@@ -37,6 +37,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { writeFile, readFile, mkdir } from 'node:fs/promises';
@@ -73,6 +74,25 @@ if (!process.env.IFC_LITE_DEMO_KIT_BOOTSTRAPPED) {
 // first in the file — so a static import here would load the broken
 // module graph before the guard ever gets a chance to run.
 // ============================================================================
+// Friendly clean-checkout guard: the imports below read built package
+// output; on a fresh worktree dist/ does not exist yet and the raw import
+// error is cryptic.
+const REQUIRED_DIST = [
+  'packages/create/dist/index.js',
+  'packages/parser/dist/index.js',
+  'packages/geometry/dist/index.js',
+  'packages/diff/dist/index.js',
+  'packages/clash/dist/index.js',
+  'packages/ids/dist/index.js',
+  'packages/encoding/dist/index.js',
+];
+const missingDist = REQUIRED_DIST.filter((p) => !existsSync(path.join(REPO_ROOT, p)));
+if (missingDist.length > 0) {
+  console.error('demo-kit: missing build output:\n  ' + missingDist.join('\n  '));
+  console.error('\nBuild the workspace packages first, then re-run:\n  pnpm turbo build\n  pnpm tsx tools/demo-kit/generate.mts');
+  process.exit(1);
+}
+
 const { IfcCreator } = await import('../../packages/create/dist/index.js');
 const { IfcParser, extractPropertiesOnDemand, extractQuantitiesOnDemand } = await import('../../packages/parser/dist/index.js');
 const { GeometryProcessor } = await import('../../packages/geometry/dist/index.js');
@@ -82,6 +102,9 @@ const { elementsFromStep } = await import('../../packages/clash/dist/adapters/st
 const { parseIDS, auditIDSDocument, validateIDS } = await import('../../packages/ids/dist/index.js');
 const { createDataAccessor } = await import('../../packages/ids/dist/bridge/index.js');
 const { generateIfcGuid } = await import('../../packages/encoding/dist/index.js');
+
+// Type-only: erased at runtime, so it does not bypass the bootstrap guard.
+type Clash = import('../../packages/clash/dist/index.js').Clash;
 
 type Point3D = [number, number, number];
 
@@ -649,7 +672,10 @@ function buildAddedWallFragment(
   }
 
   const shiftedWallId = wallId + shift;
-  const containRelId = shift + closure.size + 1;
+  // Above every harvested id: closure ids are a sparse SUBSET of the addon
+  // doc's numbering, so `shift + closure.size + 1` can collide with a
+  // harvested `id + shift` (it did - duplicate #1246 in an earlier kit).
+  const containRelId = shift + Math.max(...closure) + 1;
   const containGuid = generateIfcGuid();
   harvestLines.push(
     `#${containRelId}=IFCRELCONTAINEDINSPATIALSTRUCTURE('${containGuid}',#${baseOwnerHistoryId},$,$,(#${shiftedWallId}),#${storey2Id});`,
@@ -698,6 +724,27 @@ function deriveRevisionB(baseContent: string, base: BaseModel['ids']): RevisionB
     if (relFillsLineIdx === null) throw new Error('revB: IFCRELFILLSELEMENT for deleted door not found');
     const drop = new Set([doorLineIdx, relFillsLineIdx]);
     lines = lines.filter((_, i) => !drop.has(i));
+
+    // Scrub every remaining reference to the deleted door: other rels
+    // (property sets, spatial containment, type/material bindings) still
+    // point at it, which corrupts the STEP file with dangling references
+    // (it did - #896 in an earlier kit). Remove the door from aggregate
+    // lists; a rel whose related-objects list becomes empty is meaningless
+    // and is dropped whole.
+    const doorId = base.doorP1L2;
+    const doorRef = new RegExp(`#${doorId}(?![0-9])`);
+    lines = lines.flatMap((line) => {
+      if (!doorRef.test(line)) return [line];
+      const scrubbed = line
+        .replace(new RegExp(`#${doorId}(?![0-9]),`, 'g'), '')
+        .replace(new RegExp(`,#${doorId}(?![0-9])`, 'g'), '')
+        .replace(new RegExp(`\\(#${doorId}(?![0-9])\\)`, 'g'), '()');
+      if (scrubbed.includes('()')) return []; // sole member - drop the rel
+      if (doorRef.test(scrubbed)) {
+        throw new Error(`revB: unhandled reference to deleted door: ${line.slice(0, 100)}`);
+      }
+      return [scrubbed];
+    });
   }
   index = buildIndex(lines);
 
@@ -1031,13 +1078,13 @@ async function main(): Promise<void> {
     const engine = createClashEngine({ backend: 'ts' });
     const clashResult = await engine.run(elements, disciplineMatrixRules('hard'), { exclusions });
 
-    const pinnedPair = clashResult.clashes.find((c: any) =>
+    const pinnedPair = clashResult.clashes.find((c: Clash) =>
       c.status === 'hard' &&
       ((c.a.key === pins.clashDuct && c.b.key === pins.clashBeam) ||
         (c.a.key === pins.clashBeam && c.b.key === pins.clashDuct)));
 
     check('clash.pinnedPairPresent', !!pinnedPair,
-      pinnedPair ? `found duct-vs-beam hard clash, distance=${(pinnedPair as any).distance.toFixed(4)}m` : 'pinned duct/beam pair NOT found');
+      pinnedPair ? `found duct-vs-beam hard clash, distance=${pinnedPair.distance.toFixed(4)}m` : 'pinned duct/beam pair NOT found');
     check('clash.countBounded', clashResult.summary.total <= 20,
       `total clashes=${clashResult.summary.total} (<=20 required)`);
   } catch (err) {

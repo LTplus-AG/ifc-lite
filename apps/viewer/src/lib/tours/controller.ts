@@ -7,11 +7,14 @@
  * `getViewerStoreApi`), so entry points that live outside React (command
  * palette actions, window events) can drive it directly.
  *
- * Step lifecycle: arm baselines -> entry-time gate evaluation (an already
- * satisfied step advances silently) -> prepare() -> anchor resolution ->
- * active (gate subscription + hint timer). Steps never trap: gates have no
- * timeout-skip, but Skip is always available, a broken anchor auto-skips
- * with telemetry, and a throwing predicate degrades the step to passive.
+ * Step lifecycle: arm baselines -> prepare() -> entry-time gate evaluation
+ * (an already satisfied step advances silently) -> anchor resolution ->
+ * active (gate subscription + hint timer). prepare runs BEFORE the entry
+ * evaluation on purpose: steps like "select an element" clear stale state
+ * in prepare precisely so it cannot auto-complete the step. Steps never
+ * trap: gates have no timeout-skip, but Skip is always available, a broken
+ * anchor auto-skips with telemetry, and a throwing predicate degrades the
+ * step to passive.
  *
  * Aborts are X-on-card only, plus two automatic destructive signals: the
  * viewport flipping to mobile (the whole desktop layout - and every anchor -
@@ -191,10 +194,23 @@ async function goToStep(r: RunRecord, index: number): Promise<void> {
     redockedPanel: false,
   });
 
-  // Arm baselines, then evaluate the gate at entry: an already satisfied
-  // action step advances silently instead of flashing a stale instruction.
+  // Arm baselines, run prepare, THEN evaluate the gate at entry: an already
+  // satisfied action step advances silently instead of flashing a stale
+  // instruction. prepare must come before the entry evaluation - it is where
+  // steps clear stale state (a lingering selection, a leftover tab) exactly
+  // so that state cannot auto-complete the step.
   try {
     step.arm?.(store.getState(), ctx);
+  } catch (err) {
+    console.warn('[tours] step arm failed:', err);
+  }
+  try {
+    await step.prepare?.(store);
+  } catch (err) {
+    console.warn('[tours] step prepare failed:', err);
+  }
+  if (!isCurrent()) return;
+  try {
     if (step.gate?.predicate?.(store.getState(), ctx)) {
       r.executed.push({ step, ctx });
       telemetry.trackStepCompleted(r.def.id, step.id, index, true, 0);
@@ -203,15 +219,8 @@ async function goToStep(r: RunRecord, index: number): Promise<void> {
     }
   } catch (err) {
     // Fall through - the subscription path reports repeat predicate errors.
-    console.warn('[tours] step arm/entry-gate failed:', err);
+    console.warn('[tours] entry gate evaluation failed:', err);
   }
-
-  try {
-    await step.prepare?.(store);
-  } catch (err) {
-    console.warn('[tours] step prepare failed:', err);
-  }
-  if (!isCurrent()) return;
 
   if (step.kind !== 'canvas') {
     patchTourState({ stepPhase: 'anchoring' });
@@ -346,10 +355,15 @@ function runCleanups(r: RunRecord): void {
   const store = getViewerStoreApi();
   const index = useTourStore.getState().stepIndex;
   const current = r.def.steps[index];
-  try {
-    current?.cleanup?.(store, r.ctx);
-  } catch (err) {
-    console.warn('[tours] step cleanup failed:', err);
+  // On a normal finish the final step was already pushed to `executed`
+  // before the index advanced past the end - running it again here as
+  // "current" would double-fire its cleanup.
+  if (current?.cleanup && !r.executed.some((e) => e.step === current)) {
+    try {
+      current.cleanup(store, r.ctx);
+    } catch (err) {
+      console.warn('[tours] step cleanup failed:', err);
+    }
   }
   for (let i = r.executed.length - 1; i >= 0; i--) {
     const { step, ctx } = r.executed[i];

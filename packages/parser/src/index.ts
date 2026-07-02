@@ -8,10 +8,12 @@
  */
 
 import { unwrapIfcZip } from './ifczip.js';
-// `isZipBuffer` lets a caller (the viewer's server fast-path) know WHETHER a
-// buffer was unwrapped, not just get the unwrapped bytes. `unwrapIfcZipView`
-// is for Node Buffer/Uint8Array callers (CLI/MCP loaders).
-export { isZipBuffer, unwrapIfcZip, unwrapIfcZipView } from './ifczip.js';
+// `unwrapIfcZip` unwraps an ArrayBuffer (no-op for non-zip); `unwrapIfcZipView`
+// is the same for Node Buffer/Uint8Array callers (CLI/MCP loaders). The
+// magic-byte predicate `isZipBuffer` stays internal to `./ifczip.js` — no
+// external consumer needs to know WHETHER a buffer was a zip, only to get the
+// unwrapped bytes back.
+export { unwrapIfcZip, unwrapIfcZipView } from './ifczip.js';
 export { StepTokenizer } from './tokenizer.js';
 export { EntityIndexBuilder } from './entity-index.js';
 export { EntityExtractor } from './entity-extractor.js';

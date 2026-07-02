@@ -3174,7 +3174,6 @@
     "isEnumValue: function",
     "isKnownEntity: function",
     "isKnownType: function",
-    "isZipBuffer: function",
     "normalizeIfcTypeName: function",
     "parseAuto: function",
     "parseFederatedIfcx: function",

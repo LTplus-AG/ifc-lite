@@ -284,4 +284,24 @@ mod ifczip_tests {
         let err = unwrap_ifczip(&zip, 10, 1).unwrap_err();
         assert!(matches!(err, ApiError::FileTooLarge { max_mb: 1 }));
     }
+
+    #[test]
+    fn extracts_a_deflate_compressed_model_entry() {
+        // Real buildingSMART .ifcZIP containers are DEFLATE-compressed, not
+        // Stored. This exercises the actual `deflate` feature path so a
+        // mis-wired Cargo.toml feature fails here instead of only in production
+        // (UnsupportedArchive at decode time).
+        let mut buf = Cursor::new(Vec::new());
+        {
+            let mut zip = ZipWriter::new(&mut buf);
+            let opts =
+                SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+            zip.start_file("model.ifc", opts).unwrap();
+            zip.write_all(STEP.as_bytes()).unwrap();
+            zip.finish().unwrap();
+        }
+        let zip = buf.into_inner();
+        let out = unwrap_ifczip(&zip, BIG, 512).unwrap();
+        assert_eq!(String::from_utf8(out.to_vec()).unwrap(), STEP);
+    }
 }

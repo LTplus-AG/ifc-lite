@@ -661,7 +661,10 @@ pub fn process_geometry_streaming_filtered_with_options(
         }
 
         if ifc_lite_core::has_geometry_by_name(type_name) {
-            let ifc_type = IfcType::from_str(type_name);
+            // Legacy-aware so a remapped entity (IfcProxy, IfcSolidStratum, …)
+            // labels its node with the real base type, not "Unknown", and matches
+            // the attribute pass's row type (#1496).
+            let ifc_type = ifc_lite_core::legacy_aware_ifc_type(type_name);
             if quick_metadata_enabled {
                 quick_element_summaries.insert(
                     id,

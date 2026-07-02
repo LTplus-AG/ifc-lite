@@ -2955,6 +2955,53 @@ mod tests {
         }
     }
 
+    /// #1496 regression — the join contract: every meshed GLB node's `expressId`
+    /// must resolve to an export-model row, so a viewer can always look up
+    /// attributes on pick. The whole legacy-entity class (`IfcProxy`,
+    /// `IfcSolidStratum`, and the common IFC2x3 `*StandardCase`/`*ElementedCase`
+    /// entities) used to render *without* a row: the geometry pass meshes them via
+    /// the legacy table, but the attribute pass tested a bare `from_str`
+    /// (→ `Unknown`) against `IfcProduct`. Both now use `legacy_aware_ifc_type`.
+    /// These fixtures cover the proxy + geoscience cases; the mechanism generalises
+    /// to every legacy product. (Type-only geometry — `IfcBoilerType` in the
+    /// tessellation-with-*-texture fixtures — is a separate, harder case tracked as
+    /// a follow-up and intentionally NOT covered here.)
+    #[test]
+    fn glb_nodes_have_export_rows_for_legacy_products() {
+        for rel in [
+            "ifcopenshell/1030-sphere.ifc",
+            "ifcopenshell/1032-curve.ifc",
+            "issues/860_solid_stratum.ifc",
+        ] {
+            let Some(content) = fixture_opt(rel) else { continue };
+            let opts = GltfOptions {
+                include_metadata: true,
+                ..GltfOptions::default()
+            };
+            let (glb, _stats) = export_glb_with_stats(&content, &opts);
+            let (json, _bin) = parse_glb(&glb);
+            let rows: std::collections::HashSet<u32> = crate::model::build_export_model(&content)
+                .entities
+                .iter()
+                .map(|e| e.express_id)
+                .collect();
+            let mut checked = 0;
+            for n in json["nodes"].as_array().unwrap() {
+                let Some(extras) = n.get("extras") else { continue };
+                let Some(eid) = extras.get("expressId").and_then(|v| v.as_u64()) else {
+                    continue;
+                };
+                checked += 1;
+                assert!(
+                    rows.contains(&(eid as u32)),
+                    "{rel}: GLB node expressId {eid} (ifcType {:?}) has no export-model row (#1496)",
+                    extras.get("ifcType")
+                );
+            }
+            assert!(checked > 0, "{rel}: expected at least one meshed element node");
+        }
+    }
+
     #[test]
     fn occurrence_matrix_reconstructs_rotated_instance_under_national_grid_rtc() {
         // Decisive synthetic test for the RTC/rotation frame (review finding C1+M1):

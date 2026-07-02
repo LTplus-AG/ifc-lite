@@ -102,9 +102,18 @@ export class JsonlFileAuditSink implements AuditSink {
 
   append(entry: AuditEntry): Promise<void> {
     // Serialize all writes through one chain so size accounting and
-    // rotation observe a consistent state.
-    this.inflight = this.inflight.then(() => this.appendInner(entry));
-    return this.inflight;
+    // rotation observe a consistent state. Run after the previous write
+    // settles whether it resolved OR rejected: chaining a bare `.then()` onto
+    // a rejected `inflight` would skip the append callback, permanently
+    // poisoning every future write after one transient failure. The internal
+    // handle swallows rejections to keep the chain alive; the caller still
+    // sees its own error via the returned promise.
+    const run = this.inflight.then(
+      () => this.appendInner(entry),
+      () => this.appendInner(entry),
+    );
+    this.inflight = run.catch(() => {});
+    return run;
   }
 
   private async appendInner(entry: AuditEntry): Promise<void> {

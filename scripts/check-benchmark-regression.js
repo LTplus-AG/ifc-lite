@@ -73,6 +73,15 @@ function percentIncrease(current, baseline) {
   return ((current - baseline) / baseline) * 100;
 }
 
+// The CI job diffs like-for-like only when the baseline was itself recorded on
+// the CI runner. A locally recorded baseline (fast Apple-Silicon, real GPU, an
+// older metric era) makes every SwiftShader CI run look like a huge regression —
+// which is exactly the false alarm this check is meant to avoid. Flag a baseline
+// entry that carries no CI environment tag so the mismatch is visible, not silent.
+function looksCiRecorded(environment) {
+  return typeof environment === 'string' && /github-actions|swiftshader|ubuntu-latest|\bci\b/i.test(environment);
+}
+
 function formatMs(value) {
   if (typeof value !== 'number') return 'N/A';
   return `${value.toFixed(0)}ms`;
@@ -121,6 +130,7 @@ function compareResults() {
       baselineTimestamp: baselineEntry?.timestamp ?? null,
       baselineEnvironment: baselineEntry?.environment ?? null,
       missingBaseline: !baselineEntry?.metrics,
+      baselineLikelyLocal: !!baselineEntry?.metrics && !looksCiRecorded(baselineEntry?.environment),
       rows: [],
     };
 
@@ -160,6 +170,13 @@ function printConsoleReport(models) {
     }
     if (model.baselineEnvironment) {
       console.log(`  Baseline environment: ${model.baselineEnvironment}`);
+    }
+    if (model.baselineLikelyLocal) {
+      console.warn(
+        '  ⚠ Baseline is not CI-recorded (no CI environment tag) — deltas below may reflect a ' +
+          'machine/metric-era mismatch, not a code change. Refresh via the Benchmark workflow ' +
+          '(record_baseline); see tests/benchmark/README.md.'
+      );
     }
 
     for (const row of model.rows) {
@@ -205,6 +222,14 @@ function buildMarkdownReport(models, regressions) {
     if (baselineNote) {
       lines.push('');
       lines.push(`Baseline ${baselineNote}.`);
+    }
+    if (model.baselineLikelyLocal) {
+      lines.push('');
+      lines.push(
+        '> ⚠ This baseline is not CI-recorded (no CI environment tag), so the deltas below may reflect a ' +
+          'machine/metric-era mismatch rather than a code change. Refresh it via the Benchmark workflow ' +
+          '(`record_baseline`).'
+      );
     }
     lines.push('');
     lines.push('| Metric | Current | Baseline | Delta | Threshold | Status |');

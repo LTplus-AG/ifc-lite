@@ -41,6 +41,35 @@ pub async fn check() -> Json<HealthResponse> {
     })
 }
 
+/// GET /api/v1/ready - readiness probe: 503 while the admission RSS
+/// breaker is shedding new work, so an external load balancer can drain the
+/// instance. Deliberately separate from `/api/v1/health` (liveness), which
+/// Railway's healthcheck consumes - gating THAT on load would restart-loop
+/// the box exactly when it is busiest.
+pub async fn ready(
+    axum::extract::State(state): axum::extract::State<crate::AppState>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    if state.admission.is_shedding() {
+        (
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            axum::Json(HealthResponse {
+                status: "shedding",
+                version: env!("CARGO_PKG_VERSION"),
+                service: "ifc-lite-server",
+            }),
+        )
+            .into_response()
+    } else {
+        axum::Json(HealthResponse {
+            status: "ready",
+            version: env!("CARGO_PKG_VERSION"),
+            service: "ifc-lite-server",
+        })
+        .into_response()
+    }
+}
+
 /// GET / - API information endpoint.
 pub async fn info() -> Json<ApiInfoResponse> {
     Json(ApiInfoResponse {

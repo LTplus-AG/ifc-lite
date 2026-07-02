@@ -382,14 +382,32 @@ pub struct WorstHost {
     pub first_failure_label: Option<String>,
 }
 
+/// Compatibility handshake for the [`GeometryDiagnostics`] contract, serialized
+/// as `schemaVersion`. DISTINCT from the viewer cache `FORMAT_VERSION` (an
+/// invalidation token): this is a promise consumers can gate on.
+///
+/// Bump discipline: bump on any field rename, field removal, or
+/// count-semantics change; additive optional fields do NOT bump.
+///
+/// Changelog:
+/// - 1: initial versioned contract (the #1439 shape; a deserialized 0 means a
+///   pre-versioned producer).
+pub const GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION: u32 = 1;
+
 /// Aggregate CSG / opening diagnostics for one geometry pass — the public
 /// diagnostics contract. Built by [`aggregate_diagnostics`] from drained router
-/// data and serialized to the @ifc-lite/geometry `complete` event. wasm-free
-/// (serde only) so a native `ProcessingStats` path can reuse the same aggregator
-/// (a follow-up).
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+/// data and serialized to the @ifc-lite/geometry `complete` event, and reused
+/// verbatim by the native `ProcessingStats` path
+/// (`rust/processing/src/processor/mod.rs` populates `geometry_diagnostics`).
+/// wasm-free (serde only).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GeometryDiagnostics {
+    /// Contract version ([`GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION`]); serialized
+    /// unconditionally so consumers can gate on it. Deserializes to 0 when the
+    /// producer predates versioning.
+    #[serde(default)]
+    pub schema_version: u32,
     /// Total CSG boolean failures (un-cut openings, emptied hosts, fallbacks).
     pub total_csg_failures: u64,
     /// Distinct products (host elements) with at least one failure.
@@ -408,6 +426,22 @@ pub struct GeometryDiagnostics {
     pub rect_fast: RectFastSummary,
     /// Bounded top-N worst-failing hosts (opt-in per-product detail).
     pub worst_hosts: Vec<WorstHost>,
+}
+
+impl Default for GeometryDiagnostics {
+    fn default() -> Self {
+        Self {
+            schema_version: GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION,
+            total_csg_failures: 0,
+            products_with_failures: 0,
+            hosts_with_openings: 0,
+            classification: ClassificationSummary::default(),
+            failures_by_reason: Vec::new(),
+            silent_no_ops: 0,
+            rect_fast: RectFastSummary::default(),
+            worst_hosts: Vec::new(),
+        }
+    }
 }
 
 impl GeometryDiagnostics {
@@ -501,6 +535,7 @@ pub fn aggregate_diagnostics(
         .collect();
 
     GeometryDiagnostics {
+        schema_version: GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION,
         total_csg_failures,
         products_with_failures,
         hosts_with_openings,
@@ -657,5 +692,19 @@ mod diagnostics_contract_tests {
         }
         let fr = &v["failuresByReason"][0];
         assert!(fr.get("reason").is_some() && fr.get("count").is_some());
+    }
+
+    #[test]
+    fn schema_version_round_trips_and_defaults() {
+        let d = GeometryDiagnostics::default();
+        assert_eq!(d.schema_version, GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION);
+        let json = serde_json::to_string(&d).unwrap();
+        assert!(json.contains("\"schemaVersion\":1"), "serialized unconditionally: {json}");
+        let back: GeometryDiagnostics = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.schema_version, GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION);
+        // A pre-versioned producer (field absent) deserializes to 0, distinguishable.
+        let legacy: GeometryDiagnostics =
+            serde_json::from_str(&json.replace("\"schemaVersion\":1,", "")).unwrap();
+        assert_eq!(legacy.schema_version, 0);
     }
 }

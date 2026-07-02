@@ -1,5 +1,14 @@
 # @ifc-lite/geometry
 
+## 3.0.1
+
+### Patch Changes
+
+- [#1531](https://github.com/LTplus-AG/ifc-lite/pull/1531) [`307e56f`](https://github.com/LTplus-AG/ifc-lite/commit/307e56f71ec869e648c15075ce0144235e231ec6) Thanks [@louistrue](https://github.com/louistrue)! - Render `IfcSurfaceCurveSweptAreaSolid` and `IfcFixedReferenceSweptAreaSolid` solids. Round HVAC duct elbows — a circular profile swept along a trimmed circular-arc directrix, how Revit exports IFC4.3 duct bends — had no geometry processor registered and were silently dropped from the model. They now mesh as swept tubes (a rotation-minimising frame carries the section along the directrix, exact for the circular cross-sections these fittings use). Fixes [#1485](https://github.com/LTplus-AG/ifc-lite/issues/1485).
+
+- Updated dependencies [[`307e56f`](https://github.com/LTplus-AG/ifc-lite/commit/307e56f71ec869e648c15075ce0144235e231ec6)]:
+  - @ifc-lite/wasm@3.0.1
+
 ## 3.0.0
 
 ### Major Changes

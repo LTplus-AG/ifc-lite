@@ -31,24 +31,6 @@ pub(super) fn rotate_and_normalize(
 }
 
 
-/// Whether the representation type is geometry we can process.
-pub(super) fn is_body_representation(rep_type: &str) -> bool {
-    matches!(
-        rep_type,
-        "Body"
-            | "SweptSolid"
-            | "Brep"
-            | "CSG"
-            | "Clipping"
-            | "Tessellation"
-            | "MappedRepresentation"
-            | "SolidModel"
-            | "SurfaceModel"
-            | "AdvancedSweptSolid"
-            | "AdvancedBrep"
-    )
-}
-
 /// Pick a unit-vector along the wall's thinnest AABB axis. Used as a
 /// last-ditch extrusion direction for the issue #635 AABB fallback when
 /// the opening doesn't carry an explicit `IfcDirection`.

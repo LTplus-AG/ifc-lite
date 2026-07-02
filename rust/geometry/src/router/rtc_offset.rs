@@ -87,9 +87,66 @@ impl GeometryRouter {
                     return Some((world.x, world.y, world.z));
                 }
             }
+            // Placement sits at the origin and we could not cheaply read a body
+            // vertex. If this element has NO meshable body/surface representation
+            // at all — only a curve/axis (e.g. an IfcAlignmentSegment carrying just
+            // its 'Axis'/'Segment' curve) — it carries no reliable world position
+            // and must NOT vote (0,0,0) into the RTC sample set. Infrastructure
+            // files pair a handful of large-coordinate solids with many
+            // origin-placed alignment segments, and those spurious origin votes
+            // would drag the median back to zero and suppress the re-basing the
+            // solids actually need. Report "no evidence" instead.
+            //
+            // A body element we simply could not sample cheaply (e.g. a swept
+            // solid near the origin, which the vertex probe does not walk) still
+            // votes (0,0,0): its geometry genuinely sits at the origin, and that
+            // "no shift" vote is what keeps origin-local building models with a
+            // far georef datum from falling through to the placement-bounds
+            // fallback (which would re-base them off-screen).
+            if !self.element_has_body_representation(entity, decoder) {
+                return None;
+            }
         }
 
         Some((tx, ty, tz))
+    }
+
+    /// True when the element carries at least one meshable body/surface shape
+    /// representation (as opposed to only curve/axis/footprint representations,
+    /// e.g. an IfcAlignmentSegment). Used to decide whether an origin-placed
+    /// element with no cheaply-samplable vertex may still cast a "no shift"
+    /// (0,0,0) vote during RTC detection.
+    fn element_has_body_representation(
+        &self,
+        entity: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> bool {
+        let Some(rep_attr) = entity.get(6) else {
+            return false;
+        };
+        if rep_attr.is_null() {
+            return false;
+        }
+        let Ok(Some(rep)) = decoder.resolve_ref(rep_attr) else {
+            return false;
+        };
+        if rep.ifc_type != IfcType::IfcProductDefinitionShape {
+            return false;
+        }
+        let Some(reps_attr) = rep.get(2) else {
+            return false;
+        };
+        let Ok(reps) = decoder.resolve_ref_list(reps_attr) else {
+            return false;
+        };
+        reps.iter().any(|sr| {
+            sr.ifc_type == IfcType::IfcShapeRepresentation
+                && sr
+                    .get(2)
+                    .and_then(|a| a.as_string())
+                    .map(super::is_body_representation)
+                    .unwrap_or(false)
+        })
     }
 
     /// Read the first geometry vertex (f64) from an element's representation.
@@ -343,13 +400,21 @@ impl GeometryRouter {
         decoder: &mut EntityDecoder,
     ) -> Option<(f64, f64, f64)> {
         const MAX_SAMPLES: usize = 50;
+        // Cap on USABLE samples, not raw jobs: `take` follows `filter_map` so
+        // elements that abstain (origin-placed curve/axis-only reps such as
+        // IfcAlignmentSegment, which return None) do not consume the sample
+        // budget. Otherwise a file that emits 50+ alignment segments before its
+        // real large-coordinate solids would fill the window with abstentions,
+        // sample zero positions, and miss the re-basing the solids need.
+        // Matches `detect_rtc_offset_from_first_element`, which likewise counts
+        // pushed samples rather than scanned entities.
         let translations: Vec<(f64, f64, f64)> = jobs
             .iter()
-            .take(MAX_SAMPLES)
             .filter_map(|&(id, start, end, _)| {
                 let entity = decoder.decode_at_with_id(id, start, end).ok()?;
                 self.sample_element_translation(&entity, decoder)
             })
+            .take(MAX_SAMPLES)
             .collect();
 
         if translations.is_empty() {

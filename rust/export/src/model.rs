@@ -545,7 +545,8 @@ mod tests {
     /// The adversarial join test: EVERY mesh the geometry pass tags as
     /// type-product geometry (geometry_class != 0, keyed by the type's expressId)
     /// must have a matching attribute row of the same type. This is exactly the
-    /// motif-ifc join the #1518 gap broke; it must hold for the whole showcase set.
+    /// downstream geometry-to-attribute join the #1518 gap broke; it must hold for
+    /// the whole showcase set.
     #[test]
     fn type_product_meshes_all_have_rows() {
         for rel in [

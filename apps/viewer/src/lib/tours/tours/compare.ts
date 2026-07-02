@@ -12,7 +12,7 @@
  */
 
 import { activityAnchor, TOUR_ANCHORS } from '../anchors';
-import { loadDemoRevisions } from '../demo-kit';
+import { DEMO_MODEL_NAMES, loadDemoRevisions } from '../demo-kit';
 import type { TourDefinition } from '../types';
 
 export const COMPARE_TOUR: TourDefinition = {
@@ -68,8 +68,8 @@ export const COMPARE_TOUR: TourDefinition = {
         const s = store.getState();
         const models = [...s.models.values()];
         // Exact kit names only - anything else keeps the panel's defaults.
-        const base = models.find((m) => m.name === 'demo-project.ifc');
-        const revB = models.find((m) => m.name === 'demo-project-rev-b.ifc');
+        const base = models.find((m) => m.name === DEMO_MODEL_NAMES.base);
+        const revB = models.find((m) => m.name === DEMO_MODEL_NAMES.revB);
         if (!base || !revB) return;
         s.setCompareBaseModelId(base.id);
         s.setCompareHeadModelId(revB.id);

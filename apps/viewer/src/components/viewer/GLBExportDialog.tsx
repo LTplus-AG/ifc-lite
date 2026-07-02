@@ -89,6 +89,10 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
   // the geometryResult is needed — GLB export doesn't read the parsed
   // STEP store.
   const legacyGeometryResult = useViewerStore((s) => s.geometryResult);
+  // Merge-layers suppresses multilayer-wall part meshes at load time (#540);
+  // the from-bytes exporter re-meshes with defaults and would resurrect them,
+  // exporting different model content than the user loaded.
+  const mergeLayers = useViewerStore((s) => s.mergeLayers);
 
   const [open, setOpen] = useState(false);
   const [selectedModelId, setSelectedModelId] = useState<string>('');
@@ -236,8 +240,13 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
       // the primary id space (idOffset 0) so node-extras expressIds stay
       // consistent with the from-meshes output. Everything else keeps the
       // from-meshes assembler over the meshes the viewer already holds.
+      // NOTE on fidelity: the on-screen load may skip small cuts / lower the
+      // tessellation tier; exporters deliberately re-mesh at full fidelity
+      // (the house rule - see GeometryProcessorOptions.skipSmallCuts). Only
+      // mergeLayers changes model CONTENT, so it forces the from-meshes path.
       const canUseSource =
         colorSource === 'rendering' &&
+        !mergeLayers &&
         idOffset === 0 &&
         !!sourceFile &&
         /\.ifc$/i.test(sourceFile.name);
@@ -331,6 +340,7 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
     selectedModel,
     selectedModelId,
     models,
+    mergeLayers,
     includeMetadata,
     lit,
     colorSource,

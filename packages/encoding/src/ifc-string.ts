@@ -10,6 +10,10 @@
  * - \X\XX\ - ISO-8859-1 hex encoding
  * - \S\X - Extended ASCII with escape
  * - \P..\ - Code page switches (supported as directives and removed)
+ *
+ * This handles only backslash escapes. The '' doubled-quote escape is collapsed
+ * by the STEP tokenizer's consumers (they strip surrounding quotes and
+ * un-double), so decoding must not touch quotes or it would double-collapse.
  */
 export function decodeIfcString(str: string): string {
   if (!str || typeof str !== 'string') return str;
@@ -30,10 +34,14 @@ export function decodeIfcString(str: string): string {
       continue;
     }
 
-    // Handle \S\X where byte value is ord(X) + 128 in ISO-8859-1.
+    // Handle \S\X where the value is the code point of X plus 128. Read X as a
+    // whole code point (advancing past a surrogate pair) so a malformed
+    // multi-byte X stays in parity with the Rust decoder instead of leaving a
+    // dangling surrogate.
     if (str[i + 1] === 'S' && str[i + 2] === '\\' && i + 3 < str.length) {
-      result += String.fromCharCode(str.charCodeAt(i + 3) + 128);
-      i += 4;
+      const cp = str.codePointAt(i + 3)!;
+      result += String.fromCodePoint(cp + 128);
+      i += 3 + (cp > 0xFFFF ? 2 : 1);
       continue;
     }
 

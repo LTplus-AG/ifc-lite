@@ -10,6 +10,7 @@
  * from the command line. Designed for both humans and LLM terminals.
  */
 
+import { logger, parseVerbosity } from './logger.js';
 import { infoCommand } from './commands/info.js';
 import { queryCommand } from './commands/query.js';
 import { propsCommand } from './commands/props.js';
@@ -90,10 +91,14 @@ const HELP = `
     ext       validate <path>|init <dir>          Manage IFClite extensions (Phase 0 — validate, init)
 
   Options:
-    --help, -h       Show help
-    --version, -v    Show version
-    --json           Output as JSON (machine-readable)
-    --out <file>     Write output to file instead of stdout
+    --help, -h           Show help
+    --version, -v        Show version
+    --json               Output as JSON (machine-readable)
+    --out <file>         Write output to file instead of stdout
+    --verbose            Show parser + geometry diagnostics (stderr)
+    --quiet              Errors only
+    --debug              Verbose + stack traces on error
+    --log-level <level>  error|warn|info|debug (explicit wins over shorthands)
 
   Examples:
     ifc-lite info model.ifc
@@ -167,8 +172,18 @@ const HELP = `
   Learn more: https://ifclite.com
 `;
 
+/** Command being executed, captured for the top-level error handler. */
+let activeCommand = '';
+/** True when --debug was passed (stack traces on error). */
+let debugFlag = false;
+
 async function main(): Promise<void> {
-  const args = process.argv.slice(2);
+  // Global verbosity flags are parsed and STRIPPED before dispatch so a
+  // command's positional-argument scan never mistakes them for a file path.
+  const verbosity = parseVerbosity(process.argv.slice(2));
+  logger.configure({ level: verbosity.level });
+  debugFlag = verbosity.debug;
+  const args = verbosity.rest;
 
   if (args.length === 0 || args.includes('--help') || args.includes('-h')) {
     process.stdout.write(HELP + '\n');
@@ -181,6 +196,7 @@ async function main(): Promise<void> {
   }
 
   const command = args[0];
+  activeCommand = command;
   const commandArgs = args.slice(1);
 
   switch (command) {
@@ -270,9 +286,16 @@ async function main(): Promise<void> {
 }
 
 main().catch((err: Error) => {
-  process.stderr.write(`Error: ${err.message}\n`);
-  if (process.env.DEBUG) {
+  const label = activeCommand ? `Error [${activeCommand}]` : 'Error';
+  process.stderr.write(`${label}: ${err.message}\n`);
+  // Stack traces with --debug/--verbose/--log-level debug, or the legacy
+  // DEBUG env var (kept for back-compat).
+  if (debugFlag || logger.level() === 'debug' || process.env.DEBUG) {
     process.stderr.write((err.stack ?? '') + '\n');
+  } else {
+    process.stderr.write(
+      `Hint: re-run with --debug for a stack trace, or \`ifc-lite ${activeCommand || '<command>'} --help\` for usage.\n`,
+    );
   }
   process.exit(1);
 });

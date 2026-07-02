@@ -1,0 +1,33 @@
+{
+ "elements": [
+  {
+   "bbox": {
+    "max": [
+     2.0,
+     0.8,
+     0.8
+    ],
+    "min": [
+     0.0,
+     0.0,
+     0.0
+    ]
+   },
+   "closed": true,
+   "express_id": 225,
+   "ifc_type": "IfcSanitaryTerminal",
+   "status": "ok",
+   "tri_count": 220,
+   "vertex_count": 112,
+   "volume": 0.548286
+  }
+ ],
+ "engine": "ifcopenshell 0.8.2",
+ "fixture": "bath_csg_solid.ifc",
+ "settings": {
+  "use_world_coords": true,
+  "weld_vertices": true
+ },
+ "sha256": "950424788ef247ebde29026d3a103cd59bb971eee697175bfdd4277f61a4d2e3",
+ "version": 1
+}

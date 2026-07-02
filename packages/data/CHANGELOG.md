@@ -1,5 +1,19 @@
 # @ifc-lite/data
 
+## 2.3.0
+
+### Minor Changes
+
+- [#1503](https://github.com/LTplus-AG/ifc-lite/pull/1503) [`d1e16f9`](https://github.com/LTplus-AG/ifc-lite/commit/d1e16f944ea9f3a35a7153959f13db168a35c229) Thanks [@louistrue](https://github.com/louistrue)! - fix(query): scope `whereProperty` to the named property set
+
+  `EntityQuery.whereProperty(psetName, propName, ...)` recorded the property-set
+  name but never passed it to `findByProperty`, so a property matched in _any_
+  property set — e.g. filtering `Pset_WallCommon.IsExternal` also returned doors
+  whose `Pset_DoorCommon.IsExternal` matched. `findByProperty` gains an optional
+  `psetName` argument (honored by the in-memory, cache-restored, and
+  server-converted property tables), and `whereProperty` now passes it. An unknown
+  pset name matches nothing.
+
 ## 2.2.0
 
 ### Minor Changes

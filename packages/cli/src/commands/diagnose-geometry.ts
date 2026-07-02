@@ -11,8 +11,9 @@
  * `ProcessingStats.geometry_diagnostics`. Use `--json` for the raw object.
  */
 import { readFile } from 'node:fs/promises';
-import { GeometryProcessor, type GeometryDiagnostics } from '@ifc-lite/geometry';
+import { GeometryProcessor } from '@ifc-lite/geometry';
 import { getFlag, hasFlag, fatal } from '../output.js';
+import { formatGeometryReport, NO_DIAGNOSTICS_LINE } from '../geometry-report.js';
 
 export async function diagnoseGeometryCommand(args: string[]): Promise<void> {
   const filePath = args.find((a) => !a.startsWith('-'));
@@ -43,53 +44,8 @@ export async function diagnoseGeometryCommand(args: string[]): Promise<void> {
   }
 
   if (!diag) {
-    console.log('No CSG / opening diagnostics recorded (no openings cut, no failures).');
+    console.log(NO_DIAGNOSTICS_LINE);
     return;
   }
-  printReport(diag);
-}
-
-function printReport(d: GeometryDiagnostics): void {
-  const lines: string[] = [];
-  lines.push('Geometry diagnostics');
-  lines.push('====================');
-  lines.push(
-    `CSG failures:        ${d.totalCsgFailures} across ${d.productsWithFailures} product(s)`,
-  );
-  lines.push(`Hosts with openings: ${d.hostsWithOpenings}`);
-  lines.push(
-    `Openings classified: ${d.classification.total} ` +
-      `(rectangular ${d.classification.rectangular}, diagonal ${d.classification.diagonal}, ` +
-      `non-rectangular ${d.classification.nonRectangular})`,
-  );
-  lines.push(`Silent rect no-ops:  ${d.silentNoOps}`);
-
-  if (d.failuresByReason.length > 0) {
-    lines.push('');
-    lines.push('Failures by reason:');
-    for (const r of d.failuresByReason) {
-      lines.push(`  ${r.count.toString().padStart(6)}  ${r.reason}`);
-    }
-  }
-
-  const rf = d.rectFast;
-  lines.push('');
-  lines.push(
-    `rect_fast: fired ${rf.fired}, openings cut ${rf.openingsCut} ` +
-      `(defer: host-not-box ${rf.deferHostNotBox}, not-through ${rf.deferNotThrough}, ` +
-      `off-face ${rf.deferOffFace}, near-edge ${rf.deferNearEdge}, no-openings ${rf.deferNoOpenings})`,
-  );
-
-  if (d.worstHosts.length > 0) {
-    lines.push('');
-    lines.push('Worst-failing hosts:');
-    for (const h of d.worstHosts) {
-      const label = h.firstFailureLabel ? ` [${h.firstFailureLabel}]` : '';
-      lines.push(
-        `  #${h.productId} ${h.ifcType}: ${h.csgFailures} failure(s), ${h.openings} opening(s)${label}`,
-      );
-    }
-  }
-
-  console.log(lines.join('\n'));
+  console.log(formatGeometryReport(diag));
 }

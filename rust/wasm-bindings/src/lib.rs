@@ -60,6 +60,8 @@ pub use console_error_panic_hook::set_once as set_panic_hook;
 pub use wasm_bindgen_rayon::init_thread_pool;
 
 mod api;
+#[cfg(feature = "console-tracing")]
+mod tracing_console;
 mod utils;
 mod zero_copy;
 

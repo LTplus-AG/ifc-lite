@@ -1,0 +1,3 @@
+ifcopenshell==0.8.2
+numpy==2.0.2
+shapely==2.0.7

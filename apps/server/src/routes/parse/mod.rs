@@ -56,7 +56,7 @@ impl ParseQuery {
 pub(crate) async fn extract_file(
     multipart: &mut Multipart,
     max_file_size_mb: usize,
-) -> Result<Vec<u8>, ApiError> {
+) -> Result<bytes::Bytes, ApiError> {
     let max_bytes = max_file_size_mb.saturating_mul(1024 * 1024);
 
     while let Some(field) = multipart.next_field().await? {
@@ -93,14 +93,16 @@ pub(crate) async fn extract_file(
                         format!("{:.1}x", original_size as f64 / decompressed.len() as f64),
                     "File decompressed successfully"
                 );
-                return Ok(decompressed);
+                return Ok(bytes::Bytes::from(decompressed));
             } else {
                 if bytes.len() > max_bytes {
                     return Err(ApiError::FileTooLarge {
                         max_mb: max_file_size_mb,
                     });
                 }
-                return Ok(bytes.to_vec());
+                // Already-buffered multipart Bytes: hand back the same
+                // allocation instead of a full `.to_vec()` copy.
+                return Ok(bytes);
             }
         }
     }

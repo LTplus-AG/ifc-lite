@@ -28,6 +28,14 @@ pub async fn parse_full(
     mut multipart: Multipart,
 ) -> Result<Json<ParseResponse>, ApiError> {
     // Extract file from multipart
+    // Admission gate (bounded concurrency + byte budget): acquired BEFORE the
+    // upload is buffered, reserving the max upload size since multipart rarely
+    // declares a length up front. Held for the request's whole lifetime so a
+    // disconnected-but-still-running job keeps its memory slot.
+    let admission_guard = state
+        .admission
+        .acquire(state.config.max_file_size_mb as u64 * 1024 * 1024)
+        .await?;
     let data = extract_file(&mut multipart, state.config.max_file_size_mb).await?;
 
     // Generate cache key (include opening filter so different modes get different cache entries)
@@ -51,11 +59,15 @@ pub async fn parse_full(
     // geometry with the 2D symbolic-data extraction (issue #843) so
     // callers can render IfcGrid axes and IfcAnnotation polylines from
     // the same response without re-uploading the file.
-    let (result, symbolic_data) = tokio::task::spawn_blocking(move || {
+    // The guard moves INTO the blocking task and comes back with the result:
+    // if the TimeoutLayer (or a disconnect) cancels this handler future, the
+    // detached blocking work keeps running - and keeps its admission slot -
+    // until it actually exits, so a replacement cannot be admitted on top.
+    let ((result, symbolic_data), _admission) = tokio::task::spawn_blocking(move || {
         let result =
             process_geometry_filtered_with_quality(&content, opening_filter, tessellation_quality);
         let symbolic = ifc_lite_processing::extract_symbolic_data(&content);
-        (result, symbolic)
+        ((result, symbolic), admission_guard)
     })
     .await?;
 
@@ -96,6 +108,14 @@ pub async fn parse_stream(
     let tessellation_quality = query.resolved_tessellation_quality()?;
 
     // Extract file
+    // Admission gate (bounded concurrency + byte budget): acquired BEFORE the
+    // upload is buffered, reserving the max upload size since multipart rarely
+    // declares a length up front. Held for the request's whole lifetime so a
+    // disconnected-but-still-running job keeps its memory slot.
+    let admission_guard = state
+        .admission
+        .acquire(state.config.max_file_size_mb as u64 * 1024 * 1024)
+        .await?;
     let data = extract_file(&mut multipart, state.config.max_file_size_mb).await?;
 
     let content = data;
@@ -109,6 +129,7 @@ pub async fn parse_stream(
         max_batch_size,
         query.opening_filter,
         tessellation_quality,
+        Some(admission_guard),
     )
     .map(|event: StreamEvent| {
             let json = serde_json::to_string(&event).unwrap_or_else(|e| {
@@ -131,6 +152,14 @@ pub async fn parse_metadata(
     mut multipart: Multipart,
 ) -> Result<Json<MetadataResponse>, ApiError> {
     // Extract file
+    // Admission gate (bounded concurrency + byte budget): acquired BEFORE the
+    // upload is buffered, reserving the max upload size since multipart rarely
+    // declares a length up front. Held for the request's whole lifetime so a
+    // disconnected-but-still-running job keeps its memory slot.
+    let admission_guard = state
+        .admission
+        .acquire(state.config.max_file_size_mb as u64 * 1024 * 1024)
+        .await?;
     let data = extract_file(&mut multipart, state.config.max_file_size_mb).await?;
 
     let file_size = data.len();
@@ -151,14 +180,18 @@ pub async fn parse_metadata(
 
         let schema_version = detect_schema_version(&content);
 
-        MetadataResponse {
-            entity_count,
-            geometry_count,
-            schema_version: schema_version.to_string(),
-            file_size,
-        }
+        (
+            MetadataResponse {
+                entity_count,
+                geometry_count,
+                schema_version: schema_version.to_string(),
+                file_size,
+            },
+            admission_guard,
+        )
     })
     .await?;
+    let (result, _admission) = result;
 
     Ok(Json(result))
 }

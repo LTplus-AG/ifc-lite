@@ -20,6 +20,7 @@ mod gpu_meshes;
 mod grid_lines;
 mod mesh_outline;
 mod parsing;
+mod pipeline_diagnostics;
 mod space_plate;
 pub(crate) mod styling;
 mod symbolic;
@@ -197,6 +198,17 @@ pub struct IfcAPI {
             )>,
         )>,
     >,
+
+    /// Per-load structured pipeline diagnostics (`PipelineDiagnostics`
+    /// contract, see `api::pipeline_diagnostics`): every
+    /// `processGeometryBatch*` call folds one batch record in — cheap
+    /// counters plus per-batch JS wall time, so it is always on. Read by JS
+    /// via `getPipelineDiagnostics`; reset at load START by every entry point
+    /// that begins a new file on a reused IfcAPI (`buildPrePassOnce`,
+    /// `buildPrePassStreaming`, `setEntityIndex`) - deliberately NOT by
+    /// `clearPrePassCache`, which runs at end-of-load before a host reads the
+    /// diagnostics.
+    pipeline_diagnostics: std::sync::Mutex<ifc_lite_processing::PipelineDiagnostics>,
 }
 
 #[wasm_bindgen]
@@ -226,6 +238,9 @@ impl IfcAPI {
             skip_small_cuts: std::sync::atomic::AtomicBool::new(false),
             cached_plane_angle_to_radians: std::sync::Mutex::new(None),
             cached_geometry_styles: std::sync::Mutex::new(None),
+            pipeline_diagnostics: std::sync::Mutex::new(
+                ifc_lite_processing::PipelineDiagnostics::default(),
+            ),
         }
     }
 
@@ -307,6 +322,13 @@ impl IfcAPI {
             .lock()
             .expect("ifc-lite cached_item_dedup Mutex poisoned")
             .take();
+        // NB: do NOT reset pipeline_diagnostics here. clearPrePassCache runs in
+        // the JS load wrapper's `finally` AFTER the last processGeometryBatch
+        // (packages/geometry/src/index.ts), i.e. end-of-load cleanup; resetting
+        // here would erase the just-completed load's diagnostics before a host
+        // can read getPipelineDiagnostics(). Diagnostics are an accumulator, not
+        // a cache, so they reset only at load START (set_entity_index), unlike
+        // cached_item_dedup which is safe to drop on every clear.
     }
 
     /// Populate `cached_entity_index` from pre-extracted column arrays.
@@ -395,6 +417,9 @@ impl IfcAPI {
             .lock()
             .expect("ifc-lite cached_item_dedup Mutex poisoned")
             .take();
+        // A new entity index means a new file — the pipeline diagnostics
+        // describe the previous load, so start fresh.
+        self.reset_pipeline_diagnostics();
     }
 
     /// Get WASM memory for zero-copy access
@@ -436,12 +461,13 @@ impl IfcAPI {
     /// Enable or disable the PARAMETRIC rectangular-opening fast path (the
     /// placement-frame, ground-truth-exact analytic cut) for `processGeometryBatch`.
     ///
-    /// DEFAULT OFF. This is the wasm-side toggle that lets native and wasm flip the
-    /// flag in LOCKSTEP — the byte-identical native==wasm contract requires both
-    /// targets take the same path, and wasm has no env to read `IFC_LITE_RECT_PARAM`.
+    /// DEFAULT ON (corpus-validated; native defaults ON too, and wasm has no env to
+    /// read `IFC_LITE_RECT_PARAM`, so both targets default in LOCKSTEP -- the
+    /// byte-identical native==wasm contract requires both take the same path). This
+    /// toggle is the wasm-side escape hatch mirroring `IFC_LITE_RECT_PARAM=0`.
     /// The path subtracts rectangular openings as exact parametric boxes in the host's
     /// own placement frame (rotated walls included), deferring any non-clean case to
-    /// the exact kernel. Pass `true` before `processGeometryBatch`.
+    /// the exact kernel. Pass `false` before `processGeometryBatch` to opt out.
     #[wasm_bindgen(js_name = setRectParamFastPath)]
     pub fn set_rect_param_fast_path(&self, enabled: bool) {
         ifc_lite_geometry::rect_fast::param_set_enabled_override(Some(enabled));

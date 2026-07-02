@@ -140,6 +140,25 @@ describe('EntityQuery', () => {
       expect(results).toHaveLength(1);
       expect(results[0].expressId).toBe(1);
     });
+
+    it('scopes to the named property set, not a same-named property elsewhere', () => {
+      // `IsExternal=true` holds for wall 1 (Pset_WallCommon) and door 3
+      // (Pset_DoorCommon). A query scoped to Pset_WallCommon must return only
+      // the wall; ignoring the pset name would leak the door in.
+      const store = makeStore();
+      const query = new EntityQuery(store, null);
+      query.whereProperty('Pset_WallCommon', 'IsExternal', '=', true);
+      const results = query.execute();
+      expect(results.map(r => r.expressId)).toEqual([1]);
+    });
+
+    it('returns nothing for an unknown property set even if the property exists', () => {
+      const store = makeStore();
+      const query = new EntityQuery(store, null);
+      query.whereProperty('Pset_NonExistent', 'IsExternal', '=', true);
+      const results = query.execute();
+      expect(results).toHaveLength(0);
+    });
   });
 
   // ── Limit & Offset ────────────────────────────────────────────

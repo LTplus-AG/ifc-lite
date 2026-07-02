@@ -21,5 +21,9 @@ walls (the kernel's documented 9-34% over-cut), so fired geometry is not
 byte-equal to the old kernel output by design.
 
 `IFC_LITE_RECT_PARAM=0` (native) and `setRectParamFastPath(false)` (wasm)
-remain as opt-out escape hatches. wasm reads no env, so both targets default
-ON in lockstep and the native==wasm byte contract is preserved.
+remain as opt-out escape hatches for the parametric path alone, and
+`IFC_LITE_RECT_FAST=0` stays the global rect-fast kill switch: it disables the
+legacy AND the parametric path, so that single flag still forces every
+rectangular opening through the exact kernel (parity debugging / bisection).
+wasm reads no env, so both targets default ON in lockstep and the native==wasm
+byte contract is preserved.

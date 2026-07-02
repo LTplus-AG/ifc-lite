@@ -10,7 +10,7 @@
  */
 
 import type { CellValue, ColumnDefinition, ListRow, ListGrouping } from '@ifc-lite/lists';
-import { orderGroups, type GroupSort } from '@/components/viewer/lists/list-table-utils';
+import { orderGroups, type GroupSort } from '@/lib/lists/group-sort';
 
 export interface ExportColumn {
   id: string;

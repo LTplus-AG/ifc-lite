@@ -69,6 +69,15 @@ describe('buildGroupedView group ordering (#1498)', () => {
     assert.deepStrictEqual(groupOrder(desc), ['B', 'C', 'A']);
   });
 
+  it('breaks summed-column ties in the sort direction', () => {
+    // Sums: X=5, Y=5 (tie), Z=9 — ties resolve by label following the arrow.
+    const tie = rows(['X', 5], ['Y', 5], ['Z', 9]);
+    const asc = groupOrder(buildGroupedView(tie, columns, GROUP_BY_CAT, NO_EXPAND, { colIdx: 1, dir: 'asc' }));
+    assert.deepStrictEqual(asc, ['X', 'Y', 'Z']);
+    const desc = groupOrder(buildGroupedView(tie, columns, GROUP_BY_CAT, NO_EXPAND, { colIdx: 1, dir: 'desc' }));
+    assert.deepStrictEqual(desc, ['Z', 'Y', 'X']);
+  });
+
   it('numeric group columns sort numerically, not lexically', () => {
     const numCols: ColumnDefinition[] = [{ id: 'n', source: 'attribute', propertyName: 'N' }];
     const numRows: ListRow[] = [2, 10, 1].map((n, i) => ({ entityId: i + 1, modelId: 'm', values: [n] }));

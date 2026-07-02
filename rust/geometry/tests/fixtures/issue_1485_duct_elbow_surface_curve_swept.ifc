@@ -1,0 +1,67 @@
+ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');
+FILE_NAME('issue_1485_duct_elbow_surface_curve_swept.ifc','2026-07-02T00:00:00',(''),(''),'ifc-lite neutral fixture','ifc-lite','');
+FILE_SCHEMA(('IFC4X3_ADD2'));
+ENDSEC;
+DATA;
+/* Units: millimetres, plane angle in DEGREES (Revit HVAC convention). The
+   trimmed-arc directrix parameters below are therefore read as degrees. */
+#1=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);
+#2=IFCSIUNIT(*,.PLANEANGLEUNIT.,$,.RADIAN.);
+#3=IFCDIMENSIONALEXPONENTS(0,0,0,0,0,0,0);
+#4=IFCMEASUREWITHUNIT(IFCPLANEANGLEMEASURE(0.017453292519943295),#2);
+#5=IFCCONVERSIONBASEDUNIT(#3,.PLANEANGLEUNIT.,'DEGREE',#4);
+#6=IFCUNITASSIGNMENT((#1,#5));
+/* Representation context */
+#10=IFCCARTESIANPOINT((0.,0.,0.));
+#11=IFCAXIS2PLACEMENT3D(#10,$,$);
+#12=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,0.01,#11,$);
+#13=IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body','Model',*,*,*,*,#12,$,.MODEL_VIEW.,$);
+#20=IFCPROJECT('0P00000000000000000000',$,'Duct elbow fixture',$,$,$,$,(#12),#6);
+/* Identity placement shared by the spatial tree and the fitting */
+#30=IFCAXIS2PLACEMENT3D(#10,$,$);
+#31=IFCLOCALPLACEMENT($,#30);
+/* --- Round duct elbow, 90 degrees --------------------------------------------
+   SweptArea  : circle radius 50 mm, centred on origin (the duct bore).
+   Directrix  : circle radius 150 mm centred at (0,150) in the XY plane, trimmed
+                270deg -> 0deg (a 90deg quarter arc from (0,0) to (150,150)).
+   Reference  : surface of linear extrusion of the directrix along +Z.
+   The bend lies in the XY plane so the swept tube's Z extent is exactly the
+   duct diameter (2 x 50 = 100 mm) - a clean geometric correctness check. */
+#40=IFCCARTESIANPOINT((0.,0.));
+#41=IFCDIRECTION((1.,0.));
+#42=IFCAXIS2PLACEMENT2D(#40,#41);
+#43=IFCCIRCLEPROFILEDEF(.AREA.,'bore',#42,50.);
+#44=IFCCARTESIANPOINT((0.,150.));
+#45=IFCDIRECTION((1.,0.));
+#46=IFCAXIS2PLACEMENT2D(#44,#45);
+#47=IFCCIRCLE(#46,150.);
+#48=IFCTRIMMEDCURVE(#47,(IFCPARAMETERVALUE(270.)),(IFCPARAMETERVALUE(0.)),.T.,.PARAMETER.);
+#49=IFCARBITRARYOPENPROFILEDEF(.CURVE.,$,#48);
+#50=IFCCARTESIANPOINT((0.,0.,0.));
+#51=IFCAXIS2PLACEMENT3D(#50,$,$);
+#52=IFCDIRECTION((0.,0.,1.));
+#53=IFCSURFACEOFLINEAREXTRUSION(#49,#51,#52,1.);
+#54=IFCAXIS2PLACEMENT3D(#10,$,$);
+#55=IFCSURFACECURVESWEPTAREASOLID(#43,#54,#48,IFCPARAMETERVALUE(0.),IFCPARAMETERVALUE(90.),#53);
+#56=IFCSHAPEREPRESENTATION(#13,'Body','AdvancedSweptSolid',(#55));
+#57=IFCPRODUCTDEFINITIONSHAPE($,$,(#56));
+#58=IFCDUCTFITTING('0F00000000000000000000',$,'Round elbow',$,$,#31,#57,$,.BEND.);
+/* The same elbow as an IfcFixedReferenceSweptAreaSolid (shares the profile,
+   position and directrix). Slots 0..4 match IfcSurfaceCurveSweptAreaSolid; only
+   slot 5 differs (a FixedReference direction rather than a reference surface),
+   so a single processor handles both. */
+#70=IFCDIRECTION((0.,0.,1.));
+#71=IFCFIXEDREFERENCESWEPTAREASOLID(#43,#54,#48,IFCPARAMETERVALUE(0.),IFCPARAMETERVALUE(90.),#70);
+#72=IFCSHAPEREPRESENTATION(#13,'Body','AdvancedSweptSolid',(#71));
+#73=IFCPRODUCTDEFINITIONSHAPE($,$,(#72));
+#74=IFCDUCTFITTING('0G00000000000000000000',$,'Round elbow (fixed ref)',$,$,#31,#73,$,.BEND.);
+/* Minimal spatial tree so the fixture loads as a complete model */
+#60=IFCBUILDING('0B00000000000000000000',$,'Building',$,$,#31,$,$,.ELEMENT.,$,$,$);
+#61=IFCBUILDINGSTOREY('0S00000000000000000000',$,'Storey',$,$,#31,$,$,.ELEMENT.,0.);
+#62=IFCRELAGGREGATES('0R00000000000000000001',$,$,$,#20,(#60));
+#63=IFCRELAGGREGATES('0R00000000000000000002',$,$,$,#60,(#61));
+#64=IFCRELCONTAINEDINSPATIALSTRUCTURE('0R00000000000000000003',$,$,$,(#58,#74),#61);
+ENDSEC;
+END-ISO-10303-21;

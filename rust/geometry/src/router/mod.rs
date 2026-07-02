@@ -37,7 +37,7 @@ use crate::processors::{
     FaceBasedSurfaceModelProcessor, FacetedBrepProcessor, IfcAlignmentProcessor,
     MappedItemProcessor, PolygonalFaceSetProcessor, RevolvedAreaSolidProcessor,
     SectionedSolidHorizontalProcessor, ShellBasedSurfaceModelProcessor, SphereProcessor,
-    SweptDiskSolidProcessor, TriangulatedFaceSetProcessor,
+    SurfaceCurveSweptAreaSolidProcessor, SweptDiskSolidProcessor, TriangulatedFaceSetProcessor,
 };
 use crate::tessellation::TessellationQuality;
 use crate::{BoolFailure, Mesh, Result};
@@ -205,6 +205,9 @@ impl GeometryRouter {
         router.register(Box::new(BooleanClippingProcessor::new()));
         router.register(Box::new(SweptDiskSolidProcessor::new(schema_clone.clone())));
         router.register(Box::new(RevolvedAreaSolidProcessor::new(
+            schema_clone.clone(),
+        )));
+        router.register(Box::new(SurfaceCurveSweptAreaSolidProcessor::new(
             schema_clone.clone(),
         )));
         router.register(Box::new(SectionedSolidHorizontalProcessor::new(

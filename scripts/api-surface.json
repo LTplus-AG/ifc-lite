@@ -3174,6 +3174,7 @@
     "isEnumValue: function",
     "isKnownEntity: function",
     "isKnownType: function",
+    "isZipBuffer: function",
     "normalizeIfcTypeName: function",
     "parseAuto: function",
     "parseFederatedIfcx: function",
@@ -3189,7 +3190,8 @@
     "serializeValue: function",
     "toStepLine: function",
     "transformToLocal: function",
-    "transformToWorld: function"
+    "transformToWorld: function",
+    "unwrapIfcZip: function"
   ],
   "@ifc-lite/parser/browser": [
     "WorkerParser: class",

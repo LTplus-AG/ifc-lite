@@ -280,6 +280,10 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
 
         const meshes = (exportGeometry.meshes as MeshData[])
           .filter((m) => {
+            // Instanced type-library duplicates (geometryClass 2) duplicate
+            // occurrence geometry at the origin; the from-bytes assembler
+            // excludes them (mesh_visible) and so must this path.
+            if (m.geometryClass === 2) return false;
             if (!visibleOnly) return true;
             if (hiddenIfcTypes && m.ifcType && hiddenIfcTypes.has(m.ifcType)) return false;
             if (hasIsolation && !globalIsolated!.has(m.expressId)) return false;

@@ -297,7 +297,10 @@ export class IfcServerClient {
       // CACHE HIT - fetch all geometry at once (much faster than re-parsing)
       console.log(`[client] Stream: Cache HIT (check: ${cacheCheckTime.toFixed(0)}ms) - fetching cached geometry`);
 
-      const cachedResult = await this.fetchCachedGeometry(hash);
+      // Pass options: `/cache/geometry/:hash` keys on the same parse query, so
+      // omitting them would fetch default `medium` geometry (or 404) even
+      // though the option-scoped cache-check above hit the requested variant.
+      const cachedResult = await this.fetchCachedGeometry(hash, options);
 
       // Send all meshes as a single batch to the callback
       const decodeStart = performance.now();

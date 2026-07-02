@@ -362,9 +362,28 @@ impl GeometryRouter {
     /// Element-level void-cut dedup (#1286 Phase 5): cut identical voided elements
     /// ONCE in the host definition frame and reuse with a per-occurrence
     /// placement. DEFAULT OFF (a behaviour change: voided geometry moves from the
-    /// per-occurrence world cut to a canonical definition-frame cut), gated until
-    /// corpus-validated. Default off keeps native==wasm identical. Opt in with
+    /// per-occurrence world cut to a canonical definition-frame cut). Opt in with
     /// `IFC_LITE_DEF_DEDUP=1` or [`Self::set_definition_dedup_override`].
+    ///
+    /// STAYS OFF: corpus validation (`dedup_validate::def_dedup_void_ab`,
+    /// `IFC_LITE_DEF_DEDUP` OFF vs ON) shows it is NOT byte-identical to the
+    /// per-occurrence path and, worse, GEOMETRICALLY divergent on real models.
+    /// The exact CSG kernel run at small definition-frame coords tessellates
+    /// differently from the same cut at large world coords, so the deduped output
+    /// differs in vertex order AND in the actual triangle set. Measured
+    /// (median of 3 ABAB rounds, server-release):
+    ///
+    /// - AC20-FZK-Haus: 3/9 hosts fired, 1 geom divergence, tri delta 0, 1.00x
+    /// - dental_clinic: 45/245 fired, 5 geom divergences, tri delta -137, 1.04x
+    /// - advanced_model: 61/82 fired, 57 geom divergences, tri delta +1876, 1.06x
+    /// - ISSUE_068 skolebygg: 0/363 fired (rotated/curved hosts ineligible), 0.97x (net loss)
+    ///
+    /// The eligibility gate (pure-translation, non-layered hosts with matching
+    /// void-relative placements) fires rarely, and the void cut is not the
+    /// dominant load cost, so even where it fires the speedup is marginal. Flip
+    /// only after the def-frame vs world-frame tessellation divergence is closed
+    /// (byte-identical) AND a real perf win is shown; until then the per-occurrence
+    /// path is the byte-identical native==wasm ground truth.
     pub fn definition_dedup_enabled() -> bool {
         match DEF_DEDUP_OVERRIDE.load(std::sync::atomic::Ordering::Relaxed) {
             0 => return false,

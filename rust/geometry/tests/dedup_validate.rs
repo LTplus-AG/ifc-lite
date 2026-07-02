@@ -980,3 +980,194 @@ fn definition_cache_dedups_and_matches_placed_geometry() {
     assert_ne!(placed_fps[0], placed_fps[1], "per-instance placement lost on the deduped void path");
     assert_ne!(placed_fps[0], placed_fps[2], "a distinct void wrongly shared a template");
 }
+
+/// One void-path pass over every product. Voided hosts go through the
+/// element-level void-cut cache (`process_element_with_submeshes_and_voids_deduped`)
+/// when `dedup_on`, falling back to the per-occurrence world cut when the element
+/// is ineligible or nothing was cut (mirroring `element.rs::produce_inner`); when
+/// off, every voided host uses the per-occurrence cut (the OFF ground truth).
+/// Non-voided products use the plain submesh path in both. Returns
+/// (order-sensitive fingerprints, order-invariant coord-set fingerprints, total
+/// triangles, wall-time ms, count of hosts the dedup actually fired on).
+#[allow(clippy::type_complexity)]
+fn run_void(
+    router: &GeometryRouter,
+    products: &[(u32, String)],
+    void_idx: &FxHashMap<u32, Vec<u32>>,
+    content: &str,
+    index: FxHashMap<u32, (usize, usize)>,
+    dedup_on: bool,
+) -> (Vec<(u32, u64)>, Vec<(u32, u64)>, usize, f64, usize) {
+    const FP_DECODE_ERR: u64 = u64::MAX;
+    const FP_MESH_ERR: u64 = u64::MAX - 1;
+    let mut decoder = EntityDecoder::with_index(content, index);
+    let mut ord: Vec<(u32, u64)> = Vec::with_capacity(products.len());
+    let mut srt: Vec<(u32, u64)> = Vec::with_capacity(products.len());
+    let mut tris = 0usize;
+    let mut fired = 0usize;
+    let t = Instant::now();
+    for (id, _ty) in products {
+        let entity = match decoder.decode_by_id(*id) {
+            Ok(e) => e,
+            Err(_) => {
+                ord.push((*id, FP_DECODE_ERR));
+                srt.push((*id, FP_DECODE_ERR));
+                continue;
+            }
+        };
+        let openings = void_idx.get(id).map(|v| v.len()).unwrap_or(0);
+        let sm = if openings > 0 {
+            let deduped = if dedup_on {
+                router
+                    .process_element_with_submeshes_and_voids_deduped(&entity, &mut decoder, void_idx)
+                    .ok()
+                    .flatten()
+            } else {
+                None
+            };
+            match deduped {
+                Some(sm) if !sm.is_empty() => {
+                    fired += 1;
+                    Ok(sm)
+                }
+                _ => router.process_element_with_submeshes_and_voids(&entity, &mut decoder, void_idx),
+            }
+        } else {
+            router.process_element_with_submeshes(&entity, &mut decoder)
+        };
+        match sm {
+            Ok(sm) => {
+                tris += sm.sub_meshes.iter().map(|s| s.mesh.indices.len() / 3).sum::<usize>();
+                ord.push((*id, fingerprint(&sm)));
+                srt.push((*id, sorted_coord_set(&sm)));
+            }
+            Err(_) => {
+                ord.push((*id, FP_MESH_ERR));
+                srt.push((*id, FP_MESH_ERR));
+            }
+        }
+    }
+    (ord, srt, tris, t.elapsed().as_secs_f64() * 1000.0, fired)
+}
+
+fn median(mut v: Vec<f64>) -> f64 {
+    v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    if v.is_empty() {
+        0.0
+    } else {
+        v[v.len() / 2]
+    }
+}
+
+/// Corpus A/B for the element-level VOID-CUT dedup (#1286 Phase 5,
+/// `IFC_LITE_DEF_DEDUP`). OFF = the per-occurrence world cut (ground truth); ON =
+/// cut ONCE in the host definition frame, cache by the void-inclusive
+/// `definition_signature`, and re-place per occurrence. Reports per-element
+/// byte-identity (order-sensitive fingerprint) AND geometric identity
+/// (order-invariant sorted coord-set), how many voided hosts the dedup fired on,
+/// and ABAB-interleaved timing medians. The FLIP GATE is byte-identity across the
+/// corpus; a geometry divergence (sorted-coord mismatch) is a hard correctness
+/// finding. Run: `IFCLT_MODEL=/abs/path.ifc cargo test -p ifc-lite-geometry
+/// --profile server-release --test dedup_validate def_dedup_void_ab -- --ignored
+/// --nocapture` (`ROUNDS` env overrides the timing rounds, default 3).
+#[test]
+#[ignore = "manual; needs IFCLT_MODEL"]
+fn def_dedup_void_ab() {
+    let path = match std::env::var("IFCLT_MODEL") {
+        Ok(p) => p,
+        Err(_) => {
+            println!("set IFCLT_MODEL=/abs/path.ifc");
+            return;
+        }
+    };
+    let content = std::fs::read_to_string(&path).expect("read model");
+    let void_idx = build_void_index(&content);
+    let products = list_products(&content);
+    println!("\n=== void-cut dedup (IFC_LITE_DEF_DEDUP) A/B ===");
+    println!("model: {path}  ({} bytes)", content.len());
+    println!(
+        "products: {}  (voided hosts: {})\n",
+        products.len(),
+        void_idx.len()
+    );
+
+    // --- correctness: OFF (per-occurrence, ground truth) vs ON (def-frame cut) ---
+    GeometryRouter::set_definition_dedup_override(Some(false));
+    let (off_ord, off_srt, off_tris, _off_ms0, _) = {
+        let mut d = EntityDecoder::with_index(&content, build_entity_index(&content));
+        let r = GeometryRouter::with_units(&content, &mut d);
+        run_void(&r, &products, &void_idx, &content, build_entity_index(&content), false)
+    };
+    GeometryRouter::set_definition_dedup_override(Some(true));
+    let (on_ord, on_srt, on_tris, _on_ms0, fired) = {
+        let mut d = EntityDecoder::with_index(&content, build_entity_index(&content));
+        let mut r = GeometryRouter::with_units(&content, &mut d);
+        r.enable_definition_dedup_shared(GeometryRouter::new_definition_cache());
+        run_void(&r, &products, &void_idx, &content, build_entity_index(&content), true)
+    };
+
+    assert_eq!(off_ord.len(), on_ord.len(), "element count diverged ON vs OFF");
+    let mut byte_id = 0usize;
+    let mut geom_diff: Vec<u32> = Vec::new();
+    for i in 0..off_ord.len() {
+        let (oid, ofp) = off_ord[i];
+        let (nid, nfp) = on_ord[i];
+        assert_eq!(oid, nid, "element order diverged");
+        if ofp == nfp {
+            byte_id += 1;
+        }
+        if off_srt[i].1 != on_srt[i].1 {
+            geom_diff.push(oid);
+        }
+    }
+    let n = off_ord.len();
+    println!("dedup fired on {fired} voided host occurrences");
+    println!("byte-identical (order-sensitive):    {byte_id}/{n}");
+    println!(
+        "geometry-identical (order-invariant): {}/{n}  (geom divergences: {})",
+        n - geom_diff.len(),
+        geom_diff.len()
+    );
+    if !geom_diff.is_empty() {
+        let sample: Vec<u32> = geom_diff.iter().take(15).copied().collect();
+        println!("  GEOM-DIVERGENT element ids (up to 15): {sample:?}");
+    }
+    println!("triangles OFF={off_tris}  ON={on_tris}  (delta {})", on_tris as i64 - off_tris as i64);
+    let byte_identical = byte_id == n;
+    let geom_identical = geom_diff.is_empty();
+    println!(
+        "FLIP GATE byte-identical: {}   geometry-identical: {}",
+        byte_identical, geom_identical
+    );
+
+    // --- ABAB-interleaved timing (fresh def cache each ON round = one load) ---
+    let rounds: usize = std::env::var("ROUNDS").ok().and_then(|s| s.parse().ok()).unwrap_or(3);
+    let mut off_ms: Vec<f64> = Vec::new();
+    let mut on_ms: Vec<f64> = Vec::new();
+    for _ in 0..rounds {
+        GeometryRouter::set_definition_dedup_override(Some(false));
+        let a = {
+            let mut d = EntityDecoder::with_index(&content, build_entity_index(&content));
+            let r = GeometryRouter::with_units(&content, &mut d);
+            run_void(&r, &products, &void_idx, &content, build_entity_index(&content), false)
+        };
+        off_ms.push(a.3);
+        GeometryRouter::set_definition_dedup_override(Some(true));
+        let b = {
+            let mut d = EntityDecoder::with_index(&content, build_entity_index(&content));
+            let mut r = GeometryRouter::with_units(&content, &mut d);
+            r.enable_definition_dedup_shared(GeometryRouter::new_definition_cache());
+            run_void(&r, &products, &void_idx, &content, build_entity_index(&content), true)
+        };
+        on_ms.push(b.3);
+    }
+    GeometryRouter::set_definition_dedup_override(None);
+    let off_med = median(off_ms.clone());
+    let on_med = median(on_ms.clone());
+    let speedup = if on_med > 0.0 { off_med / on_med } else { 0.0 };
+    println!(
+        "\ntiming median over {rounds} rounds: OFF={off_med:.0}ms  ON={on_med:.0}ms  speedup={speedup:.2}x"
+    );
+    println!("  OFF ms: {off_ms:?}");
+    println!("  ON  ms: {on_ms:?}");
+}

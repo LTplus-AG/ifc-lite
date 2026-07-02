@@ -304,8 +304,16 @@ impl ClippingProcessor {
         }
         let positions = &mesh.positions;
         let vertex_count = positions.len() / 3;
-        let mut buckets: FxHashMap<(i64, i64, i64, i64), Vec<PlaneTri>> =
-            FxHashMap::default();
+        // BTreeMap, NOT FxHashMap: step 2 emits the output mesh in bucket
+        // iteration order, and FxHasher mixes usize-wide chunks, so its
+        // iteration order differs between 64-bit native and 32-bit wasm32 -
+        // the same cut came out with a different (valid but non-identical)
+        // triangle order per target, breaking the native==wasm mesh-output
+        // determinism manifest. Ord-keyed iteration is target-independent
+        // (same pattern as facet_weld's normal_buckets); bucket counts per
+        // cut are small, so the tree overhead is noise.
+        let mut buckets: std::collections::BTreeMap<(i64, i64, i64, i64), Vec<PlaneTri>> =
+            std::collections::BTreeMap::new();
         for chunk in mesh.indices.chunks_exact(3) {
             let (i0, i1, i2) = (chunk[0] as usize, chunk[1] as usize, chunk[2] as usize);
             if i0 >= vertex_count || i1 >= vertex_count || i2 >= vertex_count {

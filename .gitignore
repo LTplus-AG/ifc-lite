@@ -100,3 +100,10 @@ rust/geometry/tests/*.ifc
 # committed reference numbers live in tests/benchmark/baseline.json)
 tests/benchmark/benchmark-results/viewer-*.json
 tests/benchmark/benchmark-results/viewer-*.console.log
+
+# Playwright default run artifacts (test-results/ is Playwright's outputDir;
+# these are regenerated on every run and must never be committed)
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/

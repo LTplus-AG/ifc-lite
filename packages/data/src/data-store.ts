@@ -38,7 +38,12 @@ interface RelationshipGraph {
 interface PropertyTable {
   getForEntity(expressId: number): PropertySet[];
   getPropertyValue(expressId: number, psetName: string, propName: string): PropertyValue | null;
-  findByProperty(propName: string, operator: string, value: PropertyValue): number[];
+  findByProperty(
+    propName: string,
+    operator: string,
+    value: PropertyValue,
+    psetName?: string,
+  ): number[];
 }
 
 interface QuantityTable {

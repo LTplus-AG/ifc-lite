@@ -244,3 +244,21 @@ pub fn process_host_like_production(
         .process_element_with_voids(&entity, &mut decoder, void_index)
         .ok()
 }
+
+/// Fold `mesh.origin` into the positions (world = origin + position), leaving
+/// the origin zero. The parametric rect-opening fast path (default ON) emits
+/// the LOCAL-FRAME mesh contract every production consumer folds; tests that
+/// assert in world coordinates call this first so their checks stay in world
+/// space. No-op for a world-frame mesh (origin already zero).
+pub fn fold_origin(mesh: &mut Mesh) {
+    if mesh.origin == [0.0, 0.0, 0.0] {
+        return;
+    }
+    let o = mesh.origin;
+    for c in mesh.positions.chunks_exact_mut(3) {
+        c[0] = (c[0] as f64 + o[0]) as f32;
+        c[1] = (c[1] as f64 + o[1]) as f32;
+        c[2] = (c[2] as f64 + o[2]) as f32;
+    }
+    mesh.origin = [0.0, 0.0, 0.0];
+}

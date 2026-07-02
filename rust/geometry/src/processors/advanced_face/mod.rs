@@ -80,26 +80,38 @@ pub(super) fn process_advanced_face(
         process_planar_face(face, decoder, quality)
     } else {
         // Unsupported surface type - return empty geometry
-        #[cfg(feature = "debug_geometry")]
-        eprintln!(
-            "[ifc-lite][advanced_face] face #{} unsupported surface {}",
-            face.id, surface_type
+        crate::diag::diag_debug!(
+            { face_id = face.id, surface = %surface_type,
+              "advanced_face: unsupported surface type, emitting empty geometry" }
+            else {
+                #[cfg(feature = "debug_geometry")]
+                eprintln!(
+                    "[ifc-lite][advanced_face] face #{} unsupported surface {}",
+                    face.id, surface_type
+                );
+            }
         );
         Ok((Vec::new(), Vec::new()))
     };
 
-    #[cfg(feature = "debug_geometry")]
-    {
-        if let Ok((ref pos, ref idx)) = result {
-            if pos.is_empty() || idx.is_empty() {
-                eprintln!(
-                    "[ifc-lite][advanced_face] face #{} surface={} produced 0 tris (verts={}, idx={})",
-                    face.id,
-                    surface_type,
-                    pos.len() / 3,
-                    idx.len() / 3,
-                );
-            }
+    #[cfg(any(feature = "debug_geometry", feature = "observability"))]
+    if let Ok((ref pos, ref idx)) = result {
+        if pos.is_empty() || idx.is_empty() {
+            crate::diag::diag_debug!(
+                { face_id = face.id, surface = %surface_type,
+                  verts = pos.len() / 3, indices = idx.len() / 3,
+                  "advanced_face: face produced zero triangles" }
+                else {
+                    #[cfg(feature = "debug_geometry")]
+                    eprintln!(
+                        "[ifc-lite][advanced_face] face #{} surface={} produced 0 tris (verts={}, idx={})",
+                        face.id,
+                        surface_type,
+                        pos.len() / 3,
+                        idx.len() / 3,
+                    );
+                }
+            );
         }
     }
 

@@ -1309,18 +1309,25 @@ pub fn try_export_glb(content: &[u8], opts: &GltfOptions) -> Result<Vec<u8>, Exp
 
 /// Fail-closed [`export_glb_with_stats`]; see [`try_export_glb`].
 ///
-/// Beyond the [`ExportError::NoRenderGeometry`] guard, a large input that would
-/// exceed the glTF 4 GiB single-GLB limit returns [`ExportError::TooLarge`]
-/// instead of PANICKING (as `export_glb_with_stats` does) — the checked bounded
-/// path fails fast after pass 1, so a caller can fall back to
-/// [`export_gltf_streaming`] without catching a panic (#1516).
+/// Beyond the [`ExportError::NoRenderGeometry`] guard, an input at/above the
+/// streaming threshold that would exceed the glTF 4 GiB single-GLB limit returns
+/// [`ExportError::TooLarge`] instead of PANICKING (as `export_glb_with_stats`
+/// does) — the checked bounded path fails fast after pass 1, so a caller can fall
+/// back to [`export_gltf_streaming`] without catching a panic (#1516).
+///
+/// A SUB-THRESHOLD input (default < 64 MB) keeps the in-memory instanced
+/// assembler, which retains the historical 4 GiB `pack_glb` assert. That bound is
+/// only reachable if such a small file meshed to over 4 GiB of GLB (a ~64x
+/// expansion — not observed in practice); a caller that must be panic-proof even
+/// then can force the checked bounded path with
+/// `IFC_LITE_GLB_STREAM_THRESHOLD_MB=1`.
 pub fn try_export_glb_with_stats(
     content: &[u8],
     opts: &GltfOptions,
 ) -> Result<(Vec<u8>, GltfStats), ExportError> {
     // Mirror `export_glb_with_stats`'s routing, but the large-model branch is the
     // CHECKED bounded assembler (typed TooLarge, no panic). Small models keep the
-    // in-memory instanced path (a sub-threshold input cannot exceed 4 GiB).
+    // in-memory instanced path (see the doc note on its residual 4 GiB assert).
     let (glb, stats) = if content.len() >= glb_stream_threshold_bytes() {
         try_export_glb_streaming_bounded(content, opts)?
     } else {
@@ -1692,6 +1699,17 @@ fn glb_stream_threshold_bytes() -> usize {
     mb.saturating_mul(1024 * 1024)
 }
 
+/// GLB container size in bytes: the 12-byte file header + the JSON chunk (8-byte
+/// chunk header + 4-aligned payload) + the BIN chunk (8-byte chunk header +
+/// 4-aligned payload). Computed in u64 so an oversize model never truncates on
+/// wasm32 (32-bit `usize`) — the projected size has to stay a reliable > 4 GiB
+/// signal (#1516). Matches the layout `write_bounded_glb`/`pack_glb` emit.
+fn glb_container_size(json_len: u64, bin_total: u64) -> u64 {
+    let json_pad = (4 - (json_len % 4)) % 4;
+    let bin_pad = (4 - (bin_total % 4)) % 4;
+    12 + 8 + (json_len + json_pad) + 8 + (bin_total + bin_pad)
+}
+
 /// Projected size of the single-GLB export for a model, computed from pass 1
 /// only (no output allocation) — issue #1516. A caller uses it to pick single
 /// GLB vs multi-buffer glTF ([`export_gltf_streaming`]) WITHOUT the historical
@@ -1776,7 +1794,7 @@ fn export_glb_streaming_bounded_impl(
         plan.bin_total,
     );
     assert!(
-        plan.total <= u32::MAX as usize,
+        plan.total <= u32::MAX as u64,
         "GLB total size is {} bytes, over the glTF 32-bit container limit (4 GiB)",
         plan.total,
     );
@@ -1811,8 +1829,8 @@ fn try_export_glb_streaming_bounded_impl(
     index: Option<Arc<EntityIndex>>,
 ) -> Result<(Vec<u8>, GltfStats), ExportError> {
     let plan = plan_bounded_glb(content, opts, index.clone());
-    if plan.bin_total > u32::MAX as u64 || plan.total > u32::MAX as usize {
-        return Err(ExportError::TooLarge { bytes: plan.total as u64 });
+    if plan.bin_total > u32::MAX as u64 || plan.total > u32::MAX as u64 {
+        return Err(ExportError::TooLarge { bytes: plan.total });
     }
     Ok(write_bounded_glb(content, opts, index, plan))
 }
@@ -1841,9 +1859,9 @@ fn project_glb_size_impl(
 ) -> GlbSizeProjection {
     let plan = plan_bounded_glb(content, opts, index);
     GlbSizeProjection {
-        total_bytes: plan.total as u64,
+        total_bytes: plan.total,
         bin_bytes: plan.bin_total,
-        fits_single_glb: plan.bin_total <= u32::MAX as u64 && plan.total <= u32::MAX as usize,
+        fits_single_glb: plan.bin_total <= u32::MAX as u64 && plan.total <= u32::MAX as u64,
         stats: plan.stats,
     }
 }
@@ -1862,8 +1880,9 @@ struct BoundedGlbPlan {
     norm_len: u64,
     /// BIN payload size (pos + norm + idx), exact (u64).
     bin_total: u64,
-    /// Projected GLB container size (headers + padded JSON + padded BIN).
-    total: usize,
+    /// Projected GLB container size (headers + padded JSON + padded BIN). u64 so
+    /// an oversize model does not truncate on wasm32 (32-bit `usize`).
+    total: u64,
     stats: GltfStats,
 }
 
@@ -2278,15 +2297,10 @@ fn plan_bounded_glb(
     };
     let json = serde_json::to_vec(&gltf).expect("glTF JSON serializes");
 
-    // Projected container size (chunk headers + padded JSON + padded BIN). On a
-    // 64-bit host `bin_total as usize` never truncates, so `total` is exact when
-    // the model fits; once oversize it is dominated by the BIN payload and
-    // reliably exceeds the 4 GiB limit — enough for the caller to fail fast.
-    let json_pad = (4 - (json.len() % 4)) % 4;
-    let bin_pad = ((4 - (bin_total % 4)) % 4) as usize;
-    let padded_json = json.len() + json_pad;
-    let padded_bin = bin_total as usize + bin_pad;
-    let total = 12 + 8 + padded_json + 8 + padded_bin;
+    // Projected container size in u64 (see `glb_container_size`): this crate also
+    // compiles to wasm32 (32-bit `usize`), so an oversize model must NOT truncate
+    // here — the size has to stay a reliable > 4 GiB fail-fast signal.
+    let total = glb_container_size(json.len() as u64, bin_total);
 
     BoundedGlbPlan { metas, json, pos_len, norm_len, bin_total, total, stats }
 }
@@ -2312,6 +2326,9 @@ fn write_bounded_glb(
     let BoundedGlbPlan { metas, json, pos_len, norm_len, bin_total, total, stats } = plan;
 
     // ── Preallocate the exact GLB container, then pass 2 writes into it ─────
+    // Safe to narrow to usize here: the caller validated `total`/`bin_total` fit
+    // the 4 GiB glTF limit, so every value below is < u32::MAX on any target.
+    let total = total as usize;
     let json_pad = (4 - (json.len() % 4)) % 4;
     let bin_pad = ((4 - (bin_total % 4)) % 4) as usize;
     let padded_json = json.len() + json_pad;
@@ -2618,6 +2635,21 @@ mod tests {
     }
 
     // ── #1516: streaming shared-index + fail-fast size ────────────────────
+
+    /// The container-size math is u64 end-to-end so an oversize model does NOT
+    /// truncate on wasm32 (32-bit `usize`) — the regression the projection guards.
+    #[test]
+    fn glb_container_size_does_not_truncate() {
+        // 12 header + 8 json-chunk hdr + padded json + 8 bin-chunk hdr + padded bin.
+        // json 10 -> pad to 12; bin 20 already aligned.
+        assert_eq!(glb_container_size(10, 20), 12 + 8 + 12 + 8 + 20);
+        // A > 4 GiB BIN payload must stay > u32::MAX (not wrap to a small usize).
+        let big = 5_000_000_000u64; // > u32::MAX (4_294_967_295)
+        let total = glb_container_size(100, big);
+        assert_eq!(total, 12 + 8 + 100 + 8 + big, "no truncation, exact u64 sum");
+        assert!(total > u32::MAX as u64, "oversize total must exceed 4 GiB, got {total}");
+    }
+
 
     /// The shared-index BOUNDED GLB path must emit byte-for-byte the same GLB as
     /// the self-indexing one — the injected index equals the one the bounded

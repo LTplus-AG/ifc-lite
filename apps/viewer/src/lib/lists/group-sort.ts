@@ -29,6 +29,42 @@ export type GroupSort = { colIdx: number; dir: 'asc' | 'desc' } | null;
  *  group-by column), row count, and per-column subtotals. */
 export interface OrderableGroup { label: string; raw: CellValue; count: number; sums: Record<string, number> }
 
+/** A bucketed group plus the member rows that fed it (row type is the
+ *  caller's — `ListRow` for the table, `ListRow` projected to values by the
+ *  export). */
+export type GroupBucket<R> = OrderableGroup & { key: string; rows: R[] };
+
+/** Bucket rows by a group cell, deriving `(none)` / raw / label and the
+ *  per-group subtotals identically for every caller, so the table view and the
+ *  export can never diverge on grouping (the divergence that caused #1498). The
+ *  returned Map keeps first-seen insertion order; callers apply their own
+ *  ordering with `orderGroups`. */
+export function buildGroupBuckets<R>(
+  rows: R[],
+  getGroupCell: (row: R) => CellValue,
+  sums: { id: string; idx: number }[],
+  getSumValue: (row: R, idx: number) => CellValue,
+  formatLabel: (cell: CellValue) => string,
+): Map<string, GroupBucket<R>> {
+  const zero = (): Record<string, number> => Object.fromEntries(sums.map((s) => [s.id, 0]));
+  const byKey = new Map<string, GroupBucket<R>>();
+  for (const row of rows) {
+    const cell = getGroupCell(row);
+    const isNone = cell === null || cell === undefined || cell === '';
+    const raw: CellValue = isNone ? null : cell;
+    const label = isNone ? '(none)' : formatLabel(cell);
+    let g = byKey.get(label);
+    if (!g) { g = { key: label, label, raw, count: 0, sums: zero(), rows: [] }; byKey.set(label, g); }
+    g.count++;
+    g.rows.push(row);
+    for (const s of sums) {
+      const v = getSumValue(row, s.idx);
+      if (typeof v === 'number' && Number.isFinite(v)) g.sums[s.id] += v;
+    }
+  }
+  return byKey;
+}
+
 /** Order the group headers to match the active header sort so that toggling
  *  a column's sort actually reorders the groups (not just the rows inside
  *  them). The group header only carries a value for the group-by column and

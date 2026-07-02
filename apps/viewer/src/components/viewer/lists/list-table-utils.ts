@@ -9,7 +9,7 @@
  */
 
 import type { CellValue, ColumnDefinition, ListRow, ListGrouping } from '@ifc-lite/lists';
-import { compareCells, orderGroups, type GroupSort, type OrderableGroup } from '@/lib/lists/group-sort';
+import { buildGroupBuckets, compareCells, orderGroups, type GroupSort, type OrderableGroup } from '@/lib/lists/group-sort';
 
 // Re-exported so existing consumers keep importing the list-table barrel.
 export { compareCells, orderGroups };
@@ -68,8 +68,6 @@ function sumIndices(columns: ColumnDefinition[], sumColumnIds: string[]) {
     .filter((s) => s.idx >= 0);
 }
 
-interface GroupBucket extends OrderableGroup { key: string; rows: ListRow[] }
-
 /** Bucket already-filtered/sorted rows by the group-by column, accumulate
  *  per-group + grand count/sums, and flatten into a virtualizable list
  *  (group header followed by its rows when the group is expanded). */
@@ -82,25 +80,18 @@ export function buildGroupedView(
 ): GroupedView {
   const groupIdx = columns.findIndex((c) => c.id === grouping.columnId);
   const sums = sumIndices(columns, grouping.sumColumnIds);
-  const zero = (): Record<string, number> => Object.fromEntries(sums.map((s) => [s.id, 0]));
 
-  const totals: Totals = { count: rows.length, sums: zero() };
-  const byKey = new Map<string, GroupBucket>();
+  const byKey = buildGroupBuckets(
+    rows,
+    (r) => (groupIdx >= 0 ? r.values[groupIdx] : null),
+    sums,
+    (r, idx) => r.values[idx],
+    formatCellValue,
+  );
 
-  for (const row of rows) {
-    const cell = groupIdx >= 0 ? row.values[groupIdx] : null;
-    const isNone = cell === null || cell === undefined || cell === '';
-    const raw: CellValue = isNone ? null : cell;
-    const label = isNone ? '(none)' : formatCellValue(cell);
-    let g = byKey.get(label);
-    if (!g) { g = { key: label, label, raw, count: 0, sums: zero(), rows: [] }; byKey.set(label, g); }
-    g.count++;
-    g.rows.push(row);
-    for (const s of sums) {
-      const v = row.values[s.idx];
-      if (typeof v === 'number' && Number.isFinite(v)) { g.sums[s.id] += v; totals.sums[s.id] += v; }
-    }
-  }
+  // Grand totals are the sum of the per-group subtotals.
+  const totals: Totals = { count: rows.length, sums: Object.fromEntries(sums.map((s) => [s.id, 0])) };
+  for (const g of byKey.values()) for (const s of sums) totals.sums[s.id] += g.sums[s.id];
 
   const groups = orderGroups(Array.from(byKey.values()), sort, groupIdx, sums);
   const items: DisplayItem[] = [];

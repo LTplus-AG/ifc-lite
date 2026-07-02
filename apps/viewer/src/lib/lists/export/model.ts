@@ -10,7 +10,7 @@
  */
 
 import type { CellValue, ColumnDefinition, ListRow, ListGrouping } from '@ifc-lite/lists';
-import { orderGroups, type GroupSort } from '@/lib/lists/group-sort';
+import { buildGroupBuckets, orderGroups, type GroupSort } from '@/lib/lists/group-sort';
 
 export interface ExportColumn {
   id: string;
@@ -97,20 +97,17 @@ export function buildExportModel(input: BuildModelInput): ExportModel {
   let groups: ExportGroup[] | null = null;
   if (groupColumnId) {
     const groupIdx = columns.findIndex((c) => c.id === groupColumnId);
-    // `raw` rides alongside for value-based ordering; writers ignore it.
-    const byKey = new Map<string, ExportGroup & { raw: CellValue }>();
-    for (const r of rows) {
-      const cell = r.values[groupIdx];
-      const isNone = cell === null || cell === undefined || cell === '';
-      const raw: CellValue = isNone ? null : cell;
-      const label = isNone ? '(none)' : displayCell(cell);
-      let g = byKey.get(label);
-      if (!g) { g = { label, raw, count: 0, sums: zeroSums(), rows: [] }; byKey.set(label, g); }
-      g.count++;
-      g.rows.push(r.values);
-      addSums(g.sums, r.values);
-    }
-    groups = orderGroups(Array.from(byKey.values()), sort ?? null, groupIdx, sumIdx);
+    // Bucket + subtotal via the shared helper so the sections match the table
+    // exactly, then order and project each member row to its display values.
+    const byKey = buildGroupBuckets(
+      rows,
+      (r) => r.values[groupIdx],
+      sumIdx,
+      (r, idx) => r.values[idx],
+      displayCell,
+    );
+    groups = orderGroups(Array.from(byKey.values()), sort ?? null, groupIdx, sumIdx)
+      .map((g) => ({ label: g.label, count: g.count, sums: g.sums, rows: g.rows.map((r) => r.values) }));
   }
 
   return { title, generatedAt, columns: exportCols, groups, rows: flatRows, groupColumnId, sumColumnIds, totals };

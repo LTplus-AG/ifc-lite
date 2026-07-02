@@ -158,13 +158,11 @@ pub async fn parse_parquet_stream(
             )),
         ]));
 
-        // The cached replay still holds the (potentially large) blob in the
-        // stream; keep the admission permit until the client drains it.
-        let fast_stream =
-            fast_stream.map(move |e| {
-                let _hold = &admission_guard;
-                e
-            });
+        // Cached replay: no parse work runs, so holding the admission guard
+        // (and its CPU slot) while a slow client drains the SSE would starve
+        // real parses for nothing. The replay blob is already materialized
+        // and is bounded by cache content, far below a parse working set.
+        drop(admission_guard);
         return Ok(Sse::new(fast_stream)
             .keep_alive(KeepAlive::default())
             .into_response());

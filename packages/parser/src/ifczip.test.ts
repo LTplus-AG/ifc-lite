@@ -105,4 +105,27 @@ describe('unwrapIfcZipView', () => {
     const result = await unwrapIfcZipView(bytes);
     expect(new TextDecoder().decode(result)).toBe(STEP_HEADER);
   });
+
+  it('does not copy the backing buffer for a non-zip full-span view', async () => {
+    // A fresh Uint8Array spans its whole ArrayBuffer (byteOffset 0, full
+    // length) — the common CLI/MCP case for a real IFC file. The view's
+    // backing buffer must be returned as-is, not a fresh copy.
+    const bytes = new TextEncoder().encode(STEP_HEADER);
+    const result = await unwrapIfcZipView(bytes);
+    expect(result).toBe(bytes.buffer);
+  });
+
+  it('slices a non-zip view that does not span its whole backing buffer', async () => {
+    const inner = new TextEncoder().encode(STEP_HEADER);
+    const padded = new Uint8Array(inner.length + 16);
+    padded.set(inner, 8);
+    const view = padded.subarray(8, 8 + inner.length);
+
+    const result = await unwrapIfcZipView(view);
+    // Correct bytes, and a fresh buffer sized exactly to the view (not the
+    // padded backing buffer).
+    expect(new TextDecoder().decode(result)).toBe(STEP_HEADER);
+    expect(result.byteLength).toBe(inner.length);
+    expect(result).not.toBe(padded.buffer);
+  });
 });

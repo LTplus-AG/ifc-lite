@@ -25,6 +25,21 @@ export function isZipBuffer(buffer: ArrayBuffer): boolean {
   return new DataView(buffer).getUint32(0, true) === ZIP_MAGIC;
 }
 
+/**
+ * `isZipBuffer` for a `Uint8Array` view — reads the magic bytes directly off
+ * the view without materializing an ArrayBuffer, so the common non-zip load
+ * pays no allocation at all (see `unwrapIfcZipView`).
+ */
+function isZipView(view: Uint8Array): boolean {
+  return (
+    view.byteLength >= 4 &&
+    view[0] === 0x50 && // 'P'
+    view[1] === 0x4b && // 'K'
+    view[2] === 0x03 &&
+    view[3] === 0x04
+  );
+}
+
 /** Case-insensitive match for a model file entry inside the archive. */
 const MODEL_ENTRY_RE = /\.(ifc|ifcxml)$/i;
 
@@ -114,6 +129,26 @@ export async function unwrapIfcZipWithLimit(
  * backing buffer, so callers just wrap the result in `Buffer.from(...)`.
  */
 export async function unwrapIfcZipView(view: Uint8Array): Promise<ArrayBuffer> {
+  // Cheap magic-byte check on the view FIRST — the common case is an ordinary
+  // non-zip IFC/IFCX/GLB file, and copying the whole (possibly multi-GB)
+  // backing buffer just to hand it back unchanged is a wasted full-file
+  // allocation on every CLI/MCP load.
+  if (!isZipView(view)) {
+    // Not a zip: return an ArrayBuffer spanning exactly the view. When the
+    // view already covers its whole backing buffer (Node's dedicated
+    // allocation for any file over ~4 KB — i.e. every real IFC), hand it back
+    // with no copy; only the rare sub-range view needs a slice.
+    if (view.byteOffset === 0 && view.byteLength === view.buffer.byteLength) {
+      return view.buffer as ArrayBuffer;
+    }
+    return view.buffer.slice(
+      view.byteOffset,
+      view.byteOffset + view.byteLength,
+    ) as ArrayBuffer;
+  }
+
+  // It's a zip container — materialize the exact bytes and let unwrapIfcZip
+  // open the archive.
   const arrayBuffer = view.buffer.slice(
     view.byteOffset,
     view.byteOffset + view.byteLength,

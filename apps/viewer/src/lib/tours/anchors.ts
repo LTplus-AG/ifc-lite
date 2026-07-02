@@ -32,6 +32,16 @@ export const TOUR_ANCHORS = {
    *  slider itself only mounts once the panel is expanded, so anchor the
    *  root, not the slider. */
   sectionPanel: 'section-panel',
+  /** IDSPanel empty-state "Load IDS File" button (only while no doc). */
+  idsLoad: 'ids-load',
+  /** IDSPanel "Run Validation" button (only while doc loaded, no report). */
+  idsRun: 'ids-run',
+  /** IDSPanel results summary header (only while a report exists). */
+  idsSummary: 'ids-summary',
+  /** IDSPanel specification-results scroll area (only while a report exists). */
+  idsResults: 'ids-results',
+  /** IDSPanel isolate-failed (EyeOff) toggle in the results actions bar. */
+  idsIsolateFailed: 'ids-isolate-failed',
 } as const;
 
 /** Activity-bar rail button for a panel (one templated attribute serves

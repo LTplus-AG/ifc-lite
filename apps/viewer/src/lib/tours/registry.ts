@@ -9,6 +9,7 @@
  */
 
 import type { WorkspacePanelId } from '@/lib/panels/registry';
+import { IDS_TOUR } from './tours/ids';
 import { MEASURE_SECTION_TOUR } from './tours/measure-section';
 import { WELCOME_TOUR } from './tours/welcome';
 import type { TourDefinition, TourId } from './types';
@@ -16,6 +17,7 @@ import type { TourDefinition, TourId } from './types';
 export const TOUR_REGISTRY: readonly TourDefinition[] = [
   WELCOME_TOUR,
   MEASURE_SECTION_TOUR,
+  IDS_TOUR,
 ];
 
 export function getTour(id: TourId): TourDefinition | undefined {

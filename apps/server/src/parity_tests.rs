@@ -155,6 +155,27 @@ async fn admission_slot_release_readmits() {
 }
 
 #[tokio::test]
+async fn metrics_endpoint_gated_by_config() {
+    // Disabled (default): 404.
+    let state = test_state("metrics-disabled").await;
+    let off = get(&state, "/api/v1/metrics").await;
+    assert_eq!(off.status(), StatusCode::NOT_FOUND);
+
+    // Enabled: 200 with the Prometheus text body.
+    let mut state = test_state("metrics-enabled").await;
+    let mut config = (*state.config).clone();
+    config.metrics_enabled = true;
+    state.config = Arc::new(config);
+    state.admission.set_resident_bytes(4321);
+    let on = get(&state, "/api/v1/metrics").await;
+    assert_eq!(on.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(on.into_body(), usize::MAX).await.unwrap();
+    let text = String::from_utf8(body.to_vec()).unwrap();
+    assert!(text.contains("ifc_server_resident_bytes 4321"));
+    assert!(text.contains("ifc_server_admission_in_flight"));
+}
+
+#[tokio::test]
 async fn ready_endpoint_reflects_shedding() {
     let mut state = test_state("readiness").await;
     state.admission = Arc::new(crate::admission::Admission::new(crate::admission::AdmissionCfg {

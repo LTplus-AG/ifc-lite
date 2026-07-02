@@ -143,8 +143,9 @@ impl Config {
                 .unwrap_or(5),
             mem_shed_pct: std::env::var("IFC_MEM_SHED_PCT")
                 .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(85),
+                .and_then(|v| v.parse::<u8>().ok())
+                .unwrap_or(85)
+                .min(100),
             metrics_enabled: std::env::var("IFC_METRICS_ENABLED")
                 .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
                 .unwrap_or(false),

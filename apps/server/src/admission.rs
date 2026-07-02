@@ -143,13 +143,26 @@ impl Admission {
         let cpu = match Arc::clone(&self.cpu).try_acquire_owned() {
             Ok(permit) => permit,
             Err(_) => {
-                if self.queued.load(Ordering::Relaxed) >= self.cfg.queue_depth {
-                    self.rejected_queue_full.fetch_add(1, Ordering::Relaxed);
-                    return Err(ApiError::Overloaded {
-                        retry_after_secs: self.cfg.queue_timeout.as_secs().max(1),
-                    });
+                // Reserve the queue slot atomically (CAS): a load-then-add
+                // would let concurrent waiters race past the depth check.
+                let mut cur = self.queued.load(Ordering::Relaxed);
+                loop {
+                    if cur >= self.cfg.queue_depth {
+                        self.rejected_queue_full.fetch_add(1, Ordering::Relaxed);
+                        return Err(ApiError::Overloaded {
+                            retry_after_secs: self.cfg.queue_timeout.as_secs().max(1),
+                        });
+                    }
+                    match self.queued.compare_exchange_weak(
+                        cur,
+                        cur + 1,
+                        Ordering::Relaxed,
+                        Ordering::Relaxed,
+                    ) {
+                        Ok(_) => break,
+                        Err(actual) => cur = actual,
+                    }
                 }
-                self.queued.fetch_add(1, Ordering::Relaxed);
                 let _queued = QueuedCount(&self.queued);
                 match tokio::time::timeout(
                     self.cfg.queue_timeout,
@@ -171,6 +184,12 @@ impl Admission {
         // 4. Byte-weighted memory permits (bounded wait). A request larger
         // than the whole budget is clamped to it, so the largest allowed
         // upload can always run - alone.
+        //
+        // Ordering is deliberate: CPU first, THEN memory. Memory-first would
+        // let up to queue_depth waiters pin budget BYTES while queueing for a
+        // CPU slot - the scarcer resource held longest. CPU-first bounds the
+        // number of memory waiters to max_concurrent_parses, and a CPU permit
+        // held briefly while memory times out costs only that waiter's slot.
         let mem = if let Some(mem) = &self.mem {
             let budget_permits = (self.cfg.mem_budget_bytes / BYTES_PER_PERMIT).max(1);
             let want = reserve_bytes.div_ceil(BYTES_PER_PERMIT).max(1).min(budget_permits) as u32;

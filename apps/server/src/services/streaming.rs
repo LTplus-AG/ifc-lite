@@ -152,9 +152,12 @@ pub fn process_streaming(
             |_| {},
         );
 
-        if cancel_for_task.load(std::sync::atomic::Ordering::Relaxed) {
+        if cancel_for_task.load(std::sync::atomic::Ordering::Relaxed) || tx.is_closed() {
             // Client gone: the partial result must not be presented as a
-            // completed parse - skip Complete AND the symbolic extraction.
+            // completed parse - skip Complete AND the symbolic extraction
+            // (which re-scans the file). The is_closed check also covers a
+            // disconnect after the LAST batch, where the callback can no
+            // longer observe it.
             tracing::info!("SSE client disconnected; streaming parse stopped early");
             return;
         }

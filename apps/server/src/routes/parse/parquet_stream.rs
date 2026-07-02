@@ -346,7 +346,22 @@ pub async fn parse_parquet_stream(
     let content_for_cache = content.clone();
     let cache_key_for_dm = cache_key.clone();
     let cache_for_dm = cache.clone();
+    let admission_for_dm = state.admission.clone();
     tokio::spawn(async move {
+        // The data-model extraction re-parses the whole upload, so it must
+        // pass admission like any parse job. It is a cache-fill optimization:
+        // when the server is saturated, skipping it (the next request rebuilds
+        // it inline) beats bypassing the gate.
+        let _dm_admission = match admission_for_dm
+            .acquire(content_for_cache.len() as u64)
+            .await
+        {
+            Ok(guard) => guard,
+            Err(_) => {
+                tracing::debug!("Skipping data-model cache fill: admission saturated");
+                return;
+            }
+        };
         // Run data model extraction in blocking task
         let dm_result =
             tokio::task::spawn_blocking(move || extract_data_model(&content_for_cache)).await;

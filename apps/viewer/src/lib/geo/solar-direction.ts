@@ -7,8 +7,8 @@
  * viewer's world space, and shape the sun's photometric properties from its
  * altitude (warm low sun, twilight fade, night).
  *
- * Frame math — must stay the inverse of the viewer→ENU matrix built in
- * `cesium-bridge.ts` (createCesiumBridge):
+ * Frame math: the inverse of the Helmert grid alignment (IfcMapConversion
+ * XAxisAbscissa/Ordinate):
  *
  *   east  = absc·vx + ordi·vz
  *   north = ordi·vx − absc·vz
@@ -22,6 +22,13 @@
  *   vz = ordi·e − absc·n
  *
  * Sanity check at no rotation (absc=1, ordi=0): east→+X, up→+Y, north→−Z.
+ *
+ * NOTE: this is the GRID-only inverse; it does NOT include the meridian
+ * convergence R(gamma) that `cesium-bridge.ts` (viewerToEnuRotation) folds into
+ * the camera and model placement. So on high-convergence CRSs the WebGPU-viewer
+ * sun azimuth is off true north by ~gamma. The Cesium sun (cesium-sun.ts) is
+ * unaffected: it drives the sun through true-ENU (eastNorthUpToFixedFrame).
+ * Threading gamma here is a tracked follow-up.
  */
 
 import type { Enu } from '@ifc-lite/solar';

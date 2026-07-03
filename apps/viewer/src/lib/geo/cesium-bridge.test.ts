@@ -7,7 +7,7 @@ import assert from 'node:assert';
 
 import proj4 from 'proj4';
 
-import { computeGridConvergence } from './cesium-bridge.js';
+import { computeGridConvergence, viewerToEnuRotation } from './cesium-bridge.js';
 
 /**
  * Independent grid-convergence ground truth: reproject a grid-north step to
@@ -84,5 +84,63 @@ describe('computeGridConvergence (#1408)', () => {
   it('returns 0 for a geographic (longlat) CRS', () => {
     const longlat = '+proj=longlat +datum=WGS84 +no_defs';
     assert.strictEqual(computeGridConvergence(longlat, 14.5, 50, 14.5, 50), 0);
+  });
+});
+
+describe('viewerToEnuRotation — model/camera share one convergence-corrected rotation (#1408 follow-up)', () => {
+  const KROVAK =
+    '+proj=krovak +lat_0=49.5 +lon_0=24.83333333333333 '
+    + '+alpha=30.28813972222222 +k=0.9999 +x_0=0 +y_0=0 +ellps=bessel '
+    + '+towgs84=570.8,85.7,462.8,4.998,1.587,5.261,3.56 +units=m +no_defs';
+  const easting = -737624.9683493343;
+  const northing = -1050307.039993465;
+  const [lon, lat] = proj4(KROVAK, 'WGS84', [easting, northing]);
+  const gamma = computeGridConvergence(KROVAK, easting, northing, lon, lat);
+
+  // Bearing (rad, from true north, +east) at which a viewer→ENU rotation places
+  // the model's grid-north edge (viewer −Z). ENU = rot · (0,0,−1).
+  function gridNorthBearing(rot: ReturnType<typeof viewerToEnuRotation>): number {
+    return Math.atan2(-rot.eastFromVz, -rot.northFromVz);
+  }
+  // proj4 ground truth: bearing of a grid-north step on the true-north globe.
+  const truthBearing = -groundTruthConvergence(KROVAK, easting, northing);
+
+  it('with gamma, grid-north lands on the proj4 footprint bearing (model matches basemap + camera)', () => {
+    const rot = viewerToEnuRotation(1, 1, 0, gamma);
+    assert.ok(
+      Math.abs(gridNorthBearing(rot) - truthBearing) < 1e-9,
+      `bearing ${gridNorthBearing(rot)} must equal proj4 truth ${truthBearing}`,
+    );
+  });
+
+  it('a grid-only rotation (gamma=0, the pre-fix model matrix) is off by the full convergence', () => {
+    const rot0 = viewerToEnuRotation(1, 1, 0, 0);
+    // Points straight at true north (bearing 0) instead of −gamma...
+    assert.ok(Math.abs(gridNorthBearing(rot0)) < 1e-12, 'grid-only points at true north');
+    // ...i.e. ~7.7° off the correct basemap bearing for Krovak — the bug.
+    const offDeg = Math.abs(gridNorthBearing(rot0) - truthBearing) * 180 / Math.PI;
+    assert.ok(offDeg > 7 && offDeg < 8.5, `expected ~7.7° drift, got ${offDeg.toFixed(3)}°`);
+  });
+
+  it('carries the Helmert grid rotation + scale (reduces to the legacy sa/so at gamma=0)', () => {
+    const hScale = 2, absc = 0.5, ordi = Math.sqrt(3) / 2; // 60° rotated, ×2 scale
+    const r = viewerToEnuRotation(hScale, absc, ordi, 0);
+    assert.ok(Math.abs(r.eastFromVx - hScale * absc) < 1e-12);
+    assert.ok(Math.abs(r.eastFromVz - hScale * ordi) < 1e-12);
+    assert.ok(Math.abs(r.northFromVx - hScale * ordi) < 1e-12);
+    assert.ok(Math.abs(r.northFromVz - (-hScale * absc)) < 1e-12);
+  });
+
+  it('composes R(gamma) after Helmert with a non-trivial rotation AND non-zero gamma (cross terms)', () => {
+    const hScale = 1.3, absc = 0.6, ordi = 0.8, gamma = 0.135; // rotated + scaled + convergence
+    const r = viewerToEnuRotation(hScale, absc, ordi, gamma);
+    // Independent construction: apply the planar rotation R(gamma) to the
+    // grid-only (Helmert) coefficients. [e'; n'] = [[cg,-sg],[sg,cg]] [e; n].
+    const g = viewerToEnuRotation(hScale, absc, ordi, 0);
+    const cg = Math.cos(gamma), sg = Math.sin(gamma);
+    assert.ok(Math.abs(r.eastFromVx - (cg * g.eastFromVx - sg * g.northFromVx)) < 1e-12);
+    assert.ok(Math.abs(r.northFromVx - (sg * g.eastFromVx + cg * g.northFromVx)) < 1e-12);
+    assert.ok(Math.abs(r.eastFromVz - (cg * g.eastFromVz - sg * g.northFromVz)) < 1e-12);
+    assert.ok(Math.abs(r.northFromVz - (sg * g.eastFromVz + cg * g.northFromVz)) < 1e-12);
   });
 });

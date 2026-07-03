@@ -47,6 +47,14 @@ export interface GeodesicPosition {
 export interface CesiumBridge {
   modelOrigin: GeodesicPosition;
   rotationAngle: number;
+  /**
+   * The convergence-corrected viewer-to-ENU rotation this bridge computed once
+   * at creation. Exposed so the model-placement matrix reuses the exact same
+   * rotation as the camera frame (a pure consumer) instead of re-deriving a
+   * grid-only one; they must not drift, else the 3D model sits rotated by the
+   * meridian convergence off the true-north basemap. See #1408.
+   */
+  viewerRotation: ViewerToEnuRotation;
 
   /**
    * Sync the Cesium camera using lookAtTransform with a viewer→ECEF matrix.
@@ -187,6 +195,46 @@ export function computeGridConvergence(
   return Math.atan2(-east, north);
 }
 
+/**
+ * In-plane coefficients of the viewer-to-ENU rotation. `vy` maps straight to
+ * ENU up, so only the East/North rows depend on (vx, vz).
+ */
+export interface ViewerToEnuRotation {
+  eastFromVx: number;
+  eastFromVz: number;
+  northFromVx: number;
+  northFromVz: number;
+}
+
+/**
+ * Build the viewer-to-ENU rotation: the Helmert grid alignment (IfcMapConversion
+ * XAxisAbscissa/Ordinate, scaled by hScale) composed with the meridian
+ * convergence R(gamma) that turns grid axes into the true-north ENU frame
+ * Cesium uses (east = R(gamma) applied to the Helmert grid vectors).
+ *
+ * SINGLE SOURCE OF TRUTH: both the camera frame (`createCesiumBridge`) and the
+ * model-placement matrix (`buildModelMatrix`, via `bridge.viewerRotation`)
+ * derive their viewer-to-ENU rotation from this one function, so the model and
+ * the camera can never disagree on which way is north on the basemap. See #1408.
+ */
+export function viewerToEnuRotation(
+  hScale: number,
+  absc: number,
+  ordi: number,
+  gamma: number,
+): ViewerToEnuRotation {
+  const cg = Math.cos(gamma);
+  const sg = Math.sin(gamma);
+  const ce = hScale * absc;
+  const co = hScale * ordi;
+  return {
+    eastFromVx: cg * ce - sg * co,
+    eastFromVz: cg * co + sg * ce,
+    northFromVx: sg * ce + cg * co,
+    northFromVz: sg * co - cg * ce,
+  };
+}
+
 export async function createCesiumBridge(
   mapConversion: MapConversion,
   projectedCRS: ProjectedCRS,
@@ -237,32 +285,21 @@ export async function createCesiumBridge(
   const originLon = origin.longitude;
   const originLat = origin.latitude;
 
-  // ── Build the viewer→ENU 3x3 rotation matrix ──
-  // This converts a DELTA vector from viewer space to ENU.
-  // Step 1: viewer Y-up → IFC Z-up: (vx, vy, vz) → (vx, -vz, vy)
-  // Step 2: Helmert rotation: (ifcX, ifcY) → GRID (east, north) with scale
-  //   eg = hScale * (absc * vx - ordi * (-vz)) = hScale * (absc*vx + ordi*vz)
-  //   ng = hScale * (ordi * vx + absc * (-vz)) = hScale * (ordi*vx - absc*vz)
-  // Step 3: grid → true ENU. IfcMapConversion aligns the model to GRID north,
-  //   but Cesium's eastNorthUpToFixedFrame() is a TRUE-north frame. Rotate the
-  //   grid axes by the meridian convergence gamma so grid north lands where the
-  //   basemap puts it (the 2D footprint already bakes this in via proj4). See
-  //   issue #1408. R(gamma): east = cg*eg - sg*ng, north = sg*eg + cg*ng.
-  //   up    = vy  (ifcZ = vy, vertical is viewer Y)
-  //
-  // Viewer-space deltas are already in metres (geometry engine converts during
-  // extraction), so no lengthUnitScale needed here.
+  // Build the viewer-to-ENU 3x3 rotation matrix (converts a delta vector from
+  // viewer space to ENU). Viewer Y-up maps to IFC Z-up ((vx,vy,vz) -> (vx,-vz,
+  // vy)), then the Helmert grid alignment, then the meridian convergence
+  // R(gamma) into true-north ENU; `viewerToEnuRotation` composes all three
+  // (up = vy). The model-placement matrix reuses the very same `rot` via
+  // `bridge.viewerRotation` so the two never drift. Viewer-space deltas are
+  // already metres, so no lengthUnitScale.
   const gamma = computeGridConvergence(projDef, origin.easting, origin.northing, originLon, originLat);
-  const cg = Math.cos(gamma);
-  const sg = Math.sin(gamma);
-  const ce = hScale * absc;
-  const co = hScale * ordi;
-  const m00 = cg * ce - sg * co;   // east  from vx
+  const rot = viewerToEnuRotation(hScale, absc, ordi, gamma);
+  const m00 = rot.eastFromVx;      // east  from vx
   const m01 = 0;                   // east  from vy
-  const m02 = cg * co + sg * ce;   // east  from vz
-  const m10 = sg * ce + cg * co;   // north from vx
+  const m02 = rot.eastFromVz;      // east  from vz
+  const m10 = rot.northFromVx;     // north from vx
   const m11 = 0;                   // north from vy
-  const m12 = sg * co - cg * ce;   // north from vz
+  const m12 = rot.northFromVz;     // north from vz
   const m20 = 0;                   // up    from vx
   const m21 = 1;                   // up    from vy (vertical = viewer Y, already metres)
   const m22 = 0;                   // up    from vz
@@ -432,6 +469,7 @@ export async function createCesiumBridge(
   return {
     modelOrigin,
     rotationAngle: rotAngle,
+    viewerRotation: rot,
     syncCamera,
     queryTerrainHeight,
     viewerToGeodetic,

@@ -400,7 +400,12 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
           }
         }
 
-        const result = await mergedExporter.exportAsync({
+        // Merged files are the largest STEP output (every federated model
+        // concatenated) and this branch downloads them directly — no schedule
+        // splice sits between the exporter and the save. Assemble off-heap as a
+        // Blob so the file never materialises as one contiguous Uint8Array on
+        // the JS heap (and downloadFile skips its Uint8Array-to-BlobPart copy).
+        const result = await mergedExporter.exportBlobAsync({
           schema,
           projectStrategy: 'keep-first',
           unitReconciliation,

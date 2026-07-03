@@ -91,6 +91,31 @@ function findDanglingRefs(content: string): number[] {
 }
 
 describe('MergedExporter', () => {
+  it('exportBlobAsync produces byte-identical content to exportAsync', async () => {
+    const model1 = buildModel('m1', 'Arch', [
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('g1',$,'Projekt mit Umlaut äöü',$,$,$,$,$,$);"],
+      [2, 'IFCSITE', "#2=IFCSITE('g2',$,'Baustelle 現場',$,$,$,$,$,$,$);"],
+      [3, 'IFCWALL', "#3=IFCWALL('g3',#1,'Wand 🧱',$,#2,$,$,$);"],
+    ]);
+    const model2 = buildModel('m2', 'Struct', [
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('g4',$,'P2',$,$,$,$,$,$);"],
+      [2, 'IFCBUILDING', "#2=IFCBUILDING('g5',$,'B',$,$,$,$,$,$,$);"],
+      [3, 'IFCCOLUMN', "#3=IFCCOLUMN('g6',#1,'C',$,#2,$,$,$);"],
+    ]);
+    const options = { schema: 'IFC4' as const, projectStrategy: 'keep-first' as const };
+
+    const bytesResult = await new MergedExporter([model1, model2]).exportAsync(options);
+    const blobResult = await new MergedExporter([model1, model2]).exportBlobAsync(options);
+
+    const blobBytes = new Uint8Array(await blobResult.content.arrayBuffer());
+    expect(blobBytes).toEqual(bytesResult.content);
+    expect(blobResult.content.size).toBe(bytesResult.content.byteLength);
+    // Stats parity: the Blob path reports the same size and counts.
+    expect(blobResult.stats.fileSize).toBe(bytesResult.stats.fileSize);
+    expect(blobResult.stats.totalEntityCount).toBe(bytesResult.stats.totalEntityCount);
+    expect(blobResult.stats.modelCount).toBe(bytesResult.stats.modelCount);
+  });
+
   it('should export a single model unchanged', () => {
     const model = buildModel('m1', 'Model1', [
       [1, 'IFCPROJECT', "#1=IFCPROJECT('g1',$,'Project',$,$,$,$,$,$);"],

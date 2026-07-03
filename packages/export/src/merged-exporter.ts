@@ -17,7 +17,7 @@ import { safeUtf8Decode } from '@ifc-lite/data';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { collectReferencedEntityIds, getVisibleEntityIds, collectStyleEntities } from './reference-collector.js';
 import { convertStepLine, needsConversion, type IfcSchemaVersion } from './schema-converter.js';
-import { assembleStepBytes } from './step-serialization.js';
+import { assembleStepBytes, assembleStepBlob } from './step-serialization.js';
 import { getCompleteEntityIndex, getMaxExpressId, type CompleteEntityIndex, type ExportEntityRef } from './entity-iteration.js';
 import { StepExporter } from './step-exporter.js';
 import { rescaleEntityLengths, computeNormalizeFactor } from './unit-normalize.js';
@@ -411,6 +411,21 @@ export interface MergeExportResult {
 }
 
 /**
+ * Result of a merged STEP export assembled as an off-heap {@link Blob}
+ * ({@link MergedExporter.exportBlobAsync}) instead of one contiguous
+ * `Uint8Array`. Same stats as {@link MergeExportResult}; only the content
+ * container differs. Suited for the browser download path, where the merged
+ * file (the largest STEP output — every federated model concatenated) is
+ * handed straight to `downloadBlob` with no contiguous buffer materialised.
+ */
+export interface MergeBlobExportResult {
+  /** STEP file content as a multi-part Blob (never assembled into one buffer). */
+  content: Blob;
+  /** Statistics about the export (identical shape to {@link MergeExportResult}). */
+  stats: MergeExportResult['stats'];
+}
+
+/**
  * Merges multiple IFC models into a single STEP file.
  *
  * Uses the same approach as IfcOpenShell's MergeProjects recipe, extended
@@ -525,6 +540,56 @@ export class MergedExporter {
    * responsive during large merged exports.
    */
   async exportAsync(options: MergeExportOptions): Promise<MergeExportResult> {
+    const doc = await this.collectMergedDocument(options);
+    const content = assembleStepBytes(doc.header, doc.allEntityLines);
+    if (options.onProgress) {
+      options.onProgress({ phase: 'assembling', percent: 1, entitiesProcessed: doc.totalEntities, entitiesTotal: doc.totalEntities });
+    }
+    return {
+      content,
+      stats: this.buildStats(doc.allEntityLines.length, content.byteLength, doc.federatedModelCount, doc.normalizedModelCount, doc.normalizeWarnings),
+    };
+  }
+
+  /**
+   * Like {@link exportAsync}, but assembles the merged STEP file as an
+   * off-heap multi-part {@link Blob} (via {@link assembleStepBlob}) rather
+   * than one contiguous `Uint8Array`. The merged file is the largest STEP
+   * output ifc-lite produces (every federated model concatenated), so
+   * skipping the final contiguous buffer is where the memory saving matters
+   * most; the browser download path hands the Blob straight to `downloadBlob`
+   * with no `Uint8Array`-to-`BlobPart` copy. Byte content is identical to
+   * {@link exportAsync}.
+   */
+  async exportBlobAsync(options: MergeExportOptions): Promise<MergeBlobExportResult> {
+    const doc = await this.collectMergedDocument(options);
+    const content = assembleStepBlob(doc.header, doc.allEntityLines);
+    if (options.onProgress) {
+      options.onProgress({ phase: 'assembling', percent: 1, entitiesProcessed: doc.totalEntities, entitiesTotal: doc.totalEntities });
+    }
+    return {
+      content,
+      stats: this.buildStats(doc.allEntityLines.length, content.size, doc.federatedModelCount, doc.normalizedModelCount, doc.normalizeWarnings),
+    };
+  }
+
+  /**
+   * Shared work of {@link exportAsync} / {@link exportBlobAsync}: bake pending
+   * edits, plan the merge, and render every entity line (yielding to the event
+   * loop between chunks so the UI stays responsive). Returns the header, the
+   * rendered entity lines, and the counters the stats builder needs — the two
+   * public methods differ only in how they turn these into a final container
+   * (`Uint8Array` vs off-heap `Blob`), so the entity-rendering logic lives here
+   * once and can't drift between them.
+   */
+  private async collectMergedDocument(options: MergeExportOptions): Promise<{
+    header: string;
+    allEntityLines: string[];
+    federatedModelCount: number;
+    normalizedModelCount: number;
+    normalizeWarnings: Set<string>;
+    totalEntities: number;
+  }> {
     const onProgress = options.onProgress;
     const schema = (options.schema || 'IFC4') as IfcSchemaVersion;
     // See export(): merged files emit an ifc-lite provenance header by policy
@@ -614,16 +679,7 @@ export class MergedExporter {
     }
     await new Promise(r => setTimeout(r, 0));
 
-    const content = assembleStepBytes(header, allEntityLines);
-
-    if (onProgress) {
-      onProgress({ phase: 'assembling', percent: 1, entitiesProcessed: totalEntities, entitiesTotal: totalEntities });
-    }
-
-    return {
-      content,
-      stats: this.buildStats(allEntityLines.length, content.byteLength, federatedModelCount, normalizedModelCount, normalizeWarnings),
-    };
+    return { header, allEntityLines, federatedModelCount, normalizedModelCount, normalizeWarnings, totalEntities };
   }
 
   /**

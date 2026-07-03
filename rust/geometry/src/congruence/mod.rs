@@ -43,8 +43,9 @@ use nalgebra::{Matrix3, Vector3};
 use rustc_hash::FxHashMap;
 use std::sync::{Mutex, OnceLock};
 
-#[allow(unused_imports)] // unused re-export (spike); see module allow above
-pub use report::{analyze_rigid_dedup, RigidDedupReport};
+// `report::analyze_rigid_dedup`/`RigidDedupReport` have no consumer (production
+// or test), so they are not re-exported here; they remain in `report` as spike
+// artifacts under the module-level dead-code allow above.
 
 // ----------------------------------------------------------------------------
 // Analysis collector — populated in processing::tag_direct_instance under the
@@ -78,7 +79,6 @@ pub fn record_local(rep_identity: u128, mesh: &Mesh) {
 ///
 /// No caller today (Phase-0 measurement spike, see module doc above);
 /// narrowing `congruence` to `pub(crate)` in C3.2 surfaced that as unused.
-#[allow(dead_code)]
 pub fn take_locals() -> Vec<(u128, Mesh)> {
     let mut map = collector().lock().expect("analysis collector poisoned");
     let mut out: Vec<(u128, Mesh)> = std::mem::take(&mut *map).into_iter().collect();
@@ -106,7 +106,6 @@ pub fn rigid_enabled() -> bool {
 
 /// Result of classifying a local mesh into the rigid tier.
 #[derive(Clone, Copy)]
-#[allow(dead_code)]
 pub struct RigidClass {
     /// The rigid template's rep_identity (shared by all congruent occurrences).
     pub rigid_id: u128,
@@ -115,7 +114,6 @@ pub struct RigidClass {
     pub canonical_transform: Option<[f64; 16]>,
 }
 
-#[allow(dead_code)]
 struct RigidTemplate {
     welded: Welded,
     rigid_id: u128,
@@ -130,14 +128,12 @@ struct RigidTemplate {
 /// inline on the parallel streaming hot path, where a shared lock serialises the
 /// geometry workers (measured: stalls the 986MB stream).
 #[derive(Default)]
-#[allow(dead_code)]
 pub struct RigidCache {
     templates: Vec<RigidTemplate>,
     buckets: FxHashMap<u64, Vec<usize>>,
 }
 
 /// Row-major canonical->local transform `C = translate(c_cand) · R · translate(-c_tmpl)`.
-#[allow(dead_code)]
 fn canonical_transform_row_major(
     r: &Matrix3<f64>,
     c_tmpl: &Vector3<f64>,
@@ -152,7 +148,6 @@ fn canonical_transform_row_major(
     ]
 }
 
-#[allow(dead_code)]
 impl RigidCache {
     pub fn new() -> Self {
         Self::default()
@@ -219,7 +214,6 @@ impl RigidCache {
 /// the streaming hot path — the architecture the inline attempt got wrong. A
 /// future optimisation shards `locals` by primary signature for rayon parallelism
 /// (congruent meshes share a signature bucket, so shards are independent).
-#[allow(dead_code)]
 pub fn build_rigid_map(locals: &[(u128, Mesh)]) -> std::collections::HashMap<u128, RigidClass> {
     let mut cache = RigidCache::new();
     let mut map = std::collections::HashMap::with_capacity(locals.len());

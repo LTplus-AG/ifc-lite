@@ -10,7 +10,7 @@
 
 import type { CompareRef } from '@/lib/compare/buildFingerprints';
 import type { ChangeDetail } from '@/lib/compare/describeChange';
-import type { DiffState } from '@ifc-lite/diff';
+import type { DiffEntry, DiffState } from '@ifc-lite/diff';
 
 /** One row in the compare results list. */
 export interface CompareRow {
@@ -20,6 +20,30 @@ export interface CompareRow {
   state: DiffState;
   changeKinds: string[];
   ref: CompareRef;
+}
+
+/** An IFC class present among the changes, with how many changes it drives -
+ *  the options feeding the "ignore a class" picker (#1470). */
+export interface ChangedTypeCount {
+  type: string;
+  count: number;
+}
+
+/** Tally the classes among the changed (added/modified/deleted) entries, most
+ *  changed first. Excluded classes are already absent from `entries`, so they
+ *  never appear here. */
+export function changedTypeCounts(
+  entries: readonly DiffEntry<CompareRef>[],
+): ChangedTypeCount[] {
+  const tally = new Map<string, number>();
+  for (const entry of entries) {
+    if (entry.state === 'unchanged') continue;
+    const ifcType = (entry.head ?? entry.base)?.ifcType ?? 'IfcProduct';
+    tally.set(ifcType, (tally.get(ifcType) ?? 0) + 1);
+  }
+  return [...tally.entries()]
+    .map(([type, count]) => ({ type, count }))
+    .sort((a, b) => b.count - a.count || a.type.localeCompare(b.type));
 }
 
 /** A short human change label for a row (added / deleted / the change kinds). */

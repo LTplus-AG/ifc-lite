@@ -68,8 +68,14 @@
 //! - **Complex Breps**: ~200 entities/sec
 //! - **Boolean operations**: ~20 entities/sec
 
-pub mod alignment;
-pub mod bool2d;
+// Module visibility: only 8 modules below are reached externally by sibling
+// crates via a direct submodule path (`ifc_lite_geometry::<module>::...`) and
+// must stay `pub`: csg, csg_capture, kernel, material_layer_index, mesh,
+// projection_outline, rect_fast, space_dcel. Everything else is internal
+// wiring; external consumers reach its types through the root-level `pub use`
+// re-exports below, so those modules are `pub(crate)` (see #C3.2).
+pub(crate) mod alignment;
+pub(crate) mod bool2d;
 /// Deterministic Constrained Delaunay Triangulation + bounded Ruppert
 /// min-angle refinement. Backs the quality triangulators in `triangulation`.
 mod cdt;
@@ -80,7 +86,7 @@ pub mod csg_capture;
 /// Deterministic near-coplanar facet weld for faceted-BREP host meshes.
 /// Corrects f32 import jitter (~0.09°) so authored-coplanar roof slope facets
 /// are EXACTLY coplanar before the exact-kernel opening cut (issue #1007).
-pub mod facet_weld;
+pub(crate) mod facet_weld;
 /// Intra-mesh vertex weld + index dedup applied at the per-element mesh source
 /// (`build_mesh_data`), collapsing the faceted-brep per-face vertex duplication
 /// while keeping creases (distinct normals) split.
@@ -88,32 +94,32 @@ pub mod mesh_weld;
 /// Structured-diagnostics macro shims for the `observability` feature
 /// (tracing when ON, the legacy eprintln fallback when OFF).
 pub(crate) mod diag;
-pub mod diagnostics;
-pub mod error;
-pub mod congruence;
-pub mod geom_hash;
-pub mod extrusion;
-pub mod instancing;
+pub(crate) mod diagnostics;
+pub(crate) mod error;
+pub(crate) mod congruence;
+pub(crate) mod geom_hash;
+pub(crate) mod extrusion;
+pub(crate) mod instancing;
 /// Pure-Rust exact mesh-arrangement CSG kernel — the only CSG kernel, on
 /// every target (see docs/architecture/geometry-pipeline.md).
 pub mod kernel;
 pub mod material_layer_index;
 pub mod mesh;
-pub mod mesh_orient;
-pub mod processors;
-pub mod profile;
-pub mod profile_extractor;
-pub mod profiles;
+pub(crate) mod mesh_orient;
+pub(crate) mod processors;
+pub(crate) mod profile;
+pub(crate) mod profile_extractor;
+pub(crate) mod profiles;
 pub mod projection_outline;
 pub mod rect_fast;
 pub use rect_fast::RectFastStats;
-pub mod router;
-pub mod tessellation;
+pub(crate) mod router;
+pub(crate) mod tessellation;
 pub mod space_dcel;
-pub mod transform;
-pub mod triangulation;
-pub mod void_analysis;
-pub mod void_index;
+pub(crate) mod transform;
+pub(crate) mod triangulation;
+pub(crate) mod void_analysis;
+pub(crate) mod void_index;
 
 // Re-export nalgebra types for convenience
 pub use nalgebra::{Point2, Point3, Vector2, Vector3};

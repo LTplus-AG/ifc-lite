@@ -28,6 +28,12 @@
 //! iterative eigensolver/SVD is fine; production would need the closed-form
 //! Cardano path noted in the design.
 
+// Whole module (mod.rs + engine + report) is a measurement-only spike driven
+// solely by `congruence::tests`; it has no production caller. Narrowing
+// `congruence` to `pub(crate)` in C3.2 surfaced it as dead in non-test builds
+// (it was already unreachable by any external crate), so allow it module-wide.
+#![allow(dead_code)]
+
 mod engine;
 mod report;
 
@@ -37,6 +43,7 @@ use nalgebra::{Matrix3, Vector3};
 use rustc_hash::FxHashMap;
 use std::sync::{Mutex, OnceLock};
 
+#[allow(unused_imports)] // unused re-export (spike); see module allow above
 pub use report::{analyze_rigid_dedup, RigidDedupReport};
 
 // ----------------------------------------------------------------------------
@@ -68,6 +75,10 @@ pub fn record_local(rep_identity: u128, mesh: &Mesh) {
 
 /// Drain the collected distinct local meshes, sorted by rep_identity for
 /// deterministic analysis order.
+///
+/// No caller today (Phase-0 measurement spike, see module doc above);
+/// narrowing `congruence` to `pub(crate)` in C3.2 surfaced that as unused.
+#[allow(dead_code)]
 pub fn take_locals() -> Vec<(u128, Mesh)> {
     let mut map = collector().lock().expect("analysis collector poisoned");
     let mut out: Vec<(u128, Mesh)> = std::mem::take(&mut *map).into_iter().collect();
@@ -87,8 +98,15 @@ pub fn rigid_enabled() -> bool {
     *ENABLED.get_or_init(|| std::env::var("IFC_LITE_RIGID_INSTANCING").is_ok())
 }
 
+// The rest of this "production rigid tier" (RigidClass..build_rigid_map) is
+// driven only by `congruence::tests` today (Phase-0 measurement spike, see
+// module doc above); narrowing `congruence` to `pub(crate)` in C3.2 surfaced
+// it as unused in non-test builds. It was already unreachable by any
+// external crate before that change.
+
 /// Result of classifying a local mesh into the rigid tier.
 #[derive(Clone, Copy)]
+#[allow(dead_code)]
 pub struct RigidClass {
     /// The rigid template's rep_identity (shared by all congruent occurrences).
     pub rigid_id: u128,
@@ -97,6 +115,7 @@ pub struct RigidClass {
     pub canonical_transform: Option<[f64; 16]>,
 }
 
+#[allow(dead_code)]
 struct RigidTemplate {
     welded: Welded,
     rigid_id: u128,
@@ -111,12 +130,14 @@ struct RigidTemplate {
 /// inline on the parallel streaming hot path, where a shared lock serialises the
 /// geometry workers (measured: stalls the 986MB stream).
 #[derive(Default)]
+#[allow(dead_code)]
 pub struct RigidCache {
     templates: Vec<RigidTemplate>,
     buckets: FxHashMap<u64, Vec<usize>>,
 }
 
 /// Row-major canonical->local transform `C = translate(c_cand) · R · translate(-c_tmpl)`.
+#[allow(dead_code)]
 fn canonical_transform_row_major(
     r: &Matrix3<f64>,
     c_tmpl: &Vector3<f64>,
@@ -131,6 +152,7 @@ fn canonical_transform_row_major(
     ]
 }
 
+#[allow(dead_code)]
 impl RigidCache {
     pub fn new() -> Self {
         Self::default()
@@ -197,6 +219,7 @@ impl RigidCache {
 /// the streaming hot path — the architecture the inline attempt got wrong. A
 /// future optimisation shards `locals` by primary signature for rayon parallelism
 /// (congruent meshes share a signature bucket, so shards are independent).
+#[allow(dead_code)]
 pub fn build_rigid_map(locals: &[(u128, Mesh)]) -> std::collections::HashMap<u128, RigidClass> {
     let mut cache = RigidCache::new();
     let mut map = std::collections::HashMap::with_capacity(locals.len());

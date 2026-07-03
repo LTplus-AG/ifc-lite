@@ -22,13 +22,13 @@
      655 rust/export/src/model.rs
      611 rust/export/src/step.rs
     1233 rust/geometry/src/alignment.rs
-     568 rust/geometry/src/bool2d.rs
+     551 rust/geometry/src/bool2d.rs
     1875 rust/geometry/src/cdt.rs
      535 rust/geometry/src/congruence/engine.rs
      895 rust/geometry/src/csg/consolidate.rs
     1061 rust/geometry/src/csg/mod.rs
      436 rust/geometry/src/csg/normals.rs
-    1036 rust/geometry/src/extrusion.rs
+     998 rust/geometry/src/extrusion.rs
      759 rust/geometry/src/facet_weld.rs
      408 rust/geometry/src/geom_hash.rs
      641 rust/geometry/src/kernel/arrangement/classify.rs

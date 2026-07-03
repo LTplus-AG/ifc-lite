@@ -200,7 +200,9 @@ pub fn ensure_cw(contour: &[Point2<f64>]) -> Vec<Point2<f64>> {
     }
 }
 
-/// Simplify a contour by removing collinear points
+/// Simplify a contour by removing collinear points.
+// Test-only since the C3.2 `pub(crate)` narrowing (exercised by `test_simplify_contour`).
+#[allow(dead_code)]
 pub fn simplify_contour(contour: &[Point2<f64>], epsilon: f64) -> Vec<Point2<f64>> {
     if contour.len() <= 3 {
         return contour.to_vec();
@@ -255,32 +257,13 @@ pub fn point_in_contour(point: &Point2<f64>, contour: &[Point2<f64>]) -> bool {
     inside
 }
 
-/// Check if contour A is completely inside contour B
-pub fn contour_inside_contour(inner: &[Point2<f64>], outer: &[Point2<f64>]) -> bool {
-    // All points of inner must be inside outer
-    inner.iter().all(|p| point_in_contour(p, outer))
-}
+// `contour_inside_contour` and `contour_bounds` were deleted here: the C3.2
+// `pub(crate)` narrowing orphaned them (zero callers, production or test), so
+// per the anti-cruft rule they go rather than gain a dead-code allow.
 
-/// Compute bounding box of a contour
-pub fn contour_bounds(contour: &[Point2<f64>]) -> Option<(Point2<f64>, Point2<f64>)> {
-    if contour.is_empty() {
-        return None;
-    }
-
-    let mut min = contour[0];
-    let mut max = contour[0];
-
-    for p in contour.iter().skip(1) {
-        min.x = min.x.min(p.x);
-        min.y = min.y.min(p.y);
-        max.x = max.x.max(p.x);
-        max.y = max.y.max(p.y);
-    }
-
-    Some((min, max))
-}
-
-/// Check if two bounding boxes overlap
+/// Check if two bounding boxes overlap.
+// Test-only since the C3.2 `pub(crate)` narrowing (exercised by `test_bounds_overlap`).
+#[allow(dead_code)]
 pub fn bounds_overlap(
     a_min: &Point2<f64>,
     a_max: &Point2<f64>,

@@ -9,7 +9,7 @@
      420 apps/server/src/routes/parse/parquet_stream.rs
      756 apps/server/src/services/parquet_data_model.rs
      581 apps/server/src/services/parquet_optimized.rs
-     584 apps/server/src/services/parquet.rs
+     522 apps/server/src/services/parquet.rs
     1193 rust/core/src/decoder.rs
      429 rust/core/src/fast_parse.rs
      793 rust/core/src/georef.rs

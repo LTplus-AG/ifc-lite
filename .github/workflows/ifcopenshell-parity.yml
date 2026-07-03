@@ -6,21 +6,19 @@
 #
 # - per-PR (`quick` job): ifc-lite side ONLY vs the committed reference over
 #   the in-tree geometry fixtures - no reference-engine install, no fixture
-#   download. Path-gated to geometry-affecting changes. Non-required check
-#   (not on the "Build + WASM + Rust + Node" needs-list) so branch
-#   protection and CI cost are unchanged; promote later if it proves stable.
+#   download. This is now a REQUIRED status check, so it runs on EVERY PR and
+#   ALWAYS reports: a `dorny/paths-filter` step detects geometry-affecting
+#   changes and gates the parity diff, so a docs/TS-only PR gets a cheap no-op
+#   success instead of a never-reported check. (A required check whose whole
+#   workflow is skipped by a trigger-level `paths:` filter stays "Expected"
+#   forever and blocks unrelated PRs from merging - hence the internal gate.)
 #
-#   Promotion plan (F4): the harness's red path is now fault-injection
-#   tested (tools/ifcopenshell_reference/test_harness.py::
-#   EndToEndFaultInjection, run by the "Unit tests" step below) - it
-#   perturbs an in-memory copy of a REAL committed reference dump and
-#   asserts `compare.py` exits non-zero on bbox/volume divergence and on a
-#   dropped element, plus a positive control that an unperturbed copy stays
-#   green. That is the evidence bar for "required"; the flip itself is a
-#   branch-protection ruleset edit only the repo owner can make (Settings ->
-#   Rules -> Rulesets -> add `parity (in-tree fixtures, committed
-#   reference)` to the required-checks list). Not done here - a workflow
-#   file cannot self-promote its own check.
+#   Its red path is fault-injection tested (tools/ifcopenshell_reference/
+#   test_harness.py::EndToEndFaultInjection, run by the "Unit tests" step) - it
+#   perturbs an in-memory copy of a REAL committed reference dump and asserts
+#   `compare.py` exits non-zero on bbox/volume divergence and on a dropped
+#   element, plus a positive control that an unperturbed copy stays green.
+#   That evidence is why it was promoted to a required check.
 #
 # - nightly (`full` job): installs the PINNED engine, runs the whole
 #   committed corpus (fetched fixtures included), regenerates the reference
@@ -30,14 +28,11 @@
 name: IfcOpenShell parity
 
 on:
+  # No trigger-level `paths:` filter on purpose: this is a REQUIRED check, and
+  # a required check whose workflow is path-skipped never reports a status,
+  # which blocks unrelated (docs/TS-only) PRs from merging. The quick job runs
+  # on every PR and gates the expensive parity diff on an internal paths-filter.
   pull_request:
-    paths:
-      - "rust/geometry/**"
-      - "rust/processing/**"
-      - "rust/core/**"
-      - "rust/python/**"
-      - "tools/ifcopenshell_reference/**"
-      - ".github/workflows/ifcopenshell-parity.yml"
   schedule:
     - cron: "17 3 * * *"
   workflow_dispatch:
@@ -57,22 +52,46 @@ jobs:
           # Jobs install external packages afterwards and never push; do not
           # leave the GITHUB_TOKEN in the local git config for them to read.
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@67ef31d5b988238dd797d409d6f9574278e20537 # master 2026-05
+      # Gate the expensive parity diff on geometry-affecting changes. On a PR
+      # that touches none of these paths, every step below is skipped and the
+      # job succeeds as a no-op, so the required check still reports (no stuck
+      # "Expected" state that would block the PR).
+      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        id: filter
+        with:
+          filters: |
+            geometry:
+              - "rust/geometry/**"
+              - "rust/processing/**"
+              - "rust/core/**"
+              - "rust/python/**"
+              - "tools/ifcopenshell_reference/**"
+              - ".github/workflows/ifcopenshell-parity.yml"
+      - if: steps.filter.outputs.geometry != 'true'
+        name: No geometry changes - parity diff not applicable
+        run: echo "No geometry/processing/core/python/parity-tooling changes; parity diff skipped (check reports success)."
+      - if: steps.filter.outputs.geometry == 'true'
+        uses: dtolnay/rust-toolchain@67ef31d5b988238dd797d409d6f9574278e20537 # master 2026-05
         with:
           toolchain: stable
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v5
+      - if: steps.filter.outputs.geometry == 'true'
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+      - if: steps.filter.outputs.geometry == 'true'
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v5
         with:
           python-version: "3.12"
       - name: Build + install ifclite_geom wheel
+        if: steps.filter.outputs.geometry == 'true'
         run: |
           pip install maturin
           maturin build --release -m rust/python/Cargo.toml -o /tmp/wheels
           pip install /tmp/wheels/*.whl
       - name: Unit tests (canonical stats + comparator)
+        if: steps.filter.outputs.geometry == 'true'
         working-directory: tools/ifcopenshell_reference
         run: python -m unittest test_harness -v
       - name: Differential vs committed reference (in-tree fixtures)
+        if: steps.filter.outputs.geometry == 'true'
         working-directory: tools/ifcopenshell_reference
         run: |
           python dump_ifclite.py \

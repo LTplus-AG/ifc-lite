@@ -27,7 +27,9 @@
  * for those.
  */
 
-import { IfcParser, type IfcDataStore, extractLengthUnitScale } from '@ifc-lite/parser';
+import { IfcParser, type IfcDataStore, extractLengthUnitScale, extractProjectUnits } from '@ifc-lite/parser';
+import { QuantityType } from '@ifc-lite/data';
+import { formatQuantityUnit } from '@/lib/units/display';
 import {
   BsddNamespace,
   createBimContext,
@@ -673,14 +675,23 @@ const IMPLS: Record<string, ToolImpl> = {
     const qsets = m.bim.quantities(ref);
     let vol: number | null = null;
     for (const q of qsets) for (const x of q.quantities) if (/Volume/i.test(x.name) && typeof x.value === 'number') { vol = x.value; break; }
-    return { text: vol == null ? 'No Volume quantity present.' : `Volume = ${vol.toFixed(3)} m³.`, structured: { volume: vol } };
+    // Label with the file's declared VOLUMEUNIT (issue #1573) rather than
+    // assuming m³ — the quantity value is stored in whatever unit the
+    // project declares.
+    const unit = m.store.source.length > 0
+      ? formatQuantityUnit(QuantityType.Volume, extractProjectUnits(m.store.source, m.store.entityIndex))
+      : 'm³';
+    return { text: vol == null ? 'No Volume quantity present.' : `Volume = ${vol.toFixed(3)} ${unit}.`, structured: { volume: vol, unit } };
   },
   async geometry_area(m, args) {
     const ref = resolveRef(m, args);
     const qsets = m.bim.quantities(ref);
     let area: number | null = null;
     for (const q of qsets) for (const x of q.quantities) if (/Area/i.test(x.name) && typeof x.value === 'number') { area = x.value; break; }
-    return { text: area == null ? 'No Area quantity present.' : `Area = ${area.toFixed(3)} m².`, structured: { area } };
+    const unit = m.store.source.length > 0
+      ? formatQuantityUnit(QuantityType.Area, extractProjectUnits(m.store.source, m.store.entityIndex))
+      : 'm²';
+    return { text: area == null ? 'No Area quantity present.' : `Area = ${area.toFixed(3)} ${unit}.`, structured: { area, unit } };
   },
 
   // ── Clash detection ───────────────────────────────────────────────────────

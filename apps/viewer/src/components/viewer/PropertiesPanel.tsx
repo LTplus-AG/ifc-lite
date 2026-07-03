@@ -1674,7 +1674,7 @@ export function PropertiesPanel() {
                             key={`matpset-${group.materialId}-${pset.name}`}
                             pset={{
                               name: pset.name,
-                              properties: pset.properties.map((p) => ({ name: p.name, value: p.value, isMutated: false })),
+                              properties: pset.properties.map((p) => ({ name: p.name, value: p.value, isMutated: false, dataType: p.dataType })),
                             }}
                             projectUnits={renderedProjectUnits}
                             unitDisplayOverrides={unitDisplayOverrides}

@@ -26,6 +26,7 @@ import {
   type IfcDataStore,
 } from '@ifc-lite/parser';
 import { QuantityType } from '@ifc-lite/data';
+import { resolveQuantityDisplay } from '@/lib/units/display';
 import { PropertySetCard } from './PropertySetCard';
 import type { PropertySet } from './encodingUtils';
 
@@ -62,6 +63,28 @@ function formatNumber(value: number): string {
   if (Math.abs(value) >= 1000) return value.toLocaleString(undefined, { maximumFractionDigits: 0 });
   if (Math.abs(value) >= 1) return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
   return value.toLocaleString(undefined, { maximumFractionDigits: 4 });
+}
+
+/** Render an aggregated total with its resolved unit (issue #1573 follow-up):
+ *  the display-unit override when set, else the file's declared/SI-default
+ *  unit — same resolution as the property/quantity cards below, just with
+ *  `formatNumber`'s magnitude-adaptive precision instead of `formatConverted`
+ *  so large totals stay readable. NOTE: the totals loop sums raw quantity
+ *  values across `allStores` (materials of the same name are merged across the
+ *  federation), but the unit label + any override conversion here use only the
+ *  SELECTED store's declared units. For a single-store model that is exact; a
+ *  federation whose stores declare different volume/area/mass units mixes raw
+ *  values before this label is applied — a pre-existing concern (the block was
+ *  previously hardcoded m³/m²/kg) that this label does not attempt to fix. */
+function formatTotal(
+  value: number,
+  quantityType: number,
+  projectUnits: ProjectUnits,
+  overrides: Record<string, string>,
+): string {
+  const disp = resolveQuantityDisplay(value, quantityType, projectUnits, overrides);
+  const shown = disp.converted ?? value;
+  return disp.unit ? `${formatNumber(shown)} ${disp.unit}` : formatNumber(shown);
 }
 
 export function MaterialTotalsPanel({ materialId, modelId }: { materialId: number; modelId: string }) {
@@ -210,13 +233,13 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
             <div className="divide-y divide-amber-100 dark:divide-amber-900/30">
               <TotalRow label="Elements" value={totals.elementCount.toLocaleString()} />
               {totals.hasVolume && (
-                <TotalRow label="Volume" value={`${formatNumber(totals.volume)} m³`} />
+                <TotalRow label="Volume" value={formatTotal(totals.volume, QuantityType.Volume, projectUnits, unitDisplayOverrides)} />
               )}
               {totals.hasArea && (
-                <TotalRow label="Area" value={`${formatNumber(totals.area)} m²`} />
+                <TotalRow label="Area" value={formatTotal(totals.area, QuantityType.Area, projectUnits, unitDisplayOverrides)} />
               )}
               {totals.hasWeight && (
-                <TotalRow label="Weight" value={`${formatNumber(totals.weight)} kg`} />
+                <TotalRow label="Weight" value={formatTotal(totals.weight, QuantityType.Weight, projectUnits, unitDisplayOverrides)} />
               )}
             </div>
             {totals.elementCount > 0 && !totals.hasVolume && (
@@ -265,7 +288,7 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
                 group.psets.map((pset) => {
                   const psetView: PropertySet = {
                     name: pset.name,
-                    properties: pset.properties.map((p) => ({ name: p.name, value: p.value, isMutated: false })),
+                    properties: pset.properties.map((p) => ({ name: p.name, value: p.value, isMutated: false, dataType: p.dataType })),
                   };
                   return <PropertySetCard key={`${group.materialId}-${pset.name}`} pset={psetView} projectUnits={projectUnits} unitDisplayOverrides={unitDisplayOverrides} />;
                 }),

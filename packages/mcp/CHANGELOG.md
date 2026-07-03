@@ -1,5 +1,48 @@
 # @ifc-lite/mcp
 
+## 0.6.0
+
+### Minor Changes
+
+- [#1497](https://github.com/LTplus-AG/ifc-lite/pull/1497) [`d7a3205`](https://github.com/LTplus-AG/ifc-lite/commit/d7a3205524e023f936b29ee1bc113d1d10e3b0b1) Thanks [@Blogbotana](https://github.com/Blogbotana)! - feat(parser): support opening `.ifcZIP` containers (issue [#1494](https://github.com/LTplus-AG/ifc-lite/issues/1494))
+
+  The buildingSMART IFC container format — a zip archive wrapping a single
+  `.ifc`/`.ifcxml` file — is now unwrapped transparently. New `@ifc-lite/parser`
+  exports:
+
+  - `isZipBuffer(buffer)` — cheap magic-byte check.
+  - `unwrapIfcZip(buffer)` — returns the model file's bytes if `buffer` is a
+    zip container, or `buffer` unchanged otherwise (safe to call
+    unconditionally on every load). Throws if the archive has zero or more
+    than one `.ifc`/`.ifcxml` entry rather than guessing which to load, or if
+    the entry's declared uncompressed size exceeds 4 GiB (a zip-bomb guard,
+    checked from the zip central directory — no decompression needed to check).
+  - `unwrapIfcZipView(view)` — same contract for a Node `Buffer`/`Uint8Array`.
+
+  `parseAuto` calls it automatically. The CLI and MCP loaders (`loadIfcFile`,
+  `loadIfcModel`) unwrap before their STEP-signature check, so `ifc-lite info
+model.ifcZIP` and MCP's `model_load` just work. The viewer's file picker and
+  drag-and-drop now accept `.ifczip` alongside `.ifc`/`.ifcx`/`.glb`.
+
+  The hosted Rust parsing server (`apps/server`) unwraps `.ifcZIP` too, in its
+  multipart `extract_file` path (alongside the existing gzip handling), so an
+  uploaded container is decompressed server-side before parsing and the viewer's
+  multi-core server fast-path works for zipped uploads. It applies the same
+  single-`.ifc`/`.ifcxml`-entry rule and bounds the decompressed size against the
+  server's max-file-size ceiling (zip-bomb guard).
+
+  Referenced resources inside the container (textures, documents) are not
+  extracted in this pass — only the model file's bytes.
+
+### Patch Changes
+
+- Updated dependencies [[`218e613`](https://github.com/LTplus-AG/ifc-lite/commit/218e613b06cc5ca2a74c84f72e039b430be6caee), [`0762522`](https://github.com/LTplus-AG/ifc-lite/commit/076252241ec4201462f7fcf0555c83606de5fecd), [`d7a3205`](https://github.com/LTplus-AG/ifc-lite/commit/d7a3205524e023f936b29ee1bc113d1d10e3b0b1), [`52dd7a1`](https://github.com/LTplus-AG/ifc-lite/commit/52dd7a16788375a9507c40fbde106b78236801db), [`47bde10`](https://github.com/LTplus-AG/ifc-lite/commit/47bde10dcacddf8f99e1e6b2bf036c78c192c5ff), [`b157b48`](https://github.com/LTplus-AG/ifc-lite/commit/b157b4841bfa795f8a937a9be20c21b645757fbe)]:
+  - @ifc-lite/clash@1.5.0
+  - @ifc-lite/geometry@3.1.0
+  - @ifc-lite/parser@3.6.0
+  - @ifc-lite/export@2.5.0
+  - @ifc-lite/ids@1.15.23
+
 ## 0.5.0
 
 ### Minor Changes

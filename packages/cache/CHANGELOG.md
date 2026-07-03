@@ -1,5 +1,14 @@
 # @ifc-lite/cache
 
+## 2.0.11
+
+### Patch Changes
+
+- [#1562](https://github.com/LTplus-AG/ifc-lite/pull/1562) [`52dd7a1`](https://github.com/LTplus-AG/ifc-lite/commit/52dd7a16788375a9507c40fbde106b78236801db) Thanks [@louistrue](https://github.com/louistrue)! - Bump the geometry cache `FORMAT_VERSION` 11 -> 12 for the source vertex weld. Element meshes are now welded at the source and the per-export welds were removed, so a v11 cache holds pre-weld (per-face-duplicated) geometry; restoring it and exporting would emit an unwelded, 3-6x larger GLB (regressing the export-weld win for cached-model users) and hand non-watertight raw MeshData to render/GLB consumers. The bump invalidates pre-weld caches so they re-mesh (welded) instead of restoring stale geometry.
+
+- Updated dependencies [[`0762522`](https://github.com/LTplus-AG/ifc-lite/commit/076252241ec4201462f7fcf0555c83606de5fecd), [`52dd7a1`](https://github.com/LTplus-AG/ifc-lite/commit/52dd7a16788375a9507c40fbde106b78236801db), [`b157b48`](https://github.com/LTplus-AG/ifc-lite/commit/b157b4841bfa795f8a937a9be20c21b645757fbe)]:
+  - @ifc-lite/geometry@3.1.0
+
 ## 2.0.10
 
 ### Patch Changes

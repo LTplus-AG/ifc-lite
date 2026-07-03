@@ -1,5 +1,18 @@
 # @ifc-lite/clash
 
+## 1.5.0
+
+### Minor Changes
+
+- [#1577](https://github.com/LTplus-AG/ifc-lite/pull/1577) [`218e613`](https://github.com/LTplus-AG/ifc-lite/commit/218e613b06cc5ca2a74c84f72e039b430be6caee) Thanks [@louistrue](https://github.com/louistrue)! - Add a coordination REVIEW state for clashes, distinct from the detection classification ([#1468](https://github.com/LTplus-AG/ifc-lite/issues/1468)). A clash can now carry an `open` / `resolved` / `accepted` review status plus an optional comment, keyed by a new durable `clashReviewKey` that (unlike `Clash.id`) is independent of the ephemeral runtime `model` id, so a review re-attaches to the same clash across a reload, a re-run, or a model revision. `createBCFFromClashResult` gains an optional `reviewStatusOf` resolver: when given, each BCF topic's `TopicStatus` follows the least-resolved status among its members (`aggregateReviewStatus`), mapped to a BCF status via `reviewStatusToBcfTopicStatus` (max-interop: `open` -> `Open`, `resolved`/`accepted` -> `Closed`), and the finer review breakdown is recorded in the topic description so the resolved-vs-accepted split is not lost. Without the resolver, the previous flat `status` behaviour is unchanged. New exports: `clashReviewKey`, `aggregateReviewStatus`, `reviewStatusToBcfTopicStatus`, and the `ClashReviewStatus` / `ClashReview` types plus `CLASH_REVIEW_STATUSES` / `DEFAULT_CLASH_REVIEW_STATUS` constants.
+
+### Patch Changes
+
+- Updated dependencies [[`0762522`](https://github.com/LTplus-AG/ifc-lite/commit/076252241ec4201462f7fcf0555c83606de5fecd), [`d7a3205`](https://github.com/LTplus-AG/ifc-lite/commit/d7a3205524e023f936b29ee1bc113d1d10e3b0b1), [`52dd7a1`](https://github.com/LTplus-AG/ifc-lite/commit/52dd7a16788375a9507c40fbde106b78236801db), [`b157b48`](https://github.com/LTplus-AG/ifc-lite/commit/b157b4841bfa795f8a937a9be20c21b645757fbe)]:
+  - @ifc-lite/geometry@3.1.0
+  - @ifc-lite/parser@3.6.0
+  - @ifc-lite/wasm@3.0.4
+
 ## 1.4.1
 
 ### Patch Changes

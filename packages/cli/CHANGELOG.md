@@ -1,5 +1,56 @@
 # @ifc-lite/cli
 
+## 0.16.0
+
+### Minor Changes
+
+- [#1564](https://github.com/LTplus-AG/ifc-lite/pull/1564) [`0762522`](https://github.com/LTplus-AG/ifc-lite/commit/076252241ec4201462f7fcf0555c83606de5fecd) Thanks [@louistrue](https://github.com/louistrue)! - `diagnose-geometry` gains `--product <expressId|GlobalId>` and `--type <IfcType>` flags to narrow the worst-failing-hosts detail list to a single product or IFC type. Worst-failing hosts now also report a world-space bounding box and final triangle count when a void cut captured them, surfaced in both `--json` and the human-readable report.
+
+  Fixed `--quiet`/`--verbose` on `diagnose-geometry`: its status line ("Wrote diagnostics to...") now routes through the leveled logger like every other command, so `--quiet` actually silences it instead of always printing to stdout via a raw `console.log`. The JSON/report payload itself is unaffected by verbosity, same as every other command.
+
+- [#1497](https://github.com/LTplus-AG/ifc-lite/pull/1497) [`d7a3205`](https://github.com/LTplus-AG/ifc-lite/commit/d7a3205524e023f936b29ee1bc113d1d10e3b0b1) Thanks [@Blogbotana](https://github.com/Blogbotana)! - feat(parser): support opening `.ifcZIP` containers (issue [#1494](https://github.com/LTplus-AG/ifc-lite/issues/1494))
+
+  The buildingSMART IFC container format — a zip archive wrapping a single
+  `.ifc`/`.ifcxml` file — is now unwrapped transparently. New `@ifc-lite/parser`
+  exports:
+
+  - `isZipBuffer(buffer)` — cheap magic-byte check.
+  - `unwrapIfcZip(buffer)` — returns the model file's bytes if `buffer` is a
+    zip container, or `buffer` unchanged otherwise (safe to call
+    unconditionally on every load). Throws if the archive has zero or more
+    than one `.ifc`/`.ifcxml` entry rather than guessing which to load, or if
+    the entry's declared uncompressed size exceeds 4 GiB (a zip-bomb guard,
+    checked from the zip central directory — no decompression needed to check).
+  - `unwrapIfcZipView(view)` — same contract for a Node `Buffer`/`Uint8Array`.
+
+  `parseAuto` calls it automatically. The CLI and MCP loaders (`loadIfcFile`,
+  `loadIfcModel`) unwrap before their STEP-signature check, so `ifc-lite info
+model.ifcZIP` and MCP's `model_load` just work. The viewer's file picker and
+  drag-and-drop now accept `.ifczip` alongside `.ifc`/`.ifcx`/`.glb`.
+
+  The hosted Rust parsing server (`apps/server`) unwraps `.ifcZIP` too, in its
+  multipart `extract_file` path (alongside the existing gzip handling), so an
+  uploaded container is decompressed server-side before parsing and the viewer's
+  multi-core server fast-path works for zipped uploads. It applies the same
+  single-`.ifc`/`.ifcxml`-entry rule and bounds the decompressed size against the
+  server's max-file-size ceiling (zip-bomb guard).
+
+  Referenced resources inside the container (textures, documents) are not
+  extracted in this pass — only the model file's bytes.
+
+### Patch Changes
+
+- [#1562](https://github.com/LTplus-AG/ifc-lite/pull/1562) [`52dd7a1`](https://github.com/LTplus-AG/ifc-lite/commit/52dd7a16788375a9507c40fbde106b78236801db) Thanks [@louistrue](https://github.com/louistrue)! - Weld per-face-duplicated faceted-brep vertices at the mesh SOURCE instead of per export. The faceted-brep mesher emits geometry per `IfcFace` with no cross-face vertex sharing, so a closed shell duplicates every shared corner once per incident face (~3-6x). That collapse now happens once, at the single per-element mesh funnel (`build_mesh_data` in `produce_element_meshes`), so every element -- render, GLB/OBJ export, and analysis -- arrives welded in its `MeshData`, and the previously separate per-export welds (from-bytes `to_yup` and the viewer's from-meshes GLB path) are removed as redundant. The weld keys on the exact position plus a quantized normal, so creases (a cube corner shared by three faces with distinct normals) stay split and flat/crease shading is preserved; world triangles, winding, and the world AABB are unchanged. It is deterministic and byte-identical cross-arch (native == wasm32, positions and topology identical, only the documented libm-trig normals differ), and closes the volume/watertightness gap for non-voided faceted breps on the render path (voided elements already welded via the coplanar-facet pass). The mesh-output determinism manifests are re-pinned for the one affected battery element (the round column [#500](https://github.com/LTplus-AG/ifc-lite/issues/500), an extruded circular profile: 216 -> 144 vertices, triangle count unchanged).
+
+- Updated dependencies [[`218e613`](https://github.com/LTplus-AG/ifc-lite/commit/218e613b06cc5ca2a74c84f72e039b430be6caee), [`0762522`](https://github.com/LTplus-AG/ifc-lite/commit/076252241ec4201462f7fcf0555c83606de5fecd), [`d7a3205`](https://github.com/LTplus-AG/ifc-lite/commit/d7a3205524e023f936b29ee1bc113d1d10e3b0b1), [`52dd7a1`](https://github.com/LTplus-AG/ifc-lite/commit/52dd7a16788375a9507c40fbde106b78236801db), [`47bde10`](https://github.com/LTplus-AG/ifc-lite/commit/47bde10dcacddf8f99e1e6b2bf036c78c192c5ff), [`b157b48`](https://github.com/LTplus-AG/ifc-lite/commit/b157b4841bfa795f8a937a9be20c21b645757fbe)]:
+  - @ifc-lite/clash@1.5.0
+  - @ifc-lite/geometry@3.1.0
+  - @ifc-lite/parser@3.6.0
+  - @ifc-lite/mcp@0.6.0
+  - @ifc-lite/wasm@3.0.4
+  - @ifc-lite/export@2.5.0
+  - @ifc-lite/ids@1.15.23
+
 ## 0.15.1
 
 ### Patch Changes

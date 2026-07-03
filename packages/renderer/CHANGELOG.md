@@ -1,5 +1,16 @@
 # @ifc-lite/renderer
 
+## 1.35.0
+
+### Minor Changes
+
+- [#1578](https://github.com/LTplus-AG/ifc-lite/pull/1578) [`5a9f384`](https://github.com/LTplus-AG/ifc-lite/commit/5a9f3846047c1920ff32e6833448b41b571d0e5c) Thanks [@louistrue](https://github.com/louistrue)! - Remove the unused `Camera.zoomToFit(min, max, duration)` method. It had no callers anywhere in the repo (viewer, SDK, examples, tests) and was superseded by `Camera.frameBounds` (animated fit, keeps view direction) and `Camera.fitBoundsAdaptive` (aspect-aware fit used by the Home view and post-load auto-fit). The exported `Camera` class and the CI-tracked API surface are unchanged; only the dead convenience wrapper is gone. Callers that need an animated fit-to-bounds should use `frameBounds` (the quickstart cheat-sheet was updated to point at it).
+
+### Patch Changes
+
+- Updated dependencies [[`0762522`](https://github.com/LTplus-AG/ifc-lite/commit/076252241ec4201462f7fcf0555c83606de5fecd), [`52dd7a1`](https://github.com/LTplus-AG/ifc-lite/commit/52dd7a16788375a9507c40fbde106b78236801db), [`b157b48`](https://github.com/LTplus-AG/ifc-lite/commit/b157b4841bfa795f8a937a9be20c21b645757fbe)]:
+  - @ifc-lite/geometry@3.1.0
+
 ## 1.34.1
 
 ### Patch Changes

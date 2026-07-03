@@ -1,5 +1,44 @@
 # @ifc-lite/parser
 
+## 3.6.0
+
+### Minor Changes
+
+- [#1497](https://github.com/LTplus-AG/ifc-lite/pull/1497) [`d7a3205`](https://github.com/LTplus-AG/ifc-lite/commit/d7a3205524e023f936b29ee1bc113d1d10e3b0b1) Thanks [@Blogbotana](https://github.com/Blogbotana)! - feat(parser): support opening `.ifcZIP` containers (issue [#1494](https://github.com/LTplus-AG/ifc-lite/issues/1494))
+
+  The buildingSMART IFC container format — a zip archive wrapping a single
+  `.ifc`/`.ifcxml` file — is now unwrapped transparently. New `@ifc-lite/parser`
+  exports:
+
+  - `isZipBuffer(buffer)` — cheap magic-byte check.
+  - `unwrapIfcZip(buffer)` — returns the model file's bytes if `buffer` is a
+    zip container, or `buffer` unchanged otherwise (safe to call
+    unconditionally on every load). Throws if the archive has zero or more
+    than one `.ifc`/`.ifcxml` entry rather than guessing which to load, or if
+    the entry's declared uncompressed size exceeds 4 GiB (a zip-bomb guard,
+    checked from the zip central directory — no decompression needed to check).
+  - `unwrapIfcZipView(view)` — same contract for a Node `Buffer`/`Uint8Array`.
+
+  `parseAuto` calls it automatically. The CLI and MCP loaders (`loadIfcFile`,
+  `loadIfcModel`) unwrap before their STEP-signature check, so `ifc-lite info
+model.ifcZIP` and MCP's `model_load` just work. The viewer's file picker and
+  drag-and-drop now accept `.ifczip` alongside `.ifc`/`.ifcx`/`.glb`.
+
+  The hosted Rust parsing server (`apps/server`) unwraps `.ifcZIP` too, in its
+  multipart `extract_file` path (alongside the existing gzip handling), so an
+  uploaded container is decompressed server-side before parsing and the viewer's
+  multi-core server fast-path works for zipped uploads. It applies the same
+  single-`.ifc`/`.ifcxml`-entry rule and bounds the decompressed size against the
+  server's max-file-size ceiling (zip-bomb guard).
+
+  Referenced resources inside the container (textures, documents) are not
+  extracted in this pass — only the model file's bytes.
+
+### Patch Changes
+
+- Updated dependencies [[`52dd7a1`](https://github.com/LTplus-AG/ifc-lite/commit/52dd7a16788375a9507c40fbde106b78236801db)]:
+  - @ifc-lite/wasm@3.0.4
+
 ## 3.5.2
 
 ### Patch Changes

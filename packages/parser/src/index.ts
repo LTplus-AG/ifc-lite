@@ -26,6 +26,13 @@ export { QuantityExtractor } from './quantity-extractor.js';
 export { RelationshipExtractor } from './relationship-extractor.js';
 export { SpatialHierarchyBuilder } from './spatial-hierarchy-builder.js';
 export { extractLengthUnitScale } from './unit-extractor.js';
+export {
+  extractProjectUnits,
+  measureUnit,
+  ProjectUnits,
+  type ResolvedUnit,
+  type MeasureUnit,
+} from './project-units.js';
 export { ColumnarParser, type IfcDataStore, type EntityByIdIndex, extractPropertiesOnDemand, extractQuantitiesOnDemand, extractEntityAttributesOnDemand, extractAllEntityAttributes, getRawNamedAttributes, extractRootAttributesFromEntity, extractClassificationsOnDemand, extractMaterialsOnDemand, extractMaterialPropertiesOnDemand, extractMaterialPropertiesForMaterialId, resolveMaterialDefId, collectMaterialLeaves, buildMaterialUsageIndex, getMaterialDisplay, extractTypePropertiesOnDemand, extractTypeEntityOwnProperties, extractDocumentsOnDemand, extractRelationshipsOnDemand, extractGroupMembersOnDemand, extractGeoreferencingOnDemand, type ClassificationInfo, type MaterialInfo, type MaterialLayerInfo, type MaterialProfileInfo, type MaterialConstituentInfo, type MaterialPsetGroup, type MaterialLeaf, type MaterialUsage, type TypePropertyInfo, type DocumentInfo, type EntityRelationships, type GroupMember } from './columnar-parser.js';
 export type { IfcStoreBase, IfcSourceHeader, SpatialHierarchy, EntityTable } from '@ifc-lite/data';
 export { parseSourceHeader } from './source-header.js';

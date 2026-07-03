@@ -300,13 +300,16 @@ fn print_json(probes: &[Probe]) {
     println!("{out}");
 }
 
-/// Catalogued heavy fixtures worth profiling, in rough phase-stress order.
-/// Skipped silently when not fetched (`pnpm fixtures <path>`).
+/// Catalogued public manifest fixtures worth profiling, in rough phase-stress
+/// order. All are STEP `.ifc` (the probe drives `process_geometry`, the STEP
+/// path; IFCX/IFC5 use a separate pipeline and would report zero here) and all
+/// are fetchable with `pnpm fixtures <path>`; each is skipped silently when not
+/// on disk.
 const SUITE: &[&str] = &[
-    "tests/models/ara3d/schependomlaan.ifc",           // arch, void-CSG
-    "tests/models/ifc5/Tekla_House_TeklaHouse.ifcx",   // steel, faceted-brep
+    "tests/models/ara3d/AC20-FZK-Haus.ifc",              // small arch
+    "tests/models/various/01_Snowdon_Towers_Sample_Structural(1).ifc", // structural
     "tests/models/various/01_BIMcollab_Example_ARC.ifc", // mid arch
-    "tests/models/ara3d/AC-20-Smiley-West-10-Bldg.ifc", // small arch
+    "tests/models/ara3d/schependomlaan.ifc",            // arch, void-CSG, parse-heavy
     "tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc", // big parse
     "tests/models/various/O-S1-BWK-BIM architectural - BIM bouwkundig.ifc", // largest
 ];

@@ -9,7 +9,7 @@
 # function. The `profiling` cargo profile keeps symbols + panic=unwind.
 #
 #   scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
-#   scripts/perf/flame.sh tests/models/ifc5/Tekla_House_TeklaHouse.ifcx --iters 1
+#   scripts/perf/flame.sh tests/models/ara3d/AC20-FZK-Haus.ifc --iters 1
 #
 # Use --iters 1 for a single clean pass in the flamegraph (default 3 stacks
 # three passes, useful for a warmer, denser sample).

@@ -1,0 +1,12 @@
+# Code owners for ifc-lite.
+# A review from an owner is requested automatically on matching paths.
+# See https://docs.github.com/articles/about-code-owners
+
+# Default owner for everything in the repo.
+*                       @louistrue
+
+# Geometry kernel and processing pipeline are correctness-critical
+# (determinism manifests, exact CSG). Keep an explicit owner.
+/rust/                  @louistrue
+/apps/server/           @louistrue
+/.github/               @louistrue

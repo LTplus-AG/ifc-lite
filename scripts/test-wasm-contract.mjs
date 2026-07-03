@@ -605,6 +605,78 @@ test('getPipelineDiagnostics: undefined before load, accumulates across batches,
   }
 });
 
+// ===== setEntityIndex (production load-start reset path, #1551) =====
+// The `getPipelineDiagnostics` test above only exercises the buildPrePassOnce
+// reset. `setEntityIndex` is the OTHER load-start reset path: the geometry
+// PROCESS worker (packages/geometry/src/geometry.worker.ts) is a separate
+// wasm realm from the pre-pass worker, so it never calls buildPrePassOnce
+// itself — it receives an already-built entity index over SAB and installs
+// it via setEntityIndex before its first processGeometryBatch. Nothing
+// previously asserted that this path resets load-scoped state the same way.
+test('setEntityIndex resets pipeline diagnostics like a fresh load, and installs a working entity-index cache', () => {
+  const entityIdxApi = new IfcAPI();
+  const bytes = new TextEncoder().encode(columnContent);
+  try {
+    // First "load", via the normal buildPrePassOnce + processGeometryBatch
+    // path, to put this IfcAPI into a NON-fresh state (diagnostics
+    // populated) — the state setEntityIndex must reset on the next load.
+    const pre = entityIdxApi.buildPrePassOnce(bytes);
+    assert.ok(pre.totalJobs > 0, 'fixture must produce geometry jobs');
+    const runBatch = () => {
+      const c = entityIdxApi.processGeometryBatch(
+        bytes, pre.jobs, pre.unitScale,
+        pre.rtcOffset[0], pre.rtcOffset[1], pre.rtcOffset[2], pre.needsShift,
+        pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors,
+      );
+      try {
+        assert.ok(c.length > 0, 'first-load batch must produce meshes');
+      } finally {
+        c.free();
+      }
+    };
+    runBatch();
+    const before = entityIdxApi.getPipelineDiagnostics();
+    assert.ok(before && before.batches === 1, 'diagnostics must be populated before setEntityIndex');
+
+    // Build the (ids, starts, lengths) columns the worker realm would receive
+    // over SAB, the same way scanEntitiesFastBytes already exposes them.
+    const refs = entityIdxApi.scanEntitiesFastBytes(bytes);
+    assert.ok(Array.isArray(refs) && refs.length > 0, 'scan must find entities');
+    const ids = Uint32Array.from(refs.map((r) => r.expressId));
+    const starts = Uint32Array.from(refs.map((r) => r.byteOffset));
+    const lengths = Uint32Array.from(refs.map((r) => r.byteLength));
+
+    entityIdxApi.setEntityIndex(ids, starts, lengths);
+
+    // (a) setEntityIndex is a load-START reset, same contract as
+    // buildPrePassOnce (rust/wasm-bindings/src/api/mod.rs set_entity_index ->
+    // reset_pipeline_diagnostics): the PREVIOUS load's diagnostics must not
+    // leak into the next one on a reused IfcAPI.
+    assert.equal(entityIdxApi.getPipelineDiagnostics(), undefined,
+      'setEntityIndex must reset pipeline diagnostics like a fresh load');
+
+    // (b) Functional correctness of the installed cache: a subsequent
+    // processGeometryBatch must still produce valid meshes by reusing the
+    // Arc<EntityIndex> setEntityIndex populated, not a silently empty/corrupt
+    // one that would make every job fail to decode.
+    const collection = entityIdxApi.processGeometryBatch(
+      bytes, pre.jobs, pre.unitScale,
+      pre.rtcOffset[0], pre.rtcOffset[1], pre.rtcOffset[2], pre.needsShift,
+      pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors,
+    );
+    try {
+      assert.ok(collection.length > 0, 'batch after setEntityIndex must still produce meshes');
+    } finally {
+      collection.free();
+    }
+    const after = entityIdxApi.getPipelineDiagnostics();
+    assert.ok(after && after.batches === 1,
+      'the post-setEntityIndex batch must start a fresh accumulator at 1, not accumulate onto the prior load');
+  } finally {
+    entityIdxApi.clearPrePassCache();
+  }
+});
+
 // Summary
 console.log('\n' + '═'.repeat(50));
 console.log(`📊 Results: ${passed} passed, ${failed} failed`);

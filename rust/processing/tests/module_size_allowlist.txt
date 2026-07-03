@@ -10,7 +10,7 @@
      756 apps/server/src/services/parquet_data_model.rs
      581 apps/server/src/services/parquet_optimized.rs
      522 apps/server/src/services/parquet.rs
-    1193 rust/core/src/decoder.rs
+    1087 rust/core/src/decoder.rs
      429 rust/core/src/fast_parse.rs
      793 rust/core/src/georef.rs
      445 rust/core/src/model_bounds.rs
@@ -71,9 +71,10 @@
      812 rust/processing/src/element.rs
      468 rust/processing/src/georeferencing.rs
      772 rust/processing/src/prepass.rs
-    1674 rust/processing/src/processor/mod.rs
+    1474 rust/processing/src/processor/mod.rs
      440 rust/processing/src/symbolic/items.rs
-     767 rust/wasm-bindings/src/api/gpu_meshes/batch.rs
+# +6: wire per-batch point-cache hit/miss stats into record_pipeline_batch (perf/brep-point-cache-instrumentation).
+     773 rust/wasm-bindings/src/api/gpu_meshes/batch.rs
      627 rust/wasm-bindings/src/api/gpu_meshes/prepass.rs
      436 rust/wasm-bindings/src/api/grid_lines.rs
      878 rust/wasm-bindings/src/api/mod.rs

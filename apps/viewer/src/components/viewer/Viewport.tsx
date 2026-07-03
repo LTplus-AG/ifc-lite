@@ -11,6 +11,7 @@ import { Renderer, type VisualEnhancementOptions, type LightingEnvironment } fro
 import type { MeshData, CoordinateInfo, PointCloudAsset } from '@ifc-lite/geometry';
 import { useViewerStore, resolveEntityRef, type MeasurePoint, type SnapVisualization } from '@/store';
 import { LIGHTING_PRESETS } from '@/lib/lighting-presets';
+import { presetViewRotation } from '@/lib/preset-view-orientation';
 import { sunLightingForAltitude } from '@/lib/geo/solar-direction';
 import {
   useSelectionState,
@@ -719,8 +720,17 @@ export function Viewport({
       // Register camera callbacks for ViewCube and other controls
       setCameraCallbacks({
         setPresetView: (view) => {
-          // Pass actual geometry bounds to avoid distance drift
-          const rotation = coordinateInfoRef.current?.buildingRotation;
+          // Pass actual geometry bounds to avoid distance drift. When the Cesium
+          // world-context basemap is actually rendering, TOP/BOTTOM read as a map
+          // (north up) instead of the building's IfcSite axes; elsewhere they stay
+          // building-aligned (#1532). cesiumAvailable gates out a stale
+          // cesiumEnabled after georef disappears (no basemap = no north-up).
+          const { cesiumEnabled, cesiumAvailable } = useViewerStore.getState();
+          const rotation = presetViewRotation(
+            view,
+            coordinateInfoRef.current?.buildingRotation,
+            cesiumEnabled && cesiumAvailable,
+          );
           camera.setPresetView(view, geometryBoundsRef.current, rotation);
           // Initial render - animation loop will continue rendering during animation
           renderCurrent();

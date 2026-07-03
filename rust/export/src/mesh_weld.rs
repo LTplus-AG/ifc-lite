@@ -57,10 +57,15 @@ pub(crate) fn weld_local(
     indices: &[u32],
 ) -> (Vec<f32>, Vec<f32>, Vec<u32>) {
     let nverts = positions.len() / 3;
-    // Normals should match positions (the caller's `view_ok`/`mesh_visible`
-    // guard enforces it); if they somehow do not, fall back to a no-op so we
-    // never index out of bounds.
-    if normals.len() != positions.len() || nverts == 0 {
+    // No-op (return the inputs unchanged) on a malformed mesh: normals not
+    // matching positions, empty, or ANY index >= nverts. This preserves the
+    // pre-weld behaviour exactly - the emit path wrote the (invalid) index
+    // buffer through without validating it, so a malformed from-meshes input
+    // stays invalid-but-present rather than panicking on `remap[i]`.
+    if normals.len() != positions.len()
+        || nverts == 0
+        || indices.iter().any(|&i| i as usize >= nverts)
+    {
         return (positions.to_vec(), normals.to_vec(), indices.to_vec());
     }
 
@@ -118,6 +123,19 @@ mod tests {
             let w = ni as usize * 3;
             assert_eq!(&positions[o..o + 3], &p[w..w + 3], "world position preserved");
         }
+    }
+
+    #[test]
+    fn out_of_range_index_is_a_no_op_not_a_panic() {
+        // A malformed mesh (index >= vertex count) must round-trip unchanged,
+        // exactly as the pre-weld emit path handled it - no OOB panic.
+        let positions = vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0];
+        let normals = [0.0f32, 0.0, 1.0].repeat(3);
+        let indices = vec![0, 1, 9]; // 9 is out of range (only 3 verts)
+        let (p, n, i) = weld_local(&positions, &normals, &indices);
+        assert_eq!(p, positions, "malformed input returns positions unchanged");
+        assert_eq!(n, normals);
+        assert_eq!(i, indices, "indices pass through unchanged");
     }
 
     #[test]

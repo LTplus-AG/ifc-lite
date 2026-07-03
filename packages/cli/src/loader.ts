@@ -20,17 +20,33 @@ import { createStreamingViewerAdapter, createStreamingVisibilityAdapter } from '
  */
 export async function loadIfcFile(filePath: string): Promise<IfcDataStore> {
   const buffer = await readFile(filePath);
+  return loadIfcBytes(buffer, filePath);
+}
 
+/**
+ * Parse IFC bytes ALREADY in memory into an IfcDataStore — same validation and
+ * console-capture as {@link loadIfcFile}, but without a disk read. Lets callers
+ * that already hold the file buffer (e.g. `diagnose-geometry`, which read the
+ * bytes once for the geometry pass) resolve GlobalId→expressId without a second
+ * `readFile` of the same file. `label` is only used in error messages.
+ */
+export async function loadIfcBytes(
+  bytes: Uint8Array,
+  label = 'input',
+): Promise<IfcDataStore> {
   // Validate the file is a STEP/IFC file
-  if (buffer.byteLength === 0) {
-    process.stderr.write(`Error: ${filePath} is empty (0 bytes)\n`);
+  if (bytes.byteLength === 0) {
+    process.stderr.write(`Error: ${label} is empty (0 bytes)\n`);
     process.exit(1);
   }
 
-  // Check for STEP file signature ("ISO-10303-21") in the first 256 bytes
-  const headerSnippet = buffer.subarray(0, Math.min(buffer.byteLength, 256)).toString('ascii');
+  // Check for STEP file signature ("ISO-10303-21") in the first 256 bytes.
+  // TextDecoder (not Buffer.toString) so a plain Uint8Array view works too.
+  const headerSnippet = new TextDecoder('latin1').decode(
+    bytes.subarray(0, Math.min(bytes.byteLength, 256)),
+  );
   if (!headerSnippet.includes('ISO-10303-21')) {
-    process.stderr.write(`Error: ${filePath} is not a valid IFC/STEP file\n`);
+    process.stderr.write(`Error: ${label} is not a valid IFC/STEP file\n`);
     process.exit(1);
   }
 
@@ -50,17 +66,18 @@ export async function loadIfcFile(filePath: string): Promise<IfcDataStore> {
     logger.debug(`parser: ${parts.map(String).join(' ')}`);
   };
   try {
-    // Ensure we pass the exact slice — Node Buffers may be views into
-    // a larger pooled ArrayBuffer, so buffer.buffer can include extra bytes.
-    const arrayBuffer = buffer.buffer.slice(
-      buffer.byteOffset,
-      buffer.byteOffset + buffer.byteLength,
+    // Ensure we pass the exact slice — Node Buffers / Uint8Array views may be
+    // windows into a larger pooled ArrayBuffer, so `.buffer` can include extra
+    // bytes.
+    const arrayBuffer = bytes.buffer.slice(
+      bytes.byteOffset,
+      bytes.byteOffset + bytes.byteLength,
     ) as ArrayBuffer;
     const store = await parser.parseColumnar(arrayBuffer, {
       // The structured diagnostic channel, captured directly.
       onDiagnostic: (m: string) => logger.debug(`parser: ${m}`),
     });
-    store.fileSize = buffer.byteLength;
+    store.fileSize = bytes.byteLength;
     return store;
   } finally {
     console.log = origLog;

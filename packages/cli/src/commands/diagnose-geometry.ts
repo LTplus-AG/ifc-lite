@@ -20,7 +20,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { GeometryProcessor, type GeometryDiagnostics } from '@ifc-lite/geometry';
 import { getFlag, hasFlag, fatal } from '../output.js';
 import { logger } from '../logger.js';
-import { loadIfcFile } from '../loader.js';
+import { loadIfcBytes } from '../loader.js';
 import { formatGeometryReport, NO_DIAGNOSTICS_LINE } from '../geometry-report.js';
 
 type WorstHost = GeometryDiagnostics['worstHosts'][number];
@@ -73,8 +73,12 @@ export async function diagnoseGeometryCommand(args: string[]): Promise<void> {
         productId = parseInt(productArg, 10);
       } else {
         // GlobalId: resolve via the columnar parser's entity table (the wasm
-        // diagnostics pass never surfaces GlobalIds, only express IDs).
-        const store = await loadIfcFile(filePath);
+        // diagnostics pass never surfaces GlobalIds, only express IDs). Parse
+        // the bytes ALREADY in memory rather than re-reading the file from disk
+        // — the geometry pass above already loaded them, so this avoids a
+        // redundant disk read (the wasm IfcAPI exposes no GlobalId lookup, so a
+        // columnar parse is still required to map GlobalId → expressId).
+        const store = await loadIfcBytes(bytes, filePath);
         const resolved = store.entities.getExpressIdByGlobalId(productArg);
         if (resolved === -1) {
           fatal(`--product: no entity found with GlobalId "${productArg}"`);
@@ -101,13 +105,21 @@ export async function diagnoseGeometryCommand(args: string[]): Promise<void> {
     process.stdout.write(NO_DIAGNOSTICS_LINE + '\n');
     return;
   }
+  // Always print the full aggregate report — `formatGeometryReport` renders the
+  // file-wide counts (totalCsgFailures, failuresByReason, classification, …)
+  // and handles an empty `worstHosts` list gracefully. When a --product/--type
+  // filter narrowed the list to nothing we append a note rather than hiding the
+  // aggregate context behind a bare "no match" line (PR #1564 review).
+  const report = formatGeometryReport(diag);
   if ((productArg !== undefined || typeArg !== undefined) && diag.worstHosts.length === 0) {
     process.stdout.write(
-      'No worst-failing host record matches --product/--type ' +
-        '(diagnose-geometry only tracks the bounded top-N hosts that recorded a CSG failure; ' +
-        'a filtered-out product may simply have none).\n',
+      report +
+        '\n\n' +
+        '(No worst-failing host record matches --product/--type — diagnose-geometry ' +
+        'only tracks the bounded top-N hosts that recorded a CSG failure; a filtered-out ' +
+        'product may simply have none.)\n',
     );
     return;
   }
-  process.stdout.write(formatGeometryReport(diag) + '\n');
+  process.stdout.write(report + '\n');
 }

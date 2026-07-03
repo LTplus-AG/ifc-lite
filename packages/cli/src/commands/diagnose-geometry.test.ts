@@ -99,7 +99,12 @@ describe('diagnoseGeometryCommand', () => {
     logger.configure({ level: 'error' });
     try {
       await diagnoseGeometryCommand([SAMPLE_IFC, '--out', outPath, '--quiet']);
-      expect(stderrSpy).not.toHaveBeenCalled();
+      // Narrow: --quiet must swallow the "Wrote diagnostics to…" status line,
+      // but WASM init / the parser may legitimately touch stderr, so assert on
+      // the specific line rather than total silence (PR #1564 review).
+      expect(
+        stderrSpy.mock.calls.every((c) => !String(c[0]).includes('Wrote diagnostics to')),
+      ).toBe(true);
       const written = await readFile(outPath, 'utf-8');
       expect(() => JSON.parse(written)).not.toThrow();
     } finally {
@@ -117,6 +122,17 @@ describe('diagnoseGeometryCommand', () => {
     await diagnoseGeometryCommand([SAMPLE_IFC, '--type', 'IfcWall']);
     const text = stdoutText();
     expect(text.length).toBeGreaterThan(0);
+  }, 30_000);
+
+  it('a filter that matches no worst host still prints the full aggregate report, not just a "no match" line', async () => {
+    // A type that is never a CSG-failing host on this clean sample: the filtered
+    // worstHosts list is empty, but the file-wide aggregate report must survive
+    // (PR #1564 review — do not hide totalCsgFailures / classification context).
+    await diagnoseGeometryCommand([SAMPLE_IFC, '--type', 'IfcNonExistentType']);
+    const text = stdoutText();
+    // The aggregate report header + counts are present regardless of the filter.
+    expect(text).toContain('Geometry diagnostics');
+    expect(text).toContain('CSG failures:');
   }, 30_000);
 
   it('--product with an unresolvable GlobalId fails closed with a clear error (does not crash silently)', async () => {

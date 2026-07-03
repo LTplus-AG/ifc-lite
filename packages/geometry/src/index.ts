@@ -1298,9 +1298,32 @@ export class GeometryProcessor {
   }
 
   /**
-   * Cleanup resources
+   * Cleanup resources: frees the underlying WASM `IfcAPI` handle
+   * deterministically (AGENTS.md "Free every WASM handle deterministically").
+   * `IfcLiteBridge.dispose()` also frees whatever the pre-pass / batch caches
+   * were still holding on the handle (see the poisoned-mutex recovery note
+   * on the Rust `IfcAPI` struct) — meshes and pre-pass results are already
+   * freed as they're extracted (`.free()` right after copying into JS
+   * arrays plus `clearPrePassCache()` in every load path's `finally`), so
+   * this only needs to release the long-lived `IfcAPI` handle itself.
+   *
+   * The native (Tauri) path has no WASM handle to release; `platformBridge`
+   * is left untouched.
+   *
+   * Idempotent: `IfcLiteBridge.dispose()` nulls its handle after freeing,
+   * so calling this more than once (e.g. an explicit call after a `using`
+   * declaration already ran `[Symbol.dispose]()`) is a no-op, not a
+   * double-free.
    */
   dispose(): void {
-    // No cleanup needed
+    this.bridge?.dispose();
+  }
+
+  /**
+   * `using processor = new GeometryProcessor(...)` support (TS 5.2+ /
+   * ES2022 target): frees the WASM handle deterministically at scope exit.
+   */
+  [Symbol.dispose](): void {
+    this.dispose();
   }
 }

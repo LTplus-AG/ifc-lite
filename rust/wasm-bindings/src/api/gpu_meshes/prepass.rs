@@ -49,7 +49,7 @@ impl IfcAPI {
         let mut slot = self
             .cached_entity_index
             .lock()
-            .expect("ifc-lite cached_entity_index Mutex poisoned");
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         *slot = Some(entity_index.clone());
         drop(slot);
         let mut decoder = EntityDecoder::with_arc_index(content, entity_index);
@@ -519,7 +519,7 @@ impl IfcAPI {
             let mut slot = self
                 .cached_entity_index
                 .lock()
-                .expect("ifc-lite cached_entity_index Mutex poisoned");
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             *slot = Some(entity_index_arc.clone());
         }
         // Hold a second clone for the post-scan entity-index export below;

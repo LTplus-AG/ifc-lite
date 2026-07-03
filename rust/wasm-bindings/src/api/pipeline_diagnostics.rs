@@ -31,7 +31,7 @@ impl IfcAPI {
         let diag = self
             .pipeline_diagnostics
             .lock()
-            .expect("ifc-lite pipeline_diagnostics Mutex poisoned");
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if diag.is_empty() {
             return JsValue::UNDEFINED;
         }
@@ -55,7 +55,7 @@ impl IfcAPI {
         let mut acc = self
             .pipeline_diagnostics
             .lock()
-            .expect("ifc-lite pipeline_diagnostics Mutex poisoned");
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         acc.record_batch(
             element_count,
             mesh_count,
@@ -72,7 +72,7 @@ impl IfcAPI {
         let mut acc = self
             .pipeline_diagnostics
             .lock()
-            .expect("ifc-lite pipeline_diagnostics Mutex poisoned");
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         *acc = ifc_lite_processing::PipelineDiagnostics::default();
     }
 }

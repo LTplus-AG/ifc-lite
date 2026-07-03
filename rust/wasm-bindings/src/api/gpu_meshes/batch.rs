@@ -101,7 +101,7 @@ impl IfcAPI {
             let mut slot = self
                 .cached_entity_index
                 .lock()
-                .expect("ifc-lite cached_entity_index Mutex poisoned");
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             if let Some(existing) = slot.as_ref() {
                 std::sync::Arc::clone(existing)
             } else {
@@ -143,7 +143,7 @@ impl IfcAPI {
             let mut slot = self
                 .cached_item_dedup
                 .lock()
-                .expect("ifc-lite cached_item_dedup Mutex poisoned");
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             let cache = slot
                 .get_or_insert_with(GeometryRouter::new_dedup_cache)
                 .clone();
@@ -194,7 +194,7 @@ impl IfcAPI {
             let mut slot = self
                 .cached_geometry_styles
                 .lock()
-                .expect("ifc-lite cached_geometry_styles Mutex poisoned");
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             match slot.as_ref() {
                 Some((l, f, la, arc)) if *l == sig_len && *f == sig_first && *la == sig_last => {
                     std::sync::Arc::clone(arc)

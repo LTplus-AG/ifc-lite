@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { MergedExporter, type MergeModelInput } from './merged-exporter.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView as LiveMutablePropertyView } from '@ifc-lite/mutations';
@@ -104,16 +104,28 @@ describe('MergedExporter', () => {
     ]);
     const options = { schema: 'IFC4' as const, projectStrategy: 'keep-first' as const };
 
-    const bytesResult = await new MergedExporter([model1, model2]).exportAsync(options);
-    const blobResult = await new MergedExporter([model1, model2]).exportBlobAsync(options);
+    // The two paths differ only in how they assemble already-rendered bytes, so
+    // their output must be byte-identical. The STEP header embeds a wall-clock
+    // FILE_NAME timestamp (generateHeader -> new Date()), captured independently
+    // by each call; without pinning the clock, the two sequential exports flake
+    // whenever they straddle a second boundary. Freeze *only* Date (real timers
+    // stay live so the exporter's event-loop yielding still runs).
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+    try {
+      const bytesResult = await new MergedExporter([model1, model2]).exportAsync(options);
+      const blobResult = await new MergedExporter([model1, model2]).exportBlobAsync(options);
 
-    const blobBytes = new Uint8Array(await blobResult.content.arrayBuffer());
-    expect(blobBytes).toEqual(bytesResult.content);
-    expect(blobResult.content.size).toBe(bytesResult.content.byteLength);
-    // Stats parity: the Blob path reports the same size and counts.
-    expect(blobResult.stats.fileSize).toBe(bytesResult.stats.fileSize);
-    expect(blobResult.stats.totalEntityCount).toBe(bytesResult.stats.totalEntityCount);
-    expect(blobResult.stats.modelCount).toBe(bytesResult.stats.modelCount);
+      const blobBytes = new Uint8Array(await blobResult.content.arrayBuffer());
+      expect(blobBytes).toEqual(bytesResult.content);
+      expect(blobResult.content.size).toBe(bytesResult.content.byteLength);
+      // Stats parity: the Blob path reports the same size and counts.
+      expect(blobResult.stats.fileSize).toBe(bytesResult.stats.fileSize);
+      expect(blobResult.stats.totalEntityCount).toBe(bytesResult.stats.totalEntityCount);
+      expect(blobResult.stats.modelCount).toBe(bytesResult.stats.modelCount);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('should export a single model unchanged', () => {

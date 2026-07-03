@@ -101,6 +101,31 @@ fn line_count(path: &std::path::Path) -> usize {
         .unwrap_or(0)
 }
 
+/// Pure ratchet decision: given `(relpath, line_count)` for every non-exempt
+/// file and the allowlist, return `(new_offenders, grew)`. Extracted from the
+/// tree walk so the FIRING path (a new god file, or an allowlisted file over
+/// budget) is unit-testable with synthetic inputs, not only the all-clean tree.
+fn evaluate(
+    files: &[(String, usize)],
+    allowlist: &std::collections::HashMap<String, usize>,
+) -> (Vec<String>, Vec<String>) {
+    let mut new_offenders = Vec::new(); // over LIMIT, not allowlisted
+    let mut grew = Vec::new(); // allowlisted, over budget
+    for (rel, lines) in files {
+        match allowlist.get(rel) {
+            Some(&budget) if *lines > budget => {
+                grew.push(format!("  {rel}: {lines} lines, budget {budget}"));
+            }
+            Some(_) => {}
+            None if *lines > LIMIT => new_offenders.push(format!("  {rel}: {lines} lines")),
+            None => {}
+        }
+    }
+    new_offenders.sort();
+    grew.sort();
+    (new_offenders, grew)
+}
+
 #[test]
 fn no_module_grows_past_its_ratchet_budget() {
     let Some(root) = repo_root() else {
@@ -109,44 +134,27 @@ fn no_module_grows_past_its_ratchet_budget() {
     };
     let allowlist = parse_allowlist();
 
-    let mut files = Vec::new();
+    let mut paths = Vec::new();
     for top in ["rust", "apps"] {
-        collect_rs_files(&root.join(top), &mut files);
+        collect_rs_files(&root.join(top), &mut paths);
     }
-
-    let mut new_offenders = Vec::new(); // over LIMIT, not allowlisted
-    let mut grew = Vec::new(); // allowlisted, over budget
-    // relpath -> current line count, for every non-exempt file, so the stale-row
-    // advisory below can tell "gone/exempt" from "shrank below the limit".
-    let mut seen = std::collections::HashMap::new();
-
-    for path in &files {
-        let rel = path
-            .strip_prefix(&root)
-            .unwrap_or(path)
-            .to_string_lossy()
-            .replace('\\', "/");
-        if is_exempt(&rel) {
-            continue;
-        }
-        let lines = line_count(path);
-        seen.insert(rel.clone(), lines);
-        match allowlist.get(&rel) {
-            Some(&budget) => {
-                if lines > budget {
-                    grew.push(format!("  {rel}: {lines} lines, budget {budget}"));
-                }
-            }
-            None if lines > LIMIT => {
-                new_offenders.push(format!("  {rel}: {lines} lines"));
-            }
-            None => {}
-        }
-    }
+    // (relpath, line_count) for every non-exempt file.
+    let files: Vec<(String, usize)> = paths
+        .iter()
+        .map(|p| {
+            (
+                p.strip_prefix(&root).unwrap_or(p).to_string_lossy().replace('\\', "/"),
+                line_count(p),
+            )
+        })
+        .filter(|(rel, _)| !is_exempt(rel))
+        .collect();
 
     // Advisory only (never fails the build, to avoid merge-order coupling): an
     // allowlisted file that dropped to <= LIMIT or vanished should have its row
     // removed so the list keeps trending down.
+    let seen: std::collections::HashMap<&String, usize> =
+        files.iter().map(|(r, n)| (r, *n)).collect();
     for rel in allowlist.keys() {
         match seen.get(rel) {
             None => eprintln!(
@@ -159,9 +167,9 @@ fn no_module_grows_past_its_ratchet_budget() {
         }
     }
 
+    let (new_offenders, grew) = evaluate(&files, &allowlist);
     let mut msg = String::new();
     if !new_offenders.is_empty() {
-        new_offenders.sort();
         msg.push_str(&format!(
             "New non-generated .rs file(s) over {LIMIT} lines with no allowlist row.\n\
              Split them (AGENTS.md rule), or - only with a written justification - \
@@ -170,7 +178,6 @@ fn no_module_grows_past_its_ratchet_budget() {
         ));
     }
     if !grew.is_empty() {
-        grew.sort();
         msg.push_str(&format!(
             "Allowlisted file(s) grew PAST their recorded budget. Shrink or split \
              instead of raising the budget:\n{}\n",
@@ -178,6 +185,35 @@ fn no_module_grows_past_its_ratchet_budget() {
         ));
     }
     assert!(msg.is_empty(), "\n{msg}");
+}
+
+#[test]
+fn evaluate_fires_on_new_god_file_and_over_budget() {
+    let mut allowlist = std::collections::HashMap::new();
+    allowlist.insert("rust/a/big.rs".to_string(), 500usize);
+    allowlist.insert("rust/a/grown.rs".to_string(), 600usize);
+    let files = vec![
+        ("rust/a/small.rs".to_string(), 399),   // under the limit - clean
+        ("rust/a/at_limit.rs".to_string(), 400), // exactly 400 is NOT > 400 - clean
+        ("rust/a/new_god.rs".to_string(), 401), // new offender: >400, not allowlisted
+        ("rust/a/big.rs".to_string(), 500),     // allowlisted, at budget - clean
+        ("rust/a/grown.rs".to_string(), 601),   // allowlisted, over budget - FIRES
+    ];
+    let (new_offenders, grew) = evaluate(&files, &allowlist);
+    assert_eq!(new_offenders, vec!["  rust/a/new_god.rs: 401 lines"]);
+    assert_eq!(grew, vec!["  rust/a/grown.rs: 601 lines, budget 600"]);
+}
+
+#[test]
+fn evaluate_is_clean_when_within_budget() {
+    let mut allowlist = std::collections::HashMap::new();
+    allowlist.insert("rust/a/big.rs".to_string(), 500usize);
+    let files = vec![
+        ("rust/a/small.rs".to_string(), 12),
+        ("rust/a/big.rs".to_string(), 480), // shrank below budget - fine
+    ];
+    let (new_offenders, grew) = evaluate(&files, &allowlist);
+    assert!(new_offenders.is_empty() && grew.is_empty());
 }
 
 #[test]

@@ -211,6 +211,10 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
   const setFocusMode = useViewerStore((s) => s.setClashFocusMode);
   const [showHelp, setShowHelp] = useState(false);
   const [creatingTopic, setCreatingTopic] = useState(false);
+  // The whole detection-controls block is collapsible so the result list gets
+  // vertical room: auto-open before the first run (discoverability), auto-collapse
+  // once a result is on screen, with a manual override once the user toggles it.
+  const [controlsOverride, setControlsOverride] = useState<boolean | null>(null);
 
   // Clear the clash colours + overlap box when the panel closes/unmounts so they
   // don't linger on the model after the user leaves clash mode. Restore the
@@ -473,93 +477,131 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
         </div>
       )}
 
-      {/* Run controls */}
+      {/* Run controls — collapse to a slim bar once a result exists so the list
+          gets vertical room; expand (or before the first run) shows full setup. */}
+      {(() => {
+        const controlsOpen = controlsOverride ?? !result;
+        return (
       <div className="p-3 space-y-3 border-b border-border">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex rounded-md border border-border overflow-hidden text-xs shrink-0">
-            {(['hard', 'clearance'] as const).map((m) => (
-              <button
-                key={m}
-                onClick={() => setMode(m)}
-                className={cn(
-                  'px-2.5 py-1 capitalize transition-colors',
-                  mode === m ? 'bg-primary text-primary-foreground' : 'hover:bg-muted',
-                )}
-              >
-                {m}
-              </button>
-            ))}
-          </div>
-          <label className="flex items-center gap-1 text-xs text-muted-foreground" title="Touch band (m): surface contact within this distance is ignored">
-            tol
-            <input
-              type="number"
-              step={0.001}
-              min={0}
-              value={tolerance}
-              onChange={(e) => setTolerance(Number(e.target.value))}
-              className="w-16 rounded border border-border bg-transparent px-1.5 py-0.5 text-foreground"
-            />
-          </label>
-          {mode === 'clearance' && (
-            <label className="flex items-center gap-1 text-xs text-muted-foreground" title="Minimum required separation (m); elements closer than this are flagged">
-              gap
-              <input
-                type="number"
-                step={0.01}
-                min={0}
-                value={clearance}
-                onChange={(e) => setClearance(Number(e.target.value))}
-                className="w-16 rounded border border-border bg-transparent px-1.5 py-0.5 text-foreground"
-              />
-            </label>
-          )}
-        </div>
-
-        <Button className="w-full h-8" disabled={running} onClick={() => void runAll()} {...tourAnchor(TOUR_ANCHORS.clashRun)}>
-          {running ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Crosshair className="h-4 w-4 mr-1.5" />}
-          {running ? 'Detecting…' : 'Detect all clashes'}
-        </Button>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            className="flex-1 h-7 text-xs"
-            disabled={running}
-            onClick={() => void runDuplicates()}
-            title="Find duplicate or fully-overlapping objects in the loaded geometry"
-          >
-            <Copy className="h-3.5 w-3.5 mr-1.5" />
-            Find duplicates
-          </Button>
-          <Button
-            variant="outline"
-            className="flex-1 h-7 text-xs"
-            disabled={running}
-            onClick={() => void runMatrix()}
-            title="Run the enabled discipline-vs-discipline rules"
-          >
-            <Play className="h-3.5 w-3.5 mr-1.5" />
-            Discipline matrix
-          </Button>
-        </div>
-
-        <div className="flex flex-wrap gap-1.5">
-          {presets.map((p) => (
+        {result && (
+          <div className="flex items-center gap-2">
             <button
-              key={p.id}
-              disabled={running}
-              onClick={() => void runPreset(p.id)}
-              title={p.description}
-              className={cn(
-                'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] transition-colors',
-                'border-border hover:bg-muted disabled:opacity-50',
-              )}
+              type="button"
+              onClick={() => setControlsOverride(!controlsOpen)}
+              aria-expanded={controlsOpen}
+              className="flex flex-1 items-center gap-1.5 text-[11px] uppercase tracking-wide text-muted-foreground hover:text-foreground"
             >
-              <span className="h-1.5 w-1.5 rounded-full" style={{ background: SEVERITY[p.severity].color }} />
-              {p.name}
+              {controlsOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+              <span>Detection</span>
+              <span className="normal-case tracking-normal text-muted-foreground/60">{mode}</span>
             </button>
-          ))}
-        </div>
+            {!controlsOpen && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-6 px-2 text-xs"
+                disabled={running}
+                onClick={() => void runAll()}
+                title="Re-run detection on the whole model"
+              >
+                {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Crosshair className="h-3.5 w-3.5 mr-1" />}
+                {running ? '' : 'Re-run'}
+              </Button>
+            )}
+          </div>
+        )}
+
+        {controlsOpen && (
+          <>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="inline-flex rounded-md border border-border overflow-hidden text-xs shrink-0">
+                {(['hard', 'clearance'] as const).map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => setMode(m)}
+                    className={cn(
+                      'px-2.5 py-1 capitalize transition-colors',
+                      mode === m ? 'bg-primary text-primary-foreground' : 'hover:bg-muted',
+                    )}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+              <label className="flex items-center gap-1 text-xs text-muted-foreground" title="Touch band (m): surface contact within this distance is ignored">
+                tol
+                <input
+                  type="number"
+                  step={0.001}
+                  min={0}
+                  value={tolerance}
+                  onChange={(e) => setTolerance(Number(e.target.value))}
+                  className="w-16 rounded border border-border bg-transparent px-1.5 py-0.5 text-foreground"
+                />
+              </label>
+              {mode === 'clearance' && (
+                <label className="flex items-center gap-1 text-xs text-muted-foreground" title="Minimum required separation (m); elements closer than this are flagged">
+                  gap
+                  <input
+                    type="number"
+                    step={0.01}
+                    min={0}
+                    value={clearance}
+                    onChange={(e) => setClearance(Number(e.target.value))}
+                    className="w-16 rounded border border-border bg-transparent px-1.5 py-0.5 text-foreground"
+                  />
+                </label>
+              )}
+            </div>
+
+            <Button className="w-full h-8" disabled={running} onClick={() => void runAll()} {...tourAnchor(TOUR_ANCHORS.clashRun)}>
+              {running ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Crosshair className="h-4 w-4 mr-1.5" />}
+              {running ? 'Detecting…' : 'Detect all clashes'}
+            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1 h-7 text-xs"
+                disabled={running}
+                onClick={() => void runDuplicates()}
+                title="Find duplicate or fully-overlapping objects in the loaded geometry"
+              >
+                <Copy className="h-3.5 w-3.5 mr-1.5" />
+                Find duplicates
+              </Button>
+              <Button
+                variant="outline"
+                className="flex-1 h-7 text-xs"
+                disabled={running}
+                onClick={() => void runMatrix()}
+                title="Run the enabled discipline-vs-discipline rules"
+              >
+                <Play className="h-3.5 w-3.5 mr-1.5" />
+                Discipline matrix
+              </Button>
+            </div>
+
+            {presets.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {presets.map((p) => (
+                  <button
+                    key={p.id}
+                    disabled={running}
+                    onClick={() => void runPreset(p.id)}
+                    title={p.description}
+                    className={cn(
+                      'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] transition-colors',
+                      'border-border hover:bg-muted disabled:opacity-50',
+                    )}
+                  >
+                    <span className="h-1.5 w-1.5 rounded-full" style={{ background: SEVERITY[p.severity].color }} />
+                    {p.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
+        )}
 
         {/* Live progress — the engine yields between chunks so this paints even
             on large models that take a while (#1281). */}
@@ -585,6 +627,8 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
           );
         })()}
       </div>
+        );
+      })()}
 
       {/* Error */}
       {error && (

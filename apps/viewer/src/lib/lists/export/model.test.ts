@@ -5,6 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import type { ColumnDefinition, ListRow } from '@ifc-lite/lists';
+import { ProjectUnits } from '@ifc-lite/parser';
 import { buildExportModel } from './model';
 
 const columns: ColumnDefinition[] = [
@@ -47,5 +48,111 @@ describe('buildExportModel grouped-section order honours the on-screen sort (#14
     // Sums: A=10, C=35, B=100.
     const m = buildExportModel({ ...base, rows: sample, sort: { colIdx: 1, dir: 'asc' } });
     assert.deepStrictEqual(m.groups?.map((g) => g.label), ['A', 'C', 'B']);
+  });
+});
+
+// #1573: quantity/measure columns export converted into the user's
+// display-unit override, with the resolved symbol folded into the header.
+describe('buildExportModel display-unit conversion (#1573)', () => {
+  const volumeColumns: ColumnDefinition[] = [
+    { id: 'cat', source: 'attribute', propertyName: 'Category' },
+    { id: 'qty', source: 'quantity', psetName: 'Qto', propertyName: 'Volume', quantityType: 2 /* Volume */ },
+  ];
+
+  function volumeRows(...tuples: [string, number | null][]): ListRow[] {
+    return tuples.map(([cat, qty], i) => ({ entityId: i + 1, modelId: 'm', values: [cat, qty] }));
+  }
+
+  it('converts quantity values into the overridden unit and folds the symbol into the label', () => {
+    const rowsIn = volumeRows(['A', 1], ['B', 2]);
+    const m = buildExportModel({
+      title: 'List',
+      columns: volumeColumns,
+      rows: rowsIn,
+      numericCols: [false, true],
+      columnWidths: [120, 120],
+      generatedAt: 'now',
+      projectUnits: ProjectUnits.empty(),
+      unitDisplayOverrides: { VOLUMEUNIT: 'l' }, // 1 m³ = 1000 L
+    });
+
+    assert.strictEqual(m.columns[1].unit, 'L');
+    assert.match(m.columns[1].label, /\(L\)$/);
+    assert.deepStrictEqual(m.rows, [['A', 1000], ['B', 2000]]);
+    // The original ListRow values passed in are never mutated — export is
+    // display-only, and these arrays are shared with the live on-screen table.
+    assert.deepStrictEqual(rowsIn[0].values, ['A', 1]);
+    assert.deepStrictEqual(rowsIn[1].values, ['B', 2]);
+  });
+
+  it('still labels the column (SI default) but leaves values raw when there is no override', () => {
+    const m = buildExportModel({
+      title: 'List',
+      columns: volumeColumns,
+      rows: volumeRows(['A', 1]),
+      numericCols: [false, true],
+      columnWidths: [120, 120],
+      generatedAt: 'now',
+      projectUnits: ProjectUnits.empty(),
+      unitDisplayOverrides: {},
+    });
+
+    assert.strictEqual(m.columns[1].unit, 'm³');
+    assert.deepStrictEqual(m.rows, [['A', 1]]);
+  });
+
+  it('seeds the column unit from the first row with a finite value, not a null first row', () => {
+    // First row is null for the quantity column — a naive "peek at row 0"
+    // would freeze the header on the file default while row 2 still
+    // converts underneath it (header/value mismatch).
+    const m = buildExportModel({
+      title: 'List',
+      columns: volumeColumns,
+      rows: volumeRows(['A', null], ['B', 3]),
+      numericCols: [false, true],
+      columnWidths: [120, 120],
+      generatedAt: 'now',
+      projectUnits: ProjectUnits.empty(),
+      unitDisplayOverrides: { VOLUMEUNIT: 'l' },
+    });
+
+    assert.strictEqual(m.columns[1].unit, 'L');
+    assert.deepStrictEqual(m.rows, [['A', null], ['B', 3000]]);
+  });
+
+  it('converts a measure property column via its dataType', () => {
+    const columns: ColumnDefinition[] = [
+      { id: 'flow', source: 'property', psetName: 'Pset', propertyName: 'Flow', dataType: 'IFCVOLUMETRICFLOWRATEMEASURE' },
+    ];
+    const m = buildExportModel({
+      title: 'List',
+      columns,
+      rows: [{ entityId: 1, modelId: 'm', values: [0.013888888888888888] }],
+      numericCols: [true],
+      columnWidths: [120],
+      generatedAt: 'now',
+      projectUnits: ProjectUnits.empty(),
+      unitDisplayOverrides: { VOLUMETRICFLOWRATEUNIT: 'm3h' },
+    });
+
+    assert.strictEqual(m.columns[0].unit, 'm³/h');
+    const converted = m.rows[0][0];
+    assert.strictEqual(typeof converted, 'number');
+    assert.ok(Math.abs((converted as number) - 50) < 1e-6);
+  });
+
+  it('leaves values and labels untouched when projectUnits/overrides are omitted (legacy callers)', () => {
+    const m = buildExportModel({
+      title: 'List',
+      columns: volumeColumns,
+      rows: volumeRows(['A', 1]),
+      numericCols: [false, true],
+      columnWidths: [120, 120],
+      generatedAt: 'now',
+    });
+
+    assert.strictEqual(m.columns[1].unit, undefined);
+    assert.strictEqual(m.columns[1].label, 'Volume');
+    assert.deepStrictEqual(m.rows, [['A', 1]]);
   });
 });

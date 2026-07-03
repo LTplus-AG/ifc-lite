@@ -9,7 +9,7 @@
  * and property/quantity accessors for O(1) lookups per entity.
  */
 
-import type { PropertySet, QuantitySet } from '@ifc-lite/data';
+import type { PropertySet, Property, QuantitySet, Quantity } from '@ifc-lite/data';
 import { parsePropertyValue } from '@ifc-lite/encoding';
 import type {
   ListDataProvider,
@@ -37,12 +37,17 @@ export function executeList(
   // Step 1: Resolve source set (which entities match)
   const matchedIds = resolveSourceSet(definition, provider, modelId);
 
-  // Step 2: Extract column values for matched entities
+  // Step 2: Extract column values for matched entities. `columnMeta` collects,
+  // per quantity/property column, the QuantityType / measure dataType of the
+  // first matching entry seen — a side artifact of the same lookup used to
+  // resolve `values[i]`, so display-unit conversion downstream (issue #1573)
+  // knows what unit-KIND a raw numeric cell is in without re-deriving it.
   const rows: ListRow[] = new Array(matchedIds.length);
+  const columnMeta: ColumnMeta[] = definition.columns.map(() => ({}));
 
   for (let i = 0; i < matchedIds.length; i++) {
     const entityId = matchedIds[i];
-    const values = extractColumnValues(definition.columns, entityId, provider);
+    const values = extractColumnValues(definition.columns, entityId, provider, columnMeta);
     rows[i] = { entityId, modelId, values };
   }
 
@@ -58,14 +63,29 @@ export function executeList(
   // Step 4: Group + summarise if configured
   const { groups, summary } = summariseListRows(definition, rows);
 
+  // Merge the derived unit metadata onto the columns returned to the caller.
+  // `definition.columns` (the persisted authoring schema) is left untouched —
+  // only the RESULT's columns carry the execution-time annotation.
+  const columns = columnMeta.some((m) => m.quantityType !== undefined || m.dataType !== undefined)
+    ? definition.columns.map((c, i) => (columnMeta[i].quantityType !== undefined || columnMeta[i].dataType !== undefined)
+        ? { ...c, ...columnMeta[i] }
+        : c)
+    : definition.columns;
+
   return {
-    columns: definition.columns,
+    columns,
     rows,
     totalCount: rows.length,
     executionTime: performance.now() - startTime,
     groups,
     summary,
   };
+}
+
+/** Per-column derived unit metadata, keyed by column index (see `executeList`). */
+interface ColumnMeta {
+  quantityType?: number;
+  dataType?: string;
 }
 
 // ============================================================================
@@ -299,6 +319,7 @@ function extractColumnValues(
   columns: ColumnDefinition[],
   entityId: number,
   provider: ListDataProvider,
+  columnMeta: ColumnMeta[],
 ): CellValue[] {
   // For efficiency, batch extract properties and quantities once per entity
   const needsProperties = columns.some(c => c.source === 'property');
@@ -321,12 +342,18 @@ function extractColumnValues(
       case 'attribute':
         values[i] = getAttributeValue(entityId, col.propertyName, provider);
         break;
-      case 'property':
-        values[i] = findPropertyInSets(psets ?? [], col.psetName ?? '', col.propertyName);
+      case 'property': {
+        const prop = findPropertyEntry(psets ?? [], col.psetName ?? '', col.propertyName);
+        values[i] = prop ? resolvePropertyValue(prop.value) : null;
+        if (prop?.dataType && columnMeta[i].dataType === undefined) columnMeta[i].dataType = prop.dataType;
         break;
-      case 'quantity':
-        values[i] = findQuantityInSets(qsets ?? [], col.psetName ?? '', col.propertyName);
+      }
+      case 'quantity': {
+        const quant = findQuantityEntry(qsets ?? [], col.psetName ?? '', col.propertyName);
+        values[i] = quant ? formatQuantityValue(quant.value, quant.type) : null;
+        if (quant && columnMeta[i].quantityType === undefined) columnMeta[i].quantityType = quant.type;
         break;
+      }
       case 'material': {
         const names = provider.getMaterialNames?.(entityId) ?? [];
         values[i] = names.length > 0 ? uniqueJoin(names) : null;
@@ -399,17 +426,23 @@ function getQuantityValue(
   return findQuantityInSets(qsets, qsetName, quantName);
 }
 
-function findPropertyInSets(psets: PropertySet[], psetName: string, propName: string): CellValue {
+/** Find the raw matching property entry (name + value + dataType), so
+ *  callers that need the measure `dataType` (issue #1573) don't have to
+ *  re-walk the sets. */
+function findPropertyEntry(psets: PropertySet[], psetName: string, propName: string): Property | undefined {
   for (const pset of psets) {
     if (pset.name === psetName) {
       for (const prop of pset.properties) {
-        if (prop.name === propName) {
-          return resolvePropertyValue(prop.value);
-        }
+        if (prop.name === propName) return prop;
       }
     }
   }
-  return null;
+  return undefined;
+}
+
+function findPropertyInSets(psets: PropertySet[], psetName: string, propName: string): CellValue {
+  const prop = findPropertyEntry(psets, psetName, propName);
+  return prop ? resolvePropertyValue(prop.value) : null;
 }
 
 /**
@@ -438,20 +471,23 @@ function resolvePropertyValue(value: unknown): CellValue {
   return display;
 }
 
-/** Unit suffixes indexed by QuantityType enum */
-const QUANTITY_UNITS = ['m', 'm²', 'm³', '', 'kg', 's'];
-
-function findQuantityInSets(qsets: QuantitySet[], qsetName: string, quantName: string): CellValue {
+/** Find the raw matching quantity entry (name + value + type), so callers
+ *  that need the `QuantityType` (issue #1573) don't have to re-walk the
+ *  sets. */
+function findQuantityEntry(qsets: QuantitySet[], qsetName: string, quantName: string): Quantity | undefined {
   for (const qset of qsets) {
     if (qset.name === qsetName) {
       for (const quant of qset.quantities) {
-        if (quant.name === quantName) {
-          return formatQuantityValue(quant.value, quant.type);
-        }
+        if (quant.name === quantName) return quant;
       }
     }
   }
-  return null;
+  return undefined;
+}
+
+function findQuantityInSets(qsets: QuantitySet[], qsetName: string, quantName: string): CellValue {
+  const quant = findQuantityEntry(qsets, qsetName, quantName);
+  return quant ? formatQuantityValue(quant.value, quant.type) : null;
 }
 
 function formatQuantityValue(value: number, _type: number): CellValue {

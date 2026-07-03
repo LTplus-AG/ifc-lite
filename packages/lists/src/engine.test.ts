@@ -25,12 +25,15 @@ function createMockProvider(): ListDataProvider {
     [IfcTypeEnum.IfcSlab, [3]],
   ]);
 
-  const propertySets = new Map<number, Array<{ name: string; properties: Array<{ name: string; value: unknown }> }>>([
+  const propertySets = new Map<number, Array<{ name: string; properties: Array<{ name: string; value: unknown; dataType?: string }> }>>([
     [1, [
       { name: 'Pset_WallCommon', properties: [
         { name: 'IsExternal', value: ['IFCBOOLEAN', '.T.'] },
         { name: 'FireRating', value: 'REI 90' },
         { name: 'LoadBearing', value: ['IFCBOOLEAN', '.T.'] },
+        // A measure property carrying its raw IFC dataType — used to prove
+        // executeList surfaces it onto the result column (#1573).
+        { name: 'ThermalTransmittance', value: 0.24, dataType: 'IFCTHERMALTRANSMITTANCEMEASURE' },
       ]},
     ]],
     [2, [
@@ -203,6 +206,66 @@ describe('executeList', () => {
     expect(result.totalCount).toBe(2);
     // Length = 5.0, returned as raw number for sortability
     expect(result.rows[0].values[1]).toBe(5.0);
+  });
+
+  // #1573: the display-unit converter needs to know what unit-KIND a raw
+  // numeric cell is in, so `executeList` annotates the RESULT's columns
+  // (never the persisted ListDefinition) with the QuantityType / measure
+  // dataType of the first matching entry.
+  it('annotates quantity columns with the resolved QuantityType', () => {
+    const provider = createMockProvider();
+    const def: ListDefinition = {
+      id: 'meta-1',
+      name: 'Test',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [IfcTypeEnum.IfcSlab],
+      conditions: [],
+      columns: [
+        { id: 'area', source: 'quantity', psetName: 'Qto_SlabBaseQuantities', propertyName: 'GrossArea' },
+      ],
+    };
+
+    const result = executeList(def, provider);
+    expect(result.columns[0].quantityType).toBe(1); // QuantityType.Area
+    // The persisted definition itself is never mutated.
+    expect(def.columns[0].quantityType).toBeUndefined();
+  });
+
+  it('annotates property columns with the measure dataType', () => {
+    const provider = createMockProvider();
+    const def: ListDefinition = {
+      id: 'meta-3',
+      name: 'Test',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [IfcTypeEnum.IfcWall],
+      conditions: [],
+      columns: [
+        { id: 'u', source: 'property', psetName: 'Pset_WallCommon', propertyName: 'ThermalTransmittance' },
+      ],
+    };
+
+    const result = executeList(def, provider);
+    expect(result.columns[0].dataType).toBe('IFCTHERMALTRANSMITTANCEMEASURE');
+  });
+
+  it('leaves quantityType unset when no entity has a matching quantity', () => {
+    const provider = createMockProvider();
+    const def: ListDefinition = {
+      id: 'meta-2',
+      name: 'Test',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [IfcTypeEnum.IfcWall],
+      conditions: [],
+      columns: [
+        { id: 'missing', source: 'quantity', psetName: 'Qto_SlabBaseQuantities', propertyName: 'GrossArea' },
+      ],
+    };
+
+    const result = executeList(def, provider);
+    expect(result.columns[0].quantityType).toBeUndefined();
   });
 
   it('extracts material, classification and storey columns', () => {

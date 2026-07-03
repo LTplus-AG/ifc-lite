@@ -24,6 +24,7 @@ import { getVisibleBasketEntityRefsFromStore } from '@/store/basketVisibleSet';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { useEntityListMultiSelect, type MultiSelectItem } from '@/hooks/useEntityListMultiSelect';
 import type { ListResult, ListRow, ColumnDefinition, ListGrouping } from '@ifc-lite/lists';
+import type { ProjectUnits } from '@ifc-lite/parser';
 import { exportList, buildExportModel, EXPORT_LABELS, type ExportFormat } from '@/lib/lists/export';
 import { posthog } from '@/lib/analytics';
 import { cn } from '@/lib/utils';
@@ -44,9 +45,16 @@ interface ListResultsTableProps {
   grouping?: ListGrouping;
   /** Persist a grouping change made from the table back to the definition. */
   onGroupingChange?: (grouping: ListGrouping | undefined) => void;
+  /** The file's declared units, so quantity/measure columns export converted
+   *  into the user's display-unit override (issue #1573). A federation
+   *  resolves to the FIRST loaded store's units — true per-row/per-model
+   *  units aren't threaded through the list pipeline (see ListPanel.tsx).
+   *  Omitted keeps the legacy raw-value, no-unit export. */
+  projectUnits?: ProjectUnits;
 }
 
-export function ListResultsTable({ result, listName, grouping, onGroupingChange }: ListResultsTableProps) {
+export function ListResultsTable({ result, listName, grouping, onGroupingChange, projectUnits }: ListResultsTableProps) {
+  const unitDisplayOverrides = useViewerStore((s) => s.unitDisplayOverrides);
   const parentRef = useRef<HTMLDivElement>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortCol, setSortCol] = useState<number | null>(null);
@@ -209,6 +217,8 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange 
       numericCols,
       columnWidths,
       generatedAt: new Date().toLocaleString(),
+      projectUnits,
+      unitDisplayOverrides,
     });
     void exportList(format, model);
     // Counts only — never the list title or column/property names (confidential).
@@ -218,7 +228,7 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange 
       row_count: sortedRows.length,
       column_count: columns.length,
     });
-  }, [listName, columns, sortedRows, grouping, sortCol, sortDir, numericCols, columnWidths]);
+  }, [listName, columns, sortedRows, grouping, sortCol, sortDir, numericCols, columnWidths, projectUnits, unitDisplayOverrides]);
 
   // Flat, ordered list of the selectable rows (group headers excluded) and a
   // lookup from a row to its position, so Shift+click range-select works over

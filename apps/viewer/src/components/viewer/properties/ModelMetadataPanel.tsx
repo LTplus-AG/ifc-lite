@@ -25,11 +25,14 @@ import { PropertySetCard } from './PropertySetCard';
 import { GeoreferencingPanel } from './GeoreferencingPanel';
 import type { PropertySet } from './encodingUtils';
 import type { FederatedModel } from '@/store/types';
-import { extractGeoreferencingOnDemand, extractLengthUnitScale, type IfcDataStore } from '@ifc-lite/parser';
+import { extractGeoreferencingOnDemand, extractLengthUnitScale, extractProjectUnits, ProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
+import { useViewerStore } from '@/store';
 
 /** Model metadata panel - displays file info, schema version, entity counts, etc. */
 export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
   const dataStore = model.ifcDataStore;
+  // Display-unit converter overrides (issue #1573 proposal 2).
+  const unitDisplayOverrides = useViewerStore((s) => s.unitDisplayOverrides);
 
   // Format file size
   const formatFileSize = (bytes: number): string => {
@@ -98,6 +101,13 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
     else if (Math.abs(scale - 0.0254) < 0.001) unitName = 'Inches';
     else if (Math.abs(scale - 0.3048) < 0.01) unitName = 'Feet';
     return { scale, unitName };
+  }, [dataStore]);
+
+  // The file's declared units, for rendering unit suffixes on project
+  // property values (issue #1573).
+  const projectUnits = useMemo(() => {
+    if (!dataStore?.source?.length || !dataStore?.entityIndex) return ProjectUnits.empty();
+    return extractProjectUnits(dataStore.source, dataStore.entityIndex);
   }, [dataStore]);
 
   return (
@@ -223,7 +233,7 @@ export function ModelMetadataPanel({ model }: { model: FederatedModel }) {
             {projectData.properties.length > 0 && (
               <div className="p-3 pt-0 space-y-2">
                 {projectData.properties.map((pset) => (
-                  <PropertySetCard key={pset.name} pset={pset} />
+                  <PropertySetCard key={pset.name} pset={pset} projectUnits={projectUnits} unitDisplayOverrides={unitDisplayOverrides} />
                 ))}
               </div>
             )}

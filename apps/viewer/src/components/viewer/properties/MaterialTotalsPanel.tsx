@@ -15,11 +15,14 @@ import { useMemo } from 'react';
 import { Layers, Calculator, Boxes, Info } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useIfc } from '@/hooks/useIfc';
+import { useViewerStore } from '@/store';
 import {
   buildMaterialUsageIndex,
   getMaterialDisplay,
   extractMaterialPropertiesForMaterialId,
   extractQuantitiesOnDemand,
+  extractProjectUnits,
+  ProjectUnits,
   type IfcDataStore,
 } from '@ifc-lite/parser';
 import { QuantityType } from '@ifc-lite/data';
@@ -63,6 +66,8 @@ function formatNumber(value: number): string {
 
 export function MaterialTotalsPanel({ materialId, modelId }: { materialId: number; modelId: string }) {
   const { ifcDataStore, models } = useIfc();
+  // Display-unit converter overrides (issue #1573 proposal 2).
+  const unitDisplayOverrides = useViewerStore((s) => s.unitDisplayOverrides);
 
   // The store the selected material lives in, plus every loaded store (so the
   // totals merge same-named materials across a federation).
@@ -91,6 +96,13 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
     if (!selectedStore) return [];
     return extractMaterialPropertiesForMaterialId(selectedStore, materialId);
   }, [selectedStore, materialId]);
+
+  // The file's declared units, for rendering unit suffixes on material
+  // property values (issue #1573).
+  const projectUnits = useMemo(() => {
+    if (!selectedStore?.source?.length || !selectedStore?.entityIndex) return ProjectUnits.empty();
+    return extractProjectUnits(selectedStore.source, selectedStore.entityIndex);
+  }, [selectedStore]);
 
   // Aggregate quantities across all elements using a material of this name.
   const totals = useMemo<MaterialTotals>(() => {
@@ -255,7 +267,7 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
                     name: pset.name,
                     properties: pset.properties.map((p) => ({ name: p.name, value: p.value, isMutated: false })),
                   };
-                  return <PropertySetCard key={`${group.materialId}-${pset.name}`} pset={psetView} />;
+                  return <PropertySetCard key={`${group.materialId}-${pset.name}`} pset={psetView} projectUnits={projectUnits} unitDisplayOverrides={unitDisplayOverrides} />;
                 }),
               )}
             </div>

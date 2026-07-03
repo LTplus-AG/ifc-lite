@@ -35,7 +35,7 @@ import { useIfc } from '@/hooks/useIfc';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { IfcQuery } from '@ifc-lite/query';
 import { MutablePropertyView } from '@ifc-lite/mutations';
-import { extractClassificationsOnDemand, extractMaterialsOnDemand, extractMaterialPropertiesOnDemand, extractTypePropertiesOnDemand, extractTypeEntityOwnProperties, extractDocumentsOnDemand, extractRelationshipsOnDemand, extractGroupMembersOnDemand, extractGeoreferencingOnDemand, extractLengthUnitScale, getAttributeNames, type IfcDataStore, type MaterialPsetGroup } from '@ifc-lite/parser';
+import { extractClassificationsOnDemand, extractMaterialsOnDemand, extractMaterialPropertiesOnDemand, extractTypePropertiesOnDemand, extractTypeEntityOwnProperties, extractDocumentsOnDemand, extractRelationshipsOnDemand, extractGroupMembersOnDemand, extractGeoreferencingOnDemand, extractLengthUnitScale, extractProjectUnits, ProjectUnits, getAttributeNames, type IfcDataStore, type MaterialPsetGroup } from '@ifc-lite/parser';
 import type { NewEntity } from '@ifc-lite/mutations';
 import { EntityFlags, RelationshipType, isSpatialStructureTypeName, isStoreyLikeSpatialTypeName } from '@ifc-lite/data';
 import type { EntityRef, FederatedModel } from '@/store/types';
@@ -55,6 +55,7 @@ import type { PropertySet, QuantitySet } from './properties/encodingUtils';
 import { BsddCard } from './properties/BsddCard';
 import { GeoreferencingPanel } from './properties/GeoreferencingPanel';
 import { RawStepCard } from './properties/RawStepCard';
+import { UnitDisplayControl } from './properties/UnitDisplayControl';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
 
 /** IFC material *definition* classes selectable from the Materials tab. */
@@ -68,7 +69,7 @@ const MATERIAL_DEF_TYPES = new Set([
   'IFCMATERIALLIST',
 ]);
 
-type DisplayProperty = { name: string; value: unknown; isMutated: boolean; type?: number };
+type DisplayProperty = { name: string; value: unknown; isMutated: boolean; type?: number; dataType?: string };
 type DisplayPropertySet = {
   name: string;
   properties: DisplayProperty[];
@@ -142,6 +143,10 @@ function mergePropertySetLists(base: DisplayPropertySet[], incoming: DisplayProp
 }
 
 export function PropertiesPanel() {
+  // Display-unit converter overrides (issue #1573 proposal 2) — read once
+  // here and threaded to every PropertySetCard/QuantitySetCard render site
+  // below, plus the secondary EntityDataSection component.
+  const unitDisplayOverrides = useViewerStore((s) => s.unitDisplayOverrides);
   const selectedEntityId = useViewerStore((s) => s.selectedEntityId);
   const selectedEntity = useViewerStore((s) => s.selectedEntity);
   const selectedEntities = useViewerStore((s) => s.selectedEntities);
@@ -573,6 +578,9 @@ export function PropertiesPanel() {
             // Carry the value type so the editor can render the right control
             // even when the value is null/unset (e.g. a fresh bSDD Boolean).
             type: p.type,
+            // Carry the raw IFC measure type so the card can look up its
+            // declared display unit (issue #1573).
+            dataType: p.dataType,
           })),
           isNewPset: newPsetNames.has(pset.name),
         }));
@@ -585,7 +593,7 @@ export function PropertiesPanel() {
     const rawProps = entityNode.properties();
     let result: DisplayPropertySet[] = rawProps.map(pset => ({
       name: pset.name,
-      properties: pset.properties.map(p => ({ name: p.name, value: p.value, isMutated: false })),
+      properties: pset.properties.map(p => ({ name: p.name, value: p.value, isMutated: false, dataType: p.dataType })),
       isNewPset: false,
     }));
 
@@ -597,7 +605,7 @@ export function PropertiesPanel() {
         const typeOwnProps = extractTypeEntityOwnProperties(dataStore, expressId);
         const mappedTypeOwn = typeOwnProps.map(pset => ({
           name: pset.name,
-          properties: pset.properties.map(p => ({ name: p.name, value: p.value, isMutated: false })),
+          properties: pset.properties.map(p => ({ name: p.name, value: p.value, isMutated: false, dataType: p.dataType })),
           isNewPset: false,
         }));
         result = mergePropertySetLists(result, mappedTypeOwn);
@@ -822,6 +830,16 @@ export function PropertiesPanel() {
     const dataStore = model?.ifcDataStore ?? ifcDataStore;
     if (!dataStore?.source?.length || !dataStore?.entityIndex) return 1;
     return extractLengthUnitScale(dataStore.source, dataStore.entityIndex);
+  }, [model, ifcDataStore]);
+
+  // Extract the file's full declared unit assignment (per-unit-type symbols +
+  // SI scales) so property/quantity cards can render values with their units
+  // (issue #1573). Falls back to an empty resolver (SI defaults) when the
+  // source buffer / entity index aren't available.
+  const projectUnits = useMemo(() => {
+    const dataStore = model?.ifcDataStore ?? ifcDataStore;
+    if (!dataStore?.source?.length || !dataStore?.entityIndex) return ProjectUnits.empty();
+    return extractProjectUnits(dataStore.source, dataStore.entityIndex);
   }, [model, ifcDataStore]);
 
   // Extract type-level properties (e.g., from IfcWallType's HasPropertySets)
@@ -1074,6 +1092,7 @@ export function PropertiesPanel() {
   const renderedTypeProperties = typeProperties;
   const renderedTypeEditImpact = typeEditImpact;
   const renderedIsTypeEntity = isTypeEntity;
+  const renderedProjectUnits = projectUnits;
   const renderedExistingProps = useMemo(() => {
     const keys = new Set<string>();
     for (const pset of renderedMergedProperties) {
@@ -1265,6 +1284,10 @@ export function PropertiesPanel() {
                 {selectedEntityId && isEntityVisible(selectedEntityId) ? 'Hide' : 'Show'}
               </TooltipContent>
             </Tooltip>
+            {/* Display-unit converter (issue #1573 proposal 2) — covers both
+                the Properties and Quantities tabs below, so it lives in the
+                shared header rather than inside either TabsContent. */}
+            <UnitDisplayControl />
           </div>
         </div>
 
@@ -1576,6 +1599,8 @@ export function PropertiesPanel() {
                         isTypeProperty={renderedIsTypeEntity}
                         typeEditScope={renderedIsTypeEntity ? renderedTypeEditImpact ?? undefined : undefined}
                         focusedPropKey={focusedPropKey}
+                        projectUnits={renderedProjectUnits}
+                        unitDisplayOverrides={unitDisplayOverrides}
                       />
                     ))}
                   </>
@@ -1601,6 +1626,8 @@ export function PropertiesPanel() {
                         isTypeProperty
                         typeEditScope={renderedTypeEditImpact?.mode === 'inherited' ? renderedTypeEditImpact : undefined}
                         focusedPropKey={focusedPropKey}
+                        projectUnits={renderedProjectUnits}
+                        unitDisplayOverrides={unitDisplayOverrides}
                       />
                     ))}
                   </>
@@ -1649,6 +1676,8 @@ export function PropertiesPanel() {
                               name: pset.name,
                               properties: pset.properties.map((p) => ({ name: p.name, value: p.value, isMutated: false })),
                             }}
+                            projectUnits={renderedProjectUnits}
+                            unitDisplayOverrides={unitDisplayOverrides}
                           />
                         ))}
                       </div>
@@ -1704,7 +1733,7 @@ export function PropertiesPanel() {
             ) : (
               <div className="space-y-3 w-full overflow-hidden">
                 {renderedQuantities.map((qset: QuantitySet) => (
-                  <QuantitySetCard key={qset.name} qset={qset} />
+                  <QuantitySetCard key={qset.name} qset={qset} projectUnits={renderedProjectUnits} unitDisplayOverrides={unitDisplayOverrides} />
                 ))}
               </div>
             )}
@@ -1855,6 +1884,11 @@ function MultiEntityPanel({
           <span className="text-[10px] font-mono bg-emerald-100 dark:bg-emerald-900 px-1.5 py-0.5 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
             {entities.length} models
           </span>
+          {/* Display-unit converter (issue #1573 proposal 2) — one control
+              for the whole stacked list below, not per-entity section. */}
+          <div className="ml-auto">
+            <UnitDisplayControl />
+          </div>
         </div>
       </div>
 
@@ -1927,7 +1961,7 @@ function EntityDataSection({
     const rawProps = entityNode.properties();
     return rawProps.map(pset => ({
       name: pset.name,
-      properties: pset.properties.map(p => ({ name: p.name, value: p.value })),
+      properties: pset.properties.map(p => ({ name: p.name, value: p.value, dataType: p.dataType })),
     }));
   }, [entityNode]);
 
@@ -1935,6 +1969,19 @@ function EntityDataSection({
     if (!entityNode) return [];
     return entityNode.quantities();
   }, [entityNode]);
+
+  // The file's declared units, for rendering unit suffixes on property/
+  // quantity values (issue #1573). Mirrors the `projectUnits` memo above.
+  const projectUnits = useMemo(() => {
+    if (!dataStore?.source?.length || !dataStore?.entityIndex) return ProjectUnits.empty();
+    return extractProjectUnits(dataStore.source, dataStore.entityIndex);
+  }, [dataStore]);
+
+  // Display-unit converter overrides (issue #1573 proposal 2) — this
+  // component renders in the multi-entity selection panel, a sibling
+  // component to the main PropertiesPanel, so it reads the store directly
+  // rather than threading the value through as a prop.
+  const unitDisplayOverrides = useViewerStore((s) => s.unitDisplayOverrides);
 
   // Get attributes - uses schema-aware extraction to show ALL string/enum attributes
   // Note: GlobalId is intentionally excluded since it's shown in the dedicated GUID field above
@@ -2018,7 +2065,7 @@ function EntityDataSection({
           <CollapsibleContent>
             <div className="p-2 pt-0 space-y-2">
               {properties.map((pset) => (
-                <PropertySetCard key={pset.name} pset={pset} />
+                <PropertySetCard key={pset.name} pset={pset} projectUnits={projectUnits} unitDisplayOverrides={unitDisplayOverrides} />
               ))}
             </div>
           </CollapsibleContent>
@@ -2036,7 +2083,7 @@ function EntityDataSection({
           <CollapsibleContent>
             <div className="p-2 pt-0 space-y-2">
               {quantities.map((qset) => (
-                <QuantitySetCard key={qset.name} qset={qset} />
+                <QuantitySetCard key={qset.name} qset={qset} projectUnits={projectUnits} unitDisplayOverrides={unitDisplayOverrides} />
               ))}
             </div>
           </CollapsibleContent>

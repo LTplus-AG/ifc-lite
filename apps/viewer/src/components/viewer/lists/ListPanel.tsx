@@ -41,7 +41,7 @@ import {
   createListDataProvider,
 } from '@/lib/lists';
 import type { ListDefinition, ListResult, ListDataProvider, ListGrouping } from '@/lib/lists';
-import type { IfcDataStore } from '@ifc-lite/parser';
+import { extractProjectUnits, ProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
 import { ListBuilder } from './ListBuilder';
 import { ListResultsTable } from './ListResultsTable';
 
@@ -100,6 +100,19 @@ export function ListPanel({ onClose }: ListPanelProps) {
 
   const allProviders = useMemo(() => modelProviderPairs.map((p) => p.provider), [modelProviderPairs]);
   const allStores = useMemo(() => modelProviderPairs.map((p) => p.store), [modelProviderPairs]);
+
+  // The file's declared units, for exporting quantity/measure columns
+  // converted into the user's display-unit override (issue #1573). A
+  // federation of models with different declared units is a real (if rare)
+  // possibility the list pipeline doesn't otherwise resolve per-row, so this
+  // picks the FIRST loaded store's units as the export-wide unit source —
+  // the same simplification already made by `numericCols`/`columnWidths`
+  // sampling only the first N rows for their own per-column decisions.
+  const projectUnits = useMemo(() => {
+    const store = allStores[0];
+    if (!store?.source?.length || !store?.entityIndex) return ProjectUnits.empty();
+    return extractProjectUnits(store.source, store.entityIndex);
+  }, [allStores]);
 
   const hasData = allProviders.length > 0;
 
@@ -303,6 +316,7 @@ export function ListPanel({ onClose }: ListPanelProps) {
           listName={editingList?.name}
           grouping={editingList?.grouping}
           onGroupingChange={handleGroupingFromTable}
+          projectUnits={projectUnits}
         />
       )}
 

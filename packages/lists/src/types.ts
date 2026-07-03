@@ -182,6 +182,22 @@ export interface ColumnDefinition {
   propertyName: string;
   /** Display label override */
   label?: string;
+  /**
+   * `QuantityType` this column resolved to (from `@ifc-lite/data`), when
+   * `source: 'quantity'`. Populated by `executeList` from the first matched
+   * entity's quantity (issue #1573), so display-unit conversion downstream
+   * (the viewer's list/schedule export) knows what unit-KIND a raw numeric
+   * cell is in. Not part of the persisted `ListDefinition` authoring schema —
+   * it's an execution-time annotation the engine derives fresh every run.
+   */
+  quantityType?: number;
+  /**
+   * Raw IFC measure value type (e.g. "IFCVOLUMETRICFLOWRATEMEASURE"), when
+   * `source: 'property'` and the matched property carries one. Same
+   * execution-time-only role as `quantityType`, for measure properties
+   * (issue #1573).
+   */
+  dataType?: string;
 }
 
 // ============================================================================

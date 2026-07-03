@@ -23,7 +23,7 @@ export interface PropertySet {
    *  view so the inline editor knows e.g. an *unset* Boolean is still a Boolean
    *  (it can't infer that from a null value alone). Optional — base/loaded
    *  properties may omit it and fall back to value inference. */
-  properties: Array<{ name: string; value: unknown; isMutated?: boolean; type?: number }>;
+  properties: Array<{ name: string; value: unknown; isMutated?: boolean; type?: number; dataType?: string }>;
   isNewPset?: boolean;
   /** Where this property set originates from: 'instance' (occurrence) or 'type' (inherited from IfcTypeObject) */
   source?: 'instance' | 'type';

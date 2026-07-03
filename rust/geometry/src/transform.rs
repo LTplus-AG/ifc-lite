@@ -352,8 +352,142 @@ mod tests {
 
     #[test]
     fn test_parse_direction() {
-        // This would require a mock decoder, so we'll test integration-style
-        // in the processor tests instead
+        // parse_direction reads the ratio list from attribute 0.
+        let content = "#1=IFCDIRECTION((0.5,0.25,0.75));";
+        let mut decoder = EntityDecoder::new(content);
+        let dir = decoder.decode_by_id(1).unwrap();
+
+        let v = parse_direction(&dir).unwrap();
+
+        assert!((v.x - 0.5).abs() < 1e-12);
+        assert!((v.y - 0.25).abs() < 1e-12);
+        assert!((v.z - 0.75).abs() < 1e-12);
+    }
+
+    #[test]
+    fn parse_cartesian_point_reads_coordinates_from_attribute_0() {
+        // parse_cartesian_point(parent, decoder, 0) resolves the ref stored
+        // at attribute 0 and reads its coordinate list.
+        let content = "\
+#1=IFCCARTESIANPOINT((1.0,2.0,3.0));
+#2=IFCAXIS2PLACEMENT3D(#1,$,$);";
+        let mut decoder = EntityDecoder::new(content);
+        let placement = decoder.decode_by_id(2).unwrap();
+
+        let p = parse_cartesian_point(&placement, &mut decoder, 0).unwrap();
+
+        assert!((p.x - 1.0).abs() < 1e-12);
+        assert!((p.y - 2.0).abs() < 1e-12);
+        assert!((p.z - 3.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn parse_axis2_placement_3d_defaults_missing_axis_and_ref_direction() {
+        // IfcAxis2Placement3D attributes 1 (Axis) and 2 (RefDirection) are
+        // entirely absent (not even `$`), so `placement.get(1)`/`get(2)`
+        // return `None` and the default world Z/X axes must be used with no
+        // orthogonalization needed (they're already perpendicular).
+        let content = "\
+#1=IFCCARTESIANPOINT((10.0,20.0,30.0));
+#2=IFCAXIS2PLACEMENT3D(#1);";
+        let mut decoder = EntityDecoder::new(content);
+        let placement = decoder.decode_by_id(2).unwrap();
+        assert_eq!(placement.attributes.len(), 1, "test fixture sanity check");
+
+        let m = parse_axis2_placement_3d(&placement, &mut decoder).unwrap();
+
+        // Translation column carries the location through unchanged.
+        assert!((m[(0, 3)] - 10.0).abs() < 1e-9);
+        assert!((m[(1, 3)] - 20.0).abs() < 1e-9);
+        assert!((m[(2, 3)] - 30.0).abs() < 1e-9);
+        // Default Z axis (0,0,1) -> column 2.
+        assert!((m[(0, 2)] - 0.0).abs() < 1e-9);
+        assert!((m[(1, 2)] - 0.0).abs() < 1e-9);
+        assert!((m[(2, 2)] - 1.0).abs() < 1e-9);
+        // Default X axis (1,0,0) -> column 0.
+        assert!((m[(0, 0)] - 1.0).abs() < 1e-9);
+        assert!((m[(1, 0)] - 0.0).abs() < 1e-9);
+        assert!((m[(2, 0)] - 0.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn parse_axis2_placement_3d_defaults_ref_direction_when_only_axis_given() {
+        // Axis is explicitly (0,1,0); RefDirection attribute is missing
+        // (only 2 of 3 attributes present), so it must default to world X
+        // (1,0,0), which is already orthogonal to (0,1,0) here.
+        let content = "\
+#1=IFCCARTESIANPOINT((0.0,0.0,0.0));
+#2=IFCDIRECTION((0.0,1.0,0.0));
+#3=IFCAXIS2PLACEMENT3D(#1,#2);";
+        let mut decoder = EntityDecoder::new(content);
+        let placement = decoder.decode_by_id(3).unwrap();
+        assert_eq!(placement.attributes.len(), 2, "test fixture sanity check");
+
+        let m = parse_axis2_placement_3d(&placement, &mut decoder).unwrap();
+
+        // Z axis is the custom (0,1,0) -> column 2.
+        assert!((m[(0, 2)] - 0.0).abs() < 1e-9);
+        assert!((m[(1, 2)] - 1.0).abs() < 1e-9);
+        assert!((m[(2, 2)] - 0.0).abs() < 1e-9);
+        // X axis defaults to world (1,0,0), already orthogonal -> column 0.
+        assert!((m[(0, 0)] - 1.0).abs() < 1e-9);
+        assert!((m[(1, 0)] - 0.0).abs() < 1e-9);
+        assert!((m[(2, 0)] - 0.0).abs() < 1e-9);
+        // Y = Z x X = (0,1,0) x (1,0,0) = (0,0,-1) -> column 1.
+        assert!((m[(0, 1)] - 0.0).abs() < 1e-9);
+        assert!((m[(1, 1)] - 0.0).abs() < 1e-9);
+        assert!((m[(2, 1)] - (-1.0)).abs() < 1e-9);
+    }
+
+    #[test]
+    fn parse_axis2_placement_3d_orthogonalizes_parallel_ref_direction_low_z() {
+        // RefDirection parallel to Axis forces the fallback branch. With
+        // Axis = (1,0,0), |z.z| = 0 < 0.9, so the fallback is
+        // world-Z x Axis = (0,0,1) x (1,0,0) = (0,1,0).
+        let content = "\
+#1=IFCCARTESIANPOINT((0.0,0.0,0.0));
+#2=IFCDIRECTION((1.0,0.0,0.0));
+#3=IFCDIRECTION((1.0,0.0,0.0));
+#4=IFCAXIS2PLACEMENT3D(#1,#2,#3);";
+        let mut decoder = EntityDecoder::new(content);
+        let placement = decoder.decode_by_id(4).unwrap();
+
+        let m = parse_axis2_placement_3d(&placement, &mut decoder).unwrap();
+
+        // X axis (column 0) is the fallback perpendicular (0,1,0), not the
+        // degenerate parallel RefDirection.
+        assert!((m[(0, 0)] - 0.0).abs() < 1e-9);
+        assert!((m[(1, 0)] - 1.0).abs() < 1e-9);
+        assert!((m[(2, 0)] - 0.0).abs() < 1e-9);
+        // Y = Z x X = (1,0,0) x (0,1,0) = (0,0,1) -> column 1.
+        assert!((m[(0, 1)] - 0.0).abs() < 1e-9);
+        assert!((m[(1, 1)] - 0.0).abs() < 1e-9);
+        assert!((m[(2, 1)] - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn parse_axis2_placement_3d_orthogonalizes_parallel_ref_direction_high_z() {
+        // RefDirection parallel to Axis forces the fallback branch. With
+        // Axis = (0,0,1), |z.z| = 1 >= 0.9, so the fallback is
+        // world-X x Axis = (1,0,0) x (0,0,1) = (0,-1,0).
+        let content = "\
+#1=IFCCARTESIANPOINT((0.0,0.0,0.0));
+#2=IFCDIRECTION((0.0,0.0,1.0));
+#3=IFCDIRECTION((0.0,0.0,1.0));
+#4=IFCAXIS2PLACEMENT3D(#1,#2,#3);";
+        let mut decoder = EntityDecoder::new(content);
+        let placement = decoder.decode_by_id(4).unwrap();
+
+        let m = parse_axis2_placement_3d(&placement, &mut decoder).unwrap();
+
+        // X axis (column 0) is the fallback perpendicular (0,-1,0).
+        assert!((m[(0, 0)] - 0.0).abs() < 1e-9);
+        assert!((m[(1, 0)] - (-1.0)).abs() < 1e-9);
+        assert!((m[(2, 0)] - 0.0).abs() < 1e-9);
+        // Y = Z x X = (0,0,1) x (0,-1,0) = (1,0,0) -> column 1.
+        assert!((m[(0, 1)] - 1.0).abs() < 1e-9);
+        assert!((m[(1, 1)] - 0.0).abs() < 1e-9);
+        assert!((m[(2, 1)] - 0.0).abs() < 1e-9);
     }
 
     #[test]

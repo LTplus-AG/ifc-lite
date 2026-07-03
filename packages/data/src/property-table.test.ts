@@ -41,6 +41,72 @@ describe('PropertyTable round-trip', () => {
   });
 });
 
+describe('PropertyTable.findByProperty', () => {
+  function buildFixture() {
+    const strings = new StringTable();
+    const builder = new PropertyTableBuilder(strings);
+    // Same prop name ("FireRating") appears in two different psets, on
+    // different entities, to exercise the pset-scoping rule.
+    builder.add({ entityId: 1, psetName: 'Pset_WallCommon', psetGlobalId: 'gid-wall', propName: 'FireRating', propType: PropertyValueType.String, value: 'F90' });
+    builder.add({ entityId: 2, psetName: 'Pset_WallCommon', psetGlobalId: 'gid-wall', propName: 'FireRating', propType: PropertyValueType.String, value: 'F30' });
+    builder.add({ entityId: 3, psetName: 'Pset_DoorCommon', psetGlobalId: 'gid-door', propName: 'FireRating', propType: PropertyValueType.String, value: 'F90' });
+    // Numeric property for the comparison-operator matrix.
+    builder.add({ entityId: 1, psetName: 'Qto_WallBaseQuantities', psetGlobalId: 'gid-qto', propName: 'Length', propType: PropertyValueType.Real, value: 5 });
+    builder.add({ entityId: 2, psetName: 'Qto_WallBaseQuantities', psetGlobalId: 'gid-qto', propName: 'Length', propType: PropertyValueType.Real, value: 3 });
+    // Boolean property.
+    builder.add({ entityId: 1, psetName: 'Pset_WallCommon', psetGlobalId: 'gid-wall', propName: 'IsExternal', propType: PropertyValueType.Boolean, value: true });
+    builder.add({ entityId: 2, psetName: 'Pset_WallCommon', psetGlobalId: 'gid-wall', propName: 'IsExternal', propType: PropertyValueType.Boolean, value: false });
+    return builder.build();
+  }
+
+  it('numeric operator matrix (>=, >, <=, <, =, ==, !=)', () => {
+    const table = buildFixture();
+    expect(table.findByProperty('Length', '>=', 3).sort()).toEqual([1, 2]);
+    expect(table.findByProperty('Length', '>', 3)).toEqual([1]);
+    expect(table.findByProperty('Length', '<=', 3)).toEqual([2]);
+    expect(table.findByProperty('Length', '<', 5)).toEqual([2]);
+    expect(table.findByProperty('Length', '=', 5)).toEqual([1]);
+    expect(table.findByProperty('Length', '==', 5)).toEqual([1]);
+    expect(table.findByProperty('Length', '!=', 5)).toEqual([2]);
+  });
+
+  it('string operator matrix (=, ==, !=, contains, startsWith)', () => {
+    const table = buildFixture();
+    // Unscoped: both wall (1) and door (3) carry FireRating = 'F90'.
+    expect(table.findByProperty('FireRating', '=', 'F90').sort()).toEqual([1, 3]);
+    expect(table.findByProperty('FireRating', '==', 'F90').sort()).toEqual([1, 3]);
+    expect(table.findByProperty('FireRating', '!=', 'F90').sort()).toEqual([2]);
+    expect(table.findByProperty('FireRating', 'contains', '9').sort()).toEqual([1, 3]);
+    expect(table.findByProperty('FireRating', 'startsWith', 'F3')).toEqual([2]);
+  });
+
+  it('boolean operator matrix (=, ==, !=)', () => {
+    const table = buildFixture();
+    expect(table.findByProperty('IsExternal', '=', true)).toEqual([1]);
+    expect(table.findByProperty('IsExternal', '==', true)).toEqual([1]);
+    expect(table.findByProperty('IsExternal', '!=', true)).toEqual([2]);
+  });
+
+  it('scopes matches to the given pset: a same-named prop in another pset does not match (#pset-scoping)', () => {
+    const table = buildFixture();
+    // Wall's FireRating='F90' matches when scoped to its own pset...
+    expect(table.findByProperty('FireRating', '=', 'F90', 'Pset_WallCommon')).toEqual([1]);
+    // ...and the door's identically-valued FireRating in a different pset
+    // must NOT leak into that result.
+    expect(table.findByProperty('FireRating', '=', 'F90', 'Pset_DoorCommon')).toEqual([3]);
+  });
+
+  it('an unknown pset name matches nothing', () => {
+    const table = buildFixture();
+    expect(table.findByProperty('FireRating', '=', 'F90', 'Pset_DoesNotExist')).toEqual([]);
+  });
+
+  it('an unknown property name matches nothing', () => {
+    const table = buildFixture();
+    expect(table.findByProperty('NoSuchProp', '=', 'anything')).toEqual([]);
+  });
+});
+
 describe('QuantityTable round-trip', () => {
   it('preserves quantity values across columns transport', () => {
     const strings = new StringTable();

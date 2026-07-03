@@ -259,6 +259,35 @@ describe('executeList', () => {
     expect(result.rows.map((r) => r.values[0]).sort()).toEqual([...expected]);
   });
 
+  // Numeric operators (gt/lt/gte/lte/notEquals) plus the property/quantity
+  // condition sources (getConditionValue's 'property'/'quantity' branches),
+  // which the coverage above only exercises via columns, never via
+  // conditions. Qto_WallBaseQuantities.Length: Wall-01=5.0, Wall-02=3.5,
+  // Slab-01 has no Qto_WallBaseQuantities (null, so it never matches).
+  it.each([
+    { source: 'quantity', psetName: 'Qto_WallBaseQuantities', propertyName: 'Length', operator: 'gt', value: 4, expected: ['Wall-01'] },
+    { source: 'quantity', psetName: 'Qto_WallBaseQuantities', propertyName: 'Length', operator: 'lt', value: 4, expected: ['Wall-02'] },
+    { source: 'quantity', psetName: 'Qto_WallBaseQuantities', propertyName: 'Length', operator: 'gte', value: 5.0, expected: ['Wall-01'] },
+    { source: 'quantity', psetName: 'Qto_WallBaseQuantities', propertyName: 'Length', operator: 'lte', value: 3.5, expected: ['Wall-02'] },
+    // FireRating: Wall-01='REI 90', Wall-02='EI 30', Slab-01 has no
+    // Pset_WallCommon at all (null actualValue is excluded, not a match).
+    { source: 'property', psetName: 'Pset_WallCommon', propertyName: 'FireRating', operator: 'notEquals', value: 'EI 30', expected: ['Wall-01'] },
+  ] as const)('filters by $source $operator against $value (psetName=$psetName)', ({ source, psetName, propertyName, operator, value, expected }) => {
+    const provider = createMockProvider();
+    const def: ListDefinition = {
+      id: 'cond-numeric',
+      name: 'Test',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [],
+      conditions: [{ source, psetName, propertyName, operator, value }],
+      columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
+    };
+
+    const result = executeList(def, provider);
+    expect(result.rows.map((r) => r.values[0]).sort()).toEqual([...expected]);
+  });
+
   it('returns null for missing properties', () => {
     const provider = createMockProvider();
     const def: ListDefinition = {
@@ -480,6 +509,29 @@ describe('listResultToCSV', () => {
     });
 
     expect(csv).toContain('"Hello, ""World"""');
+  });
+
+  // CWE-1236 formula-injection guard: a cell that starts with a spreadsheet
+  // formula trigger char gets a leading apostrophe so Excel/Sheets render it
+  // as text instead of evaluating it as a formula when the CSV is opened.
+  it.each([
+    ['=SUM(A1:A10)', "'=SUM(A1:A10)"],
+    ['-2+3', "'-2+3"],
+    ['+1234567890', "'+1234567890"],
+    // Contains a delimiter comma too, so the apostrophe-prefixed value is
+    // also quote-wrapped by the general CSV-escaping rule below it.
+    ['@SUM(1,2)', '"\'@SUM(1,2)"'],
+    ['Normal value', 'Normal value'],
+  ])('escapes %j as %j', (input, escaped) => {
+    const csv = listResultToCSV({
+      columns: [{ id: 'a', source: 'attribute', propertyName: 'Name' }],
+      rows: [{ entityId: 1, modelId: 'default', values: [input] }],
+      totalCount: 1,
+      executionTime: 0,
+    });
+
+    const dataLine = csv.split('\n')[1];
+    expect(dataLine).toBe(escaped);
   });
 });
 

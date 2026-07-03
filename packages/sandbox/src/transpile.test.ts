@@ -192,6 +192,78 @@ const roof = bim.create.addIfcRoof(h, s0, {
   });
 });
 
+describe('transpileTypeScript (module syntax stripping — QuickJS has no module system)', () => {
+  it('strips a named import and the remaining code still runs', async () => {
+    const code = `
+import { foo, bar } from './utils.js';
+const x = 1;
+`;
+    const result = await transpileTypeScript(code);
+    expect(result).not.toContain('import');
+    expect(result).not.toContain('./utils.js');
+    expect(result).toContain('const x = 1');
+    // eslint-disable-next-line no-new-func
+    expect(new Function(`${result}\nreturn x;`)()).toBe(1);
+  });
+
+  it('strips a namespace import (`import * as x`) and the remaining code still runs', async () => {
+    const code = `
+import * as utils from './utils.js';
+const y = 2;
+`;
+    const result = await transpileTypeScript(code);
+    expect(result).not.toContain('import');
+    expect(result).not.toContain('* as utils');
+    expect(result).toContain('const y = 2');
+    // eslint-disable-next-line no-new-func
+    expect(new Function(`${result}\nreturn y;`)()).toBe(2);
+  });
+
+  it('strips a side-effect-only import (`import "x"`) and the remaining code still runs', async () => {
+    const code = `
+import './setup.js';
+const z = 3;
+`;
+    const result = await transpileTypeScript(code);
+    expect(result).not.toContain('import');
+    expect(result).not.toContain('./setup.js');
+    expect(result).toContain('const z = 3');
+    // eslint-disable-next-line no-new-func
+    expect(new Function(`${result}\nreturn z;`)()).toBe(3);
+  });
+
+  it('strips `export const` and the declaration still runs', async () => {
+    const code = `export const total = 40 + 2;`;
+    const result = await transpileTypeScript(code);
+    expect(result).not.toContain('export');
+    expect(result).toContain('const total');
+    // eslint-disable-next-line no-new-func
+    expect(new Function(`${result}\nreturn total;`)()).toBe(42);
+  });
+
+  it('strips `export default` and the expression still evaluates', async () => {
+    const code = `export default 99;`;
+    const result = await transpileTypeScript(code);
+    expect(result).not.toContain('export');
+    expect(result).not.toContain('default');
+    // eslint-disable-next-line no-new-func
+    expect(new Function(`return ${result}`)()).toBe(99);
+  });
+
+  it('strips `export { a, b } from "x"` re-export lists and the remaining code still runs', async () => {
+    const code = `
+export { a, b } from './other.js';
+const done = true;
+`;
+    const result = await transpileTypeScript(code);
+    expect(result).not.toContain('export');
+    expect(result).not.toContain('./other.js');
+    expect(result).toContain('const done = true');
+    // eslint-disable-next-line no-new-func
+    expect(new Function(`${result}\nreturn done;`)()).toBe(true);
+  });
+});
+
 describe('transpile observability', () => {
   it('records transpile mode and preserves BIM keys in JS', async () => {
     const code = `

@@ -186,24 +186,6 @@ describe('Integration Tests', () => {
       }).not.toThrow();
     });
 
-    it('should find infrastructure entities in IFC4X3', () => {
-      const schemaPath = join(process.cwd(), 'schemas', 'IFC4X3.exp');
-      const content = readFileSync(schemaPath, 'utf-8');
-      const schema = parseExpressSchema(content);
-
-      const entityNames = schema.entities.map(e => e.name);
-
-      // Check for infrastructure entities (new in IFC4X3)
-      const hasRoad = entityNames.some(n => n.includes('Road'));
-      const hasBridge = entityNames.some(n => n.includes('Bridge'));
-      const hasRailway = entityNames.some(n => n.includes('Railway'));
-
-      console.log(`\n✓ Parsed ${schema.entities.length} entities from IFC4X3`);
-      console.log(`  - Road entities: ${hasRoad}`);
-      console.log(`  - Bridge entities: ${hasBridge}`);
-      console.log(`  - Railway entities: ${hasRailway}`);
-    });
-
     it('should generate valid TypeScript from IFC4X3', () => {
       const schemaPath = join(process.cwd(), 'schemas', 'IFC4X3.exp');
       const content = readFileSync(schemaPath, 'utf-8');
@@ -214,33 +196,6 @@ describe('Integration Tests', () => {
       }).not.toThrow();
 
       console.log('✓ Successfully generated TypeScript from IFC4X3');
-    });
-  });
-
-  describe('Generated code statistics', () => {
-    it('should report schema coverage statistics', () => {
-      const schemaPath = join(process.cwd(), 'schemas', 'IFC4_ADD2_TC1.exp');
-      const content = readFileSync(schemaPath, 'utf-8');
-      const schema = parseExpressSchema(content);
-
-      console.log('\n📊 IFC4 ADD2 TC1 Schema Statistics:');
-      console.log(`   - Entities: ${schema.entities.length}`);
-      console.log(`   - Types: ${schema.types.length}`);
-      console.log(`   - Enums: ${schema.enums.length}`);
-      console.log(`   - Selects: ${schema.selects.length}`);
-      console.log(`   - Total: ${schema.entities.length + schema.types.length + schema.enums.length + schema.selects.length}`);
-
-      // Abstract entities
-      const abstractCount = schema.entities.filter(e => e.isAbstract).length;
-      console.log(`   - Abstract entities: ${abstractCount}`);
-
-      // Top-level entities (no parent)
-      const topLevel = schema.entities.filter(e => !e.supertype).length;
-      console.log(`   - Top-level entities: ${topLevel}`);
-
-      // Entities with the most attributes
-      const sorted = [...schema.entities].sort((a, b) => b.attributes.length - a.attributes.length);
-      console.log(`   - Entity with most attributes: ${sorted[0].name} (${sorted[0].attributes.length})`);
     });
   });
 });

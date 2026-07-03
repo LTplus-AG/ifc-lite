@@ -3653,6 +3653,53 @@ mod tests {
         assert!(iso.meshes >= 1 && iso.meshes <= full.meshes);
     }
 
+    /// A minimal but valid triangulated mesh (one triangle, matching normals),
+    /// so `mesh_visible`'s geometry-sanity checks pass and only the filter under
+    /// test can flip the result.
+    fn synthetic_mesh(express_id: u32, ifc_type: &str) -> MeshData {
+        MeshData::new(
+            express_id,
+            ifc_type.to_string(),
+            vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+            vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
+            vec![0, 1, 2],
+            [1.0, 0.0, 0.0, 1.0],
+        )
+    }
+
+    #[test]
+    fn mesh_visible_hidden_excludes_only_the_listed_express_id() {
+        // `hidden` is the per-element hide list (viewer "hide selection"): only the
+        // express ids it names must be dropped, everything else stays visible.
+        let hidden_mesh = synthetic_mesh(42, "IfcWall");
+        let other_mesh = synthetic_mesh(43, "IfcWall");
+        let opts = GltfOptions { hidden: vec![42], ..GltfOptions::default() };
+        assert!(!mesh_visible(&hidden_mesh, &opts), "express id 42 is in `hidden` and must be excluded");
+        assert!(mesh_visible(&other_mesh, &opts), "express id 43 is not in `hidden` and must stay visible");
+
+        // With an empty hidden list both are visible again (no accidental default-hide).
+        let none_hidden = GltfOptions::default();
+        assert!(mesh_visible(&hidden_mesh, &none_hidden));
+        assert!(mesh_visible(&other_mesh, &none_hidden));
+    }
+
+    #[test]
+    fn mesh_visible_hidden_types_excludes_the_whole_class() {
+        // `hidden_types` is the class-level visibility toggle (viewer "hide IfcWall"):
+        // every mesh of a hidden IFC type is dropped regardless of express id, and
+        // meshes of other types are unaffected.
+        let wall = synthetic_mesh(1, "IfcWall");
+        let slab = synthetic_mesh(2, "IfcSlab");
+        let opts = GltfOptions { hidden_types: vec!["IfcWall".to_string()], ..GltfOptions::default() };
+        assert!(!mesh_visible(&wall, &opts), "IfcWall is in `hidden_types` and must be excluded");
+        assert!(mesh_visible(&slab, &opts), "IfcSlab is not in `hidden_types` and must stay visible");
+
+        // A different express id of the same hidden type is still excluded (the
+        // filter is class-level, not per-instance).
+        let another_wall = synthetic_mesh(3, "IfcWall");
+        assert!(!mesh_visible(&another_wall, &opts));
+    }
+
     /// A structurally valid IFC with zero products (no render geometry).
     const GEOMETRYLESS_IFC: &str = "ISO-10303-21;\n\
 HEADER;\n\

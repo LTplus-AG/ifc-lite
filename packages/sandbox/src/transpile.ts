@@ -192,7 +192,10 @@ export function naiveTypeStrip(code: string): string {
   result = result.replace(/\):\s*[^{]+\{/g, ') {');
 
   // Remove `as Type` casts — but not import aliases like `import { Foo as Bar }`
-  result = result.replace(/(?<![{,]\s*\w+\s)\s+as\s+\w+(?:\[\])?/g, '');
+  // or `import * as Bar` (namespace import). Without the `\*\s*` branch this
+  // regex mangles `import * as utils from 'x'` into the invalid/broken
+  // `import * from 'x'`, which then survives stripModuleSyntax unmatched.
+  result = result.replace(/(?<![{,]\s*\w+\s|\*\s*)\s+as\s+\w+(?:\[\])?/g, '');
 
   // Remove generic type parameters: <T>, <T extends U>
   result = result.replace(/<\w+(?:\s+extends\s+\w+)?>/g, '');

@@ -3,8 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { DEFAULT_PERMISSIONS, DEFAULT_LIMITS } from '../../sandbox/src/types.js';
-import { SandboxNamespace, type SandboxLimits, type SandboxPermissions, type ScriptResult } from './namespaces/sandbox.js';
+import { DEFAULT_PERMISSIONS } from '../../sandbox/src/types.js';
+import { SandboxNamespace, type SandboxPermissions, type ScriptResult } from './namespaces/sandbox.js';
 
 const sandboxModuleMock = vi.hoisted(() => ({
   createSandbox: vi.fn(),
@@ -39,20 +39,6 @@ describe('SandboxNamespace parity', () => {
     expect(permissions.viewer).toBe(true);
     expect(permissions.export).toBe(true);
     expect(permissions.files).toBe(true);
-  });
-
-  it('accepts runtime default limits unchanged', () => {
-    const limits: SandboxLimits = DEFAULT_LIMITS;
-    expect(limits).toEqual(DEFAULT_LIMITS);
-  });
-
-  it('keeps log timestamps in the SDK-facing ScriptResult shape', () => {
-    const result: ScriptResult = {
-      value: 1,
-      logs: [{ level: 'log', args: ['hello'], timestamp: 123 }],
-      durationMs: 4,
-    };
-    expect(result.logs[0]?.timestamp).toBe(123);
   });
 
   it('serializes eval calls on a single sandbox instance', async () => {

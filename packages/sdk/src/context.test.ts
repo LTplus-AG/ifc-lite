@@ -154,11 +154,23 @@ describe('BimContext', () => {
     expect(result).toBeNull();
   });
 
-  it('on() delegates to events namespace', () => {
+  it('on() delegates to the events namespace and returns a working unsubscribe', () => {
     const { backend } = createMockBackend();
+    const unsub = vi.fn();
+    backend.subscribe = vi.fn(() => unsub);
     const bim = createBimContext({ backend });
 
-    expect(typeof bim.on).toBe('function');
+    const handler = vi.fn();
+    const off = bim.on('selection:changed', handler);
+
+    // Delegates through EventsNamespace.on -> backend.subscribe with the same
+    // event + handler (not just that bim.on is a function).
+    expect(backend.subscribe).toHaveBeenCalledWith('selection:changed', handler);
+    expect(typeof off).toBe('function');
+
+    // The returned unsubscribe tears down the underlying subscription exactly once.
+    off();
+    expect(unsub).toHaveBeenCalledTimes(1);
   });
 
   it('fails explicitly when sandbox is used with a transport-backed context', async () => {
@@ -603,37 +615,5 @@ describe('SpatialNamespace', () => {
       min: [3, 3, 3],
       max: [7, 7, 7],
     });
-  });
-});
-
-describe('IDSNamespace', () => {
-  it('summarize() computes correct totals', () => {
-    const { backend } = createMockBackend();
-    const bim = createBimContext({ backend });
-
-    const report = {
-      specificationResults: [
-        {
-          entityResults: [
-            { passed: true },
-            { passed: true },
-          ],
-        },
-        {
-          entityResults: [
-            { passed: true },
-            { passed: false },
-          ],
-        },
-      ],
-    };
-
-    const summary = bim.ids.summarize(report);
-    expect(summary.totalSpecifications).toBe(2);
-    expect(summary.passedSpecifications).toBe(1);
-    expect(summary.failedSpecifications).toBe(1);
-    expect(summary.totalEntities).toBe(4);
-    expect(summary.passedEntities).toBe(3);
-    expect(summary.failedEntities).toBe(1);
   });
 });

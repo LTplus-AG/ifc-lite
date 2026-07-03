@@ -182,7 +182,7 @@ async function readTopic(zip: JSZip, topicFolder: string): Promise<BCFTopic | nu
   const labels: string[] = [];
   const labelMatches = topicContent.matchAll(/<Labels>([^<]+)<\/Labels>/g);
   for (const match of labelMatches) {
-    labels.push(match[1]);
+    labels.push(unescapeXml(match[1]));
   }
 
   // Extract BIM snippet
@@ -230,10 +230,29 @@ async function readTopic(zip: JSZip, topicFolder: string): Promise<BCFTopic | nu
 
 /**
  * Extract a simple element value from XML
+ *
+ * Values are unescaped so writer.ts's escapeXml() round-trips correctly
+ * (see escapeXml/unescapeXml regression: & < > " ' in titles/descriptions/
+ * comments must come back exactly as written, not as literal entities).
  */
 function extractElement(content: string, elementName: string): string | undefined {
   const match = content.match(new RegExp(`<${elementName}>([^<]*)<\\/${elementName}>`));
-  return match?.[1];
+  return match?.[1] !== undefined ? unescapeXml(match[1]) : undefined;
+}
+
+/**
+ * Unescape XML entities produced by writer.ts's escapeXml()
+ *
+ * &amp; must be decoded last so a literal "&lt;" written as "&amp;lt;"
+ * doesn't get corrupted into "<" by an earlier pass.
+ */
+function unescapeXml(str: string): string {
+  return str
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&');
 }
 
 /**
@@ -283,10 +302,22 @@ function extractDocumentReferences(content: string): BCFDocumentReference[] {
 
 /**
  * Parse comments from markup.bcf
+ *
+ * The outer `<Comment Guid="...">` wrapper contains a nested `<Comment>text</Comment>`
+ * field with the SAME tag name (see writer.ts writeMarkupFile). A naive non-greedy
+ * `[\s\S]*?<\/Comment>` stops at the first `</Comment>` it sees, which is the inner
+ * field's closer, not the wrapper's -- truncating every comment to an empty string.
+ * The lookahead anchors the wrapper's real end at whatever legally follows a top-level
+ * comment: the next sibling `<Comment Guid=`, a `<Viewpoints` block (BCF 2.1 schema
+ * order is Comment* then Viewpoints*, so foreign files can put comments before the
+ * viewpoints), the `</Markup>` root close, or end-of-document. Our own writer emits
+ * comments last, but the reader must also import BCF from other tools.
  */
 function parseComments(markupContent: string): BCFComment[] {
   const comments: BCFComment[] = [];
-  const commentMatches = markupContent.matchAll(/<Comment\s+Guid="([^"]+)"[^>]*>([\s\S]*?)<\/Comment>/g);
+  const commentMatches = markupContent.matchAll(
+    /<Comment\s+Guid="([^"]+)"[^>]*>([\s\S]*?)<\/Comment>\s*(?=<Comment\s+Guid="|<Viewpoints|<\/Markup>|$)/g
+  );
 
   for (const match of commentMatches) {
     const guid = match[1];

@@ -76,10 +76,23 @@ jobs:
           workspaces: '${{ matrix.crate_dir }} -> target'
           prefix-key: ci-fuzz-${{ matrix.target }}
 
+      # Cache the compiled cargo-fuzz binary itself: Swatinem/rust-cache above
+      # covers the per-crate build target, NOT ~/.cargo/bin, so without this
+      # `cargo install` would recompile cargo-fuzz from source (~3-5 min) on
+      # every run. Keyed on the pinned version + runner OS so a version bump or
+      # OS change misses the cache and rebuilds; otherwise it's a hit and the
+      # install below is a no-op.
+      - name: Cache cargo-fuzz binary
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cargo/bin/cargo-fuzz
+          key: cargo-fuzz-0.13.2-${{ runner.os }}
+
       # Pinned version for reproducibility (matches the version validated
-      # locally when this workflow was added); bump deliberately.
+      # locally when this workflow was added); bump deliberately. Guarded so a
+      # cache hit skips the recompile entirely.
       - name: Install cargo-fuzz
-        run: cargo install cargo-fuzz --version 0.13.2 --locked
+        run: command -v cargo-fuzz || cargo install cargo-fuzz --version 0.13.2 --locked
 
       # Short bounded run per target: this is a weekly coverage-accumulation
       # smoke test, not an exhaustive campaign — libFuzzer's corpus persists

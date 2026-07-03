@@ -460,6 +460,18 @@ pub fn diff_report(expected: &MeshManifest, actual: &MeshManifest) -> Option<Str
         let (e, a) = (&expected.meshes[i], &actual.meshes[i]);
         if e != a {
             let mut which = Vec::new();
+            if e.express_id != a.express_id {
+                which.push("express_id");
+            }
+            if e.geometry_class != a.geometry_class {
+                which.push("geometry_class");
+            }
+            if e.vertex_count != a.vertex_count {
+                which.push("vertex_count");
+            }
+            if e.triangle_count != a.triangle_count {
+                which.push("triangle_count");
+            }
             if e.positions_hash != a.positions_hash {
                 which.push("positions");
             }

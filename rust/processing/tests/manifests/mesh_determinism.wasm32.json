@@ -1,68 +1,68 @@
 {
-          "hash": "0xf2c197ba3c2986d1",
-          "mesh_count": 6,
-          "vertex_count": 372,
-          "triangle_count": 232,
-          "voids_hash": "0xe20db54c093020fd",
-          "void_host_count": 2,
-          "material_colors_hash": "0x2c8ff21c7f9f5da3",
-          "material_element_count": 2,
-          "styles_hash": "0xe0a323d7dfcfaf31",
-          "style_entry_count": 5,
-          "meshes": [
-            {
-              "express_id": 100,
-              "geometry_class": 0,
-              "vertex_count": 48,
-              "triangle_count": 32,
-              "positions_hash": "0xf7644f11ac208315",
-              "normals_hash": "0xa88e5063a279b7a5",
-              "indices_origin_hash": "0x9b0470dcf50dd0f6"
-            },
-            {
-              "express_id": 200,
-              "geometry_class": 0,
-              "vertex_count": 24,
-              "triangle_count": 12,
-              "positions_hash": "0x8714e603df509575",
-              "normals_hash": "0xf0285567a570a265",
-              "indices_origin_hash": "0xa480bfc9608ffc1a"
-            },
-            {
-              "express_id": 400,
-              "geometry_class": 0,
-              "vertex_count": 12,
-              "triangle_count": 4,
-              "positions_hash": "0x0b1739ede9d48645",
-              "normals_hash": "0xfa3830252911fdfb",
-              "indices_origin_hash": "0xefa67a238c3c3ad4"
-            },
-            {
-              "express_id": 500,
-              "geometry_class": 0,
-              "vertex_count": 216,
-              "triangle_count": 140,
-              "positions_hash": "0xe42a379a27d5cf05",
-              "normals_hash": "0xc51d78373842c015",
-              "indices_origin_hash": "0x99bb177d5bce4417"
-            },
-            {
-              "express_id": 600,
-              "geometry_class": 0,
-              "vertex_count": 48,
-              "triangle_count": 32,
-              "positions_hash": "0x3c3dcacbe0e4a9e5",
-              "normals_hash": "0xa88e5063a279b7a5",
-              "indices_origin_hash": "0x2bd37de922a65ae4"
-            },
-            {
-              "express_id": 700,
-              "geometry_class": 0,
-              "vertex_count": 24,
-              "triangle_count": 12,
-              "positions_hash": "0xc42face08bbfc5c5",
-              "normals_hash": "0xf0285567a570a265",
-              "indices_origin_hash": "0x891c764aab66dbb1"
-            }
-          ]
-        }
+  "hash": "0xf2c197ba3c2986d1",
+  "mesh_count": 6,
+  "vertex_count": 372,
+  "triangle_count": 232,
+  "voids_hash": "0xe20db54c093020fd",
+  "void_host_count": 2,
+  "material_colors_hash": "0x2c8ff21c7f9f5da3",
+  "material_element_count": 2,
+  "styles_hash": "0xe0a323d7dfcfaf31",
+  "style_entry_count": 5,
+  "meshes": [
+    {
+      "express_id": 100,
+      "geometry_class": 0,
+      "vertex_count": 48,
+      "triangle_count": 32,
+      "positions_hash": "0xf7644f11ac208315",
+      "normals_hash": "0xa88e5063a279b7a5",
+      "indices_origin_hash": "0x9b0470dcf50dd0f6"
+    },
+    {
+      "express_id": 200,
+      "geometry_class": 0,
+      "vertex_count": 24,
+      "triangle_count": 12,
+      "positions_hash": "0x8714e603df509575",
+      "normals_hash": "0xf0285567a570a265",
+      "indices_origin_hash": "0xa480bfc9608ffc1a"
+    },
+    {
+      "express_id": 400,
+      "geometry_class": 0,
+      "vertex_count": 12,
+      "triangle_count": 4,
+      "positions_hash": "0x0b1739ede9d48645",
+      "normals_hash": "0xfa3830252911fdfb",
+      "indices_origin_hash": "0xefa67a238c3c3ad4"
+    },
+    {
+      "express_id": 500,
+      "geometry_class": 0,
+      "vertex_count": 216,
+      "triangle_count": 140,
+      "positions_hash": "0xe42a379a27d5cf05",
+      "normals_hash": "0xc51d78373842c015",
+      "indices_origin_hash": "0x99bb177d5bce4417"
+    },
+    {
+      "express_id": 600,
+      "geometry_class": 0,
+      "vertex_count": 48,
+      "triangle_count": 32,
+      "positions_hash": "0x3c3dcacbe0e4a9e5",
+      "normals_hash": "0xa88e5063a279b7a5",
+      "indices_origin_hash": "0x2bd37de922a65ae4"
+    },
+    {
+      "express_id": 700,
+      "geometry_class": 0,
+      "vertex_count": 24,
+      "triangle_count": 12,
+      "positions_hash": "0xc42face08bbfc5c5",
+      "normals_hash": "0xf0285567a570a265",
+      "indices_origin_hash": "0x891c764aab66dbb1"
+    }
+  ]
+}

@@ -52,6 +52,14 @@ pub struct EntityDecoder<'a> {
     /// Cache of cartesian point coordinates for FacetedBrep optimization
     /// Only populated when using get_polyloop_coords_cached
     point_cache: FxHashMap<u32, (f64, f64, f64)>,
+    /// Number of `point_cache` hits served by [`Self::get_polyloop_coords_cached`].
+    /// Pure instrumentation (never affects output); read via
+    /// [`Self::point_cache_stats`] to prove cross-element memoization fires when
+    /// the cache is hoisted across a worker's parts.
+    point_cache_hits: u64,
+    /// Number of `point_cache` misses (a CartesianPoint parsed for the first time)
+    /// served by [`Self::get_polyloop_coords_cached`].
+    point_cache_misses: u64,
     /// Lazy-cached multiplier converting file plane-angle units to radians.
     /// Populated on first call to [`Self::plane_angle_to_radians`]. Spec
     /// default (and Renga-style files) is 1.0 (RADIAN); degree-unit files
@@ -76,6 +84,8 @@ impl<'a> EntityDecoder<'a> {
             cache: FxHashMap::default(),
             entity_index: None,
             point_cache: FxHashMap::default(),
+            point_cache_hits: 0,
+            point_cache_misses: 0,
             plane_angle_to_radians_cache: None,
             length_unit_scale_cache: None,
         }
@@ -92,6 +102,8 @@ impl<'a> EntityDecoder<'a> {
             cache: FxHashMap::default(),
             entity_index: Some(Arc::new(index)),
             point_cache: FxHashMap::default(),
+            point_cache_hits: 0,
+            point_cache_misses: 0,
             plane_angle_to_radians_cache: None,
             length_unit_scale_cache: None,
         }
@@ -108,6 +120,8 @@ impl<'a> EntityDecoder<'a> {
             cache: FxHashMap::default(),
             entity_index: Some(index),
             point_cache: FxHashMap::default(),
+            point_cache_hits: 0,
+            point_cache_misses: 0,
             plane_angle_to_radians_cache: None,
             length_unit_scale_cache: None,
         }
@@ -425,6 +439,31 @@ impl<'a> EntityDecoder<'a> {
     /// The entity cache is preserved for subsequent geometry processing.
     pub fn clear_point_cache(&mut self) {
         self.point_cache.clear();
+    }
+
+    /// Move the CartesianPoint coordinate cache OUT of this decoder, leaving it
+    /// empty. Paired with [`Self::set_point_cache`] to hoist the cache across the
+    /// per-element decoders a single worker builds within one batch: the cache is
+    /// pure memoization of `content` + point id -> coords, so reusing it across
+    /// elements is byte-identical (speed only). Cheap: moves the map header, not
+    /// its contents.
+    pub fn take_point_cache(&mut self) -> FxHashMap<u32, (f64, f64, f64)> {
+        std::mem::take(&mut self.point_cache)
+    }
+
+    /// Install a previously-accumulated point cache (see [`Self::take_point_cache`]).
+    /// Does not reset the hit/miss counters, which stay per-decoder so each job's
+    /// [`Self::point_cache_stats`] reflect only that job's activity.
+    pub fn set_point_cache(&mut self, cache: FxHashMap<u32, (f64, f64, f64)>) {
+        self.point_cache = cache;
+    }
+
+    /// `(hits, misses)` served by [`Self::get_polyloop_coords_cached`] over this
+    /// decoder's lifetime. A hit is a CartesianPoint served from the cache; a miss
+    /// is one parsed for the first time. Non-zero hits after processing more than
+    /// one faceted part with a shared point list prove cross-element memoization.
+    pub fn point_cache_stats(&self) -> (u64, u64) {
+        (self.point_cache_hits, self.point_cache_misses)
     }
 
     /// Get cache size
@@ -923,6 +962,7 @@ impl<'a> EntityDecoder<'a> {
 
                     // Check cache first
                     if let Some(&coord) = self.point_cache.get(&point_id) {
+                        self.point_cache_hits += 1;
                         coords.push(coord);
                     } else {
                         // Not in cache - parse and cache
@@ -930,6 +970,7 @@ impl<'a> EntityDecoder<'a> {
                             if let Some(coord) =
                                 parse_cartesian_point_inline(&bytes_full[pt_start..pt_end])
                             {
+                                self.point_cache_misses += 1;
                                 self.point_cache.insert(point_id, coord);
                                 coords.push(coord);
                             }
@@ -1043,151 +1084,4 @@ fn parse_next_float(bytes: &[u8], offset: &mut usize) -> Option<f64> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::IfcType;
-
-    #[test]
-    fn test_decode_entity() {
-        let content = r#"
-#1=IFCPROJECT('2vqT3bvqj9RBFjLlXpN8n9',$,$,$,$,$,$,$,$);
-#2=IFCWALL('3a4T3bvqj9RBFjLlXpN8n0',$,$,$,'Wall-001',$,#3,#4);
-#3=IFCLOCALPLACEMENT($,#4);
-#4=IFCAXIS2PLACEMENT3D(#5,$,$);
-#5=IFCCARTESIANPOINT((0.,0.,0.));
-"#;
-
-        let mut decoder = EntityDecoder::new(content);
-
-        // Find entity #2
-        let start = content.find("#2=").unwrap();
-        let end = content[start..].find(';').unwrap() + start + 1;
-
-        let entity = decoder.decode_at(start, end).unwrap();
-        assert_eq!(entity.id, 2);
-        assert_eq!(entity.ifc_type, IfcType::IfcWall);
-        assert_eq!(entity.attributes.len(), 8);
-        assert_eq!(entity.get_string(4), Some("Wall-001"));
-        assert_eq!(entity.get_ref(6), Some(3));
-        assert_eq!(entity.get_ref(7), Some(4));
-    }
-
-    #[test]
-    fn test_decode_by_id() {
-        let content = r#"
-#1=IFCPROJECT('guid',$,$,$,$,$,$,$,$);
-#5=IFCWALL('guid2',$,$,$,'Wall-001',$,$,$);
-#10=IFCDOOR('guid3',$,$,$,'Door-001',$,$,$);
-"#;
-
-        let mut decoder = EntityDecoder::new(content);
-
-        let entity = decoder.decode_by_id(5).unwrap();
-        assert_eq!(entity.id, 5);
-        assert_eq!(entity.ifc_type, IfcType::IfcWall);
-        assert_eq!(entity.get_string(4), Some("Wall-001"));
-
-        // Should be cached now
-        assert_eq!(decoder.cache_size(), 1);
-        let cached = decoder.get_cached(5).unwrap();
-        assert_eq!(cached.id, 5);
-    }
-
-    #[test]
-    fn test_build_entity_index_matches_scanner_header_semantics() {
-        let content = "ISO-10303-21;\nHEADER;\n\
-FILE_DESCRIPTION(('ViewDefinition [ReferenceView]'),'2;1');\n\
-FILE_NAME('26-IFC\\X2\\00B1\\X0\\2#.ifc','2026-04-29T18:21:27',$,$,'CATIA','CATIA',$);\n\
-FILE_SCHEMA(('IFC4'));\nENDSEC;\n\
-DATA;\n\
-#1=IFCPROJECT('guid',$,$,$,$,$,$,$,$);\n\
-#2=IFCWALL('guid2',$,$,$,'Wall; with semicolon',$,$,$);\n\
-ENDSEC;\nEND-ISO-10303-21;\n";
-
-        let index = build_entity_index(content);
-
-        assert_eq!(index.len(), 2);
-        assert!(!index.contains_key(&26));
-        let (start, end) = index.get(&2).copied().unwrap();
-        assert_eq!(
-            &content[start..end],
-            "#2=IFCWALL('guid2',$,$,$,'Wall; with semicolon',$,$,$);"
-        );
-    }
-
-    #[test]
-    fn test_decode_by_id_handles_quoted_semicolon_from_shared_index() {
-        let content = "#1=IFCWALL('guid',$,$,$,'Wall; with semicolon',$,$,$);\n";
-        let mut decoder = EntityDecoder::new(content);
-
-        let wall = decoder.decode_by_id(1).unwrap();
-
-        assert_eq!(wall.id, 1);
-        assert_eq!(wall.ifc_type, IfcType::IfcWall);
-        assert_eq!(wall.get_string(4), Some("Wall; with semicolon"));
-    }
-
-    #[test]
-    fn test_resolve_ref() {
-        let content = r#"
-#1=IFCPROJECT('guid',$,$,$,$,$,$,$,$);
-#2=IFCWALL('guid2',$,$,$,$,$,#1,$);
-"#;
-
-        let mut decoder = EntityDecoder::new(content);
-
-        let wall = decoder.decode_by_id(2).unwrap();
-        let placement_attr = wall.get(6).unwrap();
-
-        let referenced = decoder.resolve_ref(placement_attr).unwrap().unwrap();
-        assert_eq!(referenced.id, 1);
-        assert_eq!(referenced.ifc_type, IfcType::IfcProject);
-    }
-
-    #[test]
-    fn test_resolve_ref_list() {
-        let content = r#"
-#1=IFCPROJECT('guid',$,$,$,$,$,$,$,$);
-#2=IFCWALL('guid1',$,$,$,$,$,$,$);
-#3=IFCDOOR('guid2',$,$,$,$,$,$,$);
-#4=IFCRELCONTAINEDINSPATIALSTRUCTURE('guid3',$,$,$,(#2,#3),$,#1);
-"#;
-
-        let mut decoder = EntityDecoder::new(content);
-
-        let rel = decoder.decode_by_id(4).unwrap();
-        let elements_attr = rel.get(4).unwrap();
-
-        let elements = decoder.resolve_ref_list(elements_attr).unwrap();
-        assert_eq!(elements.len(), 2);
-        assert_eq!(elements[0].id, 2);
-        assert_eq!(elements[0].ifc_type, IfcType::IfcWall);
-        assert_eq!(elements[1].id, 3);
-        assert_eq!(elements[1].ifc_type, IfcType::IfcDoor);
-    }
-
-    #[test]
-    fn test_cache() {
-        let content = r#"
-#1=IFCPROJECT('guid',$,$,$,$,$,$,$,$);
-#2=IFCWALL('guid2',$,$,$,$,$,$,$);
-"#;
-
-        let mut decoder = EntityDecoder::new(content);
-
-        assert_eq!(decoder.cache_size(), 0);
-
-        decoder.decode_by_id(1).unwrap();
-        assert_eq!(decoder.cache_size(), 1);
-
-        decoder.decode_by_id(2).unwrap();
-        assert_eq!(decoder.cache_size(), 2);
-
-        // Decode same entity - should use cache
-        decoder.decode_by_id(1).unwrap();
-        assert_eq!(decoder.cache_size(), 2);
-
-        decoder.clear_cache();
-        assert_eq!(decoder.cache_size(), 0);
-    }
-}
+mod decoder_tests;

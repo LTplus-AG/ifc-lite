@@ -371,5 +371,5 @@ export function assembleStepBlob(header: string, entities: string[]): Blob {
     parts[i++] = '\n';
   }
   parts[i] = 'ENDSEC;\nEND-ISO-10303-21;\n';
-  return new Blob(parts, { type: 'text/plain' });
+  return new Blob(parts, { type: 'model/step' });
 }

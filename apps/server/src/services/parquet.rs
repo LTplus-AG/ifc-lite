@@ -444,13 +444,13 @@ impl StreamingParquetCacheWriter {
     /// Close all three writers and assemble the `[len][mesh][len][vert][len][idx]`
     /// section blob, identical in framing to `serialize_to_parquet`.
     ///
-    /// No production caller needs the bare inner blob anymore (the
-    /// parquet-stream route uses `finish_combined()`), but this stays as the
-    /// direct counterpart to `serialize_to_parquet` for
+    /// Test-only (`#[cfg(test)]`): no production caller needs the bare inner
+    /// blob anymore (the parquet-stream route uses `finish_combined()`), so it
+    /// stays out of the production binary. It survives as the direct
+    /// counterpart to `serialize_to_parquet` for
     /// `incremental_writer_matches_one_shot_serializer`, which pins the
-    /// incremental writer's decode-equivalence to the one-shot serializer
-    /// independent of the route's outer combined framing.
-    #[allow(dead_code)]
+    /// incremental writer's decode-equivalence independent of the outer frame.
+    #[cfg(test)]
     pub fn finish(self) -> Result<Bytes, ParquetError> {
         let mesh = self.mesh_w.into_inner()?;
         let vertex = self.vert_w.into_inner()?;

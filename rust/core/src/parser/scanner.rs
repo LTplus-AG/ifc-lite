@@ -207,45 +207,44 @@ impl<'a> EntityScanner<'a> {
     /// Find the terminating semicolon of an entity, skipping over quoted strings.
     /// IFC strings are enclosed in single quotes ('...') and can contain semicolons.
     /// Returns the offset of the semicolon from the start of the slice.
+    ///
+    /// SIMD scan: instead of inspecting every byte, `memchr2` jumps straight to
+    /// the next quote or semicolon. The overwhelming majority of records are
+    /// string-free geometry primitives (`#7=IFCCARTESIANPOINT((1.,2.,3.));`), so
+    /// the common case resolves the terminator in a single vectorized hop rather
+    /// than a per-byte loop. Semantics are byte-identical to the scalar walk:
+    /// the first `;` outside a quoted string, with doubled `''` treated as an
+    /// escaped in-string quote per STEP (ISO 10303-21). This is the single
+    /// hottest structural-scan function and runs on every entity of every model
+    /// (native and wasm), through both `build_entity_index` and the processor
+    /// scan loop, which share this scanner.
     #[inline]
     fn find_entity_end(&self, content: &[u8]) -> Option<usize> {
         let mut pos = 0;
-        let len = content.len();
-        let mut in_string = false;
 
-        while pos < len {
-            let b = content[pos];
+        loop {
+            // Outside a quoted string: jump to the next quote or the
+            // terminating semicolon in one SIMD pass.
+            pos += memchr::memchr2(b'\'', b';', &content[pos..])?;
+            if content[pos] == b';' {
+                return Some(pos);
+            }
 
-            if in_string {
-                if b == b'\'' {
-                    // Check for escaped quote ('') - if next char is also quote, skip both
-                    if pos + 1 < len && content[pos + 1] == b'\'' {
-                        pos += 2; // Skip escaped quote
-                        continue;
-                    }
-                    in_string = false;
+            // content[pos] == b'\'' : entered a quoted string. Scan to the
+            // closing quote, treating a doubled '' as an escaped quote.
+            pos += 1;
+            loop {
+                pos += memchr::memchr(b'\'', &content[pos..])?;
+                if content.get(pos + 1) == Some(&b'\'') {
+                    // Escaped quote ('') - skip both, stay in the string.
+                    pos += 2;
+                    continue;
                 }
+                // Closing quote.
                 pos += 1;
-            } else {
-                match b {
-                    b'\'' => {
-                        in_string = true;
-                        pos += 1;
-                    }
-                    b';' => {
-                        return Some(pos);
-                    }
-                    b'\n' => {
-                        // Entity definitions can span multiple lines in some IFC files
-                        pos += 1;
-                    }
-                    _ => {
-                        pos += 1;
-                    }
-                }
+                break;
             }
         }
-        None
     }
 
     /// Find all entities of a specific type

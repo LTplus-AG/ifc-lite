@@ -53,6 +53,17 @@ strip = true
 inherits = "release"
 panic = "unwind"
 
+# Profiling profile: release-grade optimization with symbols retained and
+# panic=unwind, so `samply record` on a profiled binary produces a symbolized
+# flamegraph and per-element `catch_unwind` isolation still fires. Used by the
+# `perf_probe` harness and `scripts/perf/flame.sh` (see `scripts/perf/README.md`).
+# `strip`/`debug` override the release defaults; the rest is inherited.
+[profile.profiling]
+inherits = "release"
+strip = false
+debug = "line-tables-only"
+panic = "unwind"
+
 
 [profile.dev.package.bnum]
 opt-level = 3

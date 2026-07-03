@@ -2487,7 +2487,13 @@ pub fn export_glb_from_meshes(
     lit: bool,
 ) -> (Vec<u8>, GltfStats) {
     let n = vertex_counts.len();
-    let mut views: Vec<MeshView> = Vec::with_capacity(n);
+    // Export-local weld: this path bypasses `to_yup` (its buffers are already
+    // absolute Y-up), so it welds here instead — collapsing the viewer's
+    // per-face-duplicated faceted-brep vertices, the same reduction the meshing
+    // paths get in `to_yup`. The welded buffers must outlive the borrowing
+    // `MeshView`s, so build them first.
+    let mut welded: Vec<(Vec<f32>, Vec<f32>, Vec<u32>)> = Vec::with_capacity(n);
+    let mut attrs: Vec<(u32, [f32; 4], [f64; 3])> = Vec::with_capacity(n);
     let mut vbase = 0usize; // running vertex offset
     let mut ibase = 0usize; // running index offset
     for i in 0..n {
@@ -2514,22 +2520,28 @@ pub fn export_glb_from_meshes(
             origins.get(i * 3 + 1).copied().unwrap_or(0.0),
             origins.get(i * 3 + 2).copied().unwrap_or(0.0),
         ];
-        views.push(MeshView {
-            express_id: express_ids.get(i).copied().unwrap_or(0),
+        welded.push(crate::mesh_weld::weld_local(pslice, nslice, islice));
+        attrs.push((express_ids.get(i).copied().unwrap_or(0), color, origin));
+        vbase += vc;
+        ibase += ic;
+    }
+    let views: Vec<MeshView> = welded
+        .iter()
+        .zip(attrs.iter())
+        .map(|((wp, wn, wi), &(express_id, color, origin))| MeshView {
+            express_id,
             ifc_type: "",
             global_id: None,
-            positions: pslice,
-            normals: nslice,
-            indices: islice,
+            positions: wp,
+            normals: wn,
+            indices: wi,
             color,
             origin,
             // The viewer's MeshData drops the instancing side-channel across the
             // worker boundary (it is `#[serde(skip)]`), so this path is always flat.
             instance: None,
-        });
-        vbase += vc;
-        ibase += ic;
-    }
+        })
+        .collect();
     // From-meshes geometry is already absolute Y-up and never instances (no
     // side-channel), so there is no RTC frame to compensate. Quantization is a
     // from-bytes feature; the viewer path stays f32.
@@ -3162,6 +3174,74 @@ mod tests {
 
         // Binary buffer length matches the declared buffer.
         assert_eq!(bin.len(), json["buffers"][0]["byteLength"].as_u64().unwrap() as usize);
+    }
+
+    #[test]
+    fn faceted_plate_glb_welds_per_face_duplicated_vertices() {
+        // A flat GxG plate authored per-cell — each cell carries its OWN four
+        // coplanar corners, the faceted-brep duplication pattern that inflates
+        // structural GLBs ~8x. The export weld must collapse the 4*G*G raw
+        // vertices to the (G+1)^2 unique grid points, leaving triangles and the
+        // plate extent unchanged.
+        const G: usize = 4;
+        let mut positions: Vec<f32> = Vec::new();
+        let mut normals: Vec<f32> = Vec::new();
+        let mut indices: Vec<u32> = Vec::new();
+        for i in 0..G {
+            for j in 0..G {
+                let base = (positions.len() / 3) as u32;
+                let (x, y) = (i as f32, j as f32);
+                for (dx, dy) in [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)] {
+                    positions.extend_from_slice(&[x + dx, y + dy, 0.0]);
+                    normals.extend_from_slice(&[0.0, 0.0, 1.0]);
+                }
+                indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
+            }
+        }
+        let raw_verts = positions.len() / 3; // 4 * G * G = 64
+        let unique_verts = (G + 1) * (G + 1); // 25
+        assert_eq!(raw_verts, 4 * G * G);
+
+        let (glb, stats) = export_glb_from_meshes(
+            &positions,
+            &normals,
+            &indices,
+            &[raw_verts as u32],
+            &[indices.len() as u32],
+            &[0.5, 0.5, 0.5, 1.0],
+            &[0.0, 0.0, 0.0],
+            &[1u32],
+            true,
+            false,
+        );
+        // Triangles are unchanged by the weld.
+        assert_eq!(stats.triangles, 2 * G * G);
+
+        let (json, _bin) = parse_glb(&glb);
+        // The position accessor (VEC3 with min/max) carries the WELDED count.
+        let pos_acc = json["accessors"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["type"] == "VEC3" && a["min"].is_array())
+            .expect("position accessor");
+        let pos_count = pos_acc["count"].as_u64().unwrap() as usize;
+        assert_eq!(pos_count, unique_verts, "welded to the unique grid points");
+        assert!(
+            pos_count * 2 <= raw_verts,
+            "at least 2x fewer vertices ({pos_count} welded vs {raw_verts} raw)"
+        );
+
+        // World extent preserved: the plate is still GxG and flat (one axis span
+        // is 0, the other two are G), regardless of the Y-up axis order.
+        let mn: Vec<f64> = pos_acc["min"].as_array().unwrap().iter().map(|v| v.as_f64().unwrap()).collect();
+        let mx: Vec<f64> = pos_acc["max"].as_array().unwrap().iter().map(|v| v.as_f64().unwrap()).collect();
+        let mut spans: Vec<f64> = (0..3).map(|i| mx[i] - mn[i]).collect();
+        spans.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        assert!(
+            spans[0].abs() < 1e-4 && (spans[1] - G as f64).abs() < 1e-4 && (spans[2] - G as f64).abs() < 1e-4,
+            "welded plate keeps its GxG flat extent (spans {spans:?})"
+        );
     }
 
     #[test]

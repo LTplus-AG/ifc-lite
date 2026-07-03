@@ -17,6 +17,7 @@ mod gltf;
 mod hbjson;
 mod ifc5;
 mod json;
+mod mesh_weld;
 mod jsonld;
 mod kmz;
 mod merged;

@@ -36,7 +36,15 @@ pub(crate) struct YUpMesh {
     pub origin: [f64; 3],
 }
 
-/// Convert Z-up `positions`/`normals`/`indices`/`origin` to Y-up owned buffers.
+/// Convert Z-up `positions`/`normals`/`indices`/`origin` to Y-up owned buffers,
+/// then apply the export-local vertex weld (see [`crate::mesh_weld`]).
+///
+/// Welding here, at the single funnel every glTF emit path runs through
+/// (in-memory `build_gltf`, streaming, and both passes of the bounded assembler),
+/// is what keeps the assemblers byte-identical to each other while collapsing the
+/// faceted-brep per-face vertex duplication. It is export-only and
+/// geometry-preserving, so `process_geometry`'s `MeshData` and the mesh-output
+/// determinism manifests are untouched.
 pub(crate) fn to_yup(
     positions: &[f32],
     normals: &[f32],
@@ -60,5 +68,6 @@ pub(crate) fn to_yup(
         idx.swap(i + 1, i + 2);
         i += 3;
     }
+    let (p, n, idx) = crate::mesh_weld::weld_local(&p, &n, &idx);
     YUpMesh { positions: p, normals: n, indices: idx, origin: yup_f64(origin) }
 }

@@ -27,6 +27,9 @@ zip = { version = "8", default-features = false, features = ["deflate"], optiona
 [features]
 default = []
 parquet-bos = ["dep:arrow", "dep:parquet", "dep:zip"]
+# Surfaces the processing crate's faceted-brep phase timing (Instant-gated, native
+# only) so `--example glb_export_profile` can attribute per-part brep wall time.
+observability = ["ifc-lite-processing/observability"]
 
 [lints]
 workspace = true

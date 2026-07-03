@@ -1148,6 +1148,8 @@ pub fn process_geometry_streaming_filtered_with_options(
     let point_cache_misses_collector = std::sync::atomic::AtomicU64::new(0);
     let faceted_brep_ns_collector = std::sync::atomic::AtomicU64::new(0);
 
+    let worker_point_caches = jobs::new_worker_point_caches();
+
     let geometry_span = tracing::info_span!(
         "geometry",
         element_count = total_jobs,
@@ -1255,17 +1257,15 @@ pub fn process_geometry_streaming_filtered_with_options(
             } else {
                 None
             };
-        // `map_init` gives each rayon worker a single long-lived CartesianPoint
-        // cache (`FxHashMap`) it reuses across every element in its sub-range,
-        // instead of the fresh-per-element decoder that threw the cache away each
-        // job. Each worker owns its own map (no cross-thread sharing), so a shared
-        // steel point list is parsed once per worker-batch, not once per part.
-        // `map_init(...).flatten_iter()` preserves the exact same job order as the
-        // former `flat_map_iter`, and the cache is pure memoization, so the meshes
-        // are byte-identical (verified by `mesh_determinism`).
+        // Each job borrows its worker's persistent point cache by thread index, so a
+        // shared point list is parsed once per worker for the whole model, not per
+        // chunk/part. `.map`/`.flatten_iter()` keeps the former `flat_map_iter` order;
+        // the cache is pure memoization, so meshes are byte-identical.
         let chunk_meshes: Vec<MeshData> = jobs_chunk
             .par_iter()
-            .map_init(FxHashMap::default, |worker_point_cache, job| {
+            .map(|job| {
+                let widx = rayon::current_thread_index().unwrap_or(0) % worker_point_caches.len();
+                let mut worker_point_cache = worker_point_caches[widx].lock().unwrap();
                 process_entity_job(
                     job,
                     content,
@@ -1287,7 +1287,7 @@ pub fn process_geometry_streaming_filtered_with_options(
                     &rect_fast_collector,
                     &backstop_collector,
                     &item_dedup_cache,
-                    worker_point_cache,
+                    &mut worker_point_cache,
                     &point_cache_hits_collector,
                     &point_cache_misses_collector,
                     &faceted_brep_ns_collector,

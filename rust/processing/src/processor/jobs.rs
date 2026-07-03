@@ -12,6 +12,33 @@
 
 use super::*;
 
+/// Per-rayon-worker CartesianPoint caches: one `FxHashMap` behind a `Mutex` per
+/// worker thread, indexed by `rayon::current_thread_index()`.
+pub(super) type WorkerPointCaches = Vec<std::sync::Mutex<FxHashMap<u32, (f64, f64, f64)>>>;
+
+/// One persistent CartesianPoint cache per rayon worker thread, indexed by
+/// `rayon::current_thread_index()`.
+///
+/// The former per-chunk `map_init(FxHashMap::default, ...)` reallocated a fresh
+/// cache for every worker AND every throughput chunk, and rayon's fine job
+/// splitting fragmented it further, so a shared steel point list got re-parsed
+/// once per split/chunk under real parallel execution (case-047/048). This store
+/// lives across the WHOLE chunk loop, so each shared point is parsed at most once
+/// per worker thread for the entire model. Each `Mutex` is only ever locked by the
+/// one worker that owns that index (thread indices are unique per pool worker), so
+/// it is uncontended. The cache is pure memoization of deterministic coordinates,
+/// so meshes stay byte-identical (`mesh_determinism` no-diff).
+///
+/// The per-job body still moves its worker's slot into a local decoder and back,
+/// so `WorkerCacheGuard` below is still required to survive a `decode_at` error —
+/// and here it matters MORE than under the old per-chunk `map_init`: dropping a
+/// persistent slot cold-starts that worker for the whole model, not just a chunk.
+pub(super) fn new_worker_point_caches() -> WorkerPointCaches {
+    (0..rayon::current_num_threads().max(1))
+        .map(|_| std::sync::Mutex::new(FxHashMap::default()))
+        .collect()
+}
+
 /// RAII guard that returns a worker's warm CartesianPoint cache to its slot on
 /// EVERY exit path — the normal return, the `decode_at` error early-return, and
 /// a panic. Without it, a decode failure would drop `local_decoder` (holding the
@@ -81,10 +108,11 @@ pub(super) fn process_entity_job(
     // Model-wide content-dedup cache shared by every per-job router so identical
     // geometry is meshed once across the rayon pool (#1109 follow-up).
     item_dedup_cache: &ifc_lite_geometry::ItemDedupCache,
-    // Per-WORKER CartesianPoint cache, owned by one rayon worker and reused across
-    // every element in its sub-range (see the `map_init` call site). Moved into
-    // this job's decoder and moved back out afterwards so a shared point list is
-    // parsed once per worker-batch, not once per part.
+    // The current rayon worker's PERSISTENT CartesianPoint cache, reused across
+    // every element that worker meshes for the whole model (see the
+    // `worker_point_caches` store at the call site). Moved into this job's decoder
+    // and moved back out afterwards so a shared point list is parsed once per worker
+    // for the entire pass, not once per chunk or once per part.
     worker_point_cache: &mut FxHashMap<u32, (f64, f64, f64)>,
     // Request-local point-cache hit/miss + faceted-brep-timing sinks (see the
     // collectors declared before the chunk loop).
@@ -97,8 +125,8 @@ pub(super) fn process_entity_job(
     }
 
     let mut local_decoder = EntityDecoder::with_arc_index(content, entity_index_arc.clone());
-    // Adopt this worker's warm point cache so faceted-brep polyloop points shared
-    // across elements are served from memory instead of re-parsed per element.
+    // Adopt this worker's persistent point cache so faceted-brep polyloop points
+    // shared across elements are served from memory instead of re-parsed per element.
     local_decoder.set_point_cache(std::mem::take(worker_point_cache));
     // Seed the unit-scale caches so curve/arc processing skips the O(file)
     // IFCPROJECT scan that each fresh per-element decoder would otherwise repeat.

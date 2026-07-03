@@ -2,6 +2,10 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+//! NOTE: `#[ignore]` + needs an external corpus model, so it does NOT gate in
+//! CI. The hermetic CI gate on the shipped default is `rect_param_gate.rs`
+//! (inline fixture, no fetch).
+//!
 //! Corpus A/B validation for the PARAMETRIC rect-opening fast path
 //! (`IFC_LITE_RECT_PARAM` / `rect_fast::param_enabled`), modeled on
 //! `dedup_validate.rs`: drive the PRODUCTION submesh path

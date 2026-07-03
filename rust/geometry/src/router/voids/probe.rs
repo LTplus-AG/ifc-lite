@@ -373,126 +373,17 @@ impl GeometryRouter {
         let placement = self
             .get_placement_transform_from_element(element, decoder)
             .ok()?;
-
-        // element → IfcProductDefinitionShape → first Body/SweptSolid item.
-        let rep = decoder.resolve_ref(element.get(6)?).ok()??;
-        if rep.ifc_type != IfcType::IfcProductDefinitionShape {
+        // A clean rectangular extrusion is exactly ONE Body item. A multi-solid
+        // body (the probe would otherwise read only the first) must defer so the
+        // exact kernel cuts all of it. Sharing `body_representation_items` +
+        // `rect_param_from_item` with `parametric_rect_probe_all` keeps the host
+        // frame and the cutter frames on ONE derivation - they cannot drift into
+        // a silent miscut (they feed the same shared-frame cellular cut).
+        let items = self.body_representation_items(element, decoder)?;
+        if items.len() != 1 {
             return None;
         }
-        let reps = decoder.resolve_ref_list(rep.get(2)?).ok()?;
-        let mut item = None;
-        for sr in reps {
-            if sr.ifc_type != IfcType::IfcShapeRepresentation {
-                continue;
-            }
-            let rt = sr.get(2).and_then(|a| a.as_string()).unwrap_or("");
-            if !matches!(
-                rt,
-                "Body" | "SweptSolid" | "SolidModel" | "Clipping" | "AdvancedSweptSolid"
-                    | "MappedRepresentation"
-            ) {
-                continue;
-            }
-            if let Ok(items) = decoder.resolve_ref_list(sr.get(3)?) {
-                // A clean rectangular extrusion is ONE item. A multi-solid body
-                // (the probe would otherwise read only the first) must defer so the
-                // exact kernel cuts all of it.
-                let mut iter = items.into_iter();
-                let Some(first) = iter.next() else {
-                    continue;
-                };
-                if iter.next().is_some() {
-                    return None;
-                }
-                item = Some(first);
-                break;
-            }
-        }
-
-        // Unwrap to the IfcExtrudedAreaSolid, accumulating the mapped/clip transform chain.
-        let mut current = item?;
-        let mut chain = Matrix4::<f64>::identity();
-        let mut visited = FxHashSet::default();
-        let solid = loop {
-            if !visited.insert(current.id) || visited.len() > MAX_EXTRUSION_EXTRACT_DEPTH {
-                return None;
-            }
-            match current.ifc_type {
-                IfcType::IfcExtrudedAreaSolid => break current,
-                IfcType::IfcBooleanClippingResult | IfcType::IfcBooleanResult => {
-                    current = decoder.resolve_ref(current.get(1)?).ok()??;
-                }
-                IfcType::IfcMappedItem => {
-                    let source = decoder.resolve_ref(current.get(0)?).ok()??;
-                    let mapped_rep = decoder.resolve_ref(source.get(1)?).ok()??;
-                    if let Some(t) = current.get(1) {
-                        if !t.is_null() {
-                            if let Ok(Some(te)) = decoder.resolve_ref(t) {
-                                if let Ok(m) =
-                                    self.parse_cartesian_transformation_operator(&te, decoder)
-                                {
-                                    chain *= m;
-                                }
-                            }
-                        }
-                    }
-                    current = decoder.resolve_ref_list(mapped_rep.get(3)?).ok()?.into_iter().next()?;
-                }
-                _ => return None,
-            }
-        };
-
-        // IfcExtrudedAreaSolid: 0 SweptArea, 1 Position, 2 ExtrudedDirection, 3 Depth.
-        let profile = decoder.resolve_ref(solid.get(0)?).ok()??;
-        let (x_dim, y_dim, off_x, off_y, cos_t, sin_t) =
-            self.read_rect_profile_2d(&profile, decoder)?;
-        let depth = solid.get_float(3)?;
-        if !(x_dim > 0.0 && y_dim > 0.0 && depth > 0.0) {
-            return None;
-        }
-        let solid_pos = match solid.get(1) {
-            Some(a) if !a.is_null() => {
-                let e = decoder.resolve_ref(a).ok()??;
-                self.parse_axis2_placement_3d(&e, decoder).ok()?
-            }
-            _ => Matrix4::identity(),
-        };
-        let dir_local = {
-            let e = decoder.resolve_ref(solid.get(2)?).ok()??;
-            self.parse_direction(&e).ok()?
-        };
-
-        // Box axes in the SOLID-local frame: profile X' / Y' (rotated by the 2D Position)
-        // and the extrude direction. Center = profile offset in the solid XY plane, then
-        // half the depth along the extrude axis.
-        let u = Vector3::new(cos_t, sin_t, 0.0);
-        let v = Vector3::new(-sin_t, cos_t, 0.0);
-        let w = dir_local.try_normalize(1e-12)?;
-        let m = placement * chain * solid_pos;
-        let rot = m.fixed_view::<3, 3>(0, 0).into_owned();
-        let uu = (rot * u).try_normalize(1e-9)?;
-        let vv = (rot * v).try_normalize(1e-9)?;
-        let ww = (rot * w).try_normalize(1e-9)?;
-        let center_local = Point3::new(off_x, off_y, 0.0) + w * (depth * 0.5);
-        let center_native = m.transform_point(&center_local);
-        // The whole pipeline applies the model length-unit scale uniformly to final
-        // positions; a uniform scale leaves the orthonormal frame R unchanged and scales
-        // the center + half-extents. Without this the box is off by the unit factor
-        // (e.g. 1000x on a millimetre IFC2X3 Revit model).
-        // Match the mesh frame: the mesh/bounds path scales by `unit_scale` AND subtracts
-        // the RTC offset (georef re-basing). The center must do BOTH or it is framed
-        // around a different origin than the host vertices → spurious defers / wrong cut.
-        let s = self.unit_scale;
-        let (rx, ry, rz) = self.rtc_offset;
-        Some(RectParam {
-            r: Matrix3::from_columns(&[uu, vv, ww]),
-            center: Point3::new(
-                center_native.x * s - rx,
-                center_native.y * s - ry,
-                center_native.z * s - rz,
-            ),
-            half: [x_dim * 0.5 * s, y_dim * 0.5 * s, depth * 0.5 * s],
-        })
+        self.rect_param_from_item(items.into_iter().next()?, &placement, decoder)
     }
 
     /// Get per-item meshes for an opening element, transformed to world coordinates.

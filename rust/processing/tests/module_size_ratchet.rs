@@ -60,11 +60,18 @@ fn collect_rs_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
 
 /// Generated code and test/support files are not subject to the split rule.
 fn is_exempt(rel: &str) -> bool {
+    let base = rel.rsplit('/').next().unwrap_or(rel);
     rel.contains("/generated/")
         || rel.contains("/tests/")
         || rel.contains("/examples/")
         || rel.contains("/benches/")
         || rel.contains("/fuzz/")
+        // `#[cfg(test)]` module files embedded in src/ are test code, not
+        // production modules subject to the split rule (e.g. src/tests.rs,
+        // foo_tests.rs, foo_test.rs).
+        || base == "tests.rs"
+        || base.ends_with("_tests.rs")
+        || base.ends_with("_test.rs")
 }
 
 /// Parse the committed allowlist into (relpath -> budget). Skips comment/blank
@@ -109,7 +116,9 @@ fn no_module_grows_past_its_ratchet_budget() {
 
     let mut new_offenders = Vec::new(); // over LIMIT, not allowlisted
     let mut grew = Vec::new(); // allowlisted, over budget
-    let mut seen = std::collections::HashSet::new();
+    // relpath -> current line count, for every non-exempt file, so the stale-row
+    // advisory below can tell "gone/exempt" from "shrank below the limit".
+    let mut seen = std::collections::HashMap::new();
 
     for path in &files {
         let rel = path
@@ -121,7 +130,7 @@ fn no_module_grows_past_its_ratchet_budget() {
             continue;
         }
         let lines = line_count(path);
-        seen.insert(rel.clone());
+        seen.insert(rel.clone(), lines);
         match allowlist.get(&rel) {
             Some(&budget) => {
                 if lines > budget {
@@ -139,8 +148,14 @@ fn no_module_grows_past_its_ratchet_budget() {
     // allowlisted file that dropped to <= LIMIT or vanished should have its row
     // removed so the list keeps trending down.
     for rel in allowlist.keys() {
-        if !seen.contains(rel) {
-            eprintln!("note: allowlist row for {rel} is now <= {LIMIT} lines (or gone); remove the row");
+        match seen.get(rel) {
+            None => eprintln!(
+                "note: allowlist row {rel:?} no longer matches a tracked file (gone or now exempt); remove it"
+            ),
+            Some(&lines) if lines <= LIMIT => eprintln!(
+                "note: {rel} is now {lines} <= {LIMIT} lines; remove its allowlist row (the total should trend down)"
+            ),
+            Some(_) => {}
         }
     }
 

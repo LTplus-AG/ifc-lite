@@ -11,7 +11,6 @@
      756 apps/server/src/services/parquet_data_model.rs
      581 apps/server/src/services/parquet_optimized.rs
      584 apps/server/src/services/parquet.rs
-     497 rust/clash/src/tests.rs
     1193 rust/core/src/decoder.rs
      429 rust/core/src/fast_parse.rs
      793 rust/core/src/georef.rs
@@ -33,7 +32,6 @@
     1036 rust/geometry/src/extrusion.rs
      759 rust/geometry/src/facet_weld.rs
      408 rust/geometry/src/geom_hash.rs
-     417 rust/geometry/src/instancing/tests.rs
      641 rust/geometry/src/kernel/arrangement/classify.rs
      566 rust/geometry/src/kernel/fixed.rs
      799 rust/geometry/src/kernel/mesh_bridge.rs
@@ -45,7 +43,6 @@
      486 rust/geometry/src/processors/brep/faceted.rs
      402 rust/geometry/src/processors/csg_primitive.rs
      608 rust/geometry/src/processors/sectioned.rs
-     944 rust/geometry/src/processors/tests.rs
      758 rust/geometry/src/profile_extractor.rs
      431 rust/geometry/src/profile.rs
      598 rust/geometry/src/profiles/curves_2d.rs
@@ -53,7 +50,6 @@
      898 rust/geometry/src/profiles/mod.rs
      596 rust/geometry/src/profiles/shapes.rs
      706 rust/geometry/src/profiles/simplify.rs
-     703 rust/geometry/src/profiles/tests.rs
      781 rust/geometry/src/rect_fast.rs
      461 rust/geometry/src/router/clipping.rs
      710 rust/geometry/src/router/diagnostics.rs
@@ -61,16 +57,13 @@
      572 rust/geometry/src/router/mod.rs
     1072 rust/geometry/src/router/processing.rs
      446 rust/geometry/src/router/rtc_offset.rs
-     908 rust/geometry/src/router/tests.rs
      497 rust/geometry/src/router/voids_2d.rs
      618 rust/geometry/src/router/voids/aabb_clip.rs
      871 rust/geometry/src/router/voids/geom.rs
     1963 rust/geometry/src/router/voids/mod.rs
      730 rust/geometry/src/router/voids/probe.rs
-     574 rust/geometry/src/router/voids/reveal_tests.rs
     1002 rust/geometry/src/router/voids/synthesis.rs
     1472 rust/geometry/src/space_dcel/mod.rs
-     760 rust/geometry/src/space_dcel/tests.rs
      782 rust/geometry/src/triangulation.rs
      626 rust/geometry/src/void_analysis.rs
      745 rust/geometry/src/void_index.rs

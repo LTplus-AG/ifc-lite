@@ -12,7 +12,11 @@
 //! regression that makes the param path silently defer or miscut fails here.
 //!
 //! It reads the ROUTER-LOCAL `take_rect_fast_stats().fired` (race-free per
-//! router), not the process-global `take_param_fires()` the corpus tests use.
+//! router) to assert the analytic cut ENGAGED, plus the process-global
+//! `take_param_fires()` to assert it was EMITTED (that counter increments only
+//! after the watertight self-check passes, so it proves the fast-path mesh was
+//! kept, not discarded to the exact kernel). The global counter is drained
+//! immediately before the single process call, scoping the read to this host.
 
 use ifc_lite_core::{build_entity_index, DecodedEntity, EntityDecoder, EntityScanner, IfcType};
 use ifc_lite_geometry::{propagate_voids_to_parts, GeometryRouter, Mesh, RectParam};
@@ -250,7 +254,11 @@ fn param_fast_path_fires_watertight_and_matches_analytic_on_the_shipped_default(
     // the param path as MORE correct than the exact kernel on such hosts).
     let pv = mesh_volume(&result).abs();
     let truth = analytic_cut_volume(&router, &host, &void_index[&HOST_ID], &mut decoder)
-        .expect("analytic ground truth for a clean box host");
+        .expect(
+            "analytic ground truth requires the host + every opening to be an \
+             axis-aligned rectangular box (the committed fixture is); a None here \
+             means a fixture edit introduced a non-axis-aligned opening",
+        );
     let rel = (pv - truth).abs() / truth.max(1.0e-9);
     assert!(
         rel < 0.02,

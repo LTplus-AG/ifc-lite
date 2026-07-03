@@ -202,17 +202,16 @@ Git "fetch tags"/depth or switch to the alternative below.
 shrink the cached prefix, verify survival). Keeps from-source on every preview;
 needs cache-size investigation. Kept here in case (A)'s tag fetch proves flaky.
 
-### 3d. On-demand previews via CLI (preview auto-deploys are OFF)
+### 3d. On-demand previews via CLI
 
-Preview deployments are disabled on the Rust+WASM projects (dashboard:
-`Settings > Git > Preview Deployments`, the `previewDeploymentsDisabled` flag),
-so a push to a PR branch no longer auto-runs the ~several-minute viewer/embed
-WASM compile. Most PRs never need a live preview; this is the largest remaining
-Vercel build-minute lever. `main` still auto-deploys to **production** (a
-separate toggle that stays on).
+Preview builds on the Rust+WASM projects are turned off through each project's
+**Ignored Build Step** (section 3a; dashboard `Settings > Git`), not the
+`previewDeploymentsDisabled` flag. So a PR-branch push does not spin up the
+~several-minute viewer/embed WASM preview. Most PRs never need a live preview;
+this is the largest remaining Vercel build-minute lever. `main` still deploys to
+**production**.
 
-Trigger a preview yourself when a branch needs one. `vercel deploy` builds on
-Vercel regardless of the preview toggle:
+When a branch does need a preview, trigger one from the CLI:
 
 ```
 vercel link      # once per app dir: pick the project (.vercel is gitignored)
@@ -228,10 +227,11 @@ ifc-lite-viewer-embed     root dir: apps/viewer-embed
 ifc-lite-dev (landing)    root dir: apps/landing
 ```
 
-To skip the remote Rust+WASM compile, build locally first (you already have a
-built `@ifc-lite/wasm` from `pnpm build` / `pnpm dev`) and upload the output.
-Run `vercel pull` first so the local build uses the project's current settings
-and env vars:
+The surest path, and the way to skip the remote Rust+WASM compile, is to build
+locally and upload the output: the Ignored Build Step gates only remote builds,
+so a prebuilt upload is never skipped by it. You already have a built
+`@ifc-lite/wasm` from `pnpm build` / `pnpm dev`. Run `vercel pull` first so the
+build uses the project's current settings and env vars:
 
 ```
 vercel pull                                       # sync project settings + env

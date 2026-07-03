@@ -12,6 +12,37 @@
 
 use super::*;
 
+/// RAII guard that returns a worker's warm CartesianPoint cache to its slot on
+/// EVERY exit path — the normal return, the `decode_at` error early-return, and
+/// a panic. Without it, a decode failure would drop `local_decoder` (holding the
+/// worker's whole accumulated cache) before the write-back, cold-starting every
+/// remaining element in that worker's sub-range and silently defeating the hoist.
+/// `Deref`/`DerefMut` expose the wrapped decoder so call sites are unchanged.
+struct WorkerCacheGuard<'c, 's> {
+    decoder: EntityDecoder<'c>,
+    slot: &'s mut FxHashMap<u32, (f64, f64, f64)>,
+}
+
+impl Drop for WorkerCacheGuard<'_, '_> {
+    fn drop(&mut self) {
+        // Cheap: moves the map header (now warmer), not its entries.
+        *self.slot = self.decoder.take_point_cache();
+    }
+}
+
+impl<'c> std::ops::Deref for WorkerCacheGuard<'c, '_> {
+    type Target = EntityDecoder<'c>;
+    fn deref(&self) -> &Self::Target {
+        &self.decoder
+    }
+}
+
+impl std::ops::DerefMut for WorkerCacheGuard<'_, '_> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.decoder
+    }
+}
+
 // Carries the full per-job processing context; factoring the args into a struct
 // would not change behavior and is out of scope for the lint gate.
 #[allow(clippy::too_many_arguments)]
@@ -72,8 +103,15 @@ pub(super) fn process_entity_job(
     // Seed the unit-scale caches so curve/arc processing skips the O(file)
     // IFCPROJECT scan that each fresh per-element decoder would otherwise repeat.
     local_decoder.seed_unit_scales(unit_scale, seed_plane_angle_to_radians);
+    // From here the decoder is owned by the guard, which writes its (warmer)
+    // point cache back into `worker_point_cache` on Drop — so the early return
+    // below, and any panic, still hand the cache to the worker's next element.
+    let mut decoder = WorkerCacheGuard {
+        decoder: local_decoder,
+        slot: worker_point_cache,
+    };
 
-    let entity = match local_decoder.decode_at(job.start, job.end) {
+    let entity = match decoder.decode_at(job.start, job.end) {
         Ok(entity) => entity,
         Err(_) => return Vec::new(),
     };
@@ -130,14 +168,16 @@ pub(super) fn process_entity_job(
         &ctx,
         // Geometry hashing is a viewer diff feature — off on the native path.
         &crate::element::MeshProductionOptions::default(),
-        &mut local_decoder,
+        // Deref-coerces &mut WorkerCacheGuard -> &mut EntityDecoder.
+        &mut decoder,
         &local_router,
     );
 
-    // Fold this element's point-cache activity into the pass tallies, then move
-    // the warm cache back to the worker for the next element. `hits + misses > 0`
-    // means this element was a faceted brep that walked polyloops.
-    let (part_hits, part_misses) = local_decoder.point_cache_stats();
+    // Fold this element's point-cache activity into the pass tallies. The warm
+    // cache is moved back to the worker by `WorkerCacheGuard::drop`, on every
+    // exit path. `hits + misses > 0` means this element was a faceted brep that
+    // walked polyloops.
+    let (part_hits, part_misses) = decoder.point_cache_stats();
     if part_hits + part_misses > 0 {
         use std::sync::atomic::Ordering::Relaxed;
         point_cache_hits_collector.fetch_add(part_hits, Relaxed);
@@ -163,7 +203,6 @@ pub(super) fn process_entity_job(
         #[cfg(not(all(feature = "observability", not(target_arch = "wasm32"))))]
         faceted_brep_ns_collector.fetch_add(0, Relaxed);
     }
-    *worker_point_cache = local_decoder.take_point_cache();
 
     // Fold this element's degenerate-backstop drops into the pass tally.
     if produced.degenerate_triangles_dropped > 0 {

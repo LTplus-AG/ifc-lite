@@ -220,3 +220,54 @@ fn point_cache_survives_take_and_set_across_decoders() {
     // The donor decoder gave its cache away.
     assert!(warm.take_point_cache().is_empty());
 }
+
+/// Regression guard for the hoist's decode-error path (see
+/// `processor::jobs::WorkerCacheGuard`). When a worker's element hits a
+/// `decode_at` failure, its decoder must NOT lose the warm cache: `take_point_cache`
+/// after the failed decode still yields the accumulated entries, so the worker's
+/// NEXT element adopts them and serves its shared loop from cache hits. Before the
+/// RAII guard, the failing element early-returned and dropped the warm cache,
+/// cold-starting the rest of the worker's sub-range and silently defeating the hoist.
+#[test]
+fn point_cache_survives_a_failed_decode_between_elements() {
+    let content = "\
+#10=IFCCARTESIANPOINT((0.,0.,0.));
+#11=IFCCARTESIANPOINT((1.,0.,0.));
+#12=IFCCARTESIANPOINT((1.,1.,0.));
+#20=IFCPOLYLOOP((#10,#11,#12));
+#21=IFCPOLYLOOP((#10,#11,#12));
+";
+    // Element 1 warms the worker's cache.
+    let mut warm = EntityDecoder::new(content);
+    warm.get_polyloop_coords_cached(20).expect("warm loop resolves");
+    assert_eq!(warm.point_cache_stats(), (0, 3));
+    let carried = warm.take_point_cache();
+
+    // Element 2's decoder adopts the warm cache, then hits a decode FAILURE
+    // (out-of-range span -> Err, not a panic). This is the case the guard exists
+    // for: on Drop it takes the point cache back instead of losing it.
+    let mut failing = EntityDecoder::new(content);
+    failing.set_point_cache(carried);
+    assert!(
+        failing.decode_at(10_000, 10_010).is_err(),
+        "out-of-range decode should fail without clearing the cache"
+    );
+    let recovered = failing.take_point_cache();
+    assert_eq!(
+        recovered.len(),
+        3,
+        "a failed decode must not drop the worker's warm point cache"
+    );
+
+    // Element 3 in the same worker adopts the recovered cache: every shared point
+    // is a hit, none re-parsed - proving the failure did not cold-start the chunk.
+    let mut next = EntityDecoder::new(content);
+    next.set_point_cache(recovered);
+    next.get_polyloop_coords_cached(21).expect("next loop resolves");
+    let (hits, misses) = next.point_cache_stats();
+    assert!(
+        hits > 0,
+        "expected warm-cache hits after a failed decode, got {hits}"
+    );
+    assert_eq!((hits, misses), (3, 0));
+}

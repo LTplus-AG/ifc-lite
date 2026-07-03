@@ -51,7 +51,7 @@
      706 rust/geometry/src/profiles/simplify.rs
      781 rust/geometry/src/rect_fast.rs
      461 rust/geometry/src/router/clipping.rs
-     710 rust/geometry/src/router/diagnostics.rs
+     586 rust/geometry/src/router/diagnostics.rs
      659 rust/geometry/src/router/layers.rs
      572 rust/geometry/src/router/mod.rs
     1072 rust/geometry/src/router/processing.rs

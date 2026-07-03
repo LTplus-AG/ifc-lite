@@ -204,17 +204,28 @@ fn param_fast_path_fires_watertight_and_matches_analytic_on_the_shipped_default(
     );
 
     let host = decoder.decode_by_id(HOST_ID).expect("decode wall");
+    // Drain the global "emitted" counter immediately before the single process
+    // call so what we read back is this host's post-self-check emissions.
+    let _ = ifc_lite_geometry::rect_fast::take_param_fires();
     let result = router
         .process_element_with_voids(&host, &mut decoder, &void_index)
         .expect("process wall with voids");
+    let emitted_param_cuts = ifc_lite_geometry::rect_fast::take_param_fires();
 
-    // (a) The shipped default (param ON) must FIRE the analytic cut on this
-    // rotated rectangular wall (this is exactly the case #1493 targets and no
-    // committed test previously exercised).
+    // (a) The shipped default (param ON) must both ENGAGE and EMIT the analytic
+    // cut on this rotated rectangular wall (exactly the case #1493 targets, which
+    // no committed test previously exercised).
+    //  - `stats.fired` (router-local, race-free) is recorded in
+    //    `subtract_rect_openings`, i.e. as soon as the analytic cut is ATTEMPTED.
+    //  - `param_record_fire`/`take_param_fires` (voids/mod.rs) increments only
+    //    AFTER the watertight self-check passes, i.e. the fast-path mesh was
+    //    actually EMITTED (not attempted then discarded to the exact kernel).
+    // Asserting both means a regression that makes the cut fail the self-check
+    // and silently fall back is caught, not just one that stops it engaging.
     let stats = router.take_rect_fast_stats();
     assert!(
         stats.fired > 0,
-        "the parametric fast path must FIRE on a rotated rectangular wall with a \
+        "the parametric fast path must ENGAGE on a rotated rectangular wall with a \
          through rectangular opening (fired={}, defers: host_not_box={} not_through={} \
          off_face={} near_edge={} no_openings={})",
         stats.fired,
@@ -223,6 +234,11 @@ fn param_fast_path_fires_watertight_and_matches_analytic_on_the_shipped_default(
         stats.defer_off_face,
         stats.defer_near_edge,
         stats.defer_no_openings,
+    );
+    assert!(
+        emitted_param_cuts > 0,
+        "the parametric cut must be EMITTED (survive the watertight self-check), \
+         not merely engaged then discarded to the exact kernel (emitted={emitted_param_cuts})"
     );
 
     // (b) Production safety invariant: a fired host's output is watertight.

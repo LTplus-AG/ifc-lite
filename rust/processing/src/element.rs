@@ -605,6 +605,22 @@ fn build_mesh_data(
             DEGENERATE_DROPPED.with(|c| c.set(c.get() + dropped));
         }
     }
+    // Source vertex weld: the faceted-brep mesher emits per-`IfcFace` geometry
+    // with no cross-face vertex sharing, duplicating every shared corner once
+    // per incident face (~3-6x). Collapse coincident vertices (identical f32
+    // position AND quantized normal) here, at the single per-element funnel, so
+    // EVERY element arrives welded in its `MeshData` — the one weld point for
+    // render, export, and analysis. Normals already exist at this stage, so
+    // keying on the quantized normal keeps creases (a cube corner shared by 3
+    // faces with 3 distinct normals) split and preserves flat shading. World
+    // triangles, winding, and the world AABB are unchanged.
+    {
+        let (wp, wn, wi) =
+            ifc_lite_geometry::mesh_weld::weld_indexed(&mesh.positions, &mesh.normals, &mesh.indices);
+        mesh.positions = wp;
+        mesh.normals = wn;
+        mesh.indices = wi;
+    }
     let mesh_origin = mesh.origin;
     // Instancing: capture before the fields are moved into MeshData. A site-local
     // rotation (below) re-transforms positions/origin and would invalidate the

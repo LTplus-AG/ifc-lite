@@ -81,6 +81,10 @@ pub mod csg_capture;
 /// Corrects f32 import jitter (~0.09°) so authored-coplanar roof slope facets
 /// are EXACTLY coplanar before the exact-kernel opening cut (issue #1007).
 pub mod facet_weld;
+/// Intra-mesh vertex weld + index dedup applied at the per-element mesh source
+/// (`build_mesh_data`), collapsing the faceted-brep per-face vertex duplication
+/// while keeping creases (distinct normals) split.
+pub mod mesh_weld;
 /// Structured-diagnostics macro shims for the `observability` feature
 /// (tracing when ON, the legacy eprintln fallback when OFF).
 pub(crate) mod diag;

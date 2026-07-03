@@ -12,7 +12,7 @@ use crate::types::response::{
     QuickMetadataEntitySummary,
 };
 use ifc_lite_core::{
-    build_entity_index, DecodedEntity, EntityDecoder,
+    DecodedEntity, EntityDecoder,
     EntityIndex, EntityScanner, IfcType,
 };
 use ifc_lite_geometry::TessellationQuality;
@@ -480,16 +480,24 @@ pub fn process_geometry_streaming_filtered_with_options(
     );
     let scan_guard = scan_span.clone().entered();
 
-    // Build the entity index (fast SIMD-accelerated single pass), unless a caller
-    // injected one built from the same `content` to share across passes.
-    let entity_index = tracing::debug_span!("entity_index").in_scope(|| {
-        options
-            .entity_index
-            .clone()
-            .unwrap_or_else(|| Arc::new(build_entity_index(content)))
-    });
-    let mut decoder = EntityDecoder::with_arc_index(content, entity_index.clone());
-    tracing::debug!("Built entity index");
+    // The entity index (expressId -> byte span) is built INLINE in the scan loop
+    // below rather than in a separate `build_entity_index` pass, so the file is
+    // walked once instead of twice. A caller that injected an index reuses it and
+    // skips the inline build. `decode_at` during the scan needs no index (it parses
+    // local bytes), so the scan-phase decoder starts index-less; the completed
+    // index is installed before the first ref-resolving call (`resolve_prepass`).
+    let provided_index = options.entity_index.clone();
+    let building_index = provided_index.is_none();
+    let mut inline_index: EntityIndex = if building_index {
+        FxHashMap::with_capacity_and_hasher(content.len() / 50, Default::default())
+    } else {
+        FxHashMap::default()
+    };
+    let mut decoder = match &provided_index {
+        Some(idx) => EntityDecoder::with_arc_index(content, idx.clone()),
+        None => EntityDecoder::new(content),
+    };
+    tracing::debug!("Entity index will be built inline during the scan");
 
     // Styled items / indexed colour maps / material chain / voids / fills /
     // aggregates are span-stashed during the scan and resolved afterwards by
@@ -559,6 +567,9 @@ pub fn process_geometry_streaming_filtered_with_options(
 
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
         total_entities += 1;
+        if building_index {
+            inline_index.insert(id, (start, end));
+        }
         if let Some(spatial_nodes) = quick_spatial_nodes.as_mut() {
             // Case-insensitive check without allocating a new uppercase string.
             if is_quick_spatial_type_ci(type_name) {
@@ -793,6 +804,19 @@ pub fn process_geometry_streaming_filtered_with_options(
             });
         }
     }
+
+    // The inline index is now complete — identical to `build_entity_index` over
+    // the same scanner. Install it into the decoder so `resolve_prepass` and the
+    // downstream phases resolve refs against it, and expose it (as before) to the
+    // geometry workers further down.
+    let entity_index: Arc<EntityIndex> = match provided_index {
+        Some(idx) => idx,
+        None => {
+            let arc = Arc::new(inline_index);
+            decoder.set_entity_index(arc.clone());
+            arc
+        }
+    };
 
     // ── Shared post-scan resolution (`crate::prepass`) ──
     // Styled items (orphan vs attached, defer-aware), IfcIndexedColourMap,

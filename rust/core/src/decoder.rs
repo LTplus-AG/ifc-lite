@@ -127,6 +127,14 @@ impl<'a> EntityDecoder<'a> {
         }
     }
 
+    /// Install a pre-built index into this decoder. Used when the caller already
+    /// built the index during another pass (e.g. the processor scan loop) so the
+    /// decoder does not lazily rebuild it via `build_index`. Set it before any
+    /// `decode_by_id`/ref-resolving call; afterwards `build_index` no-ops.
+    pub fn set_entity_index(&mut self, index: Arc<EntityIndex>) {
+        self.entity_index = Some(index);
+    }
+
     /// Build entity index for O(1) lookups
     /// This scans the file once and maps entity IDs to byte offsets
     fn build_index(&mut self) {

@@ -141,6 +141,20 @@ pub struct ProcessingStats {
     /// the backstop engaged for this model.
     #[serde(default)]
     pub degenerate_triangles_dropped: u64,
+    /// CartesianPoints served from the per-worker point cache while meshing
+    /// faceted breps (`EntityDecoder::get_polyloop_coords_cached`). Non-zero
+    /// means the cross-element cache hoist memoized a shared point list rather
+    /// than re-parsing it per part.
+    #[serde(default)]
+    pub point_cache_hits: u64,
+    /// CartesianPoints parsed for the first time (point-cache misses) across the
+    /// faceted-brep pass. `hits / (hits + misses)` is the memoization rate.
+    #[serde(default)]
+    pub point_cache_misses: u64,
+    /// Wall time (ms) attributed to faceted-brep part meshing. Populated only in
+    /// `observability` native builds (`Instant` traps on wasm32); 0 otherwise.
+    #[serde(default)]
+    pub faceted_brep_time_ms: u64,
     /// Full CSG / opening diagnostics (opening classification, per-reason failure
     /// breakdown, per-host detail, silent rectangular no-ops, rect_fast engagement)
     /// aggregated across the native geometry pass — the same `GeometryDiagnostics`

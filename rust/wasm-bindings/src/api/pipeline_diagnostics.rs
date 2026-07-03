@@ -49,6 +49,8 @@ impl IfcAPI {
         mesh_count: u64,
         triangle_count: u64,
         backstop_count: u64,
+        point_cache_hits: u64,
+        point_cache_misses: u64,
         geometry_ms: u64,
         diag: &ifc_lite_geometry::GeometryDiagnostics,
     ) {
@@ -56,11 +58,16 @@ impl IfcAPI {
             .pipeline_diagnostics
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // Faceted-brep wall time is native/observability-only (Instant traps on
+        // wasm32), so the wasm batch reports 0 for it.
         acc.record_batch(
             element_count,
             mesh_count,
             triangle_count,
             backstop_count,
+            point_cache_hits,
+            point_cache_misses,
+            0,
             geometry_ms,
             diag,
         );

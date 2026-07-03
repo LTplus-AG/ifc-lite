@@ -446,11 +446,17 @@ impl IfcAPI {
             .map(|m| (m.indices.len() / 3) as u64)
             .sum();
         let batch_ms = (js_sys::Date::now() - batch_started_ms).max(0.0) as u64;
+        // The batch reuses ONE decoder across every element (the point cache is
+        // already hoisted here), so its cumulative point-cache stats ARE this
+        // batch's faceted-brep memoization tally.
+        let (point_cache_hits, point_cache_misses) = decoder.point_cache_stats();
         self.record_pipeline_batch(
             batch_elements,
             batch_meshes,
             batch_triangles,
             batch_backstop,
+            point_cache_hits,
+            point_cache_misses,
             batch_ms,
             &csg_diag,
         );

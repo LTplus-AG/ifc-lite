@@ -7,49 +7,45 @@
  * viewer's world space, and shape the sun's photometric properties from its
  * altitude (warm low sun, twilight fade, night).
  *
- * Frame math: the inverse of the Helmert grid alignment (IfcMapConversion
- * XAxisAbscissa/Ordinate):
+ * Frame math: the exact inverse of the bridge's viewer-to-ENU rotation
+ * (`viewerToEnuRotation`): the Helmert grid alignment (IfcMapConversion
+ * XAxisAbscissa/Ordinate) composed with the meridian convergence R(gamma).
+ * That rotation is orthonormal, so the ENU-to-viewer inverse is its transpose:
  *
- *   east  = absc·vx + ordi·vz
- *   north = ordi·vx − absc·vz
- *   up    = vy
- *
- * With (absc, ordi) normalized that matrix is orthonormal, so the inverse is
- * the transpose:
- *
- *   vx = absc·e + ordi·n
+ *   vx = eastFromVx*e + northFromVx*n
  *   vy = u
- *   vz = ordi·e − absc·n
+ *   vz = eastFromVz*e + northFromVz*n
  *
- * Sanity check at no rotation (absc=1, ordi=0): east→+X, up→+Y, north→−Z.
- *
- * NOTE: this is the GRID-only inverse; it does NOT include the meridian
- * convergence R(gamma) that `cesium-bridge.ts` (viewerToEnuRotation) folds into
- * the camera and model placement. So on high-convergence CRSs the WebGPU-viewer
- * sun azimuth is off true north by ~gamma. The Cesium sun (cesium-sun.ts) is
- * unaffected: it drives the sun through true-ENU (eastNorthUpToFixedFrame).
- * Threading gamma here is a tracked follow-up.
+ * Sanity check at no rotation (absc=1, ordi=0, gamma=0): east->+X, up->+Y,
+ * north->-Z. Passing gamma keeps the WebGPU sun consistent with the model
+ * placement and the Cesium sun (which drives the sun through true-ENU);
+ * omitting it left the sun off true north by ~gamma on high-convergence CRSs.
+ * See #1408.
  */
 
 import type { Enu } from '@ifc-lite/solar';
+import { viewerToEnuRotation } from './viewer-enu-rotation';
 
 /**
- * Convert an ENU unit direction to viewer/world space (Y-up) using the
- * model's IfcMapConversion XAxisAbscissa/Ordinate rotation. Defaults match
- * IFC's "no rotation" convention (cos=1, sin=0).
+ * Convert an ENU unit direction to viewer/world space (Y-up) using the inverse
+ * of the model's viewer-to-ENU rotation: the IfcMapConversion XAxisAbscissa/
+ * Ordinate grid alignment plus the meridian convergence `gamma`. Defaults match
+ * IFC's "no rotation" convention (cos=1, sin=0) with zero convergence.
  */
 export function enuToViewerDirection(
   enu: Enu,
   xAxisAbscissa = 1,
   xAxisOrdinate = 0,
+  gamma = 0,
 ): [number, number, number] {
-  // The IFC pair may be unnormalized direction cosines — normalize first.
+  // The IFC pair may be unnormalized direction cosines; normalize so the
+  // rotation is orthonormal and its transpose is the exact inverse.
   const len = Math.hypot(xAxisAbscissa, xAxisOrdinate) || 1;
-  const a = xAxisAbscissa / len;
-  const o = xAxisOrdinate / len;
-  const vx = a * enu.e + o * enu.n;
+  const rot = viewerToEnuRotation(1, xAxisAbscissa / len, xAxisOrdinate / len, gamma);
+  // ENU -> viewer is the transpose of the viewer -> ENU rotation.
+  const vx = rot.eastFromVx * enu.e + rot.northFromVx * enu.n;
   const vy = enu.u;
-  const vz = o * enu.e - a * enu.n;
+  const vz = rot.eastFromVz * enu.e + rot.northFromVz * enu.n;
   const vlen = Math.hypot(vx, vy, vz) || 1;
   return [vx / vlen, vy / vlen, vz / vlen];
 }

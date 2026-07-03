@@ -37,6 +37,11 @@ import {
 import { getEffectiveHorizontalScale, resolveMapUnitToMetreScale } from './geo-scale';
 import { shouldPreferOrthometricTerrain } from './cesium-placement';
 import { egm96Undulation } from './egm96-undulation';
+import { viewerToEnuRotation, type ViewerToEnuRotation } from './viewer-enu-rotation';
+
+// Re-exported so existing importers keep resolving it from the bridge; the
+// definition now lives in the dependency-free `viewer-enu-rotation` leaf.
+export { viewerToEnuRotation, type ViewerToEnuRotation } from './viewer-enu-rotation';
 
 export interface GeodesicPosition {
   longitude: number;
@@ -93,6 +98,12 @@ export interface CesiumModelOriginInfo extends GeodesicPosition {
   easting: number;
   northing: number;
   horizontalScale: number;
+  /**
+   * Meridian convergence (radians) at this origin: the angle from grid north
+   * to true north. Computed once here so the camera frame, the model placement
+   * and the WebGPU sun all read the same value. See #1408.
+   */
+  gamma: number;
 }
 
 export async function computeCesiumModelOrigin(
@@ -142,6 +153,7 @@ export async function computeCesiumModelOrigin(
       easting,
       northing,
       horizontalScale,
+      gamma: computeGridConvergence(projDef, easting, northing, lon, lat),
     };
   } catch {
     return null;
@@ -193,46 +205,6 @@ export function computeGridConvergence(
   const north = (lat2 - lat) * mPerDegLat;
   // grid-north's bearing measured from true north is atan2(east, north) = -gamma.
   return Math.atan2(-east, north);
-}
-
-/**
- * In-plane coefficients of the viewer-to-ENU rotation. `vy` maps straight to
- * ENU up, so only the East/North rows depend on (vx, vz).
- */
-export interface ViewerToEnuRotation {
-  eastFromVx: number;
-  eastFromVz: number;
-  northFromVx: number;
-  northFromVz: number;
-}
-
-/**
- * Build the viewer-to-ENU rotation: the Helmert grid alignment (IfcMapConversion
- * XAxisAbscissa/Ordinate, scaled by hScale) composed with the meridian
- * convergence R(gamma) that turns grid axes into the true-north ENU frame
- * Cesium uses (east = R(gamma) applied to the Helmert grid vectors).
- *
- * SINGLE SOURCE OF TRUTH: both the camera frame (`createCesiumBridge`) and the
- * model-placement matrix (`buildModelMatrix`, via `bridge.viewerRotation`)
- * derive their viewer-to-ENU rotation from this one function, so the model and
- * the camera can never disagree on which way is north on the basemap. See #1408.
- */
-export function viewerToEnuRotation(
-  hScale: number,
-  absc: number,
-  ordi: number,
-  gamma: number,
-): ViewerToEnuRotation {
-  const cg = Math.cos(gamma);
-  const sg = Math.sin(gamma);
-  const ce = hScale * absc;
-  const co = hScale * ordi;
-  return {
-    eastFromVx: cg * ce - sg * co,
-    eastFromVz: cg * co + sg * ce,
-    northFromVx: sg * ce + cg * co,
-    northFromVz: sg * co - cg * ce,
-  };
 }
 
 export async function createCesiumBridge(
@@ -292,8 +264,7 @@ export async function createCesiumBridge(
   // (up = vy). The model-placement matrix reuses the very same `rot` via
   // `bridge.viewerRotation` so the two never drift. Viewer-space deltas are
   // already metres, so no lengthUnitScale.
-  const gamma = computeGridConvergence(projDef, origin.easting, origin.northing, originLon, originLat);
-  const rot = viewerToEnuRotation(hScale, absc, ordi, gamma);
+  const rot = viewerToEnuRotation(hScale, absc, ordi, origin.gamma);
   const m00 = rot.eastFromVx;      // east  from vx
   const m01 = 0;                   // east  from vy
   const m02 = rot.eastFromVz;      // east  from vz

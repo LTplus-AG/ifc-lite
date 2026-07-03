@@ -34,6 +34,9 @@ export interface SolarEnvironmentGeoref {
 interface SiteOrigin {
   latitude: number;
   longitude: number;
+  /** Meridian convergence (radians): needed to place the sun on true north,
+   *  not grid north, in the grid-aligned WebGPU scene (#1408). */
+  gamma: number;
 }
 
 export function useSolarEnvironment(georef: SolarEnvironmentGeoref | null): void {
@@ -64,7 +67,9 @@ export function useSolarEnvironment(georef: SolarEnvironmentGeoref | null): void
           georef?.lengthUnitScale ?? 1,
         );
         if (!cancelled) {
-          setOrigin(resolved ? { latitude: resolved.latitude, longitude: resolved.longitude } : null);
+          setOrigin(resolved
+            ? { latitude: resolved.latitude, longitude: resolved.longitude, gamma: resolved.gamma }
+            : null);
         }
       } catch {
         if (!cancelled) setOrigin(null);
@@ -86,6 +91,7 @@ export function useSolarEnvironment(georef: SolarEnvironmentGeoref | null): void
       enu,
       mapConversion?.xAxisAbscissa ?? 1,
       mapConversion?.xAxisOrdinate ?? 0,
+      origin.gamma,
     ));
 
     // Panel readout — only when CesiumOverlay isn't publishing it.

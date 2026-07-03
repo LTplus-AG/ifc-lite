@@ -22,6 +22,10 @@ export interface Property {
   type: PropertyValueType;
   value: PropertyValue;
   unit?: string;
+  /** Raw IFC measure value type of this property (e.g. "IFCVOLUMETRICFLOWRATEMEASURE"),
+   *  used to resolve the file's declared display unit (issue #1573). Absent for
+   *  properties whose value type carries no measure semantics (labels, enums, ...). */
+  dataType?: string;
 }
 
 export type PropertyValue = string | number | boolean | null | PropertyValue[];

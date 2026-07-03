@@ -14,9 +14,28 @@
  */
 
 import { EntityNode } from '@ifc-lite/query';
+import { extractProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
 import type { Tool } from './types.js';
 import { okResult, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
+
+/**
+ * Resolve the file-declared display symbol for a unit-type (e.g. VOLUMEUNIT),
+ * falling back to the SI default when the store has no source buffer or the
+ * file declares no such unit. Memoised per store so repeated tool calls don't
+ * re-walk the IfcUnitAssignment. Canonical resolver lives in @ifc-lite/parser
+ * (mirror of rust/core/src/project_units), issue #1573.
+ */
+const projectUnitsCache = new WeakMap<object, ReturnType<typeof extractProjectUnits>>();
+function unitSymbol(store: IfcDataStore, unitType: string, fallback: string): string {
+  if (!store.source?.length || !store.entityIndex) return fallback;
+  let units = projectUnitsCache.get(store);
+  if (!units) {
+    units = extractProjectUnits(store.source, store.entityIndex);
+    projectUnitsCache.set(store, units);
+  }
+  return units.resolvedForUnitType(unitType)?.symbol ?? fallback;
+}
 
 interface IdInput {
   model_id?: string;
@@ -127,7 +146,7 @@ const geometryBbox: Tool = {
 
 const geometryVolume: Tool = {
   name: 'geometry_volume',
-  description: 'Element volume (m³) read from IfcElementQuantity. Returns null per entity when no quantity is present.',
+  description: 'Element volume (in the file volume unit, typically m³) read from IfcElementQuantity. Returns null per entity when no quantity is present; the response `unit` field reports the resolved symbol.',
   scope: 'read',
   inputSchema: {
     type: 'object',
@@ -158,16 +177,17 @@ const geometryVolume: Tool = {
       if (volume != null) { total += volume; counted++; }
       results.push({ expressId: id, volume });
     }
+    const unit = unitSymbol(m.store, 'VOLUMEUNIT', 'm³');
     return okResult(
-      `${counted}/${results.length} entities reported a volume; total = ${total.toFixed(3)} m³.`,
-      { total, counted, results },
+      `${counted}/${results.length} entities reported a volume; total = ${total.toFixed(3)} ${unit}.`,
+      { total, counted, results, unit },
     );
   },
 };
 
 const geometryArea: Tool = {
   name: 'geometry_area',
-  description: 'Element surface area (m²) read from IfcElementQuantity.',
+  description: 'Element surface area (in the file area unit, typically m²) read from IfcElementQuantity. The response `unit` field reports the resolved symbol.',
   scope: 'read',
   inputSchema: {
     type: 'object',
@@ -198,9 +218,10 @@ const geometryArea: Tool = {
       if (area != null) { total += area; counted++; }
       results.push({ expressId: id, area });
     }
+    const unit = unitSymbol(m.store, 'AREAUNIT', 'm²');
     return okResult(
-      `${counted}/${results.length} entities reported an area; total = ${total.toFixed(3)} m².`,
-      { total, counted, results },
+      `${counted}/${results.length} entities reported an area; total = ${total.toFixed(3)} ${unit}.`,
+      { total, counted, results, unit },
     );
   },
 };

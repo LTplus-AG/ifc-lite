@@ -24,7 +24,7 @@ import { propertyKey, quantityKey, attributeKey, generateMutationId } from './ty
 export type PropertyExtractor = (entityId: number) => Array<{
   name: string;
   globalId?: string;
-  properties: Array<{ name: string; type: number; value: unknown }>;
+  properties: Array<{ name: string; type: number; value: unknown; dataType?: string }>;
 }>;
 
 /**
@@ -178,6 +178,7 @@ export class MutablePropertyView {
           name: prop.name,
           type: prop.type as PropertyValueType,
           value: prop.value as PropertyValue,
+          dataType: prop.dataType,
         })),
       }));
     }
@@ -222,6 +223,7 @@ export class MutablePropertyView {
             type: mutation.valueType ?? prop.type,
             value: mutation.value ?? null,
             unit: mutation.unit ?? prop.unit,
+            dataType: prop.dataType,
           });
         } else {
           mutatedProperties.push(prop);

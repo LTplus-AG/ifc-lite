@@ -8,6 +8,16 @@
 //! the HTTP server and the native FFI library.
 
 pub mod determinism;
+// `determinism::diff_report` unit tests (#1549) live in this sibling
+// `_tests.rs` file, declared from here rather than inside `determinism.rs`,
+// because that module already sits exactly at its frozen
+// `module_size_ratchet` budget (`tests/module_size_allowlist.txt`); adding
+// even a `mod` declaration there would fail the "no allowlisted file grows"
+// gate. `_tests.rs` is itself exempt from that ratchet (see
+// `module_size_ratchet.rs`'s `is_exempt`).
+#[cfg(test)]
+#[path = "determinism_tests.rs"]
+mod determinism_tests;
 pub mod element;
 pub mod geometry_export;
 mod georeferencing;

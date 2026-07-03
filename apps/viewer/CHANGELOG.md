@@ -1,5 +1,15 @@
 # @ifc-lite/viewer
 
+## 1.32.3
+
+### Patch Changes
+
+- Updated dependencies [[`d942bed`](https://github.com/LTplus-AG/ifc-lite/commit/d942bedffe31d0a682c1aa8bb9fe3e3dc0f63104), [`369ee9b`](https://github.com/LTplus-AG/ifc-lite/commit/369ee9b680309ca70c569b3f26bd07acfb83c19d)]:
+  - @ifc-lite/diff@0.3.0
+  - @ifc-lite/wasm@3.0.3
+  - @ifc-lite/geometry@3.0.3
+  - @ifc-lite/export@2.4.1
+
 ## 1.32.2
 
 ### Patch Changes

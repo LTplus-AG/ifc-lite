@@ -61,7 +61,18 @@ export const MAGIC = 0x4C434649; // "IFCL" in little-endian
  * would render stale geometry and the compare/diff feature would flag those hosts as
  * changed. The bump invalidates pre-#1432 caches so they re-mesh.
  */
-export const FORMAT_VERSION = 11;
+/**
+ * v11→v12: source vertex weld. Every element mesh is now welded at the source
+ * (`build_mesh_data`): coincident vertices sharing a position + normal (+ UV)
+ * are collapsed and indices remapped, and the per-EXPORT welds (GLB `to_yup` /
+ * from-meshes) were removed as redundant. A v11 cache holds pre-weld
+ * (per-face-duplicated) geometry; restoring it and exporting would now emit an
+ * unwelded, 3-6x larger GLB (regressing the #1553 export-weld win for
+ * cached-model users) and yields non-watertight raw MeshData. The byte layout
+ * is unchanged, but the vertex/index buffers differ, so the bump invalidates
+ * pre-weld caches to re-mesh (welded).
+ */
+export const FORMAT_VERSION = 12;
 
 /** Section types in the binary format */
 export enum SectionType {

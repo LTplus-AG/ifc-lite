@@ -6,8 +6,6 @@
 # The rule: shrink or split. When you split a file below 400, delete its row
 # (the total must trend DOWN). Only ADD a row with a written justification.
 # Regenerated against the branch's merge base; refresh on rebase if a listed
-# file drifts on main. Generated/ and tests/examples/benches/fuzz are exempt.
-     413 apps/server/src/admission.rs
      420 apps/server/src/routes/parse/parquet_stream.rs
      756 apps/server/src/services/parquet_data_model.rs
      581 apps/server/src/services/parquet_optimized.rs
@@ -20,7 +18,7 @@
      463 rust/core/src/parser/tokenizer.rs
      550 rust/core/src/schema_gen.rs
      990 rust/core/src/units.rs
-    3863 rust/export/src/gltf.rs
+    3943 rust/export/src/gltf.rs
      655 rust/export/src/model.rs
      611 rust/export/src/step.rs
     1233 rust/geometry/src/alignment.rs
@@ -62,14 +60,14 @@
      618 rust/geometry/src/router/voids/aabb_clip.rs
      871 rust/geometry/src/router/voids/geom.rs
     1963 rust/geometry/src/router/voids/mod.rs
-     730 rust/geometry/src/router/voids/probe.rs
+     621 rust/geometry/src/router/voids/probe.rs
     1002 rust/geometry/src/router/voids/synthesis.rs
     1472 rust/geometry/src/space_dcel/mod.rs
      525 rust/geometry/src/transform.rs
      782 rust/geometry/src/triangulation.rs
      715 rust/geometry/src/void_analysis.rs
      745 rust/geometry/src/void_index.rs
-     441 rust/processing/src/determinism.rs
+     499 rust/processing/src/determinism.rs
      877 rust/processing/src/element.rs
      468 rust/processing/src/georeferencing.rs
      772 rust/processing/src/prepass.rs

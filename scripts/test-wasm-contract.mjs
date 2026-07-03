@@ -535,6 +535,61 @@ test('exportKmz accepts undefined optional grid axes at the JS boundary (heading
   assert.ok(Buffer.from(kmz).toString('latin1').includes('<heading>0</heading>'), 'undefined axes → heading 0');
 });
 
+// ===== Pipeline diagnostics channel (wasm boundary) =====
+// This replaces the orphaned rust/wasm-bindings/tests/pipeline_diagnostics.rs
+// (a #![cfg(target_arch="wasm32")] test no CI lane ran) with an assertion in
+// the lane that DOES gate (node-tests -> the required Build+WASM+Rust+Node
+// check). It pins the versioned wire shape across the real serde-wasm-bindgen
+// boundary, mirroring the Rust serde-key stability test.
+test('getPipelineDiagnostics: undefined before load, versioned + populated after a batch, persists post-load, resets on the next load', () => {
+  const diagApi = new IfcAPI();
+  const bytes = new TextEncoder().encode(columnContent);
+  const runLoad = () => {
+    const pre = diagApi.buildPrePassOnce(bytes);
+    assert.ok(pre.totalJobs > 0, 'fixture must produce geometry jobs');
+    const collection = diagApi.processGeometryBatch(
+      bytes, pre.jobs, pre.unitScale,
+      pre.rtcOffset[0], pre.rtcOffset[1], pre.rtcOffset[2], pre.needsShift,
+      pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors,
+    );
+    collection.free();
+  };
+  try {
+    assert.equal(diagApi.getPipelineDiagnostics(), undefined,
+      'diagnostics must be undefined before any batch runs');
+
+    runLoad();
+
+    const diag = diagApi.getPipelineDiagnostics();
+    assert.ok(diag && typeof diag === 'object', 'diagnostics must be an object after a batch');
+    // Versioned wire shape: the schema-stability contract on the real boundary.
+    assert.equal(diag.schemaVersion, 1, 'schemaVersion must match the pinned contract (bump = breaking)');
+    assert.ok(diag.batches >= 1, 'at least one batch recorded');
+    assert.ok(diag.meshCount > 0, 'the column fixture produces meshes');
+    for (const key of ['elementCount', 'triangleCount', 'backstopCount', 'totalCsgFailures',
+      'productsWithFailures', 'hostsWithOpenings', 'silentNoOps', 'rectFast', 'phaseMs']) {
+      assert.ok(key in diag, `diagnostics must carry ${key}`);
+    }
+    for (const key of ['entityScanMs', 'lookupMs', 'preprocessMs', 'parseMs', 'geometryMs', 'totalMs']) {
+      assert.ok(key in diag.phaseMs, `phaseMs must carry ${key}`);
+    }
+
+    // Diagnostics survive clearPrePassCache: it runs at end-of-load, and a host
+    // reads the per-load diagnostics AFTER it (see IfcAPI::clear_pre_pass_cache,
+    // which clears the entity/parts caches but NOT the accumulator).
+    diagApi.clearPrePassCache();
+    assert.ok(diagApi.getPipelineDiagnostics(), 'diagnostics persist for reading after clearPrePassCache');
+
+    // The next load resets the accumulator (buildPrePassOnce calls
+    // reset_pipeline_diagnostics before the new batch runs).
+    diagApi.buildPrePassOnce(bytes);
+    assert.equal(diagApi.getPipelineDiagnostics(), undefined,
+      'a new load (buildPrePassOnce) resets the accumulator until its first batch');
+  } finally {
+    diagApi.clearPrePassCache();
+  }
+});
+
 // Summary
 console.log('\n' + '═'.repeat(50));
 console.log(`📊 Results: ${passed} passed, ${failed} failed`);

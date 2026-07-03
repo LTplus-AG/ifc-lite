@@ -20,19 +20,19 @@
 //! below). The wasm getter (`IfcAPI::getPipelineDiagnostics`) crosses it to
 //! JS via `serde_wasm_bindgen::to_value`, exactly like `diagnoseGeometry`.
 //!
-//! Population:
-//! - wasm: accumulated on the NORMAL load path — every
-//!   `processGeometryBatch*` call folds one [`Self::record_batch`] in
-//!   (cheap counters plus two `js_sys::Date::now()` reads per batch, so it
-//!   is always on). `std::time::Instant` traps on wasm32, so the wasm side
-//!   fills only `phase_ms.geometry_ms` (summed batch wall time); the
-//!   scan/prepass phases run in JS workers outside the wasm module and are
-//!   reported as 0 there.
-//! - native: one-shot from the finished pass via
-//!   [`Self::from_processing_stats`], which maps the full `ProcessingStats`
-//!   phase timers.
+//! Population: this is the WASM load-diagnostics channel, accumulated on the
+//! NORMAL load path — every `processGeometryBatch*` call folds one
+//! [`Self::record_batch`] in (cheap counters plus two `js_sys::Date::now()`
+//! reads per batch, so it is always on). `std::time::Instant` traps on wasm32,
+//! so only `phase_ms.geometry_ms`/`total_ms` are filled; the scan/prepass
+//! phases run in JS workers outside the wasm module and stay 0 (the
+//! `entityScan/lookup/preprocess/parse` fields are reserved for a future
+//! native single-pass source). The native server/CLI already surface the same
+//! numbers through `ProcessingStats` + [`GeometryDiagnostics`], so there is
+//! deliberately no second native `PipelineDiagnostics` projection to keep in
+//! sync; if one is ever wanted, add a constructor wired to a real consumer with
+//! an integration test on the emitted JSON.
 
-use crate::types::response::ProcessingStats;
 use ifc_lite_geometry::{GeometryDiagnostics, RectFastSummary};
 
 /// Version of the `PipelineDiagnostics` wire shape. Bump on any
@@ -55,10 +55,10 @@ pub struct PipelinePhaseTimings {
     pub parse_ms: u64,
     /// Per-element geometry extraction (meshing + CSG).
     pub geometry_ms: u64,
-    /// End-to-end wall time of the pass. On the NATIVE single-pass builder
-    /// this is the true end-to-end figure; on the wasm batch path it is the
-    /// SUM of per-batch geometry wall time (the parse-phase timers live in
-    /// the pre-pass and JS orchestration there), i.e. a lower bound.
+    /// End-to-end wall time of the pass. On the wasm batch path this is the
+    /// SUM of per-batch geometry wall time (the parse-phase timers live in the
+    /// pre-pass and JS orchestration outside the wasm module), i.e. a lower
+    /// bound on the true end-to-end figure.
     pub total_ms: u64,
 }
 
@@ -153,37 +153,6 @@ impl PipelineDiagnostics {
         self.phase_ms.total_ms += geometry_ms;
     }
 
-    /// Build the same contract from a finished native pass. The native
-    /// pipeline is single-pass, so `batches` is 1 and every phase timer is
-    /// available.
-    pub fn from_processing_stats(stats: &ProcessingStats, element_count: u64) -> Self {
-        let (hosts_with_openings, silent_no_ops, rect_fast) = match &stats.geometry_diagnostics {
-            Some(d) => (d.hosts_with_openings, d.silent_no_ops, d.rect_fast),
-            None => (0, 0, RectFastSummary::default()),
-        };
-        Self {
-            schema_version: PIPELINE_DIAGNOSTICS_SCHEMA_VERSION,
-            batches: 1,
-            element_count,
-            mesh_count: stats.total_meshes as u64,
-            triangle_count: stats.total_triangles as u64,
-            backstop_count: stats.degenerate_triangles_dropped,
-            total_csg_failures: stats.total_csg_failures,
-            products_with_failures: stats.products_with_failures,
-            hosts_with_openings,
-            silent_no_ops,
-            rect_fast,
-            phase_ms: PipelinePhaseTimings {
-                entity_scan_ms: stats.entity_scan_time_ms,
-                lookup_ms: stats.lookup_time_ms,
-                preprocess_ms: stats.preprocess_time_ms,
-                parse_ms: stats.parse_time_ms,
-                geometry_ms: stats.geometry_time_ms,
-                total_ms: stats.total_time_ms,
-            },
-        }
-    }
-
     /// Whether anything has been recorded — the wasm getter returns
     /// `undefined` before the first batch so consumers can gate on presence.
     pub fn is_empty(&self) -> bool {
@@ -256,32 +225,4 @@ mod tests {
         assert_eq!(d.phase_ms.geometry_ms, 50);
     }
 
-    #[test]
-    fn from_processing_stats_maps_all_phase_timers() {
-        let stats = ProcessingStats {
-            total_meshes: 7,
-            total_triangles: 99,
-            parse_time_ms: 11,
-            entity_scan_time_ms: 5,
-            lookup_time_ms: 2,
-            preprocess_time_ms: 3,
-            geometry_time_ms: 40,
-            total_time_ms: 60,
-            degenerate_triangles_dropped: 4,
-            total_csg_failures: 1,
-            products_with_failures: 1,
-            ..Default::default()
-        };
-        let d = PipelineDiagnostics::from_processing_stats(&stats, 20);
-        assert_eq!(d.batches, 1);
-        assert_eq!(d.element_count, 20);
-        assert_eq!(d.mesh_count, 7);
-        assert_eq!(d.backstop_count, 4);
-        assert_eq!(d.phase_ms.parse_ms, 11);
-        assert_eq!(d.phase_ms.entity_scan_ms, 5);
-        assert_eq!(d.phase_ms.lookup_ms, 2);
-        assert_eq!(d.phase_ms.preprocess_ms, 3);
-        assert_eq!(d.phase_ms.geometry_ms, 40);
-        assert_eq!(d.phase_ms.total_ms, 60);
-    }
 }

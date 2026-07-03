@@ -11,7 +11,8 @@
 //! plus two `js_sys::Date::now()` reads, so it is always on — no feature
 //! flag). `std::time::Instant` traps on wasm32, hence the JS clock; the
 //! scan/prepass phases run in JS workers outside this module and report 0
-//! here (native fills them from ProcessingStats). Crossed to JS via
+//! here (the native server/CLI surface those numbers through ProcessingStats +
+//! GeometryDiagnostics, not through this channel). Crossed to JS via
 //! `serde_wasm_bindgen::to_value`, exactly like `diagnoseGeometry`.
 
 use super::IfcAPI;

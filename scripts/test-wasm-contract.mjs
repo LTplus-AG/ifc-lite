@@ -541,38 +541,53 @@ test('exportKmz accepts undefined optional grid axes at the JS boundary (heading
 // the lane that DOES gate (node-tests -> the required Build+WASM+Rust+Node
 // check). It pins the versioned wire shape across the real serde-wasm-bindgen
 // boundary, mirroring the Rust serde-key stability test.
-test('getPipelineDiagnostics: undefined before load, versioned + populated after a batch, persists post-load, resets on the next load', () => {
+test('getPipelineDiagnostics: undefined before load, accumulates across batches, versioned, persists post-load, resets on the next load', () => {
   const diagApi = new IfcAPI();
   const bytes = new TextEncoder().encode(columnContent);
-  const runLoad = () => {
-    const pre = diagApi.buildPrePassOnce(bytes);
-    assert.ok(pre.totalJobs > 0, 'fixture must produce geometry jobs');
-    const collection = diagApi.processGeometryBatch(
-      bytes, pre.jobs, pre.unitScale,
-      pre.rtcOffset[0], pre.rtcOffset[1], pre.rtcOffset[2], pre.needsShift,
-      pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors,
-    );
-    collection.free();
-  };
   try {
     assert.equal(diagApi.getPipelineDiagnostics(), undefined,
       'diagnostics must be undefined before any batch runs');
 
-    runLoad();
+    // One load = one buildPrePassOnce (which resets the accumulator) followed by
+    // N processGeometryBatch calls (the viewer's per-batch loop).
+    const pre = diagApi.buildPrePassOnce(bytes);
+    assert.ok(pre.totalJobs > 0, 'fixture must produce geometry jobs');
+    const runBatch = () => {
+      const c = diagApi.processGeometryBatch(
+        bytes, pre.jobs, pre.unitScale,
+        pre.rtcOffset[0], pre.rtcOffset[1], pre.rtcOffset[2], pre.needsShift,
+        pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors,
+      );
+      c.free();
+    };
 
-    const diag = diagApi.getPipelineDiagnostics();
-    assert.ok(diag && typeof diag === 'object', 'diagnostics must be an object after a batch');
+    runBatch();
+    const one = diagApi.getPipelineDiagnostics();
+    assert.ok(one && typeof one === 'object', 'diagnostics must be an object after a batch');
     // Versioned wire shape: the schema-stability contract on the real boundary.
-    assert.equal(diag.schemaVersion, 1, 'schemaVersion must match the pinned contract (bump = breaking)');
-    assert.ok(diag.batches >= 1, 'at least one batch recorded');
-    assert.ok(diag.meshCount > 0, 'the column fixture produces meshes');
-    for (const key of ['elementCount', 'triangleCount', 'backstopCount', 'totalCsgFailures',
-      'productsWithFailures', 'hostsWithOpenings', 'silentNoOps', 'rectFast', 'phaseMs']) {
-      assert.ok(key in diag, `diagnostics must carry ${key}`);
+    assert.equal(one.schemaVersion, 1, 'schemaVersion must match the pinned contract (bump = breaking)');
+    assert.equal(one.batches, 1, 'exactly one batch recorded');
+    // Real VALUES, not just key presence: the column fixture has geometry, so a
+    // serde bug emitting zero/wrong counts would be caught.
+    assert.ok(one.meshCount > 0, 'meshCount > 0');
+    assert.ok(one.triangleCount > 0, 'triangleCount > 0');
+    assert.ok(one.elementCount > 0, 'elementCount > 0');
+    for (const key of ['backstopCount', 'totalCsgFailures', 'productsWithFailures',
+      'hostsWithOpenings', 'silentNoOps', 'rectFast', 'phaseMs']) {
+      assert.ok(key in one, `diagnostics must carry ${key}`);
     }
     for (const key of ['entityScanMs', 'lookupMs', 'preprocessMs', 'parseMs', 'geometryMs', 'totalMs']) {
-      assert.ok(key in diag.phaseMs, `phaseMs must carry ${key}`);
+      assert.ok(key in one.phaseMs, `phaseMs must carry ${key}`);
     }
+
+    // A second processGeometryBatch of the SAME load ACCUMULATES: record_batch
+    // sums per batch, so batches increments and the counts never decrease.
+    runBatch();
+    const two = diagApi.getPipelineDiagnostics();
+    assert.equal(two.batches, 2, 'batches accumulate across processGeometryBatch calls');
+    assert.ok(two.meshCount >= one.meshCount, 'meshCount accumulates (monotonic)');
+    assert.ok(two.elementCount >= one.elementCount, 'elementCount accumulates (monotonic)');
+    assert.ok(two.triangleCount >= one.triangleCount, 'triangleCount accumulates (monotonic)');
 
     // Diagnostics survive clearPrePassCache: it runs at end-of-load, and a host
     // reads the per-load diagnostics AFTER it (see IfcAPI::clear_pre_pass_cache,

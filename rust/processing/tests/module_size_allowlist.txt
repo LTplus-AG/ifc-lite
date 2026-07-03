@@ -59,7 +59,7 @@
      497 rust/geometry/src/router/voids_2d.rs
      618 rust/geometry/src/router/voids/aabb_clip.rs
      871 rust/geometry/src/router/voids/geom.rs
-    1963 rust/geometry/src/router/voids/mod.rs
+    1889 rust/geometry/src/router/voids/mod.rs
      621 rust/geometry/src/router/voids/probe.rs
     1002 rust/geometry/src/router/voids/synthesis.rs
     1472 rust/geometry/src/space_dcel/mod.rs

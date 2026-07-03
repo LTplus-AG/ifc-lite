@@ -215,7 +215,7 @@ Process IFC files on a high-performance Rust server with intelligent caching.
 
 ```bash
 # Using Docker
-docker run -p 3001:8080 ghcr.io/LTplus-AG/ifc-lite-server
+docker run -p 3001:8080 ghcr.io/ltplus-ag/ifc-lite-server
 
 # Or using native binary
 npx @ifc-lite/server-bin
@@ -306,13 +306,15 @@ if (entityRef) {
 }
 
 // Get spatial hierarchy
+import { IfcTypeEnum } from '@ifc-lite/data';
+
 const hierarchy = store.spatialHierarchy;
 console.log(`Project: ${hierarchy.project.name}`);
 
-// List storeys
+// List storeys (SpatialNode.type is a numeric IfcTypeEnum, keyed by expressId)
 for (const storey of hierarchy.project.children) {
-  if (storey.type === 'IFCBUILDINGSTOREY') {
-    const elements = hierarchy.byStorey.get(storey.id) ?? [];
+  if (storey.type === IfcTypeEnum.IfcBuildingStorey) {
+    const elements = hierarchy.byStorey.get(storey.expressId) ?? [];
     console.log(`${storey.name}: ${elements.length} elements`);
   }
 }
@@ -381,7 +383,7 @@ if (format === 'ifcx') {
 
   // Pre-tessellated USD geometry
   for (const mesh of ifcxResult.meshes) {
-    console.log(`Mesh for entity #${mesh.express_id}: ${mesh.ifc_type}`);
+    console.log(`Mesh for entity #${mesh.expressId}: ${mesh.ifcType}`);
   }
 }
 ```
@@ -437,8 +439,9 @@ canvas.addEventListener('click', async (e) => {
   const x = e.clientX - rect.left;
   const y = e.clientY - rect.top;
 
-  const expressId = await renderer.pick(x, y);
-  if (expressId !== null) {
+  const hit = await renderer.pick(x, y);
+  if (hit) {
+    const expressId = hit.expressId;
     console.log(`Selected entity #${expressId}`);
     selectedIds = new Set([expressId]);
 
@@ -519,14 +522,13 @@ sequenceDiagram
 ## Error Handling
 
 ```typescript
-import { IfcParser, ParseError } from '@ifc-lite/parser';
+import { IfcParser } from '@ifc-lite/parser';
 
 try {
   const store = await parser.parseColumnar(buffer);
 } catch (error) {
-  if (error instanceof ParseError) {
+  if (error instanceof Error) {
     console.error('Parse error:', error.message);
-    console.error('At line:', error.line);
   } else {
     throw error;
   }

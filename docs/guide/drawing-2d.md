@@ -58,7 +58,7 @@ import { exportToSVG } from '@ifc-lite/drawing-2d';
 const svg = exportToSVG(drawing, {
   showHatching: true,
   showHiddenLines: true,
-  scale: { name: '1:100', factor: 100 },
+  scale: { name: '1:100', factor: 100, useCase: 'Floor plans' },
   title: 'Ground Floor Plan',
 });
 
@@ -77,24 +77,30 @@ import {
   renderFrame,
   renderTitleBlock,
   renderScaleBar,
+  DEFAULT_SCALE_BAR,
   PAPER_SIZE_REGISTRY,
 } from '@ifc-lite/drawing-2d';
 
-// Create an A1 landscape sheet
-const paper = PAPER_SIZE_REGISTRY.find(p => p.name === 'A1');
-const frame = createFrame({ paper, orientation: 'landscape' });
-const titleBlock = createTitleBlock({
-  projectName: 'Office Building',
-  drawingTitle: 'Ground Floor Plan',
-  scale: '1:100',
-  drawnBy: 'Architect',
-  date: '2026-02-07',
-});
+// Create an A1 landscape sheet. PAPER_SIZE_REGISTRY is keyed by id.
+const paper = PAPER_SIZE_REGISTRY.A1_LANDSCAPE;
 
-// Render to SVG
-const frameSvg = renderFrame(frame);
-const titleBlockSvg = renderTitleBlock(titleBlock);
-const scaleBarSvg = renderScaleBar({ scale: 100, units: 'm' });
+// createFrame takes a FrameStyle string:
+//   'simple' | 'professional' | 'minimal' | 'iso' | 'custom'
+const frame = createFrame('professional');
+
+// createTitleBlock takes a TitleBlockLayout string:
+//   'compact' | 'standard' | 'extended' | 'custom'
+// (title text/fields are populated via updateTitleBlockField)
+const titleBlock = createTitleBlock('standard');
+
+// Renderers return result objects, not raw SVG strings.
+const frameResult = renderFrame(paper, frame);
+const titleBlockResult = renderTitleBlock(titleBlock, frameResult.innerBounds);
+const scale = { name: '1:100', factor: 100, useCase: 'Floor plans' };
+const scaleBarSvg = renderScaleBar(DEFAULT_SCALE_BAR, scale, { x: 20, y: 20 });
+
+const frameSvg = frameResult.svgElements;
+const titleBlockSvg = titleBlockResult.svgElements;
 ```
 
 ## Graphic Overrides
@@ -107,7 +113,7 @@ import { createOverrideEngine, ARCHITECTURAL_PRESET } from '@ifc-lite/drawing-2d
 const engine = createOverrideEngine();
 
 // Apply a built-in preset
-engine.applyPreset(ARCHITECTURAL_PRESET);
+engine.setRules(ARCHITECTURAL_PRESET.rules);
 // Available: VIEW_3D_PRESET, ARCHITECTURAL_PRESET, FIRE_SAFETY_PRESET,
 //           STRUCTURAL_PRESET, MEP_PRESET, MONOCHROME_PRESET
 
@@ -117,8 +123,8 @@ engine.addRule({
   name: 'Highlight Load-Bearing Walls',
   enabled: true,
   priority: 1,
-  criteria: { type: 'ifcType', value: 'IFCWALL' },
-  style: { lineWeight: 0.5, color: '#FF0000' },
+  criteria: { type: 'ifcType', ifcTypes: ['IFCWALL'] },
+  style: { lineWeight: 0.5, strokeColor: '#FF0000' },
 });
 ```
 
@@ -136,8 +142,18 @@ The package generates proper architectural symbols:
 ```typescript
 import { generateDoorSymbol, generateWindowSymbol } from '@ifc-lite/drawing-2d';
 
-const doorSvg = generateDoorSymbol({ width: 0.9, angle: 90, swing: 'left' });
-const windowSvg = generateWindowSymbol({ width: 1.2, type: 'casement' });
+// `opening` is an OpeningInfo (extracted from the model), `bounds2D` its
+// projected footprint (Bounds2D), and `wallDirection` the wall's in-plane
+// axis as a Point2D.
+// generateDoorSymbol(opening, bounds2D, wallDirection): DoorSymbolResult
+const doorResult = generateDoorSymbol(opening, bounds2D, wallDirection);
+
+// generateWindowSymbol(opening, bounds2D, wallDirection, wallThickness?): WindowSymbolResult
+const windowResult = generateWindowSymbol(opening, bounds2D, wallDirection, 0.3);
+
+// Both return result objects (not SVG strings):
+//   doorResult.lines / doorResult.arcPath, windowResult.lines
+
 ```
 
 ## GPU Acceleration
@@ -147,9 +163,12 @@ For large models, section cutting can be GPU-accelerated:
 ```typescript
 import { GPUSectionCutter, isGPUComputeAvailable } from '@ifc-lite/drawing-2d';
 
-if (await isGPUComputeAvailable()) {
+// isGPUComputeAvailable() is synchronous - do not await it.
+if (isGPUComputeAvailable()) {
   const cutter = new GPUSectionCutter(gpuDevice);
-  const result = await cutter.cut(meshData, sectionConfig);
+  // Allocate GPU buffers first; cutMeshes throws if initialize() was not called.
+  await cutter.initialize(maxTriangles);
+  const result = await cutter.cutMeshes(meshData, sectionConfig);
 }
 ```
 

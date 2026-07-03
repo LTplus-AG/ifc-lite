@@ -96,7 +96,7 @@ flowchart TB
 
 ### GeometryRouter
 
-The `GeometryRouter` in `rust/geometry/src/router.rs` handles RTC:
+The `GeometryRouter` in `rust/geometry/src/router/mod.rs` handles RTC:
 
 ```rust
 impl GeometryRouter {
@@ -189,9 +189,10 @@ class CoordinateHandler {
     processMeshesIncremental(batch: MeshData[]): void;
 
     /**
-     * Get coordinate info after processing
+     * Coordinate info during (nullable) and after streaming
      */
-    getCoordinateInfo(): CoordinateInfo | null;
+    getCurrentCoordinateInfo(): CoordinateInfo | null;
+    getFinalCoordinateInfo(): CoordinateInfo;
 }
 ```
 
@@ -297,7 +298,7 @@ for (const batch of batches) {
 }
 
 // Get final coordinate info
-const info = handler.getCoordinateInfo();
+const info = handler.getFinalCoordinateInfo();
 if (info) {
     console.log('Origin shift:', info.originShift);
     console.log('Original bounds:', info.originalBounds);
@@ -423,7 +424,7 @@ if (pre.needsShift && pre.rtcOffset) {
 }
 
 // In TypeScript path
-const info = handler.getCoordinateInfo();
+const info = handler.getCurrentCoordinateInfo();
 console.log('[RTC] Handler info:', {
     wasmDetected: handler.wasmRtcDetected,
     originShift: info?.originShift,

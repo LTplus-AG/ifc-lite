@@ -46,7 +46,7 @@ cd my-ifc-viewer
 npm create vite@latest . -- --template vanilla-ts
 
 # Install dependencies
-npm install @ifc-lite/parser @ifc-lite/renderer @ifc-lite/query
+npm install @ifc-lite/parser @ifc-lite/geometry @ifc-lite/renderer @ifc-lite/query
 ```
 
 ### 2. Project Structure
@@ -210,9 +210,10 @@ export class IfcViewer {
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
 
-      const expressId = await this.renderer.pick(x, y);
-      if (expressId !== null) {
-        this.onSelect?.(expressId);
+      // pick() resolves to a PickResult ({ expressId, ... }) or null
+      const hit = await this.renderer.pick(x, y);
+      if (hit) {
+        this.onSelect?.(hit.expressId);
       } else {
         this.onSelect?.(null);
       }
@@ -228,14 +229,26 @@ export class IfcViewer {
     return this.dataStore;
   }
 
-  getEntity(expressId: number): any | null {
-    if (!this.dataStore) return null;
-    return this.dataStore.entityIndex.byId.get(expressId) ?? null;
+  getRenderer(): Renderer {
+    return this.renderer;
   }
 
-  getProperties(expressId: number): Record<string, Record<string, any>> | null {
-    if (!this.dataStore || !this.buffer) return null;
-    return extractPropertiesOnDemand(this.dataStore, expressId, this.buffer);
+  getEntity(expressId: number): any | null {
+    if (!this.dataStore) return null;
+    const ref = this.dataStore.entityIndex.byId.get(expressId);
+    if (!ref) return null;
+    // EntityRef only carries {expressId,type,byteOffset,byteLength,lineNumber}.
+    // Name and GlobalId come from the store accessors, as QueryResultEntity does.
+    return {
+      ...ref,
+      name: this.dataStore.entities.getName(expressId),
+      globalId: this.dataStore.entities.getGlobalId(expressId),
+    };
+  }
+
+  getProperties(expressId: number) {
+    if (!this.dataStore) return null;
+    return extractPropertiesOnDemand(this.dataStore, expressId);
   }
 
   getModelBounds(): { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null {
@@ -269,7 +282,7 @@ export function renderProperties(
   container: HTMLElement,
   expressId: number,
   entity: any,
-  propertySets: Record<string, Record<string, any>>
+  propertySets: Array<{ name: string; properties: Array<{ name: string; value: any }> }>
 ): void {
   container.innerHTML = '';
 
@@ -285,20 +298,20 @@ export function renderProperties(
   container.appendChild(header);
 
   // Property sets
-  for (const [psetName, props] of Object.entries(propertySets)) {
+  for (const pset of propertySets) {
     const section = document.createElement('div');
     section.className = 'prop-section';
 
     const title = document.createElement('h4');
-    title.textContent = psetName;
+    title.textContent = pset.name;
     section.appendChild(title);
 
     const table = document.createElement('table');
-    for (const [propName, value] of Object.entries(props)) {
+    for (const prop of pset.properties) {
       const row = document.createElement('tr');
       row.innerHTML = `
-        <td>${propName}</td>
-        <td>${formatValue(value)}</td>
+        <td>${prop.name}</td>
+        <td>${formatValue(prop.value)}</td>
       `;
       table.appendChild(row);
     }
@@ -339,7 +352,7 @@ async function main() {
       const entity = viewer.getEntity(expressId);
       const props = viewer.getProperties(expressId);
       if (entity) {
-        renderProperties(propertiesPanel, expressId, entity, props || {});
+        renderProperties(propertiesPanel, expressId, entity, props || []);
       }
     } else {
       propertiesPanel.innerHTML = '<p>Click an element to view properties</p>';
@@ -487,8 +500,8 @@ presets.forEach(preset => {
   const button = document.createElement('button');
   button.textContent = preset;
   button.onclick = () => {
-    const camera = viewer.renderer.getCamera();
-    camera.setPresetView(preset, viewer.getModelBounds());
+    const camera = viewer.getRenderer().getCamera();
+    camera.setPresetView(preset, viewer.getModelBounds() ?? undefined);
   };
   toolbar.appendChild(button);
 });
@@ -499,21 +512,24 @@ presets.forEach(preset => {
 ```typescript
 import { IfcQuery } from '@ifc-lite/query';
 
-// After loading
-const query = new IfcQuery(result);
+// After loading, build a query over the parsed data store
+const dataStore = viewer.getDataStore();
+if (dataStore) {
+  const query = new IfcQuery(dataStore);
 
-// Find all walls
-const walls = query.walls().toArray();
-console.log(`Found ${walls.length} walls`);
+  // Find all walls
+  const walls = query.walls().execute();
+  console.log(`Found ${walls.length} walls`);
 
-// Isolate external walls (show only these)
-const externalWalls = query
-  .walls()
-  .whereProperty('Pset_WallCommon', 'IsExternal', '=', true)
-  .toArray();
+  // Isolate external walls (show only these)
+  const externalWalls = query
+    .walls()
+    .whereProperty('Pset_WallCommon', 'IsExternal', '=', true)
+    .execute();
 
-const isolatedIds = new Set(externalWalls.map(w => w.expressId));
-renderer.render({ isolatedIds });
+  const isolatedIds = new Set(externalWalls.map(w => w.expressId));
+  viewer.getRenderer().render({ isolatedIds });
+}
 ```
 
 ## Running the Viewer

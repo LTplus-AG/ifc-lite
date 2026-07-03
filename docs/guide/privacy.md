@@ -17,10 +17,10 @@ All four live in your browser's IndexedDB. Nothing is sent off-device unless you
 |-------|---------|---------|-----|
 | `ifc-lite-extensions` | IndexedDB | Installed `.iflx` bundles + their records | Forever (or until uninstall) |
 | `ifc-lite-flavors` | IndexedDB | Flavor library + snapshots | Forever (snapshots cap at 10 per flavor) |
-| Action log | In-memory ring buffer | Pattern miner input | 50,000 events / 8 MiB rolling |
-| Audit log | In-memory ring buffer | Lifecycle events | 5,000 entries rolling |
+| Action log | IndexedDB (ring buffer) | Pattern miner input | 50,000 events / 8 MiB rolling |
+| Audit log | IndexedDB (ring buffer) | Lifecycle events | 10,000 entries / 10 MiB rolling |
 
-The action and audit logs are in-memory today; persistence across reloads is a Phase 4 follow-up. When persistence lands they'll move to the same IndexedDB store with the same retention caps.
+The action and audit logs are held in an in-memory ring buffer and mirrored to IndexedDB, so they survive a reload (both are hydrated from IDB on startup). Clearing a log wipes both the in-memory copy and its persisted copy.
 
 ## The Privacy panel
 
@@ -45,7 +45,7 @@ Per-flavor durable notes the AI assistant sees in every chat for that flavor. Us
 
 | Field | Notes |
 |-------|-------|
-| Textarea | Markdown content. Capped at ~4000 tokens (~16 KB). Excess is truncated server-side with a `[truncated]` marker. |
+| Textarea | Markdown content. Capped at ~4000 tokens (~16 KB). Excess is truncated client-side on save with a `[truncated]` marker. |
 | **Extract from chat** | Scans the current session transcript for stable preferences and proposes them (see [Memory extractor](#memory-extractor) below). |
 | **Save overlay** | Persists to the active flavor. |
 

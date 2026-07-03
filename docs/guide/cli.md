@@ -248,7 +248,7 @@ Returns a complete JSON object with:
 
 ### `export` — Export Data
 
-Export entity data to CSV, JSON, or IFC STEP format.
+Export entity data to CSV, JSON, IFC STEP, and other formats.
 
 ```bash
 # CSV export
@@ -275,7 +275,7 @@ ifc-lite export model.ifc --format csv --out walls.csv
 
 | Flag | Description |
 |------|-------------|
-| `--format <fmt>` | `csv`, `json`, or `ifc` |
+| `--format <fmt>` | `csv`, `json`, `ifc`, `obj`, `gltf`, `glb`, `jsonld`, `step`, `ifcx`, or `hbjson` |
 | `--type <T>` | Filter entities by type |
 | `--columns <cols>` | Comma-separated columns (supports `PsetName.PropName`) |
 | `--separator <sep>` | CSV separator (default: `,`) |
@@ -719,7 +719,7 @@ ifc-lite schema              # Full schema with params and return types
 ifc-lite schema --compact    # Minimal: names and descriptions only
 ```
 
-The schema includes all SDK namespaces: `model`, `query`, `viewer`, `mutate`, `create`, `export`, `ids`, `bcf`, and their methods with parameter names, return types, and LLM semantic hints.
+The schema includes the runtime SDK namespaces: `model`, `query`, `viewer`, `mutate`, `store`, `lens`, `create`, `files`, `schedule`, `clash`, `export`, and their methods with parameter names, return types, and LLM semantic hints.
 
 ## Output Modes
 

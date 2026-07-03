@@ -57,9 +57,12 @@ Regenerating the committed reference (pin bump or intentional acceptance):
 
 ## CI
 
-- Per-PR (`ifcopenshell-parity` job): ifc-lite side only vs the committed
+Both lanes live in the `IfcOpenShell parity` workflow
+(`.github/workflows/ifcopenshell-parity.yml`).
+
+- Per-PR (`quick` job): ifc-lite side only vs the committed
   reference over the IN-TREE fixtures (no fixture download, no reference
   engine install). Catches kernel drift on every geometry-affecting PR.
-- Nightly (`ifcopenshell-parity.yml`): installs the pinned engine, runs the
+- Nightly (`full` job): installs the pinned engine, runs the
   full committed corpus (fetched fixtures included), regenerates reference
   dumps to detect reference-staleness, and uploads the diff reports.

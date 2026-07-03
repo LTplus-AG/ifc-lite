@@ -58,7 +58,7 @@ When using `@ifc-lite/parser` in the browser, properties are not all parsed upfr
 These design decisions have the biggest impact on performance:
 
 - **Streaming first**: Geometry is parsed and rendered incrementally. You see the model building up, not a loading spinner followed by everything at once.
-- **Web Workers for large files**: Files over 50 MB are processed in a dedicated worker. Geometry streams from the worker while the data model parses on the main thread.
+- **Web Workers**: When the browser supports cross-origin isolation and SharedArrayBuffer, the data model parses in a dedicated Web Worker; it only falls back to the main thread when SharedArrayBuffer is unavailable. Geometry is meshed by a pool of workers for files of any size, with the pool size chosen by job count and available memory rather than a fixed file-size threshold.
 - **Columnar storage**: Data is stored by type (IDs, types, names as separate arrays) for cache-efficient access patterns.
 - **Zero-copy ArrayBuffer transfer**: Buffers are transferred between worker and main thread, not copied.
 

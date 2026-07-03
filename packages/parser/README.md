@@ -1,6 +1,6 @@
 # @ifc-lite/parser
 
-High-performance IFC parser. Tokenizes STEP files at ~1,259 MB/s, builds columnar TypedArray storage, and ships full type-safe coverage of IFC4 (776 entities) and IFC4X3 (876 entities).
+High-performance IFC parser. Tokenizes STEP files at high throughput, builds columnar TypedArray storage, and ships full type-safe coverage of all 776 IFC4 entities. IFC4X3 files are detected and parsed at runtime.
 
 ## Installation
 
@@ -40,7 +40,7 @@ console.log(`${store.entityCount} entities, schema ${store.schemaVersion}`);
 
 ## Type-safe entity access
 
-All 776 IFC4 entities (876 for IFC4X3) ship as TypeScript types via the generated schema.
+All 776 IFC4 entities ship as TypeScript types via the generated schema.
 
 ```typescript
 import type { IfcWall, IfcDoor, IfcSlab } from '@ifc-lite/parser';
@@ -93,8 +93,8 @@ const georef = extractGeoreferencingOnDemand(store);
 
 if (georef?.hasGeoreference) {
   console.log(`CRS: ${georef.projectedCRS?.name}`);
-  console.log(`Origin: ${georef.eastings}, ${georef.northings}, ${georef.orthogonalHeight}`);
-  console.log(`Rotation: ${georef.rotationRadians} rad`);
+  console.log(`Origin: ${georef.mapConversion?.eastings}, ${georef.mapConversion?.northings}, ${georef.mapConversion?.orthogonalHeight}`);
+  console.log(`Grid north: ${georef.mapConversion?.xAxisAbscissa}, ${georef.mapConversion?.xAxisOrdinate}`);
 }
 ```
 
@@ -106,7 +106,7 @@ if (georef?.hasGeoreference) {
 | 50 MB | ~600–700 ms |
 | 200 MB | ~2.5–3 s |
 
-- Tokenization: ~1,259 MB/s on M1/M2 laptops
+- Tokenization: high single-pass throughput on M1/M2 laptops
 - Bundle: ~200 KB gzipped (schema registry included)
 - Memory: TypedArray columnar storage
 

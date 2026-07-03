@@ -12,7 +12,7 @@ Related: `docs/architecture/collab-plan.md`.
 Build a clash-detection capability that is:
 
 1. **WASM-web first** — the heavy engine runs in Rust → WASM, off the main thread, on the same geometry buffers the mesher already produces.
-2. **One source of truth** — a single `@ifc-lite/clash` package consumed by the web viewer, the desktop app, the CLI, MCP, and scripts. No per-host forks.
+2. **One source of truth** — a single `@ifc-lite/clash` package consumed by the web viewer, the CLI, MCP, and scripts (plus any out-of-tree/3rd-party desktop build; see §9.4). No per-host forks.
 3. **Future-aligned for IFC5/USD** — the engine operates on a representation-agnostic element model; STEP/IFC4 and IFCx/USD are just *adapters* that feed it.
 4. **Correct** — no silent decimation, real triangle-triangle intersection and distance, true contact points, smart exclusions (voids/hosts/assemblies). This is the bar the desktop prototype does not meet.
 5. **BCF-sensible** — clash results flow into BCF as a *manageable* set of grouped, deduplicated, lifecycle-aware topics — never thousands of one-clash topics.
@@ -307,8 +307,8 @@ BCF status persists via the deterministic topic GUID. This is the Navisworks "cl
 - Highlight via existing actions: `addEntitiesToSelection`, `hideEntitiesInModel`/`showEntitiesInModel` (isolate), renderer `setColorOverrides` (A=red, B=orange), `cameraCallbacks.frameSelection`, and `SectionPlane` for slicing to a clash. "Export to BCF" uses §6 with a viewer snapshot provider; "Open BCF" round-trips status back.
 
 ### 9.2 MCP (`packages/mcp`)
-- Implement the existing `clash_check` stub (`tools/geometry.ts:229`): resolve A/B GlobalId selections via `entityIndex.byType` + `EntityNode`, run the engine (WASM-in-Node), return structured + grouped results honoring `scope:'read'`, `progress`, `signal`.
-- Add `clash_matrix` (run discipline presets) and `clash_report` (grouped summary). The `clash_review` prompt (`prompts/templates.ts:133`) already orchestrates this.
+- `clash_check` (`tools/clash.ts`): resolve A/B GlobalId selections via `entityIndex.byType` + `EntityNode`, run the engine (WASM-in-Node), return structured + grouped results honoring `scope:'read'`, `progress`, `signal`.
+- `clash_matrix` (run discipline presets). The `clash_review` prompt (`prompts/templates.ts:133`) already orchestrates this. (A separate `clash_report` grouped-summary tool is not implemented; grouped summaries ride the `clash_check`/`clash_matrix` results.)
 
 ### 9.3 Scripts / CLI / sandbox
 - `bim.clash.run(selA, selB, opts)` / `bim.clash.matrix(presets)` in the sandbox bridge (`packages/sandbox/src/bridge-schema.ts`), returning serializable `ClashResult`.
@@ -330,7 +330,7 @@ P7 (desktop migration) was not pursued — see §9.4.
 | **1. Worker + panel** | `clash.worker.ts`, `clashSlice`, `ClashPanel`, discipline-matrix UI, color/isolate/frame/section wiring | Interactive clash in the web viewer, off main thread |
 | **2. Sensible BCF** | `grouping.ts` + `bcf-bridge.ts`, deterministic topic GUIDs, caps-with-transparency, viewpoint framing/coloring/clipping/snapshot, round-trip import | The headline requirement: grouped, deduplicated, lifecycle-ready BCF |
 | **3. Rust/WASM core** | `rust/clash` + `ClashSession` binding, `backend:'auto'`, differential tests, worker-pool sharding | Production performance; 1M-triangle models without freezing |
-| **4. MCP + scripting + CLI** | implement `clash_check`, add `clash_matrix`/`clash_report`, `bim.clash.*`, `ifc-lite clash` | Headless + agentic clash; couples to automation |
+| **4. MCP + scripting + CLI** | implement `clash_check`, add `clash_matrix`, `bim.clash.*`, `ifc-lite clash` | Headless + agentic clash; couples to automation |
 | **5. Lifecycle** | revision diffing of clash sets, BCF status persistence | Clash becomes a tracked workflow, not a snapshot |
 | **6. IFC5/USD** | `adapters/ifcx.ts` (prim path = key, component type = tag, geom from ifcx extractor) | Proves and delivers the future-alignment; core unchanged |
 | **7. Desktop migration** *(not pursued)* | desktop consumes `@ifc-lite/clash`; delete private engine | Single source of truth |

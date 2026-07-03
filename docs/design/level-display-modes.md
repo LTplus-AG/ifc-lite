@@ -1,6 +1,12 @@
 # Phase 6 — Level Display Modes (design)
 
-**Status:** plan only — not yet implemented.
+**Status:** implemented. Stacked / Exploded / Solo ship via
+`apps/viewer/src/store/slices/levelDisplaySlice.ts` +
+`apps/viewer/src/hooks/useLevelDisplayEffect.ts`. The shipped design
+diverges from the Option A sketch below: Solo reuses the
+`selectedStoreys` storey filter as the single isolation channel, and
+Exploded flushes per-entity offsets through `pendingMeshTranslations`
+rather than mutating `MeshData.positions` in a `Viewport.tsx` effect.
 
 Pascal Editor's `LevelSystem` lets users switch between **Stacked**
 (default), **Exploded** (storeys lifted on Y), and **Solo** (only one

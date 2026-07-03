@@ -436,12 +436,18 @@ graph LR
 ## Mapped Representations
 
 IFC reuses geometry via `IfcMappedItem` (a source `IfcRepresentationMap` plus a
-per-instance placement transform). The engine **expands** each mapped item into
-its own tessellated mesh — the source geometry is tessellated once and the
-result is transformed per placement. There is no GPU-instancing path: the
-renderer instead groups the resulting meshes by colour into a small number of
-batched draw calls (see the rendering guide), which keeps draw-call counts low
-without a separate instance buffer.
+per-instance placement transform). For the primary model the engine collates
+congruent occurrences into **GPU instances**: the wasm
+`processGeometryBatchInstanced` entry point (backed by
+`rust/geometry/src/instancing` and `processors/mapped.rs`) partitions opaque
+ordinary occurrences into per-template instanced shards, and the renderer
+uploads each template once as `instancedTemplates` via `addInstancedShard` (see
+the rendering guide), then draws every occurrence of a template in a single
+instanced draw call. Instancing is enabled by default for the primary model
+(`enableInstancing: target.kind === 'primary'` in the viewer loader); federated
+loads keep geometry flat. Occurrences that are not eligible for instancing
+(transparent glass, or non-ordinary geometry classes) fall back to being
+tessellated per placement and grouped by colour into batched draw calls.
 
 ```mermaid
 flowchart TB
@@ -451,12 +457,12 @@ flowchart TB
     end
 
     subgraph Output["Output"]
-        Mesh["Tessellated mesh (transform applied)"]
-        Batch["Renderer batches by colour"]
+        Instanced["Per-template GPU instanced shard (primary model)"]
+        Fallback["Fallback: tessellated per placement, batched by colour"]
     end
 
-    Definition --> Mesh
-    Mesh --> Batch
+    Definition --> Instanced
+    Definition --> Fallback
 ```
 
 ## Streaming Pipeline

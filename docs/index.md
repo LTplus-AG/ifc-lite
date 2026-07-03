@@ -185,7 +185,7 @@ You don't need all packages. Here's what to grab for common tasks:
 | Export to glTF / IFC / Parquet | + `@ifc-lite/export` |
 | Connect to a server backend | + `@ifc-lite/server-client` |
 
-> Full list: [TypeScript API Reference](api/typescript.md) (25 packages) · [Rust API Reference](api/rust.md) (4 crates)
+> Full list: [TypeScript API Reference](api/typescript.md) (14 packages) · [Rust API Reference](api/rust.md) (3 crates)
 
 ## Browser Support
 

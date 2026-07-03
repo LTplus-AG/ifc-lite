@@ -139,7 +139,7 @@ Returns entity list and IFC size:
 {"ok":true,"count":3,"entities":[...],"ifcSize":3646}
 ```
 
-All 30+ element types from the [`create` command](cli.md#create--create-ifc-files) are supported. Coordinates use IFC Z-up convention.
+All 29 element types from the [`create` command](cli.md#create--create-ifc-files) are supported. Coordinates use IFC Z-up convention.
 
 ### `POST /api/clear-created` — Remove Live Geometry
 

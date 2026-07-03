@@ -111,7 +111,7 @@ cargo build --release
 | `runBinary(args?)` | Run the server with optional args — resolves with exit code |
 | `ensureBinary(onProgress?)` | Download if missing — resolves with binary path |
 | `downloadBinary(onProgress?)` | Force re-download — resolves with binary path |
-| `getBinaryInfo()` | Returns `{ platform, version, isCached, cachePath }` |
+| `getBinaryInfo()` | Returns `{ platform, binaryPath, cacheDir, isCached }` |
 | `isBinaryCached()` | Boolean — is the binary on disk? |
 
 ## License

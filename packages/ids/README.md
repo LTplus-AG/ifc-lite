@@ -19,14 +19,14 @@ const idsSpec = parseIDS(idsXml);
 const translator = createTranslationService('en');
 const report = await validateIDS(idsSpec, store, { translator });
 
-console.log(`Overall: ${report.totalPassed} / ${report.totalChecked} passed`);
+console.log(`Overall: ${report.summary.totalEntitiesPassed} / ${report.summary.totalEntitiesChecked} passed`);
 
 for (const spec of report.specificationResults) {
-  console.log(`\n${spec.specificationName}: ${spec.passRate}%`);
+  console.log(`\n${spec.specification.name}: ${spec.passRate}%`);
 
   for (const entity of spec.entityResults) {
     if (!entity.passed) {
-      for (const req of entity.requirementResults.filter(r => !r.passed)) {
+      for (const req of entity.requirementResults.filter(r => r.status === 'fail')) {
         console.log(`  ✗ ${entity.entityType} #${entity.expressId}: ${translator.describeFailure(req)}`);
       }
     }
@@ -52,7 +52,7 @@ const idsSpec = parseIDS(idsXml);
 for (const spec of idsSpec.specifications) {
   console.log(`Spec: ${spec.name} (${spec.identifier})`);
   console.log(`  Applies to: ${spec.applicability.facets.length} facet(s)`);
-  console.log(`  Requires:   ${spec.requirements.facets.length} facet(s)`);
+  console.log(`  Requires:   ${spec.requirements.length} requirement(s)`);
 }
 ```
 

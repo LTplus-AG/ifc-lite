@@ -26,7 +26,7 @@ console.log(`${walls.length} external load-bearing walls`);
 
 for (const wall of walls) {
   console.log(wall.name, wall.globalId);
-  console.log(wall.properties()); // lazily-loaded psets
+  console.log(wall.properties); // lazily-loaded psets
 }
 ```
 
@@ -52,7 +52,7 @@ query
   .execute();
 ```
 
-Supported: `=`, `!=`, `>`, `<`, `>=`, `<=`, `CONTAINS`, `STARTS_WITH`, `IS_NULL`, `IS_NOT_NULL`.
+Supported: `=`, `!=`, `>`, `<`, `>=`, `<=`, `contains`, `startsWith`.
 
 ## Graph traversal
 
@@ -65,7 +65,7 @@ console.log(wall.building()?.name);  // 'Office Tower'
 
 // Containment + composition
 const openings = wall.contains(); // openings hosted by the wall
-const aggregates = wall.composedOf();
+const aggregates = wall.decomposes();
 ```
 
 ## SQL via DuckDB-WASM

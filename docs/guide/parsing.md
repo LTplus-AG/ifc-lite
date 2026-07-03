@@ -80,7 +80,7 @@ const doorIds = store.entityIndex.byType.get('IFCDOOR') ?? [];
 const entityRef = store.entityIndex.byId.get(123);
 
 // Metadata
-console.log(`Schema: ${store.schemaVersion}`);  // IFC2X3, IFC4, IFC4X3
+console.log(`Schema: ${store.schemaVersion}`);  // IFC2X3, IFC4, IFC4X3, IFC5
 console.log(`Entities: ${store.entityCount}`);
 console.log(`Parse time: ${store.parseTime}ms`);
 ```
@@ -128,7 +128,7 @@ for await (const event of geometry.processStreaming(new Uint8Array(buffer))) {
     case 'batch':
       // Add meshes to renderer as they arrive
       renderer.addMeshes(event.meshes, true);  // isStreaming = true
-      progressBar.value = event.progress;
+      progressBar.value = event.totalSoFar;  // cumulative mesh count (no percentage on batch events)
       break;
     case 'complete':
       console.log(`Done: ${event.totalMeshes} meshes`);
@@ -214,15 +214,16 @@ import { detectFormat } from '@ifc-lite/ifcx';
 const result = await parseAuto(buffer);
 
 if (result.format === 'ifcx') {
-  // IFC5 file
-  const { entities, meshes, spatialHierarchy } = result;
+  // IFC5 file: parsed data lives under result.data, meshes at the top level
+  const { entities, spatialHierarchy } = result.data;
+  const meshes = result.meshes;
 } else {
-  // IFC4 STEP file
-  const { store } = result;
+  // IFC4 STEP file: the IfcDataStore is result.data
+  const store = result.data;
 }
 
 // Or detect format manually
-const format = detectFormat(buffer);  // 'ifc', 'ifcx', or 'unknown'
+const format = detectFormat(buffer);  // 'ifc', 'ifcx', 'glb', or 'unknown'
 ```
 
 ### Direct IFCX Parsing
@@ -242,7 +243,7 @@ console.log(`Meshes: ${result.meshes.length}`);
 
 // Pre-tessellated USD geometry
 for (const mesh of result.meshes) {
-  console.log(`Entity #${mesh.express_id}: ${mesh.ifc_type}`);
+  console.log(`Entity #${mesh.expressId}: ${mesh.ifcType}`);
   // mesh.positions, mesh.normals, mesh.indices ready for GPU
 }
 
@@ -285,7 +286,7 @@ const hierarchy = result.spatialHierarchy;
 console.log(`Project: ${hierarchy.project.name}`);
 
 // Element-to-storey lookup
-const storeyId = hierarchy.element_to_storey.get(wallId);
+const storeyId = hierarchy.elementToStorey.get(wallId);
 ```
 
 ## Server-Side Parsing
@@ -302,12 +303,10 @@ const client = new IfcServerClient({
 // Parquet format (15x smaller than JSON)
 const result = await client.parseParquet(file);
 
-// Streaming for large files
-for await (const event of client.parseParquetStream(file)) {
-  if (event.type === 'batch') {
-    renderer.addMeshes(event.meshes);
-  }
-}
+// Streaming for large files (onBatch callback fires per geometry batch)
+await client.parseParquetStream(file, (batch) => {
+  renderer.addMeshes(batch.meshes);
+});
 ```
 
 See the [Server Guide](server.md) for complete server documentation.
@@ -317,33 +316,38 @@ See the [Server Guide](server.md) for complete server documentation.
 ```typescript
 interface ParseOptions {
   // Progress callback
-  onProgress?: (progress: Progress) => void;
+  onProgress?: (progress: { phase: string; percent: number }) => void;
 
-  // Geometry quality: 'FAST' | 'BALANCED' | 'HIGH'
-  geometryQuality?: GeometryQuality;
+  // Diagnostic message callback
+  onDiagnostic?: (message: string) => void;
 
-  // Skip geometry processing
-  skipGeometry?: boolean;
+  // Optional IfcAPI instance for WASM-accelerated entity scanning
+  wasmApi?: WasmScanApi;
 
-  // Coordinate handling
-  autoOriginShift?: boolean;
-  customOrigin?: { x: number; y: number; z: number };
+  // Yield budget for large incremental parses (higher finishes faster with longer main-thread slices)
+  yieldIntervalMs?: number;
 
-  // Entity filtering
-  includeTypes?: string[];
-  excludeTypes?: string[];
+  // Keep property-set containers indexed but defer individual property/quantity atoms
+  deferPropertyAtomIndex?: boolean;
 
-  // WASM acceleration (optional)
-  wasmApi?: WasmApi;
+  // Skip worker-based entity scanning and stay in-process
+  disableWorkerScan?: boolean;
+
+  // Called when spatial hierarchy is ready, before property/association parsing completes
+  onSpatialReady?: (partialStore: IfcDataStore) => void;
+
+  // Pre-built entity index from another worker (e.g. the streaming geometry pre-pass)
+  preScannedEntityIndex?: PreScannedEntityIndex;
 }
 
 const store = await parser.parseColumnar(buffer, {
-  geometryQuality: 'BALANCED',
-  autoOriginShift: true,
-  excludeTypes: ['IFCSPACE', 'IFCOPENINGELEMENT'],
+  deferPropertyAtomIndex: true,
   onProgress: ({ phase, percent }) => console.log(`${phase}: ${percent}%`)
 });
 ```
+
+Tessellation and geometry quality are configured on the `GeometryProcessor`,
+not on `parseColumnar()`.
 
 ## IfcDataStore Structure
 
@@ -351,7 +355,7 @@ const store = await parser.parseColumnar(buffer, {
 interface IfcDataStore {
   // Metadata
   fileSize: number;
-  schemaVersion: 'IFC2X3' | 'IFC4' | 'IFC4X3';
+  schemaVersion: 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
   entityCount: number;
   parseTime: number;
 
@@ -384,23 +388,25 @@ interface IfcDataStore {
 ## Spatial Hierarchy
 
 ```typescript
+import { IfcTypeEnum } from '@ifc-lite/data';
+
 const hierarchy = store.spatialHierarchy;
 
 // Project structure
 console.log(`Project: ${hierarchy.project.name}`);
 
-// Navigate storeys
+// Navigate storeys (SpatialNode.type is a numeric IfcTypeEnum)
 for (const child of hierarchy.project.children) {
-  if (child.type === 'IFCBUILDINGSTOREY') {
+  if (child.type === IfcTypeEnum.IfcBuildingStorey) {
     const storey = child;
     console.log(`Storey: ${storey.name}`);
 
-    // Get elements on this storey
-    const elements = hierarchy.byStorey.get(storey.id) ?? [];
+    // Get elements on this storey (byStorey is keyed by the storey express id)
+    const elements = hierarchy.byStorey.get(storey.expressId) ?? [];
     console.log(`  Elements: ${elements.length}`);
 
     // Get storey elevation
-    const elevation = hierarchy.storeyElevations.get(storey.id);
+    const elevation = hierarchy.storeyElevations.get(storey.expressId);
     console.log(`  Elevation: ${elevation}m`);
   }
 }
@@ -458,14 +464,22 @@ import {
 const materials = extractMaterials(store);
 
 // Get material for an element
-const material = getMaterialForElement(wallId, materials);
-if (material) {
-  console.log(`Material: ${material.name}`);
+// getMaterialForElement returns a material express id (or undefined)
+const materialId = getMaterialForElement(wallId, materials);
+if (materialId !== undefined) {
+  const material = materials.materials.get(materialId);
+  if (material) {
+    console.log(`Material: ${material.name}`);
+  }
 
-  // For layered materials (walls)
-  if (material.layers) {
-    for (const layer of material.layers) {
-      console.log(`  Layer: ${layer.material} (${layer.thickness}mm)`);
+  // Layered materials resolve to a MaterialLayerSet of layer ids
+  const layerSet = materials.materialLayerSets.get(materialId);
+  if (layerSet) {
+    for (const layerId of layerSet.layers) {
+      const layer = materials.materialLayers.get(layerId);
+      if (!layer) continue;
+      const layerMat = materials.materials.get(layer.material);
+      console.log(`  Layer: ${layerMat?.name ?? layer.material} (${layer.thickness}mm)`);
     }
   }
 }
@@ -483,14 +497,15 @@ import {
 const georef = extractGeoreferencing(store);
 
 if (georef) {
-  console.log(`CRS: ${georef.targetCRS?.name}`);
+  console.log(`CRS: ${georef.projectedCRS?.name}`);
   console.log(`Eastings: ${georef.mapConversion?.eastings}`);
   console.log(`Northings: ${georef.mapConversion?.northings}`);
 
-  // Transform local coordinate to world
-  const local = { x: 10, y: 20, z: 0 };
-  const world = transformToWorld(local, georef);
-  console.log(`World: ${world.x}, ${world.y}, ${world.z}`);
+  // Transform a local coordinate (tuple) to world; returns a tuple or null
+  const world = transformToWorld([10, 20, 0], georef);
+  if (world) {
+    console.log(`World: ${world[0]}, ${world[1]}, ${world[2]}`);
+  }
 }
 ```
 
@@ -508,8 +523,8 @@ const classifications = extractClassifications(store);
 // Get classifications for an element
 const codes = getClassificationsForElement(wallId, classifications);
 for (const code of codes) {
-  console.log(`${code.system}: ${code.identification} - ${code.name}`);
-  // e.g., "Uniclass 2015: Pr_60_10_32 - External walls"
+  console.log(`${code.identification} - ${code.name}`);
+  // e.g., "Pr_60_10_32 - External walls" (owning system via code.referencedSource)
 }
 
 // Group elements by classification
@@ -522,20 +537,15 @@ groups.forEach((elementIds, code) => {
 ## Error Handling
 
 ```typescript
-import { IfcParser, ParseError, TokenError, SchemaError } from '@ifc-lite/parser';
+import { IfcParser } from '@ifc-lite/parser';
 
 try {
   const store = await parser.parseColumnar(buffer);
 } catch (error) {
-  if (error instanceof TokenError) {
-    // Malformed STEP syntax
-    console.error(`Token error at line ${error.line}: ${error.message}`);
-  } else if (error instanceof SchemaError) {
-    // Unknown or unsupported schema
-    console.error(`Schema error: ${error.message}`);
-  } else if (error instanceof ParseError) {
-    // General parse error
-    console.error(`Parse error: ${error.message}`);
+  // parseColumnar throws standard Error instances on malformed STEP syntax,
+  // unknown or unsupported schemas, and other parse failures.
+  if (error instanceof Error) {
+    console.error(`Parse failed: ${error.message}`);
   } else {
     throw error;
   }
@@ -548,7 +558,7 @@ try {
 |------|----------|--------|-------|
 | `parse()` | Small files, full object access | High | Moderate |
 | `parseColumnar()` | Most use cases | Low | Fast |
-| `parseStreaming()` | Large files (>50MB) | Very Low | Progressive |
+| `GeometryProcessor.processStreaming()` | Large files (>50MB) | Very Low | Progressive |
 | Server | Production, caching | Server-side | Fastest (cached) |
 
 ### Performance Tips

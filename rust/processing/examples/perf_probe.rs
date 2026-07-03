@@ -73,14 +73,23 @@ struct CensusSummary {
     operand_tris: u64,
 }
 
+// CSG op codes as recorded in `CsgOpRecord.op` (a `u8`, not an exported enum).
+// Mirrors ifc_lite_geometry's census numbering; kept as named constants so a
+// reorder there surfaces as a one-line change here rather than silently
+// swapping the reported counts.
+const OP_SUBTRACT: u8 = 0;
+const OP_UNION: u8 = 1;
+const OP_INTERSECTION: u8 = 2;
+const OP_CLIP: u8 = 3;
+
 fn summarize_census() -> CensusSummary {
     let mut s = CensusSummary::default();
     for r in take_csg_census() {
         match r.op {
-            0 => s.subtract += 1,
-            1 => s.union += 1,
-            2 => s.intersection += 1,
-            3 => s.clip += 1,
+            OP_SUBTRACT => s.subtract += 1,
+            OP_UNION => s.union += 1,
+            OP_INTERSECTION => s.intersection += 1,
+            OP_CLIP => s.clip += 1,
             _ => {}
         }
         s.operand_tris += r.a_tris as u64 + r.b_tris as u64;

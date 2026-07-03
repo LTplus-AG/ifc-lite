@@ -21,5 +21,8 @@ if [ "${OBS:-0}" = "1" ]; then
   FEATURES=(--features observability)
 fi
 
-cargo build --profile profiling -p ifc-lite-processing --example perf_probe "${FEATURES[@]}" >&2
+# `${FEATURES[@]+"${FEATURES[@]}"}` expands to nothing when the array is empty
+# without tripping `set -u` on macOS's default bash 3.2 (which treats an empty
+# array expansion as an unbound variable; fixed in bash 4.4).
+cargo build --profile profiling -p ifc-lite-processing --example perf_probe ${FEATURES[@]+"${FEATURES[@]}"} >&2
 exec "$ROOT/target/profiling/examples/perf_probe" "$@"

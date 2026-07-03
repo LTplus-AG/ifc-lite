@@ -12,7 +12,7 @@ const report: CompareReport = {
   headModel: 'Project01 v2',
   scope: 'both',
   generatedAt: '2026-06-18T00:00:00.000Z',
-  excludedTypes: ['IFCOPENINGELEMENT'],
+  excludedTypes: [],
   counts: { added: 1, deleted: 1, modified: 1 },
   rows: [
     { globalId: '12SOM77Nv5ruUGky1rkC3a', name: 'Wall', ifcType: 'IfcWall', state: 'added', change: 'Added', movedDistance: 0, model: 'Project01 v2' },
@@ -50,6 +50,19 @@ describe('reportToCsv (#1202)', () => {
     // apostrophe so Excel/Sheets treat it as text, not a formula.
     assert.ok(csv.includes('"\'=HYPERLINK('), `formula not neutralised: ${csv}`);
   });
+
+  it('leads with an excluded-classes comment so the omission is not silent (#1470)', () => {
+    const withBlacklist: CompareReport = { ...report, excludedTypes: ['IfcOpeningElement'] };
+    const lines = reportToCsv(withBlacklist).split('\r\n');
+    assert.strictEqual(lines[0], '# Excluded classes (not compared): IfcOpeningElement');
+    assert.strictEqual(lines[1], 'GlobalId,Name,IfcType,Change,MovedDistance_m,Model');
+    assert.strictEqual(lines.length, 2 + report.rows.length);
+  });
+
+  it('omits the comment line entirely when nothing was excluded', () => {
+    const lines = reportToCsv(report).split('\r\n');
+    assert.strictEqual(lines[0], 'GlobalId,Name,IfcType,Change,MovedDistance_m,Model');
+  });
 });
 
 describe('reportToJson (#1202)', () => {
@@ -61,8 +74,9 @@ describe('reportToJson (#1202)', () => {
   });
 
   it('records the excluded classes (blacklist) in the report (#1470)', () => {
-    const parsed = JSON.parse(reportToJson(report));
-    assert.deepStrictEqual(parsed.excludedTypes, ['IFCOPENINGELEMENT']);
+    const withBlacklist: CompareReport = { ...report, excludedTypes: ['IfcOpeningElement'] };
+    const parsed = JSON.parse(reportToJson(withBlacklist));
+    assert.deepStrictEqual(parsed.excludedTypes, ['IfcOpeningElement']);
   });
 });
 

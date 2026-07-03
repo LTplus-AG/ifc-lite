@@ -185,7 +185,16 @@ function csvField(value: string | number): string {
 /** Serialize the report as RFC-4180 CSV (one element per row). */
 export function reportToCsv(report: CompareReport): string {
   const header = ['GlobalId', 'Name', 'IfcType', 'Change', 'MovedDistance_m', 'Model'];
-  const lines = [header.join(',')];
+  const lines: string[] = [];
+  // Provenance: a blacklist removes rows, so a CSV that looks "complete" would
+  // mislead a coordinator (the ignored elements are simply gone). Lead with a
+  // comment naming the excluded classes so the omission is never silent (#1470).
+  // Starts with `#`, so it is not a formula-injection vector and standard CSV
+  // readers surface it as a single leading cell rather than corrupting columns.
+  if (report.excludedTypes.length > 0) {
+    lines.push(csvField(`# Excluded classes (not compared): ${report.excludedTypes.join(', ')}`));
+  }
+  lines.push(header.join(','));
   for (const r of report.rows) {
     lines.push([
       csvField(r.globalId),

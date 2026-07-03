@@ -27,6 +27,39 @@
 use crate::Mesh;
 use rustc_hash::FxHashMap;
 
+/// Incident-triangle record for one undirected welded edge. A boundary edge has
+/// one incident triangle and a manifold edge exactly two, so the two triangle
+/// slots are stored INLINE — replacing the old per-edge heap `Vec<usize>`, which
+/// allocated ~1.5 tiny Vecs per triangle and dominated the allocator churn of
+/// this pass on mesh-heavy models. `count` is the TRUE incidence; a value > 2
+/// marks a non-manifold edge, which the propagation skips before ever reading
+/// the slots. Only the first two triangles are consulted, stored in ascending
+/// scan order (identical to the old `Vec` push order), so the BFS traversal —
+/// and therefore every flip decision — is byte-identical.
+#[derive(Clone, Copy, Default)]
+struct EdgeInc {
+    tris: [usize; 2],
+    count: u32,
+}
+
+impl EdgeInc {
+    #[inline]
+    fn push(&mut self, t: usize) {
+        if (self.count as usize) < 2 {
+            self.tris[self.count as usize] = t;
+        }
+        self.count += 1;
+    }
+
+    /// The incident triangles the propagation may consult (the first two, in
+    /// push order). Only reached for `count` of 1 or 2 — the `count > 2` path
+    /// `continue`s first — so this yields exactly what the old `Vec` iterated.
+    #[inline]
+    fn incident(&self) -> &[usize] {
+        &self.tris[..(self.count as usize).min(2)]
+    }
+}
+
 /// Vertex weld grid (10 µm): fine enough not to merge distinct mm-scale features,
 /// coarse enough to weld the (usually bit-equal) coincident flat-shaded
 /// duplicates so shared edges are found. Under-welding only splits a body into
@@ -53,7 +86,8 @@ pub fn orient_mesh_outward(mesh: &mut Mesh) -> bool {
 
     // Weld positions -> welded vertex id; record the welded vid of every corner.
     let q = |v: f32| (v as f64 * WELD).round() as i64;
-    let mut vid_of: FxHashMap<(i64, i64, i64), u32> = FxHashMap::default();
+    let mut vid_of: FxHashMap<(i64, i64, i64), u32> =
+        FxHashMap::with_capacity_and_hasher(vertex_count, Default::default());
     let mut vpos: Vec<[f64; 3]> = Vec::new();
     let mut corner: Vec<u32> = Vec::with_capacity(mesh.indices.len());
     for &idx in &mesh.indices {
@@ -73,7 +107,9 @@ pub fn orient_mesh_outward(mesh: &mut Mesh) -> bool {
     let tv = |t: usize| [corner[3 * t], corner[3 * t + 1], corner[3 * t + 2]];
 
     // Undirected welded edge -> incident triangles. >2 incident ⇒ non-manifold.
-    let mut edge_tris: FxHashMap<(u32, u32), Vec<usize>> = FxHashMap::default();
+    // A closed manifold has ~1.5 edges per triangle; reserve to skip rehashing.
+    let mut edge_tris: FxHashMap<(u32, u32), EdgeInc> =
+        FxHashMap::with_capacity_and_hasher(ntri * 2, Default::default());
     for t in 0..ntri {
         let v = tv(t);
         for &(a, b) in &[(v[0], v[1]), (v[1], v[2]), (v[2], v[0])] {
@@ -120,13 +156,13 @@ pub fn orient_mesh_outward(mesh: &mut Mesh) -> bool {
                 }
                 let key = if a < b { (a, b) } else { (b, a) };
                 let inc = &edge_tris[&key];
-                if inc.len() != 2 {
+                if inc.count != 2 {
                     closed = false; // boundary (1) or non-manifold (>2) edge
                 }
-                if inc.len() > 2 {
+                if inc.count > 2 {
                     continue; // ambiguous — don't propagate across a non-manifold edge
                 }
-                for &nb in inc {
+                for &nb in inc.incident() {
                     if nb == t {
                         continue;
                     }

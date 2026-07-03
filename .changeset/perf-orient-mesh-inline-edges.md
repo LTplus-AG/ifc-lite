@@ -1,0 +1,5 @@
+---
+"@ifc-lite/wasm": patch
+---
+
+Faster mesh orientation: `orient_mesh_outward` (run on every element and sub-mesh to make faceted-brep / merged-body winding consistent and outward) built its edge adjacency in a `FxHashMap<(u32,u32), Vec<usize>>` — one tiny heap `Vec` per welded edge, ~1.5 allocations per triangle, rebuilt from scratch per mesh. That per-edge `Vec` is replaced with an inline fixed-capacity incidence record (two triangle slots + a true count), and the weld/edge maps are pre-reserved. A boundary edge has one incident triangle and a manifold edge exactly two; non-manifold edges (count > 2) are skipped before the slots are read, so only the first two triangles are ever consulted — in the same scan order as before. Output is byte-identical (no mesh-determinism manifest change; verified against the previous implementation across an exhaustive cube-flip + millions of random-topology meshes). It removes ~1.3M tiny allocations per pass on a mesh-heavy model and measures a ~14% faster geometry phase / +16% mesh throughput there (structural steel, Tekla / Revit faceted-brep — the models where CSG is not the bottleneck).

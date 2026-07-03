@@ -1,5 +1,18 @@
 # @ifc-lite/viewer
 
+## 1.32.5
+
+### Patch Changes
+
+- Updated dependencies [[`3a2cd42`](https://github.com/LTplus-AG/ifc-lite/commit/3a2cd42158313d8e22f21885e62b6c705814ab47), [`1d53646`](https://github.com/LTplus-AG/ifc-lite/commit/1d536460663b8ce607fb648ab2e996ac445ff651), [`fcbb667`](https://github.com/LTplus-AG/ifc-lite/commit/fcbb6679dd752f5b8be670c6a9e2d3fdc0b57e3d), [`7c65f23`](https://github.com/LTplus-AG/ifc-lite/commit/7c65f232952dcf0c1f7f6ebee3605fd556323035), [`3a2cd42`](https://github.com/LTplus-AG/ifc-lite/commit/3a2cd42158313d8e22f21885e62b6c705814ab47), [`3a2cd42`](https://github.com/LTplus-AG/ifc-lite/commit/3a2cd42158313d8e22f21885e62b6c705814ab47)]:
+  - @ifc-lite/lists@1.17.0
+  - @ifc-lite/wasm@3.0.5
+  - @ifc-lite/parser@3.7.0
+  - @ifc-lite/data@2.4.0
+  - @ifc-lite/mutations@1.18.0
+  - @ifc-lite/mcp@0.7.0
+  - @ifc-lite/ids@1.15.24
+
 ## 1.32.4
 
 ### Patch Changes

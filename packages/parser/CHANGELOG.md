@@ -1,5 +1,24 @@
 # @ifc-lite/parser
 
+## 3.7.0
+
+### Minor Changes
+
+- [#1580](https://github.com/LTplus-AG/ifc-lite/pull/1580) [`3a2cd42`](https://github.com/LTplus-AG/ifc-lite/commit/3a2cd42158313d8e22f21885e62b6c705814ab47) Thanks [@louistrue](https://github.com/louistrue)! - New `@ifc-lite/parser` exports resolve a file's declared `IfcUnitAssignment` into per-unit-type display symbols + SI scale factors, and map a property's IFC measure value type onto the unit it's shown in (issue [#1573](https://github.com/LTplus-AG/ifc-lite/issues/1573)):
+
+  - `extractProjectUnits(source, entityIndex) -> ProjectUnits` — reads `IfcSIUnit` (with prefixes), `IfcDerivedUnit` (composed, e.g. `m³/s`), `IfcConversionBasedUnit` (°, ft, ...) and `IfcMonetaryUnit` from `IFCPROJECT.UnitsInContext`. Never throws: an absent/malformed assignment yields an empty `ProjectUnits` (every measure falls back to its SI default symbol).
+  - `ProjectUnits.unitForMeasure(measureType)` / `.resolvedForUnitType(unitType)` / `.monetary()` — the per-measure and per-unit-type display resolvers.
+  - `measureUnit(measureType) -> MeasureUnit | undefined` — maps an IFC measure value type name (e.g. `"IFCVOLUMETRICFLOWRATEMEASURE"`) to its unit-type token, or `{kind: 'monetary'}` / `{kind: 'dimensionless'}` for currency and unit-less measures.
+  - `ResolvedUnit` (`{symbol, siScale}`) and `MeasureUnit` types.
+
+  The viewer uses this to show property/quantity values with the file's actual declared unit instead of always assuming SI, and (issue [#1573](https://github.com/LTplus-AG/ifc-lite/issues/1573) proposal 2) to power a non-destructive per-unit-type display-unit converter. The implementation is pinned to shared parity test vectors against the Rust mirror in `rust/core/src/project_units/` (`packages/parser/src/project-units.parity.test.ts`), so the two can't drift.
+
+### Patch Changes
+
+- Updated dependencies [[`1d53646`](https://github.com/LTplus-AG/ifc-lite/commit/1d536460663b8ce607fb648ab2e996ac445ff651), [`fcbb667`](https://github.com/LTplus-AG/ifc-lite/commit/fcbb6679dd752f5b8be670c6a9e2d3fdc0b57e3d), [`7c65f23`](https://github.com/LTplus-AG/ifc-lite/commit/7c65f232952dcf0c1f7f6ebee3605fd556323035), [`3a2cd42`](https://github.com/LTplus-AG/ifc-lite/commit/3a2cd42158313d8e22f21885e62b6c705814ab47)]:
+  - @ifc-lite/wasm@3.0.5
+  - @ifc-lite/data@2.4.0
+
 ## 3.6.0
 
 ### Minor Changes

@@ -170,14 +170,6 @@ impl MeshData {
         self
     }
 
-    /// Attach per-vertex UVs + a decoded surface texture (issue #961).
-    /// `uvs` must be 1:1 with `positions` (2 floats per vertex).
-    pub fn with_texture(mut self, uvs: Vec<f32>, texture: MeshTextureData) -> Self {
-        self.uvs = Some(uvs);
-        self.texture = Some(texture);
-        self
-    }
-
     /// Set element-level IFC metadata.
     pub fn with_element_metadata(
         mut self,

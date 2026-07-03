@@ -32,7 +32,11 @@ your corpus. Concretely for a single-replica box:
   memory gate is active out of the box on both. Only when neither is readable
   (non-Linux, or `/proc` unavailable) does it fall back to `0` (gate off), which
   the server logs a startup `WARN` about. Set it explicitly to override, or to
-  `0` to opt out deliberately,
+  `0` to opt out deliberately. Caveat: the physical-RAM fallback reads
+  `/proc/meminfo` `MemTotal`, which is HOST-wide. In a container run with **no**
+  cgroup memory limit, that budget reflects the whole host, not the pod's usable
+  RAM, so set `IFC_MEM_BUDGET_MB` explicitly (or give the container a memory
+  limit) in that case,
 - keep `IFC_MAX_CONCURRENT_PARSES` at the core count,
 - lower `MAX_FILE_SIZE_MB` below 500 unless the box has multiple GB of
   headroom per concurrent slot,

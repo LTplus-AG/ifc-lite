@@ -34,44 +34,72 @@ pub fn cgroup_memory_limit_bytes() -> Option<u64> {
         "/sys/fs/cgroup/memory/memory.limit_in_bytes",
     ] {
         if let Ok(raw) = std::fs::read_to_string(path) {
-            let raw = raw.trim();
-            if raw == "max" {
-                return None;
-            }
-            if let Ok(v) = raw.parse::<u64>() {
-                // cgroup v1 reports a huge sentinel when unlimited.
-                if v > 0 && v < (1 << 60) {
-                    return Some(v);
-                }
+            match parse_cgroup_limit(&raw) {
+                CgroupLimit::Unlimited => return None,
+                CgroupLimit::Bytes(v) => return Some(v),
+                CgroupLimit::Invalid => {} // unreadable value: try the next path
             }
         }
     }
     None
 }
 
+/// Parsed outcome of one cgroup memory-limit file. `Unlimited` (`max`, or a
+/// v1 huge sentinel) stops the search - the ceiling is genuinely uncapped, so we
+/// must NOT fall back to another file. `Invalid` lets the caller try the next.
+#[derive(Debug, PartialEq, Eq)]
+enum CgroupLimit {
+    Unlimited,
+    Bytes(u64),
+    Invalid,
+}
+
+fn parse_cgroup_limit(raw: &str) -> CgroupLimit {
+    let raw = raw.trim();
+    if raw == "max" {
+        return CgroupLimit::Unlimited;
+    }
+    match raw.parse::<u64>() {
+        // cgroup v1 reports a huge sentinel (~i64::MAX) when unlimited.
+        Ok(v) if v >= (1 << 60) => CgroupLimit::Unlimited,
+        Ok(v) if v > 0 => CgroupLimit::Bytes(v),
+        _ => CgroupLimit::Invalid,
+    }
+}
+
 /// Total physical RAM in bytes from `/proc/meminfo` `MemTotal`, if readable.
 ///
 /// `None` on non-Linux and on any parse failure (never panics). This is the
 /// fallback ceiling when no cgroup limit is set, so a bare Linux VM still gets
-/// a bounded memory gate instead of an unbounded one.
+/// a bounded memory gate instead of an unbounded one. NOTE: `MemTotal` is
+/// HOST-wide - in a container with no cgroup limit this over-states the
+/// container-usable RAM (see OPERATIONS.md).
 pub fn total_physical_memory_bytes() -> Option<u64> {
     #[cfg(target_os = "linux")]
     {
-        let meminfo = std::fs::read_to_string("/proc/meminfo").ok()?;
-        // `MemTotal:      16305200 kB`
-        let kb = meminfo
-            .lines()
-            .find_map(|line| line.strip_prefix("MemTotal:"))?
-            .split_whitespace()
-            .next()?
-            .parse::<u64>()
-            .ok()?;
-        Some(kb * 1024)
+        Some(parse_meminfo_memtotal_kb(&std::fs::read_to_string("/proc/meminfo").ok()?)? * 1024)
     }
     #[cfg(not(target_os = "linux"))]
     {
         None
     }
+}
+
+/// Extract `MemTotal` (in kB) from `/proc/meminfo` content, or `None`. Pure so
+/// the parse - the only place a wrong line/unit would size every bare-VM budget
+/// wrong - is unit-tested without a live `/proc`.
+// Only called from the Linux branch of `total_physical_memory_bytes`; the unit
+// test exercises it on every target, but the non-Linux *binary* never calls it.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn parse_meminfo_memtotal_kb(meminfo: &str) -> Option<u64> {
+    // `MemTotal:      16305200 kB` - must match MemTotal, not MemFree/MemAvailable.
+    meminfo
+        .lines()
+        .find_map(|line| line.strip_prefix("MemTotal:"))?
+        .split_whitespace()
+        .next()?
+        .parse::<u64>()
+        .ok()
 }
 
 /// Resolve the admission memory budget (MB) from the three inputs, in one place
@@ -105,6 +133,30 @@ mod tests {
     use super::*;
 
     const GB: u64 = 1024 * 1024 * 1024;
+
+    #[test]
+    fn parse_cgroup_limit_handles_max_sentinel_and_values() {
+        assert_eq!(parse_cgroup_limit("max\n"), CgroupLimit::Unlimited);
+        // cgroup v1 unlimited sentinel (~i64::MAX, >= 1<<60).
+        assert_eq!(parse_cgroup_limit("9223372036854771712\n"), CgroupLimit::Unlimited);
+        assert_eq!(parse_cgroup_limit("  2147483648  "), CgroupLimit::Bytes(2_147_483_648));
+        assert_eq!(parse_cgroup_limit("0"), CgroupLimit::Invalid);
+        assert_eq!(parse_cgroup_limit("garbage"), CgroupLimit::Invalid);
+        assert_eq!(parse_cgroup_limit(""), CgroupLimit::Invalid);
+    }
+
+    #[test]
+    fn parse_meminfo_picks_memtotal_in_kb_only() {
+        let meminfo = "MemTotal:       16305200 kB\n\
+                       MemFree:         1234567 kB\n\
+                       MemAvailable:    9876543 kB\n";
+        assert_eq!(parse_meminfo_memtotal_kb(meminfo), Some(16_305_200));
+        // Must NOT match MemFree/MemAvailable, and tolerate missing/garbage.
+        assert_eq!(parse_meminfo_memtotal_kb("MemFree: 100 kB\n"), None);
+        assert_eq!(parse_meminfo_memtotal_kb("MemTotal: notanumber kB"), None);
+        assert_eq!(parse_meminfo_memtotal_kb(""), None);
+    }
+
 
     #[test]
     fn explicit_budget_wins_over_ceilings() {

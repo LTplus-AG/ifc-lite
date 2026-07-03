@@ -122,11 +122,14 @@ fn faceted_brep_source_mesh_is_pre_welded() {
     // Idempotence: re-welding the produced mesh is a no-op (same vertex count),
     // confirming the source already welded and the removed per-export weld would
     // have been redundant.
-    let (rp, _rn, _ruv, _ri) = ifc_lite_geometry::mesh_weld::weld_indexed(
-        &m.positions,
-        &m.normals,
-        m.uvs.as_deref(),
-        &m.indices,
+    assert!(
+        ifc_lite_geometry::mesh_weld::weld_indexed(
+            &m.positions,
+            &m.normals,
+            m.uvs.as_deref(),
+            &m.indices,
+        )
+        .is_none(),
+        "re-weld is a no-op (None): the source mesh already arrived welded"
     );
-    assert_eq!(rp.len() / 3, nv, "re-weld is a no-op: source mesh already welded");
 }

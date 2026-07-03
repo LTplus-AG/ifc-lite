@@ -68,44 +68,46 @@ fn vkey(p: &[f32], n: &[f32], uv: [f32; 2]) -> VKey {
 }
 
 /// Weld `positions`/`normals` (3 floats per vertex, equal length), optional
-/// `uvs` (2 floats per vertex), and remap `indices`. Returns the welded
-/// `(positions, normals, uvs, indices)` — `uvs` is `Some` iff the input `uvs`
-/// was `Some`, always 1:1 with the welded positions. A mesh with no mergeable
-/// vertices (already welded, or all-crease like a cube) round-trips unchanged
-/// apart from the (stable) vertex numbering — so the weld is idempotent.
+/// `uvs` (2 floats per vertex), and remap `indices`.
+///
+/// Returns `Some((positions, normals, uvs, indices))` ONLY when at least two
+/// vertices actually merged; `uvs` is `Some` iff the input `uvs` was, always
+/// 1:1 with the welded positions. Returns `None` when nothing changes — a mesh
+/// that is already welded / all-crease (a swept solid, an indexed mesher, a
+/// flat-shaded cube), OR a malformed input (normals not matching positions,
+/// empty, a UV array not 2-per-vertex, or an out-of-range index). In every
+/// `None` case the identity remap would reproduce the input byte-for-byte, so
+/// the caller keeps its ORIGINAL buffers and skips the copy: no per-element
+/// reallocation on the (common) already-welded path, and a malformed input
+/// stays invalid-but-present rather than panicking or being re-associated.
+///
+/// Because the decision is purely "did any key collide", the funnel stays
+/// uniform — no per-geometry-type branching. The weld is idempotent: welding a
+/// welded mesh returns `None`.
 pub fn weld_indexed(
     positions: &[f32],
     normals: &[f32],
     uvs: Option<&[f32]>,
     indices: &[u32],
-) -> (Vec<f32>, Vec<f32>, Option<Vec<f32>>, Vec<u32>) {
+) -> Option<(Vec<f32>, Vec<f32>, Option<Vec<f32>>, Vec<u32>)> {
     let nverts = positions.len() / 3;
-    // No-op (return the inputs unchanged) on a malformed mesh: normals not
-    // matching positions, empty, a UV array not 2-per-vertex, or ANY index >=
-    // nverts. This preserves the pre-weld behaviour exactly - the emit path
-    // wrote the (invalid) buffers through without validating them, so a
-    // malformed input stays invalid-but-present rather than panicking, and a
-    // desynced UV array is never re-associated with the wrong vertices.
     let uv_len_ok = uvs.is_none_or(|u| u.len() == nverts * 2);
     if normals.len() != positions.len()
         || nverts == 0
         || !uv_len_ok
         || indices.iter().any(|&i| i as usize >= nverts)
     {
-        return (
-            positions.to_vec(),
-            normals.to_vec(),
-            uvs.map(|u| u.to_vec()),
-            indices.to_vec(),
-        );
+        return None; // malformed: caller keeps the (unvalidated) originals
     }
 
+    // Single hash pass: assign each distinct key a first-seen id, record the
+    // source vertex that minted it, and fill the remap. `first_vert` doubles as
+    // the merge detector — if it ends the same length as `nverts`, no two
+    // vertices collided and the remap is the identity.
     let mut map: FxHashMap<VKey, u32> = FxHashMap::default();
+    map.reserve(nverts);
     let mut remap = vec![0u32; nverts];
-    let mut out_pos: Vec<f32> = Vec::with_capacity(positions.len());
-    let mut out_nrm: Vec<f32> = Vec::with_capacity(normals.len());
-    let mut out_uv: Vec<f32> = Vec::with_capacity(uvs.map_or(0, <[f32]>::len));
-
+    let mut first_vert: Vec<u32> = Vec::new();
     for v in 0..nverts {
         let p = &positions[v * 3..v * 3 + 3];
         let n = &normals[v * 3..v * 3 + 3];
@@ -113,26 +115,39 @@ pub fn weld_indexed(
             Some(u) => [u[v * 2], u[v * 2 + 1]],
             None => [0.0, 0.0],
         };
-        let key = vkey(p, n, uv);
-        let new_id = match map.get(&key) {
+        let id = match map.get(&vkey(p, n, uv)) {
             Some(&id) => id,
             None => {
-                let id = (out_pos.len() / 3) as u32;
-                out_pos.extend_from_slice(p);
-                out_nrm.extend_from_slice(n);
-                if uvs.is_some() {
-                    out_uv.extend_from_slice(&uv);
-                }
-                map.insert(key, id);
+                let id = first_vert.len() as u32;
+                first_vert.push(v as u32);
+                map.insert(vkey(p, n, uv), id);
                 id
             }
         };
-        remap[v] = new_id;
+        remap[v] = id;
     }
 
+    let unique = first_vert.len();
+    if unique == nverts {
+        // Nothing merged: the identity remap reproduces the input exactly.
+        return None;
+    }
+
+    // Merges happened: gather the first-seen vertex per id (byte-identical to
+    // extending on first insert above) and remap the indices.
+    let mut out_pos: Vec<f32> = Vec::with_capacity(unique * 3);
+    let mut out_nrm: Vec<f32> = Vec::with_capacity(unique * 3);
+    let mut out_uv: Vec<f32> = Vec::with_capacity(if uvs.is_some() { unique * 2 } else { 0 });
+    for &fv in &first_vert {
+        let fv = fv as usize;
+        out_pos.extend_from_slice(&positions[fv * 3..fv * 3 + 3]);
+        out_nrm.extend_from_slice(&normals[fv * 3..fv * 3 + 3]);
+        if let Some(u) = uvs {
+            out_uv.extend_from_slice(&u[fv * 2..fv * 2 + 2]);
+        }
+    }
     let out_idx: Vec<u32> = indices.iter().map(|&i| remap[i as usize]).collect();
-    let out_uvs = uvs.map(|_| out_uv);
-    (out_pos, out_nrm, out_uvs, out_idx)
+    Some((out_pos, out_nrm, uvs.map(|_| out_uv), out_idx))
 }
 
 #[cfg(test)]
@@ -150,7 +165,7 @@ mod tests {
         ];
         let normals = [0.0f32, 0.0, 1.0].repeat(6); // 6 verts, all +Z
         let indices = vec![0, 1, 2, 3, 4, 5];
-        let (p, n, uv, i) = weld_indexed(&positions, &normals, None, &indices);
+        let (p, n, uv, i) = weld_indexed(&positions, &normals, None, &indices).expect("merged");
         assert!(uv.is_none(), "no uvs in, no uvs out");
         assert_eq!(p.len() / 3, 4, "6 authored verts -> 4 unique corners");
         assert_eq!(n.len(), p.len());
@@ -185,7 +200,7 @@ mod tests {
             }
         }
         let raw_verts = positions.len() / 3;
-        let (p, _n, _uv, idx) = weld_indexed(&positions, &normals, None, &indices);
+        let (p, _n, _uv, idx) = weld_indexed(&positions, &normals, None, &indices).expect("merged");
         assert_eq!(raw_verts, 4 * G * G);
         assert_eq!(p.len() / 3, (G + 1) * (G + 1), "welded to unique grid points");
         assert_eq!(idx.len(), indices.len(), "triangle count unchanged");
@@ -193,27 +208,30 @@ mod tests {
 
     #[test]
     fn out_of_range_index_is_a_no_op_not_a_panic() {
-        // A malformed mesh (index >= vertex count) must round-trip unchanged,
-        // exactly as the pre-weld emit path handled it - no OOB panic.
+        // A malformed mesh (index >= vertex count) must not panic: the weld
+        // returns None (caller keeps the unvalidated originals), exactly as the
+        // pre-weld emit path handled it - no OOB access.
         let positions = vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0];
         let normals = [0.0f32, 0.0, 1.0].repeat(3);
         let indices = vec![0, 1, 9]; // 9 is out of range (only 3 verts)
-        let (p, n, _uv, i) = weld_indexed(&positions, &normals, None, &indices);
-        assert_eq!(p, positions, "malformed input returns positions unchanged");
-        assert_eq!(n, normals);
-        assert_eq!(i, indices, "indices pass through unchanged");
+        assert!(
+            weld_indexed(&positions, &normals, None, &indices).is_none(),
+            "malformed input is a no-op (None), not a panic"
+        );
     }
 
     #[test]
     fn keeps_creases_split() {
         // Same corner position, two DIFFERENT normals (a 90-degree crease): the
-        // two vertices must NOT merge, or flat shading would break.
+        // two vertices must NOT merge (or flat shading would break), so nothing
+        // collides and the weld returns None (the 2-vertex input is kept as-is).
         let positions = vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
         let normals = vec![0.0, 0.0, 1.0, 1.0, 0.0, 0.0];
         let indices = vec![0, 1];
-        let (p, _n, _uv, i) = weld_indexed(&positions, &normals, None, &indices);
-        assert_eq!(p.len() / 3, 2, "distinct normals keep the corner split");
-        assert_eq!(i, vec![0, 1]);
+        assert!(
+            weld_indexed(&positions, &normals, None, &indices).is_none(),
+            "distinct normals: nothing merges, weld is a no-op"
+        );
     }
 
     #[test]
@@ -245,9 +263,10 @@ mod tests {
             indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
         }
         assert_eq!(positions.len() / 3, 24, "6 faces * 4 corners = 24 raw verts");
-        let (p, _n, _uv, i) = weld_indexed(&positions, &normals, None, &indices);
-        assert_eq!(p.len() / 3, 24, "distinct per-face normals keep all 24 verts (flat shading)");
-        assert_eq!(i.len(), 36, "12 triangles unchanged");
+        assert!(
+            weld_indexed(&positions, &normals, None, &indices).is_none(),
+            "distinct per-face normals: nothing merges, all 24 verts kept (flat shading)"
+        );
     }
 
     #[test]
@@ -257,7 +276,10 @@ mod tests {
         // corners carry DIFFERENT UVs on each triangle (u=1 vs u=0). Position +
         // normal alone would merge them (as `merges_coplanar_shared_vertices`
         // shows: 6 -> 4); the UV key must keep the two seam corners split, so
-        // the mesh welds to 6 (nothing merges here) and the UVs stay 1:1.
+        // the UV key keeps them split so nothing merges (weld is a no-op) and
+        // the original UVs stay 1:1 with the 6 positions. Without the UV in the
+        // key these two corners would collapse (as `merges_coplanar_shared_vertices`
+        // shows: 6 -> 4) and tear the texture.
         let positions = vec![
             0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, // tri A
             1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0, // tri B (shares the (1,0)&(1,1) corners)
@@ -270,18 +292,10 @@ mod tests {
             0.0, 0.0, 0.0, 1.0, 0.0, 1.0, // tri B uvs (u=0 at the identical-position corners)
         ];
         let indices = vec![0, 1, 2, 3, 4, 5];
-        let (p, n, uv, i) = weld_indexed(&positions, &normals, Some(&uvs), &indices);
-        assert_eq!(p.len() / 3, 6, "the UV seam keeps all 6 verts split");
-        let uv = uv.expect("uvs carried through");
-        assert_eq!(uv.len(), (p.len() / 3) * 2, "uvs stay 1:1 (2 per vertex) with positions");
-        assert_eq!(n.len(), p.len(), "normals stay 1:1 with positions");
-        assert_eq!(i.len(), 6, "triangle count unchanged");
-        // Each welded vertex's UV matches its source vertex's UV (no desync).
-        for (orig, &ni) in indices.iter().zip(i.iter()) {
-            let o = *orig as usize * 2;
-            let w = ni as usize * 2;
-            assert_eq!(&uvs[o..o + 2], &uv[w..w + 2], "uv follows its vertex");
-        }
+        assert!(
+            weld_indexed(&positions, &normals, Some(&uvs), &indices).is_none(),
+            "the UV seam keeps all 6 verts split (nothing merges, UVs stay 1:1)"
+        );
     }
 
     #[test]
@@ -300,7 +314,8 @@ mod tests {
             1.0, 0.0, 1.0, 1.0, 0.0, 1.0, //
         ];
         let indices = vec![0, 1, 2, 3, 4, 5];
-        let (p, _n, uv, _i) = weld_indexed(&positions, &normals, Some(&uvs), &indices);
+        let (p, _n, uv, _i) =
+            weld_indexed(&positions, &normals, Some(&uvs), &indices).expect("merged");
         let uv = uv.expect("uvs carried through");
         assert_eq!(p.len() / 3, 4, "same-uv shared corners still weld to 4");
         assert_eq!(uv.len(), (p.len() / 3) * 2, "uvs stay 1:1 with welded positions");
@@ -308,17 +323,22 @@ mod tests {
 
     #[test]
     fn weld_is_idempotent() {
-        // Welding an already-welded mesh is a no-op (bit-identical output). This
-        // is what makes removing the redundant per-export weld safe.
+        // The first weld merges the shared edge (6 -> 4); welding the RESULT is
+        // a no-op (returns None), which is what makes removing the redundant
+        // per-export weld safe.
         let positions = vec![
             0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, //
             1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0, //
         ];
         let normals = [0.0f32, 0.0, 1.0].repeat(6);
         let indices = vec![0, 1, 2, 3, 4, 5];
-        let (p1, n1, _uv1, i1) = weld_indexed(&positions, &normals, None, &indices);
-        let (p2, n2, _uv2, i2) = weld_indexed(&p1, &n1, None, &i1);
-        assert_eq!((&p1, &n1, &i1), (&p2, &n2, &i2), "second weld is a no-op");
+        let (p1, n1, _uv1, i1) =
+            weld_indexed(&positions, &normals, None, &indices).expect("first weld merges");
+        assert_eq!(p1.len() / 3, 4);
+        assert!(
+            weld_indexed(&p1, &n1, None, &i1).is_none(),
+            "second weld of an already-welded mesh is a no-op"
+        );
     }
 
     #[test]
@@ -326,8 +346,10 @@ mod tests {
         let positions = vec![9.0, 9.0, 9.0, 0.0, 0.0, 0.0, 9.0, 9.0, 9.0];
         let normals = vec![0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0];
         let indices = vec![0, 1, 2];
-        let (p1, n1, _uv1, i1) = weld_indexed(&positions, &normals, None, &indices);
-        let (p2, n2, _uv2, i2) = weld_indexed(&positions, &normals, None, &indices);
+        let (p1, n1, _uv1, i1) =
+            weld_indexed(&positions, &normals, None, &indices).expect("merged");
+        let (p2, n2, _uv2, i2) =
+            weld_indexed(&positions, &normals, None, &indices).expect("merged");
         assert_eq!((&p1, &n1, &i1), (&p2, &n2, &i2), "stable across runs");
         assert_eq!(p1.len() / 3, 2, "the repeated vertex 0/2 merges");
         // First-seen: vertex 0's position takes new id 0, vertex 1 takes id 1.

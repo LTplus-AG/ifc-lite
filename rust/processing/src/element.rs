@@ -585,8 +585,7 @@ fn degenerate_backstop_disabled() -> bool {
 /// Construct the final [`MeshData`]: metadata stamp, style metadata,
 /// geometry-class tag, and the optional site-local rotation. ALWAYS the last
 /// step — geometry hashing happens before this (native IFC frame).
-// Distinct per-mesh funnel inputs; a struct would not add clarity.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments)] // distinct per-mesh funnel inputs
 fn build_mesh_data(
     job: &ElementMeshJob<'_>,
     mut mesh: Mesh,
@@ -619,26 +618,27 @@ fn build_mesh_data(
             DEGENERATE_DROPPED.with(|c| c.set(c.get() + dropped));
         }
     }
-    // Source vertex weld: the faceted-brep mesher emits per-`IfcFace` geometry
-    // with no cross-face vertex sharing, duplicating every shared corner once
+    // Source vertex weld (see `mesh_weld::weld_indexed`): the faceted-brep
+    // mesher emits per-`IfcFace` geometry duplicating every shared corner once
     // per incident face (~3-6x). Collapse coincident vertices (identical f32
-    // position AND quantized normal AND quantized UV) here, at the single
-    // per-element funnel, so EVERY element arrives welded in its `MeshData` (the
-    // one weld point for render, export, and analysis). Keying on the quantized
-    // normal keeps creases split (flat shading preserved) and on the UV keeps a
-    // texture seam split; the UVs are remapped WITH the positions so they stay
-    // 1:1. World triangles, winding, and the world AABB are unchanged.
-    let welded_uvs = {
-        let (wp, wn, wuv, wi) = ifc_lite_geometry::mesh_weld::weld_indexed(
-            &mesh.positions,
-            &mesh.normals,
-            uvs.as_deref(),
-            &mesh.indices,
-        );
-        mesh.positions = wp;
-        mesh.normals = wn;
-        mesh.indices = wi;
-        wuv
+    // position + quantized normal + quantized UV) at this single per-element
+    // funnel — the normal/UV keys keep creases and texture seams split (flat
+    // shading, no torn textures), and UVs are remapped WITH the positions.
+    // `None` = nothing merged (already-welded swept solids): keep originals, no
+    // realloc; triangles, winding, and AABB unchanged either way.
+    let welded_uvs = match ifc_lite_geometry::mesh_weld::weld_indexed(
+        &mesh.positions,
+        &mesh.normals,
+        uvs.as_deref(),
+        &mesh.indices,
+    ) {
+        Some((wp, wn, wuv, wi)) => {
+            mesh.positions = wp;
+            mesh.normals = wn;
+            mesh.indices = wi;
+            wuv
+        }
+        None => uvs,
     };
     let mesh_origin = mesh.origin;
     // Instancing: capture before the fields are moved into MeshData. A site-local

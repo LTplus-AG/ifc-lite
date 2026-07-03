@@ -11,7 +11,11 @@ re-runnable differential against a pinned reference engine.
 - `canonical.py` - every stat both sides report (bbox, tri/vertex counts,
   signed volume, watertightness), computed from plain vertex/face arrays so
   the comparison measures geometry, never stat-computation differences.
-  Known-answer unit tests in `test_harness.py` (stdlib unittest).
+  Known-answer unit tests in `test_harness.py` (stdlib unittest), including
+  an `EndToEndFaultInjection` suite that perturbs an in-memory copy of a
+  real committed reference dump and asserts `compare.py` actually exits
+  non-zero - proof the "quick" CI lane's red path has teeth, not just that
+  `classify()` is correct in isolation.
 - `dump_reference.py` - canonical per-element JSON from the PINNED
   IfcOpenShell (world coords + welded, matching the provenance of the old
   baked constants). Engine failures become first-class `skip:<reason>` rows.

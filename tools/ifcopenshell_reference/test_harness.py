@@ -7,7 +7,16 @@
 Run: python -m unittest test_harness  (stdlib only, no engine required)
 """
 
+from __future__ import annotations
+
+import contextlib
+import copy
+import io
+import json
+import sys
+import tempfile
 import unittest
+from pathlib import Path
 
 import canonical
 import compare
@@ -100,6 +109,125 @@ class ComparatorClassification(unittest.TestCase):
         skipped = canonical.skip_record(1, "IfcWall", "x")
         self.assertEqual(compare.classify(skipped, self.ok())[0], "IFCLITE_ONLY")
         self.assertEqual(compare.classify(skipped, skipped)[0], "BOTH_SKIP")
+
+
+class EndToEndFaultInjection(unittest.TestCase):
+    """Proves the RED path end to end, not just the classify() helper.
+
+    ``ComparatorClassification`` above exercises ``classify()`` in isolation
+    against hand-built dicts - it proves the classification RULES are
+    correct, but not that the CLI entry point CI actually runs
+    (``compare.py --reference ... --ifclite ...``, exit code, the
+    committed-reference file, the shipped allowlist.json) fires red on a
+    real divergence. A gate that is only proven correct in a unit and never
+    proven to fire in its own binary is not evidence the "quick" job in
+    ifcopenshell-parity.yml is fit to be promoted to a required check.
+
+    This suite loads an ACTUAL committed reference dump (never mutated on
+    disk), perturbs an in-memory copy the way a genuine kernel regression
+    would, feeds the perturbed copy through ``compare.main()`` exactly as
+    the workflow invokes it (same argv shape, same allowlist.json), and
+    asserts the process reports failure. A positive control (unperturbed
+    copy stays green) rules out "always red"; the shipped allowlist.json is
+    used unmodified so an allowlisted fixture couldn't silently mask a
+    fault-injection failure.
+    """
+
+    FIXTURE = "bath_csg_solid"
+    HERE = Path(__file__).resolve().parent
+
+    def setUp(self):
+        self.ref_path = self.HERE / "reference" / f"{self.FIXTURE}.reference.json"
+        self.allowlist_path = self.HERE / "allowlist.json"
+        self.doc = json.loads(self.ref_path.read_text())
+        # Fixture must stay outside allowlist.json, or a perturbation could
+        # be silently absorbed instead of failing the gate.
+        allow = json.loads(self.allowlist_path.read_text())
+        self.assertNotIn(
+            self.doc["fixture"],
+            allow,
+            f"{self.FIXTURE} must stay unlisted in allowlist.json for this "
+            "fault-injection suite to prove anything",
+        )
+        self.tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmpdir.cleanup)
+
+    def _write_lite(self, doc: dict) -> Path:
+        path = Path(self.tmpdir.name) / "perturbed.ifclite.json"
+        path.write_text(json.dumps(doc))
+        return path
+
+    def _run_compare(self, lite_path: Path, report_path: Path | None = None) -> tuple[int, dict | None]:
+        argv = [
+            "compare.py",
+            "--reference",
+            str(self.ref_path),
+            "--ifclite",
+            str(lite_path),
+            "--allowlist",
+            str(self.allowlist_path),
+        ]
+        if report_path is not None:
+            argv += ["--report", str(report_path)]
+        old_argv = sys.argv
+        sys.argv = argv
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                rc = compare.main()
+        finally:
+            sys.argv = old_argv
+        report = json.loads(report_path.read_text()) if report_path else None
+        return rc, report
+
+    def test_unperturbed_copy_is_green(self):
+        # Positive control: an untouched copy of the reference must exit 0,
+        # so the two failing tests below prove the gate reacts to the
+        # perturbation, not that it is unconditionally red.
+        lite = self._write_lite(copy.deepcopy(self.doc))
+        rc, _ = self._run_compare(lite)
+        self.assertEqual(rc, 0)
+
+    def test_bbox_divergence_reds(self):
+        doc = copy.deepcopy(self.doc)
+        eid = doc["elements"][0]["express_id"]
+        # 50 mm >> the 1 mm BBOX_TOL_M gate.
+        doc["elements"][0]["bbox"]["max"][0] += 0.05
+        lite = self._write_lite(doc)
+        report_path = Path(self.tmpdir.name) / "bbox.report.json"
+        rc, report = self._run_compare(lite, report_path)
+        self.assertNotEqual(
+            rc, 0, "compare.py must exit non-zero when bbox diverges beyond the 1mm gate"
+        )
+        failure = next(f for f in report["failures"] if f["express_id"] == eid)
+        self.assertIn("bbox", failure["failing"])
+
+    def test_volume_divergence_reds(self):
+        doc = copy.deepcopy(self.doc)
+        eid = doc["elements"][0]["express_id"]
+        # +50% >> the 1% VOLUME_REL_TOL gate, still inside the bbox volume so
+        # it stays a *usable* volume comparison rather than tripping the
+        # mixed-winding advisory path.
+        doc["elements"][0]["volume"] = round(doc["elements"][0]["volume"] * 1.5, 6)
+        lite = self._write_lite(doc)
+        report_path = Path(self.tmpdir.name) / "volume.report.json"
+        rc, report = self._run_compare(lite, report_path)
+        self.assertNotEqual(
+            rc, 0, "compare.py must exit non-zero when volume diverges beyond the 1% gate"
+        )
+        failure = next(f for f in report["failures"] if f["express_id"] == eid)
+        self.assertIn("volume", failure["failing"])
+
+    def test_dropped_element_reds_as_reference_only(self):
+        # Simulates the kernel silently failing to produce geometry for an
+        # element the reference engine handled - REFERENCE_ONLY, which
+        # compare.py treats as a failure (docstring: "-> fails").
+        doc = copy.deepcopy(self.doc)
+        doc["elements"] = []
+        lite = self._write_lite(doc)
+        rc, _ = self._run_compare(lite)
+        self.assertNotEqual(
+            rc, 0, "a dropped element (REFERENCE_ONLY) must fail the gate"
+        )
 
 
 if __name__ == "__main__":

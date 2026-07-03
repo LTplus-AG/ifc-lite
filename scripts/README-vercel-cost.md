@@ -229,9 +229,12 @@ ifc-lite-dev (landing)    root dir: apps/landing
 ```
 
 To skip the remote Rust+WASM compile, build locally first (you already have a
-built `@ifc-lite/wasm` from `pnpm build` / `pnpm dev`) and upload the output:
+built `@ifc-lite/wasm` from `pnpm build` / `pnpm dev`) and upload the output.
+Run `vercel pull` first so the local build uses the project's current settings
+and env vars:
 
 ```
+vercel pull                                       # sync project settings + env
 vercel build && vercel deploy --prebuilt --archive=tgz
 ```
 

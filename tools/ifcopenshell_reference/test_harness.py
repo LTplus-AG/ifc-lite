@@ -172,7 +172,9 @@ class EndToEndFaultInjection(unittest.TestCase):
         old_argv = sys.argv
         sys.argv = argv
         try:
-            with contextlib.redirect_stdout(io.StringIO()):
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(
+                io.StringIO()
+            ):
                 rc = compare.main()
         finally:
             sys.argv = old_argv
@@ -198,23 +200,47 @@ class EndToEndFaultInjection(unittest.TestCase):
         self.assertNotEqual(
             rc, 0, "compare.py must exit non-zero when bbox diverges beyond the 1mm gate"
         )
-        failure = next(f for f in report["failures"] if f["express_id"] == eid)
+        failure = next(
+            (f for f in report["failures"] if f["express_id"] == eid), None
+        )
+        self.assertIsNotNone(
+            failure, f"element {eid} must appear in report failures on a bbox divergence"
+        )
         self.assertIn("bbox", failure["failing"])
 
     def test_volume_divergence_reds(self):
         doc = copy.deepcopy(self.doc)
-        eid = doc["elements"][0]["express_id"]
-        # +50% >> the 1% VOLUME_REL_TOL gate, still inside the bbox volume so
-        # it stays a *usable* volume comparison rather than tripping the
-        # mixed-winding advisory path.
-        doc["elements"][0]["volume"] = round(doc["elements"][0]["volume"] * 1.5, 6)
+        elem = doc["elements"][0]
+        eid = elem["express_id"]
+        # +50% >> the 1% VOLUME_REL_TOL gate. The perturbed volume must stay
+        # INSIDE the bbox volume (see compare.usable_volume): a value above it
+        # is a mixed-winding artifact that downgrades to the advisory path,
+        # so the gate would exit 0 and this test would fail confusingly
+        # rather than proving the volume gate reds. Lock that precondition in
+        # so a future reference regeneration with a more voluminous shape
+        # fails loudly here instead of silently defanging the test.
+        perturbed = round(elem["volume"] * 1.5, 6)
+        ext = [elem["bbox"]["max"][i] - elem["bbox"]["min"][i] for i in range(3)]
+        bbox_vol = ext[0] * ext[1] * ext[2]
+        self.assertTrue(
+            elem.get("closed") and perturbed <= bbox_vol * 1.001,
+            f"perturbed volume {perturbed} must stay a *usable* (closed, "
+            f"<= bbox volume {bbox_vol}) comparison for this test to exercise "
+            "the volume gate rather than the mixed-winding advisory path",
+        )
+        elem["volume"] = perturbed
         lite = self._write_lite(doc)
         report_path = Path(self.tmpdir.name) / "volume.report.json"
         rc, report = self._run_compare(lite, report_path)
         self.assertNotEqual(
             rc, 0, "compare.py must exit non-zero when volume diverges beyond the 1% gate"
         )
-        failure = next(f for f in report["failures"] if f["express_id"] == eid)
+        failure = next(
+            (f for f in report["failures"] if f["express_id"] == eid), None
+        )
+        self.assertIsNotNone(
+            failure, f"element {eid} must appear in report failures on a volume divergence"
+        )
         self.assertIn("volume", failure["failing"])
 
     def test_dropped_element_reds_as_reference_only(self):

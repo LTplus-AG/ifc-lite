@@ -231,21 +231,9 @@ pub(crate) fn build_instantiated_type_ids(
     instantiated
 }
 
-/// Site/building rotation angle (radians) for the viewer's render-frame
-/// rotation, or `None` if absent. Derived from the **canonical** resolved
-/// placement matrix (`GeometryRouter::resolve_scaled_placement`) + the shared
-/// [`ifc_lite_geometry::rotation_angle_about_z`], so it cannot drift from the
-/// processor's site-local frame on nested / scaled / tilted placements (the old
-/// `atan2`-of-raw-top-level-RefDirection walk was incomplete for those).
-pub(crate) fn extract_building_rotation_from_site(
-    site_pos: (u32, usize, usize),
-    router: &ifc_lite_geometry::GeometryRouter,
-    decoder: &mut ifc_lite_core::EntityDecoder,
-) -> Option<f64> {
-    let (site_id, start, end) = site_pos;
-    let site_entity = decoder.decode_at_with_id(site_id, start, end).ok()?;
-    let matrix = router
-        .resolve_scaled_placement(&site_entity, decoder)
-        .ok()?;
-    ifc_lite_geometry::rotation_angle_about_z(&matrix)
-}
+// Site/building rotation now lives in the shared streaming-prepass meta
+// resolver (`ifc_lite_processing::stream_meta`) alongside the unit-scale and
+// RTC resolution the three pre-pass emission points all consume, so it can no
+// longer drift between them. (It is still derived from the canonical resolved
+// placement matrix `GeometryRouter::resolve_scaled_placement` + the shared
+// `ifc_lite_geometry::rotation_angle_about_z`.)

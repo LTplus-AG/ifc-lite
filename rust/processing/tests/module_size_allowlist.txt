@@ -74,7 +74,7 @@
     1674 rust/processing/src/processor/mod.rs
      440 rust/processing/src/symbolic/items.rs
      767 rust/wasm-bindings/src/api/gpu_meshes/batch.rs
-     727 rust/wasm-bindings/src/api/gpu_meshes/prepass.rs
+     627 rust/wasm-bindings/src/api/gpu_meshes/prepass.rs
      436 rust/wasm-bindings/src/api/grid_lines.rs
      879 rust/wasm-bindings/src/api/mod.rs
      692 rust/wasm-bindings/src/zero_copy/mesh.rs

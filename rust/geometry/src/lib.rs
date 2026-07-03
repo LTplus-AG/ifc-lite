@@ -150,6 +150,13 @@ pub use router::{
     HostOpeningDiagnostic, ItemDedupCache, OpeningDiagnostic, OpeningKindDiag, ReasonCount,
     RectFastSummary, RectParam, WorstHost,
 };
+
+/// A world coordinate whose magnitude (in metres) exceeds this needs RTC
+/// re-basing before it is cast to f32, or the model renders with vertex jitter.
+/// The single source of truth for the "large offset" / needs-shift decision,
+/// shared by the router's own coordinate sampling and the streaming pre-pass
+/// meta resolver (`ifc_lite_processing::stream_meta`).
+pub const LARGE_COORD_THRESHOLD_METERS: f64 = 10000.0;
 pub use tessellation::{scale_segments, TessellationQuality};
 pub use transform::{
     apply_rtc_offset, parse_axis2_placement_3d, parse_axis2_placement_3d_from_id,

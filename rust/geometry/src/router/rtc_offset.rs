@@ -6,6 +6,7 @@
 //! and first geometry vertices to decide whether a model needs re-basing.
 
 use super::GeometryRouter;
+use crate::LARGE_COORD_THRESHOLD_METERS;
 use ifc_lite_core::{has_geometry_by_name, DecodedEntity, EntityDecoder, IfcType};
 
 impl GeometryRouter {
@@ -311,7 +312,6 @@ impl GeometryRouter {
     }
 
     fn raw_coordinate_is_large(&self, point: (f64, f64, f64)) -> bool {
-        const LARGE_COORD_THRESHOLD_METERS: f64 = 10000.0;
         let max_abs = point.0.abs().max(point.1.abs()).max(point.2.abs());
         max_abs * self.unit_scale > LARGE_COORD_THRESHOLD_METERS
     }

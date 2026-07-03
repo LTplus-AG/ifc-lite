@@ -21,15 +21,38 @@ fn fold_u128_to_u32(h: u128) -> u32 {
 // The per-submesh #858 palette split lives inside the canonical per-element
 // producer (`ifc_lite_processing::element`) — shared with the native pipeline.
 
+/// Serialize the shared [`StreamMeta`] onto a JS object as the wire fields the
+/// host reads: `unitScale`, `planeAngleToRadians`, `rtcOffset` (`[x,y,z]`),
+/// `needsShift`, `buildingRotation` (`null` when absent). Used by both the
+/// `buildPrePassOnce` result object and the streaming `meta` events so all
+/// three emission points serialize identically.
+fn set_stream_meta_props(
+    obj: &js_sys::Object,
+    meta: &ifc_lite_processing::stream_meta::StreamMeta,
+) {
+    crate::api::set_js_prop(obj, "unitScale", &meta.length_unit_scale.into());
+    crate::api::set_js_prop(obj, "planeAngleToRadians", &meta.plane_angle_to_radians.into());
+    let rtc_arr = js_sys::Float64Array::new_with_length(3);
+    rtc_arr.set_index(0, meta.rtc_offset.0);
+    rtc_arr.set_index(1, meta.rtc_offset.1);
+    rtc_arr.set_index(2, meta.rtc_offset.2);
+    crate::api::set_js_prop(obj, "rtcOffset", &rtc_arr);
+    crate::api::set_js_prop(obj, "needsShift", &meta.needs_shift.into());
+    match meta.building_rotation {
+        Some(rot) => crate::api::set_js_prop(obj, "buildingRotation", &rot.into()),
+        None => crate::api::set_js_prop(obj, "buildingRotation", &JsValue::NULL),
+    };
+}
+
 #[wasm_bindgen]
 impl IfcAPI {
     /// Run the pre-pass ONCE and return serialized results for worker distribution.
     /// Takes raw bytes (&[u8]) to avoid TextDecoder overhead.
     #[wasm_bindgen(js_name = buildPrePassOnce)]
     pub fn build_pre_pass_once(&self, data: &[u8]) -> JsValue {
-        use crate::api::styling::{combined_pre_pass, extract_building_rotation_from_site};
+        use crate::api::styling::combined_pre_pass;
         use ifc_lite_core::EntityDecoder;
-        use ifc_lite_geometry::GeometryRouter;
+        use ifc_lite_processing::stream_meta::{resolve_stream_meta, MetaMode};
 
         // Load START on the serial/main-thread path: the previous load's
         // pipeline diagnostics must not accumulate into this one. (The worker
@@ -57,19 +80,11 @@ impl IfcAPI {
         // Run combined pre-pass
         let pre_pass = combined_pre_pass(content, &mut decoder);
 
-        // Resolve BOTH unit scales once via the shared resolver (handles a
-        // missing project-id hint and partial-index chains internally) and
-        // seed the decoder so nothing downstream re-pays the IFCPROJECT hunt.
-        let unit_scales = ifc_lite_processing::prepass::resolve_unit_scales(
-            content,
-            pre_pass.project_id,
-            &mut decoder,
-        );
-        let unit_scale = unit_scales.length_unit_scale;
-        decoder.seed_unit_scales(unit_scale, unit_scales.plane_angle_to_radians);
-        let router = GeometryRouter::with_scale(unit_scale);
-
-        // Detect RTC offset
+        // Resolve the load-time meta (unit scales + RTC offset + needs-shift +
+        // building rotation) via the shared resolver. This decoder already sees
+        // the FULL entity index, so the single-stage `SmallFileSingle` ladder is
+        // correct. It also seeds the decoder so nothing downstream re-pays the
+        // IFCPROJECT hunt.
         let rtc_jobs: Vec<_> = pre_pass
             .simple_jobs
             .iter()
@@ -77,15 +92,14 @@ impl IfcAPI {
             .chain(pre_pass.complex_jobs.iter().take(25))
             .copied()
             .collect();
-        let rtc_offset = router.detect_rtc_offset_with_fallback(&rtc_jobs, &mut decoder, content);
-        let needs_shift = rtc_offset.0.abs() > 10000.0
-            || rtc_offset.1.abs() > 10000.0
-            || rtc_offset.2.abs() > 10000.0;
-
-        // Extract building rotation
-        let building_rotation = pre_pass
-            .site_position
-            .and_then(|pos| extract_building_rotation_from_site(pos, &router, &mut decoder));
+        let meta = resolve_stream_meta(
+            MetaMode::SmallFileSingle,
+            content,
+            pre_pass.project_id,
+            pre_pass.site_position,
+            &rtc_jobs,
+            &mut decoder,
+        );
 
         // Build combined job list: simple first, then complex
         let total_jobs = pre_pass.simple_jobs.len() + pre_pass.complex_jobs.len();
@@ -130,24 +144,9 @@ impl IfcAPI {
         let result = js_sys::Object::new();
         crate::api::set_js_prop(&result, "jobs", &jobs_flat);
         crate::api::set_js_prop(&result, "totalJobs", &(total_jobs as f64).into());
-        crate::api::set_js_prop(&result, "unitScale", &unit_scale.into());
-        crate::api::set_js_prop(
-            &result,
-            "planeAngleToRadians",
-            &unit_scales.plane_angle_to_radians.into(),
-        );
-
-        let rtc_arr = js_sys::Float64Array::new_with_length(3);
-        rtc_arr.set_index(0, rtc_offset.0);
-        rtc_arr.set_index(1, rtc_offset.1);
-        rtc_arr.set_index(2, rtc_offset.2);
-        crate::api::set_js_prop(&result, "rtcOffset", &rtc_arr);
-        crate::api::set_js_prop(&result, "needsShift", &needs_shift.into());
-
-        match building_rotation {
-            Some(rot) => crate::api::set_js_prop(&result, "buildingRotation", &rot.into()),
-            None => crate::api::set_js_prop(&result, "buildingRotation", &JsValue::NULL),
-        };
+        // unitScale / planeAngleToRadians / rtcOffset / needsShift / buildingRotation
+        // from the shared resolver.
+        set_stream_meta_props(&result, &meta);
 
         crate::api::set_js_prop(&result, "voidKeys", &void_keys);
         crate::api::set_js_prop(&result, "voidCounts", &void_counts);
@@ -202,11 +201,11 @@ impl IfcAPI {
         disabled_type_names: Option<Vec<String>>,
         skip_type_geometry: bool,
     ) -> Result<JsValue, JsValue> {
-        use crate::api::styling::extract_building_rotation_from_site;
         // Load START on the streaming pre-pass path (see build_pre_pass_once).
         self.reset_pipeline_diagnostics();
         use ifc_lite_core::{has_geometry_by_name, EntityDecoder, EntityScanner, IfcType};
         use ifc_lite_geometry::GeometryRouter;
+        use ifc_lite_processing::stream_meta::{resolve_stream_meta, MetaMode};
 
         let chunk_size = chunk_size.max(1024) as usize;
         let content = data;
@@ -347,111 +346,32 @@ impl IfcAPI {
             // full index instead of silently defaulting (a millimetre model
             // resolved as metres renders 1000× oversized).
             if !meta_emitted && buffered_jobs.len() >= RTC_SAMPLE_THRESHOLD {
-                // Build a decoder over the partial entity index built so far.
+                // MID-SCAN meta emission — the streaming win (~17 s → ~3 s
+                // time-to-first-geometry on a 986 MB file). The RESOLUTION logic
+                // (3-stage RTC ladder: partial-index detect → full-index
+                // re-detect when the partial index resolved no placement chain →
+                // placement-bounds last resort) lives in the shared
+                // `resolve_stream_meta` so it cannot drift from the tail /
+                // `buildPrePassOnce` paths. Emission STAYS HERE, unchanged: the
+                // meta event is dispatched the moment RTC_SAMPLE_THRESHOLD jobs
+                // are buffered, near the top of the file, so workers spin up
+                // early. Do NOT move this to a post-scan point — that regresses
+                // every large file.
                 let mut decoder = EntityDecoder::with_index(content, entity_index.clone());
-                let unit_scales = ifc_lite_processing::prepass::resolve_unit_scales(
+                let meta_res = resolve_stream_meta(
+                    MetaMode::StreamingPartial,
                     content,
                     project_id,
+                    site_position,
+                    &buffered_jobs,
                     &mut decoder,
                 );
-                let unit_scale = unit_scales.length_unit_scale;
-                decoder.seed_unit_scales(unit_scale, unit_scales.plane_angle_to_radians);
-                plane_angle_to_radians = unit_scales.plane_angle_to_radians;
-
-                let router = GeometryRouter::with_scale(unit_scale);
-                let is_large = |t: (f64, f64, f64)| {
-                    t.0.abs() > 10000.0 || t.1.abs() > 10000.0 || t.2.abs() > 10000.0
-                };
-                let detected_rtc = router.detect_rtc_offset_from_jobs(&buffered_jobs, &mut decoder);
-                let mut rtc_offset = detected_rtc.unwrap_or((0.0, 0.0, 0.0));
-                // True once ANY detection (partial OR the full re-detect below)
-                // resolved usable placement samples — even if it concluded "no
-                // shift" (0,0,0). The placement-bounds fallback must NOT override
-                // a successful "no shift": that scan averages ALL placement
-                // points incl. a far georef anchor (e.g. IfcSite/MapConversion at
-                // national grid), so on a building whose geometry sits near origin
-                // but carries a georef datum it returns a bogus ~-792 km offset,
-                // pushing the whole model off-screen.
-                let mut detection_succeeded = detected_rtc.is_some();
-
-                // Streaming emits this meta as soon as RTC_SAMPLE_THRESHOLD geometry
-                // jobs are buffered (~the 50th element, near the top of the file), so
-                // the partial index here only covers the file head. When a model's
-                // world offset lives in spatial-structure placements emitted LATE
-                // (a Revit/French export with IfcSite + its placement chain at the
-                // END of the file — observed at line 202 339 of a 202 691 line
-                // model), the element -> storey -> building -> site chain can't
-                // resolve from the partial index, detection returns (0,0,0), and the
-                // huge ~8e6 m world coordinates get cast to f32 downstream → ~0.5 m
-                // of vertex jitter. Re-detect against a FULL index when no large
-                // offset was found AND either (a) we haven't scanned the IfcSite
-                // yet, or (b) the partial index resolved NO usable placement
-                // samples at all. Case (b) covers the inverse ordering: the
-                // IfcSite *entity* is early (so `site_position` is already set) but
-                // its IfcAxis2Placement3D *location* — where the national-grid
-                // offset actually lives — is forward-referenced past the file head,
-                // so the element→storey→building→site chain still can't resolve and
-                // detection returns None. Gating on `!detection_succeeded` instead
-                // of site scan order alone keeps the common early-site model that
-                // DID resolve a (0,0,0) "no shift" from paying for a second index
-                // build, while rescuing the forward-referenced-placement case that
-                // otherwise fell through to the placement-bounds centroid — which
-                // averages the near-origin relative placements against the lone far
-                // anchor and lands at ~half the true offset, leaving geometry
-                // stranded in the f32-collapse zone.
-                // (`buildPrePassOnce` and the small-file tail already use a full
-                // index, so only this early-meta path needs the fallback.)
-                if !is_large(rtc_offset) && (site_position.is_none() || !detection_succeeded) {
-                    let full_index = ifc_lite_core::build_entity_index(content);
-                    let mut full_decoder = EntityDecoder::with_index(content, full_index);
-                    if let Some(full_rtc) =
-                        router.detect_rtc_offset_from_jobs(&buffered_jobs, &mut full_decoder)
-                    {
-                        // The full index resolved the placement chain — this is a
-                        // successful detection whether it shifts (large) or not.
-                        detection_succeeded = true;
-                        if is_large(full_rtc) {
-                            rtc_offset = full_rtc;
-                        }
-                    }
-                }
-                // Server parity LAST RESORT: only when NO detection (partial or
-                // full) found any usable placement translations do we scan the
-                // placement bounds (a model whose placements truly can't decode
-                // from this index, e.g. a genuine >10 km georef whose chain is
-                // unresolved). A successful "no shift" must NOT reach here, or the
-                // georef-anchor-skewed scan would re-base an origin-local model.
-                if !detection_succeeded && !is_large(rtc_offset) {
-                    let raw = ifc_lite_core::scan_placement_bounds(content).rtc_offset();
-                    // scan_placement_bounds reads raw IfcCartesianPoint values
-                    // (FILE units); the detection path is unit-scaled to metres.
-                    rtc_offset = (raw.0 * unit_scale, raw.1 * unit_scale, raw.2 * unit_scale);
-                }
-                let needs_shift = is_large(rtc_offset);
-
-                let building_rotation = site_position.and_then(|pos| {
-                    extract_building_rotation_from_site(pos, &router, &mut decoder)
-                });
+                plane_angle_to_radians = meta_res.plane_angle_to_radians;
 
                 // Emit meta event.
                 let meta = js_sys::Object::new();
                 crate::api::set_js_prop(&meta, "type", &"meta".into());
-                crate::api::set_js_prop(&meta, "unitScale", &unit_scale.into());
-                crate::api::set_js_prop(
-                    &meta,
-                    "planeAngleToRadians",
-                    &plane_angle_to_radians.into(),
-                );
-                let rtc_arr = js_sys::Float64Array::new_with_length(3);
-                rtc_arr.set_index(0, rtc_offset.0);
-                rtc_arr.set_index(1, rtc_offset.1);
-                rtc_arr.set_index(2, rtc_offset.2);
-                crate::api::set_js_prop(&meta, "rtcOffset", &rtc_arr);
-                crate::api::set_js_prop(&meta, "needsShift", &needs_shift.into());
-                match building_rotation {
-                    Some(rot) => crate::api::set_js_prop(&meta, "buildingRotation", &rot.into()),
-                    None => crate::api::set_js_prop(&meta, "buildingRotation", &JsValue::NULL),
-                };
+                set_stream_meta_props(&meta, &meta_res);
                 on_event.call1(&JsValue::NULL, &meta.into())?;
                 meta_emitted = true;
                 // NOTE: jobs are NOT drained here. They are buffered through the
@@ -468,44 +388,24 @@ impl IfcAPI {
         // workers can still process the trailing buffer.
         if !meta_emitted {
             // Build a decoder lazily for unit/RTC/site lookups. With a
-            // sub-50-job file the scan is essentially instant anyway, so
-            // buying a second pass here is irrelevant.
+            // sub-50-job file the scan is essentially instant anyway, so the
+            // full entity index is already complete here — the single-stage
+            // `SmallFileSingle` ladder (one detect_rtc_offset_with_fallback) is
+            // correct, sharing its resolution with `buildPrePassOnce`.
             let mut decoder = EntityDecoder::with_index(content, entity_index.clone());
-            let unit_scales = ifc_lite_processing::prepass::resolve_unit_scales(
+            let meta_res = resolve_stream_meta(
+                MetaMode::SmallFileSingle,
                 content,
                 project_id,
+                site_position,
+                &buffered_jobs,
                 &mut decoder,
             );
-            let unit_scale = unit_scales.length_unit_scale;
-            decoder.seed_unit_scales(unit_scale, unit_scales.plane_angle_to_radians);
-            plane_angle_to_radians = unit_scales.plane_angle_to_radians;
-            let router = GeometryRouter::with_scale(unit_scale);
-            let rtc_offset =
-                router.detect_rtc_offset_with_fallback(&buffered_jobs, &mut decoder, content);
-            let needs_shift = rtc_offset.0.abs() > 10000.0
-                || rtc_offset.1.abs() > 10000.0
-                || rtc_offset.2.abs() > 10000.0;
-            let building_rotation = site_position
-                .and_then(|pos| extract_building_rotation_from_site(pos, &router, &mut decoder));
+            plane_angle_to_radians = meta_res.plane_angle_to_radians;
 
             let meta = js_sys::Object::new();
             crate::api::set_js_prop(&meta, "type", &"meta".into());
-            crate::api::set_js_prop(&meta, "unitScale", &unit_scale.into());
-            crate::api::set_js_prop(
-                &meta,
-                "planeAngleToRadians",
-                &plane_angle_to_radians.into(),
-            );
-            let rtc_arr = js_sys::Float64Array::new_with_length(3);
-            rtc_arr.set_index(0, rtc_offset.0);
-            rtc_arr.set_index(1, rtc_offset.1);
-            rtc_arr.set_index(2, rtc_offset.2);
-            crate::api::set_js_prop(&meta, "rtcOffset", &rtc_arr);
-            crate::api::set_js_prop(&meta, "needsShift", &needs_shift.into());
-            match building_rotation {
-                Some(rot) => crate::api::set_js_prop(&meta, "buildingRotation", &rot.into()),
-                None => crate::api::set_js_prop(&meta, "buildingRotation", &JsValue::NULL),
-            };
+            set_stream_meta_props(&meta, &meta_res);
             on_event.call1(&JsValue::NULL, &meta.into())?;
         }
 

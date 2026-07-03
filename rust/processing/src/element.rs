@@ -585,9 +585,7 @@ fn degenerate_backstop_disabled() -> bool {
 /// Construct the final [`MeshData`]: metadata stamp, style metadata,
 /// geometry-class tag, and the optional site-local rotation. ALWAYS the last
 /// step — geometry hashing happens before this (native IFC frame).
-// The parameters are the distinct per-mesh inputs of the single funnel (job,
-// geometry, colour, style ids, class, ctx, uvs); bundling them would just move
-// the list into a struct with no clarity gain.
+// Distinct per-mesh funnel inputs; a struct would not add clarity.
 #[allow(clippy::too_many_arguments)]
 fn build_mesh_data(
     job: &ElementMeshJob<'_>,
@@ -625,13 +623,11 @@ fn build_mesh_data(
     // with no cross-face vertex sharing, duplicating every shared corner once
     // per incident face (~3-6x). Collapse coincident vertices (identical f32
     // position AND quantized normal AND quantized UV) here, at the single
-    // per-element funnel, so EVERY element arrives welded in its `MeshData` —
-    // the one weld point for render, export, and analysis. Normals already
-    // exist at this stage, so keying on the quantized normal keeps creases (a
-    // cube corner shared by 3 faces with 3 distinct normals) split and
-    // preserves flat shading; keying on the UV keeps a texture seam split. The
-    // UVs are remapped WITH the positions so they stay 1:1. World triangles,
-    // winding, and the world AABB are unchanged.
+    // per-element funnel, so EVERY element arrives welded in its `MeshData` (the
+    // one weld point for render, export, and analysis). Keying on the quantized
+    // normal keeps creases split (flat shading preserved) and on the UV keeps a
+    // texture seam split; the UVs are remapped WITH the positions so they stay
+    // 1:1. World triangles, winding, and the world AABB are unchanged.
     let welded_uvs = {
         let (wp, wn, wuv, wi) = ifc_lite_geometry::mesh_weld::weld_indexed(
             &mesh.positions,

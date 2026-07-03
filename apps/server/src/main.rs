@@ -38,6 +38,7 @@ use tower_http::{
 
 mod admission;
 mod config;
+mod mem_policy;
 mod error;
 mod middleware;
 mod routes;
@@ -218,14 +219,24 @@ async fn main() {
         shed_pct: config.mem_shed_pct,
     }));
     admission::spawn_rss_sampler(Arc::clone(&admission));
-    tracing::info!(
-        max_concurrent_parses = config.max_concurrent_parses,
-        mem_budget_mb = config.mem_budget_mb,
-        queue_depth = config.admission_queue_depth,
-        queue_timeout_secs = config.admission_queue_timeout_secs,
-        shed_pct = config.mem_shed_pct,
-        "Admission control active (mem budget 0 = byte gate disabled)"
-    );
+    if config.mem_budget_mb == 0 {
+        // No readable memory ceiling (non-Linux dev, /proc unavailable, or an
+        // explicit IFC_MEM_BUDGET_MB=0): the byte gate and RSS breaker are off,
+        // so concurrent large uploads can OOM this replica.
+        tracing::warn!(
+            max_concurrent_parses = config.max_concurrent_parses,
+            "Memory admission is OFF (no readable memory ceiling): concurrent large uploads can OOM this replica. Set IFC_MEM_BUDGET_MB, or run under a cgroup memory limit. (IFC_MEM_BUDGET_MB=0 is an explicit opt-out.)"
+        );
+    } else {
+        tracing::info!(
+            max_concurrent_parses = config.max_concurrent_parses,
+            mem_budget_mb = config.mem_budget_mb,
+            queue_depth = config.admission_queue_depth,
+            queue_timeout_secs = config.admission_queue_timeout_secs,
+            shed_pct = config.mem_shed_pct,
+            "Admission control active (byte budget + RSS breaker)"
+        );
+    }
 
     let state = AppState {
         cache,

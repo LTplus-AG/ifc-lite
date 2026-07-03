@@ -291,29 +291,6 @@ pub fn resident_bytes_now() -> u64 {
     }
 }
 
-/// Container memory limit from cgroups (v2 then v1), if readable. Seeds the
-/// default memory budget so it self-tunes to the instance size.
-pub fn cgroup_memory_limit_bytes() -> Option<u64> {
-    for path in [
-        "/sys/fs/cgroup/memory.max",
-        "/sys/fs/cgroup/memory/memory.limit_in_bytes",
-    ] {
-        if let Ok(raw) = std::fs::read_to_string(path) {
-            let raw = raw.trim();
-            if raw == "max" {
-                return None;
-            }
-            if let Ok(v) = raw.parse::<u64>() {
-                // cgroup v1 reports a huge sentinel when unlimited.
-                if v > 0 && v < (1 << 60) {
-                    return Some(v);
-                }
-            }
-        }
-    }
-    None
-}
-
 /// Background sampler: refreshes the shared RSS gauge every 500 ms so the
 /// admission breaker reads a cheap atomic, never the filesystem, per request.
 pub fn spawn_rss_sampler(admission: Arc<Admission>) {

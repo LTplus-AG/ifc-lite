@@ -510,6 +510,13 @@ Single-entity graph navigation, from `IfcQuery.entity(id)` or `IfcQuery.storeys`
 class EntityNode {
   readonly expressId: number;
 
+  // Resolved attributes (getters)
+  readonly globalId: string;
+  readonly name: string;
+  readonly description: string;
+  readonly objectType: string;
+  readonly tag: string;
+
   // Spatial containment
   contains(): EntityNode[]; // direct spatial children
   containedIn(): EntityNode | null;

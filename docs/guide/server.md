@@ -263,16 +263,20 @@ before uploading, so re-parsing the same file skips the upload automatically:
 const result = await client.parseParquet(file);
 ```
 
-To retrieve a previously processed result later, keep its `cache_key` and pass
-that composite key (for example `{SHA256}-default`, not a bare file hash) to
-`getCached`:
+To retrieve a previously processed result later, keep its `cache_key`. Re-calling
+`parseParquet` serves the geometry straight from the cache; fetch the cached data
+model (properties + spatial hierarchy) with `fetchDataModel`:
 
 ```typescript
-const cached = await client.getCached(result.cache_key);
-if (cached) {
-  console.log('File already processed!');
-}
+// Geometry: re-calling parseParquet returns the cached result without re-upload.
+const result = await client.parseParquet(file);
+
+// Data model (properties + hierarchy) for a known cache key:
+const dataModelBuffer = await client.fetchDataModel(result.cache_key);
 ```
+
+`getCached(key)` is the lower-level lookup for the JSON `parse()` cache and
+returns a `ParseResponse`; it is not the retrieval path for Parquet geometry.
 
 #### Fetching Data Model
 
@@ -637,7 +641,7 @@ for await (const event of client.parseStream(file)) {
 
 ### Network
 
-1. **Gzip Compression** - Optional client-side compression before upload
+1. **Gzip Compression** - Applied automatically on upload by `parse()`/`parseParquet()`
 2. **Parquet Format** - 15-50x smaller than JSON
 3. **SSE Streaming** - No polling overhead
 

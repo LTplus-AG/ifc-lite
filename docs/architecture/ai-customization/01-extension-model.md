@@ -111,7 +111,7 @@ side; (c) merge conflicts in flavor bundles are easier with one document.
 
 Validation lives in `@ifc-lite/extensions/src/manifest/validate.ts`
 (`validateManifest`) and is a hand-rolled, dependency-free validator.
-Failures produce structured errors (`{ path, code, hint }`) used by:
+Failures produce structured errors (`{ path, code, message, hint? }`) used by:
 
 - The loader (reject extension, show error in UI).
 - The registry CI (reject publish).

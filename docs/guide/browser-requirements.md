@@ -200,7 +200,9 @@ async function createRenderer(canvas: HTMLCanvasElement) {
   if (navigator.gpu) {
     const adapter = await navigator.gpu.requestAdapter();
     if (adapter) {
-      return new Renderer(canvas); // WebGPU
+      const renderer = new Renderer(canvas); // WebGPU
+      await renderer.init();
+      return renderer;
     }
   }
 

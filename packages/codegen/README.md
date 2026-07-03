@@ -22,7 +22,7 @@ node dist/cli.js ./schemas/IFC4X3.exp --output ./src/generated
 
 Generated files (one per output directory):
 
-```
+```text
 src/generated/
 ├── entities.ts          ← TypeScript interfaces for every entity
 ├── types.ts             ← defined-type aliases

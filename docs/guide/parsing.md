@@ -390,7 +390,9 @@ interface IfcDataStore {
 ```typescript
 import { IfcTypeEnum } from '@ifc-lite/data';
 
+// spatialHierarchy is optional on IfcDataStore; guard before use
 const hierarchy = store.spatialHierarchy;
+if (!hierarchy) throw new Error('No spatial hierarchy in this model');
 
 // Project structure
 console.log(`Project: ${hierarchy.project.name}`);
@@ -538,6 +540,8 @@ groups.forEach((elementIds, code) => {
 
 ```typescript
 import { IfcParser } from '@ifc-lite/parser';
+
+const parser = new IfcParser();
 
 try {
   const store = await parser.parseColumnar(buffer);

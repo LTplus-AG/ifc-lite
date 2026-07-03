@@ -523,6 +523,9 @@ sequenceDiagram
 
 ```typescript
 import { IfcParser } from '@ifc-lite/parser';
+import { IfcServerClient } from '@ifc-lite/server-client';
+
+const parser = new IfcParser();
 
 try {
   const store = await parser.parseColumnar(buffer);
@@ -535,15 +538,17 @@ try {
 }
 
 // Server client errors
-import { IfcServerClient } from '@ifc-lite/server-client';
+const client = new IfcServerClient({ baseUrl: 'http://localhost:3001' });
 
 try {
   const result = await client.parseParquet(file);
 } catch (error) {
-  if (error.message.includes('timeout')) {
+  if (error instanceof Error && error.message.includes('timeout')) {
     console.error('Server timeout - try streaming for large files');
-  } else if (error.message.includes('413')) {
+  } else if (error instanceof Error && error.message.includes('413')) {
     console.error('File too large - increase MAX_FILE_SIZE_MB on server');
+  } else {
+    throw error;
   }
 }
 ```

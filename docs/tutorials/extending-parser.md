@@ -29,7 +29,13 @@ flowchart TB
 ### Creating a Decoder
 
 ```typescript
-import { IfcDataStore, EntityRef, extractEntityAttributesOnDemand } from '@ifc-lite/parser';
+import {
+  IfcDataStore,
+  EntityRef,
+  extractEntityAttributesOnDemand,
+  extractPropertiesOnDemand,
+  extractQuantitiesOnDemand,
+} from '@ifc-lite/parser';
 
 // Define custom entity interface
 interface CustomDoorData {
@@ -87,8 +93,6 @@ class DoorDecoder {
 }
 
 // Usage
-import { extractPropertiesOnDemand, extractQuantitiesOnDemand } from '@ifc-lite/parser';
-
 const buffer = new Uint8Array(arrayBuffer);
 const doorDecoder = new DoorDecoder(store, buffer);
 const doors = doorDecoder.decodeAll();

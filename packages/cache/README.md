@@ -29,8 +29,10 @@ if (cached) {
   return; // first triangles in milliseconds
 }
 
-// Cold path — full parse + tessellation, then write the cache
-const { dataStore, geometry } = await geometryProcessor.process(new Uint8Array(ifcBuffer));
+// Cold path — full parse + tessellation, then write the cache.
+// dataStore comes from the parser; process() returns a GeometryResult.
+const dataStore = await parser.parseColumnar(new Uint8Array(ifcBuffer));
+const geometry = await geometryProcessor.process(new Uint8Array(ifcBuffer));
 
 const writer = new BinaryCacheWriter();
 const cacheBuffer = await writer.write(dataStore, geometry, ifcBuffer, { includeGeometry: true });

@@ -9,7 +9,7 @@
  */
 
 import type { ResolvedUnit } from '@ifc-lite/parser';
-import { alternativesForUnitType, type UnitOption } from './alternatives.js';
+import { alternativesForUnitType } from './alternatives.js';
 
 /** A linear (plus optional affine offset) unit descriptor: converts a value
  *  in this unit to the SI base via `value*scale + (offset??0)`. */
@@ -20,8 +20,11 @@ export interface LinearUnit {
 
 /** Convert `value` (expressed in `from`) into `to`'s unit. Both go through
  *  the shared SI base, so a from/to pair with different offsets (e.g. °C ->
- *  K) round-trips correctly. */
-export function convertValue(value: number, from: LinearUnit, to: UnitOption): number {
+ *  K) round-trips correctly. `to` accepts any {@link LinearUnit} (a
+ *  `UnitOption` already is one) so a file-declared unit - not just a curated
+ *  alternative - can be a conversion target (issue #1573 follow-up: the
+ *  Lists single-target normalization resolver). */
+export function convertValue(value: number, from: LinearUnit, to: LinearUnit): number {
   const siBase = value * from.scale + (from.offset ?? 0);
   return (siBase - (to.offset ?? 0)) / to.scale;
 }

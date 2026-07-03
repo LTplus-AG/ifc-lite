@@ -12,7 +12,7 @@
 import type { CellValue, ColumnDefinition, ListRow, ListGrouping } from '@ifc-lite/lists';
 import type { ProjectUnits } from '@ifc-lite/parser';
 import { buildGroupBuckets, orderGroups, type GroupSort } from '@/lib/lists/group-sort';
-import { resolveMeasureDisplay, resolveQuantityDisplay } from '@/lib/units/display';
+import { resolveListColumnUnits } from '@/lib/units/list-column-units';
 
 export interface ExportColumn {
   id: string;
@@ -24,7 +24,7 @@ export interface ExportColumn {
   /** Resolved display unit symbol for this column — the file's declared/
    *  default unit, or the user's display-unit override (issue #1573).
    *  Undefined for non-measure columns, or when the model was built without
-   *  `projectUnits`. Already folded into `label` (`"NetVolume (m³/h)"`) so
+   *  `modelUnits`. Already folded into `label` (`"NetVolume (m³/h)"`) so
    *  writers don't need to special-case it; kept here too for callers that
    *  want the symbol on its own. */
   unit?: string;
@@ -62,18 +62,21 @@ export interface BuildModelInput {
   columnWidths: number[];
   generatedAt: string;
   /**
-   * The file's declared units (issue #1573) — when provided alongside
+   * Per-model declared units (issue #1573 follow-up), keyed by the same
+   * `modelId` every `ListRow` carries — when provided alongside
    * `unitDisplayOverrides`, quantity columns (`ColumnDefinition.quantityType`)
    * and measure property columns (`ColumnDefinition.dataType`, both populated
-   * by `executeList`) export CONVERTED into the overridden unit, with the
-   * resolved symbol folded into the column label. Omitted keeps the legacy
-   * raw-value, no-unit export.
+   * by `executeList`) export CONVERTED into ONE resolved target unit (see
+   * `resolveListColumnUnits`), with the resolved symbol folded into the
+   * column label. Omitted (or empty) keeps the legacy raw-value, no-unit
+   * export. This is the SAME resolver the on-screen table
+   * (`ListResultsTable`) uses, so the two can never disagree.
    */
-  projectUnits?: ProjectUnits;
+  modelUnits?: Map<string, ProjectUnits>;
   /** Per-unit-type display-unit overrides — see `unitDisplayOverrides` in the
    *  viewer store's `unitDisplaySlice`. `{}` (or omitted) exports every
-   *  measure column in the file's declared unit (still labelled), with no
-   *  values converted. */
+   *  measure column in the file's declared (first-contributing model's) unit
+   *  (still labelled), with no values converted. */
   unitDisplayOverrides?: Record<string, string>;
 }
 
@@ -89,7 +92,7 @@ export function displayCell(value: CellValue): string {
 }
 
 export function buildExportModel(input: BuildModelInput): ExportModel {
-  const { columns, rows, grouping, sort, numericCols, columnWidths, title, generatedAt, projectUnits, unitDisplayOverrides } = input;
+  const { columns, rows, grouping, sort, numericCols, columnWidths, title, generatedAt, modelUnits, unitDisplayOverrides } = input;
   const sumColumnIds = grouping?.sumColumnIds ?? [];
   const exportCols: ExportColumn[] = columns.map((c, i) => ({
     id: c.id,
@@ -99,51 +102,29 @@ export function buildExportModel(input: BuildModelInput): ExportModel {
     width: columnWidths[i] ?? 120,
   }));
 
-  // Display-unit conversion (issue #1573): quantity/property measure columns
-  // export CONVERTED into the overridden unit, same math as the Properties
-  // panel (`resolveQuantityDisplay`/`resolveMeasureDisplay`), with the
+  // Display-unit conversion (issue #1573 follow-up): quantity/property
+  // measure columns export CONVERTED into ONE resolved target unit via the
+  // resolver shared with the on-screen table (`ListResultsTable`), with the
   // resolved symbol folded into the column label. A NEW row-values array is
   // built rather than mutating `rows[i].values` in place — those arrays are
   // the live on-screen `ListRow`s (shared with sort/group/colour-by), so
   // converting for export must never leak back into them.
-  const convertibleCols = projectUnits && unitDisplayOverrides
-    ? columns.map((c, i) => ({ c, i })).filter(({ c }) => c.quantityType !== undefined || !!c.dataType)
-    : [];
+  const resolver = modelUnits && modelUnits.size > 0 && unitDisplayOverrides
+    ? resolveListColumnUnits(columns, modelUnits, unitDisplayOverrides)
+    : null;
 
-  const resolveDisplay = (c: ColumnDefinition, value: CellValue) =>
-    c.quantityType !== undefined
-      ? resolveQuantityDisplay(typeof value === 'number' ? value : NaN, c.quantityType, projectUnits!, unitDisplayOverrides!)
-      : resolveMeasureDisplay(value, c.dataType, projectUnits!, unitDisplayOverrides!);
-
-  // Resolve each convertible column's label from a REPRESENTATIVE row (the
-  // first with a finite numeric value), not just `rows[0]`: an override only
-  // reports its symbol once it sees a convertible value (see
-  // `resolveQuantityDisplay`'s contract), so seeding from a row that happens
-  // to be null/non-numeric would freeze the header on the file's default
-  // unit while the actual (later) rows convert correctly underneath it —
-  // a header/value mismatch. Falls back to a non-finite probe (still labels
-  // with the file default) only when no row has data for that column at all.
-  for (const { c, i } of convertibleCols) {
-    const seed = rows.find((r) => typeof r.values[i] === 'number' && Number.isFinite(r.values[i] as number));
-    const disp = resolveDisplay(c, seed ? seed.values[i] : null);
-    if (disp.unit) {
-      exportCols[i].unit = disp.unit;
-      exportCols[i].label = `${exportCols[i].label} (${disp.unit})`;
-    }
+  if (resolver) {
+    columns.forEach((_, i) => {
+      const unit = resolver.unitSymbol(i);
+      if (unit) {
+        exportCols[i].unit = unit;
+        exportCols[i].label = `${exportCols[i].label} (${unit})`;
+      }
+    });
   }
 
-  const convertRowValues = (values: CellValue[]): CellValue[] => {
-    if (convertibleCols.length === 0) return values;
-    const next = values.slice();
-    for (const { c, i } of convertibleCols) {
-      const disp = resolveDisplay(c, next[i]);
-      if (disp.converted !== null) next[i] = disp.converted;
-    }
-    return next;
-  };
-
-  const convertedRows: ListRow[] = convertibleCols.length > 0
-    ? rows.map((r) => ({ ...r, values: convertRowValues(r.values) }))
+  const convertedRows: ListRow[] = resolver
+    ? rows.map((r) => ({ ...r, values: r.values.map((v, i) => resolver.convertCell(i, v, r.modelId)) }))
     : rows;
 
   const sumIdx = sumColumnIds

@@ -5,7 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
-import { convertValue, resolveFromUnit } from './convert.js';
+import { convertValue, resolveFromUnit, type LinearUnit } from './convert.js';
 import { alternativesForUnitType } from './alternatives.js';
 
 function option(unitType: string, id: string) {
@@ -40,6 +40,16 @@ describe('convertValue', () => {
     const celsius = option('THERMODYNAMICTEMPERATUREUNIT', 'c');
     const result = convertValue(273.15, kelvin, celsius);
     assert.ok(Math.abs(result - 0) < 1e-9, `expected 0, got ${result}`);
+  });
+
+  // #1573 follow-up: `to` accepts any plain LinearUnit (no `id`/`symbol`),
+  // not just a curated `UnitOption` — the Lists single-target normalization
+  // resolver targets a file-declared unit directly.
+  it('accepts a plain LinearUnit (no id/symbol) as the target', () => {
+    const from: LinearUnit = { scale: 1e-3 }; // mm
+    const to: LinearUnit = { scale: 1 }; // m, a bare file-declared unit
+    const result = convertValue(1000, from, to);
+    assert.strictEqual(result, 1);
   });
 });
 

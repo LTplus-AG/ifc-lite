@@ -72,7 +72,7 @@ describe('buildExportModel display-unit conversion (#1573)', () => {
       numericCols: [false, true],
       columnWidths: [120, 120],
       generatedAt: 'now',
-      projectUnits: ProjectUnits.empty(),
+      modelUnits: new Map([['m', ProjectUnits.empty()]]),
       unitDisplayOverrides: { VOLUMEUNIT: 'l' }, // 1 m³ = 1000 L
     });
 
@@ -93,7 +93,7 @@ describe('buildExportModel display-unit conversion (#1573)', () => {
       numericCols: [false, true],
       columnWidths: [120, 120],
       generatedAt: 'now',
-      projectUnits: ProjectUnits.empty(),
+      modelUnits: new Map([['m', ProjectUnits.empty()]]),
       unitDisplayOverrides: {},
     });
 
@@ -101,10 +101,7 @@ describe('buildExportModel display-unit conversion (#1573)', () => {
     assert.deepStrictEqual(m.rows, [['A', 1]]);
   });
 
-  it('seeds the column unit from the first row with a finite value, not a null first row', () => {
-    // First row is null for the quantity column — a naive "peek at row 0"
-    // would freeze the header on the file default while row 2 still
-    // converts underneath it (header/value mismatch).
+  it('converts every row (not just the first) — no more "seed row" needed since the target unit is resolved ahead of the rows', () => {
     const m = buildExportModel({
       title: 'List',
       columns: volumeColumns,
@@ -112,7 +109,7 @@ describe('buildExportModel display-unit conversion (#1573)', () => {
       numericCols: [false, true],
       columnWidths: [120, 120],
       generatedAt: 'now',
-      projectUnits: ProjectUnits.empty(),
+      modelUnits: new Map([['m', ProjectUnits.empty()]]),
       unitDisplayOverrides: { VOLUMEUNIT: 'l' },
     });
 
@@ -131,7 +128,7 @@ describe('buildExportModel display-unit conversion (#1573)', () => {
       numericCols: [true],
       columnWidths: [120],
       generatedAt: 'now',
-      projectUnits: ProjectUnits.empty(),
+      modelUnits: new Map([['m', ProjectUnits.empty()]]),
       unitDisplayOverrides: { VOLUMETRICFLOWRATEUNIT: 'm3h' },
     });
 
@@ -141,7 +138,7 @@ describe('buildExportModel display-unit conversion (#1573)', () => {
     assert.ok(Math.abs((converted as number) - 50) < 1e-6);
   });
 
-  it('leaves values and labels untouched when projectUnits/overrides are omitted (legacy callers)', () => {
+  it('leaves values and labels untouched when modelUnits/overrides are omitted (legacy callers)', () => {
     const m = buildExportModel({
       title: 'List',
       columns: volumeColumns,
@@ -154,5 +151,32 @@ describe('buildExportModel display-unit conversion (#1573)', () => {
     assert.strictEqual(m.columns[1].unit, undefined);
     assert.strictEqual(m.columns[1].label, 'Volume');
     assert.deepStrictEqual(m.rows, [['A', 1]]);
+  });
+
+  it('federated: a 2-entry modelUnits map converts each row from ITS OWN model (mm vs m declared length)', () => {
+    const mmModel = new Map([['LENGTHUNIT', { symbol: 'mm', siScale: 1e-3 }]]);
+    const mModel = new Map([['LENGTHUNIT', { symbol: 'm', siScale: 1 }]]);
+    const columns: ColumnDefinition[] = [
+      { id: 'len', source: 'quantity', psetName: 'Qto', propertyName: 'Length', quantityType: 0 /* Length */ },
+    ];
+    const m = buildExportModel({
+      title: 'List',
+      columns,
+      rows: [
+        { entityId: 1, modelId: 'mmModel', values: [1000] },
+        { entityId: 2, modelId: 'mModel', values: [1] },
+      ],
+      numericCols: [true],
+      columnWidths: [120],
+      generatedAt: 'now',
+      modelUnits: new Map([
+        ['mmModel', new ProjectUnits(mmModel, null)],
+        ['mModel', new ProjectUnits(mModel, null)],
+      ]),
+      unitDisplayOverrides: { LENGTHUNIT: 'm' },
+    });
+
+    assert.strictEqual(m.columns[0].unit, 'm');
+    assert.deepStrictEqual(m.rows, [[1], [1]]); // 1000mm -> 1m, and 1m -> 1m
   });
 });

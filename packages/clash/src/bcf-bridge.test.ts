@@ -246,6 +246,49 @@ describe('createBCFFromClashResult', () => {
   });
 });
 
+describe('createBCFFromClashResult review status (#1468)', () => {
+  it('falls back to the flat status when no reviewStatusOf is given', async () => {
+    const { result, groups } = makeFixture();
+    const project = await createBCFFromClashResult(result, groups, {
+      author: 'tester',
+      status: 'In Progress',
+    });
+    const critical = project.topics.get(uuidFromSeed('group-critical'));
+    expect(critical?.topicStatus).toBe('In Progress');
+    // Without a resolver the review breakdown line is omitted entirely.
+    expect(critical?.description).not.toContain('By review:');
+  });
+
+  it('sets topic status from the least-resolved member (open wins)', async () => {
+    const { result, groups } = makeFixture();
+    // group-critical has clash-1 + clash-2. Mark one resolved, leave one open ->
+    // the topic must stay Open (a single open member blocks closure).
+    const reviewStatusOf = (c: Clash): ClashReviewStatus =>
+      c.id === 'clash-1' ? 'resolved' : c.id === 'clash-2' ? 'open' : 'accepted';
+    const project = await createBCFFromClashResult(result, groups, {
+      author: 'tester',
+      status: 'In Progress', // must be overridden per-topic by the resolver
+      reviewStatusOf,
+    });
+    const critical = project.topics.get(uuidFromSeed('group-critical'));
+    expect(critical?.topicStatus).toBe('Open');
+    // The finer split is preserved in the description even though TopicStatus is coarse.
+    expect(critical?.description).toContain('By review:');
+    expect(critical?.description).toContain('open: 1');
+    expect(critical?.description).toContain('resolved: 1');
+  });
+
+  it('closes a topic whose every member is resolved or accepted', async () => {
+    const { result, groups } = makeFixture();
+    // group-major (clash-3) resolved, group-minor (clash-4) accepted -> both Closed.
+    const reviewStatusOf = (c: Clash): ClashReviewStatus =>
+      c.id === 'clash-3' ? 'resolved' : 'accepted';
+    const project = await createBCFFromClashResult(result, groups, { author: 'tester', reviewStatusOf });
+    expect(project.topics.get(uuidFromSeed('group-major'))?.topicStatus).toBe('Closed');
+    expect(project.topics.get(uuidFromSeed('group-minor'))?.topicStatus).toBe('Closed');
+  });
+});
+
 describe('mapBcfToClashes', () => {
   it('recovers every clash id -> status from an in-memory project', async () => {
     const { result, groups } = makeFixture();

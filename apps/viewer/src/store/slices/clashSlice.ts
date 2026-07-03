@@ -12,7 +12,16 @@
  */
 
 import type { StateCreator } from 'zustand';
-import type { ClashResult, ClashGroup, ClashMode, ClashProgress, ClashSortBy } from '@ifc-lite/clash';
+import type {
+  ClashResult,
+  ClashGroup,
+  ClashMode,
+  ClashProgress,
+  ClashReview,
+  ClashReviewStatus,
+  ClashSortBy,
+} from '@ifc-lite/clash';
+import { CLASH_REVIEW_STATUSES, DEFAULT_CLASH_REVIEW_STATUS } from '@ifc-lite/clash';
 
 /** How the rest of the model is shown when a clash is focused (#1275). Lives
  *  here (not in `useClash`) so the panel's view choice persists across panel
@@ -21,8 +30,10 @@ export type ClashFocusMode = 'highlight' | 'isolate' | 'ghost';
 import {
   buildInitialPresets,
   defaultPresets,
+  loadReviews,
   loadSettings,
   savePresets,
+  saveReviews,
   saveSettings,
   validatePresetName,
   validateSelector,
@@ -80,6 +91,15 @@ export interface ClashSlice {
   clashFocusMode: ClashFocusMode;
   /** Built-in + custom rule presets (persisted). */
   clashPresets: ClashPreset[];
+  /**
+   * Per-clash REVIEW state (status + optional comment), keyed by the durable
+   * `clashReviewKey` from `@ifc-lite/clash` so it survives reloads, re-runs and
+   * revisions. Persisted separately from the run result (workspace state, like
+   * presets); never wiped by `clearClash`. (#1468)
+   */
+  clashReviews: Map<string, ClashReview>;
+  /** Which review statuses are shown in the panel list (view filter). (#1468) */
+  clashStatusFilter: Set<ClashReviewStatus>;
   /** Currently focused clash id (for highlight in the list). */
   clashSelectedId: string | null;
   /**
@@ -143,6 +163,11 @@ export interface ClashSlice {
   setClashPresetEnabled: (id: string, enabled: boolean) => void;
   resetClashPresets: () => void;
   importClashPresets: (presets: ClashPreset[]) => SaveResult;
+  /** Merge a patch into a clash's review (status and/or comment) and persist.
+   *  Resetting to the default (open, empty comment) drops the entry. (#1468) */
+  setClashReview: (key: string, patch: { status?: ClashReviewStatus; comment?: string }) => SaveResult;
+  /** Toggle whether a review status is shown in the list. */
+  toggleClashStatusFilter: (status: ClashReviewStatus) => void;
   /**
    * Replace the entire clash config (presets + detection settings) and persist.
    * Used when activating a flavor/profile so each one carries its own rule-set.
@@ -186,6 +211,8 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
     clashHideTouching: false,
     clashFocusMode: 'highlight',
     clashPresets: buildInitialPresets(),
+    clashReviews: loadReviews(),
+    clashStatusFilter: new Set(CLASH_REVIEW_STATUSES),
     clashSelectedId: null,
     clashHighlightColors: null,
     clashOverlapBox: null,
@@ -296,6 +323,35 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
       if (result.ok) set({ clashPresets: next });
       return result;
     },
+
+    setClashReview: (key, patch) => {
+      const map = new Map(get().clashReviews);
+      const prev = map.get(key);
+      const status = patch.status ?? prev?.status ?? DEFAULT_CLASH_REVIEW_STATUS;
+      const comment = (patch.comment ?? prev?.comment ?? '').trim();
+      // Default state (open, no comment) carries no information: drop the entry
+      // so storage and the filter counts only reflect real decisions. (#1468)
+      if (status === DEFAULT_CLASH_REVIEW_STATUS && comment.length === 0) {
+        map.delete(key);
+      } else {
+        const review: ClashReview = { status, updatedAt: Date.now() };
+        if (comment.length > 0) review.comment = comment;
+        map.set(key, review);
+      }
+      const result = saveReviews(map);
+      // Reflect the edit optimistically even if persistence hit quota, so the UI
+      // stays responsive; the SaveResult lets the caller surface the failure.
+      set({ clashReviews: map });
+      return result;
+    },
+
+    toggleClashStatusFilter: (status) =>
+      set((s) => {
+        const next = new Set(s.clashStatusFilter);
+        if (next.has(status)) next.delete(status);
+        else next.add(status);
+        return { clashStatusFilter: next };
+      }),
 
     applyClashFlavorConfig: ({ presets, settings }) => {
       set({

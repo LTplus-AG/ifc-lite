@@ -18,11 +18,13 @@ import {
   rulesFromPresets,
   groupClashes,
   findDuplicates,
+  clashReviewKey,
   type Clash,
   type ClashElement,
   type ClashElementRef,
   type ClashGroup,
   type ClashResult,
+  type ClashReviewStatus,
   type ClashRule,
   type ClashSeverity,
   type ExclusionSet,
@@ -98,8 +100,6 @@ export interface ClashBcfConfig {
   severities: ClashSeverity[];
   /** Render each topic's viewpoint offscreen and embed a PNG snapshot. */
   includeSnapshots: boolean;
-  /** Initial BCF topic status (Open / In Progress / ...). */
-  status: string;
   /** Safety cap on topic count; overflow is recorded in one marker topic. */
   maxTopics: number;
 }
@@ -142,6 +142,9 @@ export function useClash() {
   const clashPresets = useViewerStore((s) => s.clashPresets);
   const selectedId = useViewerStore((s) => s.clashSelectedId);
   const panelVisible = useViewerStore((s) => s.clashPanelVisible);
+  /** Per-clash review state + the status view filter (#1468). */
+  const reviews = useViewerStore((s) => s.clashReviews);
+  const statusFilter = useViewerStore((s) => s.clashStatusFilter);
   /** Number of loaded models — drives the "checking a single model" framing (#1271). */
   const modelCount = useViewerStore((s) => s.models.size);
 
@@ -151,6 +154,8 @@ export function useClash() {
   const setGroupBy = useViewerStore((s) => s.setClashGroupBy);
   const setSelectedId = useViewerStore((s) => s.setClashSelectedId);
   const setPanelVisible = useViewerStore((s) => s.setClashPanelVisible);
+  const setClashReview = useViewerStore((s) => s.setClashReview);
+  const toggleStatusFilter = useViewerStore((s) => s.toggleClashStatusFilter);
   const clear = useViewerStore((s) => s.clearClash);
 
   // Geometry of the last-gathered clash elements, keyed by federated ref, so a
@@ -457,6 +462,27 @@ export function useClash() {
     setSelectedId(null);
   }, [setSelectedId]);
 
+  /** Current review status of a clash ('open' when unreviewed). Reactive: reads
+   *  the subscribed reviews map so the panel repaints on any review change. (#1468) */
+  const reviewOf = useCallback(
+    (clash: Clash): ClashReviewStatus => reviews.get(clashReviewKey(clash))?.status ?? 'open',
+    [reviews],
+  );
+
+  /** Current review comment of a clash ('' when none). */
+  const reviewCommentOf = useCallback(
+    (clash: Clash): string => reviews.get(clashReviewKey(clash))?.comment ?? '',
+    [reviews],
+  );
+
+  /** Set a clash's review status and/or comment (persists). Resetting to open
+   *  with no comment drops the entry. (#1468) */
+  const setReview = useCallback(
+    (clash: Clash, patch: { status?: ClashReviewStatus; comment?: string }) =>
+      setClashReview(clashReviewKey(clash), patch),
+    [setClashReview],
+  );
+
   /**
    * Preview what a given export config would produce, WITHOUT building anything:
    * how many clashes survive the severity filter and how many BCF topics they
@@ -554,11 +580,18 @@ export function useClash() {
         }
       }
 
+      // Each topic's status follows its members' review status (least-resolved
+      // wins), mapped to a BCF status in the bridge. Read the live reviews map so
+      // an edit made just before export is reflected. (#1468)
+      const reviewsMap = state.clashReviews;
+      const reviewStatusOf = (clash: Clash): ClashReviewStatus =>
+        reviewsMap.get(clashReviewKey(clash))?.status ?? 'open';
+
       try {
         const project = await createBCFFromClashResult(filtered, groups, {
           author: 'clash@ifc-lite',
           projectName: 'Clash report',
-          status: config.status,
+          reviewStatusOf,
           maxTopics: config.maxTopics,
           ...(snapshotProvider ? { snapshotProvider } : {}),
         });
@@ -596,6 +629,7 @@ export function useClash() {
     selectedId,
     panelVisible,
     modelCount,
+    statusFilter,
     // Only enabled presets show as run chips; the settings dialog manages the full set.
     presets: clashPresets.filter((p) => p.enabled),
     // settings
@@ -604,6 +638,11 @@ export function useClash() {
     setClearance,
     setGroupBy,
     setPanelVisible,
+    // review (#1468)
+    reviewOf,
+    reviewCommentOf,
+    setReview,
+    toggleStatusFilter,
     // actions
     run,
     runAll,

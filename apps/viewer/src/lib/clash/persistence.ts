@@ -17,8 +17,12 @@
 
 import {
   CLASH_RULE_PRESETS,
+  CLASH_REVIEW_STATUSES,
+  DEFAULT_CLASH_REVIEW_STATUS,
   type ClashRulePreset,
   type ClashMode,
+  type ClashReview,
+  type ClashReviewStatus,
   type ClashSeverity,
 } from '@ifc-lite/clash';
 import { downloadFile } from '../export/download.js';
@@ -45,10 +49,16 @@ export type SaveResult =
 
 const PRESETS_KEY = 'ifc-lite-clash-presets';
 const SETTINGS_KEY = 'ifc-lite-clash-settings';
+/** Per-clash review status + comments, keyed by the durable `clashReviewKey`. (#1468) */
+const REVIEWS_KEY = 'ifc-lite-clash-reviews';
 const SCHEMA_VERSION = 1;
 
 const MAX_PRESETS = 200;
 const MAX_NAME = 100;
+/** Cap on stored reviews so a huge model can't blow the localStorage quota. */
+const MAX_REVIEWS = 10_000;
+/** Cap on a single review comment; longer notes belong in a real issue tracker. */
+const MAX_COMMENT = 2_000;
 
 /** [min, max] clamps applied to settings numerics on load and on commit. */
 export const CLASH_BOUNDS = {
@@ -239,6 +249,81 @@ export function saveSettings(settings: ClashGlobalSettings): SaveResult {
     return { ok: true };
   } catch {
     return { ok: false, reason: 'quota', message: 'Browser storage is full — clash settings were not saved.' };
+  }
+}
+
+// Per-clash review state (status + comment).
+// The coordinator's triage on a clash (open / resolved / accepted, plus an
+// optional note), keyed by the DURABLE `clashReviewKey` from `@ifc-lite/clash`
+// so it re-attaches across reloads, re-runs and model revisions. Default-state
+// reviews (open, no comment) are pruned on save so storage holds only real
+// decisions and stays quota-lean. (#1468)
+
+function normalizeComment(raw: unknown): string {
+  return typeof raw === 'string' ? raw.slice(0, MAX_COMMENT) : '';
+}
+
+/** A review worth persisting: a non-default status or a non-empty comment. */
+export function isMeaningfulReview(review: ClashReview): boolean {
+  return review.status !== DEFAULT_CLASH_REVIEW_STATUS || (review.comment ?? '').trim().length > 0;
+}
+
+function isReviewStatus(v: unknown): v is ClashReviewStatus {
+  return typeof v === 'string' && (CLASH_REVIEW_STATUSES as readonly string[]).includes(v);
+}
+
+/** Read stored reviews into a Map keyed by durable clash-review key. */
+export function loadReviews(): Map<string, ClashReview> {
+  const map = new Map<string, ClashReview>();
+  try {
+    const raw = localStorage.getItem(REVIEWS_KEY);
+    if (!raw) return map;
+    const parsed: unknown = JSON.parse(raw);
+    const reviews =
+      parsed && typeof parsed === 'object' ? (parsed as { reviews?: unknown }).reviews : null;
+    if (!reviews || typeof reviews !== 'object') return map;
+    for (const [key, value] of Object.entries(reviews as Record<string, unknown>)) {
+      if (!key || !value || typeof value !== 'object') continue;
+      const r = value as Record<string, unknown>;
+      if (!isReviewStatus(r.status)) continue;
+      const comment = normalizeComment(r.comment);
+      const review: ClashReview = {
+        status: r.status,
+        ...(comment ? { comment } : {}),
+        ...(typeof r.updatedAt === 'number' && Number.isFinite(r.updatedAt) ? { updatedAt: r.updatedAt } : {}),
+      };
+      // Skip default entries a stale writer may have left behind.
+      if (isMeaningfulReview(review)) map.set(key, review);
+    }
+  } catch {
+    return map;
+  }
+  return map;
+}
+
+/** Persist reviews (default-state entries pruned, capped, quota-safe). */
+export function saveReviews(reviews: Map<string, ClashReview>): SaveResult {
+  const entries: Record<string, ClashReview> = {};
+  let count = 0;
+  for (const [key, review] of reviews) {
+    if (!isMeaningfulReview(review)) continue;
+    if (count >= MAX_REVIEWS) {
+      return { ok: false, reason: 'too_many', message: `Too many clash reviews (max ${MAX_REVIEWS}).` };
+    }
+    entries[key] = review;
+    count += 1;
+  }
+  let payload: string;
+  try {
+    payload = JSON.stringify({ schemaVersion: SCHEMA_VERSION, reviews: entries });
+  } catch {
+    return { ok: false, reason: 'serialize', message: 'Could not serialize clash reviews.' };
+  }
+  try {
+    localStorage.setItem(REVIEWS_KEY, payload);
+    return { ok: true };
+  } catch {
+    return { ok: false, reason: 'quota', message: 'Browser storage is full; clash reviews were not saved.' };
   }
 }
 

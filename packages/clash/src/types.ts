@@ -125,6 +125,31 @@ export interface Clash {
   severity: ClashSeverity;
 }
 
+/**
+ * A coordinator's REVIEW state for a clash — deliberately distinct from the
+ * detection-classification `Clash.status` (`hard`/`clearance`/`touch`). This is
+ * the human triage a project team applies: not every detected clash needs a fix
+ * (some are already resolved, some are accepted). Persisted per clash (keyed by
+ * the durable `clashReviewKey`) and mapped to a BCF topic status on export.
+ * (#1468)
+ */
+export type ClashReviewStatus = 'open' | 'resolved' | 'accepted';
+
+/** All review statuses, in workflow order (least → most resolved). */
+export const CLASH_REVIEW_STATUSES: readonly ClashReviewStatus[] = ['open', 'resolved', 'accepted'];
+
+/** The default state of a clash that has never been reviewed. */
+export const DEFAULT_CLASH_REVIEW_STATUS: ClashReviewStatus = 'open';
+
+/** A single clash's review: status plus an optional free-text coordination note. */
+export interface ClashReview {
+  status: ClashReviewStatus;
+  /** Optional coordinator comment. Empty/absent when none. */
+  comment?: string;
+  /** Epoch-ms of the last edit — lets a merge keep the newest entry. */
+  updatedAt?: number;
+}
+
 export interface ClashSummary {
   total: number;
   byRule: Record<string, number>;

@@ -30,12 +30,33 @@ import {
   type ViewerCameraState,
   type ViewerBounds,
 } from '@ifc-lite/bcf';
-import type { AABB, Clash, ClashGroup, ClashResult, ClashSeverity, Vec3 } from './types.js';
+import type {
+  AABB,
+  Clash,
+  ClashGroup,
+  ClashResult,
+  ClashReviewStatus,
+  ClashSeverity,
+  Vec3,
+} from './types.js';
 import { uuidFromSeed } from './deterministic-uuid.js';
+import { aggregateReviewStatus, reviewStatusToBcfTopicStatus } from './review.js';
 
 export interface ClashBcfOptions {
   author: string;
+  /**
+   * Fallback topic status for topics whose members have no review status (and
+   * for the overflow marker). Ignored per-topic when `reviewStatusOf` resolves a
+   * status from the members. Defaults to `Open`.
+   */
   status?: string;
+  /**
+   * Resolve a clash's REVIEW status (#1468). When provided, each topic's status
+   * is the least-resolved status among its members, mapped to a BCF TopicStatus
+   * (`open` -> Open, `resolved`/`accepted` -> Closed). Omit to keep the flat
+   * `status` for every topic (the pre-review behaviour).
+   */
+  reviewStatusOf?: (clash: Clash) => ClashReviewStatus;
   projectName?: string;
   maxTopics?: number;
   maxMembersPerTopic?: number;
@@ -153,7 +174,11 @@ function formatCounts(counts: Record<string, number>): string {
 }
 
 /** A readable, human-facing summary plus the machine-readable clash-ids line. */
-function buildDescription(group: ClashGroup, maxMembers: number): string {
+function buildDescription(
+  group: ClashGroup,
+  maxMembers: number,
+  reviewStatusOf?: (clash: Clash) => ClashReviewStatus,
+): string {
   const lines: string[] = [];
   lines.push(`Clash group "${group.title}" with ${group.members.length} member(s).`);
   if (group.discipline) lines.push(`Discipline: ${group.discipline}`);
@@ -162,6 +187,11 @@ function buildDescription(group: ClashGroup, maxMembers: number): string {
 
   lines.push(`By status: ${formatCounts(tally(group.members, (c) => c.status))}`);
   lines.push(`By severity: ${formatCounts(tally(group.members, (c) => c.severity))}`);
+  // Preserve the review breakdown here: the max-interop TopicStatus collapses
+  // resolved+accepted to Closed, so this line keeps the finer split visible.
+  if (reviewStatusOf) {
+    lines.push(`By review: ${formatCounts(tally(group.members, reviewStatusOf))}`);
+  }
 
   const typePairs = tally(group.members, (c) => {
     const ta = c.a.tag;
@@ -202,16 +232,22 @@ async function buildTopicForGroup(
   maxMembers: number,
   cameraDistanceFactor: number,
 ): Promise<void> {
-  const description = buildDescription(group, maxMembers);
+  const description = buildDescription(group, maxMembers, opts.reviewStatusOf);
   const priority = SEVERITY_PRIORITY[group.severity];
   const labels = [group.discipline, 'Clash'].filter((l): l is string => Boolean(l));
+
+  // Topic status follows the members' review status when a resolver is given
+  // (least-resolved wins); otherwise the flat `opts.status`. (#1468)
+  const topicStatus = opts.reviewStatusOf
+    ? reviewStatusToBcfTopicStatus(aggregateReviewStatus(group.members.map(opts.reviewStatusOf)))
+    : opts.status ?? 'Open';
 
   const topic = createBCFTopic({
     title: group.title,
     description,
     author: opts.author,
     topicType: 'Clash',
-    topicStatus: opts.status ?? 'Open',
+    topicStatus,
     priority,
     labels,
   });

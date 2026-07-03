@@ -19,9 +19,11 @@ import {
   ChevronRight,
   Layers,
   FilePlus,
+  MessageSquare,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { toast } from '@/components/ui/toast';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { useClash, type ClashFocusMode } from '@/hooks/useClash';
 import { useBCF } from '@/hooks/useBCF';
@@ -34,8 +36,10 @@ import {
   penetrationDepth,
   sortClashes,
   DUPLICATES_RULE,
+  CLASH_REVIEW_STATUSES,
   type Clash,
   type ClashElementRef,
+  type ClashReviewStatus,
   type ClashSeverity,
   type ClashSortBy,
 } from '@ifc-lite/clash';
@@ -64,6 +68,14 @@ const SORT_LABEL: Record<ClashSortBy, string> = {
  *  channel; these dots label which row is which side. */
 const SIDE_COLOR = ['#7dcfff', '#bb9af7'] as const;
 
+/** Review-status presentation (#1468). Colours are orthogonal to severity: green
+ *  = done, teal = accepted, muted = still open (the attention default). */
+const REVIEW_STATUS: Record<ClashReviewStatus, { label: string; color: string }> = {
+  open: { label: 'Open', color: '#7aa2f7' },
+  resolved: { label: 'Resolved', color: '#9ece6a' },
+  accepted: { label: 'Accepted', color: '#73daca' },
+};
+
 function shortName(key: string): string {
   return key.length > 10 ? `${key.slice(0, 8)}…` : key;
 }
@@ -88,6 +100,63 @@ function describeClash(c: Clash): string {
   return `Hard clash — ${penetrationDepth(c).toFixed(3)} m interpenetration`;
 }
 
+/**
+ * Per-clash review controls shown in an expanded row (#1468): a 3-way status
+ * toggle plus an optional comment. Module-level (not nested in ClashPanel) so it
+ * keeps its local comment draft across the parent's re-renders; the draft commits
+ * to the store on blur. Resetting to Open with an empty comment drops the review.
+ */
+function ClashReviewControls({
+  status,
+  comment,
+  onStatus,
+  onComment,
+}: {
+  status: ClashReviewStatus;
+  comment: string;
+  onStatus: (s: ClashReviewStatus) => void;
+  onComment: (text: string) => void;
+}) {
+  const [draft, setDraft] = useState(comment);
+  // Re-sync if the stored comment changes from elsewhere (e.g. a status reset).
+  useEffect(() => setDraft(comment), [comment]);
+  const commit = () => {
+    if (draft.trim() !== comment.trim()) onComment(draft);
+  };
+  return (
+    <div className="mt-0.5 space-y-1.5 px-7 pb-1.5">
+      <div className="flex items-center gap-2">
+        <span className="shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground">Review</span>
+        <div className="inline-flex overflow-hidden rounded-md border border-border text-[11px]">
+          {CLASH_REVIEW_STATUSES.map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => onStatus(s)}
+              className={cn(
+                'px-2 py-0.5 transition-colors',
+                status === s ? 'font-medium text-background' : 'text-muted-foreground hover:bg-muted',
+              )}
+              style={status === s ? { background: REVIEW_STATUS[s].color } : undefined}
+            >
+              {REVIEW_STATUS[s].label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <textarea
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        placeholder="Add a comment (optional)"
+        maxLength={2000}
+        rows={2}
+        className="w-full resize-y rounded border border-border bg-transparent px-2 py-1 text-[11px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+      />
+    </div>
+  );
+}
+
 export function ClashPanel({ onClose }: ClashPanelProps) {
   const {
     result,
@@ -101,6 +170,11 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
     selectedId,
     presets,
     modelCount,
+    statusFilter,
+    reviewOf,
+    reviewCommentOf,
+    setReview,
+    toggleStatusFilter,
     setMode,
     setTolerance,
     setClearance,
@@ -175,12 +249,24 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
     [result],
   );
 
-  /** The clashes actually shown: touching filter applied, then ordered by `sortBy`. */
+  /** Count of clashes in each review status (over the whole result), for the
+   *  filter chips. Recomputes when a review changes. (#1468) */
+  const reviewCounts = useMemo(() => {
+    const counts: Record<ClashReviewStatus, number> = { open: 0, resolved: 0, accepted: 0 };
+    if (result) for (const c of result.clashes) counts[reviewOf(c)] += 1;
+    return counts;
+  }, [result, reviewOf]);
+
+  /** The clashes actually shown: touching + status filters applied, then ordered by `sortBy`. */
   const visibleClashes = useMemo(() => {
     if (!result) return [] as Clash[];
-    const list = hideTouching ? result.clashes.filter((c) => !isTouching(c)) : result.clashes;
+    let list = hideTouching ? result.clashes.filter((c) => !isTouching(c)) : result.clashes;
+    // Status filter: skip the per-clash lookup entirely when all statuses show (default).
+    if (statusFilter.size < CLASH_REVIEW_STATUSES.length) {
+      list = list.filter((c) => statusFilter.has(reviewOf(c)));
+    }
     return sortClashes(list, sortBy);
-  }, [result, hideTouching, sortBy]);
+  }, [result, hideTouching, sortBy, statusFilter, reviewOf]);
 
   // Group the (filtered, sorted) clash list for display along the selected dimension.
   // Items keep their sorted order within each bucket.
@@ -252,7 +338,8 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
     getScrollElement: () => scrollRef.current,
     estimateSize: (i) => {
       const r = displayRows[i];
-      return r.kind === 'group' ? 32 : r.kind === 'detail' ? 96 : 52;
+      // Detail rows carry the two element rows plus the review controls (#1468).
+      return r.kind === 'group' ? 32 : r.kind === 'detail' ? 180 : 52;
     },
     overscan: 16,
     getItemKey: (i) => {
@@ -304,6 +391,16 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
       if (current) focusClash(current, mode);
     },
     [selectedId, result, focusClash],
+  );
+
+  /** Set a review and surface a quota/serialize failure instead of dropping it
+   *  (the edit still shows in-session; the toast says it was not saved). (#1468) */
+  const applyReview = useCallback(
+    (clash: Clash, patch: { status?: ClashReviewStatus; comment?: string }): void => {
+      const res = setReview(clash, patch);
+      if (!res.ok) toast.error(res.message);
+    },
+    [setReview],
   );
 
   /** One side (A or B) of a clash inside the expanded row (#1276). */
@@ -608,6 +705,31 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
               </Button>
             </div>
           </div>
+          {/* Review-status filter (#1468): toggle which statuses show in the list. */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="mr-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">Status</span>
+            {CLASH_REVIEW_STATUSES.map((s) => {
+              const on = statusFilter.has(s);
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => toggleStatusFilter(s)}
+                  aria-pressed={on}
+                  title={`${on ? 'Hide' : 'Show'} ${REVIEW_STATUS[s].label.toLowerCase()} clashes`}
+                  className={cn(
+                    'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] transition-colors',
+                    on ? 'border-transparent text-foreground' : 'border-border text-muted-foreground opacity-60 hover:opacity-100',
+                  )}
+                  style={on ? { background: `${REVIEW_STATUS[s].color}1f`, borderColor: `${REVIEW_STATUS[s].color}66` } : undefined}
+                >
+                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: REVIEW_STATUS[s].color }} />
+                  {REVIEW_STATUS[s].label}
+                  <span className="tabular-nums opacity-70">{reviewCounts[s]}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -633,7 +755,10 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
 
         {result && total > 0 && shown === 0 && (
           <div className="flex flex-col items-center justify-center p-8 text-center text-muted-foreground">
-            <p className="text-sm">All {total} results are ≈0 m touching contacts. Untick “Hide touching” to see them.</p>
+            <p className="text-sm">No clashes match the current filters.</p>
+            <p className="mt-1 text-[11px]">
+              Adjust the status filter{hideTouching && touchingCount > 0 ? ' or untick "Hide touching"' : ''} above.
+            </p>
           </div>
         )}
 
@@ -665,6 +790,12 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
                       <div className="px-7 py-1 text-[10px] text-muted-foreground">{describeClash(row.clash)}</div>
                       <ElementRow el={row.clash.a} side={0} />
                       <ElementRow el={row.clash.b} side={1} />
+                      <ClashReviewControls
+                        status={reviewOf(row.clash)}
+                        comment={reviewCommentOf(row.clash)}
+                        onStatus={(s) => applyReview(row.clash, { status: s })}
+                        onComment={(text) => applyReview(row.clash, { comment: text })}
+                      />
                     </div>
                   ) : (
                     <div className={cn('flex w-full items-stretch border-t border-border/40 text-xs', selectedId === row.clash.id && 'bg-primary/10')}>
@@ -694,6 +825,25 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
                             {row.clash.a.name ?? shortName(row.clash.a.key)} ↔ {row.clash.b.name ?? shortName(row.clash.b.key)}
                           </div>
                         </div>
+                        {(() => {
+                          const rs = reviewOf(row.clash);
+                          const hasComment = reviewCommentOf(row.clash).length > 0;
+                          return (
+                            <>
+                              {rs !== 'open' && (
+                                <span
+                                  className="shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-medium"
+                                  style={{ background: `${REVIEW_STATUS[rs].color}1f`, color: REVIEW_STATUS[rs].color }}
+                                >
+                                  {REVIEW_STATUS[rs].label}
+                                </span>
+                              )}
+                              {hasComment && (
+                                <MessageSquare className="h-3 w-3 shrink-0 text-muted-foreground" aria-label="Has a review comment" />
+                              )}
+                            </>
+                          );
+                        })()}
                         <span className="shrink-0 tabular-nums text-muted-foreground">{formatDistance(row.clash.distance)}</span>
                       </button>
                       <button

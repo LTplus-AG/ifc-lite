@@ -57,13 +57,10 @@ const GROUPINGS: { key: ClashBcfGroupBy; label: string; hint: string }[] = [
   { key: 'element', label: 'Affected element', hint: "One topic per element — all of an element's clashes in one place." },
 ];
 
-const STATUSES = ['Open', 'In Progress', 'Closed'] as const;
-
 const DEFAULT_CONFIG: ClashBcfConfig = {
   groupBy: 'cluster',
   severities: ['critical', 'major', 'minor', 'info'],
   includeSnapshots: false,
-  status: 'Open',
   maxTopics: 500,
 };
 
@@ -202,32 +199,20 @@ export function ClashBcfExportDialog({ trigger }: ClashBcfExportDialogProps) {
             </div>
           </div>
 
-          {/* Status + cap, side by side */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Initial status</Label>
-              <Select value={config.status} onValueChange={(v) => setConfig((p) => ({ ...p, status: v }))}>
-                <SelectTrigger className="h-8">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {STATUSES.map((s) => (
-                    <SelectItem key={s} value={s}>{s}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Max topics</Label>
-              <input
-                type="number"
-                min={1}
-                step={50}
-                value={config.maxTopics}
-                onChange={(e) => setConfig((p) => ({ ...p, maxTopics: Math.max(1, Number(e.target.value) || 1) }))}
-                className="h-8 w-full rounded-md border border-border bg-transparent px-2.5 text-sm tabular-nums"
-              />
-            </div>
+          {/* Cap + status note */}
+          <div className="space-y-1.5">
+            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Max topics</Label>
+            <input
+              type="number"
+              min={1}
+              step={50}
+              value={config.maxTopics}
+              onChange={(e) => setConfig((p) => ({ ...p, maxTopics: Math.max(1, Number(e.target.value) || 1) }))}
+              className="h-8 w-full rounded-md border border-border bg-transparent px-2.5 text-sm tabular-nums"
+            />
+            <p className="text-xs text-muted-foreground leading-snug">
+              Topic status follows each clash's review status: Open stays Open, Resolved and Accepted export as Closed.
+            </p>
           </div>
 
           {/* Snapshots */}

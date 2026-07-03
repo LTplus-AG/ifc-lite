@@ -1391,6 +1391,13 @@ export function useIfcLoader() {
       });
       setLoading(false);
       setGeometryStreamingActive(false);
+      // Normalize progress to a terminal state, mirroring the loading /
+      // streaming flags reset above. A federated georef model runs
+      // finalizeModel AFTER the streaming 'Complete' 100% and re-sets progress
+      // to 'Aligning georeferenced model' 90%; without this reset it sticks
+      // below 100%, and getPickOptions() then reports isStreaming=true forever,
+      // disabling ALL element picking once a second model is loaded (#1570).
+      setProgress({ phase: 'Complete', percent: 100 });
     } catch (err) {
       console.error(`[useIfc] loadFile THREW (session=${currentSession}, current=${loadSessionRef.current}):`, err);
       if (loadSessionRef.current !== currentSession) return;

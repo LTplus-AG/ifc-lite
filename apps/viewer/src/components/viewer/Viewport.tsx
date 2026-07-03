@@ -12,6 +12,7 @@ import type { MeshData, CoordinateInfo, PointCloudAsset } from '@ifc-lite/geomet
 import { useViewerStore, resolveEntityRef, type MeasurePoint, type SnapVisualization } from '@/store';
 import { LIGHTING_PRESETS } from '@/lib/lighting-presets';
 import { presetViewRotation } from '@/lib/preset-view-orientation';
+import { isGeometryLoadStreaming } from '@/lib/pick-gating';
 import { sunLightingForAltitude } from '@/lib/geo/solar-direction';
 import {
   useSelectionState,
@@ -653,11 +654,12 @@ export function Viewport({
   // Helper: get pick options with visibility filtering
   const getPickOptions = () => {
     const currentState = useViewerStore.getState();
-    const currentProgress = currentState.progress;
-    const currentIsStreaming = currentState.geometryStreamingActive
-      || (currentProgress !== null && currentProgress.percent < 100);
     return {
-      isStreaming: currentIsStreaming,
+      // `isStreaming` gates picking off during an active load. It must stay
+      // false once a load has finished — a federated georef model leaves
+      // `progress` stuck at 90%, which would otherwise disable picking forever
+      // for every loaded model (#1570). See isGeometryLoadStreaming.
+      isStreaming: isGeometryLoadStreaming(currentState),
       hiddenIds: hiddenEntitiesRef.current,
       isolatedIds: isolatedEntitiesRef.current,
     };

@@ -375,18 +375,7 @@ export class IfcAPI {
    * the same `IfcAPI` instance — e.g. the parser worker keeps one
    * `IfcAPI` alive across multiple `parse` requests).
    *
-   * Recovers from a poisoned cache Mutex instead of panicking
-   * (`.lock().unwrap_or_else(PoisonError::into_inner)` everywhere these
-   * cache mutexes are touched, see the module-level note on
-   * `cached_entity_index`): every cache slot here is a whole-value
-   * `Option<Arc<_>>` (or similar) that is only ever replaced after the
-   * new value is fully built, so a poisoned lock means an earlier panic
-   * happened elsewhere while the lock was merely *held*, not mid-write —
-   * the guarded value itself was never torn. Recovering and clearing it
-   * (this method's whole job) is therefore safe, and it turns "one
-   * malformed file poisons the mutex and bricks every subsequent call on
-   * a long-lived / multi-tenant `IfcAPI` instance" into "the next load
-   * clears the cache and proceeds normally".
+   * Recovers a poisoned cache Mutex instead of panicking; see `mod_tests.rs`.
    */
   clearPrePassCache(): void;
   /**

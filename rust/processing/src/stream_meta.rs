@@ -40,11 +40,12 @@ pub type Job = (u32, usize, usize, IfcType);
 pub enum MetaMode {
     /// Streaming early-meta: the caller's `decoder` sees only a PARTIAL entity
     /// index (the file head scanned so far), so RTC detection runs the 3-stage
-    /// fallback ladder — partial-index detect → full-index re-detect when the
-    /// partial index resolved no usable placement chain → placement-bounds
-    /// last resort — instead of silently defaulting to no-shift and rendering
-    /// f32 vertex jitter on models whose world offset lives in late spatial
-    /// placements.
+    /// fallback ladder — partial-index detect → full-index re-detect (triggered
+    /// when no large offset was found AND either the `IfcSite` has not been
+    /// scanned yet OR the partial index resolved no usable placement chain) →
+    /// placement-bounds last resort — instead of silently defaulting to
+    /// no-shift and rendering f32 vertex jitter on models whose world offset
+    /// lives in late spatial placements.
     StreamingPartial,
     /// The caller's `decoder` already sees the FULL entity index (the
     /// small-file streaming tail, or the single-pass `buildPrePassOnce`), so a
@@ -338,5 +339,61 @@ END-ISO-10303-21;
 
         assert!(!meta.needs_shift, "origin-local model needs no shift");
         assert_eq!(meta.rtc_offset, (0.0, 0.0, 0.0));
+    }
+
+    // A MILLIMETRE model whose only geometry-job element (#40) carries NO
+    // representation, so `sample_element_translation` abstains and BOTH detect
+    // passes return None. The large world offset lives solely in the wall's
+    // placement point (#43), which `scan_placement_bounds` reads in raw FILE
+    // units — driving stage 3, the leg other tests only cover by suppression.
+    // That is the only IfcAxis2Placement3D, so the bounds box == that point.
+    const IFC_STAGE3: &str = "\
+ISO-10303-21;
+HEADER;
+ENDSEC;
+DATA;
+#1=IFCPROJECT('p',$,'P',$,$,$,$,$,#8);
+#8=IFCUNITASSIGNMENT((#9));
+#9=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);
+#40=IFCWALL('wall',$,$,$,$,#41,$,$,$);
+#41=IFCLOCALPLACEMENT($,#42);
+#42=IFCAXIS2PLACEMENT3D(#43,$,$);
+#43=IFCCARTESIANPOINT((80000000.,90000000.,0.));
+ENDSEC;
+END-ISO-10303-21;
+";
+
+    /// StreamingPartial stage 3: both detect passes abstain (no representation),
+    /// so resolution falls through to `scan_placement_bounds` and unit-scales
+    /// the raw FILE-unit bounds to metres. Asserts the RTC offset equals the
+    /// unit-scaled placement bounds exactly.
+    #[test]
+    fn streaming_partial_stage3_placement_bounds_fallback() {
+        let content = IFC_STAGE3.as_bytes();
+        let full_index = ifc_lite_core::build_entity_index(content);
+        let mut decoder = EntityDecoder::with_index(content, full_index);
+        let jobs = vec![wall_job(content)];
+
+        let meta = resolve_stream_meta(
+            MetaMode::StreamingPartial,
+            content,
+            Some(1),
+            None,
+            &jobs,
+            &mut decoder,
+        );
+
+        // Millimetre project → a non-trivial (≠ 1.0) scale, so stage 3's
+        // unit-scaling is actually exercised.
+        let scale = meta.length_unit_scale;
+        assert!((scale - 0.001).abs() < 1e-12, "expected mm scale, got {scale}");
+
+        // Reproduce exactly what stage 3 computes: raw placement bounds times scale.
+        let raw = ifc_lite_core::scan_placement_bounds(content).rtc_offset();
+        assert_eq!(raw, (80_000_000.0, 90_000_000.0, 0.0), "raw mm bounds");
+        let expected = (raw.0 * scale, raw.1 * scale, raw.2 * scale);
+        assert_eq!(meta.rtc_offset, expected, "stage 3 unit-scales raw bounds");
+        assert_ne!(meta.rtc_offset, raw, "scaling changed the value");
+        assert!(meta.needs_shift);
     }
 }

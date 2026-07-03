@@ -33,6 +33,7 @@ import { contactClusters, type SharedFaceCluster, type Vec3 } from '@ifc-lite/cl
 import { writeBCF } from '@ifc-lite/bcf';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { buildClashPairColors, CLASH_COLOR_A, CLASH_COLOR_OVERLAP } from '@/lib/clash/clash-colors';
+import { clashFramingBounds } from '@/lib/clash/clash-framing';
 import { posthog } from '@/lib/analytics';
 import { downloadBlob } from '@/lib/export/download';
 
@@ -385,9 +386,23 @@ export function useClash() {
       }
       applyFocusMode(globalIds, mode);
       state.setClashSelectedId(clash.id);
-      // frameSelection also frames the clash ids (see Viewport), so the camera
-      // encloses the pair without a selection.
-      requestAnimationFrame(() => state.cameraCallbacks.frameSelection?.());
+      // Frame the CONTACT region (tight overlap box grown by a little context),
+      // not the union of the two whole elements; a long clashing member would
+      // otherwise dominate and push the overlap tiny and off-centre (#1466).
+      // Fall back to frameSelection if the bounds are missing or the isometric
+      // callback isn't registered yet (renderer not mounted).
+      const framing = clash.bounds ? clashFramingBounds(clash.bounds) : null;
+      requestAnimationFrame(() => {
+        const cb = useViewerStore.getState().cameraCallbacks;
+        if (framing && cb.frameClashRegion) {
+          cb.frameClashRegion(
+            { x: framing.min[0], y: framing.min[1], z: framing.min[2] },
+            { x: framing.max[0], y: framing.max[1], z: framing.max[2] },
+          );
+        } else {
+          cb.frameSelection?.();
+        }
+      });
     },
     [refOf, applyFocusMode],
   );

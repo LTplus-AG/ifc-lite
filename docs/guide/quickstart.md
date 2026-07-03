@@ -205,7 +205,7 @@ function setupCameraControls(canvas: HTMLCanvasElement, renderer: Renderer) {
 | `camera.zoom(delta, false, x, y, w, h)` | Zoom towards mouse position (scroll wheel) |
 | `camera.fitToBounds(min, max)` | Fit camera to bounding box |
 | `camera.setPresetView('top')` | Set preset view: 'top', 'front', 'left', etc. |
-| `camera.zoomToFit(min, max, 500)` | Animated zoom to fit (with duration in ms) |
+| `camera.frameBounds(min, max, 500)` | Animated zoom to fit (with duration in ms) |
 
 ## Option 2: Server + Client
 

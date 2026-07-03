@@ -817,6 +817,15 @@ export function Viewport({
             console.warn('[Viewport] frameSelection: Could not get bounds for selected element');
           }
         },
+        frameClashRegion: (min, max) => {
+          // Frame the clash's (already context-padded) contact box from the
+          // canonical isometric pose so the penetration is read at a 3/4 angle,
+          // never top-down or edge-on (#1466). `fitBoundsAdaptive` is the same
+          // fit the Home view / post-load auto-fit use, so a clash-sized box
+          // gets the compact SE-isometric pose and handles orthographic zoom.
+          camera.fitBoundsAdaptive({ min, max }, { animate: true, duration: 300 });
+          calculateScale();
+        },
         orbit: (deltaX: number, deltaY: number) => {
           // Orbit camera from ViewCube drag
           camera.orbit(deltaX, deltaY, false);

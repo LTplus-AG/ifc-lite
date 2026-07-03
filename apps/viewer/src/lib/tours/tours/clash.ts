@@ -89,7 +89,7 @@ export const CLASH_TOUR: TourDefinition = {
       panel: 'clash',
       placement: 'left',
       title: 'Zoom to a clash',
-      body: 'Click a result row. The camera flies to the pair, colors each element, and outlines the contact.',
+      body: 'Click a result row. The camera flies to the overlap, fades the rest to translucent context, colors each element, and outlines the contact.',
       arm: (state, ctx) => {
         ctx.baseline.hadResultAtEntry = hadClashResultAtTourStart;
       },
@@ -123,7 +123,7 @@ export const CLASH_TOUR: TourDefinition = {
       panel: 'clash',
       placement: 'left',
       title: 'See it in context',
-      body: 'Switch On select to Ghost or Isolate. Ghost fades everything else to translucent context; Isolate hides it.',
+      body: 'On select starts on Ghost, which fades the rest to translucent context. Switch it to Isolate to hide everything else, or Highlight to keep the full model opaque.',
       // Encode the entry mode as an index (numeric baseline); an unknown
       // value degrades to 0 rather than breaking the comparison.
       arm: (state, ctx) => {

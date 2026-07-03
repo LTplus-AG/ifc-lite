@@ -184,7 +184,11 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
     clashGroupBy: initial.groupBy,
     clashSortBy: 'severity',
     clashHideTouching: false,
-    clashFocusMode: 'highlight',
+    // Ghost (X-Ray context) by default so clicking a clash immediately reveals
+    // the pair through the surrounding geometry instead of leaving it hidden
+    // behind opaque elements: the "many times you won't see anything" problem
+    // in #1466. The user can still switch to Highlight / Isolate in the panel.
+    clashFocusMode: 'ghost',
     clashPresets: buildInitialPresets(),
     clashSelectedId: null,
     clashHighlightColors: null,

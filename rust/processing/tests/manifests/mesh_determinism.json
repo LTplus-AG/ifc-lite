@@ -1,7 +1,7 @@
 {
-  "hash": "0x041aeeae89017e49",
+  "hash": "0x7ed14cac8281eda1",
   "mesh_count": 6,
-  "vertex_count": 372,
+  "vertex_count": 300,
   "triangle_count": 232,
   "voids_hash": "0xe20db54c093020fd",
   "void_host_count": 2,
@@ -40,11 +40,11 @@
     {
       "express_id": 500,
       "geometry_class": 0,
-      "vertex_count": 216,
+      "vertex_count": 144,
       "triangle_count": 140,
-      "positions_hash": "0xe42a379a27d5cf05",
-      "normals_hash": "0x7bce397307fbbe75",
-      "indices_origin_hash": "0x99bb177d5bce4417"
+      "positions_hash": "0xe7deda8f99164e1d",
+      "normals_hash": "0x0339288ca0badfa9",
+      "indices_origin_hash": "0xe41b1f9c63c69947"
     },
     {
       "express_id": 600,

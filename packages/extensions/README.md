@@ -6,9 +6,9 @@ user-customization system.
 This package implements the **non-UI** half of the design described in
 [`docs/architecture/ai-customization/`](../../docs/architecture/ai-customization/).
 It is host-agnostic — the same code is consumed by the browser viewer,
-the desktop app, the CLI, and the headless server.
+the CLI, and the headless server.
 
-## What's here (v0.1.0 — Phase 0)
+## What's here (v0.3.3)
 
 - **Manifest** — typed schema + hand-rolled validator producing
   structured `{ path, code, hint }` errors.
@@ -27,15 +27,17 @@ the desktop app, the CLI, and the headless server.
 - **Manifest migrations** — chain scaffold for forward-compatibility
   with future manifest versions.
 
-## Coming in later phases
+## Also included (re-exported from the package root)
 
-- **Phase 1** — IndexedDB storage, host loader, runtime activation,
-  sandbox wiring, audit log, viewer-side slot binding.
-- **Phase 2** — Widget DSL renderer, AI authoring pipeline, repair loop.
-- **Phase 3** — Flavor data model, export/import, three-way merge.
-- **Phase 4** — Action log, pattern miner, prompt overlay, SDK-update repair.
+- **Storage, host, audit** - IndexedDB storage, host loader, runtime
+  activation, sandbox wiring, audit log, viewer-side slot binding.
+- **Widget + authoring** - Widget DSL renderer, AI authoring pipeline,
+  repair loop.
+- **Flavor** - Flavor data model, export/import, three-way merge.
+- **Log, miner, inference** - Action log, pattern miner, prompt overlay,
+  SDK-update repair.
 
-## Usage (Phase 0)
+## Usage
 
 ```ts
 import {
@@ -47,8 +49,9 @@ import {
   parseWhen,
   evaluateWhen,
   SlotRegistry,
-  loadBundleFromDirectory,
 } from '@ifc-lite/extensions';
+// The directory/`.iflx` bundle loader is Node-only:
+import { loadBundleFromDirectory } from '@ifc-lite/extensions/node';
 
 // Validate a manifest
 const result = validateManifest(manifestJson);

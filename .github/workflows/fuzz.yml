@@ -1,0 +1,116 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# Scheduled cargo-fuzz run over the fuzz targets under rust/*/fuzz/ — the
+# STEP entity parser (rust/core/fuzz) and the geometry boundary added
+# alongside this workflow (rust/geometry/fuzz: polygon triangulation + the
+# pure-Rust CSG kernel's `subtract`). Each fuzz sub-crate is intentionally
+# NOT a workspace member (its own `[workspace]` table, see AGENTS.md), so
+# this is the only place they get exercised beyond a developer's machine.
+#
+# A crash found here means the corresponding entry point panics/hangs/OOMs on
+# some input, not that anything downstream is provably wrong — but every one
+# of these entry points documents a "must not panic on arbitrary input"
+# contract (see the fuzz target doc comments), so a crash IS a real bug.
+# Minimize it (`cargo fuzz tmin`) and commit the reduced input under
+# `fuzz/corpus/<target>/` so `cargo test -p <crate> --test fuzz_regressions`
+# (the required, non-nightly replay gate) pins the fix forever.
+#
+# Deliberately NOT a per-PR job, and NOT on the required merge-gate list:
+# cargo-fuzz needs nightly + libFuzzer instrumentation, coverage-guided fuzzing
+# is inherently open-ended wall-clock, and a transient timeout here must never
+# block an unrelated PR. `workflow_dispatch` lets us run it on demand before
+# merging fuzz-target-sensitive changes (parser, triangulation, CSG kernel).
+name: Fuzz
+
+on:
+  schedule:
+    # Weekly, Monday 04:03 UTC — off the top-of-the-hour scheduler pileup and
+    # staggered from determinism.yml's 03:17 UTC run so they don't compete
+    # for runners.
+    - cron: '3 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    name: cargo fuzz run ${{ matrix.target }}
+    # Free GitHub-hosted runner (public repo) — weekly + on-demand only, so a
+    # slow cold build costs wall-clock, not money (same rationale as
+    # determinism.yml).
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      # One crashing target must not cancel the others mid-run.
+      fail-fast: false
+      matrix:
+        include:
+          - crate_dir: rust/core/fuzz
+            target: parse_entity
+          - crate_dir: rust/geometry/fuzz
+            target: triangulate_polygon
+          - crate_dir: rust/geometry/fuzz
+            target: kernel_subtract
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          lfs: false
+          persist-credentials: false
+
+      # Each fuzz sub-crate carries its own `[workspace]` table, so rustup
+      # resolves the toolchain from the nearest ancestor rust-toolchain.toml
+      # to that directory, not necessarily the repo-root pin (see rust/AGENTS.md
+      # "rust/rust-toolchain.toml footgun") — resolve it from the same
+      # directory the fuzz commands below run in, so what gets installed here
+      # is exactly what gets used.
+      - name: Setup Rust nightly
+        working-directory: ${{ matrix.crate_dir }}
+        run: rustup show
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          workspaces: '${{ matrix.crate_dir }} -> target'
+          prefix-key: ci-fuzz-${{ matrix.target }}
+
+      # Cache the compiled cargo-fuzz binary itself: Swatinem/rust-cache above
+      # covers the per-crate build target, NOT ~/.cargo/bin, so without this
+      # `cargo install` would recompile cargo-fuzz from source (~3-5 min) on
+      # every run. Keyed on the pinned version + runner OS so a version bump or
+      # OS change misses the cache and rebuilds; otherwise it's a hit and the
+      # install below is a no-op.
+      - name: Cache cargo-fuzz binary
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cargo/bin/cargo-fuzz
+          key: cargo-fuzz-0.13.2-${{ runner.os }}
+
+      # Pinned version for reproducibility (matches the version validated
+      # locally when this workflow was added); bump deliberately. Guarded so a
+      # cache hit skips the recompile entirely.
+      - name: Install cargo-fuzz
+        run: command -v cargo-fuzz || cargo install cargo-fuzz --version 0.13.2 --locked
+
+      # Short bounded run per target: this is a weekly coverage-accumulation
+      # smoke test, not an exhaustive campaign — libFuzzer's corpus persists
+      # only within this job (not committed), so each run explores fresh from
+      # the committed seed corpus.
+      - name: cargo fuzz run
+        working-directory: ${{ matrix.crate_dir }}
+        run: cargo fuzz run ${{ matrix.target }} -- -max_total_time=60
+
+      # On a crash, cargo-fuzz writes the minimized-ish reproducer under
+      # artifacts/<target>/. Upload it so it can be pulled down, minimized
+      # with `cargo fuzz tmin`, and committed to fuzz/corpus/<target>/ to
+      # land as a permanent regression test.
+      - name: Upload crash artifact
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fuzz-crash-${{ matrix.target }}
+          path: ${{ matrix.crate_dir }}/artifacts/${{ matrix.target }}
+          retention-days: 30
+          if-no-files-found: ignore

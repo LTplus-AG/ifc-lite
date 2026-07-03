@@ -5,7 +5,7 @@
 use super::collate::mat4_to_row_major_f32;
 use super::{
     collate_and_encode, collate_instances, decode_instanced, encode_instanced, verify_recomposition,
-    Collated, InstanceMeshRef,
+    Collated, InstanceMeshRef, INSTANCED_MAGIC, INSTANCED_VERSION,
 };
 use crate::mesh::{InstanceMeta, Mesh};
 use nalgebra::Matrix4;
@@ -388,6 +388,111 @@ fn collate_and_encode_matches_mesh_path() {
 fn decode_rejects_bad_magic() {
     assert!(decode_instanced(&[0u8; 32]).is_none());
     assert!(decode_instanced(&[]).is_none());
+}
+
+/// Little-endian instanced-shard header (mirrors the packed-instanced-decoder.test.ts
+/// header helper): magic, version, template_count, instance_count, positions_len,
+/// normals_len, indices_len, reserved.
+fn header_bytes(
+    magic: u32,
+    version: u32,
+    template_count: u32,
+    instance_count: u32,
+    positions_len: u32,
+    normals_len: u32,
+    indices_len: u32,
+) -> Vec<u8> {
+    let mut b = Vec::with_capacity(32);
+    for v in [
+        magic,
+        version,
+        template_count,
+        instance_count,
+        positions_len,
+        normals_len,
+        indices_len,
+        0,
+    ] {
+        b.extend_from_slice(&v.to_le_bytes());
+    }
+    b
+}
+
+#[test]
+fn decode_rejects_truncated_payload_with_valid_header() {
+    // Mirrors the TS conformance test "rejects a truncated buffer": valid
+    // magic/version and a header whose counts describe a real shard, but the
+    // byte buffer is cut short before the data actually ends.
+    let m0 = Matrix4::new_translation(&nalgebra::Vector3::new(1.0, 0.0, 0.0));
+    let m1 = Matrix4::new_translation(&nalgebra::Vector3::new(0.0, 2.0, 0.0));
+    let mk = |m: &Matrix4<f64>, rep: u128| {
+        mesh_from(
+            baked(&CANON, m),
+            InstanceMeta {
+                transform: mat_rm(m),
+                local_transform: None,
+                canonical_transform: None,
+                rep_identity: rep,
+                instanceable: true,
+            },
+        )
+    };
+    let meshes = vec![mk(&m0, 50), mk(&m1, 50)];
+    let collated = collate_instances(&meshes, 2, [0.0, 0.0, 0.0]);
+    let bytes = encode_instanced(&meshes, &collated, |i| i as u32, |_| [1.0, 1.0, 1.0, 1.0]);
+    assert!(decode_instanced(&bytes).is_some(), "sanity: full buffer decodes");
+
+    // Chop off the last byte of the data pool: the header/tables still claim
+    // the original counts, but the trailing index read now runs off the end
+    // of the slice.
+    let truncated = &bytes[..bytes.len() - 1];
+    assert!(
+        decode_instanced(truncated).is_none(),
+        "truncated payload (valid magic/version, short data) must decode to None, not panic"
+    );
+
+    // Chopping mid-table (well before any data) must also fail gracefully.
+    let mid_table = &bytes[..40];
+    assert!(
+        decode_instanced(mid_table).is_none(),
+        "buffer truncated inside the template table must decode to None"
+    );
+}
+
+#[test]
+fn decode_rejects_bogus_huge_counts_without_oom() {
+    // A corrupt/hostile header can claim an arbitrary template_count or
+    // instance_count. Before wire.rs's buffer-length guard, `decode_instanced`
+    // sized `Vec::with_capacity(template_count)` / `Vec::with_capacity(instance_count)`
+    // directly off these untrusted header fields (wire.rs ~231/253) — a bogus
+    // huge count would try to reserve hundreds of GB and abort the process via
+    // the allocator's OOM handler, well before the per-field truncation checks
+    // ever got a chance to return `None`. The buffer here is only 32 bytes (a
+    // bare header), so any allocation sized off these counts would be
+    // wildly disproportionate to the data actually available.
+    let huge = u32::MAX;
+
+    // Huge template_count, no instances.
+    let bytes = header_bytes(INSTANCED_MAGIC, INSTANCED_VERSION, huge, 0, 0, 0, 0);
+    assert_eq!(bytes.len(), 32);
+    assert!(
+        decode_instanced(&bytes).is_none(),
+        "bogus huge template_count must decode to None, not attempt a huge allocation"
+    );
+
+    // Huge instance_count, no templates.
+    let bytes = header_bytes(INSTANCED_MAGIC, INSTANCED_VERSION, 0, huge, 0, 0, 0);
+    assert!(
+        decode_instanced(&bytes).is_none(),
+        "bogus huge instance_count must decode to None, not attempt a huge allocation"
+    );
+
+    // Both huge at once.
+    let bytes = header_bytes(INSTANCED_MAGIC, INSTANCED_VERSION, huge, huge, huge, huge, huge);
+    assert!(
+        decode_instanced(&bytes).is_none(),
+        "bogus huge counts across the board must decode to None, not attempt a huge allocation"
+    );
 }
 
 #[test]

@@ -62,6 +62,22 @@ export interface EntityFingerprint<TRef = unknown> {
 export interface DiffOptions {
   /** What differences count as a modification. Default `'both'`. */
   scope?: DiffScope;
+  /**
+   * IFC type names to leave out of the comparison entirely - a "blacklist" of
+   * classes the user does not want considered as changes (e.g.
+   * `IfcOpeningElement`, which is only the connective void between a wall and a
+   * removed window, not a meaningful change in its own right - issue #1470).
+   *
+   * An entity is dropped from the comparison if its {@link EntityFingerprint.ifcType}
+   * matches in EITHER revision, so it never appears in {@link ModelDiff.entries},
+   * {@link ModelDiff.byKey}, or {@link ModelDiff.counts} - as if it were in neither
+   * model. Using the union of both sides means a cross-version re-class (e.g.
+   * `IfcWall` -> `IfcWallStandardCase` with `IfcWall` excluded) can't leak the
+   * entity back as a phantom add/delete. Matching is case-insensitive and ignores
+   * surrounding whitespace so a hand-typed `ifcopeningelement` still matches.
+   * Empty / whitespace-only names are ignored. Default: nothing excluded.
+   */
+  excludeTypes?: Iterable<string>;
 }
 
 export interface DiffEntry<TRef = unknown> {
@@ -90,6 +106,13 @@ export interface DiffCounts {
 export interface ModelDiff<TRef = unknown> {
   /** The scope the diff was computed with. */
   scope: DiffScope;
+  /**
+   * The IFC type names actually excluded from this diff ({@link DiffOptions.excludeTypes}),
+   * normalized to upper case and deduplicated. Empty when nothing was excluded.
+   * Echoed here so a consumer (report export, provenance) can state what the
+   * comparison ignored without re-deriving it.
+   */
+  excludedTypes: string[];
   /** All entries, in no particular order. */
   entries: DiffEntry<TRef>[];
   /** Entries indexed by {@link DiffEntry.key} for O(1) lookup (picking). */

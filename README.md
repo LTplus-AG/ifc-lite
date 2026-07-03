@@ -126,13 +126,20 @@ console.table(result.rows);
 
 ```typescript
 import { parseIDS, validateIDS, createTranslationService } from '@ifc-lite/ids';
+import { createDataAccessor } from '@ifc-lite/ids/bridge';
 
 const idsSpec = parseIDS(idsXmlContent);
+const accessor = createDataAccessor(store);
+const modelInfo = {
+  modelId: 'my-model',
+  schemaVersion: store.schemaVersion,
+  entityCount: store.entityCount,
+};
 const translator = createTranslationService('en');
-const report = await validateIDS(idsSpec, store, { translator });
+const report = await validateIDS(idsSpec, accessor, modelInfo, { translator });
 
 for (const spec of report.specificationResults) {
-  console.log(`${spec.specificationName}: ${spec.passRate}% passed`);
+  console.log(`${spec.specification.name}: ${spec.passRate}% passed`);
 }
 ```
 
@@ -174,10 +181,10 @@ const csv = gp.exportCsv(buffer, 'entities', ',', /* includeProperties */ true);
 const jsonld = gp.exportJsonld(buffer);
 
 // Parquet — columnar, ~20× smaller than JSON, queryable from DuckDB / Polars
-const parquet = await new ParquetExporter().exportEntities(parseResult);
+const parquet = await new ParquetExporter(store).exportTable('entities');
 
 // IFC5 / IFCX — JSON + USD geometry
-const ifcx = new Ifc5Exporter(store, meshes).export({ includeGeometry: true });
+const ifcx = new Ifc5Exporter(store, result).export({ includeGeometry: true });
 ```
 
 ## Choose your setup
@@ -208,7 +215,7 @@ Not sure? Start with the browser setup. You can add a server or switch engines l
 | Connect to a server backend | + `@ifc-lite/server-client` |
 | BCF issue tracking | + `@ifc-lite/bcf` |
 
-Full list: [API Reference](https://ltplus-ag.github.io/ifc-lite/api/typescript/) (25 TypeScript packages, 4 Rust crates).
+Full list: [API Reference](https://ltplus-ag.github.io/ifc-lite/api/typescript/) (14 TypeScript packages, 3 Rust crates).
 
 ## Performance
 

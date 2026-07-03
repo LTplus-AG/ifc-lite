@@ -64,6 +64,12 @@ export interface GeometryDiagnostics {
     openings: number;
     csgFailures: number;
     firstFailureLabel?: string;
+    /** World-space AABB of the host mesh, when a void cut captured it.
+     *  Mirrors the `{min, max}` shape used by `MeshData.localBounds`. */
+    bbox?: { min: [number, number, number]; max: [number, number, number] };
+    /** Final triangle count of the host's mesh (post-cut when a void
+     *  subtraction ran, otherwise the pre-cut count). */
+    triangleCount?: number;
   }>;
 }
 
@@ -103,6 +109,11 @@ export function mergeGeometryDiagnostics(
       prev.csgFailures += h.csgFailures;
       prev.openings += h.openings;
       prev.firstFailureLabel = prev.firstFailureLabel ?? h.firstFailureLabel;
+      // bbox/triangleCount describe a single physical host's mesh, not a
+      // per-batch tally — keep the first captured value rather than summing
+      // (matches the firstFailureLabel precedent above).
+      prev.bbox = prev.bbox ?? h.bbox;
+      prev.triangleCount = prev.triangleCount ?? h.triangleCount;
     } else {
       hostById.set(h.productId, { ...h });
     }

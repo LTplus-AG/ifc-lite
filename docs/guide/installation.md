@@ -157,17 +157,17 @@ The fastest way to get started is using the `create-ifc-lite` CLI:
 
 ```bash
 # Run the official container
-docker run -p 3001:8080 ghcr.io/LTplus-AG/ifc-lite-server
+docker run -p 3001:8080 ghcr.io/ltplus-ag/ifc-lite-server
 
 # With persistent cache
-docker run -p 3001:8080 -v ifc-cache:/app/cache ghcr.io/LTplus-AG/ifc-lite-server
+docker run -p 3001:8080 -v ifc-cache:/app/cache ghcr.io/ltplus-ag/ifc-lite-server
 
 # With environment configuration
 docker run -p 3001:8080 \
   -e RUST_LOG=info \
   -e MAX_FILE_SIZE_MB=500 \
   -e WORKER_THREADS=8 \
-  ghcr.io/LTplus-AG/ifc-lite-server
+  ghcr.io/ltplus-ag/ifc-lite-server
 ```
 
 ### Option 2: Native Binary
@@ -211,8 +211,8 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-ifc-lite-core = "1.2"
-ifc-lite-geometry = "1.2"
+ifc-lite-core = "4"
+ifc-lite-geometry = "4"
 ```
 
 Or install via cargo:
@@ -248,7 +248,7 @@ git lfs pull --include="tests/models/ara3d/AC20-FZK-Haus.ifc"
 
 ### Prerequisites
 
-- **Node.js** 18.0 or higher
+- **Node.js** 22.x
 - **pnpm** 8.0 or higher
 - **Rust** toolchain (the pinned nightly in `rust-toolchain.toml`, installed automatically by `rustup`) - only for WASM builds (and your own desktop builds, if any)
 
@@ -277,15 +277,11 @@ pnpm dev
 If you modify Rust code:
 
 ```bash
-# Install wasm-pack
+# Install wasm-pack (if not already installed)
 cargo install wasm-pack
 
-# Rebuild WASM
-cd rust
-wasm-pack build --target web --release
-
-# Copy to packages/wasm
-cp -r pkg/* ../packages/wasm/
+# Rebuild WASM (outputs to packages/wasm/pkg)
+pnpm build:wasm
 ```
 
 ## CDN Usage
@@ -294,7 +290,7 @@ For quick prototyping without a build step:
 
 ```html
 <script type="module">
-  import { IfcParser } from 'https://cdn.jsdelivr.net/npm/@ifc-lite/parser@1.2.1/+esm';
+  import { IfcParser } from 'https://cdn.jsdelivr.net/npm/@ifc-lite/parser/+esm';
 
   const parser = new IfcParser();
   const response = await fetch('model.ifc');
@@ -308,11 +304,11 @@ For geometry processing with WASM, you must initialize the WASM module explicitl
 
 ```html
 <script type="module">
-  import { GeometryProcessor } from 'https://cdn.jsdelivr.net/npm/@ifc-lite/geometry@1.2.1/+esm';
-  import initWasm from 'https://cdn.jsdelivr.net/npm/@ifc-lite/wasm@1.2.1/+esm';
+  import { GeometryProcessor } from 'https://cdn.jsdelivr.net/npm/@ifc-lite/geometry/+esm';
+  import initWasm from 'https://cdn.jsdelivr.net/npm/@ifc-lite/wasm/+esm';
 
   // Initialize WASM with explicit path (required for CDN)
-  const wasmUrl = 'https://cdn.jsdelivr.net/npm/@ifc-lite/wasm@1.2.1/pkg/ifc-lite_bg.wasm';
+  const wasmUrl = 'https://cdn.jsdelivr.net/npm/@ifc-lite/wasm/pkg/ifc-lite_bg.wasm';
   await initWasm({ module_or_path: wasmUrl });
 
   const processor = new GeometryProcessor();

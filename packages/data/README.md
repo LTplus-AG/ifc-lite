@@ -19,29 +19,19 @@ Most users get these structures for free as the output of `@ifc-lite/parser`'s `
 ## Build an entity table
 
 ```typescript
-import { EntityTableBuilder, StringTableBuilder } from '@ifc-lite/data';
+import { EntityTableBuilder, StringTable } from '@ifc-lite/data';
 
-const strings = new StringTableBuilder();
-const entities = new EntityTableBuilder();
+const strings = new StringTable();
+const entities = new EntityTableBuilder(1, strings);
 
-const wallTypeId = strings.intern('IFCWALL');
-const wallNameId = strings.intern('Wall A');
-const wallGuidId = strings.intern('1abc2def3...');
-
-entities.add({
-  expressId: 42,
-  typeNameId: wallTypeId,
-  nameId: wallNameId,
-  globalIdId: wallGuidId,
-  // ... other columns
-});
+// add(expressId, type, globalId, name, description, objectType)
+entities.add(42, 'IFCWALL', '1abc2def3...', 'Wall A', '', '');
 
 const table = entities.build();
-const stringTable = strings.build();
 
-console.log(table.count);                       // 1
-console.log(stringTable.get(table.name[0]));    // 'Wall A'
-console.log(table.getTypeName(42));             // 'IFCWALL'
+console.log(table.count);                    // 1
+console.log(strings.get(table.name[0]));     // 'Wall A'
+console.log(table.getTypeName(42));          // 'IfcWall'
 ```
 
 ## Relationship graph
@@ -53,15 +43,15 @@ import { RelationshipGraphBuilder, RelationshipType } from '@ifc-lite/data';
 
 const builder = new RelationshipGraphBuilder();
 
-// Storey 100 contains walls 42, 43, 44
-builder.addEdge(100, 42, RelationshipType.CONTAINS);
-builder.addEdge(100, 43, RelationshipType.CONTAINS);
-builder.addEdge(100, 44, RelationshipType.CONTAINS);
+// Storey 100 contains walls 42, 43, 44 (last arg = the IfcRel* express id)
+builder.addEdge(100, 42, RelationshipType.ContainsElements, 200);
+builder.addEdge(100, 43, RelationshipType.ContainsElements, 200);
+builder.addEdge(100, 44, RelationshipType.ContainsElements, 200);
 
 const graph = builder.build();
 
-const contained = graph.outgoing(100, RelationshipType.CONTAINS);
-console.log([...contained]); // [42, 43, 44]
+const contained = graph.getRelated(100, RelationshipType.ContainsElements, 'forward');
+console.log(contained); // [42, 43, 44]
 ```
 
 ## EPSG lookup

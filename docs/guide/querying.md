@@ -37,20 +37,20 @@ flowchart TB
 ```typescript
 import { IfcQuery } from '@ifc-lite/query';
 
-const query = new IfcQuery(parseResult);
+const query = new IfcQuery(store); // store from parseColumnar()
 
 // Get all walls
-const walls = query.walls().toArray();
+const walls = query.walls().execute();
 
 // Get all doors
-const doors = query.doors().toArray();
+const doors = query.doors().execute();
 
 // Get all windows
-const windows = query.windows().toArray();
+const windows = query.windows().execute();
 
 // Get specific entity types
-const beams = query.ofType('IFCBEAM').toArray();
-const columns = query.ofType('IFCCOLUMN').toArray();
+const beams = query.ofType('IFCBEAM').execute();
+const columns = query.ofType('IFCCOLUMN').execute();
 ```
 
 ### Type Shortcuts
@@ -61,12 +61,9 @@ const columns = query.ofType('IFCCOLUMN').toArray();
 | `.doors()` | IFCDOOR |
 | `.windows()` | IFCWINDOW |
 | `.slabs()` | IFCSLAB |
-| `.roofs()` | IFCROOF |
-| `.stairs()` | IFCSTAIR, IFCSTAIRFLIGHT |
 | `.columns()` | IFCCOLUMN |
 | `.beams()` | IFCBEAM |
 | `.spaces()` | IFCSPACE |
-| `.furniture()` | IFCFURNISHINGELEMENT |
 
 ### Property Filters
 
@@ -75,19 +72,19 @@ const columns = query.ofType('IFCCOLUMN').toArray();
 const externalWalls = query
   .walls()
   .whereProperty('Pset_WallCommon', 'IsExternal', '=', true)
-  .toArray();
+  .execute();
 
 // Filter by numeric comparison
 const fireRatedWalls = query
   .walls()
   .whereProperty('Pset_WallCommon', 'FireRating', '>=', 60)
-  .toArray();
+  .execute();
 
 // Filter by string pattern
 const loadBearing = query
   .walls()
   .whereProperty('Pset_WallCommon', 'LoadBearing', '=', true)
-  .toArray();
+  .execute();
 ```
 
 ### Chained Queries
@@ -97,27 +94,28 @@ flowchart LR
     Start["query"]
     Type["walls()"]
     Filter1["whereProperty()"]
-    Filter2["whereQuantity()"]
-    Select["select()"]
-    Output["toArray()"]
+    Filter2["whereProperty()"]
+    Output["execute()"]
 
-    Start --> Type --> Filter1 --> Filter2 --> Select --> Output
+    Start --> Type --> Filter1 --> Filter2 --> Output
 ```
 
 ```typescript
 // Complex query chain
-const results = query
+const walls = query
   .walls()
   .whereProperty('Pset_WallCommon', 'IsExternal', '=', true)
   .whereProperty('Pset_WallCommon', 'FireRating', '>=', 60)
-  .whereQuantity('NetArea', '>', 10)
-  .select(['expressId', 'name', 'type'])
-  .toArray();
+  .whereProperty('Qto_WallBaseQuantities', 'NetArea', '>', 10)
+  .execute();
+
+// execute() returns QueryResultEntity[]; project the fields you need
+const results = walls.map(w => ({ expressId: w.expressId, name: w.name, type: w.type }));
 
 console.log(results);
 // [
-//   { expressId: 123, name: 'Wall-001', type: 'IFCWALL' },
-//   { expressId: 456, name: 'Wall-002', type: 'IFCWALLSTANDARDCASE' },
+//   { expressId: 123, name: 'Wall-001', type: 'IfcWall' },
+//   { expressId: 456, name: 'Wall-002', type: 'IfcWallStandardCase' },
 //   ...
 // ]
 ```
@@ -147,47 +145,33 @@ graph TD
 ```
 
 ```typescript
-// Get all storeys
-const storeys = query.storeys().toArray();
+// Get all storeys (getter, returns EntityNode[])
+const storeys = query.storeys;
 
 // Get elements on a specific storey
-const groundFloor = query
-  .storey('Ground Floor')
-  .contains()
-  .toArray();
+const groundFloor = query.storeys.find(s => s.name === 'Ground Floor');
+const groundFloorElements = groundFloor
+  ? query.onStorey(groundFloor.expressId).execute()
+  : [];
 
-// Get all elements in a building
-const buildingElements = query
-  .building('Main Building')
-  .allContained()  // Recursive
-  .toArray();
+// Get the direct elements of every storey (contains() is one hop, not recursive;
+// use traverse() or decomposes() to walk nested aggregation)
+const buildingElements = query.storeys.flatMap(storey => storey.contains());
 
 // Navigate up the hierarchy
 const wall = query.entity(123);
-const storey = wall.containedIn().first();
-const building = storey.containedIn().first();
+const storey = wall.containedIn(); // EntityNode | null
+const building = wall.building();  // walks up to the containing IfcBuilding
 ```
 
 ### Spatial Relationships
 
 ```typescript
-// Get entities related by spatial structure
-const contained = query
-  .entity(storeyId)
-  .contains()
-  .toArray();
+// Get entities contained by a spatial container (returns EntityNode[])
+const contained = query.entity(storeyId).contains();
 
-// Get container
-const container = query
-  .entity(wallId)
-  .containedIn()
-  .first();
-
-// Get adjacent spaces
-const adjacentSpaces = query
-  .entity(spaceId)
-  .adjacent()
-  .toArray();
+// Get the container of an element (EntityNode | null)
+const container = query.entity(wallId).containedIn();
 ```
 
 ## Relationship Queries
@@ -195,29 +179,17 @@ const adjacentSpaces = query
 ### Finding Related Entities
 
 ```typescript
-// Get materials for an entity
-const materials = query
-  .entity(wallId)
-  .materials()
-  .toArray();
+// Get property sets for an entity (returns PropertySet[])
+const psets = query.entity(wallId).properties();
 
-// Get property sets
-const psets = query
-  .entity(wallId)
-  .propertySets()
-  .toArray();
+// Get quantity sets for an entity (returns QuantitySet[])
+const qtos = query.entity(wallId).quantities();
 
-// Get openings in a wall
-const openings = query
-  .entity(wallId)
-  .related('IfcRelVoidsElement')
-  .toArray();
+// Get openings in a wall (VoidsElement, returns EntityNode[])
+const openings = query.entity(wallId).voids();
 
-// Get filling elements (doors/windows in openings)
-const fillings = query
-  .entity(openingId)
-  .related('IfcRelFillsElement')
-  .toArray();
+// Get filling elements (doors/windows in openings; FillsElement)
+const fillings = query.entity(openingId).filledBy();
 ```
 
 ### Relationship Types
@@ -239,20 +211,20 @@ For complex analytics, use SQL via DuckDB:
 ```typescript
 import { IfcQuery } from '@ifc-lite/query';
 
-const query = new IfcQuery(parseResult);
+const query = new IfcQuery(store); // store from parseColumnar()
 
-// Enable SQL mode (loads DuckDB-WASM)
-await query.enableSQL();
-
-// Run SQL queries
+// sql() lazily initializes DuckDB-WASM on first call
 const result = await query.sql(`
   SELECT
-    type,
+    e.type,
     COUNT(*) as count,
-    AVG(CAST(props->>'Pset_WallCommon.FireRating' AS INTEGER)) as avg_fire_rating
-  FROM entities
-  WHERE type LIKE 'IFCWALL%'
-  GROUP BY type
+    AVG(p.value_int) as avg_fire_rating
+  FROM entities e
+  JOIN properties p ON e.express_id = p.entity_id
+  WHERE e.type LIKE 'IfcWall%'
+    AND p.pset_name = 'Pset_WallCommon'
+    AND p.prop_name = 'FireRating'
+  GROUP BY e.type
   ORDER BY count DESC
 `);
 
@@ -260,8 +232,8 @@ console.table(result);
 // ┌──────────────────────┬───────┬─────────────────┐
 // │ type                 │ count │ avg_fire_rating │
 // ├──────────────────────┼───────┼─────────────────┤
-// │ IFCWALLSTANDARDCASE  │ 42    │ 45              │
-// │ IFCWALL              │ 18    │ 30              │
+// │ IfcWallStandardCase  │ 42    │ 45              │
+// │ IfcWall              │ 18    │ 30              │
 // └──────────────────────┴───────┴─────────────────┘
 ```
 
@@ -271,36 +243,46 @@ console.table(result);
 // Entities table
 interface EntitiesTable {
   express_id: number;
-  type: string;
   global_id: string;
   name: string | null;
   description: string | null;
+  type: string;
+  object_type: string | null;
   has_geometry: boolean;
-  props: JSON;  // All properties as JSON
+  is_type: boolean;
+  contained_in_storey: number | null;
+  defined_by_type: number | null;
 }
 
 // Properties table
 interface PropertiesTable {
   entity_id: number;
   pset_name: string;
+  pset_global_id: string;
   prop_name: string;
-  value: string;
-  value_type: string;
+  prop_type: string;
+  value_string: string | null;
+  value_real: number | null;
+  value_int: number | null;
+  value_bool: boolean | null;
 }
 
 // Quantities table
 interface QuantitiesTable {
   entity_id: number;
-  name: string;
+  qset_name: string;
+  quantity_name: string;
+  quantity_type: string;
   value: number;
-  unit: string;
+  formula: string | null;
 }
 
 // Relationships table
 interface RelationshipsTable {
-  from_id: number;
-  to_id: number;
+  source_id: number;
+  target_id: number;
   rel_type: string;
+  rel_id: number;
 }
 ```
 
@@ -308,16 +290,17 @@ interface RelationshipsTable {
 
 ```sql
 -- Find walls with their storey names
+-- ContainsElements edges run storey (source_id) -> element (target_id)
 SELECT
   e.express_id,
   e.name as wall_name,
   s.name as storey_name
 FROM entities e
-JOIN relationships r ON e.express_id = r.from_id
-JOIN entities s ON r.to_id = s.express_id
-WHERE e.type LIKE 'IFCWALL%'
-  AND r.rel_type = 'IfcRelContainedInSpatialStructure'
-  AND s.type = 'IFCBUILDINGSTOREY';
+JOIN relationships r ON e.express_id = r.target_id
+JOIN entities s ON r.source_id = s.express_id
+WHERE e.type LIKE 'IfcWall%'
+  AND r.rel_type = 'ContainsElements'
+  AND s.type = 'IfcBuildingStorey';
 
 -- Calculate total area by entity type
 SELECT
@@ -325,15 +308,20 @@ SELECT
   SUM(q.value) as total_area
 FROM entities e
 JOIN quantities q ON e.express_id = q.entity_id
-WHERE q.name = 'NetArea'
+WHERE q.quantity_name = 'NetArea'
 GROUP BY e.type
 ORDER BY total_area DESC;
 
--- Find entities with missing fire ratings
-SELECT express_id, name, type
-FROM entities
-WHERE type LIKE 'IFCWALL%'
-  AND props->>'Pset_WallCommon.FireRating' IS NULL;
+-- Find walls with missing fire ratings
+SELECT e.express_id, e.name, e.type
+FROM entities e
+WHERE e.type LIKE 'IfcWall%'
+  AND NOT EXISTS (
+    SELECT 1 FROM properties p
+    WHERE p.entity_id = e.express_id
+      AND p.pset_name = 'Pset_WallCommon'
+      AND p.prop_name = 'FireRating'
+  );
 ```
 
 ## Direct Data Access
@@ -341,26 +329,27 @@ WHERE type LIKE 'IFCWALL%'
 For performance-critical operations, access columnar data directly:
 
 ```typescript
-const data = parseResult.data;
+import { IfcTypeEnumFromString } from '@ifc-lite/data';
 
-// Access entity table
-const entityTable = data.entities;
-console.log(`Total entities: ${entityTable.count}`);
+// store is the IfcDataStore from parseColumnar()
 
-// Iterate efficiently
-for (let i = 0; i < entityTable.count; i++) {
-  const expressId = entityTable.expressIds[i];
-  const typeEnum = entityTable.typeEnums[i];
-  const nameIdx = entityTable.nameIndices[i];
-  const name = data.strings.get(nameIdx);
+// Access the entity table
+console.log(`Total entities: ${store.entities.count}`);
+
+// Iterate efficiently over the columnar express-id array
+for (let i = 0; i < store.entities.count; i++) {
+  const expressId = store.entities.expressId[i];
+  const name = store.entities.getName(expressId);
+  const type = store.entities.getTypeName(expressId);
 }
 
-// Access property table
-const propTable = data.properties;
-for (let i = 0; i < propTable.count; i++) {
-  const entityId = propTable.entityIds[i];
-  const value = propTable.values[i];
-}
+// Fetch every entity of a given type
+const wallIds = store.entities.getByType(IfcTypeEnumFromString('IfcWall'));
+
+// Match entities by property value (prop, operator, value, psetName)
+const externalWallIds = store.properties.findByProperty(
+  'IsExternal', '=', true, 'Pset_WallCommon',
+);
 ```
 
 ## Query Performance
@@ -388,17 +377,17 @@ graph LR
 
 ```typescript
 // Efficient: filter by type first
-const result = query
+const externalWalls = query
   .walls()
   .whereProperty('Pset_WallCommon', 'IsExternal', '=', true)
-  .toArray();
+  .execute();
 
-// Inefficient: filter all entities
-const result = query
+// Inefficient: scan all entities, then narrow by type in JS
+const alsoExternalWalls = query
   .all()
   .whereProperty('Pset_WallCommon', 'IsExternal', '=', true)
-  .ofType('IFCWALL')
-  .toArray();
+  .execute()
+  .filter(e => e.type === 'IfcWall');
 ```
 
 ## Next Steps

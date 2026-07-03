@@ -77,7 +77,7 @@ flowchart TB
     ```bash
     docker run -p 3001:8080 \
       -v ifc-cache:/app/cache \
-      ghcr.io/LTplus-AG/ifc-lite-server
+      ghcr.io/ltplus-ag/ifc-lite-server
     ```
 
 === "Native Binary"
@@ -246,30 +246,37 @@ const metadata = await client.getMetadata(file);
 // Returns:
 // - schema_version: 'IFC2X3' | 'IFC4' | 'IFC4X3'
 // - entity_count: number
-// - geometry_entity_count: number
-// - coordinate_info: { origin_shift, is_geo_referenced }
+// - geometry_count: number
+// - file_size: number
 ```
 
 ### Cache Methods
 
 #### Checking Cache Before Upload
 
-The SDK automatically checks cache before uploading, but you can do it manually:
+`parseParquet` hashes the file client-side and checks the server cache
+before uploading, so re-parsing the same file skips the upload automatically:
 
 ```typescript
-// Compute file hash
-const hash = await client.computeFileHash(file);
-
-// Check if cached
-const cached = await client.getCached(hash);
-if (cached) {
-  console.log('File already processed!');
-  return cached;
-}
-
-// Upload if not cached
+// Automatic: parseParquet computes the SHA-256 and does the cache check
+// internally, returning the cached result without re-uploading on a hit.
 const result = await client.parseParquet(file);
 ```
+
+To retrieve a previously processed result later, keep its `cache_key`. Re-calling
+`parseParquet` serves the geometry straight from the cache; fetch the cached data
+model (properties + spatial hierarchy) with `fetchDataModel`:
+
+```typescript
+// Geometry: re-calling parseParquet returns the cached result without re-upload.
+const result = await client.parseParquet(file);
+
+// Data model (properties + hierarchy) for a known cache key:
+const dataModelBuffer = await client.fetchDataModel(result.cache_key);
+```
+
+`getCached(key)` is the lower-level lookup for the JSON `parse()` cache and
+returns a `ParseResponse`; it is not the retrieval path for Parquet geometry.
 
 #### Fetching Data Model
 
@@ -312,8 +319,8 @@ if (symbols) {
 // Health check
 const health = await client.health();
 
-// Compress file before upload (optional, saves bandwidth)
-const compressed = await client.compressGzip(file);
+// Uploads are gzip-compressed automatically by parse()/parseParquet(),
+// so no manual compression step is needed.
 
 // Check Parquet decoder availability
 const available = await client.isParquetSupported();
@@ -389,11 +396,15 @@ interface SpatialHierarchy {
 }
 
 interface SpatialNode {
-  id: number;
-  name: string;
-  type: string;
-  children: SpatialNode[];
+  entity_id: number;
+  parent_id: number;
+  level: number;
+  path: string;
+  type_name: string;
+  name?: string;
   elevation?: number;
+  children_ids: number[];
+  element_ids: number[];
 }
 ```
 
@@ -449,9 +460,10 @@ const dataModel = await decodeDataModel(dataModelBuffer);
 Cache keys are derived from file content:
 
 ```
-{SHA256}-parquet-v2         # Geometry
-{SHA256}-parquet-metadata-v2  # Metadata header
-{SHA256}-datamodel-v2        # Properties & hierarchy
+# {filter} is the opening filter (e.g. "default")
+{SHA256}-{filter}-parquet-v4          # Geometry
+{SHA256}-{filter}-parquet-metadata-v4 # Metadata header
+{SHA256}-{filter}-datamodel-v2        # Properties & hierarchy
 ```
 
 ### Cache Flow
@@ -514,7 +526,7 @@ version: '3.8'
 
 services:
   ifc-lite-server:
-    image: ghcr.io/LTplus-AG/ifc-lite-server:latest
+    image: ghcr.io/ltplus-ag/ifc-lite-server:latest
     ports:
       - "3001:8080"
     environment:
@@ -598,9 +610,9 @@ sequenceDiagram
 
 ```typescript
 // Using callback
-await client.parseParquetStream(file, async (batch) => {
-  const meshes = await decodeParquetGeometry(batch.data);
-  renderer.addMeshes(meshes);
+await client.parseParquetStream(file, (batch) => {
+  // batch.meshes are already decoded MeshData
+  renderer.addMeshes(batch.meshes);
 });
 
 // Using async iterator
@@ -629,7 +641,7 @@ for await (const event of client.parseStream(file)) {
 
 ### Network
 
-1. **Gzip Compression** - Optional client-side compression before upload
+1. **Gzip Compression** - Applied automatically on upload by `parse()`/`parseParquet()`
 2. **Parquet Format** - 15-50x smaller than JSON
 3. **SSE Streaming** - No polling overhead
 

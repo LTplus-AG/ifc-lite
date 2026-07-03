@@ -10,6 +10,18 @@
 #   (not on the "Build + WASM + Rust + Node" needs-list) so branch
 #   protection and CI cost are unchanged; promote later if it proves stable.
 #
+#   Promotion plan (F4): the harness's red path is now fault-injection
+#   tested (tools/ifcopenshell_reference/test_harness.py::
+#   EndToEndFaultInjection, run by the "Unit tests" step below) - it
+#   perturbs an in-memory copy of a REAL committed reference dump and
+#   asserts `compare.py` exits non-zero on bbox/volume divergence and on a
+#   dropped element, plus a positive control that an unperturbed copy stays
+#   green. That is the evidence bar for "required"; the flip itself is a
+#   branch-protection ruleset edit only the repo owner can make (Settings ->
+#   Rules -> Rulesets -> add `parity (in-tree fixtures, committed
+#   reference)` to the required-checks list). Not done here - a workflow
+#   file cannot self-promote its own check.
+#
 # - nightly (`full` job): installs the PINNED engine, runs the whole
 #   committed corpus (fetched fixtures included), regenerates the reference
 #   dumps to detect reference-staleness, and uploads diff reports. Modeled on

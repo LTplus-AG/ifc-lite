@@ -11,7 +11,11 @@ re-runnable differential against a pinned reference engine.
 - `canonical.py` - every stat both sides report (bbox, tri/vertex counts,
   signed volume, watertightness), computed from plain vertex/face arrays so
   the comparison measures geometry, never stat-computation differences.
-  Known-answer unit tests in `test_harness.py` (stdlib unittest).
+  Known-answer unit tests in `test_harness.py` (stdlib unittest), including
+  an `EndToEndFaultInjection` suite that perturbs an in-memory copy of a
+  real committed reference dump and asserts `compare.py` actually exits
+  non-zero - proof the "quick" CI lane's red path has teeth, not just that
+  `classify()` is correct in isolation.
 - `dump_reference.py` - canonical per-element JSON from the PINNED
   IfcOpenShell (world coords + welded, matching the provenance of the old
   baked constants). Engine failures become first-class `skip:<reason>` rows.
@@ -57,9 +61,12 @@ Regenerating the committed reference (pin bump or intentional acceptance):
 
 ## CI
 
-- Per-PR (`ifcopenshell-parity` job): ifc-lite side only vs the committed
+Both lanes live in the `IfcOpenShell parity` workflow
+(`.github/workflows/ifcopenshell-parity.yml`).
+
+- Per-PR (`quick` job): ifc-lite side only vs the committed
   reference over the IN-TREE fixtures (no fixture download, no reference
   engine install). Catches kernel drift on every geometry-affecting PR.
-- Nightly (`ifcopenshell-parity.yml`): installs the pinned engine, runs the
+- Nightly (`full` job): installs the pinned engine, runs the
   full committed corpus (fetched fixtures included), regenerates reference
   dumps to detect reference-staleness, and uploads the diff reports.

@@ -52,8 +52,29 @@ export function formatGeometryReport(d: GeometryDiagnostics): string {
       lines.push(
         `  #${h.productId} ${h.ifcType}: ${h.csgFailures} failure(s), ${h.openings} opening(s)${label}`,
       );
+      const detail = formatHostDetail(h);
+      if (detail) lines.push(`      ${detail}`);
     }
   }
 
   return lines.join('\n');
+}
+
+/**
+ * Render a worst-failing host's optional per-product detail (bbox + triangle
+ * count). Both fields are opt-in — only captured when a void cut ran for that
+ * host (see `HostBbox`/`triangle_count` in the Rust `WorstHost` contract) — so
+ * this returns `undefined` rather than printing "undefined" when neither was
+ * recorded.
+ */
+function formatHostDetail(h: GeometryDiagnostics['worstHosts'][number]): string | undefined {
+  const parts: string[] = [];
+  if (h.bbox) {
+    const fmt = (v: number) => (Number.isFinite(v) ? v.toFixed(2) : String(v));
+    parts.push(`bbox=[${h.bbox.min.map(fmt).join(', ')}] – [${h.bbox.max.map(fmt).join(', ')}]`);
+  }
+  if (h.triangleCount !== undefined) {
+    parts.push(`triangles=${h.triangleCount.toLocaleString()}`);
+  }
+  return parts.length > 0 ? parts.join('  ') : undefined;
 }

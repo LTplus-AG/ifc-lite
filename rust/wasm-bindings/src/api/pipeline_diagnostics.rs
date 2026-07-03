@@ -11,7 +11,8 @@
 //! plus two `js_sys::Date::now()` reads, so it is always on — no feature
 //! flag). `std::time::Instant` traps on wasm32, hence the JS clock; the
 //! scan/prepass phases run in JS workers outside this module and report 0
-//! here (native fills them from ProcessingStats). Crossed to JS via
+//! here (the native server/CLI surface those numbers through ProcessingStats +
+//! GeometryDiagnostics, not through this channel). Crossed to JS via
 //! `serde_wasm_bindgen::to_value`, exactly like `diagnoseGeometry`.
 
 use super::IfcAPI;
@@ -30,7 +31,7 @@ impl IfcAPI {
         let diag = self
             .pipeline_diagnostics
             .lock()
-            .expect("ifc-lite pipeline_diagnostics Mutex poisoned");
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if diag.is_empty() {
             return JsValue::UNDEFINED;
         }
@@ -48,18 +49,25 @@ impl IfcAPI {
         mesh_count: u64,
         triangle_count: u64,
         backstop_count: u64,
+        point_cache_hits: u64,
+        point_cache_misses: u64,
         geometry_ms: u64,
         diag: &ifc_lite_geometry::GeometryDiagnostics,
     ) {
         let mut acc = self
             .pipeline_diagnostics
             .lock()
-            .expect("ifc-lite pipeline_diagnostics Mutex poisoned");
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // Faceted-brep wall time is native/observability-only (Instant traps on
+        // wasm32), so the wasm batch reports 0 for it.
         acc.record_batch(
             element_count,
             mesh_count,
             triangle_count,
             backstop_count,
+            point_cache_hits,
+            point_cache_misses,
+            0,
             geometry_ms,
             diag,
         );
@@ -71,7 +79,7 @@ impl IfcAPI {
         let mut acc = self
             .pipeline_diagnostics
             .lock()
-            .expect("ifc-lite pipeline_diagnostics Mutex poisoned");
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         *acc = ifc_lite_processing::PipelineDiagnostics::default();
     }
 }

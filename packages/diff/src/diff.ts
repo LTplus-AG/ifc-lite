@@ -28,6 +28,28 @@ function geometryEqual(a: GeometryHash | undefined, b: GeometryHash | undefined)
   return String(a) === String(b);
 }
 
+/** Canonical form for exclude-set membership: trimmed + upper-cased so a
+ *  hand-typed `ifcopeningelement ` still matches the store's `IfcOpeningElement`. */
+function normalizeType(name: string): string {
+  return name.trim().toUpperCase();
+}
+
+/**
+ * Build the case-insensitive exclude set from {@link DiffOptions.excludeTypes},
+ * dropping empty / whitespace-only names. Returns `null` when nothing is
+ * excluded so the hot loop can skip the membership check entirely.
+ */
+function buildExcludeSet(excludeTypes: Iterable<string> | undefined): Set<string> | null {
+  if (!excludeTypes) return null;
+  const set = new Set<string>();
+  for (const name of excludeTypes) {
+    if (typeof name !== 'string') continue;
+    const normalized = normalizeType(name);
+    if (normalized) set.add(normalized);
+  }
+  return set.size > 0 ? set : null;
+}
+
 function indexByKey<TRef>(
   entities: Iterable<EntityFingerprint<TRef>>,
 ): Map<string, EntityFingerprint<TRef>> {
@@ -65,6 +87,10 @@ export function diffModels<TRef = unknown>(
   const considerData = scope === 'data' || scope === 'both';
   const considerGeometry = scope === 'geometry' || scope === 'both';
 
+  const excluded = buildExcludeSet(options.excludeTypes);
+  const isExcluded = (entity: EntityFingerprint<TRef>): boolean =>
+    excluded !== null && excluded.has(normalizeType(entity.ifcType));
+
   const baseByKey = indexByKey(base);
   const headByKey = indexByKey(head);
 
@@ -81,6 +107,10 @@ export function diffModels<TRef = unknown>(
   // Deleted + matched: walk base.
   for (const [key, baseEntity] of baseByKey) {
     const headEntity = headByKey.get(key);
+    // Blacklist: drop the entity if EITHER revision's class is excluded, so a
+    // cross-version re-class (e.g. IfcWall -> IfcWallStandardCase with IfcWall
+    // excluded) can't leak it back as a phantom add/delete (issue #1470).
+    if (isExcluded(baseEntity) || (headEntity !== undefined && isExcluded(headEntity))) continue;
     if (!headEntity) {
       push({ key, state: 'deleted', changeKinds: [], base: baseEntity });
       continue;
@@ -106,11 +136,13 @@ export function diffModels<TRef = unknown>(
     });
   }
 
-  // Added: keys only in head.
+  // Added: keys only in head. (Matched keys - including excluded ones - were
+  // already handled in the base walk.)
   for (const [key, headEntity] of headByKey) {
     if (baseByKey.has(key)) continue;
+    if (isExcluded(headEntity)) continue;
     push({ key, state: 'added', changeKinds: [], head: headEntity });
   }
 
-  return { scope, entries, byKey, counts };
+  return { scope, excludedTypes: excluded ? [...excluded].sort() : [], entries, byKey, counts };
 }

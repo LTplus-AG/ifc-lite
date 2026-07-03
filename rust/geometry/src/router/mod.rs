@@ -166,6 +166,27 @@ pub struct GeometryRouter {
     skip_small_cuts: bool,
 }
 
+/// Whether an `IfcShapeRepresentation.RepresentationType` names a meshable
+/// body/surface (as opposed to a curve/axis/annotation). Shared by the void
+/// probe (opening extraction) and RTC-offset detection so both agree on what
+/// counts as real geometry.
+pub(super) fn is_body_representation(rep_type: &str) -> bool {
+    matches!(
+        rep_type,
+        "Body"
+            | "SweptSolid"
+            | "Brep"
+            | "CSG"
+            | "Clipping"
+            | "Tessellation"
+            | "MappedRepresentation"
+            | "SolidModel"
+            | "SurfaceModel"
+            | "AdvancedSweptSolid"
+            | "AdvancedBrep"
+    )
+}
+
 impl GeometryRouter {
     /// Create new router with default processors
     pub fn new() -> Self {

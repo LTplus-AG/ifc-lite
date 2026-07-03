@@ -34,8 +34,8 @@ flowchart TB
 # Run all tests
 pnpm test
 
-# Run with coverage
-pnpm test:coverage
+# Run with coverage (Vitest, per package)
+pnpm -r exec vitest run --coverage
 ```
 
 ### TypeScript Tests
@@ -48,10 +48,10 @@ pnpm -r test
 cd packages/parser && pnpm test
 
 # Watch mode
-cd packages/parser && pnpm test:watch
+cd packages/parser && pnpm exec vitest --watch
 
 # With coverage
-cd packages/parser && pnpm test:coverage
+cd packages/parser && pnpm exec vitest run --coverage
 ```
 
 ### Rust Tests
@@ -395,8 +395,8 @@ mod tests {
 ### TypeScript Coverage
 
 ```bash
-# Generate coverage report
-pnpm test:coverage
+# Generate coverage report (Vitest, per package)
+pnpm -r exec vitest run --coverage
 
 # View HTML report
 open coverage/index.html
@@ -459,7 +459,8 @@ describe('Parser Performance', () => {
 Run benchmarks:
 
 ```bash
-pnpm test:bench
+# Vitest bench, from the package holding the .bench.ts file
+pnpm exec vitest bench
 ```
 
 ## CI/CD
@@ -481,7 +482,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '22'
 
       - name: Setup Rust
         uses: actions-rs/toolchain@v1

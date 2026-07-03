@@ -22,6 +22,7 @@
 //! - `GET /api/v1/parse/symbolic/:cache_key` - 2D symbol stream (IfcAnnotation + IfcGrid) as JSON
 //! - `GET /api/v1/cache/:key` - Retrieve cached result
 
+use anyhow::Context;
 use axum::http::{header, HeaderValue, Method};
 use axum::{
     extract::DefaultBodyLimit,
@@ -38,6 +39,7 @@ use tower_http::{
 
 mod admission;
 mod config;
+mod mem_policy;
 mod error;
 mod middleware;
 mod routes;
@@ -73,6 +75,38 @@ fn build_cors_layer(config: &Config) -> CorsLayer {
             .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
             .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION, header::ACCEPT])
             .max_age(Duration::from_secs(3600))
+    }
+}
+
+/// Startup log level for the memory-admission "gate off" branch in `main`,
+/// derived purely from the re-parsed `IFC_MEM_BUDGET_MB` env var (#1547).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LogDecision {
+    /// `IFC_MEM_BUDGET_MB=0`: the operator opted out of the memory gate
+    /// deliberately. Not a warning-worthy condition.
+    Info,
+    /// The env var is unset or unparseable AND the memory gate still ended
+    /// up off, i.e. auto-detection found no readable ceiling (non-Linux
+    /// host or `/proc` unavailable) — a silent OOM-risk degradation.
+    Warn,
+    /// A positive budget was explicitly requested. `main`'s call site only
+    /// reaches `memory_admission_log_level` from inside the
+    /// `config.mem_budget_mb == 0` branch, where this variant can never
+    /// actually occur (an explicit positive `IFC_MEM_BUDGET_MB` resolves
+    /// `config.mem_budget_mb` to that same positive value, see
+    /// `mem_policy::resolve_mem_budget_mb`). Kept so the function is total
+    /// over its input and independently unit-testable.
+    Active,
+}
+
+/// Pure decision for [`LogDecision`] from the resolved `IFC_MEM_BUDGET_MB`
+/// env var: `None` (unset/unparseable), `Some(0)` (explicit opt-out), or
+/// `Some(n)` with `n > 0` (an explicit positive budget).
+fn memory_admission_log_level(budget_mb: Option<u64>) -> LogDecision {
+    match budget_mb {
+        Some(0) => LogDecision::Info,
+        Some(_) => LogDecision::Active,
+        None => LogDecision::Warn,
     }
 }
 
@@ -171,7 +205,7 @@ fn build_router(state: AppState) -> Router {
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> anyhow::Result<()> {
     // Initialize logging
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -218,14 +252,37 @@ async fn main() {
         shed_pct: config.mem_shed_pct,
     }));
     admission::spawn_rss_sampler(Arc::clone(&admission));
-    tracing::info!(
-        max_concurrent_parses = config.max_concurrent_parses,
-        mem_budget_mb = config.mem_budget_mb,
-        queue_depth = config.admission_queue_depth,
-        queue_timeout_secs = config.admission_queue_timeout_secs,
-        shed_pct = config.mem_shed_pct,
-        "Admission control active (mem budget 0 = byte gate disabled)"
-    );
+    if config.mem_budget_mb == 0 {
+        // Budget 0 = memory gate off. Two distinct causes, logged differently
+        // by `memory_admission_log_level` below (see its doc for the third,
+        // unreachable-here-but-testable case).
+        let budget_env = std::env::var("IFC_MEM_BUDGET_MB")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok());
+        match memory_admission_log_level(budget_env) {
+            LogDecision::Info => {
+                tracing::info!(
+                    max_concurrent_parses = config.max_concurrent_parses,
+                    "Memory admission disabled via IFC_MEM_BUDGET_MB=0 (opt-out); only the CPU concurrency gate applies."
+                );
+            }
+            LogDecision::Warn | LogDecision::Active => {
+                tracing::warn!(
+                    max_concurrent_parses = config.max_concurrent_parses,
+                    "Memory admission is OFF (no readable memory ceiling: non-Linux host or /proc unavailable): concurrent large uploads can OOM this replica. Set IFC_MEM_BUDGET_MB, or run under a cgroup memory limit."
+                );
+            }
+        }
+    } else {
+        tracing::info!(
+            max_concurrent_parses = config.max_concurrent_parses,
+            mem_budget_mb = config.mem_budget_mb,
+            queue_depth = config.admission_queue_depth,
+            queue_timeout_secs = config.admission_queue_timeout_secs,
+            shed_pct = config.mem_shed_pct,
+            "Admission control active (byte budget + RSS breaker)"
+        );
+    }
 
     let state = AppState {
         cache,
@@ -239,6 +296,39 @@ async fn main() {
     let addr = SocketAddr::from(([0, 0, 0, 0], config.port));
     tracing::info!("Listening on http://{}", addr);
 
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    let listener = tokio::net::TcpListener::bind(addr)
+        .await
+        .with_context(|| format!("failed to bind to {addr}"))?;
+    axum::serve(listener, app)
+        .await
+        .context("server exited with an error")?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod memory_admission_log_level_tests {
+    use super::{memory_admission_log_level, LogDecision};
+
+    /// #1547: unset/unparseable `IFC_MEM_BUDGET_MB` (auto-detection found no
+    /// readable memory ceiling) must warn, not silently stay quiet.
+    #[test]
+    fn unset_warns() {
+        assert_eq!(memory_admission_log_level(None), LogDecision::Warn);
+    }
+
+    /// `IFC_MEM_BUDGET_MB=0` is a deliberate opt-out, not a degradation.
+    #[test]
+    fn explicit_zero_is_opt_out_info() {
+        assert_eq!(memory_admission_log_level(Some(0)), LogDecision::Info);
+    }
+
+    /// A positive explicit budget is neither the info nor the warn "gate
+    /// off" case (main's `config.mem_budget_mb == 0` guard means this
+    /// variant is never actually reached at the call site, but the pure
+    /// function itself must be total and correct over its whole domain).
+    #[test]
+    fn positive_budget_is_active() {
+        assert_eq!(memory_admission_log_level(Some(1)), LogDecision::Active);
+        assert_eq!(memory_admission_log_level(Some(4096)), LogDecision::Active);
+    }
 }

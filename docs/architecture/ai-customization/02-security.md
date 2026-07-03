@@ -408,9 +408,10 @@ If a malicious or buggy extension is discovered:
 - A **capability-revocation** flow: the user can revoke any capability
   at any time without uninstalling. Revocation deactivates the
   extension if it cannot run with the remaining grants.
-- A **post-mortem template** lives at `docs/security/incidents/` for
-  any extension-related security incident, with mandatory fields for
-  scope, root cause, mitigations, and detection improvements.
+- A **post-mortem template** will live at `docs/security/incidents/`
+  (created when the incident-response flow ships; the directory does not
+  exist yet) for any extension-related security incident, with mandatory
+  fields for scope, root cause, mitigations, and detection improvements.
 
 We expect to write at least one of these. The system is designed so
 that one extension going bad does not compromise the host or other

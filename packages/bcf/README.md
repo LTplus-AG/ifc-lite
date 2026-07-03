@@ -61,12 +61,12 @@ const viewpoint = createViewpoint({
     position: { x: 50, y: 30, z: 12 },
     target: { x: 0, y: 0, z: 0 },
     up: { x: 0, y: 0, z: 1 },
-    fov: 60,
+    fov: Math.PI / 3, // field of view in radians (60 degrees)
   },
   // Highlight specific entities by their IFC GlobalId
-  selection: ['1abc2def3GhI4jKlM5nOpQ', '2bcd3efg4HiJ5kLmN6oPqR'],
-  // Hide unrelated context
-  visibility: { defaultVisibility: false, exceptions: ['1abc2def3GhI4jKlM5nOpQ'] },
+  selectedGuids: ['1abc2def3GhI4jKlM5nOpQ', '2bcd3efg4HiJ5kLmN6oPqR'],
+  // Isolate: show only these entities (isolation mode, defaultVisibility=false)
+  visibleGuids: ['1abc2def3GhI4jKlM5nOpQ'],
 });
 
 addViewpointToTopic(topic, viewpoint);

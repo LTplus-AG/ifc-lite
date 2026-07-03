@@ -12,7 +12,7 @@ The renderer requires **WebGPU**, a next-generation graphics API.
 |---------|----------------|--------|
 | Chrome | 113+ | :material-check-circle:{ .success } Stable |
 | Edge | 113+ | :material-check-circle:{ .success } Stable |
-| Firefox | 127+ | :material-check-circle:{ .success } Stable |
+| Firefox | 141+ | :material-check-circle:{ .success } Stable |
 | Safari | 18+ | :material-check-circle:{ .success } Stable |
 
 ### Checking WebGPU Support
@@ -115,7 +115,8 @@ if (typeof SharedArrayBuffer === 'undefined') {
 ## Feature Detection Example
 
 ```typescript
-import { IfcParser, Renderer } from '@ifc-lite/parser';
+import { IfcParser } from '@ifc-lite/parser';
+import { Renderer } from '@ifc-lite/renderer';
 
 interface BrowserCapabilities {
   webgpu: boolean;
@@ -166,44 +167,54 @@ if (!caps.webgpu) {
 
 ```mermaid
 flowchart LR
-    subgraph Primary["Primary Path"]
-        WebGPU["WebGPU Renderer"]
-        WASM["WASM Parser"]
-    end
+    WASM["WASM Parser<br/>(all modern browsers)"]
+    Check{WebGPU<br/>supported?}
+    WASM --> Check
+    Check -->|Yes| WebGPU["WebGPU Renderer<br/>@ifc-lite/renderer"]
+    Check -->|No| WebGL["Three.js / Babylon.js<br/>(WebGL) template"]
 
-    subgraph Fallback["Fallback Path"]
-        WebGL["WebGL2 Renderer"]
-        JS["JavaScript Parser"]
-    end
-
-    Check{Browser<br/>Support?}
-    Check -->|Full| Primary
-    Check -->|Partial| Fallback
-    Check -->|None| Error[Show Error]
-
-    style Primary fill:#16a34a,stroke:#14532d,color:#fff
-    style Fallback fill:#f59e0b,stroke:#7c2d12,color:#fff
-    style Error fill:#dc2626,stroke:#7f1d1d,color:#fff
+    style WebGPU fill:#16a34a,stroke:#14532d,color:#fff
+    style WebGL fill:#f59e0b,stroke:#7c2d12,color:#fff
 ```
 
 ### WebGL Fallback
 
+`@ifc-lite/renderer` is WebGPU-only, so it has no built-in WebGL renderer. For
+browsers without WebGPU, scaffold a WebGL viewer with the `threejs` or
+`babylonjs` template. Those render with WebGL and work in all modern browsers:
+
+```bash
+# WebGL viewer (Three.js)
+npx create-ifc-lite my-viewer --template threejs
+
+# WebGL viewer (Babylon.js)
+npx create-ifc-lite my-viewer --template babylonjs
+```
+
+You can still detect WebGPU at runtime to decide which viewer to load:
+
 ```typescript
-import { Renderer, WebGLFallbackRenderer } from '@ifc-lite/renderer';
+import { Renderer } from '@ifc-lite/renderer';
 
 async function createRenderer(canvas: HTMLCanvasElement) {
   if (navigator.gpu) {
     const adapter = await navigator.gpu.requestAdapter();
     if (adapter) {
-      return new Renderer(canvas); // WebGPU
+      const renderer = new Renderer(canvas); // WebGPU
+      await renderer.init();
+      return renderer;
     }
   }
 
-  // Fallback to WebGL2
-  console.warn('WebGPU not available, using WebGL2 fallback');
-  return new WebGLFallbackRenderer(canvas);
+  // No WebGPU: load a WebGL viewer built from the threejs or
+  // babylonjs template instead (see the integration guides).
+  console.warn('WebGPU not available, use a Three.js or Babylon.js (WebGL) viewer');
+  return null;
 }
 ```
+
+See the [Three.js](../tutorials/threejs-integration.md) and
+[Babylon.js](../tutorials/babylonjs-integration.md) integration guides.
 
 ## Mobile Support
 
@@ -211,7 +222,7 @@ async function createRenderer(canvas: HTMLCanvasElement) {
 |----------|---------|--------|
 | iOS | Safari 18+ | :material-check-circle:{ .success } |
 | Android | Chrome 113+ | :material-check-circle:{ .success } |
-| Android | Firefox 127+ | :material-check-circle:{ .success } |
+| Android | Firefox | Not enabled by default (behind a flag) |
 
 !!! tip "Mobile Performance"
     For mobile devices, keep parsing columnar and stream geometry in batches:

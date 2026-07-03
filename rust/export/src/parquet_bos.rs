@@ -19,7 +19,14 @@ use zip::CompressionMethod;
 
 use ifc_lite_processing::process_geometry;
 
+use crate::error::ExportError;
 use crate::model::{build_export_model, fmt_num, ExportModel};
+
+/// Wrap a downstream encoder error (Arrow/Parquet/zip/serde_json) as
+/// [`ExportError::Serialization`], tagged with the stage that failed.
+fn ser_err<E: std::fmt::Display>(stage: &'static str) -> impl FnOnce(E) -> ExportError {
+    move |e| ExportError::Serialization { stage, detail: e.to_string() }
+}
 
 /// Options for BOS export.
 pub struct ParquetBosOptions {
@@ -38,18 +45,18 @@ fn str_col(vals: Vec<Option<String>>) -> ArrayRef {
 }
 
 /// Serialize one RecordBatch to Parquet bytes.
-fn to_parquet(batch: &RecordBatch) -> Vec<u8> {
+fn to_parquet(batch: &RecordBatch) -> Result<Vec<u8>, ExportError> {
     let mut buf: Vec<u8> = Vec::new();
     {
         let mut writer = ArrowWriter::try_new(&mut buf, batch.schema(), None)
-            .expect("arrow writer");
-        writer.write(batch).expect("write parquet batch");
-        writer.close().expect("close parquet");
+            .map_err(ser_err("arrow writer"))?;
+        writer.write(batch).map_err(ser_err("write parquet batch"))?;
+        writer.close().map_err(ser_err("close parquet"))?;
     }
-    buf
+    Ok(buf)
 }
 
-fn entities_table(model: &ExportModel) -> Vec<u8> {
+fn entities_table(model: &ExportModel) -> Result<Vec<u8>, ExportError> {
     let n = model.entities.len();
     let mut express = Vec::with_capacity(n);
     let mut global = Vec::with_capacity(n);
@@ -76,11 +83,11 @@ fn entities_table(model: &ExportModel) -> Vec<u8> {
         ("ObjectType", str_col(otype)),
         ("HasGeometry", Arc::new(BooleanArray::from(has_geom)) as ArrayRef),
     ])
-    .expect("entities batch");
+    .map_err(ser_err("entities batch"))?;
     to_parquet(&batch)
 }
 
-fn properties_table(model: &ExportModel) -> Vec<u8> {
+fn properties_table(model: &ExportModel) -> Result<Vec<u8>, ExportError> {
     let mut entity = Vec::new();
     let mut pset = Vec::new();
     let mut prop = Vec::new();
@@ -104,11 +111,11 @@ fn properties_table(model: &ExportModel) -> Vec<u8> {
         ("PropType", str_col(ptype)),
         ("ValueString", str_col(value)),
     ])
-    .expect("properties batch");
+    .map_err(ser_err("properties batch"))?;
     to_parquet(&batch)
 }
 
-fn quantities_table(model: &ExportModel) -> Vec<u8> {
+fn quantities_table(model: &ExportModel) -> Result<Vec<u8>, ExportError> {
     let mut entity = Vec::new();
     let mut qset = Vec::new();
     let mut qname = Vec::new();
@@ -132,12 +139,15 @@ fn quantities_table(model: &ExportModel) -> Vec<u8> {
         ("QuantityType", str_col(qtype)),
         ("Value", str_col(value)),
     ])
-    .expect("quantities batch");
+    .map_err(ser_err("quantities batch"))?;
     to_parquet(&batch)
 }
 
-/// Returns (vertex_table, index_table, mesh_table, vertex_count, triangle_count).
-fn geometry_tables(content: &[u8]) -> (Vec<u8>, Vec<u8>, Vec<u8>, usize, usize) {
+/// (vertex_table, index_table, mesh_table, vertex_count, triangle_count) parquet bytes.
+type GeometryTables = (Vec<u8>, Vec<u8>, Vec<u8>, usize, usize);
+
+/// Returns the geometry parquet tables plus vertex/triangle totals.
+fn geometry_tables(content: &[u8]) -> Result<GeometryTables, ExportError> {
     let result = process_geometry(content);
 
     let mut x = Vec::new();
@@ -198,14 +208,14 @@ fn geometry_tables(content: &[u8]) -> (Vec<u8>, Vec<u8>, Vec<u8>, usize, usize) 
         ("NormalY", Arc::new(Float32Array::from(ny)) as ArrayRef),
         ("NormalZ", Arc::new(Float32Array::from(nz)) as ArrayRef),
     ])
-    .expect("vertex batch");
+    .map_err(ser_err("vertex batch"))?;
 
     let ibatch = RecordBatch::try_from_iter(vec![
         ("Index0", Arc::new(UInt32Array::from(i0)) as ArrayRef),
         ("Index1", Arc::new(UInt32Array::from(i1)) as ArrayRef),
         ("Index2", Arc::new(UInt32Array::from(i2)) as ArrayRef),
     ])
-    .expect("index batch");
+    .map_err(ser_err("index batch"))?;
 
     let mbatch = RecordBatch::try_from_iter(vec![
         ("ExpressId", Arc::new(UInt32Array::from(mesh_express)) as ArrayRef),
@@ -214,34 +224,48 @@ fn geometry_tables(content: &[u8]) -> (Vec<u8>, Vec<u8>, Vec<u8>, usize, usize) 
         ("IndexStart", Arc::new(UInt32Array::from(istart)) as ArrayRef),
         ("IndexCount", Arc::new(UInt32Array::from(icount)) as ArrayRef),
     ])
-    .expect("mesh batch");
+    .map_err(ser_err("mesh batch"))?;
 
-    (to_parquet(&vbatch), to_parquet(&ibatch), to_parquet(&mbatch), vcount_total, tricount_total)
+    Ok((
+        to_parquet(&vbatch)?,
+        to_parquet(&ibatch)?,
+        to_parquet(&mbatch)?,
+        vcount_total,
+        tricount_total,
+    ))
 }
 
 /// Export the model + geometry as a `.bos` archive (ZIP of Parquet tables).
-pub fn export_bos(content: &[u8], opts: &ParquetBosOptions) -> Vec<u8> {
+///
+/// Returns [`ExportError::Serialization`] if any downstream encoder (Arrow
+/// writer, Parquet writer, zip container, or the metadata JSON serializer)
+/// rejects the data — no encoder failure here panics the caller.
+pub fn export_bos(content: &[u8], opts: &ParquetBosOptions) -> Result<Vec<u8>, ExportError> {
     let model = build_export_model(content);
 
     let cursor = std::io::Cursor::new(Vec::new());
     let mut zip = zip::ZipWriter::new(cursor);
     let file_opts = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
 
-    let mut add = |zip: &mut zip::ZipWriter<std::io::Cursor<Vec<u8>>>, name: &str, bytes: &[u8]| {
-        zip.start_file(name, file_opts).expect("zip start_file");
-        zip.write_all(bytes).expect("zip write");
+    let add = |zip: &mut zip::ZipWriter<std::io::Cursor<Vec<u8>>>,
+               name: &str,
+               bytes: &[u8]|
+     -> Result<(), ExportError> {
+        zip.start_file(name, file_opts).map_err(ser_err("zip start_file"))?;
+        zip.write_all(bytes).map_err(ser_err("zip write"))?;
+        Ok(())
     };
 
-    add(&mut zip, "Entities.parquet", &entities_table(&model));
-    add(&mut zip, "Properties.parquet", &properties_table(&model));
-    add(&mut zip, "Quantities.parquet", &quantities_table(&model));
+    add(&mut zip, "Entities.parquet", &entities_table(&model)?)?;
+    add(&mut zip, "Properties.parquet", &properties_table(&model)?)?;
+    add(&mut zip, "Quantities.parquet", &quantities_table(&model)?)?;
 
     let (mut vcount, mut tricount) = (0usize, 0usize);
     if opts.include_geometry {
-        let (vb, ib, mb, vc, tc) = geometry_tables(content);
-        add(&mut zip, "VertexBuffer.parquet", &vb);
-        add(&mut zip, "IndexBuffer.parquet", &ib);
-        add(&mut zip, "Meshes.parquet", &mb);
+        let (vb, ib, mb, vc, tc) = geometry_tables(content)?;
+        add(&mut zip, "VertexBuffer.parquet", &vb)?;
+        add(&mut zip, "IndexBuffer.parquet", &ib)?;
+        add(&mut zip, "Meshes.parquet", &mb)?;
         vcount = vc;
         tricount = tc;
     }
@@ -258,9 +282,11 @@ pub fn export_bos(content: &[u8], opts: &ParquetBosOptions) -> Vec<u8> {
             json!(["Entities", "Properties", "Quantities"])
         },
     });
-    add(&mut zip, "Metadata.json", serde_json::to_string_pretty(&meta).unwrap().as_bytes());
+    let meta_bytes = serde_json::to_string_pretty(&meta).map_err(ser_err("metadata json"))?;
+    add(&mut zip, "Metadata.json", meta_bytes.as_bytes())?;
 
-    zip.finish().expect("zip finish").into_inner()
+    let zipped = zip.finish().map_err(ser_err("zip finish"))?;
+    Ok(zipped.into_inner())
 }
 
 #[cfg(test)]
@@ -275,7 +301,8 @@ mod tests {
 
     #[test]
     fn duplex_exports_valid_bos() {
-        let bos = export_bos(&fixture("ara3d/duplex.ifc"), &ParquetBosOptions::default());
+        let bos = export_bos(&fixture("ara3d/duplex.ifc"), &ParquetBosOptions::default())
+            .expect("bos export");
         assert!(bos.len() > 1000, "non-trivial archive");
 
         // Re-open the zip and verify the expected tables + parquet magic.

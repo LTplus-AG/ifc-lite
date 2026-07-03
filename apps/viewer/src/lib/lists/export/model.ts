@@ -10,6 +10,7 @@
  */
 
 import type { CellValue, ColumnDefinition, ListRow, ListGrouping } from '@ifc-lite/lists';
+import { buildGroupBuckets, orderGroups, type GroupSort } from '@/lib/lists/group-sort';
 
 export interface ExportColumn {
   id: string;
@@ -46,6 +47,8 @@ export interface BuildModelInput {
   /** Rows already filtered + sorted exactly as shown on screen. */
   rows: ListRow[];
   grouping?: ListGrouping;
+  /** Active header sort, so grouped sections export in the on-screen order. */
+  sort?: GroupSort;
   numericCols: boolean[];
   columnWidths: number[];
   generatedAt: string;
@@ -63,7 +66,7 @@ export function displayCell(value: CellValue): string {
 }
 
 export function buildExportModel(input: BuildModelInput): ExportModel {
-  const { columns, rows, grouping, numericCols, columnWidths, title, generatedAt } = input;
+  const { columns, rows, grouping, sort, numericCols, columnWidths, title, generatedAt } = input;
   const sumColumnIds = grouping?.sumColumnIds ?? [];
   const exportCols: ExportColumn[] = columns.map((c, i) => ({
     id: c.id,
@@ -94,17 +97,17 @@ export function buildExportModel(input: BuildModelInput): ExportModel {
   let groups: ExportGroup[] | null = null;
   if (groupColumnId) {
     const groupIdx = columns.findIndex((c) => c.id === groupColumnId);
-    const byKey = new Map<string, ExportGroup>();
-    for (const r of rows) {
-      const raw = r.values[groupIdx];
-      const label = raw === null || raw === undefined || raw === '' ? '(none)' : displayCell(raw);
-      let g = byKey.get(label);
-      if (!g) { g = { label, count: 0, sums: zeroSums(), rows: [] }; byKey.set(label, g); }
-      g.count++;
-      g.rows.push(r.values);
-      addSums(g.sums, r.values);
-    }
-    groups = Array.from(byKey.values()).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+    // Bucket + subtotal via the shared helper so the sections match the table
+    // exactly, then order and project each member row to its display values.
+    const byKey = buildGroupBuckets(
+      rows,
+      (r) => r.values[groupIdx],
+      sumIdx,
+      (r, idx) => r.values[idx],
+      displayCell,
+    );
+    groups = orderGroups(Array.from(byKey.values()), sort ?? null, groupIdx, sumIdx)
+      .map((g) => ({ label: g.label, count: g.count, sums: g.sums, rows: g.rows.map((r) => r.values) }));
   }
 
   return { title, generatedAt, columns: exportCols, groups, rows: flatRows, groupColumnId, sumColumnIds, totals };

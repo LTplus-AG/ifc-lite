@@ -13,6 +13,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import JSZip from 'jszip';
 import { readBCF } from './reader.js';
 import { readFile } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
@@ -227,6 +228,105 @@ describe('BCF Reader - buildingSMART Test Files', () => {
       expect(topic.creationDate).toBeDefined();
       // Should be a valid ISO date string
       expect(new Date(topic.creationDate).toString()).not.toBe('Invalid Date');
+    });
+  });
+
+  describe('interop: foreign schema element ordering', () => {
+    it('reads a comment that precedes the <Viewpoints> block and decodes XML entities', async () => {
+      // BCF 2.1 schema order is Comment* then Viewpoints*, so a foreign tool's
+      // last comment is followed by <Viewpoints>, not </Markup>. Combined with
+      // the nested <Comment>text</Comment> field sharing the wrapper's tag name,
+      // a naive parser drops the comment or truncates its text to ''. This guards
+      // the parseComments lookahead + the extractElement entity-unescape.
+      const markup = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<Markup>',
+        '  <Topic Guid="topic-1" TopicType="Issue" TopicStatus="Open">',
+        '    <Title>Fire &amp; Smoke &lt;Wall&gt;</Title>',
+        '  </Topic>',
+        '  <Comment Guid="comment-1">',
+        '    <Date>2026-01-01T00:00:00Z</Date>',
+        '    <Author>alice@example.com</Author>',
+        '    <Comment>Needs REI 90 &amp; a &quot;review&quot;</Comment>',
+        '  </Comment>',
+        '  <Viewpoints Guid="vp-1">',
+        '    <Viewpoint>viewpoint.bcfv</Viewpoint>',
+        '  </Viewpoints>',
+        '</Markup>',
+      ].join('\n');
+
+      const zip = new JSZip();
+      zip.file('bcf.version', '<?xml version="1.0"?><Version VersionId="2.1"></Version>');
+      zip.file('topic-1/markup.bcf', markup);
+      const buffer = await zip.generateAsync({ type: 'arraybuffer' });
+
+      const project = await readBCF(buffer);
+      const topic = Array.from(project.topics.values())[0];
+
+      expect(topic).toBeDefined();
+      // Title entity-unescape round-trips.
+      expect(topic.title).toBe('Fire & Smoke <Wall>');
+      // The comment is not dropped despite being followed by <Viewpoints>, and
+      // its text is the wrapper's nested field (not '' from the tag collision),
+      // with XML entities decoded.
+      expect(topic.comments.length).toBe(1);
+      expect(topic.comments[0].comment).toBe('Needs REI 90 & a "review"');
+    });
+
+    it('reads a comment inside a BCF 3.0 <Comments> container', async () => {
+      // BCF 3.0 wraps comments in <Comments>, so the outer </Comment> is
+      // followed by </Comments> (not another comment or </Markup>). readBCF
+      // accepts version 3.0, so the parser must not drop these.
+      const markup = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<Markup>',
+        '  <Topic Guid="topic-1" TopicType="Issue" TopicStatus="Open">',
+        '    <Title>3.0 topic</Title>',
+        '  </Topic>',
+        '  <Comments>',
+        '    <Comment Guid="comment-1">',
+        '      <Date>2026-01-01T00:00:00Z</Date>',
+        '      <Author>bob@example.com</Author>',
+        '      <Comment>a wrapped 3.0 comment</Comment>',
+        '    </Comment>',
+        '  </Comments>',
+        '</Markup>',
+      ].join('\n');
+
+      const zip = new JSZip();
+      zip.file('bcf.version', '<?xml version="1.0"?><Version VersionId="3.0"></Version>');
+      zip.file('topic-1/markup.bcf', markup);
+      const buffer = await zip.generateAsync({ type: 'arraybuffer' });
+
+      const project = await readBCF(buffer);
+      const topic = Array.from(project.topics.values())[0];
+      expect(topic.comments.length).toBe(1);
+      expect(topic.comments[0].comment).toBe('a wrapped 3.0 comment');
+    });
+
+    it('reads a comment followed by an unknown vendor-extension element', async () => {
+      // A vendor element between the last comment and </Markup> must not cause
+      // the comment to be silently dropped.
+      const markup = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<Markup>',
+        '  <Topic Guid="topic-1"><Title>t</Title></Topic>',
+        '  <Comment Guid="comment-1">',
+        '    <Comment>vendor-followed comment</Comment>',
+        '  </Comment>',
+        '  <RevitExtensions><Foo>bar</Foo></RevitExtensions>',
+        '</Markup>',
+      ].join('\n');
+
+      const zip = new JSZip();
+      zip.file('bcf.version', '<?xml version="1.0"?><Version VersionId="2.1"></Version>');
+      zip.file('topic-1/markup.bcf', markup);
+      const buffer = await zip.generateAsync({ type: 'arraybuffer' });
+
+      const project = await readBCF(buffer);
+      const topic = Array.from(project.topics.values())[0];
+      expect(topic.comments.length).toBe(1);
+      expect(topic.comments[0].comment).toBe('vendor-followed comment');
     });
   });
 });

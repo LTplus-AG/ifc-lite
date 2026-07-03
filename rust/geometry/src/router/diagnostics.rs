@@ -371,6 +371,18 @@ pub struct RectFastSummary {
     pub defer_no_openings: u64,
 }
 
+/// Axis-aligned bounding box of a worst-failing host's mesh, world coords
+/// (post void-subtraction when a cut ran). Mirrors the `{min, max}` shape the
+/// rest of the geometry contract already uses for AABBs (see
+/// `packages/geometry/src/types.ts` `MeshData.localBounds`), so TS consumers
+/// don't need a second bbox convention.
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HostBbox {
+    pub min: [f32; 3],
+    pub max: [f32; 3],
+}
+
 /// One of the worst-failing host elements (bounded top-N, opt-in detail).
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -380,6 +392,16 @@ pub struct WorstHost {
     pub openings: u64,
     pub csg_failures: u64,
     pub first_failure_label: Option<String>,
+    /// World-space AABB of the host mesh, when captured by
+    /// `record_host_cut_effect` (opt-in per-product detail, #C1). `None` when
+    /// no void cut touched this host (e.g. the failure came from a
+    /// non-router CSG path).
+    pub bbox: Option<HostBbox>,
+    /// Final triangle count of the host's mesh: post-cut (`tris_after`) when a
+    /// void subtraction ran, falling back to the pre-cut count
+    /// (`tris_before`) when it didn't (the un-cut host is what actually
+    /// renders in that case). `None` when neither was captured.
+    pub triangle_count: Option<u64>,
 }
 
 /// Compatibility handshake for the [`GeometryDiagnostics`] contract, serialized
@@ -531,6 +553,11 @@ pub fn aggregate_diagnostics(
             openings: hd.openings.len() as u64,
             csg_failures: hd.csg_failure_count as u64,
             first_failure_label: hd.first_failure_label.clone(),
+            bbox: hd.host_bounds.map(|(min, max)| HostBbox {
+                min: [min.0, min.1, min.2],
+                max: [max.0, max.1, max.2],
+            }),
+            triangle_count: hd.tris_after.or(hd.tris_before).map(|t| t as u64),
         })
         .collect();
 
@@ -556,155 +583,4 @@ pub fn aggregate_diagnostics(
 }
 
 #[cfg(test)]
-mod diagnostics_contract_tests {
-    use super::*;
-    use crate::diagnostics::{BoolFailure, BoolFailureReason, BoolOp};
-    use crate::rect_fast::RectFastStats;
-
-    #[test]
-    fn aggregate_empty_is_all_zero() {
-        let d = aggregate_diagnostics(
-            ClassificationStats::default(),
-            &FxHashMap::default(),
-            &FxHashMap::default(),
-            RectFastStats::default(),
-            16,
-        );
-        assert_eq!(d.total_csg_failures, 0);
-        assert_eq!(d.products_with_failures, 0);
-        assert!(d.failures_by_reason.is_empty());
-        assert!(d.worst_hosts.is_empty());
-        assert!(!d.has_issues());
-    }
-
-    #[test]
-    fn aggregate_summarizes_failures_hosts_classification_and_silent_noops() {
-        let mut csg: FxHashMap<u32, Vec<BoolFailure>> = FxHashMap::default();
-        csg.insert(
-            5,
-            vec![BoolFailure::new(BoolOp::Difference, BoolFailureReason::DifferenceEmptiedHost)],
-        );
-        csg.insert(
-            7,
-            vec![
-                BoolFailure::new(BoolOp::Difference, BoolFailureReason::DifferenceEmptiedHost),
-                BoolFailure::new(BoolOp::Difference, BoolFailureReason::KernelOutputInvalid),
-            ],
-        );
-
-        let mut hosts: FxHashMap<u32, HostOpeningDiagnostic> = FxHashMap::default();
-        // A FAILED host (also unchanged tris) — must NOT be counted as a silent
-        // no-op because it recorded an explicit failure.
-        hosts.insert(
-            7,
-            HostOpeningDiagnostic {
-                host_type: "IfcWallStandardCase".into(),
-                csg_failure_count: 2,
-                first_failure_label: Some("DifferenceEmptiedHost".into()),
-                tris_before: Some(120),
-                tris_after: Some(120),
-                rect_boxes_processed: 1,
-                ..Default::default()
-            },
-        );
-        // A TRUE silent no-op host: rect cutters ran, tris unchanged, NO failure.
-        hosts.insert(
-            9,
-            HostOpeningDiagnostic {
-                host_type: "IfcSlab".into(),
-                csg_failure_count: 0,
-                tris_before: Some(50),
-                tris_after: Some(50),
-                rect_boxes_processed: 2,
-                ..Default::default()
-            },
-        );
-
-        let cls = ClassificationStats {
-            rectangular: 3,
-            diagonal: 1,
-            non_rectangular: 0,
-            floor_opening_guard_saved: 0,
-        };
-        let rf = RectFastStats { fired: 2, openings_cut: 4, ..Default::default() };
-
-        let d = aggregate_diagnostics(cls, &csg, &hosts, rf, 16);
-        assert_eq!(d.total_csg_failures, 3);
-        assert_eq!(d.products_with_failures, 2);
-        assert_eq!(d.hosts_with_openings, 2);
-        assert_eq!(d.classification.total, 4);
-        assert_eq!(d.classification.rectangular, 3);
-        // Only host 9 (clean, unchanged tris) counts; host 7 failed, so it is NOT
-        // a silent no-op.
-        assert_eq!(d.silent_no_ops, 1);
-        assert_eq!(d.rect_fast.fired, 2);
-        // Sorted desc by count: DifferenceEmptiedHost=2 then KernelOutputInvalid=1.
-        assert_eq!(d.failures_by_reason[0].reason, "DifferenceEmptiedHost");
-        assert_eq!(d.failures_by_reason[0].count, 2);
-        assert_eq!(d.worst_hosts.len(), 1);
-        assert_eq!(d.worst_hosts[0].product_id, 7);
-        assert_eq!(d.worst_hosts[0].csg_failures, 2);
-        assert!(d.has_issues());
-    }
-
-    #[test]
-    fn serializes_camelcase_keys_matching_the_ts_contract() {
-        // Guard the serde rename_all against drift from the @ifc-lite/geometry
-        // GeometryDiagnostics TS interface. The wasm getter uses the same renames
-        // via serde-wasm-bindgen, so this JSON key set is what crosses to JS.
-        let mut hosts: FxHashMap<u32, HostOpeningDiagnostic> = FxHashMap::default();
-        hosts.insert(
-            7,
-            HostOpeningDiagnostic {
-                host_type: "IfcWall".into(),
-                csg_failure_count: 1,
-                first_failure_label: Some("KernelError".into()),
-                ..Default::default()
-            },
-        );
-        let mut csg: FxHashMap<u32, Vec<BoolFailure>> = FxHashMap::default();
-        csg.insert(7, vec![BoolFailure::new(BoolOp::Difference, BoolFailureReason::KernelOutputInvalid)]);
-        let d = aggregate_diagnostics(
-            ClassificationStats { rectangular: 1, ..Default::default() },
-            &csg,
-            &hosts,
-            RectFastStats::default(),
-            16,
-        );
-        let v = serde_json::to_value(&d).expect("serializes");
-        for key in [
-            "totalCsgFailures",
-            "productsWithFailures",
-            "hostsWithOpenings",
-            "classification",
-            "failuresByReason",
-            "silentNoOps",
-            "rectFast",
-            "worstHosts",
-        ] {
-            assert!(v.get(key).is_some(), "missing top-level key {key}");
-        }
-        assert!(v["classification"].get("nonRectangular").is_some());
-        assert!(v["rectFast"].get("deferHostNotBox").is_some());
-        let wh = &v["worstHosts"][0];
-        for key in ["productId", "ifcType", "openings", "csgFailures", "firstFailureLabel"] {
-            assert!(wh.get(key).is_some(), "missing worstHosts key {key}");
-        }
-        let fr = &v["failuresByReason"][0];
-        assert!(fr.get("reason").is_some() && fr.get("count").is_some());
-    }
-
-    #[test]
-    fn schema_version_round_trips_and_defaults() {
-        let d = GeometryDiagnostics::default();
-        assert_eq!(d.schema_version, GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION);
-        let json = serde_json::to_string(&d).unwrap();
-        assert!(json.contains("\"schemaVersion\":1"), "serialized unconditionally: {json}");
-        let back: GeometryDiagnostics = serde_json::from_str(&json).unwrap();
-        assert_eq!(back.schema_version, GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION);
-        // A pre-versioned producer (field absent) deserializes to 0, distinguishable.
-        let legacy: GeometryDiagnostics =
-            serde_json::from_str(&json.replace("\"schemaVersion\":1,", "")).unwrap();
-        assert_eq!(legacy.schema_version, 0);
-    }
-}
+mod diagnostics_contract_tests;

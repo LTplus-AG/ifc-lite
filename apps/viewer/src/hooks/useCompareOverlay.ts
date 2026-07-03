@@ -95,7 +95,11 @@ export function useCompareOverlay(): void {
       return;
     }
 
-    const { colorOverrides, hiddenIds } = buildCompareOverlay(compareResult.diff, showUnchanged);
+    const { colorOverrides, hiddenIds } = buildCompareOverlay(
+      compareResult.diff,
+      showUnchanged,
+      compareResult.excludedHiddenIds,
+    );
     reconcileHidden(hiddenIds, ownedHiddenRef, store);
     // Empty map signals the consumer to clear overlays (lens contract).
     store.setPendingColorUpdates(colorOverrides);

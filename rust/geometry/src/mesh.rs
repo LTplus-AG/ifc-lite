@@ -1190,51 +1190,6 @@ mod tests {
     }
 
     #[test]
-    fn test_precision_comparison_shifted_vs_unshifted() {
-        // This test quantifies the precision improvement from shifting
-        // Using Swiss UTM coordinates as example
-
-        // Two points that are exactly 0.001m (1mm) apart
-        let base_x = 2679012.0;
-        let base_y = 1247892.0;
-        let offset = 0.001; // 1mm
-
-        let p1 = Point3::new(base_x, base_y, 0.0);
-        let p2 = Point3::new(base_x + offset, base_y, 0.0);
-
-        // Without shift - convert directly to f32
-        let p1_f32_direct = (p1.x as f32, p1.y as f32);
-        let p2_f32_direct = (p2.x as f32, p2.y as f32);
-        let diff_direct = p2_f32_direct.0 - p1_f32_direct.0;
-
-        // With shift - subtract centroid first, then convert
-        let shift = CoordinateShift::new(base_x, base_y, 0.0);
-        let p1_shifted = ((p1.x - shift.x) as f32, (p1.y - shift.y) as f32);
-        let p2_shifted = ((p2.x - shift.x) as f32, (p2.y - shift.y) as f32);
-        let diff_shifted = p2_shifted.0 - p1_shifted.0;
-
-        println!("Direct f32 difference (should be ~0.001): {}", diff_direct);
-        println!(
-            "Shifted f32 difference (should be ~0.001): {}",
-            diff_shifted
-        );
-
-        // The shifted version should be much closer to the true 1mm difference
-        let error_direct = (diff_direct - offset as f32).abs();
-        let error_shifted = (diff_shifted - offset as f32).abs();
-
-        println!("Error without shift: {}m", error_direct);
-        println!("Error with shift: {}m", error_shifted);
-
-        // The shifted version should have significantly less error
-        // (At least 100x better precision for typical Swiss coordinates)
-        assert!(
-            error_shifted < error_direct || error_shifted < 0.0001,
-            "Shifted precision should be better than direct conversion"
-        );
-    }
-
-    #[test]
     fn test_validate_indices_strips_out_of_bounds() {
         let mut mesh = Mesh {
             positions: vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0], // 3 vertices

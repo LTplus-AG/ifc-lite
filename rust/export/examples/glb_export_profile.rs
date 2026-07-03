@@ -95,6 +95,24 @@ fn main() {
         total_tris as f64 / t_mesh.as_secs_f64() / 1e6,
     );
 
+    // Faceted-brep point-cache instrumentation (perf/brep-point-cache hoist).
+    // `hits / (hits + misses)` is the cross-element memoization rate: a high rate
+    // on a shared-CartesianPoint model means the per-worker cache served shared
+    // points instead of re-parsing them per part (the case-047/048 driver).
+    // `faceted_brep_time_ms` is populated only when built with `--features
+    // observability` (native); it is 0 otherwise.
+    let s = &result.stats;
+    let cache_refs = s.point_cache_hits + s.point_cache_misses;
+    let hit_rate = if cache_refs > 0 {
+        s.point_cache_hits as f64 / cache_refs as f64 * 100.0
+    } else {
+        0.0
+    };
+    println!(
+        "brep pt-cache: {} hits, {} misses ({:.1}% memoized over {} point refs); faceted-brep phase {} ms",
+        s.point_cache_hits, s.point_cache_misses, hit_rate, cache_refs, s.faceted_brep_time_ms,
+    );
+
     // Per-type attribution of the geometry mass (top N by triangles).
     let mut by_type: HashMap<&str, (usize, usize)> = HashMap::new();
     for m in &result.meshes {

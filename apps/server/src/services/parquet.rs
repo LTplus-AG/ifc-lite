@@ -59,18 +59,25 @@ pub fn serialize_to_parquet(meshes: &[MeshData]) -> Result<Bytes, ParquetError> 
     frame_sections(&mesh_parquet, &vertex_parquet, &index_parquet)
 }
 
+/// Fail loud instead of silently truncating a wire-format `u32` length
+/// prefix when a section exceeds 4 GiB.
+fn check_u32_len(name: &str, len: usize) -> Result<(), ParquetError> {
+    if u32::try_from(len).is_err() {
+        return Err(ParquetError::Overflow(format!(
+            "{name} section is {len} bytes, over the u32 wire-format limit"
+        )));
+    }
+    Ok(())
+}
+
 /// Assemble the three Parquet buffers into the length-prefixed section layout
 /// shared by the whole-model serializer and the incremental cache writer.
 /// Section lengths are u32 on the wire; fail loud instead of truncating a
 /// section over 4 GiB into a silently corrupt blob.
 fn frame_sections(mesh: &[u8], vertex: &[u8], index: &[u8]) -> Result<Bytes, ParquetError> {
-    for (name, len) in [("mesh", mesh.len()), ("vertex", vertex.len()), ("index", index.len())] {
-        if u32::try_from(len).is_err() {
-            return Err(ParquetError::Overflow(format!(
-                "{name} section is {len} bytes, over the u32 wire-format limit"
-            )));
-        }
-    }
+    check_u32_len("mesh", mesh.len())?;
+    check_u32_len("vertex", vertex.len())?;
+    check_u32_len("index", index.len())?;
     let mut output = Vec::with_capacity(12 + mesh.len() + vertex.len() + index.len());
     output.extend_from_slice(&(mesh.len() as u32).to_le_bytes());
     output.extend_from_slice(mesh);
@@ -78,6 +85,34 @@ fn frame_sections(mesh: &[u8], vertex: &[u8], index: &[u8]) -> Result<Bytes, Par
     output.extend_from_slice(vertex);
     output.extend_from_slice(&(index.len() as u32).to_le_bytes());
     output.extend_from_slice(index);
+    Ok(Bytes::from(output))
+}
+
+/// Assemble the three Parquet buffers directly into the OUTER combined
+/// framing the parse endpoints wrap the geometry blob in:
+/// `[geo_len:u32][geo_bytes][data_model_len=0:u32]`, where `geo_bytes` is
+/// exactly `frame_sections`'s `[mesh_len][mesh][vertex_len][vertex][index_len][index]`
+/// layout. Endpoints that don't attach a data model inline (the streamed
+/// cache fill) previously called `frame_sections` for the inner blob and then
+/// copied that whole blob a second time into an outer `Vec` to add the
+/// `[geo_len]...[dm_len=0]` wrapper. Writing both frames into one
+/// pre-sized allocation skips that second copy; the resulting bytes are
+/// identical to the old two-copy path.
+fn frame_combined_sections(mesh: &[u8], vertex: &[u8], index: &[u8]) -> Result<Bytes, ParquetError> {
+    check_u32_len("mesh", mesh.len())?;
+    check_u32_len("vertex", vertex.len())?;
+    check_u32_len("index", index.len())?;
+    let inner_len = 12 + mesh.len() + vertex.len() + index.len();
+    check_u32_len("geometry", inner_len)?;
+    let mut output = Vec::with_capacity(4 + inner_len + 4);
+    output.extend_from_slice(&(inner_len as u32).to_le_bytes());
+    output.extend_from_slice(&(mesh.len() as u32).to_le_bytes());
+    output.extend_from_slice(mesh);
+    output.extend_from_slice(&(vertex.len() as u32).to_le_bytes());
+    output.extend_from_slice(vertex);
+    output.extend_from_slice(&(index.len() as u32).to_le_bytes());
+    output.extend_from_slice(index);
+    output.extend_from_slice(&0u32.to_le_bytes());
     Ok(Bytes::from(output))
 }
 
@@ -408,11 +443,31 @@ impl StreamingParquetCacheWriter {
 
     /// Close all three writers and assemble the `[len][mesh][len][vert][len][idx]`
     /// section blob, identical in framing to `serialize_to_parquet`.
+    ///
+    /// Test-only (`#[cfg(test)]`): no production caller needs the bare inner
+    /// blob anymore (the parquet-stream route uses `finish_combined()`), so it
+    /// stays out of the production binary. It survives as the direct
+    /// counterpart to `serialize_to_parquet` for
+    /// `incremental_writer_matches_one_shot_serializer`, which pins the
+    /// incremental writer's decode-equivalence independent of the outer frame.
+    #[cfg(test)]
     pub fn finish(self) -> Result<Bytes, ParquetError> {
         let mesh = self.mesh_w.into_inner()?;
         let vertex = self.vert_w.into_inner()?;
         let index = self.idx_w.into_inner()?;
         frame_sections(&mesh, &vertex, &index)
+    }
+
+    /// Close all three writers and assemble the OUTER combined
+    /// `[geo_len][geo_bytes][data_model_len=0]` blob the parquet-stream route
+    /// caches, in one allocation. Equivalent to wrapping `finish()`'s output
+    /// with the route's `[geo_len]...[dm_len=0]` framing, but without
+    /// copying the inner geometry blob a second time to do it.
+    pub fn finish_combined(self) -> Result<Bytes, ParquetError> {
+        let mesh = self.mesh_w.into_inner()?;
+        let vertex = self.vert_w.into_inner()?;
+        let index = self.idx_w.into_inner()?;
+        frame_combined_sections(&mesh, &vertex, &index)
     }
 }
 
@@ -458,127 +513,10 @@ fn writer_props(schema: &Schema) -> WriterProperties {
     props_builder.build()
 }
 
+// The unit tests live in the ratchet-exempt sibling file `parquet_tests.rs`
+// (kept out of this module to stay under the module-size budget). `#[path]`
+// points at the sibling while it remains a child module, so `use super::*`
+// still reaches this file's private helpers.
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_parquet_serialization() {
-        let meshes = vec![
-            MeshData::new(
-                1,
-                "IfcWall".to_string(),
-                vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0],
-                vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
-                vec![0, 1, 2],
-                [0.8, 0.8, 0.8, 1.0],
-            ),
-            MeshData::new(
-                2,
-                "IfcSlab".to_string(),
-                vec![0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 2.0, 2.0, 0.0, 0.0, 2.0, 0.0],
-                vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
-                vec![0, 1, 2, 0, 2, 3],
-                [0.5, 0.5, 0.5, 1.0],
-            ),
-        ];
-
-        let result = serialize_to_parquet(&meshes);
-        assert!(result.is_ok());
-
-        let data = result.unwrap();
-        // Should be much smaller than JSON equivalent
-        // Note: Parquet has fixed overhead (~4KB headers), so small test data may appear larger
-        // Real-world compression is 15x+ on actual IFC geometry data
-        assert!(
-            data.len() < 10000,
-            "Expected compact output, got {} bytes",
-            data.len()
-        );
-    }
-
-    /// Decode one framed section blob back into its three tables.
-    fn read_sections(blob: &[u8]) -> Vec<Vec<RecordBatch>> {
-        use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
-        let mut out = Vec::new();
-        let mut off = 0usize;
-        for _ in 0..3 {
-            let len = u32::from_le_bytes(blob[off..off + 4].try_into().unwrap()) as usize;
-            off += 4;
-            let section = Bytes::copy_from_slice(&blob[off..off + len]);
-            off += len;
-            let reader = ParquetRecordBatchReaderBuilder::try_new(section)
-                .unwrap()
-                .build()
-                .unwrap();
-            out.push(reader.map(|b| b.unwrap()).collect::<Vec<_>>());
-        }
-        assert_eq!(off, blob.len(), "trailing bytes after the three sections");
-        out
-    }
-
-    /// Concatenate row groups per column into one comparable table.
-    fn concat_all(batches: &[RecordBatch]) -> RecordBatch {
-        let schema = batches[0].schema();
-        arrow::compute::concat_batches(&schema, batches).unwrap()
-    }
-
-    /// The incremental cache writer must produce a blob DECODE-equivalent to
-    /// the one-shot serializer for the same meshes: same schemas, same rows,
-    /// same GLOBAL vertex/index offsets - only the row-group layout differs.
-    #[test]
-    fn incremental_writer_matches_one_shot_serializer() {
-        let mesh = |id: u32, verts: usize| {
-            let mut positions = Vec::new();
-            for v in 0..verts {
-                positions.extend_from_slice(&[v as f32, id as f32, 0.5 * v as f32]);
-            }
-            let normals = vec![0.0; verts * 3];
-            let indices: Vec<u32> = (0..(verts as u32 / 3) * 3).collect();
-            MeshData::new(id, format!("IfcThing{id}"), positions, normals, indices, [0.1, 0.2, 0.3, 1.0])
-        };
-        let meshes: Vec<MeshData> = (1..=7).map(|i| mesh(i, 3 * i as usize)).collect();
-
-        let one_shot = serialize_to_parquet(&meshes).unwrap();
-
-        let mut writer = StreamingParquetCacheWriter::new().unwrap();
-        // Uneven batches on purpose: 2 + 4 + 1.
-        writer.append(&meshes[0..2]).unwrap();
-        writer.append(&meshes[2..6]).unwrap();
-        writer.append(&meshes[6..7]).unwrap();
-        assert_eq!(writer.mesh_count(), 7);
-        let incremental = writer.finish().unwrap();
-
-        let a = read_sections(&one_shot);
-        let b = read_sections(&incremental);
-        for (section_a, section_b) in a.iter().zip(b.iter()) {
-            let ta = concat_all(section_a);
-            let tb = concat_all(section_b);
-            assert_eq!(ta.schema(), tb.schema());
-            assert_eq!(ta.num_rows(), tb.num_rows());
-            assert_eq!(ta, tb, "decoded tables must be identical (incl. global offsets)");
-        }
-    }
-
-    /// Regression test for #586: meshes with positions but no normals
-    /// (e.g. `advanced_brep.ifc`) used to panic with "index out of bounds"
-    /// inside the rayon worker, taking down the server process.
-    #[test]
-    fn test_serialize_mesh_without_normals() {
-        let meshes = vec![MeshData::new(
-            42,
-            "IfcAdvancedBrep".to_string(),
-            vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0],
-            Vec::new(), // no normals — must not panic
-            vec![0, 1, 2],
-            [0.8, 0.8, 0.8, 1.0],
-        )];
-
-        let result = serialize_to_parquet(&meshes);
-        assert!(
-            result.is_ok(),
-            "serialize_to_parquet should not panic on empty normals: {:?}",
-            result.err()
-        );
-    }
-}
+#[path = "parquet_tests.rs"]
+mod parquet_tests;

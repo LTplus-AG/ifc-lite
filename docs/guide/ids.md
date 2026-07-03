@@ -25,7 +25,7 @@ console.log(`${idsDocument.info.title}`);
 console.log(`${idsDocument.specifications.length} specifications`);
 
 for (const spec of idsDocument.specifications) {
-  console.log(`  ${spec.name} [${spec.optionality}]`);
+  console.log(`  ${spec.name}`);
 }
 ```
 
@@ -39,29 +39,36 @@ const idsDocument = parseIDS(idsXml);
 
 // Create a data accessor that bridges IDS to your IFC data
 const accessor: IFCDataAccessor = {
-  getEntities: () => allEntities,
+  getAllEntityIds: () => allEntityIds,
+  getEntitiesByType: (type) => entitiesByType.get(type) ?? [],
   getEntityType: (id) => entityTypeMap.get(id),
+  getEntityName: (id) => getName(id),
+  getGlobalId: (id) => getGuid(id),
+  getDescription: (id) => getDescriptionText(id),
+  getObjectType: (id) => getPredefinedType(id),
   getPropertyValue: (id, pset, prop) => getProperty(id, pset, prop),
-  getClassification: (id) => getClassificationInfo(id),
-  getMaterial: (id) => getMaterialInfo(id),
-  getParent: (id) => getParentInfo(id),
+  getPropertySets: (id) => getPropertySetInfo(id),
+  getClassifications: (id) => getClassificationInfo(id),
+  getMaterials: (id) => getMaterialInfo(id),
+  getParent: (id, relation) => getParentInfo(id, relation),
   getAttribute: (id, attr) => getAttributeValue(id, attr),
 };
 
 // Model info for the validation report
 const modelInfo: IDSModelInfo = {
-  filename: 'model.ifc',
-  schema: 'IFC4',
+  modelId: 'model.ifc',
+  schemaVersion: 'IFC4',
+  entityCount: allEntityIds.length,
 };
 
 // Validate (requires: document, accessor, modelInfo, options?)
 const report = await validateIDS(idsDocument, accessor, modelInfo, {
-  onProgress: (progress) => console.log(`${progress.phase}: ${progress.percent}%`),
+  onProgress: (progress) => console.log(`${progress.phase}: ${progress.percentage}%`),
 });
 
-console.log(`${report.summary.totalEntities} entities checked`);
-console.log(`${report.summary.passedEntities} passed`);
-console.log(`${report.summary.failedEntities} failed`);
+console.log(`${report.summary.totalEntitiesChecked} entities checked`);
+console.log(`${report.summary.totalEntitiesPassed} passed`);
+console.log(`${report.summary.totalEntitiesFailed} failed`);
 ```
 
 ## Facet Types

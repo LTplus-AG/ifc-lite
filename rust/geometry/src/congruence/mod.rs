@@ -28,6 +28,12 @@
 //! iterative eigensolver/SVD is fine; production would need the closed-form
 //! Cardano path noted in the design.
 
+// Whole module (mod.rs + engine + report) is a measurement-only spike driven
+// solely by `congruence::tests`; it has no production caller. Narrowing
+// `congruence` to `pub(crate)` in C3.2 surfaced it as dead in non-test builds
+// (it was already unreachable by any external crate), so allow it module-wide.
+#![allow(dead_code)]
+
 mod engine;
 mod report;
 
@@ -37,7 +43,9 @@ use nalgebra::{Matrix3, Vector3};
 use rustc_hash::FxHashMap;
 use std::sync::{Mutex, OnceLock};
 
-pub use report::{analyze_rigid_dedup, RigidDedupReport};
+// `report::analyze_rigid_dedup`/`RigidDedupReport` have no consumer (production
+// or test), so they are not re-exported here; they remain in `report` as spike
+// artifacts under the module-level dead-code allow above.
 
 // ----------------------------------------------------------------------------
 // Analysis collector — populated in processing::tag_direct_instance under the
@@ -68,6 +76,9 @@ pub fn record_local(rep_identity: u128, mesh: &Mesh) {
 
 /// Drain the collected distinct local meshes, sorted by rep_identity for
 /// deterministic analysis order.
+///
+/// No caller today (Phase-0 measurement spike, see module doc above);
+/// narrowing `congruence` to `pub(crate)` in C3.2 surfaced that as unused.
 pub fn take_locals() -> Vec<(u128, Mesh)> {
     let mut map = collector().lock().expect("analysis collector poisoned");
     let mut out: Vec<(u128, Mesh)> = std::mem::take(&mut *map).into_iter().collect();
@@ -86,6 +97,12 @@ pub fn rigid_enabled() -> bool {
     static ENABLED: OnceLock<bool> = OnceLock::new();
     *ENABLED.get_or_init(|| std::env::var("IFC_LITE_RIGID_INSTANCING").is_ok())
 }
+
+// The rest of this "production rigid tier" (RigidClass..build_rigid_map) is
+// driven only by `congruence::tests` today (Phase-0 measurement spike, see
+// module doc above); narrowing `congruence` to `pub(crate)` in C3.2 surfaced
+// it as unused in non-test builds. It was already unreachable by any
+// external crate before that change.
 
 /// Result of classifying a local mesh into the rigid tier.
 #[derive(Clone, Copy)]

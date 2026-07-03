@@ -11,7 +11,7 @@ replica.
 | Variable | Default | Meaning |
 |---|---|---|
 | `IFC_MAX_CONCURRENT_PARSES` | `WORKER_THREADS` (= cores) | Parse jobs running at once (CPU gate) |
-| `IFC_MEM_BUDGET_MB` | 70% of the cgroup memory limit, else 0 | Total admitted upload bytes at once; `0` disables the byte gate |
+| `IFC_MEM_BUDGET_MB` | 70% of the tightest readable ceiling (cgroup, else physical RAM), else 0 | Total admitted upload bytes at once; `0` is an explicit opt-out that disables the byte gate |
 | `IFC_ADMISSION_QUEUE_DEPTH` | `2 * WORKER_THREADS` | Requests allowed to wait for a slot before immediate 503 |
 | `IFC_ADMISSION_QUEUE_TIMEOUT_SECS` | `5` | Longest a queued request waits before 503 |
 | `IFC_MEM_SHED_PCT` | `85` | RSS percentage of the budget above which new work is shed |
@@ -27,8 +27,16 @@ Budget roughly `file_size x (1x upload buffer + 3-6x decode/mesh working set)`
 for geometry-heavy models; the multiplier is workload-dependent, re-measure on
 your corpus. Concretely for a single-replica box:
 
-- set `IFC_MEM_BUDGET_MB` to about 70% of instance RAM (the cgroup default
-  does this for you inside containers),
+- `IFC_MEM_BUDGET_MB` defaults to 70% of the tightest readable memory ceiling:
+  the cgroup limit inside containers, or physical RAM on a bare VM, so the
+  memory gate is active out of the box on both. Only when neither is readable
+  (non-Linux, or `/proc` unavailable) does it fall back to `0` (gate off), which
+  the server logs a startup `WARN` about. Set it explicitly to override, or to
+  `0` to opt out deliberately. Caveat: the physical-RAM fallback reads
+  `/proc/meminfo` `MemTotal`, which is HOST-wide. In a container run with **no**
+  cgroup memory limit, that budget reflects the whole host, not the pod's usable
+  RAM, so set `IFC_MEM_BUDGET_MB` explicitly (or give the container a memory
+  limit) in that case,
 - keep `IFC_MAX_CONCURRENT_PARSES` at the core count,
 - lower `MAX_FILE_SIZE_MB` below 500 unless the box has multiple GB of
   headroom per concurrent slot,

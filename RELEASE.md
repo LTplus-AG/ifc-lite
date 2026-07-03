@@ -48,8 +48,8 @@ Add support for IFC4X3 entities
 
 2. **When "Version Packages" PR is merged**:
    - All packages are automatically built
-   - npm packages are published to npm registry (18 `@ifc-lite/*` packages + `create-ifc-lite`)
-   - Rust crates are published to crates.io (`ifc-lite-core`, `ifc-lite-geometry`, `ifc-lite-wasm`)
+   - npm packages are published to npm registry (35 `@ifc-lite/*` packages + `create-ifc-lite`)
+   - Rust crates are published to crates.io (`ifc-lite-core`, `ifc-lite-geometry`, `ifc-lite-clash`, `ifc-lite-processing`, `ifc-lite-ffi`, `ifc-lite-wasm`)
    - GitHub Release is created with version tag
    - Server binaries are cross-compiled for 6 platforms (Linux x64/ARM64/musl, macOS x64/ARM64, Windows x64) and attached to the release
 
@@ -60,7 +60,7 @@ PR with changeset → Merge to main → "Version Packages" PR created
                                             ↓
                                     Review & Merge
                                             ↓
-                    Build → Publish npm (18 packages) → Publish Rust (3 crates)
+                    Build → Publish npm (36 packages) → Publish Rust (6 crates)
                                             ↓
                     Create GitHub Release → Build server binaries (6 platforms)
 ```

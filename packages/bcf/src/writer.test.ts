@@ -320,4 +320,161 @@ describe('BCF Writer', () => {
     expect(readViewpoint?.perspectiveCamera).toBeDefined();
     expect(readViewpoint?.perspectiveCamera?.fieldOfView).toBe(60);
   });
+
+  // Regression: writer.escapeXml() and reader.extractElement() must be inverses.
+  // Before the fix, extractElement() used a plain "grab text between tags" regex
+  // with no entity unescaping, so a title of `A & B` came back as the literal
+  // string "A &amp; B" instead of "A & B".
+  it('should roundtrip XML special characters in title, description, and comment (escapeXml/unescapeXml)', async () => {
+    const topicGuid = generateUuid();
+    const commentGuid = generateUuid();
+    const nasty = `A & B <C> "quoted" 'apos' end`;
+
+    const topic: BCFTopic = {
+      guid: topicGuid,
+      title: nasty,
+      description: nasty,
+      creationDate: new Date().toISOString(),
+      creationAuthor: 'test@example.com',
+      viewpoints: [],
+      comments: [
+        {
+          guid: commentGuid,
+          date: new Date().toISOString(),
+          author: 'test@example.com',
+          comment: nasty,
+        },
+      ],
+    };
+
+    const project: BCFProject = {
+      version: '2.1',
+      topics: new Map([[topicGuid, topic]]),
+    };
+
+    const blob = await writeBCF(project);
+    const zip = await JSZip.loadAsync(await blobToArrayBuffer(blob));
+
+    // The emitted XML must be well-formed: the raw special characters must not
+    // appear unescaped inside element text (only inside their escaped forms).
+    const markupContent = await zip.file(`${topicGuid}/markup.bcf`)?.async('string');
+    expect(markupContent).toBeDefined();
+    const titleMatch = markupContent!.match(/<Title>([\s\S]*?)<\/Title>/);
+    expect(titleMatch?.[1]).toBe('A &amp; B &lt;C&gt; &quot;quoted&quot; &apos;apos&apos; end');
+    // No raw '<' or '>' from the payload leaked in as unescaped markup delimiters.
+    expect(titleMatch?.[1]).not.toContain('<C>');
+
+    const readProject = await readBCF(await blob.arrayBuffer());
+    const readTopic = readProject.topics.get(topicGuid);
+
+    expect(readTopic?.title).toBe(nasty);
+    expect(readTopic?.description).toBe(nasty);
+    expect(readTopic?.comments[0]?.comment).toBe(nasty);
+  });
+
+  it('should roundtrip Lines, ClippingPlanes, Bitmaps, BimSnippet, and DocumentReferences', async () => {
+    const topicGuid = generateUuid();
+    const viewpointGuid = generateUuid();
+
+    const viewpoint: BCFViewpoint = {
+      guid: viewpointGuid,
+      lines: [
+        {
+          startPoint: { x: 0, y: 0, z: 0 },
+          endPoint: { x: 1, y: 2, z: 3 },
+        },
+      ],
+      clippingPlanes: [
+        {
+          location: { x: 0, y: 0, z: 1.5 },
+          direction: { x: 0, y: 0, z: -1 },
+        },
+      ],
+      bitmaps: [
+        {
+          format: 'PNG',
+          reference: 'bitmap1.png',
+          location: { x: 1, y: 1, z: 1 },
+          normal: { x: 0, y: 0, z: 1 },
+          up: { x: 0, y: 1, z: 0 },
+          height: 2.5,
+        },
+      ],
+    };
+
+    const topic: BCFTopic = {
+      guid: topicGuid,
+      title: 'Markup elements test',
+      creationDate: new Date().toISOString(),
+      creationAuthor: 'test@example.com',
+      viewpoints: [viewpoint],
+      comments: [],
+      bimSnippet: {
+        snippetType: 'IFC',
+        isExternal: true,
+        reference: 'https://example.com/snippet.ifc',
+        referenceSchema: 'https://example.com/schema.xsd',
+      },
+      documentReferences: [
+        {
+          guid: generateUuid(),
+          isExternal: true,
+          referencedDocument: 'https://example.com/spec.pdf',
+          description: 'Spec & Requirements',
+        },
+      ],
+    };
+
+    const project: BCFProject = {
+      version: '2.1',
+      topics: new Map([[topicGuid, topic]]),
+    };
+
+    const blob = await writeBCF(project);
+    const readProject = await readBCF(await blob.arrayBuffer());
+    const readTopic = readProject.topics.get(topicGuid);
+    expect(readTopic).toBeDefined();
+
+    // Lines
+    const readViewpoint = readTopic!.viewpoints[0];
+    expect(readViewpoint.lines).toHaveLength(1);
+    expect(readViewpoint.lines?.[0]).toEqual({
+      startPoint: { x: 0, y: 0, z: 0 },
+      endPoint: { x: 1, y: 2, z: 3 },
+    });
+
+    // ClippingPlanes
+    expect(readViewpoint.clippingPlanes).toHaveLength(1);
+    expect(readViewpoint.clippingPlanes?.[0]).toEqual({
+      location: { x: 0, y: 0, z: 1.5 },
+      direction: { x: 0, y: 0, z: -1 },
+    });
+
+    // Bitmaps
+    expect(readViewpoint.bitmaps).toHaveLength(1);
+    expect(readViewpoint.bitmaps?.[0]).toMatchObject({
+      format: 'PNG',
+      reference: 'bitmap1.png',
+      location: { x: 1, y: 1, z: 1 },
+      normal: { x: 0, y: 0, z: 1 },
+      up: { x: 0, y: 1, z: 0 },
+      height: 2.5,
+    });
+
+    // BimSnippet
+    expect(readTopic!.bimSnippet).toEqual({
+      snippetType: 'IFC',
+      isExternal: true,
+      reference: 'https://example.com/snippet.ifc',
+      referenceSchema: 'https://example.com/schema.xsd',
+    });
+
+    // DocumentReferences
+    expect(readTopic!.documentReferences).toHaveLength(1);
+    expect(readTopic!.documentReferences?.[0]).toMatchObject({
+      isExternal: true,
+      referencedDocument: 'https://example.com/spec.pdf',
+      description: 'Spec & Requirements',
+    });
+  });
 });

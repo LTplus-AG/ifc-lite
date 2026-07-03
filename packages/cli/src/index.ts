@@ -68,6 +68,7 @@ const HELP = `
     props     <file.ifc> --id <N>                 All properties for a single entity
     export    <file.ifc> --format csv|json|ifc|hbjson  Export data / Honeybee energy model
     diagnose-geometry <file.ifc> [--json]        CSG / opening diagnostics (failures, classification)
+                      [--product ID|GUID] [--type T]  Filter worst-hosts detail to one product/type
     ids       <file.ifc> <rules.ids>              Validate against IDS rules
     bcf       <create|list|add-comment>           Work with BCF collaboration files
     clash     <file.ifc> [--matrix] [--bcf F]      Detect geometric clashes between elements
@@ -114,6 +115,9 @@ const HELP = `
     ifc-lite props model.ifc --id 42
     ifc-lite export model.ifc --format csv --type IfcWall --columns Name,Type,GlobalId
     ifc-lite export model.ifc --format json --type IfcWall,IfcDoor
+    ifc-lite diagnose-geometry model.ifc --json
+    ifc-lite diagnose-geometry model.ifc --type IfcWall
+    ifc-lite diagnose-geometry model.ifc --product 0YvCT2_$X3_xJG3rzD8L_8
     ifc-lite ids model.ifc requirements.ids --json
     ifc-lite bcf create --title "Missing door" --out issue.bcf
     ifc-lite clash model.ifc --matrix --json

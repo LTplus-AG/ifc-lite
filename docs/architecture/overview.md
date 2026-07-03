@@ -193,18 +193,19 @@ Combine the best of different data structures:
 
 ## Package Architecture
 
-The monorepo contains 18 TypeScript packages, 4 Rust crates, and multiple application targets.
+The monorepo contains over 30 TypeScript packages and 8 Rust workspace crates, plus multiple application targets. The diagram below highlights a selected subset.
 
 ```mermaid
 graph TB
     subgraph Rust["Rust Crates"]
         Core["ifc-lite-core<br/>Parsing"]
         Geo["ifc-lite-geometry<br/>Triangulation"]
+        Processing["ifc-lite-processing<br/>Element meshing"]
         Wasm["ifc-lite-wasm<br/>Bindings"]
         Server["ifc-lite-server<br/>HTTP API"]
     end
 
-    subgraph TS["TypeScript Packages (18)"]
+    subgraph TS["TypeScript Packages (selected)"]
         Parser["@ifc-lite/parser"]
         IFCX["@ifc-lite/ifcx"]
         Geometry["@ifc-lite/geometry"]
@@ -222,13 +223,13 @@ graph TB
         Spatial["@ifc-lite/spatial"]
         Codegen["@ifc-lite/codegen"]
         WasmTS["@ifc-lite/wasm"]
-        CreateCLI["@ifc-lite/create-ifc-lite"]
+        CreateCLI["create-ifc-lite"]
     end
 
     subgraph Apps["Applications"]
         Viewer["Viewer App"]
         Desktop["Desktop (3rd-party Tauri)"]
-        CLI["create-ifc-lite"]
+        CLI["@ifc-lite/cli<br/>(ifc-lite)"]
     end
 
     Wasm --> Core
@@ -603,23 +604,23 @@ graph TB
     Plugins -.->|hooks| Core
 ```
 
-### Adding Custom Geometry Processor
+### Using the Geometry Processor
+
+`GeometryProcessor` is the entry point for turning IFC bytes into meshes. Construct it with options, call `init()`, then either `process()` a whole buffer or `processStreaming()` for large files.
 
 ```typescript
-import { GeometryProcessor, ProcessorRegistry } from '@ifc-lite/geometry';
+import { GeometryProcessor } from '@ifc-lite/geometry';
 
-class CustomProcessor extends GeometryProcessor {
-  canProcess(entity: Entity): boolean {
-    return entity.type === 'IFCMYCUSTOMTYPE';
-  }
+const processor = new GeometryProcessor({ enableInstancing: true });
+await processor.init();
 
-  process(entity: Entity): Mesh {
-    // Custom processing logic
-    return mesh;
-  }
+// Small/medium files: process the whole buffer at once
+const result = await processor.process(ifcBytes);
+
+// Large files: stream meshes batch by batch
+for await (const batch of processor.processStreaming(ifcBytes)) {
+  // handle each batch of meshes
 }
-
-ProcessorRegistry.register(new CustomProcessor());
 ```
 
 ## Technology Stack

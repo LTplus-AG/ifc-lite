@@ -6,9 +6,13 @@
 //! kernel's predicate sign manifest (`ifc_lite_geometry::kernel::manifest`).
 //!
 //! Runs the full `process_geometry` pipeline over a small synthetic fixture
-//! and FNV-1a-hashes the emitted wire bytes: per-mesh
-//! (express id, geometry class, position/normal f32 bits, indices, origin f64
-//! bits) in emit order, plus the sorted `flat_voids`, `flat_material_colors`
+//! and FNV-1a-hashes the emitted wire bytes: per-mesh, in emit order, as three
+//! separate hashes - `positions_hash` (position f32 bits), `normals_hash`
+//! (normal f32 bits), and `indices_origin_hash` (express id, geometry class,
+//! indices, origin f64 bits) - so the cross-target guard can assert positions
+//! and topology byte-identical on every target while exempting only the curved
+//! mesh's normals for the libm trig gap. Plus the sorted `flat_voids`,
+//! `flat_material_colors`
 //! and `flat_styles_rgba8` wire arrays. The resulting [`MeshManifest`] is
 //! pinned in `rust/processing/tests/manifests/mesh_determinism.json`
 //! (asserted on x86_64 AND arm64) and in its wasm32 pair (identical except
@@ -174,9 +178,18 @@ pub struct MeshManifestEntry {
     pub geometry_class: u8,
     pub vertex_count: usize,
     pub triangle_count: usize,
-    /// FNV-1a over (express_id, geometry_class, position f32 bits, normal f32
-    /// bits, indices, origin f64 bits), all little-endian.
-    pub hash: String,
+    /// FNV-1a over the position f32 bits (little-endian). Split out from the
+    /// normals so the cross-target guard can assert it byte-identical for EVERY
+    /// mesh, including the curved-profile one: the circle-tessellation libm
+    /// sin/cos gap lands in the near-zero radial-normal components, not here.
+    pub positions_hash: String,
+    /// FNV-1a over the normal f32 bits. The ONLY per-mesh surface allowed to
+    /// differ across targets, and only for the curved-profile mesh (see the
+    /// wasm leg's trig-gap guard).
+    pub normals_hash: String,
+    /// FNV-1a over (express_id, geometry_class, indices u32, origin f64 bits) -
+    /// identity, topology and placement, byte-identical across all targets.
+    pub indices_origin_hash: String,
 }
 
 /// The pinned mesh-output determinism fingerprint.
@@ -298,16 +311,24 @@ pub fn compute_mesh_manifest() -> MeshManifest {
     let mut vertex_count = 0usize;
     let mut triangle_count = 0usize;
     for mesh in &result.meshes {
-        let mut h = FNV_OFFSET_BASIS;
-        fnv1a_bytes(&mut h, &mesh.express_id.to_le_bytes());
-        fnv1a_bytes(&mut h, &[mesh.geometry_class]);
-        fnv1a_f32_bits(&mut h, &mesh.positions);
-        fnv1a_f32_bits(&mut h, &mesh.normals);
-        fnv1a_u32s(&mut h, &mesh.indices);
+        // Positions alone: the surface asserted byte-identical on EVERY target.
+        let mut hp = FNV_OFFSET_BASIS;
+        fnv1a_f32_bits(&mut hp, &mesh.positions);
+        // Normals alone: the only per-mesh surface with a documented trig gap.
+        let mut hn = FNV_OFFSET_BASIS;
+        fnv1a_f32_bits(&mut hn, &mesh.normals);
+        // Identity + topology + placement: all cross-target byte-identical.
+        let mut hio = FNV_OFFSET_BASIS;
+        fnv1a_bytes(&mut hio, &mesh.express_id.to_le_bytes());
+        fnv1a_bytes(&mut hio, &[mesh.geometry_class]);
+        fnv1a_u32s(&mut hio, &mesh.indices);
         for c in mesh.origin {
-            fnv1a_bytes(&mut h, &c.to_bits().to_le_bytes());
+            fnv1a_bytes(&mut hio, &c.to_bits().to_le_bytes());
         }
-        fnv1a_bytes(&mut top, &h.to_le_bytes());
+        // Fold all three into the top-level fingerprint in a fixed order.
+        fnv1a_bytes(&mut top, &hp.to_le_bytes());
+        fnv1a_bytes(&mut top, &hn.to_le_bytes());
+        fnv1a_bytes(&mut top, &hio.to_le_bytes());
         vertex_count += mesh.positions.len() / 3;
         triangle_count += mesh.indices.len() / 3;
         meshes.push(MeshManifestEntry {
@@ -315,7 +336,9 @@ pub fn compute_mesh_manifest() -> MeshManifest {
             geometry_class: mesh.geometry_class,
             vertex_count: mesh.positions.len() / 3,
             triangle_count: mesh.indices.len() / 3,
-            hash: hex(h),
+            positions_hash: hex(hp),
+            normals_hash: hex(hn),
+            indices_origin_hash: hex(hio),
         });
     }
 
@@ -420,22 +443,57 @@ pub fn diff_report(expected: &MeshManifest, actual: &MeshManifest) -> Option<Str
             expected.style_entry_count, actual.style_entry_count
         ));
     }
+    let fmt = |m: &MeshManifestEntry| {
+        format!(
+            "#{} class {} v{} t{} pos={} nrm={} io={}",
+            m.express_id,
+            m.geometry_class,
+            m.vertex_count,
+            m.triangle_count,
+            m.positions_hash,
+            m.normals_hash,
+            m.indices_origin_hash,
+        )
+    };
     let common = expected.meshes.len().min(actual.meshes.len());
     for i in 0..common {
         let (e, a) = (&expected.meshes[i], &actual.meshes[i]);
         if e != a {
+            let mut which = Vec::new();
+            if e.express_id != a.express_id {
+                which.push("express_id");
+            }
+            if e.geometry_class != a.geometry_class {
+                which.push("geometry_class");
+            }
+            if e.vertex_count != a.vertex_count {
+                which.push("vertex_count");
+            }
+            if e.triangle_count != a.triangle_count {
+                which.push("triangle_count");
+            }
+            if e.positions_hash != a.positions_hash {
+                which.push("positions");
+            }
+            if e.normals_hash != a.normals_hash {
+                which.push("normals");
+            }
+            if e.indices_origin_hash != a.indices_origin_hash {
+                which.push("indices/origin");
+            }
             lines.push(format!(
-                "mesh[{i}]: expected #{} class {} v{} t{} {} got #{} class {} v{} t{} {}",
-                e.express_id, e.geometry_class, e.vertex_count, e.triangle_count, e.hash,
-                a.express_id, a.geometry_class, a.vertex_count, a.triangle_count, a.hash
+                "mesh[{i}]: differs in [{}]: expected {} got {}",
+                which.join("+"),
+                fmt(e),
+                fmt(a)
             ));
         }
     }
     for (i, e) in expected.meshes.iter().enumerate().skip(common) {
-        lines.push(format!("mesh[{i}]: expected #{} {} got NOTHING", e.express_id, e.hash));
+        lines.push(format!("mesh[{i}]: expected {} got NOTHING", fmt(e)));
     }
     for (i, a) in actual.meshes.iter().enumerate().skip(common) {
-        lines.push(format!("mesh[{i}]: expected NOTHING got #{} {}", a.express_id, a.hash));
+        lines.push(format!("mesh[{i}]: expected NOTHING got {}", fmt(a)));
     }
     Some(lines.join("\n"))
 }

@@ -69,6 +69,13 @@ export interface DrawingLine2D {
     end: { x: number; y: number };
   };
   category: string;
+  /**
+   * Express ID of the entity that authored this segment. Optional — only the
+   * IfcAnnotation / IfcGridAxis symbolic overlay sets it (so per-entity hide
+   * can drop an annotation's curves without a mesh). The section-cut and
+   * drawing-2d cutters leave it undefined.
+   */
+  ownerId?: number;
 }
 
 // Fill colors by IFC type (architectural convention).

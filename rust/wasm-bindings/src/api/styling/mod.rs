@@ -10,5 +10,5 @@ mod prepass;
 pub(crate) use color::resolve_element_color;
 pub(crate) use prepass::{
     build_instantiated_type_ids, build_referenced_representation_maps, collect_type_geometry_jobs,
-    combined_pre_pass, extract_building_rotation_from_site,
+    combined_pre_pass,
 };

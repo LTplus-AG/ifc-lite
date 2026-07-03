@@ -122,17 +122,17 @@ impl Config {
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(worker_threads)
                 .max(1),
-            mem_budget_mb: std::env::var("IFC_MEM_BUDGET_MB")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or_else(|| {
-                    // Self-tune to the container: 70% of the cgroup limit,
-                    // leaving headroom for the allocator and the OS. 0 when
-                    // no limit is readable (memory gate disabled).
-                    crate::admission::cgroup_memory_limit_bytes()
-                        .map(|b| (b / (1024 * 1024) * 70 / 100) as usize)
-                        .unwrap_or(0)
-                }),
+            // Self-tune to the tightest readable memory ceiling (cgroup, else
+            // physical RAM), 70% of it; an explicit IFC_MEM_BUDGET_MB wins and
+            // `=0` is an opt-out. Only 0 when no ceiling is readable, which
+            // main() warns about (memory admission then falls back to OFF).
+            mem_budget_mb: crate::mem_policy::resolve_mem_budget_mb(
+                std::env::var("IFC_MEM_BUDGET_MB")
+                    .ok()
+                    .and_then(|v| v.parse().ok()),
+                crate::mem_policy::cgroup_memory_limit_bytes(),
+                crate::mem_policy::total_physical_memory_bytes(),
+            ),
             admission_queue_depth: std::env::var("IFC_ADMISSION_QUEUE_DEPTH")
                 .ok()
                 .and_then(|v| v.parse().ok())

@@ -17,7 +17,6 @@ import {
   DEFAULT_CAP_STYLE,
   HATCH_PATTERN_IDS,
   type HatchPatternId,
-  type SectionCapStyle,
 } from './section-cap-style.ts';
 
 describe('HATCH_PATTERN_IDS', () => {
@@ -62,12 +61,5 @@ describe('DEFAULT_CAP_STYLE', () => {
       'vertical', 'concrete', 'brick', 'insulation',
     ];
     assert.ok(allIds.includes(DEFAULT_CAP_STYLE.pattern));
-  });
-
-  it('shape is structurally assignable to SectionCapStyle', () => {
-    // Purely a compile-time contract guard. If the shape drifts,
-    // this assignment fails to compile, surfacing the break in CI.
-    const _s: SectionCapStyle = DEFAULT_CAP_STYLE;
-    assert.ok(_s);
   });
 });

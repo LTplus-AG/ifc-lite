@@ -6,19 +6,19 @@ Learn to extend IFClite with custom functionality.
 
 ```mermaid
 flowchart TB
-    subgraph Parser["Parser Extensions"]
-        Custom["Custom Decoders"]
-        Schema["Schema Extensions"]
+    subgraph Parser["Parser (TypeScript)"]
+        Custom["Custom decoders"]
+        Schema["Schema (codegen)"]
     end
 
-    subgraph Geometry["Geometry Extensions"]
-        Processor["Custom Processors"]
-        Profile["Profile Handlers"]
+    subgraph Geometry["Geometry (Rust: ifc-lite-geometry)"]
+        Processor["Representation processors"]
+        Profile["Profile handlers"]
     end
 
-    subgraph Renderer["Renderer Extensions"]
-        Shader["Custom Shaders"]
-        Material["Material System"]
+    subgraph Renderer["Renderer"]
+        Shader["Custom shaders (advanced)"]
+        Material["Visibility / render options"]
     end
 
     Parser --> Geometry --> Renderer
@@ -29,7 +29,13 @@ flowchart TB
 ### Creating a Decoder
 
 ```typescript
-import { EntityDecoder, DecodedEntity } from '@ifc-lite/parser';
+import {
+  IfcDataStore,
+  EntityRef,
+  extractEntityAttributesOnDemand,
+  extractPropertiesOnDemand,
+  extractQuantitiesOnDemand,
+} from '@ifc-lite/parser';
 
 // Define custom entity interface
 interface CustomDoorData {
@@ -51,17 +57,29 @@ class DoorDecoder {
 
   decode(entity: EntityRef): CustomDoorData {
     // Use on-demand extraction for properties
-    const props = extractPropertiesOnDemand(this.store, entity.expressId, this.buffer);
-    const quantities = extractQuantitiesOnDemand(this.store, entity.expressId, this.buffer);
+    const psets = extractPropertiesOnDemand(this.store, entity.expressId);
+    const qsets = extractQuantitiesOnDemand(this.store, entity.expressId);
+
+    // EntityRef only carries { expressId, type, byteOffset, byteLength, lineNumber },
+    // so globalId/name must be resolved from the source buffer on demand.
+    const attrs = extractEntityAttributesOnDemand(this.store, entity.expressId);
+
+    // Both extractors return arrays of sets: find the set by name,
+    // then the entry inside it by name.
+    const findProp = (psetName: string, propName: string) =>
+      psets.find(p => p.name === psetName)
+        ?.properties.find(prop => prop.name === propName)?.value;
+    const findQuantity = (qtyName: string) =>
+      qsets.flatMap(q => q.quantities).find(qty => qty.name === qtyName)?.value;
 
     return {
       expressId: entity.expressId,
-      globalId: entity.globalId,
-      name: entity.name || 'Unknown Door',
-      width: quantities?.Width?.value || 0,
-      height: quantities?.Height?.value || 0,
-      isExternal: props?.['Pset_DoorCommon']?.IsExternal || false,
-      fireRating: props?.['Pset_DoorCommon']?.FireRating || 0
+      globalId: attrs.globalId,
+      name: attrs.name || 'Unknown Door',
+      width: Number(findQuantity('Width')) || 0,
+      height: Number(findQuantity('Height')) || 0,
+      isExternal: Boolean(findProp('Pset_DoorCommon', 'IsExternal')),
+      fireRating: Number(findProp('Pset_DoorCommon', 'FireRating')) || 0
     };
   }
 
@@ -75,8 +93,6 @@ class DoorDecoder {
 }
 
 // Usage
-import { extractPropertiesOnDemand, extractQuantitiesOnDemand } from '@ifc-lite/parser';
-
 const buffer = new Uint8Array(arrayBuffer);
 const doorDecoder = new DoorDecoder(store, buffer);
 const doors = doorDecoder.decodeAll();
@@ -120,11 +136,13 @@ class StreamingDecoder<T> {
 
 // Usage
 const decoder = new StreamingDecoder<CustomDoorData>();
-decoder.register('IFCDOOR', (expressId, store, buffer) => {
-  const props = extractPropertiesOnDemand(store, expressId, buffer);
+decoder.register('IFCDOOR', (expressId, store) => {
+  const psets = extractPropertiesOnDemand(store, expressId);
+  const fireRating = psets.find(p => p.name === 'Pset_DoorCommon')
+    ?.properties.find(prop => prop.name === 'FireRating')?.value;
   return {
     expressId,
-    fireRating: props?.['Pset_DoorCommon']?.FireRating || 0,
+    fireRating: Number(fireRating) || 0,
     // ... decode door
   };
 });
@@ -136,119 +154,75 @@ for await (const door of decoder.decode(store, buffer, geometry)) {
 
 ## Custom Geometry Processors
 
-### Processor Interface
+Geometry generation is not pluggable from TypeScript. Meshing runs in the Rust
+`ifc-lite-geometry` crate (compiled to WASM), so a new representation or profile
+handler is added by contributing a processor to that crate rather than by
+registering a class at runtime:
+
+- Representation and profile handling lives in `rust/geometry/src/processors/`
+  and `rust/geometry/src/profile/`.
+- The `GeometryRouter` (`rust/geometry/src/router/mod.rs`) dispatches each
+  representation to the right processor.
+- See [Geometry Pipeline](../architecture/geometry-pipeline.md) for how a
+  representation flows from the parser to a mesh.
+
+On the TypeScript side, `GeometryProcessor` from `@ifc-lite/geometry` is a
+concrete driver, not an extension point: it exposes `init()`,
+`process(buffer, entityIndex?)` and `processStreaming(buffer)` and returns a
+`GeometryResult`. To customize output, consume that result and transform the
+`MeshData[]` yourself:
 
 ```typescript
-import { GeometryProcessor, Mesh, Entity } from '@ifc-lite/geometry';
+import { GeometryProcessor } from '@ifc-lite/geometry';
 
-interface ProcessorContext {
-  decoder: EntityDecoder;
-  quality: 'FAST' | 'BALANCED' | 'HIGH';
-}
+const gp = new GeometryProcessor();
+await gp.init();
+const result = await gp.process(buffer);
 
-abstract class GeometryProcessor {
-  abstract canProcess(entity: Entity): boolean;
-  abstract process(entity: Entity, context: ProcessorContext): Mesh | null;
-}
-```
-
-### Example: Custom Profile Processor
-
-```typescript
-class CustomProfileProcessor extends GeometryProcessor {
-  canProcess(entity: Entity): boolean {
-    // Handle custom profile types
-    return entity.type === 'IFCARBITRARYCLOSEDPROFILEDEF' &&
-           this.hasCustomAttributes(entity);
-  }
-
-  process(entity: Entity, context: ProcessorContext): Mesh | null {
-    const profile = this.extractProfile(entity, context.decoder);
-
-    // Custom triangulation logic
-    const points = this.convertToPoints(profile);
-    const indices = this.triangulate(points);
-
-    // Build mesh
-    return this.buildMesh(entity.expressId, points, indices);
-  }
-
-  private extractProfile(entity: Entity, decoder: EntityDecoder): Point2[] {
-    // Custom profile extraction
-    const curve = decoder.decode(entity.attributes[0].value);
-    return this.curveToPoints(curve);
-  }
-
-  private triangulate(points: Point2[]): number[] {
-    // Use earcut or custom algorithm
-    return earcut(points.flat(), [], 2);
-  }
-}
-```
-
-### Registering Custom Processors
-
-```typescript
-import { GeometryRouter, ProcessorRegistry } from '@ifc-lite/geometry';
-
-// Register globally
-ProcessorRegistry.register(new CustomProfileProcessor());
-
-// Or per-instance
-const router = new GeometryRouter();
-router.addProcessor(new CustomProfileProcessor());
-
-// Process metadata with the canonical columnar parser, then route custom
-// geometry through GeometryProcessor/Rust processors.
-const store = await parser.parseColumnar(buffer);
+// Post-process the produced meshes (custom simplification, tagging, etc.)
+const processed = result.meshes.map((mesh) => transformMesh(mesh));
 ```
 
 ## Schema Extensions
 
 ### Adding Custom Entity Types
 
+The IFC entity schema is generated from the official EXPRESS definitions at
+build time, not registered at runtime. To add or change entity definitions,
+regenerate the schema with `@ifc-lite/codegen` from a modified EXPRESS file and
+rebuild the parser:
+
 ```typescript
-import { SchemaRegistry, EntityDefinition } from '@ifc-lite/parser';
+import { parseExpressSchema, generateTypeScript } from '@ifc-lite/codegen';
 
-// Define custom entity
-const customEntity: EntityDefinition = {
-  name: 'IFCCUSTOMELEMENT',
-  parent: 'IFCBUILDINGELEMENT',
-  attributes: [
-    { name: 'CustomProperty', type: 'STRING', optional: true },
-    { name: 'CustomValue', type: 'REAL', optional: true }
-  ]
-};
-
-// Register
-SchemaRegistry.register(customEntity);
-
-// Schema extensions must be generated into the parser package before parsing.
-const store = await parser.parseColumnar(buffer);
-const customs = store.entityIndex.byType.get('IFCCUSTOMELEMENT') ?? [];
+const schema = parseExpressSchema(expressSource);
+const generated = generateTypeScript(schema);
+// generated.entities / .types / .enums / .selects / .schemaRegistry are TS source.
+// Write them into packages/parser/src/generated, then rebuild the parser.
 ```
+
+For one-off vendor extensions whose schema you do not control, do not extend the
+schema. Read the raw attributes of unknown entities on demand instead (see the
+on-demand extractors above and [Custom Queries](custom-queries.md)).
 
 ### Custom Property Extractors
 
+There is no `PropertyExtractor` base class to subclass. Compose the standalone
+`extractPropertiesOnDemand` helper with your own function instead:
+
 ```typescript
-import { PropertyExtractor } from '@ifc-lite/parser';
+import { extractPropertiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 
-class CustomPropertyExtractor extends PropertyExtractor {
-  extract(entity: Entity, decoder: EntityDecoder): Record<string, any> {
-    const base = super.extract(entity, decoder);
+function extractCustom(store: IfcDataStore, expressId: number): Record<string, unknown> {
+  const psets = extractPropertiesOnDemand(store, expressId);
+  const findProp = (psetName: string, propName: string) =>
+    psets.find((p) => p.name === psetName)
+      ?.properties.find((prop) => prop.name === propName)?.value;
 
-    // Add custom properties
-    if (entity.type === 'IFCWALL') {
-      base.customProperty = this.computeCustomProperty(entity);
-    }
-
-    return base;
-  }
-
-  private computeCustomProperty(entity: Entity): number {
-    // Custom calculation
-    return 42;
-  }
+  return {
+    isExternal: Boolean(findProp('Pset_WallCommon', 'IsExternal')),
+    fireRating: Number(findProp('Pset_WallCommon', 'FireRating')) || 0,
+  };
 }
 ```
 
@@ -349,7 +323,7 @@ interface IfcLitePlugin {
   // Lifecycle hooks
   onInit?(context: PluginContext): void;
   onParse?(store: IfcDataStore): void;
-  onGeometry?(meshes: Mesh[]): void;
+  onGeometry?(meshes: MeshData[]): void;
   onRender?(renderer: Renderer): void;
   onDispose?(): void;
 }
@@ -367,8 +341,7 @@ class AnalyticsPlugin implements IfcLitePlugin {
 
   onParse(store: IfcDataStore): void {
     console.log('Parse statistics:', {
-      entities: store.entityCount,
-      schema: store.schema,
+      entities: store.entities.count,
     });
   }
 }
@@ -415,14 +388,13 @@ plugins.onParse(store);
 ```typescript
 // Good: Single responsibility
 class FireRatingExtractor {
-  extract(entity: Entity): number | null { ... }
+  extract(store: IfcDataStore, expressId: number): number | null { ... }
 }
 
 // Bad: Too many responsibilities
 class EverythingExtractor {
-  extractFireRating(entity: Entity): number { ... }
-  extractMaterials(entity: Entity): Material[] { ... }
-  triangulateGeometry(entity: Entity): Mesh { ... }
+  extractFireRating(store: IfcDataStore, expressId: number): number { ... }
+  extractMaterials(store: IfcDataStore, expressId: number): Material[] { ... }
   // ...
 }
 ```
@@ -432,10 +404,10 @@ class EverythingExtractor {
 ```typescript
 class TypedDecoder<T> {
   constructor(
-    private decode: (entity: Entity) => T
+    private decode: (entity: EntityRef) => T
   ) {}
 
-  decodeAll(entities: Entity[]): T[] {
+  decodeAll(entities: EntityRef[]): T[] {
     return entities.map(this.decode);
   }
 }
@@ -446,12 +418,12 @@ const doorDecoder = new TypedDecoder<CustomDoorData>(decodeDoor);
 ### 3. Handle Errors Gracefully
 
 ```typescript
-class SafeProcessor extends GeometryProcessor {
-  process(entity: Entity, context: ProcessorContext): Mesh | null {
+class SafeExtractor {
+  extract(store: IfcDataStore, expressId: number): Record<string, unknown> | null {
     try {
-      return this.doProcess(entity, context);
+      return this.doExtract(store, expressId);
     } catch (error) {
-      console.warn(`Failed to process ${entity.type} #${entity.expressId}:`, error);
+      console.warn(`Failed to extract #${expressId}:`, error);
       return null; // Return null instead of throwing
     }
   }

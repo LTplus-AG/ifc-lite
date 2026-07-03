@@ -21,7 +21,7 @@ my-tool/
         └── hello.js
 ```
 
-The scaffolded `hello.js` is a runnable extension that contributes one command (`ext.starter.hello`) and prints a greeting to the console. Validate it:
+The scaffolded `hello.js` contributes one command (`ext.starter.hello`) and prints a greeting to the console. It passes `ext validate` as-is, but note the scaffold uses `export default async function hello(ctx)`; before it will run in the sandbox you must convert that to a plain top-level `async function hello(ctx)` (see [Writing entry code](#writing-entry-code) - entry files allow no `export` and no `import`). Validate it:
 
 ```bash
 npx @ifc-lite/cli ext validate my-tool
@@ -202,7 +202,7 @@ The `ctx.bim` API mirrors the `@ifc-lite/sdk` surface. Run `ifc-lite schema` (no
 - File system APIs
 - Web Workers, WASM instantiation
 
-These are blocked at parse time by the AST walker in `validate/code.ts`. If your code references one, `ext validate` flags it before pack.
+The sandbox runtime blocks these at execution time. The AI authoring pipeline additionally runs a static AST walker (`validate/code.ts`) that flags a subset of them (`globalThis`, `window`, `process`, `document`, `self`, plus `eval` / `new Function` / dynamic `import`) during its repair loop. Note that `ext validate` does not run that walker, so hand-authored code is only caught when it runs in the sandbox.
 
 ### Async handlers
 
@@ -219,7 +219,7 @@ The host never `await`s a long-running entry — async work runs inside the sand
 
 ## Widgets
 
-Widgets are JSON descriptions of UI you contribute to a dock panel. The widget DSL has 15 node types — `Stack`, `Group`, `Text`, `Field`, `Button`, `Table`, `Chart`, `Markdown`, `Tabs`, `Separator`, `EmptyState`, `Spinner`, `ErrorBanner`, `EntityList`, `Tree`, `KeyValueGrid`.
+Widgets are JSON descriptions of UI you contribute to a dock panel. The widget DSL has 16 node types — `Stack`, `Group`, `Text`, `Field`, `Button`, `Table`, `Chart`, `Markdown`, `Tabs`, `Separator`, `EmptyState`, `Spinner`, `ErrorBanner`, `EntityList`, `Tree`, `KeyValueGrid`.
 
 ```json
 {
@@ -381,8 +381,8 @@ The signature commits to a canonical hash of the bundle contents + the `signedAt
 
 ## Troubleshooting
 
-??? question "`ext validate` says 'banned global'"
-    Your code references `globalThis`, `window`, `document`, or another disallowed name. The AST walker flags these at parse time. Remove the reference — the sandbox runtime would block the access anyway, this just surfaces it earlier.
+??? question "The authoring loop says 'banned global'"
+    Your code references `globalThis`, `window`, `process`, `document`, or `self`. The AST walker (`validate/code.ts`) flags these during the AI authoring / repair loop (`ext validate` does not run it). Remove the reference - the sandbox runtime would block the access anyway, this just surfaces it earlier.
 
 ??? question "Manifest fails with 'dangling command reference'"
     Cross-reference validator says a `toolbar` / `contextMenu` / `keybinding` contribution names a command that's not declared in `contributes.commands`. Add the command, or remove the reference.

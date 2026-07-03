@@ -26,7 +26,8 @@ import { ChangeDetailView } from './compare/ChangeDetailView';
 import { BcfFromChange } from './compare/BcfFromChange';
 import { useBcfFromChange } from './compare/useBcfFromChange';
 import { CompareResultsList, CountBadge, LISTED_STATES, type CompareBucket } from './compare/CompareResultsList';
-import type { CompareRow } from './compare/changeRow';
+import { CompareBlacklist } from './compare/CompareBlacklist';
+import { changedTypeCounts, type CompareRow } from './compare/changeRow';
 import type { DiffScope, DiffState, DiffEntry } from '@ifc-lite/diff';
 
 interface ComparePanelProps {
@@ -55,11 +56,15 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
   const headModelId = useViewerStore((s) => s.compareHeadModelId);
   const scope = useViewerStore((s) => s.compareScope);
   const showUnchanged = useViewerStore((s) => s.compareShowUnchanged);
+  const excludedTypes = useViewerStore((s) => s.compareExcludedTypes);
   const selectedKey = useViewerStore((s) => s.compareSelectedKey);
   const setBaseModelId = useViewerStore((s) => s.setCompareBaseModelId);
   const setHeadModelId = useViewerStore((s) => s.setCompareHeadModelId);
   const setScope = useViewerStore((s) => s.setCompareScope);
   const setShowUnchanged = useViewerStore((s) => s.setCompareShowUnchanged);
+  const addExcludedType = useViewerStore((s) => s.addCompareExcludedType);
+  const removeExcludedType = useViewerStore((s) => s.removeCompareExcludedType);
+  const clearExcludedTypes = useViewerStore((s) => s.clearCompareExcludedTypes);
   const clearCompare = useViewerStore((s) => s.clearCompare);
   const bcfAuthor = useViewerStore((s) => s.bcfAuthor);
 
@@ -121,6 +126,13 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
   const counts = result?.diff.counts;
   const canRun = !!baseModelId && !!headModelId && baseModelId !== headModelId && !running;
 
+  // Classes present among the current changes - the "ignore a class" picker's
+  // options (#1470). Excluded classes are already absent from the diff.
+  const typeCounts = useMemo(
+    () => (result ? changedTypeCounts(result.diff.entries) : []),
+    [result],
+  );
+
   // "What changed" detail for the selected entry — computed lazily from both
   // stores so a huge diff stays cheap (only the selection is described).
   const detail = useMemo<ChangeDetail | null>(() => {
@@ -167,7 +179,9 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
 
   const downloadReport = (format: 'csv' | 'json') => {
     if (!result) return;
-    downloadCompareReport(format, result, models);
+    // Pass the blacklist in its original IFC casing so the report reads
+    // "IfcOpeningElement", not the engine's uppercase-normalized form (#1470).
+    downloadCompareReport(format, result, models, excludedTypes);
     const c = result.diff.counts;
     posthog.capture('model_compare_export', {
       format,
@@ -282,6 +296,16 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
                     are still accurate — switch to the Data scope for reliable results.
                   </p>
                 )}
+
+                {/* Ignored classes - blacklist noisy types out of the diff (#1470).
+                    Compact, in-line with the run controls; self-hides when empty. */}
+                <CompareBlacklist
+                  excludedTypes={excludedTypes}
+                  changedTypeCounts={typeCounts}
+                  onAdd={addExcludedType}
+                  onRemove={removeExcludedType}
+                  onClear={clearExcludedTypes}
+                />
               </div>
 
               {/* Counts */}

@@ -68,61 +68,11 @@ function animate() {
 animate();
 ```
 
-## Renderer Configuration
-
-```typescript
-interface RendererOptions {
-  // Anti-aliasing
-  antialias?: boolean;
-  sampleCount?: 1 | 4;
-
-  // Background color
-  backgroundColor?: [number, number, number, number];
-
-  // Performance
-  powerPreference?: 'low-power' | 'high-performance';
-
-  // Features
-  enablePicking?: boolean;
-  enableSectionPlanes?: boolean;
-}
-
-const renderer = new Renderer(canvas, {
-  antialias: true,
-  sampleCount: 4,
-  backgroundColor: [0.95, 0.95, 0.95, 1.0],
-  powerPreference: 'high-performance',
-  enablePicking: true,
-  enableSectionPlanes: true
-});
-```
-
 ## Camera Controls
 
 ### Configuration
 
 ```typescript
-interface CameraOptions {
-  // Initial position
-  position?: [number, number, number];
-  target?: [number, number, number];
-  up?: [number, number, number];
-
-  // Projection
-  fov?: number;
-  near?: number;
-  far?: number;
-
-  // Controls
-  orbitSpeed?: number;
-  panSpeed?: number;
-  zoomSpeed?: number;
-
-  // Constraints
-  minDistance?: number;
-  maxDistance?: number;
-}
-
 // Access camera directly
 const camera = renderer.getCamera();
 
@@ -333,11 +283,12 @@ canvas.addEventListener('mousemove', (e) => {
   });
 
   if (result.edgeLock.shouldLock) {
-    // Lock to this edge
+    // Lock to this edge. lockStrength is maintained locally (renderer input
+    // only); the result never emits it, so grow it per frame while locked.
     edgeLock = {
       edge: result.edgeLock.edge,
       meshExpressId: result.edgeLock.meshExpressId,
-      lockStrength: result.edgeLock.lockStrength
+      lockStrength: edgeLock.lockStrength + 0.05
     };
   } else if (result.edgeLock.shouldRelease) {
     // Release the lock
@@ -417,9 +368,10 @@ canvas.addEventListener('click', async (e) => {
   const x = e.clientX - rect.left;
   const y = e.clientY - rect.top;
 
-  const expressId = await renderer.pick(x, y);
+  const hit = await renderer.pick(x, y);
 
-  if (expressId !== null) {
+  if (hit !== null) {
+    const expressId = hit.expressId;
     console.log(`Selected entity #${expressId}`);
     selectedIds = new Set([expressId]);
 
@@ -777,10 +729,10 @@ async function createViewer() {
   // Click handler with picking
   canvas.addEventListener('click', async (e) => {
     const rect = canvas.getBoundingClientRect();
-    const id = await renderer.pick(e.clientX - rect.left, e.clientY - rect.top);
+    const hit = await renderer.pick(e.clientX - rect.left, e.clientY - rect.top);
 
-    if (id !== null) {
-      selectedIds = new Set([id]);
+    if (hit !== null) {
+      selectedIds = new Set([hit.expressId]);
     } else {
       selectedIds.clear();
     }
@@ -800,7 +752,13 @@ async function createViewer() {
     });
 
     if (result.edgeLock.shouldLock) {
-      edgeLock = result.edgeLock;
+      // Rebuild the EdgeLockInput; the result has no lockStrength, so keep
+      // it as a locally maintained number.
+      edgeLock = {
+        edge: result.edgeLock.edge,
+        meshExpressId: result.edgeLock.meshExpressId,
+        lockStrength: edgeLock.lockStrength + 0.05
+      };
     } else if (result.edgeLock.shouldRelease) {
       edgeLock = { edge: null, meshExpressId: null, lockStrength: 0 };
     }

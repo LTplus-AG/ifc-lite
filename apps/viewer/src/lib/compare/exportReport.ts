@@ -44,6 +44,9 @@ export interface CompareReport {
   headModel: string;
   scope: string;
   generatedAt: string;
+  /** IFC classes excluded from the comparison (the blacklist, #1470). Empty when
+   *  none were excluded. Recorded so a report reader knows what was ignored. */
+  excludedTypes: string[];
   counts: { added: number; deleted: number; modified: number };
   rows: CompareReportRow[];
 }
@@ -107,10 +110,16 @@ function classifyModified(
   return { change: parts.join(', ') || 'Changed', movedDistance };
 }
 
-/** Build the flat change report from a finished comparison. */
+/** Build the flat change report from a finished comparison.
+ *
+ * `excludedTypesDisplay` is the viewer's blacklist in its original IFC casing
+ * (e.g. `IfcOpeningElement`); the engine's `result.diff.excludedTypes` is
+ * uppercase-normalized, so we prefer the display form for a human-readable
+ * report and fall back to the normalized set when it isn't supplied (#1470). */
 export function buildCompareReport(
   result: CompareResult,
   models: ReadonlyMap<string, FederatedModel>,
+  excludedTypesDisplay: readonly string[] = [],
 ): CompareReport {
   const baseModel = models.get(result.baseModelId);
   const headModel = models.get(result.headModelId);
@@ -152,6 +161,8 @@ export function buildCompareReport(
     headModel: result.headName,
     scope: result.scope,
     generatedAt: new Date().toISOString(),
+    excludedTypes:
+      excludedTypesDisplay.length > 0 ? [...excludedTypesDisplay] : [...result.diff.excludedTypes],
     counts: {
       added: result.diff.counts.added,
       deleted: result.diff.counts.deleted,
@@ -174,7 +185,16 @@ function csvField(value: string | number): string {
 /** Serialize the report as RFC-4180 CSV (one element per row). */
 export function reportToCsv(report: CompareReport): string {
   const header = ['GlobalId', 'Name', 'IfcType', 'Change', 'MovedDistance_m', 'Model'];
-  const lines = [header.join(',')];
+  const lines: string[] = [];
+  // Provenance: a blacklist removes rows, so a CSV that looks "complete" would
+  // mislead a coordinator (the ignored elements are simply gone). Lead with a
+  // comment naming the excluded classes so the omission is never silent (#1470).
+  // Starts with `#`, so it is not a formula-injection vector and standard CSV
+  // readers surface it as a single leading cell rather than corrupting columns.
+  if (report.excludedTypes.length > 0) {
+    lines.push(csvField(`# Excluded classes (not compared): ${report.excludedTypes.join(', ')}`));
+  }
+  lines.push(header.join(','));
   for (const r of report.rows) {
     lines.push([
       csvField(r.globalId),
@@ -193,13 +213,16 @@ export function reportToJson(report: CompareReport): string {
   return JSON.stringify(report, null, 2);
 }
 
-/** Build + download the change report as a CSV or JSON file. */
+/** Build + download the change report as a CSV or JSON file.
+ *  `excludedTypesDisplay` carries the blacklist in its original IFC casing for
+ *  the report header (the engine echo is uppercase-normalized). */
 export function downloadCompareReport(
   format: 'csv' | 'json',
   result: CompareResult,
   models: ReadonlyMap<string, FederatedModel>,
+  excludedTypesDisplay: readonly string[] = [],
 ): void {
-  const report = buildCompareReport(result, models);
+  const report = buildCompareReport(result, models, excludedTypesDisplay);
   const modelName = (s: string) => sanitizeFilename(s, { fallback: 'model', maxLength: 40 });
   const name = `compare-${modelName(report.baseModel)}-vs-${modelName(report.headModel)}`;
   const body = format === 'csv' ? reportToCsv(report) : reportToJson(report);

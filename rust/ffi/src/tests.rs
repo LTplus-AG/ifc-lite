@@ -4,7 +4,147 @@
 //! we only assert the C ABI contract documented on the exported functions.
 
 use super::*;
+use ifc_lite_processing::{MeshData, ModelMetadata, ProcessingStats};
 use std::ptr;
+
+/// Builds a minimal [`ProcessingResult`] carrying two meshes with distinct,
+/// easy-to-check positions, tagged with the given coordinate space and
+/// (optional) column-major 4x4 site transform.
+fn processing_result(
+    mesh_coordinate_space: Option<&str>,
+    site_transform: Option<[f64; 16]>,
+) -> ProcessingResult {
+    let mesh_a = MeshData::new(
+        1,
+        "IfcWall".to_string(),
+        vec![0.0, 0.0, 0.0, 1.0, 2.0, 3.0],
+        vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
+        vec![0, 1, 0],
+        [1.0, 1.0, 1.0, 1.0],
+    );
+    let mesh_b = MeshData::new(
+        2,
+        "IfcSlab".to_string(),
+        vec![10.0, -5.0, 2.5],
+        vec![0.0, 0.0, 1.0],
+        vec![0],
+        [0.5, 0.5, 0.5, 1.0],
+    );
+
+    ProcessingResult {
+        meshes: vec![mesh_a, mesh_b],
+        mesh_coordinate_space: mesh_coordinate_space.map(str::to_string),
+        site_transform: site_transform.map(|m| m.to_vec()),
+        building_transform: None,
+        metadata: ModelMetadata::default(),
+        stats: ProcessingStats::default(),
+    }
+}
+
+/// A column-major identity 4x4 with the translation column (indices 12/13/14)
+/// overridden — the layout `normalize_to_site_local` reads.
+fn transform_with_translation(tx: f64, ty: f64, tz: f64) -> [f64; 16] {
+    let mut m = [0.0; 16];
+    m[0] = 1.0;
+    m[5] = 1.0;
+    m[10] = 1.0;
+    m[15] = 1.0;
+    m[12] = tx;
+    m[13] = ty;
+    m[14] = tz;
+    m
+}
+
+/// `raw_ifc` + a site translation past `LARGE_COORD_THRESHOLD` must subtract
+/// that translation from every mesh's positions and relabel the result as
+/// `site_local` (see `normalize_to_site_local` doc comment, lib.rs:~110-135).
+#[test]
+fn raw_ifc_with_large_site_translation_shifts_all_meshes_and_relabels() {
+    let (tx, ty, tz) = (123456.0, -7000.5, 2000.0);
+    let mut result = processing_result(
+        Some(RAW_IFC_MESH_COORDINATE_SPACE),
+        Some(transform_with_translation(tx, ty, tz)),
+    );
+
+    normalize_to_site_local(&mut result);
+
+    assert_eq!(
+        result.mesh_coordinate_space.as_deref(),
+        Some(SITE_LOCAL_MESH_COORDINATE_SPACE),
+        "raw_ifc meshes shifted by the site translation must be relabeled site_local"
+    );
+
+    // mesh_a: two vertices, each shifted by (tx, ty, tz).
+    let expected_a = [
+        (0.0 - tx) as f32,
+        (0.0 - ty) as f32,
+        (0.0 - tz) as f32,
+        (1.0 - tx) as f32,
+        (2.0 - ty) as f32,
+        (3.0 - tz) as f32,
+    ];
+    assert_eq!(result.meshes[0].positions, expected_a);
+
+    // mesh_b: one vertex, same shift.
+    let expected_b = [(10.0 - tx) as f32, (-5.0 - ty) as f32, (2.5 - tz) as f32];
+    assert_eq!(result.meshes[1].positions, expected_b);
+}
+
+/// `raw_ifc` with a site translation *inside* `LARGE_COORD_THRESHOLD` (near
+/// the origin) has nothing worth subtracting: positions and the coordinate
+/// space label must both be left exactly as they came in.
+#[test]
+fn raw_ifc_with_near_origin_site_translation_is_left_untouched() {
+    let original = processing_result(
+        Some(RAW_IFC_MESH_COORDINATE_SPACE),
+        Some(transform_with_translation(1.0, -2.0, 0.5)),
+    );
+    let original_positions_a = original.meshes[0].positions.clone();
+    let original_positions_b = original.meshes[1].positions.clone();
+
+    let mut result = original;
+    normalize_to_site_local(&mut result);
+
+    assert_eq!(
+        result.mesh_coordinate_space.as_deref(),
+        Some(RAW_IFC_MESH_COORDINATE_SPACE),
+        "a near-origin site translation must not be relabeled"
+    );
+    assert_eq!(result.meshes[0].positions, original_positions_a);
+    assert_eq!(result.meshes[1].positions, original_positions_b);
+}
+
+/// `site_local`, `model_rtc`, and `None` are all coordinate spaces the
+/// pipeline has already anchored upstream (or declined to tag). Even with a
+/// far-from-origin site transform present, `normalize_to_site_local` must
+/// never touch mesh positions for these — subtracting again would
+/// double-offset geometry that's already anchored (the exact bug the
+/// function's doc comment warns about for `model_rtc`).
+#[test]
+fn non_raw_ifc_spaces_are_never_shifted_even_with_a_far_site_transform() {
+    let far_transform = Some(transform_with_translation(500_000.0, 500_000.0, 500_000.0));
+
+    for space in [
+        Some(SITE_LOCAL_MESH_COORDINATE_SPACE),
+        Some("model_rtc"),
+        None,
+    ] {
+        let original = processing_result(space, far_transform);
+        let original_positions_a = original.meshes[0].positions.clone();
+        let original_positions_b = original.meshes[1].positions.clone();
+        let original_space = original.mesh_coordinate_space.clone();
+
+        let mut result = original;
+        normalize_to_site_local(&mut result);
+
+        assert_eq!(
+            result.mesh_coordinate_space, original_space,
+            "coordinate space {space:?} must not be relabeled"
+        );
+        assert_eq!(result.meshes[0].positions, original_positions_a);
+        assert_eq!(result.meshes[1].positions, original_positions_b);
+    }
+}
 
 /// A self-contained, well-formed IFC4 file (no external fixture coupling).
 /// Project-only: it parses successfully and yields an empty mesh set, which

@@ -193,8 +193,7 @@ class GeometryProcessor {
     batchSize?: number
   ): AsyncGenerator<StreamEvent>;
 
-  // Coordinate handling
-  getCoordinateInfo(): CoordinateInfo | null;
+  // Coordinate info is returned on the GeometryResult from process()
 }
 ```
 
@@ -426,86 +425,125 @@ Fluent query builder.
 
 ```typescript
 class IfcQuery {
-  constructor(parseResult: ParseResult);
+  constructor(store: IfcDataStore);
 
-  // Enable SQL queries
-  enableSQL(): Promise<void>;
+  // Type shortcuts -> EntityQuery
+  walls(): EntityQuery;
+  doors(): EntityQuery;
+  windows(): EntityQuery;
+  slabs(): EntityQuery;
+  columns(): EntityQuery;
+  beams(): EntityQuery;
+  spaces(): EntityQuery;
 
-  // Type shortcuts
-  walls(): IfcQuery;
-  doors(): IfcQuery;
-  windows(): IfcQuery;
-  slabs(): IfcQuery;
-  roofs(): IfcQuery;
-  columns(): IfcQuery;
-  beams(): IfcQuery;
-  spaces(): IfcQuery;
-  storeys(): IfcQuery;
-  all(): IfcQuery;
+  // Type filter (variadic), everything, and by id
+  ofType(...types: string[]): EntityQuery;
+  all(): EntityQuery;
+  byId(expressId: number): EntityQuery;
 
-  // Type filter
-  ofType(type: string): IfcQuery;
-  ofTypes(types: string[]): IfcQuery;
+  // Spatial
+  onStorey(storeyId: number): EntityQuery;
+  inBounds(aabb: AABB): EntityQuery;
+  raycast(
+    origin: [number, number, number],
+    direction: [number, number, number]
+  ): number[];
 
-  // Property filters
-  whereProperty(
-    psetName: string,
-    propName: string,
-    operator: Operator,
-    value: any
-  ): IfcQuery;
+  // Graph navigation
+  entity(expressId: number): EntityNode;
+  get storeys(): EntityNode[];
+  get project(): EntityNode | null;
 
-  whereQuantity(
-    name: string,
-    operator: Operator,
-    value: number
-  ): IfcQuery;
-
-  // Spatial queries
-  storey(name: string): IfcQuery;
-  building(name: string): IfcQuery;
-  contains(): IfcQuery;
-  containedIn(): IfcQuery;
-  allContained(): IfcQuery;
-
-  // Entity navigation
-  entity(expressId: number): EntityQuery;
-
-  // Selection
-  select(fields: string[]): IfcQuery;
-
-  // Output
-  toArray(): Entity[];
-  first(): Entity | undefined;
-  count(): number;
-
-  // SQL
-  sql(query: string): Promise<any[]>;
+  // SQL (DuckDB-WASM, lazily initialized on first call)
+  sql(query: string): Promise<SQLResult>;
 }
-
-type Operator = '=' | '!=' | '>' | '<' | '>=' | '<=' | 'LIKE' | 'IN';
 ```
 
 ### EntityQuery
 
-Query operations on a single entity.
+Fluent builder over a set of entities. Filter, then call a terminal.
 
 ```typescript
 class EntityQuery {
-  // Relationships
-  contains(): IfcQuery;
-  containedIn(): EntityQuery;
-  materials(): IfcQuery;
-  propertySets(): PropertySet[];
-  related(relType: string): IfcQuery;
+  // Filter (psetName is an exact interned name, not a glob)
+  whereProperty(
+    psetName: string,
+    propName: string,
+    operator: ComparisonOperator,
+    value: unknown
+  ): this;
 
-  // Navigation
-  storey(): EntityQuery;
-  building(): EntityQuery;
-  site(): EntityQuery;
+  // Paging and include flags
+  limit(count: number): this;
+  offset(count: number): this;
+  includeGeometry(): this;
+  includeProperties(): this;
+  includeQuantities(): this;
+  includeAll(): this;
 
-  // Output
-  entity(): Entity;
+  // Terminals
+  execute(): QueryResultEntity[];
+  ids(): Promise<number[]>;
+  count(): Promise<number>;
+  first(): Promise<QueryResultEntity | null>;
+}
+
+type ComparisonOperator =
+  | '=' | '!=' | '>' | '>=' | '<' | '<=' | 'contains' | 'startsWith';
+
+interface QueryResultEntity {
+  readonly expressId: number;
+  readonly globalId: string;
+  readonly name: string;
+  readonly type: string;
+  readonly properties: PropertySet[]; // populated when includeProperties()
+  readonly quantities: QuantitySet[]; // populated when includeQuantities()
+  readonly geometry: MeshData | null; // populated when includeGeometry()
+}
+```
+
+### EntityNode
+
+Single-entity graph navigation, from `IfcQuery.entity(id)` or `IfcQuery.storeys`.
+
+```typescript
+class EntityNode {
+  readonly expressId: number;
+
+  // Resolved attributes (getters)
+  readonly globalId: string;
+  readonly name: string;
+  readonly description: string;
+  readonly objectType: string;
+  readonly tag: string;
+
+  // Spatial containment
+  contains(): EntityNode[]; // direct spatial children
+  containedIn(): EntityNode | null;
+  storey(): EntityNode | null;
+  building(): EntityNode | null;
+
+  // Aggregation and typing
+  decomposes(): EntityNode[];
+  decomposedBy(): EntityNode | null;
+  definingType(): EntityNode | null;
+  instances(): EntityNode[];
+
+  // Voids and fills
+  voids(): EntityNode[];
+  filledBy(): EntityNode[];
+
+  // Data
+  properties(): PropertySet[];
+  quantities(): QuantitySet[];
+  allAttributes(): Array<{ name: string; value: string | number | boolean }>;
+
+  // Generic traversal
+  traverse(
+    relType: RelationshipType,
+    depth: number,
+    direction?: 'forward' | 'inverse'
+  ): EntityNode[];
 }
 ```
 
@@ -669,25 +707,9 @@ function collectStyleEntities(
 ): Set<number>;
 ```
 
-### GltfExporter
+### glTF / GLB export
 
-```typescript
-class GltfExporter {
-  export(
-    parseResult: ParseResult,
-    options?: GltfExportOptions
-  ): Promise<GltfResult>;
-}
-
-interface GltfExportOptions {
-  format: 'gltf' | 'glb';
-  includeProperties?: boolean;
-  embedImages?: boolean;
-  useDraco?: boolean;
-  yUp?: boolean;
-  entityFilter?: (entity: Entity) => boolean;
-}
-```
+The standalone `GltfExporter` class was removed. glTF/GLB is now assembled in Rust and exposed on `GeometryProcessor` (from `@ifc-lite/geometry`): use `exportGlb(buffer, ...)` to export from a parsed IFC buffer, or `exportGlbFromMeshes(meshes, ...)` to export from already-extracted meshes.
 
 ### ParquetExporter
 
@@ -700,21 +722,9 @@ class ParquetExporter {
 }
 ```
 
-### CsvExporter
+### CSV export
 
-```typescript
-class CsvExporter {
-  exportEntities(
-    parseResult: ParseResult,
-    options?: CsvOptions
-  ): Promise<string>;
-
-  exportPropertiesPivot(
-    parseResult: ParseResult,
-    options?: PivotOptions
-  ): Promise<string>;
-}
-```
+The standalone `CsvExporter` class was removed. CSV is now produced in Rust and exposed on `GeometryProcessor.exportCsv(buffer, mode, ...)` (from `@ifc-lite/geometry`), where `mode` is one of `entities`, `properties`, `quantities`, or `spatial`.
 
 ---
 

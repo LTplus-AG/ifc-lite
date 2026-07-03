@@ -25,8 +25,9 @@ console.log(result.summary.total, 'clashes');
 ```
 
 Includes the TypeScript reference engine, a Rust→WASM kernel kept in lockstep by a
-differential test (`backend: 'auto'` picks WASM when available, else TS), STEP and
-IFC5/USD source adapters, spatial grouping, and a *sensible* BCF bridge (grouped
+differential test (opt-in via `@ifc-lite/clash/wasm`; `backend: 'auto'` currently
+resolves to the TS engine), STEP and IFC5/USD source adapters, spatial grouping, and
+a *sensible* BCF bridge (grouped
 topics, deterministic GUIDs, optional snapshots). Surfaced through the viewer's
 clash panel, the `ifc-lite clash` CLI, the MCP `clash_check` / `clash_matrix` tools,
 and the SDK `clash` namespace. Design rationale: `docs/architecture/clash-detection-plan.md`.

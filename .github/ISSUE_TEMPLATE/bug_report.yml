@@ -1,0 +1,61 @@
+name: Bug report
+description: A defect in the viewer, kernel, CLI, server, or a package.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. A minimal reproduction (a small IFC file plus the
+        exact command or steps) is worth far more than a description.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Package version, CLI `ifc-lite --version`, or the commit SHA.
+      placeholder: "e.g. @ifc-lite/viewer 0.13.0, or commit abc1234"
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Which surface
+      options:
+        - Viewer (browser)
+        - Geometry / CSG kernel
+        - CLI
+        - Server
+        - A published @ifc-lite/* package
+        - MCP
+        - Other / not sure
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: Steps or the exact command. Attach or link a minimal IFC if geometry is involved.
+      placeholder: |
+        1. ifc-lite export model.ifc --format glb --out out.glb
+        2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected vs actual
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: OS, browser + GPU (for viewer), Node version (for CLI/server).
+    validations:
+      required: false
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy
+      options:
+        - label: My attached files and text contain no confidential or client-identifying data.
+          required: true

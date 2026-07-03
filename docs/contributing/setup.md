@@ -8,7 +8,7 @@ Guide to setting up a development environment for IFClite.
 
 | Tool | Version | Purpose |
 |------|---------|---------|
-| Node.js | 18.0+ | JavaScript runtime |
+| Node.js | 22.x | JavaScript runtime |
 | pnpm | 8.0+ | Package manager |
 | Rust | stable | WASM compilation |
 | wasm-pack | 0.12+ | WASM toolchain |
@@ -19,7 +19,7 @@ Guide to setting up a development environment for IFClite.
 
     ```bash
     # Install Node.js via Homebrew
-    brew install node@18
+    brew install node@22
 
     # Install pnpm
     npm install -g pnpm
@@ -38,7 +38,7 @@ Guide to setting up a development environment for IFClite.
 
     ```bash
     # Install Node.js (Ubuntu/Debian)
-    curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+    curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
     sudo apt-get install -y nodejs
 
     # Install pnpm
@@ -129,8 +129,7 @@ ifc-lite/
 │   └── codegen/           # Schema generator
 ├── apps/
 │   └── viewer/            # Demo viewer app
-├── docs/                  # Documentation
-└── plan/                  # Specifications
+└── docs/                  # Documentation
 ```
 
 ## Development Workflow
@@ -165,11 +164,10 @@ Open http://localhost:3000 in your browser.
 ### Building WASM
 
 ```bash
-cd rust/wasm-bindings
-wasm-pack build --target web --release
+pnpm build:wasm
 ```
 
-The output goes to `rust/wasm-bindings/pkg/`.
+The output goes to `packages/wasm/pkg/`.
 
 ### Running Rust Tests
 
@@ -197,7 +195,7 @@ cargo doc --no-deps
 **MkDocs (Project Documentation):**
 
 ```bash
-cd docs && mkdocs serve
+mkdocs serve
 # Opens at http://127.0.0.1:8000
 ```
 
@@ -278,9 +276,8 @@ cargo update
 
 ```bash
 # Clean and rebuild
-cd rust
 cargo clean
-wasm-pack build --target web --release
+pnpm build:wasm
 ```
 
 ### Node Modules Issues

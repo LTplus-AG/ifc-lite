@@ -114,7 +114,6 @@ classDiagram
         +Uint32Array indices
         +Float32Array? uvs
         +number[] color
-        +Matrix4 transform
     }
 
     class GeometryResult {
@@ -156,8 +155,8 @@ for (const mesh of result.meshes) {
 // Find mesh by entity ID
 const wallMesh = result.meshes.find(m => m.expressId === wallId);
 
-// Calculate bounds from meshes
-const bounds = calculateBounds(result.meshes);
+// Precomputed model bounds (from coordinate info on the result)
+const bounds = result.coordinateInfo.shiftedBounds;
 console.log(`Model bounds:`, bounds);
 ```
 
@@ -206,7 +205,7 @@ for await (const event of geometry.processStreaming(new Uint8Array(buffer))) {
 
       // Render current state
       renderer.render();
-      console.log(`Progress: ${event.progress}%`);
+      console.log(`Meshes so far: ${event.totalSoFar}`);
       break;
 
     case 'complete':
@@ -256,10 +255,10 @@ await geometry.init();
 
 const result = await geometry.process(new Uint8Array(buffer));
 
-// Access the computed shift from coordinate info
-const coordInfo = geometry.getCoordinateInfo();
-if (coordInfo?.shift) {
-  console.log(`Origin shifted by:`, coordInfo.shift);
+// Access the computed shift from coordinate info (returned on the result)
+const coordInfo = result.coordinateInfo;
+if (coordInfo?.originShift) {
+  console.log(`Origin shifted by:`, coordInfo.originShift);
   // { x: 487234.5, y: 5234891.2, z: 0 }
 }
 
@@ -344,31 +343,6 @@ flowchart LR
     style Result fill:#a855f7,stroke:#581c87,color:#fff
 ```
 
-## Custom Geometry Processing
-
-Extend geometry processing for custom needs:
-
-```typescript
-import { GeometryProcessor, ProcessorRegistry } from '@ifc-lite/geometry';
-
-// Create custom processor
-class CustomProfileProcessor extends GeometryProcessor {
-  canProcess(entity: Entity): boolean {
-    return entity.type === 'IFCARBITRARYCLOSEDPROFILEDEF';
-  }
-
-  process(entity: Entity): Mesh {
-    // Custom triangulation logic
-    const points = this.extractPoints(entity);
-    const triangles = this.triangulate(points);
-    return this.buildMesh(triangles);
-  }
-}
-
-// Register processor
-ProcessorRegistry.register(new CustomProfileProcessor());
-```
-
 ## Batching
 
 The renderer automatically groups geometry by colour into a small number of
@@ -403,7 +377,7 @@ await geometry.init();
 for await (const event of geometry.processStreaming(new Uint8Array(buffer), undefined, 50)) {
   if (event.type === 'batch') {
     renderer.addMeshes(event.meshes, true);
-    console.log(`Progress: ${event.progress}%`);
+    console.log(`Meshes so far: ${event.totalSoFar}`);
   }
 }
 ```
@@ -433,7 +407,7 @@ const result = await geometry.process(new Uint8Array(buffer));
 
 // Filter meshes
 const filteredMeshes = result.meshes.filter(m => wantedIds.has(m.expressId));
-renderer.loadGeometry({ meshes: filteredMeshes });
+renderer.loadGeometry(filteredMeshes);
 ```
 
 ## Geometry Statistics

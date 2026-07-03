@@ -449,6 +449,53 @@ mod tests {
         assert_ne!(super::snap(1.0), super::snap(1.0 + 1e-3));
     }
 
+    /// `mesh_to_tris` is documented panic-free against a triangle whose vertex
+    /// index runs past the end of `positions` (a truncated/corrupt buffer):
+    /// the offending triangle is silently dropped rather than indexing OOB.
+    #[test]
+    fn mesh_to_tris_drops_out_of_range_index_without_panicking() {
+        let mut m = Mesh::new();
+        // one real triangle (verts 0,1,2)...
+        m.positions.extend_from_slice(&[0.0, 0.0, 0.0]);
+        m.positions.extend_from_slice(&[1.0, 0.0, 0.0]);
+        m.positions.extend_from_slice(&[0.0, 1.0, 0.0]);
+        // ...then a second face referencing vertex index 5, which is past the
+        // end of a 3-vertex positions buffer (truncated/corrupt data).
+        m.indices.extend_from_slice(&[0, 1, 2, 0, 1, 5]);
+
+        let tris = mesh_to_tris(&m);
+
+        assert_eq!(tris.len(), 1, "malformed triangle (OOB index) must be dropped, not panic");
+        assert_eq!(tris[0], [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]);
+    }
+
+    /// `mesh_to_tris` is documented panic-free against a non-finite (NaN/Inf)
+    /// position coordinate: the offending triangle is silently dropped rather
+    /// than propagating NaN into the exact-predicate kernel.
+    #[test]
+    fn mesh_to_tris_drops_non_finite_coordinate_without_panicking() {
+        let mut m = Mesh::new();
+        // valid triangle (verts 0,1,2)
+        m.positions.extend_from_slice(&[0.0, 0.0, 0.0]);
+        m.positions.extend_from_slice(&[1.0, 0.0, 0.0]);
+        m.positions.extend_from_slice(&[0.0, 1.0, 0.0]);
+        // NaN-poisoned vertex 3, referenced by a second face
+        m.positions.extend_from_slice(&[f32::NAN, 0.0, 0.0]);
+        // Inf-poisoned vertex 4, referenced by a third face
+        m.positions.extend_from_slice(&[f32::INFINITY, 0.0, 0.0]);
+        m.indices
+            .extend_from_slice(&[0, 1, 2, 0, 1, 3, 0, 1, 4]);
+
+        let tris = mesh_to_tris(&m);
+
+        assert_eq!(
+            tris.len(),
+            1,
+            "triangles touching a NaN or Inf coordinate must be dropped, not panic"
+        );
+        assert_eq!(tris[0], [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]);
+    }
+
     #[test]
     fn kernel_cuts_a_real_mesh() {
         // Round-trip through ifc-lite's Mesh: two cube meshes, subtract via the

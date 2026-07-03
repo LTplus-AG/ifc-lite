@@ -8,6 +8,10 @@
 //! Correctness vs ground truth is proven separately in `rect_param_parity`; this proves
 //! the end-to-end wiring + the production safety invariant.
 //!
+//! NOTE: `#[ignore]` + needs an external corpus model, so it does NOT gate in
+//! CI. The hermetic CI gate on the shipped default is `rect_param_gate.rs`
+//! (inline fixture, no fetch).
+//!
 //! Run: MEASURE_FIXTURE=<path> cargo test --test rect_param_production -- --ignored --nocapture
 
 use ifc_lite_core::{build_entity_index, DecodedEntity, EntityDecoder, EntityScanner, IfcType};

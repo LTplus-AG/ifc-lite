@@ -480,6 +480,46 @@ pub fn extract_nonplanar_voids(classifications: Vec<VoidClassification>) -> Vec<
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nalgebra::{Rotation3, Unit};
+
+    /// Same box topology as `create_box_mesh`, but every vertex is rotated by
+    /// `rotation` about the origin before being added. Used to build voids
+    /// whose faces are angled with respect to the profile/extrusion axes.
+    fn create_rotated_box_mesh(min: Point3<f64>, max: Point3<f64>, rotation: &Matrix4<f64>) -> Mesh {
+        let mut mesh = Mesh::with_capacity(8, 36);
+
+        let vertices = [
+            Point3::new(min.x, min.y, min.z),
+            Point3::new(max.x, min.y, min.z),
+            Point3::new(max.x, max.y, min.z),
+            Point3::new(min.x, max.y, min.z),
+            Point3::new(min.x, min.y, max.z),
+            Point3::new(max.x, min.y, max.z),
+            Point3::new(max.x, max.y, max.z),
+            Point3::new(min.x, max.y, max.z),
+        ];
+
+        for v in &vertices {
+            let rotated = rotation.transform_point(v);
+            mesh.add_vertex(rotated, Vector3::new(0.0, 0.0, 1.0));
+        }
+
+        // Same triangle topology as create_box_mesh
+        mesh.add_triangle(0, 1, 2);
+        mesh.add_triangle(0, 2, 3);
+        mesh.add_triangle(4, 6, 5);
+        mesh.add_triangle(4, 7, 6);
+        mesh.add_triangle(0, 3, 7);
+        mesh.add_triangle(0, 7, 4);
+        mesh.add_triangle(1, 5, 6);
+        mesh.add_triangle(1, 6, 2);
+        mesh.add_triangle(0, 4, 5);
+        mesh.add_triangle(0, 5, 1);
+        mesh.add_triangle(3, 2, 6);
+        mesh.add_triangle(3, 6, 7);
+
+        mesh
+    }
 
     fn create_box_mesh(min: Point3<f64>, max: Point3<f64>) -> Mesh {
         let mut mesh = Mesh::with_capacity(8, 36);
@@ -622,5 +662,54 @@ mod tests {
 
         // Hull should have 4 points (excluding interior)
         assert_eq!(hull.len(), 4);
+    }
+
+    #[test]
+    fn test_void_analyzer_nonplanar_angled_void() {
+        // classify_void's NonPlanar branch was previously untested (existing
+        // coverage only exercises Coplanar via axis-aligned boxes). Build a
+        // void box rotated ~35deg about the (1,1,1) axis, which is skew to
+        // both the profile normal and the extrusion direction (both +Z for
+        // an identity profile transform). None of the rotated box's 3 pairs
+        // of face normals land within the analyzer's adaptive-epsilon band
+        // of "parallel to profile plane" (|dot(n, Z)| > 1-eps) or
+        // "perpendicular to extrusion" (|dot(n, Z)| < eps) for eps as loose
+        // as 0.02, so the void must be routed to 3D CSG.
+        let analyzer = VoidAnalyzer::new();
+
+        let angle = 35.0_f64.to_radians();
+        let axis = Unit::new_normalize(Vector3::new(1.0, 1.0, 1.0));
+        let rotation = Rotation3::from_axis_angle(&axis, angle).to_homogeneous();
+
+        let void_mesh = create_rotated_box_mesh(
+            Point3::new(-1.0, -1.0, -1.0),
+            Point3::new(1.0, 1.0, 1.0),
+            &rotation,
+        );
+
+        let profile_transform = Matrix4::identity();
+        let extrusion_direction = Vector3::new(0.0, 0.0, 1.0);
+        let extrusion_depth = 10.0;
+
+        let classification = analyzer.classify_void(
+            &void_mesh,
+            &profile_transform,
+            &extrusion_direction,
+            extrusion_depth,
+        );
+
+        match classification {
+            VoidClassification::NonPlanar { mesh } => {
+                // Routed to 3D CSG with the original void geometry intact.
+                assert_eq!(mesh.positions.len(), void_mesh.positions.len());
+                assert_eq!(mesh.indices.len(), void_mesh.indices.len());
+            }
+            VoidClassification::Coplanar { .. } => {
+                panic!("angled void was misclassified as Coplanar; expected NonPlanar (3D CSG)")
+            }
+            VoidClassification::NonIntersecting => {
+                panic!("angled void was misclassified as NonIntersecting; expected NonPlanar")
+            }
+        }
     }
 }

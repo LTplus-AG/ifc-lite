@@ -28,6 +28,7 @@ import { useSolarSweep } from '@/hooks/useSolarSweep';
 import { getViewerStoreApi, useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { collectIfcBuildingStoreyElementsWithIfcSpace } from '@/store/basketVisibleSet';
+import { isTypeVisible } from '@/store/typeVisibilityFilter';
 import type { AggregationRelationships } from '@/utils/aggregation';
 import { useIfc } from '@/hooks/useIfc';
 import { useWebGPU } from '@/hooks/useWebGPU';
@@ -276,14 +277,21 @@ export function ViewportContainer() {
         if (!assets || assets.length === 0) continue;
         const modelIndex = modelIdToIndex.get(modelId) ?? 0;
         for (const asset of assets) {
+          // Scan-based terrain is stamped `IfcGeographicElement`; honour the
+          // same type-visibility gate as the mesh path so the Site toggle hides
+          // it too (issue #1480).
+          if (!isTypeVisible(asset.ifcType, typeVisibility)) continue;
           collected.push(asset.modelIndex === modelIndex ? asset : { ...asset, modelIndex });
         }
       }
     } else if (geometryResult?.pointClouds) {
-      collected.push(...geometryResult.pointClouds);
+      for (const asset of geometryResult.pointClouds) {
+        if (!isTypeVisible(asset.ifcType, typeVisibility)) continue;
+        collected.push(asset);
+      }
     }
     return collected;
-  }, [storeModels, geometryResult, modelIdToIndex]);
+  }, [storeModels, geometryResult, modelIdToIndex, typeVisibility]);
 
   // Extract georeferencing info merged with any live mutations (for Cesium overlay).
   // Reacts to: model load, Cesium toggle, and every georef field edit.
@@ -795,19 +803,12 @@ export function ViewportContainer() {
         continue;
       }
 
-      if (needsFilter) {
-        if (ifcType === 'IfcSpace' && !typeVisibility.spaces) continue;
-        if (ifcType === 'IfcSpatialZone' && !typeVisibility.spatialZones) continue;
-        if (ifcType === 'IfcOpeningElement' && !typeVisibility.openings) continue;
-        if (ifcType === 'IfcVirtualElement' && !typeVisibility.virtualElements) continue;
-        if (ifcType === 'IfcSite' && !typeVisibility.site) continue;
-        // IfcAnnotation can carry real 3D solid geometry (e.g. Bonsai
-        // plan-view "DRAWING" boxes) on top of the 2D symbolic curve overlay.
-        // The `ifcAnnotations` toggle drives the curve overlay (Viewport.tsx);
-        // honour it here too so the toggle also hides those 3D meshes instead
-        // of leaving them rendered as stray cubes (issue #1354).
-        if (ifcType === 'IfcAnnotation' && !typeVisibility.ifcAnnotations) continue;
-      }
+      // Type-visibility gate — shared mapping in `typeVisibilityFilter.ts`
+      // keeps the viewport, Cesium, basket and GLB export in lockstep. The
+      // `site` toggle also hides `IfcGeographicElement` terrain (issue #1480);
+      // `ifcAnnotations` also hides annotation 3D solid geometry / "Model Text"
+      // breps on top of the 2D curve overlay (issues #1354, #1480).
+      if (needsFilter && !isTypeVisible(ifcType, typeVisibility)) continue;
 
       // Mesh alpha flows through unchanged. The previous code re-multiplied
       // IfcSpace / IfcOpeningElement alpha down to <= 0.3 here, which stomped

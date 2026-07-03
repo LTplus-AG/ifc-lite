@@ -708,48 +708,10 @@ pub fn apply_transform(mesh: &mut Mesh, transform: &Matrix4<f64>) {
     });
 }
 
-/// Apply transformation matrix to mesh with RTC (Relative-to-Center) offset
-///
-/// This is the key function for handling large coordinates (e.g., Swiss UTM).
-/// Instead of directly converting transformed f64 coordinates to f32 (which loses
-/// precision for large values), we:
-/// 1. Apply the full transformation in f64 precision
-/// 2. Subtract the RTC offset (in f64) before converting to f32
-/// 3. This keeps the final f32 values small (~0-1000m range) where precision is excellent
-///
-/// # Arguments
-/// * `mesh` - Mesh to transform
-/// * `transform` - Full transformation matrix (including large translations)
-/// * `rtc_offset` - RTC offset to subtract (typically model centroid)
-#[inline]
-pub fn apply_transform_with_rtc(
-    mesh: &mut Mesh,
-    transform: &Matrix4<f64>,
-    rtc_offset: (f64, f64, f64),
-) {
-    // Transform positions using chunk-based iteration for cache locality
-    mesh.positions.chunks_exact_mut(3).for_each(|chunk| {
-        let point = Point3::new(chunk[0] as f64, chunk[1] as f64, chunk[2] as f64);
-        // Apply full transformation in f64
-        let transformed = transform.transform_point(&point);
-        // Subtract RTC offset in f64 BEFORE converting to f32 - this is the key!
-        chunk[0] = (transformed.x - rtc_offset.0) as f32;
-        chunk[1] = (transformed.y - rtc_offset.1) as f32;
-        chunk[2] = (transformed.z - rtc_offset.2) as f32;
-    });
-
-    // Transform normals (use inverse transpose for correct normal transformation)
-    // Normals don't need RTC offset - they're directions, not positions
-    let normal_matrix = transform.try_inverse().unwrap_or(*transform).transpose();
-
-    mesh.normals.chunks_exact_mut(3).for_each(|chunk| {
-        let normal = Vector3::new(chunk[0] as f64, chunk[1] as f64, chunk[2] as f64);
-        let transformed = (normal_matrix * normal.to_homogeneous()).xyz().normalize();
-        chunk[0] = transformed.x as f32;
-        chunk[1] = transformed.y as f32;
-        chunk[2] = transformed.z as f32;
-    });
-}
+// `apply_transform_with_rtc` was deleted here: the C3.2 `pub(crate)` narrowing
+// orphaned it (zero callers, production or test), so per the anti-cruft rule it
+// goes rather than gain a dead-code allow. The RTC rebase runs in the
+// processing orchestrator (see rust/AGENTS.md), not this per-mesh helper.
 
 #[cfg(test)]
 mod tests {

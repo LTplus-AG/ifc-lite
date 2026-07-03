@@ -2487,6 +2487,11 @@ pub fn export_glb_from_meshes(
     lit: bool,
 ) -> (Vec<u8>, GltfStats) {
     let n = vertex_counts.len();
+    // The viewer's `MeshData` arrives pre-welded from the mesh source
+    // (`ifc_lite_processing::element::build_mesh_data` welds every element via
+    // `ifc_lite_geometry::mesh_weld::weld_indexed`), so this path no longer
+    // re-welds — it slices each mesh's block straight into a borrowing
+    // `MeshView`. Views borrow the caller's buffers, which outlive the call.
     let mut views: Vec<MeshView> = Vec::with_capacity(n);
     let mut vbase = 0usize; // running vertex offset
     let mut ibase = 0usize; // running index offset
@@ -3165,6 +3170,77 @@ mod tests {
     }
 
     #[test]
+    fn from_meshes_glb_preserves_source_welded_vertices() {
+        // The faceted-brep per-face vertex duplication is now welded at the mesh
+        // SOURCE (`ifc_lite_processing::element::build_mesh_data`), so the
+        // viewer's `MeshData` reaches `export_glb_from_meshes` already welded and
+        // this path must NOT re-weld — it is a faithful pass-through. Feed a
+        // PRE-WELDED GxG plate (unique grid points, shared indices) and assert
+        // the export preserves its vertex count and extent exactly. The
+        // per-face-duplicated form and its collapse are covered at the source
+        // (processing `source_vertex_weld` + geometry `mesh_weld` unit tests).
+        const G: usize = 4;
+        // (G+1)^2 unique grid vertices, all +Z.
+        let mut positions: Vec<f32> = Vec::new();
+        let mut normals: Vec<f32> = Vec::new();
+        for x in 0..=G {
+            for y in 0..=G {
+                positions.extend_from_slice(&[x as f32, y as f32, 0.0]);
+                normals.extend_from_slice(&[0.0, 0.0, 1.0]);
+            }
+        }
+        let welded_verts = (G + 1) * (G + 1); // 25
+        assert_eq!(positions.len() / 3, welded_verts);
+        // Two triangles per cell, indexing the shared grid vertices.
+        let vid = |x: usize, y: usize| (x * (G + 1) + y) as u32;
+        let mut indices: Vec<u32> = Vec::new();
+        for x in 0..G {
+            for y in 0..G {
+                let (a, b, c, d) = (vid(x, y), vid(x + 1, y), vid(x + 1, y + 1), vid(x, y + 1));
+                indices.extend_from_slice(&[a, b, c, a, c, d]);
+            }
+        }
+
+        let (glb, stats) = export_glb_from_meshes(
+            &positions,
+            &normals,
+            &indices,
+            &[welded_verts as u32],
+            &[indices.len() as u32],
+            &[0.5, 0.5, 0.5, 1.0],
+            &[0.0, 0.0, 0.0],
+            &[1u32],
+            true,
+            false,
+        );
+        assert_eq!(stats.triangles, 2 * G * G, "triangles unchanged");
+
+        let (json, _bin) = parse_glb(&glb);
+        let pos_acc = json["accessors"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["type"] == "VEC3" && a["min"].is_array())
+            .expect("position accessor");
+        let pos_count = pos_acc["count"].as_u64().unwrap() as usize;
+        assert_eq!(
+            pos_count, welded_verts,
+            "pre-welded source vertices pass through unchanged (no export re-weld / inflation)"
+        );
+
+        // World extent preserved: the plate is still GxG and flat (one axis span
+        // is 0, the other two are G), regardless of the Y-up axis order.
+        let mn: Vec<f64> = pos_acc["min"].as_array().unwrap().iter().map(|v| v.as_f64().unwrap()).collect();
+        let mx: Vec<f64> = pos_acc["max"].as_array().unwrap().iter().map(|v| v.as_f64().unwrap()).collect();
+        let mut spans: Vec<f64> = (0..3).map(|i| mx[i] - mn[i]).collect();
+        spans.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        assert!(
+            spans[0].abs() < 1e-4 && (spans[1] - G as f64).abs() < 1e-4 && (spans[2] - G as f64).abs() < 1e-4,
+            "welded plate keeps its GxG flat extent (spans {spans:?})"
+        );
+    }
+
+    #[test]
     fn from_meshes_assembles_valid_glb() {
         // Two meshes (a quad each) supplied as already-produced buffers — no re-meshing.
         // Mesh 0: unit quad at origin; Mesh 1: same quad with a non-zero RTC origin.
@@ -3651,6 +3727,53 @@ mod tests {
         )
         .1;
         assert!(iso.meshes >= 1 && iso.meshes <= full.meshes);
+    }
+
+    /// A minimal but valid triangulated mesh (one triangle, matching normals),
+    /// so `mesh_visible`'s geometry-sanity checks pass and only the filter under
+    /// test can flip the result.
+    fn synthetic_mesh(express_id: u32, ifc_type: &str) -> MeshData {
+        MeshData::new(
+            express_id,
+            ifc_type.to_string(),
+            vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+            vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
+            vec![0, 1, 2],
+            [1.0, 0.0, 0.0, 1.0],
+        )
+    }
+
+    #[test]
+    fn mesh_visible_hidden_excludes_only_the_listed_express_id() {
+        // `hidden` is the per-element hide list (viewer "hide selection"): only the
+        // express ids it names must be dropped, everything else stays visible.
+        let hidden_mesh = synthetic_mesh(42, "IfcWall");
+        let other_mesh = synthetic_mesh(43, "IfcWall");
+        let opts = GltfOptions { hidden: vec![42], ..GltfOptions::default() };
+        assert!(!mesh_visible(&hidden_mesh, &opts), "express id 42 is in `hidden` and must be excluded");
+        assert!(mesh_visible(&other_mesh, &opts), "express id 43 is not in `hidden` and must stay visible");
+
+        // With an empty hidden list both are visible again (no accidental default-hide).
+        let none_hidden = GltfOptions::default();
+        assert!(mesh_visible(&hidden_mesh, &none_hidden));
+        assert!(mesh_visible(&other_mesh, &none_hidden));
+    }
+
+    #[test]
+    fn mesh_visible_hidden_types_excludes_the_whole_class() {
+        // `hidden_types` is the class-level visibility toggle (viewer "hide IfcWall"):
+        // every mesh of a hidden IFC type is dropped regardless of express id, and
+        // meshes of other types are unaffected.
+        let wall = synthetic_mesh(1, "IfcWall");
+        let slab = synthetic_mesh(2, "IfcSlab");
+        let opts = GltfOptions { hidden_types: vec!["IfcWall".to_string()], ..GltfOptions::default() };
+        assert!(!mesh_visible(&wall, &opts), "IfcWall is in `hidden_types` and must be excluded");
+        assert!(mesh_visible(&slab, &opts), "IfcSlab is not in `hidden_types` and must stay visible");
+
+        // A different express id of the same hidden type is still excluded (the
+        // filter is class-level, not per-instance).
+        let another_wall = synthetic_mesh(3, "IfcWall");
+        assert!(!mesh_visible(&another_wall, &opts));
     }
 
     /// A structurally valid IFC with zero products (no render geometry).

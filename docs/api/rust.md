@@ -12,7 +12,7 @@ Core parsing functionality.
 
 ```rust
 pub mod parser;      // STEP tokenization
-pub mod schema;      // IFC type definitions
+pub mod generated;   // IFC type definitions (IfcType)
 pub mod decoder;     // Entity decoding
 pub mod streaming;   // Streaming parser
 pub mod schema_gen;  // Generated schema
@@ -58,24 +58,24 @@ pub enum Token<'a> {
 
 ```rust
 /// Scans IFC file for entity locations
-pub struct EntityScanner {
+pub struct EntityScanner<'a> {
     // ...
 }
 
-impl EntityScanner {
-    /// Create new scanner
-    pub fn new() -> Self;
+impl<'a> EntityScanner<'a> {
+    /// Create a scanner over the file bytes
+    pub fn new<T>(content: &'a T) -> Self;
 
-    /// Scan buffer for entities
-    pub fn scan(&mut self, input: &[u8]) -> Result<EntityIndex>;
+    /// Advance to the next entity: (express_id, type_name, start, end)
+    pub fn next_entity(&mut self) -> Option<(u32, &'a str, usize, usize)>;
 }
 ```
 
 #### parse_entity
 
 ```rust
-/// Parse a single entity definition
-pub fn parse_entity(input: &[u8]) -> Result<(u32, &[u8], Vec<Token>)>;
+/// Parse a single entity definition into (express_id, type, attribute tokens)
+pub fn parse_entity<'a, T>(input: &'a T) -> Result<(u32, IfcType, Vec<Token<'a>>)>;
 ```
 
 ### Schema Module
@@ -184,24 +184,23 @@ pub struct EntityLocation {
 /// Events emitted during streaming parse
 #[derive(Debug)]
 pub enum ParseEvent {
-    /// Header parsed
-    Header(HeaderInfo),
-    /// Entity found
-    Entity {
-        express_id: u32,
-        type_name: String,
-        offset: usize,
-    },
+    /// Parsing started
+    Started { file_size: usize, timestamp: f64 },
+    /// Entity discovered during scanning
+    EntityScanned { id: u32, ifc_type: IfcType, position: usize },
+    /// Geometry processing completed for an entity
+    GeometryReady { id: u32, vertex_count: usize, triangle_count: usize },
     /// Progress update
     Progress {
-        bytes_read: usize,
-        total_bytes: usize,
+        phase: String,
         percent: f32,
+        entities_processed: usize,
+        total_entities: usize,
     },
-    /// Parse complete
-    Complete,
+    /// Parsing completed
+    Completed { duration_ms: f64, entity_count: usize, triangle_count: usize },
     /// Error (non-fatal)
-    Error(ParseError),
+    Error { message: String, position: Option<usize> },
 }
 ```
 
@@ -491,8 +490,12 @@ WebAssembly bindings.
 
 ### IfcAPI
 
+The WASM surface is split across `rust/wasm-bindings/src/api/*.rs`; every method
+is exported to JS under a camelCase `js_name` that mirrors `pkg/ifc-lite.d.ts`.
+The methods below are representative, not exhaustive.
+
 ```rust
-/// Main WASM API class
+/// Main IFC-Lite API
 #[wasm_bindgen]
 pub struct IfcAPI {
     // ...
@@ -500,33 +503,60 @@ pub struct IfcAPI {
 
 #[wasm_bindgen]
 impl IfcAPI {
-    /// Create new instance
+    /// Create and initialize the IFC API
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self;
 
-    /// Parse IFC file
-    #[wasm_bindgen]
-    pub fn parse(&mut self, data: &[u8]) -> Result<JsValue, JsValue>;
+    /// Fast SIMD entity scan; returns entity references for the data model
+    #[wasm_bindgen(js_name = scanEntitiesFast)]
+    pub fn scan_entities_fast(&self, content: &str) -> JsValue;
 
-    /// Parse with streaming
-    #[wasm_bindgen]
-    pub async fn parse_streaming(
-        &mut self,
+    /// Streaming geometry pre-pass; emits progress via `on_event`
+    #[wasm_bindgen(js_name = buildPrePassStreaming)]
+    pub fn build_pre_pass_streaming(
+        &self,
         data: &[u8],
-        callback: &js_sys::Function,
+        on_event: &js_sys::Function,
+        chunk_size: u32,
+        disabled_type_names: Option<Vec<String>>,
+        skip_type_geometry: bool,
     ) -> Result<JsValue, JsValue>;
 
-    /// Get entity by ID
-    #[wasm_bindgen]
-    pub fn get_entity(&self, express_id: u32) -> Result<JsValue, JsValue>;
+    /// Mesh one batch of geometry jobs into a MeshCollection
+    #[wasm_bindgen(js_name = processGeometryBatch)]
+    pub fn process_geometry_batch(
+        &self,
+        data: &[u8],
+        jobs_flat: &[u32],
+        unit_scale: f64,
+        // ... RTC offset, void keys, styles, material colours
+    ) -> MeshCollection;
 
-    /// Get geometry for entity
-    #[wasm_bindgen]
-    pub fn get_geometry(&self, express_id: u32) -> Result<JsValue, JsValue>;
+    /// Extract 2D profiles (outer boundary + holes) for parametric geometry
+    #[wasm_bindgen(js_name = extractProfiles)]
+    pub fn extract_profiles(&self, content: String, model_index: u32) -> ProfileCollection;
 
-    /// Get all meshes
-    #[wasm_bindgen]
-    pub fn get_all_meshes(&self) -> Result<JsValue, JsValue>;
+    /// Export glTF binary (GLB) from the model
+    #[wasm_bindgen(js_name = exportGlb)]
+    pub fn export_glb(
+        &self,
+        content: &[u8],
+        include_metadata: bool,
+        hidden: &[u32],
+        isolated: &[u32],
+        hidden_types_csv: String,
+        lit: Option<bool>,
+    ) -> Result<Vec<u8>, JsValue>;
+
+    /// Export CSV (entities / properties / quantities / spatial)
+    #[wasm_bindgen(js_name = exportCsv)]
+    pub fn export_csv(
+        &self,
+        content: &[u8],
+        mode: String,
+        delimiter: String,
+        include_properties: bool,
+    ) -> Vec<u8>;
 }
 ```
 

@@ -1,0 +1,82 @@
+# Module-size ratchet allowlist (see module_size_ratchet.rs).
+# Non-generated, non-test Rust source files currently over the ~400-line
+# house rule (AGENTS.md). Each line is '<budget> <path>'; the budget is the
+# line count at the time it was recorded. The ratchet test fails if any of
+# these grows PAST its budget, or if a NEW file crosses 400 without an entry.
+# The rule: shrink or split. When you split a file below 400, delete its row
+# (the total must trend DOWN). Only ADD a row with a written justification.
+# Regenerated against the branch's merge base; refresh on rebase if a listed
+     420 apps/server/src/routes/parse/parquet_stream.rs
+     756 apps/server/src/services/parquet_data_model.rs
+     581 apps/server/src/services/parquet_optimized.rs
+     522 apps/server/src/services/parquet.rs
+    1087 rust/core/src/decoder.rs
+     429 rust/core/src/fast_parse.rs
+     793 rust/core/src/georef.rs
+     445 rust/core/src/model_bounds.rs
+     601 rust/core/src/parser/scanner.rs
+     463 rust/core/src/parser/tokenizer.rs
+     550 rust/core/src/schema_gen.rs
+     990 rust/core/src/units.rs
+    3943 rust/export/src/gltf.rs
+     655 rust/export/src/model.rs
+     611 rust/export/src/step.rs
+    1233 rust/geometry/src/alignment.rs
+     551 rust/geometry/src/bool2d.rs
+    1875 rust/geometry/src/cdt.rs
+     535 rust/geometry/src/congruence/engine.rs
+     895 rust/geometry/src/csg/consolidate.rs
+    1061 rust/geometry/src/csg/mod.rs
+     436 rust/geometry/src/csg/normals.rs
+     998 rust/geometry/src/extrusion.rs
+     759 rust/geometry/src/facet_weld.rs
+     408 rust/geometry/src/geom_hash.rs
+     641 rust/geometry/src/kernel/arrangement/classify.rs
+     566 rust/geometry/src/kernel/fixed.rs
+     846 rust/geometry/src/kernel/mesh_bridge.rs
+     700 rust/geometry/src/kernel/predicates.rs
+    1383 rust/geometry/src/kernel/retriangulate.rs
+     468 rust/geometry/src/kernel/tritri.rs
+    1529 rust/geometry/src/mesh.rs
+     920 rust/geometry/src/processors/boolean/mod.rs
+     486 rust/geometry/src/processors/brep/faceted.rs
+     402 rust/geometry/src/processors/csg_primitive.rs
+     608 rust/geometry/src/processors/sectioned.rs
+     758 rust/geometry/src/profile_extractor.rs
+     431 rust/geometry/src/profile.rs
+     598 rust/geometry/src/profiles/curves_2d.rs
+     709 rust/geometry/src/profiles/curves_3d.rs
+     898 rust/geometry/src/profiles/mod.rs
+     596 rust/geometry/src/profiles/shapes.rs
+     706 rust/geometry/src/profiles/simplify.rs
+     781 rust/geometry/src/rect_fast.rs
+     461 rust/geometry/src/router/clipping.rs
+     586 rust/geometry/src/router/diagnostics.rs
+     659 rust/geometry/src/router/layers.rs
+     572 rust/geometry/src/router/mod.rs
+    1072 rust/geometry/src/router/processing.rs
+     446 rust/geometry/src/router/rtc_offset.rs
+     497 rust/geometry/src/router/voids_2d.rs
+     618 rust/geometry/src/router/voids/aabb_clip.rs
+     871 rust/geometry/src/router/voids/geom.rs
+    1889 rust/geometry/src/router/voids/mod.rs
+     621 rust/geometry/src/router/voids/probe.rs
+    1002 rust/geometry/src/router/voids/synthesis.rs
+    1472 rust/geometry/src/space_dcel/mod.rs
+     525 rust/geometry/src/transform.rs
+     782 rust/geometry/src/triangulation.rs
+     715 rust/geometry/src/void_analysis.rs
+     745 rust/geometry/src/void_index.rs
+     499 rust/processing/src/determinism.rs
+     812 rust/processing/src/element.rs
+     468 rust/processing/src/georeferencing.rs
+     772 rust/processing/src/prepass.rs
+    1474 rust/processing/src/processor/mod.rs
+     440 rust/processing/src/symbolic/items.rs
+# +6: wire per-batch point-cache hit/miss stats into record_pipeline_batch (perf/brep-point-cache-instrumentation).
+     773 rust/wasm-bindings/src/api/gpu_meshes/batch.rs
+     627 rust/wasm-bindings/src/api/gpu_meshes/prepass.rs
+     436 rust/wasm-bindings/src/api/grid_lines.rs
+     878 rust/wasm-bindings/src/api/mod.rs
+     692 rust/wasm-bindings/src/zero_copy/mesh.rs
+     743 rust/wasm-bindings/src/zero_copy/symbolic.rs

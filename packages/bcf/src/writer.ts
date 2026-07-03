@@ -25,6 +25,8 @@ import type {
   BCFBitmap,
   BCFPoint,
   BCFDirection,
+  BCFBimSnippet,
+  BCFDocumentReference,
 } from './types.js';
 import { generateUuid } from '@ifc-lite/encoding';
 
@@ -167,6 +169,19 @@ function writeMarkupFile(folder: JSZip, topic: BCFTopic): void {
   if (topic.labels && topic.labels.length > 0) {
     for (const label of topic.labels) {
       content += `\n    <Labels>${escapeXml(label)}</Labels>`;
+    }
+  }
+
+  // ReferenceSchema is required inside BimSnippet by the BCF XSD; only emit the
+  // snippet when it is complete so we never write schema-invalid markup. (The
+  // type marks referenceSchema optional, but a snippet without it is unusable.)
+  if (topic.bimSnippet?.referenceSchema) {
+    content += writeBimSnippet(topic.bimSnippet);
+  }
+
+  if (topic.documentReferences && topic.documentReferences.length > 0) {
+    for (const docRef of topic.documentReferences) {
+      content += writeDocumentReference(docRef);
     }
   }
 
@@ -533,6 +548,33 @@ function writeBitmap(bitmap: BCFBitmap): string {
       </Up>
       <Height>${bitmap.height}</Height>
     </Bitmap>`;
+}
+
+/**
+ * Write BimSnippet XML
+ */
+function writeBimSnippet(snippet: BCFBimSnippet): string {
+  // Caller guarantees referenceSchema is present (see writeMarkupFile); both
+  // Reference and ReferenceSchema are required by the BCF schema.
+  let content = `\n    <BimSnippet SnippetType="${escapeXml(snippet.snippetType)}" isExternal="${snippet.isExternal}">`;
+  content += `\n      <Reference>${escapeXml(snippet.reference)}</Reference>`;
+  content += `\n      <ReferenceSchema>${escapeXml(snippet.referenceSchema ?? '')}</ReferenceSchema>`;
+  content += `\n    </BimSnippet>`;
+  return content;
+}
+
+/**
+ * Write DocumentReference XML
+ */
+function writeDocumentReference(docRef: BCFDocumentReference): string {
+  const guidAttr = docRef.guid ? ` Guid="${escapeXml(docRef.guid)}"` : '';
+  let content = `\n    <DocumentReference${guidAttr} isExternal="${docRef.isExternal}">`;
+  content += `\n      <ReferencedDocument>${escapeXml(docRef.referencedDocument)}</ReferencedDocument>`;
+  if (docRef.description) {
+    content += `\n      <Description>${escapeXml(docRef.description)}</Description>`;
+  }
+  content += `\n    </DocumentReference>`;
+  return content;
 }
 
 /**

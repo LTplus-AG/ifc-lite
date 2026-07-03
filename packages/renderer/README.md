@@ -36,9 +36,9 @@ canvas.addEventListener('click', async (e) => {
   const hit = await renderer.pick(e.clientX - rect.left, e.clientY - rect.top);
 
   if (hit) {
-    console.log(`Clicked expressId ${hit.expressId} at`, hit.point);
-    renderer.setSelection([hit.expressId]);
-    renderer.requestRender();
+    console.log(`Clicked expressId ${hit.expressId} at`, hit.worldXYZ);
+    // Selection is a per-frame render option, not a stateful setter.
+    renderer.render({ selectedIds: new Set([hit.expressId]) });
   }
 });
 ```
@@ -48,33 +48,38 @@ For exact world-space hits with surface normals, use `raycastScene(x, y)` — sl
 ## Section planes
 
 ```typescript
-// Cut the model with an axis-aligned section plane
-renderer.setSectionPlane({
-  axis: 'down',          // 'side' | 'down' | 'front' (X / Y / Z)
-  position: 3.0,         // metres along axis
-  enabled: true,
-  flipped: false,
+// Cut the model with an axis-aligned section plane (a per-frame render option)
+renderer.render({
+  sectionPlane: {
+    axis: 'down',          // 'side' | 'down' | 'front' (X / Y / Z)
+    position: 50,          // 0-100 percentage of model bounds
+    enabled: true,
+    flipped: false,
+  },
 });
-renderer.requestRender();
 
 // Disable
-renderer.setSectionPlane(null);
+renderer.render({ sectionPlane: { axis: 'down', position: 50, enabled: false } });
 ```
 
 ## Visibility + colour overrides
 
 ```typescript
-// Hide a list of entities
-renderer.setHiddenEntities(new Set([12345, 12346, 12347]));
+// Hide a list of entities (per-frame render option)
+renderer.render({ hiddenIds: new Set([12345, 12346, 12347]) });
 
 // Solo a subset (everything else gets the ghost treatment)
-renderer.setIsolatedEntities(new Set([42]));
+renderer.render({ isolatedIds: new Set([42]) });
 
-// Tint specific entities
-renderer.setColorOverrides(new Map([
-  [42, [1, 0, 0, 1]],   // RGBA — bright red
-  [99, [0, 1, 0, 0.4]], // semi-transparent green
-]));
+// Tint specific entities (RGBA 0-1) via the scene's color overrides
+renderer.getScene().setColorOverrides(
+  new Map([
+    [42, [1, 0, 0, 1]],   // bright red
+    [99, [0, 1, 0, 0.4]], // semi-transparent green
+  ]),
+  renderer.getGPUDevice()!,
+  renderer.getPipeline()!,
+);
 renderer.requestRender();
 ```
 

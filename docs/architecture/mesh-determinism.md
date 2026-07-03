@@ -11,7 +11,14 @@ Running `process_geometry` over the synthetic fixture in
 `ifc_lite_processing::determinism` produces, bit-for-bit:
 
 - Per mesh, in emit order: `express_id`, `geometry_class`, position f32 bits,
-  normal f32 bits, triangle indices, and the per-element f64 `origin`.
+  normal f32 bits, triangle indices, and the per-element f64 `origin`. These are
+  hashed into THREE separate per-mesh fields so the cross-target guard can hold
+  each to a different standard: `positions_hash` (positions) and
+  `indices_origin_hash` (identity + topology + placement) are byte-identical on
+  every target for every mesh, with no exemption; `normals_hash` is the only
+  surface allowed the documented trig gap, and only for the curved mesh. This is
+  what makes the "positions are byte-identical cross-target, even for the round
+  column" claim below a test-enforced invariant rather than prose.
   Emit order itself is part of the contract: entity jobs are processed in file
   scan order and rayon's ordered collect preserves it, so the mesh list is
   identical regardless of thread count (verified with `RAYON_NUM_THREADS=1`).
@@ -77,8 +84,11 @@ near-zero normal components (true value ~0, e.g. sin at the angle pi) keep
 the full residue: measured -7.0e-17 native vs -2.1e-17 wasm32 on the fixture
 column. Closing this requires deterministic trig (e.g. the pure-Rust `libm`
 crate) in the profile tessellation path -- a separate work item. Until then
-the round column's mesh hash is the ONLY divergence between the two pinned
-manifests.
+the round column's `normals_hash` is the ONLY divergence between the two pinned
+manifests: its `positions_hash` and `indices_origin_hash` match native ==
+wasm32 (empirically confirmed and asserted per-field by the guard), so a future
+change that diverged the curved mesh's POSITIONS across targets would fail the
+guard instead of hiding inside a combined per-mesh hash.
 
 ## What was fixed to get here
 

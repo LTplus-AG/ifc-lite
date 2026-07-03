@@ -254,16 +254,13 @@ impl IfcAPI {
     /// the same `IfcAPI` instance — e.g. the parser worker keeps one
     /// `IfcAPI` alive across multiple `parse` requests).
     ///
-    /// Panics if the cache Mutex is poisoned. Poisoning means an
-    /// earlier panic occurred while the lock was held — silently
-    /// continuing would mean operating on an inconsistent cache, so
-    /// fail fast.
+    /// Recovers a poisoned cache Mutex instead of panicking; see `mod_tests.rs`.
     #[wasm_bindgen(js_name = clearPrePassCache)]
     pub fn clear_pre_pass_cache(&self) {
         let mut slot = self
             .cached_entity_index
             .lock()
-            .expect("ifc-lite cached_entity_index Mutex poisoned");
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         slot.take();
         // The parts-to-skip set is keyed off the content scanned during
         // the previous load; drop it together with the entity index so the
@@ -271,48 +268,48 @@ impl IfcAPI {
         let mut parts_slot = self
             .cached_parts_to_skip
             .lock()
-            .expect("ifc-lite cached_parts_to_skip Mutex poisoned");
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         parts_slot.take();
         // The material-layer index is keyed off the previous load's content.
         self.cached_material_layer_index
             .lock()
-            .expect("ifc-lite cached_material_layer_index Mutex poisoned")
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take();
         // The referenced-RepresentationMap set is keyed off the previous load's
         // content; drop it so the next file rebuilds against fresh content.
         let mut repmap_slot = self
             .cached_referenced_repmaps
             .lock()
-            .expect("ifc-lite cached_referenced_repmaps Mutex poisoned");
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         repmap_slot.take();
         // The instantiated-type-ids set is keyed off the previous load's content.
         let mut inst_slot = self
             .cached_instantiated_type_ids
             .lock()
-            .expect("ifc-lite cached_instantiated_type_ids Mutex poisoned");
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         inst_slot.take();
         // The texture index is keyed off the previous load's content; drop it.
         let mut texture_slot = self
             .cached_texture_index
             .lock()
-            .expect("ifc-lite cached_texture_index Mutex poisoned");
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         texture_slot.take();
         // The indexed-colour-map index is also keyed off the previous load's
         // content; drop it so the next file rebuilds against fresh content.
         let mut icm_slot = self
             .cached_indexed_colour_maps
             .lock()
-            .expect("ifc-lite cached_indexed_colour_maps Mutex poisoned");
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         icm_slot.take();
         // The plane-angle scale belongs to the previous load's content.
         self.cached_plane_angle_to_radians
             .lock()
-            .expect("ifc-lite cached_plane_angle_to_radians Mutex poisoned")
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take();
         // The geometry-style maps belong to the previous load's wire styles.
         self.cached_geometry_styles
             .lock()
-            .expect("ifc-lite cached_geometry_styles Mutex poisoned")
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take();
         // The content-dedup cache holds the previous model's item meshes, keyed by
         // a content hash of that model's entities. Drop it so a new file on the
@@ -320,7 +317,7 @@ impl IfcAPI {
         // loads; defensive even though the key is content- not id-based).
         self.cached_item_dedup
             .lock()
-            .expect("ifc-lite cached_item_dedup Mutex poisoned")
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take();
         // NB: do NOT reset pipeline_diagnostics here. clearPrePassCache runs in
         // the JS load wrapper's `finally` AFTER the last processGeometryBatch
@@ -366,7 +363,7 @@ impl IfcAPI {
         let mut slot = self
             .cached_entity_index
             .lock()
-            .expect("ifc-lite cached_entity_index Mutex poisoned");
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         *slot = Some(std::sync::Arc::new(index));
         drop(slot);
 
@@ -377,45 +374,45 @@ impl IfcAPI {
         // rebuild against the new content (#962 review). Mirrors clearPrePassCache.
         self.cached_parts_to_skip
             .lock()
-            .expect("ifc-lite cached_parts_to_skip Mutex poisoned")
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take();
         self.cached_material_layer_index
             .lock()
-            .expect("ifc-lite cached_material_layer_index Mutex poisoned")
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take();
         self.cached_referenced_repmaps
             .lock()
-            .expect("ifc-lite cached_referenced_repmaps Mutex poisoned")
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take();
         self.cached_instantiated_type_ids
             .lock()
-            .expect("ifc-lite cached_instantiated_type_ids Mutex poisoned")
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take();
         self.cached_texture_index
             .lock()
-            .expect("ifc-lite cached_texture_index Mutex poisoned")
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take();
         self.cached_indexed_colour_maps
             .lock()
-            .expect("ifc-lite cached_indexed_colour_maps Mutex poisoned")
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take();
         self.cached_plane_angle_to_radians
             .lock()
-            .expect("ifc-lite cached_plane_angle_to_radians Mutex poisoned")
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take();
         // The geometry-style maps belong to the previous load's wire styles —
         // drop them on content swap so a reused IfcAPI can't reuse a stale map
         // (the (len,first,last) signature would otherwise collide rarely).
         self.cached_geometry_styles
             .lock()
-            .expect("ifc-lite cached_geometry_styles Mutex poisoned")
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take();
         // The content-dedup cache holds the previous model's item meshes — drop it
         // on content swap so a reused IfcAPI starts the new file with an empty
         // cache (bounds memory across loads).
         self.cached_item_dedup
             .lock()
-            .expect("ifc-lite cached_item_dedup Mutex poisoned")
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take();
         // A new entity index means a new file — the pipeline diagnostics
         // describe the previous load, so start fresh.
@@ -454,7 +451,7 @@ impl IfcAPI {
         let mut parts_slot = self
             .cached_parts_to_skip
             .lock()
-            .expect("ifc-lite cached_parts_to_skip Mutex poisoned");
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         parts_slot.take();
     }
 
@@ -598,7 +595,7 @@ impl IfcAPI {
             let slot = self
                 .cached_parts_to_skip
                 .lock()
-                .expect("ifc-lite cached_parts_to_skip Mutex poisoned");
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             if let Some(existing) = slot.as_ref() {
                 return std::sync::Arc::clone(existing);
             }
@@ -613,7 +610,7 @@ impl IfcAPI {
         let mut slot = self
             .cached_parts_to_skip
             .lock()
-            .expect("ifc-lite cached_parts_to_skip Mutex poisoned");
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         *slot = Some(std::sync::Arc::clone(&arc));
         arc
     }
@@ -633,7 +630,7 @@ impl IfcAPI {
             let slot = self
                 .cached_material_layer_index
                 .lock()
-                .expect("ifc-lite cached_material_layer_index Mutex poisoned");
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             if let Some(existing) = slot.as_ref() {
                 return std::sync::Arc::clone(existing);
             }
@@ -673,7 +670,7 @@ impl IfcAPI {
         let mut slot = self
             .cached_material_layer_index
             .lock()
-            .expect("ifc-lite cached_material_layer_index Mutex poisoned");
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         *slot = Some(std::sync::Arc::clone(&arc));
         arc
     }
@@ -691,7 +688,7 @@ impl IfcAPI {
             let slot = self
                 .cached_referenced_repmaps
                 .lock()
-                .expect("ifc-lite cached_referenced_repmaps Mutex poisoned");
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             if let Some(existing) = slot.as_ref() {
                 return std::sync::Arc::clone(existing);
             }
@@ -703,7 +700,7 @@ impl IfcAPI {
         let mut slot = self
             .cached_referenced_repmaps
             .lock()
-            .expect("ifc-lite cached_referenced_repmaps Mutex poisoned");
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         *slot = Some(std::sync::Arc::clone(&arc));
         arc
     }
@@ -721,7 +718,7 @@ impl IfcAPI {
             let slot = self
                 .cached_instantiated_type_ids
                 .lock()
-                .expect("ifc-lite cached_instantiated_type_ids Mutex poisoned");
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             if let Some(existing) = slot.as_ref() {
                 return std::sync::Arc::clone(existing);
             }
@@ -733,7 +730,7 @@ impl IfcAPI {
         let mut slot = self
             .cached_instantiated_type_ids
             .lock()
-            .expect("ifc-lite cached_instantiated_type_ids Mutex poisoned");
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         *slot = Some(std::sync::Arc::clone(&arc));
         arc
     }
@@ -750,7 +747,7 @@ impl IfcAPI {
             let slot = self
                 .cached_texture_index
                 .lock()
-                .expect("ifc-lite cached_texture_index Mutex poisoned");
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             if let Some(existing) = slot.as_ref() {
                 return std::sync::Arc::clone(existing);
             }
@@ -762,7 +759,7 @@ impl IfcAPI {
         let mut slot = self
             .cached_texture_index
             .lock()
-            .expect("ifc-lite cached_texture_index Mutex poisoned");
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         *slot = Some(std::sync::Arc::clone(&arc));
         arc
     }
@@ -786,7 +783,7 @@ impl IfcAPI {
             let slot = self
                 .cached_indexed_colour_maps
                 .lock()
-                .expect("ifc-lite cached_indexed_colour_maps Mutex poisoned");
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             if let Some(existing) = slot.as_ref() {
                 return std::sync::Arc::clone(existing);
             }
@@ -806,7 +803,7 @@ impl IfcAPI {
             let mut slot = self
                 .cached_indexed_colour_maps
                 .lock()
-                .expect("ifc-lite cached_indexed_colour_maps Mutex poisoned");
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             *slot = Some(std::sync::Arc::clone(&arc));
             return arc;
         }
@@ -827,7 +824,7 @@ impl IfcAPI {
         let mut slot = self
             .cached_indexed_colour_maps
             .lock()
-            .expect("ifc-lite cached_indexed_colour_maps Mutex poisoned");
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         *slot = Some(std::sync::Arc::clone(&arc));
         arc
     }
@@ -847,7 +844,7 @@ impl IfcAPI {
             let slot = self
                 .cached_plane_angle_to_radians
                 .lock()
-                .expect("ifc-lite cached_plane_angle_to_radians Mutex poisoned");
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             if let Some(existing) = *slot {
                 return existing;
             }
@@ -858,7 +855,7 @@ impl IfcAPI {
         let mut slot = self
             .cached_plane_angle_to_radians
             .lock()
-            .expect("ifc-lite cached_plane_angle_to_radians Mutex poisoned");
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         *slot = Some(scale);
         scale
     }
@@ -877,3 +874,5 @@ impl Default for IfcAPI {
 fn set_js_prop(obj: &JsValue, key: &str, value: &JsValue) -> bool {
     js_sys::Reflect::set(obj, &JsValue::from_str(key), value).unwrap_or(false)
 }
+
+#[cfg(test)] mod mod_tests;

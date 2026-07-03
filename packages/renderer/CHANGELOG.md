@@ -1,5 +1,14 @@
 # @ifc-lite/renderer
 
+## 1.34.1
+
+### Patch Changes
+
+- [#1542](https://github.com/LTplus-AG/ifc-lite/pull/1542) [`810f917`](https://github.com/LTplus-AG/ifc-lite/commit/810f9177997953dc821568a3d68ecec0c57b0c56) Thanks [@louistrue](https://github.com/louistrue)! - Add an optional `ownerId` to `DrawingLine2D` so the IfcAnnotation / IfcGridAxis symbolic overlay can carry the express id of the entity that authored each segment. The section-cut and drawing-2d cutters leave it undefined; it lets the viewer drop an annotation's curves when the owning entity is hidden, without a mesh. Supports the terrain/annotation visibility fixes in [#1480](https://github.com/LTplus-AG/ifc-lite/issues/1480).
+
+- Updated dependencies [[`e8997ea`](https://github.com/LTplus-AG/ifc-lite/commit/e8997ea79a473c443e524151fea4ad9470a4f42d)]:
+  - @ifc-lite/geometry@3.0.2
+
 ## 1.34.0
 
 ### Minor Changes

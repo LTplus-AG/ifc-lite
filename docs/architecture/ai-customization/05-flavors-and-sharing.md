@@ -267,9 +267,11 @@ A flavor is the user's environment. Breakage is severe. Safeguards:
 
 ## 10. Interaction with desktop / server
 
-The desktop app loads flavors the same way as the browser. Flavors that
-declare `desktop`-specific features (e.g. file system access through a
-future `system.fs:<path>` capability) are flagged accordingly.
+No first-party desktop app ships today (it was decommissioned; see 09
+P3.T16/T17). Any future or third-party desktop build would load flavors
+the same way as the browser. Flavors that declare `desktop`-specific
+features (e.g. file system access through a future `system.fs:<path>`
+capability) are flagged accordingly.
 
 The server (headless backend) loads flavors and runs activations for
 non-viewer triggers (e.g. an exporter that runs on file upload). UI

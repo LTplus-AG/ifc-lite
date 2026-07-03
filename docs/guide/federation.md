@@ -100,7 +100,7 @@ interface FederatedModel {
 
 - Each model adds its entities to the shared spatial index and renderer
 - Memory usage scales linearly with total entity count across all models
-- The FederationRegistry uses O(1) lookups for ID resolution
+- The FederationRegistry resolves IDs in O(1) local->global, O(log N) global->local
 - Visibility toggling per-model is O(1) (GPU-level filtering)
 - Loading 5+ large models (100MB+ each) may require the server paradigm for best performance
 

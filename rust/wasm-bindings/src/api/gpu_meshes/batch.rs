@@ -101,7 +101,7 @@ impl IfcAPI {
             let mut slot = self
                 .cached_entity_index
                 .lock()
-                .expect("ifc-lite cached_entity_index Mutex poisoned");
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             if let Some(existing) = slot.as_ref() {
                 std::sync::Arc::clone(existing)
             } else {
@@ -143,7 +143,7 @@ impl IfcAPI {
             let mut slot = self
                 .cached_item_dedup
                 .lock()
-                .expect("ifc-lite cached_item_dedup Mutex poisoned");
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             let cache = slot
                 .get_or_insert_with(GeometryRouter::new_dedup_cache)
                 .clone();
@@ -194,7 +194,7 @@ impl IfcAPI {
             let mut slot = self
                 .cached_geometry_styles
                 .lock()
-                .expect("ifc-lite cached_geometry_styles Mutex poisoned");
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             match slot.as_ref() {
                 Some((l, f, la, arc)) if *l == sig_len && *f == sig_first && *la == sig_last => {
                     std::sync::Arc::clone(arc)
@@ -446,11 +446,17 @@ impl IfcAPI {
             .map(|m| (m.indices.len() / 3) as u64)
             .sum();
         let batch_ms = (js_sys::Date::now() - batch_started_ms).max(0.0) as u64;
+        // The batch reuses ONE decoder across every element (the point cache is
+        // already hoisted here), so its cumulative point-cache stats ARE this
+        // batch's faceted-brep memoization tally.
+        let (point_cache_hits, point_cache_misses) = decoder.point_cache_stats();
         self.record_pipeline_batch(
             batch_elements,
             batch_meshes,
             batch_triangles,
             batch_backstop,
+            point_cache_hits,
+            point_cache_misses,
             batch_ms,
             &csg_diag,
         );

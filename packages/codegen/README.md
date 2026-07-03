@@ -14,19 +14,23 @@ npm install --save-dev @ifc-lite/codegen
 
 ```bash
 # IFC4 (776 entities)
-npx ifc-lite-codegen ./schemas/IFC4.exp --out ./src/generated
+node dist/cli.js ./schemas/IFC4.exp --output ./src/generated
 
 # IFC4X3 (876 entities, includes infrastructure: roads, bridges, alignments)
-npx ifc-lite-codegen ./schemas/IFC4X3.exp --out ./src/generated
+node dist/cli.js ./schemas/IFC4X3.exp --output ./src/generated
 ```
 
 Generated files (one per output directory):
 
-```
+```text
 src/generated/
 ├── entities.ts          ← TypeScript interfaces for every entity
+├── types.ts             ← defined-type aliases
+├── enums.ts             ← enum definitions
+├── selects.ts           ← SELECT union types
 ├── schema-registry.ts   ← runtime metadata (parent, attributes, ...)
-├── types.ts             ← enum unions and SELECT types
+├── type-ids.ts          ← numeric type-id lookup tables
+├── serializers.ts       ← STEP serializer bound to the schema registry
 └── index.ts             ← barrel export
 ```
 
@@ -34,16 +38,13 @@ src/generated/
 
 ```typescript
 import { parseExpressSchema, generateTypeScript } from '@ifc-lite/codegen';
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 
-const schema = parseExpressSchema('./schemas/IFC4.exp');
+const schema = parseExpressSchema(await readFile('./schemas/IFC4.exp', 'utf-8'));
 
 console.log(`Parsed ${schema.entities.length} entities, ${schema.types.length} types`);
 
-const generated = generateTypeScript(schema, {
-  inheritanceChain: true,
-  emitEnums: true,
-});
+const generated = generateTypeScript(schema);
 
 await writeFile('./src/generated/entities.ts', generated.entities);
 await writeFile('./src/generated/schema-registry.ts', generated.schemaRegistry);

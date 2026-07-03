@@ -375,10 +375,7 @@ export class IfcAPI {
    * the same `IfcAPI` instance — e.g. the parser worker keeps one
    * `IfcAPI` alive across multiple `parse` requests).
    *
-   * Panics if the cache Mutex is poisoned. Poisoning means an
-   * earlier panic occurred while the lock was held — silently
-   * continuing would mean operating on an inconsistent cache, so
-   * fail fast.
+   * Recovers a poisoned cache Mutex instead of panicking; see `mod_tests.rs`.
    */
   clearPrePassCache(): void;
   /**

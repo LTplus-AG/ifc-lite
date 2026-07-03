@@ -74,7 +74,7 @@ import {
 } from '@ifc-lite/drawing-2d';
 
 // Use a built-in preset
-const fireSafety = getBuiltInPreset('fire-safety');
+const fireSafety = getBuiltInPreset('preset-fire-safety');
 const engine = createOverrideEngine(fireSafety?.rules);
 
 // Or define custom rules
@@ -98,7 +98,7 @@ const result = engine.applyOverrides({
 console.log(result.style);
 ```
 
-Built-in presets: `architectural` (default), `structural`, `mep`, `fire-safety`, `monochrome`. List them via `BUILT_IN_PRESETS` or look one up with `getBuiltInPreset(id)`.
+Built-in presets: `preset-3d-colors` (default), `preset-architectural`, `preset-structural`, `preset-mep`, `preset-fire-safety`, `preset-monochrome`. List them via `BUILT_IN_PRESETS` or look one up with `getBuiltInPreset(id)`.
 
 ## Drawing sheets
 

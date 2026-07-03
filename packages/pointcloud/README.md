@@ -19,7 +19,7 @@ if (chunk) {
 ```
 
 The renderer (`@ifc-lite/renderer`) consumes `DecodedPointChunk` values via
-`Renderer.loadPointClouds()` / `Renderer.addPointCloudChunks()`.
+`Renderer.setPointClouds()` / `Renderer.addPointClouds()`.
 
 ## Streaming decode worker (zero Vite config)
 

@@ -150,7 +150,7 @@ Section planes cut through **all visible models** simultaneously. The section pl
 |-----------|------------|-------|
 | Register model | O(1) | Compute offset from max existing |
 | toGlobalId | O(1) | Simple addition |
-| fromGlobalId | O(n) where n = model count | Iterate sorted offsets (typically 2-5 models) |
+| fromGlobalId | O(log N) | Binary search on sorted ranges (typically 2-5 models) |
 | resolveGlobalIdFromModels | O(n) | Uses Zustand state for reliability |
 | Model visibility toggle | O(1) | GPU-level filtering |
 | Entity selection | O(1) | Direct lookup after ID resolution |

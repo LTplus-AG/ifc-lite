@@ -1218,6 +1218,7 @@
     "Lod0Json: type",
     "Lod1MetaJson: type",
     "LodInput: type",
+    "MergeBlobExportResult: interface",
     "MergeExportOptions: interface",
     "MergeExportResult: interface",
     "MergeModelInput: interface",

@@ -18,11 +18,11 @@ Export IFC to GLB directly in the browser with zero setup:
     <div id="status"></div>
 
     <script type="module">
-        import { GeometryProcessor } from "https://cdn.jsdelivr.net/npm/@ifc-lite/geometry@1.2.1/+esm";
-        import initWasm from "https://cdn.jsdelivr.net/npm/@ifc-lite/wasm@1.2.1/+esm";
+        import { GeometryProcessor } from "https://cdn.jsdelivr.net/npm/@ifc-lite/geometry/+esm";
+        import initWasm from "https://cdn.jsdelivr.net/npm/@ifc-lite/wasm/+esm";
 
         // Initialize WASM with explicit path for CDN
-        const wasmUrl = "https://cdn.jsdelivr.net/npm/@ifc-lite/wasm@1.2.1/pkg/ifc-lite_bg.wasm";
+        const wasmUrl = "https://cdn.jsdelivr.net/npm/@ifc-lite/wasm/pkg/ifc-lite_bg.wasm";
         await initWasm({ module_or_path: wasmUrl });
 
         document.getElementById("file").addEventListener("change", async (e) => {
@@ -78,7 +78,6 @@ flowchart LR
         glTF["glTF/GLB"]
         IFCOut["IFC (roundtrip)"]
         Parquet["Apache Parquet"]
-        Arrow["Apache Arrow"]
         JSON["JSON-LD"]
         CSV["CSV"]
     end
@@ -95,7 +94,6 @@ flowchart LR
     IFC --> glTF --> Viewer
     IFC --> IFCOut --> Roundtrip
     IFC --> Parquet --> Analytics
-    IFC --> Arrow --> Analytics
     IFC --> JSON --> Linked
     IFC --> CSV --> Spreadsheet
 ```
@@ -169,26 +167,26 @@ Export to Apache Parquet for analytics with tools like DuckDB, Pandas, or Polars
 ```typescript
 import { ParquetExporter } from '@ifc-lite/export';
 
-const exporter = new ParquetExporter();
+// The exporter needs the parsed data store. Pass a GeometryResult too if
+// you also want the vertex/index/mesh tables:
+const exporter = new ParquetExporter(store, geometryResult);
 
-// Export entities
-const entitiesParquet = await exporter.exportEntities(parseResult);
+// Export the whole model as a single .bos archive (a ZIP of Parquet files:
+// Entities, Properties, Quantities, Relationships, Strings, plus the
+// geometry tables when a GeometryResult was supplied):
+const bos = await exporter.exportBOS();
+await saveFile('model.bos', bos);
+
+// Or export one table at a time. Valid names: 'entities' | 'properties' |
+// 'quantities' | 'relationships' | 'strings' | 'vertices' | 'indices' | 'meshes'.
+const entitiesParquet = await exporter.exportTable('entities');
 await saveFile('entities.parquet', entitiesParquet);
 
-// Export properties
-const propsParquet = await exporter.exportProperties(parseResult);
+const propsParquet = await exporter.exportTable('properties');
 await saveFile('properties.parquet', propsParquet);
 
-// Export quantities
-const quantsParquet = await exporter.exportQuantities(parseResult);
+const quantsParquet = await exporter.exportTable('quantities');
 await saveFile('quantities.parquet', quantsParquet);
-
-// Export all tables
-const bundle = await exporter.exportAll(parseResult);
-await saveFile('entities.parquet', bundle.entities);
-await saveFile('properties.parquet', bundle.properties);
-await saveFile('quantities.parquet', bundle.quantities);
-await saveFile('relationships.parquet', bundle.relationships);
 ```
 
 ### Parquet Schema
@@ -358,10 +356,10 @@ Export back to IFC format for roundtrip workflows and interoperability with othe
 ```typescript
 import { StepExporter } from '@ifc-lite/export';
 
-const exporter = new StepExporter(dataStore, sourceBuffer);
+const exporter = new StepExporter(dataStore);
 
 // Full export
-const result = exporter.export();
+const result = exporter.export({});
 await saveFile('model.ifc', result.content);
 
 // Visible-only export (exclude hidden entities)
@@ -453,28 +451,13 @@ specific to IFC4X3 (alignment / linear referencing) may not be rescaled — a
 Load existing GLB files for viewing alongside IFC models:
 
 ```typescript
-import { GlbImporter } from '@ifc-lite/import';
+import { parseGLBToMeshData } from '@ifc-lite/export';
 
-const importer = new GlbImporter();
 const glbBuffer = await fetch('model.glb').then(r => r.arrayBuffer());
-const meshes = await importer.import(new Uint8Array(glbBuffer));
+const meshes = parseGLBToMeshData(new Uint8Array(glbBuffer)); // MeshData[]
 
 // Add imported meshes to the renderer
 renderer.addMeshes(meshes);
-```
-
-## Arrow Export
-
-Export to Apache Arrow for in-memory analytics and streaming pipelines:
-
-```typescript
-import { ArrowExporter } from '@ifc-lite/export';
-
-const exporter = new ArrowExporter();
-const arrowBuffer = await exporter.exportEntities(parseResult);
-
-// Use with Arrow-compatible tools (DuckDB, DataFusion, etc.)
-await saveFile('entities.arrow', arrowBuffer);
 ```
 
 ## Custom Export
@@ -482,13 +465,15 @@ await saveFile('entities.arrow', arrowBuffer);
 Create custom export formats:
 
 ```typescript
-import { ExportPipeline } from '@ifc-lite/export';
-
-import { extractPropertiesOnDemand, extractQuantitiesOnDemand } from '@ifc-lite/parser';
+import {
+  extractEntityAttributesOnDemand,
+  extractPropertiesOnDemand,
+  extractQuantitiesOnDemand,
+} from '@ifc-lite/parser';
 
 // Define custom exporter
 class CustomExporter {
-  export(store: IfcDataStore, buffer: Uint8Array): CustomFormat {
+  export(store: IfcDataStore): CustomFormat {
     const output: CustomFormat = {
       metadata: {
         schema: store.schemaVersion,
@@ -503,11 +488,12 @@ class CustomExporter {
     for (const expressId of wallIds) {
       const entityRef = store.entityIndex.byId.get(expressId);
       if (entityRef) {
+        // EntityRef has no name; resolve it from the store on demand.
         output.elements.push({
           id: expressId,
-          name: entityRef.name,
-          properties: extractPropertiesOnDemand(store, expressId, buffer),
-          quantities: extractQuantitiesOnDemand(store, expressId, buffer)
+          name: extractEntityAttributesOnDemand(store, expressId).name,
+          properties: extractPropertiesOnDemand(store, expressId),
+          quantities: extractQuantitiesOnDemand(store, expressId)
         });
       }
     }
@@ -518,7 +504,7 @@ class CustomExporter {
 
 // Use custom exporter
 const exporter = new CustomExporter();
-const custom = exporter.export(store, buffer);
+const custom = exporter.export(store);
 ```
 
 ## Filtered Export
@@ -533,11 +519,11 @@ import { GeometryProcessor } from '@ifc-lite/geometry';
 import { IfcQuery } from '@ifc-lite/query';
 
 // Filter entities with query
-const query = new IfcQuery(parseResult);
+const query = new IfcQuery(store); // store from parseColumnar()
 const externalWalls = query
   .walls()
   .whereProperty('Pset_WallCommon', 'IsExternal', '=', true)
-  .toArray();
+  .execute();
 
 const isolated = new Uint32Array(externalWalls.map((w) => w.expressId));
 
@@ -570,21 +556,21 @@ flowchart LR
 ```
 
 ```typescript
-import { ExportPipeline } from '@ifc-lite/export';
+import { GeometryProcessor } from '@ifc-lite/geometry';
+import { ParquetExporter } from '@ifc-lite/export';
 
-const pipeline = new ExportPipeline(parseResult);
+const gp = new GeometryProcessor();
+await gp.init();
 
-// Run multiple exports in parallel
-const results = await pipeline.export([
-  { format: 'glb', options: { useDraco: true } },
-  { format: 'parquet', tables: ['entities', 'properties'] },
-  { format: 'csv', columns: ['expressId', 'type', 'name'] }
-]);
+// There is no single pipeline class — compose the real exporters you need.
+const glb = gp.exportGlb(bytes, true, new Uint32Array(), new Uint32Array(), '');
+const entitiesParquet = await new ParquetExporter(store).exportTable('entities');
+const csv = gp.exportCsv(bytes, 'entities', ',', /* includeProperties */ true);
 
 // Save all results
-await saveFile('model.glb', results.glb);
-await saveFile('entities.parquet', results.parquet.entities);
-await saveFile('entities.csv', results.csv);
+await saveFile('model.glb', glb);
+await saveFile('entities.parquet', entitiesParquet);
+await saveFile('entities.csv', csv);
 ```
 
 ## Next Steps

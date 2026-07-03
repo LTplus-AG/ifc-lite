@@ -390,6 +390,7 @@ fn produce_inner(
                         Some(geometry_id),
                         0,
                         ctx,
+                        None,
                     ));
                 }
                 if !out.is_empty() {
@@ -405,7 +406,7 @@ fn produce_inner(
     if let Some(h) = hasher.as_mut() {
         h.add_mesh_with_origin(&mesh.positions, &mesh.indices, mesh.origin);
     }
-    vec![build_mesh_data(job, mesh, element_color, None, None, 0, ctx)]
+    vec![build_mesh_data(job, mesh, element_color, None, None, 0, ctx, None)]
 }
 
 /// Emit a sub-mesh collection: per-item colour resolution through the
@@ -481,6 +482,7 @@ fn emit_sub_meshes(
                         Some(sub.geometry_id),
                         slice_class,
                         ctx,
+                        None,
                     ));
                 }
                 continue;
@@ -495,6 +497,7 @@ fn emit_sub_meshes(
             Some(sub.geometry_id),
             slice_class,
             ctx,
+            None,
         ));
     }
     out
@@ -545,19 +548,23 @@ fn produce_type_geometry(
             if mesh.normals.len() != mesh.positions.len() {
                 calculate_normals(&mut mesh);
             }
+            // Thread the per-vertex UVs through `build_mesh_data` so the source
+            // weld remaps them WITH the deduped positions (and keeps texture
+            // seams split). Only textured parts carry UVs; untextured parts pass
+            // `None` and get the full position+normal weld.
+            let part_uvs = if texture.is_some() { Some(uvs) } else { None };
             let mut mesh_data =
-                build_mesh_data(job, mesh, color, None, None, geometry_class, ctx);
+                build_mesh_data(job, mesh, color, None, None, geometry_class, ctx, part_uvs);
             if let Some(tex) = texture {
-                mesh_data = mesh_data.with_texture(
-                    uvs,
-                    MeshTextureData {
-                        rgba: tex.rgba,
-                        width: tex.width,
-                        height: tex.height,
-                        repeat_s: tex.repeat_s,
-                        repeat_t: tex.repeat_t,
-                    },
-                );
+                // UVs were already welded onto `mesh_data`; attach only the
+                // decoded texture image here.
+                mesh_data.texture = Some(MeshTextureData {
+                    rgba: tex.rgba,
+                    width: tex.width,
+                    height: tex.height,
+                    repeat_s: tex.repeat_s,
+                    repeat_t: tex.repeat_t,
+                });
             }
             out.push(mesh_data);
         }
@@ -578,6 +585,7 @@ fn degenerate_backstop_disabled() -> bool {
 /// Construct the final [`MeshData`]: metadata stamp, style metadata,
 /// geometry-class tag, and the optional site-local rotation. ALWAYS the last
 /// step — geometry hashing happens before this (native IFC frame).
+#[allow(clippy::too_many_arguments)] // distinct per-mesh funnel inputs
 fn build_mesh_data(
     job: &ElementMeshJob<'_>,
     mut mesh: Mesh,
@@ -586,6 +594,11 @@ fn build_mesh_data(
     geometry_item_id: Option<u32>,
     geometry_class: u8,
     ctx: &MeshProductionContext<'_>,
+    // Per-vertex texture coordinates (2 per vertex, 1:1 with `mesh.positions`),
+    // present only for textured type geometry (#961). Threaded through the weld
+    // so the UVs are remapped WITH the deduped positions and stay aligned; a UV
+    // difference also keeps a texture seam's coincident corners split.
+    uvs: Option<Vec<f32>>,
 ) -> MeshData {
     // Backstop for f32 vertex-storage collapse: at building-scale world
     // coordinates an f32 mantissa can't separate sub-15µm-apart vertices, so
@@ -605,6 +618,28 @@ fn build_mesh_data(
             DEGENERATE_DROPPED.with(|c| c.set(c.get() + dropped));
         }
     }
+    // Source vertex weld (see `mesh_weld::weld_indexed`): the faceted-brep
+    // mesher emits per-`IfcFace` geometry duplicating every shared corner once
+    // per incident face (~3-6x). Collapse coincident vertices (identical f32
+    // position + quantized normal + quantized UV) at this single per-element
+    // funnel — the normal/UV keys keep creases and texture seams split (flat
+    // shading, no torn textures), and UVs are remapped WITH the positions.
+    // `None` = nothing merged (already-welded swept solids): keep originals, no
+    // realloc; triangles, winding, and AABB unchanged either way.
+    let welded_uvs = match ifc_lite_geometry::mesh_weld::weld_indexed(
+        &mesh.positions,
+        &mesh.normals,
+        uvs.as_deref(),
+        &mesh.indices,
+    ) {
+        Some((wp, wn, wuv, wi)) => {
+            mesh.positions = wp;
+            mesh.normals = wn;
+            mesh.indices = wi;
+            wuv
+        }
+        None => uvs,
+    };
     let mesh_origin = mesh.origin;
     // Instancing: capture before the fields are moved into MeshData. A site-local
     // rotation (below) re-transforms positions/origin and would invalidate the
@@ -649,6 +684,10 @@ fn build_mesh_data(
     if geometry_class != 0 {
         mesh_data = mesh_data.with_geometry_class(geometry_class);
     }
+    // Attach the welded UVs (kept 1:1 with the welded positions by the weld).
+    // The texture IMAGE is attached by the caller; here we only carry the
+    // per-vertex coordinates through the funnel so they can't desync.
+    mesh_data.uvs = welded_uvs;
     convert_mesh_to_site_local(&mut mesh_data, ctx.site_local_rotation);
     mesh_data
 }
@@ -769,109 +808,5 @@ pub(crate) fn infer_opening_subpart_material_name(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn refs(ids: &[u32]) -> FxHashSet<u32> {
-        ids.iter().copied().collect()
-    }
-
-    #[test]
-    fn plan_type_geometry_orphan_type_emits_unreferenced_maps_as_class_1() {
-        for mode in [TypeGeometryMode::SuppressInstanced, TypeGeometryMode::EmitTagged] {
-            let planned = plan_type_geometry(&[10, 11, 12], &refs(&[11]), false, mode);
-            assert_eq!(
-                planned,
-                vec![(10, 1), (12, 1)],
-                "orphan type: unreferenced maps render as class 1 in {mode:?}",
-            );
-        }
-    }
-
-    #[test]
-    fn plan_type_geometry_instantiated_type_suppressed_for_export_tagged_for_viewer() {
-        let suppress = plan_type_geometry(
-            &[10, 11],
-            &refs(&[]),
-            true,
-            TypeGeometryMode::SuppressInstanced,
-        );
-        assert!(
-            suppress.is_empty(),
-            "an export must never duplicate an instanced type's geometry"
-        );
-
-        let tagged =
-            plan_type_geometry(&[10, 11], &refs(&[]), true, TypeGeometryMode::EmitTagged);
-        assert_eq!(
-            tagged,
-            vec![(10, 2), (11, 2)],
-            "the viewer renders instanced type maps tagged class 2 for the Types view"
-        );
-    }
-
-    #[test]
-    fn plan_type_geometry_referenced_maps_never_emit() {
-        let planned = plan_type_geometry(
-            &[10],
-            &refs(&[10]),
-            false,
-            TypeGeometryMode::EmitTagged,
-        );
-        assert!(
-            planned.is_empty(),
-            "a map an IfcMappedItem instantiates draws through its occurrence"
-        );
-    }
-
-    #[test]
-    fn find_geometry_item_color_follows_mapped_item() {
-        // #100 IfcMappedItem → #101 IfcRepresentationMap → #103
-        // IfcShapeRepresentation whose Items = (#110). The style lives on the
-        // underlying item #110, not on the mapped item, so a flat lookup of
-        // #100 misses it — the resolver must chase the mapping (#913 §2.7).
-        const IFC: &str = r#"ISO-10303-21;
-HEADER;
-FILE_DESCRIPTION((''),'2;1');
-FILE_NAME('m.ifc','2026-06-04T00:00:00',(''),(''),'','','');
-FILE_SCHEMA(('IFC4'));
-ENDSEC;
-DATA;
-#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,$,$);
-#100=IFCMAPPEDITEM(#101,#105);
-#101=IFCREPRESENTATIONMAP(#102,#103);
-#102=IFCAXIS2PLACEMENT3D(#104,$,$);
-#103=IFCSHAPEREPRESENTATION(#2,'Body','MappedRepresentation',(#110));
-#104=IFCCARTESIANPOINT((0.,0.,0.));
-#105=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#104,$,$);
-ENDSEC;
-END-ISO-10303-21;
-"#;
-        let blue = [0.1, 0.2, 0.9, 1.0];
-        let mut styles: FxHashMap<u32, GeometryStyleInfo> = FxHashMap::default();
-        styles.insert(110, GeometryStyleInfo::from_color(blue));
-
-        let mut decoder = EntityDecoder::new(IFC);
-
-        // Mapped item, no direct style → inherits the underlying item's colour.
-        assert_eq!(find_geometry_item_color(100, &styles, &mut decoder), Some(blue));
-        // A direct style still wins.
-        assert_eq!(find_geometry_item_color(110, &styles, &mut decoder), Some(blue));
-        // A non-mapped, unstyled item (the representation map itself) → None.
-        assert_eq!(find_geometry_item_color(101, &styles, &mut decoder), None);
-    }
-
-    #[test]
-    fn infer_opening_material_names_glass_vs_frame() {
-        let glass =
-            infer_opening_subpart_material_name(&IfcType::IfcWindow, [0.7, 0.9, 0.5, 0.3], 42);
-        assert_eq!(glass.as_deref(), Some("Window_Glass"));
-
-        let frame =
-            infer_opening_subpart_material_name(&IfcType::IfcDoor, [0.5, 0.5, 0.5, 1.0], 7);
-        assert_eq!(frame.as_deref(), Some("Door_Frame_7"));
-
-        let none = infer_opening_subpart_material_name(&IfcType::IfcWall, [1.0; 4], 1);
-        assert!(none.is_none(), "only windows/doors get inferred part names");
-    }
-}
+#[path = "element_tests.rs"]
+mod tests;

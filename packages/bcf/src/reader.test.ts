@@ -272,5 +272,61 @@ describe('BCF Reader - buildingSMART Test Files', () => {
       expect(topic.comments.length).toBe(1);
       expect(topic.comments[0].comment).toBe('Needs REI 90 & a "review"');
     });
+
+    it('reads a comment inside a BCF 3.0 <Comments> container', async () => {
+      // BCF 3.0 wraps comments in <Comments>, so the outer </Comment> is
+      // followed by </Comments> (not another comment or </Markup>). readBCF
+      // accepts version 3.0, so the parser must not drop these.
+      const markup = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<Markup>',
+        '  <Topic Guid="topic-1" TopicType="Issue" TopicStatus="Open">',
+        '    <Title>3.0 topic</Title>',
+        '  </Topic>',
+        '  <Comments>',
+        '    <Comment Guid="comment-1">',
+        '      <Date>2026-01-01T00:00:00Z</Date>',
+        '      <Author>bob@example.com</Author>',
+        '      <Comment>a wrapped 3.0 comment</Comment>',
+        '    </Comment>',
+        '  </Comments>',
+        '</Markup>',
+      ].join('\n');
+
+      const zip = new JSZip();
+      zip.file('bcf.version', '<?xml version="1.0"?><Version VersionId="3.0"></Version>');
+      zip.file('topic-1/markup.bcf', markup);
+      const buffer = await zip.generateAsync({ type: 'arraybuffer' });
+
+      const project = await readBCF(buffer);
+      const topic = Array.from(project.topics.values())[0];
+      expect(topic.comments.length).toBe(1);
+      expect(topic.comments[0].comment).toBe('a wrapped 3.0 comment');
+    });
+
+    it('reads a comment followed by an unknown vendor-extension element', async () => {
+      // A vendor element between the last comment and </Markup> must not cause
+      // the comment to be silently dropped.
+      const markup = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<Markup>',
+        '  <Topic Guid="topic-1"><Title>t</Title></Topic>',
+        '  <Comment Guid="comment-1">',
+        '    <Comment>vendor-followed comment</Comment>',
+        '  </Comment>',
+        '  <RevitExtensions><Foo>bar</Foo></RevitExtensions>',
+        '</Markup>',
+      ].join('\n');
+
+      const zip = new JSZip();
+      zip.file('bcf.version', '<?xml version="1.0"?><Version VersionId="2.1"></Version>');
+      zip.file('topic-1/markup.bcf', markup);
+      const buffer = await zip.generateAsync({ type: 'arraybuffer' });
+
+      const project = await readBCF(buffer);
+      const topic = Array.from(project.topics.values())[0];
+      expect(topic.comments.length).toBe(1);
+      expect(topic.comments[0].comment).toBe('vendor-followed comment');
+    });
   });
 });

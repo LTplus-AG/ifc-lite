@@ -307,21 +307,34 @@ function extractDocumentReferences(content: string): BCFDocumentReference[] {
  * field with the SAME tag name (see writer.ts writeMarkupFile). A naive non-greedy
  * `[\s\S]*?<\/Comment>` stops at the first `</Comment>` it sees, which is the inner
  * field's closer, not the wrapper's -- truncating every comment to an empty string.
- * The lookahead anchors the wrapper's real end at whatever legally follows a top-level
- * comment: the next sibling `<Comment Guid=`, a `<Viewpoints` block (BCF 2.1 schema
- * order is Comment* then Viewpoints*, so foreign files can put comments before the
- * viewpoints), the `</Markup>` root close, or end-of-document. Our own writer emits
- * comments last, but the reader must also import BCF from other tools.
+ *
+ * Rather than guess what token follows a comment (which varies by BCF version and
+ * vendor: `<Viewpoints>` in 2.1 schema order, `</Comments>` in 3.0, `</Markup>`, or
+ * a vendor-extension element), we slice each wrapper's span from its own opening tag
+ * to the NEXT wrapper opening (or end of content) and take the last `</Comment>` in
+ * that span as the wrapper's real closer. That is robust across BCF 2.1/3.0 and
+ * tolerates unknown sibling elements, so no comment is silently dropped.
  */
 function parseComments(markupContent: string): BCFComment[] {
   const comments: BCFComment[] = [];
-  const commentMatches = markupContent.matchAll(
-    /<Comment\s+Guid="([^"]+)"[^>]*>([\s\S]*?)<\/Comment>\s*(?=<Comment\s+Guid="|<Viewpoints|<\/Markup>|$)/g
-  );
 
-  for (const match of commentMatches) {
-    const guid = match[1];
-    const content = match[2];
+  // Collect every top-level comment-wrapper opening tag and where its body starts.
+  const openRe = /<Comment\s+Guid="([^"]+)"[^>]*>/g;
+  const opens: { guid: string; tagStart: number; bodyStart: number }[] = [];
+  for (let m = openRe.exec(markupContent); m; m = openRe.exec(markupContent)) {
+    opens.push({ guid: m[1], tagStart: m.index, bodyStart: m.index + m[0].length });
+  }
+
+  for (let i = 0; i < opens.length; i++) {
+    const spanEnd = i + 1 < opens.length ? opens[i + 1].tagStart : markupContent.length;
+    const span = markupContent.slice(opens[i].bodyStart, spanEnd);
+    // The wrapper's own closer is the last </Comment> before the next wrapper/end;
+    // the nested text field's closer comes earlier. (</Comments> does not match
+    // </Comment> because of the trailing 's', so the 3.0 container is not confused
+    // for a wrapper close.)
+    const close = span.lastIndexOf('</Comment>');
+    if (close < 0) continue; // malformed: no wrapper closer, skip rather than throw
+    const content = span.slice(0, close);
 
     const date = extractElement(content, 'Date') || new Date().toISOString();
     const author = extractElement(content, 'Author') || 'Unknown';
@@ -333,7 +346,7 @@ function parseComments(markupContent: string): BCFComment[] {
     const viewpointMatch = content.match(/<Viewpoint\s+Guid="([^"]+)"/);
 
     comments.push({
-      guid,
+      guid: opens[i].guid,
       date,
       author,
       comment,

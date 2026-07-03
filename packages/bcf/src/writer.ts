@@ -172,7 +172,10 @@ function writeMarkupFile(folder: JSZip, topic: BCFTopic): void {
     }
   }
 
-  if (topic.bimSnippet) {
+  // ReferenceSchema is required inside BimSnippet by the BCF XSD; only emit the
+  // snippet when it is complete so we never write schema-invalid markup. (The
+  // type marks referenceSchema optional, but a snippet without it is unusable.)
+  if (topic.bimSnippet?.referenceSchema) {
     content += writeBimSnippet(topic.bimSnippet);
   }
 
@@ -551,11 +554,11 @@ function writeBitmap(bitmap: BCFBitmap): string {
  * Write BimSnippet XML
  */
 function writeBimSnippet(snippet: BCFBimSnippet): string {
+  // Caller guarantees referenceSchema is present (see writeMarkupFile); both
+  // Reference and ReferenceSchema are required by the BCF schema.
   let content = `\n    <BimSnippet SnippetType="${escapeXml(snippet.snippetType)}" isExternal="${snippet.isExternal}">`;
   content += `\n      <Reference>${escapeXml(snippet.reference)}</Reference>`;
-  if (snippet.referenceSchema) {
-    content += `\n      <ReferenceSchema>${escapeXml(snippet.referenceSchema)}</ReferenceSchema>`;
-  }
+  content += `\n      <ReferenceSchema>${escapeXml(snippet.referenceSchema ?? '')}</ReferenceSchema>`;
   content += `\n    </BimSnippet>`;
   return content;
 }

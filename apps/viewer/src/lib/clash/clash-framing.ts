@@ -20,13 +20,7 @@
  * a degenerate super-close zoom.
  */
 
-import type { Vec3 } from '@ifc-lite/clash';
-
-/** World-space axis-aligned box, corners as `[x, y, z]` (same shape as `Clash.bounds`). */
-export interface WorldBox {
-  min: Vec3;
-  max: Vec3;
-}
+import type { AABB } from '@ifc-lite/clash';
 
 /** Context margin added on each side, as a fraction of the clash's largest dimension. */
 export const CLASH_CONTEXT_PAD_FACTOR = 0.6;
@@ -39,7 +33,7 @@ export const CLASH_CONTEXT_PAD_MIN_M = 0.5;
  * shows with a little context and a thin/flush overlap never collapses to a
  * point. `min`/`max` are normalised, so an inverted input box is tolerated.
  */
-export function clashFramingBounds(bounds: WorldBox): WorldBox {
+export function clashFramingBounds(bounds: AABB): AABB {
   const loX = Math.min(bounds.min[0], bounds.max[0]);
   const loY = Math.min(bounds.min[1], bounds.max[1]);
   const loZ = Math.min(bounds.min[2], bounds.max[2]);

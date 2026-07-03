@@ -5,14 +5,14 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
+import type { AABB } from '@ifc-lite/clash';
 import {
   clashFramingBounds,
   CLASH_CONTEXT_PAD_FACTOR,
   CLASH_CONTEXT_PAD_MIN_M,
-  type WorldBox,
 } from './clash-framing.js';
 
-const center = (b: WorldBox): [number, number, number] => [
+const center = (b: AABB): [number, number, number] => [
   (b.min[0] + b.max[0]) / 2,
   (b.min[1] + b.max[1]) / 2,
   (b.min[2] + b.max[2]) / 2,

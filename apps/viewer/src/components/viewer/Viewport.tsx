@@ -823,7 +823,14 @@ export function Viewport({
           // never top-down or edge-on (#1466). `fitBoundsAdaptive` is the same
           // fit the Home view / post-load auto-fit use, so a clash-sized box
           // gets the compact SE-isometric pose and handles orthographic zoom.
-          camera.fitBoundsAdaptive({ min, max }, { animate: true, duration: 300 });
+          // Pass the real viewport short side (as the Home handler does) so the
+          // fit is viewport-accurate for any policy.
+          const canvas = rendererRef.current?.getCanvas();
+          const canvasShort = Math.min(canvas?.height ?? 0, canvas?.width ?? 0);
+          camera.fitBoundsAdaptive(
+            { min, max },
+            { animate: true, duration: 300, viewportShortPx: canvasShort > 0 ? canvasShort : undefined },
+          );
           calculateScale();
         },
         orbit: (deltaX: number, deltaY: number) => {

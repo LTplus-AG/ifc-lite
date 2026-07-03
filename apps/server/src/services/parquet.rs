@@ -59,18 +59,25 @@ pub fn serialize_to_parquet(meshes: &[MeshData]) -> Result<Bytes, ParquetError> 
     frame_sections(&mesh_parquet, &vertex_parquet, &index_parquet)
 }
 
+/// Fail loud instead of silently truncating a wire-format `u32` length
+/// prefix when a section exceeds 4 GiB.
+fn check_u32_len(name: &str, len: usize) -> Result<(), ParquetError> {
+    if u32::try_from(len).is_err() {
+        return Err(ParquetError::Overflow(format!(
+            "{name} section is {len} bytes, over the u32 wire-format limit"
+        )));
+    }
+    Ok(())
+}
+
 /// Assemble the three Parquet buffers into the length-prefixed section layout
 /// shared by the whole-model serializer and the incremental cache writer.
 /// Section lengths are u32 on the wire; fail loud instead of truncating a
 /// section over 4 GiB into a silently corrupt blob.
 fn frame_sections(mesh: &[u8], vertex: &[u8], index: &[u8]) -> Result<Bytes, ParquetError> {
-    for (name, len) in [("mesh", mesh.len()), ("vertex", vertex.len()), ("index", index.len())] {
-        if u32::try_from(len).is_err() {
-            return Err(ParquetError::Overflow(format!(
-                "{name} section is {len} bytes, over the u32 wire-format limit"
-            )));
-        }
-    }
+    check_u32_len("mesh", mesh.len())?;
+    check_u32_len("vertex", vertex.len())?;
+    check_u32_len("index", index.len())?;
     let mut output = Vec::with_capacity(12 + mesh.len() + vertex.len() + index.len());
     output.extend_from_slice(&(mesh.len() as u32).to_le_bytes());
     output.extend_from_slice(mesh);
@@ -78,6 +85,34 @@ fn frame_sections(mesh: &[u8], vertex: &[u8], index: &[u8]) -> Result<Bytes, Par
     output.extend_from_slice(vertex);
     output.extend_from_slice(&(index.len() as u32).to_le_bytes());
     output.extend_from_slice(index);
+    Ok(Bytes::from(output))
+}
+
+/// Assemble the three Parquet buffers directly into the OUTER combined
+/// framing the parse endpoints wrap the geometry blob in:
+/// `[geo_len:u32][geo_bytes][data_model_len=0:u32]`, where `geo_bytes` is
+/// exactly `frame_sections`'s `[mesh_len][mesh][vertex_len][vertex][index_len][index]`
+/// layout. Endpoints that don't attach a data model inline (the streamed
+/// cache fill) previously called `frame_sections` for the inner blob and then
+/// copied that whole blob a second time into an outer `Vec` to add the
+/// `[geo_len]...[dm_len=0]` wrapper. Writing both frames into one
+/// pre-sized allocation skips that second copy; the resulting bytes are
+/// identical to the old two-copy path.
+fn frame_combined_sections(mesh: &[u8], vertex: &[u8], index: &[u8]) -> Result<Bytes, ParquetError> {
+    check_u32_len("mesh", mesh.len())?;
+    check_u32_len("vertex", vertex.len())?;
+    check_u32_len("index", index.len())?;
+    let inner_len = 12 + mesh.len() + vertex.len() + index.len();
+    check_u32_len("geometry", inner_len)?;
+    let mut output = Vec::with_capacity(4 + inner_len + 4);
+    output.extend_from_slice(&(inner_len as u32).to_le_bytes());
+    output.extend_from_slice(&(mesh.len() as u32).to_le_bytes());
+    output.extend_from_slice(mesh);
+    output.extend_from_slice(&(vertex.len() as u32).to_le_bytes());
+    output.extend_from_slice(vertex);
+    output.extend_from_slice(&(index.len() as u32).to_le_bytes());
+    output.extend_from_slice(index);
+    output.extend_from_slice(&0u32.to_le_bytes());
     Ok(Bytes::from(output))
 }
 
@@ -408,11 +443,31 @@ impl StreamingParquetCacheWriter {
 
     /// Close all three writers and assemble the `[len][mesh][len][vert][len][idx]`
     /// section blob, identical in framing to `serialize_to_parquet`.
+    ///
+    /// No production caller needs the bare inner blob anymore (the
+    /// parquet-stream route uses `finish_combined()`), but this stays as the
+    /// direct counterpart to `serialize_to_parquet` for
+    /// `incremental_writer_matches_one_shot_serializer`, which pins the
+    /// incremental writer's decode-equivalence to the one-shot serializer
+    /// independent of the route's outer combined framing.
+    #[allow(dead_code)]
     pub fn finish(self) -> Result<Bytes, ParquetError> {
         let mesh = self.mesh_w.into_inner()?;
         let vertex = self.vert_w.into_inner()?;
         let index = self.idx_w.into_inner()?;
         frame_sections(&mesh, &vertex, &index)
+    }
+
+    /// Close all three writers and assemble the OUTER combined
+    /// `[geo_len][geo_bytes][data_model_len=0]` blob the parquet-stream route
+    /// caches, in one allocation. Equivalent to wrapping `finish()`'s output
+    /// with the route's `[geo_len]...[dm_len=0]` framing, but without
+    /// copying the inner geometry blob a second time to do it.
+    pub fn finish_combined(self) -> Result<Bytes, ParquetError> {
+        let mesh = self.mesh_w.into_inner()?;
+        let vertex = self.vert_w.into_inner()?;
+        let index = self.idx_w.into_inner()?;
+        frame_combined_sections(&mesh, &vertex, &index)
     }
 }
 
@@ -557,6 +612,69 @@ mod tests {
             assert_eq!(ta.schema(), tb.schema());
             assert_eq!(ta.num_rows(), tb.num_rows());
             assert_eq!(ta, tb, "decoded tables must be identical (incl. global offsets)");
+        }
+    }
+
+    /// `finish_combined()` must byte-equal the old two-copy path (wrap
+    /// `finish()`'s inner blob with `[geo_len][geo_bytes][dm_len=0]` in a
+    /// second Vec, as the parquet-stream route used to do inline) and the
+    /// result must parse back to the same tables as the one-shot serializer.
+    /// This is a copy-elimination, not a format change; a byte mismatch here
+    /// means the wire format drifted.
+    #[test]
+    fn finish_combined_matches_old_two_copy_wrapping() {
+        let mesh = |id: u32, verts: usize| {
+            let mut positions = Vec::new();
+            for v in 0..verts {
+                positions.extend_from_slice(&[v as f32, id as f32, 0.5 * v as f32]);
+            }
+            let normals = vec![0.0; verts * 3];
+            let indices: Vec<u32> = (0..(verts as u32 / 3) * 3).collect();
+            MeshData::new(id, format!("IfcThing{id}"), positions, normals, indices, [0.1, 0.2, 0.3, 1.0])
+        };
+        let meshes: Vec<MeshData> = (1..=5).map(|i| mesh(i, 3 * i as usize)).collect();
+
+        // Old path: finish() the inner geometry blob, then wrap it a second
+        // time exactly like the route used to (before finish_combined()).
+        let mut writer_old = StreamingParquetCacheWriter::new().unwrap();
+        writer_old.append(&meshes[0..2]).unwrap();
+        writer_old.append(&meshes[2..5]).unwrap();
+        let geometry_parquet = writer_old.finish().unwrap();
+        let mut old_combined = Vec::new();
+        old_combined.extend_from_slice(&(geometry_parquet.len() as u32).to_le_bytes());
+        old_combined.extend_from_slice(&geometry_parquet);
+        old_combined.extend_from_slice(&0u32.to_le_bytes());
+
+        // New path: finish_combined() builds the same outer framing in one pass.
+        let mut writer_new = StreamingParquetCacheWriter::new().unwrap();
+        writer_new.append(&meshes[0..2]).unwrap();
+        writer_new.append(&meshes[2..5]).unwrap();
+        let new_combined = writer_new.finish_combined().unwrap();
+
+        assert_eq!(
+            old_combined.as_slice(),
+            new_combined.as_ref(),
+            "finish_combined() must be byte-identical to the old two-copy wrapping"
+        );
+
+        // Round-trip: unwrap the outer framing and confirm the inner geometry
+        // blob decodes to the same tables as the one-shot serializer.
+        let geo_len = u32::from_le_bytes(new_combined[0..4].try_into().unwrap()) as usize;
+        let dm_len_offset = 4 + geo_len;
+        let dm_len =
+            u32::from_le_bytes(new_combined[dm_len_offset..dm_len_offset + 4].try_into().unwrap());
+        assert_eq!(dm_len, 0, "streamed cache fill never attaches a data model inline");
+        assert_eq!(new_combined.len(), 4 + geo_len + 4, "no trailing bytes after the outer frame");
+
+        let inner_geo = &new_combined[4..4 + geo_len];
+        let one_shot = serialize_to_parquet(&meshes).unwrap();
+        let a = read_sections(&one_shot);
+        let b = read_sections(inner_geo);
+        for (section_a, section_b) in a.iter().zip(b.iter()) {
+            let ta = concat_all(section_a);
+            let tb = concat_all(section_b);
+            assert_eq!(ta.schema(), tb.schema());
+            assert_eq!(ta, tb, "decoded tables must match the one-shot serializer");
         }
     }
 

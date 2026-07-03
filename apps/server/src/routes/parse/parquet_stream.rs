@@ -308,17 +308,15 @@ pub async fn parse_parquet_stream(
                         "Caching streamed geometry (incremental writer, no re-serialization)"
                     );
 
+                    // `finish_combined` writes the outer `[geo_len][geo_bytes]
+                    // [dm_len=0]` framing (same as non-streaming endpoint,
+                    // format: [geometry_len: u32][geometry_data][data_model_len: u32])
+                    // directly, instead of framing the inner geometry blob and
+                    // then copying it a second time into an outer buffer.
                     let finish_result =
-                        tokio::task::spawn_blocking(move || writer.finish()).await;
+                        tokio::task::spawn_blocking(move || writer.finish_combined()).await;
 
-                    if let Ok(Ok(geometry_parquet)) = finish_result {
-                        // Build combined format (same as non-streaming endpoint)
-                        // Format: [geometry_len: u32][geometry_data][data_model_len: u32]
-                        let mut combined_parquet = Vec::new();
-                        combined_parquet.extend_from_slice(&(geometry_parquet.len() as u32).to_le_bytes());
-                        combined_parquet.extend_from_slice(&geometry_parquet);
-                        combined_parquet.extend_from_slice(&0u32.to_le_bytes()); // data_model_len = 0
-
+                    if let Ok(Ok(combined_parquet)) = finish_result {
                         // Cache geometry (same format as non-streaming)
                         let parquet_cache_key = format!("{}-parquet-v4", key);
                         if let Err(e) = cache.set_bytes(&parquet_cache_key, &combined_parquet).await {

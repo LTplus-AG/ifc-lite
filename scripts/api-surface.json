@@ -1229,6 +1229,7 @@
     "StepExportResult: interface",
     "StepExporter: class",
     "Vec3: type",
+    "assembleStepBlob: function",
     "collectReferencedEntityIds: function",
     "collectStyleEntities: function",
     "convertEntityType: function",

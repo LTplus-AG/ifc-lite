@@ -18,9 +18,8 @@
 //! kept, not discarded to the exact kernel). The global counter is drained
 //! immediately before the single process call, scoping the read to this host.
 
-use ifc_lite_core::{build_entity_index, DecodedEntity, EntityDecoder, EntityScanner, IfcType};
-use ifc_lite_geometry::{propagate_voids_to_parts, GeometryRouter, Mesh, RectParam};
-use nalgebra::Matrix3;
+use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
+use ifc_lite_geometry::{propagate_voids_to_parts, GeometryRouter, Mesh};
 use rustc_hash::FxHashMap;
 
 /// Rotated (36.87 deg in plan, NON-axis-aligned so the world path defers and
@@ -135,63 +134,48 @@ fn watertight(mesh: &Mesh) -> (bool, usize, usize) {
     (!edges.is_empty() && bad == 0, edges.len(), bad)
 }
 
-/// Signed-permutation axis map of `m` (each row one entry ~ +/-1), or `None`.
-fn signed_perm(m: &Matrix3<f64>, tol: f64) -> Option<[usize; 3]> {
-    let mut out = [0usize; 3];
-    let mut used = [false; 3];
-    for i in 0..3 {
-        let (mut best, mut ba, mut second) = (0usize, 0.0, 0.0);
-        for j in 0..3 {
-            let a = m[(i, j)].abs();
-            if a > ba {
-                second = ba;
-                ba = a;
-                best = j;
-            } else if a > second {
-                second = a;
-            }
-        }
-        if ba < 1.0 - tol || second > tol || used[best] {
-            return None;
-        }
-        used[best] = true;
-        out[i] = best;
-    }
-    Some(out)
-}
+/// Analytic ground-truth cut volume, computed from the LITERAL dimensions
+/// baked into the `IFC` fixture above, independent of `parametric_rect_probe`
+/// (#1552). The prior version derived "truth" by calling the very same
+/// `router.parametric_rect_probe()` the code under test also uses, which is
+/// self-referential: a systematic frame/axis bug in `parametric_rect_probe`
+/// would corrupt both the "expected" and "actual" sides identically, so this
+/// oracle must never call it (or anything that reuses its internals).
+///
+/// Derivation from the fixture's raw STEP parametrics (re-verify by hand
+/// against the `IFC` string above if this ever needs to change):
+///   - Host wall (#100): `IFCRECTANGLEPROFILEDEF` #130 is 4.0 (length) x 0.3
+///     (thickness), extruded #140 depth 2.5 (height) -> box volume
+///     4.0 * 0.3 * 2.5.
+///   - Opening (#200): profile #227 is 1.0 (length) x 1.5 (height), extruded
+///     #231 depth 1.0 along the opening's local Z, which axis #213/#214 map
+///     to the WALL's thickness direction (Y). The opening's own placement
+///     #211 sits at wall-local y=-0.5 and the 1.0 extrusion reaches y=+0.5,
+///     i.e. it deliberately overshoots the wall's +/-0.15 half-thickness on
+///     both sides so the cut always goes fully through, clamped by the host
+///     to exactly the wall's 0.3 thickness. The opening is centred on the
+///     host in length (wall-local x=0) and height (wall-local z=1.25, the
+///     host's own z-centre), both well inside the host's extents, so neither
+///     of those two axes is clamped.
+///   - Clamped opening volume: 1.0 (length) * 1.5 (height) * 0.3 (thickness,
+///     clamped from the oversized 1.0 extrusion down to the host).
+///
+/// A rigid rotation of the whole assembly (the fixture's wall is rotated
+/// about Z in world space) does not change either volume, so this is exact
+/// regardless of that rotation.
+fn analytic_cut_volume() -> f64 {
+    const WALL_LENGTH: f64 = 4.0;
+    const WALL_THICKNESS: f64 = 0.3;
+    const WALL_HEIGHT: f64 = 2.5;
+    const OPENING_LENGTH: f64 = 1.0;
+    const OPENING_HEIGHT: f64 = 1.5;
+    // The opening's extrusion overshoots the host on both faces, so the
+    // clamped cut depth is the full host thickness, not the raw 1.0 extrusion.
+    let clamped_opening_depth = WALL_THICKNESS;
 
-/// Analytic ground-truth cut volume: host box minus the opening box clamped to
-/// the host. Exact for a box-minus-box; reads both frames from the parametrics.
-fn analytic_cut_volume(
-    router: &GeometryRouter,
-    host: &DecodedEntity,
-    opening_ids: &[u32],
-    decoder: &mut EntityDecoder,
-) -> Option<f64> {
-    let hp: RectParam = router.parametric_rect_probe(host, decoder)?;
-    let rt = hp.r.transpose();
-    let host_vol = 8.0 * hp.half[0] * hp.half[1] * hp.half[2];
-    let mut opening_vol = 0.0;
-    for &oid in opening_ids {
-        let opening = decoder.decode_by_id(oid).ok()?;
-        if opening.ifc_type != IfcType::IfcOpeningElement {
-            continue;
-        }
-        for b in router.parametric_rect_probe_all(&opening, decoder)? {
-            let map = signed_perm(&(rt * b.r), 1.0e-3)?;
-            let cf = rt * (b.center - hp.center);
-            let cf = [cf.x, cf.y, cf.z];
-            let half_f = [b.half[map[0]], b.half[map[1]], b.half[map[2]]];
-            let mut v = 1.0;
-            for i in 0..3 {
-                let lo = (cf[i] - half_f[i]).max(-hp.half[i]);
-                let hi = (cf[i] + half_f[i]).min(hp.half[i]);
-                v *= (hi - lo).max(0.0);
-            }
-            opening_vol += v;
-        }
-    }
-    Some((host_vol - opening_vol).abs())
+    let host_vol = WALL_LENGTH * WALL_THICKNESS * WALL_HEIGHT;
+    let opening_vol = OPENING_LENGTH * OPENING_HEIGHT * clamped_opening_depth;
+    (host_vol - opening_vol).abs()
 }
 
 #[test]
@@ -208,13 +192,27 @@ fn param_fast_path_fires_watertight_and_matches_analytic_on_the_shipped_default(
     );
 
     let host = decoder.decode_by_id(HOST_ID).expect("decode wall");
-    // Drain the global "emitted" counter immediately before the single process
-    // call so what we read back is this host's post-self-check emissions.
-    let _ = ifc_lite_geometry::rect_fast::take_param_fires();
+    // `PARAM_FIRES` (rect_fast.rs) is a process-global counter, so reading its
+    // absolute value would be unsafe under cargo test's default parallel test
+    // execution if this file ever grew a second `#[test]` sharing the process
+    // (each `tests/*.rs` integration file is its own binary/process today, so
+    // there is currently nothing else to race with here, but `serial_test` is
+    // not a workspace dev-dependency, so we don't reach for `#[serial]`).
+    // Snapshot-and-diff instead: `take_param_fires()` swaps the counter to 0
+    // and returns the prior value, so draining immediately before the call
+    // under test and reading again immediately after yields the DELTA
+    // attributable to this one call, robust to any future concurrent user.
+    let before_param_fires = ifc_lite_geometry::rect_fast::take_param_fires();
     let result = router
         .process_element_with_voids(&host, &mut decoder, &void_index)
         .expect("process wall with voids");
+    // `take_param_fires()` already resets the counter on read, so the value
+    // read here IS the delta accrued strictly between the two calls above.
     let emitted_param_cuts = ifc_lite_geometry::rect_fast::take_param_fires();
+    assert_eq!(
+        before_param_fires, 0,
+        "unexpected pre-existing PARAM_FIRES count before the call under test"
+    );
 
     // (a) The shipped default (param ON) must both ENGAGE and EMIT the analytic
     // cut on this rotated rectangular wall (exactly the case #1493 targets, which
@@ -253,12 +251,7 @@ fn param_fast_path_fires_watertight_and_matches_analytic_on_the_shipped_default(
     // truth (encoded as agreement, NOT kernel bit-equality, since memory records
     // the param path as MORE correct than the exact kernel on such hosts).
     let pv = mesh_volume(&result).abs();
-    let truth = analytic_cut_volume(&router, &host, &void_index[&HOST_ID], &mut decoder)
-        .expect(
-            "analytic ground truth requires the host + every opening to be an \
-             axis-aligned rectangular box (the committed fixture is); a None here \
-             means a fixture edit introduced a non-axis-aligned opening",
-        );
+    let truth = analytic_cut_volume();
     let rel = (pv - truth).abs() / truth.max(1.0e-9);
     assert!(
         rel < 0.02,

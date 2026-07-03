@@ -77,6 +77,38 @@ fn build_cors_layer(config: &Config) -> CorsLayer {
     }
 }
 
+/// Startup log level for the memory-admission "gate off" branch in `main`,
+/// derived purely from the re-parsed `IFC_MEM_BUDGET_MB` env var (#1547).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LogDecision {
+    /// `IFC_MEM_BUDGET_MB=0`: the operator opted out of the memory gate
+    /// deliberately. Not a warning-worthy condition.
+    Info,
+    /// The env var is unset or unparseable AND the memory gate still ended
+    /// up off, i.e. auto-detection found no readable ceiling (non-Linux
+    /// host or `/proc` unavailable) — a silent OOM-risk degradation.
+    Warn,
+    /// A positive budget was explicitly requested. `main`'s call site only
+    /// reaches `memory_admission_log_level` from inside the
+    /// `config.mem_budget_mb == 0` branch, where this variant can never
+    /// actually occur (an explicit positive `IFC_MEM_BUDGET_MB` resolves
+    /// `config.mem_budget_mb` to that same positive value, see
+    /// `mem_policy::resolve_mem_budget_mb`). Kept so the function is total
+    /// over its input and independently unit-testable.
+    Active,
+}
+
+/// Pure decision for [`LogDecision`] from the resolved `IFC_MEM_BUDGET_MB`
+/// env var: `None` (unset/unparseable), `Some(0)` (explicit opt-out), or
+/// `Some(n)` with `n > 0` (an explicit positive budget).
+fn memory_admission_log_level(budget_mb: Option<u64>) -> LogDecision {
+    match budget_mb {
+        Some(0) => LogDecision::Info,
+        Some(_) => LogDecision::Active,
+        None => LogDecision::Warn,
+    }
+}
+
 /// Application state shared across handlers.
 #[derive(Clone)]
 pub struct AppState {
@@ -220,25 +252,25 @@ async fn main() {
     }));
     admission::spawn_rss_sampler(Arc::clone(&admission));
     if config.mem_budget_mb == 0 {
-        // Budget 0 = memory gate off. Two distinct causes; log them differently:
-        //  - explicit `IFC_MEM_BUDGET_MB=0`: the operator opted out deliberately
-        //    (info, not a warning);
-        //  - no readable ceiling (non-Linux dev, /proc unavailable): a silent
-        //    degradation that risks OOM, so warn.
-        let opted_out = std::env::var("IFC_MEM_BUDGET_MB")
+        // Budget 0 = memory gate off. Two distinct causes, logged differently
+        // by `memory_admission_log_level` below (see its doc for the third,
+        // unreachable-here-but-testable case).
+        let budget_env = std::env::var("IFC_MEM_BUDGET_MB")
             .ok()
-            .and_then(|v| v.parse::<usize>().ok())
-            == Some(0);
-        if opted_out {
-            tracing::info!(
-                max_concurrent_parses = config.max_concurrent_parses,
-                "Memory admission disabled via IFC_MEM_BUDGET_MB=0 (opt-out); only the CPU concurrency gate applies."
-            );
-        } else {
-            tracing::warn!(
-                max_concurrent_parses = config.max_concurrent_parses,
-                "Memory admission is OFF (no readable memory ceiling: non-Linux host or /proc unavailable): concurrent large uploads can OOM this replica. Set IFC_MEM_BUDGET_MB, or run under a cgroup memory limit."
-            );
+            .and_then(|v| v.parse::<u64>().ok());
+        match memory_admission_log_level(budget_env) {
+            LogDecision::Info => {
+                tracing::info!(
+                    max_concurrent_parses = config.max_concurrent_parses,
+                    "Memory admission disabled via IFC_MEM_BUDGET_MB=0 (opt-out); only the CPU concurrency gate applies."
+                );
+            }
+            LogDecision::Warn | LogDecision::Active => {
+                tracing::warn!(
+                    max_concurrent_parses = config.max_concurrent_parses,
+                    "Memory admission is OFF (no readable memory ceiling: non-Linux host or /proc unavailable): concurrent large uploads can OOM this replica. Set IFC_MEM_BUDGET_MB, or run under a cgroup memory limit."
+                );
+            }
         }
     } else {
         tracing::info!(
@@ -265,4 +297,32 @@ async fn main() {
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
+}
+
+#[cfg(test)]
+mod memory_admission_log_level_tests {
+    use super::{memory_admission_log_level, LogDecision};
+
+    /// #1547: unset/unparseable `IFC_MEM_BUDGET_MB` (auto-detection found no
+    /// readable memory ceiling) must warn, not silently stay quiet.
+    #[test]
+    fn unset_warns() {
+        assert_eq!(memory_admission_log_level(None), LogDecision::Warn);
+    }
+
+    /// `IFC_MEM_BUDGET_MB=0` is a deliberate opt-out, not a degradation.
+    #[test]
+    fn explicit_zero_is_opt_out_info() {
+        assert_eq!(memory_admission_log_level(Some(0)), LogDecision::Info);
+    }
+
+    /// A positive explicit budget is neither the info nor the warn "gate
+    /// off" case (main's `config.mem_budget_mb == 0` guard means this
+    /// variant is never actually reached at the call site, but the pure
+    /// function itself must be total and correct over its whole domain).
+    #[test]
+    fn positive_budget_is_active() {
+        assert_eq!(memory_admission_log_level(Some(1)), LogDecision::Active);
+        assert_eq!(memory_admission_log_level(Some(4096)), LogDecision::Active);
+    }
 }

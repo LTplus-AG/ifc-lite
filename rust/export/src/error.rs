@@ -27,6 +27,18 @@ pub enum ExportError {
         /// oversize; see [`crate::GlbSizeProjection::total_bytes`]).
         bytes: u64,
     },
+    /// A downstream encoder (Arrow/Parquet columnar writer, ZIP container, or
+    /// JSON serializer) rejected the data it was handed. This is an I/O/library
+    /// failure rather than a business-logic outcome — replaces panicking
+    /// `.unwrap()`/`.expect()` calls on writer/serializer results so a malformed
+    /// or resource-exhausted encode returns an error instead of unwinding the
+    /// whole export (see the `parquet_bos` exporter).
+    Serialization {
+        /// What was being serialized/written (e.g. "entities batch", "zip write_all").
+        stage: &'static str,
+        /// The underlying error's `Display` output.
+        detail: String,
+    },
 }
 
 impl ExportError {
@@ -36,6 +48,7 @@ impl ExportError {
         match self {
             ExportError::NoRenderGeometry => "NO_RENDER_GEOMETRY",
             ExportError::TooLarge { .. } => "TOO_LARGE",
+            ExportError::Serialization { .. } => "SERIALIZATION_FAILED",
         }
     }
 }
@@ -54,6 +67,9 @@ impl fmt::Display for ExportError {
                  export as a multi-buffer glTF instead",
                 self.code()
             ),
+            ExportError::Serialization { stage, detail } => {
+                write!(f, "{}: failed to serialize {stage}: {detail}", self.code())
+            }
         }
     }
 }

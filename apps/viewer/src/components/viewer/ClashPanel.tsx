@@ -480,7 +480,10 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
       {/* Run controls — collapse to a slim bar once a result exists so the list
           gets vertical room; expand (or before the first run) shows full setup. */}
       {(() => {
-        const controlsOpen = controlsOverride ?? !result;
+        // With no result there is nothing to collapse for and the run controls are
+        // the only way forward, so force them open (ignoring any pinned override);
+        // once a result exists, default collapsed with the user's override winning.
+        const controlsOpen = result == null ? true : (controlsOverride ?? false);
         return (
       <div className="p-3 space-y-3 border-b border-border">
         {result && (
@@ -713,11 +716,38 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
               <ClashBcfExportDialog />
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground">
+          {/* Filters: touching + review status, grouped so "what's shown" reads
+              as one control cluster (#1468). */}
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-muted-foreground">
             <label className="inline-flex items-center gap-1.5 cursor-pointer" title="Hide ≈0 m face/edge contacts">
               <input type="checkbox" checked={hideTouching} onChange={(e) => setHideTouching(e.target.checked)} className="accent-[#f7768e]" />
               Hide touching{touchingCount > 0 ? ` (${touchingCount})` : ''}
             </label>
+            <span className="h-3.5 w-px bg-border" aria-hidden="true" />
+            {CLASH_REVIEW_STATUSES.map((s) => {
+              const on = statusFilter.has(s);
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => toggleStatusFilter(s)}
+                  aria-pressed={on}
+                  title={`${on ? 'Hide' : 'Show'} ${REVIEW_STATUS[s].label.toLowerCase()} clashes`}
+                  className={cn(
+                    'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] transition-colors',
+                    on ? 'border-transparent text-foreground' : 'border-border opacity-60 hover:opacity-100',
+                  )}
+                  style={on ? { background: `${REVIEW_STATUS[s].color}1f`, borderColor: `${REVIEW_STATUS[s].color}66` } : undefined}
+                >
+                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: REVIEW_STATUS[s].color }} />
+                  {REVIEW_STATUS[s].label}
+                  <span className="tabular-nums opacity-70">{reviewCounts[s]}</span>
+                </button>
+              );
+            })}
+          </div>
+          {/* View: on-select focus mode + bulk highlight / clear. */}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground">
             <div className="inline-flex items-center gap-1" title="How the rest of the model is shown when you click a clash" {...tourAnchor(TOUR_ANCHORS.clashFocusMode)}>
               <span>On select:</span>
               <div className="inline-flex rounded-md border border-border overflow-hidden">
@@ -748,31 +778,6 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
                 Clear
               </Button>
             </div>
-          </div>
-          {/* Review-status filter (#1468): toggle which statuses show in the list. */}
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="mr-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">Status</span>
-            {CLASH_REVIEW_STATUSES.map((s) => {
-              const on = statusFilter.has(s);
-              return (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => toggleStatusFilter(s)}
-                  aria-pressed={on}
-                  title={`${on ? 'Hide' : 'Show'} ${REVIEW_STATUS[s].label.toLowerCase()} clashes`}
-                  className={cn(
-                    'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] transition-colors',
-                    on ? 'border-transparent text-foreground' : 'border-border text-muted-foreground opacity-60 hover:opacity-100',
-                  )}
-                  style={on ? { background: `${REVIEW_STATUS[s].color}1f`, borderColor: `${REVIEW_STATUS[s].color}66` } : undefined}
-                >
-                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: REVIEW_STATUS[s].color }} />
-                  {REVIEW_STATUS[s].label}
-                  <span className="tabular-nums opacity-70">{reviewCounts[s]}</span>
-                </button>
-              );
-            })}
           </div>
         </div>
       )}

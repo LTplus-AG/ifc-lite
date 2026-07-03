@@ -118,14 +118,33 @@ fn wasm_manifest_differs_only_in_the_trig_gap() {
         assert_eq!(n.geometry_class, w.geometry_class, "manifest drift: geometry_class");
         assert_eq!(n.vertex_count, w.vertex_count, "manifest drift: per-mesh vertex_count");
         assert_eq!(n.triangle_count, w.triangle_count, "manifest drift: per-mesh triangle_count");
+        // Positions AND identity/topology/origin are byte-identical on EVERY
+        // mesh cross-target - including the curved column. This is the invariant
+        // the hash split exists to enforce: the trig gap lives in the near-zero
+        // radial-normal components, not in the (snapped) positions, so a future
+        // change that diverged the curved mesh's positions across targets would
+        // now fail here instead of hiding inside a combined per-mesh hash.
+        assert_eq!(
+            n.positions_hash, w.positions_hash,
+            "manifest drift: mesh #{} POSITIONS differ between native and wasm32 \
+             (positions must be byte-identical cross-target, curved mesh included)",
+            n.express_id
+        );
+        assert_eq!(
+            n.indices_origin_hash, w.indices_origin_hash,
+            "manifest drift: mesh #{} indices/origin differ between native and wasm32",
+            n.express_id
+        );
+        // Normals are the ONLY per-mesh surface allowed to differ, and only for
+        // the curved-profile mesh whose radial normals carry the libm trig gap.
         if n.express_id == TRIG_GAP_EXPRESS_ID {
-            if n.hash != w.hash {
+            if n.normals_hash != w.normals_hash {
                 gap_meshes += 1;
             }
         } else {
             assert_eq!(
-                n.hash, w.hash,
-                "manifest drift: mesh #{} bytes differ between native and wasm32 \
+                n.normals_hash, w.normals_hash,
+                "manifest drift: mesh #{} normals differ between native and wasm32 \
                  outside the documented trig gap",
                 n.express_id
             );

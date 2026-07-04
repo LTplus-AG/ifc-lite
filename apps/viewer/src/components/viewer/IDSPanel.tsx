@@ -75,7 +75,9 @@ import type {
 } from '@ifc-lite/ids';
 import { cn } from '@/lib/utils';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
+import { useViewerStore } from '@/store';
 import { IDSAuditSummary } from './IDSAuditSummary';
+import { ModelBadge } from './ModelBadge';
 import { IDSExportDialog } from './IDSExportDialog';
 import type { IDSBCFExportSettings, IDSExportProgress } from './IDSExportDialog';
 
@@ -487,6 +489,17 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
     bcfExportProgress,
   } = useIDS();
 
+  // Validation runs against one model at a time (the active model); when a
+  // federation is loaded, name which model these results reflect so the
+  // pass/fail counts aren't ambiguous (#1591). The report's modelId is frozen
+  // at validation time, so resolve its name here (Rules of Hooks) and gate the
+  // label on it — a model removed since validation leaves it unresolvable, and
+  // we must not render a dangling "Validated against" with no name.
+  const idsMultiModel = useViewerStore((s) => s.models.size > 1);
+  const validatedModelName = useViewerStore((s) =>
+    report ? s.models.get(report.modelInfo.modelId)?.name : undefined,
+  );
+
   // Handle file selection
   const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -704,6 +717,12 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
 
         {/* Summary Header */}
         <div className="p-3 border-b bg-muted/30" {...tourAnchor(TOUR_ANCHORS.idsSummary)}>
+          {idsMultiModel && validatedModelName && (
+            <div className="flex items-center gap-1.5 mb-2 text-xs text-muted-foreground min-w-0">
+              <span className="shrink-0">Validated against</span>
+              <ModelBadge modelId={report.modelInfo.modelId} />
+            </div>
+          )}
           <div className="flex items-center gap-2 mb-2">
             <StatusIcon status={report.summary.failedSpecifications > 0 ? 'fail' : 'pass'} />
             <span className="font-medium text-sm">

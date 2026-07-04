@@ -28,6 +28,7 @@ import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { useClash, type ClashFocusMode } from '@/hooks/useClash';
 import { useBCF } from '@/hooks/useBCF';
 import { useViewerStore } from '@/store';
+import { ModelBadge } from './ModelBadge';
 import { ClashBcfExportDialog } from '@/components/viewer/ClashBcfExportDialog';
 import { ClashSettingsDialog } from '@/components/viewer/ClashSettingsDialog';
 import { createBCFProject, createBCFTopic } from '@ifc-lite/bcf';
@@ -418,6 +419,9 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
       <div className="min-w-0 flex-1">
         <div className="truncate text-[11px] text-foreground">{el.tag}</div>
         <div className="truncate text-[10px] text-muted-foreground">{el.name ?? shortName(el.key)}</div>
+        {/* Federated clashes carry each side's source model (#1591); show it
+            only in a federation so single-model lists stay uncluttered. */}
+        {modelCount > 1 && <ModelBadge modelId={el.model} className="mt-0.5 max-w-full" />}
       </div>
       <Focus className="h-3 w-3 shrink-0 text-muted-foreground" />
     </button>

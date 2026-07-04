@@ -1,5 +1,14 @@
 # @ifc-lite/geometry
 
+## 3.1.1
+
+### Patch Changes
+
+- [#1615](https://github.com/LTplus-AG/ifc-lite/pull/1615) [`4c179e0`](https://github.com/LTplus-AG/ifc-lite/commit/4c179e0706168efee5232c9a5e013826757a4345) Thanks [@louistrue](https://github.com/louistrue)! - Hoist the per-worker prepass builds onto the cold-load critical path. On a streaming load each of the N geometry workers independently re-walked the whole 200-340MB file on its first batch to build the `MaterialLayerIndex` (fires on the default Model view for layered architectural models), the referenced-`IfcRepresentationMap` set, and the instantiated-type set ([#957](https://github.com/LTplus-AG/ifc-lite/issues/957)) — 3xN concurrent full-file walks, the mechanism behind the per-worker warmup that anti-scales the pool. These are now computed ONCE from spans in the prepass's single existing scan (no extra walk) and shipped to workers via new `setReferencedRepmaps` / `setInstantiatedTypeIds` / `setMaterialLayerIndex` setters, exactly like the entity index. Byte-identical: `MaterialLayerIndex::from_spans` feeds the identical spans through the shared insert step (order-sensitive Sliceable rule preserved) and the id-sets are membership-only; proven by a `from_content == from_spans == from_flat(from_spans.to_flat())` test and the mesh-determinism manifest (no re-pin). The lazy per-worker build remains as a fallback when the injected columns are absent (native + non-streaming paths unchanged). The per-triangle indexed-colour-map is deliberately NOT hoisted (its payload scales with triangle count, so shipping it would add bandwidth on the colour-mapped files it targets).
+
+- Updated dependencies [[`aee7a41`](https://github.com/LTplus-AG/ifc-lite/commit/aee7a41f2aff94c60bfe3db40a2fe2ead4ca5cff), [`4c179e0`](https://github.com/LTplus-AG/ifc-lite/commit/4c179e0706168efee5232c9a5e013826757a4345), [`84dfd17`](https://github.com/LTplus-AG/ifc-lite/commit/84dfd17a6d3eaeb62a78bdac97a88479a47503e7)]:
+  - @ifc-lite/wasm@3.0.8
+
 ## 3.1.0
 
 ### Minor Changes

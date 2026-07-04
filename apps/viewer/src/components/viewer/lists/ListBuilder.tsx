@@ -20,7 +20,7 @@ import { ComboInput } from '@/components/ui/combo-input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { IfcTypeEnum } from '@ifc-lite/data';
+import { IfcTypeEnum, isBuildingLikeSpatialType, type SpatialNode } from '@ifc-lite/data';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import {
   discoverFilterValues,
@@ -107,10 +107,17 @@ const SELECTABLE_TYPES: { type: IfcTypeEnum; label: string }[] = [
 /** Column descriptor shared by the quick-add grid. */
 interface CommonColumn { id: string; source: ColumnDefinition['source']; propertyName: string; label: string }
 
+/** Spatial-container levels a `spatial` column / filter can target, coarse →
+ *  fine written the other way: Storey is the default (back-compat). */
+const SPATIAL_LEVELS = ['Storey', 'Building', 'Site', 'Project'] as const;
+
 /**
  * The first-class columns: built-in attributes plus the spatial / semantic
- * columns. Surfaced as a flat grid so Material / Classification / Storey
- * are as reachable as Name / Class — not buried in a collapsed group.
+ * columns. Surfaced as a flat grid so Material / Classification / Storey /
+ * Site / Building / Project / Model are as reachable as Name / Class — not
+ * buried in a collapsed group. Site / Building / Project / Model identify which
+ * federated file (and where in its spatial tree) each row comes from, so a list
+ * over several models can be grouped and sorted by source (issue #1591).
  */
 const COMMON_COLUMNS: CommonColumn[] = [
   ...ENTITY_ATTRIBUTES.map((a): CommonColumn => ({
@@ -122,6 +129,10 @@ const COMMON_COLUMNS: CommonColumn[] = [
   { id: 'col-material', source: 'material', propertyName: 'Material', label: 'Material' },
   { id: 'col-classification', source: 'classification', propertyName: 'Classification', label: 'Classification' },
   { id: 'col-storey', source: 'spatial', propertyName: 'Storey', label: 'Storey' },
+  { id: 'col-building', source: 'spatial', propertyName: 'Building', label: 'Building' },
+  { id: 'col-site', source: 'spatial', propertyName: 'Site', label: 'Site' },
+  { id: 'col-project', source: 'spatial', propertyName: 'Project', label: 'Project' },
+  { id: 'col-model', source: 'model', propertyName: 'Model', label: 'Model' },
 ];
 
 /** Union the per-provider complete-discovery results into one column set. */
@@ -185,6 +196,41 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
     }
     return Array.from(set).sort();
   }, [stores]);
+
+  // Spatial-filter value suggestions per level. Storey reuses the index-derived
+  // names above; Building / Site / Project come from a cheap spatial-tree walk
+  // (only the handful of container nodes, no element sampling).
+  const spatialNamesByLevel = useMemo<Record<string, string[]>>(() => {
+    const building = new Set<string>();
+    const site = new Set<string>();
+    const project = new Set<string>();
+    for (const store of stores) {
+      const root = store.spatialHierarchy?.project;
+      if (!root) continue;
+      // Resolve real IFC Names (empty for unnamed containers) so the suggestions
+      // match the column values, never the `Entity #N` node placeholder.
+      const walk = (node: SpatialNode) => {
+        const nm = store.entities.getName(node.expressId);
+        if (nm) {
+          if (isBuildingLikeSpatialType(node.type)) building.add(nm);
+          else if (node.type === IfcTypeEnum.IfcSite) site.add(nm);
+          else if (node.type === IfcTypeEnum.IfcProject) project.add(nm);
+        }
+        for (const c of node.children) walk(c);
+      };
+      walk(root);
+    }
+    const sorted = (s: Set<string>) => Array.from(s).sort();
+    return { Storey: storeyNames, Building: sorted(building), Site: sorted(site), Project: sorted(project) };
+  }, [stores, storeyNames]);
+
+  // Loaded model / file names — value suggestions for a `Model` filter, and the
+  // discriminator the Model column surfaces (issue #1591).
+  const modelNames = useMemo<string[]>(() => {
+    const set = new Set<string>();
+    for (const p of providers) { const n = p.getModelName?.(); if (n) set.add(n); }
+    return Array.from(set).sort();
+  }, [providers]);
   const [groupByColumnId, setGroupByColumnId] = useState<string>(initial?.grouping?.columnId ?? '');
   const [sumColumnIds, setSumColumnIds] = useState<Set<string>>(
     new Set(initial?.grouping?.sumColumnIds ?? [])
@@ -384,7 +430,8 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
               conditions={conditions}
               discovered={discovered}
               values={conditionValues}
-              storeys={storeyNames}
+              spatialNames={spatialNamesByLevel}
+              modelNames={modelNames}
               onAdd={addCondition}
               onUpdate={updateCondition}
               onRemove={removeCondition}
@@ -522,7 +569,7 @@ function SelectedColumns({
             {col.label ?? col.propertyName}
             {col.psetName && <span className="ml-1 font-normal text-muted-foreground">· {col.psetName}</span>}
           </span>
-          <ColSourceTag source={col.source} />
+          <ColSourceTag col={col} />
           <button
             onClick={() => onMove(idx, -1)}
             disabled={idx === 0}
@@ -559,12 +606,20 @@ const SOURCE_TAG: Record<ColumnDefinition['source'], string> = {
   material: 'mat',
   classification: 'cls',
   spatial: 'storey',
+  model: 'model',
 };
 
-function ColSourceTag({ source }: { source: ColumnDefinition['source'] }) {
+/** A `spatial` column's tag reflects its level (storey / building / site /
+ *  project); everything else uses the flat per-source tag. */
+function colSourceTag(col: ColumnDefinition): string {
+  if (col.source === 'spatial') return (col.propertyName || 'Storey').toLowerCase();
+  return SOURCE_TAG[col.source];
+}
+
+function ColSourceTag({ col }: { col: ColumnDefinition }) {
   return (
     <span className="shrink-0 rounded bg-muted px-1 text-[9px] font-medium uppercase tracking-wide text-muted-foreground">
-      {SOURCE_TAG[source]}
+      {colSourceTag(col)}
     </span>
   );
 }
@@ -783,7 +838,8 @@ const CONDITION_SOURCES: { source: ConditionSource; label: string }[] = [
   { source: 'quantity', label: 'Quantity' },
   { source: 'material', label: 'Material' },
   { source: 'classification', label: 'Classification' },
-  { source: 'spatial', label: 'Storey' },
+  { source: 'spatial', label: 'Spatial' },
+  { source: 'model', label: 'Model' },
 ];
 
 const OPERATOR_LABEL: Record<ConditionOperator, string> = {
@@ -821,6 +877,8 @@ function defaultConditionFor(source: ConditionSource): PropertyCondition {
       return { source, propertyName: 'Classification', operator: 'contains', value: '' };
     case 'spatial':
       return { source, propertyName: 'Storey', operator: 'equals', value: '' };
+    case 'model':
+      return { source, propertyName: 'Model', operator: 'equals', value: '' };
     case 'attribute':
     default:
       return { source: 'attribute', propertyName: 'Name', operator: 'contains', value: '' };
@@ -834,7 +892,8 @@ function ConditionsBody({
   conditions,
   discovered,
   values,
-  storeys,
+  spatialNames,
+  modelNames,
   onAdd,
   onUpdate,
   onRemove,
@@ -842,7 +901,8 @@ function ConditionsBody({
   conditions: PropertyCondition[];
   discovered: DiscoveredColumns;
   values: ListConditionValues | null;
-  storeys: string[];
+  spatialNames: Record<string, string[]>;
+  modelNames: string[];
   onAdd: (condition: PropertyCondition) => void;
   onUpdate: (idx: number, condition: PropertyCondition) => void;
   onRemove: (idx: number) => void;
@@ -855,7 +915,8 @@ function ConditionsBody({
           condition={condition}
           discovered={discovered}
           values={values}
-          storeys={storeys}
+          spatialNames={spatialNames}
+          modelNames={modelNames}
           onChange={(next) => onUpdate(idx, next)}
           onRemove={() => onRemove(idx)}
         />
@@ -874,14 +935,16 @@ function ConditionRow({
   condition,
   discovered,
   values,
-  storeys,
+  spatialNames,
+  modelNames,
   onChange,
   onRemove,
 }: {
   condition: PropertyCondition;
   discovered: DiscoveredColumns;
   values: ListConditionValues | null;
-  storeys: string[];
+  spatialNames: Record<string, string[]>;
+  modelNames: string[];
   onChange: (next: PropertyCondition) => void;
   onRemove: () => void;
 }) {
@@ -889,6 +952,7 @@ function ConditionRow({
   const showValue = condition.operator !== 'exists';
   const isProperty = condition.source === 'property';
   const isQuantity = condition.source === 'quantity';
+  const isSpatial = condition.source === 'spatial';
   const showSetFields = isProperty || isQuantity;
 
   const setNameOptions = useMemo<string[]>(() => {
@@ -910,16 +974,18 @@ function ConditionRow({
         return values?.propertyValues.get(propValueKey(condition.psetName ?? '', condition.propertyName)) ?? NO_OPTIONS;
       case 'material': return values?.materials ?? NO_OPTIONS;
       case 'classification': return values?.classifications ?? NO_OPTIONS;
-      case 'spatial': return storeys;
+      case 'spatial': return spatialNames[condition.propertyName] ?? spatialNames.Storey ?? NO_OPTIONS;
+      case 'model': return modelNames;
       default: return NO_OPTIONS;
     }
-  }, [condition.source, condition.psetName, condition.propertyName, values, storeys]);
+  }, [condition.source, condition.psetName, condition.propertyName, values, spatialNames, modelNames]);
 
   const valuePlaceholder =
-    condition.source === 'spatial' ? 'storey name'
-      : condition.source === 'material' ? 'material'
-        : condition.source === 'classification' ? 'code or name'
-          : 'value';
+    condition.source === 'spatial' ? `${(condition.propertyName || 'Storey').toLowerCase()} name`
+      : condition.source === 'model' ? 'model / file'
+        : condition.source === 'material' ? 'material'
+          : condition.source === 'classification' ? 'code or name'
+            : 'value';
 
   return (
     <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-border/60 bg-card px-2 py-1.5 text-xs">
@@ -943,6 +1009,19 @@ function ConditionRow({
         >
           {ENTITY_ATTRIBUTES.map((a) => (
             <option key={a} value={a}>{a}</option>
+          ))}
+        </select>
+      )}
+
+      {isSpatial && (
+        <select
+          value={condition.propertyName || 'Storey'}
+          onChange={(e) => onChange({ ...condition, propertyName: e.target.value, value: '' })}
+          className={SELECT_CLASS}
+          aria-label="Spatial level"
+        >
+          {SPATIAL_LEVELS.map((level) => (
+            <option key={level} value={level}>{level}</option>
           ))}
         </select>
       )}

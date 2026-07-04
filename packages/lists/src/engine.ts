@@ -260,9 +260,35 @@ function getConditionValue(
     case 'quantity':
       return getQuantityValue(entityId, condition.psetName ?? '', condition.propertyName, provider);
     case 'spatial':
-      return provider.getStoreyName?.(entityId) || null;
+      return getSpatialValue(entityId, condition.propertyName, provider);
+    case 'model':
+      return provider.getModelName?.() || null;
     default:
       return null;
+  }
+}
+
+/**
+ * Resolve a `spatial` column/condition to a spatial-container name at the
+ * requested level. `propertyName` selects the level; an empty or unrecognised
+ * level falls back to `Storey`, so lists authored before the level existed
+ * keep resolving the storey name. `Project` is constant per model.
+ */
+function getSpatialValue(
+  entityId: number,
+  level: string,
+  provider: ListDataProvider,
+): CellValue {
+  switch (level) {
+    case 'Building':
+      return provider.getBuildingName?.(entityId) || null;
+    case 'Site':
+      return provider.getSiteName?.(entityId) || null;
+    case 'Project':
+      return provider.getProjectName?.() || null;
+    case 'Storey':
+    default:
+      return provider.getStoreyName?.(entityId) || null;
   }
 }
 
@@ -366,7 +392,10 @@ function extractColumnValues(
         break;
       }
       case 'spatial':
-        values[i] = provider.getStoreyName?.(entityId) || null;
+        values[i] = getSpatialValue(entityId, col.propertyName, provider);
+        break;
+      case 'model':
+        values[i] = provider.getModelName?.() || null;
         break;
       default:
         values[i] = null;

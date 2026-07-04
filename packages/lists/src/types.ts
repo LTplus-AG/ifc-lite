@@ -71,6 +71,20 @@ export interface ListDataProvider {
   getClassifications?(expressId: number): ListClassificationRef[];
   /** Building-storey name the element belongs to, or '' when unplaced. */
   getStoreyName?(expressId: number): string;
+  /** IfcBuilding name containing the element, or '' when unplaced. Used by the
+   *  `spatial` column at `Building` level. */
+  getBuildingName?(expressId: number): string;
+  /** IfcSite name containing the element, or '' when unplaced. Used by the
+   *  `spatial` column at `Site` level. */
+  getSiteName?(expressId: number): string;
+  /** IfcProject.Name for this model — constant for every element the provider
+   *  serves (one IfcProject per file). Used by the `spatial` column at
+   *  `Project` level. '' when the model has no named project. */
+  getProjectName?(): string;
+  /** Source model / file display name — constant for every element the
+   *  provider serves. Used by the `model` column to identify which federated
+   *  file a row comes from. '' when unknown (e.g. single-model legacy path). */
+  getModelName?(): string;
   /** IFC `PredefinedType` enum token (e.g. "FLOOR", "FLOORING"), or '' when
    *  the element has none. Used by the `PredefinedType` attribute column. */
   getEntityPredefinedType?(expressId: number): string;
@@ -144,12 +158,16 @@ export interface PropertyCondition {
    * - `property` / `quantity` — a pset / qto value (uses `psetName`)
    * - `material` — any of the element's material names (multi-valued)
    * - `classification` — any classification code or name (multi-valued)
-   * - `spatial` — the element's building-storey name
+   * - `spatial` — a spatial-container name; `propertyName` selects the level
+   *   (`Storey` (default), `Building`, `Site`, or `Project`)
+   * - `model` — the source model / file name (federation identity)
    */
-  source: 'attribute' | 'property' | 'quantity' | 'material' | 'classification' | 'spatial';
+  source: 'attribute' | 'property' | 'quantity' | 'material' | 'classification' | 'spatial' | 'model';
   /** Property set name (for property/quantity sources) */
   psetName?: string;
-  /** Property name within the set. Ignored for material/classification/spatial. */
+  /** Attribute / property / quantity name, or the spatial level for `spatial`
+   *  (`Storey` | `Building` | `Site` | `Project`). Ignored for
+   *  material/classification/model. */
   propertyName: string;
   operator: ConditionOperator;
   value: string | number | boolean;
@@ -173,12 +191,16 @@ export interface ColumnDefinition {
   id: string;
   /**
    * Where the column value comes from. `material` / `classification` are
-   * multi-valued (joined with ", "); `spatial` is the element's storey name.
+   * multi-valued (joined with ", "); `spatial` is a spatial-container name at
+   * the level named by `propertyName` (`Storey` (default) | `Building` | `Site`
+   * | `Project`); `model` is the source model / file name (federation identity).
    */
-  source: 'attribute' | 'property' | 'quantity' | 'material' | 'classification' | 'spatial';
+  source: 'attribute' | 'property' | 'quantity' | 'material' | 'classification' | 'spatial' | 'model';
   /** For property: pset name. For quantity: qset name. */
   psetName?: string;
-  /** Attribute name or property/quantity name. Ignored for material/classification/spatial. */
+  /** Attribute / property / quantity name, or the spatial level for `spatial`
+   *  (`Storey` | `Building` | `Site` | `Project`). Ignored for
+   *  material/classification/model. */
   propertyName: string;
   /** Display label override */
   label?: string;

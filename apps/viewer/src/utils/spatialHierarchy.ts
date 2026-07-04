@@ -11,6 +11,7 @@
 import {
   IfcTypeEnum,
   RelationshipType,
+  isBuildingLikeSpatialType,
   type SpatialHierarchy,
   type SpatialNode,
   type EntityTable,
@@ -44,6 +45,82 @@ function findSpatialNode(node: SpatialNode, expressId: number): SpatialNode | nu
     if (hit) return hit;
   }
   return null;
+}
+
+/**
+ * Nearest-ancestor spatial identity for an element, resolved from a built
+ * spatial hierarchy. `siteOf` / `buildingOf` return the containing IfcSite /
+ * IfcBuilding name (or '' when the element is unplaced, or the container is
+ * unnamed); `projectName` is the model's single IfcProject name.
+ */
+export interface SpatialAncestryIndex {
+  projectName: string;
+  siteOf(elementId: number): string;
+  buildingOf(elementId: number): string;
+}
+
+/**
+ * Precompute each element's containing IfcSite / IfcBuilding name from a spatial
+ * hierarchy in a single depth-first pass, so a per-element lookup is O(1) and
+ * never re-walks the tree. Used by federated views (Lists columns, panels) to
+ * label which project / site / building an element belongs to.
+ *
+ * `getName` resolves an entity's real IFC `Name` — pass the store's
+ * `entities.getName` so an UNNAMED container resolves to '' (matching how the
+ * storey column behaves), rather than the `SpatialNode.name` placeholder the
+ * hierarchy builder synthesizes (`Entity #N`). "Building" spans every
+ * building-like spatial type (IFC4X3 IfcFacility / IfcBridge / IfcRoad / …), so
+ * infrastructure federations resolve too.
+ *
+ * Coverage: elements listed directly under a container node (`node.elements`)
+ * resolve via that node; a spatial container queried by its own id resolves to
+ * its own site/building; parts and other aggregated descendants reachable only
+ * through the storey reverse index (`elementToStorey`) resolve via their
+ * storey. Elements the hierarchy doesn't place resolve to ''.
+ */
+export function buildSpatialAncestryIndex(
+  hierarchy: SpatialHierarchy | undefined | null,
+  getName: (expressId: number) => string,
+): SpatialAncestryIndex {
+  // container node id -> nearest {site, building} name (self-inclusive).
+  const ancestry = new Map<number, { site: string; building: string }>();
+  // element id -> the container node that directly lists it in `elements`.
+  const elementToContainer = new Map<number, number>();
+  let projectName = '';
+
+  if (hierarchy?.project) {
+    const root = hierarchy.project;
+    projectName = getName(root.expressId) || '';
+    const walk = (node: SpatialNode, site: string, building: string): void => {
+      const nextSite = node.type === IfcTypeEnum.IfcSite ? (getName(node.expressId) || site) : site;
+      const nextBuilding = isBuildingLikeSpatialType(node.type) ? (getName(node.expressId) || building) : building;
+      ancestry.set(node.expressId, { site: nextSite, building: nextBuilding });
+      for (const el of node.elements) {
+        if (!elementToContainer.has(el)) elementToContainer.set(el, node.expressId);
+      }
+      for (const child of node.children) walk(child, nextSite, nextBuilding);
+    };
+    walk(root, '', '');
+  }
+
+  const containerFor = (elementId: number): number | undefined => {
+    if (ancestry.has(elementId)) return elementId; // the element IS a spatial container
+    const direct = elementToContainer.get(elementId);
+    if (direct !== undefined) return direct;
+    return hierarchy?.elementToStorey.get(elementId); // parts/aggregated descendants
+  };
+
+  return {
+    projectName,
+    siteOf(elementId: number): string {
+      const c = containerFor(elementId);
+      return c === undefined ? '' : (ancestry.get(c)?.site ?? '');
+    },
+    buildingOf(elementId: number): string {
+      const c = containerFor(elementId);
+      return c === undefined ? '' : (ancestry.get(c)?.building ?? '');
+    },
+  };
 }
 
 /**

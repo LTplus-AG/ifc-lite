@@ -91,7 +91,7 @@ export function ListPanel({ onClose }: ListPanelProps) {
         // Skip native-metadata models — they don't have a parsed
         // IfcDataStore, so the list provider can't query them.
         if (!model.ifcDataStore) continue;
-        pairs.push({ modelId, provider: createListDataProvider(model.ifcDataStore), store: model.ifcDataStore });
+        pairs.push({ modelId, provider: createListDataProvider(model.ifcDataStore, model.name), store: model.ifcDataStore });
       }
     } else if (ifcDataStore) {
       pairs.push({ modelId: 'default', provider: createListDataProvider(ifcDataStore), store: ifcDataStore });

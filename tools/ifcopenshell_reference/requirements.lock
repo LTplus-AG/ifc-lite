@@ -1,3 +1,9 @@
-ifcopenshell==0.8.2
+# IfcOpenShell dropped Linux aarch64 wheels for 0.8.2/0.8.3 (the arm CI runner
+# could no longer resolve 0.8.2); 0.8.4 is the earliest release with an
+# aarch64/py3.12 wheel. Pinned to the latest available patch. The nightly
+# `full` job regenerates the reference dumps from this engine, so a pin bump is
+# a reviewed change - it warns (does not fail) when the committed reference
+# goes stale.
+ifcopenshell==0.8.5
 numpy==2.0.2
 shapely==2.0.7

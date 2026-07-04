@@ -11,6 +11,7 @@
 
 import type { PropertySet, Property, QuantitySet, Quantity } from '@ifc-lite/data';
 import { parsePropertyValue } from '@ifc-lite/encoding';
+import { compileNameMatcher } from './name-pattern.js';
 import type {
   ListDataProvider,
   ListDefinition,
@@ -459,10 +460,15 @@ function getQuantityValue(
  *  callers that need the measure `dataType` (issue #1573) don't have to
  *  re-walk the sets. */
 function findPropertyEntry(psets: PropertySet[], psetName: string, propName: string): Property | undefined {
+  // Set and property names support Bonsai-style `/regex/` patterns, so one
+  // column can pull a value from several psets at once (issue #1591); a plain
+  // name stays an exact match.
+  const matchSet = compileNameMatcher(psetName);
+  const matchProp = compileNameMatcher(propName);
   for (const pset of psets) {
-    if (pset.name === psetName) {
+    if (matchSet(pset.name)) {
       for (const prop of pset.properties) {
-        if (prop.name === propName) return prop;
+        if (matchProp(prop.name)) return prop;
       }
     }
   }
@@ -504,10 +510,13 @@ function resolvePropertyValue(value: unknown): CellValue {
  *  that need the `QuantityType` (issue #1573) don't have to re-walk the
  *  sets. */
 function findQuantityEntry(qsets: QuantitySet[], qsetName: string, quantName: string): Quantity | undefined {
+  // Qset and quantity names support `/regex/` patterns too (see findPropertyEntry).
+  const matchSet = compileNameMatcher(qsetName);
+  const matchQuant = compileNameMatcher(quantName);
   for (const qset of qsets) {
-    if (qset.name === qsetName) {
+    if (matchSet(qset.name)) {
       for (const quant of qset.quantities) {
-        if (quant.name === quantName) return quant;
+        if (matchQuant(quant.name)) return quant;
       }
     }
   }

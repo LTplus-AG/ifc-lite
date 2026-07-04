@@ -52,6 +52,9 @@ function createMockProvider(): ListDataProvider {
         { name: 'Length', value: 5.0, type: 0 },
         { name: 'Height', value: 2.8, type: 0 },
         { name: 'Width', value: 0.2, type: 0 },
+        // NetVolume lives in a DIFFERENT set per element type (wall vs slab);
+        // a `/Qto_.*BaseQuantities/` pattern spans both (#1591).
+        { name: 'NetVolume', value: 0.28, type: 2 },
       ]},
     ]],
     [2, [
@@ -59,12 +62,14 @@ function createMockProvider(): ListDataProvider {
         { name: 'Length', value: 3.5, type: 0 },
         { name: 'Height', value: 2.8, type: 0 },
         { name: 'Width', value: 0.15, type: 0 },
+        { name: 'NetVolume', value: 0.147, type: 2 },
       ]},
     ]],
     [3, [
       { name: 'Qto_SlabBaseQuantities', quantities: [
         { name: 'GrossArea', value: 45.2, type: 1 },
         { name: 'GrossVolume', value: 9.04, type: 2 },
+        { name: 'NetVolume', value: 8.5, type: 2 },
       ]},
     ]],
   ]);
@@ -403,6 +408,9 @@ describe('executeList', () => {
     // FireRating: Wall-01='REI 90', Wall-02='EI 30', Slab-01 has no
     // Pset_WallCommon at all (null actualValue is excluded, not a match).
     { source: 'property', psetName: 'Pset_WallCommon', propertyName: 'FireRating', operator: 'notEquals', value: 'EI 30', expected: ['Wall-01'] },
+    // #1591: a regex qset pattern in a condition. NetVolume: Wall-01=0.28,
+    // Wall-02=0.147, Slab-01=8.5 — only the slab exceeds 1.
+    { source: 'quantity', psetName: '/Qto_.*BaseQuantities/', propertyName: 'NetVolume', operator: 'gt', value: 1, expected: ['Slab-01'] },
   ] as const)('filters by $source $operator against $value (psetName=$psetName)', ({ source, psetName, propertyName, operator, value, expected }) => {
     const provider = createMockProvider();
     const def: ListDefinition = {
@@ -417,6 +425,31 @@ describe('executeList', () => {
 
     const result = executeList(def, provider);
     expect(result.rows.map((r) => r.values[0]).sort()).toEqual([...expected]);
+  });
+
+  // #1591: a `/regex/` qset-name pattern pulls the same quantity from whichever
+  // matching set an element carries — NetVolume from Qto_WallBaseQuantities for
+  // walls AND Qto_SlabBaseQuantities for the slab, in one column.
+  it('resolves a quantity via a regex qset-name pattern across sets', () => {
+    const provider = createMockProvider();
+    const def: ListDefinition = {
+      id: 'regex-qty',
+      name: 'T',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [IfcTypeEnum.IfcWall, IfcTypeEnum.IfcSlab],
+      conditions: [],
+      columns: [
+        { id: 'name', source: 'attribute', propertyName: 'Name' },
+        { id: 'vol', source: 'quantity', psetName: '/Qto_.*BaseQuantities/', propertyName: 'NetVolume' },
+      ],
+    };
+
+    const result = executeList(def, provider);
+    const byName = new Map(result.rows.map((r) => [r.values[0], r.values[1]]));
+    expect(byName.get('Wall-01')).toBe(0.28);
+    expect(byName.get('Wall-02')).toBe(0.147);
+    expect(byName.get('Slab-01')).toBe(8.5);
   });
 
   it('returns null for missing properties', () => {

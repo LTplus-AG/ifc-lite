@@ -1828,8 +1828,10 @@
     "ListRow: interface",
     "ListSummary: interface",
     "PropertyCondition: interface",
+    "compileNameMatcher: function",
     "discoverColumns: function",
     "executeList: function",
+    "isNamePattern: function",
     "listResultToCSV: function",
     "summariseListRows: function"
   ],

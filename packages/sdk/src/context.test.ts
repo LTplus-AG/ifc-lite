@@ -264,6 +264,33 @@ describe('QueryNamespace helpers', () => {
     expect(value).toBe(true);
   });
 
+  // #1591: `/regex/` set-name patterns in property()/quantity().
+  it('property() resolves across sets via a regex set-name pattern', () => {
+    const { backend, query } = createMockBackend();
+    query.properties.mockReturnValue([
+      { name: 'Pset_SlabCommon', properties: [{ name: 'LoadBearing', type: 0, value: true }] },
+    ]);
+
+    const bim = createBimContext({ backend });
+    // `/Pset_.*Common/` matches Pset_SlabCommon even though the caller doesn't
+    // know the element's class up front.
+    const value = bim.property({ modelId: 'model-1', expressId: 1 }, '/Pset_.*Common/', 'LoadBearing');
+    expect(value).toBe(true);
+    // A plain (exact) name that doesn't match still returns null.
+    expect(bim.property({ modelId: 'model-1', expressId: 1 }, 'Pset_WallCommon', 'LoadBearing')).toBeNull();
+  });
+
+  it('quantity() resolves across sets via a regex qset-name pattern', () => {
+    const { backend, query } = createMockBackend();
+    query.quantities.mockReturnValue([
+      { name: 'Qto_SlabBaseQuantities', quantities: [{ name: 'NetVolume', type: 2, value: 8.5 }] },
+    ]);
+
+    const bim = createBimContext({ backend });
+    const value = bim.quantity({ modelId: 'model-1', expressId: 1 }, '/Qto_.*BaseQuantities/', 'NetVolume');
+    expect(value).toBe(8.5);
+  });
+
   it('materials() returns structured material data', () => {
     const { backend, query } = createMockBackend();
     query.materials.mockReturnValue({

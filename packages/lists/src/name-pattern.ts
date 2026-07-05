@@ -56,7 +56,10 @@ function parseRegexLiteral(pattern: string): RegExp | null {
   const m = /^\/(.+)\/([a-z]*)$/.exec(pattern);
   if (!m) return null;
   try {
-    return new RegExp(m[1], m[2]);
+    // Strip the stateful `g`/`y` flags: the compiled matcher is cached and
+    // shared across rows, and `.test()` on a global/sticky RegExp advances
+    // `lastIndex`, which would make matching alternate true/false per call.
+    return new RegExp(m[1], m[2].replace(/[gy]/g, ''));
   } catch (err) {
     console.warn(`[lists] invalid name pattern ${JSON.stringify(pattern)}: ${(err as Error).message}`);
     return null;

@@ -27,6 +27,18 @@ describe('compileNameMatcher', () => {
     expect(m('Qto_WallBaseQuantities')).toBe(true);
   });
 
+  it('strips stateful g/y flags so cached matching stays deterministic', () => {
+    // The matcher is cached and shared across rows; a global/sticky RegExp
+    // advances lastIndex on each .test(), so without stripping g/y the same
+    // name would alternate true/false. Repeated calls must be stable.
+    const m = compileNameMatcher('/Qto_.*BaseQuantities/g');
+    expect(m('Qto_WallBaseQuantities')).toBe(true);
+    expect(m('Qto_WallBaseQuantities')).toBe(true);
+    expect(m('Qto_SlabBaseQuantities')).toBe(true);
+    expect(m('Pset_WallCommon')).toBe(false);
+    expect(m('Pset_WallCommon')).toBe(false);
+  });
+
   it('anchors are respected inside the literal', () => {
     const m = compileNameMatcher('/^Pset_/');
     expect(m('Pset_WallCommon')).toBe(true);

@@ -36,7 +36,7 @@ import type {
   PropertyCondition,
   ConditionOperator,
 } from '@ifc-lite/lists';
-import { discoverColumns, ENTITY_ATTRIBUTES } from '@ifc-lite/lists';
+import { discoverColumns, ENTITY_ATTRIBUTES, isNamePattern } from '@ifc-lite/lists';
 
 const NO_OPTIONS: readonly string[] = [];
 
@@ -753,9 +753,11 @@ function CustomColumnEntry({
 
   const set = setName.trim();
   const prop = propName.trim();
-  // Slugify like the discovered-column ids (whitespace only), so regex
-  // metacharacters survive and two distinct patterns never collapse to one id.
-  const columnId = `custom-${source}-${set}-${prop}`.toLowerCase().replace(/\s+/g, '-');
+  const isPattern = isNamePattern(set);
+  // Slugify like the discovered-column ids (collapse whitespace) but keep the
+  // original case: regex patterns are case-sensitive, so `/A/` and `/a/` are
+  // distinct sets and must not collapse to one id.
+  const columnId = `custom-${source}-${set}-${prop}`.replace(/\s+/g, '-');
   const canAdd = set.length > 0 && prop.length > 0 && !selectedIds.has(columnId);
 
   const add = () => {
@@ -783,6 +785,11 @@ function CustomColumnEntry({
       <div className="flex items-center gap-1.5">
         <Chip selected={source === 'property'} onClick={() => setSource('property')}>Property</Chip>
         <Chip selected={source === 'quantity'} onClick={() => setSource('quantity')}>Quantity</Chip>
+        {isPattern && (
+          <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-primary">
+            regex
+          </span>
+        )}
         <button
           onClick={() => setOpen(false)}
           aria-label="Close custom column"

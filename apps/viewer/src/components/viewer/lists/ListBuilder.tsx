@@ -712,6 +712,115 @@ function ColumnPicker({ discovered, selectedIds, onAdd, onToggle }: ColumnPicker
           ))}
         </div>
       )}
+
+      {/* Custom / pattern column: type a set + property name directly, with
+          `/regex/` support so one column pulls a value across matching sets
+          (issue #1591 follow-up). Progressive disclosure keeps the picker
+          uncluttered until a power user reaches for it. */}
+      <CustomColumnEntry discovered={discovered} selectedIds={selectedIds} onAdd={onAdd} />
+    </div>
+  );
+}
+
+// ============================================================================
+// Custom / pattern column entry — free-text set + property, regex-aware
+// ============================================================================
+
+function CustomColumnEntry({
+  discovered,
+  selectedIds,
+  onAdd,
+}: {
+  discovered: DiscoveredColumns;
+  selectedIds: Set<string>;
+  onAdd: (col: ColumnDefinition) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [source, setSource] = useState<'property' | 'quantity'>('property');
+  const [setName, setSetName] = useState('');
+  const [propName, setPropName] = useState('');
+
+  const setOptions = useMemo<string[]>(
+    () => Array.from((source === 'quantity' ? discovered.quantities : discovered.properties).keys()).sort(),
+    [discovered, source],
+  );
+  // Suggest property names only when the typed set is an exact discovered set
+  // (a `/regex/` set has no single property list to offer).
+  const propOptions = useMemo<string[]>(
+    () => [...((source === 'quantity' ? discovered.quantities : discovered.properties).get(setName.trim()) ?? [])],
+    [discovered, source, setName],
+  );
+
+  const set = setName.trim();
+  const prop = propName.trim();
+  // Slugify like the discovered-column ids (whitespace only), so regex
+  // metacharacters survive and two distinct patterns never collapse to one id.
+  const columnId = `custom-${source}-${set}-${prop}`.toLowerCase().replace(/\s+/g, '-');
+  const canAdd = set.length > 0 && prop.length > 0 && !selectedIds.has(columnId);
+
+  const add = () => {
+    if (!canAdd) return;
+    onAdd({ id: columnId, source, psetName: set, propertyName: prop, label: prop });
+    // Keep the set + source so several properties from the same (pattern) set
+    // can be added in a row; clear only the property.
+    setPropName('');
+  };
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="flex w-full items-center gap-1.5 rounded-md border border-dashed border-border px-2 py-1.5 text-xs text-muted-foreground hover:border-primary/50 hover:text-foreground"
+      >
+        <Plus className="h-3.5 w-3.5" /> Custom column
+        <span className="ml-auto font-mono text-[10px] opacity-70">Pset/Qto or /regex/</span>
+      </button>
+    );
+  }
+
+  return (
+    <div className="space-y-2 rounded-md border border-border/60 bg-card p-2.5">
+      <div className="flex items-center gap-1.5">
+        <Chip selected={source === 'property'} onClick={() => setSource('property')}>Property</Chip>
+        <Chip selected={source === 'quantity'} onClick={() => setSource('quantity')}>Quantity</Chip>
+        <button
+          onClick={() => setOpen(false)}
+          aria-label="Close custom column"
+          className="ml-auto shrink-0 text-muted-foreground hover:text-foreground"
+        >
+          <ChevronUp className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      <div className="flex items-center gap-1.5">
+        <ComboInput
+          value={setName}
+          options={setOptions}
+          placeholder={source === 'quantity' ? 'Qto_… or /Qto_.*/' : 'Pset_… or /Pset_.*/'}
+          className="h-7 min-w-0 flex-1 text-xs"
+          onChange={setSetName}
+        />
+        <ComboInput
+          value={propName}
+          options={propOptions}
+          placeholder={source === 'quantity' ? 'NetVolume' : 'FireRating'}
+          className="h-7 min-w-0 flex-1 text-xs"
+          onChange={setPropName}
+        />
+        <Button
+          size="sm"
+          onClick={add}
+          disabled={!canAdd}
+          aria-label="Add custom column"
+          className="h-7 shrink-0 px-2"
+        >
+          <Plus className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+      <p className="text-[11px] leading-relaxed text-muted-foreground">
+        Type an exact set name, or wrap a pattern in{' '}
+        <code className="rounded bg-muted px-1 font-mono text-[10px]">/…/</code> to pull one value across every
+        matching set, e.g. <code className="rounded bg-muted px-1 font-mono text-[10px]">/Qto_.*BaseQuantities/</code>.
+      </p>
     </div>
   );
 }

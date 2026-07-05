@@ -20,7 +20,8 @@ import { ComboInput } from '@/components/ui/combo-input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { IfcTypeEnum, isBuildingLikeSpatialType, type SpatialNode } from '@ifc-lite/data';
+import { IfcTypeEnum } from '@ifc-lite/data';
+import { collectSpatialContainerNames } from '@/utils/spatialHierarchy';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import {
   discoverFilterValues,
@@ -204,21 +205,13 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
     const building = new Set<string>();
     const site = new Set<string>();
     const project = new Set<string>();
+    // Reuse the shared collector so the site / building-like / project
+    // classification can't drift from the column resolver (#1591 review).
     for (const store of stores) {
-      const root = store.spatialHierarchy?.project;
-      if (!root) continue;
-      // Resolve real IFC Names (empty for unnamed containers) so the suggestions
-      // match the column values, never the `Entity #N` node placeholder.
-      const walk = (node: SpatialNode) => {
-        const nm = store.entities.getName(node.expressId);
-        if (nm) {
-          if (isBuildingLikeSpatialType(node.type)) building.add(nm);
-          else if (node.type === IfcTypeEnum.IfcSite) site.add(nm);
-          else if (node.type === IfcTypeEnum.IfcProject) project.add(nm);
-        }
-        for (const c of node.children) walk(c);
-      };
-      walk(root);
+      const names = collectSpatialContainerNames(store.spatialHierarchy, (id) => store.entities.getName(id));
+      names.sites.forEach((n) => site.add(n));
+      names.buildings.forEach((n) => building.add(n));
+      names.projects.forEach((n) => project.add(n));
     }
     const sorted = (s: Set<string>) => Array.from(s).sort();
     return { Storey: storeyNames, Building: sorted(building), Site: sorted(site), Project: sorted(project) };

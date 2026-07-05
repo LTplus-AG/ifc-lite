@@ -11,7 +11,7 @@ import {
   RelationshipType,
   StringTable,
 } from '@ifc-lite/data';
-import { rebuildSpatialHierarchy, rebuildOnDemandMaps, registerAuthoredElement, buildSpatialAncestryIndex } from './spatialHierarchy';
+import { rebuildSpatialHierarchy, rebuildOnDemandMaps, registerAuthoredElement, buildSpatialAncestryIndex, collectSpatialContainerNames } from './spatialHierarchy';
 
 describe('registerAuthoredElement', () => {
   function baseHierarchy() {
@@ -346,6 +346,78 @@ describe('buildSpatialAncestryIndex', () => {
     const idx = buildSpatialAncestryIndex(h, (id) => et.getName(id));
     assert.equal(idx.buildingOf(6), 'Building');
     assert.equal(idx.siteOf(6), 'Site');
+  });
+
+  // Nested same-type containers (IfcSite within IfcSite). The element's nearest
+  // site is the INNER site; an unnamed inner site must NOT inherit the outer
+  // site's name (it is a different, unnamed site), so it resolves to ''.
+  it('does not inherit an ancestor site name across same-type nesting', () => {
+    const strings = new StringTable();
+    const eb = new EntityTableBuilder(6, strings);
+    eb.add(1, 'IFCPROJECT', 'p0', 'Project', '', '');
+    eb.add(2, 'IFCSITE', 's-outer', 'Environment', '', '');
+    eb.add(3, 'IFCSITE', 's-inner', '', '', ''); // unnamed nested site
+    eb.add(4, 'IFCBUILDING', 'b0', 'House', '', '');
+    eb.add(5, 'IFCBUILDINGSTOREY', 'st0', 'Level 1', '', '');
+    eb.add(6, 'IFCWALL', 'w0', 'Wall', '', '', true);
+    const rels = new RelationshipGraphBuilder();
+    rels.addEdge(1, 2, RelationshipType.Aggregates, 100);
+    rels.addEdge(2, 3, RelationshipType.Aggregates, 101); // site within site
+    rels.addEdge(3, 4, RelationshipType.Aggregates, 102);
+    rels.addEdge(4, 5, RelationshipType.Aggregates, 103);
+    rels.addEdge(5, 6, RelationshipType.ContainsElements, 104);
+    const et = eb.build();
+    const h = rebuildSpatialHierarchy(et, rels.build());
+    assert.ok(h);
+    const idx = buildSpatialAncestryIndex(h, (id) => et.getName(id));
+    assert.equal(idx.siteOf(6), ''); // NOT 'Environment'
+    assert.equal(idx.buildingOf(6), 'House');
+  });
+
+  it('uses the nearest named site when a nested inner site IS named', () => {
+    const strings = new StringTable();
+    const eb = new EntityTableBuilder(5, strings);
+    eb.add(1, 'IFCPROJECT', 'p0', 'Project', '', '');
+    eb.add(2, 'IFCSITE', 's-outer', 'Environment', '', '');
+    eb.add(3, 'IFCSITE', 's-inner', 'House Site', '', ''); // named nested site
+    eb.add(4, 'IFCBUILDINGSTOREY', 'st0', 'Level 1', '', '');
+    eb.add(5, 'IFCWALL', 'w0', 'Wall', '', '', true);
+    const rels = new RelationshipGraphBuilder();
+    rels.addEdge(1, 2, RelationshipType.Aggregates, 100);
+    rels.addEdge(2, 3, RelationshipType.Aggregates, 101);
+    rels.addEdge(3, 4, RelationshipType.Aggregates, 102);
+    rels.addEdge(4, 5, RelationshipType.ContainsElements, 103);
+    const et = eb.build();
+    const h = rebuildSpatialHierarchy(et, rels.build());
+    assert.ok(h);
+    const idx = buildSpatialAncestryIndex(h, (id) => et.getName(id));
+    assert.equal(idx.siteOf(5), 'House Site');
+  });
+});
+
+describe('collectSpatialContainerNames', () => {
+  it('collects distinct named site / building / project names, skipping unnamed', () => {
+    const strings = new StringTable();
+    const eb = new EntityTableBuilder(6, strings);
+    eb.add(1, 'IFCPROJECT', 'p0', 'My Project', '', '');
+    eb.add(2, 'IFCSITE', 's0', 'North Site', '', '');
+    eb.add(3, 'IFCBRIDGE', 'br', 'Bridge A', '', ''); // building-like (IFC4X3)
+    eb.add(4, 'IFCBUILDING', 'b0', '', '', ''); // unnamed building -> skipped
+    eb.add(5, 'IFCBUILDINGSTOREY', 'st0', 'Level 1', '', ''); // storey -> not a level
+    eb.add(6, 'IFCWALL', 'w0', 'Wall', '', '', true);
+    const rels = new RelationshipGraphBuilder();
+    rels.addEdge(1, 2, RelationshipType.Aggregates, 100);
+    rels.addEdge(2, 3, RelationshipType.Aggregates, 101);
+    rels.addEdge(2, 4, RelationshipType.Aggregates, 102);
+    rels.addEdge(4, 5, RelationshipType.Aggregates, 103);
+    rels.addEdge(5, 6, RelationshipType.ContainsElements, 104);
+    const et = eb.build();
+    const h = rebuildSpatialHierarchy(et, rels.build());
+    assert.ok(h);
+    const names = collectSpatialContainerNames(h, (id) => et.getName(id));
+    assert.deepEqual(names.projects, ['My Project']);
+    assert.deepEqual(names.sites, ['North Site']);
+    assert.deepEqual(names.buildings, ['Bridge A']); // facility included; unnamed building skipped
   });
 });
 

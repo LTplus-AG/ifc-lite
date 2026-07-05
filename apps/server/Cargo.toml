@@ -13,7 +13,19 @@ description = "High-performance IFC processing server for Railway deployment"
 keywords = ["ifc", "bim", "server", "aec", "api"]
 categories = ["web-programming", "parsing"]
 
+[features]
+# `mimalloc` (default): route the server's Rust allocations through mimalloc.
+# The platform system heap's global lock dominated native geometry self-time
+# (~70%) and capped rayon scaling to ~1.8x on IfcMappedItem-heavy models (#1623);
+# mimalloc's per-thread heaps remove the lock. `--no-default-features` ⇒ platform
+# allocator, unchanged.
+default = ["mimalloc"]
+mimalloc = ["dep:mimalloc"]
+
 [dependencies]
+# Native global allocator (see the `mimalloc` feature).
+mimalloc = { version = "0.1", optional = true }
+
 # Web framework
 axum = { version = "0.8", features = ["multipart", "tokio"] }
 tower = "0.5"

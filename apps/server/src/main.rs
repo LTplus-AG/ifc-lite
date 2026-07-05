@@ -22,6 +22,14 @@
 //! - `GET /api/v1/parse/symbolic/:cache_key` - 2D symbol stream (IfcAnnotation + IfcGrid) as JSON
 //! - `GET /api/v1/cache/:key` - Retrieve cached result
 
+// Native global allocator (#1623): the platform system heap's global lock was
+// ~70% of native geometry self-time and capped rayon scaling to ~1.8x on
+// IfcMappedItem-heavy models; mimalloc's per-thread heaps lifted an all-cores
+// СИКН geometry pass 35s -> 16.7s (2.1x). See the `mimalloc` feature.
+#[cfg(feature = "mimalloc")]
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 use anyhow::Context;
 use axum::http::{header, HeaderValue, Method};
 use axum::{

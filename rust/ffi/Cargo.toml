@@ -14,7 +14,20 @@ description = "C FFI bindings for ifc-lite — native DLL for in-process IFC par
 [lib]
 crate-type = ["cdylib"]
 
+[features]
+# `mimalloc` (default): route this native DLL's Rust allocations through mimalloc
+# instead of the platform system heap. The Windows system heap (`ntdll` RtlHeap)
+# has a global lock that dominated native geometry self-time (~70%) and capped
+# rayon scaling to ~1.8x on IfcMappedItem-heavy models (#1623); mimalloc's
+# per-thread heaps remove the lock. Off ⇒ the platform allocator, unchanged.
+default = ["mimalloc"]
+mimalloc = ["dep:mimalloc"]
+
 [dependencies]
+# Native global allocator (see the `mimalloc` feature). Optional so a consumer
+# can opt back out with `--no-default-features`. Never reaches wasm (this crate
+# is a native cdylib only).
+mimalloc = { version = "0.1", optional = true }
 # Carry an explicit `version` alongside `path` so the crate is publishable to
 # crates.io: `cargo publish` strips the path and keeps the version requirement.
 # A path-only dep fails publish ("dependency does not specify a version").

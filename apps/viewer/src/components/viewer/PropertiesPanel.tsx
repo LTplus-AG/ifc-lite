@@ -17,13 +17,13 @@ import {
   Tag,
   MousePointer2,
   ArrowUpDown,
-  FileBox,
   PenLine,
   Crosshair,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { EditToolbar } from './PropertyEditor';
 import { GeometryEditCard } from './GeometryEditCard';
+import { ModelBadge } from './ModelBadge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -1428,9 +1428,8 @@ export function PropertiesPanel() {
 
         {/* Model Source (when multiple models loaded) - below storey, less prominent */}
         {models.size > 1 && model && (
-          <div className="flex items-center gap-2 text-[11px] px-2 py-1 text-zinc-400 dark:text-zinc-500 min-w-0">
-            <FileBox className="h-3 w-3 shrink-0" />
-            <span className="font-mono truncate min-w-0 flex-1">{model.name}</span>
+          <div className="px-2 py-1">
+            <ModelBadge modelId={model.id} className="gap-2 text-[11px] max-w-full" />
           </div>
         )}
       </div>
@@ -2010,10 +2009,7 @@ function EntityDataSection({
       {/* Entity Header with model name */}
       <div className="p-3 bg-zinc-50 dark:bg-zinc-900/50 space-y-2">
         {showModelName && model && (
-          <div className="flex items-center gap-2 text-[11px] text-zinc-500 dark:text-zinc-400">
-            <FileBox className="h-3 w-3" />
-            <span className="font-mono truncate">{model.name}</span>
-          </div>
+          <ModelBadge modelId={model.id} className="gap-2 text-[11px] max-w-full" />
         )}
         <div className="flex items-center gap-2">
           <Layers className="h-4 w-4 text-emerald-600" />

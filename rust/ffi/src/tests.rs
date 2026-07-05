@@ -296,11 +296,12 @@ fn geometry_is_sound_and_deterministic_under_the_global_allocator() {
         env!("CARGO_MANIFEST_DIR"),
         "/../geometry/tests/fixtures/bath_csg_solid.ifc"
     );
-    // Fixtures can be absent in a packaged checkout — skip rather than fail.
-    let Ok(ifc) = std::fs::read_to_string(fixture) else {
-        eprintln!("fixture absent, skipping: {fixture}");
-        return;
-    };
+    // Committed in-tree fixture (not a fetched `tests/models/` model), so it is
+    // always present in a normal checkout — a read failure is a real error, not a
+    // skip. Silently skipping would let this guard "pass" without exercising the
+    // allocator at all.
+    let ifc = std::fs::read_to_string(fixture)
+        .unwrap_or_else(|e| panic!("read committed fixture {fixture}: {e}"));
 
     let a = ifc_lite_processing::process_geometry(&ifc);
     let b = ifc_lite_processing::process_geometry(&ifc);

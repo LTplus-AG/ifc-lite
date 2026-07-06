@@ -355,3 +355,12 @@ fn budget_tripped_engulfing_cutter_skips_aabb_fallback() {
         "a non-engulfing opening under the tripped cap must still cut the host (#635 box-cut)"
     );
 }
+
+// A non-finite vertex (e.g. from a degenerate upstream transform) reaching the
+// malformed-opening OBB heuristic must not panic the partial_cmp sorts; the
+// cutter is not worth reshaping, so it bails to None.
+#[test]
+fn opening_obb_if_malformed_bails_on_nan_vertex_not_panic() {
+    let cutter = box_cutter_mesh([1.0, 1.0, 1.0], &[[f64::NAN, 0.0, 0.0]]);
+    assert!(opening_obb_if_malformed(&cutter).is_none());
+}

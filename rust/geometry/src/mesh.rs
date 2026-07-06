@@ -498,6 +498,16 @@ impl Mesh {
         let mut kept = Vec::with_capacity(self.indices.len());
         for tri in self.indices.chunks_exact(3) {
             let (ia, ib, ic) = (tri[0], tri[1], tri[2]);
+            // Drop any out-of-range triangle BEFORE the unchecked `bits()` closure
+            // indexes positions[] (unlike `vert()` below, `bits()` has no bounds
+            // check). Matches the drop-not-panic contract of vert()/validate_indices;
+            // sibling drop_thin_triangles guards the same way.
+            if ia as usize >= vertex_count
+                || ib as usize >= vertex_count
+                || ic as usize >= vertex_count
+            {
+                continue;
+            }
             // Bit-identical f32 vertex pair → exact zero-area collapse.
             let (ba, bb, bc) = (bits(ia), bits(ib), bits(ic));
             if ba == bb || bb == bc || ba == bc {
@@ -1410,6 +1420,28 @@ mod tests {
             origin: [0.0; 3],
         instance_meta: None, local_bounds: None, local_to_world: None };
         mesh.drop_thin_triangles(GRID);
+        assert_eq!(mesh.indices, vec![0, 1, 2]);
+    }
+
+    // Sibling of the above for drop_degenerate_triangles: the bits() closure
+    // indexed positions[] unchecked before vert()'s bounds check, so an OOB index
+    // panicked. It must now drop the bad triangle without panicking.
+    #[test]
+    fn drop_degenerate_skips_oob_index_without_panic() {
+        let mut mesh = Mesh {
+            positions: vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+            normals: vec![],
+            indices: vec![
+                0, 1, 2, // valid
+                0, 1, 9, // out-of-bounds index → would panic in bits() pre-fix
+            ],
+            rtc_applied: false,
+            origin: [0.0; 3],
+            instance_meta: None,
+            local_bounds: None,
+            local_to_world: None,
+        };
+        mesh.drop_degenerate_triangles();
         assert_eq!(mesh.indices, vec![0, 1, 2]);
     }
 

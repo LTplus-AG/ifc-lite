@@ -313,9 +313,14 @@ fn opening_obb_if_malformed(m: &Mesh) -> Option<OpeningBox> {
     if all.len() < 8 {
         return None;
     }
+    // Bail on any non-finite vertex so the partial_cmp sorts below cannot panic;
+    // a garbage cutter is not worth reshaping (file filters non-finite elsewhere).
+    if all.iter().any(|v| v.iter().any(|c| !c.is_finite())) {
+        return None;
+    }
     let median_axis = |axis: usize| -> f64 {
         let mut vals: Vec<f64> = all.iter().map(|v| v[axis]).collect();
-        vals.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        vals.sort_by(f64::total_cmp);
         vals[vals.len() / 2]
     };
     let med = Vector3::new(median_axis(0), median_axis(1), median_axis(2));
@@ -324,7 +329,7 @@ fn opening_obb_if_malformed(m: &Mesh) -> Option<OpeningBox> {
         .enumerate()
         .map(|(i, v)| ((v - med).norm(), i))
         .collect();
-    dist.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+    dist.sort_by(|a, b| a.0.total_cmp(&b.0));
     // The garbage "fins" of these broken cutters sit METRES from the opening
     // (≈9 m here), far beyond any legitimate opening vertex (even a big garage
     // door is ≲3 m). Detect malformity ONLY by an ABSOLUTE far cluster — a

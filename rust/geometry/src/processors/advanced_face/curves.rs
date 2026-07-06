@@ -73,6 +73,14 @@ pub(super) fn sample_bspline_edge_curve(
     }
 
     let knots = expand_knots(&knot_values, &mults);
+    // A malformed IfcBSplineCurveWithKnots can carry multiplicities summing to
+    // fewer than degree+1 knots (or expand_knots may have bailed to empty on an
+    // over-large multiplicity). Indexing knots[degree] / knots[len-degree-1]
+    // would then panic (OOB, or a usize underflow in len-degree-1). Mirror the
+    // sibling polyline.rs guard and treat the curve as unusable.
+    if knots.len() <= degree {
+        return vec![*start];
+    }
     let t_min = knots[degree];
     let t_max = knots[knots.len() - degree - 1];
 

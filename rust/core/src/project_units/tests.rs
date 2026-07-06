@@ -159,3 +159,18 @@ END-ISO-10303-21;
     // Still yields SI defaults via unit_for_measure.
     assert_eq!(units.unit_for_measure("IfcAreaMeasure").unwrap().symbol, "m\u{00B2}");
 }
+
+/// A malformed IFCDERIVEDUNIT whose element's Unit points back to itself would
+/// recurse forever (an uncatchable stack-overflow abort). With the depth cap it
+/// terminates and resolves to None. NOTE: pre-fix this SIGABRTs the whole test
+/// binary, so the fail-before check is a one-time manual `--test` run with the
+/// fix reverted; checked in, it asserts only post-fix termination.
+#[test]
+fn cyclic_derived_unit_terminates_not_stack_overflow() {
+    let content = "\
+#10=IFCDERIVEDUNIT((#11),.USERDEFINED.);
+#11=IFCDERIVEDUNITELEMENT(#10,1);
+";
+    let mut decoder = EntityDecoder::new(content);
+    assert!(resolve_unit_by_ref(&mut decoder, 10).is_none());
+}

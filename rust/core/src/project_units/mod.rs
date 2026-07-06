@@ -139,6 +139,23 @@ pub fn resolve_unit_by_ref(
     decoder: &mut EntityDecoder,
     unit_ref: u32,
 ) -> Option<(Option<String>, ResolvedUnit, bool)> {
+    resolve_unit_by_ref_depth(decoder, unit_ref, 0)
+}
+
+/// Max depth for the IFCDERIVEDUNIT -> element -> unit recursion. Real derived
+/// units nest ~2 levels; a malformed file can form a reference cycle (an
+/// IFCDERIVEDUNIT whose element's Unit points back to it), so cap the recursion
+/// to keep it from overflowing the stack, which is an uncatchable abort.
+const MAX_UNIT_RESOLVE_DEPTH: u32 = 16;
+
+fn resolve_unit_by_ref_depth(
+    decoder: &mut EntityDecoder,
+    unit_ref: u32,
+    depth: u32,
+) -> Option<(Option<String>, ResolvedUnit, bool)> {
+    if depth > MAX_UNIT_RESOLVE_DEPTH {
+        return None;
+    }
     let entity = decoder.decode_by_id(unit_ref).ok()?;
     match entity.ifc_type.as_str() {
         "IFCSIUNIT" => {
@@ -174,7 +191,9 @@ pub fn resolve_unit_by_ref(
             let mut parts: Vec<(String, i32)> = Vec::new();
             let mut scale = 1.0f64;
             for er in elem_refs {
-                if let Some((sym, unit_scale, exponent)) = resolve_derived_element(decoder, er) {
+                if let Some((sym, unit_scale, exponent)) =
+                    resolve_derived_element(decoder, er, depth)
+                {
                     scale *= unit_scale.powi(exponent);
                     parts.push((sym, exponent));
                 }
@@ -201,6 +220,7 @@ pub fn resolve_unit_by_ref(
 fn resolve_derived_element(
     decoder: &mut EntityDecoder,
     elem_ref: u32,
+    depth: u32,
 ) -> Option<(String, f64, i32)> {
     let elem = decoder.decode_by_id(elem_ref).ok()?;
     if elem.ifc_type.as_str() != "IFCDERIVEDUNITELEMENT" {
@@ -209,7 +229,7 @@ fn resolve_derived_element(
     // [0]=Unit (IfcNamedUnit), [1]=Exponent
     let unit_ref = elem.get_ref(0)?;
     let exponent = elem.get(1).and_then(|a| a.as_int()).unwrap_or(1) as i32;
-    let (_ut, resolved, _mon) = resolve_unit_by_ref(decoder, unit_ref)?;
+    let (_ut, resolved, _mon) = resolve_unit_by_ref_depth(decoder, unit_ref, depth + 1)?;
     Some((resolved.symbol, resolved.si_scale, exponent))
 }
 

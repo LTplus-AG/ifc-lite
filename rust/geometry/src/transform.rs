@@ -77,9 +77,17 @@ pub(crate) fn build_axis2_matrix(
     z_axis: Vector3<f64>,
     x_axis: Vector3<f64>,
 ) -> Matrix4<f64> {
-    // Normalize axes
-    let z_axis_final = z_axis.normalize();
-    let x_axis_normalized = x_axis.normalize();
+    // Normalize axes. A malformed IfcDirection((0,0,0)) as Axis/RefDirection would
+    // make a bare normalize() emit NaN (0/0) and poison the whole placement matrix
+    // (this helper is the shared home for every IfcAxis2Placement3D parser, so the
+    // guard lives here once). A zero Axis falls back to +Z; a zero RefDirection
+    // routes into the parallel-axis fallback below.
+    let z_axis_final = z_axis
+        .try_normalize(1e-9)
+        .unwrap_or_else(|| Vector3::new(0.0, 0.0, 1.0));
+    let x_axis_normalized = x_axis
+        .try_normalize(1e-9)
+        .unwrap_or_else(|| Vector3::new(1.0, 0.0, 0.0));
 
     // Ensure X is orthogonal to Z (project X onto plane perpendicular to Z)
     let dot_product = x_axis_normalized.dot(&z_axis_final);
@@ -489,5 +497,17 @@ mod tests {
 
         // Degenerate (zero-length) projected X-axis → None.
         assert!(rotation_angle_about_z(&[0.0f64; 16]).is_none());
+    }
+
+    // A malformed IfcDirection((0,0,0)) as Axis must not NaN-poison the matrix;
+    // build_axis2_matrix is the shared home for every IfcAxis2Placement3D parser.
+    #[test]
+    fn build_axis2_matrix_zero_axis_stays_finite() {
+        let m = build_axis2_matrix(
+            Point3::new(0.0, 0.0, 0.0),
+            Vector3::new(0.0, 0.0, 0.0),
+            Vector3::new(1.0, 0.0, 0.0),
+        );
+        assert!(m.iter().all(|v| v.is_finite()), "NaN in matrix: {m:?}");
     }
 }

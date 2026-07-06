@@ -189,11 +189,11 @@ impl GeometryRouter {
             scale
         };
 
-        // Get Axis1 (X axis, attribute 0)
-        let x_axis = if let Some(axis1_attr) = entity.get(0) {
+        // Get Axis1 (raw local X, attribute 0), defaulting to +X when absent/null.
+        let x_axis_raw = if let Some(axis1_attr) = entity.get(0) {
             if !axis1_attr.is_null() {
                 if let Some(axis1_entity) = decoder.resolve_ref(axis1_attr)? {
-                    self.parse_direction(&axis1_entity)?.normalize()
+                    self.parse_direction(&axis1_entity)?
                 } else {
                     Vector3::new(1.0, 0.0, 0.0)
                 }
@@ -204,11 +204,11 @@ impl GeometryRouter {
             Vector3::new(1.0, 0.0, 0.0)
         };
 
-        // Get Axis3 (Z axis, attribute 4 for 3D)
-        let z_axis = if let Some(axis3_attr) = entity.get(4) {
+        // Get Axis3 (raw local Z, attribute 4 for 3D), defaulting to +Z.
+        let z_axis_raw = if let Some(axis3_attr) = entity.get(4) {
             if !axis3_attr.is_null() {
                 if let Some(axis3_entity) = decoder.resolve_ref(axis3_attr)? {
-                    self.parse_direction(&axis3_entity)?.normalize()
+                    self.parse_direction(&axis3_entity)?
                 } else {
                     Vector3::new(0.0, 0.0, 1.0)
                 }
@@ -219,9 +219,27 @@ impl GeometryRouter {
             Vector3::new(0.0, 0.0, 1.0)
         };
 
-        // Derive Y axis from Z and X (right-hand coordinate system)
+        // Orthonormalize (Gram-Schmidt), guarding every normalize so a malformed
+        // IfcDirection((0,0,0)) or an Axis1 parallel to Axis3 cannot produce a NaN
+        // transform that silently poisons bounds/RTC/instancing/export. A zero
+        // Axis3 falls back to +Z; a zero-or-parallel Axis1 keeps the valid Z and
+        // takes a deterministic perpendicular X (mirrors build_axis2_matrix). Only
+        // the truly degenerate operator reorients, and it always stays finite.
+        let z_axis = z_axis_raw
+            .try_normalize(1e-9)
+            .unwrap_or_else(|| Vector3::new(0.0, 0.0, 1.0));
+        let x_norm = x_axis_raw
+            .try_normalize(1e-9)
+            .unwrap_or_else(|| Vector3::new(1.0, 0.0, 0.0));
+        let x_ortho = x_norm - z_axis * x_norm.dot(&z_axis);
+        let x_axis = x_ortho.try_normalize(1e-6).unwrap_or_else(|| {
+            if z_axis.z.abs() < 0.9 {
+                Vector3::new(0.0, 0.0, 1.0).cross(&z_axis).normalize()
+            } else {
+                Vector3::new(1.0, 0.0, 0.0).cross(&z_axis).normalize()
+            }
+        });
         let y_axis = z_axis.cross(&x_axis).normalize();
-        let x_axis = y_axis.cross(&z_axis).normalize();
 
         // Build transformation matrix. Each axis is scaled by its
         // per-axis factor (Scale / Scale2 / Scale3) so non-uniform
@@ -241,5 +259,28 @@ impl GeometryRouter {
         transform[(2, 3)] = origin.z;
 
         Ok(transform)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // A zero IfcDirection((0,0,0)) as Axis1 made a bare normalize() emit NaN, and
+    // the operator matrix was returned Ok, silently poisoning every mapped vertex.
+    // The matrix must now be finite.
+    #[test]
+    fn cartesian_transformation_operator_zero_axis_stays_finite() {
+        let content = "\
+#1=IFCDIRECTION((0.,0.,0.));
+#3=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#1,$,$,$,$);
+";
+        let mut decoder = EntityDecoder::new(content);
+        let router = GeometryRouter::new();
+        let entity = decoder.decode_by_id(3).unwrap();
+        let m = router
+            .parse_cartesian_transformation_operator(&entity, &mut decoder)
+            .expect("operator should still parse");
+        assert!(m.iter().all(|v| v.is_finite()), "NaN in transform matrix: {m:?}");
     }
 }

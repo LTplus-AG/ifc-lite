@@ -180,3 +180,88 @@ fn multi_item_mapped_per_occurrence_target_collates_under_shared_template() {
         }
     }
 }
+
+#[test]
+fn nested_mapped_composes_outer_and_inner_targets() {
+    // A nested map (outer RepresentationMap whose MappedRepresentation is itself an
+    // IfcMappedItem over an inner map) exercises the `Some(inner)` compose branch:
+    // `local_transform = outer_target · inner_target`, matching the innermost-first
+    // vertex bake order. The outer targets here are 90-deg-about-Z ROTATIONS and the
+    // inner target is a translation; rotation and translation do NOT commute, so a
+    // reversed compose order (`inner · outer`) would fail the world-vertex check.
+    let bytes = fixture_bytes("mapped_instances_nested.ifc");
+    let res = run(&bytes);
+
+    let mut groups: FxHashMap<u128, Vec<&MeshData>> = FxHashMap::default();
+    for m in &res.meshes {
+        if m.positions.is_empty() {
+            continue;
+        }
+        if let Some(im) = m.instance.as_ref() {
+            if im.instanceable {
+                groups.entry(im.rep_identity).or_default().push(m);
+            }
+        }
+    }
+
+    // One source solid, three nested occurrences ⇒ one template of three.
+    assert_eq!(
+        groups.len(),
+        1,
+        "expected 1 rep_identity template (single nested source solid), got {}",
+        groups.len()
+    );
+    for m in &res.meshes {
+        assert!(
+            m.origin.iter().all(|c| c.abs() < 1.0),
+            "unexpected RTC origin {:?}; reconstruction assumes rtc = 0",
+            m.origin
+        );
+    }
+    let rtc = [0.0f64; 3];
+    let tol = 1e-4;
+
+    let occ = groups.values().next().unwrap();
+    assert_eq!(occ.len(), 3, "expected 3 nested occurrences, got {}", occ.len());
+
+    // Every occurrence records a composed target; the three are distinct.
+    let mut seen: Vec<[f64; 16]> = Vec::new();
+    for m in occ {
+        let lt = m
+            .instance
+            .as_ref()
+            .unwrap()
+            .local_transform
+            .expect("nested occurrence lost its composed MappingTarget");
+        assert!(
+            !seen.iter().any(|s| s == &lt),
+            "two nested occurrences share a composed local_transform"
+        );
+        seen.push(lt);
+    }
+    // The rotated outer targets must actually leave a rotation in the composed
+    // transform (not just translation): at least one local_transform has an
+    // off-diagonal rotation term. Guards against a translation-only compose slipping
+    // through the reconstruction tolerance.
+    assert!(
+        seen.iter().any(|lt| lt[1].abs() > 0.5 || lt[4].abs() > 0.5),
+        "no composed local_transform carries the outer rotation"
+    );
+
+    // Correctness incl. compose ORDER: reconstruct every occurrence from occurrence 0.
+    let reference = occ[0];
+    let m_ref = compose_instance_world_row_major(reference.instance.as_ref().unwrap());
+    let ref_world = world_vertices(reference);
+    for m in &occ[1..] {
+        let m_k = compose_instance_world_row_major(m.instance.as_ref().unwrap());
+        let rel = instance_rel_row_major_f32(&m_k, &m_ref, rtc)
+            .expect("degenerate reference placement");
+        let recomposed: Vec<[f64; 3]> = ref_world.iter().map(|&p| apply(&rel, p)).collect();
+        let err = max_vertex_error(&recomposed, &world_vertices(m));
+        assert!(
+            err < tol,
+            "nested occurrence {} world-vertex error {err:.3e} m exceeds {tol:.0e}",
+            m.express_id
+        );
+    }
+}

@@ -797,9 +797,12 @@ impl Mesh {
     /// `1e-3 * diag` for hosts ≤ 10 m diagonal (`1e-3 * diag ≤ 1e-2`), trimming
     /// on every larger one. Returns the count dropped.
     pub fn clip_triangles_to_host_aabb(&mut self, min: [f32; 3], max: [f32; 3]) -> usize {
-        let diag = (((max[0] - min[0]) as f64).powi(2)
-            + ((max[1] - min[1]) as f64).powi(2)
-            + ((max[2] - min[2]) as f64).powi(2))
+        // Widen to f64 BEFORE subtracting (not `(max - min) as f64`) so `diag`,
+        // and thus `pad`, is bit-for-bit what the former inline `wall_max.x -
+        // wall_min.x` (f64) computed — the clamp is the only intended change.
+        let diag = ((max[0] as f64 - min[0] as f64).powi(2)
+            + (max[1] as f64 - min[1] as f64).powi(2)
+            + (max[2] as f64 - min[2] as f64).powi(2))
         .sqrt();
         let pad = (1.0e-3 * diag).clamp(5.0e-3, 1.0e-2) as f32;
         self.clip_triangles_to_aabb(min, max, pad)

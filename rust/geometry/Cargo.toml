@@ -86,7 +86,6 @@ geometry-predicates = "0.3"
 # Exact BigRational oracle + the predicate cascade's exact fallback tier
 # (already transitive; promoted to direct).
 num-rational = { version = "0.4", default-features = false, features = ["num-bigint"] }
-num-bigint = { version = "0.4", default-features = false }
 num-traits = { version = "0.2", default-features = false }
 bnum = { version = "0.14.4", features = ["numtraits"] }
 

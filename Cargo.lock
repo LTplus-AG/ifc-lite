@@ -1527,7 +1527,6 @@ dependencies = [
  "jpeg-decoder",
  "memchr",
  "nalgebra",
- "num-bigint",
  "num-rational",
  "num-traits",
  "png",

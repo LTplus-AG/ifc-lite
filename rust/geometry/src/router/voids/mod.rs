@@ -1836,24 +1836,19 @@ impl GeometryRouter {
         recut_malformed_openings(&mut result, &ctx.malformed_opening_boxes());
 
         // SPURIOUS-FLAP CLIP: a subtract can only remove material, so the cut is
-        // mathematically contained in the host's pre-cut AABB (`wall_min/max`).
-        // A malformed cutter (self-intersecting, or with garbage vertices metres
-        // from the real opening — the multi-body / tessellated-void case) can
-        // make the exact arrangement leak a far-flung flap triangle that pokes
-        // out of the wall, but only once a SECOND cutter perturbs the
-        // arrangement (so it slips past the per-cutter admission guards). Drop
-        // any triangle with a vertex beyond the host AABB; `pad` absorbs kernel
-        // snap / f64→f32 round-trip jitter (legit cut vertices land sub-mm
-        // inside). A no-op on clean cuts.
-        let diag = ((wall_max.x - wall_min.x).powi(2)
-            + (wall_max.y - wall_min.y).powi(2)
-            + (wall_max.z - wall_min.z).powi(2))
-        .sqrt();
-        let pad = (1.0e-3 * diag).max(5.0e-3) as f32;
-        result.clip_triangles_to_aabb(
+        // mathematically contained in the host's pre-cut AABB (`wall_min/max`);
+        // any triangle poking past it is provably an artifact — a malformed
+        // cutter's far-flung leaked flap (self-intersecting / tessellated void,
+        // surfacing once a SECOND cutter perturbs the arrangement), OR the
+        // flush-cap through-extension reveal overhang (`extend_opening_mesh_
+        // through_host` pushes a flush cap ~0.3·depth past the host for a clean
+        // transversal cut, so the subtract emits the reveal out to it — 0.105 m
+        // past a 0.35 m floor slab, #1633). `clip_triangles_to_host_aabb` bounds
+        // its jitter tolerance so a large host cannot leak the overhang. A no-op
+        // on clean cuts.
+        result.clip_triangles_to_host_aabb(
             [wall_min.x as f32, wall_min.y as f32, wall_min.z as f32],
             [wall_max.x as f32, wall_max.y as f32, wall_max.z as f32],
-            pad,
         );
 
         // Per-host cut-effect snapshot: tris_before / tris_after lets the

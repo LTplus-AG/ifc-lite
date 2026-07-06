@@ -784,6 +784,26 @@ impl Mesh {
         self.indices = new_idx;
         dropped
     }
+
+    /// Clip a void-cut result to the host's pre-cut AABB `[min, max]`, dropping
+    /// any triangle poking beyond it (see [`Mesh::clip_triangles_to_aabb`]). A
+    /// subtract can only remove material, so anything past the host AABB is a cut
+    /// artifact. The tolerance absorbs f64→f32 round-trip jitter (sub-mm), so it
+    /// is a small ABSOLUTE band, NOT a fraction of host size: an unbounded
+    /// `1e-3 * diag` reaches 0.13 m on a 130 m floor slab — wider than the
+    /// ~0.105 m flush-cap reveal overhang it must trap, which is why only large
+    /// slabs/roofs leaked it (a 5 m wall's 5 mm pad already trims the identical
+    /// overhang, #1633). Clamped to [5 mm, 10 mm]: byte-identical to the former
+    /// `1e-3 * diag` for hosts ≤ 10 m diagonal (`1e-3 * diag ≤ 1e-2`), trimming
+    /// on every larger one. Returns the count dropped.
+    pub fn clip_triangles_to_host_aabb(&mut self, min: [f32; 3], max: [f32; 3]) -> usize {
+        let diag = (((max[0] - min[0]) as f64).powi(2)
+            + ((max[1] - min[1]) as f64).powi(2)
+            + ((max[2] - min[2]) as f64).powi(2))
+        .sqrt();
+        let pad = (1.0e-3 * diag).clamp(5.0e-3, 1.0e-2) as f32;
+        self.clip_triangles_to_aabb(min, max, pad)
+    }
 }
 
 impl Default for Mesh {
@@ -986,6 +1006,46 @@ mod tests {
         let dropped = m.clip_triangles_to_aabb([0.0, 0.0, 0.0], [1.0, 1.0, 0.0], 0.01);
         assert_eq!(dropped, 0);
         assert_eq!(m.triangle_count(), 1, "mesh preserved, not emptied");
+    }
+
+    #[test]
+    fn clip_to_host_aabb_trims_reveal_overhang_on_a_large_slab_1633() {
+        // #1633: a flush-capped through-opening's reveal is extended ~0.3·depth
+        // past the host cap for a clean transversal cut, so the exact subtract
+        // leaves a reveal triangle ~0.105 m past a 0.35 m floor slab. The auto pad
+        // MUST trim it regardless of host size — the bug was that `1e-3 · diag`
+        // grew to 0.13 m on this ~130 m-diagonal slab (wider than the overhang) and
+        // let it through, while a 5 m wall's 5 mm pad trimmed the identical overhang.
+        let big = 92.0_f32; // 92 × 92 × 0.35 slab ⇒ diag ≈ 130 m ⇒ old pad ≈ 0.13 m
+        let mut m = mesh_from_tris(&[
+            // two in-bounds cap triangles (host top face at z = 0.35)
+            [[0.0, 0.0, 0.35], [big, 0.0, 0.35], [big, big, 0.35]],
+            [[0.0, 0.0, 0.35], [big, big, 0.35], [0.0, big, 0.35]],
+            // reveal-overhang sliver: apex 0.105 m above the slab top cap
+            [[40.0, 40.0, 0.35], [41.0, 40.0, 0.35], [40.5, 40.5, 0.455]],
+        ]);
+        let dropped = m.clip_triangles_to_host_aabb([0.0, 0.0, 0.0], [big, big, 0.35]);
+        assert_eq!(dropped, 1, "the 0.105 m reveal overhang must be trimmed on a large host");
+        let (_lo, hi) = m.bounds();
+        assert!(hi.z <= 0.36, "no vertex may remain above the slab top cap: hi.z = {}", hi.z);
+    }
+
+    #[test]
+    fn clip_to_host_aabb_is_byte_identical_to_1e3_diag_for_small_hosts() {
+        // The bound only changes behaviour above a 10 m diagonal; a normal wall
+        // (~5 m diag ⇒ pad = 5 mm) is untouched, so the frozen corpus is safe.
+        let tris = [
+            [[0.0, 0.0, 0.0], [3.0, 0.0, 0.0], [3.0, 4.0, 0.0]],
+            [[0.0, 0.0, 0.0], [3.0, 4.0, 0.0], [0.0, 4.0, 0.0]],
+        ];
+        let mut auto = mesh_from_tris(&tris);
+        let mut manual = mesh_from_tris(&tris);
+        let diag = (3.0_f64 * 3.0 + 4.0 * 4.0).sqrt(); // 5 m
+        let old_pad = (1.0e-3 * diag).max(5.0e-3) as f32;
+        auto.clip_triangles_to_host_aabb([0.0, 0.0, 0.0], [3.0, 4.0, 0.0]);
+        manual.clip_triangles_to_aabb([0.0, 0.0, 0.0], [3.0, 4.0, 0.0], old_pad);
+        assert_eq!(auto.positions, manual.positions);
+        assert_eq!(auto.indices, manual.indices);
     }
 
     #[test]

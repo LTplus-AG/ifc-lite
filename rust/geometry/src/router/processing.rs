@@ -533,32 +533,32 @@ impl GeometryRouter {
                         continue;
                     }
 
-                    // Apply MappedItem transform to newly added sub-meshes
+                    // Apply MappedItem transform to newly added sub-meshes.
                     if let Some(mut transform) = mapping_transform {
                         self.scale_transform(&mut transform);
-                        // The MappingTarget is baked into the vertices here, but
-                        // `rep_identity` was hashed from the canonical (pre-target)
-                        // geometry during the recursion. Two occurrences sharing a map
-                        // with DIFFERENT targets would therefore collate under one
-                        // template and reuse the reference's target offset/orientation.
-                        // When the target actually changes the geometry, re-hash the
-                        // post-target local geometry so rep_identity matches what is
-                        // baked. Identity targets (the common Revit case) leave the
-                        // geometry unchanged, so the canonical hash already matches —
-                        // skip the re-hash there to avoid the O(verts) cost.
+                        // The MappingTarget is a PER-OCCURRENCE transform: baked into the
+                        // vertices here (flat output byte-for-byte unchanged), and for
+                        // INSTANCING recorded in `local_transform` (keeping the canonical,
+                        // pre-target `rep_identity`) — mirroring `process_mapped_item_cached`
+                        // and the don't-bake TEMPLATE re-tag below — so occurrences sharing a
+                        // map but differing by target collate under one template. Previously
+                        // this RE-HASHED into `rep_identity`, giving every target a unique id
+                        // and disabling instancing (GLB export #1443) for the MULTI-item class
+                        // Phase 2 leaves flat (Tekla assemblies / MEP / metering skids). #1623
                         let nontrivial_target = !transform.is_identity(1e-9);
                         for sub in &mut sub_meshes.sub_meshes[count_before..] {
                             self.transform_mesh_local(&mut sub.mesh, &transform);
-                            if nontrivial_target
-                                && sub
-                                    .mesh
-                                    .instance_meta
-                                    .as_ref()
-                                    .is_some_and(|im| im.instanceable)
-                            {
-                                let h = Self::compute_mesh_hash_full(&sub.mesh) | DIRECT_SOLID_TAG;
-                                if let Some(im) = sub.mesh.instance_meta.as_mut() {
-                                    im.rep_identity = h;
+                            if nontrivial_target {
+                                if let Some(im) =
+                                    sub.mesh.instance_meta.as_mut().filter(|im| im.instanceable)
+                                {
+                                    im.local_transform = Some(match im.local_transform {
+                                        // Nested map: outer target ∘ inner, bake order.
+                                        Some(inner) => mat4_to_row_major(
+                                            &(transform * nalgebra::Matrix4::from_row_slice(&inner)),
+                                        ),
+                                        None => mat4_to_row_major(&transform),
+                                    });
                                 }
                             }
                         }

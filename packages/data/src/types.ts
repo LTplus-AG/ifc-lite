@@ -223,6 +223,12 @@ export interface SpatialNode {
   expressId: number;
   type: IfcTypeEnum;
   name: string;
+  /** IFC `LongName` (the descriptive name), when present and distinct from
+   *  `name`. Spatial structure elements often carry an ISO 19650 code in `Name`
+   *  ("01") and the human label in `LongName` ("Main Residence"); the hierarchy
+   *  panel shows both (issue #1634). Undefined when the entity declares no
+   *  LongName or it duplicates `name`. */
+  longName?: string;
   elevation?: number;
   children: SpatialNode[];
   elements: number[];  // Direct contained elements

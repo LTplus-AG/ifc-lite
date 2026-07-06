@@ -15,11 +15,13 @@ function createSpatialNode(
   type: IfcTypeEnum,
   name: string,
   children: SpatialNode[] = [],
+  longName?: string,
 ): SpatialNode {
   return {
     expressId,
     type,
     name,
+    longName,
     children,
     elements: [],
   };
@@ -300,6 +302,66 @@ describe('buildTreeData', () => {
     assert.strictEqual(railing.ifcType, 'IfcRailing');
     assert.strictEqual(flight.depth, stair.depth + 1, 'parts nest one level under the assembly');
     assert.strictEqual(flight.hasChildren, false, 'leaf parts are not expandable');
+  });
+});
+
+/** ISO 19650 spatial structure: buildings carry a short code in Name and the
+ *  descriptive label in LongName. #3 "01"/"Main Residence" (distinct), #7
+ *  "02"/"Garage" (distinct), #8 "Annex"/"Annex" (duplicate — no secondary). */
+function createLongNameDataStore(): IfcDataStore {
+  const residence = createSpatialNode(3, IfcTypeEnum.IfcBuilding, '01', [], 'Main Residence');
+  const garage = createSpatialNode(7, IfcTypeEnum.IfcBuilding, '02', [], 'Garage & Workshop');
+  const annex = createSpatialNode(8, IfcTypeEnum.IfcBuilding, 'Annex', [], 'Annex');
+  const siteNode = createSpatialNode(2, IfcTypeEnum.IfcSite, 'MY_SITE', [residence, garage, annex]);
+  const projectNode = createSpatialNode(1, IfcTypeEnum.IfcProject, 'MY_PROJECT', [siteNode]);
+
+  const spatialHierarchy: SpatialHierarchy = {
+    project: projectNode,
+    byStorey: new Map(),
+    byBuilding: new Map(),
+    bySite: new Map(),
+    bySpace: new Map(),
+    storeyElevations: new Map(),
+    storeyHeights: new Map(),
+    elementToStorey: new Map(),
+    getStoreyElements: () => [],
+    getStoreyByElevation: () => null,
+    getContainingSpace: () => null,
+    getPath: () => [],
+  };
+
+  return {
+    spatialHierarchy,
+    entities: { count: 0, getName: () => '', getTypeName: () => 'Unknown' },
+  } as unknown as IfcDataStore;
+}
+
+describe('spatial short + long name (#1634)', () => {
+  const expanded = new Set(['root-1', 'root-1-2']);
+
+  it('exposes LongName as secondaryName alongside the short Name', () => {
+    const nodes = buildTreeData(new Map(), createLongNameDataStore(), expanded, false, []);
+
+    const residence = nodes.find((n) => n.id === 'root-1-2-3')!;
+    assert.strictEqual(residence.name, '01');
+    assert.strictEqual(residence.secondaryName, 'Main Residence');
+
+    const garage = nodes.find((n) => n.id === 'root-1-2-7')!;
+    assert.strictEqual(garage.name, '02');
+    assert.strictEqual(garage.secondaryName, 'Garage & Workshop');
+  });
+
+  it('drops a LongName that just duplicates the Name (no redundant secondary)', () => {
+    const nodes = buildTreeData(new Map(), createLongNameDataStore(), expanded, false, []);
+    const annex = nodes.find((n) => n.id === 'root-1-2-8')!;
+    assert.strictEqual(annex.name, 'Annex');
+    assert.strictEqual(annex.secondaryName, undefined);
+  });
+
+  it('leaves secondaryName undefined when a node carries no LongName', () => {
+    const nodes = buildTreeData(new Map(), createLongNameDataStore(), expanded, false, []);
+    const site = nodes.find((n) => n.id === 'root-1-2')!;
+    assert.strictEqual(site.secondaryName, undefined);
   });
 });
 

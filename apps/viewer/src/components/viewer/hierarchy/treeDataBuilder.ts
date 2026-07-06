@@ -372,6 +372,17 @@ function buildSpatialNodes(
   const elements = getSpatialNodeElements(spatialNode, dataStore, nodeType, descendantSpaceCache);
   const hasDirectElements = elements.length > 0;
 
+  // Primary label: the entity Name, falling back to the type when absent
+  // ("unknown"). LongName rides alongside as a muted secondary so an ISO 19650
+  // code and its meaning read together, e.g. "01" + "Main Residence" (#1634).
+  const primaryName = (spatialNode.name && spatialNode.name.toLowerCase() !== 'unknown')
+    ? spatialNode.name
+    : nodeType;
+  const secondaryName =
+    spatialNode.longName && spatialNode.longName !== primaryName
+      ? spatialNode.longName
+      : undefined;
+
   // Check if has children
   // In stopAtBuilding mode, buildings have no children (storeys shown separately)
   const hasNonStoreyChildren = spatialNode.children?.some(
@@ -386,9 +397,8 @@ function buildSpatialNodes(
     expressIds: [spatialNode.expressId],
     globalIds: [resolveTreeGlobalId(modelId, spatialNode.expressId, models)],
     modelIds: [modelId],
-    name: (spatialNode.name && spatialNode.name.toLowerCase() !== 'unknown')
-      ? spatialNode.name
-      : nodeType,
+    name: primaryName,
+    secondaryName,
     type: nodeType,
     depth,
     hasChildren,
@@ -983,6 +993,7 @@ export function filterNodes(nodes: TreeNode[], searchQuery: string): TreeNode[] 
   const query = searchQuery.toLowerCase();
   return nodes.filter(node =>
     node.name.toLowerCase().includes(query) ||
+    (node.secondaryName?.toLowerCase().includes(query) ?? false) ||
     node.type.toLowerCase().includes(query)
   );
 }

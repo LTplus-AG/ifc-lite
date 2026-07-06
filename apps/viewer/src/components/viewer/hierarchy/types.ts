@@ -37,6 +37,14 @@ export interface TreeNode {
   /** Model IDs this node belongs to */
   modelIds: string[];
   name: string;
+  /**
+   * Secondary descriptive label rendered muted after `name`, currently the IFC
+   * `LongName` of a spatial node when it differs from the primary Name. Lets the
+   * panel show an ISO 19650 code and its meaning together, e.g. "01" +
+   * "Main Residence" (issue #1634). Undefined for rows with no distinct
+   * secondary label.
+   */
+  secondaryName?: string;
   type: NodeType;
   /** Actual IFC class for element rows and type groups */
   ifcType?: string;

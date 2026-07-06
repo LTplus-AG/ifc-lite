@@ -67,6 +67,20 @@ export function HierarchyNode({
   const LucideIcon = NODE_TYPE_ICONS[node.type];
   const iconCodepoint = getIfcIconCodepoint(resolvedType);
 
+  // Spatial containers, storeys, spaces, and grouping headers get the emphasized
+  // label treatment; element rows stay lighter.
+  const primaryNameClass =
+    isSpatialContainer(node.type) ||
+    node.type === 'IfcBuildingStorey' ||
+    node.type === 'IfcSpace' ||
+    node.type === 'IfcSpatialZone' ||
+    node.type === 'unified-storey' ||
+    node.type === 'type-group' ||
+    node.type === 'material-group'
+      ? 'font-medium text-zinc-900 dark:text-zinc-100'
+      : 'text-zinc-700 dark:text-zinc-300';
+  const strikeWhenHidden = nodeHidden && 'line-through decoration-zinc-400 dark:decoration-zinc-600';
+
   // Model header nodes (for visibility control and expansion)
   if (node.type === 'model-header' && node.id.startsWith('model-')) {
     const modelId = node.modelIds[0];
@@ -272,14 +286,25 @@ export function HierarchyNode({
           </TooltipContent>
         </Tooltip>
 
-        {/* Name */}
-        <span className={cn(
-          'flex-1 text-sm truncate ml-1.5',
-          isSpatialContainer(node.type) || node.type === 'IfcBuildingStorey' || node.type === 'IfcSpace' || node.type === 'IfcSpatialZone' || node.type === 'unified-storey' || node.type === 'type-group' || node.type === 'material-group'
-            ? 'font-medium text-zinc-900 dark:text-zinc-100'
-            : 'text-zinc-700 dark:text-zinc-300',
-          nodeHidden && 'line-through decoration-zinc-400 dark:decoration-zinc-600'
-        )}>{node.name}</span>
+        {/* Name (+ optional muted LongName for spatial nodes carrying an ISO
+            19650 code in Name and the descriptive label in LongName, #1634) */}
+        {node.secondaryName ? (
+          <span
+            className="flex-1 min-w-0 flex items-baseline text-sm ml-1.5"
+            title={`${node.name} - ${node.secondaryName}`}
+          >
+            <span className={cn('shrink-0 max-w-[55%] truncate', primaryNameClass, strikeWhenHidden)}>
+              {node.name}
+            </span>
+            <span className={cn('truncate min-w-0 ml-1.5 font-normal text-zinc-400 dark:text-zinc-500', strikeWhenHidden)}>
+              {node.secondaryName}
+            </span>
+          </span>
+        ) : (
+          <span className={cn('flex-1 text-sm truncate ml-1.5', primaryNameClass, strikeWhenHidden)}>
+            {node.name}
+          </span>
+        )}
 
         {node.ifcType && node.type === 'element' && (
           <span className="text-[10px] font-mono text-zinc-400 dark:text-zinc-500 truncate max-w-[90px]">

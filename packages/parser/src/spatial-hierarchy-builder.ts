@@ -27,7 +27,7 @@ import {
 } from '@ifc-lite/data';
 import type { EntityRef } from './types.js';
 import { EntityExtractor } from './entity-extractor.js';
-import { getAttributeNames } from './ifc-schema.js';
+import { getAttributeNamesAcrossSchemas } from './ifc-schema.js';
 
 const log = createLogger('SpatialHierarchy');
 
@@ -324,11 +324,13 @@ export class SpatialHierarchyBuilder {
 
   /**
    * Read an entity's LongName by schema attribute *name*. IfcSite / IfcBuilding /
-   * IfcBuildingStorey / IfcSpace declare LongName at index 7, but IfcProject
-   * carries it at a different slot, so resolving by name (not a fixed index)
-   * stays correct across the IfcRoot family and every schema. Returns the
-   * trimmed value, or undefined when the type declares no LongName, it is empty,
-   * or no source buffer is available (the buildFromCache path).
+   * IfcBuildingStorey / IfcSpace (and the IFC4.3 facility/infra containers)
+   * declare LongName at index 7, but IfcProject carries it at a different slot,
+   * so resolving by name (not a fixed index) stays correct across the IfcRoot
+   * family. The lookup spans every bundled schema, so IFC4.3 leaves outside the
+   * parser's IFC4 codegen pin resolve too. Returns the trimmed value, or
+   * undefined when the type declares no LongName, it is empty, or no source
+   * buffer is available (the buildFromCache path).
    */
   private extractLongName(expressId: number, ctx: BuildContext): string | undefined {
     if (!ctx.attrSource || !ctx.attrExtractor) return undefined;
@@ -337,7 +339,7 @@ export class SpatialHierarchyBuilder {
     try {
       const entity = ctx.attrExtractor.extractEntity(ref);
       if (!entity) return undefined;
-      const idx = getAttributeNames(entity.type).indexOf('LongName');
+      const idx = getAttributeNamesAcrossSchemas(entity.type).indexOf('LongName');
       if (idx < 0) return undefined;
       const raw = (entity.attributes || [])[idx];
       const value = typeof raw === 'string' ? raw.trim() : '';

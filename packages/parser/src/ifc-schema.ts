@@ -74,6 +74,25 @@ export function getAttributeNames(type: string): string[] {
 }
 
 /**
+ * Like {@link getAttributeNames}, but resolves across the bundled schema union
+ * (2X3 + 4 + 4X3) when the parser's IFC4-pinned registry does not know the type.
+ * IFC4.3 infrastructure leaves the codegen pin doesn't carry — IfcFacility,
+ * IfcFacilityPart, IfcBridge, IfcRoad, IfcRailway, IfcMarineFacility, … — still
+ * resolve their positional attributes (e.g. LongName at index 7) this way, so
+ * name-by-index attribute reads stay correct across every schema, not just IFC4.
+ * Known types keep the exact pinned-registry result (identical to
+ * `getAttributeNames`); only otherwise-empty lookups consult the union.
+ */
+export function getAttributeNamesAcrossSchemas(type: string): string[] {
+    const pinned = getAttributeNames(type);
+    if (pinned.length > 0) return pinned;
+    const upper = type.toUpperCase();
+    const canonical = ENTITY_NAME_ALIASES[upper] ?? type;
+    const info = ENTITY_INFO_BY_UPPER.get(canonical.toUpperCase());
+    return info ? [...info.attributes] : [];
+}
+
+/**
  * Check if a type is known in the IFC schema.
  */
 export function isKnownType(type: string): boolean {

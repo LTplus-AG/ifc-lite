@@ -234,6 +234,45 @@ describe('SpatialHierarchyBuilder', () => {
     expect(space.longName).toBeUndefined(); // not duplicated into the secondary slot
   });
 
+  it('resolves LongName for IFC4.3 facility/infra containers outside the IFC4 codegen pin (#1634)', () => {
+    // IfcBridge / IfcBridgePart live only in the IFC4X3 schema, which the parser's
+    // IFC4-pinned attribute registry does not carry. The name-by-index lookup must
+    // fall back to the bundled schema union so LongName (index 7 for every
+    // IfcSpatialStructureElement subtype) still resolves for infra models.
+    const strings = new StringTable();
+    const entities = new EntityTableBuilder(3, strings);
+    entities.add(1, 'IFCPROJECT', 'p0', 'Infra Project', '', '');
+    entities.add(2, 'IFCBRIDGE', 'br0', 'BR-01', '', '');
+    entities.add(3, 'IFCBRIDGEPART', 'bp0', 'DECK', '', '');
+
+    const relationships = new RelationshipGraphBuilder();
+    relationships.addEdge(1, 2, RelationshipType.Aggregates, 10);
+    relationships.addEdge(2, 3, RelationshipType.Aggregates, 11);
+
+    const { source, entityIndex } = buildStepSource([
+      `#1=IFCPROJECT('p0',$,'Infra Project',$,$,$,$,$,$);`,
+      `#2=IFCBRIDGE('br0',$,'BR-01',$,$,$,$,'North Approach Bridge',.ELEMENT.,$);`,
+      `#3=IFCBRIDGEPART('bp0',$,'DECK',$,$,$,$,'Bridge Deck',.PARTIAL.,$);`,
+    ]);
+
+    const hierarchy = new SpatialHierarchyBuilder().build(
+      entities.build(),
+      relationships.build(),
+      strings,
+      source,
+      entityIndex,
+    );
+
+    const bridge = hierarchy.project.children[0];
+    expect(bridge.type).toBe(IfcTypeEnum.IfcBridge);
+    expect(bridge.name).toBe('BR-01');
+    expect(bridge.longName).toBe('North Approach Bridge');
+
+    const deck = bridge.children[0];
+    expect(deck.type).toBe(IfcTypeEnum.IfcBridgePart);
+    expect(deck.longName).toBe('Bridge Deck');
+  });
+
   it('leaves longName undefined on the source-less cache-restore path', () => {
     const strings = new StringTable();
     const entities = new EntityTableBuilder(2, strings);

@@ -1,5 +1,13 @@
 # @ifc-lite/wasm
 
+## 3.0.10
+
+### Patch Changes
+
+- [#1641](https://github.com/LTplus-AG/ifc-lite/pull/1641) [`729ea8b`](https://github.com/LTplus-AG/ifc-lite/commit/729ea8b75e60677d152c07438c29ede1b2d60a9d) Thanks [@louistrue](https://github.com/louistrue)! - Instance multi-item `IfcMappedItem` sources with per-occurrence `MappingTarget`s ([#1623](https://github.com/LTplus-AG/ifc-lite/issues/1623) follow-up). The submesh path baked each occurrence's `MappingTarget` into the vertices and then RE-HASHED the post-target geometry into `rep_identity`, so every distinct target got a unique id and occurrences sharing a `RepresentationMap` but differing by target never collated — the whole per-occurrence-target class (Tekla assemblies, multi-part MEP, metering skids) rendered flat, and GLB-export instancing ([#1443](https://github.com/LTplus-AG/ifc-lite/issues/1443), which composes `local_transform`) was disabled for it. Phase 2 don't-bake only covers single-solid sources, leaving these on the flat path. Now the target is recorded in `InstanceMeta.local_transform` (composed for nested maps) while `rep_identity` keeps the canonical, pre-target content hash, so those occurrences collate under one template per source solid. The materialized/flat output is byte-for-byte unchanged (only the always-on instance metadata changes); mesh-determinism and ifcopenshell parity are unaffected. Salvaged from @Blogbotana's [#1624](https://github.com/LTplus-AG/ifc-lite/issues/1624).
+
+- [#1630](https://github.com/LTplus-AG/ifc-lite/pull/1630) [`a1748d1`](https://github.com/LTplus-AG/ifc-lite/commit/a1748d120fe3d33035db268131678a3a0ef74dde) Thanks [@louistrue](https://github.com/louistrue)! - Fail gracefully on models that exceed the browser's WebAssembly memory ceiling instead of a bare `unreachable executed` crash. The streaming prepass copies the whole file into wasm linear memory and builds the entity index alongside it; on wasm32 (4GB address space) a ~3GB+ model can't fit, so the allocator aborted with an opaque trap. Two changes: (1) cap the entity-index up-front reservation (`content.len() / 50` reserved ~1GB of hash slots for a ~4GB file, on top of the resident file — that alone blew the budget before the scan; now capped, a rare huge model grows the map via rehash instead of aborting), which lifts the practical browser ceiling and lowers peak memory for every large model; (2) when the prepass still traps on a very large file, surface an actionable error ("This model is X GB, which exceeds the browser's ~3GB WebAssembly ceiling — open it in the desktop app") rather than the cryptic wasm trap. Ordinary (<2GB) models are unaffected (their reservation stays under the cap; the error helper never fires).
+
 ## 3.0.9
 
 ### Patch Changes

@@ -1,5 +1,0 @@
----
-"@ifc-lite/wasm": patch
----
-
-Instance multi-item `IfcMappedItem` sources with per-occurrence `MappingTarget`s (#1623 follow-up). The submesh path baked each occurrence's `MappingTarget` into the vertices and then RE-HASHED the post-target geometry into `rep_identity`, so every distinct target got a unique id and occurrences sharing a `RepresentationMap` but differing by target never collated — the whole per-occurrence-target class (Tekla assemblies, multi-part MEP, metering skids) rendered flat, and GLB-export instancing (#1443, which composes `local_transform`) was disabled for it. Phase 2 don't-bake only covers single-solid sources, leaving these on the flat path. Now the target is recorded in `InstanceMeta.local_transform` (composed for nested maps) while `rep_identity` keeps the canonical, pre-target content hash, so those occurrences collate under one template per source solid. The materialized/flat output is byte-for-byte unchanged (only the always-on instance metadata changes); mesh-determinism and ifcopenshell parity are unaffected. Salvaged from @Blogbotana's #1624.

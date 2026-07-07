@@ -15,7 +15,7 @@ function make(partial: Partial<GeometryDiagnostics> = {}): GeometryDiagnostics {
     silentNoOps: 0,
     rectFast: {
       fired: 0, openingsCut: 0, deferHostNotBox: 0, deferNotThrough: 0,
-      deferOffFace: 0, deferNearEdge: 0, deferNoOpenings: 0,
+      deferOffFace: 0, deferNearEdge: 0, deferNoOpenings: 0, deferTooManyOpenings: 0,
     },
     worstHosts: [],
     ...partial,
@@ -35,12 +35,12 @@ describe('mergeGeometryDiagnostics', () => {
     const a = make({
       totalCsgFailures: 2, productsWithFailures: 1, hostsWithOpenings: 4, silentNoOps: 1,
       classification: { rectangular: 5, diagonal: 1, nonRectangular: 2, total: 8 },
-      rectFast: { fired: 3, openingsCut: 6, deferHostNotBox: 1, deferNotThrough: 0, deferOffFace: 0, deferNearEdge: 2, deferNoOpenings: 0 },
+      rectFast: { fired: 3, openingsCut: 6, deferHostNotBox: 1, deferNotThrough: 0, deferOffFace: 0, deferNearEdge: 2, deferNoOpenings: 0, deferTooManyOpenings: 2 },
     });
     const b = make({
       totalCsgFailures: 3, productsWithFailures: 2, hostsWithOpenings: 1, silentNoOps: 2,
       classification: { rectangular: 1, diagonal: 0, nonRectangular: 1, total: 2 },
-      rectFast: { fired: 1, openingsCut: 1, deferHostNotBox: 0, deferNotThrough: 4, deferOffFace: 1, deferNearEdge: 0, deferNoOpenings: 3 },
+      rectFast: { fired: 1, openingsCut: 1, deferHostNotBox: 0, deferNotThrough: 4, deferOffFace: 1, deferNearEdge: 0, deferNoOpenings: 3, deferTooManyOpenings: 5 },
     });
     const m = mergeGeometryDiagnostics(a, b)!;
     expect(m.totalCsgFailures).toBe(5);
@@ -48,7 +48,7 @@ describe('mergeGeometryDiagnostics', () => {
     expect(m.hostsWithOpenings).toBe(5);
     expect(m.silentNoOps).toBe(3);
     expect(m.classification).toEqual({ rectangular: 6, diagonal: 1, nonRectangular: 3, total: 10 });
-    expect(m.rectFast).toEqual({ fired: 4, openingsCut: 7, deferHostNotBox: 1, deferNotThrough: 4, deferOffFace: 1, deferNearEdge: 2, deferNoOpenings: 3 });
+    expect(m.rectFast).toEqual({ fired: 4, openingsCut: 7, deferHostNotBox: 1, deferNotThrough: 4, deferOffFace: 1, deferNearEdge: 2, deferNoOpenings: 3, deferTooManyOpenings: 7 });
   });
 
   it('merges failuresByReason by reason and re-sorts desc by count', () => {

@@ -41,7 +41,8 @@ export function formatGeometryReport(d: GeometryDiagnostics): string {
   lines.push(
     `rect_fast: fired ${rf.fired}, openings cut ${rf.openingsCut} ` +
       `(defer: host-not-box ${rf.deferHostNotBox}, not-through ${rf.deferNotThrough}, ` +
-      `off-face ${rf.deferOffFace}, near-edge ${rf.deferNearEdge}, no-openings ${rf.deferNoOpenings})`,
+      `off-face ${rf.deferOffFace}, near-edge ${rf.deferNearEdge}, no-openings ${rf.deferNoOpenings}, ` +
+      `too-many ${rf.deferTooManyOpenings ?? 0})`,
   );
 
   if (d.worstHosts.length > 0) {

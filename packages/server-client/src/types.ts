@@ -194,6 +194,7 @@ export interface GeometryDiagnostics {
     deferOffFace: number;
     deferNearEdge: number;
     deferNoOpenings: number;
+    deferTooManyOpenings?: number;
   };
   worstHosts: Array<{
     productId: number;

@@ -17,7 +17,7 @@ function makeDiagnostics(partial: Partial<GeometryDiagnostics> = {}): GeometryDi
     silentNoOps: 0,
     rectFast: {
       fired: 0, openingsCut: 0, deferHostNotBox: 0, deferNotThrough: 0,
-      deferOffFace: 0, deferNearEdge: 0, deferNoOpenings: 0,
+      deferOffFace: 0, deferNearEdge: 0, deferNoOpenings: 0, deferTooManyOpenings: 0,
     },
     worstHosts: [],
     ...partial,
@@ -66,11 +66,12 @@ describe('formatGeometryReport', () => {
     const report = formatGeometryReport(makeDiagnostics({
       rectFast: {
         fired: 10, openingsCut: 8, deferHostNotBox: 1, deferNotThrough: 2,
-        deferOffFace: 0, deferNearEdge: 1, deferNoOpenings: 0,
+        deferOffFace: 0, deferNearEdge: 1, deferNoOpenings: 0, deferTooManyOpenings: 3,
       },
     }));
     expect(report).toContain('rect_fast: fired 10, openings cut 8');
     expect(report).toContain('host-not-box 1');
+    expect(report).toContain('too-many 3');
   });
 
   it('lists worst-failing hosts with productId, ifcType, failures, openings', () => {

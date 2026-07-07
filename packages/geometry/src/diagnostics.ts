@@ -56,6 +56,8 @@ export interface GeometryDiagnostics {
     deferOffFace: number;
     deferNearEdge: number;
     deferNoOpenings: number;
+    /** Optional: absent on payloads produced before this counter existed (#1649). */
+    deferTooManyOpenings?: number;
   };
   /** Bounded top-N worst-failing hosts (opt-in per-product detail). */
   worstHosts: Array<{
@@ -143,6 +145,7 @@ export function mergeGeometryDiagnostics(
       deferOffFace: a.rectFast.deferOffFace + b.rectFast.deferOffFace,
       deferNearEdge: a.rectFast.deferNearEdge + b.rectFast.deferNearEdge,
       deferNoOpenings: a.rectFast.deferNoOpenings + b.rectFast.deferNoOpenings,
+      deferTooManyOpenings: (a.rectFast.deferTooManyOpenings ?? 0) + (b.rectFast.deferTooManyOpenings ?? 0),
     },
     worstHosts,
   };

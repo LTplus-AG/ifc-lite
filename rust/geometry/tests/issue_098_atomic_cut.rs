@@ -65,7 +65,6 @@ fn open_edges(m: &Mesh) -> i64 {
     e.values().map(|c| c.abs()).sum()
 }
 
-#[ignore = "issue #098: exact-arrangement kernel leaves unrecovered CDT constraints at reveal-step T-junctions -> classification cascade -> non-watertight cut. Open; deep kernel fix pending."]
 #[test]
 fn atomic_box_minus_reveal_cutter_is_watertight() {
     let host = parse_mesh(include_str!("fixtures/issue_098_atomic_host.json"));

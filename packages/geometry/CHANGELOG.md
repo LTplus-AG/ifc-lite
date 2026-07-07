@@ -1,5 +1,14 @@
 # @ifc-lite/geometry
 
+## 3.1.3
+
+### Patch Changes
+
+- [#1651](https://github.com/LTplus-AG/ifc-lite/pull/1651) [`52d861c`](https://github.com/LTplus-AG/ifc-lite/commit/52d861cdace765965dc79953916403b3ab0e3da6) Thanks [@louistrue](https://github.com/louistrue)! - Surface the rect-fast `deferTooManyOpenings` counter in the geometry diagnostics. The Rust `RectFastSummary` already emits it (the opening-count DoS cap, [#1649](https://github.com/LTplus-AG/ifc-lite/issues/1649)); the `GeometryDiagnostics.rectFast` and server-client types now include it (optional, defaulted to 0 when absent so older payloads merge cleanly), `mergeGeometryDiagnostics` sums it, and the CLI geometry report renders it in the rect_fast defer breakdown.
+
+- Updated dependencies [[`5e1fe56`](https://github.com/LTplus-AG/ifc-lite/commit/5e1fe568b007f5f434db5f585e90551979f32aae)]:
+  - @ifc-lite/wasm@3.0.12
+
 ## 3.1.2
 
 ### Patch Changes

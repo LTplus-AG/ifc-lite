@@ -1,5 +1,25 @@
 # @ifc-lite/cli
 
+## 0.17.0
+
+### Minor Changes
+
+- [#1656](https://github.com/LTplus-AG/ifc-lite/pull/1656) [`94f4713`](https://github.com/LTplus-AG/ifc-lite/commit/94f471365b7185822f15f02202ef52c81e4f203e) Thanks [@louistrue](https://github.com/louistrue)! - Add `ifc-lite extract-entities` — isolate a handful of entities from a large IFC into a small, valid, viewable standalone model, the "reproduce a suspect element" step of a geometry-triage loop.
+
+  Selectors (unioned): `--product <GUID|expressId>` (repeatable / comma-list), `--type <IfcType>`, `--storey <GUID|name|expressId>` (every product placed under a storey via its placement chain), and `--detect [--top N]` (the meshes a geometry-triage pass ranks most unusual). The output carries each selected product's full forward reference closure plus the shared context roots (IfcProject, unit assignment, geometric contexts, and the site/building/storey spatial skeleton) and every spatial-containment relation whose members are all kept — so the result parses and renders on its own with zero dangling references. Add `--view` to open it in the viewer.
+
+  Crucially, a selected element also carries its openings and their fillers: every `IfcRelVoidsElement` whose host is kept (plus the `IfcOpeningElement` cutter) and every `IfcRelFillsElement` whose opening is kept (plus the window/door). These relations point _backward_ to the host, so forward closure alone never reaches them — without this an isolated wall extracts as an uncut box, hiding the very void-cut geometry a triage loop needs to reproduce.
+
+  `extract-entities <file> --detect --report [--json]` prints a triage report without extracting, separating HARD defects (non-finite or `|coord|>1e4` vertices after the per-element local-frame/RTC recentre — genuine corruption) from REVIEW heuristics (oversized AABB) that are frequently legitimate for thin or large elements and must be eyeballed, not trusted.
+
+### Patch Changes
+
+- [#1651](https://github.com/LTplus-AG/ifc-lite/pull/1651) [`52d861c`](https://github.com/LTplus-AG/ifc-lite/commit/52d861cdace765965dc79953916403b3ab0e3da6) Thanks [@louistrue](https://github.com/louistrue)! - Surface the rect-fast `deferTooManyOpenings` counter in the geometry diagnostics. The Rust `RectFastSummary` already emits it (the opening-count DoS cap, [#1649](https://github.com/LTplus-AG/ifc-lite/issues/1649)); the `GeometryDiagnostics.rectFast` and server-client types now include it (optional, defaulted to 0 when absent so older payloads merge cleanly), `mergeGeometryDiagnostics` sums it, and the CLI geometry report renders it in the rect_fast defer breakdown.
+
+- Updated dependencies [[`5e1fe56`](https://github.com/LTplus-AG/ifc-lite/commit/5e1fe568b007f5f434db5f585e90551979f32aae), [`52d861c`](https://github.com/LTplus-AG/ifc-lite/commit/52d861cdace765965dc79953916403b3ab0e3da6)]:
+  - @ifc-lite/wasm@3.0.12
+  - @ifc-lite/geometry@3.1.3
+
 ## 0.16.1
 
 ### Patch Changes

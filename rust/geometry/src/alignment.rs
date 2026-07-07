@@ -521,6 +521,15 @@ fn parse_horizontal(
         let length = curve.get_float(2).ok_or_else(|| {
             Error::geometry(format!("CurveSegment #{} missing SegmentLength", curve_id))
         })?;
+        // A negative or non-finite SegmentLength drives (station - cum).min(length)
+        // negative and emits NaN world coordinates (sibling radius is guarded at
+        // ~538). Zero-length stubs are a legitimate stationing no-op, so allow them.
+        if !length.is_finite() || length < 0.0 {
+            return Err(Error::geometry(format!(
+                "CurveSegment #{} has negative/non-finite SegmentLength {}",
+                curve_id, length
+            )));
+        }
 
         let hseg = if curve.ifc_type == t_line_segment_2d() {
             HSeg::Line {
@@ -652,6 +661,13 @@ fn parse_vertical(
                 seg_id,
             ))
         })?;
+        // Negative/non-finite length emits NaN geometry; zero is a legitimate no-op.
+        if !length.is_finite() || length < 0.0 {
+            return Err(Error::geometry(format!(
+                "VerticalSegment #{} has negative/non-finite HorizontalLength {}",
+                seg_id, length
+            )));
+        }
         let h0 = seg
             .get_float(5)
             .ok_or_else(|| Error::geometry(format!("VerticalSegment #{} missing StartHeight", seg_id)))?;
@@ -1121,5 +1137,34 @@ END-ISO-10303-21;
         let f_end = curve.evaluate(100.0);
         assert!((f_end.origin.x - 100.0).abs() < 1e-6, "end x = {}", f_end.origin.x);
         assert!((f_end.origin.z - 60.0).abs() < 1e-6, "end z = {}", f_end.origin.z);
+    }
+
+    /// A negative SegmentLength drives (station - cum).min(length) negative and
+    /// emits NaN world coordinates. It must be rejected as an Err at parse time.
+    /// (Zero-length stubs stay legal; only negative/non-finite is rejected.)
+    #[test]
+    fn negative_segment_length_errors_not_nan() {
+        let content = "\
+ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('','',(''),(''),'','','');
+FILE_SCHEMA(('IFC4X1'));
+ENDSEC;
+DATA;
+#10=IFCCARTESIANPOINT((0.,0.));
+#11=IFCLINESEGMENT2D(#10,0.,-100.);
+#12=IFCALIGNMENT2DHORIZONTALSEGMENT($,$,$,#11);
+#13=IFCALIGNMENT2DHORIZONTAL(0.,(#12));
+#14=IFCALIGNMENT2DVERSEGLINE($,$,$,0.,100.,50.,0.1);
+#15=IFCALIGNMENT2DVERTICAL((#14));
+#16=IFCALIGNMENTCURVE(#13,#15,$);
+ENDSEC;
+END-ISO-10303-21;
+";
+        let entity_index = ifc_lite_core::build_entity_index(&content);
+        let mut decoder = EntityDecoder::with_index(&content, entity_index);
+        let directrix = decoder.decode_by_id(16).expect("decode IfcAlignmentCurve");
+        assert!(AlignmentCurve::parse(&directrix, &mut decoder).is_err());
     }
 }

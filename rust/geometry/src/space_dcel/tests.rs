@@ -530,6 +530,24 @@
         assert_eq!(plate.vertex_degree(junction), 3, "the spur base is a T-junction");
     }
 
+    /// Two spurs land on the interior of ONE spine at (3,0) and (7,0). Before the
+    /// per-sweep-splits change (`break 'outer` -> `break`) this needed two passes
+    /// (one split each); the change must still resolve BOTH T-junctions — the spine
+    /// split into three, each base a degree-3 node. Guards the arrangement fixpoint.
+    #[test]
+    fn multiple_t_junctions_on_one_spine_all_resolve() {
+        let segs = vec![
+            InputSegment::new([0.0, 0.0], [10.0, 0.0], Some(1)),
+            InputSegment::new([3.0, 0.0], [3.0, 2.0], Some(2)),
+            InputSegment::new([7.0, 0.0], [7.0, 2.0], Some(3)),
+        ];
+        let plate = SpacePlate::from_arrangement(Arrangement::resolve(&segs, 0.1), 0.5);
+        let j1 = plate.find_vertex([3.0, 0.0]);
+        let j2 = plate.find_vertex([7.0, 0.0]);
+        assert_eq!(plate.vertex_degree(j1), 3, "first T-junction not resolved");
+        assert_eq!(plate.vertex_degree(j2), 3, "second T-junction not resolved");
+    }
+
     #[test]
     fn remove_spur_edge_drops_the_tip_and_keeps_area() {
         let mut plate = spur_plate_unpruned();

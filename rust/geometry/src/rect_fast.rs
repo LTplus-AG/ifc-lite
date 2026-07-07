@@ -50,6 +50,7 @@ pub struct RectFastStats {
     pub defer_off_face: u64,
     pub defer_near_edge: u64,
     pub defer_no_openings: u64,
+    pub defer_too_many_openings: u64,
 }
 
 /// Escape hatch: `IFC_LITE_RECT_FAST=0` is the GLOBAL rect-fast kill switch.
@@ -230,6 +231,15 @@ pub fn subtract_rect_openings(
 ) -> Option<Mesh> {
     if openings.is_empty() {
         stats.defer_no_openings += 1;
+        return None;
+    }
+    // build_cellular is O(cells * openings) and cells grow with the opening count,
+    // so a crafted host with thousands of tiny openings is O(N^3) -> unbounded
+    // hang. 128 is far above any real wall (1-20 openings); defer the pathological
+    // case to the exact kernel (bounded per-element, #1121) rather than hang.
+    const MAX_FAST_OPENINGS: usize = 128;
+    if openings.len() > MAX_FAST_OPENINGS {
+        stats.defer_too_many_openings += 1;
         return None;
     }
     let bx = match aligned_box(host) {
@@ -664,6 +674,22 @@ mod tests {
         let mut st = RectFastStats::default();
         assert!(subtract_rect_openings(&host, &[opening([0.0, 0.0, 0.0], 1.5, 2.5, 0.5, 2.0)], &mut st).is_none());
         assert_eq!(st.defer_host_not_box, 1);
+    }
+
+    #[test]
+    fn defers_pathological_opening_count() {
+        // A crafted host with hundreds of tiny openings makes build_cellular
+        // O(N^3); the fast path must defer to the exact kernel, not hang.
+        let host = box_mesh([0.0, 0.0, 0.0], [10.0, 3.0, 0.3]);
+        let openings: Vec<([f64; 3], [f64; 3])> = (0..200)
+            .map(|i| {
+                let x = i as f64 * 0.04;
+                ([x, 0.5, -0.1], [x + 0.02, 1.0, 0.4])
+            })
+            .collect();
+        let mut st = RectFastStats::default();
+        assert!(subtract_rect_openings(&host, &openings, &mut st).is_none());
+        assert_eq!(st.defer_too_many_openings, 1);
     }
 
     #[test]

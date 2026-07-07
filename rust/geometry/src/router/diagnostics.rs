@@ -198,6 +198,7 @@ impl GeometryRouter {
         acc.defer_off_face += s.defer_off_face;
         acc.defer_near_edge += s.defer_near_edge;
         acc.defer_no_openings += s.defer_no_openings;
+        acc.defer_too_many_openings += s.defer_too_many_openings;
     }
 
     /// Drain and return this router's rect_fast counters (resets them to zero).
@@ -351,6 +352,7 @@ pub struct RectFastSummary {
     pub defer_off_face: u64,
     pub defer_near_edge: u64,
     pub defer_no_openings: u64,
+    pub defer_too_many_openings: u64,
 }
 
 /// Axis-aligned bounding box of a worst-failing host's mesh, world coords
@@ -563,6 +565,7 @@ pub fn aggregate_diagnostics(
             defer_off_face: rect_fast.defer_off_face,
             defer_near_edge: rect_fast.defer_near_edge,
             defer_no_openings: rect_fast.defer_no_openings,
+            defer_too_many_openings: rect_fast.defer_too_many_openings,
         },
         worst_hosts,
     }

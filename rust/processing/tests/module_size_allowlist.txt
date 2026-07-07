@@ -25,7 +25,8 @@
     3947 rust/export/src/gltf.rs
      655 rust/export/src/model.rs
      611 rust/export/src/step.rs
-    1125 rust/geometry/src/alignment.rs
+# +45: reject non-positive SegmentLength/HorizontalLength (malformed-input NaN guard) + regression test.
+    1170 rust/geometry/src/alignment.rs
      413 rust/geometry/src/bool2d.rs
 # +19: split_on_edge now sets a failed flag and bails to the ear-clip fallback instead of the lone .expect() panic.
     1526 rust/geometry/src/cdt.rs
@@ -56,10 +57,11 @@
      431 rust/geometry/src/profile.rs
      598 rust/geometry/src/profiles/curves_2d.rs
      709 rust/geometry/src/profiles/curves_3d.rs
-     898 rust/geometry/src/profiles/mod.rs
-     594 rust/geometry/src/profiles/shapes.rs
+# +1: `mod steel_shapes;` for the shapes.rs split, which removed the 594-line shapes.rs row (net down).
+     899 rust/geometry/src/profiles/mod.rs
      706 rust/geometry/src/profiles/simplify.rs
-     781 rust/geometry/src/rect_fast.rs
+# +26: cap the fast-path opening count (O(N^3) DoS guard) + regression test.
+     807 rust/geometry/src/rect_fast.rs
      586 rust/geometry/src/router/diagnostics.rs
      659 rust/geometry/src/router/layers.rs
 # +1: unify body-rep predicate — added is_direct_body_representation + docs; net removes ~60 lines from processing.rs and ~12 from layers.rs (crate trends down).

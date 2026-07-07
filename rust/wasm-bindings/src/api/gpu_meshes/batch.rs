@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use super::void_index::reconstruct_void_index;
 use crate::api::IfcAPI;
 use crate::zero_copy::{MeshCollection, MeshDataJs};
 use wasm_bindgen::prelude::*;
@@ -224,16 +225,10 @@ impl IfcAPI {
             router.set_rtc_offset((rtc_x, rtc_y, rtc_z));
         }
 
-        // Reconstruct void_index from flat arrays
-        let mut void_index: rustc_hash::FxHashMap<u32, Vec<u32>> = rustc_hash::FxHashMap::default();
-        let mut value_offset = 0usize;
-        for i in 0..void_keys.len() {
-            let host_id = void_keys[i];
-            let count = void_counts[i] as usize;
-            let openings = void_values[value_offset..value_offset + count].to_vec();
-            void_index.insert(host_id, openings);
-            value_offset += count;
-        }
+        // Reconstruct void_index from the flat wire arrays. Length-guarded so
+        // upstream drift drops the index instead of trapping the whole wasm
+        // instance under panic=abort (see reconstruct_void_index).
+        let void_index = reconstruct_void_index(void_keys, void_counts, void_values);
 
         // #1097: the wire styles are session-constant, so build the colour map
         // AND the GeometryStyleInfo index the producer consumes ONCE per worker

@@ -82,7 +82,7 @@ impl Arrangement {
                 s.dedup();
                 s
             };
-            'outer: for vid in endpoints {
+            for vid in endpoints {
                 let p = vertices[vid];
                 for si in 0..segs.len() {
                     let Seg { a, b, source, half_thickness } = segs[si];
@@ -101,7 +101,13 @@ impl Arrangement {
                         segs[si] = Seg { a, b: vid, source, half_thickness };
                         segs.push(Seg { a: vid, b, source, half_thickness });
                         applied = true;
-                        break 'outer;
+                        // Apply ALL splits found this sweep (one per endpoint), not
+                        // one per full O(n^2) pass: the T-junction fixpoint is
+                        // order-independent (each split only subdivides an existing
+                        // segment at an existing vertex), so this converges in a few
+                        // sweeps instead of O(n) -> drops the pass from O(n^3) to
+                        // ~O(n^2). Break only the inner scan for this endpoint.
+                        break;
                     }
                 }
             }

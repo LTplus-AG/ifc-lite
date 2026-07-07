@@ -523,20 +523,18 @@ impl GeometryRouter {
                 let extrusion_direction = if let Some((local_dir, position_transform)) =
                     self.extract_extrusion_direction_recursive(&item, decoder)
                 {
-                    // Transform extrusion direction from local to world coordinates
+                    // A zero-length IFCDIRECTION drops only THIS item's direction
+                    // (coarser bounds), not `?`-abort every sibling item's bounds.
+                    let element_rot = extract_rotation_columns(&placement_transform);
                     if let Some(pos_transform) = position_transform {
                         let pos_rot = extract_rotation_columns(&pos_transform);
-                        let world_dir = rotate_and_normalize(&pos_rot, &local_dir)?;
-
-                        let element_rot = extract_rotation_columns(&placement_transform);
-                        let final_dir = rotate_and_normalize(&element_rot, &world_dir)?;
-
-                        Some(final_dir)
+                        rotate_and_normalize(&pos_rot, &local_dir)
+                            .ok()
+                            .and_then(|world_dir| {
+                                rotate_and_normalize(&element_rot, &world_dir).ok()
+                            })
                     } else {
-                        let element_rot = extract_rotation_columns(&placement_transform);
-                        let final_dir = rotate_and_normalize(&element_rot, &local_dir)?;
-
-                        Some(final_dir)
+                        rotate_and_normalize(&element_rot, &local_dir).ok()
                     }
                 } else {
                     None

@@ -1256,23 +1256,19 @@ impl GeometryRouter {
         let all_openings: Vec<&OpeningType> =
             synth_rect.iter().chain(non_rect_openings.iter().copied()).collect();
 
-        // DISJOINT-CUTTER BATCHING: group cutters whose pad-inflated
-        // AABBs are pairwise disjoint and subtract each group in ONE conforming
-        // arrangement (`ClippingProcessor::subtract_mesh_many`). Sequential
-        // per-opening subtraction re-arranges the whole (growing) host once per
-        // cutter, and each intermediate f64→f32→snap round-trip re-jitters
-        // carve vertices off shared planes so cut N+1 re-cracks what cut N
-        // reconciled — many-void walls' compounding open edges and the
-        // 16-void slab's ~3.5 s cost. Batching admits only openings that pass
-        // the SAME guards as the sequential loop plus per-component
-        // watertightness (#2176: an open component poisons the group's ray
-        // parity); per-component outward orientation happens inside
-        // `mesh_bridge::subtract_many`. Singletons and any group whose batched
-        // cut fails its guards — or the kernel's conformity gate:
-        // `subtract_mesh_many` rejects a group whose N-ary arrangement left an
-        // unrecovered constraint — stay unconsumed and fall through to the
-        // per-opening sequential loop below with its full #635 fallback /
-        // engulf / redundant-void machinery.
+        // DISJOINT-CUTTER BATCHING: group cutters whose pad-inflated AABBs are
+        // pairwise disjoint and subtract each group in ONE conforming arrangement
+        // (`ClippingProcessor::subtract_mesh_many`). Sequential per-opening
+        // subtraction re-arranges the (growing) host once per cutter, and each
+        // intermediate f64→f32→snap round-trip re-jitters carve vertices off
+        // shared planes so cut N+1 re-cracks what cut N reconciled (many-void
+        // walls' compounding open edges, the 16-void slab's ~3.5 s cost). Batching
+        // admits only openings passing the SAME guards as the sequential loop plus
+        // per-component watertightness (#2176). Singletons and any group whose
+        // batched cut fails its guards — or the kernel conformity gate
+        // (`subtract_mesh_many` rejects a group whose N-ary arrangement left an
+        // unrecovered constraint) — fall through to the per-opening sequential
+        // loop below with its full #635 fallback / engulf / redundant-void machinery.
         let mut batch_consumed: Vec<bool> = vec![false; all_openings.len()];
         // Disjoint groups of opening indices (len ≥ 2 only); each is cut
         // INLINE at its first member's position in the sequential loop below,
@@ -1335,11 +1331,10 @@ impl GeometryRouter {
                 let depth_dir = extrusion_dir
                     .filter(|d| d.norm() > NORMALIZE_EPSILON)
                     .unwrap_or_else(|| opening_mesh_thinnest_axis_dir(opening_mesh));
-                // Weld coincident vertices to bit-identical so a geometrically-
-                // watertight cutter whose shared-edge f32 coords differ in bits
-                // (a faceted BREP after the placement transform) still passes the
-                // bit-exact closure gate and can join a batch (issue #098). 1 µm
-                // is far below any real feature; a genuinely open cutter stays open.
+                // Weld (1 µm) to bit-identical so a geometrically-watertight cutter
+                // whose shared-edge f32 coords differ in bits after the placement
+                // transform still passes the bit-exact closure gate below and can
+                // join a batch instead of re-jittering through sequential cuts (#098).
                 let ext = Self::extend_opening_mesh_through_host(opening_mesh, &result, depth_dir)
                     .welded_by_position(1.0e-6);
                 // #2176: only per-component-watertight solids may join a group.

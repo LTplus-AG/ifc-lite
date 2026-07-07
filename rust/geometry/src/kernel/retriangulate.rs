@@ -262,7 +262,7 @@ const PREFILTER_MIN: usize = 32;
 
 /// `p`'s coordinates dropped to the kept 2D plane for projection `axis`.
 #[inline]
-fn project2d(p: [f64; 3], axis: DropAxis) -> [f64; 2] {
+pub(crate) fn project2d(p: [f64; 3], axis: DropAxis) -> [f64; 2] {
     match axis {
         DropAxis::X => [p[1], p[2]],
         DropAxis::Y => [p[0], p[2]],
@@ -899,53 +899,10 @@ fn enforce_constraint(mesh: &mut Mesh2d, it: &Interner, s: Vid, t: Vid) {
 
 /// Phases A–D: project, canonicalise, insert all constraint points, then force
 /// every constraint to appear as an edge (chain). `None` ⇒ `T` is degenerate.
-/// (seg×seg crossings and coplanar/touching cases are deferred increments.)
 pub fn triangulate(input: &RetriInput, interner: &mut Interner) -> Option<Mesh2d> {
     let (axis, w0) = projection_axis(&input.tri)?;
     let mut canon = canonicalize(input, interner);
-    // Drop DEGENERATE constraints — a segment whose two endpoints project to the
-    // SAME point in this face's drop-axis 2D plane (it runs ALONG the drop axis,
-    // perpendicular to the face). A genuine in-plane constraint always has 2D
-    // extent here; only a spurious out-of-plane segment (a near-coplanar tri-tri
-    // touch mis-recorded as a crossing on this face) collapses to a point. Such a
-    // segment can never be forced as a 2D edge (`recover_subsegment` bails on its
-    // empty channel), and inserting its two 2D-coincident endpoints collapses two
-    // distinct 3D Vids onto one 2D location, so the CDT emits sub-triangles that
-    // reference the wrong 3D vertex — the reveal-step T-junction tear (issue #098).
-    // Exact equality: `project2d` is deterministic, so a truly out-of-plane
-    // segment lands both endpoints on the identical 2D coordinate.
-    let proj = |v: Vid| fixed::point_to_f64(interner.get(v)).map(|p| project2d(p, axis));
-    canon.segments.retain(|&(lo, hi)| match (proj(lo), proj(hi)) {
-        (Some(a), Some(b)) => a[0] != b[0] || a[1] != b[1],
-        _ => true,
-    });
-    // Drop OFF-PLANE constraints — a constraint of face `T` must lie IN `T`'s
-    // plane. A near-coplanar tri-tri can mis-record a crossing whose interned
-    // point keeps a cutter vertex's OWN 3D identity, sitting mm-to-cm off `T`;
-    // inserting it pulls `T`'s sub-triangles off-plane and the centroid
-    // classification then keeps faces that lie outside the host (issue #098 soffit
-    // cap). The tolerance is far above f32-import + snap noise (≲ tens of µm) yet
-    // far below any real contaminant (here 0.17 m), so a genuine in-plane
-    // constraint is never dropped — the pinned CSG corpus is unperturbed.
-    let plane = {
-        let t = &input.tri;
-        let u = [t[1][0] - t[0][0], t[1][1] - t[0][1], t[1][2] - t[0][2]];
-        let v = [t[2][0] - t[0][0], t[2][1] - t[0][1], t[2][2] - t[0][2]];
-        let n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
-        let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
-        (len > 0.0).then(|| ([n[0] / len, n[1] / len, n[2] / len], t[0]))
-    };
-    if let Some((n, p0)) = plane {
-        const OFF_PLANE_TOL: f64 = 1.0e-3; // 1 mm
-        let on_plane = |v: Vid| {
-            fixed::point_to_f64(interner.get(v)).is_none_or(|p| {
-                ((p[0] - p0[0]) * n[0] + (p[1] - p0[1]) * n[1] + (p[2] - p0[2]) * n[2]).abs()
-                    <= OFF_PLANE_TOL
-            })
-        };
-        canon.segments.retain(|&(lo, hi)| on_plane(lo) && on_plane(hi));
-        canon.points.retain(|&v| on_plane(v));
-    }
+    super::retriangulate_cleanup::drop_out_of_plane(&mut canon, &input.tri, interner, axis); // #098
     let mut mesh = Mesh2d {
         tris: vec![canon.corners],
         axis,

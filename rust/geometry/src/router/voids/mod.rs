@@ -1335,8 +1335,13 @@ impl GeometryRouter {
                 let depth_dir = extrusion_dir
                     .filter(|d| d.norm() > NORMALIZE_EPSILON)
                     .unwrap_or_else(|| opening_mesh_thinnest_axis_dir(opening_mesh));
-                let ext =
-                    Self::extend_opening_mesh_through_host(opening_mesh, &result, depth_dir);
+                // Weld coincident vertices to bit-identical so a geometrically-
+                // watertight cutter whose shared-edge f32 coords differ in bits
+                // (a faceted BREP after the placement transform) still passes the
+                // bit-exact closure gate and can join a batch (issue #098). 1 µm
+                // is far below any real feature; a genuinely open cutter stays open.
+                let ext = Self::extend_opening_mesh_through_host(opening_mesh, &result, depth_dir)
+                    .welded_by_position(1.0e-6);
                 // #2176: only per-component-watertight solids may join a group.
                 if !mesh_is_closed_exact(&ext) {
                     continue;

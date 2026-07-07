@@ -16,6 +16,7 @@ import { queryCommand } from './commands/query.js';
 import { propsCommand } from './commands/props.js';
 import { exportCommand } from './commands/export.js';
 import { diagnoseGeometryCommand } from './commands/diagnose-geometry.js';
+import { extractEntitiesCommand } from './commands/extract-entities.js';
 import { idsCommand } from './commands/ids.js';
 import { bcfCommand } from './commands/bcf.js';
 import { clashCommand } from './commands/clash.js';
@@ -69,6 +70,8 @@ const HELP = `
     export    <file.ifc> --format csv|json|ifc|hbjson  Export data / Honeybee energy model
     diagnose-geometry <file.ifc> [--json]        CSG / opening diagnostics (failures, classification)
                       [--product ID|GUID] [--type T]  Filter worst-hosts detail to one product/type
+    extract-entities <file.ifc> --out F          Isolate entities into a small, viewable standalone IFC
+                      [--product ID|GUID] [--storey S] [--detect] [--view]  by GUID/type/storey or auto-triage
     ids       <file.ifc> <rules.ids>              Validate against IDS rules
     bcf       <create|list|add-comment>           Work with BCF collaboration files
     clash     <file.ifc> [--matrix] [--bcf F]      Detect geometric clashes between elements
@@ -218,6 +221,9 @@ async function main(): Promise<void> {
       break;
     case 'diagnose-geometry':
       await diagnoseGeometryCommand(commandArgs);
+      break;
+    case 'extract-entities':
+      await extractEntitiesCommand(commandArgs);
       break;
     case 'ids':
       await idsCommand(commandArgs);

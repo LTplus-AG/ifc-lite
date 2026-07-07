@@ -130,11 +130,16 @@ export function parseStep(text: string): ParsedStep {
   return { header, instances, guidToId };
 }
 
-/** Resolve one selector token to an expressId (`#42`, `42`, or a GlobalId). */
+/** Resolve one selector token to an expressId (`#42`, `42`, or a GlobalId).
+ * An `#id` / bare id is validated against the model too, so a typo'd or stale
+ * id fails loudly instead of silently selecting nothing. */
 export function resolveToId(token: string, parsed: ParsedStep): number {
   const t = token.trim();
-  if (t.startsWith('#')) return parseInt(t.slice(1), 10);
-  if (/^\d+$/.test(t)) return parseInt(t, 10);
+  if (t.startsWith('#') || /^\d+$/.test(t)) {
+    const id = parseInt(t.startsWith('#') ? t.slice(1) : t, 10);
+    if (!parsed.instances.has(id)) throw new Error(`expressId not found in model: #${id}`);
+    return id;
+  }
   const id = parsed.guidToId.get(t);
   if (id === undefined) throw new Error(`GlobalId not found in model: ${t}`);
   return id;
@@ -409,7 +414,10 @@ export async function extractEntitiesCommand(args: string[]): Promise<void> {
   const detect = hasFlag(args, '--detect');
   const report = hasFlag(args, '--report');
   const asJson = hasFlag(args, '--json');
-  const topN = parseInt(getFlag(args, '--top') ?? '20', 10);
+  // Fall back to 20 on a missing or non-numeric `--top` (a `NaN` would make
+  // every `slice(0, topN)` return nothing).
+  const topRaw = Number.parseInt(getFlag(args, '--top') ?? '20', 10);
+  const topN = Number.isNaN(topRaw) ? 20 : topRaw;
 
   // ── Detect-only report path ──
   if (detect && report) {

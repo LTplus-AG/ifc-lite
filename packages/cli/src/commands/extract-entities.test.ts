@@ -74,6 +74,10 @@ describe('resolveToId', () => {
   it('throws on an unknown GlobalId', () => {
     expect(() => resolveToId('NOPE00000000000000000X', p)).toThrow(/not found/);
   });
+  it('throws on a non-existent express id / #id (not silently selecting nothing)', () => {
+    expect(() => resolveToId('999999', p)).toThrow(/expressId not found/);
+    expect(() => resolveToId('#999999', p)).toThrow(/expressId not found/);
+  });
 });
 
 describe('forwardClosure', () => {

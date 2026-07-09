@@ -286,25 +286,21 @@ pub(crate) fn recover_via_traversal(mesh: &mut Mesh2d, it: &Interner, a: Vid, b:
             adj.entry(if u < v { (u, v) } else { (v, u) }).or_default().push(ti);
         }
     }
-    // Entry triangle at `start`: one with vertex `start` whose opposite edge (u,v)
-    // straddles line start→end AND has `end` inside the interior wedge ∠(u,start,v).
-    // First in tri order — deterministic; at most one triangle qualifies. `eu` is
-    // returned on the `w0` side of the DIRECTED line start→end, `ev` the other.
+    // Entry triangle at `start`: the one whose opposite edge (u,v) the segment
+    // start→end properly CROSSES — u,v straddle line start→end AND start,end
+    // straddle line (u,v). The second test matters: without it a complex fan
+    // around `start` admits a farther wedge triangle whose edge the segment
+    // crosses AWAY from `end`, and the walk overshoots to the mesh boundary (the
+    // near-degenerate reveal-step segments, #098 V5C). `eu` is on the `w0` side.
     let find_entry = |start: Vid, end: Vid| -> Option<(usize, Vid, Vid)> {
         for (ti, t) in mesh.tris.iter().enumerate() {
             let Some(ai) = (0..3).find(|&k| t[k] == start) else { continue };
             let (u, v) = (t[(ai + 1) % 3], t[(ai + 2) % 3]);
             let (su, sv) = (orient2d_v(it, start, end, u, axis), orient2d_v(it, start, end, v, axis));
-            if su == Sign::Zero || sv == Sign::Zero || su == sv {
-                continue; // u,v don't straddle line start→end
-            }
-            // The segment must actually cross the opposite edge (u,v) TOWARD `end`
-            // — `start` and `end` on opposite sides of line (u,v). Without this a
-            // complex fan around `start` (many constraint sub-triangles) admits a
-            // FARTHER wedge triangle whose edge the segment crosses AWAY from
-            // `end`, and the walk then overshoots to the mesh boundary (the
-            // near-degenerate reveal-step segments, issue #098 V5C residual).
             let (sa, sb) = (orient2d_v(it, u, v, start, axis), orient2d_v(it, u, v, end, axis));
+            if su == Sign::Zero || sv == Sign::Zero || su == sv {
+                continue;
+            }
             if sa == Sign::Zero || sb == Sign::Zero || sa == sb {
                 continue;
             }
@@ -312,9 +308,7 @@ pub(crate) fn recover_via_traversal(mesh: &mut Mesh2d, it: &Interner, a: Vid, b:
         }
         None
     };
-    // Traverse start→end (start's entry must exist); the endpoints' order doesn't
-    // change the forced edge, so fall back to end→start when start has no entry
-    // (e.g. a corner vertex whose wedge geometry is degenerate for this segment).
+    // Endpoint order doesn't change the forced edge: try end→start if start has none.
     let (a, b, entry) = if let Some(en) = find_entry(a, b) {
         (a, b, en)
     } else if let Some(en) = find_entry(b, a) {

@@ -37,6 +37,7 @@ import type {
   ConditionOperator,
 } from '@ifc-lite/lists';
 import { discoverColumns, ENTITY_ATTRIBUTES, isNamePattern } from '@ifc-lite/lists';
+import { collectScopeTypes } from '@/lib/lists/scope-types';
 
 const NO_OPTIONS: readonly string[] = [];
 
@@ -77,33 +78,6 @@ function discoverConditionValues(stores: IfcDataStore[]): ListConditionValues {
   for (const [k, s] of propertyValues) pv.set(k, sort(s));
   return { materials: sort(materials), classifications: sort(classifications), propertyValues: pv };
 }
-
-// Building element types available for selection
-const SELECTABLE_TYPES: { type: IfcTypeEnum; label: string }[] = [
-  { type: IfcTypeEnum.IfcWall, label: 'Walls' },
-  { type: IfcTypeEnum.IfcWallStandardCase, label: 'Walls (Standard)' },
-  { type: IfcTypeEnum.IfcDoor, label: 'Doors' },
-  { type: IfcTypeEnum.IfcWindow, label: 'Windows' },
-  { type: IfcTypeEnum.IfcSlab, label: 'Slabs' },
-  { type: IfcTypeEnum.IfcColumn, label: 'Columns' },
-  { type: IfcTypeEnum.IfcBeam, label: 'Beams' },
-  { type: IfcTypeEnum.IfcStair, label: 'Stairs' },
-  { type: IfcTypeEnum.IfcRamp, label: 'Ramps' },
-  { type: IfcTypeEnum.IfcRoof, label: 'Roofs' },
-  { type: IfcTypeEnum.IfcCovering, label: 'Coverings' },
-  { type: IfcTypeEnum.IfcCurtainWall, label: 'Curtain Walls' },
-  { type: IfcTypeEnum.IfcRailing, label: 'Railings' },
-  { type: IfcTypeEnum.IfcSpace, label: 'Spaces' },
-  { type: IfcTypeEnum.IfcSpatialZone, label: 'Spatial Zones' },
-  { type: IfcTypeEnum.IfcZone, label: 'Zones' },
-  { type: IfcTypeEnum.IfcSystem, label: 'Systems' },
-  { type: IfcTypeEnum.IfcDistributionSystem, label: 'Distribution Systems' },
-  { type: IfcTypeEnum.IfcBuildingStorey, label: 'Storeys' },
-  { type: IfcTypeEnum.IfcDistributionElement, label: 'MEP Distribution' },
-  { type: IfcTypeEnum.IfcFlowTerminal, label: 'MEP Terminals' },
-  { type: IfcTypeEnum.IfcFlowSegment, label: 'MEP Segments' },
-  { type: IfcTypeEnum.IfcFlowFitting, label: 'MEP Fittings' },
-];
 
 /** Column descriptor shared by the quick-add grid. */
 interface CommonColumn { id: string; source: ColumnDefinition['source']; propertyName: string; label: string }
@@ -229,18 +203,16 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
     new Set(initial?.grouping?.sumColumnIds ?? [])
   );
 
-  // Count entities per type across all providers
+  // Scope classes offered as chips: every element class actually present in
+  // the loaded model(s), with instance counts. Derived from the models rather
+  // than a curated allowlist, so a present class the curator never listed —
+  // e.g. IfcDuctSegment / IfcPipeSegment — is still selectable (#1662).
+  const scopeTypes = useMemo(() => collectScopeTypes(stores), [stores]);
   const typeCounts = useMemo(() => {
     const counts = new Map<IfcTypeEnum, number>();
-    for (const { type } of SELECTABLE_TYPES) {
-      let total = 0;
-      for (const p of providers) {
-        total += p.getEntitiesByType(type).length;
-      }
-      if (total > 0) counts.set(type, total);
-    }
+    for (const { type, count } of scopeTypes) counts.set(type, count);
     return counts;
-  }, [providers]);
+  }, [scopeTypes]);
 
   // Available columns. Prefer COMPLETE, type-independent discovery (every
   // property set / quantity set in the model) so all properties/quantities
@@ -392,20 +364,16 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
             ) : (
               <>
                 <div className="flex flex-wrap gap-1.5">
-                  {SELECTABLE_TYPES.map(({ type, label }) => {
-                    const count = typeCounts.get(type);
-                    if (!count) return null;
-                    return (
-                      <Chip
-                        key={type}
-                        selected={selectedTypes.has(type)}
-                        onClick={() => toggleType(type)}
-                        trailing={count.toLocaleString()}
-                      >
-                        {label}
-                      </Chip>
-                    );
-                  })}
+                  {scopeTypes.map(({ type, label, count }) => (
+                    <Chip
+                      key={type}
+                      selected={selectedTypes.has(type)}
+                      onClick={() => toggleType(type)}
+                      trailing={count.toLocaleString()}
+                    >
+                      {label}
+                    </Chip>
+                  ))}
                 </div>
                 {selectedTypes.size === 0 && (
                   <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">

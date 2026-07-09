@@ -45,7 +45,9 @@
 # +12: near_band_from_extent (the snap-scatter band formula) single-homed here, next to canonical SNAP_GRID; tritri/classify import it instead of mirroring the expression.
      904 rust/geometry/src/kernel/mesh_bridge.rs
      700 rust/geometry/src/kernel/predicates.rs
-              966 rust/geometry/src/kernel/retriangulate.rs
+# -31: extracted the final conformity audit + traversal recovery into kernel/retriangulate_audit.rs and phase-D recovery into retriangulate_recover.rs (issue #098 dense faceted-reveal walls); net down.
+              935 rust/geometry/src/kernel/retriangulate.rs
+# split out of retriangulate.rs: phase-D constraint recovery (recover_subsegment/enforce_constraint/between + the Sloan recover_via_traversal fallback for dense reveal pockets, issue #098).
          438 rust/geometry/src/kernel/retriangulate_recover.rs
 # new row: adds from_spans (build the index from pre-collected IfcRelAssociatesMaterial spans, no re-walk) + the MaterialLayerFlat wire codec (to_flat/from_flat) + round-trip tests, so the streaming pre-pass ships the index to workers once instead of each worker re-scanning the file (perf/single-scan #563).
      563 rust/geometry/src/material_layer_index.rs

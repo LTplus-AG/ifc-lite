@@ -353,10 +353,18 @@ pub fn subtract_many(host: &Mesh, cutters: &[&Mesh]) -> Option<Mesh> {
     // Trust the lenient batch ONLY when its removed volume matches the sequential
     // reference; else None, so the caller runs its full sequential path.
     let batch = difference_all_lenient(&h, &refs);
+    // The sequential reference is an ORACLE for the volume comparison, not the
+    // operation — snapshot/restore the budget so these full booleans don't charge
+    // the caller's batch budget. Otherwise a dense group could trip the shared
+    // #1109 budget merely computing the reference, and the caller would discard
+    // even a volume-matched batch, defeating recovery on exactly the hard cases
+    // this path targets (codex P2 on #1660).
+    let budget_snap = super::budget::snapshot_counters();
     let mut seq = tris_to_mesh(&h);
     for c in cutters {
         seq = subtract(&seq, c);
     }
+    super::budget::restore_counters(budget_snap);
     let host_v = signed_volume6(&h).abs();
     let batch_removed = host_v - signed_volume6(&batch).abs();
     let seq_removed = host_v - signed_volume6(&mesh_to_tris(&seq)).abs();

@@ -17,7 +17,7 @@
 
 use super::interner::{Interner, Vid};
 use super::predicates::{cmp_lex, orient2d, orient2d_any};
-use super::retriangulate_recover::{between, enforce_constraint, recover_via_traversal};
+use super::retriangulate_recover::enforce_constraint;
 use super::{fixed, interval};
 use super::{DropAxis, ImplicitPoint, Lpi, Sign, Tpi};
 use std::cmp::Ordering;
@@ -647,38 +647,7 @@ pub fn triangulate(input: &RetriInput, interner: &mut Interner) -> Option<Mesh2d
     if !mesh.audit_needed {
         return Some(mesh);
     }
-    for &(cs, ct) in &canon.segments {
-        let verts: BTreeSet<Vid> = mesh.tris.iter().flatten().copied().collect();
-        let mut on_seg: Vec<Vid> = verts
-            .into_iter()
-            .filter(|&v| {
-                v != cs
-                    && v != ct
-                    && orient2d_v(interner, cs, ct, v, axis) == Sign::Zero
-                    && between(interner, cs, ct, v)
-            })
-            .collect();
-        on_seg.sort_by(|&x, &y| lex_cmp(interner, x, y));
-        if cmp_lex_v(interner, cs, ct) == Sign::Positive {
-            on_seg.reverse();
-        }
-        let mut chain = vec![cs];
-        chain.extend(on_seg);
-        chain.push(ct);
-        for w in chain.windows(2) {
-            if !edge_exists(&mesh, w[0], w[1]) {
-                // Last-chance robust recovery. The fixed-point loop has converged,
-                // so the mesh is stable here — a traversal-forced edge can't be
-                // broken by a later pass (unlike the enforce-time fallback, which
-                // an oscillating pass can undo). Recovers the dense-face residual
-                // (issue #098 V5C) so the N-ary batched cut isn't rejected.
-                recover_via_traversal(&mut mesh, interner, w[0], w[1]);
-                if !edge_exists(&mesh, w[0], w[1]) {
-                    mesh.unrecovered += 1;
-                }
-            }
-        }
-    }
+    super::retriangulate_audit::audit_and_recover(&mut mesh, interner, &canon, axis);
     // Deliberate trade-off: return Some even if a constraint stayed unrecovered —
     // the caller (arrangement.rs) maps None to a FULL passthrough of the input
     // triangle, dropping ALL constraints, which is strictly worse than a mesh

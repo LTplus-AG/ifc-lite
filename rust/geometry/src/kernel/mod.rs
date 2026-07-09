@@ -27,6 +27,7 @@ pub mod predicates;
 pub mod rational;
 mod signed_volume;
 pub mod retriangulate;
+mod retriangulate_audit;
 mod retriangulate_cleanup;
 mod retriangulate_recover;
 pub mod tritri;

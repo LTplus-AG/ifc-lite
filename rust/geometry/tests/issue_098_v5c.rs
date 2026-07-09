@@ -2,13 +2,14 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Issue #098: a plan-rotated Poroton wall (`IfcWallStandardCase` #928204,
-//! `2A8m$1B8T2VuclBPhPDl_W`) whose 7 window openings are `IfcFacetedBrep`
-//! stepped-reveal prisms carrying NO authored extrusion direction. Because the
-//! openings arrive with `depth = None`, `try_cut_wall_local_frame` (#1167)
-//! bails and the wall is cut in world space at ~1.5 Mm, fragmenting into flap
-//! triangles that bridge the openings (a 23 m edge spanning the whole wall
-//! face). This fixture is the wall isolated WITH its voids by
+//! Issue #098: a DENSER instance of the same Poroton wall type as the sibling
+//! `issue_098_reveal_wall` test — `IfcWallStandardCase` #1512699,
+//! `3FceP9AqX1_92g5eDdrV5C` — whose 7 `IfcFacetedBrep` stepped-reveal window
+//! openings batch onto ONE wall face. The dense near-collinear reveal cluster
+//! defeats the incremental constraint recovery (earcut can only fan it into
+//! sliver tips); the Sloan traversal fallback + volume-safe batched difference
+//! bring it from ~2072 open edges (badly torn) to ~108 with the removed volume
+//! unchanged. This fixture is the wall isolated WITH its voids by
 //! `ifc-lite extract-entities`.
 
 use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};

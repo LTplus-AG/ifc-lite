@@ -34,6 +34,8 @@ pub mod retriangulate;
 mod retriangulate_audit;
 mod retriangulate_cleanup;
 mod retriangulate_recover;
+#[cfg(test)]
+mod retriangulate_recover_tests;
 pub mod tritri;
 
 /// Three-valued exact sign.

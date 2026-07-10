@@ -27,6 +27,12 @@ export interface FrameStats {
   batchesFrustumCulled: number;
   /** Colour batches rejected by contribution (projected-size) culling. */
   batchesContributionCulled: number;
+  /**
+   * Visible batches skipped because their GPU buffers were evicted under the
+   * residency budget; a rebuild was requested and they draw again within a
+   * frame or two (issue #1682 phase 3a).
+   */
+  batchesNotResident: number;
   /** `performance.now()` timestamp taken at the end of the render call. */
   timestamp: number;
 }

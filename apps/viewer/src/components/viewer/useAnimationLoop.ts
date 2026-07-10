@@ -164,6 +164,17 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
         }
       }
 
+      // 1b. Rebuild GPU-evicted batches the last frame asked for (residency
+      // budget, issue #1682 phase 3a). Time-budgeted; requests a render so
+      // the restored batches appear on the next frame.
+      if (scene.hasResidencyRestoreWork()) {
+        const device = renderer.getGPUDevice();
+        const pipeline = renderer.getPipeline();
+        if (device && pipeline && scene.processResidencyRestores(device, pipeline) > 0) {
+          renderer.requestRender();
+        }
+      }
+
       // 2. Camera update (animation / inertia)
       const isAnimating = camera.update(deltaTime);
 

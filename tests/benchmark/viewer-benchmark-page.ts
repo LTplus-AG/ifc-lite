@@ -167,6 +167,21 @@ export class ViewerBenchmarkPage {
       }
     }
 
+    // Optional GPU residency budget for A/B runs (issue #1682 phase 3a).
+    // Set VIEWER_BENCHMARK_GPU_BUDGET to a number of megabytes. Unset ⇒ off.
+    const gpuBudgetEnv = process.env.VIEWER_BENCHMARK_GPU_BUDGET;
+    if (gpuBudgetEnv) {
+      const mb = Number(gpuBudgetEnv);
+      if (Number.isFinite(mb) && mb > 0) {
+        await this.page.addInitScript((v) => {
+          (globalThis as unknown as { __IFC_LITE_GPU_BUDGET_MB?: number }).__IFC_LITE_GPU_BUDGET_MB = v;
+        }, mb);
+        console.log(`[Benchmark] GPU residency budget override: ${mb}MB`);
+      } else {
+        console.warn(`[Benchmark] invalid VIEWER_BENCHMARK_GPU_BUDGET: ${gpuBudgetEnv}`);
+      }
+    }
+
     // Navigate to viewer app
     await this.page.goto('http://localhost:3000');
     

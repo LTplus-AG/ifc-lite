@@ -75,6 +75,12 @@ export interface BatchedMesh {
    *  space (world = origin + position). Keeps f32 vertex coords element-small at
    *  building/georef scale (no fan collapse). [0,0,0] = absolute (legacy). */
   origin?: [number, number, number];
+  /** GPU residency (issue #1682 phase 3a): `false` = evicted metadata shell —
+   *  bounds/expressIds/counts remain valid for culling, picking-fallback and
+   *  bookkeeping, but the GPU buffers are destroyed and MUST NOT be bound.
+   *  The draw loop skips such batches and requests a rebuild via
+   *  `Scene.requestBatchResidency`. `undefined`/`true` = resident. */
+  gpuResident?: boolean;
 }
 
 // Section plane for clipping

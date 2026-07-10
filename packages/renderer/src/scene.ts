@@ -21,6 +21,7 @@ import {
 import { mergeGeometry, splitMeshDataForBufferLimit, colorSaltByte, packEntityLane } from './scene-geometry.js';
 import { sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
 import { bucketBaseKeyFor, type SpatialChunkingConfig } from './chunk-grid.js';
+import { selectEvictions, type ResidencyShell } from './residency.js';
 import { OPAQUE_ALPHA_CUTOFF } from './overlay-routing.js';
 import type { DecodedInstancedShard } from '@ifc-lite/geometry';
 import {
@@ -146,6 +147,15 @@ export class Scene {
   // grid-cell prefix so batches are spatially compact and cullable. Null = off
   // (plain colour bucketing, the historical behaviour).
   private spatialChunking: SpatialChunkingConfig | null = null;
+  // GPU residency budget (issue #1682 phase 3a): when set, bucket-owned
+  // batches not drawn recently are evicted (GPU buffers destroyed, CPU
+  // meshData + metadata shell kept) once their combined bytes exceed the
+  // budget, and rebuilt on demand when the draw loop wants them again.
+  private gpuBudgetBytes: number | null = null;
+  private residencyFrame = 0;                                  // bumped once per render()
+  private lastDrawnFrame: Map<number, number> = new Map();     // batch.id -> residencyFrame
+  private residencyRestoreQueue: Set<string> = new Set();      // bucket keys awaiting re-upload
+  private residencyOverBudgetWarned = false;
   private nextSplitId: number = 0; // Monotonic counter for sub-bucket keys
   private nextBatchId: number = 0; // Monotonic counter for unique batch identifiers
   // Shared local-frame origin for ALL batches (set from the first batch's world
@@ -240,6 +250,157 @@ export class Scene {
 
   getSpatialChunking(): SpatialChunkingConfig | null {
     return this.spatialChunking;
+  }
+
+  // ─── GPU residency (issue #1682 phase 3a) ──────────────────────────────
+  // The budget applies to bucket-owned colour/chunk batches (the evictable
+  // set). Streaming fragments, partial sub-batches, overlay batches,
+  // textured meshes and instanced templates are never evicted: fragments are
+  // transient, the rest are small or lack a rebuild source. Enforcement
+  // no-ops while geometry is released or in ephemeral streaming mode (no CPU
+  // meshData to rebuild from — that is phase 3b's evict-to-disk territory).
+
+  /** Set (or clear) the GPU residency budget in bytes. */
+  setGpuResidencyBudget(bytes: number | null): void {
+    if (bytes !== null && !(Number.isFinite(bytes) && bytes > 0)) {
+      console.warn('[Scene] ignoring invalid GPU residency budget:', bytes);
+      return;
+    }
+    this.gpuBudgetBytes = bytes;
+    this.residencyOverBudgetWarned = false;
+  }
+
+  getGpuResidencyBudget(): number | null {
+    return this.gpuBudgetBytes;
+  }
+
+  /** Called once at the start of every Renderer.render() — residency ages
+   *  are measured in RENDERED frames, so idle scenes never age out. */
+  beginResidencyFrame(): void {
+    this.residencyFrame++;
+  }
+
+  /** Record that the draw loop drew this batch this frame. */
+  recordBatchDrawn(batch: BatchedMesh): void {
+    if (this.gpuBudgetBytes === null) return;
+    this.lastDrawnFrame.set(batch.id, this.residencyFrame);
+  }
+
+  /**
+   * The draw loop wants an evicted batch back on the GPU. Queues its bucket
+   * for a time-budgeted rebuild in processResidencyRestores (driven by the
+   * app's animation loop) — the batch is skipped this frame and pops back in
+   * within a frame or two.
+   */
+  requestBatchResidency(batch: BatchedMesh): void {
+    const bucket = this.buckets.get(batch.colorKey);
+    if (bucket && bucket.batchedMesh === batch && bucket.meshData.length > 0) {
+      this.residencyRestoreQueue.add(bucket.key);
+    }
+  }
+
+  hasResidencyRestoreWork(): boolean {
+    return this.residencyRestoreQueue.size > 0;
+  }
+
+  /**
+   * Rebuild evicted batches from their buckets' CPU meshData, up to
+   * `budgetMs` per call (same time-slicing philosophy as flushPending).
+   * Returns the number of batches restored.
+   */
+  processResidencyRestores(device: GPUDevice, pipeline: RenderPipeline, budgetMs: number = 6): number {
+    if (this.residencyRestoreQueue.size === 0) return 0;
+    const start = performance.now();
+    let restored = 0;
+    for (const key of this.residencyRestoreQueue) {
+      this.residencyRestoreQueue.delete(key);
+      const bucket = this.buckets.get(key);
+      const old = bucket?.batchedMesh;
+      // Only restore a still-evicted, still-rebuildable bucket batch — a
+      // recolour/finalize may have rebuilt (or emptied) it in the meantime.
+      if (!bucket || !old || old.gpuResident !== false || bucket.meshData.length === 0) continue;
+
+      const rebuilt = this.createBatchedMesh(bucket.meshData, bucket.meshData[0].color, device, pipeline, key);
+      bucket.batchedMesh = rebuilt;
+      const idx = this.batchedMeshes.indexOf(old);
+      if (idx >= 0) this.batchedMeshes[idx] = rebuilt;
+      else this.batchedMeshes.push(rebuilt);
+      this.lastDrawnFrame.delete(old.id);
+      // Seed as just-drawn so the budget pass can't evict it before the
+      // frame that asked for it gets to draw it.
+      this.lastDrawnFrame.set(rebuilt.id, this.residencyFrame);
+      restored++;
+      if (performance.now() - start >= budgetMs) break;
+    }
+    return restored;
+  }
+
+  /**
+   * Evict least-recently-drawn bucket batches until the resident set fits
+   * the budget. Called after each frame's submit; destroying just-submitted
+   * buffers is safe (WebGPU defers destruction past in-flight work). Never
+   * evicts a batch drawn this frame — a visible set larger than the budget
+   * renders correctly and stays over budget (warned once).
+   */
+  enforceGpuBudget(): void {
+    const budget = this.gpuBudgetBytes;
+    if (budget === null) return;
+    if (this.geometryReleased || this.ephemeralStreamingMode) return;
+    // During streaming the batch set churns (fragments + finalize rebuild
+    // everything anyway) — start enforcing once the scene is stable.
+    if (this.streamingFragments.length > 0) return;
+
+    let residentBytes = 0;
+    const shells: ResidencyShell[] = [];
+    for (const bucket of this.buckets.values()) {
+      const b = bucket.batchedMesh;
+      if (!b || b.gpuResident === false) continue;
+      const bytes = b.vertexBuffer.size + b.indexBuffer.size + (b.uniformBuffer?.size ?? 0);
+      residentBytes += bytes;
+      const lastDrawn = this.lastDrawnFrame.get(b.id) ?? -1;
+      if (lastDrawn === this.residencyFrame) continue;      // drawn this frame: not evictable
+      if (bucket.meshData.length === 0) continue;           // no rebuild source: keep resident
+      shells.push({ key: bucket.key, bytes, lastDrawnFrame: lastDrawn });
+    }
+    if (residentBytes <= budget) return;
+
+    const evictKeys = selectEvictions(shells, residentBytes, budget, this.residencyFrame);
+    let evictedBytes = 0;
+    for (const key of evictKeys) {
+      const bucket = this.buckets.get(key);
+      const batch = bucket?.batchedMesh;
+      if (!bucket || !batch || batch.gpuResident === false) continue;
+      destroyGpuResources(batch);
+      batch.gpuResident = false;
+      evictedBytes += batch.vertexBuffer.size + batch.indexBuffer.size + (batch.uniformBuffer?.size ?? 0);
+      this.lastDrawnFrame.delete(batch.id);
+      this.dropPartialCacheForBatch(batch);
+    }
+
+    if (residentBytes - evictedBytes > budget && !this.residencyOverBudgetWarned) {
+      this.residencyOverBudgetWarned = true;
+      console.warn(
+        `[Scene] GPU residency budget ${(budget / 1048576).toFixed(0)}MB exceeded by the ` +
+        `recently-drawn set (${((residentBytes - evictedBytes) / 1048576).toFixed(0)}MB resident) — ` +
+        `nothing old enough to evict. Rendering is unaffected.`
+      );
+    }
+  }
+
+  /** Destroy + drop cached partial sub-batches derived from `batch` (their
+   *  sourceBatchKeys embed the batch id, so they are stale once it is
+   *  evicted/replaced). */
+  private dropPartialCacheForBatch(batch: BatchedMesh): void {
+    const prefix = `${batch.colorKey}:${batch.id}`;
+    for (const [sourceBatchKey, cacheKey] of this.partialBatchCacheKeys) {
+      if (!sourceBatchKey.startsWith(prefix)) continue;
+      const cached = this.partialBatchCache.get(cacheKey);
+      if (cached) {
+        destroyGpuResources(cached);
+        this.partialBatchCache.delete(cacheKey);
+      }
+      this.partialBatchCacheKeys.delete(sourceBatchKey);
+    }
   }
 
   /**
@@ -1389,6 +1550,8 @@ export class Scene {
     this.buckets.clear();
     this.meshDataBucket = new Map();
     this.activeBucketKey.clear();
+    this.lastDrawnFrame.clear();
+    this.residencyRestoreQueue.clear();
     this.pendingBatchKeys.clear();
     // Destroy cached partial batches — their colorKeys are now stale
     for (const batch of this.partialBatchCache.values()) destroyGpuResources(batch);
@@ -1462,6 +1625,8 @@ export class Scene {
     this.buckets.clear();
     this.meshDataBucket = new Map();
     this.activeBucketKey.clear();
+    this.lastDrawnFrame.clear();
+    this.residencyRestoreQueue.clear();
     this.pendingBatchKeys.clear();
     for (const batch of this.partialBatchCache.values()) destroyGpuResources(batch);
     this.partialBatchCache.clear();
@@ -1576,6 +1741,8 @@ export class Scene {
     // AABBs already live in boundingBoxes, so bbox-raycast still finds instanced ids.
     this.instancedTemplateCpu = [];
     this.activeBucketKey.clear();
+    this.lastDrawnFrame.clear();
+    this.residencyRestoreQueue.clear();
     this.pendingBatchKeys.clear();
     for (const batch of this.partialBatchCache.values()) destroyGpuResources(batch);
     this.partialBatchCache.clear();
@@ -1658,6 +1825,8 @@ export class Scene {
     }
     this.meshDataBucket = new Map();
     this.activeBucketKey.clear();
+    this.lastDrawnFrame.clear();
+    this.residencyRestoreQueue.clear();
 
     // 3. Clear partial batch cache (would need mesh data to rebuild)
     for (const batch of this.partialBatchCache.values()) destroyGpuResources(batch);
@@ -2162,7 +2331,9 @@ export class Scene {
    */
   getResidentGpuBytes(): ResidentGpuBytes {
     return sumResidentGpuBytes({
-      batches: this.batchedMeshes,
+      // Evicted batches are metadata shells — their destroyed buffers still
+      // report .size, so they must be excluded from the resident sum.
+      batches: this.batchedMeshes.filter((b) => b.gpuResident !== false),
       partialBatches: this.partialBatchCache.values(),
       meshes: this.meshes,
       textured: this.texturedMeshes,
@@ -2749,6 +2920,8 @@ export class Scene {
     this.meshDataMap.clear();
     this.boundingBoxes.clear();
     this.activeBucketKey.clear();
+    this.lastDrawnFrame.clear();
+    this.residencyRestoreQueue.clear();
     this.cachedMaxBufferSize = 0;
     this.pendingBatchKeys.clear();
     this.partialBatchCache.clear();

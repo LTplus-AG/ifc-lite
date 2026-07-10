@@ -61,6 +61,8 @@ export { resolveContributionThresholdPx, projectedAabbRadiusPx } from './contrib
 export type { ContributionCullOptions, CullCameraState } from './contribution-cull.js';
 export { chunkCellKey, bucketBaseKeyFor, DEFAULT_CHUNK_CELL_SIZE } from './chunk-grid.js';
 export type { SpatialChunkingConfig, ChunkAnchorSource } from './chunk-grid.js';
+export { selectEvictions, MIN_EVICTION_AGE_FRAMES } from './residency.js';
+export type { ResidencyShell } from './residency.js';
 export { sumResidentGpuBytes } from './render-stats.js';
 export type { FrameStats, ResidentGpuBytes } from './render-stats.js';
 export { RaycastEngine } from './raycast-engine.js';
@@ -1098,6 +1100,9 @@ export class Renderer {
         let frameBatchesDrawn = 0;
         let frameBatchesFrustumCulled = 0;
         let frameBatchesContributionCulled = 0;
+        let frameBatchesNotResident = 0;
+        // Residency ages are measured in RENDERED frames (idle never ages out).
+        this.scene.beginResidencyFrame();
         const visualEnhancement = this.resolveVisualEnhancement(options.visualEnhancement);
         // Post effects during interaction (orbit/pan/zoom) are governed
         // adaptively: they stay on while the interactive frame cadence holds
@@ -1868,7 +1873,19 @@ export class Renderer {
                         }
                     }
 
-                    // Fully visible (or no filtering). Transparent batches with mixed
+                    // Fully visible (or no filtering) — this batch draws from its OWN
+                    // GPU buffers. An evicted batch (residency budget, #1682 phase 3a)
+                    // is skipped for a frame while its rebuild is queued; the partial
+                    // path above is unaffected (sub-batches own separate buffers built
+                    // from CPU meshData).
+                    if (batch.gpuResident === false) {
+                        this.scene.requestBatchResidency(batch);
+                        frameBatchesNotResident++;
+                        continue;
+                    }
+                    this.scene.recordBatchDrawn(batch);
+
+                    // Transparent batches with mixed
                     // override membership must be split so non-overridden batchmates
                     // stay transparent — see splitVisibleIdsByPromotion / issue #677.
                     if (nativelyTransparent) {
@@ -2540,8 +2557,14 @@ export class Renderer {
                 batchesDrawn: frameBatchesDrawn,
                 batchesFrustumCulled: frameBatchesFrustumCulled,
                 batchesContributionCulled: frameBatchesContributionCulled,
+                batchesNotResident: frameBatchesNotResident,
                 timestamp: performance.now(),
             };
+
+            // GPU residency budget (issue #1682 phase 3a): evict least-recently
+            // drawn bucket batches after submit — destruction of just-submitted
+            // buffers is deferred past in-flight work by WebGPU.
+            this.scene.enforceGpuBudget();
 
             // Pop validation error scope and capture the exact error
             if (captureGpuError) {

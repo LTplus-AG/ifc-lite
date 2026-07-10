@@ -3353,6 +3353,7 @@
     "HatchPatternId: type",
     "Intersection: interface",
     "LightingEnvironment: interface",
+    "MIN_EVICTION_AGE_FRAMES: const",
     "MagneticSnapResult: interface",
     "Mat4: interface",
     "Material: interface",
@@ -3387,6 +3388,7 @@
     "RenderOptions: interface",
     "RenderPipeline: class",
     "Renderer: class",
+    "ResidencyShell: interface",
     "ResidentGpuBytes: interface",
     "ResolvedEnvironment: type",
     "Scene: class",
@@ -3428,6 +3430,7 @@
     "projectedAabbRadiusPx: function",
     "resolveContributionThresholdPx: function",
     "resolveEnvironment: function",
+    "selectEvictions: function",
     "sumResidentGpuBytes: function"
   ],
   "@ifc-lite/sandbox": [

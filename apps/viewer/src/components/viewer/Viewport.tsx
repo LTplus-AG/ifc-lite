@@ -31,6 +31,7 @@ import { useLatestRef } from '../../hooks/useLatestRef.js';
 import { CLASH_COLOR_OVERLAP } from '@/lib/clash/clash-colors';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
 import { getSpatialChunkingConfig } from '../../utils/spatialChunkConfig.js';
+import { getGpuResidencyBudgetBytes } from '../../utils/gpuBudgetConfig.js';
 import {
   getEntityBounds,
   getThemeClearColor,
@@ -723,6 +724,14 @@ export function Viewport({
       if (chunking) {
         renderer.getScene().setSpatialChunking(chunking);
         console.log(`[Viewport] spatial chunk bucketing on (cellSize=${chunking.cellSize}m)`);
+      }
+      // GPU residency budget (issue #1682 phase 3a) — session knob, off by
+      // default. Evicts least-recently-drawn chunk batches over the budget;
+      // the animation loop pumps the on-demand rebuilds.
+      const gpuBudget = getGpuResidencyBudgetBytes();
+      if (gpuBudget !== null) {
+        renderer.getScene().setGpuResidencyBudget(gpuBudget);
+        console.log(`[Viewport] GPU residency budget on (${(gpuBudget / 1048576).toFixed(0)}MB)`);
       }
       // Read-only debug/e2e hook (same convention as __ifc_lite_viewer_store__):
       // live frame stats + resident GPU bytes for Playwright assertions and

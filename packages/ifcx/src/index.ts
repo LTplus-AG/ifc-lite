@@ -10,6 +10,7 @@
  */
 
 import type { IfcxFile, ComposedNode } from './types.js';
+import { ATTR } from './types.js';
 import { composeIfcx, findRoots } from './composition.js';
 import { extractEntities } from './entity-extractor.js';
 import { extractProperties, isQuantityProperty } from './property-extractor.js';
@@ -212,7 +213,9 @@ export async function parseIfcx(
 
 /**
  * Build relationship graph from composed nodes.
- * In IFCX, relationships are implicit in the children structure.
+ * In IFCX, relationships are implicit in the children structure, except for
+ * system membership which rides the `bsi::ifc::system::partofsystem`
+ * attribute (see {@link collectRefs}).
  */
 function buildRelationships(
   composed: Map<string, ComposedNode>,
@@ -233,9 +236,39 @@ function buildRelationships(
         builder.addEdge(parentId, childId, relType, relId++);
       }
     }
+
+    // IFC5 system membership: `bsi::ifc::system::partofsystem` sits on the
+    // MEMBER node and refs the IfcSystem-family node. Emit the edge in STEP
+    // direction (source = group, so 'forward' from the group yields its
+    // members) so extractGroupMembersOnDemand / the viewer's Groups tab read
+    // IFCX stores exactly like STEP ones (#1622).
+    const partOfSystem = node.attributes.get(ATTR.PART_OF_SYSTEM);
+    if (partOfSystem !== undefined) {
+      for (const ref of collectRefs(partOfSystem)) {
+        const groupId = pathToId.get(ref);
+        if (groupId !== undefined) {
+          builder.addEdge(groupId, parentId, RelationshipType.AssignsToGroup, relId++);
+        }
+      }
+    }
   }
 
   return builder.build();
+}
+
+/**
+ * Collect the `ref` targets of a relationship-valued IFCX attribute. The
+ * buildingSMART samples author these as an array of `{ ref: "<path>" }`
+ * objects; tolerate a single bare object too. Anything else yields [].
+ */
+function collectRefs(value: unknown): string[] {
+  const items = Array.isArray(value) ? value : [value];
+  const refs: string[] = [];
+  for (const item of items) {
+    const ref = (item as { ref?: unknown } | null)?.ref;
+    if (typeof ref === 'string' && ref.length > 0) refs.push(ref);
+  }
+  return refs;
 }
 
 /**

@@ -122,6 +122,12 @@ export const ATTR = {
 
   // IFC Relationships (evolving)
   SPACE_BOUNDARY: 'bsi::ifc::spaceBoundary',
+
+  // IFC5 system membership (bsi::ifc::system schema): sits on the MEMBER
+  // node as `[{ ref }]` pointing at the IfcSystem-family node — the ECS
+  // successor of IfcRelAssignsToGroup (see the buildingSMART
+  // Domestic_Hot_Water sample).
+  PART_OF_SYSTEM: 'bsi::ifc::system::partofsystem',
 } as const;
 
 // ============================================================================

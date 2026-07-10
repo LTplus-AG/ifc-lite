@@ -1133,13 +1133,33 @@ export function buildGroupTree(
   const processDataStore = (dataStore: IfcDataStore, modelId: string) => {
     const byType = dataStore.entityIndex?.byType;
     const entities = dataStore.entities;
-    if (!byType || !entities) return;
+    if (!entities) return;
+
+    // IFCX ingest builds `entityIndex` permanently EMPTY (there are no STEP
+    // byte spans to index — see buildIfcxDataStore), so an empty byType must
+    // not read as "no groups": fall back to ONE scan of the EntityTable's
+    // type-name column, restricted to the group classes (the scope-chips
+    // pattern, #1662). STEP stores keep the O(1) index path untouched.
+    let fallbackByType: Map<string, number[]> | null = null;
+    if (!byType || byType.size === 0) {
+      fallbackByType = new Map();
+      const wanted = new Set<string>(GROUP_ENTITY_TYPES.map((t) => t.toUpperCase()));
+      for (let i = 0; i < entities.count; i++) {
+        const expressId = entities.expressId[i];
+        const upper = entities.getTypeName(expressId).toUpperCase();
+        if (!wanted.has(upper)) continue;
+        const bucket = fallbackByType.get(upper);
+        if (bucket) bucket.push(expressId);
+        else fallbackByType.set(upper, [expressId]);
+      }
+      if (fallbackByType.size === 0) return;
+    }
     const toGlobal = (expressId: number) => resolveTreeGlobalId(modelId, expressId, models);
 
     for (let rank = 0; rank < GROUP_ENTITY_TYPES.length; rank++) {
       const typeName = GROUP_ENTITY_TYPES[rank];
       if (!groupMatchesSubFilter(typeName, subFilter)) continue;
-      const groupIds = byType.get(typeName.toUpperCase());
+      const groupIds = byType?.get(typeName.toUpperCase()) ?? fallbackByType?.get(typeName.toUpperCase());
       if (!groupIds || groupIds.length === 0) continue;
 
       for (const groupId of groupIds) {
@@ -1209,8 +1229,15 @@ export function buildGroupTree(
   };
 
   if (models.size > 0) {
+    // Federated IFCX layers all share ONE composed data store (each overlay
+    // is registered as a "model" for the Models panel) — process each
+    // distinct store once or every group row would repeat per layer.
+    const processed = new Set<IfcDataStore>();
     for (const [modelId, model] of models) {
-      if (model.ifcDataStore) processDataStore(model.ifcDataStore, modelId);
+      const store = model.ifcDataStore;
+      if (!store || processed.has(store)) continue;
+      processed.add(store);
+      processDataStore(store, modelId);
     }
   } else if (ifcDataStore) {
     processDataStore(ifcDataStore, 'legacy');

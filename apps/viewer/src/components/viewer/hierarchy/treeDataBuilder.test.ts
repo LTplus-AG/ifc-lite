@@ -4,7 +4,15 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { IfcTypeEnum, RelationshipType, type SpatialHierarchy, type SpatialNode } from '@ifc-lite/data';
+import {
+  EntityTableBuilder,
+  IfcTypeEnum,
+  RelationshipGraphBuilder,
+  RelationshipType,
+  StringTable,
+  type SpatialHierarchy,
+  type SpatialNode,
+} from '@ifc-lite/data';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore, type FederatedModel } from '@/store';
 import {
@@ -984,5 +992,101 @@ describe('buildGroupTree (#1622)', () => {
     assert.deepStrictEqual(order, [
       'IfcDistributionSystem', 'IfcDistributionCircuit', 'IfcZone', 'IfcGroup',
     ]);
+  });
+});
+
+// ============================================================================
+// Groups tab — IFCX-shaped stores (#1622 IFCX follow-up)
+// ============================================================================
+
+/**
+ * An IFCX-ingested store (see buildIfcxDataStore / the federated path): a REAL
+ * populated EntityTable + RelationshipGraph, but `entityIndex.byId` and
+ * `.byType` permanently EMPTY — there are no STEP byte spans to index. The
+ * Groups tab must fall back to the entity table for both group enumeration
+ * and member existence/type resolution.
+ *
+ *  - IfcDistributionSystem #1 "Water Supply": pipes #2/#3 (geometry).
+ *  - IfcGroup #10 "Misc": pipe #2. IfcGroup has NO IfcTypeEnum member, so this
+ *    exercises the rawTypeName fallback inside the type-column scan.
+ */
+function createIfcxShapedDataStore(): IfcDataStore {
+  const strings = new StringTable();
+  const builder = new EntityTableBuilder(8, strings);
+  // add(expressId, type, globalId, name, description, objectType, hasGeometry, isType)
+  builder.add(1, 'IfcDistributionSystem', 'path-system', 'Water Supply', '', '', false, false);
+  builder.add(2, 'IfcPipeSegment', 'path-pipe-1', 'Pipe 1', '', '', true, false);
+  builder.add(3, 'IfcPipeSegment', 'path-pipe-2', 'Pipe 2', '', '', true, false);
+  builder.add(10, 'IfcGroup', 'path-group', 'Misc', '', '', false, false);
+  const entities = builder.build();
+
+  const relBuilder = new RelationshipGraphBuilder();
+  relBuilder.addEdge(1, 2, RelationshipType.AssignsToGroup, 1);
+  relBuilder.addEdge(1, 3, RelationshipType.AssignsToGroup, 2);
+  relBuilder.addEdge(10, 2, RelationshipType.AssignsToGroup, 3);
+
+  return {
+    entityIndex: { byId: new Map(), byType: new Map() },
+    entities,
+    relationships: relBuilder.build(),
+  } as unknown as IfcDataStore;
+}
+
+describe('buildGroupTree — IFCX-shaped store (empty entityIndex)', () => {
+  it('lists groups with real members despite empty byType/byId', () => {
+    const ds = createIfcxShapedDataStore();
+    const nodes = buildGroupTree(
+      new Map(), ds, new Set(['group-legacy-1']), false, new Set([2, 3]),
+    );
+
+    const system = nodes.find((n) => n.type === 'group' && n.ifcType === 'IfcDistributionSystem');
+    assert.ok(system, 'the system surfaces via the entity-table fallback');
+    assert.strictEqual(system.name, 'Water Supply');
+    assert.strictEqual(system.elementCount, 2);
+    assert.deepStrictEqual([...system.globalIds].sort(), [2, 3], 'isolation ids carry member geometry');
+
+    const memberRows = nodes.filter((n) => n.type === 'group-member' && n.id.startsWith('groupmember-legacy-1-'));
+    assert.strictEqual(memberRows.length, 2);
+    assert.deepStrictEqual(
+      memberRows.map((n) => n.name).sort(),
+      ['Pipe 1', 'Pipe 2'],
+      'member rows resolve name/type from the entity table, not byId',
+    );
+    assert.ok(memberRows.every((n) => n.ifcType === 'IfcPipeSegment'));
+  });
+
+  it('surfaces a class with no IfcTypeEnum member (IfcGroup) via rawTypeName', () => {
+    const ds = createIfcxShapedDataStore();
+    const nodes = buildGroupTree(new Map(), ds, new Set(), false, new Set([2, 3]));
+    const group = nodes.find((n) => n.type === 'group' && n.ifcType === 'IfcGroup');
+    assert.ok(group, 'IfcGroup (enum-less) surfaces via the raw type-name scan');
+    assert.strictEqual(group.name, 'Misc');
+    assert.strictEqual(group.elementCount, 1);
+  });
+
+  it('returns no group rows when the model has no group entities', () => {
+    const strings = new StringTable();
+    const builder = new EntityTableBuilder(2, strings);
+    builder.add(1, 'IfcWall', 'path-wall', 'Wall', '', '', true, false);
+    const ds = {
+      entityIndex: { byId: new Map(), byType: new Map() },
+      entities: builder.build(),
+      relationships: new RelationshipGraphBuilder().build(),
+    } as unknown as IfcDataStore;
+    assert.deepStrictEqual(buildGroupTree(new Map(), ds, new Set(), false, new Set([1])), []);
+  });
+
+  it('processes a data store shared by several federated layers exactly once', () => {
+    // Federated IFCX layers share idOffset 0 (one composed expressId space),
+    // so globalId === expressId; keep the store's model registry empty.
+    useViewerStore.setState({ models: new Map() });
+    const ds = createIfcxShapedDataStore();
+    const models = new Map<string, FederatedModel>([
+      ['layer-base', { id: 'layer-base', name: 'base.ifcx', ifcDataStore: ds, idOffset: 0, maxExpressId: 0 } as unknown as FederatedModel],
+      ['layer-overlay', { id: 'layer-overlay', name: 'overlay.ifcx', ifcDataStore: ds, idOffset: 0, maxExpressId: 0 } as unknown as FederatedModel],
+    ]);
+    const nodes = buildGroupTree(models, null, new Set(), true, new Set([2, 3]));
+    const systems = nodes.filter((n) => n.type === 'group' && n.ifcType === 'IfcDistributionSystem');
+    assert.strictEqual(systems.length, 1, 'the shared store must not duplicate group rows per layer');
   });
 });

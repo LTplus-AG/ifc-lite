@@ -3334,6 +3334,8 @@
     "Camera: class",
     "ClipBox: interface",
     "ContactShadingQuality: type",
+    "ContributionCullOptions: interface",
+    "CullCameraState: interface",
     "CutPolygon2D: interface",
     "DEFAULT_CAP_STYLE: const",
     "DecodedPickSample: interface",
@@ -3343,6 +3345,7 @@
     "FederationRegistry: class",
     "FitPolicy: interface",
     "FitPolicyKind: type",
+    "FrameStats: interface",
     "GlobalIdLookup: interface",
     "HATCH_PATTERN_IDS: const",
     "HatchPatternId: type",
@@ -3382,6 +3385,7 @@
     "RenderOptions: interface",
     "RenderPipeline: class",
     "Renderer: class",
+    "ResidentGpuBytes: interface",
     "ResolvedEnvironment: type",
     "Scene: class",
     "Section2DOverlayCapStyle: interface",
@@ -3416,7 +3420,10 @@
     "packEnvironmentUniforms: function",
     "pickFitPolicy: function",
     "planeBasis: function",
-    "resolveEnvironment: function"
+    "projectedAabbRadiusPx: function",
+    "resolveContributionThresholdPx: function",
+    "resolveEnvironment: function",
+    "sumResidentGpuBytes: function"
   ],
   "@ifc-lite/sandbox": [
     "DEFAULT_LIMITS: const",

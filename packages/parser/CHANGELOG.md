@@ -1,5 +1,17 @@
 # @ifc-lite/parser
 
+## 3.8.4
+
+### Patch Changes
+
+- [#1700](https://github.com/LTplus-AG/ifc-lite/pull/1700) [`422d47d`](https://github.com/LTplus-AG/ifc-lite/commit/422d47dde37c7168ce4a547fc0a4f966649c1762) Thanks [@louistrue](https://github.com/louistrue)! - Harden the immediate-Container spatial level ([#1591](https://github.com/LTplus-AG/ifc-lite/issues/1591) follow-up):
+
+  - The spatial hierarchy now records an aggregated-descendant containment walk for ANY spatial container node, not just storeys, via a new optional `SpatialHierarchy.elementToContainer` map (also carried across data-store transport). A part nested through an IfcElementAssembly under an IfcBridgePart / IfcRoadPart / IfcSpatialZone now resolves that container instead of a blank cell. Storey-only `elementToStorey` semantics are unchanged.
+  - The list engine matches the spatial level string case-insensitively, so a hand-edited / imported list carrying `container` resolves the Container level rather than silently falling back to the storey name. An empty or unrecognised level still defaults to Storey.
+
+- Updated dependencies [[`422d47d`](https://github.com/LTplus-AG/ifc-lite/commit/422d47dde37c7168ce4a547fc0a4f966649c1762)]:
+  - @ifc-lite/data@2.5.3
+
 ## 3.8.3
 
 ### Patch Changes

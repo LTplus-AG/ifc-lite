@@ -40,10 +40,26 @@ function useProjectedLatLon(
   effective: UsableEffectiveGeoref | null,
 ): LatLon | null {
   const [latLon, setLatLon] = useState<LatLon | null>(null);
-  const key = projected
+  const pointKey = projected
     ? `${Math.round(projected.eastings * 1000)}:${Math.round(projected.northings * 1000)}`
     : '';
-  const crsName = effective?.projectedCRS.name ?? '';
+  // Every input reprojectPointToLatLon reads must key the effect, or editing a
+  // georef field that changes the projection while leaving the CRS name and
+  // rounded E/N unchanged (MapUnit, MapZone, projection metadata, length unit)
+  // would leave lat/lon stale against a live E/N/H readout (issue #1657 review).
+  // resolveProjection reads name/mapZone/description/mapProjection;
+  // reprojectPointToLatLon also reads mapUnitScale + lengthUnitScale.
+  const crs = effective?.projectedCRS;
+  const georefKey = crs
+    ? [
+        crs.name,
+        crs.mapZone ?? '',
+        crs.description ?? '',
+        crs.mapProjection ?? '',
+        crs.mapUnitScale ?? '',
+        effective?.lengthUnitScale ?? '',
+      ].join('|')
+    : '';
   useEffect(() => {
     if (!projected || !effective) {
       setLatLon(null);
@@ -61,8 +77,10 @@ function useProjectedLatLon(
     return () => {
       cancelled = true;
     };
+    // Effect keyed by primitive georefKey/pointKey so it recomputes when any
+    // reprojection input changes without refetching on unrelated re-renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, crsName]);
+  }, [pointKey, georefKey]);
   return latLon;
 }
 

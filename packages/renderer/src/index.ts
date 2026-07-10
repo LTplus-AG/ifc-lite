@@ -57,6 +57,10 @@ export type { SnapTarget, SnapOptions, EdgeLockInput, MagneticSnapResult } from 
 // Extracted manager classes
 export { PickingManager } from './picking-manager.js';
 export type { PointPickProvider } from './picking-manager.js';
+export { resolveContributionThresholdPx, projectedAabbRadiusPx } from './contribution-cull.js';
+export type { ContributionCullOptions, CullCameraState } from './contribution-cull.js';
+export { sumResidentGpuBytes } from './render-stats.js';
+export type { FrameStats, ResidentGpuBytes } from './render-stats.js';
 export { RaycastEngine } from './raycast-engine.js';
 export { PointPicker, decodePickSample } from './point-picker.js';
 export type { PointPickNode, DecodedPickSample } from './point-picker.js';
@@ -113,6 +117,8 @@ import { PickingManager } from './picking-manager.js';
 import { RaycastEngine } from './raycast-engine.js';
 import { PostProcessor } from './post-processor.js';
 import { InteractionEffectsGovernor } from './interaction-effects-governor.js';
+import { resolveContributionThresholdPx, projectedAabbRadiusPx, type CullCameraState } from './contribution-cull.js';
+import type { FrameStats } from './render-stats.js';
 import { EdlPass } from './edl-pass.js';
 import { SkyPass } from './sky-pass.js';
 import { skyShaderSource } from './shaders/sky.wgsl.js';
@@ -231,6 +237,8 @@ export class Renderer {
     // Diagnostic counters for mobile debugging
     private _renderCallCount: number = 0;
     private _renderSkipCount: number = 0;
+    /** Snapshot of the last completed render() — see getFrameStats(). */
+    private _lastFrameStats: FrameStats | null = null;
     private _renderErrorCount: number = 0;
     private _lastRenderError: string = '';
 
@@ -1026,6 +1034,16 @@ export class Renderer {
         };
     }
 
+    /**
+     * Statistics of the last COMPLETED render() call (draw calls issued,
+     * batches drawn / frustum-culled / contribution-culled), or null before
+     * the first frame. Pair with `getScene().getResidentGpuBytes()` for the
+     * load-complete telemetry snapshot (issue #1682 observability).
+     */
+    getFrameStats(): FrameStats | null {
+        return this._lastFrameStats;
+    }
+
     render(options: RenderOptions = {}): void {
         this._renderCallCount++;
         if (!this.device.isInitialized() || !this.pipeline) {
@@ -1072,6 +1090,12 @@ export class Renderer {
 
         const device = this.device.getDevice();
         const viewProj = this.camera.getViewProjMatrix().m;
+        // Frame stats (issue #1682): geometry draw calls + per-frame cull
+        // outcomes, snapshotted into _lastFrameStats before queue.submit.
+        let frameDrawCalls = 0;
+        let frameBatchesDrawn = 0;
+        let frameBatchesFrustumCulled = 0;
+        let frameBatchesContributionCulled = 0;
         const visualEnhancement = this.resolveVisualEnhancement(options.visualEnhancement);
         // Post effects during interaction (orbit/pan/zoom) are governed
         // adaptively: they stay on while the interactive frame cadence holds
@@ -1683,6 +1707,22 @@ export class Renderer {
                 // This is the primary performance optimization for large models (200K+ meshes)
                 const frustum = FrustumUtils.fromViewProjMatrix(viewProj);
 
+                // Contribution culling (issue #1682): skip batches whose world
+                // AABB projects below a pixel threshold. Disabled unless the
+                // caller opts in via options.contributionCull; the threshold is
+                // raised while interacting (quality matters least mid-gesture).
+                const contribThresholdPx = resolveContributionThresholdPx(
+                    options.contributionCull,
+                    interacting,
+                );
+                const cullCam: CullCameraState | null = contribThresholdPx > 0 ? {
+                    eye: this.camera.getPosition(),
+                    mode: this.camera.getProjectionMode(),
+                    fovYRadians: this.camera.getFOV(),
+                    orthoHalfHeight: this.camera.getOrthoSize(),
+                    viewportHeightPx: this.canvas.height,
+                } : null;
+
                 // Pre-compute visibility for each batch (only when filtering is active)
                 // A batch is visible if ANY of its elements are visible
                 // A batch is fully visible if ALL of its elements are visible
@@ -1777,7 +1817,19 @@ export class Renderer {
                     if (batch.bounds) {
                         const batchAABB = { min: batch.bounds.min, max: batch.bounds.max };
                         if (!FrustumUtils.isAABBVisible(frustum, batchAABB)) {
+                            frameBatchesFrustumCulled++;
                             continue; // Entire batch is off-screen
+                        }
+                        // Contribution cull: the whole batch projects below the
+                        // pixel threshold — drawing it could change at most a
+                        // (sub-)pixel. Selected entities still highlight: the
+                        // selection pass draws per-mesh, independent of batches.
+                        if (
+                            cullCam &&
+                            projectedAabbRadiusPx(batch.bounds.min, batch.bounds.max, cullCam) < contribThresholdPx
+                        ) {
+                            frameBatchesContributionCulled++;
+                            continue;
                         }
                     }
 
@@ -1892,6 +1944,8 @@ export class Renderer {
                     pass.setVertexBuffer(0, batch.vertexBuffer);
                     pass.setIndexBuffer(batch.indexBuffer, 'uint32');
                     pass.drawIndexed(batch.indexCount);
+                    frameDrawCalls++;
+                    frameBatchesDrawn++;
                 };
 
                 // Render opaque batches with the opaque (double-sided) pipeline.
@@ -1931,6 +1985,7 @@ export class Renderer {
                         pass.setVertexBuffer(1, it.instanceBuffer);
                         pass.setIndexBuffer(it.indexBuffer, 'uint32');
                         pass.drawIndexed(it.indexCount, it.instanceCount);
+                        frameDrawCalls++;
                     }
                     pass.setPipeline(this.pipeline.getPipeline());
                     // The TRANSPARENT instanced sub-pass is drawn later, alongside the
@@ -1982,6 +2037,7 @@ export class Renderer {
                         pass.setVertexBuffer(0, tm.vertexBuffer);
                         pass.setIndexBuffer(tm.indexBuffer, 'uint32');
                         pass.drawIndexed(tm.indexCount);
+                        frameDrawCalls++;
                     }
                     // Restore the opaque pipeline for the passes that follow.
                     pass.setPipeline(this.pipeline.getPipeline());
@@ -2131,6 +2187,7 @@ export class Renderer {
                         pass.setVertexBuffer(1, it.instanceBuffer);
                         pass.setIndexBuffer(it.indexBuffer, 'uint32');
                         pass.drawIndexed(it.indexCount, it.instanceCount);
+                        frameDrawCalls++;
                     }
                     pass.setPipeline(this.pipeline.getPipeline());
                 }
@@ -2180,6 +2237,7 @@ export class Renderer {
                         pass.setVertexBuffer(0, mesh.vertexBuffer);
                         pass.setIndexBuffer(mesh.indexBuffer, 'uint32');
                         pass.drawIndexed(mesh.indexCount, 1, 0, 0, 0);
+                        frameDrawCalls++;
                     }
                 }
 
@@ -2238,6 +2296,7 @@ export class Renderer {
                     pass.setVertexBuffer(0, mesh.vertexBuffer);
                     pass.setIndexBuffer(mesh.indexBuffer, 'uint32');
                     pass.drawIndexed(mesh.indexCount, 1, 0, 0, 0);
+                    frameDrawCalls++;
                 }
             } else {
                 // Fallback: render individual meshes (only when no batches exist)
@@ -2251,6 +2310,7 @@ export class Renderer {
                     pass.setVertexBuffer(0, mesh.vertexBuffer);
                     pass.setIndexBuffer(mesh.indexBuffer, 'uint32');
                     pass.drawIndexed(mesh.indexCount, 1, 0, 0, 0);
+                    frameDrawCalls++;
                 }
 
                 // Render transparent meshes with transparent pipeline (alpha blending)
@@ -2265,6 +2325,7 @@ export class Renderer {
                         pass.setVertexBuffer(0, mesh.vertexBuffer);
                         pass.setIndexBuffer(mesh.indexBuffer, 'uint32');
                         pass.drawIndexed(mesh.indexCount, 1, 0, 0, 0);
+                        frameDrawCalls++;
                     }
                 }
             }
@@ -2461,6 +2522,14 @@ export class Renderer {
             }
 
             device.queue.submit([encoder.finish()]);
+
+            this._lastFrameStats = {
+                drawCalls: frameDrawCalls,
+                batchesDrawn: frameBatchesDrawn,
+                batchesFrustumCulled: frameBatchesFrustumCulled,
+                batchesContributionCulled: frameBatchesContributionCulled,
+                timestamp: performance.now(),
+            };
 
             // Pop validation error scope and capture the exact error
             if (captureGpuError) {

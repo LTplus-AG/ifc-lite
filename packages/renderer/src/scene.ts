@@ -19,6 +19,7 @@ import {
   rayIntersectsBox,
 } from './scene-raycaster.js';
 import { mergeGeometry, splitMeshDataForBufferLimit, colorSaltByte, packEntityLane } from './scene-geometry.js';
+import { sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
 import { OPAQUE_ALPHA_CUTOFF } from './overlay-routing.js';
 import type { DecodedInstancedShard } from '@ifc-lite/geometry';
 import {
@@ -2059,6 +2060,26 @@ export class Scene {
   /** Textured meshes (#961) for the renderer's dedicated textured sub-pass. */
   getTexturedMeshes(): readonly TexturedMesh[] {
     return this.texturedMeshes;
+  }
+
+  /**
+   * GPU bytes currently held by the scene's mesh collections (issue #1682
+   * observability). Sums actual `GPUBuffer.size` values across colour batches
+   * (streaming fragments are members of `batchedMeshes`, so they are counted
+   * exactly once), cached partial sub-batches, hydrated individual meshes,
+   * textured meshes (plus a 4 B/texel texture estimate) and instanced
+   * templates. Instanced templates are counted even while hidden in the Types
+   * view: hiding does not free their buffers. O(collections) walk with no GPU
+   * calls, intended for on-demand telemetry, not per-frame use.
+   */
+  getResidentGpuBytes(): ResidentGpuBytes {
+    return sumResidentGpuBytes({
+      batches: this.batchedMeshes,
+      partialBatches: this.partialBatchCache.values(),
+      meshes: this.meshes,
+      textured: this.texturedMeshes,
+      instanced: this.instancedTemplates,
+    });
   }
 
   /**

@@ -34,6 +34,11 @@ export interface ViewerBenchmarkMetrics {
   // New: Actual render time
   renderCompleteMs: number | null;
   canvasHasContent: boolean;
+  // Steady-state render stats (issue #1682): parsed from the app's
+  // "[ifc-lite] render stats: …" line, emitted after the scene settles.
+  drawCalls: number | null;
+  residentGpuMB: number | null;
+  batchesContributionCulled: number | null;
 }
 
 export class ViewerBenchmarkPage {
@@ -126,6 +131,23 @@ export class ViewerBenchmarkPage {
         console.log(`[Benchmark] visibility filter: ${visFilterEnv}`);
       } catch (e) {
         console.warn(`[Benchmark] invalid VIEWER_BENCHMARK_VISIBILITY_FILTER: ${visFilterEnv}`);
+      }
+    }
+
+    // Optional contribution-culling override for A/B runs (issue #1682).
+    // Set VIEWER_BENCHMARK_CONTRIB_CULL to "0" (disable), a number (rest px),
+    // or JSON like {"pixelRadius":1,"interactingPixelRadius":3}. Unset ⇒ the
+    // app default (see apps/viewer/src/utils/renderCullConfig.ts).
+    const contribCullEnv = process.env.VIEWER_BENCHMARK_CONTRIB_CULL;
+    if (contribCullEnv) {
+      try {
+        const cfg = JSON.parse(contribCullEnv);
+        await this.page.addInitScript((c) => {
+          (globalThis as unknown as { __IFC_LITE_CONTRIB_CULL?: unknown }).__IFC_LITE_CONTRIB_CULL = c;
+        }, cfg);
+        console.log(`[Benchmark] contribution cull override: ${contribCullEnv}`);
+      } catch {
+        console.warn(`[Benchmark] invalid VIEWER_BENCHMARK_CONTRIB_CULL: ${contribCullEnv}`);
       }
     }
 
@@ -261,6 +283,18 @@ export class ViewerBenchmarkPage {
     // totalWallClockMs log).
     if (renderCompleteTime && this.loadEndTime) {
       this.metrics.renderCompleteMs = this.loadEndTime - this.loadStartTime;
+    }
+
+    // Best-effort wait for the steady-state render-stats line — it fires
+    // after the scene settles (queue drain + fragment finalize), which is
+    // shortly after the final load summary on the CI models. Non-fatal: the
+    // stats metrics stay null when it doesn't arrive in time.
+    const statsDeadline = Date.now() + 30000;
+    while (
+      Date.now() < statsDeadline &&
+      !this.consoleLogs.some((log) => log.includes('[ifc-lite] render stats:'))
+    ) {
+      await this.page.waitForTimeout(250);
     }
 
     // Parse metrics from console logs
@@ -438,6 +472,19 @@ export class ViewerBenchmarkPage {
       this.metrics.totalMeshes = this.metrics.totalMeshes ?? parseInt(finalSummaryMatch[2].replace(/,/g, ''), 10);
       this.metrics.totalWallClockMs = Math.round(parseFloat(finalSummaryMatch[3]) * 1000);
     }
+
+    // Steady-state render stats (issue #1682), emitted post-settle by
+    // apps/viewer/src/utils/renderStatsReport.ts — keep formats in sync:
+    //   [ifc-lite] render stats: 143 draw calls, 512.3 MB GPU resident
+    //   (140 batches drawn, 2 frustum-culled, 1 contribution-culled)
+    const renderStatsMatch = logs.match(
+      /\[ifc-lite\] render stats: (\d+) draw calls, ([\d.]+) MB GPU resident \((\d+) batches drawn, (\d+) frustum-culled, (\d+) contribution-culled\)/
+    );
+    if (renderStatsMatch) {
+      this.metrics.drawCalls = parseInt(renderStatsMatch[1], 10);
+      this.metrics.residentGpuMB = parseFloat(renderStatsMatch[2]);
+      this.metrics.batchesContributionCulled = parseInt(renderStatsMatch[5], 10);
+    }
   }
 
   getMetrics(): ViewerBenchmarkMetrics {
@@ -467,6 +514,9 @@ export class ViewerBenchmarkPage {
       fileSizeMB: this.metrics.fileSizeMB ?? null,
       renderCompleteMs: this.metrics.renderCompleteMs ?? null,
       canvasHasContent: this.metrics.canvasHasContent ?? false,
+      drawCalls: this.metrics.drawCalls ?? null,
+      residentGpuMB: this.metrics.residentGpuMB ?? null,
+      batchesContributionCulled: this.metrics.batchesContributionCulled ?? null,
     };
   }
 

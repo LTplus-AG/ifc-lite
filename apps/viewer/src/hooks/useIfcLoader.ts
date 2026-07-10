@@ -56,6 +56,7 @@ import { getGlobalRenderer } from './useBCF.js';
 import { extractModelGeoref, alignGeometryToReference, findReferenceGeorefModel } from './ingest/federationAlign.js';
 import { toast } from '../components/ui/toast.js';
 import { posthog } from '../lib/analytics.js';
+import { reportRenderStats } from '../utils/renderStatsReport.js';
 import { classifyLoadError, formatLoadError } from '../lib/load-errors.js';
 
 /**
@@ -731,6 +732,9 @@ export function useIfcLoader() {
               });
               console.log(`[useIfc] TOTAL LOAD TIME (from cache): ${(performance.now() - totalStartTime).toFixed(0)}ms`);
               posthog.capture('ifc_model_loaded', { format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'cache', total_elapsed_ms: Math.round(performance.now() - totalStartTime) });
+              // Steady-state draw-call/GPU telemetry — same reporter as the
+              // fresh path so warm (cache) loads are comparable (issue #1682).
+              void reportRenderStats({ fileName: file.name, fileSizeMB });
               setLoading(false);
               // Belt-and-suspenders for the source-decoupled tier: revalidate the
               // TRUE full-file hash off the main thread and, if the source changed
@@ -1485,6 +1489,11 @@ export function useIfcLoader() {
         first_visible_geometry_ms: firstVisibleGeometryMs != null ? Math.round(firstVisibleGeometryMs) : undefined,
         stream_complete_ms: streamCompleteMs != null ? Math.round(streamCompleteMs) : undefined,
       });
+      // Steady-state draw-call/GPU-memory telemetry (issue #1682) — fired
+      // separately from ifc_model_loaded because it must wait for the scene
+      // to settle (queue drain + fragment finalize), which happens after this
+      // summary on large models. Fire-and-forget by design.
+      void reportRenderStats({ fileName: file.name, fileSizeMB });
       setLoading(false);
       setGeometryStreamingActive(false);
       // Normalize progress to a terminal state, mirroring the loading /

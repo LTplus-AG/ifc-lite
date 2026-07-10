@@ -265,6 +265,16 @@ export interface RenderOptions {
   // the display refresh — a deliberately throttled 33ms cadence is not a
   // GPU miss.
   interactionFrameIntervalMs?: number;
+  /**
+   * Contribution culling (issue #1682): skip colour batches whose world AABB
+   * projects below `pixelRadius` device pixels (raised to
+   * `interactingPixelRadius` while the camera moves). Applies to the batched
+   * draw path only — instanced templates, textured meshes and the no-batches
+   * fallback are never contribution-culled. Absent or `pixelRadius <= 0`
+   * disables it (the default), so snapshot/export renders that omit the
+   * option stay exhaustive.
+   */
+  contributionCull?: import('./contribution-cull.js').ContributionCullOptions;
 }
 
 /**

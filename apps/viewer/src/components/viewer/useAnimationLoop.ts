@@ -21,6 +21,7 @@ import type { Renderer, VisualEnhancementOptions, LightingEnvironment } from '@i
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import type { SectionPlane } from '@/store';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
+import { getContributionCullConfig } from '../../utils/renderCullConfig.js';
 
 export interface UseAnimationLoopParams {
   canvasRef: RefObject<HTMLCanvasElement | null>;
@@ -108,6 +109,11 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
     const camera = renderer.getCamera();
     const scene = renderer.getScene();
     let aborted = false;
+
+    // Contribution culling (issue #1682): resolved once per session — the
+    // knob is a load-time A/B switch, not a live setting. Only this loop
+    // passes it; snapshot renders (clash/IDS/BCF) stay exhaustive.
+    const contributionCull = getContributionCullConfig();
 
     let lastRotationUpdate = 0;
     let lastScaleUpdate = 0;
@@ -212,6 +218,7 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
           // Let the effects governor judge missed frames against the
           // intentional large-model throttle instead of display refresh.
           interactionFrameIntervalMs: continuousThrottleMs || undefined,
+          contributionCull,
           buildingRotation: coordinateInfoRef.current?.buildingRotation,
           sectionPlane: activeToolRef.current === 'section' ? {
             axis: sectionPlaneRef.current.axis,

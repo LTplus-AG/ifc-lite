@@ -24,8 +24,8 @@
     "codegen",
     "typescript"
   ],
-  "author": "",
-  "license": "MIT",
+  "author": "Louis True",
+  "license": "MPL-2.0",
   "dependencies": {
     "@ifc-lite/data": "workspace:^",
     "commander": "^15.0.0"
@@ -34,5 +34,15 @@
     "@types/node": "^26.1.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.9"
-  }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "homepage": "https://ltplus-ag.github.io/ifc-lite/",
+  "bugs": "https://github.com/LTplus-AG/ifc-lite/issues",
+  "files": [
+    "dist",
+    "schemas",
+    "README.md"
+  ]
 }

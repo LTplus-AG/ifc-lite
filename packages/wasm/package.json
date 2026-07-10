@@ -38,5 +38,11 @@
     "wasm",
     "webassembly",
     "aec"
-  ]
+  ],
+  "author": "Louis True",
+  "publishConfig": {
+    "access": "public"
+  },
+  "homepage": "https://ltplus-ag.github.io/ifc-lite/",
+  "bugs": "https://github.com/LTplus-AG/ifc-lite/issues"
 }

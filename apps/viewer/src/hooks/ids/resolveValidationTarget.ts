@@ -37,9 +37,11 @@ export type ResolveValidationTargetResult =
  *   is unknown or has no parsed data store, return an error rather than falling
  *   back — a silent fallback would validate the active model's data while the
  *   report claims to describe the picked (empty / mid-load) model.
- * - No target (active-model / legacy path): keep the existing fallback chain —
- *   active model, else first loaded, else legacy single-model — resolving the
- *   data store from that model, else the legacy store, else the first model.
+ * - No target (active-model / legacy path): every fallback branch returns a
+ *   COUPLED {modelId, dataStore} pair so the report label can never describe a
+ *   different model than the one actually validated. Order: active model (only
+ *   if it has a store), else the first loaded model that HAS a store, else the
+ *   legacy single-model store paired with the '__legacy__' sentinel.
  */
 export function resolveValidationTarget(
   input: ResolveValidationTargetInput,
@@ -57,18 +59,22 @@ export function resolveValidationTarget(
     return { modelId: targetModelId, dataStore: model.ifcDataStore };
   }
 
-  // No explicit target: active model, else first loaded, else legacy.
-  const modelId =
-    activeModelId
-    || (models.size > 0 ? Array.from(models.keys())[0] : '__legacy__');
-
-  const dataStore =
-    models.get(modelId)?.ifcDataStore
-    || legacyDataStore
-    || (models.size > 0 ? Array.from(models.values())[0]?.ifcDataStore ?? null : null);
-
-  if (!dataStore) {
-    return { error: 'No IFC model loaded' };
+  // No explicit target: active model, else first loaded WITH a store, else
+  // legacy. Each branch keeps modelId and dataStore coupled to the same model.
+  if (activeModelId) {
+    const dataStore = models.get(activeModelId)?.ifcDataStore;
+    if (dataStore) return { modelId: activeModelId, dataStore };
   }
-  return { modelId, dataStore };
+
+  for (const [modelId, model] of models) {
+    if (model.ifcDataStore) {
+      return { modelId, dataStore: model.ifcDataStore };
+    }
+  }
+
+  if (legacyDataStore) {
+    return { modelId: '__legacy__', dataStore: legacyDataStore };
+  }
+
+  return { error: 'No IFC model loaded' };
 }

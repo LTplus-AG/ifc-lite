@@ -179,6 +179,11 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
     const models = get().models;
     if (models.size <= 1 && models.has(modelId)) {
       cross.clearGeneratedSchedule?.();
+      // Removing the final model empties the federation. Any surviving report
+      // (e.g. one whose stored target is the '__legacy__' sentinel, which can
+      // never match a real model id above) now references nothing loaded, so
+      // drop it regardless of its stored target id.
+      cross.clearIdsValidationReport?.();
     }
 
     set((state) => {
@@ -207,6 +212,11 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
   },
 
   clearAllModels: () => {
+    // Full federation teardown: any IDS report now references an unloaded
+    // model, so drop it too (removeModel's per-model cleanup never runs here).
+    (get() as unknown as {
+      clearIdsValidationReport?: () => void;
+    }).clearIdsValidationReport?.();
     // Clear the federation registry
     federationRegistry.clear();
     return set({

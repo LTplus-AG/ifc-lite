@@ -102,7 +102,7 @@ describe('resolveValidationTarget (#1702 C1)', () => {
     assert.deepStrictEqual(result, { modelId: '__legacy__', dataStore: legacy });
   });
 
-  it('no target, active model missing its store, still falls back (behavior kept as-is)', () => {
+  it('no target, active model missing its store, falls back to legacy paired with __legacy__', () => {
     const legacy = store('legacy');
     const models = new Map([['m-a', model(null)]]);
     const result = resolveValidationTarget({
@@ -110,9 +110,27 @@ describe('resolveValidationTarget (#1702 C1)', () => {
       models,
       legacyDataStore: legacy,
     });
-    // Active model has no store; the no-target path is allowed to fall back to
-    // the legacy store (unchanged from the original inline logic).
-    assert.deepStrictEqual(result, { modelId: 'm-a', dataStore: legacy });
+    // Active model has no store and no other model does either; the no-target
+    // path falls back to the legacy store, but the modelId must stay coupled to
+    // that store (the '__legacy__' sentinel), never the active model's id.
+    assert.deepStrictEqual(result, { modelId: '__legacy__', dataStore: legacy });
+  });
+
+  it('no target, first model has no store, resolves to the second (coupled pair)', () => {
+    const b = store('b');
+    // Insertion order: m-a first (storeless), m-b second (loaded).
+    const models = new Map([
+      ['m-a', model(null)],
+      ['m-b', model(b)],
+    ]);
+    const result = resolveValidationTarget({
+      activeModelId: null,
+      models,
+      legacyDataStore: null,
+    });
+    // Must skip the storeless first entry and return the SECOND model with its
+    // own store, never erroring on the empty first entry.
+    assert.deepStrictEqual(result, { modelId: 'm-b', dataStore: b });
   });
 
   it('nothing loaded at all errors', () => {

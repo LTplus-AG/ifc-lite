@@ -742,6 +742,12 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
               <select
                 value={pendingModelId ?? report.modelInfo.modelId}
                 onChange={(e) => {
+                  // An active isolation (failed/passed/involved) pins
+                  // isolatedEntities to the OLD model's global ids. The new
+                  // report replaces idsIsolateMode but leaves those ids in
+                  // place, so the new target would look hidden. Clear the
+                  // isolation before validating the newly picked model.
+                  clearIsolation();
                   setPendingModelId(e.target.value);
                   void runValidation(e.target.value);
                 }}

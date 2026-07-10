@@ -174,6 +174,25 @@ pub type EntityIndex = FxHashMap<u32, (usize, usize)>;
 pub fn build_entity_index<T>(content: &T) -> EntityIndex;
 ```
 
+#### ColumnarEntityIndex (wasm workers)
+
+Wasm geometry workers keep the shared entity index as sorted `u32` columns
+(`ids` / `starts` / `lengths`) and look up by `binary_search` instead of
+materializing a per-worker `FxHashMap` (#1682). Native / server paths still
+use `EntityIndex`.
+
+```rust
+pub struct ColumnarEntityIndex { /* ids, starts, lengths */ }
+
+impl ColumnarEntityIndex {
+    pub fn from_columns(ids: &[u32], starts: &[u32], lengths: &[u32]) -> Self;
+    pub fn from_scan<T>(content: &T) -> Self;
+    pub fn from_hashmap(map: &EntityIndex) -> Self;
+    pub fn from_hashmap_consuming(map: EntityIndex) -> Self;
+    pub fn lookup(&self, id: u32) -> Option<(usize, usize)>;
+}
+```
+
 #### EntityDecoder
 
 ```rust
@@ -190,6 +209,8 @@ impl<'a> EntityDecoder<'a> {
     /// Create decoder with a pre-built index
     pub fn with_index<T>(content: &'a T, index: EntityIndex) -> Self;
     pub fn with_arc_index<T>(content: &'a T, index: Arc<EntityIndex>) -> Self;
+    /// Wasm path: attach a shared columnar index (binary-search lookup)
+    pub fn with_arc_columnar_index<T>(content: &'a T, index: Arc<ColumnarEntityIndex>) -> Self;
 
     /// Decode an entity by express id (cached)
     pub fn decode_by_id(&mut self, entity_id: u32) -> Result<DecodedEntity>;

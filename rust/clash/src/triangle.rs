@@ -4,20 +4,27 @@
 
 //! Triangle-triangle intersection (SAT) and minimum-distance routines.
 //!
-//! Faithful port of `packages/clash/src/math/triangle-intersect.ts` and
-//! `triangle-distance.ts`.
+//! [`tri_tri_intersect`] delegates to the Plato-generated
+//! `generated::plato::Vec3::TriTriIntersect` (from `tools/plato/clash_math.plato`).
+//! The minimum-distance routines ([`tri_tri_distance`], [`closest_pt_seg_seg`],
+//! [`closest_pt_point_triangle`]) stay hand-written here; they are a faithful
+//! port of `packages/clash/src/math/triangle-distance.ts` and consume the
+//! `vec3` helpers, which are themselves Plato-backed adapters.
 
-use crate::vec3::{add, cross, dist_sq, dot, scale, sub, Vec3};
+use crate::generated::plato::Vec3 as PlatoVec3;
+use crate::vec3::{add, dist_sq, dot, scale, sub, Vec3};
 
 const EPS: f64 = 1e-12;
 
 /// Exact triangle-triangle intersection via the Separating Axis Theorem.
 ///
 /// Tests the 2 face normals plus the up-to-9 edge-edge cross-product axes
-/// (axes whose squared length is `<= eps` are skipped). Returns `true` only
+/// (axes whose squared length is `<= 1e-12` are skipped). Returns `true` only
 /// when the triangle *interiors* overlap; bare touching (coincident
 /// faces/edges/vertices) reports `false`. The `<=` comparison makes exact
-/// contact count as separation (a touch), not interpenetration.
+/// contact count as separation (a touch), not interpenetration. The SAT body
+/// lives in the generated `Vec3::TriTriIntersect`; this is a byte-compatible
+/// adapter over the crate's `[f64; 3]` triangle vertices.
 pub fn tri_tri_intersect(
     a0: Vec3,
     a1: Vec3,
@@ -26,54 +33,13 @@ pub fn tri_tri_intersect(
     b1: Vec3,
     b2: Vec3,
 ) -> bool {
-    let edges_a = [sub(a1, a0), sub(a2, a1), sub(a0, a2)];
-    let edges_b = [sub(b1, b0), sub(b2, b1), sub(b0, b2)];
-
-    let mut axes: Vec<Vec3> = Vec::with_capacity(11);
-    axes.push(cross(edges_a[0], edges_a[1]));
-    axes.push(cross(edges_b[0], edges_b[1]));
-    for &ea in &edges_a {
-        for &eb in &edges_b {
-            let axis = cross(ea, eb);
-            if dot(axis, axis) > EPS {
-                axes.push(axis);
-            }
-        }
-    }
-
-    let va = [a0, a1, a2];
-    let vb = [b0, b1, b2];
-
-    for axis in axes {
-        let mut min_a = f64::INFINITY;
-        let mut max_a = f64::NEG_INFINITY;
-        let mut min_b = f64::INFINITY;
-        let mut max_b = f64::NEG_INFINITY;
-        for &v in &va {
-            let p = dot(v, axis);
-            if p < min_a {
-                min_a = p;
-            }
-            if p > max_a {
-                max_a = p;
-            }
-        }
-        for &v in &vb {
-            let p = dot(v, axis);
-            if p < min_b {
-                min_b = p;
-            }
-            if p > max_b {
-                max_b = p;
-            }
-        }
-        // `<=` so exact contact counts as separation (touch), not interpenetration.
-        if max_a <= min_b || max_b <= min_a {
-            return false;
-        }
-    }
-
-    true
+    PlatoVec3::new(a0[0], a0[1], a0[2]).TriTriIntersect(
+        PlatoVec3::new(a1[0], a1[1], a1[2]),
+        PlatoVec3::new(a2[0], a2[1], a2[2]),
+        PlatoVec3::new(b0[0], b0[1], b0[2]),
+        PlatoVec3::new(b1[0], b1[1], b1[2]),
+        PlatoVec3::new(b2[0], b2[1], b2[2]),
+    )
 }
 
 #[inline]

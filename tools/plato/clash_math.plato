@@ -46,7 +46,10 @@ library Vectors
     Sub(a: Vec3, b: Vec3): Vec3
         => new Vec3(a.X - b.X, a.Y - b.Y, a.Z - b.Z);
 
-    Add(a: Vec3, b: Vec3): Vec3
+    // Named Plus (not Add) so no generated Vec3 method shares a name with a
+    // scalar intrinsic; the TS post-processing codemod relies on scalar
+    // method names being unambiguous.
+    Plus(a: Vec3, b: Vec3): Vec3
         => new Vec3(a.X + b.X, a.Y + b.Y, a.Z + b.Z);
 
     Scale(a: Vec3, s: Number): Vec3

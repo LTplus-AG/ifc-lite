@@ -336,6 +336,33 @@ export class Scene {
   }
 
   /**
+   * Synchronously rebuild EVERY evicted bucket batch (no time budget) —
+   * for one-shot capture renders (IDS/clash/BCF snapshots) whose isolation
+   * options may reveal batches that aged out under the budget. The live
+   * view never needs this: visible batches are never evicted. The budget
+   * pass re-evicts unused batches after the usual idle age.
+   * Returns the number of batches restored.
+   */
+  restoreAllEvicted(device: GPUDevice, pipeline: RenderPipeline): number {
+    if (this.geometryReleased || this.ephemeralStreamingMode) return 0;
+    let restored = 0;
+    for (const bucket of this.buckets.values()) {
+      const old = bucket.batchedMesh;
+      if (!old || old.gpuResident !== false || bucket.meshData.length === 0) continue;
+      const rebuilt = this.createBatchedMesh(bucket.meshData, bucket.meshData[0].color, device, pipeline, bucket.key);
+      bucket.batchedMesh = rebuilt;
+      const idx = this.batchedMeshes.indexOf(old);
+      if (idx >= 0) this.batchedMeshes[idx] = rebuilt;
+      else this.batchedMeshes.push(rebuilt);
+      this.lastDrawnFrame.delete(old.id);
+      this.lastDrawnFrame.set(rebuilt.id, this.residencyFrame);
+      this.residencyRestoreQueue.delete(bucket.key);
+      restored++;
+    }
+    return restored;
+  }
+
+  /**
    * Evict least-recently-drawn bucket batches until the resident set fits
    * the budget. Called after each frame's submit; destroying just-submitted
    * buffers is safe (WebGPU defers destruction past in-flight work). Never

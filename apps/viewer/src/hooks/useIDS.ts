@@ -989,6 +989,9 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
             isolatedIds: isolationSet,
             selectedId: null,           // No cyan selection highlight
             clearColor: SNAPSHOT_CLEAR_COLOR,
+            // Isolation may reveal batches evicted under the GPU residency
+            // budget — restore them synchronously so the capture is complete.
+            restoreEvictedForCapture: true,
           });
 
           // Wait for GPU commands to complete

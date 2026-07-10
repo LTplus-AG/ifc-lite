@@ -582,7 +582,10 @@ export function useClash() {
               isolation.add(m.a.ref);
               isolation.add(m.b.ref);
             }
-            renderer.render({ isolatedIds: isolation, selectedId: null, clearColor: SNAPSHOT_CLEAR_COLOR });
+            // restoreEvictedForCapture: isolation may reveal batches evicted
+            // under the GPU residency budget — restore synchronously so the
+            // BCF snapshot is complete.
+            renderer.render({ isolatedIds: isolation, selectedId: null, clearColor: SNAPSHOT_CLEAR_COLOR, restoreEvictedForCapture: true });
             const device = renderer.getGPUDevice();
             if (device) await device.queue.onSubmittedWorkDone();
             // Let the compositor present the frame before reading the canvas.

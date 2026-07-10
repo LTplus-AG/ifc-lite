@@ -1103,6 +1103,11 @@ export class Renderer {
         let frameBatchesNotResident = 0;
         // Residency ages are measured in RENDERED frames (idle never ages out).
         this.scene.beginResidencyFrame();
+        // Capture renders restore evicted batches SYNCHRONOUSLY so isolation
+        // snapshots are complete in this very frame (see RenderOptions doc).
+        if (options.restoreEvictedForCapture && this.pipeline) {
+            this.scene.restoreAllEvicted(device, this.pipeline);
+        }
         const visualEnhancement = this.resolveVisualEnhancement(options.visualEnhancement);
         // Post effects during interaction (orbit/pan/zoom) are governed
         // adaptively: they stay on while the interactive frame cadence holds

@@ -31,7 +31,7 @@ import { useLatestRef } from '../../hooks/useLatestRef.js';
 import { CLASH_COLOR_OVERLAP } from '@/lib/clash/clash-colors';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
 import { getSpatialChunkingConfig } from '../../utils/spatialChunkConfig.js';
-import { getGpuResidencyBudgetBytes } from '../../utils/gpuBudgetConfig.js';
+import { getGpuResidencyBudgetBytes, getHostResidencyBudgetBytes } from '../../utils/gpuBudgetConfig.js';
 import {
   getEntityBounds,
   getThemeClearColor,
@@ -733,12 +733,18 @@ export function Viewport({
         renderer.getScene().setGpuResidencyBudget(gpuBudget);
         console.log(`[Viewport] GPU residency budget on (${(gpuBudget / 1048576).toFixed(0)}MB)`);
       }
+      const hostBudget = getHostResidencyBudgetBytes();
+      if (hostBudget !== null) {
+        renderer.getScene().setHostResidencyBudget(hostBudget);
+        console.log(`[Viewport] host residency budget on (${(hostBudget / 1048576).toFixed(0)}MB)`);
+      }
       // Read-only debug/e2e hook (same convention as __ifc_lite_viewer_store__):
-      // live frame stats + resident GPU bytes for Playwright assertions and
-      // console inspection. Cleared on viewport teardown below.
+      // live frame stats + resident GPU/CPU bytes for Playwright assertions
+      // and console inspection. Cleared on viewport teardown below.
       (globalThis as Record<string, unknown>).__ifc_lite_render_stats__ = () => ({
         frame: renderer.getFrameStats(),
         gpu: renderer.getScene().getResidentGpuBytes(),
+        cpuBytes: renderer.getScene().getResidentCpuBytes(),
       });
       setIsInitialized(true);
 

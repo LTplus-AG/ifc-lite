@@ -50,6 +50,7 @@ export {
   readGeometryHeadV13,
   decodeGeometryChunk,
   groupMeshesIntoChunks,
+  buildGeometrySectionV13,
 } from './sections/geometry-chunks.js';
 export { readInstancedShards } from './sections/instanced-shards.js';
 export type { GeometryHead } from './sections/geometry-chunks.js';

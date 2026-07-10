@@ -236,6 +236,13 @@ export function useIfcLoader() {
     // Federated adds carry a pre-allocated id; primary loads mint a fresh one.
     const modelId = target.kind === 'federated' ? target.modelId : crypto.randomUUID();
 
+    // Cold-storage residency (issue #1682 phase 3b): any new load invalidates
+    // the previous entry-backed provider — a primary load replaces the model,
+    // and a federated add's geometry is not in the primary's cache entry (a
+    // cold restore could not serve it, so the tier must switch off).
+    // loadFromCache re-wires it for v13 primary hits.
+    getGlobalRenderer()?.getScene().setColdGeometryProvider(null);
+
     // Track total elapsed time for complete user experience
     const totalStartTime = performance.now();
 

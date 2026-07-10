@@ -24,6 +24,8 @@ import {
 } from '@ifc-lite/cache';
 import { SpatialHierarchyBuilder, StepTokenizer, CompactEntityIndex, CompactEntityIndexBuilder, extractLengthUnitScale, attachDataStoreAccessors, type IfcDataStore, type IfcStoreData } from '@ifc-lite/parser';
 import { buildSpatialIndexGuarded } from '../utils/loadingUtils.js';
+import { makeColdGeometryProvider } from '../utils/coldGeometryProvider.js';
+import { getGlobalRenderer } from './useBCF.js';
 import { computeFullSourceHash } from '../utils/sourceContentHash.js';
 import type { MeshData } from '@ifc-lite/geometry';
 
@@ -199,15 +201,24 @@ export function useIfcCache() {
       // dropping it removes the main-thread stall for BOTH cache tiers. A
       // truncated/corrupt cache buffer still fails fast in `reader.read` below →
       // the catch deletes the entry and returns a graceful miss.
+      // Blob entries (cold-tier writes) are disk-backed: materialize once
+      // for the load, but KEEP the blob handle — the cold-storage provider
+      // uses slice() for partial chunk reads later (issue #1682 phase 3b).
+      const rawCacheBuffer = cacheResult.buffer;
+      const cacheBlob = rawCacheBuffer instanceof Blob ? rawCacheBuffer : null;
+      const cacheBuffer: ArrayBuffer = rawCacheBuffer instanceof Blob
+        ? await rawCacheBuffer.arrayBuffer()
+        : rawCacheBuffer;
+
       // v13+ entries stream their geometry chunk-by-chunk below (first paint
       // after the FIRST chunk instead of a full deserialize) — read metadata
       // only here. Older entries keep the legacy one-shot geometry read.
-      const headerInfo = reader.readHeader(cacheResult.buffer);
+      const headerInfo = reader.readHeader(cacheBuffer);
       const geometrySection = headerInfo.version >= 13
         ? headerInfo.sections.find((s) => s.type === SectionType.Geometry)
         : undefined;
       const result = await reader.read(
-        cacheResult.buffer,
+        cacheBuffer,
         geometrySection ? { skipGeometry: true } : {}
       );
       const cacheReadTime = performance.now() - cacheLoadStart;
@@ -323,7 +334,7 @@ export function useIfcCache() {
         // geometryStreamingActive, so useGeometryStreaming finalizes the
         // fragments when the flag flips back off).
         const open = openGeometryChunksV13(
-          cacheResult.buffer,
+          cacheBuffer,
           geometrySection.offset,
           headerInfo.version
         );
@@ -363,7 +374,7 @@ export function useIfcCache() {
         // were partitioned off the flat meshes).
         const shardsSection = headerInfo.sections.find((s) => s.type === SectionType.InstancedShards);
         if (shardsSection) {
-          const shardsReader = new BufferReader(cacheResult.buffer);
+          const shardsReader = new BufferReader(cacheBuffer);
           shardsReader.position = shardsSection.offset;
           const shards = readInstancedShards(shardsReader);
           if (shards.length > 0) appendInstancedShards(shards);
@@ -371,6 +382,21 @@ export function useIfcCache() {
 
         setIfcDataStore(dataStore);
         buildSpatialIndexGuarded(allMeshes, dataStore, setIfcDataStore);
+
+        // Cold-storage provider (issue #1682 phase 3b): with this wired the
+        // scene may drop CPU meshData for cold chunks and restore them from
+        // this entry via partial reads (Blob slice when available). Primary
+        // loads only — a federated add clears the provider (its geometry is
+        // not in this entry, so cold restores could not serve it).
+        const renderer = getGlobalRenderer();
+        if (renderer) {
+          renderer.getScene().setColdGeometryProvider(makeColdGeometryProvider({
+            source: cacheBlob ?? cacheBuffer,
+            geometrySectionOffset: geometrySection.offset,
+            chunks: open.chunks,
+            version: headerInfo.version,
+          }));
+        }
       } else if (result.geometry) {
         const { meshes, coordinateInfo, totalVertices, totalTriangles } = result.geometry;
         meshCount = meshes.length;

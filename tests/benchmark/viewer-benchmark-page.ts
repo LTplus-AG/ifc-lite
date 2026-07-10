@@ -182,6 +182,21 @@ export class ViewerBenchmarkPage {
       }
     }
 
+    // Optional HOST residency budget for A/B runs (issue #1682 phase 3b).
+    // Megabytes; only effective on v13-cached models with the GPU budget on.
+    const hostBudgetEnv = process.env.VIEWER_BENCHMARK_HOST_BUDGET;
+    if (hostBudgetEnv) {
+      const mb = Number(hostBudgetEnv);
+      if (Number.isFinite(mb) && mb > 0) {
+        await this.page.addInitScript((v) => {
+          (globalThis as unknown as { __IFC_LITE_HOST_BUDGET_MB?: number }).__IFC_LITE_HOST_BUDGET_MB = v;
+        }, mb);
+        console.log(`[Benchmark] host residency budget override: ${mb}MB`);
+      } else {
+        console.warn(`[Benchmark] invalid VIEWER_BENCHMARK_HOST_BUDGET: ${hostBudgetEnv}`);
+      }
+    }
+
     // Navigate to viewer app
     await this.page.goto('http://localhost:3000');
     

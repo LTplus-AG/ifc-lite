@@ -62,7 +62,7 @@ export type { ContributionCullOptions, CullCameraState } from './contribution-cu
 export { chunkCellKey, bucketBaseKeyFor, DEFAULT_CHUNK_CELL_SIZE } from './chunk-grid.js';
 export type { SpatialChunkingConfig, ChunkAnchorSource } from './chunk-grid.js';
 export { selectEvictions, MIN_EVICTION_AGE_FRAMES } from './residency.js';
-export type { ResidencyShell } from './residency.js';
+export type { ResidencyShell, ColdGeometryProvider } from './residency.js';
 export { sumResidentGpuBytes } from './render-stats.js';
 export type { FrameStats, ResidentGpuBytes } from './render-stats.js';
 export { RaycastEngine } from './raycast-engine.js';

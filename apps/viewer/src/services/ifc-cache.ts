@@ -15,7 +15,12 @@ const STORE_NAME = 'models';
 
 interface CacheEntry {
   key: string;
-  buffer: ArrayBuffer;
+  /** The serialized .ifc-lite cache. Written as a Blob since the v13 cold
+   *  tier (issue #1682 phase 3b): IndexedDB Blobs are disk-backed, so a
+   *  retained handle enables `slice()` PARTIAL reads of geometry chunks
+   *  without holding the whole entry in memory. Older entries hold an
+   *  ArrayBuffer — readers accept both. */
+  buffer: Blob | ArrayBuffer;
   sourceBuffer?: ArrayBuffer; // Original IFC source for on-demand property extraction
   fileName: string;
   fileSize: number;
@@ -55,8 +60,9 @@ export const QUOTA_HEADROOM_BYTES = 128 * 1024 * 1024;
 let dbPromise: Promise<IDBDatabase> | null = null;
 
 /** Bytes a cache record occupies on disk (cache buffer + optional source). */
-function entryBytes(buffer: ArrayBuffer, sourceBuffer?: ArrayBuffer): number {
-  return buffer.byteLength + (sourceBuffer?.byteLength ?? 0);
+function entryBytes(buffer: Blob | ArrayBuffer, sourceBuffer?: ArrayBuffer): number {
+  const bufferBytes = buffer instanceof Blob ? buffer.size : buffer.byteLength;
+  return bufferBytes + (sourceBuffer?.byteLength ?? 0);
 }
 
 /**
@@ -207,7 +213,8 @@ export function openDatabase(): Promise<IDBDatabase> {
 }
 
 export interface CacheResult {
-  buffer: ArrayBuffer;
+  /** Blob for cold-tier-era entries (disk-backed, sliceable); ArrayBuffer for older ones. */
+  buffer: Blob | ArrayBuffer;
   sourceBuffer?: ArrayBuffer;
   /** Source File `lastModified` (ms) stored at write; see {@link CacheEntry}. */
   lastModified?: number;
@@ -303,7 +310,8 @@ export async function setCached(
 
       const entry: CacheEntry = {
         key,
-        buffer,
+        // Blob = disk-backed in IDB → enables partial chunk reads later.
+        buffer: new Blob([buffer]),
         sourceBuffer,
         fileName,
         fileSize,
@@ -425,7 +433,7 @@ export async function getCacheStats(): Promise<{
         const entries = request.result as CacheEntry[];
         resolve({
           entryCount: entries.length,
-          totalSize: entries.reduce((sum, e) => sum + e.buffer.byteLength, 0),
+          totalSize: entries.reduce((sum, e) => sum + entryBytes(e.buffer), 0),
           entries: entries.map((e) => ({
             fileName: e.fileName,
             fileSize: e.fileSize,

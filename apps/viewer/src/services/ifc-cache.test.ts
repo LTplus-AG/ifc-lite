@@ -31,9 +31,11 @@ function patterned(bytes: number, seed: number): ArrayBuffer {
   return buf;
 }
 
-function bytesEqual(a: ArrayBuffer, b: ArrayBuffer): boolean {
-  if (a.byteLength !== b.byteLength) return false;
-  const va = new Uint8Array(a);
+async function bytesEqual(a: Blob | ArrayBuffer, b: ArrayBuffer): Promise<boolean> {
+  // Cache entries are stored as Blobs since the v13 cold tier; unwrap first.
+  const bufA = a instanceof Blob ? await a.arrayBuffer() : a;
+  if (bufA.byteLength !== b.byteLength) return false;
+  const va = new Uint8Array(bufA);
   const vb = new Uint8Array(b);
   for (let i = 0; i < va.length; i++) if (va[i] !== vb[i]) return false;
   return true;
@@ -101,8 +103,8 @@ describe('ifc-cache quota + robustness (blocker #2)', () => {
 
     const got = await getCached('big');
     assert.ok(got, 'large record must be retrievable');
-    assert.ok(bytesEqual(got!.buffer, buffer), 'cache buffer round-trips byte-identical');
-    assert.ok(got!.sourceBuffer && bytesEqual(got!.sourceBuffer, source), 'source round-trips byte-identical');
+    assert.ok(await bytesEqual(got!.buffer, buffer), 'cache buffer round-trips byte-identical');
+    assert.ok(got!.sourceBuffer && await bytesEqual(got!.sourceBuffer, source), 'source round-trips byte-identical');
   });
 
   it('estimate-unavailable → falls back to the per-entry ceiling and still writes', async () => {
@@ -142,7 +144,7 @@ describe('ifc-cache quota + robustness (blocker #2)', () => {
 
     assert.equal(await getCached('new'), null, 'the over-quota entry was not written');
     const keep = await getCached('keep');
-    assert.ok(keep && bytesEqual(keep.buffer, patterned(32 * KB, 4)), 'the surviving entry is intact');
+    assert.ok(keep && await bytesEqual(keep.buffer, patterned(32 * KB, 4)), 'the surviving entry is intact');
   });
 
   it('non-fatal when the put itself fails (transaction error/abort)', async () => {
@@ -220,6 +222,6 @@ describe('ifc-cache LRU eviction correctness (blocker #2)', () => {
     await evictToFree(db, 2 * KB, '__none__'); // evict just 'a'
     assert.equal(await getCached('a'), null);
     const c = await getCached('c');
-    assert.ok(c && bytesEqual(c.buffer, patterned(2 * KB, 12)), 'survivor is uncorrupted');
+    assert.ok(c && await bytesEqual(c.buffer, patterned(2 * KB, 12)), 'survivor is uncorrupted');
   });
 });

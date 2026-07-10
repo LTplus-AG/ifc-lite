@@ -40,6 +40,20 @@ export interface ResidencyShell {
 export const MIN_EVICTION_AGE_FRAMES = 30;
 
 /**
+ * Cold-storage source for phase 3b (evict-to-disk): returns the meshes of
+ * every cache chunk intersecting the given world AABB. The Scene filters the
+ * result down to one bucket's members (by expressId + bucket base key), so
+ * over-fetching neighbours is fine — providers should cache recently decoded
+ * chunks since adjacent buckets restore together during a gesture.
+ */
+export interface ColdGeometryProvider {
+  loadMeshesInBounds(
+    min: [number, number, number],
+    max: [number, number, number],
+  ): Promise<import('@ifc-lite/geometry').MeshData[]>;
+}
+
+/**
  * Select batches to evict so `residentBytes` drops to `budgetBytes` or below.
  * `shells` must contain only ELIGIBLE batches (resident, bucket-owned, CPU
  * geometry retained, not drawn this frame). Returns the keys to evict, LRU

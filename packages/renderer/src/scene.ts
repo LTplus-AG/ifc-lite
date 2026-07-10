@@ -21,7 +21,7 @@ import {
 import { mergeGeometry, splitMeshDataForBufferLimit, colorSaltByte, packEntityLane } from './scene-geometry.js';
 import { sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
 import { bucketBaseKeyFor, type SpatialChunkingConfig } from './chunk-grid.js';
-import { selectEvictions, type ResidencyShell } from './residency.js';
+import { selectEvictions, type ResidencyShell, type ColdGeometryProvider } from './residency.js';
 import { OPAQUE_ALPHA_CUTOFF } from './overlay-routing.js';
 import type { DecodedInstancedShard } from '@ifc-lite/geometry';
 import {
@@ -156,6 +156,17 @@ export class Scene {
   private lastDrawnFrame: Map<number, number> = new Map();     // batch.id -> residencyFrame
   private residencyRestoreQueue: Set<string> = new Set();      // bucket keys awaiting re-upload
   private residencyOverBudgetWarned = false;
+  // Cold tier (issue #1682 phase 3b): warm buckets (GPU-evicted, CPU kept)
+  // can additionally drop their CPU meshData when a HOST budget is set and a
+  // cold-storage provider (v13 cache chunks) can restore it on demand.
+  // hot = GPU+CPU, warm = CPU only, cold = metadata shell only.
+  private coldProvider: ColdGeometryProvider | null = null;
+  private hostBudgetBytes: number | null = null;
+  private coldBuckets: Set<string> = new Set();                // CPU dropped, provider-restorable
+  private dirtyBuckets: Set<string> = new Set();               // diverged from disk (recolour/move/remove)
+  private coldRestoresInFlight: Map<string, Promise<void>> = new Map();
+  private hostOverBudgetWarned = false;
+  private hostEnforceCountdown = 0;
   private nextSplitId: number = 0; // Monotonic counter for sub-bucket keys
   private nextBatchId: number = 0; // Monotonic counter for unique batch identifiers
   // Shared local-frame origin for ALL batches (set from the first batch's world
@@ -294,7 +305,9 @@ export class Scene {
    */
   requestBatchResidency(batch: BatchedMesh): void {
     const bucket = this.buckets.get(batch.colorKey);
-    if (bucket && bucket.batchedMesh === batch && bucket.meshData.length > 0) {
+    if (!bucket || bucket.batchedMesh !== batch) return;
+    // Warm (CPU kept) OR cold (disk-restorable) — both are restorable.
+    if (bucket.meshData.length > 0 || this.coldBuckets.has(bucket.key)) {
       this.residencyRestoreQueue.add(bucket.key);
     }
   }
@@ -316,9 +329,15 @@ export class Scene {
       this.residencyRestoreQueue.delete(key);
       const bucket = this.buckets.get(key);
       const old = bucket?.batchedMesh;
-      // Only restore a still-evicted, still-rebuildable bucket batch — a
-      // recolour/finalize may have rebuilt (or emptied) it in the meantime.
-      if (!bucket || !old || old.gpuResident !== false || bucket.meshData.length === 0) continue;
+      // Only restore a still-evicted bucket batch — a recolour/finalize may
+      // have rebuilt (or emptied) it in the meantime.
+      if (!bucket || !old || old.gpuResident !== false) continue;
+      // Cold bucket: geometry is on disk — kick off the async provider fetch
+      // (it re-queues the key as warm when the meshes land).
+      if (bucket.meshData.length === 0) {
+        if (this.coldBuckets.has(key)) this.startColdRestore(key);
+        continue;
+      }
 
       const rebuilt = this.createBatchedMesh(bucket.meshData, bucket.meshData[0].color, device, pipeline, key);
       bucket.batchedMesh = rebuilt;
@@ -333,6 +352,153 @@ export class Scene {
       if (performance.now() - start >= budgetMs) break;
     }
     return restored;
+  }
+
+  // ─── Cold tier (issue #1682 phase 3b) ──────────────────────────────────
+
+  /** Wire the cold-storage source (v13 cache chunks). Null disables the tier. */
+  setColdGeometryProvider(provider: ColdGeometryProvider | null): void {
+    this.coldProvider = provider;
+  }
+
+  /** Set (or clear) the HOST budget in bytes for bucket CPU geometry. */
+  setHostResidencyBudget(bytes: number | null): void {
+    if (bytes !== null && !(Number.isFinite(bytes) && bytes > 0)) {
+      console.warn('[Scene] ignoring invalid host residency budget:', bytes);
+      return;
+    }
+    this.hostBudgetBytes = bytes;
+    this.hostOverBudgetWarned = false;
+  }
+
+  /** CPU bytes held by bucket meshData (positions + normals + indices). */
+  getResidentCpuBytes(): number {
+    let total = 0;
+    for (const bucket of this.buckets.values()) {
+      for (const md of bucket.meshData) {
+        total += md.positions.byteLength + md.normals.byteLength + md.indices.byteLength;
+      }
+    }
+    return total;
+  }
+
+  /** A bucket whose content diverged from what the cache entry holds
+   *  (recolour / move / removal) must never be cold-evicted: restoring it
+   *  from disk would resurrect the pre-edit geometry. */
+  private markBucketDirty(key: string): void {
+    this.dirtyBuckets.add(key);
+  }
+
+  /**
+   * Demote warm buckets (GPU-evicted, CPU kept) to cold (shell only) until
+   * bucket CPU bytes fit the host budget. Same LRU policy as the GPU tier.
+   * Eligibility is strict: pristine, non-overflow ("#N" sub-buckets are
+   * excluded — their piece membership cannot be re-derived unambiguously),
+   * GPU-evicted, provider present. Cold eviction removes the bucket's meshes
+   * from meshDataMap/meshDataBucket too — that is what actually frees the
+   * typed arrays.
+   */
+  private enforceHostBudget(): void {
+    const budget = this.hostBudgetBytes;
+    if (budget === null || !this.coldProvider) return;
+    if (this.geometryReleased || this.ephemeralStreamingMode) return;
+    if (this.streamingFragments.length > 0) return;
+
+    const residentBytes = this.getResidentCpuBytes();
+    if (residentBytes <= budget) return;
+
+    const shells: ResidencyShell[] = [];
+    for (const bucket of this.buckets.values()) {
+      const b = bucket.batchedMesh;
+      if (!b || b.gpuResident !== false) continue;             // hot buckets stay warm-skippable
+      if (bucket.meshData.length === 0) continue;              // already cold
+      if (bucket.key.includes('#')) continue;                  // overflow sub-bucket
+      if (this.dirtyBuckets.has(bucket.key)) continue;         // diverged from disk
+      let bytes = 0;
+      for (const md of bucket.meshData) {
+        bytes += md.positions.byteLength + md.normals.byteLength + md.indices.byteLength;
+      }
+      shells.push({
+        key: bucket.key,
+        bytes,
+        lastDrawnFrame: this.lastDrawnFrame.get(b.id) ?? -1,
+      });
+    }
+
+    const evictKeys = selectEvictions(shells, residentBytes, budget, this.residencyFrame);
+    let evictedBytes = 0;
+    for (const key of evictKeys) {
+      const bucket = this.buckets.get(key);
+      if (!bucket || bucket.meshData.length === 0) continue;
+      for (const md of bucket.meshData) {
+        evictedBytes += md.positions.byteLength + md.normals.byteLength + md.indices.byteLength;
+        this.meshDataBucket.delete(md);
+        // Remove THIS object from the entity's piece list (identity match:
+        // other pieces of the entity may live in other, still-warm buckets).
+        const pieces = this.meshDataMap.get(md.expressId);
+        if (pieces) {
+          const idx = pieces.indexOf(md);
+          if (idx >= 0) pieces.splice(idx, 1);
+          if (pieces.length === 0) this.meshDataMap.delete(md.expressId);
+        }
+      }
+      bucket.meshData = [];
+      bucket.vertexBytes = 0;
+      this.coldBuckets.add(key);
+    }
+
+    if (residentBytes - evictedBytes > budget && !this.hostOverBudgetWarned) {
+      this.hostOverBudgetWarned = true;
+      console.warn(
+        `[Scene] host residency budget ${(budget / 1048576).toFixed(0)}MB exceeded ` +
+        `(${((residentBytes - evictedBytes) / 1048576).toFixed(0)}MB CPU resident) — ` +
+        `remaining buckets are hot, dirty, or overflow sub-buckets. Rendering is unaffected.`
+      );
+    }
+  }
+
+  /** Kick off the async disk restore for a cold bucket the draw loop wants.
+   *  On completion the bucket is warm again and re-queued for GPU rebuild. */
+  private startColdRestore(key: string): void {
+    if (this.geometryReleased || this.ephemeralStreamingMode) return;
+    if (this.coldRestoresInFlight.has(key)) return;
+    const bucket = this.buckets.get(key);
+    const shell = bucket?.batchedMesh;
+    const provider = this.coldProvider;
+    if (!bucket || !shell || !shell.bounds || !provider) return;
+
+    const promise = provider
+      .loadMeshesInBounds(shell.bounds.min, shell.bounds.max)
+      .then((meshes) => {
+        // Re-validate: a clear()/finalize may have replaced the world.
+        const current = this.buckets.get(key);
+        if (!current || current !== bucket || !this.coldBuckets.has(key)) return;
+        const baseKey = this.baseColorKey(key);
+        const idSet = new Set(shell.expressIds);
+        const members = meshes.filter(
+          (m) => idSet.has(m.expressId) && this.bucketBaseKey(m) === baseKey
+        );
+        for (const m of members) {
+          bucket.meshData.push(m);
+          bucket.vertexBytes += (m.positions.length / 3) * BATCH_CONSTANTS.BYTES_PER_VERTEX;
+          this.meshDataBucket.set(m, bucket);
+          this.addMeshData(m);
+        }
+        this.coldBuckets.delete(key);
+        if (members.length > 0) {
+          // Warm now — re-queue so the next restore tick rebuilds the GPU batch.
+          this.residencyRestoreQueue.add(key);
+        } else {
+          console.warn(`[Scene] cold restore for ${key} found no members — bucket stays a shell`);
+        }
+      })
+      .catch((err) => {
+        console.warn('[Scene] cold restore failed (bucket stays cold, will retry on demand):', err);
+      })
+      .finally(() => {
+        this.coldRestoresInFlight.delete(key);
+      });
+    this.coldRestoresInFlight.set(key, promise);
   }
 
   /**
@@ -370,6 +536,14 @@ export class Scene {
    * renders correctly and stays over budget (warned once).
    */
   enforceGpuBudget(): void {
+    // Host (CPU) tier rides the same post-submit hook on a slow cadence —
+    // warm->cold demotion is not latency-sensitive and the CPU-bytes walk is
+    // O(total meshes).
+    if (this.hostBudgetBytes !== null && --this.hostEnforceCountdown <= 0) {
+      this.hostEnforceCountdown = 120;
+      this.enforceHostBudget();
+    }
+
     const budget = this.gpuBudgetBytes;
     if (budget === null) return;
     if (this.geometryReleased || this.ephemeralStreamingMode) return;
@@ -930,6 +1104,8 @@ export class Scene {
           bucket.vertexBytes = Math.max(0, bucket.vertexBytes - bytes);
         }
         affectedKeys.add(bucket.key);
+        // Entity removal diverges the bucket from the cache entry.
+        this.markBucketDirty(bucket.key);
       }
       this.meshDataBucket.delete(meshData);
     }
@@ -1053,13 +1229,18 @@ export class Scene {
    */
   private rebucketMovedMesh(meshData: MeshData, affectedKeys: Set<string>): void {
     const bucket = this.meshDataBucket.get(meshData);
-    if (bucket) affectedKeys.add(bucket.key);
+    if (bucket) {
+      affectedKeys.add(bucket.key);
+      // Moved geometry diverges from the cache entry — see markBucketDirty.
+      this.markBucketDirty(bucket.key);
+    }
     if (!this.spatialChunking || !bucket) return;
 
     const newBaseKey = this.bucketBaseKey(meshData);
     if (this.baseColorKey(bucket.key) === newBaseKey) return;
 
     const newBucketKey = this.resolveActiveBucket(newBaseKey, meshData);
+    this.markBucketDirty(newBucketKey);
     // Swap-remove from the old bucket + decrement its byte accounting
     const idx = bucket.meshData.indexOf(meshData);
     if (idx >= 0) {
@@ -1565,9 +1746,18 @@ export class Scene {
     const fragmentSet = new Set(oldFragments);
     this.streamingFragments = [];
 
-    // 1. Collect ALL accumulated meshData before clearing state
+    // 1. Collect ALL accumulated meshData before clearing state.
+    //    Cold buckets (issue #1682 phase 3b) hold NO meshData — their
+    //    geometry lives on disk — so they are carried through the rebuild as
+    //    sealed shells instead of being re-grouped (re-grouping would
+    //    silently drop them).
     const allMeshData: MeshData[] = [];
-    for (const bucket of this.buckets.values()) {
+    const carriedCold: Array<[string, BatchBucket]> = [];
+    for (const [key, bucket] of this.buckets) {
+      if (this.coldBuckets.has(key) && bucket.meshData.length === 0 && bucket.batchedMesh) {
+        carriedCold.push([key, bucket]);
+        continue;
+      }
       for (const md of bucket.meshData) allMeshData.push(md);
     }
 
@@ -1584,6 +1774,10 @@ export class Scene {
     for (const batch of this.partialBatchCache.values()) destroyGpuResources(batch);
     this.partialBatchCache.clear();
     this.partialBatchCacheKeys.clear();
+
+    // Re-seat the carried cold shells in the fresh bucket map (their GPU
+    // shells re-enter the flat array via rebuildPendingBatches below).
+    for (const [key, bucket] of carriedCold) this.buckets.set(key, bucket);
 
     // 3. Re-group ALL meshData by their CURRENT color (and grid cell).
     //    meshData.color may have been mutated in-place since the mesh was
@@ -1642,9 +1836,15 @@ export class Scene {
     const fragmentSet = new Set(oldFragments);
     this.streamingFragments = [];
 
-    // 1. Collect ALL accumulated meshData
+    // 1. Collect ALL accumulated meshData (cold buckets carried as sealed
+    //    shells — see the sync finalize for the rationale)
     const allMeshData: MeshData[] = [];
-    for (const bucket of this.buckets.values()) {
+    const carriedCold: Array<[string, BatchBucket]> = [];
+    for (const [key, bucket] of this.buckets) {
+      if (this.coldBuckets.has(key) && bucket.meshData.length === 0 && bucket.batchedMesh) {
+        carriedCold.push([key, bucket]);
+        continue;
+      }
       for (const md of bucket.meshData) allMeshData.push(md);
     }
 
@@ -1658,6 +1858,9 @@ export class Scene {
     for (const batch of this.partialBatchCache.values()) destroyGpuResources(batch);
     this.partialBatchCache.clear();
     this.partialBatchCacheKeys.clear();
+
+    // Re-seat the carried cold shells in the fresh bucket map.
+    for (const [key, bucket] of carriedCold) this.buckets.set(key, bucket);
 
     // 3. Re-group meshData by current color (and grid cell) — fast
     for (const meshData of allMeshData) {
@@ -1706,6 +1909,12 @@ export class Scene {
           }
         }
 
+        // Carried cold shells stay drawable-when-restored: keep them in the
+        // flat array (their buffers are already destroyed; the draw loop
+        // skips gpuResident === false and the restore path revives them).
+        for (const [, bucket] of carriedCold) {
+          if (bucket.batchedMesh) newBatches.push(bucket.batchedMesh);
+        }
         // All batches built — atomic swap so renderer never sees an empty array
         scene.batchedMeshes = newBatches;
 
@@ -1770,6 +1979,8 @@ export class Scene {
     this.activeBucketKey.clear();
     this.lastDrawnFrame.clear();
     this.residencyRestoreQueue.clear();
+    this.coldBuckets.clear();
+    this.dirtyBuckets.clear();
     this.pendingBatchKeys.clear();
     for (const batch of this.partialBatchCache.values()) destroyGpuResources(batch);
     this.partialBatchCache.clear();
@@ -1854,6 +2065,10 @@ export class Scene {
     this.activeBucketKey.clear();
     this.lastDrawnFrame.clear();
     this.residencyRestoreQueue.clear();
+    // Released mode has no restore source at all — drop the cold tier state
+    // (the geometryReleased guards stop any further cold activity).
+    this.coldBuckets.clear();
+    this.dirtyBuckets.clear();
 
     // 3. Clear partial batch cache (would need mesh data to rebuild)
     for (const batch of this.partialBatchCache.values()) destroyGpuResources(batch);
@@ -1927,6 +2142,10 @@ export class Scene {
 
           affectedOldKeys.add(oldBucketKey);
           affectedNewKeys.add(newBucketKey);
+          // Both buckets now diverge from the cache entry: never cold-evict
+          // them (a disk restore would resurrect the pre-recolour geometry).
+          this.markBucketDirty(oldBucketKey);
+          this.markBucketDirty(newBucketKey);
 
           // Remove from old bucket data using indexOf (O(N) within one color bucket, typically <100 items)
           if (oldBucket) {
@@ -2105,6 +2324,22 @@ export class Scene {
     const bucket = this.buckets.get(bucketKey);
     const currentBytes = bucket?.vertexBytes ?? 0;
     const meshBytes = (meshData.positions.length / 3) * BATCH_CONSTANTS.BYTES_PER_VERTEX;
+
+    // A COLD bucket is sealed (its content lives on disk and its shell's
+    // expressIds are the restore contract) — route new arrivals (e.g. a
+    // federated add landing in the same cell+colour) to an overflow
+    // sub-bucket instead of corrupting the sealed one.
+    if (bucket && this.coldBuckets.has(bucketKey)) {
+      bucketKey = `${baseColorKey}#${this.nextSplitId++}`;
+      this.activeBucketKey.set(baseColorKey, bucketKey);
+      let target = this.buckets.get(bucketKey);
+      if (!target) {
+        target = { key: bucketKey, meshData: [], batchedMesh: null, vertexBytes: 0 };
+        this.buckets.set(bucketKey, target);
+      }
+      target.vertexBytes += meshBytes;
+      return bucketKey;
+    }
 
     if (currentBytes > 0 && currentBytes + meshBytes > this.cachedMaxBufferSize) {
       // Overflow — create a new sub-bucket
@@ -2949,6 +3184,8 @@ export class Scene {
     this.activeBucketKey.clear();
     this.lastDrawnFrame.clear();
     this.residencyRestoreQueue.clear();
+    this.coldBuckets.clear();
+    this.dirtyBuckets.clear();
     this.cachedMaxBufferSize = 0;
     this.pendingBatchKeys.clear();
     this.partialBatchCache.clear();

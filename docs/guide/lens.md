@@ -25,8 +25,8 @@ const structural = BUILTIN_LENSES.find((l) => l.id === 'lens-structural')!;
 
 const result = evaluateLens(structural, provider);
 
-result.colorMap;      // Map<globalId, [r, g, b, a]> (0-1 range)
-result.hiddenIds;     // Set<globalId> from 'hide' rules
+result.colorMap;      // Map<expressId (number), [r, g, b, a]> (0-1 range)
+result.hiddenIds;     // Set<expressId (number)> from 'hide' rules
 result.ruleCounts;    // Map<ruleId, matchCount>
 result.executionTime; // ms
 ```

@@ -19,7 +19,9 @@ const session = await createCollabSession({
 // Wait for persistence + websocket sync to complete
 await session.whenSynced;
 
-// Seed the shared document from an IFCX file (string, buffer, or parsed IfcxFile)
+// Seed the shared document from an IFCX file (string, buffer, or parsed
+// IfcxFile). ifcxContent is caller-provided, e.g.
+// await fetch('model.ifcx').then(r => r.text())
 session.seed(ifcxContent);
 
 // Make an edit; all peers see it in real time
@@ -45,7 +47,8 @@ const off = session.onConflict((conflict) => {
 // Snapshot the whole document back to IFCX
 const file = session.snapshot();
 
-// Or extract just this peer's edits as an IFCX layer
+// Or extract just this peer's edits as an IFCX layer.
+// baseline is the parsed IfcxFile the session was seeded from.
 const myLayer = session.extractUserLayer(baseline);
 
 session.dispose();

@@ -43,7 +43,12 @@ ifc-lite mcp ./model.ifc --transport http --port 8765 --token $API_TOKEN
     deliberate: two sessions that load different files which derive the same
     internal id never alias each other's state.
 
-By default the server binds `127.0.0.1`. Binding a non-loopback host requires either a `--token` (which becomes the bearer token for full scope) or the `--insecure` flag for development only.
+    A corollary: `--read-only` combined with `--transport http` produces
+    sessions that have no way to load a model at all (the registry starts
+    empty and `model_load` is hidden). For read-only serving of preloaded
+    files, use the `stdio` transport.
+
+By default the server binds `127.0.0.1`. Binding a non-loopback host requires either a `--token` (which becomes the bearer token for full scope) or the `--insecure` flag for development only. The token travels as a plaintext `Authorization` header: the CLI itself serves plain HTTP, so any non-loopback deployment must sit behind a TLS-terminating reverse proxy (nginx, Caddy, a cloud load balancer), or the bearer token is readable by anyone on the network path.
 
 ### Flags
 
@@ -109,7 +114,7 @@ Tools are grouped by capability. Everything below is registered in the default t
 
 Live model state is exposed as MCP resources under the `ifc-lite://` URI scheme, so an agent can read current state without a tool round-trip:
 
-```
+```text
 ifc-lite://server/manifest
 ifc-lite://model/{model_id}/manifest
 ifc-lite://model/{model_id}/entity/{global_id}

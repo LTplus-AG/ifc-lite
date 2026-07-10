@@ -16,6 +16,8 @@ describe('wasmBytesScanAllowed', () => {
     // entity index; attempting it aborts with a bare `unreachable executed`
     // before the JS tokeniser fallback runs anyway (observed on a 3899MB IFC).
     expect(wasmBytesScanAllowed(3_899_000_000)).toBe(false);
-    expect(wasmBytesScanAllowed(2_500_000_001)).toBe(false);
+    // Exactly 2.5e9 is refused, matching the geometry huge-file heuristic's
+    // `>=` so the two ceilings agree at the boundary.
+    expect(wasmBytesScanAllowed(2_500_000_000)).toBe(false);
   });
 });

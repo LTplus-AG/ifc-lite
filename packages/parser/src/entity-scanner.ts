@@ -129,7 +129,7 @@ export async function scanIfcEntities(
  * the copy alone leaves no headroom.
  */
 export function wasmBytesScanAllowed(byteLength: number): boolean {
-  return byteLength <= 2_500_000_000;
+  return byteLength < 2_500_000_000;
 }
 
 function selectWasmScanFunction(api: WasmScanApi | undefined, uint8Buffer: Uint8Array): WasmScanFunction | null {

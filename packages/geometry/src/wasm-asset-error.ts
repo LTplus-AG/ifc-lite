@@ -34,6 +34,18 @@
  */
 export const WASM_ASSET_UNAVAILABLE_EVENT = 'ifclite:wasm-asset-unavailable';
 
+/**
+ * Discriminates WHY the event fired, so the host does not have to re-derive
+ * the classification from the message text (a synthetic worker-script message
+ * carries none of the wasm-MIME tokens the strict matcher looks for - re-running
+ * the matcher host-side would silently drop exactly the case this exists for).
+ *
+ * - `wasm-asset`:    the engine binary fetch hit the #1363 MIME/404 signature.
+ * - `worker-script`: a Worker script failed to load (empty-message onerror
+ *                    from a worker that never posted; stale-deploy 404).
+ */
+export type WasmAssetUnavailableKind = 'wasm-asset' | 'worker-script';
+
 function messageOf(err: unknown): string {
   if (err == null) return '';
   if (typeof err === 'string') return err;
@@ -119,16 +131,16 @@ function domDispatcher(): DomDispatcher | null {
  */
 export function notifyIfWasmAssetUnavailable(err: unknown): boolean {
   if (!isWasmAssetUnavailableError(err)) return false;
-  dispatchAssetUnavailable(messageOf(err));
+  dispatchAssetUnavailable(messageOf(err), 'wasm-asset');
   return true;
 }
 
-function dispatchAssetUnavailable(message: string): void {
+function dispatchAssetUnavailable(message: string, kind: WasmAssetUnavailableKind): void {
   const target = domDispatcher();
   if (!target) return;
   try {
     target.dispatchEvent(
-      new CustomEvent(WASM_ASSET_UNAVAILABLE_EVENT, { detail: { message } }),
+      new CustomEvent(WASM_ASSET_UNAVAILABLE_EVENT, { detail: { message, kind } }),
     );
   } catch {
     /* CustomEvent unavailable — best effort, nothing more to do */
@@ -172,6 +184,7 @@ export function notifyIfWorkerScriptUnavailable(
   if (receivedAnyMessage) return false;
   dispatchAssetUnavailable(
     'worker script failed to load (no error message; likely a rotated asset after a redeploy)',
+    'worker-script',
   );
   return true;
 }

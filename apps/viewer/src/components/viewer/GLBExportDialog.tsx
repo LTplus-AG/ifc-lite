@@ -342,7 +342,7 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent className="sm:max-w-md overflow-hidden">
+      <DialogContent className="sm:max-w-lg overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Download className="h-5 w-5" />
@@ -353,7 +353,7 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto">
+        <div className="grid gap-4 py-4 max-h-[70vh] overflow-y-auto">
           {/* Model selector — only shown when multiple are loaded */}
           {modelList.length > 1 && (
             <div className="flex items-center gap-4">
@@ -364,7 +364,7 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
                 </SelectTrigger>
                 <SelectContent>
                   {modelList.map((m) => {
-                    const maxLen = 24;
+                    const maxLen = 32;
                     const displayName =
                       m.name.length > maxLen ? m.name.slice(0, maxLen) + '…' : m.name;
                     return (

@@ -22,7 +22,10 @@
     553 rust/core/src/schema_gen.rs
      990 rust/core/src/units.rs
 # +4: build the index once in parallel on the fail-closed try_/project_glb_size large-model GLB paths (perf/parallel-scan).
-    3947 rust/export/src/gltf.rs
+# +81: emissive-material knob for KMZ/Google Earth (#1427) - make_material lit/unlit/emissive branch + emissive param threaded through build_gltf/export_glb_from_meshes and their tests.
+    4028 rust/export/src/gltf.rs
+# COLLADA (.dae) exporter that embeds geometry in the KMZ (#1427); cohesive single-purpose module.
+    635 rust/export/src/collada.rs
      655 rust/export/src/model.rs
      611 rust/export/src/step.rs
 # +45: reject non-positive SegmentLength/HorizontalLength (malformed-input NaN guard) + regression test.

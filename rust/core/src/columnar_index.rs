@@ -96,12 +96,19 @@ impl ColumnarEntityIndex {
     /// 19.1 M entities and the conversion runs while the whole source file is
     /// resident in the same <4 GiB heap; borrowing (`from_hashmap`) keeps the
     /// map alive across the copy AND the sort, spiking ~970 MB of transients.
-    /// Consuming lets the map's tuples drain into ONE interleaved buffer, the
-    /// map allocation is freed before sorting, and the sort is in-place
-    /// `sort_unstable` (map keys are unique, so no stability/permutation is
-    /// needed): peak extra memory drops to roughly the interleaved buffer.
+    ///
+    /// Consuming drains into one interleaved `Vec<(id, start, len)>` (~229 MB)
+    /// then sorts in place (`sort_unstable`; map keys are unique, so no
+    /// stability/permutation buffer). Peak during the drain is map + rows
+    /// capacity (~665 MB) until the map drops at end-of-loop; after that the
+    /// sort is in-place and the final column split briefly overlaps rows +
+    /// outputs (~458 MB) before rows drop. Still far below the borrowing path,
+    /// and the steady-state index is ~229 MB.
     pub fn from_hashmap_consuming(map: EntityIndex) -> Self {
         let n = map.len();
+        // Reserve while the map is still alive: peak ≈ map + rows (~665 MB at
+        // 19.1 M). Draining without reserve would thrash reallocs for the same
+        // asymptotic peak once the vec fills.
         let mut rows: Vec<(u32, u32, u32)> = Vec::with_capacity(n);
         for (id, (start, end)) in map {
             // u32 offsets are sound only under the wasm32 <4GiB address space
@@ -109,8 +116,7 @@ impl ColumnarEntityIndex {
             debug_assert!(end <= u32::MAX as usize, "entity offset exceeds the u32 column ceiling");
             rows.push((id, start as u32, (end - start) as u32));
         }
-        // `map` is dropped here (moved into the loop) before any further
-        // allocation.
+        // `map` dropped with the loop; sort is in-place on `rows` alone.
         rows.sort_unstable_by_key(|r| r.0);
         let mut ids = Vec::with_capacity(rows.len());
         let mut starts = Vec::with_capacity(rows.len());

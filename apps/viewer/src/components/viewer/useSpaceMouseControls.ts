@@ -27,7 +27,7 @@ import {
   reconnectGrantedSpaceMouse,
   type SpaceMouseSession,
 } from '@/lib/spacemouse/device';
-import { deltasAreZero, mapSixDofToCameraDeltas } from '@/lib/spacemouse/mapping';
+import { deltasAreZero, isInputStale, mapSixDofToCameraDeltas } from '@/lib/spacemouse/mapping';
 import { getEntityBounds } from '../../utils/viewportUtils.js';
 
 export interface UseSpaceMouseControlsParams {
@@ -38,12 +38,6 @@ export interface UseSpaceMouseControlsParams {
   selectedEntityIdRef: MutableRefObject<number | null>;
   calculateScale: () => void;
 }
-
-/**
- * Frames longer than this (background tab, debugger pause) are clamped so the
- * first frame back cannot integrate seconds of deflection into one huge jump.
- */
-const MAX_FRAME_MS = 100;
 
 export function useSpaceMouseControls(params: UseSpaceMouseControlsParams): void {
   const {
@@ -97,12 +91,18 @@ export function useSpaceMouseControls(params: UseSpaceMouseControlsParams): void
     const spaceMouseMove = (now: number) => {
       if (aborted || !session) return;
 
-      const deltaMs = Math.min(now - lastFrameTime, MAX_FRAME_MS);
+      // The mapping caps deltaMs (MAX_FRAME_DELTA_MS) so a backgrounded tab
+      // cannot teleport the camera; the staleness watchdog stops a silent
+      // HID stall (no disconnect event) from latching the last sample.
+      const deltaMs = now - lastFrameTime;
       lastFrameTime = now;
 
+      const stale = isInputStale(session.getLastSampleAt(), now);
       const sensitivity = useViewerStore.getState().spaceMouseSensitivity;
-      const deltas = mapSixDofToCameraDeltas(session.getState(), sensitivity, deltaMs);
-      if (!deltasAreZero(deltas)) {
+      const deltas = stale
+        ? null
+        : mapSixDofToCameraDeltas(session.getState(), sensitivity, deltaMs);
+      if (deltas && !deltasAreZero(deltas)) {
         if (deltas.orbitDx !== 0 || deltas.orbitDy !== 0) {
           camera.orbit(deltas.orbitDx, deltas.orbitDy, false);
         }

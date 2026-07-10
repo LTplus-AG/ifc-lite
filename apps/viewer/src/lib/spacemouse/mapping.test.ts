@@ -10,7 +10,11 @@ import {
   deltasAreZero,
 } from './mapping.js';
 import { zeroSixDof, type SixDof } from './parser.js';
-import { AXIS_FULL_SCALE, AXIS_SIGN, BASE_RATES, DEADZONE_FRACTION } from './constants.js';
+import { AXIS_FULL_SCALE, AXIS_SIGN, BASE_RATES, DEADZONE_FRACTION, MAX_FRAME_DELTA_MS } from './constants.js';
+
+// One frame at the integration cap: full deflection for exactly this long
+// yields rate * CAP_DT of mouse-equivalent delta.
+const CAP_DT = MAX_FRAME_DELTA_MS / 1000;
 
 test('applyDeadzone returns 0 inside the dead zone', () => {
   const inside = AXIS_FULL_SCALE * DEADZONE_FRACTION * 0.5;
@@ -48,10 +52,10 @@ test('non-positive deltaMs or sensitivity produces zero deltas', () => {
 });
 
 test('cap left/right (tx) drives horizontal pan only', () => {
-  // Full deflection on tx only, sensitivity 1, exactly 1000ms -> base rate.
+  // Full deflection on tx only, sensitivity 1, one frame at the dt cap.
   const s: SixDof = { ...zeroSixDof(), tx: AXIS_FULL_SCALE };
-  const d = mapSixDofToCameraDeltas(s, 1, 1000);
-  assert.equal(d.panDx, AXIS_SIGN.panX * BASE_RATES.panPxPerSec);
+  const d = mapSixDofToCameraDeltas(s, 1, MAX_FRAME_DELTA_MS);
+  assert.equal(d.panDx, AXIS_SIGN.panX * BASE_RATES.panPxPerSec * CAP_DT);
   assert.equal(d.panDy, 0);
   assert.equal(d.zoomDelta, 0);
   assert.equal(d.orbitDx, 0);
@@ -60,16 +64,16 @@ test('cap left/right (tx) drives horizontal pan only', () => {
 
 test('cap up/down (tz) drives vertical pan only', () => {
   const s: SixDof = { ...zeroSixDof(), tz: AXIS_FULL_SCALE };
-  const d = mapSixDofToCameraDeltas(s, 1, 1000);
-  assert.equal(d.panDy, AXIS_SIGN.panY * BASE_RATES.panPxPerSec);
+  const d = mapSixDofToCameraDeltas(s, 1, MAX_FRAME_DELTA_MS);
+  assert.equal(d.panDy, AXIS_SIGN.panY * BASE_RATES.panPxPerSec * CAP_DT);
   assert.equal(d.panDx, 0);
   assert.equal(d.zoomDelta, 0);
 });
 
 test('cap push/pull (ty) drives zoom with the configured sign', () => {
   const s: SixDof = { ...zeroSixDof(), ty: AXIS_FULL_SCALE };
-  const d = mapSixDofToCameraDeltas(s, 1, 1000);
-  assert.equal(d.zoomDelta, AXIS_SIGN.dolly * BASE_RATES.zoomDeltaPerSec);
+  const d = mapSixDofToCameraDeltas(s, 1, MAX_FRAME_DELTA_MS);
+  assert.equal(d.zoomDelta, AXIS_SIGN.dolly * BASE_RATES.zoomDeltaPerSec * CAP_DT);
   assert.equal(d.panDx, 0);
   assert.equal(d.panDy, 0);
   assert.equal(d.orbitDx, 0);
@@ -77,9 +81,9 @@ test('cap push/pull (ty) drives zoom with the configured sign', () => {
 
 test('twist (rz) and tilt (rx) drive orbit; roll (ry) is ignored', () => {
   const s: SixDof = { ...zeroSixDof(), rz: AXIS_FULL_SCALE, rx: AXIS_FULL_SCALE, ry: AXIS_FULL_SCALE };
-  const d = mapSixDofToCameraDeltas(s, 1, 1000);
-  assert.equal(d.orbitDx, AXIS_SIGN.orbitYaw * BASE_RATES.orbitPxPerSec);
-  assert.equal(d.orbitDy, AXIS_SIGN.orbitPitch * BASE_RATES.orbitPxPerSec);
+  const d = mapSixDofToCameraDeltas(s, 1, MAX_FRAME_DELTA_MS);
+  assert.equal(d.orbitDx, AXIS_SIGN.orbitYaw * BASE_RATES.orbitPxPerSec * CAP_DT);
+  assert.equal(d.orbitDy, AXIS_SIGN.orbitPitch * BASE_RATES.orbitPxPerSec * CAP_DT);
   // roll contributes to nothing
   assert.equal(d.panDx, 0);
   assert.equal(d.panDy, 0);
@@ -88,8 +92,8 @@ test('twist (rz) and tilt (rx) drive orbit; roll (ry) is ignored', () => {
 
 test('sensitivity scales deltas linearly', () => {
   const s: SixDof = { ...zeroSixDof(), tx: AXIS_FULL_SCALE };
-  const base = mapSixDofToCameraDeltas(s, 1, 1000);
-  const doubled = mapSixDofToCameraDeltas(s, 2, 1000);
+  const base = mapSixDofToCameraDeltas(s, 1, 16);
+  const doubled = mapSixDofToCameraDeltas(s, 2, 16);
   assert.ok(Math.abs(doubled.panDx - 2 * base.panDx) < 1e-9);
 });
 

@@ -77,6 +77,7 @@ export interface SpaceMouseSessionOptions {
  */
 export class SpaceMouseSession {
   private state: SixDof = zeroSixDof();
+  private lastSampleAt = Number.NEGATIVE_INFINITY;
   private buttonsDown = new Set<number>();
   private closed = false;
 
@@ -93,6 +94,7 @@ export class SpaceMouseSession {
       return;
     }
     this.state = parseSpaceMouseReport(event.reportId, event.data, this.state);
+    this.lastSampleAt = performance.now();
     this.options.onSample?.(this.state);
   };
 
@@ -113,6 +115,15 @@ export class SpaceMouseSession {
   /** Latest decoded 6DoF sample (device counts, clamped). */
   getState(): SixDof {
     return this.state;
+  }
+
+  /**
+   * performance.now() of the last decoded 6DoF report, -Infinity before the
+   * first one. Feed to `isInputStale` so a silent HID stall (no disconnect
+   * event) cannot latch the last sample and drive the camera forever.
+   */
+  getLastSampleAt(): number {
+    return this.lastSampleAt;
   }
 
   get productName(): string {

@@ -54,6 +54,23 @@ export const AXIS_FULL_SCALE = 350;
 export const DEADZONE_FRACTION = 0.03;
 
 /**
+ * Frames longer than this (background tab, debugger pause) integrate as if
+ * they were this long, so the first frame back cannot fold seconds of held
+ * deflection into one huge camera jump. Enforced inside the pure mapping so
+ * the teleport guard is unit-testable.
+ */
+export const MAX_FRAME_DELTA_MS = 50;
+
+/**
+ * Reports older than this no longer drive the camera. A silent HID stall
+ * (driver hiccup, stack freeze, no `disconnect` event) would otherwise latch
+ * the last non-zero sample and move the camera forever. Safe because a
+ * deflected SpaceMouse streams reports continuously (~125Hz); more than
+ * 250ms of silence means released or stalled.
+ */
+export const STALE_REPORT_TIMEOUT_MS = 250;
+
+/**
  * Per-axis role + sign, following 3Dconnexion's default "object mode": the
  * model follows the puck (push right -> model moves right, twist -> model
  * turns, push away -> move into the scene). Signs are best-effort without

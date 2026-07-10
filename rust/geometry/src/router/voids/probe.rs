@@ -421,11 +421,9 @@ impl GeometryRouter {
             if shape_rep.ifc_type != IfcType::IfcShapeRepresentation {
                 continue;
             }
-            if let Some(rep_type_attr) = shape_rep.get(2) {
-                if let Some(rep_type) = rep_type_attr.as_string() {
-                    if !is_body_representation(rep_type) {
-                        continue;
-                    }
+            if let Some(rep_type) = crate::router::effective_rep_type(&shape_rep) {
+                if !is_body_representation(rep_type) {
+                    continue;
                 }
             }
             let items_attr = match shape_rep.get(3) {
@@ -498,11 +496,9 @@ impl GeometryRouter {
             }
 
             // Check representation type
-            if let Some(rep_type_attr) = shape_rep.get(2) {
-                if let Some(rep_type) = rep_type_attr.as_string() {
-                    if !is_body_representation(rep_type) {
-                        continue;
-                    }
+            if let Some(rep_type) = crate::router::effective_rep_type(&shape_rep) {
+                if !is_body_representation(rep_type) {
+                    continue;
                 }
             }
 

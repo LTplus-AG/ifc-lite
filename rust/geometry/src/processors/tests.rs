@@ -1162,3 +1162,55 @@ fn test_advanced_face_composite_curve_edge_sampled() {
         "half-disc (two quarter-arc segments) area should be ~{expected:.0}, got {area:.0}"
     );
 }
+
+/// Issue #1661: CATIA writes IFCSHAPEREPRESENTATION(#ctx,'Body','',(items)) -
+/// RepresentationIdentifier 'Body', RepresentationType EMPTY STRING. The body
+/// filter ran on the raw type, so the whole representation was vetoed and the
+/// element meshed to zero triangles ($ null type never hit the filter; only
+/// the empty-string spelling did). The filter must fall back to the
+/// identifier when the type is blank - and an 'Axis' identifier with a blank
+/// type must still be skipped.
+#[test]
+fn test_element_with_blank_representation_type_uses_identifier() {
+    use crate::router::GeometryRouter;
+
+    let content = r#"
+#1=IFCCARTESIANPOINT((0.,0.,0.));
+#2=IFCCARTESIANPOINT((100.,0.,0.));
+#3=IFCCARTESIANPOINT((100.,100.,0.));
+#4=IFCCARTESIANPOINT((0.,100.,0.));
+#10=IFCPOLYLOOP((#1,#2,#3,#4));
+#11=IFCFACEBOUND(#10,.T.);
+#12=IFCFACE((#11));
+#13=IFCOPENSHELL((#12));
+#14=IFCSHELLBASEDSURFACEMODEL((#13));
+#20=IFCSHAPEREPRESENTATION(#99,'Body','',(#14));
+#21=IFCPRODUCTDEFINITIONSHAPE($,$,(#20));
+#22=IFCWALL('3xxxxxxxxxxxxxxxxxxxx1',$,$,$,$,$,#21,$);
+#30=IFCSHAPEREPRESENTATION(#99,'Axis','',(#14));
+#31=IFCPRODUCTDEFINITIONSHAPE($,$,(#30));
+#32=IFCWALL('3xxxxxxxxxxxxxxxxxxxx2',$,$,$,$,$,#31,$);
+"#;
+
+    let entity_index = ifc_lite_core::build_entity_index(content);
+    let mut decoder = EntityDecoder::with_index(content, entity_index);
+    let router = GeometryRouter::new();
+
+    let wall = decoder.decode_by_id(22).expect("decode wall");
+    let mesh = router
+        .process_element(&wall, &mut decoder)
+        .expect("process wall");
+    assert!(
+        !mesh.is_empty(),
+        "blank RepresentationType with 'Body' identifier must still mesh (#1661)"
+    );
+
+    let axis_wall = decoder.decode_by_id(32).expect("decode axis wall");
+    let axis_mesh = router
+        .process_element(&axis_wall, &mut decoder)
+        .expect("process axis wall");
+    assert!(
+        axis_mesh.is_empty(),
+        "blank RepresentationType with 'Axis' identifier must stay skipped"
+    );
+}

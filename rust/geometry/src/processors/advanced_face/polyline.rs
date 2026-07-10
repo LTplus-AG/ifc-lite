@@ -8,7 +8,8 @@ use crate::{scale_segments, Point3, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 
 use super::bspline::{evaluate_bspline_curve, expand_knots};
-use super::curves::{read_axis2_placement_3d, sample_bspline_edge_curve, sample_circle_edge_curve};
+use super::conics::{read_axis2_placement_3d, sample_circle_edge_curve};
+use super::curves::sample_bspline_edge_curve;
 
 /// Sample points along a curve in 3D. Currently handles `IfcLine`, `IfcCircle`,
 /// `IfcTrimmedCurve` and `IfcBSplineCurveWithKnots`. Returns a polyline that

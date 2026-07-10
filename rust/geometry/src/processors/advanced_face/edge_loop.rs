@@ -7,9 +7,10 @@
 use crate::{Point3, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 
+use super::conics::{sample_circle_edge_curve, sample_ellipse_edge_curve};
 use super::curves::{
     extract_vertex_coords, read_trim_parameter, sample_bspline_edge_curve,
-    sample_bspline_edge_curve_range, sample_circle_edge_curve, sample_ellipse_edge_curve,
+    sample_bspline_edge_curve_range,
 };
 use super::polyline::sample_curve_polyline;
 

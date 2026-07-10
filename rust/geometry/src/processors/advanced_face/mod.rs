@@ -12,6 +12,7 @@ use crate::{Error, Result, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 
 mod bspline;
+mod conics;
 mod curves;
 mod edge_loop;
 mod polyline;

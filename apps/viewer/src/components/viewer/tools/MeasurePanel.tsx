@@ -16,6 +16,11 @@ import { useDraggablePanel } from '@/hooks/useDraggablePanel';
 import { useAnchorGeoreference, type AnchorGeoreference } from '@/lib/geo/useAnchorGeoreference';
 import { viewerPointToProjected } from '@/lib/geo/pick-to-geo';
 import { mapUnitsToMeters } from '@/lib/geo/cesium-placement';
+import {
+  reprojectPointToLatLon,
+  reprojectionInputKey,
+  type LatLon,
+} from '@/lib/geo/reproject';
 
 interface Vec3Like { x: number; y: number; z: number }
 interface Enh { e: string; n: string; h: string }
@@ -47,6 +52,57 @@ function EnhLine({ label, enh }: { label?: string; enh: Enh }) {
       <span>H {enh.h}</span>
     </div>
   );
+}
+
+/**
+ * Resolve a picked viewer point to WGS84 lat/lon asynchronously (proj4). The
+ * synchronous E/N/H readout never blocks on this; lat/lon appears once the
+ * projection resolves and is `null` for a CRS proj4 can't resolve (the line is
+ * simply absent). The effect is keyed by a primitive derived from *all* inputs
+ * the reprojection consumes (CRS name + projection metadata + unit scales +
+ * quantised E/N) so it recomputes on any georef edit but not on unrelated
+ * re-renders — see {@link reprojectionInputKey}.
+ */
+function useProjectedLatLon(
+  point: Vec3Like | null,
+  anchor: AnchorGeoreference | null,
+): LatLon | null {
+  const [latLon, setLatLon] = useState<LatLon | null>(null);
+  const projected = point && anchor
+    ? viewerPointToProjected(point, anchor.eff, anchor.originViewer)
+    : null;
+  const key = projected && anchor
+    ? reprojectionInputKey(
+        projected.eastings,
+        projected.northings,
+        anchor.eff.projectedCRS,
+        anchor.eff.lengthUnitScale,
+      )
+    : '';
+
+  useEffect(() => {
+    if (!projected || !anchor) {
+      setLatLon(null);
+      return;
+    }
+    let cancelled = false;
+    void reprojectPointToLatLon(
+      projected.eastings,
+      projected.northings,
+      anchor.eff.projectedCRS,
+      anchor.eff.lengthUnitScale,
+    ).then((r) => {
+      if (!cancelled) setLatLon(r);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // Keyed by the primitive `key` so unrelated re-renders don't refetch and a
+    // georef change that alters the projection always does.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+
+  return latLon;
 }
 
 export function MeasureOverlay() {
@@ -133,6 +189,9 @@ export function MeasureOverlay() {
   const livePoint: Vec3Like | null = activeMeasurement?.current
     ?? (measurements.length > 0 ? measurements[measurements.length - 1].end : null);
   const liveEnh = showGeo && anchor && livePoint ? projectedEnh(livePoint, anchor) : null;
+  // Async WGS84 lat/lon for the live point. Non-blocking: null until proj4
+  // resolves (and stays null for an unresolvable CRS), so E/N/H is unaffected.
+  const liveLatLon = useProjectedLatLon(showGeo ? livePoint : null, showGeo ? anchor : null);
 
   const panelRef = React.useRef<HTMLDivElement>(null);
   const drag = useDraggablePanel(panelRef);
@@ -244,6 +303,11 @@ export function MeasureOverlay() {
           <div className="font-mono text-[9px] text-muted-foreground/80 mt-0.5 pl-5">
             {anchor.eff.projectedCRS.name}
           </div>
+          {liveLatLon && (
+            <div className="font-mono text-[10px] tabular-nums whitespace-nowrap text-muted-foreground mt-0.5 pl-5">
+              Lat {liveLatLon.lat.toFixed(6)} / Lon {liveLatLon.lon.toFixed(6)}
+            </div>
+          )}
         </div>
       )}
 

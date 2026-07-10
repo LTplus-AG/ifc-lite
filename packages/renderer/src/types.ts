@@ -75,6 +75,11 @@ export interface BatchedMesh {
    *  space (world = origin + position). Keeps f32 vertex coords element-small at
    *  building/georef scale (no fan collapse). [0,0,0] = absolute (legacy). */
   origin?: [number, number, number];
+  /** LOD1 (issue #1682 phase 5): simplified index range over the SAME vertex
+   *  buffer, drawn instead of the full indices when the batch projects below
+   *  the configured screen size. Absent = no LOD (draw full detail always). */
+  lod1IndexBuffer?: GPUBuffer;
+  lod1IndexCount?: number;
   /** GPU residency (issue #1682 phase 3a): `false` = evicted metadata shell —
    *  bounds/expressIds/counts remain valid for culling, picking-fallback and
    *  bookkeeping, but the GPU buffers are destroyed and MUST NOT be bound.
@@ -290,6 +295,13 @@ export interface RenderOptions {
    * asynchronously there).
    */
   restoreEvictedForCapture?: boolean;
+  /**
+   * LOD selection (issue #1682 phase 5): batches whose world AABB projects
+   * below `screenPx` device pixels draw their simplified LOD1 index range
+   * (when one was built — see Scene.setLodBuildsEnabled) instead of full
+   * detail. Absent or `screenPx <= 0` = always full detail.
+   */
+  lod?: { screenPx: number };
 }
 
 /**

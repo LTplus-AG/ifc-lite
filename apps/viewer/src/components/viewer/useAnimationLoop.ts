@@ -22,6 +22,7 @@ import type { CoordinateInfo } from '@ifc-lite/geometry';
 import type { SectionPlane } from '@/store';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
 import { getContributionCullConfig } from '../../utils/renderCullConfig.js';
+import { getLodScreenPx } from '../../utils/lodConfig.js';
 
 export interface UseAnimationLoopParams {
   canvasRef: RefObject<HTMLCanvasElement | null>;
@@ -110,10 +111,13 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
     const scene = renderer.getScene();
     let aborted = false;
 
-    // Contribution culling (issue #1682): resolved once per session — the
-    // knob is a load-time A/B switch, not a live setting. Only this loop
-    // passes it; snapshot renders (clash/IDS/BCF) stay exhaustive.
+    // Contribution culling + LOD (issue #1682): resolved once per session —
+    // the knobs are load-time A/B switches, not live settings. Only this loop
+    // passes them; snapshot renders (clash/IDS/BCF) stay exhaustive and
+    // full-detail.
     const contributionCull = getContributionCullConfig();
+    const lodScreenPx = getLodScreenPx();
+    const lod = lodScreenPx !== null ? { screenPx: lodScreenPx } : undefined;
 
     let lastRotationUpdate = 0;
     let lastScaleUpdate = 0;
@@ -240,6 +244,7 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
           // intentional large-model throttle instead of display refresh.
           interactionFrameIntervalMs: continuousThrottleMs || undefined,
           contributionCull,
+          lod,
           buildingRotation: coordinateInfoRef.current?.buildingRotation,
           sectionPlane: activeToolRef.current === 'section' ? {
             axis: sectionPlaneRef.current.axis,

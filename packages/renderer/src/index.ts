@@ -63,6 +63,7 @@ export { chunkCellKey, bucketBaseKeyFor, DEFAULT_CHUNK_CELL_SIZE } from './chunk
 export type { SpatialChunkingConfig, ChunkAnchorSource } from './chunk-grid.js';
 export { selectEvictions, MIN_EVICTION_AGE_FRAMES } from './residency.js';
 export type { ResidencyShell, ColdGeometryProvider } from './residency.js';
+export { simplifyIndicesByClustering, lodCellSizeForBounds, LOD_MIN_TRIANGLES, LOD_CELL_FRACTION } from './lod-simplify.js';
 export { sumResidentGpuBytes } from './render-stats.js';
 export type { FrameStats, ResidentGpuBytes } from './render-stats.js';
 export { RaycastEngine } from './raycast-engine.js';
@@ -1101,6 +1102,7 @@ export class Renderer {
         let frameBatchesFrustumCulled = 0;
         let frameBatchesContributionCulled = 0;
         let frameBatchesNotResident = 0;
+        let frameBatchesAtLod1 = 0;
         // Residency ages are measured in RENDERED frames (idle never ages out).
         this.scene.beginResidencyFrame();
         // Capture renders restore evicted batches SYNCHRONOUSLY so isolation
@@ -1727,8 +1729,13 @@ export class Renderer {
                     options.contributionCull,
                     interacting,
                 );
+                // LOD1 selection (issue #1682 phase 5): batches projecting below
+                // this draw their simplified index range. Shares the projection
+                // camera with contribution culling.
+                const lodScreenPx = options.lod && options.lod.screenPx > 0 ? options.lod.screenPx : 0;
+                const lodBatches = new Set<number>();
                 let cullCam: CullCameraState | null = null;
-                if (contribThresholdPx > 0) {
+                if (contribThresholdPx > 0 || lodScreenPx > 0) {
                     const eye = this.camera.getPosition();
                     const tgt = this.camera.getTarget();
                     const dx = tgt.x - eye.x, dy = tgt.y - eye.y, dz = tgt.z - eye.z;
@@ -1842,16 +1849,21 @@ export class Renderer {
                             frameBatchesFrustumCulled++;
                             continue; // Entire batch is off-screen
                         }
-                        // Contribution cull: the whole batch projects below the
-                        // pixel threshold — drawing it could change at most a
-                        // (sub-)pixel. Selected entities still highlight: the
-                        // selection pass draws per-mesh, independent of batches.
-                        if (
-                            cullCam &&
-                            projectedAabbRadiusPx(batch.bounds.min, batch.bounds.max, cullCam) < contribThresholdPx
-                        ) {
-                            frameBatchesContributionCulled++;
-                            continue;
+                        if (cullCam) {
+                            const px = projectedAabbRadiusPx(batch.bounds.min, batch.bounds.max, cullCam);
+                            // Contribution cull: the whole batch projects below the
+                            // pixel threshold — drawing it could change at most a
+                            // (sub-)pixel. Selected entities still highlight: the
+                            // selection pass draws per-mesh, independent of batches.
+                            if (contribThresholdPx > 0 && px < contribThresholdPx) {
+                                frameBatchesContributionCulled++;
+                                continue;
+                            }
+                            // LOD1: small-but-visible batches draw the simplified
+                            // index range over the same vertices.
+                            if (lodScreenPx > 0 && px < lodScreenPx && batch.lod1IndexBuffer) {
+                                lodBatches.add(batch.id);
+                            }
                         }
                     }
 
@@ -1980,11 +1992,19 @@ export class Renderer {
 
                     device.queue.writeBuffer(batch.uniformBuffer, 0, tpl);
 
-                    // Single draw call for entire batch!
+                    // Single draw call for entire batch! LOD1-selected batches
+                    // bind their simplified index range over the same vertices.
+                    const useLod1 = batch.lod1IndexBuffer && batch.lod1IndexCount && lodBatches.has(batch.id);
                     pass.setBindGroup(0, batch.bindGroup);
                     pass.setVertexBuffer(0, batch.vertexBuffer);
-                    pass.setIndexBuffer(batch.indexBuffer, 'uint32');
-                    pass.drawIndexed(batch.indexCount);
+                    if (useLod1) {
+                        pass.setIndexBuffer(batch.lod1IndexBuffer!, 'uint32');
+                        pass.drawIndexed(batch.lod1IndexCount!);
+                        frameBatchesAtLod1++;
+                    } else {
+                        pass.setIndexBuffer(batch.indexBuffer, 'uint32');
+                        pass.drawIndexed(batch.indexCount);
+                    }
                     frameDrawCalls++;
                     frameBatchesDrawn++;
                 };
@@ -2570,6 +2590,7 @@ export class Renderer {
                 batchesFrustumCulled: frameBatchesFrustumCulled,
                 batchesContributionCulled: frameBatchesContributionCulled,
                 batchesNotResident: frameBatchesNotResident,
+                batchesAtLod1: frameBatchesAtLod1,
                 timestamp: performance.now(),
             };
 

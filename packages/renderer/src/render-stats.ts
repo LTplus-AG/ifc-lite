@@ -33,6 +33,8 @@ export interface FrameStats {
    * frame or two (issue #1682 phase 3a).
    */
   batchesNotResident: number;
+  /** Batches drawn at their simplified LOD1 index range this frame. */
+  batchesAtLod1: number;
   /** `performance.now()` timestamp taken at the end of the render call. */
   timestamp: number;
 }

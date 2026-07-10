@@ -32,6 +32,7 @@ import { CLASH_COLOR_OVERLAP } from '@/lib/clash/clash-colors';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
 import { getSpatialChunkingConfig } from '../../utils/spatialChunkConfig.js';
 import { getGpuResidencyBudgetBytes, getHostResidencyBudgetBytes } from '../../utils/gpuBudgetConfig.js';
+import { getLodScreenPx } from '../../utils/lodConfig.js';
 import {
   getEntityBounds,
   getThemeClearColor,
@@ -737,6 +738,11 @@ export function Viewport({
       if (hostBudget !== null) {
         renderer.getScene().setHostResidencyBudget(hostBudget);
         console.log(`[Viewport] host residency budget on (${(hostBudget / 1048576).toFixed(0)}MB)`);
+      }
+      const lodPx = getLodScreenPx();
+      if (lodPx !== null) {
+        renderer.getScene().setLodBuildsEnabled(true);
+        console.log(`[Viewport] LOD1 on (below ${lodPx}px projected)`);
       }
       // Read-only debug/e2e hook (same convention as __ifc_lite_viewer_store__):
       // live frame stats + resident GPU/CPU bytes for Playwright assertions

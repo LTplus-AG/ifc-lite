@@ -3365,6 +3365,8 @@
     "HATCH_PATTERN_IDS: const",
     "HatchPatternId: type",
     "Intersection: interface",
+    "LOD_CELL_FRACTION: const",
+    "LOD_MIN_TRIANGLES: const",
     "LightingEnvironment: interface",
     "MIN_EVICTION_AGE_FRAMES: const",
     "MagneticSnapResult: interface",
@@ -3436,6 +3438,7 @@
     "decodePickSample: function",
     "deriveSkyGradient: function",
     "federationRegistry: const",
+    "lodCellSizeForBounds: function",
     "nearestCardinalAxis: function",
     "packEnvironmentUniforms: function",
     "pickFitPolicy: function",
@@ -3444,6 +3447,7 @@
     "resolveContributionThresholdPx: function",
     "resolveEnvironment: function",
     "selectEvictions: function",
+    "simplifyIndicesByClustering: function",
     "sumResidentGpuBytes: function"
   ],
   "@ifc-lite/sandbox": [

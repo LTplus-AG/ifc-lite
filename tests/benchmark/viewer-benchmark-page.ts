@@ -197,6 +197,21 @@ export class ViewerBenchmarkPage {
       }
     }
 
+    // Optional LOD1 override for A/B runs (issue #1682 phase 5). Projected
+    // screen px below which batches draw their simplified index range.
+    const lodEnv = process.env.VIEWER_BENCHMARK_LOD_PX;
+    if (lodEnv) {
+      const px = Number(lodEnv);
+      if (Number.isFinite(px) && px > 0) {
+        await this.page.addInitScript((v) => {
+          (globalThis as unknown as { __IFC_LITE_LOD_PX?: number }).__IFC_LITE_LOD_PX = v;
+        }, px);
+        console.log(`[Benchmark] LOD override: ${px}px`);
+      } else {
+        console.warn(`[Benchmark] invalid VIEWER_BENCHMARK_LOD_PX: ${lodEnv}`);
+      }
+    }
+
     // Navigate to viewer app
     await this.page.goto('http://localhost:3000');
     

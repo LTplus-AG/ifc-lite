@@ -7,8 +7,9 @@
 //!
 //! # Why
 //!
-//! The streaming pre-pass hands every wasm worker (N geometry workers + prepass
-//! + parser) the same pre-scanned entity index as three parallel `u32` columns
+//! The streaming pre-pass hands every wasm worker (N geometry workers plus the
+//! prepass and parser workers) the same pre-scanned entity index as three
+//! parallel `u32` columns
 //! via `setEntityIndex`. Each worker used to materialize a private
 //! `FxHashMap<u32, (usize, usize)>` from those columns. hashbrown rounds the
 //! bucket count up to the next power of two, so for a 19.1 M-entity model it
@@ -99,6 +100,10 @@ impl ColumnarEntityIndex {
         let mut starts = Vec::with_capacity(n);
         let mut lengths = Vec::with_capacity(n);
         for (&id, &(start, end)) in map.iter() {
+            // u32 offsets are sound only under the wasm32 <4GiB address space
+            // (module docs). Catch a future native caller in debug builds
+            // before a silent truncation decodes the wrong bytes.
+            debug_assert!(end <= u32::MAX as usize, "entity offset exceeds the u32 column ceiling");
             ids.push(id);
             starts.push(start as u32);
             lengths.push((end - start) as u32);
@@ -124,6 +129,7 @@ impl ColumnarEntityIndex {
         let mut lengths = Vec::with_capacity(estimated);
         let mut scanner = EntityScanner::new(content);
         while let Some((id, _type_name, start, end)) = scanner.next_entity() {
+            debug_assert!(end <= u32::MAX as usize, "entity offset exceeds the u32 column ceiling");
             ids.push(id);
             starts.push(start as u32);
             lengths.push((end - start) as u32);

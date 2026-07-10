@@ -21,6 +21,8 @@ const result = await parseIfcx(buffer, {
 
 console.log(`${result.entityCount} entities, ${result.meshes.length} pre-tessellated meshes`);
 console.log(`Schema: ${result.schemaVersion}`); // 'IFC5'
+// result also carries properties, quantities, relationships, spatial
+// hierarchy, and decoded point clouds (result.pointClouds)
 
 // Same MeshData[] shape as @ifc-lite/parser — feed straight into renderer
 renderer.loadGeometry(result.meshes);
@@ -60,7 +62,7 @@ const result = await parseFederatedIfcx([
 
 ## Write IFCX
 
-The package's writer ships with `@ifc-lite/export` as `Ifc5Exporter`. See the [Export package](../export/README.md) for the full write path. Quick example:
+The low-level writer (`IfcxWriter` / `exportToIfcx`) lives in this package. For the full IFC-to-IFC5 conversion path (cross-schema, geometry as USD, mutations applied), use `Ifc5Exporter` from `@ifc-lite/export`:
 
 ```typescript
 import { Ifc5Exporter } from '@ifc-lite/export';

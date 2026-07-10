@@ -46,8 +46,8 @@ If you already have a GLB blob (from a server, S3, etc.), skip the binary cache 
 ```typescript
 import { loadGLBToMeshData, parseGLB } from '@ifc-lite/cache';
 
-const meshes = await loadGLBToMeshData(glbBuffer);
-// → MeshData[] ready to feed into @ifc-lite/renderer
+const meshes = loadGLBToMeshData(new Uint8Array(glbBuffer)); // synchronous
+// MeshData[] ready to feed into @ifc-lite/renderer
 
 // Or get the parsed GLB structure if you need lower-level access
 const { json, bin } = parseGLB(glbBuffer);
@@ -65,6 +65,10 @@ const rawKey = xxhash64(buffer);     // same hash as a bigint
 ```
 
 The cache keys models by the xxHash64 of the source IFC, and `reader.validate(cacheBuffer, sourceBuffer)` uses the same hash to detect when the source has changed.
+
+## Format versioning
+
+The binary layout is versioned via the exported `FORMAT_VERSION` constant. Readers accept entries written by the current or an older format version (with backward-compatible decoding, e.g. the per-mesh geometry-class byte added in v5) and reject entries written by a newer one, so mixed-version deployments fail safely toward a cold parse.
 
 ## Source-hash contract (and `omitSourceHash`)
 

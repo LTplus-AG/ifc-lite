@@ -24,6 +24,29 @@ On each release, the following are published automatically:
 
 **GitHub Release:** Version tag + server binaries for 6 platforms
 
+### How Publishing Authenticates
+
+npm publishes use OIDC trusted publishing from GitHub Actions: the workflow
+exchanges an `id-token` for short-lived npm credentials and attaches
+provenance to every tarball, so no long-lived npm token is stored. One
+consequence: a brand-new package cannot bootstrap itself through OIDC, so new
+packages need a manual first publish by a maintainer before the automated
+flow can take over.
+
+crates.io publishes run through `scripts/release-crates.mjs`
+(`pnpm release:crates`), which publishes the crates in dependency order and
+skips versions that already exist.
+
+### Release Scripts
+
+The root `package.json` wires the flow together:
+
+| Command | What it does |
+|---------|--------------|
+| `pnpm changeset` | Create a changeset for your PR |
+| `pnpm version` | `changeset version` + `scripts/sync-versions.js` |
+| `pnpm release` | Build, verify ESM entry points, then publish npm (`changeset publish`) and crates (`scripts/release-crates.mjs`) |
+
 ### Version Synchronization
 
 Packages version independently. Changesets still propagates internal dependency bumps, and `scripts/sync-versions.js` keeps the root package version, Cargo.toml workspace version, and internal Rust workspace dependency versions aligned with the highest released workspace package version.

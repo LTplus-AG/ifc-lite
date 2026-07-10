@@ -62,7 +62,7 @@ The full EPSG database ships as a pre-built index — geo-referenced models can 
 import { lookupEpsgByCode, searchEpsgIndex } from '@ifc-lite/data';
 
 const lv95 = await lookupEpsgByCode(2056);
-// { code: 2056, name: 'CH1903+ / LV95', kind: 'projected', ... }
+// { code: '2056', name: 'CH1903+ / LV95', kind: 'projected', ... }
 
 const matches = await searchEpsgIndex('web mercator');
 // → top text-search results; ordered by relevance

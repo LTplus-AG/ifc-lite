@@ -195,7 +195,8 @@ const physicalElements = query
 For complex analytics, use SQL:
 
 ```typescript
-// sql() lazily initializes DuckDB on the first call - no enable step needed.
+// sql() lazily initializes DuckDB on the first call - no enable step needed,
+// but @duckdb/duckdb-wasm must be installed or sql() throws.
 // Simple aggregation
 const wallCounts = await query.sql(`
   SELECT type, COUNT(*) as count

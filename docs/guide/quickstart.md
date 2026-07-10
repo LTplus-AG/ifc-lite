@@ -47,7 +47,7 @@ Process IFC files entirely in the browser using WebAssembly.
     npm run dev
     ```
 
-Open `http://localhost:3000` and drag an IFC file onto the viewer.
+Open the URL Vite prints (`http://localhost:5173` by default) and drag an IFC file onto the viewer.
 
 !!! tip "No WebGPU? Use Three.js or Babylon.js"
     The `threejs` and `babylonjs` templates use WebGL, which works in all modern browsers. See the [Three.js](../tutorials/threejs-integration.md) and [Babylon.js](../tutorials/babylonjs-integration.md) integration guides for details.
@@ -366,8 +366,8 @@ if (result.format === 'ifcx') {
   // IFC5 file (result.data is IfcxParseResult)
   console.log('IFC5 with', result.meshes.length, 'pre-tessellated meshes');
 } else {
-  // IFC4 STEP file (result.data is IfcDataStore)
-  console.log('IFC4 with', result.data.entityCount, 'entities');
+  // IFC STEP file (result.data is IfcDataStore)
+  console.log('IFC with', result.data.entityCount, 'entities');
 }
 
 // Or parse IFCX directly

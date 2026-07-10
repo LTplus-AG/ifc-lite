@@ -4,19 +4,22 @@ IFClite is designed to be fast and lightweight. This page covers bundle size, pa
 
 ## Bundle Size
 
-| Library | WASM Size | Gzipped |
-|---------|-----------|---------|
-| **IFClite** | **0.65 MB** | **0.26 MB** |
-| web-ifc | 1.1 MB | 0.4 MB |
-| IfcOpenShell | 15 MB | - |
+The whole client-side engine (parser, exact CSG geometry kernel, and all Rust exporters) ships as a single WASM module of roughly 3.4 MB, about 1.2 MB gzipped over the wire. It is loaded once, lazily, and cached by the browser. Optional heavyweight features stay out of the bundle: DuckDB-WASM for SQL queries is only downloaded on the first `sql()` call, and only if you install it.
+
+You can reproduce the measurement with `scripts/measure-bundle-size.sh`.
 
 ## Parsing and Geometry
 
-Geometry processing is up to 5x faster overall (median 2.18x across test files, up to 104x on specific models). The streaming pipeline processes geometry in batches of 100 meshes so the first triangles appear on screen while the rest of the file is still being parsed.
+The streaming pipeline processes geometry in batches, so the first triangles appear on screen while the rest of the file is still being meshed. The batch size scales with file size (from about 100 meshes for small files up to a few thousand for very large ones) to balance first-paint latency against per-batch overhead.
 
-### Viewer Benchmark Baseline (2026-02-21)
+Two properties of the pipeline dominate throughput:
 
-Measured locally with the viewer benchmark suite on an M1 MacBook Pro. The two largest fixtures are optional stress tests and should be fetched on demand:
+- **Entity scanning is SIMD-accelerated** (memchr-based) in Rust, so the STEP walk itself is rarely the bottleneck on geometry-heavy files.
+- **Exact CSG void-cutting is the dominant geometry cost** on models with many openings. IFClite uses one exact cut per opening; per-element budgets and watchdogs keep pathological models from hanging the pipeline.
+
+### Viewer Benchmark Reference (2026-02-21)
+
+Measured locally with the viewer benchmark suite on an Apple Silicon machine (see `tests/benchmark/README.md`; the committed CI baseline uses a slower headless environment and reads differently). The two largest fixtures are optional stress tests and should be fetched on demand:
 
 | Model | Size | First Geometry | Total Time | Meshes |
 |-------|------|----------------|------------|--------|
@@ -27,7 +30,7 @@ Measured locally with the viewer benchmark suite on an M1 MacBook Pro. The two l
 
 ### End-to-End Viewer Loading
 
-Full loading times including parsing, geometry processing, and rendering:
+Full loading times including parsing, geometry processing, and rendering, from the same reference run:
 
 | Model | Size | Entities | Total Load | First Batch | Geometry (WASM) | Data Model Parse |
 |-------|------|----------|------------|-------------|-----------------|------------------|
@@ -76,15 +79,19 @@ For large files or team scenarios, the server processes everything in parallel a
 
 ## Running Benchmarks
 
-You can run the benchmarks on your own hardware:
+You can run the benchmarks on your own hardware. Fixtures are fetched on demand from a GitHub Release (see `tests/models/manifest.json`; the repo no longer uses Git LFS):
 
 ```bash
 pnpm --filter viewer build
-git lfs pull --include="tests/models/ara3d/AC20-FZK-Haus.ifc"
+node scripts/fixtures/fetch-fixtures.mjs "ara3d/AC20-FZK-Haus.ifc"
 VIEWER_BENCHMARK_FILES="tests/models/ara3d/AC20-FZK-Haus.ifc" pnpm test:benchmark:viewer
 ```
 
-For large stress fixtures such as `BWK-BIM` and `Holter Tower`, fetch those files explicitly with `git lfs pull --include=...` before running the benchmark suite.
+For the large stress fixtures such as `BWK-BIM` and `Holter Tower`, fetch those files explicitly before running the benchmark suite:
+
+```bash
+node scripts/fixtures/fetch-fixtures.mjs "various/O-S1-BWK-BIM architectural - BIM bouwkundig.ifc" "ara3d/ISSUE_053_20181220Holter_Tower_10.ifc"
+```
 
 Results are saved to `tests/benchmark/benchmark-results/` with automatic regression detection. See the [benchmark README](https://github.com/LTplus-AG/ifc-lite/tree/main/tests/benchmark) for details on test models, metrics, and CI integration.
 

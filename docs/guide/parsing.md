@@ -87,22 +87,32 @@ console.log(`Parse time: ${store.parseTime}ms`);
 
 ### Browser Worker Mode
 
-For non-blocking parsing in the browser:
+For non-blocking parsing in the browser, `WorkerParser` runs the columnar
+parser in a Web Worker. It takes a `SharedArrayBuffer` (so the same bytes can
+also be handed to the geometry workers without a copy), which requires a
+cross-origin-isolated page:
 
 ```typescript
 import { WorkerParser } from '@ifc-lite/parser/browser';
 
-const parser = new WorkerParser();
+if (WorkerParser.isSupported()) {
+  // Copy the file bytes into a SharedArrayBuffer
+  const sab = new SharedArrayBuffer(buffer.byteLength);
+  new Uint8Array(sab).set(new Uint8Array(buffer));
 
-const store = await parser.parseColumnar(buffer, {
-  onProgress: ({ phase, percent }) => {
-    // Updates from worker thread
-    updateProgressUI(phase, percent);
-  }
-});
-
-// Clean up when done
-parser.terminate();
+  const parser = new WorkerParser();
+  const store = await parser.parseColumnar(sab, {
+    onProgress: ({ phase, percent }) => {
+      // Updates from worker thread
+      updateProgressUI(phase, percent);
+    }
+  });
+  // The worker self-terminates after each parse; call parser.terminate()
+  // only to cancel an in-flight parse early.
+} else {
+  // Fall back to the in-process parser (no SAB / not cross-origin isolated)
+  const store = await new IfcParser().parseColumnar(buffer);
+}
 ```
 
 ### Streaming Geometry
@@ -285,22 +295,27 @@ console.log(`Parse time: ${result.parseTime}ms`);
 
 ### IFC5 Data Model
 
-```typescript
-// Entities include metadata
-result.entities.forEach((entity, id) => {
-  console.log(`Entity #${id}: ${entity.type_name}`);
-  console.log(`  GlobalId: ${entity.global_id}`);
-  console.log(`  Name: ${entity.name}`);
-  console.log(`  Has geometry: ${entity.has_geometry}`);
-});
+`parseIfcx` returns the same columnar tables as the STEP parser
+(`EntityTable`, `PropertyTable`, `QuantityTable`, `RelationshipGraph`,
+`SpatialHierarchy`), plus IFCX-specific path mappings:
 
-// Property sets grouped by namespace
-result.propertySets.forEach((pset, id) => {
-  console.log(`PropertySet: ${pset.pset_name}`);
+```typescript
+// Columnar entity table
+const { entities } = result;
+for (const id of entities.expressId) {
+  console.log(`Entity #${id}: ${entities.getTypeName(id)}`);
+  console.log(`  GlobalId: ${entities.getGlobalId(id)}`);
+  console.log(`  Name: ${entities.getName(id)}`);
+  console.log(`  Has geometry: ${entities.hasGeometry(id)}`);
+}
+
+// Property sets for an element (namespace-prefixed names)
+for (const pset of result.properties.getForEntity(wallId)) {
+  console.log(`PropertySet: ${pset.name}`);
   for (const prop of pset.properties) {
-    console.log(`  ${prop.property_name}: ${prop.property_value}`);
+    console.log(`  ${prop.name}: ${prop.value}`);
   }
-});
+}
 
 // Spatial hierarchy
 const hierarchy = result.spatialHierarchy;
@@ -308,6 +323,10 @@ console.log(`Project: ${hierarchy.project.name}`);
 
 // Element-to-storey lookup
 const storeyId = hierarchy.elementToStorey.get(wallId);
+
+// IFCX path <-> express ID mappings
+const path = result.idToPath.get(wallId);
+const id = result.pathToId.get(path);
 ```
 
 ## Server-Side Parsing
@@ -442,14 +461,18 @@ const storeyId = hierarchy.elementToStorey.get(wallId);
 
 | Schema | Entities | Status |
 |--------|----------|--------|
-| IFC2X3 | 653 | :material-check: Supported |
+| IFC2X3 | - | :material-check: Supported |
 | IFC4 | 776 | :material-check: Full Support |
 | IFC4X3 | 876 | :material-check: Supported |
 | IFC5 (IFCX) | - | :material-check: Beta |
 
+Entity counts are taken from the EXPRESS schemas the code generators consume
+(`IFC4_ADD2_TC1`, `IFC4X3`). IFC2X3 files are parsed with the same pipeline;
+the runtime schema registry itself is generated from IFC4.
+
 ### Schema Registry
 
-Access runtime schema metadata:
+Access runtime schema metadata (generated from `IFC4_ADD2_TC1`):
 
 ```typescript
 import {
@@ -462,7 +485,7 @@ import {
 // Check if entity type is known
 if (isKnownEntity('IFCWALL')) {
   const meta = getEntityMetadata('IFCWALL');
-  console.log(`Parent: ${meta.parent}`);         // 'IFCBUILDINGELEMENT'
+  console.log(`Parent: ${meta.parent}`);         // 'IfcBuildingElement'
   console.log(`Abstract: ${meta.isAbstract}`);   // false
 
   // Get all attributes including inherited
@@ -502,7 +525,8 @@ if (materialId !== undefined) {
       const layer = materials.materialLayers.get(layerId);
       if (!layer) continue;
       const layerMat = materials.materials.get(layer.material);
-      console.log(`  Layer: ${layerMat?.name ?? layer.material} (${layer.thickness}mm)`);
+      // layer.thickness is in the file's length unit
+      console.log(`  Layer: ${layerMat?.name ?? layer.material} (${layer.thickness})`);
     }
   }
 }

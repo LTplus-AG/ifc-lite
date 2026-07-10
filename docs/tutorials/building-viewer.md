@@ -58,13 +58,41 @@ my-ifc-viewer/
 │   ├── viewer.ts         # Viewer class
 │   ├── ui.ts             # UI components
 │   └── style.css         # Styles
-├── public/
-│   └── ifc_lite_wasm.wasm
 ├── index.html
+├── vite.config.ts
 └── package.json
 ```
 
-### 3. HTML Setup
+The WASM binary ships inside the `@ifc-lite/wasm` package and is resolved by
+the bundler; you do not need to copy it into `public/`.
+
+### 3. Vite Configuration
+
+The COOP/COEP headers enable `SharedArrayBuffer` for the geometry worker
+pool, and the ES worker format matches the ES-module workers the packages
+ship:
+
+```typescript
+// vite.config.ts
+import { defineConfig } from 'vite';
+
+export default defineConfig({
+  worker: {
+    format: 'es',
+  },
+  optimizeDeps: {
+    exclude: ['@ifc-lite/wasm'],
+  },
+  server: {
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'require-corp',
+    },
+  },
+});
+```
+
+### 4. HTML Setup
 
 ```html
 <!DOCTYPE html>
@@ -91,7 +119,7 @@ my-ifc-viewer/
 </html>
 ```
 
-### 4. Base Styles
+### 5. Base Styles
 
 ```css
 /* src/style.css */
@@ -148,7 +176,7 @@ Create the main viewer class:
 ```typescript
 // src/viewer.ts
 import { IfcParser, type IfcDataStore, extractPropertiesOnDemand } from '@ifc-lite/parser';
-import { GeometryProcessor, type GeometryResult } from '@ifc-lite/geometry';
+import { GeometryProcessor } from '@ifc-lite/geometry';
 import { Renderer } from '@ifc-lite/renderer';
 
 export class IfcViewer {
@@ -182,7 +210,12 @@ export class IfcViewer {
       }
     });
 
-    // Process geometry
+    // Process geometry. process() returns everything at once; for large
+    // files, iterate this.geometry.processAdaptive(this.buffer) instead and
+    // call this.renderer.addMeshes(event.meshes, true) per 'batch' event for
+    // progressive display. When hand-rolling that loop, construct the
+    // processor with new GeometryProcessor({ enableInstancing: false }) so
+    // repeated elements stay in event.meshes on the parallel path.
     const geometryResult = await this.geometry.process(this.buffer);
 
     // Load into renderer
@@ -333,7 +366,7 @@ function formatValue(value: any): string {
 ```typescript
 // src/main.ts
 import { IfcViewer } from './viewer';
-import { updateStatus, updateProgress, renderProperties } from './ui';
+import { updateStatus, renderProperties } from './ui';
 import './style.css';
 
 async function main() {
@@ -346,7 +379,7 @@ async function main() {
   const viewer = new IfcViewer(canvas);
 
   // Set up callbacks
-  viewer.onProgress = updateProgress;
+  viewer.onProgress = updateStatus; // onProgress delivers a "phase: percent%" string
   viewer.onSelect = (expressId) => {
     if (expressId) {
       const entity = viewer.getEntity(expressId);

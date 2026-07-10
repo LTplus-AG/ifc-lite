@@ -1,35 +1,65 @@
 # TypeScript API Reference
 
-Complete API documentation for the TypeScript packages.
+API documentation for the published TypeScript packages.
+
+ifc-lite ships 36 public npm packages: 35 scoped `@ifc-lite/*` packages plus the `create-ifc-lite` scaffolder. This page lists all of them, with API detail for the core packages. Exact type signatures live in each package's `src/index.ts` and shipped `.d.ts` files.
+
+## Package Index
+
+| Package | Description |
+|---------|-------------|
+| [`@ifc-lite/parser`](#ifc-liteparser) | IFC/STEP parser |
+| [`@ifc-lite/geometry`](#ifc-litegeometry) | Geometry processing bridge to the WASM/native kernel |
+| [`@ifc-lite/data`](#ifc-litedata) | Columnar data structures |
+| [`@ifc-lite/query`](#ifc-litequery) | Query system (fluent API, graph navigation, SQL) |
+| [`@ifc-lite/spatial`](#ifc-litespatial) | Spatial indexing (BVH, frustum, raycast) |
+| [`@ifc-lite/renderer`](#ifc-literenderer) | WebGPU renderer |
+| [`@ifc-lite/export`](#ifc-liteexport) | Export formats (STEP, merged STEP, Parquet/.bos, IFC5) |
+| [`@ifc-lite/mutations`](#ifc-litemutations) | Mutation tracking and property editing |
+| [`@ifc-lite/create`](#ifc-litecreate) | IFC creation from scratch and in-store element builders |
+| [`@ifc-lite/bcf`](#ifc-litebcf) | BIM Collaboration Format (BCF 2.1 / 3.0) |
+| [`@ifc-lite/ids`](#ifc-liteids) | IDS (Information Delivery Specification) validation |
+| [`@ifc-lite/drawing-2d`](#ifc-litedrawing-2d) | 2D drawing generation: section cuts, floor plans, elevations |
+| [`@ifc-lite/clash`](#ifc-liteclash) | Clash detection: core engine plus source adapters |
+| [`@ifc-lite/diff`](#ifc-litediff) | Headless model-diff engine across two revisions |
+| [`@ifc-lite/lens`](#ifc-litelens) | Rule-based 3D filtering and colorization |
+| [`@ifc-lite/lists`](#ifc-litelists) | Configurable property tables and schedules |
+| [`@ifc-lite/ifcx`](#ifc-liteifcx) | IFC5 (IFCX) parser |
+| [`@ifc-lite/encoding`](#ifc-liteencoding) | IFC string encoding/decoding and property value parsing |
+| [`@ifc-lite/cache`](#ifc-litecache) | Binary cache format for fast model loading |
+| [`@ifc-lite/pointcloud`](#ifc-litepointcloud) | Point cloud decoders and types |
+| [`@ifc-lite/solar`](#ifc-litesolar) | Solar position, sunrise/sunset, and 3D sun-path geometry |
+| [`@ifc-lite/sdk`](#ifc-litesdk) | Scripting SDK: the `bim.*` API for BIM automation |
+| [`@ifc-lite/sandbox`](#ifc-litesandbox) | QuickJS-in-WASM sandboxed script execution |
+| [`@ifc-lite/extensions`](#ifc-liteextensions) | Extension manifest, capability grammar, and slot registry |
+| [`@ifc-lite/mcp`](#ifc-litemcp) | Model Context Protocol server (stdio + Streamable HTTP) |
+| [`@ifc-lite/cli`](#ifc-litecli) | CLI toolkit: query, validate, export, create, and script BIM data |
+| [`@ifc-lite/collab`](#ifc-litecollab) | Real-time collaborative BIM via CRDT on IFCX |
+| [`@ifc-lite/collab-server`](#ifc-litecollab-server) | Reference websocket sync server for `@ifc-lite/collab` |
+| [`@ifc-lite/embed-sdk`](#ifc-liteembed-sdk) | Embed the 3D viewer in any web page via iframe |
+| [`@ifc-lite/embed-protocol`](#ifc-liteembed-protocol) | Shared postMessage protocol types for embed viewer and SDK |
+| [`@ifc-lite/viewer-core`](#ifc-liteviewer-core) | Interactive 3D viewer with REST API (lives in `packages/viewer`) |
+| [`@ifc-lite/server-client`](#ifc-liteserver-client) | TypeScript client SDK for IFC-Lite Server |
+| [`@ifc-lite/server-bin`](#ifc-liteserver-bin) | Pre-built server binary, no Docker or Rust needed |
+| [`@ifc-lite/wasm`](#ifc-litewasm) | WebAssembly bindings |
+| [`@ifc-lite/codegen`](#ifc-litecodegen) | TypeScript code generator from IFC EXPRESS schemas |
+| [`create-ifc-lite`](#create-ifc-lite) | Project scaffolder: create IFC-Lite projects with one command |
+
+---
 
 ## @ifc-lite/parser
 
-### IfcParser
+IFC/STEP parser producing a columnar `IfcDataStore`.
 
-Main class for parsing IFC files.
+### IfcParser
 
 ```typescript
 class IfcParser {
-  constructor(options?: ParserOptions);
+  // Columnar parse (recommended). Accepts ArrayBuffer or SharedArrayBuffer.
+  parseColumnar(buffer: ArrayBuffer | SharedArrayBuffer, options?: ParseOptions): Promise<IfcDataStore>;
 
-  // Parse from ArrayBuffer (returns entities as objects)
+  // Legacy eager parse into a ParseResult (deprecated, kept as a compatibility adapter)
   parse(buffer: ArrayBuffer, options?: ParseOptions): Promise<ParseResult>;
-
-  // Columnar parse (returns IfcDataStore - recommended)
-  parseColumnar(buffer: ArrayBuffer, options?: ParseOptions): Promise<IfcDataStore>;
-}
-```
-
-#### ParserOptions
-
-```typescript
-interface ParserOptions {
-  // Use WASM parser (default: true if available)
-  useWasm?: boolean;
-
-  // Worker configuration
-  useWorker?: boolean;
-  workerUrl?: string;
 }
 ```
 
@@ -37,200 +67,268 @@ interface ParserOptions {
 
 ```typescript
 interface ParseOptions {
-  // Progress callback
-  onProgress?: (progress: Progress) => void;
-
-  // Geometry quality: 'FAST' | 'BALANCED' | 'HIGH'
-  geometryQuality?: GeometryQuality;
-
-  // Skip geometry processing
-  skipGeometry?: boolean;
-
-  // Auto-shift large coordinates
-  autoOriginShift?: boolean;
-
-  // Custom origin point
-  customOrigin?: Vector3;
-
-  // Memory limit in MB
-  memoryLimit?: number;
-
-  // Entity type filters
-  includeTypes?: string[];
-  excludeTypes?: string[];
+  onProgress?: (progress: { phase: string; percent: number }) => void;
+  onDiagnostic?: (message: string) => void;
+  // Optional IfcAPI instance for WASM-accelerated entity scanning
+  wasmApi?: WasmScanApi;
+  // Yield budget for large incremental parses
+  yieldIntervalMs?: number;
+  // Defer indexing of individual property/quantity atoms
+  deferPropertyAtomIndex?: boolean;
+  // Skip worker-based entity scanning and stay in-process
+  disableWorkerScan?: boolean;
+  // Called when the spatial hierarchy is ready, before property parsing completes
+  onSpatialReady?: (partialStore: IfcDataStore) => void;
+  // Pre-built entity index from another worker (e.g. the geometry pre-pass)
+  preScannedEntityIndex?: PreScannedEntityIndex;
 }
 ```
 
 ### parseAuto
 
-Standalone function that auto-detects parser based on environment.
+Auto-detects the file format (IFC/STEP vs IFCX/JSON, with transparent `.ifcZIP` unwrap) and parses accordingly.
 
 ```typescript
 import { parseAuto } from '@ifc-lite/parser';
 
-// Auto-selects best parser for current environment
-const store = await parseAuto(buffer);
-```
-
-### ParseResult
-
-Result object returned from `parse()` method.
-
-```typescript
-interface ParseResult {
-  // Entity data as Map
-  readonly entities: Map<number, any>;
-  readonly entityCount: number;
-
-  // Property sets
-  readonly propertySets: Map<number, any>;
-
-  // Relationships
-  readonly relationships: any[];
-
-  // Entity index
-  readonly entityIndex: EntityIndex;
-
-  // File info
-  readonly fileSize: number;
+const result = await parseAuto(buffer);
+if (result.format === 'ifc') {
+  const store = result.data;        // IfcDataStore
+} else {
+  const ifcx = result.data;         // IfcxParseResult
+  const meshes = result.meshes;     // pre-extracted meshes
 }
 ```
 
 ### IfcDataStore
 
-Result object returned from `parseColumnar()` method (recommended).
+Result of `parseColumnar()`. Key fields (see `src/columnar-parser.ts` for the full interface):
 
 ```typescript
-interface IfcDataStore {
-  // Entity index for fast lookups
-  readonly entityIndex: EntityIndex;
+interface IfcDataStore extends IfcStoreBase {
+  source: Uint8Array;
+  entityIndex: { byId: EntityByIdIndex; byType: Map<string, number[]> };
 
-  // Schema version: 'IFC2X3' | 'IFC4' | 'IFC4X3'
-  readonly schemaVersion: string;
+  strings: StringTable;
+  entities: EntityTable;
+  properties: PropertyTable;
+  quantities: QuantityTable;
+  relationships: RelationshipGraph;
 
-  // Statistics
-  readonly entityCount: number;
-  readonly parseTime: number;
+  parseTime: number;
+  // Length unit scale to metres (e.g. 0.001 for mm files)
+  lengthUnitScale?: number;
 
-  // Length unit scale (e.g., 0.001 for mm files)
-  readonly lengthUnitScale: number;
-
-  // Spatial hierarchy
-  readonly spatialHierarchy: SpatialHierarchy;
-}
-
-interface EntityIndex {
-  // Lookup by expressId
-  byId: Map<number, EntityRef>;
-
-  // Lookup by type (e.g., 'IFCWALL' -> [expressId1, expressId2, ...])
-  byType: Map<string, number[]>;
+  // On-demand lookup maps: entityId -> related expressIds
+  onDemandPropertyMap?: Map<number, number[]>;
+  onDemandQuantityMap?: Map<number, number[]>;
+  onDemandClassificationMap?: Map<number, number[]>;
+  onDemandMaterialMap?: Map<number, number>;
+  onDemandDocumentMap?: Map<number, number[]>;
 }
 ```
 
-### On-Demand Property Extraction
+### On-Demand Extraction
 
-Properties are extracted lazily for memory efficiency.
+Properties, quantities, and attributes are extracted lazily for memory efficiency.
 
 ```typescript
-import { 
-  extractPropertiesOnDemand, 
+import {
+  extractPropertiesOnDemand,
   extractQuantitiesOnDemand,
-  extractEntityAttributesOnDemand 
+  extractEntityAttributesOnDemand,
 } from '@ifc-lite/parser';
 
-// Extract properties for a single entity
-const props = extractPropertiesOnDemand(store, expressId, buffer);
-// Returns: { 'Pset_WallCommon': { LoadBearing: true, ... }, ... }
+// Property sets for one entity
+const psets = extractPropertiesOnDemand(store, expressId);
 
-// Extract quantities for a single entity
-const quantities = extractQuantitiesOnDemand(store, expressId, buffer);
-// Returns: { Volume: { value: 1.5, unit: 'm³' }, ... }
+// Quantity sets for one entity
+const qsets = extractQuantitiesOnDemand(store, expressId);
 
-// Extract entity attributes
-const attrs = extractEntityAttributesOnDemand(store, expressId, buffer);
-// Returns: { Name: 'Wall 1', GlobalId: '...' }
+// Root attributes for one entity
+const attrs = extractEntityAttributesOnDemand(store, expressId);
+// { globalId, name, description, objectType, tag }
 ```
 
-### Entity
+Many more on-demand extractors are exported (classifications, materials, documents, relationships, group members, georeferencing, type properties, schedules); see `packages/parser/src/index.ts`.
 
-```typescript
-interface Entity {
-  readonly expressId: number;
-  readonly type: string;
-  readonly globalId: string;
-  readonly name: string | null;
-  readonly description: string | null;
-  readonly hasGeometry: boolean;
-}
-```
+Other exports include the STEP scanning/tokenizing building blocks (`StepTokenizer`, `EntityExtractor`, `scanIfcEntities`, `CompactEntityIndex`), unit extraction (`extractProjectUnits`, `ProjectUnits`), the STEP serializer helpers (`generateStepFile`, `toStepLine`, `serializeValue`), the generated IFC schema registry (`SCHEMA_REGISTRY`, `getAttributeNames`), and re-exported IFCX parsing from `@ifc-lite/ifcx`.
 
 ---
 
 ## @ifc-lite/geometry
 
-### GeometryProcessor
+Bridge from IFC bytes to per-element triangle meshes, running the Rust kernel via WASM (or a native backend when available).
 
-Main class for extracting geometry from IFC files.
+### GeometryProcessor
 
 ```typescript
 class GeometryProcessor {
-  constructor();
+  constructor(options?: GeometryProcessorOptions);
 
   // Initialize WASM (required before processing)
   init(): Promise<void>;
 
-  // Check if initialized
-  isInitialized(): boolean;
+  // Process IFC buffer and extract geometry (whole-file)
+  process(buffer: Uint8Array, entityIndex?: Map<number, any>): Promise<GeometryResult>;
 
-  // Process IFC buffer and extract geometry
-  process(buffer: Uint8Array): Promise<GeometryResult>;
+  // Stream geometry for large files (async generator of streaming events)
+  processStreaming(/* buffer + streaming options; see the .d.ts */): AsyncGenerator<StreamingGeometryEvent>;
 
-  // Stream geometry for large files
-  processStreaming(
-    buffer: Uint8Array,
-    entityIndex?: Map<number, any>,
-    batchSize?: number
-  ): AsyncGenerator<StreamEvent>;
-
-  // Coordinate info is returned on the GeometryResult from process()
+  // Rust-side exporters surfaced on the processor
+  exportGlb(buffer, includeMetadata?, hidden?, isolated?, hiddenTypesCsv?, lit?): Uint8Array | null;
+  exportGlbFromMeshes(meshes: MeshData[], includeMetadata?, lit?): Uint8Array | null;
+  exportObj(/* ... */): Uint8Array | null;
+  exportCsv(/* buffer, mode: 'entities'|'properties'|'quantities'|'spatial', ... */): Uint8Array | null;
+  exportJson(/* ... */): Uint8Array | null;
+  exportJsonld(/* ... */): Uint8Array | null;
+  exportStep(/* ... */): Uint8Array | null;
+  exportIfcx(buffer, onlyKnownProperties?, pretty?): Uint8Array | null;
+  exportMerged(buffers: Uint8Array[], schema?): Uint8Array | null;
+  exportKmz(/* ... */): Uint8Array | null;
+  exportHbjson(buffer, name): Uint8Array | null;
 }
 ```
 
-#### StreamEvent
-
-```typescript
-type StreamEvent =
-  | { type: 'start' }
-  | { type: 'batch'; meshes: MeshData[]; progress: number }
-  | { type: 'complete'; totalMeshes: number; coordinateInfo: CoordinateInfo };
-```
-
-### GeometryResult
+### GeometryResult and MeshData
 
 ```typescript
 interface GeometryResult {
-  readonly meshes: MeshData[];
-  readonly coordinateInfo?: CoordinateInfo;
+  meshes: MeshData[];
+  pointClouds?: PointCloudAsset[];
+  totalTriangles: number;
+  totalVertices: number;
+  coordinateInfo: CoordinateInfo;
 }
 
-interface CoordinateInfo {
-  shift?: { x: number; y: number; z: number };
-  bounds: BoundingBox;
+interface MeshData {
+  expressId: number;
+  ifcType?: string;
+  modelIndex?: number;
+  positions: Float32Array;  // [x,y,z, ...]
+  normals: Float32Array;    // [nx,ny,nz, ...]
+  indices: Uint32Array;     // triangle indices (winding is unreliable; meshes are double-sided)
+  color: [number, number, number, number];
+  // ... local-frame origin, geometry class, texture fields; see src/types.ts
 }
 ```
 
-### MeshData
+`CoordinateInfo` carries the RTC/origin-shift information (`originShift`, `wasmRtcOffset`, `hasLargeCoordinates`, `buildingRotation`, unit scale) needed to place meshes in world space.
 
-Raw geometry data (Float32Arrays, not GPU buffers).
+---
+
+## @ifc-lite/data
+
+Columnar data structures shared by the parser and downstream packages.
+
+Key exports:
 
 ```typescript
-interface MeshData {
-  readonly expressId: number;
-  readonly positions: Float32Array;  // [x, y, z, x, y, z, ...]
-  readonly normals: Float32Array;    // [nx, ny, nz, ...]
-  readonly indices: Uint32Array;     // Triangle indices
-  readonly color: [number, number, number, number];  // RGBA (0-1)
+// Deduplicated string storage
+class StringTable { get(index: number): string; intern(value: string): number; /* ... */ }
+
+// Columnar tables: built once, read everywhere
+class EntityTableBuilder { /* build(): EntityTable */ }
+class PropertyTableBuilder { /* build(): PropertyTable */ }
+class QuantityTableBuilder { /* build(): QuantityTable */ }
+
+// CSR-format relationship graph
+class RelationshipGraphBuilder { /* build(): RelationshipGraph */ }
+```
+
+Each table type also has `fromColumns` / `toColumns` helpers for structured-clone transfer across workers (`entityTableFromColumns`, `propertyTableToColumns`, ...). Shared enums and types live here too: `IfcTypeEnum`, `PropertyValueType`, `QuantityType`, `RelationshipType`, `SpatialHierarchy`, `IfcStoreBase`, the generated entity-name lists (`ENTITIES_IFC2X3` / `IFC4` / `IFC4X3`), plus utilities like `safeUtf8Decode` and `createLogger`.
+
+---
+
+## @ifc-lite/query
+
+### IfcQuery
+
+Fluent query builder over an `IfcDataStore`.
+
+```typescript
+class IfcQuery {
+  constructor(store: IfcDataStore);
+
+  // Type shortcuts -> EntityQuery
+  walls(): EntityQuery;      // IfcWall + IfcWallStandardCase
+  doors(): EntityQuery;
+  windows(): EntityQuery;
+  slabs(): EntityQuery;
+  columns(): EntityQuery;
+  beams(): EntityQuery;
+  spaces(): EntityQuery;
+
+  // Type filter (variadic), everything, and by id
+  ofType(...types: string[]): EntityQuery;
+  all(): EntityQuery;
+  byId(expressId: number): EntityQuery;
+
+  // Spatial
+  onStorey(storeyId: number): EntityQuery;
+  inBounds(aabb: AABB): EntityQuery;
+  raycast(origin: [number, number, number], direction: [number, number, number]): number[];
+
+  // Graph navigation
+  entity(expressId: number): EntityNode;
+  get storeys(): EntityNode[];
+  get project(): EntityNode | null;
+
+  // SQL (DuckDB-WASM, lazily initialized on first call)
+  sql(query: string): Promise<SQLResult>;
+}
+```
+
+### EntityQuery
+
+```typescript
+class EntityQuery {
+  whereProperty(psetName: string, propName: string, operator: ComparisonOperator, value: unknown): this;
+
+  limit(count: number): this;
+  offset(count: number): this;
+  includeGeometry(): this;
+  includeProperties(): this;
+  includeQuantities(): this;
+  includeAll(): this;
+
+  // Terminals
+  execute(): QueryResultEntity[];
+  ids(): Promise<number[]>;
+  count(): Promise<number>;
+  first(): Promise<QueryResultEntity | null>;
+}
+```
+
+### EntityNode
+
+Single-entity graph navigation, from `IfcQuery.entity(id)` or `IfcQuery.storeys`.
+
+```typescript
+class EntityNode {
+  // Spatial containment
+  contains(): EntityNode[];
+  containedIn(): EntityNode | null;
+  storey(): EntityNode | null;
+  building(): EntityNode | null;
+
+  // Aggregation and typing
+  decomposes(): EntityNode[];
+  decomposedBy(): EntityNode | null;
+  definingType(): EntityNode | null;
+  instances(): EntityNode[];
+
+  // Voids and fills
+  voids(): EntityNode[];
+  filledBy(): EntityNode[];
+
+  // Data
+  properties(): PropertySet[];
+  quantities(): QuantitySet[];
+  allAttributes(): Array<{ name: string; value: string | number | boolean }>;
+
+  // Generic traversal
+  traverse(relType: RelationshipType, depth: number, direction?: 'forward' | 'inverse'): EntityNode[];
 }
 ```
 
@@ -238,24 +336,16 @@ interface MeshData {
 
 ## @ifc-lite/spatial
 
-Spatial indexing utilities for efficient geometry queries and frustum culling.
+Spatial indexing utilities for geometry queries and frustum culling.
 
 ### buildSpatialIndex
 
-Builds a BVH (Bounding Volume Hierarchy) spatial index from geometry meshes.
-
 ```typescript
-import { buildSpatialIndex } from '@ifc-lite/spatial';
+import { buildSpatialIndex, buildSpatialIndexAsync } from '@ifc-lite/spatial';
 import type { MeshData } from '@ifc-lite/geometry';
 
 function buildSpatialIndex(meshes: MeshData[]): SpatialIndex;
 ```
-
-**Parameters:**
-- `meshes: MeshData[]` - Array of mesh data objects from `GeometryProcessor.process()`
-
-**Returns:**
-- `SpatialIndex` - BVH spatial index implementing the SpatialIndex interface
 
 **Example:**
 
@@ -284,44 +374,20 @@ renderer.render({
 
 ### SpatialIndex
 
-Interface for spatial queries.
-
 ```typescript
 interface SpatialIndex {
-  /**
-   * Query AABB - returns expressIds of meshes intersecting bounds
-   */
+  // Query AABB: expressIds of meshes intersecting bounds
   queryAABB(bounds: AABB): number[];
 
-  /**
-   * Raycast - returns expressIds of meshes hit by ray
-   */
+  // Raycast: expressIds of meshes hit by ray
   raycast(origin: [number, number, number], direction: [number, number, number]): number[];
 
-  /**
-   * Query frustum - returns expressIds of meshes visible in frustum
-   */
+  // Query frustum: expressIds of meshes visible in frustum
   queryFrustum(frustum: Frustum): number[];
 }
 ```
 
-### Types
-
-```typescript
-interface AABB {
-  min: [number, number, number];
-  max: [number, number, number];
-}
-
-interface Frustum {
-  planes: Plane[];
-}
-
-interface Plane {
-  normal: [number, number, number];
-  distance: number;
-}
-```
+The underlying `BVH` class, `AABBUtils`, and `FrustumUtils` are also exported.
 
 ---
 
@@ -340,7 +406,7 @@ class Renderer {
 
   // Load geometry (main entry point for IFC geometry)
   loadGeometry(geometry: GeometryResult | MeshData[]): void;
-  
+
   // Add meshes incrementally (for streaming)
   addMeshes(meshes: MeshData[], isStreaming?: boolean): void;
 
@@ -352,11 +418,7 @@ class Renderer {
   getCamera(): Camera;
 
   // Selection (GPU picking)
-  pick(x: number, y: number, options?: PickOptions): Promise<number | null>;
-
-  // Visibility (pass to render() options)
-  // hiddenIds?: Set<number>;
-  // isolatedIds?: Set<number> | null;
+  pick(x: number, y: number, options?: PickOptions): Promise<PickResult | null>;
 
   // Scene access
   getScene(): Scene;
@@ -369,709 +431,163 @@ class Renderer {
 }
 ```
 
-#### RendererOptions
+Visibility is passed via `render()` options (`hiddenIds`, `isolatedIds`); frustum culling via `enableFrustumCulling` plus a `spatialIndex` from `@ifc-lite/spatial`.
 
-```typescript
-interface RendererOptions {
-  antialias?: boolean;
-  sampleCount?: 1 | 4;
-  backgroundColor?: Color;
-  powerPreference?: 'low-power' | 'high-performance';
-  enablePicking?: boolean;
-  enableShadows?: boolean;
-  enableSectionPlanes?: boolean;
-}
-```
-
-#### CameraOptions
-
-```typescript
-interface CameraOptions {
-  position?: Vector3;
-  target?: Vector3;
-  up?: Vector3;
-  fov?: number;
-  near?: number;
-  far?: number;
-  orbitSpeed?: number;
-  panSpeed?: number;
-  zoomSpeed?: number;
-  minDistance?: number;
-  maxDistance?: number;
-}
-```
-
-#### ViewPreset
-
-```typescript
-type ViewPreset =
-  | 'front'
-  | 'back'
-  | 'left'
-  | 'right'
-  | 'top'
-  | 'bottom'
-  | 'iso'
-  | 'iso-back';
-```
-
----
-
-## @ifc-lite/query
-
-### IfcQuery
-
-Fluent query builder.
-
-```typescript
-class IfcQuery {
-  constructor(store: IfcDataStore);
-
-  // Type shortcuts -> EntityQuery
-  walls(): EntityQuery;
-  doors(): EntityQuery;
-  windows(): EntityQuery;
-  slabs(): EntityQuery;
-  columns(): EntityQuery;
-  beams(): EntityQuery;
-  spaces(): EntityQuery;
-
-  // Type filter (variadic), everything, and by id
-  ofType(...types: string[]): EntityQuery;
-  all(): EntityQuery;
-  byId(expressId: number): EntityQuery;
-
-  // Spatial
-  onStorey(storeyId: number): EntityQuery;
-  inBounds(aabb: AABB): EntityQuery;
-  raycast(
-    origin: [number, number, number],
-    direction: [number, number, number]
-  ): number[];
-
-  // Graph navigation
-  entity(expressId: number): EntityNode;
-  get storeys(): EntityNode[];
-  get project(): EntityNode | null;
-
-  // SQL (DuckDB-WASM, lazily initialized on first call)
-  sql(query: string): Promise<SQLResult>;
-}
-```
-
-### EntityQuery
-
-Fluent builder over a set of entities. Filter, then call a terminal.
-
-```typescript
-class EntityQuery {
-  // Filter (psetName is an exact interned name, not a glob)
-  whereProperty(
-    psetName: string,
-    propName: string,
-    operator: ComparisonOperator,
-    value: unknown
-  ): this;
-
-  // Paging and include flags
-  limit(count: number): this;
-  offset(count: number): this;
-  includeGeometry(): this;
-  includeProperties(): this;
-  includeQuantities(): this;
-  includeAll(): this;
-
-  // Terminals
-  execute(): QueryResultEntity[];
-  ids(): Promise<number[]>;
-  count(): Promise<number>;
-  first(): Promise<QueryResultEntity | null>;
-}
-
-type ComparisonOperator =
-  | '=' | '!=' | '>' | '>=' | '<' | '<=' | 'contains' | 'startsWith';
-
-interface QueryResultEntity {
-  readonly expressId: number;
-  readonly globalId: string;
-  readonly name: string;
-  readonly type: string;
-  readonly properties: PropertySet[]; // populated when includeProperties()
-  readonly quantities: QuantitySet[]; // populated when includeQuantities()
-  readonly geometry: MeshData | null; // populated when includeGeometry()
-}
-```
-
-### EntityNode
-
-Single-entity graph navigation, from `IfcQuery.entity(id)` or `IfcQuery.storeys`.
-
-```typescript
-class EntityNode {
-  readonly expressId: number;
-
-  // Resolved attributes (getters)
-  readonly globalId: string;
-  readonly name: string;
-  readonly description: string;
-  readonly objectType: string;
-  readonly tag: string;
-
-  // Spatial containment
-  contains(): EntityNode[]; // direct spatial children
-  containedIn(): EntityNode | null;
-  storey(): EntityNode | null;
-  building(): EntityNode | null;
-
-  // Aggregation and typing
-  decomposes(): EntityNode[];
-  decomposedBy(): EntityNode | null;
-  definingType(): EntityNode | null;
-  instances(): EntityNode[];
-
-  // Voids and fills
-  voids(): EntityNode[];
-  filledBy(): EntityNode[];
-
-  // Data
-  properties(): PropertySet[];
-  quantities(): QuantitySet[];
-  allAttributes(): Array<{ name: string; value: string | number | boolean }>;
-
-  // Generic traversal
-  traverse(
-    relType: RelationshipType,
-    depth: number,
-    direction?: 'forward' | 'inverse'
-  ): EntityNode[];
-}
-```
-
----
-
-## @ifc-lite/data
-
-### EntityTable
-
-Columnar entity storage.
-
-```typescript
-class EntityTable {
-  readonly count: number;
-  readonly expressIds: Uint32Array;
-  readonly typeEnums: Uint16Array;
-  readonly globalIdIndices: Uint32Array;
-  readonly nameIndices: Uint32Array;
-  readonly flags: Uint8Array;
-
-  get(index: number): EntityRow;
-  findByExpressId(id: number): number;
-  filter(predicate: (row: EntityRow) => boolean): number[];
-}
-```
-
-### StringTable
-
-Deduplicated string storage.
-
-```typescript
-class StringTable {
-  readonly count: number;
-
-  get(index: number): string;
-  intern(value: string): number;
-  has(value: string): boolean;
-}
-```
-
-### RelationshipGraph
-
-CSR-format graph for relationships.
-
-```typescript
-class RelationshipGraph {
-  // Get related entities
-  getRelated(expressId: number, relType?: string): number[];
-
-  // Get container
-  getContainer(expressId: number): number | null;
-
-  // Get contained elements
-  getContained(expressId: number): number[];
-
-  // Get all descendants
-  getAllContained(expressId: number): number[];
-
-  // Build spatial hierarchy
-  getSpatialHierarchy(): HierarchyNode;
-}
-```
+Other exports: `Camera`, `Scene`, `Picker`, `PickingManager`, `Raycaster`, `SnapDetector`, `BVH`, `SectionPlaneRenderer`, `Section2DOverlayRenderer`, `PointCloudRenderer`, `FederationRegistry` (multi-model id ranges), and the section-cap / plane-basis helpers.
 
 ---
 
 ## @ifc-lite/export
 
+Client-side exporters that operate on a parsed `IfcDataStore`.
+
 ### StepExporter
 
-Export IFC models back to STEP format with optional visible-only filtering.
+Export IFC models back to STEP, with optional visible-only filtering and mutation baking.
 
 ```typescript
 class StepExporter {
-  constructor(dataStore: IfcDataStore, source: Uint8Array);
+  constructor(dataStore: IfcDataStore, mutationView?: MutablePropertyView);
 
-  export(options?: StepExportOptions): StepExportResult;
+  export(options: StepExportOptions): StepExportResult;
 }
 
 interface StepExportOptions {
-  visibleOnly?: boolean;
-  hiddenEntityIds?: Set<number>;
-  isolatedEntityIds?: Set<number> | null;
-  applyMutations?: boolean;
-  deltaOnly?: boolean;
-}
+  // Output schema; converts entity types when needed
+  schema: 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
+  description?: string;
+  author?: string;
+  organization?: string;
+  application?: string;
+  filename?: string;
 
-interface StepExportResult {
-  content: string;
-  stats: { entityCount: number };
+  includeGeometry?: boolean;       // default true
+  includeProperties?: boolean;     // default true
+  includeQuantities?: boolean;     // default true
+  includeRelationships?: boolean;  // default true
+
+  applyMutations?: boolean;        // bake MutablePropertyView edits
+  deltaOnly?: boolean;             // only entities with mutations
+  visibleOnly?: boolean;           // filter to viewer-visible entities
+  hiddenEntityIds?: Set<number>;   // required when visibleOnly is true
+  // ... isolation, progress; see src/step-exporter.ts
 }
 ```
 
 ### MergedExporter
 
-Merge multiple IFC models into a single STEP file with a unified ID space,
-spatial-hierarchy unification, and unit-aware reconciliation.
+Merge multiple IFC models into a single STEP file with a unified ID space, spatial-hierarchy unification, and unit-aware reconciliation.
 
 ```typescript
 class MergedExporter {
   constructor(models: MergeModelInput[]);
-  export(options: MergeExportOptions): MergeExportResult;          // synchronous
+  export(options: MergeExportOptions): MergeExportResult;               // synchronous
   exportAsync(options: MergeExportOptions): Promise<MergeExportResult>; // progress + mutations
-}
-
-interface MergeModelInput {
-  id: string;
-  name: string;
-  dataStore: IfcDataStore;
-  lengthUnitScale?: number;   // metres per unit; falls back to dataStore.lengthUnitScale
-}
-
-interface MergeExportOptions {
-  schema: 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
-  // Mixed length units:
-  //   'auto' (default) — federate a differing-unit model as its own IfcProject
-  //   'normalize'      — rescale it into the first model's unit (one single-unit project)
-  //   'assume-shared'  — force one project without rescaling
-  unitReconciliation?: 'auto' | 'normalize' | 'assume-shared';
-  // Spatial matching strategy per container type (omitted = today's combined
-  // heuristic: name match, else single-instance fallback for sites/buildings;
-  // name-then-elevation for storeys):
-  //   'single':  unify iff each model contributes exactly one (Name ignored)
-  //   'by-name': Name match only (case-insensitive), no single-instance fallback
-  mergeSites?: 'single' | 'by-name';
-  mergeBuildings?: 'single' | 'by-name';
-  mergeStoreys?: 'by-name' | 'by-elevation' | 'by-name-then-elevation';
-  visibleOnly?: boolean;
-}
-
-interface MergeExportResult {
-  content: Uint8Array;
-  stats: {
-    modelCount: number;
-    totalEntityCount: number;
-    fileSize: number;
-    federatedModelCount: number;   // models kept as separate projects (auto)
-    normalizedModelCount: number;  // models rescaled into the first unit (normalize)
-    warnings: string[];
-  };
 }
 ```
 
-### collectReferencedEntityIds / collectStyleEntities
+`MergeExportOptions.unitReconciliation` controls mixed length units:
 
-Low-level reference collection for building the entity closure needed for valid STEP export.
+- `'auto'` (default): a model with a different length unit is federated as its own `IfcProject`
+- `'normalize'`: rescale it into the first model's unit (one single-unit project)
+- `'assume-shared'`: force one project without rescaling
+
+Spatial matching is tunable per container type via `mergeSites` / `mergeBuildings` (`'single' | 'by-name'`) and `mergeStoreys` (`'by-name' | 'by-elevation' | 'by-name-then-elevation'`).
+
+### ParquetExporter
+
+Creates a `.bos` archive (ZIP of Parquet files) from a parsed store, optionally with geometry buffers.
+
+```typescript
+class ParquetExporter {
+  constructor(store: IfcDataStore, geometryResult?: GeometryResult);
+
+  exportBOS(options?: ParquetExportOptions): Promise<Uint8Array>;
+  exportTable(tableName: string): Promise<Uint8Array>;
+}
+```
+
+### Reference Collection
+
+Low-level closure walking for valid STEP export:
 
 ```typescript
 // Forward closure walk from root entities
 function collectReferencedEntityIds(
-  store: IfcDataStore,
+  rootIds: Set<number>,
   source: Uint8Array,
-  hiddenIds?: Set<number>,
-  isolatedIds?: Set<number> | null
+  entityIndex: { get(id: number): { byteOffset: number; byteLength: number } | undefined; has(id: number): boolean },
+  excludeIds?: Set<number>,
 ): Set<number>;
 
-// Reverse pass to collect IfcStyledItem entities
-function collectStyleEntities(
-  store: IfcDataStore,
-  source: Uint8Array,
-  referencedIds: Set<number>
-): Set<number>;
+// Resolve viewer visibility into export roots
+function getVisibleEntityIds(dataStore, hiddenIds, isolatedIds): { roots: Set<number>; hiddenProductIds: Set<number> };
+
+// Reverse pass adding IfcStyledItem entities into the closure (mutates `closure`)
+function collectStyleEntities(closure: Set<number>, source: Uint8Array, entityIndex): void;
 ```
 
-### glTF / GLB export
+### Other exports
 
-The standalone `GltfExporter` class was removed. glTF/GLB is now assembled in Rust and exposed on `GeometryProcessor` (from `@ifc-lite/geometry`): use `exportGlb(buffer, ...)` to export from a parsed IFC buffer, or `exportGlbFromMeshes(meshes, ...)` to export from already-extracted meshes.
+- `Ifc5Exporter`: IFC5/IFCX JSON export
+- Schema conversion helpers: `convertEntityType`, `convertStepLine`, `needsConversion`
+- GLB helpers: `parseGLB`, `parseGLBToMeshData`, `extractGlbMapping`, `countGlbMeshes`
+- LOD generators: `generateLod0`, `generateLod1`
 
-### ParquetExporter
+### glTF / GLB and CSV export
 
-```typescript
-class ParquetExporter {
-  exportEntities(parseResult: ParseResult): Promise<Uint8Array>;
-  exportProperties(parseResult: ParseResult): Promise<Uint8Array>;
-  exportQuantities(parseResult: ParseResult): Promise<Uint8Array>;
-  exportAll(parseResult: ParseResult): Promise<ParquetBundle>;
-}
-```
-
-### CSV export
-
-The standalone `CsvExporter` class was removed. CSV is now produced in Rust and exposed on `GeometryProcessor.exportCsv(buffer, mode, ...)` (from `@ifc-lite/geometry`), where `mode` is one of `entities`, `properties`, `quantities`, or `spatial`.
-
----
-
-## Common Types
-
-### Vector3
-
-```typescript
-interface Vector3 {
-  x: number;
-  y: number;
-  z: number;
-}
-```
-
-### Color
-
-```typescript
-type Color = [number, number, number, number]; // RGBA, 0-1
-```
-
-### BoundingBox
-
-```typescript
-interface BoundingBox {
-  min: Vector3;
-  max: Vector3;
-  center: Vector3;
-  size: Vector3;
-}
-```
-
-### Matrix4
-
-```typescript
-type Matrix4 = Float32Array; // 16 elements, column-major
-```
-
-### Progress
-
-```typescript
-interface Progress {
-  percent: number;
-  entitiesProcessed?: number;
-  totalEntities?: number;
-  stage?: string;
-}
-```
-
----
-
-## @ifc-lite/bcf
-
-BCF (BIM Collaboration Format) support for issue tracking in BIM projects. Implements BCF 2.1 and 3.0.
-
-### readBCF / writeBCF
-
-```typescript
-// Read a BCF/BCFzip file (accepts File, Blob, or ArrayBuffer)
-function readBCF(file: File | Blob | ArrayBuffer): Promise<BCFProject>;
-
-// Write a BCF file (returns a Blob)
-function writeBCF(project: BCFProject): Promise<Blob>;
-```
-
-### createBCFProject
-
-```typescript
-function createBCFProject(options?: {
-  name?: string;
-  version?: '2.1' | '3.0';
-}): BCFProject;
-```
-
-### createBCFTopic / createBCFComment
-
-```typescript
-function createBCFTopic(options: {
-  title: string;
-  author: string;
-  // ... additional topic fields
-}): BCFTopic;
-
-function createBCFComment(options: {
-  author: string;
-  comment: string;
-}): BCFComment;
-```
-
-### Project Mutation Helpers
-
-```typescript
-// Add topic to project
-function addTopicToProject(project: BCFProject, topic: BCFTopic): void;
-
-// Add comment to topic
-function addCommentToTopic(topic: BCFTopic, comment: BCFComment): void;
-
-// Add viewpoint to topic
-function addViewpointToTopic(topic: BCFTopic, viewpoint: BCFViewpoint): void;
-```
-
-### Viewpoints
-
-```typescript
-// Create a viewpoint from viewer state
-function createViewpoint(options: {
-  camera: ViewerCameraState;
-  sectionPlane?: ViewerSectionPlane;
-  selectedGuids?: string[];
-  hiddenGuids?: string[];
-  visibleGuids?: string[];
-  snapshot?: string;
-}): BCFViewpoint;
-
-// Extract viewer state from a BCF viewpoint
-function extractViewpointState(viewpoint: BCFViewpoint): {
-  camera?: ViewerCameraState;
-  sectionPlane?: ViewerSectionPlane;
-  selectedGuids: string[];
-  hiddenGuids: string[];
-  visibleGuids: string[];
-  coloredGuids: { color: string; guids: string[] }[];
-};
-```
-
-### GUID Utilities
-
-```typescript
-function uuidToIfcGuid(uuid: string): string;
-function ifcGuidToUuid(guid: string): string;
-function generateIfcGuid(): string;
-function isValidIfcGuid(guid: string): boolean;
-```
-
-### Types
-
-```typescript
-interface BCFProject {
-  // Project metadata and topics
-}
-
-interface BCFTopic {
-  // Topic with title, author, status, comments, viewpoints
-}
-
-interface BCFComment {
-  // Comment with author, text, and timestamp
-}
-
-interface BCFViewpoint {
-  // Viewpoint with camera position, components, and clipping planes
-}
-
-interface BCFComponents {
-  // Component visibility and selection state
-}
-
-interface BCFClippingPlane {
-  // Clipping plane definition
-}
-```
-
----
-
-## @ifc-lite/ids
-
-IDS (Information Delivery Specification) validation. Implements IDS 1.0 with all facet and constraint types.
-
-### parseIDS
-
-```typescript
-// Parse an IDS XML file (accepts string or ArrayBuffer)
-function parseIDS(xmlContent: string | ArrayBuffer): IDSDocument;
-```
-
-### validateIDS
-
-```typescript
-// Run validation against IFC data
-function validateIDS(
-  document: IDSDocument,
-  accessor: IFCDataAccessor,
-  modelInfo: IDSModelInfo,
-  options?: ValidatorOptions
-): Promise<IDSValidationReport>;
-```
-
-### Facet Checking
-
-```typescript
-function checkFacet(facet: IDSFacet, entity: EntityRef, accessor: IFCDataAccessor): boolean;
-function filterByFacet(facet: IDSFacet, entities: EntityRef[], accessor: IFCDataAccessor): EntityRef[];
-function checkEntityFacet(facet: IDSFacet, entity: EntityRef): boolean;
-function checkPropertyFacet(facet: IDSFacet, entity: EntityRef, accessor: IFCDataAccessor): boolean;
-```
-
-### Constraint Matching
-
-```typescript
-function matchConstraint(constraint: IDSConstraint, value: unknown): boolean;
-function formatConstraint(constraint: IDSConstraint): string;
-function getConstraintMismatchReason(constraint: IDSConstraint, value: unknown): string;
-```
-
-### Translation
-
-```typescript
-function createTranslationService(locale: 'en' | 'de' | 'fr'): TranslationService;
-```
-
-### Types
-
-```typescript
-interface IDSDocument {
-  // Parsed IDS document with specifications
-}
-
-interface IDSSpecification {
-  // A single specification with applicability and requirements
-}
-
-interface IDSFacet {
-  // Facet definition (entity, property, material, etc.)
-}
-
-interface IDSConstraint {
-  // Constraint definition (exact value, pattern, range, enumeration)
-}
-
-interface IDSValidationReport {
-  // Validation results with pass/fail per specification
-}
-
-interface IDSEntityResult {
-  // Result for a single entity against a specification
-}
-
-interface IFCDataAccessor {
-  // Abstraction for accessing IFC data during validation
-}
-```
+The standalone `GltfExporter` and `CsvExporter` classes were removed. glTF/GLB and CSV are produced in Rust and exposed on `GeometryProcessor` (from `@ifc-lite/geometry`): `exportGlb(buffer, ...)`, `exportGlbFromMeshes(meshes, ...)`, and `exportCsv(buffer, mode, ...)` where `mode` is one of `entities`, `properties`, `quantities`, or `spatial`.
 
 ---
 
 ## @ifc-lite/mutations
 
-Property editing with bidirectional change tracking.
+Property editing with bidirectional change tracking. Nothing mutates the parsed buffer; edits accumulate in an overlay and materialise during `StepExporter.export({ applyMutations: true })`.
 
 ### MutablePropertyView
 
-Wraps a PropertyTable with a mutation overlay for non-destructive property editing.
+Wraps a `PropertyTable` with a mutation overlay for non-destructive property editing.
 
 ```typescript
 class MutablePropertyView {
   constructor(baseTable: PropertyTable | null, modelId: string);
 
-  // Get properties for an entity (with mutations applied)
+  // Reads (with mutations applied)
   getForEntity(entityId: number): PropertySet[];
-
-  // Get a specific property value (with mutations applied)
   getPropertyValue(entityId: number, psetName: string, propName: string): PropertyValue | null;
 
-  // Set a property value (returns the Mutation record)
-  setProperty(
-    entityId: number,
-    psetName: string,
-    propName: string,
-    value: PropertyValue,
-    valueType?: PropertyValueType,
-    unit?: string
-  ): Mutation;
+  // Property edits (each returns/records a Mutation)
+  setProperty(entityId, psetName, propName, value, valueType?, unit?): Mutation;
+  deleteProperty(entityId, psetName, propName): Mutation | null;
+  createPropertySet(entityId, psetName, properties): Mutation;
+  deletePropertySet(entityId, psetName): Mutation;
 
-  // Delete a property
-  deleteProperty(entityId: number, psetName: string, propName: string): Mutation | null;
+  // Positional STEP-argument overrides (profiles, points, ...)
+  setPositionalAttribute(entityId, index, value, skipHistory?): Mutation;
+  getPositionalMutationsForEntity(entityId): Map<number, IfcAttributeValue> | null;
+  removePositionalMutation(entityId, index): void;
 
-  // Create a new property set
-  createPropertySet(
-    entityId: number,
-    psetName: string,
-    properties: Array<{ name: string; value: PropertyValue; type?: PropertyValueType }>
-  ): Mutation;
-
-  // Delete a property set
-  deletePropertySet(entityId: number, psetName: string): Mutation;
-
-  // Get all recorded mutations
-  getMutations(): Mutation[];
-
-  // Check if entity has changes
-  hasChanges(entityId?: number): boolean;
-
-  // Count of modified entities
-  getModifiedEntityCount(): number;
-
-  // Apply a batch of mutations
-  applyMutations(mutations: Mutation[]): void;
-
-  // Export/import mutations as JSON
-  exportMutations(): string;
-  importMutations(json: string): void;
-
-  // ── Store-level mutations (raw STEP edits) ──────────────────────────
-
-  // Override a positional STEP argument by zero-based index. Used for
-  // entities without symbolic attribute names (IfcRectangleProfileDef.XDim,
-  // cartesian point coordinates, etc.).
-  setPositionalAttribute(
-    entityId: number,
-    index: number,
-    value: IfcAttributeValue,
-    skipHistory?: boolean,
-  ): Mutation;
-
-  // Read-back of all positional overrides on an entity, keyed by index.
-  getPositionalMutationsForEntity(entityId: number): Map<number, IfcAttributeValue> | null;
-
-  // Drop a single positional override (used by undo).
-  removePositionalMutation(entityId: number, index: number): void;
-
-  // Create / delete entities in the overlay. Tombstoned entities are
-  // skipped during STEP export; overlay-created entities are appended.
+  // Entity churn in the overlay
   createEntity(type: string, attributes: IfcAttributeValue[]): NewEntity;
   deleteEntity(expressId: number): boolean;
   getNewEntities(): NewEntity[];
-  getNewEntity(expressId: number): NewEntity | null;
   isDeleted(expressId: number): boolean;
   getTombstones(): Set<number>;
-
-  // Restore helpers used by viewer undo/redo.
   restoreFromTombstone(expressId: number): boolean;
-  restoreNewEntity(entity: NewEntity): void;
 
-  // Seed the express-id allocator from the parsed store's max id (called
-  // automatically by StoreEditor's constructor). Subsequent createEntity
-  // calls allocate ids strictly above the watermark.
-  setExpressIdWatermark(maxExistingId: number): void;
-  peekNextExpressId(): number;
-
-  // Reset all mutations
+  // Bookkeeping
+  getMutations(): Mutation[];
+  hasChanges(entityId?: number): boolean;
+  applyMutations(mutations: Mutation[]): void;
+  exportMutations(): string;
+  importMutations(json: string): void;
   clear(): void;
 }
 ```
 
 ### StoreEditor
 
-High-level facade for editing a parsed `IfcDataStore` via the `MutablePropertyView` overlay. Adds entities, deletes them, edits positional STEP arguments. The underlying store buffer is never mutated — changes accumulate in the overlay and materialise during `StepExporter.export({ applyMutations: true })`.
+High-level facade for editing a parsed `IfcDataStore` via the `MutablePropertyView` overlay.
 
 ```typescript
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
@@ -1090,38 +606,21 @@ editor.removeEntity(unwantedExpressId);
 class StoreEditor {
   constructor(store: IfcDataStore, view: MutablePropertyView);
 
-  // Add a new entity to the overlay. Returns a synthetic EntityRef with a
-  // freshly-allocated expressId (above the store's watermark).
+  // Add a new entity to the overlay (returns a synthetic EntityRef with a fresh expressId)
   addEntity(type: string, attributes: IfcAttributeValue[]): EntityRef;
 
-  // Tombstone an existing entity OR forget an overlay-only one. Returns
-  // false if the id is not known.
+  // Tombstone an existing entity or forget an overlay-only one
   removeEntity(expressId: number): boolean;
 
-  // Override a single positional STEP arg by zero-based index.
+  // Override a single positional STEP arg by zero-based index
   setPositionalAttribute(expressId: number, index: number, value: IfcAttributeValue): void;
 
-  // Edit a named root attribute (Name, Description, ObjectType, …).
+  // Edit a named root attribute (Name, Description, ObjectType, ...)
   setAttribute(expressId: number, attrName: string, value: string): void;
 
-  // Read overlay-created entities.
   getNewEntity(expressId: number): NewEntity | null;
   getNewEntities(): NewEntity[];
 }
-```
-
-```typescript
-// Sentinel byteOffset that flags an EntityRef as overlay-only.
-const OVERLAY_BYTE_OFFSET = -1;
-
-interface NewEntity {
-  expressId: number;
-  type: string;
-  attributes: IfcAttributeValue[];
-}
-
-// IFC STEP attribute value, as produced by EntityExtractor.extractEntity().
-type IfcAttributeValue = string | number | boolean | null | IfcAttributeValue[];
 ```
 
 #### Value conventions
@@ -1136,28 +635,11 @@ type IfcAttributeValue = string | number | boolean | null | IfcAttributeValue[];
 | `"#42"` (string) | entity reference |
 | `".AREA."` (string) | enum |
 | `"My Column"` (string) | quoted STEP string |
-| `[1, 2, 3]` | STEP list `(1,2,3)` — recursive |
+| `[1, 2, 3]` | STEP list `(1,2,3)`, recursive |
 
 ### ChangeSetManager
 
-Manage named groups of mutations.
-
-```typescript
-class ChangeSetManager {
-  createChangeSet(name: string): ChangeSet;
-  getActiveChangeSet(): ChangeSet | null;
-  setActiveChangeSet(id: string | null): void;
-  addMutation(mutation: Mutation): void;
-  getChangeSet(id: string): ChangeSet | null;
-  getAllChangeSets(): ChangeSet[];
-  deleteChangeSet(id: string): boolean;
-  renameChangeSet(id: string, newName: string): void;
-  mergeChangeSets(ids: string[], newName: string): ChangeSet;
-  exportChangeSet(id: string): string;
-  importChangeSet(json: string): ChangeSet;
-  clear(): void;
-}
-```
+Manage named groups of mutations: `createChangeSet`, `setActiveChangeSet`, `addMutation`, `mergeChangeSets`, `exportChangeSet` / `importChangeSet`, and friends.
 
 ### BulkQueryEngine
 
@@ -1165,345 +647,25 @@ Query and update entities in bulk.
 
 ```typescript
 class BulkQueryEngine {
-  constructor(
-    entities: EntityTable,
-    mutationView: MutablePropertyView,
-    spatialHierarchy?: SpatialHierarchy | null,
-    properties?: PropertyTable | null,
-    strings?: { get(idx: number): string } | null
-  );
-
-  // Select entities matching criteria
   select(criteria: SelectionCriteria): number[];
-
-  // Preview which entities match the query
   preview(query: BulkQuery): BulkQueryPreview;
-
-  // Execute the bulk update
   execute(query: BulkQuery): BulkQueryResult;
 }
 ```
 
 ### CsvConnector
 
-Import property updates from CSV files.
+Import property updates from CSV files: `parse`, `match`, `generateMutations`, `import`, `preview`, `autoDetectMappings`.
 
-```typescript
-class CsvConnector {
-  constructor(
-    entities: EntityTable,
-    mutationView: MutablePropertyView,
-    strings?: { get(idx: number): string } | null
-  );
-
-  parse(content: string, options?: CsvParseOptions): CsvRow[];
-  match(rows: CsvRow[], mapping: DataMapping): MatchResult[];
-  generateMutations(matches: MatchResult[], mapping: DataMapping): Mutation[];
-  import(content: string, mapping: DataMapping, options?: CsvParseOptions): ImportStats;
-  preview(content: string, mapping: DataMapping, options?: CsvParseOptions): {
-    rows: CsvRow[]; matches: MatchResult[]; estimatedMutations: number;
-  };
-  autoDetectMappings(headers: string[]): PropertyMapping[];
-}
-```
-
-### Types
-
-```typescript
-interface Mutation {
-  id: string;
-  type:
-    // Properties
-    | 'CREATE_PROPERTY'
-    | 'UPDATE_PROPERTY'
-    | 'DELETE_PROPERTY'
-    | 'CREATE_PROPERTY_SET'
-    | 'DELETE_PROPERTY_SET'
-    // Quantities
-    | 'CREATE_QUANTITY'
-    | 'UPDATE_QUANTITY'
-    | 'DELETE_QUANTITY'
-    // Named attributes (Name, Description, ObjectType, Tag, …)
-    | 'UPDATE_ATTRIBUTE'
-    // Positional STEP args (XDim on a profile, coords on a point, …)
-    | 'UPDATE_POSITIONAL_ATTRIBUTE'
-    // Store-level entity churn (StoreEditor / bim.store.*)
-    | 'CREATE_ENTITY'
-    | 'DELETE_ENTITY';
-  timestamp: number;
-  modelId: string;
-  entityId: number;
-  psetName?: string;
-  propName?: string;
-  // For UPDATE_ATTRIBUTE: the IfcRoot attribute name (e.g. 'Name').
-  // For UPDATE_POSITIONAL_ATTRIBUTE: encoded as `@N` where N is the index.
-  // For CREATE_ENTITY: the IFC type (e.g. 'IFCCOLUMN').
-  attributeName?: string;
-  oldValue?: PropertyValue;
-  newValue?: PropertyValue;
-}
-
-interface ChangeSet {
-  id: string;
-  name: string;
-  createdAt: number;
-  mutations: Mutation[];
-  applied: boolean;
-}
-
-type PropertyValue = string | number | boolean | null | PropertyValue[];
-
-interface SelectionCriteria {
-  entityTypes?: number[];
-  storeys?: number[];
-  propertyFilters?: PropertyFilter[];
-  globalIds?: string[];
-  expressIds?: number[];
-  namePattern?: string;
-}
-
-interface BulkQuery {
-  select: SelectionCriteria;
-  action: BulkAction;
-}
-
-interface BulkQueryPreview {
-  matchedEntityIds: number[];
-  matchedCount: number;
-  estimatedMutations: number;
-}
-
-interface BulkQueryResult {
-  mutations: Mutation[];
-  affectedEntityCount: number;
-  success: boolean;
-  errors?: string[];
-}
-
-interface CsvRow {
-  [column: string]: string;
-}
-
-type MatchStrategy =
-  | { type: 'globalId'; column: string }
-  | { type: 'expressId'; column: string }
-  | { type: 'name'; column: string };
-
-interface DataMapping {
-  matchStrategy: MatchStrategy;
-  propertyMappings: PropertyMapping[];
-}
-
-interface ImportStats {
-  totalRows: number;
-  matchedRows: number;
-  unmatchedRows: number;
-  mutationsCreated: number;
-  errors: string[];
-  warnings: string[];
-}
-```
-
----
-
-## @ifc-lite/drawing-2d
-
-2D architectural drawing generation from 3D IFC models.
-
-### Drawing2DGenerator
-
-```typescript
-class Drawing2DGenerator {
-  constructor(options?: DrawingGeneratorOptions);
-
-  // Generate a floor plan
-  generateFloorPlan(meshData: MeshData[], options?: FloorPlanOptions): Drawing2D;
-
-  // Generate a section view
-  generateSection(meshData: MeshData[], config: SectionConfig): Drawing2D;
-}
-```
-
-### High-Level Functions
-
-```typescript
-function generateFloorPlan(
-  meshes: MeshData[],
-  elevation: number,
-  options?: Partial<GeneratorOptions>
-): Promise<Drawing2D>;
-
-function generateSection(
-  meshes: MeshData[],
-  axis: 'x' | 'z',
-  position: number,
-  options?: Partial<GeneratorOptions>
-): Promise<Drawing2D>;
-
-function createSectionConfig(
-  axis: 'x' | 'y' | 'z',
-  position: number,
-  options?: Partial<Omit<SectionConfig, 'plane'>>
-): SectionConfig;
-```
-
-### Section Cutting
-
-```typescript
-class SectionCutter {
-  cut(meshes: MeshData[], plane: Plane): DrawingLine[];
-}
-
-function cutMeshesStreaming(
-  meshes: AsyncIterable<MeshData>,
-  plane: Plane
-): AsyncGenerator<DrawingLine[]>;
-```
-
-### SVG Export
-
-```typescript
-class SVGExporter {
-  export(drawing: Drawing2D, options?: SVGExportOptions): string;
-}
-
-function exportToSVG(drawing: Drawing2D, options?: SVGExportOptions): string;
-```
-
-### Polygon Building
-
-```typescript
-class PolygonBuilder {
-  build(lines: DrawingLine[]): Polygon[];
-}
-
-function simplifyPolygon(polygon: Polygon, tolerance?: number): Polygon;
-```
-
-### Edge Extraction
-
-```typescript
-class EdgeExtractor {
-  extract(meshes: MeshData[], viewDir: Vector3): DrawingLine[];
-}
-
-function getViewDirection(preset: ViewPreset): Vector3;
-```
-
-### Hidden Line Removal
-
-```typescript
-class HiddenLineClassifier {
-  classify(lines: DrawingLine[], meshes: MeshData[]): ClassifiedLine[];
-}
-```
-
-### Hatching
-
-```typescript
-class HatchGenerator {
-  generate(polygon: Polygon, pattern: HatchPattern): DrawingLine[];
-}
-
-const HATCH_PATTERNS: Record<string, HatchPattern>;
-function getHatchPattern(materialName: string): HatchPattern;
-```
-
-### Styles and Constants
-
-```typescript
-const LINE_STYLES: Record<string, LineStyle>;
-const COMMON_SCALES: Record<string, number>;
-const PAPER_SIZES: Record<string, { width: number; height: number }>;
-```
-
-### Symbols
-
-```typescript
-function generateDoorSymbol(width: number, swing: number): DrawingLine[];
-function generateWindowSymbol(width: number): DrawingLine[];
-function generateStairArrow(start: Vector3, end: Vector3): DrawingLine[];
-```
-
-### GPU Acceleration
-
-```typescript
-class GPUSectionCutter {
-  constructor(device: GPUDevice);
-  cut(meshes: MeshData[], plane: Plane): Promise<DrawingLine[]>;
-}
-
-function isGPUComputeAvailable(): Promise<boolean>;
-```
-
-### Graphic Overrides
-
-```typescript
-class GraphicOverrideEngine {
-  addRule(rule: GraphicOverrideRule): void;
-  apply(drawing: Drawing2D): Drawing2D;
-}
-
-function createOverrideEngine(preset?: GraphicOverridePreset): GraphicOverrideEngine;
-
-// Built-in presets
-const ARCHITECTURAL_PRESET: GraphicOverridePreset;
-const FIRE_SAFETY_PRESET: GraphicOverridePreset;
-```
-
-### Drawing Sheets
-
-```typescript
-function createFrame(options: FrameOptions): DrawingFrame;
-function createTitleBlock(options: TitleBlockOptions): TitleBlock;
-function renderFrame(frame: DrawingFrame): SVGElement;
-function renderTitleBlock(block: TitleBlock): SVGElement;
-function renderScaleBar(scale: number, options?: ScaleBarOptions): SVGElement;
-
-const PAPER_SIZE_REGISTRY: Record<string, PaperSize>;
-```
-
-### Types
-
-```typescript
-interface Drawing2D {
-  // Collection of drawing lines, polygons, and metadata
-}
-
-interface SectionConfig {
-  // Section plane position, direction, and depth
-}
-
-interface DrawingLine {
-  // Line segment with start, end, style, and layer
-}
-
-interface SVGExportOptions {
-  // SVG output settings (scale, stroke widths, colors)
-}
-
-interface GraphicOverrideRule {
-  // Rule matching entities to graphic styles
-}
-
-interface GraphicOverridePreset {
-  // Named collection of override rules
-}
-
-interface DrawingSheet {
-  // Sheet layout with frame, title block, and viewports
-}
-```
+Mutation types cover properties (`CREATE/UPDATE/DELETE_PROPERTY`, `CREATE/DELETE_PROPERTY_SET`), quantities, named attributes (`UPDATE_ATTRIBUTE`), positional STEP args (`UPDATE_POSITIONAL_ATTRIBUTE`), and entity churn (`CREATE_ENTITY`, `DELETE_ENTITY`).
 
 ---
 
 ## @ifc-lite/create
 
-Build valid IFC4 STEP files programmatically with building elements, geometry, property sets, quantities, and materials.
+Build valid IFC4 STEP files programmatically, or add elements into an already-parsed model.
 
 ### IfcCreator
-
-Main class for creating IFC files from scratch.
 
 ```typescript
 import { IfcCreator } from '@ifc-lite/create';
@@ -1524,28 +686,36 @@ class IfcCreator {
   // Spatial structure
   addIfcBuildingStorey(params: StoreyParams): number;
 
-  // Building elements (returns expressId)
-  addIfcWall(storeyId: number, params: WallParams): number;
-  addIfcSlab(storeyId: number, params: SlabParams): number;
-  addIfcColumn(storeyId: number, params: ColumnParams): number;
-  addIfcBeam(storeyId: number, params: BeamParams): number;
-  addIfcStair(storeyId: number, params: StairParams): number;
-  addIfcRoof(storeyId: number, params: RoofParams): number;
+  // Building elements (each returns the new expressId)
+  addIfcWall(storeyId, params: WallParams): number;
+  addIfcSlab(storeyId, params: SlabParams): number;
+  addIfcColumn(storeyId, params: ColumnParams): number;
+  addIfcBeam(storeyId, params: BeamParams): number;
+  addIfcStair(storeyId, params: StairParams): number;
+  addIfcRoof(storeyId, params: RoofParams): number;
+  addIfcGableRoof(storeyId, params: GableRoofParams): number;
+  addIfcDoor(storeyId, params: DoorParams): number;
+  addIfcWindow(storeyId, params: WindowParams): number;
+  addIfcWallDoor(wallId, params: WallDoorParams): number;    // door + opening in a wall
+  addIfcWallWindow(wallId, params: WallWindowParams): number;
+  addIfcRamp(storeyId, params: RampParams): number;
+  addIfcRailing(storeyId, params: RailingParams): number;
+  addIfcPlate(storeyId, params: PlateParams): number;
+  addIfcMember(storeyId, params: MemberParams): number;
+  addIfcFooting(storeyId, params: FootingParams): number;
+  addIfcPile(storeyId, params: PileParams): number;
+  addIfcSpace(storeyId, params: SpaceParams): number;
 
-  // Properties, quantities, materials
-  addIfcPropertySet(elementId: number, pset: PropertySetDef): number;
-  addIfcElementQuantity(elementId: number, qset: QuantitySetDef): number;
-  addIfcMaterial(elementId: number, material: MaterialDef): void;
-
-  // Appearance
-  setColor(elementId: number, name: string, rgb: [number, number, number]): void;
+  // Properties, quantities, materials, colour
+  addIfcPropertySet(elementId, pset: PropertySetDef): number;
+  addIfcElementQuantity(elementId, qset: QuantitySetDef): number;
+  addIfcMaterial(elementId, material: MaterialDef): void;
+  setColor(elementId, name: string, rgb: [number, number, number]): void;
 
   // Generate STEP file
   toIfc(): CreateResult;
 }
 ```
-
-#### ProjectParams
 
 ```typescript
 interface ProjectParams {
@@ -1558,164 +728,13 @@ interface ProjectParams {
 }
 ```
 
-#### StoreyParams
-
-```typescript
-interface StoreyParams {
-  Name?: string;
-  Description?: string;
-  Elevation: number;
-}
-```
-
-#### WallParams
-
-```typescript
-interface WallParams {
-  Start: [number, number, number];
-  End: [number, number, number];
-  Thickness: number;
-  Height: number;
-  Name?: string;
-  Openings?: RectangularOpening[];
-}
-```
-
-#### SlabParams
-
-```typescript
-interface SlabParams {
-  Position: [number, number, number];
-  Thickness: number;
-  Width?: number;      // X dimension (omit when using Profile)
-  Depth?: number;      // Y dimension (omit when using Profile)
-  Profile?: [number, number][];  // Arbitrary closed outline
-  Name?: string;
-  Openings?: RectangularOpening[];
-}
-```
-
-#### ColumnParams
-
-```typescript
-interface ColumnParams {
-  Position: [number, number, number];
-  Width: number;
-  Depth: number;
-  Height: number;
-  Name?: string;
-}
-```
-
-#### BeamParams
-
-```typescript
-interface BeamParams {
-  Start: [number, number, number];
-  End: [number, number, number];
-  Width: number;
-  Height: number;
-  Name?: string;
-}
-```
-
-#### StairParams
-
-```typescript
-interface StairParams {
-  Position: [number, number, number];
-  NumberOfRisers: number;
-  RiserHeight: number;
-  TreadLength: number;
-  Width: number;
-  Direction?: number;  // Angle in radians, 0 = +X
-  Name?: string;
-}
-```
-
-#### RoofParams
-
-```typescript
-interface RoofParams {
-  Position: [number, number, number];
-  Width: number;
-  Depth: number;
-  Thickness: number;
-  Slope?: number;  // Angle in radians, 0 = flat
-  Name?: string;
-}
-```
-
-#### RectangularOpening
-
-```typescript
-interface RectangularOpening {
-  Width: number;
-  Height: number;
-  Position: [number, number, number];  // Relative to host element
-  Name?: string;
-}
-```
-
-#### PropertySetDef
-
-```typescript
-interface PropertySetDef {
-  Name: string;
-  Properties: Array<{
-    Name: string;
-    NominalValue: string | number | boolean;
-    Type?: 'IfcLabel' | 'IfcText' | 'IfcReal' | 'IfcInteger' | 'IfcBoolean';
-  }>;
-}
-```
-
-#### QuantitySetDef
-
-```typescript
-interface QuantitySetDef {
-  Name: string;
-  Quantities: Array<{
-    Name: string;
-    Value: number;
-    Kind: 'IfcQuantityLength' | 'IfcQuantityArea' | 'IfcQuantityVolume'
-        | 'IfcQuantityCount' | 'IfcQuantityWeight';
-  }>;
-}
-```
-
-#### MaterialDef
-
-```typescript
-interface MaterialDef {
-  Name: string;
-  Category?: string;
-  Layers?: Array<{
-    Name: string;
-    Thickness: number;
-    Category?: string;
-    IsVentilated?: boolean;
-  }>;
-}
-```
-
-#### CreateResult
-
-```typescript
-interface CreateResult {
-  content: string;
-  entities: Array<{ expressId: number; type: string; Name?: string }>;
-  stats: { entityCount: number; fileSize: number };
-}
-```
+Parameter interfaces for every element type live in `packages/create/src/types.ts` (e.g. `WallParams` with `Start`, `End`, `Thickness`, `Height`, optional `Openings`).
 
 ### In-Store Builders
 
-For editing an **already-parsed** `IfcDataStore` instead of building a new file from scratch, the package exposes anchored builders that emit a complete sub-graph into a `StoreEditor` overlay.
+For editing an **already-parsed** `IfcDataStore`, the package exposes anchored builders that emit a complete sub-graph (placement, profile, solid, representation, containment) into a `StoreEditor` overlay:
 
-#### addColumnToStore
-
-Add an `IfcColumn` (with placement, profile, extruded solid, representation, product shape, and rel-contained-in-spatial-structure) to an existing parsed model.
+`addColumnToStore`, `addWallToStore`, `addSlabToStore`, `addBeamToStore`, `addDoorToStore`, `addWindowToStore`, `addSpaceToStore`, `addRoofToStore`, `addPlateToStore`, `addMemberToStore`.
 
 ```typescript
 import { StoreEditor } from '@ifc-lite/mutations';
@@ -1731,91 +750,257 @@ const result = addColumnToStore(editor, anchor, {
 });
 ```
 
-```typescript
-function addColumnToStore(
-  editor: StoreEditor,
-  anchor: SpatialAnchor,
-  params: ColumnInStoreParams,
-): ColumnBuildResult;
-
-interface ColumnInStoreParams {
-  Position: [number, number, number];  // Storey-local metres
-  Width: number;
-  Depth: number;
-  Height: number;
-  Name?: string;
-  Description?: string;
-  ObjectType?: string;
-  Tag?: string;
-}
-
-interface ColumnBuildResult {
-  columnId: number;
-  placementId: number;
-  profileId: number;
-  solidId: number;
-  shapeRepId: number;
-  productShapeId: number;
-  /** The IfcRelContainedInSpatialStructure linking the column to its storey. */
-  relContainedId: number;
-}
-```
-
 #### resolveSpatialAnchor
 
-Walks a parsed `IfcDataStore` for the references every in-store builder needs. Throws if any of `IfcOwnerHistory`, the 'Body' representation context, or the storey's `IfcLocalPlacement` can't be resolved.
+Walks a parsed `IfcDataStore` for the references every in-store builder needs. Throws if `IfcOwnerHistory`, the 'Body' representation context, or the storey's `IfcLocalPlacement` cannot be resolved.
 
 ```typescript
-function resolveSpatialAnchor(
-  store: IfcDataStore,
-  storeyExpressId: number,
-): SpatialAnchor;
+function resolveSpatialAnchor(store: IfcDataStore, storeyExpressId: number): SpatialAnchor;
 
 interface SpatialAnchor {
-  /** IfcOwnerHistory expressId — referenced by every IfcRoot. */
-  ownerHistoryId: number;
-  /** IfcGeometricRepresentationSubContext for 'Body' (or its parent context as fallback). */
-  bodyContextId: number;
-  /** The target IfcBuildingStorey expressId. */
+  ownerHistoryId: number;    // referenced by every IfcRoot
+  bodyContextId: number;     // 'Body' subcontext (or parent context fallback)
   storeyId: number;
-  /** The IfcLocalPlacement that the storey itself sits on. */
-  storeyPlacementId: number;
+  storeyPlacementId: number; // the storey's own IfcLocalPlacement
 }
 ```
 
 ---
 
-## @ifc-lite/codegen
+## @ifc-lite/bcf
 
-Code generation from IFC EXPRESS schemas.
+BCF (BIM Collaboration Format) support for issue tracking. Implements BCF 2.1 and 3.0.
 
-### Overview
-
-Generates TypeScript entity types from EXPRESS schema files. Used to produce the 876+ IFC4X3 entity definitions used by the parser. This is primarily a build-time tool, not used at runtime.
+### readBCF / writeBCF
 
 ```typescript
-// Build-time usage (typically invoked via package scripts)
-// Reads EXPRESS schema (.exp) files and outputs TypeScript type definitions
-// for all IFC entity types, enumerations, and select types.
+// Read a BCF/BCFzip file (accepts File, Blob, or ArrayBuffer)
+function readBCF(file: File | Blob | ArrayBuffer): Promise<BCFProject>;
+
+// Write a BCF file (returns a Blob)
+function writeBCF(project: BCFProject): Promise<Blob>;
+```
+
+### Creation and mutation helpers
+
+```typescript
+function createBCFProject(options?: { name?: string; version?: '2.1' | '3.0' }): BCFProject;
+function createBCFTopic(options: { title: string; author: string; /* ... */ }): BCFTopic;
+function createBCFComment(options: { author: string; comment: string }): BCFComment;
+
+function addTopicToProject(project: BCFProject, topic: BCFTopic): void;
+function addCommentToTopic(topic: BCFTopic, comment: BCFComment): void;
+function addViewpointToTopic(topic: BCFTopic, viewpoint: BCFViewpoint): void;
+function updateTopicStatus(/* topic, status, ... */): void;
+```
+
+### Viewpoints
+
+```typescript
+// Create a viewpoint from viewer state (camera, section plane, selection, visibility, snapshot)
+function createViewpoint(options): BCFViewpoint;
+
+// Extract viewer state from a BCF viewpoint
+function extractViewpointState(viewpoint: BCFViewpoint): {
+  camera?: ViewerCameraState;
+  sectionPlane?: ViewerSectionPlane;
+  selectedGuids: string[];
+  hiddenGuids: string[];
+  visibleGuids: string[];
+  coloredGuids: { color: string; guids: string[] }[];
+};
+```
+
+### Utilities
+
+GUID conversion (`uuidToIfcGuid`, `ifcGuidToUuid`, `generateIfcGuid`, `isValidIfcGuid`), ARGB colour helpers (`parseARGBColor`, `toARGBColor`), 3D marker overlay (`computeMarkerPositions`, `BCFOverlayRenderer`), and `createBCFFromIDSReport` to turn an IDS validation report into BCF topics.
+
+---
+
+## @ifc-lite/ids
+
+IDS (Information Delivery Specification) validation. Implements IDS 1.0 with all facet and constraint types.
+
+### parseIDS / validateIDS
+
+```typescript
+// Parse an IDS XML file (accepts string or ArrayBuffer)
+function parseIDS(xmlContent: string | ArrayBuffer): IDSDocument;
+
+// Run validation against IFC data
+function validateIDS(
+  document: IDSDocument,
+  accessor: IFCDataAccessor,
+  modelInfo: IDSModelInfo,
+  options?: ValidatorOptions
+): Promise<IDSValidationReport>;
+```
+
+### Facet checking
+
+```typescript
+function checkFacet(facet, entity, accessor): boolean;
+function filterByFacet(facet, entities, accessor): EntityRef[];
+function checkEntityFacet(facet, entity): boolean;
+function checkAttributeFacet(facet, entity, accessor): boolean;
+function checkPropertyFacet(facet, entity, accessor): boolean;
+function checkClassificationFacet(facet, entity, accessor): boolean;
+function checkMaterialFacet(facet, entity, accessor): boolean;
+function checkPartOfFacet(facet, entity, accessor): boolean;
+```
+
+### Constraints, audit, translation
+
+```typescript
+function matchConstraint(constraint: IDSConstraint, value: unknown): boolean;
+function formatConstraint(constraint: IDSConstraint): string;
+function getConstraintMismatchReason(constraint: IDSConstraint, value: unknown): string;
+
+// IDS document correctness audit
+function auditIDSDocument(/* ... */): IDSAuditReport;
+function auditIDSStructure(/* ... */): IDSAuditReport;
+
+// Report localisation
+function createTranslationService(locale: 'en' | 'de' | 'fr'): TranslationService;
 ```
 
 ---
+
+## @ifc-lite/drawing-2d
+
+2D architectural drawing generation from 3D IFC models: section cuts, floor plans, and elevations.
+
+### High-level generation
+
+```typescript
+class Drawing2DGenerator {
+  initialize(): Promise<void>;
+  generate(meshes: MeshData[], config: SectionConfig, options?: Partial<GeneratorOptions>): Promise<Drawing2D>;
+  dispose(): void;
+}
+
+function generateFloorPlan(meshes: MeshData[], elevation: number, options?: Partial<GeneratorOptions>): Promise<Drawing2D>;
+function generateSection(meshes: MeshData[], axis: 'x' | 'z', position: number, options?: Partial<GeneratorOptions>): Promise<Drawing2D>;
+function createSectionConfig(axis: 'x' | 'y' | 'z', position: number, options?: Partial<Omit<SectionConfig, 'plane'>>): SectionConfig;
+```
+
+### Pipeline pieces
+
+- Section cutting: `SectionCutter`, `cutMeshesStreaming`, GPU-accelerated `GPUSectionCutter` + `isGPUComputeAvailable`
+- Polygons: `PolygonBuilder`, `simplifyPolygon`, `polygonBounds`
+- Edges and visibility: `EdgeExtractor`, `HiddenLineClassifier`, `projectProfiles`
+- Hatching: `HatchGenerator`, `HATCH_PATTERNS`, `getHatchPattern`
+- Openings and symbols: `buildOpeningRelationships`, `generateDoorSymbol`, `generateWindowSymbol`, `generateStairArrow`
+- Graphic overrides: `GraphicOverrideEngine`, `createOverrideEngine`, presets `ARCHITECTURAL_PRESET` and `FIRE_SAFETY_PRESET`
+- SVG output: `SVGExporter`, `exportToSVG`
+- Sheets: `createFrame`, `createTitleBlock`, `renderFrame`, `renderTitleBlock`, `renderScaleBar`, `PAPER_SIZE_REGISTRY`
+- Constants: `LINE_STYLES`, `COMMON_SCALES`, `PAPER_SIZES`
+
+---
+
+## @ifc-lite/clash
+
+Clash detection with a representation-agnostic core engine plus source adapters. Key exports: `createClashEngine` (pluggable `ClashBackend`, including the WASM-native one), `groupClashes`, `matchesSelector`, exclusion helpers (`makeExclusionSet`, `isExcluded`, `pairKey`), and the shared clash types.
+
+## @ifc-lite/diff
+
+Headless model-diff engine: classifies entities as added / modified / deleted / unchanged across two revisions, with separable data vs geometry scope. Main entry point: `diffModels`.
+
+## @ifc-lite/lens
+
+Rule-based 3D filtering and colorization for IFC models: `evaluateLens`, `evaluateAutoColorLens`, `matchesCriteria`, class/data-source discovery (`discoverClasses`, `discoverDataSources`), and `BUILTIN_LENSES` presets.
+
+## @ifc-lite/lists
+
+Configurable property tables and schedules from IFC data: `executeList`, `listResultToCSV`, `summariseListRows`, column discovery (`discoverColumns`), name patterns (`compileNameMatcher`), and `LIST_PRESETS`.
+
+## @ifc-lite/ifcx
+
+IFC5 (IFCX) parser: `parseIfcx`, `parseFederatedIfcx`, `composeIfcx`, `detectFormat`, layer stacking (`createLayerStack`, `addIfcxOverlay`), entity/property/geometry extractors, and hierarchy building. Re-exported through `@ifc-lite/parser` for `parseAuto`.
+
+## @ifc-lite/encoding
+
+IFC string encoding/decoding and property value parsing: `decodeIfcString`, `encodeIfcString`, `parsePropertyValue`.
+
+## @ifc-lite/cache
+
+Binary cache format for fast model loading: `BinaryCacheWriter`, `BinaryCacheReader`, plus hashing (`xxhash64`) and buffer utilities. Used by the viewer to skip re-parsing unchanged files.
+
+## @ifc-lite/pointcloud
+
+Point cloud decoders and types: `decodePcd`, LAS/LAZ support including `LasStreamingSource` for chunked streaming, and `decompressLZF`.
+
+## @ifc-lite/solar
+
+Solar position, sunrise/sunset, and 3D sun-path geometry: `sunPosition`, `sunTimes`, and the sun-path dome builders (day paths, hourly analemmas). Renderer-agnostic.
+
+## @ifc-lite/sdk
+
+Scripting SDK: the `bim.*` API for BIM automation. `createBimContext` builds a `BimContext` whose namespaces (`QueryNamespace`, `ModelNamespace`, `ViewerNamespace`, `MutateNamespace`, `StoreNamespace`, ...) run against either the browser viewer or a headless backend.
+
+## @ifc-lite/sandbox
+
+QuickJS-in-WASM sandboxed script execution: `createSandbox` / `Sandbox`, `buildBridge` (marshals the `bim.*` API across the sandbox boundary), and `transpileTypeScript`.
+
+## @ifc-lite/extensions
+
+Extension manifest, capability grammar, and slot registry for user customization: `validateManifest`, `migrateManifest`, `SlotRegistry`, capability and `when`-clause evaluation, bundle and storage helpers.
+
+## @ifc-lite/mcp
+
+Model Context Protocol server for ifc-lite: agent-native BIM via MCP over stdio or Streamable HTTP. Exports `MCPServer` plus the model-registry and tool-context types; also ships the `ifc-lite-mcp` CLI entry point.
+
+## @ifc-lite/cli
+
+CLI toolkit for IFC files (binary name `ifc-lite`): query, validate (IDS), export (CSV/JSON/IFC/glTF/Parquet), create, merge, convert, diff, clash-check, and script the SDK.
+
+## @ifc-lite/collab
+
+Real-time collaborative BIM via CRDT on IFCX: document schema, entity/relationship/geometry operations, and snapshot support.
+
+## @ifc-lite/collab-server
+
+Reference websocket sync server for `@ifc-lite/collab`.
+
+## @ifc-lite/embed-sdk
+
+SDK for embedding the IFC-Lite 3D viewer in any web page via iframe. Main export: the `IFCLiteEmbed` class with typed commands and an `EventMap` for viewer events.
+
+## @ifc-lite/embed-protocol
+
+Shared postMessage protocol types for the embed viewer and SDK: message envelope, inbound command and outbound event types, and `PROTOCOL_VERSION`.
+
+## @ifc-lite/viewer-core
+
+Interactive 3D viewer for IFC models: a WebGL 2 browser viewer with a REST API. Published from `packages/viewer`; main export is `getViewerHtml` plus the server/embedding helpers.
+
+## @ifc-lite/server-client
+
+TypeScript client SDK for IFC-Lite Server: typed REST client plus Parquet geometry decoding (`decodeParquetGeometry`, `decodeOptimizedParquetGeometry`).
 
 ## @ifc-lite/server-bin
 
-Pre-built server binary distribution package.
-
-### Overview
-
-Distributes pre-compiled `ifc-lite-server` binaries for deployment without requiring a Rust toolchain.
+Pre-built `ifc-lite-server` binaries for deployment without a Rust toolchain or Docker. Installs a launcher (`ifc-lite-server`) that downloads and verifies the platform binary.
 
 **Supported platforms:**
 
-| Platform         | Architecture |
+| Platform | Architecture |
 |------------------|-------------|
-| `linux-x64`      | x86_64      |
-| `linux-arm64`    | aarch64     |
+| `linux-x64` | x86_64 |
+| `linux-arm64` | aarch64 |
 | `linux-x64-musl` | x86_64 (musl libc) |
-| `darwin-x64`     | x86_64 (macOS) |
-| `darwin-arm64`   | aarch64 (macOS Apple Silicon) |
-| `win32-x64`      | x86_64 (Windows) |
+| `darwin-x64` | x86_64 (macOS) |
+| `darwin-arm64` | aarch64 (macOS Apple Silicon) |
+| `win32-x64` | x86_64 (Windows) |
+
+## @ifc-lite/wasm
+
+WebAssembly bindings (the `IfcAPI` class and mesh/profile/clash types). See the [WASM API reference](wasm.md).
+
+## @ifc-lite/codegen
+
+TypeScript code generator from IFC EXPRESS schemas. Produces the 876-entity type definitions, CRC32 type ids, serializers, and the parser's generated Rust tables (`generateTypeIds`, `generateSerializers`, `generateRust`). Primarily a build-time tool, not used at runtime.
+
+## create-ifc-lite
+
+Project scaffolder: `npm create ifc-lite` (binary `create-ifc-lite`) sets up a new IFC-Lite project with one command.

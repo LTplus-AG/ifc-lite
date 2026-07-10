@@ -28,21 +28,27 @@ flowchart TB
 
 ## Running Tests
 
-### All Tests
+### Test Suites
 
-```bash
-# Run all tests
-pnpm test
+The root `package.json` wires up these suites (most need fixtures, fetched
+once with `pnpm fixtures`):
 
-# Run with coverage (Vitest, per package)
-pnpm -r exec vitest run --coverage
-```
+| Command | What it runs |
+|---------|--------------|
+| `pnpm test` | All package unit tests via Turbo (`turbo test`, Vitest per package) |
+| `pnpm test:e2e` | Playwright viewer end-to-end tests (project `viewer-e2e`) |
+| `pnpm test:e2e:ci` | Playwright e2e, CI variant (project `viewer-e2e-ci`) |
+| `pnpm test:integration` | Cross-package integration pipeline (`tests/integration.test.ts`) |
+| `pnpm test:api` | Server API tests (`tests/api/`) |
+| `pnpm test:wasm-contract` | Real WASM boundary contract tests (run `pnpm build:wasm` first, or it skips) |
+| `pnpm test:ids-corpus` | IDS validation corpus |
+| `cargo test --workspace` | All Rust tests (run from the repo root) |
 
 ### TypeScript Tests
 
 ```bash
 # Run all TypeScript tests
-pnpm -r test
+pnpm test
 
 # Run specific package
 cd packages/parser && pnpm test
@@ -56,12 +62,14 @@ cd packages/parser && pnpm exec vitest run --coverage
 
 ### Rust Tests
 
+The Cargo workspace root is the repo root:
+
 ```bash
 # Run all Rust tests
-cd rust && cargo test
+cargo test --workspace
 
 # Run specific crate
-cd rust/core && cargo test
+cargo test -p ifc-lite-core
 
 # Run specific test
 cargo test parse_entity
@@ -72,10 +80,12 @@ cargo test -- --nocapture
 
 #### Fuzzing the STEP parser
 
-The entity parser has a coverage-guided fuzz target (`rust/core/fuzz/`). It is a
-standalone crate, so it is not built by `cargo build`/`cargo test` or in CI; run
-it locally with [`cargo-fuzz`](https://github.com/rust-fuzz/cargo-fuzz) (needs
-the nightly toolchain, already pinned):
+The entity parser has a coverage-guided fuzz target (`rust/core/fuzz/`). It is
+a standalone crate, so it is not built by `cargo build`/`cargo test` or by the
+PR test workflow; a scheduled workflow (`.github/workflows/fuzz.yml`) runs it
+weekly and on demand. Run it locally with
+[`cargo-fuzz`](https://github.com/rust-fuzz/cargo-fuzz) (needs the nightly
+toolchain, already pinned):
 
 ```bash
 cargo install cargo-fuzz
@@ -297,19 +307,26 @@ describe('Full Parse Integration', () => {
 
 ## Test Fixtures
 
-### Location
+IFC/IFCX model fixtures live under `tests/models/` but are not stored in git.
+They are catalogued in `tests/models/manifest.json` (path, SHA-256, size) and
+fetched on demand from a GitHub Release:
 
+```bash
+# Populate the fixtures (idempotent; skips files whose hash already matches)
+pnpm fixtures
+
+# Verify presence and hashes without downloading
+pnpm fixtures:check
+
+# List missing or out-of-date paths
+pnpm fixtures:list-missing
 ```
-tests/
-├── fixtures/
-│   ├── simple.ifc           # Minimal IFC file
-│   ├── test-model.ifc       # Standard test model
-│   ├── large-model.ifc      # Large file for performance
-│   └── edge-cases/
-│       ├── unicode.ifc      # Unicode strings
-│       ├── empty.ifc        # Empty DATA section
-│       └── nested.ifc       # Deeply nested entities
-```
+
+Every download is verified against the manifest's SHA-256 before being
+written. Tests that need a missing fixture skip cleanly rather than fail.
+`tests/models/local/` is never managed by the manifest; it is reserved for
+private fixtures kept on your own machine. See `tests/models/README.md` for
+the maintainer flow (adding fixtures, rotating releases).
 
 ### Creating Test Data
 
@@ -362,33 +379,8 @@ vi.stubGlobal('fetch', vi.fn(() =>
 ));
 ```
 
-### Rust Mocks
-
-```rust
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use mockall::predicate::*;
-    use mockall::*;
-
-    mock! {
-        pub Decoder {
-            fn decode(&self, id: u32) -> Result<Entity, Error>;
-        }
-    }
-
-    #[test]
-    fn test_with_mock_decoder() {
-        let mut mock = MockDecoder::new();
-        mock.expect_decode()
-            .with(eq(1))
-            .returning(|_| Ok(Entity::default()));
-
-        let result = mock.decode(1);
-        assert!(result.is_ok());
-    }
-}
-```
+Rust tests do not use a mocking framework; they exercise real parsers and
+geometry on fixture bytes (see `rust/*/tests/`).
 
 ## Coverage
 
@@ -396,7 +388,7 @@ mod tests {
 
 ```bash
 # Generate coverage report (Vitest, per package)
-pnpm -r exec vitest run --coverage
+cd packages/parser && pnpm exec vitest run --coverage
 
 # View HTML report
 open coverage/index.html
@@ -415,13 +407,8 @@ cargo tarpaulin --out Html
 open tarpaulin-report.html
 ```
 
-### Coverage Thresholds
-
-| Metric | Threshold |
-|--------|-----------|
-| Lines | 80% |
-| Functions | 80% |
-| Branches | 70% |
+No coverage thresholds are enforced in CI; coverage reports are for local
+inspection.
 
 ## Performance Tests
 
@@ -461,79 +448,39 @@ Run benchmarks:
 ```bash
 # Vitest bench, from the package holding the .bench.ts file
 pnpm exec vitest bench
+
+# Viewer load benchmark (Playwright, project viewer-benchmark)
+pnpm test:benchmark:viewer
 ```
 
 ## CI/CD
 
 ### GitHub Actions
 
-```yaml
-# .github/workflows/test.yml
-name: Test
+The PR gate lives in `.github/workflows/test.yml`. It runs on Node 22 with
+the Rust toolchain pinned by `rust-toolchain.toml`, and covers:
 
-on: [push, pull_request]
+- WASM build (or a prebuilt-bundle fast path when no Rust code changed)
+- `pnpm typecheck` and `pnpm lint`
+- `pnpm test`, then `pnpm test:integration` and `pnpm test:wasm-contract`
+- Playwright e2e via `pnpm test:e2e:ci`
+- `cargo test` for the Rust workspace
 
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+Fixtures in CI use the same flow as local development: `pnpm fixtures` to
+fetch, `pnpm fixtures:check` to verify hashes. Heavier suites (benchmarks,
+determinism, fuzzing, IfcOpenShell parity) run in separate scheduled or
+on-demand workflows under `.github/workflows/`.
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
+### Fixture Strategy in CI
 
-      - name: Setup Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          target: wasm32-unknown-unknown
+Fixtures come from a GitHub Release, not Git LFS (the repo no longer uses
+LFS). The manifest-driven fetcher keeps CI reliable:
 
-      - name: Install dependencies
-        run: pnpm install
-
-      - name: Run tests
-        run: pnpm test
-
-      - name: Run Rust tests
-        run: cd rust && cargo test
-
-      - name: Upload coverage
-        uses: codecov/codecov-action@v3
-```
-
-### IFC Fixture Strategy
-
-Use a tiered fixture approach so release pipelines stay reliable when Git LFS quota is constrained:
-
-1. Keep release and docs workflows on `actions/checkout` with `lfs: false`.
-2. Keep smoke-test fixtures small and cheap to access so normal PR and release validation never needs a broad LFS pull.
-3. Run heavy IFC corpus tests (large geometry/benchmark sets) in dedicated manual or scheduled workflows.
-4. For heavy workflows, fetch only required fixtures with `git lfs pull --include="<paths>"` instead of downloading all LFS objects.
-5. Add caching and checksums for downloaded fixture bundles when using external artifact storage.
-
-### Fixture Tiers
-
-- **Smoke fixtures**: Small files required for normal development, package tests, and release verification. These should stay cheap to access and should not require broad LFS pulls.
-- **Benchmark fixtures**: Medium-sized files used for targeted performance checks. Fetch them on demand with `git lfs pull --include="<paths>"`.
-- **Stress fixtures**: Giant files such as full-building streaming tests. Treat these as rare opt-in assets and never assume they are present in a fresh clone.
-
-### Recommended Clone Flow
-
-```bash
-GIT_LFS_SKIP_SMUDGE=1 git clone https://github.com/LTplus-AG/ifc-lite.git
-cd ifc-lite
-pnpm install
-```
-
-Then fetch only the fixtures needed for the task at hand:
-
-```bash
-git lfs pull --include="tests/models/ara3d/AC20-FZK-Haus.ifc"
-```
-
-For future giant IFC corpora, prefer external artifact storage plus checksums over adding more always-available Git LFS fixtures to the repo.
+- Fetches are selective: only files listed in `tests/models/manifest.json`
+  that are missing or hash-mismatched get downloaded.
+- Every file is verified against its SHA-256 from the manifest.
+- Heavy corpus and benchmark runs live in dedicated scheduled workflows, so
+  normal PR validation stays cheap.
 
 ## Next Steps
 

@@ -16,11 +16,11 @@ import { readBCF } from '@ifc-lite/bcf';
 const buffer = await fetch('coordination.bcf').then(r => r.arrayBuffer());
 const project = await readBCF(buffer);
 
-console.log(`${project.topics.length} topics, version ${project.version}`);
+console.log(`${project.topics.size} topics, version ${project.version}`);
 
-for (const topic of project.topics) {
+for (const topic of project.topics.values()) {
   console.log(`[${topic.priority}] ${topic.title}`);
-  console.log(`  by ${topic.author}, status: ${topic.status}`);
+  console.log(`  by ${topic.creationAuthor}, status: ${topic.topicStatus}`);
   console.log(`  ${topic.comments.length} comments, ${topic.viewpoints.length} viewpoints`);
 }
 ```
@@ -39,9 +39,9 @@ const topic = createBCFTopic({
   title: 'Missing fire rating on east-facade walls',
   author: 'reviewer@example.com',
   priority: 'High',
-  status: 'Open',
+  topicStatus: 'Open',
   topicType: 'Issue',
-  description: 'Walls on grid F1–F6 have no Pset_WallCommon.FireRating set.',
+  description: 'Walls on grid F1-F6 have no Pset_WallCommon.FireRating set.',
 });
 
 addTopicToProject(project, topic);
@@ -85,6 +85,12 @@ const uuid = ifcGuidToUuid('1abc2def3GhI4jKlM5nOpQ');
 const back = uuidToIfcGuid(uuid);
 // → '1abc2def3GhI4jKlM5nOpQ'
 ```
+
+## Also included
+
+- `createBCFFromIDSReport` - turn an IDS validation report into a BCF file, one topic per failing spec
+- `computeMarkerPositions` + `BCFOverlayRenderer` - viewer-agnostic 3D topic markers for any renderer
+- Camera round-trip helpers (`cameraToPerspective`, `orthogonalToCamera`, ...) and section-plane conversion
 
 ## API
 

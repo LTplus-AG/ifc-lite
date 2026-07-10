@@ -94,13 +94,18 @@ Packages are versioned independently:
 - **Automatic sync**: `scripts/sync-versions.js` syncs the root package version, `Cargo.toml` workspace version, and internal Rust workspace dependency versions to the highest released workspace package version
 - **Dependency propagation**: `updateInternalDependencies: "patch"` keeps dependents aligned when an internal package version changes
 
-## Secrets Required
+## Publish Authentication
 
-The GitHub Actions workflow needs these secrets:
+No long-lived registry tokens are stored as secrets. The release workflow uses
+OIDC trusted publishing for both registries:
 
-- `NPM_TOKEN`: npm access token with publish permissions
-- `CARGO_TOKEN`: crates.io API token
-- `GITHUB_TOKEN`: Automatically provided by GitHub Actions
+- **npm**: the workflow's `id-token: write` permission plus the npm CLI's OIDC
+  handshake mints a short-lived credential at publish time (with SLSA
+  provenance). New packages need one manual first publish before trusted
+  publishing can take over.
+- **crates.io**: `rust-lang/crates-io-auth-action` exchanges the workflow's
+  OIDC token for a short-lived crates.io token.
+- `GITHUB_TOKEN`: automatically provided by GitHub Actions.
 
 ## FAQ
 

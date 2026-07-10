@@ -112,10 +112,11 @@ await gp.init();
 // From IFC bytes (meshes internally):
 const glb = gp.exportGlb(
   bytes,                 // Uint8Array of the .ifc
-  true,                  // includeMetadata → expressId/globalId/type in node extras
-  new Uint32Array(),     // hidden  express-ids (empty ⇒ none hidden)
-  new Uint32Array(),     // isolated express-ids (empty ⇒ all visible)
+  true,                  // includeMetadata: expressId/ifcType/GlobalId in node extras
+  new Uint32Array(),     // hidden  express-ids (empty = none hidden)
+  new Uint32Array(),     // isolated express-ids (empty = all visible)
   '',                    // hidden IFC-type CSV (e.g. 'IfcSpace,IfcOpeningElement')
+  true,                  // lit: PBR materials; false = flat KHR_materials_unlit
 );
 await saveFile('model.glb', glb);
 
@@ -131,34 +132,32 @@ RTC origins ride a glTF node translation so large-coordinate models stay precise
 
 | Parameter | Meaning |
 |-----------|---------|
-| `includeMetadata` | Write `expressId` / `globalId` / `type` (and properties) into each node's `extras` |
+| `includeMetadata` | Write `expressId` / `ifcType` / `GlobalId` (plus `modelId` for federated exports) into each node's `extras` |
 | `hidden` | Express-ids to omit (mirrors the viewer's hide set) |
-| `isolated` | Express-ids to keep; empty ⇒ all visible |
+| `isolated` | Express-ids to keep; empty = all visible |
 | hidden-types CSV | IFC class names to drop wholesale, e.g. `IfcSpace,IfcOpeningElement` |
+| `lit` | `true` (default) emits standard PBR materials that shade from normals; `false` emits flat `KHR_materials_unlit` materials |
 
-### glTF with Properties
+### glTF with Metadata
 
 ```typescript
 const glb = gp.exportGlb(bytes, /* includeMetadata */ true, new Uint32Array(), new Uint32Array(), '');
 
-// Properties are stored in node extras:
+// With includeMetadata, each node carries identifying extras:
 // {
 //   "nodes": [{
 //     "name": "Wall-001",
 //     "extras": {
 //       "expressId": 123,
-//       "globalId": "2O2Fr$...",
-//       "type": "IFCWALL",
-//       "properties": {
-//         "Pset_WallCommon": {
-//           "IsExternal": true,
-//           "FireRating": 60
-//         }
-//       }
+//       "ifcType": "IfcWall",
+//       "GlobalId": "2O2Fr$t4X7Zf8NOew3FL9r"
 //     }
 //   }]
 // }
 ```
+
+Property sets are not embedded in the GLB; export them separately (CSV, JSON-LD,
+Parquet) and join on `expressId` / `GlobalId` when you need both.
 
 ## Parquet Export
 
@@ -172,8 +171,10 @@ import { ParquetExporter } from '@ifc-lite/export';
 const exporter = new ParquetExporter(store, geometryResult);
 
 // Export the whole model as a single .bos archive (a ZIP of Parquet files:
-// Entities, Properties, Quantities, Relationships, Strings, plus the
-// geometry tables when a GeometryResult was supplied):
+// Entities, Properties, Quantities, Relationships, Strings, a Metadata.json,
+// SpatialHierarchy when available, plus the VertexBuffer/IndexBuffer/Meshes
+// tables when a GeometryResult was supplied; pass { includeGeometry: false }
+// to skip them):
 const bos = await exporter.exportBOS();
 await saveFile('model.bos', bos);
 
@@ -191,36 +192,47 @@ await saveFile('quantities.parquet', quantsParquet);
 
 ### Parquet Schema
 
+Column names are PascalCase (ara3d BIM Open Schema style); entity types are
+PascalCase class names such as `IfcWall`:
+
 ```mermaid
 erDiagram
     ENTITIES {
-        int64 express_id PK
-        string type
-        string global_id
-        string name
-        string description
-        boolean has_geometry
+        int64 ExpressId PK
+        string GlobalId
+        string Name
+        string Description
+        string Type
+        string ObjectType
+        boolean HasGeometry
+        boolean IsType
     }
 
     PROPERTIES {
-        int64 entity_id FK
-        string pset_name
-        string prop_name
-        string value
-        string value_type
+        int64 EntityId FK
+        string PsetName
+        string PropName
+        string PropType
+        string ValueString
+        float64 ValueReal
+        int64 ValueInt
+        boolean ValueBool
     }
 
     QUANTITIES {
-        int64 entity_id FK
-        string name
-        float64 value
-        string unit
+        int64 EntityId FK
+        string QsetName
+        string QuantityName
+        string QuantityType
+        float64 Value
+        string Formula
     }
 
     RELATIONSHIPS {
-        int64 from_id FK
-        int64 to_id FK
-        string rel_type
+        int64 SourceId FK
+        int64 TargetId FK
+        string RelType
+        int64 RelId
     }
 
     ENTITIES ||--o{ PROPERTIES : has
@@ -242,14 +254,14 @@ quantities = pl.read_parquet('quantities.parquet')
 # Analyze wall areas
 wall_areas = (
     entities
-    .filter(pl.col('type').str.contains('IFCWALL'))
-    .join(quantities, left_on='express_id', right_on='entity_id')
-    .filter(pl.col('name') == 'NetArea')
-    .group_by('type')
+    .filter(pl.col('Type').str.contains('IfcWall'))
+    .join(quantities, left_on='ExpressId', right_on='EntityId')
+    .filter(pl.col('QuantityName') == 'NetArea')
+    .group_by('Type')
     .agg([
-        pl.count('express_id').alias('count'),
-        pl.sum('value').alias('total_area'),
-        pl.mean('value').alias('avg_area')
+        pl.count('ExpressId').alias('count'),
+        pl.sum('Value').alias('total_area'),
+        pl.mean('Value').alias('avg_area')
     ])
 )
 print(wall_areas)
@@ -284,25 +296,25 @@ await saveFile('model.jsonld', jsonld);
 ```json
 {
   "@context": {
-    "ifc": "https://standards.buildingsmart.org/IFC/DEV/IFC4/ADD2/OWL#",
-    "schema": "https://schema.org/",
-    "geo": "http://www.opengis.net/ont/geosparql#"
+    "@vocab": "https://standards.buildingsmart.org/IFC/DEV/IFC4/ADD2/OWL#",
+    "ifc": "https://standards.buildingsmart.org/IFC/DEV/IFC4/ADD2/OWL#"
   },
   "@graph": [
     {
-      "@id": "https://example.com/project/wall-123",
+      "@id": "ifc:123",
       "@type": "ifc:IfcWall",
+      "ifc:expressId": 123,
       "ifc:globalId": "2O2Fr$t4X7Zf8NOew3FL9r",
       "ifc:name": "Wall-001",
-      "ifc:hasPropertySet": [
+      "ifc:hasPropertySets": [
         {
           "@type": "ifc:IfcPropertySet",
           "ifc:name": "Pset_WallCommon",
-          "ifc:hasProperty": [
+          "ifc:hasProperties": [
             {
               "@type": "ifc:IfcPropertySingleValue",
               "ifc:name": "IsExternal",
-              "ifc:value": true
+              "ifc:nominalValue": true
             }
           ]
         }
@@ -311,6 +323,9 @@ await saveFile('model.jsonld', jsonld);
   ]
 }
 ```
+
+With `includeQuantities`, each entity additionally carries `ifc:hasQuantitySets`
+(`ifc:IfcElementQuantity` nodes with typed `ifc:IfcQuantity...` entries).
 
 ## CSV Export
 
@@ -343,10 +358,14 @@ await saveFile('spatial.csv', spatialCsv);
 
 ### CSV Output Example
 
+The `entities` mode emits the fixed columns
+`expressId,globalId,name,type,description,objectType,hasGeometry`; with
+`includeProperties`, each property becomes a flattened `Pset_Prop` column:
+
 ```csv
-expressId,type,globalId,name,IsExternal,FireRating,LoadBearing
-123,IFCWALL,2O2Fr$t4X7Zf8NOew3FL9r,Wall-001,true,60,true
-456,IFCWALLSTANDARDCASE,3P3Gs$u5Y8Ag9PQfx4GM0s,Wall-002,false,30,false
+expressId,globalId,name,type,description,objectType,hasGeometry,Pset_WallCommon_IsExternal,Pset_WallCommon_FireRating
+123,2O2Fr$t4X7Zf8NOew3FL9r,Wall-001,IfcWall,,,true,true,60
+456,3P3Gs$u5Y8Ag9PQfx4GM0s,Wall-002,IfcWallStandardCase,,,true,false,30
 ```
 
 ## IFC Export
@@ -358,18 +377,32 @@ import { StepExporter } from '@ifc-lite/export';
 
 const exporter = new StepExporter(dataStore);
 
-// Full export
-const result = exporter.export({});
-await saveFile('model.ifc', result.content);
+// Full export (schema is required; conversion runs when it differs from the source)
+const result = exporter.export({ schema: 'IFC4' });
+await saveFile('model.ifc', result.content);  // result.content is a Uint8Array
 
 // Visible-only export (exclude hidden entities)
 const visibleResult = exporter.export({
+  schema: 'IFC4',
   visibleOnly: true,
   hiddenEntityIds: hiddenSet,       // Set<number> of local expressIds
   isolatedEntityIds: isolatedSet,   // Set<number> | null
 });
 await saveFile('visible_only.ifc', visibleResult.content);
 ```
+
+To bake in pending property edits, pass the `MutablePropertyView` from
+`@ifc-lite/mutations` to the constructor; `applyMutations` defaults to true
+when a view is provided (see the [Property Editing guide](mutations.md)):
+
+```typescript
+const edited = new StepExporter(dataStore, mutationView)
+  .export({ schema: 'IFC4', applyMutations: true });
+```
+
+For quick scripts there is also `exportToStep(dataStore, options?)`, which
+returns the STEP text as a string (defaults to `schema: 'IFC4'`; prefer
+`StepExporter` and its `Uint8Array` output for very large files).
 
 ### Visible-Only Export
 
@@ -386,8 +419,9 @@ Supports all 202 `IfcProduct` subtypes from IFC4 and IFC4X3 schemas, including i
 ### Multi-Model Merged Export
 
 Merge multiple IFC models into a single file. The models are passed to the
-constructor; `export()` (sync) or `exportAsync()` (progress-reporting) takes the
-options:
+constructor; `export()` (sync) or `exportAsync()` (yields to the event loop for
+progress reporting, and required when any model carries pending mutation-view
+edits to bake) takes the options:
 
 ```typescript
 import { MergedExporter } from '@ifc-lite/export';
@@ -445,6 +479,40 @@ own declared `AREAUNIT`/`VOLUMEUNIT` ratio. Angles, ratios, counts, unit
 definitions and georeferencing offsets are left untouched. Length attributes
 specific to IFC4X3 (alignment / linear referencing) may not be rescaled — a
 `stats.warnings` advisory flags this.
+
+## IFC5 (IFCX) Export
+
+Export a parsed model as an IFC5 IFCX document (JSON with USD-style composition):
+
+```typescript
+import { Ifc5Exporter } from '@ifc-lite/export';
+
+// geometryResult and mutationView are optional
+const exporter = new Ifc5Exporter(dataStore, geometryResult);
+const result = exporter.export({
+  includeGeometry: true,     // USD meshes (default true)
+  includeProperties: true,   // default true
+  prettyPrint: true,         // default true
+});
+await saveFile('model.ifcx', result.content);  // string; result.stats has counts
+```
+
+A Rust-side variant is also available as `GeometryProcessor.exportIfcx(bytes, onlyKnownProperties?, pretty?)`.
+
+## Other Formats via GeometryProcessor
+
+The Rust exporter crate backs several more one-call formats on `GeometryProcessor`:
+
+| Method | Output |
+|--------|--------|
+| `exportObj(bytes, includeNormals?, hidden?, isolated?)` | Wavefront OBJ of the render geometry |
+| `exportJson(bytes, pretty?, includeProperties?, includeQuantities?)` | Plain JSON entity dump |
+| `exportStep(bytes, schema?, included?, mutationsJson?)` | STEP/IFC re-export (Rust path) |
+| `exportHbjson(bytes, name)` | Honeybee HBJSON energy/daylight model built from the `IfcSpace` volumes |
+| `exportKmz(glb, lat, lon, alt, xAxisAbscissa?, xAxisOrdinate?, name?)` | KMZ (Google Earth) wrapping an already-exported GLB at a georeferenced location |
+| `exportMerged(buffers, schema?)` | Merge several IFC byte buffers into one STEP file (Rust path) |
+
+Each returns a `Uint8Array` (UTF-8 for the text formats; decode with `TextDecoder` when you need a string), or `null` if the processor is not initialized.
 
 ## GLB Import
 

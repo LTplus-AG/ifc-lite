@@ -235,7 +235,7 @@ editor.setPositionalAttribute(profile.expressId, 3, 0.7);  // XDim → 0.7
 editor.removeEntity(unwantedExpressId);
 ```
 
-Edits accumulate in the same overlay used by `setProperty` / `setAttribute`. They land in the exported file the next time you call `StepExporter.export({ applyMutations: true })`.
+Edits accumulate in the same overlay used by `setProperty` / `setAttribute`. They land in the exported file the next time you call `exportToStep(store, { applyMutations: true })` from `@ifc-lite/export`.
 
 #### STEP value conventions
 
@@ -287,7 +287,7 @@ const result = addColumnToStore(editor, anchor, {
 // → { columnId, placementId, profileId, solidId, shapeRepId, productShapeId, relContainedId }
 ```
 
-The column lands in the existing spatial hierarchy, references the model's own owner history and 'Body' subcontext, and exports as a set of new STEP entities the next time you call `StepExporter.export({ applyMutations: true })`. No script + re-parse round-trip needed.
+The column lands in the existing spatial hierarchy, references the model's own owner history and 'Body' subcontext, and exports as a set of new STEP entities the next time you call `exportToStep(store, { applyMutations: true })` from `@ifc-lite/export`. No script + re-parse round-trip needed.
 
 #### IFC4 vs IFC2X3
 

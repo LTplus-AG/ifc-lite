@@ -12,12 +12,21 @@ npm install @ifc-lite/ids
 
 ```typescript
 import { parseIDS, validateIDS, createTranslationService } from '@ifc-lite/ids';
+import { createDataAccessor } from '@ifc-lite/ids/bridge';
 
 const idsXml = await fetch('project-requirements.ids').then(r => r.text());
 const idsSpec = parseIDS(idsXml);
 
+// Bridge a parsed IfcDataStore into the validator's data-accessor interface
+const accessor = createDataAccessor(store);
+
 const translator = createTranslationService('en');
-const report = await validateIDS(idsSpec, store, { translator });
+const report = await validateIDS(
+  idsSpec,
+  accessor,
+  { modelId: 'model.ifc', schemaVersion: store.schemaVersion, entityCount: store.entityCount },
+  { translator },
+);
 
 console.log(`Overall: ${report.summary.totalEntitiesPassed} / ${report.summary.totalEntitiesChecked} passed`);
 
@@ -40,8 +49,21 @@ Reports translate automatically. Supported languages: English (`en`), German (`d
 
 ```typescript
 const de = createTranslationService('de');
-const report = await validateIDS(idsSpec, store, { translator: de });
+const report = await validateIDS(idsSpec, accessor, modelInfo, { translator: de });
 // Failures now read: "Anforderung 'FireRating' nicht erfüllt..."
+```
+
+## Audit an IDS document
+
+Check an IDS file itself for authoring mistakes (broken restrictions, impossible cardinalities, unknown entity names) before running it against a model:
+
+```typescript
+import { auditIDSDocument } from '@ifc-lite/ids';
+
+const audit = await auditIDSDocument(idsXml);
+for (const issue of audit.issues) {
+  console.log(`${issue.severity}: ${issue.message}`);
+}
 ```
 
 ## Inspect an IDS specification

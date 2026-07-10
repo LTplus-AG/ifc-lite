@@ -10,7 +10,7 @@ cursors move." Pick the depth you want; each section is self-contained.
 # 1. Build everything once
 pnpm turbo build --filter=@ifc-lite/collab --filter=@ifc-lite/collab-server
 
-# 2. Run the test suite (175 tests, ~10 seconds)
+# 2. Run the test suite
 pnpm --filter @ifc-lite/collab test
 pnpm --filter @ifc-lite/collab-server test
 
@@ -27,7 +27,7 @@ The fastest way to verify everything works.
 
 ```sh
 pnpm --filter @ifc-lite/collab test
-# → 134 tests across schema, ops, snapshot round-trip, undo,
+# → suites covering schema, ops, snapshot round-trip, undo,
 #   conflict detection, conflict UI bridge, federation,
 #   blob store + GC, CSG, parametric kernel, determinism,
 #   E2E encryption, history sidecar (memory + Automerge),
@@ -36,7 +36,7 @@ pnpm --filter @ifc-lite/collab test
 #   property-based convergence under random concurrent edits.
 
 pnpm --filter @ifc-lite/collab-server test
-# → 41 tests across server boot, two-client sync,
+# → suites covering server boot, two-client sync,
 #   disconnect/reconnect, audit log + JSONL, retention,
 #   idle unloading, blob route, S3 + Redis persistence,
 #   metrics + bucketed histograms, replay-protector wired
@@ -155,6 +155,18 @@ Useful things to try:
   to 0.4 opacity within ~10s, then drop entirely.
 - **History:** click "Capture snapshot" twice; the history sidecar
   records IFCX entries you can inspect via the "history" panel.
+
+### The 3D variant
+
+```sh
+pnpm collab:demo:3d
+```
+
+Same server on `ws://localhost:1234`, but serves `examples/threejs-collab`
+on `http://localhost:5175`: every entity is a real Three.js box on a floor
+grid. Drag a wall in tab A and it slides in tab B; peer selections are
+outlined in each user's color. Position, size, rotation and color are CRDT
+attributes synced over the websocket server.
 
 ---
 

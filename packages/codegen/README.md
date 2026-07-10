@@ -14,11 +14,13 @@ npm install --save-dev @ifc-lite/codegen
 
 ```bash
 # IFC4 (776 entities)
-node dist/cli.js ./schemas/IFC4.exp --output ./src/generated
+node dist/cli.js schemas/IFC4_ADD2_TC1.exp --output ./generated/ifc4
 
 # IFC4X3 (876 entities, includes infrastructure: roads, bridges, alignments)
-node dist/cli.js ./schemas/IFC4X3.exp --output ./src/generated
+node dist/cli.js schemas/IFC4X3.exp --output ./generated/ifc4x3
 ```
+
+Pass `--rust` to also emit Rust type tables (consumed by the ifc-lite Rust core).
 
 Generated files (one per output directory):
 

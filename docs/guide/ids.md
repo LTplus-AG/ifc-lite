@@ -31,34 +31,23 @@ for (const spec of idsDocument.specifications) {
 
 ### Running Validation
 
+The easiest way to validate a parsed model is the bridge, which builds the data accessor the validator needs directly from an `IfcDataStore` (the output of `@ifc-lite/parser`):
+
 ```typescript
 import { parseIDS, validateIDS } from '@ifc-lite/ids';
-import type { IFCDataAccessor, IDSModelInfo } from '@ifc-lite/ids';
+import { createDataAccessor } from '@ifc-lite/ids/bridge';
+import type { IDSModelInfo } from '@ifc-lite/ids';
 
 const idsDocument = parseIDS(idsXml);
 
-// Create a data accessor that bridges IDS to your IFC data
-const accessor: IFCDataAccessor = {
-  getAllEntityIds: () => allEntityIds,
-  getEntitiesByType: (type) => entitiesByType.get(type) ?? [],
-  getEntityType: (id) => entityTypeMap.get(id),
-  getEntityName: (id) => getName(id),
-  getGlobalId: (id) => getGuid(id),
-  getDescription: (id) => getDescriptionText(id),
-  getObjectType: (id) => getPredefinedType(id),
-  getPropertyValue: (id, pset, prop) => getProperty(id, pset, prop),
-  getPropertySets: (id) => getPropertySetInfo(id),
-  getClassifications: (id) => getClassificationInfo(id),
-  getMaterials: (id) => getMaterialInfo(id),
-  getParent: (id, relation) => getParentInfo(id, relation),
-  getAttribute: (id, attr) => getAttributeValue(id, attr),
-};
+// Bridge the parsed IFC data store to the validator
+const accessor = createDataAccessor(dataStore);
 
 // Model info for the validation report
 const modelInfo: IDSModelInfo = {
   modelId: 'model.ifc',
   schemaVersion: 'IFC4',
-  entityCount: allEntityIds.length,
+  entityCount: dataStore.entityCount,
 };
 
 // Validate (requires: document, accessor, modelInfo, options?)
@@ -70,6 +59,14 @@ console.log(`${report.summary.totalEntitiesChecked} entities checked`);
 console.log(`${report.summary.totalEntitiesPassed} passed`);
 console.log(`${report.summary.totalEntitiesFailed} failed`);
 ```
+
+The bridge mirrors IfcOpenShell `ifctester` semantics (classification sub-reference walking, length unit conversion, predefined property-set unwrapping, schema-driven attribute types). It also exports `narrowSchemaVersion` for mapping a parsed schema string to an IDS `IFCVersion`.
+
+Other options in `ValidatorOptions`: `translator` (see below), `includePassingEntities` (default `true`), and `yieldEveryMs` to keep the thread responsive on large models.
+
+### Custom Data Sources
+
+If your IFC data does not come from `@ifc-lite/parser`, implement the `IFCDataAccessor` interface yourself. It requires `getAllEntityIds`, `getEntitiesByType`, `getEntityType`, `getEntityName`, `getGlobalId`, `getDescription`, `getObjectType`, `getPropertyValue`, `getPropertySets`, `getClassifications`, `getMaterials`, `getParent`, and `getAttribute`, plus optional methods (`getAncestors`, `getAttributeNames`, `getAttributeXsdTypes`, `getPredefinedTypeRaw`) that improve spec fidelity when provided.
 
 ## Facet Types
 
@@ -103,8 +100,24 @@ Validation reports can be generated in multiple languages:
 import { createTranslationService } from '@ifc-lite/ids';
 
 const t = createTranslationService('de'); // German
-// Or: 'en' (English), 'fr' (French)
+// Or: 'en' (English, default), 'fr' (French)
+
+// Pass it to validateIDS to translate the report:
+const report = await validateIDS(idsDocument, accessor, modelInfo, { translator: t });
 ```
+
+## Auditing IDS Documents
+
+Beyond validating models, the package can audit the IDS document itself for structural and semantic problems:
+
+```typescript
+import { auditIDSDocument } from '@ifc-lite/ids';
+
+// Takes the raw IDS XML (string or ArrayBuffer); parse errors become structured issues
+const auditReport = await auditIDSDocument(idsXml);
+```
+
+Use `auditIDSStructure(idsDocument)` to audit an already-parsed document.
 
 ## Viewer Integration
 
@@ -116,6 +129,9 @@ In the IFClite viewer, IDS validation is integrated through the IDS panel:
 4. **3D Highlighting** - Failed entities are highlighted in red in the 3D view
 5. **Filter** - Show all entities, only failed, or only passed
 6. **Navigate** - Click a failed entity to zoom to it in 3D
+7. **Export BCF** - Turn validation failures into BCF topics (see [BCF](bcf.md#ids-validation-reports-as-bcf))
+
+Validation runs in a Web Worker so the UI stays responsive during large runs, with an automatic fallback to in-process validation if the worker is unavailable.
 
 ### Display Options
 

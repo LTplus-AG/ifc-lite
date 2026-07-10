@@ -162,6 +162,15 @@ sectionPlane.flipped = true;
 // Storey-based range override
 sectionPlane.min = storeyElevation;
 sectionPlane.max = storeyElevation + storeyHeight;
+
+// Cut-surface rendering (both default true)
+sectionPlane.showCap = true;       // filled cap surfaces with screen-space hatch
+sectionPlane.showOutlines = true;  // polygon outlines on the cut surfaces
+
+// Arbitrary slice plane: providing a world-space unit normal + distance
+// bypasses axis/position/min/max entirely (face-pick section planes)
+sectionPlane.normal = { x: 0.3, y: 0.9, z: 0.1 };
+sectionPlane.distance = 12.5;
 ```
 
 ### Section Plane Visualization
@@ -698,6 +707,39 @@ Meshes are automatically grouped by color for efficient rendering:
 // For streaming, use isStreaming flag to throttle batch rebuilding
 renderer.addMeshes(meshes, true);  // isStreaming = true
 ```
+
+### GPU Instancing
+
+Repeated opaque geometry is production-ready on a dedicated GPU-instancing
+path: unique mesh templates are stored once and drawn with per-occurrence
+transform/color buffers, which keeps draw calls and GPU memory low on models
+with heavy repetition (steel connections, bolts, standard components).
+
+The geometry processor emits packed instanced shards on its streaming batch
+events (see the [Geometry Guide](geometry.md)); decode and upload them to the
+scene:
+
+```typescript
+import { decodeInstancedShard } from '@ifc-lite/geometry';
+
+const device = renderer.getGPUDevice();
+
+for await (const event of geometry.processAdaptive(new Uint8Array(buffer))) {
+  if (event.type === 'batch') {
+    renderer.addMeshes(event.meshes, true);
+    for (const bytes of event.instancedShards ?? []) {
+      const shard = decodeInstancedShard(new Uint8Array(bytes));
+      if (shard && device) renderer.getScene().addInstancedShard(device, shard);
+    }
+  }
+}
+```
+
+Selection, hide/isolate, section planes, and picking all work on instanced
+occurrences; the renderer mirrors `selectedIds`, `hiddenIds`, and
+`isolatedIds` onto the instanced pass automatically. Instancing is
+primary-model only: disable it (`enableInstancing: false` on the
+`GeometryProcessor`) for federated multi-model loads.
 
 ## Complete Example
 

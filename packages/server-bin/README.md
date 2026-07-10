@@ -13,7 +13,7 @@ npm install -g @ifc-lite/server-bin
 ifc-lite-server
 ```
 
-The server starts on `http://localhost:8080` by default. Point [`@ifc-lite/server-client`](../server-client/README.md) at it and you've got a parsing backend with caching, streaming, and parallel processing.
+The server starts on `http://localhost:8080` by default. Point [`@ifc-lite/server-client`](https://www.npmjs.com/package/@ifc-lite/server-client) at it and you've got a parsing backend with caching, streaming, and parallel processing.
 
 ## CLI
 
@@ -113,6 +113,10 @@ cargo build --release
 | `downloadBinary(onProgress?)` | Force re-download — resolves with binary path |
 | `getBinaryInfo()` | Returns `{ platform, binaryPath, cacheDir, isCached }` |
 | `isBinaryCached()` | Boolean — is the binary on disk? |
+
+## Docs
+
+See the [Server Guide](https://ltplus-ag.github.io/ifc-lite/guide/server/).
 
 ## License
 

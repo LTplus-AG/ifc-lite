@@ -8,7 +8,7 @@ The IFClite server processes IFC files on a high-performance Rust backend, provi
 
 - **Content-Addressable Caching** - Same file = instant response (skip upload entirely)
 - **Parallel Processing** - Multi-core geometry extraction with Rayon
-- **Parquet Format** - 15-50x smaller payloads than JSON
+- **Parquet Format** - roughly 15-50x smaller payloads than JSON
 - **SSE Streaming** - Progressive geometry for immediate rendering
 - **Full Data Model** - Properties, quantities, and spatial hierarchy computed upfront
 
@@ -111,7 +111,7 @@ console.log('Server status:', health.status);
 ### 3. Parse a File
 
 ```typescript
-// Parquet format (15x smaller than JSON)
+// Parquet format (~15x smaller than JSON)
 const result = await client.parseParquet(file);
 
 console.log(`Meshes: ${result.meshes.length}`);
@@ -126,8 +126,8 @@ console.log(`From cache: ${result.stats.from_cache}`);
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/v1/parse` | POST | Full parse, JSON response |
-| `/api/v1/parse/parquet` | POST | Full parse, Parquet response (15x smaller) |
-| `/api/v1/parse/parquet/optimized` | POST | Optimized Parquet (50x smaller) |
+| `/api/v1/parse/parquet` | POST | Full parse, Parquet response (~15x smaller) |
+| `/api/v1/parse/parquet/optimized` | POST | Optimized Parquet (~50x smaller) |
 | `/api/v1/parse/stream` | POST | Streaming JSON (SSE) |
 | `/api/v1/parse/parquet-stream` | POST | Streaming Parquet (SSE) |
 | `/api/v1/parse/metadata` | POST | Quick metadata only (no geometry) |
@@ -161,7 +161,16 @@ JSON/SSE endpoints it's on `metadata`; for the Parquet endpoints it's in the
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/` | GET | API information |
-| `/api/v1/health` | GET | Health check |
+| `/api/v1/health` | GET | Health check (liveness; always open) |
+| `/api/v1/ready` | GET | Readiness probe (503 while the memory breaker is shedding load) |
+| `/api/v1/metrics` | GET | Prometheus text metrics (registered only when `IFC_METRICS_ENABLED=1`) |
+
+!!! note "Optional bearer-token auth"
+    When `IFC_SERVER_API_TOKEN` (or `API_TOKEN`) is set, all parse and cache
+    endpoints require an `Authorization: Bearer <token>` header and return 401
+    otherwise. The `/`, `/api/v1/health`, and `/api/v1/ready` probes stay open
+    so health checks keep working. When unset (the default), all routes are
+    open and the server logs a startup warning that it is unauthenticated.
 
 ## Client SDK
 
@@ -180,7 +189,7 @@ const client = new IfcServerClient({
 
 #### parseParquet (Recommended)
 
-Best for most use cases - 15x smaller payloads than JSON.
+Best for most use cases - roughly 15x smaller payloads than JSON.
 
 ```typescript
 const result = await client.parseParquet(file);
@@ -196,7 +205,7 @@ const result = await client.parseParquet(file);
 
 #### parseParquetOptimized
 
-50x smaller payloads using integer quantization (0.1mm precision).
+Roughly 50x smaller payloads using integer quantization (0.1mm precision).
 
 ```typescript
 const result = await client.parseParquetOptimized(file);
@@ -244,7 +253,7 @@ Quick metadata extraction without geometry processing.
 const metadata = await client.getMetadata(file);
 
 // Returns:
-// - schema_version: 'IFC2X3' | 'IFC4' | 'IFC4X3'
+// - schema_version: string (e.g. 'IFC2X3', 'IFC4', 'IFC4X3')
 // - entity_count: number
 // - geometry_count: number
 // - file_size: number
@@ -412,7 +421,7 @@ interface SpatialNode {
 
 The server uses Apache Parquet for efficient binary serialization.
 
-### Standard Format (15x Smaller)
+### Standard Format
 
 ```text
 [mesh_table][vertex_table][index_table]
@@ -422,7 +431,7 @@ The server uses Apache Parquet for efficient binary serialization.
 - **Vertex Table**: x, y, z (Float32), nx, ny, nz (Float32)
 - **Index Table**: i0, i1, i2 (Uint32 triangle indices)
 
-### Optimized Format (50x Smaller)
+### Optimized Format
 
 ```text
 [instance_table][mesh_table][material_table][vertex_table][index_table]
@@ -460,10 +469,12 @@ const dataModel = await decodeDataModel(dataModelBuffer);
 Cache keys are derived from file content:
 
 ```
-# {filter} is the opening filter (e.g. "default")
+# {filter} is the opening filter (e.g. "default"); a non-default tessellation
+# quality appends a "-q{level}" suffix after it
 {SHA256}-{filter}-parquet-v4          # Geometry
 {SHA256}-{filter}-parquet-metadata-v4 # Metadata header
 {SHA256}-{filter}-datamodel-v2        # Properties & hierarchy
+{SHA256}-{filter}-symbolic-v1         # 2D symbol stream
 ```
 
 ### Cache Flow
@@ -497,11 +508,13 @@ sequenceDiagram
 
 | Scenario | Without Cache | With Cache |
 |----------|--------------|------------|
-| 50 MB file, first load | ~800ms | ~800ms |
-| 50 MB file, repeat load | ~800ms | **~50ms** |
-| 169 MB file, first load | ~7s | ~7s |
-| 169 MB file, repeat load | ~7s | **~100ms** |
-| Skip upload | No | **Yes** |
+| First load of a file | Full parse + geometry extraction | Full parse + geometry extraction |
+| Repeat load of the same file | Full parse again | **Serve pre-computed Parquet from disk** |
+| Upload | Always | **Skipped entirely on a hit** (hash check first) |
+
+On a cache hit the server does no parsing at all: the response is a disk read
+plus network transfer, so repeat loads are typically orders of magnitude
+faster than the first load.
 
 ## Server Configuration
 
@@ -510,14 +523,22 @@ sequenceDiagram
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | 8080 | Server port |
-| `RUST_LOG` | info | Log level (error, warn, info, debug, trace) |
+| `RUST_LOG` | info (+ debug for server/http spans) | Log filter (error, warn, info, debug, trace) |
 | `MAX_FILE_SIZE_MB` | 500 | Maximum upload size in MB |
 | `WORKER_THREADS` | CPU cores | Parallel processing threads |
-| `CACHE_DIR` | ./.cache | Cache directory path |
+| `CACHE_DIR` | `./.cache` (`/app/cache` in Docker) | Cache directory path |
 | `REQUEST_TIMEOUT_SECS` | 300 | Request timeout in seconds |
 | `INITIAL_BATCH_SIZE` | 100 | Streaming initial batch size |
 | `MAX_BATCH_SIZE` | 1000 | Streaming maximum batch size |
 | `CACHE_MAX_AGE_DAYS` | 7 | Cache retention in days |
+| `CORS_ORIGINS` | localhost dev origins | Allowed CORS origins (comma-separated, `*` for all) |
+| `IFC_SERVER_API_TOKEN` | unset | Optional bearer token for parse/cache routes (falls back to `API_TOKEN`) |
+| `IFC_MAX_CONCURRENT_PARSES` | `WORKER_THREADS` | Parse jobs admitted at once (CPU gate) |
+| `IFC_MEM_BUDGET_MB` | 70% of detected memory limit | Upload bytes admitted at once; `0` disables the memory gate |
+| `IFC_ADMISSION_QUEUE_DEPTH` | 2 x `WORKER_THREADS` | Requests allowed to queue for an admission permit |
+| `IFC_ADMISSION_QUEUE_TIMEOUT_SECS` | 5 | Longest a queued request waits for a permit |
+| `IFC_MEM_SHED_PCT` | 85 | RSS percentage of the budget above which new parses are shed |
+| `IFC_METRICS_ENABLED` | false | Expose `GET /api/v1/metrics` |
 
 ### Docker Compose
 
@@ -642,7 +663,7 @@ for await (const event of client.parseStream(file)) {
 ### Network
 
 1. **Gzip Compression** - Applied automatically on upload by `parse()`/`parseParquet()`
-2. **Parquet Format** - 15-50x smaller than JSON
+2. **Parquet Format** - roughly 15-50x smaller than JSON
 3. **SSE Streaming** - No polling overhead
 
 ## Error Handling

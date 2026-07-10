@@ -39,7 +39,7 @@
     "url": "https://github.com/LTplus-AG/ifc-lite.git",
     "directory": "packages/parser"
   },
-  "homepage": "https://ltplus-ag.github.io/ifc-lite/",
+  "homepage": "https://ifclite.dev/docs/",
   "bugs": "https://github.com/LTplus-AG/ifc-lite/issues",
   "keywords": [
     "ifc",

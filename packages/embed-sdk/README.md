@@ -38,7 +38,7 @@ Protocol types are shared with the viewer through `@ifc-lite/embed-protocol`.
 
 ## Links
 
-- Docs: https://ltplus-ag.github.io/ifc-lite/
+- Docs: https://ifclite.dev/docs/
 - Source: https://github.com/LTplus-AG/ifc-lite
 
 ## License

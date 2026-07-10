@@ -43,7 +43,7 @@ and the SDK `clash` namespace.
 
 ## Docs
 
-See the [ifc-lite docs](https://ltplus-ag.github.io/ifc-lite/) and the design
+See the [ifc-lite docs](https://ifclite.dev/docs/) and the design
 rationale in
 [clash-detection-plan.md](https://github.com/LTplus-AG/ifc-lite/blob/main/docs/architecture/clash-detection-plan.md).
 

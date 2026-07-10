@@ -97,7 +97,7 @@ const hit = await renderer.pick(120, 240);
 if (hit) console.log(`Picked expressId ${hit.expressId}`);
 ```
 
-For Three.js or Babylon.js, parse and extract geometry the same way and feed `meshes` to your engine. See [Three.js integration](https://ltplus-ag.github.io/ifc-lite/tutorials/threejs-integration/) and [Babylon.js integration](https://ltplus-ag.github.io/ifc-lite/tutorials/babylonjs-integration/).
+For Three.js or Babylon.js, parse and extract geometry the same way and feed `meshes` to your engine. See [Three.js integration](https://ifclite.dev/docs/tutorials/threejs-integration/) and [Babylon.js integration](https://ifclite.dev/docs/tutorials/babylonjs-integration/).
 
 ## Query entities
 
@@ -198,7 +198,7 @@ const ifcx = new Ifc5Exporter(store, geometryResult).export({ includeGeometry: t
 
 ## Work from the terminal
 
-The [`ifc-lite` CLI](https://ltplus-ag.github.io/ifc-lite/guide/cli/) covers the full toolkit: inspect, query, validate, export, create, diff, clash-check, merge, convert, and script IFC models without writing a line of app code.
+The [`ifc-lite` CLI](https://ifclite.dev/docs/guide/cli/) covers the full toolkit: inspect, query, validate, export, create, diff, clash-check, merge, convert, and script IFC models without writing a line of app code.
 
 ```bash
 ifc-lite info model.ifc                                  # schema, entities, storeys
@@ -212,18 +212,18 @@ ifc-lite view model.ifc                                  # 3D viewer + REST API
 ifc-lite eval model.ifc "bim.query().byType('IfcWall').count()"
 ```
 
-Building AI tooling? `ifc-lite mcp model.ifc` starts a [Model Context Protocol](https://ltplus-ag.github.io/ifc-lite/guide/cli/) server (stdio or HTTP) so agents can query and edit BIM data directly, and `ifc-lite ask model.ifc "how many walls?"` answers natural-language questions.
+Building AI tooling? `ifc-lite mcp model.ifc` starts a [Model Context Protocol](https://ifclite.dev/docs/guide/cli/) server (stdio or HTTP) so agents can query and edit BIM data directly, and `ifc-lite ask model.ifc "how many walls?"` answers natural-language questions.
 
 ## Choose your setup
 
 | Setup | Best for | You get |
 |-------|----------|---------|
-| [**Browser (WebGPU)**](https://ltplus-ag.github.io/ifc-lite/guide/quickstart/) | Viewing and inspecting models | Full-featured 3D viewer, runs entirely client-side |
-| [**Three.js / Babylon.js**](https://ltplus-ag.github.io/ifc-lite/tutorials/threejs-integration/) | Adding IFC support to an existing 3D app | IFC parsing + geometry, rendered by your engine |
-| [**CLI**](https://ltplus-ag.github.io/ifc-lite/guide/cli/) | Scripting, CI pipelines, AI agents | The whole toolkit from the terminal, JSON output everywhere |
-| [**Server**](https://ltplus-ag.github.io/ifc-lite/guide/server/) | Teams, large files, repeat access | Rust backend with caching, parallel processing, streaming |
-| [**Build for Desktop**](https://ltplus-ag.github.io/ifc-lite/guide/desktop/) | Your own offline native app, very large files (500 MB+) | Extension points to wrap the packages in Tauri, with an optional native-Rust geometry fast path |
-| [**Python (native wheel)**](https://ltplus-ag.github.io/ifc-lite/api/python/) | Analysis, scripting, scientific Python | `pip install ifclite-geom` runs the geometry kernel in-process, meshes straight to numpy |
+| [**Browser (WebGPU)**](https://ifclite.dev/docs/guide/quickstart/) | Viewing and inspecting models | Full-featured 3D viewer, runs entirely client-side |
+| [**Three.js / Babylon.js**](https://ifclite.dev/docs/tutorials/threejs-integration/) | Adding IFC support to an existing 3D app | IFC parsing + geometry, rendered by your engine |
+| [**CLI**](https://ifclite.dev/docs/guide/cli/) | Scripting, CI pipelines, AI agents | The whole toolkit from the terminal, JSON output everywhere |
+| [**Server**](https://ifclite.dev/docs/guide/server/) | Teams, large files, repeat access | Rust backend with caching, parallel processing, streaming |
+| [**Build for Desktop**](https://ifclite.dev/docs/guide/desktop/) | Your own offline native app, very large files (500 MB+) | Extension points to wrap the packages in Tauri, with an optional native-Rust geometry fast path |
+| [**Python (native wheel)**](https://ifclite.dev/docs/api/python/) | Analysis, scripting, scientific Python | `pip install ifclite-geom` runs the geometry kernel in-process, meshes straight to numpy |
 
 Not sure? Start with the browser setup. You can add a server or switch engines later.
 
@@ -251,7 +251,7 @@ Not sure? Start with the browser setup. You can add a server or switch engines l
 | Connect to a server backend | + `@ifc-lite/server-client` |
 | Give AI agents BIM access (MCP) | + `@ifc-lite/mcp` |
 
-Full list: [API Reference](https://ltplus-ag.github.io/ifc-lite/api/typescript/) (36 npm packages, 6 Rust crates on crates.io, and the `ifclite-geom` Python wheel on PyPI).
+Full list: [API Reference](https://ifclite.dev/docs/api/typescript/) (36 npm packages, 6 Rust crates on crates.io, and the `ifclite-geom` Python wheel on PyPI).
 
 ## Performance
 
@@ -261,7 +261,7 @@ Full list: [API Reference](https://ltplus-ag.github.io/ifc-lite/api/typescript/)
 - **Schema coverage:** 100% of IFC4 (776 entities) and IFC4X3 (876 entities).
 - **Footprint:** one lazily fetched WASM module (~1.2 MB gzipped) plus small per-package JS wrappers.
 
-See [benchmarks](https://ltplus-ag.github.io/ifc-lite/guide/performance/) for full numbers across model sizes and hardware.
+See [benchmarks](https://ifclite.dev/docs/guide/performance/) for full numbers across model sizes and hardware.
 
 ## Examples
 
@@ -276,13 +276,13 @@ Ready-to-run projects in [`examples/`](examples/):
 
 | | |
 |---|---|
-| **Start here** | [Quick Start](https://ltplus-ag.github.io/ifc-lite/guide/quickstart/) · [Installation](https://ltplus-ag.github.io/ifc-lite/guide/installation/) · [CLI Toolkit](https://ltplus-ag.github.io/ifc-lite/guide/cli/) · [Browser Requirements](https://ltplus-ag.github.io/ifc-lite/guide/browser-requirements/) |
-| **Guides** | [Parsing](https://ltplus-ag.github.io/ifc-lite/guide/parsing/) · [Geometry](https://ltplus-ag.github.io/ifc-lite/guide/geometry/) · [Rendering](https://ltplus-ag.github.io/ifc-lite/guide/rendering/) · [Querying](https://ltplus-ag.github.io/ifc-lite/guide/querying/) · [Exporting](https://ltplus-ag.github.io/ifc-lite/guide/exporting/) |
-| **BIM features** | [Federation](https://ltplus-ag.github.io/ifc-lite/guide/federation/) · [BCF](https://ltplus-ag.github.io/ifc-lite/guide/bcf/) · [IDS Validation](https://ltplus-ag.github.io/ifc-lite/guide/ids/) · [2D Drawings](https://ltplus-ag.github.io/ifc-lite/guide/drawing-2d/) · [Property Editing](https://ltplus-ag.github.io/ifc-lite/guide/mutations/) |
-| **Customization** | [Extensions](https://ltplus-ag.github.io/ifc-lite/guide/extensions/) · [Authoring Extensions](https://ltplus-ag.github.io/ifc-lite/guide/extension-authoring/) · [Flavors](https://ltplus-ag.github.io/ifc-lite/guide/flavors/) |
-| **Tutorials** | [Build a Viewer](https://ltplus-ag.github.io/ifc-lite/tutorials/building-viewer/) · [Three.js](https://ltplus-ag.github.io/ifc-lite/tutorials/threejs-integration/) · [Babylon.js](https://ltplus-ag.github.io/ifc-lite/tutorials/babylonjs-integration/) · [Custom Queries](https://ltplus-ag.github.io/ifc-lite/tutorials/custom-queries/) |
-| **Deep dives** | [Architecture](https://ltplus-ag.github.io/ifc-lite/architecture/overview/) · [Data Flow](https://ltplus-ag.github.io/ifc-lite/architecture/data-flow/) · [Performance](https://ltplus-ag.github.io/ifc-lite/guide/performance/) |
-| **API** | [TypeScript](https://ltplus-ag.github.io/ifc-lite/api/typescript/) · [Rust](https://ltplus-ag.github.io/ifc-lite/api/rust/) · [WASM](https://ltplus-ag.github.io/ifc-lite/api/wasm/) · [Python](https://ltplus-ag.github.io/ifc-lite/api/python/) |
+| **Start here** | [Quick Start](https://ifclite.dev/docs/guide/quickstart/) · [Installation](https://ifclite.dev/docs/guide/installation/) · [CLI Toolkit](https://ifclite.dev/docs/guide/cli/) · [Browser Requirements](https://ifclite.dev/docs/guide/browser-requirements/) |
+| **Guides** | [Parsing](https://ifclite.dev/docs/guide/parsing/) · [Geometry](https://ifclite.dev/docs/guide/geometry/) · [Rendering](https://ifclite.dev/docs/guide/rendering/) · [Querying](https://ifclite.dev/docs/guide/querying/) · [Exporting](https://ifclite.dev/docs/guide/exporting/) |
+| **BIM features** | [Federation](https://ifclite.dev/docs/guide/federation/) · [BCF](https://ifclite.dev/docs/guide/bcf/) · [IDS Validation](https://ifclite.dev/docs/guide/ids/) · [2D Drawings](https://ifclite.dev/docs/guide/drawing-2d/) · [Property Editing](https://ifclite.dev/docs/guide/mutations/) |
+| **Customization** | [Extensions](https://ifclite.dev/docs/guide/extensions/) · [Authoring Extensions](https://ifclite.dev/docs/guide/extension-authoring/) · [Flavors](https://ifclite.dev/docs/guide/flavors/) |
+| **Tutorials** | [Build a Viewer](https://ifclite.dev/docs/tutorials/building-viewer/) · [Three.js](https://ifclite.dev/docs/tutorials/threejs-integration/) · [Babylon.js](https://ifclite.dev/docs/tutorials/babylonjs-integration/) · [Custom Queries](https://ifclite.dev/docs/tutorials/custom-queries/) |
+| **Deep dives** | [Architecture](https://ifclite.dev/docs/architecture/overview/) · [Data Flow](https://ifclite.dev/docs/architecture/data-flow/) · [Performance](https://ifclite.dev/docs/guide/performance/) |
+| **API** | [TypeScript](https://ifclite.dev/docs/api/typescript/) · [Rust](https://ifclite.dev/docs/api/rust/) · [WASM](https://ifclite.dev/docs/api/wasm/) · [Python](https://ifclite.dev/docs/api/python/) |
 
 ## Contributing
 
@@ -314,7 +314,7 @@ The fixtures are stored on a GitHub Release and catalogued in
 [`tests/models/README.md`](tests/models/README.md) for the full design and
 maintainer workflow.
 
-See the [Contributing Guide](https://ltplus-ag.github.io/ifc-lite/contributing/setup/) and [Release Process](RELEASE.md).
+See the [Contributing Guide](https://ifclite.dev/docs/contributing/setup/) and [Release Process](RELEASE.md).
 
 ## Community
 

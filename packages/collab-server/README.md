@@ -52,7 +52,7 @@ Also exported: `S3Persistence`, `RedisPersistence`, `MemoryPersistence`,
 
 ## Docs
 
-See the [ifc-lite docs](https://ltplus-ag.github.io/ifc-lite/).
+See the [ifc-lite docs](https://ifclite.dev/docs/).
 
 ## License
 

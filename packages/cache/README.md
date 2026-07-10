@@ -91,7 +91,7 @@ This is backward compatible: entries written before the flag existed have it uns
 
 ## API
 
-See the [API Reference](https://ltplus-ag.github.io/ifc-lite/api/typescript/#ifc-litecache).
+See the [API Reference](https://ifclite.dev/docs/api/typescript/#ifc-litecache).
 
 ## License
 

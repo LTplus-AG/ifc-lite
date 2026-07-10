@@ -74,7 +74,7 @@ const ifcx = exporter.export({ includeGeometry: true });
 
 ## API
 
-See the [Parsing Guide](https://ltplus-ag.github.io/ifc-lite/guide/parsing/) and [API Reference](https://ltplus-ag.github.io/ifc-lite/api/typescript/#ifc-liteifcx).
+See the [Parsing Guide](https://ifclite.dev/docs/guide/parsing/) and [API Reference](https://ifclite.dev/docs/api/typescript/#ifc-liteifcx).
 
 ## License
 

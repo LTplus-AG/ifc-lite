@@ -54,6 +54,6 @@ Each template ships with a `README.md` documenting what it does and how to exten
 
 ## Learn more
 
-- [IFClite docs](https://ltplus-ag.github.io/ifc-lite/)
+- [IFClite docs](https://ifclite.dev/docs/)
 - [GitHub repo](https://github.com/LTplus-AG/ifc-lite)
-- [Quick Start guide](https://ltplus-ag.github.io/ifc-lite/guide/quickstart/)
+- [Quick Start guide](https://ifclite.dev/docs/guide/quickstart/)

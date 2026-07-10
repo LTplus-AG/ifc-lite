@@ -72,7 +72,7 @@ if (result.ok) {
 
 ## Docs
 
-- [Extensions Guide](https://ltplus-ag.github.io/ifc-lite/guide/extensions/) and [Extension Authoring](https://ltplus-ag.github.io/ifc-lite/guide/extension-authoring/)
+- [Extensions Guide](https://ifclite.dev/docs/guide/extensions/) and [Extension Authoring](https://ifclite.dev/docs/guide/extension-authoring/)
 - Design references: [01-extension-model.md](https://github.com/LTplus-AG/ifc-lite/blob/main/docs/architecture/ai-customization/01-extension-model.md), [02-security.md](https://github.com/LTplus-AG/ifc-lite/blob/main/docs/architecture/ai-customization/02-security.md), [03-ui-surface.md](https://github.com/LTplus-AG/ifc-lite/blob/main/docs/architecture/ai-customization/03-ui-surface.md)
 
 Licensed under MPL-2.0.

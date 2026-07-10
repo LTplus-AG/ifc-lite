@@ -100,7 +100,7 @@ structured events that the viewer (or any UI) can render.
 
 ## Docs
 
-See the [ifc-lite docs](https://ltplus-ag.github.io/ifc-lite/). Pair with
+See the [ifc-lite docs](https://ifclite.dev/docs/). Pair with
 [`@ifc-lite/collab-server`](https://www.npmjs.com/package/@ifc-lite/collab-server)
 for multi-peer websocket sync.
 

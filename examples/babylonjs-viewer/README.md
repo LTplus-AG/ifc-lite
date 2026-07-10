@@ -40,7 +40,7 @@ IFC data in the side panel.
 ## Tutorial
 
 For a step-by-step walkthrough, see the
-[Babylon.js integration tutorial](https://ltplus-ag.github.io/ifc-lite/tutorials/babylonjs-integration/).
+[Babylon.js integration tutorial](https://ifclite.dev/docs/tutorials/babylonjs-integration/).
 
 ## License
 

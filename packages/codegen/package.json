@@ -38,7 +38,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "homepage": "https://ltplus-ag.github.io/ifc-lite/",
+  "homepage": "https://ifclite.dev/docs/",
   "bugs": "https://github.com/LTplus-AG/ifc-lite/issues",
   "files": [
     "dist",

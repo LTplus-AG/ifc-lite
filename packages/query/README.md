@@ -96,7 +96,7 @@ The fluent query API works without it.
 
 ## API
 
-See the [Querying Guide](https://ltplus-ag.github.io/ifc-lite/guide/querying/) and [API Reference](https://ltplus-ag.github.io/ifc-lite/api/typescript/#ifc-litequery).
+See the [Querying Guide](https://ifclite.dev/docs/guide/querying/) and [API Reference](https://ifclite.dev/docs/api/typescript/#ifc-litequery).
 
 ## License
 

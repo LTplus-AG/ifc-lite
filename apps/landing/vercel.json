@@ -1,5 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "bash build-docs.sh",
+  "outputDirectory": "dist",
+  "ignoreCommand": "git diff --quiet HEAD^ HEAD -- . ../../docs ../../mkdocs.yml ../../requirements-docs.txt",
   "headers": [
     {
       "source": "/(.*)",

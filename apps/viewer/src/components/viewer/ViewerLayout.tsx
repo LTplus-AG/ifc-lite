@@ -23,6 +23,8 @@ import { usePanelDetachDrag } from '@/hooks/usePanelDetachDrag';
 import { ExtensionDockHost } from '@/components/extensions/ExtensionDockHost';
 import { useIfc } from '@/hooks/useIfc';
 import { useViewerStore } from '@/store';
+import { isCollabEnabled } from '@/lib/collab/config';
+import { parseRoleFromToken } from '@/lib/collab/share-link';
 import { EntityContextMenu } from './EntityContextMenu';
 import { useDuplicateShortcut } from './useDuplicateShortcut';
 import { HoverTooltip } from './HoverTooltip';
@@ -107,6 +109,29 @@ export function ViewerLayout() {
       }
     })();
   }, [autoloadAddModel]);
+
+  // Deep-link collaboration join: a share link is `?room=…&t=…`. The
+  // recipient joins the room; with seed-into-room the model hydrates from the
+  // Y.Doc, so no `?model=` is needed for shared sessions. Guarded so React
+  // StrictMode's double-invoke can't join twice, and wrapped so a throw can't
+  // tear down the layout (uncaught throws in effects unmount the canvas).
+  const collabJoinDoneRef = useRef(false);
+  useEffect(() => {
+    if (collabJoinDoneRef.current) return;
+    if (!isCollabEnabled()) return;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const roomId = params.get('room');
+      if (!roomId) return;
+      const token = params.get('t') ?? undefined;
+      collabJoinDoneRef.current = true;
+      const role = (token && parseRoleFromToken(token)) || 'viewer';
+      void useViewerStore.getState().startCollab({ roomId, role, token });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[collab] deep-link join failed:', err);
+    }
+  }, []);
 
   // Command palette state
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);

@@ -204,9 +204,26 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
     // the global toggle on so the rest of the UI (Properties panel,
     // future manipulators) stays in sync. Read-only tools leave the
     // flag alone.
-    set(AUTHORING_TOOLS.has(activeTool) ? { activeTool, editEnabled: true } : { activeTool });
+    if (AUTHORING_TOOLS.has(activeTool)) {
+      // Collab role gate: in a shared session only editor/admin may
+      // unlock authoring. Viewers/commenters can still pick read-only
+      // tools, so we only block the authoring branch.
+      const canEdit = (get() as unknown as { canCollabEdit?: () => boolean }).canCollabEdit;
+      if (canEdit && !canEdit()) return;
+      set({ activeTool, editEnabled: true });
+      return;
+    }
+    set({ activeTool });
   },
   setEditEnabled: (editEnabled) => {
+    if (editEnabled) {
+      // Collab role gate: only editor/admin (or single-user, role===null)
+      // may enter edit mode. This is the single chokepoint that unlocks
+      // the gizmo, geometry card, add-element draw tools, and the inline
+      // property editors — gating it here covers every authoring surface.
+      const canEdit = (get() as unknown as { canCollabEdit?: () => boolean }).canCollabEdit;
+      if (canEdit && !canEdit()) return;
+    }
     if (!editEnabled) {
       // Flipping edit mode off must clear every authoring sub-state
       // that depends on it — otherwise the viewer ends up "not in

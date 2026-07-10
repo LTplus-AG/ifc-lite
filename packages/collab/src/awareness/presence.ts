@@ -61,6 +61,12 @@ export interface PresenceState {
   lastUpdate: number;
   /** Optional model the cursor is currently in (for federated sessions). */
   modelId?: string;
+  /**
+   * Broadcast access role ('viewer' | 'commenter' | 'editor' | 'admin'), so
+   * peers can show each other's role in the presence roster. Advisory only —
+   * the authoritative role is the server-verified token.
+   */
+  role?: string;
 }
 
 export interface PresenceMap {

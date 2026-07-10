@@ -29,6 +29,7 @@ import {
   CalendarRange,
   Table2,
   ListTree,
+  Users,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -48,7 +49,8 @@ export type WorkspacePanelId =
   | 'extensions'
   | 'script'
   | 'gantt'
-  | 'lists';
+  | 'lists'
+  | 'collab';
 
 /** Activity-bar clustering — a divider is drawn whenever the group changes. */
 export type PanelGroup = 'navigate' | 'inspect' | 'review' | 'author' | 'work';
@@ -90,6 +92,10 @@ export const WORKSPACE_PANELS: readonly WorkspacePanelDef[] = [
   // top of the rail (see DEFAULT_ORDER in sidebarSlice); the activity bar toggles
   // its left slot via `leftPanelCollapsed` rather than the right-pane flags.
   { id: 'hierarchy', title: 'Hierarchy', short: 'Tree', Icon: ListTree, group: 'navigate', region: 'left' },
+  // Collaboration room roster (link-based multiuser). APPENDED so the frozen
+  // Alt+1..0 mapping stays intact (no Alt shortcut). The activity bar hides it
+  // while the collab feature flag is off (see ActivityBar).
+  { id: 'collab', title: 'Collaboration room', short: 'Room', Icon: Users, group: 'review', region: 'side' },
 ];
 
 /** The bottom-strip panel ids, mapped to their store visibility flag + setter

@@ -37,6 +37,19 @@ export function getGeometry(doc: Y.Doc, geomId: string): Y.Map<unknown> | undefi
   return geometryMap(doc).get(geomId) as Y.Map<unknown> | undefined;
 }
 
+/**
+ * Iterate every geometry node in the doc as `[geomId, node]`. Useful for a
+ * recipient hydrating all blob-backed meshes directly from the geometry store
+ * — entities may reference the same node, and a single entity can own several
+ * meshes (multi-material / multiple representation items), so walking the
+ * store is more complete than walking per-entity refs.
+ */
+export function* iterGeometries(doc: Y.Doc): IterableIterator<[string, Y.Map<unknown>]> {
+  for (const [geomId, node] of geometryMap(doc).entries()) {
+    yield [geomId, node as Y.Map<unknown>];
+  }
+}
+
 export function createGeometry(
   doc: Y.Doc,
   geomId: string,

@@ -134,7 +134,10 @@ nav:
     - Error Handling & Integration: guide/error-handling.md
     - Clash Detection: guide/clash-detection.md
     - Model Diff: guide/model-diff.md
-    - Real-Time Collaboration: guide/collab.md
+    - Real-Time Collaboration: guide/collaboration.md
+    - Collab Engine (API): guide/collab.md
+    - Collaboration Server: guide/collab-server.md
+    - Testing Collaboration: guide/collab-testing.md
     - Lens Visualization: guide/lens.md
     - Lists & Schedules: guide/lists.md
     - Solar Analysis: guide/solar.md

@@ -20,6 +20,8 @@
 
 import * as http from 'node:http';
 import * as crypto from 'node:crypto';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 
 export interface ServerBlobMeta {
   hash: string;
@@ -67,6 +69,89 @@ export class InMemoryBlobStorage implements ServerBlobStorage {
 
 /** Match exactly 32 lowercase hex chars (the client's `fnv128` output). */
 const HASH_REGEX = /^[a-f0-9]{32}$/;
+
+/**
+ * Disk-backed storage — one file per blob under `<dataDir>/blobs/<hash>`.
+ *
+ * Mesh blobs are the bulk of a room's data; keeping them in RAM
+ * (`InMemoryBlobStorage`) made memory the dominant hosting cost AND lost every
+ * blob on restart (orphaning the doc's geometry refs). Disk is far cheaper per
+ * GB than memory on a mounted volume, and durable. Content-addressed, so writes
+ * are idempotent. `hash` is validated as 32 hex chars by the route before it
+ * reaches here, so it's safe as a filename (no traversal).
+ */
+export class FsBlobStorage implements ServerBlobStorage {
+  private readonly dir: string;
+  private readonly ready: Promise<void>;
+
+  constructor(dataDir: string) {
+    this.dir = path.join(dataDir, 'blobs');
+    this.ready = fs.promises.mkdir(this.dir, { recursive: true }).then(() => undefined);
+  }
+
+  private file(hash: string): string {
+    return path.join(this.dir, hash);
+  }
+
+  async put(hash: string, bytes: Uint8Array, contentType?: string): Promise<ServerBlobMeta> {
+    await this.ready;
+    const file = this.file(hash);
+    // Atomic write (temp + rename) so a concurrent/interrupted PUT of the same
+    // content-addressed blob can't leave a torn file.
+    const tmp = `${file}.tmp-${crypto.randomUUID()}`;
+    await fs.promises.writeFile(tmp, bytes);
+    await fs.promises.rename(tmp, file);
+    return {
+      hash,
+      byteLength: bytes.byteLength,
+      contentType,
+      uploadedAt: new Date().toISOString(),
+    };
+  }
+
+  async get(hash: string): Promise<{ bytes: Uint8Array; meta: ServerBlobMeta } | null> {
+    await this.ready;
+    try {
+      const file = this.file(hash);
+      const [bytes, stat] = await Promise.all([fs.promises.readFile(file), fs.promises.stat(file)]);
+      return {
+        bytes: new Uint8Array(bytes),
+        meta: { hash, byteLength: stat.size, uploadedAt: stat.mtime.toISOString() },
+      };
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
+      throw err;
+    }
+  }
+
+  async has(hash: string): Promise<boolean> {
+    await this.ready;
+    try {
+      await fs.promises.access(this.file(hash));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async delete(hash: string): Promise<boolean> {
+    await this.ready;
+    try {
+      await fs.promises.unlink(this.file(hash));
+      return true;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return false;
+      throw err;
+    }
+  }
+
+  async list(): Promise<string[]> {
+    await this.ready;
+    const names = await fs.promises.readdir(this.dir);
+    // Exclude in-flight temp files; only return real content-addressed blobs.
+    return names.filter((n) => HASH_REGEX.test(n));
+  }
+}
 
 /**
  * Authorizer for blob requests. Returns `true` to allow the operation,

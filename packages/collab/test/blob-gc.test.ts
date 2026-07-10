@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { createCollabDoc } from '../src/doc/schema.js';
-import { createEntity, setGeometryRef } from '../src/doc/entity.js';
+import { createEntity, addGeometryRef } from '../src/doc/entity.js';
 import { createGeometry, setGeometryBlobHash } from '../src/doc/geometry.js';
 import { MemoryBlobStore } from '../src/geometry/blob-store.js';
 import {
@@ -18,7 +18,7 @@ describe('blob GC', () => {
     const doc = createCollabDoc();
     createEntity(doc, 'wall');
     createGeometry(doc, 'g1', { type: 'mesh', source: 'mesh-blob', blobHash: 'a'.repeat(32) });
-    setGeometryRef(doc, 'wall', { geomId: 'g1' });
+    addGeometryRef(doc, 'wall', 'g1');
 
     const referenced = collectReferencedBlobHashes(doc);
     expect(referenced.has('a'.repeat(32))).toBe(true);
@@ -28,7 +28,7 @@ describe('blob GC', () => {
     const doc = createCollabDoc();
     createEntity(doc, 'wall');
     createGeometry(doc, 'g1', { type: 'mesh', source: 'mesh-blob' });
-    setGeometryRef(doc, 'wall', { geomId: 'g1' });
+    addGeometryRef(doc, 'wall', 'g1');
 
     const store = new MemoryBlobStore();
     // Referenced via doc once we wire it.

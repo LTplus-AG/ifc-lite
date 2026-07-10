@@ -37,6 +37,7 @@ import { cn } from '@/lib/utils';
 import { useViewerStore } from '@/store';
 import { usePanelControls } from '@/hooks/usePanelControls';
 import { WORKSPACE_PANELS, getPanelDef, type WorkspacePanelId } from '@/lib/panels/registry';
+import { isCollabEnabled } from '@/lib/collab/config';
 import { activityAnchor, tourAnchor } from '@/lib/tours/anchors';
 import { CustomizeSidebar } from './CustomizeSidebar';
 
@@ -66,8 +67,11 @@ export function ActivityBar() {
 
   // Hidden panels are removed from the rail in every mode (#1263), including
   // customize. Restoring a hidden panel happens in the Customize popover's
-  // dedicated Hidden section, not by an inline greyed icon here.
-  const visibleIds = order.filter((id) => !hidden.has(id) || id === 'properties');
+  // dedicated Hidden section, not by an inline greyed icon here. The collab
+  // Room panel only surfaces while the collab feature flag is on.
+  const visibleIds = order.filter(
+    (id) => (!hidden.has(id) || id === 'properties') && (id !== 'collab' || isCollabEnabled()),
+  );
 
   const onIconClick = (id: WorkspacePanelId) => {
     const region = getPanelDef(id)?.region;

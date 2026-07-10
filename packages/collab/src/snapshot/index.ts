@@ -8,6 +8,15 @@ export {
   type SeedOptions,
   type IfcxInput,
 } from './from-ifcx.js';
+export {
+  seedFromStep,
+  guidToPath,
+  type StepSeedEntity,
+  type StepSeedSource,
+  type SeedFromStepOptions,
+  type SeedFromStepResult,
+  type CollabSchemaVersion,
+} from './from-step.js';
 export { snapshotToIfcx, serializeIfcx, type SnapshotOptions } from './to-ifcx.js';
 export {
   captureBaseline,

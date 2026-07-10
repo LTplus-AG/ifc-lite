@@ -17,6 +17,7 @@ import { GeometryModeBanner } from './GeometryModeBanner';
 import { LevelDisplayIndicator } from './LevelDisplayIndicator';
 import { ToolOverlays } from './ToolOverlays';
 import { AnnotationLayer } from './annotations/AnnotationLayer';
+import { CollabPresenceLayer } from './CollabPresenceLayer';
 import { Section2DPanel } from './Section2DPanel';
 import { BasketPresentationDock } from './BasketPresentationDock';
 import { BCFOverlay } from './bcf/BCFOverlay';
@@ -1355,6 +1356,7 @@ export function ViewportContainer() {
         onGeometryReleased={releaseGeometryMemory}
       />
       <AnnotationLayer />
+      <CollabPresenceLayer />
       {bcfOverlayVisible && <BCFOverlay />}
       <ViewportOverlays />
       {/* Issue #540: non-modal "reload to apply" banner anchored to the

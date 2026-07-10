@@ -53,6 +53,8 @@ import {
   Boxes,
   Shapes,
   RefreshCw,
+  Share2,
+  Users,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -86,6 +88,8 @@ import { HbjsonExportDialog } from './HbjsonExportDialog';
 import { BulkPropertyEditor } from './BulkPropertyEditor';
 import { DataConnector } from './DataConnector';
 import { ExportChangesButton } from './ExportChangesButton';
+import { ShareDialog } from './ShareDialog';
+import { isCollabEnabled } from '@/lib/collab/config';
 import { SearchInline } from './SearchInline';
 import { recordRecentFiles, cacheFileBlobs } from '@/lib/recent-files';
 import {
@@ -312,6 +316,12 @@ interface MainToolbarProps {
 export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainToolbarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const addModelInputRef = useRef<HTMLInputElement>(null);
+  // Collaboration: the Share button is gated behind the collab feature flag.
+  const collabEnabled = useMemo(() => isCollabEnabled(), []);
+  const [shareDialogOpen, setShareDialogOpen] = React.useState(false);
+  const collabPeerCount = useViewerStore((s) => s.collabPeers.length);
+  const collabRoomId = useViewerStore((s) => s.collabRoomId);
+  const collabPanelVisible = useViewerStore((s) => s.collabPanelVisible);
   const {
     loadFile,
     loading,
@@ -357,6 +367,13 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   const setActiveTool = useViewerStore((state) => state.setActiveTool);
   const editEnabled = useViewerStore((state) => state.editEnabled);
   const toggleEditEnabled = useViewerStore((state) => state.toggleEditEnabled);
+  // Collab role: editing (gizmo, geometry card, add-element, inline property
+  // editors) is reserved for editor/admin. Derive from the reactive role so
+  // the Edit pill enables/disables live when the role changes. null role
+  // = single-user, always editable.
+  const collabEditRole = useViewerStore((state) => state.collabRole);
+  const canEditInSession =
+    collabEditRole === null || collabEditRole === 'editor' || collabEditRole === 'admin';
   const selectedEntityId = useViewerStore((state) => state.selectedEntityId);
   const selectedEntityIds = useViewerStore((state) => state.selectedEntityIds);
   const hideEntities = useViewerStore((state) => state.hideEntities);
@@ -1115,6 +1132,56 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
       {/* Export Changes Button - shows when there are pending mutations */}
       <ExportChangesButton />
 
+      {/* Share — link-based multiuser collaboration (behind the collab flag) */}
+      {collabEnabled && (
+        <>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                disabled={!geometryResult}
+                onClick={() => setShareDialogOpen(true)}
+                className="relative"
+                aria-label="Share"
+              >
+                <Share2 className="h-4 w-4" />
+                {collabPeerCount > 0 && (
+                  <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-medium text-primary-foreground">
+                    {collabPeerCount + 1}
+                  </span>
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Share</TooltipContent>
+          </Tooltip>
+          <ShareDialog open={shareDialogOpen} onOpenChange={setShareDialogOpen} />
+          {/* Room panel toggle — live presence + management, only while in a room. */}
+          {collabRoomId && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={collabPanelVisible ? 'secondary' : 'ghost'}
+                  size="icon-sm"
+                  onClick={() => useViewerStore.getState().toggleWorkspacePanel('collab')}
+                  className="relative"
+                  aria-label="Room"
+                  aria-pressed={collabPanelVisible}
+                >
+                  <Users className="h-4 w-4" />
+                  {collabPeerCount > 0 && (
+                    <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-emerald-500 px-1 text-[9px] font-medium text-white">
+                      {collabPeerCount + 1}
+                    </span>
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Room</TooltipContent>
+            </Tooltip>
+          )}
+        </>
+      )}
+
       {/* ── Panels ── */}
       <DropdownMenu>
         <Tooltip>
@@ -1274,6 +1341,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           <Button
             variant={editEnabled ? 'default' : 'ghost'}
             size="icon-sm"
+            disabled={!canEditInSession}
             aria-label={editEnabled ? 'Exit edit mode' : 'Enter edit mode'}
             aria-pressed={editEnabled}
             onClick={(e) => {
@@ -1286,7 +1354,13 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           </Button>
         </TooltipTrigger>
         <TooltipContent>
-          {editEnabled ? 'Exit Edit Mode' : 'Edit Mode'} <span className="opacity-50">E</span>
+          {canEditInSession ? (
+            <>
+              {editEnabled ? 'Exit Edit Mode' : 'Edit Mode'} <span className="opacity-50">E</span>
+            </>
+          ) : (
+            'Editing requires editor access in this shared session'
+          )}
         </TooltipContent>
       </Tooltip>
 

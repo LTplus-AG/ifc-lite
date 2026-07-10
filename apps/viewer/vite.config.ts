@@ -241,6 +241,14 @@ export default defineConfig({
       '@ifc-lite/data': path.resolve(__dirname, '../../packages/data/src'),
       '@ifc-lite/export': path.resolve(__dirname, '../../packages/export/src'),
       '@ifc-lite/cache': path.resolve(__dirname, '../../packages/cache/src'),
+      '@ifc-lite/collab': path.resolve(__dirname, '../../packages/collab/src'),
+      // `@ifc-lite/collab` lazily `import('y-webrtc')` for its optional WebRTC
+      // transport, which the viewer never uses. y-webrtc isn't installed, so
+      // alias it to a stub — otherwise Vite's dev import-analysis fails to
+      // resolve the bare specifier and `import('@ifc-lite/collab')` rejects,
+      // silently disabling collab in dev. (The build also covers this via
+      // `rollupOptions.external` below.)
+      'y-webrtc': path.resolve(__dirname, './src/services/y-webrtc-stub.ts'),
       '@ifc-lite/ifcx': path.resolve(__dirname, '../../packages/ifcx/src'),
       '@ifc-lite/pointcloud': path.resolve(__dirname, '../../packages/pointcloud/src'),
       '@ifc-lite/wasm': path.resolve(__dirname, '../../packages/wasm/pkg/ifc-lite.js'),
@@ -291,7 +299,11 @@ export default defineConfig({
       // statically, so externalize it to prevent a build failure. ifc-lite no
       // longer ships a desktop app; downstream desktop builders supply
       // @tauri-apps in their own host layer.
-      external: ['@tauri-apps/api/event'],
+      // `@ifc-lite/collab` ships an optional WebRTC provider that lazily
+      // `import('y-webrtc')` with a runtime fallback. The viewer only uses the
+      // indexeddb+websocket transport, so y-webrtc isn't installed — mark it
+      // external so Rollup doesn't fail resolving the (never-executed) import.
+      external: ['@tauri-apps/api/event', 'y-webrtc'],
       output: {
         manualChunks(id) {
           if (id.includes('/packages/sandbox/')) return 'sandbox';
@@ -324,6 +336,8 @@ export default defineConfig({
       'quickjs-emscripten',
       '@jitl/quickjs-wasmfile-release-asyncify',
       'esbuild-wasm',
+      // Optional collab WebRTC transport — not installed (see rollup external).
+      'y-webrtc',
     ],
   },
   worker: {

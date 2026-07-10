@@ -8,6 +8,7 @@ export {
   MemoryPersistence,
   type StartCollabServerOptions,
   type CollabServerHandle,
+  type CorsOptions,
 } from './server.js';
 export {
   type Persistence,
@@ -105,9 +106,27 @@ export {
 } from './rate-limit.js';
 export {
   InMemoryBlobStorage,
+  FsBlobStorage,
   handleBlobRequest,
   type ServerBlobStorage,
   type ServerBlobMeta,
   type BlobRouteOptions,
   type BlobAuthorizeFn,
 } from './blob-route.js';
+export {
+  signRoomToken,
+  verifyRoomToken,
+  createRoomTokenAuthenticator,
+  handleTokenMintRequest,
+  handleRevokeRequest,
+  handleKickRequest,
+  type RoomTokenClaims,
+  type SecretResolver,
+  type SignRoomTokenOptions,
+  type VerifyRoomTokenOptions,
+  type RoomTokenAuthenticatorOptions,
+  type TokenEndpointOptions,
+  type RevokeEndpointOptions,
+  type KickEndpointOptions,
+  type MintRequestBody,
+} from './room-token.js';

@@ -1,0 +1,24 @@
+# Railway deployment for the IFC-Lite collaboration sync server.
+# Mirrors apps/server's setup. Build context is the repo root.
+
+[build]
+builder = "dockerfile"
+dockerfilePath = "packages/collab-server/Dockerfile"
+
+[deploy]
+# Each room holds authoritative in-memory CRDT state, so run a SINGLE replica.
+# Scaling out requires room-affinity routing plus a shared blob store and a
+# shared revocation deny-list (see the programmatic API).
+numReplicas = 1
+healthcheckPath = "/healthz"
+healthcheckTimeout = 10
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
+# Scale to zero when idle to eliminate 24/7 cost. Safe now that a persistent
+# volume is mounted at COLLAB_DATA_DIR (/data): a slept instance wakes with the
+# same disk, so rooms + blobs + the revocation deny-list survive across sleeps.
+# (Without the volume this would wipe state on every wake — keep them together.)
+# First connection after idle pays a short cold-start; the room rehydrates from
+# the volume via FilePersistence. The disk-backed FsBlobStorage also keeps the
+# memory bill low while awake.
+sleepApplication = true

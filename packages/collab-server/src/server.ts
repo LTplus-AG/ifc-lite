@@ -21,7 +21,76 @@ import {
   type BlobAuthorizeFn,
   type ServerBlobStorage,
 } from './blob-route.js';
+import {
+  handleTokenMintRequest,
+  handleRevokeRequest,
+  handleKickRequest,
+  type TokenEndpointOptions,
+  type RevokeEndpointOptions,
+  type KickEndpointOptions,
+} from './room-token.js';
 import { defaultMetrics, MetricsRegistry } from './metrics.js';
+
+/**
+ * Cross-origin policy for the HTTP routes (`/blobs`, `/collab/*`, `/healthz`,
+ * `/metrics`). The viewer is typically served from a different origin than the
+ * collab-server, so a browser `fetch()`/`PUT` to the blob route needs
+ * `Access-Control-Allow-*` headers and an `OPTIONS` preflight response —
+ * without them the WebSocket doc syncs but geometry blobs are blocked, so
+ * recipients see an empty model.
+ */
+export interface CorsOptions {
+  /**
+   * Allowed origin(s). `'*'` or omitted reflects whatever `Origin` the
+   * request carries (permissive — fine for dev and same-trust deployments).
+   * An explicit string or array restricts to those origins; a non-matching
+   * origin gets no CORS headers (and the browser blocks the request).
+   */
+  origin?: '*' | string | string[];
+}
+
+/** Headers a browser blob client (`HttpBlobStore`) sends; allowed on preflight. */
+const CORS_ALLOW_HEADERS = 'Content-Type, Authorization, Accept, X-Blob-Hash';
+const CORS_ALLOW_METHODS = 'GET, HEAD, PUT, POST, DELETE, OPTIONS';
+const CORS_EXPOSE_HEADERS = 'X-Blob-Hash, Content-Length';
+
+/**
+ * Resolve the `Access-Control-Allow-Origin` value for a request, or `null`
+ * when the origin isn't allowed (no CORS headers are then written).
+ */
+function resolveAllowedOrigin(
+  cors: CorsOptions | false | undefined,
+  requestOrigin: string | undefined,
+): string | null {
+  if (cors === false) return null;
+  const origin = cors?.origin;
+  // Permissive default: reflect the caller's Origin so credentialed and
+  // credentialless (COEP) browser requests both work. Falls back to '*' for
+  // non-browser callers that send no Origin header.
+  if (origin === undefined || origin === '*') return requestOrigin ?? '*';
+  const allow = Array.isArray(origin) ? origin : [origin];
+  if (requestOrigin && allow.includes(requestOrigin)) return requestOrigin;
+  return null;
+}
+
+/** Write CORS headers onto a response. Returns true if cross-origin is allowed. */
+function applyCors(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  cors: CorsOptions | false | undefined,
+): boolean {
+  const allowed = resolveAllowedOrigin(cors, req.headers.origin);
+  if (allowed === null) return false;
+  res.setHeader('Access-Control-Allow-Origin', allowed);
+  res.setHeader('Vary', 'Origin');
+  res.setHeader('Access-Control-Allow-Methods', CORS_ALLOW_METHODS);
+  res.setHeader('Access-Control-Allow-Headers', CORS_ALLOW_HEADERS);
+  res.setHeader('Access-Control-Expose-Headers', CORS_EXPOSE_HEADERS);
+  res.setHeader('Access-Control-Max-Age', '86400');
+  // Lets the blob bytes be read by a COEP `credentialless`/`require-corp` page.
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  return true;
+}
 
 export interface StartCollabServerOptions {
   port?: number;
@@ -74,6 +143,33 @@ export interface StartCollabServerOptions {
    * `reject` with the reason and drops the message.
    */
   verifyMessage?: VerifyMessageFn;
+  /**
+   * Enable the `POST /collab/token` mint route for link-based sharing.
+   * Omit to leave the route disabled (404). Pair with
+   * `authenticate: createRoomTokenAuthenticator({ secret })` so connections
+   * are verified against the same secret.
+   */
+  tokenEndpoint?: TokenEndpointOptions;
+  /**
+   * Enable the `POST /collab/revoke` route so an admin can invalidate a share
+   * link (its `jti` is added to a deny-list the authenticator's `isRevoked`
+   * consults). Omit to leave the route disabled (404).
+   */
+  revokeEndpoint?: RevokeEndpointOptions;
+  /**
+   * Enable the `POST /collab/kick` route so an admin can force-disconnect a
+   * peer by awareness clientId. The server binds the kick to its room manager;
+   * only the verifying `secret` is supplied here. Omit to disable (404).
+   */
+  kickEndpoint?: Pick<KickEndpointOptions, 'secret'>;
+  /**
+   * Cross-origin access for the HTTP routes. Default: enabled with origin
+   * reflection (permissive). Pass an allow-list to restrict, or `false` to
+   * disable entirely (e.g. when a reverse proxy owns CORS). Only applies to
+   * the server this function creates — ignored when you pass your own
+   * `server`.
+   */
+  cors?: CorsOptions | false;
 }
 
 export interface CollabServerHandle {
@@ -130,6 +226,14 @@ export async function startCollabServer(
       try {
         const reqUrl = new URL(req.url ?? '/', 'http://localhost');
         const pathname = reqUrl.pathname;
+        applyCors(req, res, opts.cors);
+        // Preflight: answer OPTIONS before any route so cross-origin PUT/HEAD/
+        // DELETE (and GET-with-Authorization) to /blobs aren't rejected.
+        if (req.method === 'OPTIONS') {
+          res.writeHead(204);
+          res.end();
+          return;
+        }
         // Room IDs encode tenant project/model paths, so room-identifying
         // diagnostics detail is only surfaced to a caller presenting the
         // metrics token. When no token is configured, behaviour is unchanged
@@ -162,6 +266,34 @@ export async function startCollabServer(
           res.writeHead(200, { 'content-type': 'text/plain; version=0.0.4' });
           res.end(metrics.render());
           return;
+        }
+        // Token mint route: POST /collab/token (link-based sharing).
+        if (opts.tokenEndpoint && pathname === '/collab/token') {
+          const handled = await handleTokenMintRequest(req, res, opts.tokenEndpoint);
+          if (handled) return;
+        }
+        // Revoke route: POST /collab/revoke (admin invalidates a share link).
+        if (opts.revokeEndpoint && pathname === '/collab/revoke') {
+          const handled = await handleRevokeRequest(req, res, opts.revokeEndpoint);
+          if (handled) return;
+        }
+        // Kick route: POST /collab/kick (admin force-disconnects a peer).
+        if (opts.kickEndpoint && pathname === '/collab/kick') {
+          const handled = await handleKickRequest(req, res, {
+            secret: opts.kickEndpoint.secret,
+            kick: async (room, clientId) => {
+              const pending = roomManager.peek(room);
+              if (!pending) return false;
+              const { kicked, jti } = (await pending).kickClient(clientId);
+              // Also revoke the peer's token so their y-websocket can't just
+              // reconnect with it. Requires the revoke endpoint's deny-list.
+              if (kicked && jti && opts.revokeEndpoint) {
+                await opts.revokeEndpoint.recordRevocation(jti, room);
+              }
+              return kicked;
+            },
+          });
+          if (handled) return;
         }
         // Blob route: PUT / GET / HEAD / DELETE on /blobs/<hash>, GET /blobs.
         if (pathname.startsWith('/blobs')) {

@@ -99,6 +99,9 @@ importers:
       '@ifc-lite/clash':
         specifier: workspace:^
         version: link:../../packages/clash
+      '@ifc-lite/collab':
+        specifier: workspace:^
+        version: link:../../packages/collab
       '@ifc-lite/create':
         specifier: workspace:^
         version: link:../../packages/create

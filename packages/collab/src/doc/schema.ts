@@ -17,6 +17,12 @@ export const TOP = {
   RELATIONSHIPS: 'relationships',
   GEOMETRY: 'geometry',
   META: 'meta',
+  /**
+   * Collaboration annotation pins (markup), keyed by annotation id. Synced by
+   * Yjs alongside the model but intentionally NOT part of the IFCX snapshot/seed
+   * (snapshotToIfcx only walks ENTITIES) — markup is room overlay data, not BIM.
+   */
+  ANNOTATIONS: 'annotations',
 } as const;
 
 /** Origin tag used for transactions originated by the local CollabSession. */
@@ -113,10 +119,15 @@ export interface MaterialAssignment {
   fraction?: number;
 }
 
-/** Geometry reference stored on each entity. */
+/**
+ * Geometry reference stored on each entity. A single entity can own several
+ * meshes (multi-material / multiple representation items), so this holds an
+ * ordered list of pointers into the `geometry` top-level map (each == that
+ * entry's geomId). Older docs stored a single `geomId`; readers fall back to
+ * wrapping it as a one-element list.
+ */
 export interface GeometryRefRecord {
-  /** Pointer into the `geometry` top-level map (== that entry's geomId). */
-  geomId: string;
+  geomIds: string[];
 }
 
 /** Entity metadata. */
@@ -148,6 +159,7 @@ export function createCollabDoc(opts: { gc?: boolean } = {}): Y.Doc {
   doc.getMap(TOP.RELATIONSHIPS);
   doc.getMap(TOP.GEOMETRY);
   doc.getMap(TOP.META);
+  doc.getMap(TOP.ANNOTATIONS);
   return doc;
 }
 

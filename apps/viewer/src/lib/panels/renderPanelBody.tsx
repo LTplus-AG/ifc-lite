@@ -24,6 +24,7 @@ import { ExtensionsPanel } from '@/components/extensions/ExtensionsPanel';
 import { ScriptPanel } from '@/components/viewer/ScriptPanel';
 import { GanttPanel } from '@/components/viewer/schedule/GanttPanel';
 import { ListPanel } from '@/components/viewer/lists/ListPanel';
+import { RoomPanel } from '@/components/viewer/RoomPanel';
 
 /**
  * Render the body for a workspace panel. `onClose` is the host's "close this
@@ -45,5 +46,6 @@ export function renderPanelBody(id: WorkspacePanelId, onClose: () => void): Reac
     case 'script': return <ScriptPanel onClose={onClose} />;
     case 'gantt': return <GanttPanel onClose={onClose} />;
     case 'lists': return <ListPanel onClose={onClose} />;
+    case 'collab': return <RoomPanel onClose={onClose} />;
   }
 }

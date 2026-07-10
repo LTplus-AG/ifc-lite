@@ -48,6 +48,7 @@ import { createPlaybackSlice, type PlaybackSlice } from './slices/playbackSlice.
 import { createOverlaySlice, type OverlaySlice } from './slices/overlaySlice.js';
 import { createSearchSlice, type SearchSlice } from './slices/searchSlice.js';
 import { createAnnotationsSlice, type AnnotationsSlice } from './slices/annotationsSlice.js';
+import { createCollabSlice, type CollabSlice } from './slices/collabSlice.js';
 import { createAddElementSlice, type AddElementSlice } from './slices/addElementSlice.js';
 import { createSplitToolSlice, type SplitToolSlice } from './slices/splitToolSlice.js';
 import { createLevelDisplaySlice, type LevelDisplaySlice } from './slices/levelDisplaySlice.js';
@@ -77,6 +78,9 @@ export type { Drawing2DState, Drawing2DStatus, Annotation2DTool, PolygonArea2DRe
 
 // Re-export Sheet types
 export type { SheetState } from './slices/sheetSlice.js';
+
+// Re-export Collab types
+export type { CollabSlice, CollabRole, CollabStatus, StartCollabOptions } from './slices/collabSlice.js';
 
 // Re-export BCF types
 export type { BCFSlice, BCFSliceState } from './slices/bcfSlice.js';
@@ -154,6 +158,7 @@ export type ViewerState = LoadingSlice &
   OverlaySlice &
   SearchSlice &
   AnnotationsSlice &
+  CollabSlice &
   AddElementSlice &
   SplitToolSlice &
   LevelDisplaySlice &
@@ -238,6 +243,7 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
   ...createOverlaySlice(...args),
   ...createSearchSlice(...args),
   ...createAnnotationsSlice(...args),
+  ...createCollabSlice(...args),
   ...createAddElementSlice(...args),
   ...createSplitToolSlice(...args),
   ...createLevelDisplaySlice(...args),
@@ -541,6 +547,7 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       clashPanelVisible: panel === 'clash',
       comparePanelVisible: panel === 'compare',
       extensionsPanelVisible: panel === 'extensions',
+      collabPanelVisible: panel === 'collab',
       rightPanelCollapsed: false,
     });
     if (get().sidebarMode !== 'expanded') get().setSidebarMode('expanded');
@@ -574,6 +581,7 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
         clashPanelVisible: false,
         comparePanelVisible: false,
         extensionsPanelVisible: false,
+        collabPanelVisible: false,
         rightPanelCollapsed: false,
       });
       get().setSidebarActivePanel('properties');
@@ -651,6 +659,7 @@ const SIDEBAR_PANEL_FLAGS: ReadonlyArray<readonly [keyof ViewerState, WorkspaceP
   ['clashPanelVisible', 'clash'],
   ['comparePanelVisible', 'compare'],
   ['extensionsPanelVisible', 'extensions'],
+  ['collabPanelVisible', 'collab'],
 ];
 
 /**

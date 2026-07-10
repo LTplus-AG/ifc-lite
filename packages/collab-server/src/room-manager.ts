@@ -169,6 +169,29 @@ export class Room {
     }
   }
 
+  /**
+   * Force-disconnect the peer that owns the given awareness clientId (admin
+   * "kick"). Closing the socket triggers the normal removeConnection cleanup,
+   * which clears the peer's awareness state for everyone. Returns whether a
+   * matching connection was found plus the peer's token `jti` (if any) so the
+   * caller can revoke it — otherwise the client's y-websocket simply reconnects
+   * with the same still-valid token.
+   */
+  kickClient(clientId: number): { kicked: boolean; jti?: string } {
+    for (const conn of this.conns) {
+      if (conn.awarenessClients.has(clientId)) {
+        const jti = typeof conn.principal.meta?.jti === 'string' ? conn.principal.meta.jti : undefined;
+        try {
+          conn.ws.close(4403, 'kicked');
+        } catch {
+          /* socket may already be torn down */
+        }
+        return { kicked: true, jti };
+      }
+    }
+    return { kicked: false };
+  }
+
   /** Number of currently connected peers. */
   get peerCount(): number {
     return this.conns.size;
@@ -492,6 +515,13 @@ export class RoomManager {
 
   list(): string[] {
     return Array.from(this.rooms.keys());
+  }
+
+  /** The pending Room for a loaded room id, or undefined when not loaded.
+   *  Unlike `getOrCreate` this never creates: admin actions (kick) target only
+   *  rooms that actually exist. */
+  peek(roomId: string): Promise<Room> | undefined {
+    return this.rooms.get(roomId);
   }
 
   /** Snapshot of `(roomId, peerCount)` for diagnostics / tests. */

@@ -69,6 +69,11 @@ export interface UseGeometryStreamingParams {
    */
   pendingMeshTranslations: Map<number, [number, number, number]> | null;
   /**
+   * Per-entity yaw rotations queued by authoring actions or a collab
+   * peer's placement edit. Drained into `scene.rotateMeshesForEntities`.
+   */
+  pendingMeshRotations: Map<number, { angle: number; pivot: [number, number, number] }> | null;
+  /**
    * Emit-both GPU-instancing: raw IFNS shard bytes from the geometry worker,
    * drained here via `scene.addInstancedShard` (decode + upload as instanced
    * templates). Cleared after each drain. Inert until the wasm exposes
@@ -79,6 +84,7 @@ export interface UseGeometryStreamingParams {
   clearPendingColorUpdates: () => void;
   clearPendingMeshRemovals: () => void;
   clearPendingMeshTranslations: () => void;
+  clearPendingMeshRotations: () => void;
   clearInstancedShards: () => void;
   clearColorRef: MutableRefObject<[number, number, number, number]>;
   releaseGeometryAfterFinalize?: boolean;
@@ -126,11 +132,13 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     pendingColorUpdates,
     pendingMeshRemovals,
     pendingMeshTranslations,
+    pendingMeshRotations,
     pendingInstancedShards,
     clearPendingMeshColorUpdates,
     clearPendingColorUpdates,
     clearPendingMeshRemovals,
     clearPendingMeshTranslations,
+    clearPendingMeshRotations,
     clearInstancedShards,
     clearColorRef,
     releaseGeometryAfterFinalize = false,
@@ -721,6 +729,31 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     }
     clearPendingMeshTranslations();
   }, [pendingMeshTranslations, isInitialized, clearPendingMeshTranslations]);
+
+  // ─── Mesh rotations (yaw / numeric rotate / collab apply) ────────────
+  // Same drain pattern as translations: rotate vertices + normals in place
+  // about the given pivot, then rebuild the affected buckets.
+  useEffect(() => {
+    if (pendingMeshRotations === null || !isInitialized) return;
+    const renderer = rendererRef.current;
+    if (!renderer) return;
+    const device = renderer.getGPUDevice();
+    const pipeline = renderer.getPipeline();
+    const scene = renderer.getScene();
+    if (!device || !pipeline) return;
+
+    if (pendingMeshRotations.size > 0) {
+      scene.rotateMeshesForEntities(pendingMeshRotations);
+      if (scene.hasPendingBatches()) {
+        scene.rebuildPendingBatches(device, pipeline);
+      }
+      if (scene.hasStreamingFragments() && !scene.isEphemeralStreaming()) {
+        scene.finalizeStreaming(device, pipeline);
+      }
+      renderer.requestRender();
+    }
+    clearPendingMeshRotations();
+  }, [pendingMeshRotations, isInitialized, clearPendingMeshRotations]);
 
   // ─── Lens color overlays ─────────────────────────────────────────────
   useEffect(() => {

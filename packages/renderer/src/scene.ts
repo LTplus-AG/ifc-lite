@@ -979,6 +979,98 @@ export class Scene {
     return count;
   }
 
+  /**
+   * Rotate every flat mesh for `expressId` by `angleRad` about the renderer
+   * vertical (+Y) axis through `pivot` (renderer world, Y-up). This is the Y-up
+   * image of an IFC yaw about the storey-up Z axis. Modifies `positions` and
+   * `normals` in place and marks the affected bucket(s) for re-batch.
+   *
+   * Positions may live in a per-element local frame (`MeshData.origin`, world =
+   * origin + position), so the pivot is folded into each mesh's local frame
+   * before rotating; normals are direction vectors and rotate as-is.
+   *
+   * Same colour-merge caveat as `translateFlatMeshesForEntity` (skips meshes
+   * whose vertices belong to more than this entity). GPU-instanced occurrences
+   * are not rotated (the collab edit path only rotates flat/authored meshes).
+   * Returns true when a mesh was modified.
+   */
+  rotateMeshesForEntity(expressId: number, angleRad: number, pivot: [number, number, number]): boolean {
+    const meshDataList = this.meshDataMap.get(expressId);
+    if (!meshDataList || meshDataList.length === 0) return false;
+    if (angleRad === 0) return false;
+    const cos = Math.cos(angleRad);
+    const sin = Math.sin(angleRad);
+
+    const affectedKeys = new Set<string>();
+    let anyMoved = false;
+    for (const meshData of meshDataList) {
+      // Skip a genuinely shared color-merged mesh (see translateFlatMeshesForEntity).
+      if (meshData.entityIds && meshData.entityIds.length > 0) {
+        let shared = false;
+        for (let i = 0; i < meshData.entityIds.length; i++) {
+          if (meshData.entityIds[i] !== expressId) { shared = true; break; }
+        }
+        if (shared) continue;
+      }
+      // Fold the per-element local-frame origin into the pivot (world = origin + pos).
+      const px = pivot[0] - (meshData.origin?.[0] ?? 0);
+      const pz = pivot[2] - (meshData.origin?.[2] ?? 0);
+      const pos = meshData.positions;
+      for (let i = 0; i < pos.length; i += 3) {
+        const dx = pos[i] - px;
+        const dz = pos[i + 2] - pz;
+        pos[i] = px + dx * cos + dz * sin;
+        pos[i + 2] = pz - dx * sin + dz * cos;
+      }
+      const nrm = meshData.normals;
+      if (nrm) {
+        for (let i = 0; i < nrm.length; i += 3) {
+          const nx = nrm[i];
+          const nz = nrm[i + 2];
+          nrm[i] = nx * cos + nz * sin;
+          nrm[i + 2] = -nx * sin + nz * cos;
+        }
+      }
+      const bucket = this.meshDataBucket.get(meshData);
+      if (bucket) affectedKeys.add(bucket.key);
+      anyMoved = true;
+    }
+    if (!anyMoved) return false;
+
+    // #961: textured meshes render from their own GPU vertex buffer — re-upload
+    // the rotated parts so they don't render stale (mirrors the translate path).
+    if (this.texturedDevice && this.texturedMeshes.length > 0) {
+      const texturedData = meshDataList.filter((md) => md.texture && md.uvs);
+      if (texturedData.length > 0) {
+        const entries = this.texturedMeshes.filter((tm) => tm.expressId === expressId);
+        for (let i = 0; i < entries.length && i < texturedData.length; i++) {
+          const interleaved = this.interleaveTexturedVertices(texturedData[i]);
+          if (interleaved) {
+            this.texturedDevice.queue.writeBuffer(entries[i].vertexBuffer, 0, interleaved);
+          }
+        }
+      }
+    }
+
+    this.boundingBoxes.delete(expressId);
+    // Selection-highlight meshes are frozen copies — evict so the highlight
+    // re-extracts from the rotated geometry next frame (same as translate).
+    this.evictHighlightMeshes(expressId);
+    for (const key of affectedKeys) {
+      this.pendingBatchKeys.add(key);
+    }
+    return true;
+  }
+
+  /** Bulk variant of `rotateMeshesForEntity`. */
+  rotateMeshesForEntities(updates: Map<number, { angle: number; pivot: [number, number, number] }>): number {
+    let count = 0;
+    for (const [id, { angle, pivot }] of updates) {
+      if (this.rotateMeshesForEntity(id, angle, pivot)) count++;
+    }
+    return count;
+  }
+
   // ─── Mesh command queue ──────────────────────────────────────────────
 
   /**

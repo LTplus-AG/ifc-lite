@@ -341,21 +341,41 @@ export function addMaterial(doc: Y.Doc, path: string, assignment: MaterialAssign
 /* Geometry reference                                                   */
 /* ------------------------------------------------------------------ */
 
-/** Point an entity at a specific entry in the top-level geometry map. */
+/** Read the geomIds list off a geometryRef map (legacy single `geomId` wraps to one element). */
+function readGeomIds(refMap: Y.Map<unknown> | undefined): string[] {
+  if (!refMap) return [];
+  const ids = refMap.get('geomIds');
+  if (Array.isArray(ids)) return ids.filter((v): v is string => typeof v === 'string');
+  const legacy = refMap.get('geomId');
+  return typeof legacy === 'string' ? [legacy] : [];
+}
+
+/** Point an entity at one or more entries in the top-level geometry map (replaces any existing refs). */
 export function setGeometryRef(doc: Y.Doc, path: string, ref: GeometryRefRecord): void {
   const entity = getEntity(doc, path);
   if (!entity) throw new Error(`@ifc-lite/collab: entity "${path}" not found`);
   const refMap = entity.get(ENTITY_KEY.GEOMETRY_REF) as Y.Map<unknown> | undefined;
   if (!refMap) throw new Error(`@ifc-lite/collab: entity "${path}" missing geometryRef`);
-  refMap.set('geomId', ref.geomId);
+  refMap.set('geomIds', [...ref.geomIds]);
+}
+
+/** Append a geomId to an entity's geometry refs (idempotent — no duplicates). */
+export function addGeometryRef(doc: Y.Doc, path: string, geomId: string): void {
+  const entity = getEntity(doc, path);
+  if (!entity) throw new Error(`@ifc-lite/collab: entity "${path}" not found`);
+  const refMap = entity.get(ENTITY_KEY.GEOMETRY_REF) as Y.Map<unknown> | undefined;
+  if (!refMap) throw new Error(`@ifc-lite/collab: entity "${path}" missing geometryRef`);
+  const ids = readGeomIds(refMap);
+  if (ids.includes(geomId)) return;
+  refMap.set('geomIds', [...ids, geomId]);
 }
 
 export function getGeometryRef(doc: Y.Doc, path: string): GeometryRefRecord | undefined {
   const refMap = getEntity(doc, path)?.get(ENTITY_KEY.GEOMETRY_REF) as
     | Y.Map<unknown>
     | undefined;
-  const geomId = refMap?.get('geomId');
-  return typeof geomId === 'string' ? { geomId } : undefined;
+  const geomIds = readGeomIds(refMap);
+  return geomIds.length > 0 ? { geomIds } : undefined;
 }
 
 /* ------------------------------------------------------------------ */
@@ -383,7 +403,7 @@ export function entityToJSON(entity: Y.Map<unknown>): {
   psets: Record<string, Record<string, PropertyValue>>;
   classifications: ClassificationRef[];
   materials: MaterialAssignment[];
-  geometryRef?: string;
+  geometryRefs: string[];
   meta: Record<string, unknown>;
 } {
   const attrs = entity.get(ENTITY_KEY.ATTRIBUTES) as Y.Map<unknown> | undefined;
@@ -420,7 +440,12 @@ export function entityToJSON(entity: Y.Map<unknown>): {
   const metaJson: Record<string, unknown> = {};
   if (meta) for (const [k, v] of meta.entries()) metaJson[k] = v;
 
-  const geomId = geomRef?.get('geomId');
+  const geomIdsRaw = geomRef?.get('geomIds');
+  const geometryRefs = Array.isArray(geomIdsRaw)
+    ? geomIdsRaw.filter((v): v is string => typeof v === 'string')
+    : typeof geomRef?.get('geomId') === 'string'
+      ? [geomRef.get('geomId') as string]
+      : [];
 
   return {
     attributes,
@@ -429,7 +454,7 @@ export function entityToJSON(entity: Y.Map<unknown>): {
     psets: psetsJson,
     classifications: classifications ? classifications.toArray() : [],
     materials: materials ? materials.toArray() : [],
-    geometryRef: typeof geomId === 'string' ? geomId : undefined,
+    geometryRefs,
     meta: metaJson,
   };
 }

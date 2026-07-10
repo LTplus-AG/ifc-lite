@@ -41,6 +41,7 @@ import { useMouseControls, type MouseState } from './useMouseControls.js';
 import { RectSelectionOverlay, type RectSelectionRect } from './RectSelectionOverlay.js';
 import { useTouchControls, type TouchState } from './useTouchControls.js';
 import { useKeyboardControls } from './useKeyboardControls.js';
+import { useSpaceMouseControls } from './useSpaceMouseControls.js';
 import { useAnimationLoop } from './useAnimationLoop.js';
 import { useGeometryStreaming } from './useGeometryStreaming.js';
 import { usePointCloudSync } from './usePointCloudSync.js';
@@ -1218,6 +1219,15 @@ export function Viewport({
     sectionPlaneRef,
     sectionRangeRef,
     updateCameraRotationRealtime,
+    calculateScale,
+  });
+
+  useSpaceMouseControls({
+    rendererRef,
+    isInitialized,
+    geometryBoundsRef,
+    geometryRef,
+    selectedEntityIdRef,
     calculateScale,
   });
 

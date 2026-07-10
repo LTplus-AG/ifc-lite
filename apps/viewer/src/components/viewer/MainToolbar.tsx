@@ -47,6 +47,7 @@ import {
   Globe2,
   Sun,
   Move,
+  Move3d,
   PenLine,
   Undo2,
   Redo2,
@@ -434,6 +435,10 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   const toggleEnvPanel = useViewerStore((state) => state.toggleEnvPanel);
   const envSkyEnabled = useViewerStore((state) => state.envSkyEnabled);
   const envPreset = useViewerStore((state) => state.envPreset);
+  // SpaceMouse panel state (3D mouse navigation, #1677)
+  const spaceMousePanelOpen = useViewerStore((state) => state.spaceMousePanelOpen);
+  const toggleSpaceMousePanel = useViewerStore((state) => state.toggleSpaceMousePanel);
+  const spaceMouseConnected = useViewerStore((state) => state.spaceMouseConnected);
   const storeModels = useViewerStore((state) => state.models);
   const analysisExtensionState = useSyncExternalStore(
     subscribeAnalysisExtensions,
@@ -1705,6 +1710,30 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           </Button>
         </TooltipTrigger>
         <TooltipContent>Sun &amp; sky</TooltipContent>
+      </Tooltip>
+
+      {/* SpaceMouse panel — connect a 3Dconnexion 3D mouse over WebHID and
+          tune its sensitivity (#1677). */}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant={spaceMousePanelOpen ? 'default' : 'ghost'}
+            size="icon-sm"
+            aria-label={spaceMousePanelOpen ? 'Close SpaceMouse panel' : 'Open SpaceMouse panel'}
+            aria-pressed={spaceMousePanelOpen}
+            onClick={(e) => {
+              (e.currentTarget as HTMLButtonElement).blur();
+              toggleSpaceMousePanel();
+            }}
+            className={cn(
+              (spaceMousePanelOpen || spaceMouseConnected)
+                && 'bg-teal-600 text-white hover:bg-teal-500',
+            )}
+          >
+            <Move3d className="h-4 w-4" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>SpaceMouse</TooltipContent>
       </Tooltip>
 
       {/*

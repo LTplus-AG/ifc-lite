@@ -23,6 +23,7 @@ import { BCFOverlay } from './bcf/BCFOverlay';
 import { CesiumOverlay } from './CesiumOverlay';
 import { CesiumPlacementEditor } from './CesiumPlacementEditor';
 import { SunSkyPanel } from './SunSkyPanel';
+import { SpaceMousePanel } from './SpaceMousePanel';
 import { useSolarEnvironment } from '@/hooks/useSolarEnvironment';
 import { useSolarSweep } from '@/hooks/useSolarSweep';
 import { getViewerStoreApi, useViewerStore } from '@/store';
@@ -1331,6 +1332,9 @@ export function ViewportContainer() {
           Self-anchored below the ViewCube (top-6 right-6 cube) at top-32 right-4
           so it never covers navigation; draggable from its header (#1107). */}
       <SunSkyPanel />
+      {/* SpaceMouse panel — WebHID 3D mouse connection + sensitivity (#1677).
+          Anchored below the Sun & Sky spot so both can be open; draggable. */}
+      <SpaceMousePanel />
       {cesiumEnabled && georef?.mapConversion && georef.baseMapConversion && (
         <CesiumPlacementEditor
           modelId={georef.sourceModelId}

@@ -53,6 +53,7 @@ import { createSplitToolSlice, type SplitToolSlice } from './slices/splitToolSli
 import { createLevelDisplaySlice, type LevelDisplaySlice } from './slices/levelDisplaySlice.js';
 import { createPointCloudSlice, type PointCloudSlice, POINT_CLOUD_DEFAULTS } from './slices/pointCloudSlice.js';
 import { createUnitDisplaySlice, type UnitDisplaySlice } from './slices/unitDisplaySlice.js';
+import { createSpaceMouseSlice, type SpaceMouseSlice } from './slices/spaceMouseSlice.js';
 import { invalidateVisibleBasketCache } from './basketVisibleSet.js';
 
 // Import constants for reset function
@@ -159,6 +160,7 @@ export type ViewerState = LoadingSlice &
   LevelDisplaySlice &
   PointCloudSlice &
   UnitDisplaySlice &
+  SpaceMouseSlice &
   ExtensionsSlice & {
     resetViewerState: () => void;
     /**
@@ -243,6 +245,7 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
   ...createLevelDisplaySlice(...args),
   ...createPointCloudSlice(...args),
   ...createUnitDisplaySlice(...args),
+  ...createSpaceMouseSlice(...args),
   ...createExtensionsSlice(...args),
 
   // Reset all viewer state when loading new file

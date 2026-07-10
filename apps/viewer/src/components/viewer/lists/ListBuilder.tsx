@@ -36,8 +36,9 @@ import type {
   PropertyCondition,
   ConditionOperator,
 } from '@ifc-lite/lists';
-import { discoverColumns, ENTITY_ATTRIBUTES, isNamePattern } from '@ifc-lite/lists';
+import { discoverColumns, ENTITY_ATTRIBUTES } from '@ifc-lite/lists';
 import { collectScopeTypes } from '@/lib/lists/scope-types';
+import { previewSetPattern, formatMatchHint } from './pattern-preview';
 
 const NO_OPTIONS: readonly string[] = [];
 
@@ -721,12 +722,15 @@ function CustomColumnEntry({
 
   const set = setName.trim();
   const prop = propName.trim();
-  const isPattern = isNamePattern(set);
+  // Live preview: which discovered sets a `/regex/` set field matches, so a
+  // power user sees "matches 2 sets: ..." before adding, and a malformed pattern
+  // is flagged rather than silently added as a dead literal (issue #1591).
+  const preview = useMemo(() => previewSetPattern(set, setOptions), [set, setOptions]);
   // Slugify like the discovered-column ids (collapse whitespace) but keep the
   // original case: regex patterns are case-sensitive, so `/A/` and `/a/` are
   // distinct sets and must not collapse to one id.
   const columnId = `custom-${source}-${set}-${prop}`.replace(/\s+/g, '-');
-  const canAdd = set.length > 0 && prop.length > 0 && !selectedIds.has(columnId);
+  const canAdd = set.length > 0 && prop.length > 0 && !selectedIds.has(columnId) && !preview.isInvalid;
 
   const add = () => {
     if (!canAdd) return;
@@ -753,7 +757,7 @@ function CustomColumnEntry({
       <div className="flex items-center gap-1.5">
         <Chip selected={source === 'property'} onClick={() => setSource('property')}>Property</Chip>
         <Chip selected={source === 'quantity'} onClick={() => setSource('quantity')}>Quantity</Chip>
-        {isPattern && (
+        {preview.isPattern && (
           <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-primary">
             regex
           </span>
@@ -791,11 +795,21 @@ function CustomColumnEntry({
           <Plus className="h-3.5 w-3.5" />
         </Button>
       </div>
-      <p className="text-[11px] leading-relaxed text-muted-foreground">
-        Type an exact set name, or wrap a pattern in{' '}
-        <code className="rounded bg-muted px-1 font-mono text-[10px]">/…/</code> to pull one value across every
-        matching set, e.g. <code className="rounded bg-muted px-1 font-mono text-[10px]">/Qto_.*BaseQuantities/</code>.
-      </p>
+      {preview.isInvalid ? (
+        <p className="text-[11px] leading-relaxed text-destructive">
+          Invalid pattern. It would be matched as a literal name, so it likely hits nothing.
+        </p>
+      ) : preview.isPattern ? (
+        <p className="text-[11px] leading-relaxed text-muted-foreground">
+          {formatMatchHint(preview.matches)}
+        </p>
+      ) : (
+        <p className="text-[11px] leading-relaxed text-muted-foreground">
+          Type an exact set name, or wrap a pattern in{' '}
+          <code className="rounded bg-muted px-1 font-mono text-[10px]">/…/</code> to pull one value across every
+          matching set, e.g. <code className="rounded bg-muted px-1 font-mono text-[10px]">/Qto_.*BaseQuantities/</code>.
+        </p>
+      )}
     </div>
   );
 }

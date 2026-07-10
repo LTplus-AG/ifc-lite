@@ -463,10 +463,11 @@ impl IfcAPI {
         // Cache for processGeometryBatch reuse. Convert the scan's FxHashMap
         // into a compact columnar index (sorted u32 columns + binary search):
         // ~229 MB vs the hashmap's ~436 MB on a 19.1 M-entity model (#1682).
-        // Drop the hashmap right after so this worker's peak isn't both.
-        let entity_index_arc =
-            std::sync::Arc::new(ifc_lite_core::ColumnarEntityIndex::from_hashmap(&entity_index));
-        drop(entity_index);
+        // The consuming conversion frees the map before sorting, so the
+        // conversion transient is one interleaved buffer, not map + copies.
+        let entity_index_arc = std::sync::Arc::new(
+            ifc_lite_core::ColumnarEntityIndex::from_hashmap_consuming(entity_index),
+        );
         // Mutex held only briefly to install the Arc.
         {
             let mut slot = self

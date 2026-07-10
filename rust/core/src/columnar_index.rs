@@ -92,8 +92,42 @@ impl ColumnarEntityIndex {
     }
 
     /// Build from an already-scanned [`EntityIndex`](crate::EntityIndex)
+    /// hashmap, CONSUMING it. On the wasm prepass path the map is ~436 MB at
+    /// 19.1 M entities and the conversion runs while the whole source file is
+    /// resident in the same <4 GiB heap; borrowing (`from_hashmap`) keeps the
+    /// map alive across the copy AND the sort, spiking ~970 MB of transients.
+    /// Consuming lets the map's tuples drain into ONE interleaved buffer, the
+    /// map allocation is freed before sorting, and the sort is in-place
+    /// `sort_unstable` (map keys are unique, so no stability/permutation is
+    /// needed): peak extra memory drops to roughly the interleaved buffer.
+    pub fn from_hashmap_consuming(map: EntityIndex) -> Self {
+        let n = map.len();
+        let mut rows: Vec<(u32, u32, u32)> = Vec::with_capacity(n);
+        for (id, (start, end)) in map {
+            // u32 offsets are sound only under the wasm32 <4GiB address space
+            // (module docs); see `from_hashmap`.
+            debug_assert!(end <= u32::MAX as usize, "entity offset exceeds the u32 column ceiling");
+            rows.push((id, start as u32, (end - start) as u32));
+        }
+        // `map` is dropped here (moved into the loop) before any further
+        // allocation.
+        rows.sort_unstable_by_key(|r| r.0);
+        let mut ids = Vec::with_capacity(rows.len());
+        let mut starts = Vec::with_capacity(rows.len());
+        let mut lengths = Vec::with_capacity(rows.len());
+        for (id, start, len) in rows {
+            ids.push(id);
+            starts.push(start);
+            lengths.push(len);
+        }
+        Self { ids, starts, lengths }
+    }
+
+    /// Build from an already-scanned [`EntityIndex`](crate::EntityIndex)
     /// hashmap. The map is unique by construction (last-in-file-order-wins was
-    /// applied by `HashMap::insert`), so this only sorts the entries.
+    /// applied by `HashMap::insert`), so this only sorts the entries. Prefer
+    /// [`Self::from_hashmap_consuming`] when the map is no longer needed - it
+    /// avoids holding map + copies concurrently (P1 review finding on #1689).
     pub fn from_hashmap(map: &EntityIndex) -> Self {
         let n = map.len();
         let mut ids = Vec::with_capacity(n);
@@ -341,5 +375,19 @@ mod columnar_index_tests {
         for &id in col.ids() {
             assert_eq!(scanned.lookup(id), col.lookup(id));
         }
+    }
+
+    #[test]
+    fn consuming_and_borrowing_hashmap_builds_agree() {
+        let mut map: crate::EntityIndex = Default::default();
+        for (id, start, end) in [(7u32, 100usize, 150usize), (3, 0, 40), (9, 200, 260), (1, 41, 99)] {
+            map.insert(id, (start, end));
+        }
+        let borrowed = ColumnarEntityIndex::from_hashmap(&map);
+        let consumed = ColumnarEntityIndex::from_hashmap_consuming(map);
+        for id in [0u32, 1, 3, 7, 9, 10, u32::MAX] {
+            assert_eq!(borrowed.lookup(id), consumed.lookup(id), "id {id}");
+        }
+        assert_eq!(consumed.len(), 4);
     }
 }

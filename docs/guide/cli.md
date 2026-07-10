@@ -1114,6 +1114,8 @@ Run `ifc-lite schema` to see the full API before writing eval expressions.
 | `query` | Query entities by type/properties/quantities |
 | `props` | All properties for a single entity |
 | `export` | Export data / Honeybee energy model |
+| `diagnose-geometry` | CSG / opening diagnostics (failures, classification) |
+| `extract-entities` | Isolate entities into a small, viewable standalone IFC |
 | `ids` | Validate against IDS rules |
 | `bcf` | Work with BCF collaboration files |
 | `clash` | Detect geometric clashes between elements |
@@ -1128,10 +1130,11 @@ Run `ifc-lite schema` to see the full API before writing eval expressions.
 | `bsdd` | buildingSMART Data Dictionary lookup |
 | `stats` | Auto-calculated model KPIs and health check |
 | `mutate` | Modify properties/attributes and save |
+| `generate-spaces` | Derive IfcSpace from walls (slab/roof-aware height) |
 | `ask` | Natural language BIM queries |
 | `view` | Interactive 3D viewer in browser |
 | `analyze` | Query + visualize analysis results |
 | `lod` | Generate lightweight LOD artifacts |
-| `mcp` | <file.ifc> [--transport stdio|http] Start an MCP server bound to one or more IFC files |
+| `mcp` | Start an MCP server bound to one or more IFC files |
 | `ext` | Manage IFClite extensions (Phase 0 — validate, init) |
 <!-- END GENERATED: cli-commands -->

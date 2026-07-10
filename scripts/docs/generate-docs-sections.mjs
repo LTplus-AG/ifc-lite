@@ -136,13 +136,36 @@ function genCliCommands() {
   for (const line of commandsBlock[1].split('\n')) {
     // A command row starts at exactly 4 spaces then the command name;
     // wrapped continuation lines are indented deeper and are skipped.
-    const m = line.match(/^ {4}([a-z][\w-]*)\s{2,}(.+?)\s*$/);
+    // Long names (diagnose-geometry, extract-entities, generate-spaces)
+    // have only ONE space before their <args>, so the name-to-remainder
+    // gap must be \s+ not \s{2,}; the description is always the final
+    // 2+-space-separated field of the row.
+    const m = line.match(/^ {4}([a-z][\w-]*)\s+(.+?)\s*$/);
     if (!m) continue;
     const name = m[1];
-    // The remainder is "<args>   <description>"; the description is the
-    // final 2+-space-separated field.
+    // Description extraction, in order of reliability:
+    // 1. Most rows separate args from description with 2+ spaces; take
+    //    the final such field.
+    // 2. Rows like `mcp` use a single space; strip leading <arg> / [arg]
+    //    placeholder groups and keep the remainder.
+    // 3. Rows like `schema` have no args at all; the remainder IS the
+    //    description.
     const parts = m[2].split(/\s{2,}/);
-    const description = parts[parts.length - 1].trim();
+    let description;
+    if (parts.length >= 2) {
+      description = parts[parts.length - 1].trim();
+    } else {
+      let rest = m[2];
+      let stripped;
+      do {
+        stripped = rest.replace(/^(<[^>]*>|\[[^\]]*\]|"[^"]*")\s*/, '');
+        const changed = stripped !== rest;
+        rest = stripped;
+        if (!changed) break;
+      } while (rest.length > 0);
+      description = rest.trim();
+    }
+    if (!description) continue; // pure continuation line
     commands.push({ name, description });
   }
 

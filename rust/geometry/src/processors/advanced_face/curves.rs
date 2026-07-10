@@ -21,6 +21,33 @@ pub(super) fn extract_vertex_coords(vertex: &DecodedEntity, decoder: &mut Entity
     Some(Point3::new(x, y, z))
 }
 
+/// Read a B-spline curve's knot multiplicities and knot values.
+///
+/// Per the IFC schema, `IfcBSplineCurveWithKnots` carries
+/// KnotMultiplicities(5), Knots(6), KnotSpec(7) — the previous code read
+/// attributes 6/7, which on any real file yields the knot values as "mults"
+/// and the KnotSpec enum as "knots", so every B-spline edge silently bailed
+/// to a single vertex (issue #1661). The 6/7 pair is kept as a validated
+/// fallback in case a producer emits an extra attribute.
+pub(super) fn parse_curve_knots(curve: &DecodedEntity) -> Option<(Vec<i64>, Vec<f64>)> {
+    for (mi, ki) in [(5usize, 6usize), (6, 7)] {
+        let mults: Vec<i64> = match curve.get(mi).and_then(|a| a.as_list()) {
+            Some(l) => l.iter().filter_map(|v| v.as_int()).collect(),
+            None => continue,
+        };
+        let knots: Vec<f64> = match curve.get(ki).and_then(|a| a.as_list()) {
+            Some(l) => l.iter().filter_map(|v| v.as_float()).collect(),
+            None => continue,
+        };
+        // The schema requires one multiplicity per knot value; use that as the
+        // discriminator between the two attribute layouts.
+        if !mults.is_empty() && mults.len() == knots.len() {
+            return Some((mults, knots));
+        }
+    }
+    None
+}
+
 /// Sample points along a B-spline curve edge.
 /// Returns the start vertex plus intermediate sample points.
 /// The end vertex is omitted (provided by the next edge's start in the loop).
@@ -56,21 +83,9 @@ pub(super) fn sample_bspline_edge_curve(
         return vec![*start];
     }
 
-    // Parse knot multiplicities (attribute 6) and knot values (attribute 7)
-    let mults: Vec<i64> = curve
-        .get(6)
-        .and_then(|a| a.as_list())
-        .map(|l| l.iter().filter_map(|v| v.as_int()).collect())
-        .unwrap_or_default();
-    let knot_values: Vec<f64> = curve
-        .get(7)
-        .and_then(|a| a.as_list())
-        .map(|l| l.iter().filter_map(|v| v.as_float()).collect())
-        .unwrap_or_default();
-
-    if mults.is_empty() || knot_values.is_empty() {
+    let Some((mults, knot_values)) = parse_curve_knots(curve) else {
         return vec![*start];
-    }
+    };
 
     let knots = expand_knots(&knot_values, &mults);
     // A malformed IfcBSplineCurveWithKnots can carry multiplicities summing to
@@ -257,6 +272,79 @@ pub(super) fn sample_circle_edge_curve(
         let t = delta * (i as f64) / (n_segments as f64);
         let angle = a_start + sign * t;
         let p = center + axis_x * (radius * angle.cos()) + axis_y * (radius * angle.sin());
+        points.push(p);
+    }
+    points
+}
+
+/// Sample an `IfcEllipse` edge from `start` to `end`, walking the arc in the
+/// curve's native (CCW around axis_z) direction when `curve_forward` is true,
+/// otherwise CW. Mirrors `sample_circle_edge_curve`; the parametric angle is
+/// recovered with the semi-axis scaling folded out so trigonometric parameter
+/// t (not geometric angle) drives the walk, matching the IFC parameterization
+/// P(t) = C + r1·cos(t)·x + r2·sin(t)·y.
+pub(super) fn sample_ellipse_edge_curve(
+    curve: &DecodedEntity,
+    start: &Point3<f64>,
+    end: &Point3<f64>,
+    curve_forward: bool,
+    decoder: &mut EntityDecoder,
+    quality: TessellationQuality,
+) -> Vec<Point3<f64>> {
+    use std::f64::consts::TAU;
+
+    // IfcEllipse: 0=Position(IfcAxis2Placement3D|2D), 1=SemiAxis1, 2=SemiAxis2
+    let r1 = match curve.get(1).and_then(|v| v.as_float()) {
+        Some(r) if r > 0.0 => r,
+        _ => return vec![*start],
+    };
+    let r2 = match curve.get(2).and_then(|v| v.as_float()) {
+        Some(r) if r > 0.0 => r,
+        _ => return vec![*start],
+    };
+
+    let placement = match curve.get(0).and_then(|a| decoder.resolve_ref(a).ok().flatten()) {
+        Some(p) => p,
+        None => return vec![*start],
+    };
+
+    let (center, axis_z, axis_x) = read_axis2_placement_3d(&placement, decoder);
+    let axis_y = axis_z.cross(&axis_x);
+
+    // Recover the parametric angle of a point: divide the planar components by
+    // their semi-axes first, otherwise a stretched ellipse skews the angle.
+    let project_angle = |p: &Point3<f64>| -> f64 {
+        let v = p - center;
+        (v.dot(&axis_y) / r2).atan2(v.dot(&axis_x) / r1)
+    };
+
+    let a_start = project_angle(start);
+    let a_end = project_angle(end);
+
+    let mut ccw_delta = (a_end - a_start).rem_euclid(TAU);
+    let mut cw_delta = (a_start - a_end).rem_euclid(TAU);
+
+    let coincident = (start - end).norm() < 1e-6 * r1.max(r2).max(1.0);
+    if coincident || ccw_delta < 1e-9 {
+        ccw_delta = TAU;
+        cw_delta = TAU;
+    }
+
+    let (delta, sign) = if curve_forward {
+        (ccw_delta, 1.0_f64)
+    } else {
+        (cw_delta, -1.0_f64)
+    };
+
+    let n_base = (delta / (TAU / 30.0)).ceil() as usize;
+    let n_segments = scale_segments(n_base, 2, 32, quality);
+
+    let mut points = Vec::with_capacity(n_segments);
+    points.push(*start);
+    for i in 1..n_segments {
+        let t = delta * (i as f64) / (n_segments as f64);
+        let angle = a_start + sign * t;
+        let p = center + axis_x * (r1 * angle.cos()) + axis_y * (r2 * angle.sin());
         points.push(p);
     }
     points

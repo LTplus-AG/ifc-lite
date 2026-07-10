@@ -942,3 +942,223 @@ fn test_shell_based_surface_model_hole_bound_not_dropped() {
          hole bound and emitted 100.0), got {area}"
     );
 }
+
+/// Issue #1661: an advanced-face boundary edge whose geometry is an
+/// IfcTrimmedCurve over an IfcCircle collapsed to a single vertex (only the
+/// exact strings IFCBSPLINECURVEWITHKNOTS/IFCCIRCLE were sampled), so a
+/// half-disc face bounded by one arc + one line had a 2-point loop and was
+/// silently dropped. CATIA wall exports hit this constantly.
+#[test]
+fn test_advanced_face_trimmed_circle_edge_sampled() {
+    let content = r#"
+#1=IFCCARTESIANPOINT((50.,0.,0.));
+#2=IFCCARTESIANPOINT((-50.,0.,0.));
+#3=IFCCARTESIANPOINT((0.,0.,0.));
+#5=IFCVERTEXPOINT(#1);
+#6=IFCVERTEXPOINT(#2);
+#9=IFCDIRECTION((0.,0.,1.));
+#10=IFCDIRECTION((1.,0.,0.));
+#11=IFCAXIS2PLACEMENT3D(#3,#9,#10);
+#12=IFCPLANE(#11);
+#13=IFCCIRCLE(#11,50.);
+#14=IFCTRIMMEDCURVE(#13,(#1),(#2),.T.,.CARTESIAN.);
+#15=IFCLINE(#2,#20);
+#20=IFCVECTOR(#21,1.);
+#21=IFCDIRECTION((1.,0.,0.));
+#30=IFCEDGECURVE(#5,#6,#14,.T.);
+#31=IFCEDGECURVE(#6,#5,#15,.T.);
+#40=IFCORIENTEDEDGE(*,*,#30,.T.);
+#41=IFCORIENTEDEDGE(*,*,#31,.T.);
+#50=IFCEDGELOOP((#40,#41));
+#51=IFCFACEOUTERBOUND(#50,.T.);
+#52=IFCADVANCEDFACE((#51),#12,.T.);
+#53=IFCOPENSHELL((#52));
+#54=IFCSHELLBASEDSURFACEMODEL((#53));
+"#;
+
+    let mut decoder = EntityDecoder::new(content);
+    let schema = IfcSchema::new();
+    let processor = ShellBasedSurfaceModelProcessor::new();
+
+    let entity = decoder.decode_by_id(54).unwrap();
+    let mesh = processor
+        .process(&entity, &mut decoder, &schema, TessellationQuality::Medium)
+        .expect("half-disc face with trimmed-circle edge must tessellate");
+
+    assert!(
+        mesh.positions.len() / 3 >= 5,
+        "arc edge must contribute intermediate samples, got {} vertices",
+        mesh.positions.len() / 3
+    );
+    let area = mesh_surface_area(&mesh);
+    let expected = std::f64::consts::PI * 50.0 * 50.0 / 2.0;
+    assert!(
+        (area - expected).abs() < expected * 0.1,
+        "half-disc area should be ~{expected:.0}, got {area:.0} (single-vertex \
+         collapse yields an empty mesh)"
+    );
+}
+
+/// Issue #1661: IfcEllipse edge geometry fell to the start-vertex-only branch.
+#[test]
+fn test_advanced_face_ellipse_edge_sampled() {
+    let content = r#"
+#1=IFCCARTESIANPOINT((50.,0.,0.));
+#2=IFCCARTESIANPOINT((-50.,0.,0.));
+#3=IFCCARTESIANPOINT((0.,0.,0.));
+#5=IFCVERTEXPOINT(#1);
+#6=IFCVERTEXPOINT(#2);
+#9=IFCDIRECTION((0.,0.,1.));
+#10=IFCDIRECTION((1.,0.,0.));
+#11=IFCAXIS2PLACEMENT3D(#3,#9,#10);
+#12=IFCPLANE(#11);
+#13=IFCELLIPSE(#11,50.,25.);
+#15=IFCLINE(#2,#20);
+#20=IFCVECTOR(#21,1.);
+#21=IFCDIRECTION((1.,0.,0.));
+#30=IFCEDGECURVE(#5,#6,#13,.T.);
+#31=IFCEDGECURVE(#6,#5,#15,.T.);
+#40=IFCORIENTEDEDGE(*,*,#30,.T.);
+#41=IFCORIENTEDEDGE(*,*,#31,.T.);
+#50=IFCEDGELOOP((#40,#41));
+#51=IFCFACEOUTERBOUND(#50,.T.);
+#52=IFCADVANCEDFACE((#51),#12,.T.);
+#53=IFCOPENSHELL((#52));
+#54=IFCSHELLBASEDSURFACEMODEL((#53));
+"#;
+
+    let mut decoder = EntityDecoder::new(content);
+    let schema = IfcSchema::new();
+    let processor = ShellBasedSurfaceModelProcessor::new();
+
+    let entity = decoder.decode_by_id(54).unwrap();
+    let mesh = processor
+        .process(&entity, &mut decoder, &schema, TessellationQuality::Medium)
+        .expect("half-ellipse face must tessellate");
+
+    let area = mesh_surface_area(&mesh);
+    let expected = std::f64::consts::PI * 50.0 * 25.0 / 2.0;
+    assert!(
+        (area - expected).abs() < expected * 0.1,
+        "half-ellipse area should be ~{expected:.0}, got {area:.0}"
+    );
+    // The semi-minor axis bounds the sampled arc: max |y| must be ~25, not 50
+    // (a circle-style sampler ignoring SemiAxis2 would overshoot).
+    let max_y = mesh
+        .positions
+        .chunks_exact(3)
+        .map(|p| p[1])
+        .fold(f32::MIN, f32::max);
+    assert!(
+        (20.0..=26.0).contains(&max_y),
+        "ellipse apex must be at y~25, got {max_y}"
+    );
+}
+
+/// Issue #1661: the rational NURBS variant missed the exact-string
+/// IFCBSPLINECURVEWITHKNOTS match and collapsed to one vertex.
+#[test]
+fn test_advanced_face_rational_bspline_edge_sampled() {
+    let content = r#"
+#1=IFCCARTESIANPOINT((50.,0.,0.));
+#2=IFCCARTESIANPOINT((-50.,0.,0.));
+#3=IFCCARTESIANPOINT((0.,0.,0.));
+#4=IFCCARTESIANPOINT((0.,60.,0.));
+#5=IFCVERTEXPOINT(#1);
+#6=IFCVERTEXPOINT(#2);
+#9=IFCDIRECTION((0.,0.,1.));
+#10=IFCDIRECTION((1.,0.,0.));
+#11=IFCAXIS2PLACEMENT3D(#3,#9,#10);
+#12=IFCPLANE(#11);
+#13=IFCRATIONALBSPLINECURVEWITHKNOTS(2,(#1,#4,#2),.UNSPECIFIED.,.F.,.F.,(3,3),(0.,1.),.UNSPECIFIED.,(1.,1.,1.));
+#15=IFCLINE(#2,#20);
+#20=IFCVECTOR(#21,1.);
+#21=IFCDIRECTION((1.,0.,0.));
+#30=IFCEDGECURVE(#5,#6,#13,.T.);
+#31=IFCEDGECURVE(#6,#5,#15,.T.);
+#40=IFCORIENTEDEDGE(*,*,#30,.T.);
+#41=IFCORIENTEDEDGE(*,*,#31,.T.);
+#50=IFCEDGELOOP((#40,#41));
+#51=IFCFACEOUTERBOUND(#50,.T.);
+#52=IFCADVANCEDFACE((#51),#12,.T.);
+#53=IFCOPENSHELL((#52));
+#54=IFCSHELLBASEDSURFACEMODEL((#53));
+"#;
+
+    let mut decoder = EntityDecoder::new(content);
+    let schema = IfcSchema::new();
+    let processor = ShellBasedSurfaceModelProcessor::new();
+
+    let entity = decoder.decode_by_id(54).unwrap();
+    let mesh = processor
+        .process(&entity, &mut decoder, &schema, TessellationQuality::Medium)
+        .expect("rational-bspline-bounded face must tessellate");
+
+    assert!(
+        mesh.positions.len() / 3 >= 5,
+        "rational B-spline edge must contribute intermediate samples, got {} vertices",
+        mesh.positions.len() / 3
+    );
+    // Quadratic Bezier from (50,0) to (-50,0) with control (0,60): apex y=30.
+    let max_y = mesh
+        .positions
+        .chunks_exact(3)
+        .map(|p| p[1])
+        .fold(f32::MIN, f32::max);
+    assert!(
+        max_y > 20.0,
+        "curve interior must be sampled (apex y~30), got max y = {max_y}"
+    );
+}
+
+/// Issue #1661: IfcCompositeCurve edge geometry (two quarter-arc trimmed
+/// segments) collapsed to a single vertex per edge.
+#[test]
+fn test_advanced_face_composite_curve_edge_sampled() {
+    let content = r#"
+#1=IFCCARTESIANPOINT((50.,0.,0.));
+#2=IFCCARTESIANPOINT((-50.,0.,0.));
+#3=IFCCARTESIANPOINT((0.,0.,0.));
+#4=IFCCARTESIANPOINT((0.,50.,0.));
+#5=IFCVERTEXPOINT(#1);
+#6=IFCVERTEXPOINT(#2);
+#9=IFCDIRECTION((0.,0.,1.));
+#10=IFCDIRECTION((1.,0.,0.));
+#11=IFCAXIS2PLACEMENT3D(#3,#9,#10);
+#12=IFCPLANE(#11);
+#13=IFCCIRCLE(#11,50.);
+#14=IFCTRIMMEDCURVE(#13,(#1),(#4),.T.,.CARTESIAN.);
+#16=IFCTRIMMEDCURVE(#13,(#4),(#2),.T.,.CARTESIAN.);
+#17=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#14);
+#18=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#16);
+#19=IFCCOMPOSITECURVE((#17,#18),.F.);
+#15=IFCLINE(#2,#20);
+#20=IFCVECTOR(#21,1.);
+#21=IFCDIRECTION((1.,0.,0.));
+#30=IFCEDGECURVE(#5,#6,#19,.T.);
+#31=IFCEDGECURVE(#6,#5,#15,.T.);
+#40=IFCORIENTEDEDGE(*,*,#30,.T.);
+#41=IFCORIENTEDEDGE(*,*,#31,.T.);
+#50=IFCEDGELOOP((#40,#41));
+#51=IFCFACEOUTERBOUND(#50,.T.);
+#52=IFCADVANCEDFACE((#51),#12,.T.);
+#53=IFCOPENSHELL((#52));
+#54=IFCSHELLBASEDSURFACEMODEL((#53));
+"#;
+
+    let mut decoder = EntityDecoder::new(content);
+    let schema = IfcSchema::new();
+    let processor = ShellBasedSurfaceModelProcessor::new();
+
+    let entity = decoder.decode_by_id(54).unwrap();
+    let mesh = processor
+        .process(&entity, &mut decoder, &schema, TessellationQuality::Medium)
+        .expect("composite-curve-bounded face must tessellate");
+
+    let area = mesh_surface_area(&mesh);
+    let expected = std::f64::consts::PI * 50.0 * 50.0 / 2.0;
+    assert!(
+        (area - expected).abs() < expected * 0.1,
+        "half-disc (two quarter-arc segments) area should be ~{expected:.0}, got {area:.0}"
+    );
+}

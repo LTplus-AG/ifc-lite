@@ -1,7 +1,9 @@
 # Plato as a single source for Rust/TS mirrored math
 
-Status: spike (branch `spike/plato-investigation`, artifacts in `tools/plato-spike/`).
-Date: 2026-07-09.
+Status: shipped as a contained pilot on the clash math kernel (this branch).
+The exploratory spike artifacts (bounds parity demo, standalone validation
+harnesses) live on branch `spike/plato-investigation` under `tools/plato-spike/`.
+Dates: spike 2026-07-09, production integration 2026-07-10.
 
 ## What Plato is
 
@@ -39,8 +41,8 @@ pattern). Plato addresses only the pure-numeric slice.
 
 ## What the spike proved
 
-All artifacts live in `tools/plato-spike/` and are runnable offline; commands in
-its README.
+Spike artifacts live on branch `spike/plato-investigation` under
+`tools/plato-spike/`, runnable offline; commands in its README.
 
 Level 0, `bounds/`: a 60-line `ifc_bounds.plato` (AABB include/union/contains/
 intersects, MeshData.origin folding, symmetric clip pad) compiled to both
@@ -159,10 +161,43 @@ Rust (generated code behind `[f64;3]` adapters, harness in
   `tri_tri_intersect` ~1.05x). The Copy structs monomorphize to equivalent
   machine code, so the codegen shape costs nothing on the Rust side.
 
-Both harnesses re-verified in place in this branch (cargo test: 13/13; fuzz
-verdict PASS).
+Both harnesses re-verified in place on the spike branch (cargo test: 13/13;
+fuzz verdict PASS).
+
+## Production integration (this branch)
+
+- Single source: `tools/plato/clash_math.plato` (+ `scaffold.plato`).
+- Committed generated outputs: `rust/clash/src/generated/plato.rs` and
+  `packages/clash/src/math/generated/plato.g.ts`. `vec3`, `aabb` and
+  `triangle-intersect` on both sides are now thin adapters with byte-compatible
+  public APIs; the triangle distance routines stay hand-written twins (out of
+  Plato's expressive range for now) but consume the Plato-backed vec3 ops.
+- TS prototype pollution and dispatch overhead are gone: a deterministic AST
+  codemod (`tools/plato/scalar-codemod.mjs`) rewrites scalar method calls to
+  native operators and lifts the former Number/Boolean prototype helpers into a
+  module-scoped namespace. The committed TS contains no `prototype` access and
+  no `declare global`. The one ambiguous method name was removed at the source
+  (`Vec3.Add` renamed to `Plus`), and the codemod fails loudly on any future
+  class/scalar name collision.
+- Post-codemod TS perf: prototype dispatch eliminated; the adapter overhead
+  drops roughly 2.5-3x versus the raw generated code. Remaining overhead versus
+  the old hand-written tuples (about 1.6-2x on the microbench, dominated by the
+  tuple-to-object marshalling allocations) applies to the in-process TS engine;
+  the Rust/WASM engine is at parity with the old code (~1.0x).
+- Generation is offline and reproducible: `node scripts/generate-plato-clash.mjs`
+  clones plato, parakeet and ara3d-sdk at pinned SHAs, builds Plato.CLI with a
+  .NET 9 SDK, verifies output non-trivially exists (the CLI exits 0 even on
+  failure), strips the nondeterministic timestamp header, runs the codemod, and
+  writes the committed files. Two back-to-back runs produce byte-identical
+  output on both targets.
+- CI freshness gate: a path-filtered `plato-check` job in test.yml regenerates
+  with `--check` and fails on drift, wired into the required aggregate check,
+  mirroring the committed-wasm-types pattern. Consumers never need dotnet.
+- Cross-language behavior lock: `packages/clash/src/differential.test.ts`
+  (WASM kernel === TS kernel) now compares two artifacts generated from the
+  same source.
 
 ## Reproducing
 
-See `tools/plato-spike/README.md`. Everything runs offline from a pinned clone
-of cdiggins/plato plus a .NET 9 SDK; no network access needed after setup.
+Production regeneration: `tools/plato/README.md` (script, pins, traps). Spike
+harnesses: `tools/plato-spike/README.md` on branch `spike/plato-investigation`.

@@ -77,12 +77,14 @@
 # +38: #1623 Phase 2 don't-bake — MappedInstancePlan type alias + output_instancing_plan field + enable_/getter + `mod instancing` decl.
 # +28: #858 palette guard — indexed_colour_split_ids field + enable_indexed_colour_split_guard setter + is_indexed_colour_split_source accessor (routes an indexed-colour mapped source to the flat per-palette split instead of a colour-collapsing instance placeholder).
 # +42: #1623 Phase 3 batch-local template mode — instancing_batch_local flag + instanced_sources_materialized tracker fields + set_/getter/mark_source_materialized_if_first methods (browser per-batch don't-bake).
-     746 rust/geometry/src/router/mod.rs
+# +1: #1293 dedup rep_identity: build_dedup_extra_enabled/set_build_dedup_extra_override gate + DEDUP_EXTRA_OVERRIDE static; net +1 after the ItemDedupCache doc consolidation.
+     747 rust/geometry/src/router/mod.rs
 # +65: #1623 Phase 2 don't-bake — the top-level mapped-item intercept (template retag + instance placeholder) + the public/impl process_element_with_submeshes split; the two eligibility/ensure helpers were extracted to router/instancing.rs (new, 92 lines) to hold the net down.
 # +7: #858 palette guard — exclude an indexed-colour single-solid source from the don't-bake decision (one .filter on the resolved solid id + explanatory comment) so its per-triangle palette survives the flat split.
 # +16: #1623 Phase 3 — thread the batch-local vs global template decision through the mapped-item intercept (is_template match arm + retag guard).
 # +3: hoist the item-dedup mesh clone out of the cache Mutex critical section (let-binding + 2-line rationale) so a dedup miss no longer serializes the worker pool on a deep-copy.
-    1165 rust/geometry/src/router/processing.rs
+# +18: #1293 dedup rep_identity: store rep beside the cached mesh, split tag_direct_instance into direct_rep_identity + stamp_direct_instance, and the flagged IFC_LITE_DEDUP_EXTRA type gate in item_dedup_key.
+    1183 rust/geometry/src/router/processing.rs
 # +26: is_rtc_votable_representation predicate + doc — Surface3D is meshable but must NOT cast RTC votes (#1526 pollution via absolute-coord surfaces).
      472 rust/geometry/src/router/rtc_offset.rs
 # +1: reveal-quads comment expanded to 2 lines (dead-symbol reference fix, no code change).

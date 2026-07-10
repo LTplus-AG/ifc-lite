@@ -843,13 +843,41 @@ END-ISO-10303-21;
     .to_string()
 }
 
+/// RAII scope for the process-global dedup-extra override
+/// (`GeometryRouter::set_build_dedup_extra_override`): serializes every test
+/// that forces the override (a static mutex held for the guard's lifetime, so
+/// two such tests can't interleave under the parallel test runner) and restores
+/// the env-default (`None`) on drop, INCLUDING on a panicking assert, so a
+/// failure can't leak the forced state into later tests. `None` is the correct
+/// restore value (not a saved snapshot): the only writers are guard scopes, so
+/// outside any scope the override is always at its env-default.
+struct DedupExtraOverrideGuard {
+    _lock: std::sync::MutexGuard<'static, ()>,
+}
+
+impl DedupExtraOverrideGuard {
+    fn set(v: bool) -> Self {
+        static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let lock = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        GeometryRouter::set_build_dedup_extra_override(Some(v));
+        Self { _lock: lock }
+    }
+}
+
+impl Drop for DedupExtraOverrideGuard {
+    fn drop(&mut self) {
+        GeometryRouter::set_build_dedup_extra_override(None);
+    }
+}
+
 #[test]
 fn content_dedup_extra_facesets_byte_identical_when_flagged() {
     let content = synthetic_faceset_duplicates_ifc();
     let ids = [50u32, 80, 110];
 
-    // Flag ON: faceset items become dedup candidates.
-    GeometryRouter::set_build_dedup_extra_override(Some(true));
+    // Flag ON: faceset items become dedup candidates. Guard restores the
+    // env-default override on every exit path (assert panics included).
+    let _extra_on = DedupExtraOverrideGuard::set(true);
     let mut d_on = EntityDecoder::with_index(&content, build_entity_index(&content));
     let on_router = GeometryRouter::with_units(&content, &mut d_on);
     let mut on = Vec::new();
@@ -862,9 +890,9 @@ fn content_dedup_extra_facesets_byte_identical_when_flagged() {
         on.push(fingerprint(&sm));
     }
     let unique_on = on_router.dedup_unique_count();
-    GeometryRouter::set_build_dedup_extra_override(None); // reset global before asserts
 
-    // Ground truth: dedup fully disabled ⇒ every faceset rebuilt.
+    // Ground truth: dedup fully disabled ⇒ every faceset rebuilt (the override
+    // value is irrelevant on this path, so the guard can stay in scope).
     let mut d_off = EntityDecoder::with_index(&content, build_entity_index(&content));
     let mut off_router = GeometryRouter::with_units(&content, &mut d_off);
     off_router.disable_content_dedup();

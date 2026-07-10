@@ -313,6 +313,90 @@ describe('BinaryCacheWriter and BinaryCacheReader', () => {
     expect(header.sections.length).toBeGreaterThan(0);
   });
 
+  it('default write embeds a real full-file xxhash64 and validate() works', async () => {
+    const writer = new BinaryCacheWriter();
+    const cacheBuffer = await writer.write(dataStore, undefined, sourceBuffer, {
+      includeGeometry: false,
+    });
+    const reader = new BinaryCacheReader();
+    const header = reader.readHeader(cacheBuffer);
+
+    expect(header.hasSourceHash).toBe(true);
+    expect(header.sourceHash).toBe(xxhash64(sourceBuffer));
+    expect(reader.validate(cacheBuffer, sourceBuffer)).toBe(true);
+  });
+
+  it('omitSourceHash skips the full-file hash and flags the header (SourceHashUnset)', async () => {
+    // The mesh-only tier omits the header hash so a 400MB source pays no
+    // full-file main-thread hash on write; it validates the source another way
+    // (mtime + an app-layer content hash). The header must self-describe this so
+    // a future reader.validate() / read({sourceBuffer}) can't silently fail-close.
+    const writer = new BinaryCacheWriter();
+    const cacheBuffer = await writer.write(dataStore, undefined, sourceBuffer, {
+      includeGeometry: false,
+      omitSourceHash: true,
+    });
+    const reader = new BinaryCacheReader();
+    const header = reader.readHeader(cacheBuffer);
+
+    expect(header.hasSourceHash).toBe(false);
+    expect(header.sourceHash).toBe(0n);
+    // validate() refuses (throws) rather than returning a misleading false.
+    expect(() => reader.validate(cacheBuffer, sourceBuffer)).toThrow(/SourceHashUnset/);
+    // read({sourceBuffer}) does NOT fail-close on an unset hash — it just reads.
+    await expect(reader.read(cacheBuffer, { sourceBuffer })).resolves.toBeTruthy();
+  });
+
+  it('mesh-only write (omitSourceHash, no persisted source) round-trips geometry byte-identical', async () => {
+    // Byte-identity of the restored geometry is what makes a mesh-only cache hit
+    // equal to a cold load. The write path is source-decoupled (the viewer does
+    // NOT persist the source for this tier), so exercise write→read with the hash
+    // omitted and assert the meshes come back bit-for-bit.
+    const positions = new Float32Array([0, 0, 0, 1, 0, 0, 1, 1, 0]);
+    const normals = new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]);
+    const indices = new Uint32Array([0, 1, 2]);
+    const geometry = {
+      meshes: [{ expressId: 4, positions, normals, indices, color: [0.2, 0.4, 0.6, 1] as [number, number, number, number] }],
+      totalVertices: 3,
+      totalTriangles: 1,
+      coordinateInfo: {
+        originShift: { x: 0, y: 0, z: 0 },
+        originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 0 } },
+        shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 0 } },
+        hasLargeCoordinates: false,
+      } as CoordinateInfo,
+    };
+
+    const writer = new BinaryCacheWriter();
+    const cacheBuffer = await writer.write(dataStore, geometry, sourceBuffer, { omitSourceHash: true });
+    const result = await new BinaryCacheReader().read(cacheBuffer);
+
+    const mesh = result.geometry!.meshes[0];
+    expect(mesh.expressId).toBe(4);
+    expect(Array.from(mesh.positions)).toEqual(Array.from(positions));
+    expect(Array.from(mesh.normals)).toEqual(Array.from(normals));
+    expect(Array.from(mesh.indices)).toEqual(Array.from(indices));
+    expect(result.geometry!.totalVertices).toBe(3);
+    expect(result.geometry!.totalTriangles).toBe(1);
+  });
+
+  it('rejects a truncated / corrupt cache buffer (graceful-miss path)', async () => {
+    // loadFromCache catches this, deletes the entry, and falls back to a normal
+    // parse — a validated miss, not a crash.
+    const writer = new BinaryCacheWriter();
+    const full = await writer.write(dataStore, undefined, sourceBuffer, { includeGeometry: false });
+    const reader = new BinaryCacheReader();
+
+    // Truncated mid-section: header parses but a section read runs off the end.
+    const truncated = full.slice(0, Math.floor(full.byteLength / 2));
+    await expect(reader.read(truncated)).rejects.toThrow();
+
+    // Garbage magic bytes: header validation fails immediately.
+    const garbage = new Uint8Array(full.byteLength);
+    garbage.fill(0xcd);
+    await expect(reader.read(garbage.buffer)).rejects.toThrow();
+  });
+
   it('should preserve entity data through round-trip', async () => {
     const writer = new BinaryCacheWriter();
     const cacheBuffer = await writer.write(dataStore, undefined, sourceBuffer, {

@@ -1,0 +1,33 @@
+{
+ "elements": [
+  {
+   "bbox": {
+    "max": [
+     2.75,
+     0.014394,
+     0.0145
+    ],
+    "min": [
+     0.0,
+     -0.014394,
+     -0.0145
+    ]
+   },
+   "closed": true,
+   "express_id": 50,
+   "ifc_type": "IfcReinforcingBar",
+   "status": "ok",
+   "tri_count": 100,
+   "vertex_count": 52,
+   "volume": 0.001799
+  }
+ ],
+ "engine": "ifcopenshell 0.8.2",
+ "fixture": "swept_disk_trimmed_line.ifc",
+ "settings": {
+  "use_world_coords": true,
+  "weld_vertices": true
+ },
+ "sha256": "287ccd9d9cfb73623c74168d79162a590dfbe53b4fd8d3f484995b6c1272f9fb",
+ "version": 1
+}

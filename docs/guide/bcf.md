@@ -66,7 +66,7 @@ addCommentToTopic(topic, comment);
 // Add to project
 addTopicToProject(project, topic);
 
-// Export as .bcf file (returns a Blob)
+// Export as a .bcfzip archive (returns a Blob)
 const bcfBlob = await writeBCF(project);
 ```
 
@@ -107,7 +107,7 @@ const state = extractViewpointState(viewpoint);
 
 ## GUID Conversion
 
-BCF uses UUID format while IFC uses a compressed 22-character GlobalId (base64). The package provides conversion utilities:
+BCF uses UUID format while IFC uses a compressed 22-character GlobalId (base64). The package re-exports conversion utilities (from `@ifc-lite/encoding`):
 
 ```typescript
 import { uuidToIfcGuid, ifcGuidToUuid, isValidIfcGuid } from '@ifc-lite/bcf';
@@ -120,16 +120,58 @@ if (isValidIfcGuid(guid)) {
 }
 ```
 
+`generateIfcGuid`, `generateUuid`, and `isValidUuid` are also re-exported.
+
+## IDS Validation Reports as BCF
+
+Failed IDS validation results can be turned into a BCF project, one topic per failure group:
+
+```typescript
+import { createBCFFromIDSReport } from '@ifc-lite/bcf';
+
+const project = createBCFFromIDSReport(reportInput, options);
+const blob = await writeBCF(project);
+```
+
+The viewer's IDS panel uses this to export validation failures as BCF, with optional camera viewpoints and snapshots. See [IDS Validation](ids.md).
+
+## Clash Results as BCF
+
+The clash package (`@ifc-lite/clash/bcf`) exports clash detection results as a BCF 2.1 project, one topic per clash group:
+
+```typescript
+import { createBCFFromClashResult, mapBcfToClashes } from '@ifc-lite/clash/bcf';
+
+const project = await createBCFFromClashResult(result, groups, {
+  author: 'clash@ifc-lite',
+  projectName: 'Clash report',
+  // Optional: map each clash to its review status ('open' | 'resolved' | 'accepted')
+  reviewStatusOf: (clash) => myReviews.get(clashReviewKey(clash))?.status ?? 'open',
+});
+```
+
+`clashReviewKey` (from `@ifc-lite/clash`) builds a durable, model-independent key from the rule id and the two element GUIDs, so a review re-attaches to the same clash after a re-run or model revision.
+
+Clash review status (`open` / `resolved` / `accepted`, tracked with an optional comment in the viewer's clash panel) flows into the export: each topic's status is the least-resolved status among its member clashes, mapped to a BCF `TopicStatus` for maximum interoperability (`open` -> `Open`, `resolved` and `accepted` -> `Closed`). The finer open/resolved/accepted breakdown is preserved in the topic description. Topic GUIDs are deterministic per clash group, so topic identity is stable across re-exports, and `mapBcfToClashes` reads a BCF project back into a clash-id -> topic/status map for round-tripping.
+
+## 3D Overlay Markers
+
+For rendering BCF topics as markers in a 3D view, the package provides viewer-agnostic marker positioning plus a DOM renderer:
+
+```typescript
+import { computeMarkerPositions, BCFOverlayRenderer } from '@ifc-lite/bcf';
+```
+
 ## Viewer Integration
 
 In the IFClite viewer, BCF is integrated through the BCF panel:
 
-1. **Load BCF** - Drag and drop a `.bcf` file or use the BCF panel to import
+1. **Load BCF** - Drag and drop a `.bcf` or `.bcfzip` file or use the BCF panel to import
 2. **Browse Topics** - View all issues with status, priority, and labels
 3. **Navigate Viewpoints** - Click a viewpoint to restore camera and visibility
 4. **Add Comments** - Discuss issues directly in the viewer
 5. **Create Topics** - Select entities, position camera, and create new issues
-6. **Export BCF** - Save the project as a `.bcf` file for sharing
+6. **Export BCF** - Save the project as a `.bcfzip` file for sharing
 
 ## Key Types
 

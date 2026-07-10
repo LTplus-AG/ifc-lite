@@ -1,5 +1,47 @@
 # @ifc-lite/cache
 
+## 2.1.1
+
+### Patch Changes
+
+- [#1676](https://github.com/LTplus-AG/ifc-lite/pull/1676) [`da04601`](https://github.com/LTplus-AG/ifc-lite/commit/da0460183dcb4e2b26ceb53cfebd8cca33c78c39) Thanks [@louistrue](https://github.com/louistrue)! - Docs refresh: correct stale README claims and API samples against the current codebase; add READMEs to the ten published packages that shipped without one (cli, create, sdk, sandbox, lens, lists, embed-sdk, embed-protocol, encoding, viewer-core).
+
+- Updated dependencies [[`da04601`](https://github.com/LTplus-AG/ifc-lite/commit/da0460183dcb4e2b26ceb53cfebd8cca33c78c39)]:
+  - @ifc-lite/data@2.5.1
+
+## 2.1.0
+
+### Minor Changes
+
+- [#1621](https://github.com/LTplus-AG/ifc-lite/pull/1621) [`8fdd200`](https://github.com/LTplus-AG/ifc-lite/commit/8fdd200c640034d74f5718741892577a00d737be) Thanks [@louistrue](https://github.com/louistrue)! - Add `CacheWriteOptions.omitSourceHash`. When set, `BinaryCacheWriter.write` skips the full-file `xxhash64(sourceBuffer)`, stores `sourceHash = 0n`, and sets the new `HeaderFlags.SourceHashUnset` — for callers that validate the source another way and don't want a large source to pay a full-file main-thread hash on write. `CacheHeaderInfo` gains `hasSourceHash`; `reader.read({ sourceBuffer })` skips header validation for such entries (instead of fail-closing), and `reader.validate()` throws a clear error rather than returning a misleading `false`. Default behaviour (the writer hashes the whole source) is unchanged, and entries written before this flag existed still validate normally.
+
+## 2.0.11
+
+### Patch Changes
+
+- [#1562](https://github.com/LTplus-AG/ifc-lite/pull/1562) [`52dd7a1`](https://github.com/LTplus-AG/ifc-lite/commit/52dd7a16788375a9507c40fbde106b78236801db) Thanks [@louistrue](https://github.com/louistrue)! - Bump the geometry cache `FORMAT_VERSION` 11 -> 12 for the source vertex weld. Element meshes are now welded at the source and the per-export welds were removed, so a v11 cache holds pre-weld (per-face-duplicated) geometry; restoring it and exporting would emit an unwelded, 3-6x larger GLB (regressing the export-weld win for cached-model users) and hand non-watertight raw MeshData to render/GLB consumers. The bump invalidates pre-weld caches so they re-mesh (welded) instead of restoring stale geometry.
+
+- Updated dependencies [[`0762522`](https://github.com/LTplus-AG/ifc-lite/commit/076252241ec4201462f7fcf0555c83606de5fecd), [`52dd7a1`](https://github.com/LTplus-AG/ifc-lite/commit/52dd7a16788375a9507c40fbde106b78236801db), [`b157b48`](https://github.com/LTplus-AG/ifc-lite/commit/b157b4841bfa795f8a937a9be20c21b645757fbe)]:
+  - @ifc-lite/geometry@3.1.0
+
+## 2.0.10
+
+### Patch Changes
+
+- [#1503](https://github.com/LTplus-AG/ifc-lite/pull/1503) [`d1e16f9`](https://github.com/LTplus-AG/ifc-lite/commit/d1e16f944ea9f3a35a7153959f13db168a35c229) Thanks [@louistrue](https://github.com/louistrue)! - fix(query): scope `whereProperty` to the named property set
+
+  `EntityQuery.whereProperty(psetName, propName, ...)` recorded the property-set
+  name but never passed it to `findByProperty`, so a property matched in _any_
+  property set — e.g. filtering `Pset_WallCommon.IsExternal` also returned doors
+  whose `Pset_DoorCommon.IsExternal` matched. `findByProperty` gains an optional
+  `psetName` argument (honored by the in-memory, cache-restored, and
+  server-converted property tables), and `whereProperty` now passes it. An unknown
+  pset name matches nothing.
+
+- Updated dependencies [[`8e43ecf`](https://github.com/LTplus-AG/ifc-lite/commit/8e43ecf540b88b942a4ec2127dd9bcf24ec244fa), [`d1e16f9`](https://github.com/LTplus-AG/ifc-lite/commit/d1e16f944ea9f3a35a7153959f13db168a35c229), [`6d2cb21`](https://github.com/LTplus-AG/ifc-lite/commit/6d2cb21a170413c6c98aadf10d254667b2ed2b53), [`3d25765`](https://github.com/LTplus-AG/ifc-lite/commit/3d25765edc2cee40268a6d5a27d4055f88f76489), [`b66ff1d`](https://github.com/LTplus-AG/ifc-lite/commit/b66ff1dd915a0ff4f60198a511adb7ed7f714079)]:
+  - @ifc-lite/geometry@3.0.0
+  - @ifc-lite/data@2.3.0
+
 ## 2.0.9
 
 ### Patch Changes

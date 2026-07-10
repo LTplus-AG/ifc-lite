@@ -73,44 +73,9 @@ pub(super) fn parse_axis2_placement_3d(
         Vector3::new(1.0, 0.0, 0.0)
     };
 
-    // Normalize axes
-    let z_axis_final = z_axis.normalize();
-    let x_axis_normalized = x_axis.normalize();
-
-    // Ensure X is orthogonal to Z (project X onto plane perpendicular to Z)
-    let dot_product = x_axis_normalized.dot(&z_axis_final);
-    let x_axis_orthogonal = x_axis_normalized - z_axis_final * dot_product;
-    let x_axis_final = if x_axis_orthogonal.norm() > 1e-6 {
-        x_axis_orthogonal.normalize()
-    } else {
-        // X and Z are parallel or nearly parallel - use a default perpendicular direction
-        if z_axis_final.z.abs() < 0.9 {
-            Vector3::new(0.0, 0.0, 1.0).cross(&z_axis_final).normalize()
-        } else {
-            Vector3::new(1.0, 0.0, 0.0).cross(&z_axis_final).normalize()
-        }
-    };
-
-    // Y axis is cross product of Z and X (right-hand rule: Y = Z × X)
-    let y_axis = z_axis_final.cross(&x_axis_final).normalize();
-
-    // Build transformation matrix
-    // Columns represent world-space directions of local axes
-    let mut transform = Matrix4::identity();
-    transform[(0, 0)] = x_axis_final.x;
-    transform[(1, 0)] = x_axis_final.y;
-    transform[(2, 0)] = x_axis_final.z;
-    transform[(0, 1)] = y_axis.x;
-    transform[(1, 1)] = y_axis.y;
-    transform[(2, 1)] = y_axis.z;
-    transform[(0, 2)] = z_axis_final.x;
-    transform[(1, 2)] = z_axis_final.y;
-    transform[(2, 2)] = z_axis_final.z;
-    transform[(0, 3)] = location.x;
-    transform[(1, 3)] = location.y;
-    transform[(2, 3)] = location.z;
-
-    Ok(transform)
+    // Orthonormalize + assemble via the shared builder (canonical Gram–Schmidt
+    // with the degenerate-axis fallback baked in).
+    Ok(crate::transform::build_axis2_matrix(location, z_axis, x_axis))
 }
 
 /// Parse IfcCartesianPoint from a parent entity at the given attribute index
@@ -231,13 +196,13 @@ pub(super) fn get_axis2_placement_transform_by_id(
         .and_then(|id| get_direction_by_id(id, decoder))
         .unwrap_or(Vector3::new(1.0, 0.0, 0.0));
 
-    // Compute Y axis as Z cross X
-    let y_axis = z_axis.cross(&x_axis).normalize();
-    let x_axis = y_axis.cross(&z_axis).normalize();
-
-    Ok(Matrix4::new(
-        x_axis.x, y_axis.x, z_axis.x, location.0, x_axis.y, y_axis.y, z_axis.y, location.1,
-        x_axis.z, y_axis.z, z_axis.z, location.2, 0.0, 0.0, 0.0, 1.0,
+    // Orthonormalize + assemble via the shared builder so the degenerate-axis
+    // (RefDirection ∥ Axis) fallback is applied here too, instead of normalizing
+    // a zero cross-product into a NaN matrix.
+    Ok(crate::transform::build_axis2_matrix(
+        Point3::new(location.0, location.1, location.2),
+        z_axis,
+        x_axis,
     ))
 }
 

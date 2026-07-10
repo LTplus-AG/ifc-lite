@@ -25,6 +25,9 @@ import type {
   BCFBitmap,
   BCFPoint,
   BCFDirection,
+  BCFBimSnippet,
+  BCFDocumentReference,
+  BCFHeaderFile,
 } from './types.js';
 import { generateUuid } from '@ifc-lite/encoding';
 
@@ -47,7 +50,7 @@ export async function writeBCF(project: BCFProject): Promise<Blob> {
 
   // Write topics
   for (const [guid, topic] of project.topics) {
-    await writeTopicFolder(zip, topic);
+    await writeTopicFolder(zip, topic, project.version);
   }
 
   // Generate zip file
@@ -91,12 +94,16 @@ function writeProjectFile(zip: JSZip, project: BCFProject): void {
 /**
  * Write a topic folder with all its contents
  */
-async function writeTopicFolder(zip: JSZip, topic: BCFTopic): Promise<void> {
+async function writeTopicFolder(
+  zip: JSZip,
+  topic: BCFTopic,
+  version: '2.1' | '3.0',
+): Promise<void> {
   const folder = zip.folder(topic.guid);
   if (!folder) return;
 
   // Write markup.bcf
-  writeMarkupFile(folder, topic);
+  writeMarkupFile(folder, topic, version);
 
   // Write viewpoints
   for (let i = 0; i < topic.viewpoints.length; i++) {
@@ -124,9 +131,16 @@ function snapshotExt(viewpoint: BCFViewpoint): 'png' | 'jpg' {
  * Write markup.bcf file
  * Uses buildingSMART standard format
  */
-function writeMarkupFile(folder: JSZip, topic: BCFTopic): void {
+function writeMarkupFile(folder: JSZip, topic: BCFTopic, version: '2.1' | '3.0'): void {
   let content = `<?xml version="1.0" encoding="UTF-8"?>
-<Markup xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+<Markup xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">`;
+
+  // Header (source IFC files) precedes Topic per the BCF markup schema sequence.
+  if (topic.header && topic.header.length > 0) {
+    content += writeHeader(topic.header, version);
+  }
+
+  content += `
   <Topic Guid="${escapeXml(topic.guid)}"${topic.topicType ? ` TopicType="${escapeXml(topic.topicType)}"` : ''}${topic.topicStatus ? ` TopicStatus="${escapeXml(topic.topicStatus)}"` : ''}>
     <Title>${escapeXml(topic.title)}</Title>`;
 
@@ -167,6 +181,19 @@ function writeMarkupFile(folder: JSZip, topic: BCFTopic): void {
   if (topic.labels && topic.labels.length > 0) {
     for (const label of topic.labels) {
       content += `\n    <Labels>${escapeXml(label)}</Labels>`;
+    }
+  }
+
+  // ReferenceSchema is required inside BimSnippet by the BCF XSD; only emit the
+  // snippet when it is complete so we never write schema-invalid markup. (The
+  // type marks referenceSchema optional, but a snippet without it is unusable.)
+  if (topic.bimSnippet?.referenceSchema) {
+    content += writeBimSnippet(topic.bimSnippet);
+  }
+
+  if (topic.documentReferences && topic.documentReferences.length > 0) {
+    for (const docRef of topic.documentReferences) {
+      content += writeDocumentReference(docRef);
     }
   }
 
@@ -533,6 +560,81 @@ function writeBitmap(bitmap: BCFBitmap): string {
       </Up>
       <Height>${bitmap.height}</Height>
     </Bitmap>`;
+}
+
+/**
+ * Write the markup `<Header>` block (source IFC files).
+ *
+ * The container differs by BCF version: 2.1 nests `<File>` directly under
+ * `<Header>`, while 3.0 wraps them in a `<Files>` element. The `<File>` shape
+ * (IfcProject / IfcSpatialStructureElement / isExternal attributes; Filename,
+ * Date, Reference children) is identical across both.
+ */
+function writeHeader(files: BCFHeaderFile[], version: '2.1' | '3.0'): string {
+  const fileIndent = version === '3.0' ? '      ' : '    ';
+  const fileXml = files.map((f) => writeHeaderFile(f, fileIndent, version)).join('');
+
+  if (version === '3.0') {
+    return `\n  <Header>\n    <Files>${fileXml}\n    </Files>\n  </Header>`;
+  }
+  return `\n  <Header>${fileXml}\n  </Header>`;
+}
+
+/** Write a single `<File>` entry inside the markup `<Header>`. */
+function writeHeaderFile(file: BCFHeaderFile, indent: string, version: '2.1' | '3.0'): string {
+  // isExternal defaults to true (an unresolved reference is treated as external).
+  const isExternal = file.isExternal ?? true;
+  // BCF 2.1 spells the attribute `isExternal`; 3.0 renamed it `IsExternal`.
+  const isExternalAttr = version === '3.0' ? 'IsExternal' : 'isExternal';
+
+  let attrs = '';
+  if (file.ifcProject) {
+    attrs += ` IfcProject="${escapeXml(file.ifcProject)}"`;
+  }
+  if (file.ifcSpatialStructureElement) {
+    attrs += ` IfcSpatialStructureElement="${escapeXml(file.ifcSpatialStructureElement)}"`;
+  }
+  attrs += ` ${isExternalAttr}="${isExternal}"`;
+
+  let content = `\n${indent}<File${attrs}>`;
+  if (file.filename) {
+    content += `\n${indent}  <Filename>${escapeXml(file.filename)}</Filename>`;
+  }
+  if (file.date) {
+    content += `\n${indent}  <Date>${escapeXml(file.date)}</Date>`;
+  }
+  if (file.reference) {
+    content += `\n${indent}  <Reference>${escapeXml(file.reference)}</Reference>`;
+  }
+  content += `\n${indent}</File>`;
+  return content;
+}
+
+/**
+ * Write BimSnippet XML
+ */
+function writeBimSnippet(snippet: BCFBimSnippet): string {
+  // Caller guarantees referenceSchema is present (see writeMarkupFile); both
+  // Reference and ReferenceSchema are required by the BCF schema.
+  let content = `\n    <BimSnippet SnippetType="${escapeXml(snippet.snippetType)}" isExternal="${snippet.isExternal}">`;
+  content += `\n      <Reference>${escapeXml(snippet.reference)}</Reference>`;
+  content += `\n      <ReferenceSchema>${escapeXml(snippet.referenceSchema ?? '')}</ReferenceSchema>`;
+  content += `\n    </BimSnippet>`;
+  return content;
+}
+
+/**
+ * Write DocumentReference XML
+ */
+function writeDocumentReference(docRef: BCFDocumentReference): string {
+  const guidAttr = docRef.guid ? ` Guid="${escapeXml(docRef.guid)}"` : '';
+  let content = `\n    <DocumentReference${guidAttr} isExternal="${docRef.isExternal}">`;
+  content += `\n      <ReferencedDocument>${escapeXml(docRef.referencedDocument)}</ReferencedDocument>`;
+  if (docRef.description) {
+    content += `\n      <Description>${escapeXml(docRef.description)}</Description>`;
+  }
+  content += `\n    </DocumentReference>`;
+  return content;
 }
 
 /**

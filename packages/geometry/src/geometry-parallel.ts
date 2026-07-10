@@ -336,6 +336,8 @@ export async function* processParallel(
           geometryHash?: bigint;
           geometryClass?: number;
           origin?: [number, number, number];
+          localBounds?: MeshData['localBounds'];
+          localToWorld?: MeshData['localToWorld'];
         }) => ({
           expressId: m.expressId,
           ifcType: m.ifcType,
@@ -359,6 +361,9 @@ export async function* processParallel(
           // Per-element local-frame origin (world = origin + position); the
           // renderer reconstructs world via a per-batch model-matrix translate.
           ...(m.origin ? { origin: m.origin } : {}),
+          // Local (pre-placement) AABB + placement transform (issue #1474).
+          ...(m.localBounds ? { localBounds: m.localBounds } : {}),
+          ...(m.localToWorld ? { localToWorld: m.localToWorld } : {}),
         }));
         // GPU-instancing: per-batch IFNS shards ride alongside the flat meshes.
         // Opaque repeated occurrences render ONLY via these shards (taken off the
@@ -659,6 +664,13 @@ export async function* processParallel(
       // with default per-type colours; without the pre-built entity
       // index, the worker's first WASM call would re-scan the file
       // (~5 s on 1 GB) to rebuild the index inside Rust.
+      //
+      // NB: the `prepass-columns` event (referenced-repmaps / instantiated-
+      // type-ids / material-layer index, #957/#563) is deliberately NOT gated
+      // here: the pre-pass emits it BEFORE the first jobs chunk and workers
+      // apply messages FIFO, so it always lands before any batch. An older
+      // engine binary that never emits it simply falls back to the worker's
+      // byte-identical lazy rebuild — gating would turn that into a hang.
       queuedChunks.push({ jobs, affinity });
       return;
     }
@@ -867,6 +879,69 @@ export async function* processParallel(
         }
 
         entityIndexReceived = true;
+        drainQueuedChunksIfReady();
+      } else if (evt.type === 'prepass-columns') {
+        // Pre-pass computed the referenced-repmaps + instantiated-type-id sets
+        // and the material-layer index ONCE (issue #957 / #563). Forward to
+        // every worker so its first batch skips the per-worker full-file
+        // rebuild. Small (id sets + one record per material-associated element),
+        // so a per-worker structured-clone slice is cheap; each slice goes in
+        // its own transfer list. Must reach workers AFTER set-entity-index
+        // (whose setter clears these caches) — the pre-pass emits this event
+        // after `entity-index` and workers handle messages FIFO, so it holds.
+        const referencedRepmaps = evt.referencedRepmaps as Uint32Array;
+        const instantiatedTypeIds = evt.instantiatedTypeIds as Uint32Array;
+        // #1623 Phase 3 don't-bake plan (RepresentationMap ids repeated >= 2x).
+        // Absent on older pre-pass builds -> empty, so the batch never arms.
+        const mappedInstancePlan = (evt.mappedInstancePlan as Uint32Array | undefined) ?? new Uint32Array(0);
+        const mliElementIds = evt.mliElementIds as Uint32Array;
+        const mliAxis = evt.mliAxis as Uint32Array;
+        const mliLayerCounts = evt.mliLayerCounts as Uint32Array;
+        const mliDirectionSense = evt.mliDirectionSense as Float64Array;
+        const mliOffset = evt.mliOffset as Float64Array;
+        const mliLayerMaterialIds = evt.mliLayerMaterialIds as Uint32Array;
+        const mliLayerThicknesses = evt.mliLayerThicknesses as Float64Array;
+        console.log(`[stream] prepass-columns @ ${elapsed()}ms (${referencedRepmaps.length} repmaps, ${instantiatedTypeIds.length} inst-types, ${mliElementIds.length} layer-elems)`);
+
+        for (const w of workers) {
+          try {
+            const rRepmaps = referencedRepmaps.slice();
+            const rTypeIds = instantiatedTypeIds.slice();
+            const rMappedPlan = mappedInstancePlan.slice();
+            const mIds = mliElementIds.slice();
+            const mAxis = mliAxis.slice();
+            const mCounts = mliLayerCounts.slice();
+            const mDir = mliDirectionSense.slice();
+            const mOff = mliOffset.slice();
+            const mMatIds = mliLayerMaterialIds.slice();
+            const mThick = mliLayerThicknesses.slice();
+            w.postMessage(
+              {
+                type: 'set-prepass-columns' as const,
+                referencedRepmaps: rRepmaps,
+                instantiatedTypeIds: rTypeIds,
+                mappedInstancePlan: rMappedPlan,
+                mliElementIds: mIds,
+                mliAxis: mAxis,
+                mliLayerCounts: mCounts,
+                mliDirectionSense: mDir,
+                mliOffset: mOff,
+                mliLayerMaterialIds: mMatIds,
+                mliLayerThicknesses: mThick,
+              },
+              [
+                rRepmaps.buffer, rTypeIds.buffer, rMappedPlan.buffer, mIds.buffer, mAxis.buffer, mCounts.buffer,
+                mDir.buffer, mOff.buffer, mMatIds.buffer, mThick.buffer,
+              ],
+            );
+          } catch (err) {
+            console.warn('[stream] set-prepass-columns dispatch failed:', err);
+          }
+        }
+
+        // Not a dispatch gate (see dispatchJobsChunk); the pre-pass emits this
+        // before the first jobs chunk, so drain here only for symmetry with the
+        // other post-scan events in case chunks were queued behind styles/index.
         drainQueuedChunksIfReady();
       } else if (evt.type === 'complete') {
         prepassJobsTotal = evt.totalJobs as number;

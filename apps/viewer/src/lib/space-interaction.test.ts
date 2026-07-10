@@ -28,8 +28,4 @@ describe('isRemoveModifier', () => {
   it('is false with no modifier (a plain click drags / draws)', () => {
     assert.strictEqual(isRemoveModifier(ev({})), false);
   });
-
-  it('treats Shift alone as not-a-remove (Shift is ortho/pan)', () => {
-    assert.strictEqual(isRemoveModifier(ev({})), false);
-  });
 });

@@ -74,8 +74,6 @@ const SMOOTH_CURVE_MIN_VERTICES: usize = 24;
 /// recognizably round (16-gon reads as a circle).
 const SIMPLIFIED_MIN_VERTICES: usize = 12;
 
-/// Perpendicular distance from `p` to the line through `a` and `b`.
-#[inline]
 /// Mirror every point of a `Profile2D` about the local Y-axis (x → −x).
 ///
 /// `IfcMirroredProfileDef` per IFC4 §8.6.2.21 produces a profile that is
@@ -96,6 +94,8 @@ pub(super) fn mirror_profile_about_y_axis(profile: &mut Profile2D) {
     }
 }
 
+/// Perpendicular distance from `p` to the line through `a` and `b`.
+#[inline]
 fn perpendicular_distance(p: Point2<f64>, a: Point2<f64>, b: Point2<f64>) -> f64 {
     let dx = b.x - a.x;
     let dy = b.y - a.y;

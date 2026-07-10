@@ -20,6 +20,7 @@ mod gpu_meshes;
 mod grid_lines;
 mod mesh_outline;
 mod parsing;
+mod pipeline_diagnostics;
 mod space_plate;
 pub(crate) mod styling;
 mod symbolic;
@@ -57,6 +58,21 @@ pub struct IfcAPI {
     /// under concurrent `&self` access.
     cached_entity_index: std::sync::Mutex<Option<std::sync::Arc<EntityIndex>>>,
 
+    /// Session source bytes (the whole IFC file) held ONCE per load, so the
+    /// streaming batch path stops re-copying the file into the wasm heap on
+    /// EVERY `processGeometryBatch*` call. `passArray8ToWasm0` mallocs + memcpys
+    /// the full `data` slice every call (~4 ms/call on 169 MB); a huge CSG-dense
+    /// model adapts down to 64-job batches and makes 600+ calls/worker, so the
+    /// per-call copy alone is 15-25 s/worker of pure memcpy. The bytes are
+    /// IDENTICAL across a worker's calls (one model per `IfcAPI`), so one copy
+    /// suffices: `setSourceBytes` stores it here and the `*FromSource` batch
+    /// variants read it instead of taking `data`. Set once per load (mirrors
+    /// `cached_entity_index`); dropped by `clearPrePassCache`. NOT dropped by
+    /// `setEntityIndex` — it is REPLACED wholesale by the next `setSourceBytes`,
+    /// and the JS worker always calls `setSourceBytes` for the current session
+    /// before any `*FromSource` batch, so the held bytes always match the index.
+    cached_source_bytes: std::sync::Mutex<Option<std::sync::Arc<Vec<u8>>>>,
+
     /// Per-worker shared content-dedup cache (#1109 follow-up). The
     /// `GeometryRouter` is rebuilt every `processGeometryBatch`, so its item-mesh
     /// dedup cache would reset each batch. Holding ONE cache here and injecting it
@@ -66,6 +82,16 @@ pub struct IfcAPI {
     /// Built lazily on first batch; one model per `IfcApi` instance, exactly like
     /// `cached_entity_index`.
     cached_item_dedup: std::sync::Mutex<Option<ifc_lite_geometry::ItemDedupCache>>,
+
+    /// Per-worker shared `IfcMappedItem` source cache (#1623). The `GeometryRouter`
+    /// is rebuilt every `processGeometryBatch`, so its per-router `mapped_item_cache`
+    /// would reset each batch and only dedup within a batch. Holding ONE cache here
+    /// and injecting it into every batch router meshes each RepresentationMap source
+    /// once across the whole worker's workload. Built lazily on first batch; one
+    /// model per `IfcApi` instance, exactly like `cached_item_dedup`. Dropped on a
+    /// content swap AND on `setTessellationQuality` (a quality change invalidates
+    /// the source-coord tessellation — the key is the source id, not the quality).
+    cached_mapped_item: std::sync::Mutex<Option<ifc_lite_geometry::SharedMappedItemCache>>,
 
     /// When `true`, `processGeometryBatch` suppresses geometry emission for
     /// every `IfcBuildingElementPart` whose `IfcRelAggregates` parent (a) has
@@ -115,6 +141,19 @@ pub struct IfcAPI {
     /// cleared by `clearPrePassCache`.
     cached_instantiated_type_ids:
         std::sync::Mutex<Option<std::sync::Arc<rustc_hash::FxHashSet<u32>>>>,
+
+    /// #1623 Phase 3 don't-bake plan: `IfcRepresentationMap` id ⇒ `(count, min-id)`
+    /// for every source an `IfcMappedItem` instantiates >= 2 times (the streaming
+    /// pre-pass tallies it in the same scan that builds `cached_referenced_repmaps`).
+    /// When present AND the instanced/partitioned batch path runs, the batch router
+    /// is armed with it in BATCH-LOCAL mode so a repeated single-solid mapped source
+    /// meshes ONCE per batch (the first-seen occurrence) and the rest ride as
+    /// per-occurrence instances in the IFNS shard — killing the per-occurrence
+    /// vertex materialize. `None` (never installed) ⇒ the batch path materializes
+    /// every occurrence exactly as before (byte-identical). Cleared on content swap
+    /// (`setEntityIndex`) and `clearPrePassCache`, like the other pre-pass columns.
+    cached_mapped_instance_plan:
+        std::sync::Mutex<Option<ifc_lite_geometry::MappedInstancePlan>>,
 
     /// Lazily-built surface-texture index keyed by face-set id (issue #961):
     /// decoded RGBA images + per-triangle UV maps from
@@ -197,6 +236,17 @@ pub struct IfcAPI {
             )>,
         )>,
     >,
+
+    /// Per-load structured pipeline diagnostics (`PipelineDiagnostics`
+    /// contract, see `api::pipeline_diagnostics`): every
+    /// `processGeometryBatch*` call folds one batch record in — cheap
+    /// counters plus per-batch JS wall time, so it is always on. Read by JS
+    /// via `getPipelineDiagnostics`; reset at load START by every entry point
+    /// that begins a new file on a reused IfcAPI (`buildPrePassOnce`,
+    /// `buildPrePassStreaming`, `setEntityIndex`) - deliberately NOT by
+    /// `clearPrePassCache`, which runs at end-of-load before a host reads the
+    /// diagnostics.
+    pipeline_diagnostics: std::sync::Mutex<ifc_lite_processing::PipelineDiagnostics>,
 }
 
 #[wasm_bindgen]
@@ -210,12 +260,15 @@ impl IfcAPI {
         Self {
             initialized: true,
             cached_entity_index: std::sync::Mutex::new(None),
+            cached_source_bytes: std::sync::Mutex::new(None),
             cached_item_dedup: std::sync::Mutex::new(None),
+            cached_mapped_item: std::sync::Mutex::new(None),
             merge_layers: std::sync::atomic::AtomicBool::new(false),
             cached_parts_to_skip: std::sync::Mutex::new(None),
             cached_material_layer_index: std::sync::Mutex::new(None),
             cached_referenced_repmaps: std::sync::Mutex::new(None),
             cached_instantiated_type_ids: std::sync::Mutex::new(None),
+            cached_mapped_instance_plan: std::sync::Mutex::new(None),
             cached_texture_index: std::sync::Mutex::new(None),
             cached_indexed_colour_maps: std::sync::Mutex::new(None),
             compute_geometry_hashes: std::sync::atomic::AtomicBool::new(false),
@@ -226,6 +279,9 @@ impl IfcAPI {
             skip_small_cuts: std::sync::atomic::AtomicBool::new(false),
             cached_plane_angle_to_radians: std::sync::Mutex::new(None),
             cached_geometry_styles: std::sync::Mutex::new(None),
+            pipeline_diagnostics: std::sync::Mutex::new(
+                ifc_lite_processing::PipelineDiagnostics::default(),
+            ),
         }
     }
 
@@ -239,16 +295,13 @@ impl IfcAPI {
     /// the same `IfcAPI` instance — e.g. the parser worker keeps one
     /// `IfcAPI` alive across multiple `parse` requests).
     ///
-    /// Panics if the cache Mutex is poisoned. Poisoning means an
-    /// earlier panic occurred while the lock was held — silently
-    /// continuing would mean operating on an inconsistent cache, so
-    /// fail fast.
+    /// Recovers a poisoned cache Mutex instead of panicking; see `mod_tests.rs`.
     #[wasm_bindgen(js_name = clearPrePassCache)]
     pub fn clear_pre_pass_cache(&self) {
         let mut slot = self
             .cached_entity_index
             .lock()
-            .expect("ifc-lite cached_entity_index Mutex poisoned");
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         slot.take();
         // The parts-to-skip set is keyed off the content scanned during
         // the previous load; drop it together with the entity index so the
@@ -256,48 +309,54 @@ impl IfcAPI {
         let mut parts_slot = self
             .cached_parts_to_skip
             .lock()
-            .expect("ifc-lite cached_parts_to_skip Mutex poisoned");
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         parts_slot.take();
         // The material-layer index is keyed off the previous load's content.
         self.cached_material_layer_index
             .lock()
-            .expect("ifc-lite cached_material_layer_index Mutex poisoned")
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take();
         // The referenced-RepresentationMap set is keyed off the previous load's
         // content; drop it so the next file rebuilds against fresh content.
         let mut repmap_slot = self
             .cached_referenced_repmaps
             .lock()
-            .expect("ifc-lite cached_referenced_repmaps Mutex poisoned");
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         repmap_slot.take();
         // The instantiated-type-ids set is keyed off the previous load's content.
         let mut inst_slot = self
             .cached_instantiated_type_ids
             .lock()
-            .expect("ifc-lite cached_instantiated_type_ids Mutex poisoned");
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         inst_slot.take();
+        // The don't-bake mapped-instance plan is keyed off the previous load's
+        // IfcMappedItem scan (#1623 Phase 3); drop it so the next file rebuilds it.
+        self.cached_mapped_instance_plan
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
         // The texture index is keyed off the previous load's content; drop it.
         let mut texture_slot = self
             .cached_texture_index
             .lock()
-            .expect("ifc-lite cached_texture_index Mutex poisoned");
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         texture_slot.take();
         // The indexed-colour-map index is also keyed off the previous load's
         // content; drop it so the next file rebuilds against fresh content.
         let mut icm_slot = self
             .cached_indexed_colour_maps
             .lock()
-            .expect("ifc-lite cached_indexed_colour_maps Mutex poisoned");
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         icm_slot.take();
         // The plane-angle scale belongs to the previous load's content.
         self.cached_plane_angle_to_radians
             .lock()
-            .expect("ifc-lite cached_plane_angle_to_radians Mutex poisoned")
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take();
         // The geometry-style maps belong to the previous load's wire styles.
         self.cached_geometry_styles
             .lock()
-            .expect("ifc-lite cached_geometry_styles Mutex poisoned")
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take();
         // The content-dedup cache holds the previous model's item meshes, keyed by
         // a content hash of that model's entities. Drop it so a new file on the
@@ -305,8 +364,30 @@ impl IfcAPI {
         // loads; defensive even though the key is content- not id-based).
         self.cached_item_dedup
             .lock()
-            .expect("ifc-lite cached_item_dedup Mutex poisoned")
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take();
+        // The session source bytes are the previous load's whole file; drop them
+        // at end-of-load cleanup so a reused IfcAPI doesn't retain a ~100s-of-MB
+        // copy between loads (the next load's setSourceBytes re-installs its own).
+        self.cached_source_bytes
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        // The mapped-item source cache holds the previous model's source meshes,
+        // keyed by RepresentationMap id (baking in that load's unit scale /
+        // tessellation quality). Drop it so a new file on the same reused IfcAPI
+        // starts empty (#1623).
+        self.cached_mapped_item
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        // NB: do NOT reset pipeline_diagnostics here. clearPrePassCache runs in
+        // the JS load wrapper's `finally` AFTER the last processGeometryBatch
+        // (packages/geometry/src/index.ts), i.e. end-of-load cleanup; resetting
+        // here would erase the just-completed load's diagnostics before a host
+        // can read getPipelineDiagnostics(). Diagnostics are an accumulator, not
+        // a cache, so they reset only at load START (set_entity_index), unlike
+        // cached_item_dedup which is safe to drop on every clear.
     }
 
     /// Populate `cached_entity_index` from pre-extracted column arrays.
@@ -344,7 +425,7 @@ impl IfcAPI {
         let mut slot = self
             .cached_entity_index
             .lock()
-            .expect("ifc-lite cached_entity_index Mutex poisoned");
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         *slot = Some(std::sync::Arc::new(index));
         drop(slot);
 
@@ -355,46 +436,164 @@ impl IfcAPI {
         // rebuild against the new content (#962 review). Mirrors clearPrePassCache.
         self.cached_parts_to_skip
             .lock()
-            .expect("ifc-lite cached_parts_to_skip Mutex poisoned")
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take();
         self.cached_material_layer_index
             .lock()
-            .expect("ifc-lite cached_material_layer_index Mutex poisoned")
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take();
         self.cached_referenced_repmaps
             .lock()
-            .expect("ifc-lite cached_referenced_repmaps Mutex poisoned")
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take();
         self.cached_instantiated_type_ids
             .lock()
-            .expect("ifc-lite cached_instantiated_type_ids Mutex poisoned")
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        self.cached_mapped_instance_plan
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take();
         self.cached_texture_index
             .lock()
-            .expect("ifc-lite cached_texture_index Mutex poisoned")
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take();
         self.cached_indexed_colour_maps
             .lock()
-            .expect("ifc-lite cached_indexed_colour_maps Mutex poisoned")
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take();
         self.cached_plane_angle_to_radians
             .lock()
-            .expect("ifc-lite cached_plane_angle_to_radians Mutex poisoned")
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take();
         // The geometry-style maps belong to the previous load's wire styles —
         // drop them on content swap so a reused IfcAPI can't reuse a stale map
         // (the (len,first,last) signature would otherwise collide rarely).
         self.cached_geometry_styles
             .lock()
-            .expect("ifc-lite cached_geometry_styles Mutex poisoned")
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take();
         // The content-dedup cache holds the previous model's item meshes — drop it
         // on content swap so a reused IfcAPI starts the new file with an empty
         // cache (bounds memory across loads).
         self.cached_item_dedup
             .lock()
-            .expect("ifc-lite cached_item_dedup Mutex poisoned")
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take();
+        // The mapped-item source cache holds the previous model's source meshes —
+        // drop it on content swap so a reused IfcAPI starts the new file empty
+        // (bounds memory across loads; #1623).
+        self.cached_mapped_item
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        // A new entity index means a new file — the pipeline diagnostics
+        // describe the previous load, so start fresh.
+        self.reset_pipeline_diagnostics();
+    }
+
+    /// Install the pre-computed set of `IfcRepresentationMap` ids referenced by
+    /// an `IfcMappedItem` (issue #957), so the worker's first type-product batch
+    /// SKIPS the per-worker [`Self::get_or_build_referenced_repmaps`] full-file
+    /// walk. The streaming pre-pass built the same set once from the
+    /// `IfcMappedItem` spans it already scanned (see
+    /// `styling::build_referenced_representation_maps_from_spans`) and ships the
+    /// id list here — bit-identical to what each worker would compute, since a
+    /// set's membership is order-invariant and consumers only call `.contains`.
+    ///
+    /// Installed AFTER `setEntityIndex` (which clears this cache on content
+    /// swap), so the injected value survives. When this setter is never called
+    /// (native path, non-streaming callers), the lazy build path is unchanged.
+    #[wasm_bindgen(js_name = setReferencedRepmaps)]
+    pub fn set_referenced_repmaps(&self, ids: &[u32]) {
+        let set: rustc_hash::FxHashSet<u32> = ids.iter().copied().collect();
+        let mut slot = self
+            .cached_referenced_repmaps
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *slot = Some(std::sync::Arc::new(set));
+    }
+
+    /// Install the pre-computed set of type ids that an `IfcRelDefinesByType`
+    /// instantiates (#957 follow-up), so the worker's first type-product batch
+    /// skips the per-worker [`Self::get_or_build_instantiated_type_ids`]
+    /// full-file walk. Same injection contract as [`Self::set_referenced_repmaps`].
+    #[wasm_bindgen(js_name = setInstantiatedTypeIds)]
+    pub fn set_instantiated_type_ids(&self, ids: &[u32]) {
+        let set: rustc_hash::FxHashSet<u32> = ids.iter().copied().collect();
+        let mut slot = self
+            .cached_instantiated_type_ids
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *slot = Some(std::sync::Arc::new(set));
+    }
+
+    /// Install the pre-computed #1623 Phase 3 don't-bake plan: the flat list of
+    /// `IfcRepresentationMap` ids that an `IfcMappedItem` instantiates >= 2 times.
+    /// The streaming pre-pass tallies it in the SAME scan that builds the referenced-
+    /// repmap set (`styling::build_mapped_instance_plan_from_spans`) and ships the id
+    /// list here. The batch path arms its router with it (batch-local template mode),
+    /// so a repeated single-solid mapped source materializes ONCE per batch and the
+    /// rest ride as instances in the IFNS shard.
+    ///
+    /// Same injection contract as [`Self::set_referenced_repmaps`]: installed after
+    /// `setEntityIndex` (which clears it on content swap), and a no-op absence leaves
+    /// the batch path materializing every occurrence (byte-identical). Each id is
+    /// stored as `(2, id)` — the batch-local router only needs the eligibility set
+    /// (count >= 2); the min-id template slot is unused in batch-local mode.
+    #[wasm_bindgen(js_name = setMappedInstancePlan)]
+    pub fn set_mapped_instance_plan(&self, source_ids: &[u32]) {
+        if source_ids.is_empty() {
+            // Nothing repeated ⇒ leave the plan unset so the router never arms.
+            return;
+        }
+        let plan: rustc_hash::FxHashMap<u32, (u32, u32)> =
+            source_ids.iter().map(|&id| (id, (2u32, id))).collect();
+        let mut slot = self
+            .cached_mapped_instance_plan
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *slot = Some(std::sync::Arc::new(plan));
+    }
+
+    /// Install the pre-computed [`ifc_lite_geometry::MaterialLayerIndex`] (#563)
+    /// from its flat SoA encoding, so the worker's first batch skips the
+    /// per-worker [`Self::get_or_build_material_layer_index`] full-file decode
+    /// scan (the dominant first-batch cost on layered architectural models,
+    /// which run this on the DEFAULT view). The streaming pre-pass built the
+    /// index once from the `IfcRelAssociatesMaterial` spans it already scanned
+    /// (`MaterialLayerIndex::from_spans`) and flat-encoded it here; the flat
+    /// encoding round-trips bit-for-bit (proven in `material_layer_index` tests),
+    /// so the injected index equals each worker's `from_content` result.
+    ///
+    /// Same injection contract as [`Self::set_referenced_repmaps`]: installed
+    /// after `setEntityIndex`, and a no-op absence leaves the lazy build intact.
+    #[allow(clippy::too_many_arguments)]
+    #[wasm_bindgen(js_name = setMaterialLayerIndex)]
+    pub fn set_material_layer_index(
+        &self,
+        element_ids: &[u32],
+        axis: &[u32],
+        layer_counts: &[u32],
+        direction_sense: &[f64],
+        offset: &[f64],
+        layer_material_ids: &[u32],
+        layer_thicknesses: &[f64],
+    ) {
+        let index = ifc_lite_geometry::MaterialLayerIndex::from_flat(
+            element_ids,
+            axis,
+            layer_counts,
+            direction_sense,
+            offset,
+            layer_material_ids,
+            layer_thicknesses,
+        );
+        let mut slot = self
+            .cached_material_layer_index
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *slot = Some(std::sync::Arc::new(index));
     }
 
     /// Get WASM memory for zero-copy access
@@ -429,19 +628,20 @@ impl IfcAPI {
         let mut parts_slot = self
             .cached_parts_to_skip
             .lock()
-            .expect("ifc-lite cached_parts_to_skip Mutex poisoned");
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         parts_slot.take();
     }
 
     /// Enable or disable the PARAMETRIC rectangular-opening fast path (the
     /// placement-frame, ground-truth-exact analytic cut) for `processGeometryBatch`.
     ///
-    /// DEFAULT OFF. This is the wasm-side toggle that lets native and wasm flip the
-    /// flag in LOCKSTEP — the byte-identical native==wasm contract requires both
-    /// targets take the same path, and wasm has no env to read `IFC_LITE_RECT_PARAM`.
+    /// DEFAULT ON (corpus-validated; native defaults ON too, and wasm has no env to
+    /// read `IFC_LITE_RECT_PARAM`, so both targets default in LOCKSTEP -- the
+    /// byte-identical native==wasm contract requires both take the same path). This
+    /// toggle is the wasm-side escape hatch mirroring `IFC_LITE_RECT_PARAM=0`.
     /// The path subtracts rectangular openings as exact parametric boxes in the host's
     /// own placement frame (rotated walls included), deferring any non-clean case to
-    /// the exact kernel. Pass `true` before `processGeometryBatch`.
+    /// the exact kernel. Pass `false` before `processGeometryBatch` to opt out.
     #[wasm_bindgen(js_name = setRectParamFastPath)]
     pub fn set_rect_param_fast_path(&self, enabled: bool) {
         ifc_lite_geometry::rect_fast::param_set_enabled_override(Some(enabled));
@@ -497,6 +697,17 @@ impl IfcAPI {
         };
         self.tessellation_quality
             .store(discriminant, std::sync::atomic::Ordering::Relaxed);
+        // The mapped-item source cache is keyed by RepresentationMap id, not by
+        // quality, and bakes in the tessellation density of its curved sub-items.
+        // A quality change would otherwise serve stale-density source meshes across
+        // subsequent batches, so drop it here — mirroring the router's own
+        // `set_tessellation_quality`, which clears its per-router `mapped_item_cache`
+        // for the same reason. (The content-dedup cache folds quality INTO its key,
+        // so it needs no such clear.)
+        self.cached_mapped_item
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
         Ok(())
     }
 
@@ -512,6 +723,16 @@ impl IfcAPI {
     pub fn set_skip_small_cuts(&self, on: bool) {
         self.skip_small_cuts
             .store(on, std::sync::atomic::Ordering::Relaxed);
+        // `skip_small_cuts` swaps the boolean/CSG processors, so a mapped source
+        // containing IfcBooleanResult/IfcCsgSolid meshes differently under it. The
+        // source cache is keyed by RepresentationMap id, not by this flag, so a
+        // toggle would otherwise serve stale-fidelity source meshes (e.g. a worker
+        // reused by a full-fidelity export after a `fast` load). Drop it here,
+        // mirroring `set_tessellation_quality`.
+        self.cached_mapped_item
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
     }
 }
 
@@ -528,12 +749,10 @@ impl IfcAPI {
     /// [`Self::set_tessellation_quality`].
     pub(crate) fn tessellation_quality(&self) -> ifc_lite_geometry::TessellationQuality {
         use ifc_lite_geometry::TessellationQuality;
-        match self
-            .tessellation_quality
-            .load(std::sync::atomic::Ordering::Relaxed)
-        {
-            idx => TessellationQuality::from_index(idx),
-        }
+        TessellationQuality::from_index(
+            self.tessellation_quality
+                .load(std::sync::atomic::Ordering::Relaxed),
+        )
     }
 
     /// Active small-cut skip flag, applied to the per-batch `GeometryRouter` at
@@ -558,11 +777,10 @@ impl IfcAPI {
     }
 
     /// Get or lazily build the cached parts-to-skip set used by
-    /// `processGeometryBatch` when the
-    /// merge-layers toggle is on. Two full-file scans (`MaterialLayerIndex`
-    /// + `propagate_voids_to_parts`) are amortised across every batch on
-    /// the same content; first-call cost ~one IFC re-scan, subsequent
-    /// calls are an `Arc::clone`.
+    /// `processGeometryBatch` when the merge-layers toggle is on. Two
+    /// full-file scans (`MaterialLayerIndex` plus `propagate_voids_to_parts`)
+    /// are amortised across every batch on the same content; first-call cost
+    /// ~one IFC re-scan, subsequent calls are an `Arc::clone`.
     ///
     /// Returns an empty set when no eligible parts exist — callers can
     /// still cheaply test `parts.contains(&id)` without a branch.
@@ -575,7 +793,7 @@ impl IfcAPI {
             let slot = self
                 .cached_parts_to_skip
                 .lock()
-                .expect("ifc-lite cached_parts_to_skip Mutex poisoned");
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             if let Some(existing) = slot.as_ref() {
                 return std::sync::Arc::clone(existing);
             }
@@ -590,7 +808,7 @@ impl IfcAPI {
         let mut slot = self
             .cached_parts_to_skip
             .lock()
-            .expect("ifc-lite cached_parts_to_skip Mutex poisoned");
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         *slot = Some(std::sync::Arc::clone(&arc));
         arc
     }
@@ -610,7 +828,7 @@ impl IfcAPI {
             let slot = self
                 .cached_material_layer_index
                 .lock()
-                .expect("ifc-lite cached_material_layer_index Mutex poisoned");
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             if let Some(existing) = slot.as_ref() {
                 return std::sync::Arc::clone(existing);
             }
@@ -623,8 +841,10 @@ impl IfcAPI {
         // pay the full build; non-layered files behave identically (an absent
         // entry and a `NotSliceable` entry both mean "don't slice").
         const LAYER_SET_KW: &[u8] = b"IFCMATERIALLAYERSET";
-        let has_layer_set = content.len() >= LAYER_SET_KW.len()
-            && content.windows(LAYER_SET_KW.len()).any(|w| w == LAYER_SET_KW);
+        // memmem (SIMD O(n)) not the naive O(n*k) `windows().any()`: this runs on
+        // the whole file on each worker's first batch call, so on a 200-340MB model
+        // the naive scan cost ~100-400ms per worker. Byte-identical boolean.
+        let has_layer_set = memchr::memmem::find(content, LAYER_SET_KW).is_some();
         let index = if has_layer_set {
             ifc_lite_geometry::MaterialLayerIndex::from_content(content, decoder)
         } else {
@@ -650,9 +870,22 @@ impl IfcAPI {
         let mut slot = self
             .cached_material_layer_index
             .lock()
-            .expect("ifc-lite cached_material_layer_index Mutex poisoned");
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         *slot = Some(std::sync::Arc::clone(&arc));
         arc
+    }
+
+    /// The installed #1623 Phase 3 don't-bake plan (see [`Self::set_mapped_instance_plan`]),
+    /// or `None` when the pre-pass shipped no repeated mapped sources. UNLIKE the
+    /// referenced-repmap set there is NO lazy full-file fallback: the plan is a pure
+    /// optimization, so absence just means "materialize every occurrence" (the
+    /// byte-identical default), never a correctness gap.
+    pub(crate) fn mapped_instance_plan(&self) -> Option<ifc_lite_geometry::MappedInstancePlan> {
+        self.cached_mapped_instance_plan
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .map(std::sync::Arc::clone)
     }
 
     /// Get or lazily build the set of `IfcRepresentationMap` ids instantiated by
@@ -668,7 +901,7 @@ impl IfcAPI {
             let slot = self
                 .cached_referenced_repmaps
                 .lock()
-                .expect("ifc-lite cached_referenced_repmaps Mutex poisoned");
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             if let Some(existing) = slot.as_ref() {
                 return std::sync::Arc::clone(existing);
             }
@@ -680,7 +913,7 @@ impl IfcAPI {
         let mut slot = self
             .cached_referenced_repmaps
             .lock()
-            .expect("ifc-lite cached_referenced_repmaps Mutex poisoned");
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         *slot = Some(std::sync::Arc::clone(&arc));
         arc
     }
@@ -698,7 +931,7 @@ impl IfcAPI {
             let slot = self
                 .cached_instantiated_type_ids
                 .lock()
-                .expect("ifc-lite cached_instantiated_type_ids Mutex poisoned");
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             if let Some(existing) = slot.as_ref() {
                 return std::sync::Arc::clone(existing);
             }
@@ -710,7 +943,7 @@ impl IfcAPI {
         let mut slot = self
             .cached_instantiated_type_ids
             .lock()
-            .expect("ifc-lite cached_instantiated_type_ids Mutex poisoned");
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         *slot = Some(std::sync::Arc::clone(&arc));
         arc
     }
@@ -727,7 +960,7 @@ impl IfcAPI {
             let slot = self
                 .cached_texture_index
                 .lock()
-                .expect("ifc-lite cached_texture_index Mutex poisoned");
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             if let Some(existing) = slot.as_ref() {
                 return std::sync::Arc::clone(existing);
             }
@@ -739,7 +972,7 @@ impl IfcAPI {
         let mut slot = self
             .cached_texture_index
             .lock()
-            .expect("ifc-lite cached_texture_index Mutex poisoned");
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         *slot = Some(std::sync::Arc::clone(&arc));
         arc
     }
@@ -763,7 +996,7 @@ impl IfcAPI {
             let slot = self
                 .cached_indexed_colour_maps
                 .lock()
-                .expect("ifc-lite cached_indexed_colour_maps Mutex poisoned");
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             if let Some(existing) = slot.as_ref() {
                 return std::sync::Arc::clone(existing);
             }
@@ -775,15 +1008,12 @@ impl IfcAPI {
         // IfcIndexedColourMap pay only a single substring search (SIMD memmem),
         // not a full entity scan + decode, on the first batch of every worker.
         // The empty result is still cached so later batches skip even that.
-        if !content
-            .windows(b"IFCINDEXEDCOLOURMAP".len())
-            .any(|window| window == b"IFCINDEXEDCOLOURMAP")
-        {
+        if memchr::memmem::find(content, b"IFCINDEXEDCOLOURMAP").is_none() {
             let arc = std::sync::Arc::new(map);
             let mut slot = self
                 .cached_indexed_colour_maps
                 .lock()
-                .expect("ifc-lite cached_indexed_colour_maps Mutex poisoned");
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             *slot = Some(std::sync::Arc::clone(&arc));
             return arc;
         }
@@ -804,7 +1034,7 @@ impl IfcAPI {
         let mut slot = self
             .cached_indexed_colour_maps
             .lock()
-            .expect("ifc-lite cached_indexed_colour_maps Mutex poisoned");
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         *slot = Some(std::sync::Arc::clone(&arc));
         arc
     }
@@ -824,7 +1054,7 @@ impl IfcAPI {
             let slot = self
                 .cached_plane_angle_to_radians
                 .lock()
-                .expect("ifc-lite cached_plane_angle_to_radians Mutex poisoned");
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             if let Some(existing) = *slot {
                 return existing;
             }
@@ -835,7 +1065,7 @@ impl IfcAPI {
         let mut slot = self
             .cached_plane_angle_to_radians
             .lock()
-            .expect("ifc-lite cached_plane_angle_to_radians Mutex poisoned");
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         *slot = Some(scale);
         scale
     }
@@ -855,22 +1085,4 @@ fn set_js_prop(obj: &JsValue, key: &str, value: &JsValue) -> bool {
     js_sys::Reflect::set(obj, &JsValue::from_str(key), value).unwrap_or(false)
 }
 
-/// Safely set a property on a JavaScript object using JsValue key.
-/// Returns true if successful, false otherwise.
-#[inline]
-fn set_js_prop_jv(obj: &JsValue, key: &JsValue, value: &JsValue) -> bool {
-    js_sys::Reflect::set(obj, key, value).unwrap_or(false)
-}
-
-/// Convert entity counts map to JavaScript object
-fn counts_to_js(counts: &rustc_hash::FxHashMap<String, usize>) -> JsValue {
-    let obj = js_sys::Object::new();
-
-    for (type_name, count) in counts {
-        let key = JsValue::from_str(type_name.as_str());
-        let value = JsValue::from_f64(*count as f64);
-        set_js_prop_jv(&obj, &key, &value);
-    }
-
-    obj.into()
-}
+#[cfg(test)] mod mod_tests;

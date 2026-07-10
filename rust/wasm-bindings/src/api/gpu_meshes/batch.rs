@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use super::void_index::reconstruct_void_index;
 use crate::api::IfcAPI;
 use crate::zero_copy::{MeshCollection, MeshDataJs};
 use wasm_bindgen::prelude::*;
@@ -15,6 +16,13 @@ struct ElementMeshOutput {
     meshes: Vec<ifc_lite_processing::MeshData>,
     geometry_hash: Option<u64>,
 }
+
+/// Session-constant style lookups shared across batches: colour map plus
+/// per-style `GeometryStyleInfo` index (see the #1097 cache note below).
+type StyleMaps = std::sync::Arc<(
+    rustc_hash::FxHashMap<u32, [f32; 4]>,
+    rustc_hash::FxHashMap<u32, ifc_lite_processing::style::GeometryStyleInfo>,
+)>;
 
 impl IfcAPI {
     /// Shared core for both batch outputs: run the canonical per-element
@@ -48,7 +56,19 @@ impl IfcAPI {
         material_element_ids: Option<Vec<u32>>,
         material_color_counts: Option<Vec<u32>>,
         material_colors_rgba: Option<Vec<u8>>,
-    ) -> (Vec<ElementMeshOutput>, ifc_lite_geometry::GeometryDiagnostics) {
+        // #1623 Phase 3: when `true` AND a mapped-instance plan is installed AND the
+        // model is unshifted AND geometry hashing is off, arm the batch router in
+        // BATCH-LOCAL don't-bake mode so a repeated single-solid mapped source
+        // materializes once per batch and the rest ride the IFNS shard. Only the
+        // partitioned entry point (which holds a flat MeshCollection for the
+        // sub-threshold recovery) passes `true`; the flat / instanced-only entry
+        // points pass `false`, keeping their output byte-identical.
+        arm_instancing: bool,
+    ) -> (
+        Vec<ElementMeshOutput>,
+        ifc_lite_geometry::GeometryDiagnostics,
+        Vec<super::instancing::ShardOccurrence>,
+    ) {
         use crate::api::styling::resolve_element_color;
         use ifc_lite_core::EntityDecoder;
         use ifc_lite_geometry::GeometryRouter;
@@ -57,6 +77,11 @@ impl IfcAPI {
             GeometryHashConfig, MeshProductionContext, MeshProductionOptions, TypeGeometryMode,
         };
         use ifc_lite_processing::style::GeometryStyleInfo;
+
+        // Batch wall-clock for the PipelineDiagnostics channel. std::time::Instant
+        // traps on wasm32, so use the JS clock (two Date.now() reads per batch —
+        // negligible, always on).
+        let batch_started_ms = js_sys::Date::now();
 
         let content = data;
 
@@ -89,7 +114,7 @@ impl IfcAPI {
             let mut slot = self
                 .cached_entity_index
                 .lock()
-                .expect("ifc-lite cached_entity_index Mutex poisoned");
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             if let Some(existing) = slot.as_ref() {
                 std::sync::Arc::clone(existing)
             } else {
@@ -125,17 +150,57 @@ impl IfcAPI {
         // Arm content-dedup against the per-worker shared cache so byte-identical
         // geometry (e.g. Tekla parts the exporter failed to share via
         // IfcMappedItem) is meshed ONCE across batches, not once per batch.
-        // content-dedup default OFF: its structural hash costs more than the
-        // meshing it skips on real models (see GeometryRouter::content_dedup_enabled).
-        if GeometryRouter::content_dedup_enabled() {
+        {
             let mut slot = self
                 .cached_item_dedup
                 .lock()
-                .expect("ifc-lite cached_item_dedup Mutex poisoned");
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             let cache = slot
                 .get_or_insert_with(GeometryRouter::new_dedup_cache)
                 .clone();
             router.enable_content_dedup_shared(cache);
+        }
+
+        // Arm the shared IfcMappedItem source cache (#1623) against the per-worker
+        // cache so a RepresentationMap source shared across owning elements is
+        // meshed ONCE across batches, not once per batch. Held on the IfcApi like
+        // the item-dedup cache above (one per worker session). Keep a clone for the
+        // Phase 3 don't-bake finalize below (sub-threshold occurrences recover flat
+        // from this registry).
+        let mapped_item_cache = {
+            let mut slot = self
+                .cached_mapped_item
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let cache = slot
+                .get_or_insert_with(GeometryRouter::new_mapped_item_cache)
+                .clone();
+            router.enable_shared_mapped_item_cache(cache.clone());
+            cache
+        };
+
+        // #1623 Phase 3 "don't-bake": arm the batch router in BATCH-LOCAL mode when
+        // the partitioned path asked for it AND a plan is installed. Gated on
+        // `!needs_shift` (unshifted models only): the browser shard math is
+        // coordinate-space-agnostic (collate reduces to the post-RTC frame and the
+        // renderer applies any site rotation uniformly), but georef/site-local
+        // byte-identity needs a headed-browser check, so — mirroring the native
+        // `coord_space != site_local` guard — georef routes to flat here for now
+        // (loosen this predicate once the coord space is verified in-browser). Also
+        // gated on hashing being OFF: the #924 per-element geometry-diff fingerprint
+        // is computed during the per-occurrence materialize, which the don't-bake
+        // path skips — so when the diff feature needs those hashes, every occurrence
+        // materializes exactly as before. `None` ⇒ router unarmed ⇒ every occurrence
+        // materializes (byte-identical to the pre-Phase-3 partitioned path).
+        let instancing_armed = arm_instancing && !needs_shift && hash_tolerance.is_none();
+        let instance_plan = if instancing_armed {
+            self.mapped_instance_plan()
+        } else {
+            None
+        };
+        if let Some(plan) = instance_plan.as_ref() {
+            router.enable_output_instancing(plan.clone());
+            router.set_instancing_batch_local(true);
         }
 
         // Attach the per-content material-layer index so single-solid walls and
@@ -160,32 +225,23 @@ impl IfcAPI {
             router.set_rtc_offset((rtc_x, rtc_y, rtc_z));
         }
 
-        // Reconstruct void_index from flat arrays
-        let mut void_index: rustc_hash::FxHashMap<u32, Vec<u32>> = rustc_hash::FxHashMap::default();
-        let mut value_offset = 0usize;
-        for i in 0..void_keys.len() {
-            let host_id = void_keys[i];
-            let count = void_counts[i] as usize;
-            let openings = void_values[value_offset..value_offset + count].to_vec();
-            void_index.insert(host_id, openings);
-            value_offset += count;
-        }
+        // Reconstruct void_index from the flat wire arrays. Length-guarded so
+        // upstream drift drops the index instead of trapping the whole wasm
+        // instance under panic=abort (see reconstruct_void_index).
+        let void_index = reconstruct_void_index(void_keys, void_counts, void_values);
 
         // #1097: the wire styles are session-constant, so build the colour map
         // AND the GeometryStyleInfo index the producer consumes ONCE per worker
         // and reuse across batches (was ~18 M HashMap inserts each on a 140 K-
         // styled model). Keyed by a cheap (len, first_id, last_id) signature.
-        let style_maps: std::sync::Arc<(
-            rustc_hash::FxHashMap<u32, [f32; 4]>,
-            rustc_hash::FxHashMap<u32, GeometryStyleInfo>,
-        )> = {
+        let style_maps: StyleMaps = {
             let sig_len = style_ids.len();
             let sig_first = style_ids.first().copied().unwrap_or(0);
             let sig_last = style_ids.last().copied().unwrap_or(0);
             let mut slot = self
                 .cached_geometry_styles
                 .lock()
-                .expect("ifc-lite cached_geometry_styles Mutex poisoned");
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             match slot.as_ref() {
                 Some((l, f, la, arc)) if *l == sig_len && *f == sig_first && *la == sig_last => {
                     std::sync::Arc::clone(arc)
@@ -193,11 +249,11 @@ impl IfcAPI {
                 _ => {
                     let mut colors: rustc_hash::FxHashMap<u32, [f32; 4]> =
                         rustc_hash::FxHashMap::with_capacity_and_hasher(sig_len, Default::default());
-                    for i in 0..style_ids.len() {
+                    for (i, &style_id) in style_ids.iter().enumerate() {
                         let base = i * 4;
                         if base + 3 < style_colors.len() {
                             colors.insert(
-                                style_ids[i],
+                                style_id,
                                 [
                                     style_colors[base] as f32 / 255.0,
                                     style_colors[base + 1] as f32 / 255.0,
@@ -292,6 +348,16 @@ impl IfcAPI {
             Vec<ifc_lite_geometry::BoolFailure>,
         > = rustc_hash::FxHashMap::default();
 
+        // PipelineDiagnostics tallies for this batch (elements actually run
+        // through the producer, degenerate-backstop drops).
+        let mut batch_elements: u64 = 0;
+        let mut batch_backstop: u64 = 0;
+
+        // #1623 Phase 3: don't-bake occurrences collected across the batch's
+        // elements (empty when the router is unarmed). Resolved after the loop into
+        // shard instances (kept) + recovered flat meshes (sub-threshold).
+        let mut all_occurrences: Vec<ifc_lite_processing::RawInstanceOccurrence> = Vec::new();
+
         // Process only the entities specified in jobs_flat — every job runs
         // THE canonical per-element producer (`ifc_lite_processing::element`),
         // the same code the native pipeline runs.
@@ -375,6 +441,11 @@ impl IfcAPI {
             for (product_id, fails) in produced.csg_failures {
                 batch_csg_failures.entry(product_id).or_default().extend(fails);
             }
+            batch_elements += 1;
+            batch_backstop += produced.degenerate_triangles_dropped;
+            if !produced.instance_occurrences.is_empty() {
+                all_occurrences.extend(produced.instance_occurrences);
+            }
             outputs.push(ElementMeshOutput {
                 id,
                 meshes: produced.meshes,
@@ -420,7 +491,89 @@ impl IfcAPI {
             }
         }
 
-        (outputs, csg_diag)
+        // #1623 Phase 3: resolve the batch's don't-bake occurrences into shard
+        // instances (kept) + recovered flat meshes (sub-threshold / ineligible
+        // template). Build the per-rep template facts from the retained instanceable
+        // meshes (batch-local mode materialized one template per source), then split.
+        // Empty (unarmed / no occurrences) ⇒ nothing changes, byte-identical output.
+        let shard_occurrences = if all_occurrences.is_empty() {
+            Vec::new()
+        } else {
+            let mut template_by_rep: rustc_hash::FxHashMap<u128, super::instancing::TemplateInfo> =
+                rustc_hash::FxHashMap::default();
+            for out in &outputs {
+                for m in &out.meshes {
+                    if m.positions.is_empty() {
+                        continue;
+                    }
+                    if let Some(im) = m.instance.as_ref() {
+                        if im.instanceable {
+                            // Shard-eligible = the partition's candidate gate: opaque,
+                            // untextured, ordinary-occurrence (class 0) geometry.
+                            let eligible = m.color[3] >= INSTANCED_ALPHA_CUTOFF
+                                && m.texture.is_none()
+                                && m.geometry_class == 0;
+                            template_by_rep
+                                .entry(im.rep_identity)
+                                .or_insert(super::instancing::TemplateInfo { eligible });
+                        }
+                    }
+                }
+            }
+            let rtc = if needs_shift {
+                [rtc_x, rtc_y, rtc_z]
+            } else {
+                [0.0, 0.0, 0.0]
+            };
+            let mut recovered_flats: Vec<ifc_lite_processing::MeshData> = Vec::new();
+            let shard = super::instancing::resolve_batch_occurrences(
+                std::mem::take(&mut all_occurrences),
+                &template_by_rep,
+                &mapped_item_cache,
+                rtc,
+                INSTANCE_MIN_OCCURRENCES as usize,
+                &mut recovered_flats,
+            );
+            // Recovered occurrences ride as their own single-mesh outputs; the
+            // partition routes them to the flat MeshCollection (instance meta is None
+            // ⇒ never instanced), byte-identical to the flat baseline for that element.
+            for m in recovered_flats {
+                let id = m.express_id;
+                outputs.push(ElementMeshOutput {
+                    id,
+                    meshes: vec![m],
+                    geometry_hash: None,
+                });
+            }
+            shard
+        };
+
+        // Fold this batch into the per-worker PipelineDiagnostics accumulator
+        // (read by JS via getPipelineDiagnostics). Counts + two Date.now()
+        // reads — cheap enough to stay on the normal load path unconditionally.
+        let batch_meshes: u64 = outputs.iter().map(|o| o.meshes.len() as u64).sum();
+        let batch_triangles: u64 = outputs
+            .iter()
+            .flat_map(|o| o.meshes.iter())
+            .map(|m| (m.indices.len() / 3) as u64)
+            .sum();
+        let batch_ms = (js_sys::Date::now() - batch_started_ms).max(0.0) as u64;
+        // The batch reuses ONE decoder across every element (the point cache is
+        // already hoisted here), so its cumulative point-cache stats ARE this
+        // batch's faceted-brep memoization tally.
+        let (point_cache_hits, point_cache_misses) = decoder.point_cache_stats();
+        self.record_pipeline_batch(
+            batch_elements,
+            batch_meshes,
+            batch_triangles,
+            batch_backstop,
+            point_cache_hits,
+            point_cache_misses,
+            batch_ms,
+            &csg_diag,
+        );
+
+        (outputs, csg_diag, shard_occurrences)
     }
 }
 
@@ -453,10 +606,12 @@ impl IfcAPI {
         material_colors_rgba: Option<Vec<u8>>,
     ) -> MeshCollection {
         let num_jobs = jobs_flat.len() / 3;
-        let (outputs, csg_diag) = self.produce_batch(
+        // arm_instancing = false: the flat path has no IFNS shard to hold don't-bake
+        // occurrences, so every occurrence must materialize (byte-identical output).
+        let (outputs, csg_diag, _shard_occurrences) = self.produce_batch(
             data, jobs_flat, unit_scale, rtc_x, rtc_y, rtc_z, needs_shift, void_keys,
             void_counts, void_values, style_ids, style_colors, plane_angle_to_radians,
-            material_element_ids, material_color_counts, material_colors_rgba,
+            material_element_ids, material_color_counts, material_colors_rgba, false,
         );
         let mut mesh_collection = MeshCollection::with_capacity(num_jobs);
         if needs_shift {
@@ -508,10 +663,14 @@ impl IfcAPI {
         // NB: this instanced-only export returns raw shard bytes with no
         // MeshCollection carrier, so CSG diagnostics are intentionally dropped. It
         // is not the worker's default path (partitioned/flat carry the counts).
-        let (outputs, _) = self.produce_batch(
+        // arm_instancing = false: with no flat carrier there is nowhere to route the
+        // don't-bake sub-threshold recovery, so every occurrence materializes here
+        // and this export stays byte-identical (it collates the baked meshes as
+        // before). Only `process_geometry_batch_partitioned` arms the don't-bake path.
+        let (outputs, _, _shard_occurrences) = self.produce_batch(
             data, jobs_flat, unit_scale, rtc_x, rtc_y, rtc_z, needs_shift, void_keys,
             void_counts, void_values, style_ids, style_colors, plane_angle_to_radians,
-            material_element_ids, material_color_counts, material_colors_rgba,
+            material_element_ids, material_color_counts, material_colors_rgba, false,
         );
         let meshes: Vec<ifc_lite_processing::MeshData> =
             outputs.into_iter().flat_map(|o| o.meshes).collect();
@@ -583,10 +742,16 @@ impl IfcAPI {
         material_colors_rgba: Option<Vec<u8>>,
     ) -> PartitionedBatch {
         let num_jobs = jobs_flat.len() / 3;
-        let (outputs, csg_diag) = self.produce_batch(
+        // arm_instancing = true (#1623 Phase 3): the partitioned path holds a flat
+        // MeshCollection, so it CAN route the don't-bake sub-threshold recovery to
+        // flat — the only entry point that arms it. `shard_occurrences` are the kept
+        // don't-bake occurrences (pose-only, no baked vertices); their template
+        // materialized once in `outputs`, and any recovered flats are already
+        // appended to `outputs`.
+        let (outputs, csg_diag, shard_occurrences) = self.produce_batch(
             data, jobs_flat, unit_scale, rtc_x, rtc_y, rtc_z, needs_shift, void_keys,
             void_counts, void_values, style_ids, style_colors, plane_angle_to_radians,
-            material_element_ids, material_color_counts, material_colors_rgba,
+            material_element_ids, material_color_counts, material_colors_rgba, true,
         );
         let mut mesh_collection = MeshCollection::with_capacity(num_jobs);
         if needs_shift {
@@ -634,6 +799,15 @@ impl IfcAPI {
                 mesh_collection.push_geometry_hash(out.id, hash);
             }
         }
+        // #1623 Phase 3: fold the kept don't-bake occurrence counts into the per-rep
+        // tally so a batch-local template (materialized ONCE, so count 1 among the
+        // candidates) plus its N shard occurrences clears INSTANCE_MIN_OCCURRENCES
+        // and routes to the instanced shard (the finalize already applied that gate,
+        // so this only confirms it). The template's geometry rides the shard once;
+        // the occurrences ride as pose-only instances against it.
+        for occ in &shard_occurrences {
+            *counts.entry(occ.rep_identity).or_insert(0) += 1;
+        }
         let mut instanced: Vec<ifc_lite_processing::MeshData> = Vec::new();
         for mesh_data in candidates {
             let instance_it = mesh_data.instance.as_ref().is_some_and(|im| {
@@ -647,8 +821,27 @@ impl IfcAPI {
                 mesh_collection.add(MeshDataJs::from_mesh_data(mesh_data));
             }
         }
-        let instanced_occurrences = instanced.len();
-        let refs: Vec<ifc_lite_geometry::InstanceMeshRef> = instanced
+        // Each materialized instanced mesh is one shard instance; each kept don't-bake
+        // occurrence adds one more. Report the sum so the viewer's mesh total reflects
+        // ALL rendered geometry (flat + instanced), not just the flat MeshCollection.
+        let instanced_occurrences = instanced.len() + shard_occurrences.len();
+        // #1623 Phase 3: back the kept don't-bake occurrences with InstanceMeta storage
+        // that outlives `refs` — `collate_refs` reads each placeholder's PRE-RTC world
+        // transform (local/canonical identity) to derive its `rel_k` against the
+        // batch-local template, exactly as a materialized occurrence would. Building
+        // these EMPTY-geometry refs is the whole Phase 3 win: the occurrence vertices
+        // were never materialized.
+        let occ_metas: Vec<ifc_lite_geometry::InstanceMeta> = shard_occurrences
+            .iter()
+            .map(|o| ifc_lite_geometry::InstanceMeta {
+                transform: o.world_transform,
+                local_transform: None,
+                canonical_transform: None,
+                rep_identity: o.rep_identity,
+                instanceable: true,
+            })
+            .collect();
+        let mut refs: Vec<ifc_lite_geometry::InstanceMeshRef> = instanced
             .iter()
             .map(|m| ifc_lite_geometry::InstanceMeshRef {
                 positions: &m.positions,
@@ -660,6 +853,17 @@ impl IfcAPI {
                 color: m.color,
             })
             .collect();
+        for (o, meta) in shard_occurrences.iter().zip(occ_metas.iter()) {
+            refs.push(ifc_lite_geometry::InstanceMeshRef {
+                positions: &[],
+                normals: &[],
+                indices: &[],
+                origin: [0.0, 0.0, 0.0],
+                instance_meta: Some(meta),
+                entity_id: o.entity_id,
+                color: o.color,
+            });
+        }
         // min_group == the routing threshold so collate_refs never re-flattens a group
         // that already passed the count gate; only its own try_inverse / shape-mismatch
         // safety net can still drop a (rare, degenerate) group to a singleton template.

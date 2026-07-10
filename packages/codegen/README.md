@@ -14,19 +14,25 @@ npm install --save-dev @ifc-lite/codegen
 
 ```bash
 # IFC4 (776 entities)
-npx ifc-lite-codegen ./schemas/IFC4.exp --out ./src/generated
+node dist/cli.js schemas/IFC4_ADD2_TC1.exp --output ./generated/ifc4
 
 # IFC4X3 (876 entities, includes infrastructure: roads, bridges, alignments)
-npx ifc-lite-codegen ./schemas/IFC4X3.exp --out ./src/generated
+node dist/cli.js schemas/IFC4X3.exp --output ./generated/ifc4x3
 ```
 
-Generated files (one per output directory):
+Pass `--rust` to also emit Rust type tables (consumed by the ifc-lite Rust core).
 
-```
-src/generated/
+Generated files (one per output directory, e.g. `./generated/ifc4`):
+
+```text
+generated/ifc4/
 ├── entities.ts          ← TypeScript interfaces for every entity
+├── types.ts             ← defined-type aliases
+├── enums.ts             ← enum definitions
+├── selects.ts           ← SELECT union types
 ├── schema-registry.ts   ← runtime metadata (parent, attributes, ...)
-├── types.ts             ← enum unions and SELECT types
+├── type-ids.ts          ← numeric type-id lookup tables
+├── serializers.ts       ← STEP serializer bound to the schema registry
 └── index.ts             ← barrel export
 ```
 
@@ -34,19 +40,16 @@ src/generated/
 
 ```typescript
 import { parseExpressSchema, generateTypeScript } from '@ifc-lite/codegen';
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 
-const schema = parseExpressSchema('./schemas/IFC4.exp');
+const schema = parseExpressSchema(await readFile('./schemas/IFC4.exp', 'utf-8'));
 
 console.log(`Parsed ${schema.entities.length} entities, ${schema.types.length} types`);
 
-const generated = generateTypeScript(schema, {
-  inheritanceChain: true,
-  emitEnums: true,
-});
+const generated = generateTypeScript(schema);
 
-await writeFile('./src/generated/entities.ts', generated.entities);
-await writeFile('./src/generated/schema-registry.ts', generated.schemaRegistry);
+await writeFile('./generated/ifc4/entities.ts', generated.entities);
+await writeFile('./generated/ifc4/schema-registry.ts', generated.schemaRegistry);
 ```
 
 ## What you get

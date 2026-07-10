@@ -35,6 +35,12 @@ use ifc_lite_geometry::space_dcel::{
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
+/// Hard DoS ceiling on arrangement input size. The T-junction resolve is ~O(n^2)
+/// after the per-sweep-splits fix; these bounds keep even adversarial input to a
+/// few seconds while sitting far above any real floor plan (hundreds of walls).
+const MAX_INPUT_SEGMENTS: usize = 16384;
+const MAX_INPUT_RECTS: usize = 4096;
+
 /// One face returned to JS after a build or an edit.
 #[derive(Serialize)]
 struct FacePatchJs {
@@ -90,6 +96,11 @@ impl SpacePlateHandle {
             ));
         }
         let n = seg_coords.len() / 4;
+        if n > MAX_INPUT_SEGMENTS {
+            return Err(JsValue::from_str(
+                "too many wall segments for the space-plate arrangement",
+            ));
+        }
         if seg_sources.len() != n {
             return Err(JsValue::from_str(
                 "segSources length must equal the segment count (segCoords.len / 4)",
@@ -138,6 +149,11 @@ impl SpacePlateHandle {
             .chunks_exact(8)
             .map(|c| [[c[0], c[1]], [c[2], c[3]], [c[4], c[5]], [c[6], c[7]]])
             .collect();
+        if rects.len() > MAX_INPUT_RECTS {
+            return Err(JsValue::from_str(
+                "too many wall rects for the space-plate arrangement",
+            ));
+        }
         let defaults = BuildOptions::default();
         let opts = BuildOptions {
             snap_tolerance: if snap_tolerance > 0.0 { snap_tolerance } else { defaults.snap_tolerance },

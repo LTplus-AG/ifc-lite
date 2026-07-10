@@ -1,0 +1,34 @@
+# Standalone fuzz crate for the geometry boundary (triangulation + the
+# pure-Rust CSG kernel). It is intentionally NOT a member of the workspace
+# (own `[workspace]` table below) so normal `cargo build --workspace` and CI
+# ignore it; run it with `cargo fuzz`. Mirrors `rust/core/fuzz`.
+[package]
+name = "ifc-lite-geometry-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.ifc-lite-geometry]
+path = ".."
+
+[[bin]]
+name = "triangulate_polygon"
+path = "fuzz_targets/triangulate_polygon.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "kernel_subtract"
+path = "fuzz_targets/kernel_subtract.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]

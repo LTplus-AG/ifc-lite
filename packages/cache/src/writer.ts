@@ -60,10 +60,13 @@ export class BinaryCacheWriter {
     const {
       includeGeometry = true,
       includeSpatialHierarchy = true,
+      omitSourceHash = false,
     } = options;
 
-    // Compute source hash
-    const sourceHash = xxhash64(sourceBuffer);
+    // Source hash: `omitSourceHash` skips the full-file main-thread `xxhash64`
+    // for large sources (the caller validates the source another way and flags
+    // the header as unset); otherwise hash the whole buffer as before.
+    const sourceHash = omitSourceHash ? 0n : xxhash64(sourceBuffer);
 
     // Build sections
     const sectionBuffers: Array<{ type: SectionType; buffer: ArrayBuffer }> = [];
@@ -172,6 +175,9 @@ export class BinaryCacheWriter {
     }
     if (includeSpatialHierarchy && dataStore.spatialHierarchy) {
       headerFlags |= HeaderFlags.HasSpatial;
+    }
+    if (omitSourceHash) {
+      headerFlags |= HeaderFlags.SourceHashUnset;
     }
 
     const header: CacheHeader = {

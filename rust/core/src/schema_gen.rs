@@ -244,12 +244,15 @@ impl AttributeValue {
     }
 }
 
-/// Decoded IFC entity with attributes
+/// Decoded IFC entity. `attributes` is behind an `Arc` so cloning a
+/// `DecodedEntity` (the decoder clones on every cache insert AND every cache
+/// hit) is a refcount bump, not a deep clone of the attribute tree. Attributes
+/// are never mutated after construction, so sharing is sound and byte-identical.
 #[derive(Debug, Clone)]
 pub struct DecodedEntity {
     pub id: u32,
     pub ifc_type: IfcType,
-    pub attributes: Vec<AttributeValue>,
+    pub attributes: std::sync::Arc<Vec<AttributeValue>>,
 }
 
 impl DecodedEntity {
@@ -258,7 +261,7 @@ impl DecodedEntity {
         Self {
             id,
             ifc_type,
-            attributes,
+            attributes: std::sync::Arc::new(attributes),
         }
     }
 

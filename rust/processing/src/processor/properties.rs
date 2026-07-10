@@ -3,8 +3,8 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::{normalize_optional_string, EntityJob};
-use ifc_lite_core::{AttributeValue, DecodedEntity, IfcType};
-use rustc_hash::FxHashMap;
+use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType};
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone)]
@@ -243,4 +243,110 @@ pub(super) fn assign_space_zone_properties(
             job.space_zone_properties = Some(properties.clone());
         }
     }
+}
+
+/// Demand-driven space/zone property resolution.
+///
+/// Only IfcSpace/IfcZone/IfcSpatialZone occurrences ever carry
+/// `space_zone_properties` (see [`assign_space_zone_properties`]), so rather than
+/// eagerly decoding every `IfcPropertySet`, `IfcRelDefinesByProperties` and
+/// `IfcProperty*` atom during the single-threaded scan — ~25% of the entities on
+/// a property-rich model, and the dominant cold-load cost on parse-bound files —
+/// the scan only stashes the `IfcRelDefinesByProperties` spans and defers the
+/// rest to here. We then:
+///   1. bail entirely when the model has no space/zone job (steel/MEP pays zero);
+///   2. decode the rel-defines in scan order, producing the identical link vector
+///      the eager path built (target filtering stays inside `assign`);
+///   3. decode ONLY the property sets a space/zone actually references — gated to
+///      genuine `IfcPropertySet` entities, mirroring the eager scan's exact
+///      `type_name == "IFCPROPERTYSET"` branch so a stray ref to a non-pset entity
+///      cannot mint phantom properties — and only the property atoms those sets
+///      list, resolving each by id through the completed entity index.
+///
+/// **Parity.** For STEP-valid input — every entity has a unique express id, which
+/// the standard requires — this is byte-identical to the eager path: the maps
+/// handed to [`assign_space_zone_properties`] are the exact subset it consumed,
+/// verified across the full fixture corpus. It is NOT bug-compatible on malformed
+/// files that reuse an express id: the eager path returned the *first* occurrence
+/// (an artifact of the decoder's id-keyed cache short-circuiting the second
+/// `decode_at`), whereas `decode_by_id` here resolves through the canonical
+/// entity index (last-wins), the same span every other reference in the pipeline
+/// — geometry, styles, voids — already resolves to. On a duplicate-id file the
+/// old path was internally inconsistent (properties from one span, geometry from
+/// another); this makes property resolution consistent with the rest of the
+/// pipeline instead.
+pub(super) fn resolve_space_zone_properties_lazy(
+    entity_jobs: &mut [EntityJob],
+    decoder: &mut EntityDecoder,
+    rel_defines_spans: &[(usize, usize)],
+) {
+    let space_zone_ids: FxHashSet<u32> = entity_jobs
+        .iter()
+        .filter(|job| is_space_or_zone_type(&job.ifc_type))
+        .map(|job| job.id)
+        .collect();
+    if space_zone_ids.is_empty() {
+        return;
+    }
+
+    // Decode every IfcRelDefinesByProperties in scan order → identical link
+    // vector to the former eager scan (filtering to space/zone targets happens
+    // inside `assign_space_zone_properties`).
+    let mut rel_defines_by_properties = Vec::with_capacity(rel_defines_spans.len());
+    for &(start, end) in rel_defines_spans {
+        if let Ok(rel_defines) = decoder.decode_at(start, end) {
+            if let Some(link) = collect_rel_defines_by_properties_link(&rel_defines) {
+                rel_defines_by_properties.push(link);
+            }
+        }
+    }
+
+    // Decode only the property sets (and their listed property atoms) that a
+    // space/zone references, resolving each by id through the completed index.
+    let mut property_sets_by_id: FxHashMap<u32, PropertySetDefinition> = FxHashMap::default();
+    let mut property_values_by_id: FxHashMap<u32, (String, String)> = FxHashMap::default();
+    for link in &rel_defines_by_properties {
+        if !link
+            .related_object_ids
+            .iter()
+            .any(|id| space_zone_ids.contains(id))
+        {
+            continue;
+        }
+        if property_sets_by_id.contains_key(&link.property_set_id) {
+            continue;
+        }
+        let Ok(property_set) = decoder.decode_by_id(link.property_set_id) else {
+            continue;
+        };
+        // Type gate: the eager scan only stashed exact `IFCPROPERTYSET` matches,
+        // so a link whose RelatingPropertyDefinition resolves to some other
+        // entity (a malformed ref, or an `IfcElementQuantity`) must contribute
+        // nothing rather than have `collect_property_set_definition` mine a stray
+        // ref-list at attr 4/2 into invented properties.
+        if property_set.ifc_type != IfcType::IfcPropertySet {
+            continue;
+        }
+        let Some(definition) = collect_property_set_definition(&property_set) else {
+            continue;
+        };
+        for &property_id in &definition.property_ids {
+            if property_values_by_id.contains_key(&property_id) {
+                continue;
+            }
+            if let Ok(property_entity) = decoder.decode_by_id(property_id) {
+                if let Some((name, value)) = extract_property_name_and_value(&property_entity) {
+                    property_values_by_id.insert(property_id, (name, value));
+                }
+            }
+        }
+        property_sets_by_id.insert(link.property_set_id, definition);
+    }
+
+    assign_space_zone_properties(
+        entity_jobs,
+        &property_values_by_id,
+        &property_sets_by_id,
+        &rel_defines_by_properties,
+    );
 }

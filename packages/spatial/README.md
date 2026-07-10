@@ -15,7 +15,8 @@ import { buildSpatialIndex } from '@ifc-lite/spatial';
 
 const index = buildSpatialIndex(meshes); // MeshData[] from @ifc-lite/geometry
 
-// For very large models (50K+ meshes), build off the main thread:
+// For very large models (50K+ meshes), use the time-sliced builder:
+// it yields to the event loop between chunks so the UI stays responsive.
 import { buildSpatialIndexAsync } from '@ifc-lite/spatial';
 const indexAsync = await buildSpatialIndexAsync(meshes);
 ```
@@ -54,7 +55,7 @@ console.log(`${hits.length} entities in region`);
 import { FrustumUtils } from '@ifc-lite/spatial';
 
 // Build a frustum from a view-projection matrix (column-major 4×4)
-const frustum = FrustumUtils.fromMatrix(viewProjMatrix);
+const frustum = FrustumUtils.fromViewProjMatrix(viewProjMatrix);
 
 const visible = index.queryFrustum(frustum);
 // → expressIds visible to the camera; renderer only draws these

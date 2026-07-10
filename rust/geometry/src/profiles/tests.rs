@@ -701,3 +701,33 @@ use super::*;
         assert!(approx_eq_p3(pts[0], Point3::new(0.0, 10.0, 0.0), 1e-9));
         assert!(approx_eq_p3(pts[1], Point3::new(0.0, 7.0, 0.0), 1e-9));
     }
+
+    // A negative Thickness / WebThickness on a parametric L/U/T/C/Z profile is
+    // schema-invalid (IfcPositiveLengthMeasure) and (for L/U/T) previously panicked
+    // f64::clamp (release too) via a negative fillet-radius bound. All are now
+    // rejected as an Err at read time (element skipped), never a panic and never
+    // mirrored/self-intersecting garbage.
+    #[test]
+    fn negative_profile_thickness_errors_not_panics() {
+        let bad = [
+            "#1=IFCLSHAPEPROFILEDEF(.AREA.,$,$,100.,80.,-10.,$,$,$,$,$);\n",
+            "#1=IFCUSHAPEPROFILEDEF(.AREA.,$,$,100.,80.,-10.,12.,$,$,$);\n",
+            "#1=IFCTSHAPEPROFILEDEF(.AREA.,$,$,100.,80.,-10.,12.,$,$,$,$,$);\n",
+            "#1=IFCCSHAPEPROFILEDEF(.AREA.,$,$,100.,80.,-10.,20.,$);\n",
+            "#1=IFCZSHAPEPROFILEDEF(.AREA.,$,$,100.,80.,-10.,12.,$,$);\n",
+        ];
+        for content in bad {
+            let mut decoder = EntityDecoder::new(content);
+            let processor = ProfileProcessor::new(IfcSchema::new());
+            let entity = decoder.decode_by_id(1).unwrap();
+            let result = processor.process(&entity, &mut decoder, TessellationQuality::Medium);
+            assert!(result.is_err(), "expected Err for malformed profile: {content}");
+        }
+        // A well-formed L-shape still processes fine (validation is not over-eager).
+        let mut decoder = EntityDecoder::new("#1=IFCLSHAPEPROFILEDEF(.AREA.,$,$,100.,80.,10.,$,$,$,$,$);\n");
+        let processor = ProfileProcessor::new(IfcSchema::new());
+        let entity = decoder.decode_by_id(1).unwrap();
+        assert!(processor
+            .process(&entity, &mut decoder, TessellationQuality::Medium)
+            .is_ok());
+    }

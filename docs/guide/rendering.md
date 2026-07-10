@@ -68,61 +68,11 @@ function animate() {
 animate();
 ```
 
-## Renderer Configuration
-
-```typescript
-interface RendererOptions {
-  // Anti-aliasing
-  antialias?: boolean;
-  sampleCount?: 1 | 4;
-
-  // Background color
-  backgroundColor?: [number, number, number, number];
-
-  // Performance
-  powerPreference?: 'low-power' | 'high-performance';
-
-  // Features
-  enablePicking?: boolean;
-  enableSectionPlanes?: boolean;
-}
-
-const renderer = new Renderer(canvas, {
-  antialias: true,
-  sampleCount: 4,
-  backgroundColor: [0.95, 0.95, 0.95, 1.0],
-  powerPreference: 'high-performance',
-  enablePicking: true,
-  enableSectionPlanes: true
-});
-```
-
 ## Camera Controls
 
 ### Configuration
 
 ```typescript
-interface CameraOptions {
-  // Initial position
-  position?: [number, number, number];
-  target?: [number, number, number];
-  up?: [number, number, number];
-
-  // Projection
-  fov?: number;
-  near?: number;
-  far?: number;
-
-  // Controls
-  orbitSpeed?: number;
-  panSpeed?: number;
-  zoomSpeed?: number;
-
-  // Constraints
-  minDistance?: number;
-  maxDistance?: number;
-}
-
 // Access camera directly
 const camera = renderer.getCamera();
 
@@ -212,6 +162,15 @@ sectionPlane.flipped = true;
 // Storey-based range override
 sectionPlane.min = storeyElevation;
 sectionPlane.max = storeyElevation + storeyHeight;
+
+// Cut-surface rendering (both default true)
+sectionPlane.showCap = true;       // filled cap surfaces with screen-space hatch
+sectionPlane.showOutlines = true;  // polygon outlines on the cut surfaces
+
+// Arbitrary slice plane: providing a world-space unit normal + distance
+// bypasses axis/position/min/max entirely (face-pick section planes)
+sectionPlane.normal = { x: 0.3, y: 0.9, z: 0.1 };
+sectionPlane.distance = 12.5;
 ```
 
 ### Section Plane Visualization
@@ -333,11 +292,12 @@ canvas.addEventListener('mousemove', (e) => {
   });
 
   if (result.edgeLock.shouldLock) {
-    // Lock to this edge
+    // Lock to this edge. lockStrength is maintained locally (renderer input
+    // only); the result never emits it, so grow it per frame while locked.
     edgeLock = {
       edge: result.edgeLock.edge,
       meshExpressId: result.edgeLock.meshExpressId,
-      lockStrength: result.edgeLock.lockStrength
+      lockStrength: edgeLock.lockStrength + 0.05
     };
   } else if (result.edgeLock.shouldRelease) {
     // Release the lock
@@ -417,9 +377,10 @@ canvas.addEventListener('click', async (e) => {
   const x = e.clientX - rect.left;
   const y = e.clientY - rect.top;
 
-  const expressId = await renderer.pick(x, y);
+  const hit = await renderer.pick(x, y);
 
-  if (expressId !== null) {
+  if (hit !== null) {
+    const expressId = hit.expressId;
     console.log(`Selected entity #${expressId}`);
     selectedIds = new Set([expressId]);
 
@@ -747,6 +708,39 @@ Meshes are automatically grouped by color for efficient rendering:
 renderer.addMeshes(meshes, true);  // isStreaming = true
 ```
 
+### GPU Instancing
+
+Repeated opaque geometry is production-ready on a dedicated GPU-instancing
+path: unique mesh templates are stored once and drawn with per-occurrence
+transform/color buffers, which keeps draw calls and GPU memory low on models
+with heavy repetition (steel connections, bolts, standard components).
+
+The geometry processor emits packed instanced shards on its streaming batch
+events (see the [Geometry Guide](geometry.md)); decode and upload them to the
+scene:
+
+```typescript
+import { decodeInstancedShard } from '@ifc-lite/geometry';
+
+const device = renderer.getGPUDevice();
+
+for await (const event of geometry.processAdaptive(new Uint8Array(buffer))) {
+  if (event.type === 'batch') {
+    renderer.addMeshes(event.meshes, true);
+    for (const bytes of event.instancedShards ?? []) {
+      const shard = decodeInstancedShard(new Uint8Array(bytes));
+      if (shard && device) renderer.getScene().addInstancedShard(device, shard);
+    }
+  }
+}
+```
+
+Selection, hide/isolate, section planes, and picking all work on instanced
+occurrences; the renderer mirrors `selectedIds`, `hiddenIds`, and
+`isolatedIds` onto the instanced pass automatically. Instancing is
+primary-model only: disable it (`enableInstancing: false` on the
+`GeometryProcessor`) for federated multi-model loads.
+
 ## Complete Example
 
 ```typescript
@@ -777,10 +771,10 @@ async function createViewer() {
   // Click handler with picking
   canvas.addEventListener('click', async (e) => {
     const rect = canvas.getBoundingClientRect();
-    const id = await renderer.pick(e.clientX - rect.left, e.clientY - rect.top);
+    const hit = await renderer.pick(e.clientX - rect.left, e.clientY - rect.top);
 
-    if (id !== null) {
-      selectedIds = new Set([id]);
+    if (hit !== null) {
+      selectedIds = new Set([hit.expressId]);
     } else {
       selectedIds.clear();
     }
@@ -800,7 +794,13 @@ async function createViewer() {
     });
 
     if (result.edgeLock.shouldLock) {
-      edgeLock = result.edgeLock;
+      // Rebuild the EdgeLockInput; the result has no lockStrength, so keep
+      // it as a locally maintained number.
+      edgeLock = {
+        edge: result.edgeLock.edge,
+        meshExpressId: result.edgeLock.meshExpressId,
+        lockStrength: edgeLock.lockStrength + 0.05
+      };
     } else if (result.edgeLock.shouldRelease) {
       edgeLock = { edge: null, meshExpressId: null, lockStrength: 0 };
     }

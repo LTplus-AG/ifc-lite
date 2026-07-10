@@ -13,9 +13,13 @@
 //! The result is a single intersection-free complex, ready for L4 winding
 //! classification.
 //!
-//! This increment: all-pairs broadphase (AABB cull) + the proper-crossing
-//! `Segment` case. BVH broadphase, coplanar overlap, and vertex/edge `Touches`
-//! degeneracies are later increments.
+//! Broadphase is a hand-rolled AABB BVH (`super::broadphase`) that filters
+//! candidate triangle pairs before the exact per-pair `tri_tri_intersection`
+//! test; that test itself resolves both the proper-crossing `Segment` case and
+//! the on-plane-vertex/edge `Touches` degeneracies (folded into `Segment`/
+//! `Chord`, see `tritri::PlaneInterval`). Coplanar overlaps are handled
+//! separately via `coplanar_clip` and accumulated alongside the segment
+//! constraints before re-triangulation.
 
 use super::coplanar::coplanar_clip;
 use super::interner::{Interner, Vid};
@@ -32,7 +36,7 @@ mod tests;
 
 pub use self::boolean::{
     boolean, boolean_manifest, boolean_topology_hash, box_mesh, cube_mesh, difference_all,
-    union_all,
+    difference_all_lenient, union_all,
 };
 
 pub type Tri = [[f64; 3]; 3];
@@ -250,12 +254,21 @@ pub fn arrange(a: &[Tri], b: &[Tri]) -> Arrangement {
 }
 
 /// The conforming arrangement of `n` operand meshes over one shared interner.
-/// `subtris[k]` is mesh `k`'s conforming sub-triangles; `owner[k][t]` is the index
-/// in mesh `k`'s sub-tri list (unused externally, kept implicit by position).
+/// `subtris[k]` is mesh `k`'s conforming sub-triangles; there is no separate
+/// owner/index table — a sub-triangle's originating mesh is simply its
+/// position `k` in `subtris`.
 pub struct MultiArrangement {
     pub interner: Interner,
     /// `subtris[k]` = mesh `k`'s conforming sub-triangles (interned Vids).
     pub subtris: Vec<Vec<[Vid; 3]>>,
+    /// Total constraint sub-segments the per-mesh re-triangulations could not
+    /// force as edges (summed over every mesh's `Mesh2d::unrecovered`). Non-zero
+    /// ⇒ the operands do not fully conform along their intersections, so a
+    /// straddling sub-triangle's centroid classification in [`union_all`] is
+    /// unreliable (the union can silently tear). Mirrors [`Arrangement::unrecovered`]
+    /// so [`union_all`] can SIGNAL the same non-conformity condition
+    /// [`difference_all`] hard-rejects (it was previously discarded into a `_`).
+    pub unrecovered: usize,
 }
 
 /// Conforming arrangement of `meshes` (N operands) over ONE interner.
@@ -314,6 +327,11 @@ pub fn arrange_many(meshes: &[&[Tri]]) -> MultiArrangement {
     }
     let mut interner = Interner::new();
     let mut subtris = Vec::with_capacity(n);
+    // Accumulate unrecovered constraints across EVERY mesh's re-triangulation
+    // (mirrors the binary `arrange`, which sums over both operands). `union_all`
+    // surfaces any non-zero total as its non-conformity signal, so it must not be
+    // discarded here (it previously was, into a `_unrecovered`).
+    let mut unrecovered = 0usize;
     for k in 0..n {
         let cop_parent: Vec<bool> = cop[k].iter().map(|c| !c.is_empty()).collect();
         let cons: Vec<Vec<Constraint>> = (0..meshes[k].len())
@@ -325,12 +343,11 @@ pub fn arrange_many(meshes: &[&[Tri]]) -> MultiArrangement {
             .collect();
         // `union_all` classifies every sub-triangle against each other mesh via the
         // off-plane `solid_side` probe, so it needs no per-sub coplanar flag here.
-        let mut _unrecovered = 0usize;
         let (tris, _coplanar) =
-            retriangulate_each(meshes[k], &cons, &pts[k], &cop_parent, &mut interner, &mut _unrecovered);
+            retriangulate_each(meshes[k], &cons, &pts[k], &cop_parent, &mut interner, &mut unrecovered);
         subtris.push(tris);
     }
-    MultiArrangement { interner, subtris }
+    MultiArrangement { interner, subtris, unrecovered }
 }
 
 /// Re-triangulate each original triangle over the shared interner. Returns the

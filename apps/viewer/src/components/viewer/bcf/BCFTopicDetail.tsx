@@ -22,6 +22,7 @@ import {
   Pencil,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import {
   Tooltip,
   TooltipContent,
@@ -198,7 +199,7 @@ export function BCFTopicDetail({
           <div>
             <div className="flex items-center justify-between mb-2">
               <h4 className="text-sm font-medium">Viewpoints</h4>
-              <Button variant="outline" size="sm" onClick={onAddViewpoint}>
+              <Button variant="outline" size="sm" onClick={onAddViewpoint} {...tourAnchor(TOUR_ANCHORS.bcfCaptureViewpoint)}>
                 <Camera className="h-3 w-3 mr-1" />
                 Capture
               </Button>

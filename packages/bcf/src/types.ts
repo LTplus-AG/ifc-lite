@@ -79,6 +79,13 @@ export interface BCFTopic {
   comments: BCFComment[];
   /** Viewpoints associated with the topic */
   viewpoints: BCFViewpoint[];
+  /**
+   * Source IFC file(s) this topic refers to (markup `<Header>`). One entry per
+   * distinct model touched by the topic, so a federated topic round-trips the
+   * provenance of every model it spans. Optional: absent for topics with no
+   * resolvable source model.
+   */
+  header?: BCFHeaderFile[];
 }
 
 export interface BCFBimSnippet {

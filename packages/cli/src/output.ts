@@ -7,6 +7,7 @@
  */
 
 import { writeFile } from 'node:fs/promises';
+import { logger } from './logger.js';
 
 export type OutputFormat = 'json' | 'table' | 'csv';
 
@@ -17,7 +18,7 @@ export type OutputFormat = 'json' | 'table' | 'csv';
 export async function writeOutput(content: string | Uint8Array, outPath?: string): Promise<void> {
   if (outPath) {
     await writeFile(outPath, content);
-    process.stderr.write(`Written to ${outPath}\n`);
+    logger.info(`Written to ${outPath}`);
   } else {
     process.stdout.write(content);
     // Convenience newline for human-readable string output only; byte output

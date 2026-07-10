@@ -1,6 +1,6 @@
 # @ifc-lite/parser
 
-High-performance IFC parser. Tokenizes STEP files at ~1,259 MB/s, builds columnar TypedArray storage, and ships full type-safe coverage of IFC4 (776 entities) and IFC4X3 (876 entities).
+High-performance IFC parser. Tokenizes STEP files at high throughput, builds columnar TypedArray storage, and ships full type-safe coverage of all 776 IFC4 entities. IFC2X3, IFC4, and IFC4X3 files are detected and parsed at runtime; IFC5 (IFCX) files are handled via `parseAuto`.
 
 ## Installation
 
@@ -31,16 +31,25 @@ materials, classifications, documents, and attributes.
 ```typescript
 const store = await parser.parseColumnar(buffer);
 
-// store.entities    — typed access by expressId
-// store.properties  — flattened pset table
-// store.quantities  — flattened qset table
-// store.spatialHierarchy.byStorey  — Map<storeyId, Set<elementId>>
+// store.entities    - typed access by expressId
+// store.properties  - flattened pset table
+// store.quantities  - flattened qset table
+// store.spatialHierarchy.byStorey  - Map<storeyId, elementIds[]>
 console.log(`${store.entityCount} entities, schema ${store.schemaVersion}`);
+```
+
+To handle IFC5 (IFCX) files with the same entry point, use `parseAuto`:
+
+```typescript
+import { parseAuto } from '@ifc-lite/parser';
+
+const result = await parseAuto(buffer);
+// result.format is 'ifc' (STEP -> IfcDataStore) or 'ifcx' (JSON -> IfcxParseResult + meshes)
 ```
 
 ## Type-safe entity access
 
-All 776 IFC4 entities (876 for IFC4X3) ship as TypeScript types via the generated schema.
+All 776 IFC4 entities ship as TypeScript types via the generated schema.
 
 ```typescript
 import type { IfcWall, IfcDoor, IfcSlab } from '@ifc-lite/parser';
@@ -81,7 +90,7 @@ const material = extractMaterialsOnDemand(store, wallId);
 //   { name: 'Concrete C30/37', layers: [{ name: 'Concrete', thickness: 0.15 }, ...] }
 
 const classifications = extractClassificationsOnDemand(store, wallId);
-//   [{ system: 'Uniclass 2015', code: 'Pr_60_10_32', name: 'External walls', ... }]
+//   [{ system: 'Uniclass 2015', identification: 'Pr_60_10_32', name: 'External walls', ... }]
 ```
 
 ## Georeferencing
@@ -93,8 +102,8 @@ const georef = extractGeoreferencingOnDemand(store);
 
 if (georef?.hasGeoreference) {
   console.log(`CRS: ${georef.projectedCRS?.name}`);
-  console.log(`Origin: ${georef.eastings}, ${georef.northings}, ${georef.orthogonalHeight}`);
-  console.log(`Rotation: ${georef.rotationRadians} rad`);
+  console.log(`Origin: ${georef.mapConversion?.eastings}, ${georef.mapConversion?.northings}, ${georef.mapConversion?.orthogonalHeight}`);
+  console.log(`Grid north: ${georef.mapConversion?.xAxisAbscissa}, ${georef.mapConversion?.xAxisOrdinate}`);
 }
 ```
 
@@ -106,7 +115,7 @@ if (georef?.hasGeoreference) {
 | 50 MB | ~600–700 ms |
 | 200 MB | ~2.5–3 s |
 
-- Tokenization: ~1,259 MB/s on M1/M2 laptops
+- Tokenization: high single-pass throughput on M1/M2 laptops
 - Bundle: ~200 KB gzipped (schema registry included)
 - Memory: TypedArray columnar storage
 

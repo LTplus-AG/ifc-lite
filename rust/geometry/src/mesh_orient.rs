@@ -26,13 +26,82 @@
 
 use crate::Mesh;
 use rustc_hash::FxHashMap;
+use std::cell::RefCell;
 
-/// Vertex weld grid (10 µm): fine enough not to merge distinct mm-scale features,
-/// coarse enough to weld the (usually bit-equal) coincident flat-shaded
-/// duplicates so shared edges are found. Under-welding only splits a body into
-/// more components (each still oriented); over-welding would fuse distinct
-/// vertices and is the dangerous direction, so the grid stays fine.
-const WELD: f64 = 1.0e5;
+/// Incident-triangle record for one undirected welded edge. A boundary edge has
+/// one incident triangle and a manifold edge exactly two, so the two triangle
+/// slots are stored INLINE — replacing the old per-edge heap `Vec<usize>`, which
+/// allocated ~1.5 tiny Vecs per triangle and dominated the allocator churn of
+/// this pass on mesh-heavy models. `count` is the TRUE incidence; a value > 2
+/// marks a non-manifold edge, which the propagation skips before ever reading
+/// the slots. Only the first two triangles are consulted, stored in ascending
+/// scan order (identical to the old `Vec` push order), so the BFS traversal —
+/// and therefore every flip decision — is byte-identical.
+#[derive(Clone, Copy, Default)]
+struct EdgeInc {
+    tris: [usize; 2],
+    count: u32,
+}
+
+impl EdgeInc {
+    #[inline]
+    fn push(&mut self, t: usize) {
+        if (self.count as usize) < 2 {
+            self.tris[self.count as usize] = t;
+        }
+        self.count += 1;
+    }
+
+    /// The incident triangles the propagation may consult (the first two, in
+    /// push order). Only reached for `count` of 1 or 2 — the `count > 2` path
+    /// `continue`s first — so this yields exactly what the old `Vec` iterated.
+    #[inline]
+    fn incident(&self) -> &[usize] {
+        &self.tris[..(self.count as usize).min(2)]
+    }
+}
+
+/// Vertex weld grid scale (reciprocal of a 10 µm grid, i.e. positions are
+/// quantized to `round(v * WELD_SCALE)`): fine enough not to merge distinct
+/// mm-scale features, coarse enough to weld the (usually bit-equal) coincident
+/// flat-shaded duplicates so shared edges are found. Under-welding only splits
+/// a body into more components (each still oriented); over-welding would fuse
+/// distinct vertices and is the dangerous direction, so the grid stays fine.
+const WELD_SCALE: f64 = 1.0e5;
+
+/// Per-worker reusable scratch for [`orient_mesh_outward`], cleared (never freed)
+/// between meshes. The pass runs once per assembled submesh (~109k times on a
+/// mesh-heavy model), so each fresh call's two `FxHashMap`s + six `Vec`s were
+/// ~4-6% of busy CPU on pure-brep/steel models; pooling makes it allocate-once,
+/// clear-many. BYTE-IDENTICAL: neither map is ever iterated — both are only
+/// `.entry()`-inserted (order fixed by the deterministic scan) and keyed-looked-up,
+/// so bucket count / residual capacity can't reach the output; every `Vec` is
+/// fully overwritten before it is read. A cleared, reused buffer replays the
+/// identical fill sequence, so the flip decisions and `indices.swap`s are unchanged.
+#[derive(Default)]
+struct OrientScratch {
+    vid_of: FxHashMap<(i64, i64, i64), u32>,
+    vpos: Vec<[f64; 3]>,
+    corner: Vec<u32>,
+    edge_tris: FxHashMap<(u32, u32), EdgeInc>,
+    flip: Vec<bool>,
+    visited: Vec<bool>,
+    comp: Vec<usize>,
+    stack: Vec<usize>,
+}
+
+thread_local! {
+    /// One scratch per rayon worker (and the main / wasm single thread). A
+    /// `thread_local!`, not the `Vec<Mutex<_>>` worker-slot pattern: this LEAF
+    /// buffer never crosses a crate boundary, needs no lock (so no deadlock risk,
+    /// unlike the CartesianPoint cache #1572), and works when
+    /// `rayon::current_thread_index()` is `None` (direct calls, tests, wasm). Each
+    /// worker owns its instance — no cross-thread sharing, fully deterministic.
+    /// Re-entrancy is TAKE / put-back (below): the `RefCell` borrow is never held
+    /// across the computation, so a nested-`par_iter` re-entrant call on the same
+    /// thread mints a fresh scratch instead of panicking on a double borrow.
+    static ORIENT_SCRATCH: RefCell<Option<OrientScratch>> = const { RefCell::new(None) };
+}
 
 /// Orient every connected component of `mesh` consistently and outward, in place.
 /// Returns `true` iff any triangle's winding was flipped (the caller must then
@@ -43,7 +112,7 @@ pub fn orient_mesh_outward(mesh: &mut Mesh) -> bool {
         return false;
     }
     // Bail cleanly on malformed buffers instead of panicking on an out-of-range
-    // index below.
+    // index below. (Before any scratch is taken — the bail path allocates nothing.)
     let vertex_count = mesh.positions.len() / 3;
     if !mesh.positions.len().is_multiple_of(3)
         || mesh.indices.iter().any(|&idx| idx as usize >= vertex_count)
@@ -51,11 +120,26 @@ pub fn orient_mesh_outward(mesh: &mut Mesh) -> bool {
         return false;
     }
 
+    // Take this worker's warm scratch (or mint one on the first call / a re-entrant
+    // borrow). The momentary `.with` borrow is never held across the pass, so a
+    // nested-`par_iter` re-entrant call on this thread can't trip a double borrow;
+    // the scratch is handed back on the single return path (byte-for-byte the
+    // pre-pool algorithm). The disjoint `&mut` field bindings (the borrow checker
+    // splits struct fields) let a read-only closure borrow one buffer while another
+    // is mutated.
+    let mut scratch = ORIENT_SCRATCH.with(|c| c.borrow_mut().take()).unwrap_or_default();
+    let OrientScratch { vid_of, vpos, corner, edge_tris, flip, visited, comp, stack } =
+        &mut scratch;
+    // Clear (retain capacity) before use so no stale data leaks in; the reserves
+    // restore the original `with_capacity` sizing.
+    vid_of.clear();
+    vid_of.reserve(vertex_count);
+    vpos.clear();
+    corner.clear();
+    corner.reserve(mesh.indices.len());
+
     // Weld positions -> welded vertex id; record the welded vid of every corner.
-    let q = |v: f32| (v as f64 * WELD).round() as i64;
-    let mut vid_of: FxHashMap<(i64, i64, i64), u32> = FxHashMap::default();
-    let mut vpos: Vec<[f64; 3]> = Vec::new();
-    let mut corner: Vec<u32> = Vec::with_capacity(mesh.indices.len());
+    let q = |v: f32| (v as f64 * WELD_SCALE).round() as i64;
     for &idx in &mesh.indices {
         let b = idx as usize * 3;
         let key = (
@@ -65,7 +149,11 @@ pub fn orient_mesh_outward(mesh: &mut Mesh) -> bool {
         );
         let vid = *vid_of.entry(key).or_insert_with(|| {
             let id = vpos.len() as u32;
-            vpos.push([key.0 as f64 / WELD, key.1 as f64 / WELD, key.2 as f64 / WELD]);
+            vpos.push([
+                key.0 as f64 / WELD_SCALE,
+                key.1 as f64 / WELD_SCALE,
+                key.2 as f64 / WELD_SCALE,
+            ]);
             id
         });
         corner.push(vid);
@@ -73,7 +161,9 @@ pub fn orient_mesh_outward(mesh: &mut Mesh) -> bool {
     let tv = |t: usize| [corner[3 * t], corner[3 * t + 1], corner[3 * t + 2]];
 
     // Undirected welded edge -> incident triangles. >2 incident ⇒ non-manifold.
-    let mut edge_tris: FxHashMap<(u32, u32), Vec<usize>> = FxHashMap::default();
+    // A closed manifold has ~1.5 edges per triangle; reserve to skip rehashing.
+    edge_tris.clear();
+    edge_tris.reserve(ntri * 2);
     for t in 0..ntri {
         let v = tv(t);
         for &(a, b) in &[(v[0], v[1]), (v[1], v[2]), (v[2], v[0])] {
@@ -85,17 +175,22 @@ pub fn orient_mesh_outward(mesh: &mut Mesh) -> bool {
         }
     }
 
-    let mut flip = vec![false; ntri];
-    let mut visited = vec![false; ntri];
+    // `clear()` + `resize(ntri, false)` reproduces the original `vec![false; ntri]`.
+    flip.clear();
+    flip.resize(ntri, false);
+    visited.clear();
+    visited.resize(ntri, false);
     let mut any_flip = false;
 
     for seed in 0..ntri {
         if visited[seed] {
             continue;
         }
-        // BFS the component, propagating a consistent orientation.
-        let mut comp: Vec<usize> = Vec::new();
-        let mut stack = vec![seed];
+        // BFS the component, propagating a consistent orientation. `comp`/`stack`
+        // are cleared per component (pre-pool freshly allocated them) — identical order.
+        comp.clear();
+        stack.clear();
+        stack.push(seed);
         visited[seed] = true;
         let mut orientable = true;
         // Only a CLOSED manifold (every welded edge shared by exactly two tris) has
@@ -120,13 +215,13 @@ pub fn orient_mesh_outward(mesh: &mut Mesh) -> bool {
                 }
                 let key = if a < b { (a, b) } else { (b, a) };
                 let inc = &edge_tris[&key];
-                if inc.len() != 2 {
+                if inc.count != 2 {
                     closed = false; // boundary (1) or non-manifold (>2) edge
                 }
-                if inc.len() > 2 {
+                if inc.count > 2 {
                     continue; // ambiguous — don't propagate across a non-manifold edge
                 }
-                for &nb in inc {
+                for &nb in inc.incident() {
                     if nb == t {
                         continue;
                     }
@@ -147,7 +242,7 @@ pub fn orient_mesh_outward(mesh: &mut Mesh) -> bool {
         }
 
         if !orientable || !closed {
-            for &t in &comp {
+            for &t in comp.iter() {
                 flip[t] = false; // open / non-orientable — leave winding as authored
             }
             continue;
@@ -155,7 +250,7 @@ pub fn orient_mesh_outward(mesh: &mut Mesh) -> bool {
 
         // Flip the whole CLOSED component outward (positive signed volume).
         let mut vol6 = 0.0f64;
-        for &t in &comp {
+        for &t in comp.iter() {
             let v = tv(t);
             let (i0, i1, i2) = if flip[t] {
                 (v[0], v[2], v[1])
@@ -167,7 +262,7 @@ pub fn orient_mesh_outward(mesh: &mut Mesh) -> bool {
                 + a[2] * (b[0] * c[1] - b[1] * c[0]);
         }
         if vol6 < 0.0 {
-            for &t in &comp {
+            for &t in comp.iter() {
                 flip[t] = !flip[t];
             }
         }
@@ -179,6 +274,8 @@ pub fn orient_mesh_outward(mesh: &mut Mesh) -> bool {
             any_flip = true;
         }
     }
+    // Field borrows have ended (NLL); hand the now-warm scratch back to this worker.
+    ORIENT_SCRATCH.with(|c| *c.borrow_mut() = Some(scratch));
     any_flip
 }
 
@@ -219,7 +316,7 @@ mod tests {
     }
 
     fn bad_edges(m: &Mesh) -> usize {
-        let q = |v: f32| (v as f64 * WELD).round() as i64;
+        let q = |v: f32| (v as f64 * WELD_SCALE).round() as i64;
         let key = |i: u32| {
             let b = i as usize * 3;
             (q(m.positions[b]), q(m.positions[b + 1]), q(m.positions[b + 2]))

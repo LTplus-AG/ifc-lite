@@ -48,13 +48,18 @@ export interface CompareOverlay {
  *
  * @param diff           engine output (refs carry the federation global id)
  * @param showUnchanged  draw unchanged elements ghosted (true) or hide them
+ * @param excludedHiddenIds  federation global ids of blacklisted-class entities
+ *   (#1470). They're absent from `diff.entries` (dropped by the engine), so they
+ *   would otherwise stay drawn at full colour amid the ghosted scene - hide them
+ *   so "not considered" also means "out of the way" in 3D.
  */
 export function buildCompareOverlay(
   diff: ModelDiff<CompareRef>,
   showUnchanged: boolean,
+  excludedHiddenIds?: ReadonlySet<number>,
 ): CompareOverlay {
   const colorOverrides = new Map<number, RGBA>();
-  const hiddenIds = new Set<number>();
+  const hiddenIds = new Set<number>(excludedHiddenIds);
 
   for (const entry of diff.entries) {
     const baseGlobal = entry.base?.ref.globalId;

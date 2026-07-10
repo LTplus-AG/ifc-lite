@@ -4,6 +4,8 @@
 
 Synthesizes the IFC 4.3 spec definitions and the two reference implementations (ifcopenshell, web-ifc) for `IfcPolygonalBoundedHalfSpace` / `IfcBooleanClippingResult`, then identifies the gap in our implementation.
 
+**Historical note:** this analysis was written against the then-current BSP CSG kernel. That kernel (and the C++ Manifold path) were later removed in the M9 one-kernel consolidation, and ifc-lite now runs a single pure-Rust exact CSG kernel. The "our implementation" description in §4 therefore records past behavior, not the current path. The IFC 4.3 spec and reference-implementation analysis (§1 to §3) remain accurate.
+
 ---
 
 ## 1. IFC 4.3 Spec — what the entities actually mean

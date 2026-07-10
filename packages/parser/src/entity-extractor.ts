@@ -132,8 +132,12 @@ export class EntityExtractor {
     }
 
     // TypedValue: IFCTYPENAME(value) - must check before list check
-    // Pattern: identifier followed by parentheses (e.g., IFCNORMALISEDRATIOMEASURE(0.5))
-    const typedValueMatch = value.match(/^([A-Z][A-Z0-9_]*)\((.+)\)$/i);
+    // Pattern: identifier followed by parentheses (e.g., IFCNORMALISEDRATIOMEASURE(0.5)).
+    // The `s` (dotall) flag lets `.+` span line terminators so a wrapped value —
+    // e.g. an IFCLABEL/IFCTEXT string an authoring tool broke across physical
+    // lines — is still unwrapped. Without it the match fails and the raw
+    // `IFCLABEL('...')` literal (mis-typed as a plain string) leaks to callers.
+    const typedValueMatch = value.match(/^([A-Z][A-Z0-9_]*)\((.+)\)$/is);
     if (typedValueMatch) {
       const typeName = typedValueMatch[1];
       const innerValue = typedValueMatch[2].trim();

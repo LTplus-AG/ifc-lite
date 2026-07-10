@@ -50,45 +50,6 @@
         );
     }
 
-    /// Build a simple box mesh (12 triangles) for testing.
-    #[allow(dead_code)]
-    fn make_box_mesh(min: Point3<f64>, max: Point3<f64>) -> Mesh {
-        let mut m = Mesh::with_capacity(24, 36);
-
-        let corners = [
-            Point3::new(min.x, min.y, min.z), // 0
-            Point3::new(max.x, min.y, min.z), // 1
-            Point3::new(max.x, max.y, min.z), // 2
-            Point3::new(min.x, max.y, min.z), // 3
-            Point3::new(min.x, min.y, max.z), // 4
-            Point3::new(max.x, min.y, max.z), // 5
-            Point3::new(max.x, max.y, max.z), // 6
-            Point3::new(min.x, max.y, max.z), // 7
-        ];
-
-        // 6 faces × 4 vertices each with face normals
-        let faces: [(Vector3<f64>, [usize; 4]); 6] = [
-            // Parity-sweep fix: [0, 2, 1, 3] was a crossed (bowtie) quad —
-            // see the sibling `make_box_mesh` above for the full rationale.
-            (Vector3::new(0.0, 0.0, -1.0), [0, 3, 2, 1]), // -Z
-            (Vector3::new(0.0, 0.0, 1.0), [4, 5, 6, 7]),  // +Z
-            (Vector3::new(0.0, -1.0, 0.0), [0, 1, 5, 4]), // -Y
-            (Vector3::new(0.0, 1.0, 0.0), [2, 3, 7, 6]),  // +Y
-            (Vector3::new(-1.0, 0.0, 0.0), [0, 4, 7, 3]), // -X
-            (Vector3::new(1.0, 0.0, 0.0), [1, 2, 6, 5]),  // +X
-        ];
-        for (n, idx) in &faces {
-            let b = m.vertex_count() as u32;
-            m.add_vertex(corners[idx[0]], *n);
-            m.add_vertex(corners[idx[1]], *n);
-            m.add_vertex(corners[idx[2]], *n);
-            m.add_vertex(corners[idx[3]], *n);
-            m.add_triangle(b, b + 1, b + 2);
-            m.add_triangle(b, b + 2, b + 3);
-        }
-        m
-    }
-
     fn make_framed_box_mesh(
         origin: Point3<f64>,
         depth_axis: Vector3<f64>,
@@ -115,7 +76,7 @@
         let mut m = Mesh::with_capacity(24, 36);
         let faces: [[usize; 4]; 6] = [
             // Parity-sweep fix: [0, 2, 1, 3] was a crossed (bowtie) quad —
-            // see `make_box_mesh` above for the full rationale.
+            // see `synthesis::make_box_mesh` for the full rationale.
             [0, 3, 2, 1],
             [4, 5, 6, 7],
             [0, 1, 5, 4],

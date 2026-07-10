@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use crate::types::response::{QuickMetadataEntitySummary, QuickMetadataSpatialNode};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Clone)]
 pub(super) struct QuickSpatialNodeEntry {
@@ -132,17 +132,38 @@ pub(super) fn build_quick_spatial_tree_node(
     nodes: &HashMap<u32, QuickSpatialNodeEntry>,
     element_summaries: &HashMap<u32, QuickMetadataEntitySummary>,
 ) -> Result<QuickMetadataSpatialNode, String> {
+    let mut ancestors = HashSet::new();
+    build_quick_spatial_tree_node_inner(express_id, nodes, element_summaries, &mut ancestors)
+}
+
+/// A malformed IfcRelAggregates graph can make a spatial node its own
+/// descendant; the recursion would then overflow the stack, an uncatchable
+/// abort. `ancestors` holds the current root-to-node path, so a child already on
+/// it is a back-edge: skip just that child and keep building the rest of the tree.
+fn build_quick_spatial_tree_node_inner(
+    express_id: u32,
+    nodes: &HashMap<u32, QuickSpatialNodeEntry>,
+    element_summaries: &HashMap<u32, QuickMetadataEntitySummary>,
+    ancestors: &mut HashSet<u32>,
+) -> Result<QuickMetadataSpatialNode, String> {
     let node = nodes
         .get(&express_id)
         .ok_or_else(|| format!("Quick spatial node #{express_id} not found"))?;
+    ancestors.insert(express_id);
     let mut children = Vec::with_capacity(node.children.len());
     for child_id in &node.children {
-        children.push(build_quick_spatial_tree_node(
+        if ancestors.contains(child_id) {
+            // Cyclic aggregate edge: skip this back-edge child, keep the rest.
+            continue;
+        }
+        children.push(build_quick_spatial_tree_node_inner(
             *child_id,
             nodes,
             element_summaries,
+            ancestors,
         )?);
     }
+    ancestors.remove(&express_id);
     let elements = node
         .elements
         .iter()
@@ -176,4 +197,34 @@ pub(super) fn build_quick_spatial_tree_node(
         children,
         elements,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn node(id: u32, children: Vec<u32>) -> QuickSpatialNodeEntry {
+        QuickSpatialNodeEntry {
+            express_id: id,
+            type_name: "IfcSpace".to_string(),
+            name: format!("#{id}"),
+            elevation: None,
+            children,
+            elements: vec![],
+            parent: None,
+        }
+    }
+
+    // A malformed IfcRelAggregates graph making two nodes each other's child would
+    // recurse forever (stack-overflow abort). The back-edge child is skipped and
+    // the rest of the tree still builds.
+    #[test]
+    fn cyclic_aggregate_graph_does_not_stack_overflow() {
+        let mut nodes = HashMap::new();
+        nodes.insert(1, node(1, vec![2]));
+        nodes.insert(2, node(2, vec![1]));
+        let summaries = HashMap::new();
+        let tree = build_quick_spatial_tree_node(1, &nodes, &summaries);
+        assert!(tree.is_ok(), "cyclic tree should build (cycle pruned), got {tree:?}");
+    }
 }

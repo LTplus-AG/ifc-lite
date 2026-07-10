@@ -11,6 +11,7 @@
 import {
   IfcTypeEnum,
   RelationshipType,
+  isBuildingLikeSpatialType,
   type SpatialHierarchy,
   type SpatialNode,
   type EntityTable,
@@ -44,6 +45,134 @@ function findSpatialNode(node: SpatialNode, expressId: number): SpatialNode | nu
     if (hit) return hit;
   }
   return null;
+}
+
+/**
+ * Classify a spatial node into the federation-identity container level it
+ * represents, or null when it is none of those. The single home for the
+ * site / building-like / project rules (building-like spans IFC4X3 facilities),
+ * shared by `buildSpatialAncestryIndex` and `collectSpatialContainerNames` so
+ * the classification can never drift between them.
+ */
+function spatialContainerLevel(node: SpatialNode): 'site' | 'building' | 'project' | null {
+  if (node.type === IfcTypeEnum.IfcSite) return 'site';
+  if (isBuildingLikeSpatialType(node.type)) return 'building';
+  if (node.type === IfcTypeEnum.IfcProject) return 'project';
+  return null;
+}
+
+/**
+ * Collect the distinct REAL IFC names of every IfcSite / building-like /
+ * IfcProject container in a hierarchy (unnamed containers contribute nothing,
+ * matching the column values). `getName` resolves an entity's real Name.
+ * Powers the spatial-filter value suggestions, sharing node classification with
+ * `buildSpatialAncestryIndex`.
+ */
+export function collectSpatialContainerNames(
+  hierarchy: SpatialHierarchy | undefined | null,
+  getName: (expressId: number) => string,
+): { sites: string[]; buildings: string[]; projects: string[] } {
+  const sites = new Set<string>();
+  const buildings = new Set<string>();
+  const projects = new Set<string>();
+  const root = hierarchy?.project;
+  if (root) {
+    const walk = (node: SpatialNode): void => {
+      const name = getName(node.expressId);
+      if (name) {
+        const level = spatialContainerLevel(node);
+        if (level === 'site') sites.add(name);
+        else if (level === 'building') buildings.add(name);
+        else if (level === 'project') projects.add(name);
+      }
+      for (const child of node.children) walk(child);
+    };
+    walk(root);
+  }
+  const sorted = (s: Set<string>) => Array.from(s).sort();
+  return { sites: sorted(sites), buildings: sorted(buildings), projects: sorted(projects) };
+}
+
+/**
+ * Nearest-ancestor spatial identity for an element, resolved from a built
+ * spatial hierarchy. `siteOf` / `buildingOf` return the containing IfcSite /
+ * IfcBuilding name (or '' when the element is unplaced, or the nearest such
+ * container is unnamed); `projectName` is the model's single IfcProject name.
+ */
+export interface SpatialAncestryIndex {
+  projectName: string;
+  siteOf(elementId: number): string;
+  buildingOf(elementId: number): string;
+}
+
+/**
+ * Precompute each element's containing IfcSite / IfcBuilding name from a spatial
+ * hierarchy in a single depth-first pass, so a per-element lookup is O(1) and
+ * never re-walks the tree. Used by federated views (Lists columns, panels) to
+ * label which project / site / building an element belongs to.
+ *
+ * `getName` resolves an entity's real IFC `Name` — pass the store's
+ * `entities.getName` so an UNNAMED container resolves to '' (matching how the
+ * storey column behaves), rather than the `SpatialNode.name` placeholder the
+ * hierarchy builder synthesizes (`Entity #N`). "Building" spans every
+ * building-like spatial type (IFC4X3 IfcFacility / IfcBridge / IfcRoad / …), so
+ * infrastructure federations resolve too.
+ *
+ * Coverage: elements listed directly under a container node (`node.elements`)
+ * resolve via that node; a spatial container queried by its own id resolves to
+ * its own site/building; parts and other aggregated descendants reachable only
+ * through the storey reverse index (`elementToStorey`) resolve via their
+ * storey. Elements the hierarchy doesn't place resolve to ''.
+ */
+export function buildSpatialAncestryIndex(
+  hierarchy: SpatialHierarchy | undefined | null,
+  getName: (expressId: number) => string,
+): SpatialAncestryIndex {
+  // container node id -> nearest {site, building} name (self-inclusive).
+  const ancestry = new Map<number, { site: string; building: string }>();
+  // element id -> the container node that directly lists it in `elements`.
+  const elementToContainer = new Map<number, number>();
+  let projectName = '';
+
+  if (hierarchy?.project) {
+    const root = hierarchy.project;
+    projectName = getName(root.expressId) || '';
+    const walk = (node: SpatialNode, site: string, building: string): void => {
+      // A site / building-like node takes its OWN name (or '' when unnamed). It
+      // does NOT inherit the ancestor's name across same-type nesting: an
+      // unnamed IfcSite nested in a named IfcSite is a different, unnamed site,
+      // so it resolves to '' (consistent with the storey column), not the outer
+      // name. Non-container nodes (storeys, spaces) propagate the parent's.
+      const level = spatialContainerLevel(node);
+      const nextSite = level === 'site' ? getName(node.expressId) : site;
+      const nextBuilding = level === 'building' ? getName(node.expressId) : building;
+      ancestry.set(node.expressId, { site: nextSite, building: nextBuilding });
+      for (const el of node.elements) {
+        if (!elementToContainer.has(el)) elementToContainer.set(el, node.expressId);
+      }
+      for (const child of node.children) walk(child, nextSite, nextBuilding);
+    };
+    walk(root, '', '');
+  }
+
+  const containerFor = (elementId: number): number | undefined => {
+    if (ancestry.has(elementId)) return elementId; // the element IS a spatial container
+    const direct = elementToContainer.get(elementId);
+    if (direct !== undefined) return direct;
+    return hierarchy?.elementToStorey.get(elementId); // parts/aggregated descendants
+  };
+
+  return {
+    projectName,
+    siteOf(elementId: number): string {
+      const c = containerFor(elementId);
+      return c === undefined ? '' : (ancestry.get(c)?.site ?? '');
+    },
+    buildingOf(elementId: number): string {
+      const c = containerFor(elementId);
+      return c === undefined ? '' : (ancestry.get(c)?.building ?? '');
+    },
+  };
 }
 
 /**

@@ -23,6 +23,7 @@ import type { PropertySet, QuantitySet } from '@ifc-lite/data';
 import { ENTITY_ATTRIBUTES } from '@ifc-lite/lists';
 import type { ListDataProvider, ListClassificationRef, DiscoveredColumns } from '@ifc-lite/lists';
 import { resolveEntityPredefinedType } from '../entity-predefined-type.js';
+import { buildSpatialAncestryIndex, type SpatialAncestryIndex } from '../../utils/spatialHierarchy.js';
 
 /** Collect every material-name string an element exposes — top-level
  *  material plus layer / constituent / profile names and list members. */
@@ -41,8 +42,13 @@ function materialNamesOf(info: MaterialInfo | null): string[] {
 /**
  * Create a ListDataProvider backed by an IfcDataStore.
  * The provider handles on-demand WASM extraction transparently.
+ *
+ * `modelName` is the source model / file display name used by the `model`
+ * federation-identity column; pass the `FederatedModel.name` so a list over
+ * several models can tell which file each row came from. Defaults to '' for the
+ * single-model legacy path where there's nothing to disambiguate.
  */
-export function createListDataProvider(store: IfcDataStore): ListDataProvider {
+export function createListDataProvider(store: IfcDataStore, modelName = ''): ListDataProvider {
   // Cache for on-demand attribute extraction (description, objectType, tag)
   // These are not stored during initial parse to keep load times fast,
   // but are needed for list display. Cache avoids re-parsing per column.
@@ -82,6 +88,18 @@ export function createListDataProvider(store: IfcDataStore): ListDataProvider {
   // Complete column discovery is cached — the provider outlives a builder
   // open, and the scan touches every entity that declares a pset/qto.
   let columnsCache: DiscoveredColumns | null = null;
+
+  // Spatial ancestry (element -> containing Site / Building name, + the model's
+  // Project name) is precomputed once in a single tree pass, then O(1) per
+  // element. Cached because the provider outlives a run and the Site / Building
+  // columns hit it per row.
+  let ancestryCache: SpatialAncestryIndex | null = null;
+  function ancestry(): SpatialAncestryIndex {
+    if (!ancestryCache) {
+      ancestryCache = buildSpatialAncestryIndex(store.spatialHierarchy, (id) => store.entities.getName(id));
+    }
+    return ancestryCache;
+  }
 
   const usesOnDemandProps = !!store.onDemandPropertyMap && store.source?.length > 0;
   const usesOnDemandQtos = !!store.onDemandQuantityMap && store.source?.length > 0;
@@ -144,6 +162,22 @@ export function createListDataProvider(store: IfcDataStore): ListDataProvider {
       const storeyId = hierarchy.elementToStorey.get(entityId);
       if (!storeyId) return '';
       return store.entities.getName(storeyId) || '';
+    },
+
+    getBuildingName(entityId: number): string {
+      return ancestry().buildingOf(entityId);
+    },
+
+    getSiteName(entityId: number): string {
+      return ancestry().siteOf(entityId);
+    },
+
+    getProjectName(): string {
+      return ancestry().projectName;
+    },
+
+    getModelName(): string {
+      return modelName;
     },
 
     discoverAllColumns(): DiscoveredColumns {

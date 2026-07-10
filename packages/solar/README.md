@@ -12,6 +12,12 @@ Outputs are renderer-agnostic: plain angles plus **ENU unit vectors**
 by the viewer, so a renderer only multiplies by a dome radius and adds the
 site origin.
 
+## Installation
+
+```bash
+npm install @ifc-lite/solar
+```
+
 ## Usage
 
 ```ts
@@ -41,6 +47,11 @@ architectural shadow / right-to-light studies require.
 - **Altitude**: degrees above the horizon (negative below).
 - **Time**: a JavaScript `Date`, interpreted as the absolute UTC instant
   (`getTime()`), so callers never reason about the host timezone.
+
+## Docs
+
+See the [ifc-lite docs](https://ltplus-ag.github.io/ifc-lite/) and the
+[API Reference](https://ltplus-ag.github.io/ifc-lite/api/typescript/).
 
 ## License
 

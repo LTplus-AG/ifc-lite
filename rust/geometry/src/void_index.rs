@@ -367,56 +367,6 @@ impl Default for VoidIndex {
     }
 }
 
-/// Statistics about void distribution in a model
-#[derive(Debug, Clone)]
-pub struct VoidStatistics {
-    /// Total number of hosts with voids
-    pub hosts_with_voids: usize,
-    /// Total number of void relationships
-    pub total_voids: usize,
-    /// Maximum voids on a single host
-    pub max_voids_per_host: usize,
-    /// Average voids per host (that has voids)
-    pub avg_voids_per_host: f64,
-    /// Number of hosts with many voids (>10)
-    pub hosts_with_many_voids: usize,
-}
-
-impl VoidStatistics {
-    /// Compute statistics from a void index
-    pub fn from_index(index: &VoidIndex) -> Self {
-        let hosts_with_voids = index.host_count();
-        let total_voids = index.total_relationships();
-
-        let max_voids_per_host = index
-            .host_to_voids
-            .values()
-            .map(|v| v.len())
-            .max()
-            .unwrap_or(0);
-
-        let avg_voids_per_host = if hosts_with_voids > 0 {
-            total_voids as f64 / hosts_with_voids as f64
-        } else {
-            0.0
-        };
-
-        let hosts_with_many_voids = index
-            .host_to_voids
-            .values()
-            .filter(|v| v.len() > 10)
-            .count();
-
-        Self {
-            hosts_with_voids,
-            total_voids,
-            max_voids_per_host,
-            avg_voids_per_host,
-            hosts_with_many_voids,
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -478,40 +428,6 @@ mod tests {
         assert!(hosts.contains(&100));
         assert!(hosts.contains(&101));
         assert!(hosts.contains(&102));
-    }
-
-    #[test]
-    fn test_void_statistics() {
-        let mut index = VoidIndex::new();
-
-        // Host 100 has 3 voids
-        index.add_relationship(100, 200);
-        index.add_relationship(100, 201);
-        index.add_relationship(100, 202);
-
-        // Host 101 has 1 void
-        index.add_relationship(101, 203);
-
-        let stats = VoidStatistics::from_index(&index);
-
-        assert_eq!(stats.hosts_with_voids, 2);
-        assert_eq!(stats.total_voids, 4);
-        assert_eq!(stats.max_voids_per_host, 3);
-        assert!((stats.avg_voids_per_host - 2.0).abs() < 0.01);
-        assert_eq!(stats.hosts_with_many_voids, 0);
-    }
-
-    #[test]
-    fn test_void_statistics_many_voids() {
-        let mut index = VoidIndex::new();
-
-        // Host 100 has 15 voids (> 10 threshold)
-        for i in 0..15 {
-            index.add_relationship(100, 200 + i);
-        }
-
-        let stats = VoidStatistics::from_index(&index);
-        assert_eq!(stats.hosts_with_many_voids, 1);
     }
 
     // ── propagate_voids_to_parts ─────────────────────────────────────────

@@ -11,6 +11,33 @@ import {
   StringTable,
 } from '@ifc-lite/data';
 import { SpatialHierarchyBuilder } from '../src/spatial-hierarchy-builder.js';
+import type { EntityRef } from '../src/types.js';
+
+/** Assemble a STEP source buffer + byId index from raw records, so the builder
+ *  can read LongName off the bytes the way the real fresh-parse path does. All
+ *  records are ASCII, so byte length equals string length. */
+function buildStepSource(records: string[]): {
+  source: Uint8Array;
+  entityIndex: { byId: { get(expressId: number): EntityRef | undefined } };
+} {
+  const encoder = new TextEncoder();
+  const byId = new Map<number, EntityRef>();
+  let text = '';
+  for (const record of records) {
+    const expressId = Number(record.match(/^#(\d+)/)![1]);
+    const type = record.match(/=\s*(\w+)/)![1];
+    const byteOffset = encoder.encode(text).length;
+    byId.set(expressId, {
+      expressId,
+      type,
+      byteOffset,
+      byteLength: encoder.encode(record).length,
+      lineNumber: 0,
+    });
+    text += `${record}\n`;
+  }
+  return { source: encoder.encode(text), entityIndex: { byId } };
+}
 
 describe('SpatialHierarchyBuilder', () => {
   it('builds IFC4.3 facility hierarchies and expands elements through facility parts', () => {
@@ -143,5 +170,124 @@ describe('SpatialHierarchyBuilder', () => {
     expect(hierarchy.elementToStorey.get(5)).toBe(4);
     expect(hierarchy.elementToStorey.get(6)).toBe(4);
     expect(hierarchy.elementToStorey.get(7)).toBe(4);
+  });
+
+  it('reads LongName off the source for spatial nodes, by schema attribute name (#1634)', () => {
+    // ISO 19650: authors put a short code in Name ("01") and the descriptive
+    // label in LongName ("Main Residence"). LongName sits at attribute index 7
+    // for IfcSpatialStructureElement subtypes but at index 5 for IfcProject, so
+    // the builder must resolve it by schema attribute NAME, not a fixed index.
+    const strings = new StringTable();
+    const entities = new EntityTableBuilder(5, strings);
+    entities.add(1, 'IFCPROJECT', 'p0', 'Project', '', '');
+    entities.add(2, 'IFCSITE', 's0', 'Site', '', '');
+    entities.add(3, 'IFCBUILDING', 'b0', '01', '', '');
+    entities.add(4, 'IFCBUILDING', 'b1', 'Garage', '', '');
+    entities.add(5, 'IFCSPACE', 'sp0', '', '', '', true); // Name empty, label in LongName
+
+    const relationships = new RelationshipGraphBuilder();
+    relationships.addEdge(1, 2, RelationshipType.Aggregates, 100);
+    relationships.addEdge(2, 3, RelationshipType.Aggregates, 101);
+    relationships.addEdge(2, 4, RelationshipType.Aggregates, 102);
+    relationships.addEdge(3, 5, RelationshipType.Aggregates, 103);
+
+    const { source, entityIndex } = buildStepSource([
+      // IfcProject: LongName at index 5 (GlobalId, OwnerHistory, Name,
+      // Description, ObjectType, LongName, Phase, RepresentationContexts, Units).
+      `#1=IFCPROJECT('p0',$,'Project',$,$,'Project Long',$,$,$);`,
+      // IfcSite/IfcBuilding/IfcSpace: LongName at index 7.
+      `#2=IFCSITE('s0',$,'Site',$,$,$,$,'The Whole Site',.ELEMENT.);`,
+      `#3=IFCBUILDING('b0',$,'01',$,$,$,$,'Main Residence',.ELEMENT.);`,
+      // LongName duplicates Name -> should be dropped (no redundant secondary).
+      `#4=IFCBUILDING('b1',$,'Garage',$,$,$,$,'Garage',.ELEMENT.);`,
+      // Empty Name -> LongName becomes the primary label, so no secondary.
+      `#5=IFCSPACE('sp0',$,$,$,$,$,$,'Living Room',.ELEMENT.);`,
+    ]);
+
+    const hierarchy = new SpatialHierarchyBuilder().build(
+      entities.build(),
+      relationships.build(),
+      strings,
+      source,
+      entityIndex,
+    );
+
+    const project = hierarchy.project;
+    expect(project.name).toBe('Project');
+    expect(project.longName).toBe('Project Long');
+
+    const site = project.children[0];
+    expect(site.name).toBe('Site');
+    expect(site.longName).toBe('The Whole Site');
+
+    const residence = site.children.find((n) => n.expressId === 3)!;
+    expect(residence.name).toBe('01');
+    expect(residence.longName).toBe('Main Residence');
+
+    const garage = site.children.find((n) => n.expressId === 4)!;
+    expect(garage.name).toBe('Garage');
+    expect(garage.longName).toBeUndefined(); // duplicate of Name is dropped
+
+    const space = residence.children[0];
+    expect(space.expressId).toBe(5);
+    expect(space.name).toBe('Living Room'); // fell back to LongName
+    expect(space.longName).toBeUndefined(); // not duplicated into the secondary slot
+  });
+
+  it('resolves LongName for IFC4.3 facility/infra containers outside the IFC4 codegen pin (#1634)', () => {
+    // IfcBridge / IfcBridgePart live only in the IFC4X3 schema, which the parser's
+    // IFC4-pinned attribute registry does not carry. The name-by-index lookup must
+    // fall back to the bundled schema union so LongName (index 7 for every
+    // IfcSpatialStructureElement subtype) still resolves for infra models.
+    const strings = new StringTable();
+    const entities = new EntityTableBuilder(3, strings);
+    entities.add(1, 'IFCPROJECT', 'p0', 'Infra Project', '', '');
+    entities.add(2, 'IFCBRIDGE', 'br0', 'BR-01', '', '');
+    entities.add(3, 'IFCBRIDGEPART', 'bp0', 'DECK', '', '');
+
+    const relationships = new RelationshipGraphBuilder();
+    relationships.addEdge(1, 2, RelationshipType.Aggregates, 10);
+    relationships.addEdge(2, 3, RelationshipType.Aggregates, 11);
+
+    const { source, entityIndex } = buildStepSource([
+      `#1=IFCPROJECT('p0',$,'Infra Project',$,$,$,$,$,$);`,
+      `#2=IFCBRIDGE('br0',$,'BR-01',$,$,$,$,'North Approach Bridge',.ELEMENT.,$);`,
+      `#3=IFCBRIDGEPART('bp0',$,'DECK',$,$,$,$,'Bridge Deck',.PARTIAL.,$);`,
+    ]);
+
+    const hierarchy = new SpatialHierarchyBuilder().build(
+      entities.build(),
+      relationships.build(),
+      strings,
+      source,
+      entityIndex,
+    );
+
+    const bridge = hierarchy.project.children[0];
+    expect(bridge.type).toBe(IfcTypeEnum.IfcBridge);
+    expect(bridge.name).toBe('BR-01');
+    expect(bridge.longName).toBe('North Approach Bridge');
+
+    const deck = bridge.children[0];
+    expect(deck.type).toBe(IfcTypeEnum.IfcBridgePart);
+    expect(deck.longName).toBe('Bridge Deck');
+  });
+
+  it('leaves longName undefined on the source-less cache-restore path', () => {
+    const strings = new StringTable();
+    const entities = new EntityTableBuilder(2, strings);
+    entities.add(1, 'IFCPROJECT', 'p0', 'Project', '', '');
+    entities.add(2, 'IFCBUILDING', 'b0', '01', '', '');
+
+    const relationships = new RelationshipGraphBuilder();
+    relationships.addEdge(1, 2, RelationshipType.Aggregates, 100);
+
+    const hierarchy = new SpatialHierarchyBuilder().buildFromCache(
+      entities.build(),
+      relationships.build(),
+    )!;
+
+    expect(hierarchy.project.children[0].name).toBe('01');
+    expect(hierarchy.project.children[0].longName).toBeUndefined();
   });
 });

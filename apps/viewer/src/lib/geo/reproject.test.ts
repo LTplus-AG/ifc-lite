@@ -10,6 +10,8 @@ import {
   computeFootprintGeoJSON,
   computeModelCenterInIfcMeters,
   reprojectFromLatLon,
+  reprojectionInputKey,
+  reprojectPointToLatLon,
   reprojectToLatLon,
   resolveProjection,
   sanitizeProj4,
@@ -190,6 +192,34 @@ describe('reproject helpers', () => {
     assert.ok(latLon!.lon > 3 && latLon!.lon < 8, `lon = ${latLon!.lon} (expected ~5°E for NL)`);
   });
 
+  it('resolves legacy IfcSite (geographic EPSG:4326) georeferencing — eastings/northings are lon/lat', async () => {
+    // The legacy-IfcSite path (extractLegacySiteGeoreference) synthesises a geographic
+    // CRS with eastings = longitude and northings = latitude. reprojectToLatLon must
+    // return those degrees directly (no projected-metre maths), so the KMZ / Google
+    // Earth export works for models georeferenced only by IfcSite.RefLatitude /
+    // RefLongitude, not just IfcMapConversion + a projected CRS (#1427).
+    const crs: ProjectedCRS = {
+      id: 1,
+      name: 'EPSG:4326',
+      mapProjection: 'Geographic',
+      geodeticDatum: 'WGS84',
+      mapUnit: 'DEGREE',
+    };
+    const conversion: MapConversion = {
+      id: 2,
+      sourceCRS: 0,
+      targetCRS: 1,
+      eastings: 5.38, // longitude
+      northings: 52.15, // latitude
+      orthogonalHeight: 12,
+      scale: 1,
+    };
+    const latLon = await reprojectToLatLon(conversion, crs);
+    assert.ok(latLon, 'legacy IfcSite geolocation should resolve');
+    assert.ok(Math.abs(latLon!.lat - 52.15) < 1e-9, `lat = ${latLon!.lat} (expected 52.15)`);
+    assert.ok(Math.abs(latLon!.lon - 5.38) < 1e-9, `lon = ${latLon!.lon} (expected 5.38)`);
+  });
+
   it('treats unset MapUnit as METRES, not project length unit (Bonsai/IfcOpenShell convention)', async () => {
     // Regression for the antipode bug: a file with LengthUnit=mm and
     // MapConversion eastings/northings authored in METRES (typical surveyor
@@ -295,5 +325,106 @@ describe('computeCesiumModelOrigin geoid correction default (#1355)', () => {
     assert.ok(origin);
     assert.strictEqual(origin!.geoidUndulation, 0);
     assert.strictEqual(origin!.height, origin!.ifcOriginHeight);
+  });
+});
+
+describe('reprojectPointToLatLon (#1657 measure geo lat/lon)', () => {
+  // building-architecture.ifc constants (EPSG:32760, UTM zone 60S), offsets in
+  // millimetres (mapUnitScale 0.001) — mirrors pick-to-geo.test.ts.
+  const BUILDING_ARCH_EASTINGS_MM = 729013348.8297004;
+  const BUILDING_ARCH_NORTHINGS_MM = 9063992684.697363;
+  const mmCrs: ProjectedCRS = {
+    id: 18,
+    name: 'EPSG:32760',
+    mapUnit: 'MILLIMETRE',
+    mapUnitScale: 0.001,
+  };
+  const metreCrs: ProjectedCRS = {
+    id: 18,
+    name: 'EPSG:32760',
+    mapUnit: 'METRE',
+    mapUnitScale: 1,
+  };
+
+  it('reprojects a picked E/N (mm CRS) to WGS84 in the expected UTM-60S region', async () => {
+    const latLon = await reprojectPointToLatLon(
+      BUILDING_ARCH_EASTINGS_MM,
+      BUILDING_ARCH_NORTHINGS_MM,
+      mmCrs,
+      0.001,
+    );
+    assert.ok(latLon, 'should resolve for a bundled UTM code');
+    // Zone 60S, central meridian 177E: this E/N lands just east of the antimeridian
+    // in the southern hemisphere.
+    assert.ok(latLon!.lat < 0 && latLon!.lat > -20, `lat = ${latLon!.lat} (expected southern)`);
+    assert.ok(latLon!.lon > 170 && latLon!.lon <= 180, `lon = ${latLon!.lon} (expected ~zone 60)`);
+  });
+
+  it('honours the map-unit scale: mm offsets and equivalent metre offsets agree', async () => {
+    const fromMm = await reprojectPointToLatLon(
+      BUILDING_ARCH_EASTINGS_MM,
+      BUILDING_ARCH_NORTHINGS_MM,
+      mmCrs,
+      0.001,
+    );
+    const fromMetres = await reprojectPointToLatLon(
+      BUILDING_ARCH_EASTINGS_MM * 0.001,
+      BUILDING_ARCH_NORTHINGS_MM * 0.001,
+      metreCrs,
+      1,
+    );
+    assert.ok(fromMm && fromMetres);
+    assert.ok(Math.abs(fromMm!.lat - fromMetres!.lat) < 1e-9, 'lat must match across unit scaling');
+    assert.ok(Math.abs(fromMm!.lon - fromMetres!.lon) < 1e-9, 'lon must match across unit scaling');
+  });
+
+  it('returns null (never throws) for an unresolvable CRS', async () => {
+    const unknown: ProjectedCRS = { id: 1, name: 'TOTALLY_UNKNOWN_CRS' };
+    const latLon = await reprojectPointToLatLon(500000, 5000000, unknown, 1);
+    assert.strictEqual(latLon, null);
+  });
+});
+
+describe('reprojectionInputKey (effect dependency correctness)', () => {
+  const crs: ProjectedCRS = {
+    id: 1,
+    name: 'EPSG:32760',
+    mapUnit: 'MILLIMETRE',
+    mapUnitScale: 0.001,
+    mapZone: '60S',
+    description: 'WGS 84 / UTM zone 60S',
+    mapProjection: 'UTM',
+  };
+
+  it('quantises sub-millimetre E/N jitter to the same key', () => {
+    // mm CRS: eastings are millimetres, so nudges within the same millimetre
+    // bucket round identically (both 729013348.x -> 729013348).
+    const a = reprojectionInputKey(729013348.1, 9063992684.1, crs, 0.001);
+    const b = reprojectionInputKey(729013348.4, 9063992684.4, crs, 0.001);
+    assert.strictEqual(a, b, 'sub-mm changes must not change the key');
+  });
+
+  it('changes the key when E/N moves by more than a millimetre', () => {
+    const a = reprojectionInputKey(729013348.1, 9063992684.1, crs, 0.001);
+    const b = reprojectionInputKey(729013350.1, 9063992684.1, crs, 0.001);
+    assert.notStrictEqual(a, b, 'a >1 mm move must change the key');
+  });
+
+  it('folds every reprojection input (codex #1671 P2): a projection-metadata edit changes the key even when name + E/N are unchanged', () => {
+    const base = reprojectionInputKey(729013348.1, 9063992684.1, crs, 0.001);
+    // Each field resolveProjection / reprojectPointToLatLon reads must move the key.
+    const edits: Array<Partial<ProjectedCRS>> = [
+      { mapZone: '59S' },
+      { description: 'something else' },
+      { mapProjection: 'TM' },
+      { mapUnitScale: 1 },
+    ];
+    for (const edit of edits) {
+      const mutated = reprojectionInputKey(729013348.1, 9063992684.1, { ...crs, ...edit }, 0.001);
+      assert.notStrictEqual(mutated, base, `editing ${Object.keys(edit)[0]} must change the key`);
+    }
+    // lengthUnitScale is a non-CRS input the reprojection reads too.
+    const diffLength = reprojectionInputKey(729013348.1, 9063992684.1, crs, 0.01);
+    assert.notStrictEqual(diffLength, base, 'a lengthUnitScale change must change the key');
   });
 });

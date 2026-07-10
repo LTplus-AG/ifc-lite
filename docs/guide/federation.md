@@ -19,11 +19,13 @@ Model C: expressIds 1-2000    -> globalIds 8001-10000   (offset: 8000)
 - **EntityRef**: `{ modelId: string, expressId: number }` - unambiguous reference to any entity
 
 ```typescript
+import { federationRegistry } from '@ifc-lite/renderer';
+
 // Convert local to global
-const globalId = expressId + model.idOffset;
+const globalId = federationRegistry.toGlobalId('arch-model', expressId);
 
 // Convert global to local
-const lookup = resolveGlobalIdFromModels(globalId);
+const lookup = federationRegistry.fromGlobalId(globalId);
 // { modelId: 'arch-model', expressId: 42 }
 ```
 
@@ -81,6 +83,31 @@ The viewer provides controls for each loaded model:
 | **Remove** | Unload a model and free its ID range |
 | **Set Active** | Focus the properties panel on a specific model |
 
+## Merging to a Single File (CLI)
+
+In-viewer federation keeps each model as a separate file with an ID offset. When
+you instead want to bake several models into one physical IFC file, use the
+`ifc-lite merge` command:
+
+```bash
+ifc-lite merge a.ifc b.ifc --out fed.ifc
+```
+
+Pass two or more input files (positional args) and one `--out` target. The
+spatial hierarchy (sites, buildings, storeys) is unified by name and elevation by
+default so the merged file has one coherent tree rather than duplicated
+containers.
+
+| Flag | Values | Default | Effect |
+|------|--------|---------|--------|
+| `--out <file>` | path | required | Output file path |
+| `--schema` | `IFC2X3` / `IFC4` / `IFC4X3` | `IFC4` | Output schema version |
+| `--unit-reconciliation` | `auto` / `normalize` / `assume-shared` | `auto` | How to handle models whose length unit differs from the first file. `auto` federates them as separate projects; `normalize` rescales them into the first file's unit; `assume-shared` forces one project without rescaling |
+| `--merge-sites` | `single` / `by-name` | combined heuristic | How `IfcSite` records are matched across models |
+| `--merge-buildings` | `single` / `by-name` | combined heuristic | How `IfcBuilding` records are matched |
+| `--merge-storeys` | `by-name` / `by-elevation` / `by-name-then-elevation` | combined heuristic | How `IfcBuildingStorey` records are matched |
+| `--json` | flag | off | Emit machine-readable stats (entity counts, warnings) to stdout |
+
 ## FederatedModel Type
 
 Each loaded model is tracked as a `FederatedModel`:
@@ -100,7 +127,7 @@ interface FederatedModel {
 
 - Each model adds its entities to the shared spatial index and renderer
 - Memory usage scales linearly with total entity count across all models
-- The FederationRegistry uses O(1) lookups for ID resolution
+- The FederationRegistry resolves IDs in O(1) local->global, O(log N) global->local
 - Visibility toggling per-model is O(1) (GPU-level filtering)
 - Loading 5+ large models (100MB+ each) may require the server paradigm for best performance
 

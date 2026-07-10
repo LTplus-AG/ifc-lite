@@ -1,5 +1,106 @@
 # @ifc-lite/export
 
+## 2.5.1
+
+### Patch Changes
+
+- [#1676](https://github.com/LTplus-AG/ifc-lite/pull/1676) [`da04601`](https://github.com/LTplus-AG/ifc-lite/commit/da0460183dcb4e2b26ceb53cfebd8cca33c78c39) Thanks [@louistrue](https://github.com/louistrue)! - Docs refresh: correct stale README claims and API samples against the current codebase; add READMEs to the ten published packages that shipped without one (cli, create, sdk, sandbox, lens, lists, embed-sdk, embed-protocol, encoding, viewer-core).
+
+- Updated dependencies [[`da04601`](https://github.com/LTplus-AG/ifc-lite/commit/da0460183dcb4e2b26ceb53cfebd8cca33c78c39)]:
+  - @ifc-lite/data@2.5.1
+  - @ifc-lite/encoding@1.14.9
+  - @ifc-lite/parser@3.8.1
+
+## 2.5.0
+
+### Minor Changes
+
+- [#1558](https://github.com/LTplus-AG/ifc-lite/pull/1558) [`47bde10`](https://github.com/LTplus-AG/ifc-lite/commit/47bde10dcacddf8f99e1e6b2bf036c78c192c5ff) Thanks [@louistrue](https://github.com/louistrue)! - Add `MergedExporter.exportBlobAsync` (and its `MergeBlobExportResult` type): assembles the merged STEP file as an off-heap multi-part `Blob` instead of one contiguous `Uint8Array`, so the largest STEP output ifc-lite produces (every federated model concatenated) never materialises as a single buffer on the JS heap. The viewer's merged-export download now uses it, handing the Blob straight to the download path with no copy. Byte content is identical to `exportAsync`. Also rewrites the internal `assembleStepBytes` (used by `StepExporter`/`MergedExporter`) as a two-pass single-allocation assembler (`TextEncoder.encodeInto`) instead of retaining a persistent `Uint8Array[]` of every encoded entity; output is byte-identical, verified against the previous implementation on a multi-byte UTF-8 corpus.
+
+### Patch Changes
+
+- [#1562](https://github.com/LTplus-AG/ifc-lite/pull/1562) [`52dd7a1`](https://github.com/LTplus-AG/ifc-lite/commit/52dd7a16788375a9507c40fbde106b78236801db) Thanks [@louistrue](https://github.com/louistrue)! - Weld per-face-duplicated faceted-brep vertices at the mesh SOURCE instead of per export. The faceted-brep mesher emits geometry per `IfcFace` with no cross-face vertex sharing, so a closed shell duplicates every shared corner once per incident face (~3-6x). That collapse now happens once, at the single per-element mesh funnel (`build_mesh_data` in `produce_element_meshes`), so every element -- render, GLB/OBJ export, and analysis -- arrives welded in its `MeshData`, and the previously separate per-export welds (from-bytes `to_yup` and the viewer's from-meshes GLB path) are removed as redundant. The weld keys on the exact position plus a quantized normal, so creases (a cube corner shared by three faces with distinct normals) stay split and flat/crease shading is preserved; world triangles, winding, and the world AABB are unchanged. It is deterministic and byte-identical cross-arch (native == wasm32, positions and topology identical, only the documented libm-trig normals differ), and closes the volume/watertightness gap for non-voided faceted breps on the render path (voided elements already welded via the coplanar-facet pass). The mesh-output determinism manifests are re-pinned for the one affected battery element (the round column [#500](https://github.com/LTplus-AG/ifc-lite/issues/500), an extruded circular profile: 216 -> 144 vertices, triangle count unchanged).
+
+- Updated dependencies [[`0762522`](https://github.com/LTplus-AG/ifc-lite/commit/076252241ec4201462f7fcf0555c83606de5fecd), [`d7a3205`](https://github.com/LTplus-AG/ifc-lite/commit/d7a3205524e023f936b29ee1bc113d1d10e3b0b1), [`52dd7a1`](https://github.com/LTplus-AG/ifc-lite/commit/52dd7a16788375a9507c40fbde106b78236801db), [`b157b48`](https://github.com/LTplus-AG/ifc-lite/commit/b157b4841bfa795f8a937a9be20c21b645757fbe)]:
+  - @ifc-lite/geometry@3.1.0
+  - @ifc-lite/parser@3.6.0
+
+## 2.4.1
+
+### Patch Changes
+
+- [#1553](https://github.com/LTplus-AG/ifc-lite/pull/1553) [`369ee9b`](https://github.com/LTplus-AG/ifc-lite/commit/369ee9b680309ca70c569b3f26bd07acfb83c19d) Thanks [@louistrue](https://github.com/louistrue)! - Shrink GLB exports by welding per-face-duplicated vertices. The faceted-brep mesher emits geometry per `IfcFace` with no cross-face vertex sharing, so a closed shell duplicated every shared corner once per incident face (~3-6x) -- the direct cause of the ~8x-larger GLBs seen on structural (faceted-brep-heavy) models versus reference extractors. Exports now collapse vertices that share an identical position and coinciding normal at the single glTF write funnel, then remap indices. World triangles, the world AABB, and flat/crease shading are preserved exactly (creases keep distinct normals and stay split); the weld is deterministic and cross-arch, applies to every GLB path (in-memory, streaming, bounded, and the viewer's from-meshes export), and leaves `process_geometry` output and the mesh-output determinism manifests untouched.
+
+- Updated dependencies [[`369ee9b`](https://github.com/LTplus-AG/ifc-lite/commit/369ee9b680309ca70c569b3f26bd07acfb83c19d)]:
+  - @ifc-lite/geometry@3.0.3
+
+## 2.4.0
+
+### Minor Changes
+
+- [#1481](https://github.com/LTplus-AG/ifc-lite/pull/1481) [`204cab4`](https://github.com/LTplus-AG/ifc-lite/commit/204cab48f8e3b6326a8005628ed5b7174d9d694c) Thanks [@louistrue](https://github.com/louistrue)! - feat(export): add `unitReconciliation: 'normalize'` merge mode
+
+  `MergedExporter` can now rescale a model whose length unit differs from the first
+  model's into the primary unit, so a mixed-unit merge produces one ordinary
+  single-unit `IfcProject` with one `IfcUnitAssignment` (opens correctly everywhere,
+  BIM Vision included) instead of a multi-project federation.
+
+  - Every length-valued datum is rescaled: all `IfcCartesianPoint` /
+    `IfcCartesianPointList` coordinates, scalar lengths (extrusion depths, profile
+    dimensions, radii, thicknesses, `IfcVector.Magnitude`, CSG primitive sizes,
+    `IfcBuildingStorey.Elevation`, `IfcSite.RefElevation`), `IfcLengthMeasure`
+    property values, and `IfcQuantityLength`. Which attributes are length-valued is
+    derived from the IFC schema registry, not hand-rolled.
+  - Areas and volumes are converted by their own declared `AREAUNIT`/`VOLUMEUNIT`
+    ratio (not the length factor squared/cubed), so a model with millimetre lengths
+    but square-/cubic-metre quantities (the common authoring-tool default) is not
+    corrupted.
+  - Angles, direction ratios, counts, unit definitions and georeferencing offsets
+    are left untouched. `MergeExportResult.stats.normalizedModelCount` reports how
+    many models were rescaled, and advisories are surfaced for schemas the length
+    registry does not fully cover (IFC4X3) and for georeferenced models.
+
+  The CLI `merge` command gains a `--unit-reconciliation <auto|normalize|assume-shared>`
+  flag, and the viewer's merged export adds a "Mixed units" selector.
+
+- [#1484](https://github.com/LTplus-AG/ifc-lite/pull/1484) [`a48abac`](https://github.com/LTplus-AG/ifc-lite/commit/a48abacfacdf226702f2454859afe9abe018e029) Thanks [@Blogbotana](https://github.com/Blogbotana)! - feat(export): configurable spatial merge matching in `MergedExporter`
+
+  `MergedExporter` unifies `IfcSite`/`IfcBuilding`/`IfcBuildingStorey` across
+  merged models with a single fixed heuristic today. It now accepts explicit
+  matching strategies, mirroring IfcOpenShell/BlenderBIM's "Merge Projects"
+  recipe:
+
+  - `mergeSites?: 'single' | 'by-name'` — `'single'` ignores Name and unifies
+    iff each model contributes exactly one `IfcSite`; `'by-name'` matches only
+    same-name (case-insensitive) sites, with no single-instance fallback.
+  - `mergeBuildings?: 'single' | 'by-name'` — same strategy, for `IfcBuilding`.
+  - `mergeStoreys?: 'by-name' | 'by-elevation' | 'by-name-then-elevation'` —
+    `'by-name'`/`'by-elevation'` match on exactly one criterion with no
+    fallback; `'by-name-then-elevation'` is the pre-existing combined heuristic
+    made explicit.
+
+  All three options are optional and, when omitted, preserve today's exact
+  default behavior (name match, else single-instance fallback for site/building;
+  name-then-elevation for storeys) — purely additive, no default behavior change.
+
+  One edge-case hardening applies in every mode, including the default: when two
+  sites (or buildings) in the same secondary model would match the same
+  first-model target (e.g. identical names), only the first claims it and the
+  second is kept as its own root instead of being silently collapsed onto the
+  same target. This brings site/building matching to parity with the
+  pre-existing storey behavior.
+
+  The CLI `merge` command gains matching `--merge-sites` / `--merge-buildings` /
+  `--merge-storeys` flags.
+
+### Patch Changes
+
+- Updated dependencies [[`8e43ecf`](https://github.com/LTplus-AG/ifc-lite/commit/8e43ecf540b88b942a4ec2127dd9bcf24ec244fa), [`d1e16f9`](https://github.com/LTplus-AG/ifc-lite/commit/d1e16f944ea9f3a35a7153959f13db168a35c229), [`a46dcdf`](https://github.com/LTplus-AG/ifc-lite/commit/a46dcdf68d05e8cdec4199167647f2dfa3c62cb6), [`6d2cb21`](https://github.com/LTplus-AG/ifc-lite/commit/6d2cb21a170413c6c98aadf10d254667b2ed2b53), [`3d25765`](https://github.com/LTplus-AG/ifc-lite/commit/3d25765edc2cee40268a6d5a27d4055f88f76489), [`b66ff1d`](https://github.com/LTplus-AG/ifc-lite/commit/b66ff1dd915a0ff4f60198a511adb7ed7f714079)]:
+  - @ifc-lite/geometry@3.0.0
+  - @ifc-lite/data@2.3.0
+  - @ifc-lite/encoding@1.14.8
+  - @ifc-lite/parser@3.5.2
+
 ## 2.3.0
 
 ### Minor Changes

@@ -2,11 +2,18 @@
 
 Real-time collaborative BIM via CRDT on IFCX. Built on [Yjs](https://github.com/yjs/yjs).
 
-> **Status: v0.1 Foundation.** Single- and multi-peer Y.Doc editing, IFCX
+> **Status: early (0.x).** Single- and multi-peer Y.Doc editing, IFCX
 > seed/snapshot round-trip, IndexedDB persistence, undo manager, websocket
-> provider, awareness/presence types, conflict detection. See
-> [`docs/architecture/collab-plan.md`](../../docs/architecture/collab-plan.md)
-> for the full v0.1 → v1.0 roadmap.
+> provider, awareness/presence, conflict detection, per-user layer
+> extraction, branching, federation, and end-to-end encryption helpers. See
+> [collab-plan.md](https://github.com/LTplus-AG/ifc-lite/blob/main/docs/architecture/collab-plan.md)
+> for the roadmap.
+
+## Installation
+
+```bash
+npm install @ifc-lite/collab
+```
 
 ## Why
 
@@ -26,7 +33,7 @@ const buffer = await fetch('/model.ifcx').then((r) => r.arrayBuffer());
 const session = await createCollabSession({
   roomId: 'project-abc/model.ifcx',
   user: { id: 'louis', name: 'Louis Trümpler', color: '#5b8def' },
-  provider: 'indexeddb', // or 'websocket' for multi-peer
+  provider: 'indexeddb', // or 'websocket' for multi-peer (requires serverUrl)
 });
 seedFromIfcx(session.doc, buffer);
 
@@ -50,12 +57,16 @@ const ifcx = snapshotToIfcx(session.doc, { author: 'louis' });
 
 ```ts
 createCollabSession(opts) → CollabSession
-session.doc           // Y.Doc
-session.presence      // Presence (awareness wrapper)
-session.transact(fn)  // wrapper around ydoc.transact with our origin
-session.undo()        // local-origin undo via Y.UndoManager
+session.doc            // Y.Doc
+session.presence       // Presence (awareness wrapper)
+session.whenSynced     // resolves once persistence / websocket sync completes
+session.seed(input)    // seed the Y.Doc from an .ifcx buffer or object
+session.transact(fn)   // wrapper around ydoc.transact with our origin
+session.undo()         // local-origin undo via Y.UndoManager
 session.redo()
-session.snapshot()    // → IfcxFile
+session.snapshot()     // → IfcxFile
+session.extractUserLayer(baseline)  // per-peer IFCX overlay layer
+session.onConflict(listener)
 session.dispose()
 ```
 
@@ -86,6 +97,12 @@ See spec §9 for the full conflict policy. In short:
 
 The `createConflictDetector` helper observes Y.Doc updates and emits
 structured events that the viewer (or any UI) can render.
+
+## Docs
+
+See the [ifc-lite docs](https://ltplus-ag.github.io/ifc-lite/). Pair with
+[`@ifc-lite/collab-server`](https://www.npmjs.com/package/@ifc-lite/collab-server)
+for multi-peer websocket sync.
 
 ## License
 

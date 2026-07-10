@@ -49,9 +49,14 @@ fn blob_texture_decodes_to_rgba_with_uvs() {
         (mesh.positions.len() / 3) * 2,
         "UVs are 2 floats per vertex, 1:1 with positions"
     );
-    // Flat-shaded boiler cylinder: vertices = triangles * 3, all populated.
+    // The boiler mesh is welded at the source (`build_mesh_data`): coincident
+    // vertices sharing position + normal + UV are collapsed, so the vertex count
+    // is no longer the raw `triangles * 3` triangle-soup — the UV seam and the
+    // per-face normals keep the necessary splits. Triangles stay intact and the
+    // UVs remain 1:1 with positions (checked above).
     let verts = mesh.positions.len() / 3;
-    assert!(verts >= 3 && verts % 3 == 0, "flat-shaded vertex count, got {verts}");
+    assert!(verts >= 3, "non-empty welded vertex buffer, got {verts}");
+    assert_eq!(mesh.indices.len() % 3, 0, "index buffer is whole triangles");
     // UVs use the authored IfcTextureVertexList coordinates directly (the
     // IfcSurfaceTexture.TextureTransform scale is NOT applied — it over-tiles
     // vs the buildingSMART reference). The authored coords map the image ~1:1,

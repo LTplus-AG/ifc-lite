@@ -116,6 +116,13 @@ function getInitialMergeLayers(): boolean {
 export const GEOM_WORKERS_STORAGE_KEY = 'ifc-lite-geom-workers';
 export const GEOM_TIER_STORAGE_KEY = 'ifc-lite-geom-tier';
 
+/**
+ * localStorage key for the source-decoupled mesh-only cache KILL SWITCH. The
+ * tier is on by default; this key holds `'0'` only when the user disabled it via
+ * `?meshCache=0` (absent = default on). See `isMeshOnlyCacheEnabled`.
+ */
+export const MESH_ONLY_CACHE_STORAGE_KEY = 'ifc-lite-mesh-cache';
+
 // Auto-low tessellation density for heavy models. The on-screen load already
 // skips tiny detail boolean cuts on every load (#1286), which removes the
 // exact-tier escalations that dominate boolean-heavy steel; this is the
@@ -236,6 +243,60 @@ export function getGeomTierOverride(): TessellationQuality | undefined {
     console.warn('[geom-tier] override read failed; using heuristic', err);
   }
   return undefined;
+}
+
+/**
+ * Pure decision for the source-decoupled mesh-only cache tier, split out for
+ * node:test (the outer {@link isMeshOnlyCacheEnabled} reads `window`/
+ * `localStorage`). Default ON — the tier is unflagged for 150-400MB files. The
+ * kill switch is `?meshCache=0` (persisted so it sticks across reloads and rides
+ * a shared link); `?meshCache=1` clears the kill switch back to the default.
+ *
+ * @param param  the `meshCache` URL query value, or `null` if absent
+ * @param stored the persisted `MESH_ONLY_CACHE_STORAGE_KEY` value, or `null`
+ * @returns `enabled` plus the persistence side-effect the caller should apply
+ *   (`persist: '0'` writes the kill switch; `clear: true` removes it).
+ */
+export function resolveMeshCacheDecision(
+  param: string | null,
+  stored: string | null,
+): { enabled: boolean; persist?: '0'; clear?: boolean } {
+  if (param === '0' || param === 'false' || param === 'off') {
+    return { enabled: false, persist: '0' };
+  }
+  if (param === '1' || param === 'true' || param === 'on') {
+    return { enabled: true, clear: true };
+  }
+  // Default ON unless the kill switch was persisted.
+  return { enabled: stored !== '0' };
+}
+
+/**
+ * Is the source-decoupled mesh-only cache tier enabled? It caches tables +
+ * geometry + instanced shards WITHOUT the source buffer for large (150-400MB)
+ * files so REPEAT opens skip the 10-90s parse+mesh. ON BY DEFAULT — the kill
+ * switch `?meshCache=0` disables it (persisted to localStorage so it sticks
+ * across the reload a re-measure needs, and a shared link carries it);
+ * `?meshCache=1` clears the kill switch. The <=150MB source-persisting tier is
+ * unaffected either way (it never consults this flag).
+ */
+export function isMeshOnlyCacheEnabled(): boolean {
+  if (typeof window === 'undefined') return false; // SSR never runs the cache path
+  const param = new URLSearchParams(window.location.search).get('meshCache');
+  try {
+    const stored = localStorage.getItem(MESH_ONLY_CACHE_STORAGE_KEY);
+    const decision = resolveMeshCacheDecision(param, stored);
+    if (decision.persist) localStorage.setItem(MESH_ONLY_CACHE_STORAGE_KEY, decision.persist);
+    else if (decision.clear) localStorage.removeItem(MESH_ONLY_CACHE_STORAGE_KEY);
+    return decision.enabled;
+  } catch (err) {
+    // Blocked/unavailable storage (Safari private mode): can't read or persist
+    // the kill switch, but an explicit `?meshCache=0` in the URL must STILL
+    // disable the tier for this load; otherwise fall back to default-on. Don't
+    // swallow silently (AGENTS.md: no silent catch).
+    console.warn('[mesh-cache] storage unavailable; honouring URL param, else default-on', err);
+    return resolveMeshCacheDecision(param, null).enabled;
+  }
 }
 
 /**

@@ -4,13 +4,15 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { reportToCsv, reportToJson, type CompareReport } from './exportReport.js';
+import { buildCompareReport, reportToCsv, reportToJson, type CompareReport } from './exportReport.js';
+import type { CompareResult } from '../../store/slices/compareSlice.js';
 
 const report: CompareReport = {
   baseModel: 'Project01',
   headModel: 'Project01 v2',
   scope: 'both',
   generatedAt: '2026-06-18T00:00:00.000Z',
+  excludedTypes: [],
   counts: { added: 1, deleted: 1, modified: 1 },
   rows: [
     { globalId: '12SOM77Nv5ruUGky1rkC3a', name: 'Wall', ifcType: 'IfcWall', state: 'added', change: 'Added', movedDistance: 0, model: 'Project01 v2' },
@@ -48,6 +50,19 @@ describe('reportToCsv (#1202)', () => {
     // apostrophe so Excel/Sheets treat it as text, not a formula.
     assert.ok(csv.includes('"\'=HYPERLINK('), `formula not neutralised: ${csv}`);
   });
+
+  it('leads with an excluded-classes comment so the omission is not silent (#1470)', () => {
+    const withBlacklist: CompareReport = { ...report, excludedTypes: ['IfcOpeningElement'] };
+    const lines = reportToCsv(withBlacklist).split('\r\n');
+    assert.strictEqual(lines[0], '# Excluded classes (not compared): IfcOpeningElement');
+    assert.strictEqual(lines[1], 'GlobalId,Name,IfcType,Change,MovedDistance_m,Model');
+    assert.strictEqual(lines.length, 2 + report.rows.length);
+  });
+
+  it('omits the comment line entirely when nothing was excluded', () => {
+    const lines = reportToCsv(report).split('\r\n');
+    assert.strictEqual(lines[0], 'GlobalId,Name,IfcType,Change,MovedDistance_m,Model');
+  });
 });
 
 describe('reportToJson (#1202)', () => {
@@ -56,5 +71,41 @@ describe('reportToJson (#1202)', () => {
     assert.strictEqual(parsed.rows.length, 3);
     assert.strictEqual(parsed.counts.added, 1);
     assert.strictEqual(parsed.baseModel, 'Project01');
+  });
+
+  it('records the excluded classes (blacklist) in the report (#1470)', () => {
+    const withBlacklist: CompareReport = { ...report, excludedTypes: ['IfcOpeningElement'] };
+    const parsed = JSON.parse(reportToJson(withBlacklist));
+    assert.deepStrictEqual(parsed.excludedTypes, ['IfcOpeningElement']);
+  });
+});
+
+describe('buildCompareReport excludedTypes casing (#1470)', () => {
+  // Minimal result: no entries, so no rows/bounds needed.
+  const result = {
+    baseModelId: 'a',
+    headModelId: 'b',
+    baseName: 'A',
+    headName: 'B',
+    scope: 'both',
+    geometryUnavailable: false,
+    excludedHiddenIds: new Set<number>(),
+    diff: {
+      scope: 'both',
+      excludedTypes: ['IFCOPENINGELEMENT'], // engine's uppercase-normalized form
+      entries: [],
+      byKey: new Map(),
+      counts: { added: 0, modified: 0, deleted: 0, unchanged: 0 },
+    },
+  } as unknown as CompareResult;
+
+  it('prefers the display-cased blacklist when supplied', () => {
+    const report = buildCompareReport(result, new Map(), ['IfcOpeningElement']);
+    assert.deepStrictEqual(report.excludedTypes, ['IfcOpeningElement']);
+  });
+
+  it('falls back to the engine-normalized form when no display list is given', () => {
+    const report = buildCompareReport(result, new Map());
+    assert.deepStrictEqual(report.excludedTypes, ['IFCOPENINGELEMENT']);
   });
 });

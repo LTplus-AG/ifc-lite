@@ -1,5 +1,27 @@
 # @ifc-lite/server-client
 
+## 1.18.2
+
+### Patch Changes
+
+- [#1651](https://github.com/LTplus-AG/ifc-lite/pull/1651) [`52d861c`](https://github.com/LTplus-AG/ifc-lite/commit/52d861cdace765965dc79953916403b3ab0e3da6) Thanks [@louistrue](https://github.com/louistrue)! - Surface the rect-fast `deferTooManyOpenings` counter in the geometry diagnostics. The Rust `RectFastSummary` already emits it (the opening-count DoS cap, [#1649](https://github.com/LTplus-AG/ifc-lite/issues/1649)); the `GeometryDiagnostics.rectFast` and server-client types now include it (optional, defaulted to 0 when absent so older payloads merge cleanly), `mergeGeometryDiagnostics` sums it, and the CLI geometry report renders it in the rect_fast defer breakdown.
+
+## 1.18.1
+
+### Patch Changes
+
+- [#1502](https://github.com/LTplus-AG/ifc-lite/pull/1502) [`7d5a031`](https://github.com/LTplus-AG/ifc-lite/commit/7d5a03191a768f68c5ddad878698d1aacb9940ef) Thanks [@louistrue](https://github.com/louistrue)! - fix(server-client): send the auth token on data-model and symbolic fetches
+
+  `fetchDataModel` and `fetchSymbolic` were the only requests that omitted
+  `authHeaders()`, so against a server started with `IFC_SERVER_API_TOKEN` the
+  geometry parse succeeded but the follow-up data-model and symbolic fetches got
+  401 and silently returned null — the model loaded with no properties and no
+  annotations. Both now send the `Authorization` header like every other request.
+
+  Also: the streaming parse cache-check now includes the parse query string
+  (`parseQuery(options)`), matching the non-streaming path, so a cached result for
+  a different tessellation quality is no longer returned as a hit.
+
 ## 1.18.0
 
 ### Minor Changes

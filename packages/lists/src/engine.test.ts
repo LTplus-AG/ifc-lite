@@ -25,12 +25,15 @@ function createMockProvider(): ListDataProvider {
     [IfcTypeEnum.IfcSlab, [3]],
   ]);
 
-  const propertySets = new Map<number, Array<{ name: string; properties: Array<{ name: string; value: unknown }> }>>([
+  const propertySets = new Map<number, Array<{ name: string; properties: Array<{ name: string; value: unknown; dataType?: string }> }>>([
     [1, [
       { name: 'Pset_WallCommon', properties: [
         { name: 'IsExternal', value: ['IFCBOOLEAN', '.T.'] },
         { name: 'FireRating', value: 'REI 90' },
         { name: 'LoadBearing', value: ['IFCBOOLEAN', '.T.'] },
+        // A measure property carrying its raw IFC dataType — used to prove
+        // executeList surfaces it onto the result column (#1573).
+        { name: 'ThermalTransmittance', value: 0.24, dataType: 'IFCTHERMALTRANSMITTANCEMEASURE' },
       ]},
     ]],
     [2, [
@@ -49,6 +52,9 @@ function createMockProvider(): ListDataProvider {
         { name: 'Length', value: 5.0, type: 0 },
         { name: 'Height', value: 2.8, type: 0 },
         { name: 'Width', value: 0.2, type: 0 },
+        // NetVolume lives in a DIFFERENT set per element type (wall vs slab);
+        // a `/Qto_.*BaseQuantities/` pattern spans both (#1591).
+        { name: 'NetVolume', value: 0.28, type: 2 },
       ]},
     ]],
     [2, [
@@ -56,12 +62,14 @@ function createMockProvider(): ListDataProvider {
         { name: 'Length', value: 3.5, type: 0 },
         { name: 'Height', value: 2.8, type: 0 },
         { name: 'Width', value: 0.15, type: 0 },
+        { name: 'NetVolume', value: 0.147, type: 2 },
       ]},
     ]],
     [3, [
       { name: 'Qto_SlabBaseQuantities', quantities: [
         { name: 'GrossArea', value: 45.2, type: 1 },
         { name: 'GrossVolume', value: 9.04, type: 2 },
+        { name: 'NetVolume', value: 8.5, type: 2 },
       ]},
     ]],
   ]);
@@ -84,6 +92,19 @@ function createMockProvider(): ListDataProvider {
     [3, 'Level 0'],
   ]);
 
+  // Federation-identity fixtures (#1591): both walls sit in Building A, the
+  // slab in Building B; all share one site and one source model.
+  const buildingNames = new Map<number, string>([
+    [1, 'Building A'],
+    [2, 'Building A'],
+    [3, 'Building B'],
+  ]);
+  const siteNames = new Map<number, string>([
+    [1, 'Main Site'],
+    [2, 'Main Site'],
+    [3, 'Main Site'],
+  ]);
+
   const predefinedTypes = new Map<number, string>([
     [1, 'SOLIDWALL'],
     // entity 2 intentionally has no PredefinedType
@@ -104,6 +125,10 @@ function createMockProvider(): ListDataProvider {
     getMaterialNames: (id) => materialNames.get(id) ?? [],
     getClassifications: (id) => classifications.get(id) ?? [],
     getStoreyName: (id) => storeyNames.get(id) ?? '',
+    getBuildingName: (id) => buildingNames.get(id) ?? '',
+    getSiteName: (id) => siteNames.get(id) ?? '',
+    getProjectName: () => 'Sample Project',
+    getModelName: () => 'model-a.ifc',
     getEntityPredefinedType: (id) => predefinedTypes.get(id) ?? '',
   };
 }
@@ -205,6 +230,66 @@ describe('executeList', () => {
     expect(result.rows[0].values[1]).toBe(5.0);
   });
 
+  // #1573: the display-unit converter needs to know what unit-KIND a raw
+  // numeric cell is in, so `executeList` annotates the RESULT's columns
+  // (never the persisted ListDefinition) with the QuantityType / measure
+  // dataType of the first matching entry.
+  it('annotates quantity columns with the resolved QuantityType', () => {
+    const provider = createMockProvider();
+    const def: ListDefinition = {
+      id: 'meta-1',
+      name: 'Test',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [IfcTypeEnum.IfcSlab],
+      conditions: [],
+      columns: [
+        { id: 'area', source: 'quantity', psetName: 'Qto_SlabBaseQuantities', propertyName: 'GrossArea' },
+      ],
+    };
+
+    const result = executeList(def, provider);
+    expect(result.columns[0].quantityType).toBe(1); // QuantityType.Area
+    // The persisted definition itself is never mutated.
+    expect(def.columns[0].quantityType).toBeUndefined();
+  });
+
+  it('annotates property columns with the measure dataType', () => {
+    const provider = createMockProvider();
+    const def: ListDefinition = {
+      id: 'meta-3',
+      name: 'Test',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [IfcTypeEnum.IfcWall],
+      conditions: [],
+      columns: [
+        { id: 'u', source: 'property', psetName: 'Pset_WallCommon', propertyName: 'ThermalTransmittance' },
+      ],
+    };
+
+    const result = executeList(def, provider);
+    expect(result.columns[0].dataType).toBe('IFCTHERMALTRANSMITTANCEMEASURE');
+  });
+
+  it('leaves quantityType unset when no entity has a matching quantity', () => {
+    const provider = createMockProvider();
+    const def: ListDefinition = {
+      id: 'meta-2',
+      name: 'Test',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [IfcTypeEnum.IfcWall],
+      conditions: [],
+      columns: [
+        { id: 'missing', source: 'quantity', psetName: 'Qto_SlabBaseQuantities', propertyName: 'GrossArea' },
+      ],
+    };
+
+    const result = executeList(def, provider);
+    expect(result.columns[0].quantityType).toBeUndefined();
+  });
+
   it('extracts material, classification and storey columns', () => {
     const provider = createMockProvider();
     const def: ListDefinition = {
@@ -229,6 +314,51 @@ describe('executeList', () => {
     expect(result.rows[1].values).toEqual(['Wall-02', 'Brick, Rigid Insulation', null, 'Level 1']);
   });
 
+  // #1591: federation-identity columns — the source model plus the spatial
+  // container at each level (Project / Site / Building / Storey), so a list over
+  // several models can be grouped and sorted by where each row comes from.
+  it('extracts the model and leveled spatial columns', () => {
+    const provider = createMockProvider();
+    const def: ListDefinition = {
+      id: 'fed-cols',
+      name: 'Test',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [IfcTypeEnum.IfcWall, IfcTypeEnum.IfcSlab],
+      conditions: [],
+      columns: [
+        { id: 'name', source: 'attribute', propertyName: 'Name' },
+        { id: 'model', source: 'model', propertyName: 'Model' },
+        { id: 'project', source: 'spatial', propertyName: 'Project' },
+        { id: 'site', source: 'spatial', propertyName: 'Site' },
+        { id: 'building', source: 'spatial', propertyName: 'Building' },
+        { id: 'storey', source: 'spatial', propertyName: 'Storey' },
+      ],
+    };
+
+    const result = executeList(def, provider);
+    const byName = new Map(result.rows.map((r) => [r.values[0], r.values]));
+    expect(byName.get('Wall-01')).toEqual(['Wall-01', 'model-a.ifc', 'Sample Project', 'Main Site', 'Building A', 'Level 0']);
+    expect(byName.get('Slab-01')).toEqual(['Slab-01', 'model-a.ifc', 'Sample Project', 'Main Site', 'Building B', 'Level 0']);
+  });
+
+  // A `spatial` column authored before the level existed carries an empty
+  // propertyName; it must still resolve the storey name (back-compat with
+  // persisted lists / the pre-#1591 Storey chip).
+  it('defaults a level-less spatial column to Storey', () => {
+    const provider = createMockProvider();
+    const result = executeList({
+      id: 'sp-default',
+      name: 'T',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [IfcTypeEnum.IfcWall],
+      conditions: [],
+      columns: [{ id: 'sp', source: 'spatial', propertyName: '' }],
+    }, provider);
+    expect(result.rows[0].values[0]).toBe('Level 0');
+  });
+
   // Condition filtering across every condition source. entityTypes: []
   // targets all elements the provider can enumerate (no class constraint),
   // so these rows also pin the class-less targeting semantics.
@@ -243,6 +373,12 @@ describe('executeList', () => {
     // Wall-02 has no classification, so `exists` excludes it.
     { source: 'classification', propertyName: 'Classification', operator: 'exists', value: '', expected: ['Slab-01', 'Wall-01'] },
     { source: 'spatial', propertyName: 'Storey', operator: 'equals', value: 'Level 0', expected: ['Slab-01', 'Wall-01'] },
+    // #1591: leveled spatial + model filters. Building B holds only the slab;
+    // every element shares one site and one source model.
+    { source: 'spatial', propertyName: 'Building', operator: 'equals', value: 'Building B', expected: ['Slab-01'] },
+    { source: 'spatial', propertyName: 'Site', operator: 'equals', value: 'Main Site', expected: ['Slab-01', 'Wall-01', 'Wall-02'] },
+    { source: 'model', propertyName: 'Model', operator: 'equals', value: 'model-a.ifc', expected: ['Slab-01', 'Wall-01', 'Wall-02'] },
+    { source: 'model', propertyName: 'Model', operator: 'equals', value: 'other.ifc', expected: [] },
   ] as const)('filters by $source $operator "$value"', ({ source, propertyName, operator, value, expected }) => {
     const provider = createMockProvider();
     const def: ListDefinition = {
@@ -257,6 +393,63 @@ describe('executeList', () => {
 
     const result = executeList(def, provider);
     expect(result.rows.map((r) => r.values[0]).sort()).toEqual([...expected]);
+  });
+
+  // Numeric operators (gt/lt/gte/lte/notEquals) plus the property/quantity
+  // condition sources (getConditionValue's 'property'/'quantity' branches),
+  // which the coverage above only exercises via columns, never via
+  // conditions. Qto_WallBaseQuantities.Length: Wall-01=5.0, Wall-02=3.5,
+  // Slab-01 has no Qto_WallBaseQuantities (null, so it never matches).
+  it.each([
+    { source: 'quantity', psetName: 'Qto_WallBaseQuantities', propertyName: 'Length', operator: 'gt', value: 4, expected: ['Wall-01'] },
+    { source: 'quantity', psetName: 'Qto_WallBaseQuantities', propertyName: 'Length', operator: 'lt', value: 4, expected: ['Wall-02'] },
+    { source: 'quantity', psetName: 'Qto_WallBaseQuantities', propertyName: 'Length', operator: 'gte', value: 5.0, expected: ['Wall-01'] },
+    { source: 'quantity', psetName: 'Qto_WallBaseQuantities', propertyName: 'Length', operator: 'lte', value: 3.5, expected: ['Wall-02'] },
+    // FireRating: Wall-01='REI 90', Wall-02='EI 30', Slab-01 has no
+    // Pset_WallCommon at all (null actualValue is excluded, not a match).
+    { source: 'property', psetName: 'Pset_WallCommon', propertyName: 'FireRating', operator: 'notEquals', value: 'EI 30', expected: ['Wall-01'] },
+    // #1591: a regex qset pattern in a condition. NetVolume: Wall-01=0.28,
+    // Wall-02=0.147, Slab-01=8.5 — only the slab exceeds 1.
+    { source: 'quantity', psetName: '/Qto_.*BaseQuantities/', propertyName: 'NetVolume', operator: 'gt', value: 1, expected: ['Slab-01'] },
+  ] as const)('filters by $source $operator against $value (psetName=$psetName)', ({ source, psetName, propertyName, operator, value, expected }) => {
+    const provider = createMockProvider();
+    const def: ListDefinition = {
+      id: 'cond-numeric',
+      name: 'Test',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [],
+      conditions: [{ source, psetName, propertyName, operator, value }],
+      columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
+    };
+
+    const result = executeList(def, provider);
+    expect(result.rows.map((r) => r.values[0]).sort()).toEqual([...expected]);
+  });
+
+  // #1591: a `/regex/` qset-name pattern pulls the same quantity from whichever
+  // matching set an element carries — NetVolume from Qto_WallBaseQuantities for
+  // walls AND Qto_SlabBaseQuantities for the slab, in one column.
+  it('resolves a quantity via a regex qset-name pattern across sets', () => {
+    const provider = createMockProvider();
+    const def: ListDefinition = {
+      id: 'regex-qty',
+      name: 'T',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [IfcTypeEnum.IfcWall, IfcTypeEnum.IfcSlab],
+      conditions: [],
+      columns: [
+        { id: 'name', source: 'attribute', propertyName: 'Name' },
+        { id: 'vol', source: 'quantity', psetName: '/Qto_.*BaseQuantities/', propertyName: 'NetVolume' },
+      ],
+    };
+
+    const result = executeList(def, provider);
+    const byName = new Map(result.rows.map((r) => [r.values[0], r.values[1]]));
+    expect(byName.get('Wall-01')).toBe(0.28);
+    expect(byName.get('Wall-02')).toBe(0.147);
+    expect(byName.get('Slab-01')).toBe(8.5);
   });
 
   it('returns null for missing properties', () => {
@@ -480,6 +673,29 @@ describe('listResultToCSV', () => {
     });
 
     expect(csv).toContain('"Hello, ""World"""');
+  });
+
+  // CWE-1236 formula-injection guard: a cell that starts with a spreadsheet
+  // formula trigger char gets a leading apostrophe so Excel/Sheets render it
+  // as text instead of evaluating it as a formula when the CSV is opened.
+  it.each([
+    ['=SUM(A1:A10)', "'=SUM(A1:A10)"],
+    ['-2+3', "'-2+3"],
+    ['+1234567890', "'+1234567890"],
+    // Contains a delimiter comma too, so the apostrophe-prefixed value is
+    // also quote-wrapped by the general CSV-escaping rule below it.
+    ['@SUM(1,2)', '"\'@SUM(1,2)"'],
+    ['Normal value', 'Normal value'],
+  ])('escapes %j as %j', (input, escaped) => {
+    const csv = listResultToCSV({
+      columns: [{ id: 'a', source: 'attribute', propertyName: 'Name' }],
+      rows: [{ entityId: 1, modelId: 'default', values: [input] }],
+      totalCount: 1,
+      executionTime: 0,
+    });
+
+    const dataLine = csv.split('\n')[1];
+    expect(dataLine).toBe(escaped);
   });
 });
 

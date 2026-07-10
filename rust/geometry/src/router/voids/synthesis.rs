@@ -7,7 +7,7 @@
 use super::geom::*;
 use super::{GeometryRouter, OpeningType, NORMALIZE_EPSILON};
 use crate::{Mesh, Point3, Vector3};
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
+use ifc_lite_core::{DecodedEntity, EntityDecoder};
 
 impl GeometryRouter {
 
@@ -50,18 +50,6 @@ impl GeometryRouter {
     ) -> Vec<OpeningType> {
         use super::super::{ClassificationKind, OpeningDiagnostic, OpeningKindDiag};
 
-        // Only treat vertical-extrusion openings as "floor openings" when
-        // the host is an actual horizontal-surface element. For walls, a
-        // vertical (Z) opening extrusion is just how Revit/Archicad encode
-        // door / window openings — it should still take the rectangular
-        // AABB clip path. Pre-this-change the heuristic mis-tagged every
-        // vertical-extrusion opening as a floor opening, routing wall
-        // openings through the (cap-limited, error-prone) CSG path.
-        let host_is_horizontal_surface = matches!(
-            host.ifc_type,
-            IfcType::IfcSlab | IfcType::IfcRoof | IfcType::IfcCovering
-        );
-
         // Per-opening diagnostic accumulator for this host. Pushed to the
         // router's `host_opening_diagnostics` map before we return.
         let mut host_diag: Vec<OpeningDiagnostic> = Vec::with_capacity(opening_ids.len());
@@ -88,20 +76,10 @@ impl GeometryRouter {
             let vertex_count = opening_mesh.positions.len() / 3;
 
             // Local helper: record both the aggregate counter bump and a
-            // per-host diagnostic line in one place. `guard_saved` is the
-            // per-opening flag (whether the host-aware floor-opening guard
-            // kept this opening on the rectangular path).
-            let mut bump = |router: &Self,
-                            ck: ClassificationKind,
-                            kind: OpeningKindDiag,
-                            guard_saved: bool| {
+            // per-host diagnostic line in one place.
+            let mut bump = |router: &Self, ck: ClassificationKind, kind: OpeningKindDiag| {
                 router.bump_classification(ck);
-                host_diag.push(OpeningDiagnostic {
-                    opening_id,
-                    kind,
-                    vertex_count,
-                    guard_saved,
-                });
+                host_diag.push(OpeningDiagnostic { opening_id, kind, vertex_count });
             };
 
             // Probe per-item geometry up front. An opening that holds several
@@ -138,7 +116,6 @@ impl GeometryRouter {
                     self,
                     ClassificationKind::NonRectangular,
                     OpeningKindDiag::NonRectangular,
-                    false,
                 );
                 openings.push(OpeningType::NonRectangular(
                     opening_mesh,
@@ -149,20 +126,13 @@ impl GeometryRouter {
             } else if !item_bounds_with_dir.is_empty() {
                     // Per-item geometry-driven classification (origin/main).
                     // The earlier "is_floor_opening" host-aware heuristic
-                    // (preserved here only via diagnostics) routed every
-                    // Z-extruded opening through full CSG, which silently
-                    // failed for roof windows on shallow-slope roofs and
-                    // left the host uncut. The frame-based DiagonalRectangular
-                    // path handles tilted rectangular openings — including
-                    // rotated-footprint floor openings — so reserve
-                    // NonRectangular for genuinely curved or arched voids.
-                    //
-                    // The host-is-horizontal flag is no longer used as a
-                    // routing signal but is retained as a diagnostic field
-                    // so we can still observe the historic guard population
-                    // in regression sweeps.
-                    let _host_is_horizontal = host_is_horizontal_surface;
-
+                    // routed every Z-extruded opening through full CSG, which
+                    // silently failed for roof windows on shallow-slope roofs
+                    // and left the host uncut. The frame-based
+                    // DiagonalRectangular path handles tilted rectangular
+                    // openings — including rotated-footprint floor openings —
+                    // so reserve NonRectangular for genuinely curved or arched
+                    // voids.
                     let item_meshes = self
                         .get_opening_item_meshes_world(&opening_entity, decoder)
                         .unwrap_or_default();
@@ -184,7 +154,6 @@ impl GeometryRouter {
                                         self,
                                         ClassificationKind::NonRectangular,
                                         OpeningKindDiag::NonRectangular,
-                                        false,
                                     );
                                     openings.push(OpeningType::NonRectangular(
                                         item_mesh,
@@ -197,7 +166,6 @@ impl GeometryRouter {
                                         self,
                                         ClassificationKind::Diagonal,
                                         OpeningKindDiag::Diagonal,
-                                        false,
                                     );
                                     openings.push(OpeningType::DiagonalRectangular(
                                         item_mesh, frame,
@@ -207,7 +175,6 @@ impl GeometryRouter {
                                         self,
                                         ClassificationKind::Rectangular,
                                         OpeningKindDiag::Rectangular,
-                                        false,
                                     );
                                     openings.push(OpeningType::Rectangular(
                                         min_pt,
@@ -220,7 +187,6 @@ impl GeometryRouter {
                                     self,
                                     ClassificationKind::Rectangular,
                                     OpeningKindDiag::Rectangular,
-                                    false,
                                 );
                                 openings.push(OpeningType::Rectangular(
                                     min_pt,
@@ -232,7 +198,6 @@ impl GeometryRouter {
                                     self,
                                     ClassificationKind::NonRectangular,
                                     OpeningKindDiag::NonRectangular,
-                                    false,
                                 );
                                 openings.push(OpeningType::NonRectangular(
                                     item_mesh,
@@ -248,7 +213,6 @@ impl GeometryRouter {
                                 self,
                                 ClassificationKind::Rectangular,
                                 OpeningKindDiag::Rectangular,
-                                false,
                             );
                             openings.push(OpeningType::Rectangular(
                                 min_pt, max_pt, extrusion_dir,
@@ -275,7 +239,6 @@ impl GeometryRouter {
                         self,
                         ClassificationKind::Rectangular,
                         OpeningKindDiag::Rectangular,
-                        false,
                     );
                     openings.push(OpeningType::Rectangular(min_f64, max_f64, None));
                 }
@@ -615,31 +578,6 @@ impl GeometryRouter {
         (new_min, new_max)
     }
 
-    /// Push the opening MESH's caps a hair PAST the host along `dir` so a FLUSH
-    /// cap interface becomes a clean TRANSVERSAL crossing before the exact-kernel
-    /// subtract. Returns the mesh UNCHANGED unless a real flush-cap condition is
-    /// present — the conservative default, so a normal through-opening, an
-    /// off-axis `dir`, a recess, or an already-poking-through opening is untouched.
-    ///
-    /// WHY (the #1007 flush roof-opening sliver, PART A): an opening solid whose
-    /// cap is authored EXACTLY flush with a host surface meets that surface as a
-    /// near-coplanar interface, not a crossing. On a TILTED, f32-imported, faceted
-    /// BREP roof the host facets under the cap each sit a fraction of a degree off
-    /// the cap plane (~0.1° measured on #1112), so the exact kernel neither sees a
-    /// clean transversal crossing NOR an exactly-coplanar pair — it leaves a sliver
-    /// bridging the hole. Pushing the flush cap a hair past the surface makes EVERY
-    /// host facet under the footprint a genuine transversal crossing, which the
-    /// exact kernel cuts cleanly and deterministically (0% footprint coverage on
-    /// both #1112 openings; plain f32 vertex translation ⇒ native==wasm).
-    ///
-    /// FLUSH DETECTION is against the host SURFACE, not its AABB: a cap is extended
-    /// only when a host TRIANGLE parallel to it (`|n·dir| ≈ 1`) lies ON the cap's
-    /// plane. That is what separates the #1112 roof cap (flush with a roof facet
-    /// INTERIOR to the host's projected extent) from a wall #552611 horizontal slot
-    /// whose caps float inside the wall with no host facet there — extending the
-    /// latter along its authored +Z extrusion would cut the wall in half. A
-    /// non-flush cap (a recess inner cap, a clean transversal cap) is left in place,
-    /// so a pocket is never converted to a through-hole.
     /// An axis-aligned box `[min,max]` as a closed 12-triangle outward-wound mesh —
     /// the cutter solid for a RECTANGULAR opening routed through the exact subtract
     /// (PART B). 24 verts (4 per face) so each face carries its own outward normal.
@@ -861,6 +799,31 @@ impl GeometryRouter {
         out
     }
 
+    /// Push the opening MESH's caps a hair PAST the host along `dir` so a FLUSH
+    /// cap interface becomes a clean TRANSVERSAL crossing before the exact-kernel
+    /// subtract. Returns the mesh UNCHANGED unless a real flush-cap condition is
+    /// present — the conservative default, so a normal through-opening, an
+    /// off-axis `dir`, a recess, or an already-poking-through opening is untouched.
+    ///
+    /// WHY (the #1007 flush roof-opening sliver, PART A): an opening solid whose
+    /// cap is authored EXACTLY flush with a host surface meets that surface as a
+    /// near-coplanar interface, not a crossing. On a TILTED, f32-imported, faceted
+    /// BREP roof the host facets under the cap each sit a fraction of a degree off
+    /// the cap plane (~0.1° measured on #1112), so the exact kernel neither sees a
+    /// clean transversal crossing NOR an exactly-coplanar pair — it leaves a sliver
+    /// bridging the hole. Pushing the flush cap a hair past the surface makes EVERY
+    /// host facet under the footprint a genuine transversal crossing, which the
+    /// exact kernel cuts cleanly and deterministically (0% footprint coverage on
+    /// both #1112 openings; plain f32 vertex translation ⇒ native==wasm).
+    ///
+    /// FLUSH DETECTION is against the host SURFACE, not its AABB: a cap is extended
+    /// only when a host TRIANGLE parallel to it (`|n·dir| ≈ 1`) lies ON the cap's
+    /// plane. That is what separates the #1112 roof cap (flush with a roof facet
+    /// INTERIOR to the host's projected extent) from a wall #552611 horizontal slot
+    /// whose caps float inside the wall with no host facet there — extending the
+    /// latter along its authored +Z extrusion would cut the wall in half. A
+    /// non-flush cap (a recess inner cap, a clean transversal cap) is left in place,
+    /// so a pocket is never converted to a through-hole.
     pub(super) fn extend_opening_mesh_through_host(
         opening_mesh: &Mesh,
         host_mesh: &Mesh,

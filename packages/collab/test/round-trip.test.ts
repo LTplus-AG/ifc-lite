@@ -21,6 +21,11 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, '../../..');
 const fixturesDir = path.join(repoRoot, 'tests/models/ifc5');
 
+// Per AGENTS.md fixtures are fetched on demand (`pnpm fixtures`); skip the
+// suite cleanly rather than throwing ENOENT when the fixture is not staged.
+const FIXTURE_PATH = path.join(fixturesDir, 'Hello_Wall_hello-wall.ifcx');
+const FIXTURES_AVAILABLE = fs.existsSync(FIXTURE_PATH);
+
 function loadFixture(name: string): string {
   return fs.readFileSync(path.join(fixturesDir, name), 'utf-8');
 }
@@ -39,7 +44,9 @@ function summarise(doc: ReturnType<typeof createCollabDoc>): {
   return { entityPaths: paths, attrCount };
 }
 
-describe('seedFromIfcx + snapshotToIfcx', () => {
+describe('seedFromIfcx + snapshotToIfcx', {
+  skip: !FIXTURES_AVAILABLE && 'tests/models/ifc5/Hello_Wall_hello-wall.ifcx missing — run `pnpm fixtures`',
+}, () => {
   it('preserves entity set and attributes across one round-trip', () => {
     const text = loadFixture('Hello_Wall_hello-wall.ifcx');
     const docA = createCollabDoc();

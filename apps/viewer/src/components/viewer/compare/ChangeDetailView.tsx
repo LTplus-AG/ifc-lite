@@ -9,12 +9,13 @@
 
 import { PencilLine } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import type { ChangeDetail, FieldDelta, GeometrySummary } from '@/lib/compare/describeChange';
 import type { CompareRow } from './changeRow';
 
 export function ChangeDetailView({ row, detail }: { row: CompareRow; detail: ChangeDetail }) {
   return (
-    <div className="border-t border-border shrink-0 max-h-[42%] overflow-auto">
+    <div className="border-t border-border shrink-0 max-h-[42%] overflow-auto" {...tourAnchor(TOUR_ANCHORS.compareDetail)}>
       <div className="px-3 pt-2.5 pb-1.5 flex items-center gap-1.5 sticky top-0 bg-background">
         <PencilLine className="h-3.5 w-3.5 text-primary shrink-0" />
         <span className="text-xs font-semibold truncate">{row.name || row.ifcType}</span>

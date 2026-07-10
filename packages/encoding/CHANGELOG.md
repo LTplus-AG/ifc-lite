@@ -1,5 +1,25 @@
 # @ifc-lite/encoding
 
+## 1.14.9
+
+### Patch Changes
+
+- [#1676](https://github.com/LTplus-AG/ifc-lite/pull/1676) [`da04601`](https://github.com/LTplus-AG/ifc-lite/commit/da0460183dcb4e2b26ceb53cfebd8cca33c78c39) Thanks [@louistrue](https://github.com/louistrue)! - Docs refresh: correct stale README claims and API samples against the current codebase; add READMEs to the ten published packages that shipped without one (cli, create, sdk, sandbox, lens, lists, embed-sdk, embed-protocol, encoding, viewer-core).
+
+## 1.14.8
+
+### Patch Changes
+
+- [#1500](https://github.com/LTplus-AG/ifc-lite/pull/1500) [`a46dcdf`](https://github.com/LTplus-AG/ifc-lite/commit/a46dcdf68d05e8cdec4199167647f2dfa3c62cb6) Thanks [@louistrue](https://github.com/louistrue)! - fix(encoding): stop `\S\` decoding from diverging / panicking on multi-byte input
+
+  The `\S\C` STEP escape (code point of `C` plus 128) is spec-defined for a single
+  ASCII `C`, but a malformed-but-UTF-8 file can put a multi-byte `C` there.
+  `decodeIfcString` now reads `C` as a whole code point (advancing past a surrogate
+  pair) instead of one UTF-16 unit, so it no longer leaves a dangling surrogate and
+  stays in parity with the Rust `decode_ifc_string`, whose matching fix also stops
+  a multi-byte `C` from panicking mid-slice (which aborts the wasm instance). Pinned
+  by a new non-BMP `\S\` case in the shared `ifc_string_vectors.json` fixture.
+
 ## 1.14.7
 
 ### Patch Changes

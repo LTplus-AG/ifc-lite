@@ -24,25 +24,18 @@ use std::fmt;
 
 thread_local! {
     /// Pending boolean failures from contexts that have no direct router
-    /// handle (notably `MappedItemProcessor`'s transient
-    /// `BooleanClippingProcessor`). The router drains this in
-    /// `take_csg_failures` so mapped boolean chains aren't blind.
+    /// handle. Historically fed by `MappedItemProcessor`'s transient
+    /// `BooleanClippingProcessor` (deleted as dead code — every dispatch site
+    /// special-cased `IfcMappedItem` before it could ever be reached; see the
+    /// D5 dead-code sweep), so nothing pushes into this today. Kept + still
+    /// drained by `take_csg_failures` in case a future non-router boolean
+    /// context needs the same escape hatch.
     static PENDING_MAPPED_BOOL_FAILURES: RefCell<Vec<BoolFailure>> =
         const { RefCell::new(Vec::new()) };
 }
 
-/// Push failures that originated outside any router-owned context (e.g. the
-/// transient `BooleanClippingProcessor` inside `MappedItemProcessor`). They
-/// will be drained by `take_pending_mapped_bool_failures` next time the
-/// router collects diagnostics.
-pub fn push_pending_mapped_bool_failures(failures: Vec<BoolFailure>) {
-    if failures.is_empty() {
-        return;
-    }
-    PENDING_MAPPED_BOOL_FAILURES.with(|cell| cell.borrow_mut().extend(failures));
-}
-
-/// Drain failures pushed via `push_pending_mapped_bool_failures`.
+/// Drain failures pushed from a context with no direct router handle (see
+/// `PENDING_MAPPED_BOOL_FAILURES`).
 pub fn take_pending_mapped_bool_failures() -> Vec<BoolFailure> {
     PENDING_MAPPED_BOOL_FAILURES.with(|cell| std::mem::take(&mut *cell.borrow_mut()))
 }

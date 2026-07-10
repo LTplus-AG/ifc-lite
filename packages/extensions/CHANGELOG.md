@@ -1,5 +1,17 @@
 # @ifc-lite/extensions
 
+## 0.3.4
+
+### Patch Changes
+
+- [#1676](https://github.com/LTplus-AG/ifc-lite/pull/1676) [`da04601`](https://github.com/LTplus-AG/ifc-lite/commit/da0460183dcb4e2b26ceb53cfebd8cca33c78c39) Thanks [@louistrue](https://github.com/louistrue)! - Docs refresh: correct stale README claims and API samples against the current codebase; add READMEs to the ten published packages that shipped without one (cli, create, sdk, sandbox, lens, lists, embed-sdk, embed-protocol, encoding, viewer-core).
+
+## 0.3.3
+
+### Patch Changes
+
+- [#1487](https://github.com/LTplus-AG/ifc-lite/pull/1487) [`54b5c6b`](https://github.com/LTplus-AG/ifc-lite/commit/54b5c6b043ebd83dc9b10bd15e9973e6a58293cb) Thanks [@louistrue](https://github.com/louistrue)! - Pin the gzip MTIME header to 0 in `packBundle` so `.iflx` bytes are deterministic for the same input. Previously the header embedded wall-clock seconds, so re-packing identical content in a different second produced a different content-addressed bundle hash (and flaked the determinism test). Matches the fix already shipped in the flavor packer.
+
 ## 0.3.2
 
 ### Patch Changes

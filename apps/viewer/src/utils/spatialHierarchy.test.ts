@@ -11,7 +11,7 @@ import {
   RelationshipType,
   StringTable,
 } from '@ifc-lite/data';
-import { rebuildSpatialHierarchy, rebuildOnDemandMaps, registerAuthoredElement } from './spatialHierarchy';
+import { rebuildSpatialHierarchy, rebuildOnDemandMaps, registerAuthoredElement, buildSpatialAncestryIndex, collectSpatialContainerNames } from './spatialHierarchy';
 
 describe('registerAuthoredElement', () => {
   function baseHierarchy() {
@@ -250,6 +250,174 @@ describe('rebuildSpatialHierarchy', () => {
     assert.equal(hierarchy.elementToStorey.get(4), 3);
     assert.equal(hierarchy.elementToStorey.get(5), 3);
     assert.equal(hierarchy.elementToStorey.get(6), 3);
+  });
+});
+
+describe('buildSpatialAncestryIndex', () => {
+  it('resolves project / site / building names for a contained element', () => {
+    const strings = new StringTable();
+    const eb = new EntityTableBuilder(5, strings);
+    eb.add(1, 'IFCPROJECT', 'p0', 'My Project', '', '');
+    eb.add(2, 'IFCSITE', 's0', 'North Site', '', '');
+    eb.add(3, 'IFCBUILDING', 'b0', 'Tower A', '', '');
+    eb.add(4, 'IFCBUILDINGSTOREY', 'st0', 'Level 1', '', '');
+    eb.add(5, 'IFCWALL', 'w0', 'Wall', '', '', true);
+    const rels = new RelationshipGraphBuilder();
+    rels.addEdge(1, 2, RelationshipType.Aggregates, 100);
+    rels.addEdge(2, 3, RelationshipType.Aggregates, 101);
+    rels.addEdge(3, 4, RelationshipType.Aggregates, 102);
+    rels.addEdge(4, 5, RelationshipType.ContainsElements, 103);
+    const et = eb.build();
+    const h = rebuildSpatialHierarchy(et, rels.build());
+    assert.ok(h);
+    const idx = buildSpatialAncestryIndex(h, (id) => et.getName(id));
+    assert.equal(idx.projectName, 'My Project');
+    assert.equal(idx.siteOf(5), 'North Site');
+    assert.equal(idx.buildingOf(5), 'Tower A');
+    // A container queried by its own id resolves self-inclusively.
+    assert.equal(idx.siteOf(2), 'North Site');
+    assert.equal(idx.buildingOf(3), 'Tower A');
+  });
+
+  it('resolves IFC4X3 facilities (IfcBridge) at the building level', () => {
+    const strings = new StringTable();
+    const eb = new EntityTableBuilder(4, strings);
+    eb.add(1, 'IFCPROJECT', '0', 'Infra Project', '', '');
+    eb.add(2, 'IFCBRIDGE', '1', 'Bridge A', '', '');
+    eb.add(3, 'IFCBRIDGEPART', '2', 'Deck', '', '');
+    eb.add(4, 'IFCWALL', '3', 'Barrier', '', '', true);
+    const rels = new RelationshipGraphBuilder();
+    rels.addEdge(1, 2, RelationshipType.Aggregates, 10);
+    rels.addEdge(2, 3, RelationshipType.Aggregates, 11);
+    rels.addEdge(3, 4, RelationshipType.ContainsElements, 12);
+    const et = eb.build();
+    const h = rebuildSpatialHierarchy(et, rels.build());
+    assert.ok(h);
+    const idx = buildSpatialAncestryIndex(h, (id) => et.getName(id));
+    assert.equal(idx.buildingOf(4), 'Bridge A');
+    assert.equal(idx.siteOf(4), ''); // no IfcSite in this tree
+  });
+
+  it('returns "" for an unnamed container and an unplaced element', () => {
+    const strings = new StringTable();
+    const eb = new EntityTableBuilder(5, strings);
+    eb.add(1, 'IFCPROJECT', 'p0', 'Project', '', '');
+    eb.add(2, 'IFCSITE', 's0', 'Site', '', '');
+    eb.add(3, 'IFCBUILDING', 'b0', '', '', ''); // unnamed building
+    eb.add(4, 'IFCBUILDINGSTOREY', 'st0', 'Level 1', '', '');
+    eb.add(5, 'IFCWALL', 'w0', 'Wall', '', '', true);
+    const rels = new RelationshipGraphBuilder();
+    rels.addEdge(1, 2, RelationshipType.Aggregates, 100);
+    rels.addEdge(2, 3, RelationshipType.Aggregates, 101);
+    rels.addEdge(3, 4, RelationshipType.Aggregates, 102);
+    rels.addEdge(4, 5, RelationshipType.ContainsElements, 103);
+    const et = eb.build();
+    const h = rebuildSpatialHierarchy(et, rels.build());
+    assert.ok(h);
+    const idx = buildSpatialAncestryIndex(h, (id) => et.getName(id));
+    // Unnamed IfcBuilding resolves to '' (not the `Entity #N` node placeholder).
+    assert.equal(idx.buildingOf(5), '');
+    assert.equal(idx.siteOf(5), 'Site');
+    // An element the hierarchy doesn't place resolves to ''.
+    assert.equal(idx.siteOf(9999), '');
+    assert.equal(idx.buildingOf(9999), '');
+  });
+
+  it('resolves parts reachable only through the storey reverse index', () => {
+    // A wall part is aggregated under the wall (not directly contained); it
+    // inherits the wall's storey, so ancestry resolves via elementToStorey.
+    const strings = new StringTable();
+    const eb = new EntityTableBuilder(6, strings);
+    eb.add(1, 'IFCPROJECT', 'p0', 'Project', '', '');
+    eb.add(2, 'IFCSITE', 's0', 'Site', '', '');
+    eb.add(3, 'IFCBUILDING', 'b0', 'Building', '', '');
+    eb.add(4, 'IFCBUILDINGSTOREY', 'st0', 'Level 1', '', '');
+    eb.add(5, 'IFCWALL', 'w0', 'Wall', '', '', true);
+    eb.add(6, 'IFCBUILDINGELEMENTPART', 'part', 'Layer A', '', '', true);
+    const rels = new RelationshipGraphBuilder();
+    rels.addEdge(1, 2, RelationshipType.Aggregates, 100);
+    rels.addEdge(2, 3, RelationshipType.Aggregates, 101);
+    rels.addEdge(3, 4, RelationshipType.Aggregates, 102);
+    rels.addEdge(4, 5, RelationshipType.ContainsElements, 103);
+    rels.addEdge(5, 6, RelationshipType.Aggregates, 104);
+    const et = eb.build();
+    const h = rebuildSpatialHierarchy(et, rels.build());
+    assert.ok(h);
+    const idx = buildSpatialAncestryIndex(h, (id) => et.getName(id));
+    assert.equal(idx.buildingOf(6), 'Building');
+    assert.equal(idx.siteOf(6), 'Site');
+  });
+
+  // Nested same-type containers (IfcSite within IfcSite). The element's nearest
+  // site is the INNER site; an unnamed inner site must NOT inherit the outer
+  // site's name (it is a different, unnamed site), so it resolves to ''.
+  it('does not inherit an ancestor site name across same-type nesting', () => {
+    const strings = new StringTable();
+    const eb = new EntityTableBuilder(6, strings);
+    eb.add(1, 'IFCPROJECT', 'p0', 'Project', '', '');
+    eb.add(2, 'IFCSITE', 's-outer', 'Environment', '', '');
+    eb.add(3, 'IFCSITE', 's-inner', '', '', ''); // unnamed nested site
+    eb.add(4, 'IFCBUILDING', 'b0', 'House', '', '');
+    eb.add(5, 'IFCBUILDINGSTOREY', 'st0', 'Level 1', '', '');
+    eb.add(6, 'IFCWALL', 'w0', 'Wall', '', '', true);
+    const rels = new RelationshipGraphBuilder();
+    rels.addEdge(1, 2, RelationshipType.Aggregates, 100);
+    rels.addEdge(2, 3, RelationshipType.Aggregates, 101); // site within site
+    rels.addEdge(3, 4, RelationshipType.Aggregates, 102);
+    rels.addEdge(4, 5, RelationshipType.Aggregates, 103);
+    rels.addEdge(5, 6, RelationshipType.ContainsElements, 104);
+    const et = eb.build();
+    const h = rebuildSpatialHierarchy(et, rels.build());
+    assert.ok(h);
+    const idx = buildSpatialAncestryIndex(h, (id) => et.getName(id));
+    assert.equal(idx.siteOf(6), ''); // NOT 'Environment'
+    assert.equal(idx.buildingOf(6), 'House');
+  });
+
+  it('uses the nearest named site when a nested inner site IS named', () => {
+    const strings = new StringTable();
+    const eb = new EntityTableBuilder(5, strings);
+    eb.add(1, 'IFCPROJECT', 'p0', 'Project', '', '');
+    eb.add(2, 'IFCSITE', 's-outer', 'Environment', '', '');
+    eb.add(3, 'IFCSITE', 's-inner', 'House Site', '', ''); // named nested site
+    eb.add(4, 'IFCBUILDINGSTOREY', 'st0', 'Level 1', '', '');
+    eb.add(5, 'IFCWALL', 'w0', 'Wall', '', '', true);
+    const rels = new RelationshipGraphBuilder();
+    rels.addEdge(1, 2, RelationshipType.Aggregates, 100);
+    rels.addEdge(2, 3, RelationshipType.Aggregates, 101);
+    rels.addEdge(3, 4, RelationshipType.Aggregates, 102);
+    rels.addEdge(4, 5, RelationshipType.ContainsElements, 103);
+    const et = eb.build();
+    const h = rebuildSpatialHierarchy(et, rels.build());
+    assert.ok(h);
+    const idx = buildSpatialAncestryIndex(h, (id) => et.getName(id));
+    assert.equal(idx.siteOf(5), 'House Site');
+  });
+});
+
+describe('collectSpatialContainerNames', () => {
+  it('collects distinct named site / building / project names, skipping unnamed', () => {
+    const strings = new StringTable();
+    const eb = new EntityTableBuilder(6, strings);
+    eb.add(1, 'IFCPROJECT', 'p0', 'My Project', '', '');
+    eb.add(2, 'IFCSITE', 's0', 'North Site', '', '');
+    eb.add(3, 'IFCBRIDGE', 'br', 'Bridge A', '', ''); // building-like (IFC4X3)
+    eb.add(4, 'IFCBUILDING', 'b0', '', '', ''); // unnamed building -> skipped
+    eb.add(5, 'IFCBUILDINGSTOREY', 'st0', 'Level 1', '', ''); // storey -> not a level
+    eb.add(6, 'IFCWALL', 'w0', 'Wall', '', '', true);
+    const rels = new RelationshipGraphBuilder();
+    rels.addEdge(1, 2, RelationshipType.Aggregates, 100);
+    rels.addEdge(2, 3, RelationshipType.Aggregates, 101);
+    rels.addEdge(2, 4, RelationshipType.Aggregates, 102);
+    rels.addEdge(4, 5, RelationshipType.Aggregates, 103);
+    rels.addEdge(5, 6, RelationshipType.ContainsElements, 104);
+    const et = eb.build();
+    const h = rebuildSpatialHierarchy(et, rels.build());
+    assert.ok(h);
+    const names = collectSpatialContainerNames(h, (id) => et.getName(id));
+    assert.deepEqual(names.projects, ['My Project']);
+    assert.deepEqual(names.sites, ['North Site']);
+    assert.deepEqual(names.buildings, ['Bridge A']); // facility included; unnamed building skipped
   });
 });
 

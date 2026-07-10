@@ -26,7 +26,7 @@
 //! vertical), +Y along travel. Used by `SectionedSolidHorizontalProcessor`
 //! to place each cross-section in 3D space.
 
-use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, EntityScanner, IfcType};
+use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType};
 use nalgebra::{Point3, Vector3};
 use std::sync::OnceLock;
 
@@ -53,9 +53,6 @@ ifc_type_fn!(t_transition_curve_segment_2d, "IFCTRANSITIONCURVESEGMENT2D");
 ifc_type_fn!(t_ver_seg_line, "IFCALIGNMENT2DVERSEGLINE");
 ifc_type_fn!(t_ver_seg_parabolic, "IFCALIGNMENT2DVERSEGPARABOLICARC");
 ifc_type_fn!(t_ver_seg_circular, "IFCALIGNMENT2DVERSEGCIRCULARARC");
-ifc_type_fn!(t_alignment_2d_cant, "IFCALIGNMENT2DCANT");
-ifc_type_fn!(t_cant_seg_const, "IFCALIGNMENT2DCANTSEGLINE");
-ifc_type_fn!(t_cant_seg_transition, "IFCALIGNMENT2DCANTSEGTRANSITION");
 
 /// IFC4x1 `IfcTransitionCurveType` enumeration. The curvature varies
 /// from `start_curv` at `s=0` to `end_curv` at `s=L` along a profile
@@ -118,145 +115,6 @@ impl TransitionKind {
             }
         }
     }
-}
-
-/// Public spec for a cant segment. Callers building cant by hand (e.g.
-/// from an alternative schema traversal) pass a `Vec<CantSegSpec>` to
-/// `AlignmentCurve::with_cant_segments`.
-#[derive(Debug, Clone, Copy)]
-pub struct CantSegSpec {
-    /// Cumulative station along the directrix where this segment
-    /// begins, in file length units.
-    pub start: f64,
-    /// Horizontal length of the segment.
-    pub length: f64,
-    /// Cant angle (radians) at the start of the segment.
-    pub roll_start: f64,
-    /// Cant angle (radians) at the end of the segment. Equal to
-    /// `roll_start` for constant-cant segments.
-    pub roll_end: f64,
-}
-
-/// Internal cant segment. We keep `Const` and `Linear` distinct mainly
-/// for clarity in `cant_angle`; both could be folded into the linear
-/// case at the cost of a couple of extra multiplications.
-#[derive(Debug, Clone, Copy)]
-enum CantSeg {
-    /// Constant cant from `start` to `start+length`, with `roll` radians
-    /// of rotation about the tangent (positive = right rail lower).
-    Const { start: f64, length: f64, roll: f64 },
-    /// Linear transition from `roll_start` at station `start` to
-    /// `roll_end` at `start+length`.
-    Linear {
-        start: f64,
-        length: f64,
-        roll_start: f64,
-        roll_end: f64,
-    },
-}
-
-impl CantSeg {
-    fn from_spec(spec: CantSegSpec) -> Self {
-        if (spec.roll_end - spec.roll_start).abs() < 1e-12 {
-            CantSeg::Const {
-                start: spec.start,
-                length: spec.length,
-                roll: spec.roll_start,
-            }
-        } else {
-            CantSeg::Linear {
-                start: spec.start,
-                length: spec.length,
-                roll_start: spec.roll_start,
-                roll_end: spec.roll_end,
-            }
-        }
-    }
-}
-
-/// Parse an `IfcAlignment2DCant` entity into a list of
-/// `CantSegSpec`. The segments are taken in authored order; each
-/// segment is one of `IfcAlignment2DCantSegLine` (constant cant) or
-/// `IfcAlignment2DCantSegTransition` (linear cant transition).
-///
-/// IFC4x1 `IfcAlignment2DCant` attributes:
-///   0: RailHeadDistance (track gauge; not used by the renderer)
-///   1: Segments         (LIST of IfcAlignment2DCantSegment)
-///
-/// Inherited `IfcAlignment2DCantSegment` attrs:
-///   0: TangentialContinuity
-///   1: StartTag / 2: EndTag
-///   3: StartDistAlong
-///   4: HorizontalLength
-///   5: StartCantLeft
-///   6: StartCantRight
-/// Plus subtype-specific:
-///   7: EndCantLeft  (transition only)
-///   8: EndCantRight (transition only)
-///
-/// Track gauge / cant convention: the roll angle is computed as
-/// `atan2(StartCantRight − StartCantLeft, RailHeadDistance)`. The
-/// IFC4x1 convention is that cant values are positive vertical
-/// distances above the rail-head datum, so right-cant > left-cant
-/// rolls the cross-section CCW about the tangent looking down-track.
-pub fn parse_cant(entity: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<Vec<CantSegSpec>> {
-    if entity.ifc_type != t_alignment_2d_cant() {
-        return Err(Error::geometry(format!(
-            "#{} is not IfcAlignment2DCant",
-            entity.id,
-        )));
-    }
-    let rail_head_distance = entity.get_float(0).unwrap_or(1.435); // standard gauge in m as a sane default
-    let segs_attr = entity
-        .get(1)
-        .ok_or_else(|| Error::geometry("IfcAlignment2DCant missing Segments".to_string()))?;
-    let seg_refs = segs_attr
-        .as_list()
-        .ok_or_else(|| Error::geometry("Cant Segments must be a list".to_string()))?;
-
-    let mut specs = Vec::with_capacity(seg_refs.len());
-    for r in seg_refs {
-        let sid = r.as_entity_ref().ok_or_else(|| {
-            Error::geometry("Cant segment ref is not an entity reference".to_string())
-        })?;
-        let seg = decoder.decode_by_id(sid)?;
-        let start = seg.get_float(3).ok_or_else(|| {
-            Error::geometry(format!("CantSegment #{} missing StartDistAlong", sid))
-        })?;
-        let length = seg.get_float(4).ok_or_else(|| {
-            Error::geometry(format!("CantSegment #{} missing HorizontalLength", sid))
-        })?;
-        let start_left = seg.get_float(5).unwrap_or(0.0);
-        let start_right = seg.get_float(6).unwrap_or(0.0);
-        let roll_start = ((start_right - start_left) / rail_head_distance.max(1e-9)).atan();
-        // Constant-cant subtype is `IfcAlignment2DCantSegLine`; the
-        // transition subtype is `IfcAlignment2DCantSegTransition` and
-        // additionally carries end-cant attributes at indices 7 / 8.
-        // We compare against both type IDs so future schema dialects
-        // that add more constant-cant subtypes still default to "no
-        // change in cant" rather than misreading attrs 7/8.
-        let is_transition = seg.ifc_type == t_cant_seg_transition();
-        let is_const = seg.ifc_type == t_cant_seg_const();
-        let (roll_end_left, roll_end_right) = if is_transition {
-            (
-                seg.get_float(7).unwrap_or(start_left),
-                seg.get_float(8).unwrap_or(start_right),
-            )
-        } else if is_const {
-            (start_left, start_right)
-        } else {
-            // Unknown subtype — default to constant cant.
-            (start_left, start_right)
-        };
-        let roll_end = ((roll_end_right - roll_end_left) / rail_head_distance.max(1e-9)).atan();
-        specs.push(CantSegSpec {
-            start,
-            length,
-            roll_start,
-            roll_end,
-        });
-    }
-    Ok(specs)
 }
 
 /// `True` if the attribute is an IFC boolean enum `.T.`. Anything else
@@ -352,15 +210,13 @@ pub struct AlignmentFrame {
 pub struct AlignmentCurve {
     horizontal: Vec<HSeg>,
     vertical: Vec<VSeg>,
-    cant: Vec<CantSeg>,
 }
 
 impl AlignmentCurve {
     /// Parse `IfcAlignmentCurve` (or any directrix we can reduce to a
     /// piecewise alignment). Recognised cases:
     ///
-    /// - `IfcAlignmentCurve` — full horizontal + vertical + (optional)
-    ///   cant parsing.
+    /// - `IfcAlignmentCurve` — horizontal + (optional) vertical parsing.
     /// - `IfcPolyline` — synthesised as a chain of line segments. Each
     ///   polyline edge becomes one `HSeg::Line` (in XY) and one
     ///   `VSeg::Line` (with gradient = dz / horizontal length). This
@@ -385,58 +241,25 @@ impl AlignmentCurve {
         let h_id = directrix.get_ref(0).ok_or_else(|| {
             Error::geometry("IfcAlignmentCurve missing Horizontal".to_string())
         })?;
-        let horizontal = parse_horizontal(h_id, decoder, angle_scale)?;
+        // `horizontal_base` is the horizontal alignment's `StartDistAlong`
+        // — the chainage value at the physical start of the alignment.
+        // The horizontal geometry itself is indexed by a cumulative
+        // segment-length station that starts at 0, so this base is only
+        // needed to rebase the vertical segments (whose `StartDistAlong`
+        // are authored as absolute chainages in the same domain) onto
+        // that same 0-origin axis. See `parse_vertical`.
+        let (horizontal, horizontal_base) = parse_horizontal(h_id, decoder, angle_scale)?;
 
         // attr 1 = Vertical (optional)
         let vertical = match directrix.get(1) {
             Some(v) if !v.is_null() => match v.as_entity_ref() {
-                Some(v_id) => parse_vertical(v_id, decoder)?,
+                Some(v_id) => parse_vertical(v_id, decoder, horizontal_base)?,
                 None => Vec::new(),
             },
             _ => Vec::new(),
         };
 
-        // Cant is an off-axis sibling entity (`IfcAlignment2DCant`).
-        // IFC4x1 doesn't have a direct attribute on `IfcAlignmentCurve`
-        // pointing at it; the auto-discovery (file-wide scan that
-        // walks IfcAlignment → Cant) is left as a hook via
-        // `with_cant_segments`. The current pipeline produces no cant
-        // because no fixture in the suite exercises it.
-        let cant = Vec::new();
-
-        Ok(Some(Self {
-            horizontal,
-            vertical,
-            cant,
-        }))
-    }
-
-    /// Attach a pre-parsed cant profile. Used by callers that have
-    /// already located an `IfcAlignment2DCant` entity for this
-    /// alignment (e.g. via an `IfcAlignment.AxisCant` traversal). The
-    /// segments are taken in authored order with cumulative-station
-    /// indexing handled by `cant_angle`.
-    pub fn with_cant_segments(mut self, segments: Vec<CantSegSpec>) -> Self {
-        self.cant = segments.into_iter().map(CantSeg::from_spec).collect();
-        self
-    }
-
-    /// Scan `content` for any `IfcAlignment2DCant` and attach the first
-    /// one found. This is a best-effort hook for callers that want the
-    /// auto-discovery convenience; in IFC4x1 the schema doesn't
-    /// constrain how the cant is bound to the alignment, so picking
-    /// the first one is the only generic option. Files with multiple
-    /// alignments + cants should use `with_cant_segments` explicitly.
-    pub fn auto_attach_cant(self, content: &str, decoder: &mut EntityDecoder) -> Result<Self> {
-        let mut scanner = EntityScanner::new(content);
-        while let Some((id, type_name, _, _)) = scanner.next_entity() {
-            if type_name == "IFCALIGNMENT2DCANT" {
-                let entity = decoder.decode_by_id(id)?;
-                let specs = parse_cant(&entity, decoder)?;
-                return Ok(self.with_cant_segments(specs));
-            }
-        }
-        Ok(self)
+        Ok(Some(Self { horizontal, vertical }))
     }
 
     /// Total length of the horizontal alignment (sum of segment lengths).
@@ -516,11 +339,7 @@ impl AlignmentCurve {
                 "IfcPolyline directrix degenerated to zero horizontal length".to_string(),
             ));
         }
-        Ok(Self {
-            horizontal,
-            vertical,
-            cant: Vec::new(),
-        })
+        Ok(Self { horizontal, vertical })
     }
 
     /// Evaluate the placement frame at the given station (cumulative
@@ -550,32 +369,13 @@ impl AlignmentCurve {
     }
 
     /// Cant (roll about the 3D tangent) at the given station, in
-    /// radians. Returns 0 when no cant is authored.
-    pub fn cant_angle(&self, station: f64) -> f64 {
-        for seg in &self.cant {
-            match seg {
-                CantSeg::Const {
-                    start,
-                    length,
-                    roll,
-                } => {
-                    if station >= *start - 1e-9 && station <= start + length + 1e-9 {
-                        return *roll;
-                    }
-                }
-                CantSeg::Linear {
-                    start,
-                    length,
-                    roll_start,
-                    roll_end,
-                } => {
-                    if station >= *start - 1e-9 && station <= start + length + 1e-9 {
-                        let t = ((station - start) / length.max(1e-12)).clamp(0.0, 1.0);
-                        return roll_start * (1.0 - t) + roll_end * t;
-                    }
-                }
-            }
-        }
+    /// radians. Stable stub that always returns 0: the parser does not
+    /// traverse the off-axis `IfcAlignment2DCant` relationship, so no
+    /// cant is ever authored on the curve. Kept as the seam the
+    /// `SectionedSolidHorizontalProcessor` reads (its cross-section roll
+    /// step is a no-op while this returns 0) so cant can be wired later
+    /// without touching the processor.
+    pub fn cant_angle(&self, _station: f64) -> f64 {
         0.0
     }
 
@@ -586,7 +386,12 @@ impl AlignmentCurve {
         for seg in &self.vertical {
             let start = v_start(seg);
             let length = v_length(seg);
-            if station <= start + length + 1e-9 {
+            // Require `station >= start` as well as `<= start + length`:
+            // without the lower bound a station BEFORE a segment's own
+            // start still satisfies the upper test and silently clamps
+            // into it. The first segment covers station 0 via its own
+            // `start` (0 after rebasing in `parse_vertical`).
+            if station >= start - 1e-9 && station <= start + length + 1e-9 {
                 let local = (station - start).max(0.0).min(length);
                 return v_eval(seg, local).1;
             }
@@ -627,7 +432,11 @@ impl AlignmentCurve {
         for seg in &self.vertical {
             let start = v_start(seg);
             let length = v_length(seg);
-            if station <= start + length + 1e-9 {
+            // See `evaluate_vertical_slope`: the `station >= start` lower
+            // bound stops a station before this segment from clamping
+            // into it. Vertical starts are rebased to the horizontal's
+            // 0-origin station axis in `parse_vertical`.
+            if station >= start - 1e-9 && station <= start + length + 1e-9 {
                 let local = (station - start).max(0.0).min(length);
                 return v_eval_height(seg, local);
             }
@@ -641,11 +450,16 @@ impl AlignmentCurve {
     }
 }
 
+/// Returns the parsed horizontal segments plus the alignment's
+/// `StartDistAlong` (the base chainage at the physical start). The
+/// segments are indexed by a cumulative-length station starting at 0;
+/// the base is returned so `parse_vertical` can rebase the vertical
+/// segments (authored as absolute chainages) onto that same axis.
 fn parse_horizontal(
     h_id: u32,
     decoder: &mut EntityDecoder,
     angle_scale: f64,
-) -> Result<Vec<HSeg>> {
+) -> Result<(Vec<HSeg>, f64)> {
     let h_entity = decoder.decode_by_id(h_id)?;
     if h_entity.ifc_type != t_alignment_2d_horizontal() {
         return Err(Error::geometry(format!(
@@ -654,7 +468,7 @@ fn parse_horizontal(
         )));
     }
     // attr 0 = StartDistAlong (optional); attr 1 = Segments.
-    let _start_dist_along = h_entity.get_float(0).unwrap_or(0.0);
+    let start_dist_along = h_entity.get_float(0).unwrap_or(0.0);
     let segs_attr = h_entity
         .get(1)
         .ok_or_else(|| Error::geometry("IfcAlignment2DHorizontal missing Segments".to_string()))?;
@@ -707,6 +521,15 @@ fn parse_horizontal(
         let length = curve.get_float(2).ok_or_else(|| {
             Error::geometry(format!("CurveSegment #{} missing SegmentLength", curve_id))
         })?;
+        // A negative or non-finite SegmentLength drives (station - cum).min(length)
+        // negative and emits NaN world coordinates (sibling radius is guarded at
+        // ~538). Zero-length stubs are a legitimate stationing no-op, so allow them.
+        if !length.is_finite() || length < 0.0 {
+            return Err(Error::geometry(format!(
+                "CurveSegment #{} has negative/non-finite SegmentLength {}",
+                curve_id, length
+            )));
+        }
 
         let hseg = if curve.ifc_type == t_line_segment_2d() {
             HSeg::Line {
@@ -780,10 +603,21 @@ fn parse_horizontal(
         cumulative += length;
         segments.push(hseg);
     }
-    Ok(segments)
+    Ok((segments, start_dist_along))
 }
 
-fn parse_vertical(v_id: u32, decoder: &mut EntityDecoder) -> Result<Vec<VSeg>> {
+/// `horizontal_base` is the horizontal alignment's `StartDistAlong`.
+/// Vertical segments carry their `StartDistAlong` as an absolute
+/// chainage in the same domain as the horizontal alignment, whereas the
+/// horizontal geometry (and the station passed to `evaluate`) is indexed
+/// from 0 at the alignment's physical start. Subtracting the base puts
+/// both axes on one 0-origin station axis; when `StartDistAlong == 0`
+/// (the common case) this is a no-op.
+fn parse_vertical(
+    v_id: u32,
+    decoder: &mut EntityDecoder,
+    horizontal_base: f64,
+) -> Result<Vec<VSeg>> {
     let v_entity = decoder.decode_by_id(v_id)?;
     if v_entity.ifc_type != t_alignment_2d_vertical() {
         return Err(Error::geometry(format!(
@@ -813,18 +647,27 @@ fn parse_vertical(v_id: u32, decoder: &mut EntityDecoder) -> Result<Vec<VSeg>> {
         //   4: HorizontalLength
         //   5: StartHeight
         //   6: StartGradient
+        // Rebase the absolute chainage onto the horizontal's 0-origin
+        // station axis (see the fn doc). No-op when `horizontal_base == 0`.
         let start = seg.get_float(3).ok_or_else(|| {
             Error::geometry(format!(
                 "VerticalSegment #{} missing StartDistAlong",
                 seg_id,
             ))
-        })?;
+        })? - horizontal_base;
         let length = seg.get_float(4).ok_or_else(|| {
             Error::geometry(format!(
                 "VerticalSegment #{} missing HorizontalLength",
                 seg_id,
             ))
         })?;
+        // Negative/non-finite length emits NaN geometry; zero is a legitimate no-op.
+        if !length.is_finite() || length < 0.0 {
+            return Err(Error::geometry(format!(
+                "VerticalSegment #{} has negative/non-finite HorizontalLength {}",
+                seg_id, length
+            )));
+        }
         let h0 = seg
             .get_float(5)
             .ok_or_else(|| Error::geometry(format!("VerticalSegment #{} missing StartHeight", seg_id)))?;
@@ -875,8 +718,22 @@ fn parse_vertical(v_id: u32, decoder: &mut EntityDecoder) -> Result<Vec<VSeg>> {
             }
         } else {
             // Unknown vertical subtype — degrade to a straight gradient
-            // segment so the sweep at least continues sensibly through
-            // it. Logged below.
+            // segment so the sweep at least continues sensibly through it.
+            // (The horizontal sibling hard-errors on an unknown curve
+            // subtype; a bad vertical profile shouldn't sink the whole
+            // solid, so we degrade instead.) A degraded fallback is a
+            // genuine anomaly, so warn rather than swallow it silently.
+            crate::diag::diag_warn!(
+                { vertical_segment = seg_id, ifc_type = %seg.ifc_type,
+                  "alignment: unknown vertical segment subtype, degrading to a straight gradient" }
+                else {
+                    eprintln!(
+                        "[ifc-lite][alignment] vertical segment #{} has unsupported subtype {}; \
+                         degrading to a straight gradient segment",
+                        seg_id, seg.ifc_type,
+                    );
+                }
+            );
             VSeg::Line {
                 start,
                 length,
@@ -1096,12 +953,12 @@ mod tests {
         assert!((y - 216.39).abs() < 5.0, "y = {} expected ~216.39", y);
     }
 
-    /// Cant rolls the (right, up) axes around the tangent. Drive the
-    /// roll from a hand-built segment and check that the frame rotates
-    /// by the expected amount on a straight directrix where the
-    /// pre-cant axes are easy to reason about.
+    /// Base placement frame on a straight directrix: right = (0, -1, 0),
+    /// up = (0, 0, 1). `cant_angle` is a stable 0 stub (cant is not
+    /// wired through the parser), so the processor's roll step is a
+    /// no-op at every station.
     #[test]
-    fn cant_rotates_frame_axes() {
+    fn base_frame_axes_and_cant_stub() {
         // Straight directrix along +X, no slope.
         let curve = AlignmentCurve {
             horizontal: vec![HSeg::Line {
@@ -1112,26 +969,14 @@ mod tests {
                 cum_start: 0.0,
             }],
             vertical: vec![],
-            cant: vec![],
         };
-        let frame_no_cant = curve.evaluate(50.0);
-        // Pre-cant axes: right = (0, -1, 0), up = (0, 0, 1).
-        assert!((frame_no_cant.right.x).abs() < 1e-9);
-        assert!((frame_no_cant.right.y + 1.0).abs() < 1e-9);
-        assert!((frame_no_cant.up.z - 1.0).abs() < 1e-9);
-
-        let with_cant = curve.with_cant_segments(vec![CantSegSpec {
-            start: 0.0,
-            length: 100.0,
-            roll_start: std::f64::consts::FRAC_PI_2,
-            roll_end: std::f64::consts::FRAC_PI_2,
-        }]);
-        // The processor (not AlignmentCurve::evaluate) is what applies
-        // the cant roll. We test the roll lookup directly here.
-        let angle = with_cant.cant_angle(50.0);
-        assert!((angle - std::f64::consts::FRAC_PI_2).abs() < 1e-9);
-        // Past the end of the segment → 0 again.
-        assert!(with_cant.cant_angle(150.0).abs() < 1e-9);
+        let frame = curve.evaluate(50.0);
+        assert!((frame.right.x).abs() < 1e-9);
+        assert!((frame.right.y + 1.0).abs() < 1e-9);
+        assert!((frame.up.z - 1.0).abs() < 1e-9);
+        // Cant is a fixed-0 stub regardless of station.
+        assert!(curve.cant_angle(50.0).abs() < 1e-9);
+        assert!(curve.cant_angle(150.0).abs() < 1e-9);
     }
 
     /// `from_polyline` builds a piecewise-linear directrix. Each edge
@@ -1175,7 +1020,6 @@ mod tests {
                     g0: 0.1,
                 },
             ],
-            cant: vec![],
         };
         // Mid-point of edge 1: station 5.
         let f1 = curve.evaluate(5.0);
@@ -1229,5 +1073,98 @@ mod tests {
         let (z, slope) = v_eval(&seg, 1680.0);
         assert!((z - 535.472).abs() < 0.01, "z = {}", z);
         assert!((slope - 0.1046).abs() < 1e-3, "slope = {}", slope);
+    }
+
+    /// Regression: an alignment whose `IfcAlignment2DHorizontal.StartDistAlong`
+    /// is a nonzero chainage (1000) must keep its horizontal and vertical
+    /// evaluation in the same station domain. The horizontal geometry is
+    /// indexed from station 0, but the vertical segment's `StartDistAlong`
+    /// is authored as the absolute chainage 1000; without rebasing the two
+    /// axes desync and the vertical lookup clamps to the segment's start
+    /// height everywhere.
+    ///
+    /// Physical setup: a 100 m straight along +X, rising at grade 0.1 from
+    /// height 50. At the halfway station the horizontal position is x = 50,
+    /// so the elevation must be the halfway grade value 50 + 0.1·50 = 55.
+    ///
+    /// Pre-fix (no rebasing) the vertical segment sits at station 1000 while
+    /// the input station is 50, so `evaluate_vertical(50)` clamped into it
+    /// and returned the start height 50 — disagreeing with the horizontal
+    /// axis about where "halfway" is. This assertion fails on main.
+    #[test]
+    fn nonzero_start_dist_along_rebases_vertical_to_horizontal() {
+        let content = "\
+ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('','',(''),(''),'','','');
+FILE_SCHEMA(('IFC4X1'));
+ENDSEC;
+DATA;
+#10=IFCCARTESIANPOINT((0.,0.));
+#11=IFCLINESEGMENT2D(#10,0.,100.);
+#12=IFCALIGNMENT2DHORIZONTALSEGMENT($,$,$,#11);
+#13=IFCALIGNMENT2DHORIZONTAL(1000.,(#12));
+#14=IFCALIGNMENT2DVERSEGLINE($,$,$,1000.,100.,50.,0.1);
+#15=IFCALIGNMENT2DVERTICAL((#14));
+#16=IFCALIGNMENTCURVE(#13,#15,$);
+ENDSEC;
+END-ISO-10303-21;
+";
+        let entity_index = ifc_lite_core::build_entity_index(&content);
+        let mut decoder = EntityDecoder::with_index(&content, entity_index);
+        let directrix = decoder.decode_by_id(16).expect("decode IfcAlignmentCurve");
+        let curve = AlignmentCurve::parse(&directrix, &mut decoder)
+            .expect("parse alignment")
+            .expect("directrix recognised as alignment");
+
+        // Station 0 (physical start): x = 0, z = start height 50.
+        let f0 = curve.evaluate(0.0);
+        assert!((f0.origin.x - 0.0).abs() < 1e-6, "start x = {}", f0.origin.x);
+        assert!((f0.origin.z - 50.0).abs() < 1e-6, "start z = {}", f0.origin.z);
+
+        // Station 50 (halfway): horizontal x = 50, so elevation must be
+        // 50 + 0.1·50 = 55. On main this returns 50 (clamped) and fails.
+        let f_mid = curve.evaluate(50.0);
+        assert!((f_mid.origin.x - 50.0).abs() < 1e-6, "mid x = {}", f_mid.origin.x);
+        assert!(
+            (f_mid.origin.z - 55.0).abs() < 1e-6,
+            "mid z = {} (expected 55; main desyncs vertical and returns ~50)",
+            f_mid.origin.z,
+        );
+
+        // Station 100 (physical end): x = 100, z = 60.
+        let f_end = curve.evaluate(100.0);
+        assert!((f_end.origin.x - 100.0).abs() < 1e-6, "end x = {}", f_end.origin.x);
+        assert!((f_end.origin.z - 60.0).abs() < 1e-6, "end z = {}", f_end.origin.z);
+    }
+
+    /// A negative SegmentLength drives (station - cum).min(length) negative and
+    /// emits NaN world coordinates. It must be rejected as an Err at parse time.
+    /// (Zero-length stubs stay legal; only negative/non-finite is rejected.)
+    #[test]
+    fn negative_segment_length_errors_not_nan() {
+        let content = "\
+ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('','',(''),(''),'','','');
+FILE_SCHEMA(('IFC4X1'));
+ENDSEC;
+DATA;
+#10=IFCCARTESIANPOINT((0.,0.));
+#11=IFCLINESEGMENT2D(#10,0.,-100.);
+#12=IFCALIGNMENT2DHORIZONTALSEGMENT($,$,$,#11);
+#13=IFCALIGNMENT2DHORIZONTAL(0.,(#12));
+#14=IFCALIGNMENT2DVERSEGLINE($,$,$,0.,100.,50.,0.1);
+#15=IFCALIGNMENT2DVERTICAL((#14));
+#16=IFCALIGNMENTCURVE(#13,#15,$);
+ENDSEC;
+END-ISO-10303-21;
+";
+        let entity_index = ifc_lite_core::build_entity_index(&content);
+        let mut decoder = EntityDecoder::with_index(&content, entity_index);
+        let directrix = decoder.decode_by_id(16).expect("decode IfcAlignmentCurve");
+        assert!(AlignmentCurve::parse(&directrix, &mut decoder).is_err());
     }
 }

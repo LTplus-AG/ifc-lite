@@ -166,7 +166,7 @@ impl GeometryProcessor for FaceBasedSurfaceModelProcessor {
             normals: Vec::new(),
             indices: all_indices,
             rtc_applied: false, 
-            origin: [0.0; 3],        instance_meta: None, })
+            origin: [0.0; 3],        instance_meta: None, local_bounds: None, local_to_world: None })
     }
 
     fn supported_types(&self) -> Vec<IfcType> {
@@ -337,7 +337,7 @@ impl GeometryProcessor for ShellBasedSurfaceModelProcessor {
             normals: Vec::new(),
             indices: all_indices,
             rtc_applied: false, 
-            origin: [0.0; 3],        instance_meta: None, })
+            origin: [0.0; 3],        instance_meta: None, local_bounds: None, local_to_world: None })
     }
 
     fn supported_types(&self) -> Vec<IfcType> {

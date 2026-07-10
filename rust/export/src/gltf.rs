@@ -19,7 +19,7 @@ use ifc_lite_core::EntityIndex;
 use ifc_lite_geometry::{collate_refs, InstanceMeshRef, InstanceMeta, InstanceTemplate};
 use ifc_lite_processing::{
     process_geometry, process_geometry_streaming_filtered_with_options, process_geometry_with_index,
-    MeshData, OpeningFilterMode, ProcessingResult, StreamingOptions,
+    build_entity_index_parallel, MeshData, OpeningFilterMode, ProcessingResult, StreamingOptions,
 };
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -39,6 +39,14 @@ pub struct GltfOptions {
     /// render flat with just the apparent base colour (the historical behaviour,
     /// kept for colour-accurate exports). Default `true`. (#1321)
     pub lit: bool,
+    /// Make every material self-illuminating by setting `emissiveFactor` to its
+    /// base colour. Targets renderers with no ambient/IBL and a single hard sun —
+    /// notably **Google Earth**, which ignores `KHR_materials_unlit` and lit the
+    /// model so dark that shadow-side faces went black (#1427). `emissiveFactor`
+    /// is core glTF 2.0 (not an extension), so every compliant renderer honours
+    /// it; the base colour is kept too, so a viewer that ignores emissive is no
+    /// worse than today (never blacker than the lit result). Default `false`.
+    pub emissive: bool,
     /// Per-model id stamped into every node's `extras.modelId` (federation: lets a
     /// host distinguish elements from different models that share express-id space).
     /// `None` ⇒ single model, no `modelId` emitted. Requires `include_metadata`.
@@ -60,6 +68,7 @@ impl Default for GltfOptions {
             hidden: Vec::new(),
             hidden_types: Vec::new(),
             lit: true,
+            emissive: false,
             model_id: None,
             quantize: false,
         }
@@ -67,6 +76,7 @@ impl Default for GltfOptions {
 }
 
 /// Coverage stats for a GLB export.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct GltfStats {
     pub meshes: usize,
     pub vertices: usize,
@@ -156,6 +166,11 @@ struct Attributes {
 struct Material {
     #[serde(rename = "pbrMetallicRoughness")]
     pbr: Pbr,
+    // `Some` only for emissive exports (#1427): RGB self-illumination equal to the
+    // base colour, so renderers without ambient/IBL (Google Earth) still show the
+    // true colour instead of a sun-shaded near-black. Core glTF 2.0, so universal.
+    #[serde(rename = "emissiveFactor", skip_serializing_if = "Option::is_none")]
+    emissive_factor: Option<[f32; 3]>,
     // `Some` only for unlit exports (#1321); a lit material omits it entirely so
     // the viewer applies standard PBR lighting from the mesh normals.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -257,6 +272,29 @@ fn mesh_visible(mesh: &MeshData, opts: &GltfOptions) -> bool {
 fn color_key(c: [f32; 4]) -> (i32, i32, i32, i32) {
     let r = |v: f32| (v * 100.0).round() as i32;
     (r(c[0]), r(c[1]), r(c[2]), r(c[3]))
+}
+
+/// One material for a mesh colour: the single source of the lit / unlit / emissive
+/// rules, shared by every assembler so the paths cannot drift. `emissive` takes
+/// precedence over `unlit` because the KHR_materials_unlit spec mandates
+/// `emissiveFactor = 0`, making the two mutually exclusive; never emit a
+/// spec-violating material that declares unlit AND a non-zero emissiveFactor (#1427).
+fn make_material(color: [f32; 4], lit: bool, emissive: bool) -> Material {
+    Material {
+        pbr: Pbr {
+            base_color_factor: color,
+            metallic_factor: 0.0,
+            roughness_factor: 1.0,
+        },
+        emissive_factor: emissive.then_some([color[0], color[1], color[2]]),
+        extensions: if lit || emissive {
+            None
+        } else {
+            Some(Extensions { khr_materials_unlit: EmptyObj {} })
+        },
+        alpha_mode: if color[3] < 1.0 { Some("BLEND") } else { None },
+        double_sided: true,
+    }
 }
 
 /// 128-bit content key for the flat-remainder dedup: the mesh's LOCAL geometry
@@ -560,6 +598,7 @@ fn push_mesh(
     mesh: &MeshView,
     vertex_offset: [f64; 3],
     lit: bool,
+    emissive: bool,
     stats: &mut GltfStats,
 ) -> u32 {
     let nverts = (mesh.positions.len() / 3) as u32;
@@ -628,20 +667,7 @@ fn push_mesh(
     let key = color_key(mesh.color);
     let material = *material_map.entry(key).or_insert_with(|| {
         let idx = materials.len() as u32;
-        materials.push(Material {
-            pbr: Pbr {
-                base_color_factor: mesh.color,
-                metallic_factor: 0.0,
-                roughness_factor: 1.0,
-            },
-            extensions: if lit {
-                None
-            } else {
-                Some(Extensions { khr_materials_unlit: EmptyObj {} })
-            },
-            alpha_mode: if mesh.color[3] < 1.0 { Some("BLEND") } else { None },
-            double_sided: true,
-        });
+        materials.push(make_material(mesh.color, lit, emissive));
         idx
     });
 
@@ -676,6 +702,7 @@ fn push_mesh_quantized(
     material_map: &mut HashMap<(i32, i32, i32, i32), u32>,
     mesh: &MeshView,
     lit: bool,
+    emissive: bool,
     stats: &mut GltfStats,
 ) -> (u32, [f64; 3], [f64; 3]) {
     let nverts = (mesh.positions.len() / 3) as u32;
@@ -801,20 +828,7 @@ fn push_mesh_quantized(
     let key = color_key(mesh.color);
     let material = *material_map.entry(key).or_insert_with(|| {
         let idx = materials.len() as u32;
-        materials.push(Material {
-            pbr: Pbr {
-                base_color_factor: mesh.color,
-                metallic_factor: 0.0,
-                roughness_factor: 1.0,
-            },
-            extensions: if lit {
-                None
-            } else {
-                Some(Extensions { khr_materials_unlit: EmptyObj {} })
-            },
-            alpha_mode: if mesh.color[3] < 1.0 { Some("BLEND") } else { None },
-            double_sided: true,
-        });
+        materials.push(make_material(mesh.color, lit, emissive));
         idx
     });
 
@@ -914,11 +928,16 @@ fn view_ok(v: &MeshView) -> bool {
 /// GLB, or chunked external buffers for multi-buffer glTF). Returns the `Gltf` for the
 /// caller to pack (GLB) or serialize (glTF); the binary lives in `ch` afterwards
 /// (`ch.embedded_bin` for the single-buffer case, or already handed to the chunk sink).
+// Cohesive builder: these are the orthogonal knobs of one glTF pass (metadata,
+// model id, lit/emissive material, RTC origin, quantization) and packing them
+// into a struct would not reduce the real coupling. #1427 added `emissive`.
+#[allow(clippy::too_many_arguments)]
 fn build_gltf(
     views: &[MeshView],
     include_metadata: bool,
     model_id: Option<&str>,
     lit: bool,
+    emissive: bool,
     rtc_zup: [f64; 3],
     quantize: bool,
     ch: &mut Chunker,
@@ -1062,13 +1081,13 @@ fn build_gltf(
                 *flat_cache.entry(key).or_insert_with(|| {
                     push_mesh_quantized(
                         &mut *ch, &mut accessors, &mut meshes,
-                        &mut materials, &mut material_map, mesh, lit, &mut stats,
+                        &mut materials, &mut material_map, mesh, lit, emissive, &mut stats,
                     )
                 })
             } else {
                 push_mesh_quantized(
                     &mut *ch, &mut accessors, &mut meshes,
-                    &mut materials, &mut material_map, mesh, lit, &mut stats,
+                    &mut materials, &mut material_map, mesh, lit, emissive, &mut stats,
                 )
             };
             mesh_idx = mi;
@@ -1083,7 +1102,7 @@ fn build_gltf(
             let (mi, _, _) = *flat_cache.entry(key).or_insert_with(|| {
                 let mi = push_mesh(
                     &mut *ch, &mut accessors, &mut meshes,
-                    &mut materials, &mut material_map, mesh, [0.0, 0.0, 0.0], lit, &mut stats,
+                    &mut materials, &mut material_map, mesh, [0.0, 0.0, 0.0], lit, emissive, &mut stats,
                 );
                 (mi, [0.0; 3], [0.0; 3])
             });
@@ -1094,7 +1113,7 @@ fn build_gltf(
             // Singleton: bake world-minus-center into the vertices, identity node.
             mesh_idx = push_mesh(
                 &mut *ch, &mut accessors, &mut meshes,
-                &mut materials, &mut material_map, mesh, placement, lit, &mut stats,
+                &mut materials, &mut material_map, mesh, placement, lit, emissive, &mut stats,
             );
             translation = None;
             scale = None;
@@ -1154,14 +1173,14 @@ fn build_gltf(
             let (mesh_idx, dequant) = if quantize {
                 let (mi, center, half) = push_mesh_quantized(
                     &mut *ch, &mut accessors,
-                    &mut meshes, &mut materials, &mut material_map, &tmpl_mesh, lit, &mut stats,
+                    &mut meshes, &mut materials, &mut material_map, &tmpl_mesh, lit, emissive, &mut stats,
                 );
                 (mi, Some((center, half)))
             } else {
                 let mi = push_mesh(
                     &mut *ch, &mut accessors,
                     &mut meshes, &mut materials, &mut material_map, &tmpl_mesh,
-                    [0.0, 0.0, 0.0], lit, &mut stats,
+                    [0.0, 0.0, 0.0], lit, emissive, &mut stats,
                 );
                 (mi, None)
             };
@@ -1263,7 +1282,8 @@ fn build_gltf(
         buffers: std::mem::take(&mut ch.buffers),
         extensions_used: {
             let mut ext: Vec<&'static str> = Vec::new();
-            if !lit && stats.materials > 0 {
+            // Emissive suppresses unlit (mutually exclusive; see make_material).
+            if !lit && !emissive && stats.materials > 0 {
                 ext.push("KHR_materials_unlit");
             }
             if quantize {
@@ -1292,13 +1312,7 @@ fn build_gltf(
 /// materializes all of its `MeshData` at once — the wasm-OOM fix. Small models
 /// keep the in-memory instanced assembler (byte-identical to before).
 pub fn export_glb_with_stats(content: &[u8], opts: &GltfOptions) -> (Vec<u8>, GltfStats) {
-    // Quantized exports stay on the in-memory assembler regardless of size:
-    // quantization is a NATIVE-ONLY opt-in (the wasm binding hardcodes
-    // `quantize: false`, so the browser path - the one with the hard heap
-    // ceiling - always gets the bounded assembler), and native large-quantized
-    // exports are a working, measured path (multi-buffer glTF + quantization).
-    // Teaching the bounded assembler quantized layout is a tracked follow-up.
-    if !opts.quantize && content.len() >= glb_stream_threshold_bytes() {
+    if content.len() >= glb_stream_threshold_bytes() {
         return export_glb_streaming_bounded(content, opts);
     }
     export_glb_from_result(process_geometry(content), opts)
@@ -1313,11 +1327,31 @@ pub fn try_export_glb(content: &[u8], opts: &GltfOptions) -> Result<Vec<u8>, Exp
 }
 
 /// Fail-closed [`export_glb_with_stats`]; see [`try_export_glb`].
+///
+/// Beyond the [`ExportError::NoRenderGeometry`] guard, an input at/above the
+/// streaming threshold that would exceed the glTF 4 GiB single-GLB limit returns
+/// [`ExportError::TooLarge`] instead of PANICKING (as `export_glb_with_stats`
+/// does) — the checked bounded path fails fast after pass 1, so a caller can fall
+/// back to [`export_gltf_streaming`] without catching a panic (#1516).
+///
+/// A SUB-THRESHOLD input (default < 64 MB) keeps the in-memory instanced
+/// assembler, which retains the historical 4 GiB `pack_glb` assert. That bound is
+/// only reachable if such a small file meshed to over 4 GiB of GLB (a ~64x
+/// expansion — not observed in practice); a caller that must be panic-proof even
+/// then can force the checked bounded path with
+/// `IFC_LITE_GLB_STREAM_THRESHOLD_MB=1`.
 pub fn try_export_glb_with_stats(
     content: &[u8],
     opts: &GltfOptions,
 ) -> Result<(Vec<u8>, GltfStats), ExportError> {
-    let (glb, stats) = export_glb_with_stats(content, opts);
+    // Mirror `export_glb_with_stats`'s routing, but the large-model branch is the
+    // CHECKED bounded assembler (typed TooLarge, no panic). Small models keep the
+    // in-memory instanced path (see the doc note on its residual 4 GiB assert).
+    let (glb, stats) = if content.len() >= glb_stream_threshold_bytes() {
+        try_export_glb_streaming_bounded(content, opts)?
+    } else {
+        export_glb_from_result(process_geometry(content), opts)
+    };
     if stats.meshes == 0 {
         return Err(ExportError::NoRenderGeometry);
     }
@@ -1386,8 +1420,8 @@ fn export_glb_from_result(result: ProcessingResult, opts: &GltfOptions) -> (Vec<
     with_result_views(result, opts, |views, rtc_zup| {
         let mut ch = Chunker::new(if opts.quantize { 8 } else { 12 }, usize::MAX, None);
         let (gltf, stats) = build_gltf(
-            views, opts.include_metadata, opts.model_id.as_deref(), opts.lit, rtc_zup,
-            opts.quantize, &mut ch,
+            views, opts.include_metadata, opts.model_id.as_deref(), opts.lit, opts.emissive,
+            rtc_zup, opts.quantize, &mut ch,
         );
         let json = serde_json::to_vec(&gltf).expect("glTF JSON serializes");
         (pack_glb(&json, &ch.embedded_bin), stats)
@@ -1412,6 +1446,33 @@ pub fn export_gltf_streaming(
     content: &[u8],
     opts: &GltfOptions,
     chunk_cap: usize,
+    sink: impl FnMut(GltfBuffer),
+) -> Vec<u8> {
+    export_gltf_streaming_impl(content, opts, None, chunk_cap, sink)
+}
+
+/// Like [`export_gltf_streaming`] but reuses a pre-built entity index instead of
+/// scanning `content` again on EACH of its two passes. A caller that already
+/// built the index — e.g. to share with the attribute pass
+/// ([`crate::stream_export_model_with_index`]) — passes it here to remove the
+/// redundant SIMD scans on the large models this path targets (#1516). `index`
+/// MUST come from [`build_entity_index`](crate::build_entity_index) over the same
+/// `content`; output is byte-identical to [`export_gltf_streaming`].
+pub fn export_gltf_streaming_with_index(
+    content: &[u8],
+    opts: &GltfOptions,
+    index: Arc<EntityIndex>,
+    chunk_cap: usize,
+    sink: impl FnMut(GltfBuffer),
+) -> Vec<u8> {
+    export_gltf_streaming_impl(content, opts, Some(index), chunk_cap, sink)
+}
+
+fn export_gltf_streaming_impl(
+    content: &[u8],
+    opts: &GltfOptions,
+    index: Option<Arc<EntityIndex>>,
+    chunk_cap: usize,
     mut sink: impl FnMut(GltfBuffer),
 ) -> Vec<u8> {
     // Bounded memory: drive the streaming geometry API with `retain_emitted_meshes: false`
@@ -1423,8 +1484,13 @@ pub fn export_gltf_streaming(
     // Instancing/content-dedup is skipped (it needs every mesh co-resident); the dense
     // models that actually need bounded memory have little instancing, and world geometry
     // is identical either way (instancing is only a dedup of repeated placements).
-    let stream_opts =
-        || StreamingOptions { retain_emitted_meshes: false, ..StreamingOptions::default() };
+    // A shared `index` (when present) is injected into BOTH passes' StreamingOptions so
+    // neither re-scans `content` for its entity index (#1516).
+    let stream_opts = || StreamingOptions {
+        retain_emitted_meshes: false,
+        entity_index: index.clone(),
+        ..StreamingOptions::default()
+    };
 
     let mut wmin = [f64::INFINITY; 3];
     let mut wmax = [f64::NEG_INFINITY; 3];
@@ -1505,7 +1571,7 @@ pub fn export_gltf_streaming(
                 if opts.quantize {
                     let (mi, center, half) = push_mesh_quantized(
                         &mut ch, &mut accessors, &mut meshes, &mut materials,
-                        &mut material_map, &view, opts.lit, &mut stats,
+                        &mut material_map, &view, opts.lit, opts.emissive, &mut stats,
                     );
                     mesh_idx = mi;
                     translation = Some([
@@ -1517,7 +1583,7 @@ pub fn export_gltf_streaming(
                 } else {
                     mesh_idx = push_mesh(
                         &mut ch, &mut accessors, &mut meshes, &mut materials,
-                        &mut material_map, &view, placement, opts.lit, &mut stats,
+                        &mut material_map, &view, placement, opts.lit, opts.emissive, &mut stats,
                     );
                     translation = None;
                     scale = None;
@@ -1579,7 +1645,8 @@ pub fn export_gltf_streaming(
         buffers: std::mem::take(&mut ch.buffers),
         extensions_used: {
             let mut ext: Vec<&'static str> = Vec::new();
-            if !opts.lit && stats.materials > 0 {
+            // Emissive suppresses unlit (mutually exclusive; see make_material).
+            if !opts.lit && !opts.emissive && stats.materials > 0 {
                 ext.push("KHR_materials_unlit");
             }
             if opts.quantize {
@@ -1618,14 +1685,17 @@ struct StreamedMeshMeta {
     write: Option<StreamedWrite>,
 }
 
-/// Byte destinations (offsets WITHIN each run) + bake offset for one emitted mesh.
+/// Byte destinations (offsets WITHIN each run) + bake parameters for one emitted mesh.
 struct StreamedWrite {
     pos_off: u64,
     norm_off: u64,
     idx_off: u64,
-    /// Added to each position (f64) before the f32 downcast: `origin - scene_center`
-    /// for singletons, zero for shared (content-deduped) meshes.
+    /// f32 path: added to each position (f64) before the f32 downcast:
+    /// `origin - scene_center` for singletons, zero for shared meshes.
     vertex_offset: [f64; 3],
+    /// Quantized path: `(center, half, small_indices)` for the SHORT encoding
+    /// (the node carries the dequant); `vertex_offset` is unused when set.
+    quant: Option<([f64; 3], [f64; 3], bool)>,
 }
 
 /// Input-size threshold (bytes) above which `export_glb_with_stats` uses the
@@ -1649,16 +1719,53 @@ fn glb_stream_threshold_bytes() -> usize {
     mb.saturating_mul(1024 * 1024)
 }
 
+/// GLB container size in bytes: the 12-byte file header + the JSON chunk (8-byte
+/// chunk header + 4-aligned payload) + the BIN chunk (8-byte chunk header +
+/// 4-aligned payload). Computed in u64 so an oversize model never truncates on
+/// wasm32 (32-bit `usize`) — the projected size has to stay a reliable > 4 GiB
+/// signal (#1516). Matches the layout `write_bounded_glb`/`pack_glb` emit.
+fn glb_container_size(json_len: u64, bin_total: u64) -> u64 {
+    let json_pad = (4 - (json_len % 4)) % 4;
+    let bin_pad = (4 - (bin_total % 4)) % 4;
+    12 + 8 + (json_len + json_pad) + 8 + (bin_total + bin_pad)
+}
+
+/// Projected size of the single-GLB export for a model, computed from pass 1
+/// only (no output allocation) — issue #1516. A caller uses it to pick single
+/// GLB vs multi-buffer glTF ([`export_gltf_streaming`]) WITHOUT the historical
+/// "attempt the GLB, catch the 4 GiB panic, re-run as multi-buffer" dance.
+#[derive(Debug, Clone, Copy)]
+pub struct GlbSizeProjection {
+    /// Projected total GLB container size in bytes (padded JSON + padded BIN +
+    /// chunk headers). Exact when it fits; a lower bound once oversize (the
+    /// truncated buffer numbers in the discarded JSON make it marginally short).
+    pub total_bytes: u64,
+    /// Projected BIN payload (positions + normals + indices), the value checked
+    /// against the glTF 4 GiB per-buffer limit. Always exact (u64, no truncation).
+    pub bin_bytes: u64,
+    /// `false` when the projected GLB would exceed the glTF 32-bit (4 GiB) limit
+    /// — route to [`export_gltf_streaming`] (multi-buffer) instead.
+    pub fits_single_glb: bool,
+    /// Coverage of the projected export (post content-dedup mesh/vertex/tri counts).
+    pub stats: GltfStats,
+}
+
 /// Bounded-memory single-**GLB** export: two passes over the deterministic mesh
 /// stream (`retain_emitted_meshes: false`, peak input = one batch).
 ///
-/// Pass 1 records per-mesh METADATA only (counts, local bbox, colour, ids,
-/// content-hash) plus the world AABB; the complete glTF JSON is then built and
-/// the final GLB `Vec` is preallocated at its exact container size. Pass 2
-/// re-streams the same meshes and bakes their bytes straight into the output at
-/// precomputed offsets. Peak memory = the final artifact + one batch + metadata
-/// — never the whole model's `MeshData`, never a growing three-run scratch, and
-/// never a second full copy from a final concatenation.
+/// Pass 1 ([`plan_bounded_glb`]) records per-mesh METADATA only (counts, local
+/// bbox, colour, ids, content-hash) plus the world AABB; the complete glTF JSON
+/// is then built and the final GLB `Vec` is preallocated at its exact container
+/// size. Pass 2 ([`write_bounded_glb`]) re-streams the same meshes and bakes
+/// their bytes straight into the output at precomputed offsets. Peak memory = the
+/// final artifact + one batch + metadata — never the whole model's `MeshData`,
+/// never a growing three-run scratch, and never a second full copy from a final
+/// concatenation.
+///
+/// **Oversize** (projected GLB over the glTF 4 GiB limit) PANICS with the
+/// historical messages (a worker classifier matches on them). Prefer
+/// [`try_export_glb_streaming_bounded`] to get [`ExportError::TooLarge`] instead,
+/// or [`project_glb_size`] to decide up front.
 ///
 /// Tradeoffs vs the in-memory assembler (`build_gltf`):
 /// - rep-identity instancing is SKIPPED (it needs every occurrence co-resident);
@@ -1666,11 +1773,164 @@ fn glb_stream_threshold_bytes() -> usize {
 ///   Models with no instanceable groups produce BYTE-IDENTICAL output; models
 ///   with them produce the same world geometry, larger by the forgone dedup.
 /// - the model is meshed twice (the price of bounded memory).
-/// - quantization is not supported here; the caller gates on `opts.quantize`.
+///
+/// Supports both the f32 and the `KHR_mesh_quantization` layouts; the quantized
+/// accessor min/max come from the local bbox in closed form (the quantize map is
+/// monotone per axis). Caveat: a NaN vertex coordinate quantizes to 0 in the
+/// byte stream on both paths, but only the in-memory fold lets that 0 into the
+/// accessor min/max hint; clean meshes are byte-identical.
 pub fn export_glb_streaming_bounded(content: &[u8], opts: &GltfOptions) -> (Vec<u8>, GltfStats) {
-    assert!(!opts.quantize, "quantized export uses the in-memory assembler");
-    let stream_opts =
-        || StreamingOptions { retain_emitted_meshes: false, ..StreamingOptions::default() };
+    export_glb_streaming_bounded_impl(content, opts, None)
+}
+
+/// Like [`export_glb_streaming_bounded`] but reuses a pre-built entity index
+/// instead of scanning `content` again on EACH of the two passes — for a caller
+/// that already built it (e.g. to share with [`crate::stream_export_model_with_index`]),
+/// removing the redundant SIMD scans on the large models this path targets
+/// (#1516). `index` MUST come from [`build_entity_index`](crate::build_entity_index)
+/// over the same `content`; output is byte-identical.
+pub fn export_glb_streaming_bounded_with_index(
+    content: &[u8],
+    opts: &GltfOptions,
+    index: Arc<EntityIndex>,
+) -> (Vec<u8>, GltfStats) {
+    export_glb_streaming_bounded_impl(content, opts, Some(index))
+}
+
+fn export_glb_streaming_bounded_impl(
+    content: &[u8],
+    opts: &GltfOptions,
+    index: Option<Arc<EntityIndex>>,
+) -> (Vec<u8>, GltfStats) {
+    // Build the index ONCE, in parallel on native, so both passes reuse it (no
+    // redundant per-pass inline scan). Byte-identical to the shared-index path (#1516).
+    let index = index.or_else(|| Some(Arc::new(build_entity_index_parallel(content))));
+    let plan = plan_bounded_glb(content, opts, index.clone());
+    // Back-compat: an oversize model PANICS with the historical messages (the
+    // worker's OutputTooLarge classifier matches on them). `try_export_glb*` /
+    // `try_export_glb_streaming_bounded` are the fail-closed alternatives that
+    // return `ExportError::TooLarge` instead.
+    assert!(
+        plan.bin_total <= u32::MAX as u64,
+        "GLB binary buffer is {} bytes, over the glTF 32-bit buffer limit \
+         (4 GiB); the model is too large for a single GLB",
+        plan.bin_total,
+    );
+    assert!(
+        plan.total <= u32::MAX as u64,
+        "GLB total size is {} bytes, over the glTF 32-bit container limit (4 GiB)",
+        plan.total,
+    );
+    write_bounded_glb(content, opts, index, plan)
+}
+
+/// Fail-closed [`export_glb_streaming_bounded`]: an oversize projected GLB
+/// returns [`ExportError::TooLarge`] (carrying the projected byte size) after
+/// pass 1 — no output allocation, no panic (#1516). An empty visible set is a
+/// valid (zero-mesh) GLB here; use [`try_export_glb_with_stats`] for the
+/// [`ExportError::NoRenderGeometry`] guard as well.
+pub fn try_export_glb_streaming_bounded(
+    content: &[u8],
+    opts: &GltfOptions,
+) -> Result<(Vec<u8>, GltfStats), ExportError> {
+    try_export_glb_streaming_bounded_impl(content, opts, None)
+}
+
+/// Shared-index [`try_export_glb_streaming_bounded`] (see
+/// [`export_glb_streaming_bounded_with_index`]).
+pub fn try_export_glb_streaming_bounded_with_index(
+    content: &[u8],
+    opts: &GltfOptions,
+    index: Arc<EntityIndex>,
+) -> Result<(Vec<u8>, GltfStats), ExportError> {
+    try_export_glb_streaming_bounded_impl(content, opts, Some(index))
+}
+
+fn try_export_glb_streaming_bounded_impl(
+    content: &[u8],
+    opts: &GltfOptions,
+    index: Option<Arc<EntityIndex>>,
+) -> Result<(Vec<u8>, GltfStats), ExportError> {
+    // Build the index ONCE in parallel and share it across plan + write. This is
+    // the fail-closed large-model path, exactly where the parallel scan pays off;
+    // with `index=None` it otherwise paid two internal serial scans.
+    let index = index.or_else(|| Some(Arc::new(build_entity_index_parallel(content))));
+    let plan = plan_bounded_glb(content, opts, index.clone());
+    if plan.bin_total > u32::MAX as u64 || plan.total > u32::MAX as u64 {
+        return Err(ExportError::TooLarge { bytes: plan.total });
+    }
+    Ok(write_bounded_glb(content, opts, index, plan))
+}
+
+/// Project the single-GLB size for `content` from pass 1 only — the world AABB +
+/// per-mesh byte sizes the bounded assembler already computes — WITHOUT meshing
+/// twice or allocating the output (#1516). Lets a caller pick single GLB vs
+/// multi-buffer glTF up front. Meshes the model once (the price of an exact size).
+pub fn project_glb_size(content: &[u8], opts: &GltfOptions) -> GlbSizeProjection {
+    project_glb_size_impl(content, opts, None)
+}
+
+/// Shared-index [`project_glb_size`] (see [`export_glb_streaming_bounded_with_index`]).
+pub fn project_glb_size_with_index(
+    content: &[u8],
+    opts: &GltfOptions,
+    index: Arc<EntityIndex>,
+) -> GlbSizeProjection {
+    project_glb_size_impl(content, opts, Some(index))
+}
+
+fn project_glb_size_impl(
+    content: &[u8],
+    opts: &GltfOptions,
+    index: Option<Arc<EntityIndex>>,
+) -> GlbSizeProjection {
+    let index = index.or_else(|| Some(Arc::new(build_entity_index_parallel(content))));
+    let plan = plan_bounded_glb(content, opts, index);
+    GlbSizeProjection {
+        total_bytes: plan.total,
+        bin_bytes: plan.bin_total,
+        fits_single_glb: plan.bin_total <= u32::MAX as u64 && plan.total <= u32::MAX as u64,
+        stats: plan.stats,
+    }
+}
+
+/// Everything pass 2 ([`write_bounded_glb`]) needs from pass 1: the finished glTF
+/// JSON, the per-mesh write plan (`metas`, each carrying its byte offsets), the
+/// three run lengths, and the projected sizes — WITHOUT the vertex bytes (those
+/// re-stream on pass 2). Holding this between passes is what lets the caller
+/// fail fast on an oversize model before any output is allocated.
+struct BoundedGlbPlan {
+    metas: Vec<StreamedMeshMeta>,
+    json: Vec<u8>,
+    /// Positions / normals run lengths; the index run is `bin_total - pos - norm`
+    /// (its base offset is `pos_len + norm_len`, so `idx_len` need not be carried).
+    pos_len: u64,
+    norm_len: u64,
+    /// BIN payload size (pos + norm + idx), exact (u64).
+    bin_total: u64,
+    /// Projected GLB container size (headers + padded JSON + padded BIN). u64 so
+    /// an oversize model does not truncate on wasm32 (32-bit `usize`).
+    total: u64,
+    stats: GltfStats,
+}
+
+/// Pass 1 of the bounded assembler: mesh the model once to gather per-mesh
+/// metadata + the world AABB, build the complete glTF JSON, and compute the exact
+/// output sizes — returning a [`BoundedGlbPlan`] the caller either writes
+/// ([`write_bounded_glb`]) or inspects for size ([`project_glb_size`]). Does NOT
+/// assert the 4 GiB limits; the caller decides (panic vs typed error).
+fn plan_bounded_glb(
+    content: &[u8],
+    opts: &GltfOptions,
+    index: Option<Arc<EntityIndex>>,
+) -> BoundedGlbPlan {
+    // A shared `index` (when present) is injected into BOTH passes' StreamingOptions
+    // so neither re-scans `content` for its entity index (#1516).
+    let stream_opts = || StreamingOptions {
+        retain_emitted_meshes: false,
+        entity_index: index.clone(),
+        ..StreamingOptions::default()
+    };
 
     // ── Pass 1: metadata + world AABB ────────────────────────────────────────
     let mut metas: Vec<StreamedMeshMeta> = Vec::new();
@@ -1752,8 +2012,12 @@ pub fn export_glb_streaming_bounded(content: &[u8], opts: &GltfOptions) -> (Vec<
     let mut material_map: HashMap<(i32, i32, i32, i32), u32> = HashMap::new();
     let mut element_node_indices: Vec<u32> = Vec::new();
     let mut stats = GltfStats { meshes: 0, vertices: 0, triangles: 0, materials: 0 };
-    let mut shared_cache: HashMap<u128, u32> = HashMap::new();
+    // key -> (mesh_idx, dequant center, dequant half). center/half are dummy
+    // zeros/ones on the f32 path (node scale stays None), the per-mesh dequant
+    // the node folds in on the quantized path (mirrors build_gltf's flat_cache).
+    let mut shared_cache: HashMap<u128, (u32, [f64; 3], [f64; 3])> = HashMap::new();
     let (mut pos_len, mut norm_len, mut idx_len) = (0u64, 0u64, 0u64);
+    let quantize = opts.quantize;
 
     // First simulation pass computes run lengths so accessor emission below can
     // reference stable bufferView indices (0/1/2) with per-run byte offsets.
@@ -1762,6 +2026,7 @@ pub fn export_glb_streaming_bounded(content: &[u8], opts: &GltfOptions) -> (Vec<
     struct Emitted {
         mesh_idx: u32,
         translation: Option<[f64; 3]>,
+        scale: Option<[f64; 3]>,
     }
     let mut per_meta: Vec<Emitted> = Vec::with_capacity(metas.len());
     for meta in &mut metas {
@@ -1771,72 +2036,116 @@ pub fn export_glb_streaming_bounded(content: &[u8], opts: &GltfOptions) -> (Vec<
             meta.origin[2] - scene_center[2],
         ];
         let shared = key_counts.get(&meta.key).copied().unwrap_or(1) >= 2;
-        let (emit, vertex_offset, translation) = if shared {
-            (
-                !shared_cache.contains_key(&meta.key),
-                [0.0, 0.0, 0.0],
-                placement.iter().any(|c| c.abs() > 1e-9).then_some(placement),
-            )
-        } else {
-            (true, placement, None)
+        // Per-mesh dequant frame (quantized layout): centre + half-extent of the
+        // LOCAL bbox, degenerate axes guarded to 1, exactly as push_mesh_quantized.
+        let (q_center, q_half) = {
+            let mut c = [0.0f64; 3];
+            let mut h = [1.0f64; 3];
+            for k in 0..3 {
+                let lo = meta.local_min[k] as f64;
+                let hi = meta.local_max[k] as f64;
+                c[k] = (lo + hi) * 0.5;
+                let hh = (hi - lo) * 0.5;
+                if hh > 0.0 {
+                    h[k] = hh;
+                }
+            }
+            (c, h)
         };
-        let mesh_idx = if emit {
-            let bake = |local: [f32; 3]| -> [f32; 3] {
-                [
-                    (local[0] as f64 + vertex_offset[0]) as f32,
-                    (local[1] as f64 + vertex_offset[1]) as f32,
-                    (local[2] as f64 + vertex_offset[2]) as f32,
-                ]
+        let emit = !(shared && shared_cache.contains_key(&meta.key));
+        // f32 path only: singletons bake world-minus-centre into the vertices.
+        let vertex_offset =
+            if shared || quantize { [0.0, 0.0, 0.0] } else { placement };
+        let (mesh_idx, center, half) = if emit {
+            let (pos_acc, norm_acc, idx_acc) = if quantize {
+                // Quantize is monotone per axis, so the accessor min/max are the
+                // quantized local bbox corners in closed form.
+                let q1 = |v: f32, k: usize| -> f32 {
+                    let n = ((v as f64 - q_center[k]) / q_half[k]).clamp(-1.0, 1.0);
+                    ((n * 32767.0).round() as i16) as f32
+                };
+                let qv = |v: [f32; 3]| [q1(v[0], 0), q1(v[1], 1), q1(v[2], 2)];
+                let pos_acc = accessors.len() as u32;
+                accessors.push(Accessor {
+                    buffer_view: 0,
+                    byte_offset: pos_len as u32,
+                    component_type: 5122, // SHORT
+                    count: meta.nverts,
+                    ty: "VEC3",
+                    normalized: Some(true),
+                    min: Some(qv(meta.local_min)),
+                    max: Some(qv(meta.local_max)),
+                });
+                let norm_acc = accessors.len() as u32;
+                accessors.push(Accessor {
+                    buffer_view: 1,
+                    byte_offset: norm_len as u32,
+                    component_type: 5122,
+                    count: meta.nverts,
+                    ty: "VEC3",
+                    normalized: Some(true),
+                    min: None,
+                    max: None,
+                });
+                let small = meta.nverts <= u16::MAX as u32 + 1;
+                let idx_acc = accessors.len() as u32;
+                accessors.push(Accessor {
+                    buffer_view: 2,
+                    byte_offset: idx_len as u32,
+                    component_type: if small { 5123 } else { 5125 },
+                    count: meta.nidx,
+                    ty: "SCALAR",
+                    normalized: None,
+                    min: None,
+                    max: None,
+                });
+                (pos_acc, norm_acc, idx_acc)
+            } else {
+                let bake = |local: [f32; 3]| -> [f32; 3] {
+                    [
+                        (local[0] as f64 + vertex_offset[0]) as f32,
+                        (local[1] as f64 + vertex_offset[1]) as f32,
+                        (local[2] as f64 + vertex_offset[2]) as f32,
+                    ]
+                };
+                let pos_acc = accessors.len() as u32;
+                accessors.push(Accessor {
+                    buffer_view: 0,
+                    byte_offset: pos_len as u32,
+                    component_type: 5126,
+                    count: meta.nverts,
+                    ty: "VEC3",
+                    normalized: None,
+                    min: Some(bake(meta.local_min)),
+                    max: Some(bake(meta.local_max)),
+                });
+                let norm_acc = accessors.len() as u32;
+                accessors.push(Accessor {
+                    buffer_view: 1,
+                    byte_offset: norm_len as u32,
+                    component_type: 5126,
+                    count: meta.nverts,
+                    ty: "VEC3",
+                    normalized: None,
+                    min: None,
+                    max: None,
+                });
+                let idx_acc = accessors.len() as u32;
+                accessors.push(Accessor {
+                    buffer_view: 2,
+                    byte_offset: idx_len as u32,
+                    component_type: 5125,
+                    count: meta.nidx,
+                    ty: "SCALAR",
+                    normalized: None,
+                    min: None,
+                    max: None,
+                });
+                (pos_acc, norm_acc, idx_acc)
             };
-            let pos_acc = accessors.len() as u32;
-            accessors.push(Accessor {
-                buffer_view: 0,
-                byte_offset: pos_len as u32,
-                component_type: 5126,
-                count: meta.nverts,
-                ty: "VEC3",
-                normalized: None,
-                min: Some(bake(meta.local_min)),
-                max: Some(bake(meta.local_max)),
-            });
-            let norm_acc = accessors.len() as u32;
-            accessors.push(Accessor {
-                buffer_view: 1,
-                byte_offset: norm_len as u32,
-                component_type: 5126,
-                count: meta.nverts,
-                ty: "VEC3",
-                normalized: None,
-                min: None,
-                max: None,
-            });
-            let idx_acc = accessors.len() as u32;
-            accessors.push(Accessor {
-                buffer_view: 2,
-                byte_offset: idx_len as u32,
-                component_type: 5125,
-                count: meta.nidx,
-                ty: "SCALAR",
-                normalized: None,
-                min: None,
-                max: None,
-            });
             let material = *material_map.entry(color_key(meta.color)).or_insert_with(|| {
                 let idx = materials.len() as u32;
-                materials.push(Material {
-                    pbr: Pbr {
-                        base_color_factor: meta.color,
-                        metallic_factor: 0.0,
-                        roughness_factor: 1.0,
-                    },
-                    extensions: if opts.lit {
-                        None
-                    } else {
-                        Some(Extensions { khr_materials_unlit: EmptyObj {} })
-                    },
-                    alpha_mode: if meta.color[3] < 1.0 { Some("BLEND") } else { None },
-                    double_sided: true,
-                });
+                materials.push(make_material(meta.color, opts.lit, opts.emissive));
                 idx
             });
             let mesh_idx = meshes.len() as u32;
@@ -1850,23 +2159,53 @@ pub fn export_glb_streaming_bounded(content: &[u8], opts: &GltfOptions) -> (Vec<
             stats.meshes += 1;
             stats.vertices += meta.nverts as usize;
             stats.triangles += meta.nidx as usize / 3;
+            let small = meta.nverts <= u16::MAX as u32 + 1;
             meta.write = Some(StreamedWrite {
                 pos_off: pos_len,
                 norm_off: norm_len,
                 idx_off: idx_len,
                 vertex_offset,
+                quant: quantize.then_some((q_center, q_half, small)),
             });
-            pos_len += meta.nverts as u64 * 12;
-            norm_len += meta.nverts as u64 * 12;
-            idx_len += meta.nidx as u64 * 4;
-            if shared {
-                shared_cache.insert(meta.key, mesh_idx);
+            if quantize {
+                pos_len += meta.nverts as u64 * 8;
+                norm_len += meta.nverts as u64 * 8;
+                idx_len += meta.nidx as u64 * if small { 2 } else { 4 };
+                // The in-memory chunker pads the index run to 4-byte alignment
+                // after every mesh; mirror it so offsets and lengths agree.
+                idx_len = idx_len.div_ceil(4) * 4;
+            } else {
+                pos_len += meta.nverts as u64 * 12;
+                norm_len += meta.nverts as u64 * 12;
+                idx_len += meta.nidx as u64 * 4;
             }
-            mesh_idx
+            if shared {
+                shared_cache.insert(meta.key, (mesh_idx, q_center, q_half));
+            }
+            (mesh_idx, q_center, q_half)
         } else {
             shared_cache[&meta.key]
         };
-        per_meta.push(Emitted { mesh_idx, translation });
+        let (translation, scale) = if quantize {
+            // Placement is pure translation, so it commutes with the dequant
+            // translate: node = T(placement + center) · S(half).
+            (
+                Some([
+                    placement[0] + center[0],
+                    placement[1] + center[1],
+                    placement[2] + center[2],
+                ]),
+                Some(half),
+            )
+        } else if shared {
+            (
+                placement.iter().any(|c| c.abs() > 1e-9).then_some(placement),
+                None,
+            )
+        } else {
+            (None, None)
+        };
+        per_meta.push(Emitted { mesh_idx, translation, scale });
     }
     for (meta, emitted) in metas.iter().zip(&per_meta) {
         let node_idx = nodes.len() as u32;
@@ -1874,7 +2213,7 @@ pub fn export_glb_streaming_bounded(content: &[u8], opts: &GltfOptions) -> (Vec<
             mesh: Some(emitted.mesh_idx),
             children: None,
             translation: emitted.translation,
-            scale: None,
+            scale: emitted.scale,
             matrix: None,
             extras: node_extras(
                 opts.include_metadata,
@@ -1889,13 +2228,12 @@ pub fn export_glb_streaming_bounded(content: &[u8], opts: &GltfOptions) -> (Vec<
     stats.materials = materials.len();
 
     let bin_total = pos_len + norm_len + idx_len;
-    // Same message as Chunker::flush so the worker's `OutputTooLarge` classifier
-    // matches regardless of which assembler tripped.
-    assert!(
-        bin_total <= u32::MAX as u64,
-        "GLB binary buffer is {bin_total} bytes, over the glTF 32-bit buffer limit \
-         (4 GiB); the model is too large for a single GLB",
-    );
+    // NOTE: the 4 GiB buffer/container limits are NOT asserted here — the caller
+    // decides (panic in `export_glb_streaming_bounded_impl` vs typed
+    // `ExportError::TooLarge` in the `try_*`/`project_*` paths). The `bin_total as
+    // u32` casts below therefore truncate on an oversize model, but that JSON is
+    // only ever emitted when the size fits (an oversize plan is discarded), so
+    // every path that actually produces bytes stays correct.
     let (buffers, buffer_views) = if bin_total == 0 && stats.meshes == 0 {
         (vec![Buffer { byte_length: 0, uri: None }], Vec::new())
     } else {
@@ -1906,14 +2244,14 @@ pub fn export_glb_streaming_bounded(content: &[u8], opts: &GltfOptions) -> (Vec<
                     buffer: 0,
                     byte_offset: 0,
                     byte_length: pos_len as u32,
-                    byte_stride: Some(12),
+                    byte_stride: Some(if quantize { 8 } else { 12 }),
                     target: 34962,
                 },
                 BufferView {
                     buffer: 0,
                     byte_offset: pos_len as u32,
                     byte_length: norm_len as u32,
-                    byte_stride: Some(12),
+                    byte_stride: Some(if quantize { 8 } else { 12 }),
                     target: 34962,
                 },
                 BufferView {
@@ -1962,26 +2300,55 @@ pub fn export_glb_streaming_bounded(content: &[u8], opts: &GltfOptions) -> (Vec<
         buffers,
         extensions_used: {
             let mut ext: Vec<&'static str> = Vec::new();
-            if !opts.lit && stats.materials > 0 {
+            // Emissive suppresses unlit (mutually exclusive; see make_material).
+            if !opts.lit && !opts.emissive && stats.materials > 0 {
                 ext.push("KHR_materials_unlit");
+            }
+            if quantize {
+                ext.push("KHR_mesh_quantization");
             }
             (!ext.is_empty()).then_some(ext)
         },
-        extensions_required: None,
+        extensions_required: quantize.then(|| vec!["KHR_mesh_quantization"]),
     };
     let json = serde_json::to_vec(&gltf).expect("glTF JSON serializes");
 
+    // Projected container size in u64 (see `glb_container_size`): this crate also
+    // compiles to wasm32 (32-bit `usize`), so an oversize model must NOT truncate
+    // here — the size has to stay a reliable > 4 GiB fail-fast signal.
+    let total = glb_container_size(json.len() as u64, bin_total);
+
+    BoundedGlbPlan { metas, json, pos_len, norm_len, bin_total, total, stats }
+}
+
+/// Pass 2 of the bounded assembler: preallocate the exact GLB container from
+/// `plan`, write the header + JSON, then re-stream the (deterministic) meshes and
+/// bake their bytes straight into the BIN region at the precomputed offsets.
+/// Callers MUST have already validated `plan.total`/`plan.bin_total` fit the glTF
+/// 4 GiB limits (panic or typed error) — this assumes they do.
+fn write_bounded_glb(
+    content: &[u8],
+    opts: &GltfOptions,
+    index: Option<Arc<EntityIndex>>,
+    plan: BoundedGlbPlan,
+) -> (Vec<u8>, GltfStats) {
+    // Re-stream with the same (optionally shared) index so pass 2 never re-scans
+    // for its entity index either (#1516).
+    let stream_opts = || StreamingOptions {
+        retain_emitted_meshes: false,
+        entity_index: index.clone(),
+        ..StreamingOptions::default()
+    };
+    let BoundedGlbPlan { metas, json, pos_len, norm_len, bin_total, total, stats } = plan;
+
     // ── Preallocate the exact GLB container, then pass 2 writes into it ─────
+    // Safe to narrow to usize here: the caller validated `total`/`bin_total` fit
+    // the 4 GiB glTF limit, so every value below is < u32::MAX on any target.
+    let total = total as usize;
     let json_pad = (4 - (json.len() % 4)) % 4;
     let bin_pad = ((4 - (bin_total % 4)) % 4) as usize;
     let padded_json = json.len() + json_pad;
     let padded_bin = bin_total as usize + bin_pad;
-    let total = 12 + 8 + padded_json + 8 + padded_bin;
-    // Same message as pack_glb (the authoritative container guard).
-    assert!(
-        total <= u32::MAX as usize,
-        "GLB total size is {total} bytes, over the glTF 32-bit container limit (4 GiB)",
-    );
     let mut out = Vec::with_capacity(total);
     out.extend_from_slice(b"glTF");
     out.extend_from_slice(&2u32.to_le_bytes());
@@ -2034,23 +2401,69 @@ pub fn export_glb_streaming_bounded(content: &[u8], opts: &GltfOptions) -> (Vec<
                     m.express_id, y.positions.len() / 3, y.indices.len(),
                 );
                 if let Some(w) = &meta.write {
-                    let mut po = pos_base + w.pos_off as usize;
-                    for p in y.positions.chunks_exact(3) {
-                        for (&pv, &off) in p.iter().zip(&w.vertex_offset) {
-                            let baked = (pv as f64 + off) as f32;
-                            out[po..po + 4].copy_from_slice(&baked.to_le_bytes());
-                            po += 4;
+                    if let Some((center, half, small)) = &w.quant {
+                        // SHORT-normalized encoding, identical to push_mesh_quantized;
+                        // the 2-byte stride pads and the index-run 4-alignment pads
+                        // are already zero from the container prefill.
+                        let mut po = pos_base + w.pos_off as usize;
+                        for p in y.positions.chunks_exact(3) {
+                            for (k, &v) in p.iter().enumerate() {
+                                let n = ((v as f64 - center[k]) / half[k]).clamp(-1.0, 1.0);
+                                let q = (n * 32767.0).round() as i16;
+                                out[po..po + 2].copy_from_slice(&q.to_le_bytes());
+                                po += 2;
+                            }
+                            po += 2; // 8-byte stride pad
                         }
-                    }
-                    let mut no = norm_base + w.norm_off as usize;
-                    for &n in &y.normals {
-                        out[no..no + 4].copy_from_slice(&n.to_le_bytes());
-                        no += 4;
-                    }
-                    let mut io = idx_base + w.idx_off as usize;
-                    for &i in &y.indices {
-                        out[io..io + 4].copy_from_slice(&i.to_le_bytes());
-                        io += 4;
+                        let mut no = norm_base + w.norm_off as usize;
+                        for nrm in y.normals.chunks_exact(3) {
+                            let mut v = [
+                                nrm[0] as f64 * half[0],
+                                nrm[1] as f64 * half[1],
+                                nrm[2] as f64 * half[2],
+                            ];
+                            let len = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+                            if len > 0.0 {
+                                v = [v[0] / len, v[1] / len, v[2] / len];
+                            }
+                            for c in v {
+                                let q = (c.clamp(-1.0, 1.0) * 32767.0).round() as i16;
+                                out[no..no + 2].copy_from_slice(&q.to_le_bytes());
+                                no += 2;
+                            }
+                            no += 2; // 8-byte stride pad
+                        }
+                        let mut io = idx_base + w.idx_off as usize;
+                        if *small {
+                            for &i in &y.indices {
+                                out[io..io + 2].copy_from_slice(&(i as u16).to_le_bytes());
+                                io += 2;
+                            }
+                        } else {
+                            for &i in &y.indices {
+                                out[io..io + 4].copy_from_slice(&i.to_le_bytes());
+                                io += 4;
+                            }
+                        }
+                    } else {
+                        let mut po = pos_base + w.pos_off as usize;
+                        for p in y.positions.chunks_exact(3) {
+                            for (&pv, &off) in p.iter().zip(&w.vertex_offset) {
+                                let baked = (pv as f64 + off) as f32;
+                                out[po..po + 4].copy_from_slice(&baked.to_le_bytes());
+                                po += 4;
+                            }
+                        }
+                        let mut no = norm_base + w.norm_off as usize;
+                        for &n in &y.normals {
+                            out[no..no + 4].copy_from_slice(&n.to_le_bytes());
+                            no += 4;
+                        }
+                        let mut io = idx_base + w.idx_off as usize;
+                        for &i in &y.indices {
+                            out[io..io + 4].copy_from_slice(&i.to_le_bytes());
+                            io += 4;
+                        }
                     }
                 }
                 cursor += 1;
@@ -2088,8 +2501,14 @@ pub fn export_glb_from_meshes(
     express_ids: &[u32],
     include_metadata: bool,
     lit: bool,
+    emissive: bool,
 ) -> (Vec<u8>, GltfStats) {
     let n = vertex_counts.len();
+    // The viewer's `MeshData` arrives pre-welded from the mesh source
+    // (`ifc_lite_processing::element::build_mesh_data` welds every element via
+    // `ifc_lite_geometry::mesh_weld::weld_indexed`), so this path no longer
+    // re-welds — it slices each mesh's block straight into a borrowing
+    // `MeshView`. Views borrow the caller's buffers, which outlive the call.
     let mut views: Vec<MeshView> = Vec::with_capacity(n);
     let mut vbase = 0usize; // running vertex offset
     let mut ibase = 0usize; // running index offset
@@ -2137,7 +2556,8 @@ pub fn export_glb_from_meshes(
     // side-channel), so there is no RTC frame to compensate. Quantization is a
     // from-bytes feature; the viewer path stays f32.
     let mut ch = Chunker::new(12, usize::MAX, None);
-    let (gltf, stats) = build_gltf(&views, include_metadata, None, lit, [0.0, 0.0, 0.0], false, &mut ch);
+    let (gltf, stats) =
+        build_gltf(&views, include_metadata, None, lit, emissive, [0.0, 0.0, 0.0], false, &mut ch);
     let json = serde_json::to_vec(&gltf).expect("glTF JSON serializes");
     (pack_glb(&json, &ch.embedded_bin), stats)
 }
@@ -2235,6 +2655,105 @@ mod tests {
         let idx = Arc::new(crate::build_entity_index(&bytes));
         let (shared, _) = export_glb_with_stats_with_index(&bytes, &opts, idx);
         assert_eq!(plain, shared, "shared-index GLB must equal self-indexed GLB");
+    }
+
+    // ── #1516: streaming shared-index + fail-fast size ────────────────────
+
+    /// The container-size math is u64 end-to-end so an oversize model does NOT
+    /// truncate on wasm32 (32-bit `usize`) — the regression the projection guards.
+    #[test]
+    fn glb_container_size_does_not_truncate() {
+        // 12 header + 8 json-chunk hdr + padded json + 8 bin-chunk hdr + padded bin.
+        // json 10 -> pad to 12; bin 20 already aligned.
+        assert_eq!(glb_container_size(10, 20), 12 + 8 + 12 + 8 + 20);
+        // A > 4 GiB BIN payload must stay > u32::MAX (not wrap to a small usize).
+        let big = 5_000_000_000u64; // > u32::MAX (4_294_967_295)
+        let total = glb_container_size(100, big);
+        assert_eq!(total, 12 + 8 + 100 + 8 + big, "no truncation, exact u64 sum");
+        assert!(total > u32::MAX as u64, "oversize total must exceed 4 GiB, got {total}");
+    }
+
+
+    /// The shared-index BOUNDED GLB path must emit byte-for-byte the same GLB as
+    /// the self-indexing one — the injected index equals the one the bounded
+    /// assembler builds internally, so only the redundant scan is removed.
+    #[test]
+    fn bounded_glb_with_index_is_byte_identical() {
+        let bytes = fixture("ara3d/duplex.ifc");
+        for quantize in [false, true] {
+            let opts = GltfOptions { quantize, ..GltfOptions::default() };
+            let (plain, ps) = export_glb_streaming_bounded(&bytes, &opts);
+            let idx = Arc::new(crate::build_entity_index(&bytes));
+            let (shared, ss) = export_glb_streaming_bounded_with_index(&bytes, &opts, idx);
+            assert_eq!(plain, shared, "shared-index bounded GLB must match (quantize={quantize})");
+            assert_eq!(ps, ss, "stats must match");
+        }
+    }
+
+    /// The shared-index MULTI-BUFFER path must produce an identical `.gltf` JSON
+    /// and identical external buffers as the self-indexing one.
+    #[test]
+    fn gltf_streaming_with_index_is_byte_identical() {
+        let bytes = fixture("ara3d/duplex.ifc");
+        let opts = GltfOptions::default();
+        let cap = 256 * 1024;
+
+        let mut plain_bufs: Vec<Vec<u8>> = Vec::new();
+        let plain_json = export_gltf_streaming(&bytes, &opts, cap, |b| plain_bufs.push(b.bytes));
+
+        let idx = Arc::new(crate::build_entity_index(&bytes));
+        let mut shared_bufs: Vec<Vec<u8>> = Vec::new();
+        let shared_json =
+            export_gltf_streaming_with_index(&bytes, &opts, idx, cap, |b| shared_bufs.push(b.bytes));
+
+        assert_eq!(plain_json, shared_json, "shared-index .gltf JSON must match");
+        assert_eq!(plain_bufs, shared_bufs, "shared-index buffers must match");
+    }
+
+    /// `project_glb_size` (pass 1 only) must return the EXACT byte size of the GLB
+    /// the bounded assembler actually produces, plus matching coverage stats and
+    /// `fits_single_glb = true` for a normal model — so a caller can pick single
+    /// GLB vs multi-buffer without meshing to completion twice.
+    #[test]
+    fn project_glb_size_matches_bounded_output() {
+        let bytes = fixture("ara3d/duplex.ifc");
+        for quantize in [false, true] {
+            let opts = GltfOptions { quantize, ..GltfOptions::default() };
+            let proj = project_glb_size(&bytes, &opts);
+            let (glb, stats) = export_glb_streaming_bounded(&bytes, &opts);
+            assert_eq!(
+                proj.total_bytes as usize,
+                glb.len(),
+                "projected size must equal the real GLB length (quantize={quantize})"
+            );
+            assert!(proj.fits_single_glb, "duplex fits a single GLB");
+            assert_eq!(proj.stats, stats, "projected stats must match the export");
+            // Shared-index projection must agree with the self-indexed one.
+            let idx = Arc::new(crate::build_entity_index(&bytes));
+            let proj_idx = project_glb_size_with_index(&bytes, &opts, idx);
+            assert_eq!(proj_idx.total_bytes, proj.total_bytes);
+            assert_eq!(proj_idx.bin_bytes, proj.bin_bytes);
+        }
+    }
+
+    /// The checked bounded export returns the SAME bytes as the panicking one for
+    /// a model that fits (the common case), so `try_*` is a drop-in that only
+    /// changes the oversize behaviour (typed error vs panic).
+    #[test]
+    fn try_export_bounded_matches_export_for_fitting_model() {
+        let bytes = fixture("ara3d/duplex.ifc");
+        let opts = GltfOptions::default();
+        let (want, wstats) = export_glb_streaming_bounded(&bytes, &opts);
+        let (got, gstats) = try_export_glb_streaming_bounded(&bytes, &opts)
+            .expect("duplex fits — must not be TooLarge");
+        assert_eq!(want, got, "checked bounded GLB must equal the panicking one");
+        assert_eq!(wstats, gstats);
+
+        // The top-level fail-closed API agrees with the in-memory export for a
+        // small model and still guards the empty case.
+        let (glb, _) = try_export_glb_with_stats(&bytes, &opts).expect("has geometry");
+        let (want2, _) = export_glb_with_stats(&bytes, &opts);
+        assert_eq!(glb, want2, "try_export_glb_with_stats must match export_glb_with_stats");
     }
 
     // ── KHR_mesh_quantization ────────────────────────────────────────────
@@ -2669,6 +3188,78 @@ mod tests {
     }
 
     #[test]
+    fn from_meshes_glb_preserves_source_welded_vertices() {
+        // The faceted-brep per-face vertex duplication is now welded at the mesh
+        // SOURCE (`ifc_lite_processing::element::build_mesh_data`), so the
+        // viewer's `MeshData` reaches `export_glb_from_meshes` already welded and
+        // this path must NOT re-weld — it is a faithful pass-through. Feed a
+        // PRE-WELDED GxG plate (unique grid points, shared indices) and assert
+        // the export preserves its vertex count and extent exactly. The
+        // per-face-duplicated form and its collapse are covered at the source
+        // (processing `source_vertex_weld` + geometry `mesh_weld` unit tests).
+        const G: usize = 4;
+        // (G+1)^2 unique grid vertices, all +Z.
+        let mut positions: Vec<f32> = Vec::new();
+        let mut normals: Vec<f32> = Vec::new();
+        for x in 0..=G {
+            for y in 0..=G {
+                positions.extend_from_slice(&[x as f32, y as f32, 0.0]);
+                normals.extend_from_slice(&[0.0, 0.0, 1.0]);
+            }
+        }
+        let welded_verts = (G + 1) * (G + 1); // 25
+        assert_eq!(positions.len() / 3, welded_verts);
+        // Two triangles per cell, indexing the shared grid vertices.
+        let vid = |x: usize, y: usize| (x * (G + 1) + y) as u32;
+        let mut indices: Vec<u32> = Vec::new();
+        for x in 0..G {
+            for y in 0..G {
+                let (a, b, c, d) = (vid(x, y), vid(x + 1, y), vid(x + 1, y + 1), vid(x, y + 1));
+                indices.extend_from_slice(&[a, b, c, a, c, d]);
+            }
+        }
+
+        let (glb, stats) = export_glb_from_meshes(
+            &positions,
+            &normals,
+            &indices,
+            &[welded_verts as u32],
+            &[indices.len() as u32],
+            &[0.5, 0.5, 0.5, 1.0],
+            &[0.0, 0.0, 0.0],
+            &[1u32],
+            true,
+            false,
+            false, // emissive off (#1427 added the emissive param)
+        );
+        assert_eq!(stats.triangles, 2 * G * G, "triangles unchanged");
+
+        let (json, _bin) = parse_glb(&glb);
+        let pos_acc = json["accessors"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["type"] == "VEC3" && a["min"].is_array())
+            .expect("position accessor");
+        let pos_count = pos_acc["count"].as_u64().unwrap() as usize;
+        assert_eq!(
+            pos_count, welded_verts,
+            "pre-welded source vertices pass through unchanged (no export re-weld / inflation)"
+        );
+
+        // World extent preserved: the plate is still GxG and flat (one axis span
+        // is 0, the other two are G), regardless of the Y-up axis order.
+        let mn: Vec<f64> = pos_acc["min"].as_array().unwrap().iter().map(|v| v.as_f64().unwrap()).collect();
+        let mx: Vec<f64> = pos_acc["max"].as_array().unwrap().iter().map(|v| v.as_f64().unwrap()).collect();
+        let mut spans: Vec<f64> = (0..3).map(|i| mx[i] - mn[i]).collect();
+        spans.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        assert!(
+            spans[0].abs() < 1e-4 && (spans[1] - G as f64).abs() < 1e-4 && (spans[2] - G as f64).abs() < 1e-4,
+            "welded plate keeps its GxG flat extent (spans {spans:?})"
+        );
+    }
+
+    #[test]
     fn from_meshes_assembles_valid_glb() {
         // Two meshes (a quad each) supplied as already-produced buffers — no re-meshing.
         // Mesh 0: unit quad at origin; Mesh 1: same quad with a non-zero RTC origin.
@@ -2686,7 +3277,7 @@ mod tests {
 
         let (glb, stats) = export_glb_from_meshes(
             &positions, &normals, &indices, &vertex_counts, &index_counts, &colors, &origins,
-            &express_ids, true, true,
+            &express_ids, true, true, false,
         );
         assert_eq!(stats.meshes, 2);
         assert_eq!(stats.triangles, 4);
@@ -2810,6 +3401,65 @@ mod tests {
             if let Some(extras) = n.get("extras") {
                 assert!(extras.get("modelId").is_none(), "no modelId without a model id");
             }
+        }
+    }
+
+    /// #1496 regression — the join contract: every meshed GLB node's `expressId`
+    /// must resolve to an export-model row, so a viewer can always look up
+    /// attributes on pick. The whole legacy-entity class (`IfcProxy`,
+    /// `IfcSolidStratum`, and the common IFC2x3 `*StandardCase`/`*ElementedCase`
+    /// entities) used to render *without* a row: the geometry pass meshes them via
+    /// the legacy table, but the attribute pass tested a bare `from_str`
+    /// (→ `Unknown`) against `IfcProduct`. Both now use `legacy_aware_ifc_type`.
+    /// These fixtures cover the proxy + geoscience cases; the mechanism generalises
+    /// to every legacy product. (Type-only geometry — `IfcBoilerType` in the
+    /// tessellation-with-*-texture fixtures — is a separate, harder case tracked as
+    /// a follow-up and intentionally NOT covered here.)
+    #[test]
+    fn glb_nodes_have_export_rows_for_legacy_products() {
+        let mut found = 0;
+        for rel in [
+            "ifcopenshell/1030-sphere.ifc",
+            "ifcopenshell/1032-curve.ifc",
+            "issues/860_solid_stratum.ifc",
+        ] {
+            let Some(content) = fixture_opt(rel) else { continue };
+            found += 1;
+            let opts = GltfOptions {
+                include_metadata: true,
+                ..GltfOptions::default()
+            };
+            let (glb, _stats) = export_glb_with_stats(&content, &opts);
+            let (json, _bin) = parse_glb(&glb);
+            let rows: std::collections::HashSet<u32> = crate::model::build_export_model(&content)
+                .entities
+                .iter()
+                .map(|e| e.express_id)
+                .collect();
+            let mut checked = 0;
+            for n in json["nodes"].as_array().unwrap() {
+                let Some(extras) = n.get("extras") else { continue };
+                let Some(eid) = extras.get("expressId").and_then(|v| v.as_u64()) else {
+                    continue;
+                };
+                checked += 1;
+                assert!(
+                    rows.contains(&(eid as u32)),
+                    "{rel}: GLB node expressId {eid} (ifcType {:?}) has no export-model row (#1496)",
+                    extras.get("ifcType")
+                );
+            }
+            assert!(checked > 0, "{rel}: expected at least one meshed element node");
+        }
+        // Per the fixture_opt house rule the test is green when the corpus isn't
+        // fetched — but say so, so a silent zero-coverage run (Greptile #1511) is
+        // visible rather than masquerading as a real pass. CI fetches the corpus,
+        // so `found` is 3 there and the join contract is actually exercised.
+        if found == 0 {
+            eprintln!(
+                "skipping glb_nodes_have_export_rows: no legacy fixtures fetched \
+                 (run `pnpm fixtures`)"
+            );
         }
     }
 
@@ -3060,6 +3710,7 @@ mod tests {
             &[10],
             false,
             false, // lit = false ⇒ unlit
+            false, // emissive off
         );
         let (json, _) = parse_glb(&glb);
         assert_eq!(json["extensionsUsed"][0], "KHR_materials_unlit");
@@ -3068,6 +3719,75 @@ mod tests {
                 ["KHR_materials_unlit"]
                 .is_object()),
             "unlit materials carry the KHR_materials_unlit extension"
+        );
+    }
+
+    #[test]
+    fn emissive_option_sets_emissive_factor_to_base_colour() {
+        // #1427: emissive = true self-illuminates every material at its base colour
+        // so Google Earth (no ambient/IBL, hard sun) shows the true colour instead of
+        // a near-black shaded surface. emissiveFactor is core glTF 2.0 — no extension.
+        let positions: Vec<f32> = vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0];
+        let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 0.0, 1.0], 4).flatten().collect();
+        let indices: Vec<u32> = vec![0, 1, 2, 0, 2, 3];
+        let (glb, _) = export_glb_from_meshes(
+            &positions,
+            &normals,
+            &indices,
+            &[4],
+            &[6],
+            &[0.25, 0.5, 0.75, 1.0],
+            &[0.0, 0.0, 0.0],
+            &[10],
+            true, // include_metadata
+            true, // lit (no unlit extension — mutually exclusive with emissive)
+            true, // emissive on
+        );
+        let (json, _) = parse_glb(&glb);
+        let mats = json["materials"].as_array().unwrap();
+        // emissiveFactor == base colour RGB; base colour is preserved (safe fallback).
+        let m = &mats[0];
+        let ef = m["emissiveFactor"].as_array().unwrap();
+        assert!((ef[0].as_f64().unwrap() - 0.25).abs() < 1e-6);
+        assert!((ef[1].as_f64().unwrap() - 0.5).abs() < 1e-6);
+        assert!((ef[2].as_f64().unwrap() - 0.75).abs() < 1e-6);
+        let bc = m["pbrMetallicRoughness"]["baseColorFactor"].as_array().unwrap();
+        assert!((bc[0].as_f64().unwrap() - 0.25).abs() < 1e-6, "base colour kept (no regression)");
+        // emissive is core glTF: no extension is declared for it.
+        assert!(json.get("extensionsUsed").is_none(), "emissive needs no extension");
+    }
+
+    #[test]
+    fn emissive_takes_precedence_over_unlit() {
+        // #1427: emissive and KHR_materials_unlit are mutually exclusive (the unlit
+        // spec mandates emissiveFactor = 0). If a caller asks for BOTH (lit = false
+        // AND emissive = true), emissive must win — never emit a material that
+        // declares unlit alongside a non-zero emissiveFactor (a spec violation).
+        let positions: Vec<f32> = vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0];
+        let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 0.0, 1.0], 4).flatten().collect();
+        let indices: Vec<u32> = vec![0, 1, 2, 0, 2, 3];
+        let (glb, _) = export_glb_from_meshes(
+            &positions,
+            &normals,
+            &indices,
+            &[4],
+            &[6],
+            &[0.5, 0.5, 0.5, 1.0],
+            &[0.0, 0.0, 0.0],
+            &[10],
+            false,
+            false, // lit = false (would normally request unlit)…
+            true,  // …but emissive = true wins.
+        );
+        let (json, _) = parse_glb(&glb);
+        assert!(json.get("extensionsUsed").is_none(), "emissive suppresses the unlit extension");
+        assert!(
+            json["materials"].as_array().unwrap().iter().all(|m| m.get("extensions").is_none()),
+            "no material carries KHR_materials_unlit when emissive is on"
+        );
+        assert!(
+            json["materials"].as_array().unwrap().iter().all(|m| m["emissiveFactor"].is_array()),
+            "materials carry emissiveFactor"
         );
     }
 
@@ -3098,6 +3818,53 @@ mod tests {
         assert!(iso.meshes >= 1 && iso.meshes <= full.meshes);
     }
 
+    /// A minimal but valid triangulated mesh (one triangle, matching normals),
+    /// so `mesh_visible`'s geometry-sanity checks pass and only the filter under
+    /// test can flip the result.
+    fn synthetic_mesh(express_id: u32, ifc_type: &str) -> MeshData {
+        MeshData::new(
+            express_id,
+            ifc_type.to_string(),
+            vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+            vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
+            vec![0, 1, 2],
+            [1.0, 0.0, 0.0, 1.0],
+        )
+    }
+
+    #[test]
+    fn mesh_visible_hidden_excludes_only_the_listed_express_id() {
+        // `hidden` is the per-element hide list (viewer "hide selection"): only the
+        // express ids it names must be dropped, everything else stays visible.
+        let hidden_mesh = synthetic_mesh(42, "IfcWall");
+        let other_mesh = synthetic_mesh(43, "IfcWall");
+        let opts = GltfOptions { hidden: vec![42], ..GltfOptions::default() };
+        assert!(!mesh_visible(&hidden_mesh, &opts), "express id 42 is in `hidden` and must be excluded");
+        assert!(mesh_visible(&other_mesh, &opts), "express id 43 is not in `hidden` and must stay visible");
+
+        // With an empty hidden list both are visible again (no accidental default-hide).
+        let none_hidden = GltfOptions::default();
+        assert!(mesh_visible(&hidden_mesh, &none_hidden));
+        assert!(mesh_visible(&other_mesh, &none_hidden));
+    }
+
+    #[test]
+    fn mesh_visible_hidden_types_excludes_the_whole_class() {
+        // `hidden_types` is the class-level visibility toggle (viewer "hide IfcWall"):
+        // every mesh of a hidden IFC type is dropped regardless of express id, and
+        // meshes of other types are unaffected.
+        let wall = synthetic_mesh(1, "IfcWall");
+        let slab = synthetic_mesh(2, "IfcSlab");
+        let opts = GltfOptions { hidden_types: vec!["IfcWall".to_string()], ..GltfOptions::default() };
+        assert!(!mesh_visible(&wall, &opts), "IfcWall is in `hidden_types` and must be excluded");
+        assert!(mesh_visible(&slab, &opts), "IfcSlab is not in `hidden_types` and must stay visible");
+
+        // A different express id of the same hidden type is still excluded (the
+        // filter is class-level, not per-instance).
+        let another_wall = synthetic_mesh(3, "IfcWall");
+        assert!(!mesh_visible(&another_wall, &opts));
+    }
+
     /// A structurally valid IFC with zero products (no render geometry).
     const GEOMETRYLESS_IFC: &str = "ISO-10303-21;\n\
 HEADER;\n\
@@ -3123,6 +3890,16 @@ END-ISO-10303-21;\n";
         assert_eq!(stats.meshes, 0);
         let (json, _) = parse_glb(&glb);
         assert!(json["meshes"].as_array().is_none_or(|m| m.is_empty()));
+    }
+
+    /// The #1516 TooLarge variant carries the projected size and a stable code the
+    /// wasm/TS boundary can match on (mirroring NO_RENDER_GEOMETRY).
+    #[test]
+    fn too_large_error_code_and_message() {
+        let err = ExportError::TooLarge { bytes: 5_000_000_000 };
+        assert_eq!(err.code(), "TOO_LARGE");
+        assert!(err.to_string().contains("5000000000"), "message carries the byte size");
+        assert!(err.to_string().starts_with("TOO_LARGE"), "code prefixes the message");
     }
 
     #[test]
@@ -3198,6 +3975,45 @@ END-ISO-10303-21;\n";
         // pos/norm are 12-byte and idx 4-byte multiples, so the BIN needs no padding
         // and must be exactly the three declared runs.
         assert_eq!(declared as usize, str_bin.len(), "BIN length matches declared runs");
+    }
+
+    #[test]
+    fn streaming_bounded_quantized_is_byte_identical_on_flat_models() {
+        for rel in ["ifcopenshell/1019-column.ifc", "ifcopenshell/1030-sphere.ifc"] {
+            let Some(content) = fixture_opt(rel) else { continue };
+            let opts = GltfOptions {
+                quantize: true,
+                include_metadata: true,
+                ..GltfOptions::default()
+            };
+            let (in_memory, mem_stats) = export_glb_from_result(process_geometry(&content), &opts);
+            let (streamed, stream_stats) = export_glb_streaming_bounded(&content, &opts);
+            assert_eq!(mem_stats.meshes, stream_stats.meshes, "{rel}: mesh stats");
+            assert_eq!(in_memory, streamed, "{rel}: quantized bounded must be byte-identical");
+        }
+    }
+
+    #[test]
+    fn streaming_bounded_quantized_preserves_world_geometry_on_instanced_model() {
+        let Some(content) = fixture_opt("ara3d/duplex.ifc") else { return };
+        let opts = GltfOptions { quantize: true, ..GltfOptions::default() };
+        let (in_memory, _) = export_glb_from_result(process_geometry(&content), &opts);
+        let (streamed, stream_stats) = export_glb_streaming_bounded(&content, &opts);
+        assert!(stream_stats.meshes > 0);
+        let (mem_json, _) = parse_glb(&in_memory);
+        let (str_json, _) = parse_glb(&streamed);
+        // Node counts legitimately differ (the in-memory instanced quantized path
+        // nests a dequant child under a placement parent), but each occurrence
+        // carries exactly one mesh node on both paths, so placed triangles agree.
+        assert_eq!(
+            world_triangles(&mem_json),
+            world_triangles(&str_json),
+            "world triangle count must match",
+        );
+        assert_eq!(
+            str_json["extensionsRequired"][0].as_str(),
+            Some("KHR_mesh_quantization"),
+        );
     }
 
     #[test]

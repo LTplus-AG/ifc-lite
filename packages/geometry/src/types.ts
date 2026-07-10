@@ -81,7 +81,32 @@ export interface MeshData {
    *  such caches must key on this instead. Absent for flat meshes (one MeshData
    *  per `expressId`), where `expressId` is already a sufficient key. */
   occurrenceKey?: string;
+  /** Local (pre-placement, object-space) AABB — `positions` bounds as they
+   *  were BEFORE the element's `IfcLocalPlacement` was baked in (issue #1474).
+   *  Absent when not captured (e.g. an instancing template, or a mesh built
+   *  outside the standard element pipeline). Unrelated to `origin`, which is
+   *  a *world*-space translation captured AFTER placement, purely for f32
+   *  precision — don't conflate the two. */
+  localBounds?: { min: [number, number, number]; max: [number, number, number] };
+  /** The resolved `IfcLocalPlacement` chain applied to this mesh (issue
+   *  #1474): row-major 4x4, 16 numbers, WebGL Y-up metres (same frame as
+   *  `positions`). Absent when not captured. All of one entity's `MeshData`
+   *  pieces share the same value (one placement per element). */
+  localToWorld?: number[];
 }
+
+/**
+ * KML `<altitudeMode>` for KMZ (Google Earth) export — how Google Earth places
+ * the model vertically (#1427):
+ *  - `'clampToGround'` (default): rest the origin on the terrain, ignoring the
+ *    KMZ `altitude`. A building can never float and is immune to a wrong / zero /
+ *    double-counted `IfcMapConversion.OrthogonalHeight`.
+ *  - `'absolute'`: place the origin at `altitude` metres above mean sea level.
+ *    Use when the OrthogonalHeight is a true MSL elevation the user wants honoured.
+ * `'relativeToGround'` (altitude above the terrain below the origin) exists in
+ * the Rust exporter but is not surfaced in the viewer UI.
+ */
+export type KmzAltitudeMode = 'clampToGround' | 'absolute' | 'relativeToGround';
 
 /** A decoded RGBA8 surface texture attached to a mesh (issue #961). */
 export interface MeshTexture {

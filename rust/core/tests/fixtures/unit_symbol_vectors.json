@@ -1,0 +1,58 @@
+{
+  "_comment": "Shared unit-SYMBOL test vectors for the Rust resolver (rust/core/src/project_units) and the TS resolver (packages/parser/src/project-units.ts). Each case is a minimal but complete ISO-10303-21 file. `measures` lists a property/quantity measure value type and the expected display unit: `symbol` (null = no unit shown) and `siScale` (multiply a value in this unit to get its SI base). Both resolvers must agree on every case. All fixtures are synthetic.",
+  "cases": [
+    {
+      "name": "vzt_like_mm_area_volume_derived_flowrate",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t.ifc','2026-01-01T00:00:00',(''),(''),'','','');\nFILE_SCHEMA(('IFC4X3_ADD2'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0001projectaaaaaaaaaaa',$,'P',$,$,$,$,$,#2);\n#2=IFCUNITASSIGNMENT((#3,#4,#5,#10));\n#3=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);\n#4=IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.);\n#5=IFCSIUNIT(*,.VOLUMEUNIT.,$,.CUBIC_METRE.);\n#6=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\n#7=IFCDERIVEDUNITELEMENT(#6,3);\n#8=IFCSIUNIT(*,.TIMEUNIT.,$,.SECOND.);\n#9=IFCDERIVEDUNITELEMENT(#8,-1);\n#10=IFCDERIVEDUNIT((#7,#9),.VOLUMETRICFLOWRATEUNIT.,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "measures": [
+        { "measure": "IfcPositiveLengthMeasure", "symbol": "mm", "siScale": 0.001 },
+        { "measure": "IfcAreaMeasure", "symbol": "m²", "siScale": 1.0 },
+        { "measure": "IfcVolumeMeasure", "symbol": "m³", "siScale": 1.0 },
+        { "measure": "IfcVolumetricFlowRateMeasure", "symbol": "m³/s", "siScale": 1.0 },
+        { "measure": "IfcPressureMeasure", "symbol": "Pa", "siScale": 1.0 },
+        { "measure": "IfcRatioMeasure", "symbol": null, "siScale": null },
+        { "measure": "IfcLabel", "symbol": null, "siScale": null }
+      ]
+    },
+    {
+      "name": "imperial_foot_length",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t.ifc','2026-01-01T00:00:00',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0001projectaaaaaaaaaaa',$,'P',$,$,$,$,$,#2);\n#2=IFCUNITASSIGNMENT((#3));\n#3=IFCCONVERSIONBASEDUNIT(#4,.LENGTHUNIT.,'FOOT',#5);\n#4=IFCDIMENSIONALEXPONENTS(1,0,0,0,0,0,0);\n#5=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(0.3048),#6);\n#6=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "measures": [
+        { "measure": "IfcLengthMeasure", "symbol": "ft", "siScale": 0.3048 },
+        { "measure": "IfcAreaMeasure", "symbol": "m²", "siScale": 1.0 }
+      ]
+    },
+    {
+      "name": "degree_plane_angle",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t.ifc','2026-01-01T00:00:00',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0001projectaaaaaaaaaaa',$,'P',$,$,$,$,$,#2);\n#2=IFCUNITASSIGNMENT((#5,#10));\n#5=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\n#8=IFCSIUNIT(*,.PLANEANGLEUNIT.,$,.RADIAN.);\n#9=IFCMEASUREWITHUNIT(IFCRATIOMEASURE(0.0174532925199433),#8);\n#10=IFCCONVERSIONBASEDUNIT(#11,.PLANEANGLEUNIT.,'DEGREE',#9);\n#11=IFCDIMENSIONALEXPONENTS(0,0,0,0,0,0,0);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "measures": [
+        { "measure": "IfcPlaneAngleMeasure", "symbol": "°", "siScale": 0.0174532925199433 },
+        { "measure": "IfcPositivePlaneAngleMeasure", "symbol": "°", "siScale": 0.0174532925199433 }
+      ]
+    },
+    {
+      "name": "mass_kilogram_and_monetary_eur",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t.ifc','2026-01-01T00:00:00',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0001projectaaaaaaaaaaa',$,'P',$,$,$,$,$,#2);\n#2=IFCUNITASSIGNMENT((#3,#4));\n#3=IFCSIUNIT(*,.MASSUNIT.,.KILO.,.GRAM.);\n#4=IFCMONETARYUNIT('EUR');\nENDSEC;\nEND-ISO-10303-21;\n",
+      "measures": [
+        { "measure": "IfcMassMeasure", "symbol": "kg", "siScale": 1.0 },
+        { "measure": "IfcMonetaryMeasure", "symbol": "€", "siScale": 1.0 }
+      ]
+    },
+    {
+      "name": "mass_density_derived_unit",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t.ifc','2026-01-01T00:00:00',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0001projectaaaaaaaaaaa',$,'P',$,$,$,$,$,#2);\n#2=IFCUNITASSIGNMENT((#3,#10));\n#3=IFCSIUNIT(*,.MASSUNIT.,.KILO.,.GRAM.);\n#4=IFCSIUNIT(*,.MASSUNIT.,.KILO.,.GRAM.);\n#5=IFCDERIVEDUNITELEMENT(#4,1);\n#6=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\n#7=IFCDERIVEDUNITELEMENT(#6,-3);\n#10=IFCDERIVEDUNIT((#5,#7),.MASSDENSITYUNIT.,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "measures": [
+        { "measure": "IfcMassDensityMeasure", "symbol": "kg/m³", "siScale": 1.0 }
+      ]
+    },
+    {
+      "name": "no_unit_assignment_defaults",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t.ifc','2026-01-01T00:00:00',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0001projectaaaaaaaaaaa',$,'P',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "measures": [
+        { "measure": "IfcLengthMeasure", "symbol": "m", "siScale": 1.0 },
+        { "measure": "IfcAreaMeasure", "symbol": "m²", "siScale": 1.0 },
+        { "measure": "IfcVolumetricFlowRateMeasure", "symbol": "m³/s", "siScale": 1.0 }
+      ]
+    }
+  ]
+}

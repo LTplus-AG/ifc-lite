@@ -6,49 +6,6 @@
 
 use nalgebra::{Point3, Vector3};
 
-/// Coordinate shift for RTC (Relative-to-Center) rendering
-/// Stores the offset subtracted from coordinates to improve Float32 precision
-#[derive(Debug, Clone, Copy, Default)]
-pub struct CoordinateShift {
-    /// X offset (subtracted from all X coordinates)
-    pub x: f64,
-    /// Y offset (subtracted from all Y coordinates)
-    pub y: f64,
-    /// Z offset (subtracted from all Z coordinates)
-    pub z: f64,
-}
-
-impl CoordinateShift {
-    /// Create a new coordinate shift
-    #[inline]
-    pub fn new(x: f64, y: f64, z: f64) -> Self {
-        Self { x, y, z }
-    }
-
-    /// Create shift from a Point3
-    #[inline]
-    pub fn from_point(point: Point3<f64>) -> Self {
-        Self {
-            x: point.x,
-            y: point.y,
-            z: point.z,
-        }
-    }
-
-    /// Check if shift is significant (>10km from origin)
-    #[inline]
-    pub fn is_significant(&self) -> bool {
-        const THRESHOLD: f64 = 10000.0; // 10km
-        self.x.abs() > THRESHOLD || self.y.abs() > THRESHOLD || self.z.abs() > THRESHOLD
-    }
-
-    /// Check if shift is zero (no shifting needed)
-    #[inline]
-    pub fn is_zero(&self) -> bool {
-        self.x == 0.0 && self.y == 0.0 && self.z == 0.0
-    }
-}
-
 /// Side-channel instancing metadata, attached only when GPU instancing is
 /// enabled (the `IFC_LITE_INSTANCING` flag). NEVER read by geometry processing
 /// and excluded from `compute_mesh_hash` / `meshes_equal`, so content-dedup and
@@ -95,6 +52,18 @@ pub struct Mesh {
     pub origin: [f64; 3],
     /// Instancing side-channel (see [`InstanceMeta`]); `None` on the flat path.
     pub instance_meta: Option<InstanceMeta>,
+    /// Local (pre-placement, object-space) AABB — `positions` bounds as they
+    /// were BEFORE `apply_placement`'s transform was baked in. `None` for an
+    /// empty mesh or one that never went through `transform_mesh_world_framed`
+    /// (e.g. synthetic/test meshes). Unrelated to `origin`, which is a
+    /// *world*-space translation captured AFTER the transform, purely for f32
+    /// precision — see issue #1474.
+    pub local_bounds: Option<[f32; 6]>, // minX,minY,minZ,maxX,maxY,maxZ
+    /// The resolved `IfcLocalPlacement` chain applied to this mesh by
+    /// `apply_placement` (row-major, same convention as
+    /// [`InstanceMeta::transform`]). `None` when no placement was applied
+    /// (synthetic/test meshes) — see issue #1474.
+    pub local_to_world: Option<[f64; 16]>,
 }
 
 /// A sub-mesh with its source geometry item ID.
@@ -171,6 +140,8 @@ impl Mesh {
             rtc_applied: false,
             origin: [0.0; 3],
             instance_meta: None,
+            local_bounds: None,
+            local_to_world: None,
         }
     }
 
@@ -183,6 +154,54 @@ impl Mesh {
             rtc_applied: false,
             origin: [0.0; 3],
             instance_meta: None,
+            local_bounds: None,
+            local_to_world: None,
+        }
+    }
+
+    /// Build a mesh with FRESH geometry buffers (`positions` / `normals` /
+    /// `indices`) that carries THIS mesh's placement/frame metadata forward:
+    /// `origin` (RTC / local-frame translation), `rtc_applied`, `local_bounds`
+    /// and `local_to_world` (the #1474 placement capture).
+    ///
+    /// This is the correct constructor for an in-place rebuild pass that
+    /// REPLACES the vertex buffers of an already-placed mesh (sliver refine,
+    /// subdivide, weld). Constructing a bare `Mesh` and copying back only a
+    /// field or two silently resets `origin` and the #1474 capture to their
+    /// defaults, which mis-places the rebuilt host at the world origin on
+    /// local-framed (large / georeferenced) models — see facet_weld's
+    /// sliver-refine and this module's `subdivide_once` / `weld_impl`.
+    ///
+    /// `instance_meta` is intentionally NOT carried. Every such rebuild CHANGES
+    /// the vertices, so the mesh no longer reproduces its representation's
+    /// canonical geometry; carrying the (vertex-invariant) `rep_identity`
+    /// forward would let the GPU-instancing collator dedup this changed mesh
+    /// against an *unrefined* sibling that shares the same `rep_identity` and
+    /// draw the wrong geometry. Dropping it mirrors the void-cut path, which
+    /// nulls `instance_meta` for exactly this reason.
+    ///
+    /// # Precondition
+    ///
+    /// The new buffers MUST NOT extend the mesh's spatial extent beyond the
+    /// original: the carried `local_bounds` stays valid only because it remains
+    /// a *superset* of the rebuilt vertices' extent. This holds for every
+    /// current caller — sliver-refine and subdivide insert edge/interior
+    /// midpoints (convex combinations that lie inside the existing hull), and
+    /// weld only merges/moves coincident vertices to a snapped position (a
+    /// subset extent). A future caller that GROWS the extent (adds vertices
+    /// outside the original hull) must NOT use this constructor for
+    /// `local_bounds`: it has to recompute `local_bounds` from the new positions
+    /// or pass through a variant that sets it to `None`.
+    pub fn rebuilt_like(&self, positions: Vec<f32>, normals: Vec<f32>, indices: Vec<u32>) -> Mesh {
+        Mesh {
+            positions,
+            normals,
+            indices,
+            rtc_applied: self.rtc_applied,
+            origin: self.origin,
+            instance_meta: None,
+            local_bounds: self.local_bounds,
+            local_to_world: self.local_to_world,
         }
     }
 
@@ -230,22 +249,6 @@ impl Mesh {
         self.normals.push(normal.x as f32);
         self.normals.push(normal.y as f32);
         self.normals.push(normal.z as f32);
-    }
-
-    /// Apply coordinate shift to existing positions in-place
-    /// Uses f64 intermediate for precision when subtracting large offsets
-    #[inline]
-    pub fn apply_shift(&mut self, shift: &CoordinateShift) {
-        if shift.is_zero() {
-            return;
-        }
-        for chunk in self.positions.chunks_exact_mut(3) {
-            // Convert to f64, subtract, convert back to f32
-            chunk[0] = (chunk[0] as f64 - shift.x) as f32;
-            chunk[1] = (chunk[1] as f64 - shift.y) as f32;
-            chunk[2] = (chunk[2] as f64 - shift.z) as f32;
-        }
-        self.rtc_applied = true;
     }
 
     /// Add a triangle
@@ -413,13 +416,10 @@ impl Mesh {
             // four sub-triangles, preserving the parent winding
             indices.extend_from_slice(&[a, ab, ca, ab, b, bc, ca, bc, c, ab, bc, ca]);
         }
-        Mesh {
-            positions,
-            normals,
-            indices,
-            rtc_applied: self.rtc_applied,
-            origin: self.origin,
-        instance_meta: None, }
+        // Adding midpoints changes the vertex buffers, so carry the placement /
+        // frame metadata (origin, rtc, #1474 capture) but drop instance_meta
+        // (this mesh no longer matches its canonical rep) via `rebuilt_like`.
+        self.rebuilt_like(positions, normals, indices)
     }
 
     /// Remove triangle indices that reference vertices beyond the positions array.
@@ -498,6 +498,16 @@ impl Mesh {
         let mut kept = Vec::with_capacity(self.indices.len());
         for tri in self.indices.chunks_exact(3) {
             let (ia, ib, ic) = (tri[0], tri[1], tri[2]);
+            // Drop any out-of-range triangle BEFORE the unchecked `bits()` closure
+            // indexes positions[] (unlike `vert()` below, `bits()` has no bounds
+            // check). Matches the drop-not-panic contract of vert()/validate_indices;
+            // sibling drop_thin_triangles guards the same way.
+            if ia as usize >= vertex_count
+                || ib as usize >= vertex_count
+                || ic as usize >= vertex_count
+            {
+                continue;
+            }
             // Bit-identical f32 vertex pair → exact zero-area collapse.
             let (ba, bb, bc) = (bits(ia), bits(ib), bits(ic));
             if ba == bb || bb == bc || ba == bc {
@@ -587,30 +597,9 @@ impl Mesh {
         // Reset instancing metadata so a cleared+reused mesh can't carry stale
         // rep-identity / transform into unrelated geometry. (#1238 review)
         self.instance_meta = None;
-    }
-
-    /// Weld coincident vertices, preserving per-vertex normals.
-    ///
-    /// Returns a new mesh where vertices whose **position AND normal** both
-    /// quantize to the same bucket are merged. Indices are remapped.
-    /// Triangles that collapse to a degenerate edge or point (any two
-    /// corners welded to the same vertex) are dropped.
-    ///
-    /// **Use this when shading must stay crisp.** A box corner shared by
-    /// three faces has the same position but three different normals, so
-    /// it stays as three vertices — flat shading and per-face colours
-    /// survive the weld.
-    ///
-    /// `position_eps` and `normal_eps` are bucket sizes (in metres and
-    /// normal-vector units respectively). 1 µm position / 1 mrad normal is
-    /// usually right for IFC geometry: well below any meaningful BIM
-    /// tolerance and below f32 precision at typical building scales.
-    ///
-    /// For watertight output that lets you compute volumes or run CSG,
-    /// use [`Mesh::welded_by_position`] instead — it merges all vertices
-    /// at the same position regardless of normal.
-    pub fn welded(&self, position_eps: f32, normal_eps: f32) -> Mesh {
-        weld_impl(self, position_eps, Some(normal_eps), /*average_normals=*/ false)
+        // Same concern for the local-bounds/placement capture (issue #1474).
+        self.local_bounds = None;
+        self.local_to_world = None;
     }
 
     /// Weld vertices that share a position, regardless of normal.
@@ -618,18 +607,19 @@ impl Mesh {
     /// Returns a new mesh where vertices at the same position (within
     /// `position_eps`) collapse to one canonical vertex; the welded
     /// vertex's normal is the sum of contributing normals, re-normalized
-    /// (or the first contributing normal if the sum is degenerate).
+    /// (or a neutral up-Z `(0, 0, 1)` default if the sum is degenerate,
+    /// e.g. exactly opposing normals cancelling out).
     /// Triangles that collapse to a degenerate edge or point are dropped.
     ///
     /// **Use this when you need a topologically connected, manifold-
     /// candidate mesh** — volume queries, CSG operands, watertight
     /// checks, mesh repair pipelines. Shading at sharp corners gets
-    /// averaged; if you need crisp corners use [`Mesh::welded`] instead.
+    /// averaged.
     ///
     /// `position_eps` is the bucket size in metres (1 µm is a safe
     /// default for IFC).
     pub fn welded_by_position(&self, position_eps: f32) -> Mesh {
-        weld_impl(self, position_eps, None, /*average_normals=*/ true)
+        weld_impl(self, position_eps, /*average_normals=*/ true)
     }
 
     /// Drop triangles whose perpendicular height (= 2·area / longest edge) is
@@ -721,86 +711,9 @@ impl Mesh {
     /// extreme scale. NaN/Inf triangles are kept (the comparison is false),
     /// i.e. non-finite geometry is left for upstream to handle, never dropped.
     pub fn clean_degenerate(&mut self) {
-        // 1/65536 m — matches kernel::mesh_bridge::SNAP_GRID (power-of-two for
+        // The kernel's canonical reconcile grid (power-of-two for
         // bit-determinism). Sub-grid triangles are below kernel resolution.
-        const RECONCILE_GRID: f64 = 1.0 / 65536.0;
-        self.drop_thin_triangles(RECONCILE_GRID);
-    }
-
-    /// Filter out triangles with edges exceeding the threshold
-    /// This removes "stretched" triangles that span unreasonably large distances,
-    /// which can occur when disconnected geometry is incorrectly merged.
-    ///
-    /// Uses a conservative threshold (500m) to only catch clearly broken geometry,
-    /// not legitimate large elements like long beams or walls.
-    ///
-    /// # Arguments
-    /// * `max_edge_length` - Maximum allowed edge length in meters (default: 500m)
-    ///
-    /// # Returns
-    /// Number of triangles removed
-    pub fn filter_stretched_triangles(&mut self, max_edge_length: f32) -> usize {
-        if self.is_empty() {
-            return 0;
-        }
-
-        let max_edge_sq = max_edge_length * max_edge_length;
-        let mut valid_indices = Vec::new();
-        let mut removed_count = 0;
-
-        // Check each triangle
-        for i in (0..self.indices.len()).step_by(3) {
-            if i + 2 >= self.indices.len() {
-                break;
-            }
-            let i0 = self.indices[i] as usize;
-            let i1 = self.indices[i + 1] as usize;
-            let i2 = self.indices[i + 2] as usize;
-
-            if i0 * 3 + 2 >= self.positions.len()
-                || i1 * 3 + 2 >= self.positions.len()
-                || i2 * 3 + 2 >= self.positions.len()
-            {
-                // Invalid indices - skip
-                removed_count += 1;
-                continue;
-            }
-
-            let p0 = (
-                self.positions[i0 * 3],
-                self.positions[i0 * 3 + 1],
-                self.positions[i0 * 3 + 2],
-            );
-            let p1 = (
-                self.positions[i1 * 3],
-                self.positions[i1 * 3 + 1],
-                self.positions[i1 * 3 + 2],
-            );
-            let p2 = (
-                self.positions[i2 * 3],
-                self.positions[i2 * 3 + 1],
-                self.positions[i2 * 3 + 2],
-            );
-
-            // Calculate squared edge lengths
-            let edge01_sq = (p1.0 - p0.0).powi(2) + (p1.1 - p0.1).powi(2) + (p1.2 - p0.2).powi(2);
-            let edge12_sq = (p2.0 - p1.0).powi(2) + (p2.1 - p1.1).powi(2) + (p2.2 - p1.2).powi(2);
-            let edge20_sq = (p0.0 - p2.0).powi(2) + (p0.1 - p2.1).powi(2) + (p0.2 - p2.2).powi(2);
-
-            // Check if any edge exceeds threshold
-            if edge01_sq <= max_edge_sq && edge12_sq <= max_edge_sq && edge20_sq <= max_edge_sq {
-                // Triangle is valid - keep it
-                valid_indices.push(self.indices[i]);
-                valid_indices.push(self.indices[i + 1]);
-                valid_indices.push(self.indices[i + 2]);
-            } else {
-                // Triangle has stretched edge - remove it
-                removed_count += 1;
-            }
-        }
-
-        self.indices = valid_indices;
-        removed_count
+        self.drop_thin_triangles(crate::kernel::mesh_bridge::SNAP_GRID);
     }
 
     /// Drop triangles with ANY vertex outside `[min - pad, max + pad]`, then
@@ -881,6 +794,29 @@ impl Mesh {
         self.indices = new_idx;
         dropped
     }
+
+    /// Clip a void-cut result to the host's pre-cut AABB `[min, max]`, dropping
+    /// any triangle poking beyond it (see [`Mesh::clip_triangles_to_aabb`]). A
+    /// subtract can only remove material, so anything past the host AABB is a cut
+    /// artifact. The tolerance absorbs f64→f32 round-trip jitter (sub-mm), so it
+    /// is a small ABSOLUTE band, NOT a fraction of host size: an unbounded
+    /// `1e-3 * diag` reaches 0.13 m on a 130 m floor slab — wider than the
+    /// ~0.105 m flush-cap reveal overhang it must trap, which is why only large
+    /// slabs/roofs leaked it (a 5 m wall's 5 mm pad already trims the identical
+    /// overhang, #1633). Clamped to [5 mm, 10 mm]: byte-identical to the former
+    /// `1e-3 * diag` for hosts ≤ 10 m diagonal (`1e-3 * diag ≤ 1e-2`), trimming
+    /// on every larger one. Returns the count dropped.
+    pub fn clip_triangles_to_host_aabb(&mut self, min: [f32; 3], max: [f32; 3]) -> usize {
+        // Widen to f64 BEFORE subtracting (not `(max - min) as f64`) so `diag`,
+        // and thus `pad`, is bit-for-bit what the former inline `wall_max.x -
+        // wall_min.x` (f64) computed — the clamp is the only intended change.
+        let diag = ((max[0] as f64 - min[0] as f64).powi(2)
+            + (max[1] as f64 - min[1] as f64).powi(2)
+            + (max[2] as f64 - min[2] as f64).powi(2))
+        .sqrt();
+        let pad = (1.0e-3 * diag).clamp(5.0e-3, 1.0e-2) as f32;
+        self.clip_triangles_to_aabb(min, max, pad)
+    }
 }
 
 impl Default for Mesh {
@@ -889,21 +825,12 @@ impl Default for Mesh {
     }
 }
 
-/// Shared welding implementation backing `Mesh::welded` and
-/// `Mesh::welded_by_position`.
+/// Shared welding implementation backing `Mesh::welded_by_position`.
 ///
-/// When `normal_eps` is `Some(eps)`, the dedupe key is
-/// `(quantized_position, quantized_normal)` and `average_normals` is
-/// ignored — the first encountered (position, normal) pair wins. When
-/// `normal_eps` is `None`, the dedupe key is `quantized_position` only;
-/// `average_normals=true` accumulates contributing normals into the
-/// welded vertex and renormalizes at the end.
-fn weld_impl(
-    mesh: &Mesh,
-    position_eps: f32,
-    normal_eps: Option<f32>,
-    average_normals: bool,
-) -> Mesh {
+/// The dedupe key is `quantized_position` only. `average_normals=true`
+/// accumulates contributing normals into the welded vertex and
+/// renormalizes at the end.
+fn weld_impl(mesh: &Mesh, position_eps: f32, average_normals: bool) -> Mesh {
     use rustc_hash::FxHashMap;
 
     let n_verts = mesh.positions.len() / 3;
@@ -915,17 +842,8 @@ fn weld_impl(
     let pos_scale = 1.0 / position_eps.max(f32::MIN_POSITIVE);
     let q_pos = |v: f32| -> i64 { (v * pos_scale).round() as i64 };
 
-    let nrm_scale = normal_eps.map(|e| 1.0 / e.max(f32::MIN_POSITIVE));
-    let q_nrm = |v: f32| -> i64 {
-        nrm_scale
-            .map(|s| (v * s).round() as i64)
-            .unwrap_or(0)
-    };
-
-    // Dedupe key. Pre-allocate to size 6 (pos + normal) — using a tuple
-    // would require two distinct hash types; a small array keeps a single
-    // hash map specialisation.
-    type Key = [i64; 6];
+    // Dedupe key: quantized position only.
+    type Key = [i64; 3];
     let mut canonical: FxHashMap<Key, u32> = FxHashMap::default();
     let mut old_to_new: Vec<u32> = Vec::with_capacity(n_verts);
     let mut new_positions: Vec<f32> = Vec::with_capacity(n_verts * 3);
@@ -951,14 +869,7 @@ fn weld_impl(
         } else {
             (0.0, 0.0, 0.0)
         };
-        let key: Key = [
-            q_pos(px),
-            q_pos(py),
-            q_pos(pz),
-            q_nrm(nx),
-            q_nrm(ny),
-            q_nrm(nz),
-        ];
+        let key: Key = [q_pos(px), q_pos(py), q_pos(pz)];
 
         if let Some(&new_idx) = canonical.get(&key) {
             old_to_new.push(new_idx);
@@ -1030,13 +941,10 @@ fn weld_impl(
         new_indices.push(i2);
     }
 
-    Mesh {
-        positions: new_positions,
-        normals: new_normals,
-        indices: new_indices,
-        rtc_applied: mesh.rtc_applied,
-        origin: mesh.origin,
-    instance_meta: None, }
+    // Welding collapses / moves vertices, so carry the placement / frame
+    // metadata (origin, rtc, #1474 capture) but drop instance_meta (the welded
+    // mesh no longer matches its canonical rep) via `rebuilt_like`.
+    mesh.rebuilt_like(new_positions, new_normals, new_indices)
 }
 
 #[cfg(test)]
@@ -1114,6 +1022,46 @@ mod tests {
     }
 
     #[test]
+    fn clip_to_host_aabb_trims_reveal_overhang_on_a_large_slab_1633() {
+        // #1633: a flush-capped through-opening's reveal is extended ~0.3·depth
+        // past the host cap for a clean transversal cut, so the exact subtract
+        // leaves a reveal triangle ~0.105 m past a 0.35 m floor slab. The auto pad
+        // MUST trim it regardless of host size — the bug was that `1e-3 · diag`
+        // grew to 0.13 m on this ~130 m-diagonal slab (wider than the overhang) and
+        // let it through, while a 5 m wall's 5 mm pad trimmed the identical overhang.
+        let big = 92.0_f32; // 92 × 92 × 0.35 slab ⇒ diag ≈ 130 m ⇒ old pad ≈ 0.13 m
+        let mut m = mesh_from_tris(&[
+            // two in-bounds cap triangles (host top face at z = 0.35)
+            [[0.0, 0.0, 0.35], [big, 0.0, 0.35], [big, big, 0.35]],
+            [[0.0, 0.0, 0.35], [big, big, 0.35], [0.0, big, 0.35]],
+            // reveal-overhang sliver: apex 0.105 m above the slab top cap
+            [[40.0, 40.0, 0.35], [41.0, 40.0, 0.35], [40.5, 40.5, 0.455]],
+        ]);
+        let dropped = m.clip_triangles_to_host_aabb([0.0, 0.0, 0.0], [big, big, 0.35]);
+        assert_eq!(dropped, 1, "the 0.105 m reveal overhang must be trimmed on a large host");
+        let (_lo, hi) = m.bounds();
+        assert!(hi.z <= 0.36, "no vertex may remain above the slab top cap: hi.z = {}", hi.z);
+    }
+
+    #[test]
+    fn clip_to_host_aabb_is_byte_identical_to_1e3_diag_for_small_hosts() {
+        // The bound only changes behaviour above a 10 m diagonal; a normal wall
+        // (~5 m diag ⇒ pad = 5 mm) is untouched, so the frozen corpus is safe.
+        let tris = [
+            [[0.0, 0.0, 0.0], [3.0, 0.0, 0.0], [3.0, 4.0, 0.0]],
+            [[0.0, 0.0, 0.0], [3.0, 4.0, 0.0], [0.0, 4.0, 0.0]],
+        ];
+        let mut auto = mesh_from_tris(&tris);
+        let mut manual = mesh_from_tris(&tris);
+        let diag = (3.0_f64 * 3.0 + 4.0 * 4.0).sqrt(); // 5 m
+        let old_pad = (1.0e-3 * diag).max(5.0e-3) as f32;
+        auto.clip_triangles_to_host_aabb([0.0, 0.0, 0.0], [3.0, 4.0, 0.0]);
+        manual.clip_triangles_to_aabb([0.0, 0.0, 0.0], [3.0, 4.0, 0.0], old_pad);
+        assert_eq!(auto.positions, manual.positions);
+        assert_eq!(auto.indices, manual.indices);
+    }
+
+    #[test]
     fn test_merge() {
         let mut mesh1 = Mesh::new();
         mesh1.add_vertex(Point3::new(0.0, 0.0, 0.0), Vector3::z());
@@ -1129,36 +1077,6 @@ mod tests {
     }
 
     #[test]
-    fn test_coordinate_shift_creation() {
-        let shift = CoordinateShift::new(500000.0, 5000000.0, 100.0);
-        assert!(shift.is_significant());
-        assert!(!shift.is_zero());
-
-        let zero_shift = CoordinateShift::default();
-        assert!(!zero_shift.is_significant());
-        assert!(zero_shift.is_zero());
-    }
-
-    #[test]
-    fn test_apply_shift_to_existing_mesh() {
-        let mut mesh = Mesh::new();
-
-        // Add vertices with large coordinates (already converted to f32 - some precision lost)
-        mesh.positions = vec![500000.0, 5000000.0, 0.0, 500010.0, 5000010.0, 10.0];
-        mesh.normals = vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0];
-
-        // Apply shift
-        let shift = CoordinateShift::new(500000.0, 5000000.0, 0.0);
-        mesh.apply_shift(&shift);
-
-        // Verify positions are shifted
-        assert!((mesh.positions[0] - 0.0).abs() < 0.001);
-        assert!((mesh.positions[1] - 0.0).abs() < 0.001);
-        assert!((mesh.positions[3] - 10.0).abs() < 0.001);
-        assert!((mesh.positions[4] - 10.0).abs() < 0.001);
-    }
-
-    #[test]
     fn test_centroid_f64() {
         let mut mesh = Mesh::new();
         mesh.positions = vec![0.0, 0.0, 0.0, 10.0, 10.0, 10.0, 20.0, 20.0, 20.0];
@@ -1168,51 +1086,6 @@ mod tests {
         assert!((centroid.x - 10.0).abs() < 0.001);
         assert!((centroid.y - 10.0).abs() < 0.001);
         assert!((centroid.z - 10.0).abs() < 0.001);
-    }
-
-    #[test]
-    fn test_precision_comparison_shifted_vs_unshifted() {
-        // This test quantifies the precision improvement from shifting
-        // Using Swiss UTM coordinates as example
-
-        // Two points that are exactly 0.001m (1mm) apart
-        let base_x = 2679012.0;
-        let base_y = 1247892.0;
-        let offset = 0.001; // 1mm
-
-        let p1 = Point3::new(base_x, base_y, 0.0);
-        let p2 = Point3::new(base_x + offset, base_y, 0.0);
-
-        // Without shift - convert directly to f32
-        let p1_f32_direct = (p1.x as f32, p1.y as f32);
-        let p2_f32_direct = (p2.x as f32, p2.y as f32);
-        let diff_direct = p2_f32_direct.0 - p1_f32_direct.0;
-
-        // With shift - subtract centroid first, then convert
-        let shift = CoordinateShift::new(base_x, base_y, 0.0);
-        let p1_shifted = ((p1.x - shift.x) as f32, (p1.y - shift.y) as f32);
-        let p2_shifted = ((p2.x - shift.x) as f32, (p2.y - shift.y) as f32);
-        let diff_shifted = p2_shifted.0 - p1_shifted.0;
-
-        println!("Direct f32 difference (should be ~0.001): {}", diff_direct);
-        println!(
-            "Shifted f32 difference (should be ~0.001): {}",
-            diff_shifted
-        );
-
-        // The shifted version should be much closer to the true 1mm difference
-        let error_direct = (diff_direct - offset as f32).abs();
-        let error_shifted = (diff_shifted - offset as f32).abs();
-
-        println!("Error without shift: {}m", error_direct);
-        println!("Error with shift: {}m", error_shifted);
-
-        // The shifted version should have significantly less error
-        // (At least 100x better precision for typical Swiss coordinates)
-        assert!(
-            error_shifted < error_direct || error_shifted < 0.0001,
-            "Shifted precision should be better than direct conversion"
-        );
     }
 
     #[test]
@@ -1228,6 +1101,8 @@ mod tests {
             rtc_applied: false,
             origin: [0.0; 3],
             instance_meta: None,
+            local_bounds: None,
+            local_to_world: None,
         };
         mesh.validate_indices();
         assert_eq!(mesh.indices, vec![0, 1, 2]);
@@ -1242,6 +1117,8 @@ mod tests {
             rtc_applied: false,
             origin: [0.0; 3],
             instance_meta: None,
+            local_bounds: None,
+            local_to_world: None,
         };
         mesh.validate_indices();
         assert!(mesh.indices.is_empty());
@@ -1256,6 +1133,8 @@ mod tests {
             rtc_applied: false,
             origin: [0.0; 3],
             instance_meta: None,
+            local_bounds: None,
+            local_to_world: None,
         };
         mesh.validate_indices();
         assert_eq!(mesh.indices, vec![0, 1, 2]);
@@ -1293,25 +1172,6 @@ mod tests {
     }
 
     #[test]
-    fn welded_preserves_corner_normals() {
-        let m = make_unwelded_box();
-        assert_eq!(m.vertex_count(), 24);
-        assert_eq!(m.triangle_count(), 12);
-        // With normal-preserving weld, each box corner has 3 incident
-        // faces with 3 different normals, so each corner stays as 3
-        // separate vertices. 6 faces × 4 vertices = 24 → 24 (no merge,
-        // because no two of the 24 input vertices share BOTH position
-        // and normal).
-        let welded = m.welded(1e-6, 1e-3);
-        assert_eq!(
-            welded.vertex_count(),
-            24,
-            "normal-preserving weld must keep all per-face corner vertices"
-        );
-        assert_eq!(welded.triangle_count(), 12);
-    }
-
-    #[test]
     fn welded_by_position_collapses_corner_to_one_vertex() {
         let m = make_unwelded_box();
         // Position-only weld: all 24 input vertices map to the 8 box
@@ -1333,6 +1193,60 @@ mod tests {
                 (len_sq - 1.0).abs() < 1e-4,
                 "welded normal must be unit length, got |n|^2 = {}",
                 len_sq
+            );
+        }
+    }
+
+    /// #1474 / B7 regression guard: a vertex-changing rebuild MUST carry the
+    /// mesh's placement/frame metadata (origin, rtc_applied, local_bounds,
+    /// local_to_world) forward and MUST drop instance_meta (the changed vertices
+    /// no longer match the canonical rep). Directly exercises `rebuilt_like` and
+    /// the two public seams that route through it (`subdivided`,
+    /// `welded_by_position`). Pure unit test — no fixture.
+    #[test]
+    fn rebuild_carries_placement_metadata_and_drops_instancing() {
+        // One triangle, placed: non-default origin/rtc + a set #1474 capture and
+        // an attached instance side-channel.
+        let mut m = mesh_from_tris(&[[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0]]]);
+        m.origin = [100.0, 200.0, 300.0];
+        m.rtc_applied = true;
+        m.local_bounds = Some([0.0, 0.0, 0.0, 1.0, 1.0, 0.0]);
+        let l2w: [f64; 16] = [
+            1.0, 0.0, 0.0, 10.0, //
+            0.0, 1.0, 0.0, 20.0, //
+            0.0, 0.0, 1.0, 30.0, //
+            0.0, 0.0, 0.0, 1.0,
+        ];
+        m.local_to_world = Some(l2w);
+        m.instance_meta = Some(InstanceMeta {
+            transform: l2w,
+            local_transform: None,
+            canonical_transform: None,
+            rep_identity: 0xDEAD_BEEF,
+            instanceable: true,
+        });
+
+        // Metadata carried; instancing dropped. Assert on every seam.
+        let via_ctor = m.rebuilt_like(vec![0.0, 0.0, 0.0], vec![0.0, 0.0, 1.0], vec![]);
+        let via_subdivide = m.subdivided(1);
+        let via_weld = m.welded_by_position(1e-6);
+
+        for (label, out) in [
+            ("rebuilt_like", &via_ctor),
+            ("subdivided", &via_subdivide),
+            ("welded_by_position", &via_weld),
+        ] {
+            assert_eq!(out.origin, [100.0, 200.0, 300.0], "{label}: origin must carry");
+            assert!(out.rtc_applied, "{label}: rtc_applied must carry");
+            assert_eq!(
+                out.local_bounds,
+                Some([0.0, 0.0, 0.0, 1.0, 1.0, 0.0]),
+                "{label}: local_bounds (#1474) must carry"
+            );
+            assert_eq!(out.local_to_world, Some(l2w), "{label}: local_to_world (#1474) must carry");
+            assert!(
+                out.instance_meta.is_none(),
+                "{label}: instance_meta must be dropped (vertices changed -> not the canonical rep)"
             );
         }
     }
@@ -1370,8 +1284,6 @@ mod tests {
     #[test]
     fn welded_handles_empty_mesh() {
         let m = Mesh::new();
-        let welded = m.welded(1e-6, 1e-3);
-        assert!(welded.is_empty());
         let welded_pos = m.welded_by_position(1e-6);
         assert!(welded_pos.is_empty());
     }
@@ -1395,6 +1307,8 @@ mod tests {
             rtc_applied: false,
             origin: [0.0; 3],
             instance_meta: None,
+            local_bounds: None,
+            local_to_world: None,
         };
         mesh.validate_indices();
         assert_eq!(mesh.indices, vec![0, 1, 2, 1, 2, 3]);
@@ -1422,7 +1336,7 @@ mod tests {
             indices: vec![0, 1, 2, 3, 4, 5],
             rtc_applied: false,
             origin: [0.0; 3],
-        instance_meta: None, };
+        instance_meta: None, local_bounds: None, local_to_world: None };
         mesh.drop_thin_triangles(GRID);
         assert_eq!(mesh.indices, vec![3, 4, 5], "sliver dropped, real kept");
         // Positions/normals are never touched (orphan vertices are fine).
@@ -1438,7 +1352,7 @@ mod tests {
             indices: vec![0, 1, 2],
             rtc_applied: false,
             origin: [0.0; 3],
-        instance_meta: None, };
+        instance_meta: None, local_bounds: None, local_to_world: None };
         mesh.drop_thin_triangles(GRID);
         assert!(mesh.indices.is_empty(), "coincident-pair needle dropped");
     }
@@ -1452,7 +1366,7 @@ mod tests {
             indices: vec![0, 1, 2],
             rtc_applied: false,
             origin: [0.0; 3],
-        instance_meta: None, };
+        instance_meta: None, local_bounds: None, local_to_world: None };
         mesh.drop_thin_triangles(GRID);
         assert_eq!(mesh.indices, vec![0, 1, 2], "above-grid triangle kept");
     }
@@ -1483,7 +1397,7 @@ mod tests {
             ],
             rtc_applied: false,
             origin: [0.0; 3],
-        instance_meta: None, };
+        instance_meta: None, local_bounds: None, local_to_world: None };
         mesh.drop_thin_triangles(GRID);
         assert_eq!(
             mesh.indices,
@@ -1504,8 +1418,30 @@ mod tests {
             ],
             rtc_applied: false,
             origin: [0.0; 3],
-        instance_meta: None, };
+        instance_meta: None, local_bounds: None, local_to_world: None };
         mesh.drop_thin_triangles(GRID);
+        assert_eq!(mesh.indices, vec![0, 1, 2]);
+    }
+
+    // Sibling of the above for drop_degenerate_triangles: the bits() closure
+    // indexed positions[] unchecked before vert()'s bounds check, so an OOB index
+    // panicked. It must now drop the bad triangle without panicking.
+    #[test]
+    fn drop_degenerate_skips_oob_index_without_panic() {
+        let mut mesh = Mesh {
+            positions: vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+            normals: vec![],
+            indices: vec![
+                0, 1, 2, // valid
+                0, 1, 9, // out-of-bounds index → would panic in bits() pre-fix
+            ],
+            rtc_applied: false,
+            origin: [0.0; 3],
+            instance_meta: None,
+            local_bounds: None,
+            local_to_world: None,
+        };
+        mesh.drop_degenerate_triangles();
         assert_eq!(mesh.indices, vec![0, 1, 2]);
     }
 
@@ -1520,7 +1456,7 @@ mod tests {
             indices: vec![0, 1, 2, 3, 4, 5],
             rtc_applied: false,
             origin: [0.0; 3],
-        instance_meta: None, };
+        instance_meta: None, local_bounds: None, local_to_world: None };
         mesh.drop_thin_triangles(GRID);
         let once = mesh.indices.clone();
         mesh.drop_thin_triangles(GRID);
@@ -1540,7 +1476,7 @@ mod tests {
             indices: vec![0, 1, 2, 3, 4, 5],
             rtc_applied: false,
             origin: [0.0; 3],
-        instance_meta: None, };
+        instance_meta: None, local_bounds: None, local_to_world: None };
         mesh.clean_degenerate();
         assert_eq!(mesh.indices, vec![3, 4, 5]);
     }

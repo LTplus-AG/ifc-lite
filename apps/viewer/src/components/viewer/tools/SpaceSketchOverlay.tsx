@@ -525,15 +525,22 @@ export function SpaceSketchOverlay() {
     for (const st of storeys) {
       const rects = wallRectsFromMeshes(meshes, coord, st.elev, floorToFloor(st.id));
       if (!rects.length) continue;
-      // Throwaway face-based plate per storey (deterministic free handled by the
-      // session module) — this path doesn't touch the live session. Reads each
-      // room's wall axis + the boundary outline at the chosen mode.
-      const rooms = snapshotRoomsFromRects(flattenWallRects(rects.map((r) => r.corners)), boundaryMode);
-      if (!rooms.length) continue;
-      const { emitted, skipped, error } = bakeStorey(st.id, rooms, authoredMap.get(st.id) ?? []);
-      totalEmitted += emitted; totalSkipped += skipped;
-      firstError ??= error;
-      if (emitted) floors++;
+      try {
+        // Throwaway face-based plate per storey (deterministic free handled by the
+        // session module); this path doesn't touch the live session. Reads each
+        // room's wall axis + the boundary outline at the chosen mode.
+        const rooms = snapshotRoomsFromRects(flattenWallRects(rects.map((r) => r.corners)), boundaryMode);
+        if (!rooms.length) continue;
+        const { emitted, skipped, error } = bakeStorey(st.id, rooms, authoredMap.get(st.id) ?? []);
+        totalEmitted += emitted; totalSkipped += skipped;
+        firstError ??= error;
+        if (emitted) floors++;
+      } catch (e) {
+        // A storey that exceeds the arrangement input cap (or otherwise fails to
+        // build) must not abort the whole run or leave an unhandled rejection that
+        // can tear down the canvas; record it and move on to the next storey.
+        firstError ??= e instanceof Error ? e.message : String(e);
+      }
     }
     if (totalEmitted > 0) revealSpaces();
     if (!firstError) { if (sessionRef.current) sessionRef.current.dirty = false; setDirty(false); }

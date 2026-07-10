@@ -45,6 +45,13 @@ pub struct MeshDataJs {
     /// per-element AABB-centre relativization so building-scale coordinates stay
     /// f32-precise (no fan collapse). See `Mesh::origin`/transform_mesh_world_framed.
     origin: [f64; 3],
+    /// Local (pre-placement, object-space) AABB, WebGL Y-up (issue #1474):
+    /// `[minX,minY,minZ,maxX,maxY,maxZ]`. `None` when not captured (e.g. a
+    /// synthetic/from-meshes mesh). See `Mesh::local_bounds`.
+    local_bounds: Option<[f32; 6]>,
+    /// The resolved placement (`local_to_world`), row-major, WebGL Y-up (issue
+    /// #1474). `None` when not captured. See `Mesh::local_to_world`.
+    local_to_world: Option<[f64; 16]>,
 }
 
 #[wasm_bindgen]
@@ -161,6 +168,66 @@ impl MeshDataJs {
     pub fn origin(&self) -> js_sys::Float64Array {
         js_sys::Float64Array::from(&self.origin[..])
     }
+
+    /// Local (pre-placement, object-space) AABB (issue #1474), WebGL Y-up,
+    /// `[minX,minY,minZ,maxX,maxY,maxZ]`. `undefined` when not captured
+    /// (wasm-bindgen maps `Option::None` to `undefined`, not `null`).
+    #[wasm_bindgen(getter, js_name = localBounds)]
+    pub fn local_bounds(&self) -> Option<Vec<f32>> {
+        self.local_bounds.map(|b| b.to_vec())
+    }
+
+    /// The resolved `IfcLocalPlacement` chain for this mesh (issue #1474),
+    /// row-major 4×4, WebGL Y-up. `undefined` when not captured (see
+    /// `local_bounds` above).
+    #[wasm_bindgen(getter, js_name = localToWorld)]
+    pub fn local_to_world(&self) -> Option<Vec<f64>> {
+        self.local_to_world.map(|m| m.to_vec())
+    }
+}
+
+/// Swap an axis-aligned box's corners from IFC Z-up to WebGL Y-up
+/// (`(x,y,z) -> (x,z,-y)`). A per-component swap of `min`/`max` independently
+/// is WRONG: negating the Y axis flips which corner is the min/max along the
+/// new Z, so the new Z range is `[-maxY, -minY]`, not `[-minY, -maxY]`.
+fn swap_zup_to_yup_aabb(b: [f32; 6]) -> [f32; 6] {
+    let [min_x, min_y, min_z, max_x, max_y, max_z] = b;
+    [min_x, min_z, -max_y, max_x, max_z, -min_y]
+}
+
+/// Conjugate a row-major 4×4 matrix by the fixed IFC Z-up → WebGL Y-up swap
+/// `S`: `(x,y,z,w) -> (x,z,-y,w)`, so a placement/rotation matrix expressed in
+/// the IFC frame becomes valid in the Y-up frame the renderer uses:
+/// `M' = S · M · Sᵀ` (S is orthogonal, so `S⁻¹ = Sᵀ`).
+fn swap_zup_to_yup_mat4(m: &[f64; 16]) -> [f64; 16] {
+    #[rustfmt::skip]
+    const S: [f64; 16] = [
+        1.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 1.0, 0.0,
+        0.0, -1.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 1.0,
+    ];
+    #[rustfmt::skip]
+    const ST: [f64; 16] = [
+        1.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, -1.0, 0.0,
+        0.0, 1.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 1.0,
+    ];
+    fn matmul(a: &[f64; 16], b: &[f64; 16]) -> [f64; 16] {
+        let mut out = [0.0; 16];
+        for r in 0..4 {
+            for c in 0..4 {
+                let mut sum = 0.0;
+                for k in 0..4 {
+                    sum += a[r * 4 + k] * b[k * 4 + c];
+                }
+                out[r * 4 + c] = sum;
+            }
+        }
+        out
+    }
+    matmul(&matmul(&S, m), &ST)
 }
 
 impl MeshDataJs {
@@ -200,6 +267,15 @@ impl MeshDataJs {
         // / displaced). Default [0,0,0] swaps to [0,0,0] (no-op for legacy).
         let origin = [mesh.origin[0], mesh.origin[2], -mesh.origin[1]];
 
+        // Local (pre-placement) AABB (issue #1474): same swap as positions, but
+        // an AABB corner can't be swapped component-wise — negating an axis
+        // flips which corner is min/max along it. See `swap_zup_to_yup_aabb`.
+        let local_bounds = mesh.local_bounds.map(swap_zup_to_yup_aabb);
+        // The placement transform (issue #1474) is conjugated by the same
+        // swap, since it's expressed in the IFC frame the positions were in
+        // before this conversion: M' = S · M · Sᵀ. See `swap_zup_to_yup_mat4`.
+        let local_to_world = mesh.local_to_world.map(|m| swap_zup_to_yup_mat4(&m));
+
         Self {
             express_id,
             ifc_type,
@@ -216,6 +292,8 @@ impl MeshDataJs {
             texture_repeat_t: true,
             geometry_class: 0,
             origin,
+            local_bounds,
+            local_to_world,
         }
     }
 
@@ -272,6 +350,10 @@ impl MeshDataJs {
             origin: m.origin,
             // Instancing side-channel is not used on this wasm zero-copy path.
             instance_meta: None,
+            // Local bounds/placement (issue #1474), still in the IFC frame —
+            // `new` applies the same Z-up→Y-up swap it applies to positions/origin.
+            local_bounds: m.local_bounds,
+            local_to_world: m.local_to_world,
         };
         let mut js = Self::new(m.express_id, m.ifc_type, mesh, m.color);
         js.set_geometry_class(m.geometry_class);
@@ -343,6 +425,8 @@ impl MeshCollection {
             texture_repeat_t: m.texture_repeat_t,
             geometry_class: m.geometry_class,
             origin: m.origin,
+            local_bounds: m.local_bounds,
+            local_to_world: m.local_to_world,
         })
     }
 
@@ -370,6 +454,8 @@ impl MeshCollection {
             texture_repeat_t: m.texture_repeat_t,
             geometry_class: m.geometry_class,
             origin: m.origin,
+            local_bounds: m.local_bounds,
+            local_to_world: m.local_to_world,
         })
     }
 
@@ -584,6 +670,8 @@ impl Clone for MeshCollection {
                     texture_repeat_t: m.texture_repeat_t,
                     geometry_class: m.geometry_class,
                     origin: m.origin,
+                    local_bounds: m.local_bounds,
+                    local_to_world: m.local_to_world,
                 })
                 .collect(),
             rtc_offset_x: self.rtc_offset_x,

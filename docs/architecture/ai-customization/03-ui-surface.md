@@ -21,8 +21,9 @@ considered it and rejected it. The reasons:
 3. **Accessibility.** The host owns ARIA semantics, focus order, keyboard
    shortcuts. A free-form UI surface degrades this; a fixed widget
    catalogue lets us guarantee it.
-4. **Multi-target rendering.** The same widget renders in the desktop
-   app, the embed SDK, and (Phase 4) a possible mobile target. JSX does
+4. **Multi-target rendering.** The same widget renders in the web
+   viewer, the embed SDK, third-party desktop builds (via the Tauri
+   NativeBridge), and (Phase 4) a possible mobile target. JSX does
    not survive that crossing; data does.
 5. **AI authoring.** A small declarative DSL is *vastly* easier for the
    AI to author correctly than React JSX. The repair loop becomes

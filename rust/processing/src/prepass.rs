@@ -420,9 +420,14 @@ pub fn flat_styles_rgba8(resolved: &ResolvedPrepass, decoder: &mut EntityDecoder
         }
     }
 
-    let mut ids: Vec<u32> = Vec::with_capacity(merged.len());
-    let mut rgba: Vec<u8> = Vec::with_capacity(merged.len() * 4);
-    for (&id, &color) in &merged {
+    // Emit id-ascending: hashmap iteration order is an implementation detail,
+    // and these arrays are wire output. Consumers rebuild a map (see the sort
+    // rationale on `flat_voids`), so the order is free to pin.
+    let mut entries: Vec<(u32, [f32; 4])> = merged.into_iter().collect();
+    entries.sort_unstable_by_key(|&(id, _)| id);
+    let mut ids: Vec<u32> = Vec::with_capacity(entries.len());
+    let mut rgba: Vec<u8> = Vec::with_capacity(entries.len() * 4);
+    for (id, color) in entries {
         ids.push(id);
         rgba.extend_from_slice(&crate::style::Rgba::from_array(color).to_rgba8());
     }
@@ -431,11 +436,20 @@ pub fn flat_styles_rgba8(resolved: &ResolvedPrepass, decoder: &mut EntityDecoder
 
 /// Flat wire encoding of the void index: `(keys, counts, values)` in the
 /// shape `processGeometryBatch` accepts.
+///
+/// Emitted sorted by host id (u32 ascending). FxHashMap iteration order is
+/// seed-free and therefore stable today, but it is an implicit
+/// insertion+hash-order artifact; the sort makes the wire byte order an
+/// explicit contract (pinned by the mesh-output determinism manifest,
+/// `docs/architecture/mesh-determinism.md`). Consumers rebuild a map from the
+/// flat arrays (`processGeometryBatch`), so they are order-insensitive.
 pub fn flat_voids(void_index: &FxHashMap<u32, Vec<u32>>) -> (Vec<u32>, Vec<u32>, Vec<u32>) {
-    let mut keys: Vec<u32> = Vec::with_capacity(void_index.len());
-    let mut counts: Vec<u32> = Vec::with_capacity(void_index.len());
+    let mut hosts: Vec<(&u32, &Vec<u32>)> = void_index.iter().collect();
+    hosts.sort_unstable_by_key(|&(&host_id, _)| host_id);
+    let mut keys: Vec<u32> = Vec::with_capacity(hosts.len());
+    let mut counts: Vec<u32> = Vec::with_capacity(hosts.len());
     let mut values: Vec<u32> = Vec::new();
-    for (&host_id, openings) in void_index {
+    for (&host_id, openings) in hosts {
         keys.push(host_id);
         counts.push(openings.len() as u32);
         values.extend(openings.iter().copied());
@@ -446,13 +460,20 @@ pub fn flat_voids(void_index: &FxHashMap<u32, Vec<u32>>) -> (Vec<u32>, Vec<u32>,
 /// Flat wire encoding of the element material colour lists (#407/#913 §2.3):
 /// `(element_ids, counts, rgba8)` — `counts[i]` colours belong to
 /// `element_ids[i]`, in order, 4 bytes each.
+///
+/// Emitted sorted by element id (u32 ascending) - same explicit-order wire
+/// contract as [`flat_voids`]; the per-element colour list order (file order)
+/// is unchanged. The inverse [`material_colors_from_flat`] rebuilds a map, so
+/// consumers are order-insensitive.
 pub fn flat_material_colors(
     element_material_colors: &FxHashMap<u32, Vec<[f32; 4]>>,
 ) -> (Vec<u32>, Vec<u32>, Vec<u8>) {
-    let mut ids: Vec<u32> = Vec::with_capacity(element_material_colors.len());
-    let mut counts: Vec<u32> = Vec::with_capacity(element_material_colors.len());
+    let mut elements: Vec<(&u32, &Vec<[f32; 4]>)> = element_material_colors.iter().collect();
+    elements.sort_unstable_by_key(|&(&element_id, _)| element_id);
+    let mut ids: Vec<u32> = Vec::with_capacity(elements.len());
+    let mut counts: Vec<u32> = Vec::with_capacity(elements.len());
     let mut rgba: Vec<u8> = Vec::new();
-    for (&element_id, colors) in element_material_colors {
+    for (&element_id, colors) in elements {
         if colors.is_empty() {
             continue;
         }
@@ -693,6 +714,32 @@ END-ISO-10303-21;
                 assert!((a - b).abs() <= 1.0 / 255.0 + 1e-6);
             }
         }
+    }
+
+    /// The flat wire arrays are an EXPLICIT id-ascending contract (pinned by
+    /// the mesh-output determinism manifest), not an FxHashMap iteration-order
+    /// artifact.
+    #[test]
+    fn flat_wire_arrays_are_sorted_by_id() {
+        let mut voids: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
+        voids.insert(300, vec![301, 302]);
+        voids.insert(7, vec![8]);
+        voids.insert(90, vec![91]);
+        let (keys, counts, values) = flat_voids(&voids);
+        assert_eq!(keys, vec![7, 90, 300]);
+        assert_eq!(counts, vec![1, 1, 2]);
+        // Per-host opening lists keep their (file-order) sequence.
+        assert_eq!(values, vec![8, 91, 301, 302]);
+
+        let mut colors: FxHashMap<u32, Vec<[f32; 4]>> = FxHashMap::default();
+        colors.insert(42, vec![[1.0, 0.0, 0.0, 1.0]]);
+        colors.insert(10, vec![[0.0, 1.0, 0.0, 1.0], [0.0, 0.0, 1.0, 0.5]]);
+        let (ids, counts, rgba) = flat_material_colors(&colors);
+        assert_eq!(ids, vec![10, 42]);
+        assert_eq!(counts, vec![2, 1]);
+        assert_eq!(rgba.len(), 12);
+        // First colour on the wire is element #10's first (green), not #42's.
+        assert_eq!(&rgba[0..4], &[0, 255, 0, 255]);
     }
 
     #[test]

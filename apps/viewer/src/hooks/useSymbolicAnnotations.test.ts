@@ -121,4 +121,46 @@ describe('liftTo3DLineList', () => {
     liftTo3DLineList([], 1, out);
     assert.equal(out.length, 0);
   });
+
+  it('drops segments whose owner is hidden (issue #1480)', () => {
+    const lines: DrawingLine2D[] = [
+      { line: { start: { x: 1, y: 2 }, end: { x: 3, y: 4 } }, category: 'annotation', ownerId: 100 },
+      { line: { start: { x: 5, y: 6 }, end: { x: 7, y: 8 } }, category: 'annotation', ownerId: 200 },
+    ];
+    const out: number[] = [];
+    liftTo3DLineList(lines, 0, out, (id) => id === 100);
+    // Only owner 200's segment survives.
+    assert.deepEqual(out, [5, 0, 6, 7, 0, 8]);
+  });
+
+  it('keeps every segment when the predicate is absent', () => {
+    const lines: DrawingLine2D[] = [
+      { line: { start: { x: 1, y: 2 }, end: { x: 3, y: 4 } }, category: 'annotation', ownerId: 100 },
+    ];
+    const out: number[] = [];
+    liftTo3DLineList(lines, 0, out);
+    assert.equal(out.length, 6);
+  });
+});
+
+describe('owner tagging', () => {
+  it('polylineToSegments stamps every segment (incl. the closing one) with ownerId', () => {
+    const points = new Float32Array([0, 0, 1, 0, 1, 1]);
+    const out: DrawingLine2D[] = [];
+    polylineToSegments(points, 3, true, out, 4242);
+    assert.equal(out.length, 3);
+    assert.ok(out.every((s) => s.ownerId === 4242));
+  });
+
+  it('circleToSegments stamps every segment with ownerId', () => {
+    const out: DrawingLine2D[] = [];
+    circleToSegments(0, 0, 1, 0, Math.PI / 2, false, out, 7);
+    assert.ok(out.every((s) => s.ownerId === 7));
+  });
+
+  it('defaults ownerId to 0 when not supplied (back-compat)', () => {
+    const out: DrawingLine2D[] = [];
+    polylineToSegments(new Float32Array([0, 0, 1, 1]), 2, false, out);
+    assert.equal(out[0].ownerId, 0);
+  });
 });

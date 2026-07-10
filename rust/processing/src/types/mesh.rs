@@ -87,6 +87,16 @@ pub struct MeshData {
     /// and never round-trips through the JSON/disk cache.
     #[serde(skip)]
     pub instance: Option<InstanceMeta>,
+    /// Local (pre-placement, object-space) AABB (issue #1474) — see
+    /// `ifc_lite_geometry::Mesh::local_bounds`. Purely in-memory, like
+    /// `instance` — `#[serde(skip)]`, recomputed fresh each load.
+    #[serde(skip)]
+    pub local_bounds: Option<[f32; 6]>,
+    /// The resolved `IfcLocalPlacement` chain applied to this mesh (issue
+    /// #1474), row-major — see `ifc_lite_geometry::Mesh::local_to_world`.
+    /// Purely in-memory, like `instance` — `#[serde(skip)]`.
+    #[serde(skip)]
+    pub local_to_world: Option<[f64; 16]>,
 }
 
 fn geometry_class_is_occurrence(class: &u8) -> bool {
@@ -125,12 +135,26 @@ impl MeshData {
             geometry_class: 0,
             origin: [0.0; 3],
             instance: None,
+            local_bounds: None,
+            local_to_world: None,
         }
     }
 
     /// Attach GPU-instancing metadata (see the `instance` field).
     pub fn with_instance(mut self, instance: Option<InstanceMeta>) -> Self {
         self.instance = instance;
+        self
+    }
+
+    /// Set the local (pre-placement, object-space) AABB (see `local_bounds`).
+    pub fn with_local_bounds(mut self, local_bounds: Option<[f32; 6]>) -> Self {
+        self.local_bounds = local_bounds;
+        self
+    }
+
+    /// Set the resolved placement transform (see `local_to_world`).
+    pub fn with_local_to_world(mut self, local_to_world: Option<[f64; 16]>) -> Self {
+        self.local_to_world = local_to_world;
         self
     }
 
@@ -143,14 +167,6 @@ impl MeshData {
     /// Set the per-mesh local origin (positions are relative to it).
     pub fn with_origin(mut self, origin: [f64; 3]) -> Self {
         self.origin = origin;
-        self
-    }
-
-    /// Attach per-vertex UVs + a decoded surface texture (issue #961).
-    /// `uvs` must be 1:1 with `positions` (2 floats per vertex).
-    pub fn with_texture(mut self, uvs: Vec<f32>, texture: MeshTextureData) -> Self {
-        self.uvs = Some(uvs);
-        self.texture = Some(texture);
         self
     }
 
@@ -198,4 +214,65 @@ impl MeshData {
     pub fn is_empty(&self) -> bool {
         self.positions.is_empty() || self.indices.is_empty()
     }
+}
+
+/// #1623 Phase 2 "don't-bake": a non-template occurrence of a shared
+/// `IfcRepresentationMap` that skipped the per-occurrence vertex materialize. The
+/// router emits an instance-only placeholder (empty geometry carrying
+/// `InstanceMeta`); [`crate::element::emit_sub_meshes`] turns it into one of these,
+/// and the streaming finalize resolves it against the template MeshData into an
+/// [`InstanceRecord`]. Purely in-memory (recomputed each load), never serialized.
+#[derive(Debug, Clone)]
+pub struct RawInstanceOccurrence {
+    /// This occurrence's IFC element id.
+    pub express_id: u32,
+    /// IFC type name (e.g. "IfcFlowFitting").
+    pub ifc_type: String,
+    /// IFC GlobalId when available.
+    pub global_id: Option<String>,
+    /// IFC Name when available.
+    pub name: Option<String>,
+    /// IFC presentation layer assignment name when available.
+    pub presentation_layer: Option<String>,
+    /// This occurrence's resolved RGBA colour.
+    pub color: [f32; 4],
+    /// Shared-template key = the `IfcRepresentationMap` express id. Matches the
+    /// template MeshData's `instance.rep_identity`.
+    pub rep_identity: u128,
+    /// PRE-RTC composed world transform (row-major) `transform · local · canonical`
+    /// — the same composition `collate_refs` computes for a baked occurrence, but
+    /// captured WITHOUT materializing vertices. The finalize reduces it to the
+    /// post-RTC frame and derives the template-relative `InstanceRecord.transform`.
+    pub world_transform: [f64; 16],
+}
+
+/// #1623 Phase 2: one resolved occurrence of a shared template geometry, emitted in
+/// [`crate::ProcessingResult::instances`] instead of a full materialized mesh when
+/// `StreamingOptions.enable_instancing` is set. The consumer uploads the template
+/// MeshData (`template_express_id`, still in `meshes`) once and draws this occurrence
+/// by applying `transform` to the template's baked world geometry. Purely in-memory,
+/// like [`MeshData::instance`] — recomputed fresh each load, never round-trips a cache.
+#[derive(Debug, Clone)]
+pub struct InstanceRecord {
+    /// This occurrence's IFC element id.
+    pub express_id: u32,
+    /// IFC type name (e.g. "IfcFlowFitting").
+    pub ifc_type: String,
+    /// IFC GlobalId when available.
+    pub global_id: Option<String>,
+    /// IFC Name when available.
+    pub name: Option<String>,
+    /// IFC presentation layer assignment name when available.
+    pub presentation_layer: Option<String>,
+    /// This occurrence's RGBA colour (may differ from the template occurrence's).
+    pub color: [f32; 4],
+    /// `express_id` of the template `MeshData` this occurrence instantiates — the
+    /// consumer's link from record to the geometry it draws (JS-safe u32).
+    pub template_express_id: u32,
+    /// Representation-identity of the shared geometry (`IfcRepresentationMap` id).
+    pub rep_identity: u128,
+    /// Row-major, TEMPLATE-RELATIVE mat4: applied to the template's baked world
+    /// geometry (`template.origin + positions`) it yields this occurrence's world
+    /// geometry (`rel_k = post_rtc(M_k) · post_rtc(M_ref)⁻¹`).
+    pub transform: [f32; 16],
 }

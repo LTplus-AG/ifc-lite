@@ -150,10 +150,21 @@ function buildSpatialNode(
   const typeEnum = IfcTypeEnumFromString(ifcClass?.code ?? '');
   const elementIds = new Set<number>();
 
+  const name = extractName(node) ?? node.path.slice(0, 8);
+  // Keep LongName as a distinct descriptor (Name "01" / LongName "Main
+  // Residence") so the hierarchy panel can show both (issue #1634); drop it when
+  // it just duplicates the primary label.
+  const rawLongName = node.attributes.get('bsi::ifc::prop::LongName');
+  const longName =
+    typeof rawLongName === 'string' && rawLongName.trim() && rawLongName.trim() !== name
+      ? rawLongName.trim()
+      : undefined;
+
   const spatialNode: SpatialNode = {
     expressId,
     type: typeEnum,
-    name: extractName(node) ?? node.path.slice(0, 8),
+    name,
+    longName,
     children: [],
     elements: [],
   };

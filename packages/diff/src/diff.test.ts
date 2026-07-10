@@ -196,4 +196,107 @@ describe('diffModels — result shape', () => {
       expect(diff.byKey.get(entry.key)).toBe(entry);
     }
   });
+
+  it('echoes an empty excludedTypes by default', () => {
+    expect(diffModels([fp('a')], [fp('a')]).excludedTypes).toEqual([]);
+  });
+});
+
+describe('diffModels - excludeTypes blacklist (issue #1470)', () => {
+  it('drops a blacklisted class from both revisions (not added/deleted/unchanged)', () => {
+    const base = [fp('wall', { ifcType: 'IfcWall' }), fp('void', { ifcType: 'IfcOpeningElement' })];
+    const head = [fp('wall', { ifcType: 'IfcWall' })];
+
+    // Without the blacklist: the opening reads as deleted.
+    const plain = diffModels(base, head);
+    expect(plain.byKey.get('void')?.state).toBe('deleted');
+    expect(plain.counts.deleted).toBe(1);
+
+    // With it: the opening is not considered at all.
+    const filtered = diffModels(base, head, { excludeTypes: ['IfcOpeningElement'] });
+    expect(filtered.byKey.has('void')).toBe(false);
+    expect(filtered.entries.some((e) => e.key === 'void')).toBe(false);
+    expect(filtered.counts).toEqual({ added: 0, modified: 0, deleted: 0, unchanged: 1 });
+    expect(filtered.byKey.get('wall')?.state).toBe('unchanged');
+  });
+
+  it('the reported scenario: a removed window is reported, its opening is not', () => {
+    // v1 has a window + its hosting opening; v2 removed the window (and its opening).
+    const v1 = [
+      fp('window', { ifcType: 'IfcWindow' }),
+      fp('opening', { ifcType: 'IfcOpeningElement' }),
+    ];
+    const v2: EntityFingerprint<number>[] = [];
+
+    const diff = diffModels(v1, v2, { excludeTypes: ['IfcOpeningElement'] });
+    expect(diff.byKey.get('window')?.state).toBe('deleted');
+    expect(diff.byKey.has('opening')).toBe(false);
+    expect(diff.counts.deleted).toBe(1);
+  });
+
+  it('excludes an unchanged blacklisted element too (never counted)', () => {
+    const base = [fp('w', { ifcType: 'IfcWall' }), fp('o', { ifcType: 'IfcOpeningElement' })];
+    const head = [fp('w', { ifcType: 'IfcWall' }), fp('o', { ifcType: 'IfcOpeningElement' })];
+    const diff = diffModels(base, head, { excludeTypes: ['IfcOpeningElement'] });
+    expect(diff.counts.unchanged).toBe(1);
+    expect(diff.byKey.has('o')).toBe(false);
+  });
+
+  it('matches case-insensitively and ignores surrounding whitespace', () => {
+    const base = [fp('o', { ifcType: 'IfcOpeningElement' })];
+    const head: EntityFingerprint<number>[] = [];
+    for (const spelling of ['ifcopeningelement', '  IFCOPENINGELEMENT  ', 'IfcOpeningElement']) {
+      const diff = diffModels(base, head, { excludeTypes: [spelling] });
+      expect(diff.byKey.has('o')).toBe(false);
+      expect(diff.counts.deleted).toBe(0);
+    }
+  });
+
+  it('ignores empty / whitespace-only exclude names (does not blank the whole diff)', () => {
+    const base = [fp('a', { ifcType: 'IfcWall' })];
+    const head = [fp('b', { ifcType: 'IfcWall' })];
+    const diff = diffModels(base, head, { excludeTypes: ['', '   ', '\t'] });
+    expect(diff.excludedTypes).toEqual([]);
+    expect(diff.counts).toEqual({ added: 1, modified: 0, deleted: 1, unchanged: 0 });
+  });
+
+  it('echoes the applied excludedTypes: normalized, deduped, sorted', () => {
+    const diff = diffModels(
+      [fp('a', { ifcType: 'IfcWall' })],
+      [fp('a', { ifcType: 'IfcWall' })],
+      { excludeTypes: ['IfcSpace', 'ifcopeningelement', 'IFCSPACE', '  '] },
+    );
+    expect(diff.excludedTypes).toEqual(['IFCOPENINGELEMENT', 'IFCSPACE']);
+  });
+
+  it('leaves non-blacklisted classes untouched', () => {
+    const base = [fp('wall', { ifcType: 'IfcWall' }), fp('door', { ifcType: 'IfcDoor' })];
+    const head = [fp('door', { ifcType: 'IfcDoor' })];
+    const diff = diffModels(base, head, { excludeTypes: ['IfcOpeningElement'] });
+    expect(diff.byKey.get('wall')?.state).toBe('deleted');
+    expect(diff.byKey.get('door')?.state).toBe('unchanged');
+  });
+
+  it('excludes via the UNION of both revisions (a re-class cannot leak back)', () => {
+    // Same GlobalId re-classed across versions; the old class is blacklisted.
+    const base = [fp('g', { ifcType: 'IfcWall' })];
+    const head = [fp('g', { ifcType: 'IfcWallStandardCase' })];
+
+    // Without the blacklist it is a real (data) modification...
+    expect(diffModels(base, head).byKey.get('g')?.state).toBe('modified');
+
+    // ...with IfcWall excluded, the entity is dropped entirely - NOT a phantom
+    // "added" IfcWallStandardCase.
+    const excl = diffModels(base, head, { excludeTypes: ['IfcWall'] });
+    expect(excl.byKey.has('g')).toBe(false);
+    expect(excl.counts).toEqual({ added: 0, modified: 0, deleted: 0, unchanged: 0 });
+  });
+
+  it('union exclusion also fires when only the HEAD revision has the excluded class', () => {
+    const base = [fp('g', { ifcType: 'IfcWallStandardCase' })];
+    const head = [fp('g', { ifcType: 'IfcWall' })];
+    const diff = diffModels(base, head, { excludeTypes: ['IfcWall'] });
+    expect(diff.byKey.has('g')).toBe(false);
+    expect(diff.counts).toEqual({ added: 0, modified: 0, deleted: 0, unchanged: 0 });
+  });
 });

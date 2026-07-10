@@ -942,3 +942,340 @@ fn test_shell_based_surface_model_hole_bound_not_dropped() {
          hole bound and emitted 100.0), got {area}"
     );
 }
+
+/// Issue #1661: an advanced-face boundary edge whose geometry is an
+/// IfcTrimmedCurve over an IfcCircle collapsed to a single vertex (only the
+/// exact strings IFCBSPLINECURVEWITHKNOTS/IFCCIRCLE were sampled), so a
+/// half-disc face bounded by one arc + one line had a 2-point loop and was
+/// silently dropped. CATIA wall exports hit this constantly.
+#[test]
+fn test_advanced_face_trimmed_circle_edge_sampled() {
+    let content = r#"
+#1=IFCCARTESIANPOINT((50.,0.,0.));
+#2=IFCCARTESIANPOINT((-50.,0.,0.));
+#3=IFCCARTESIANPOINT((0.,0.,0.));
+#5=IFCVERTEXPOINT(#1);
+#6=IFCVERTEXPOINT(#2);
+#9=IFCDIRECTION((0.,0.,1.));
+#10=IFCDIRECTION((1.,0.,0.));
+#11=IFCAXIS2PLACEMENT3D(#3,#9,#10);
+#12=IFCPLANE(#11);
+#13=IFCCIRCLE(#11,50.);
+#14=IFCTRIMMEDCURVE(#13,(#1),(#2),.T.,.CARTESIAN.);
+#15=IFCLINE(#2,#20);
+#20=IFCVECTOR(#21,1.);
+#21=IFCDIRECTION((1.,0.,0.));
+#30=IFCEDGECURVE(#5,#6,#14,.T.);
+#31=IFCEDGECURVE(#6,#5,#15,.T.);
+#40=IFCORIENTEDEDGE(*,*,#30,.T.);
+#41=IFCORIENTEDEDGE(*,*,#31,.T.);
+#50=IFCEDGELOOP((#40,#41));
+#51=IFCFACEOUTERBOUND(#50,.T.);
+#52=IFCADVANCEDFACE((#51),#12,.T.);
+#53=IFCOPENSHELL((#52));
+#54=IFCSHELLBASEDSURFACEMODEL((#53));
+"#;
+
+    let mut decoder = EntityDecoder::new(content);
+    let schema = IfcSchema::new();
+    let processor = ShellBasedSurfaceModelProcessor::new();
+
+    let entity = decoder.decode_by_id(54).unwrap();
+    let mesh = processor
+        .process(&entity, &mut decoder, &schema, TessellationQuality::Medium)
+        .expect("half-disc face with trimmed-circle edge must tessellate");
+
+    assert!(
+        mesh.positions.len() / 3 >= 5,
+        "arc edge must contribute intermediate samples, got {} vertices",
+        mesh.positions.len() / 3
+    );
+    let area = mesh_surface_area(&mesh);
+    let expected = std::f64::consts::PI * 50.0 * 50.0 / 2.0;
+    assert!(
+        (area - expected).abs() < expected * 0.1,
+        "half-disc area should be ~{expected:.0}, got {area:.0} (single-vertex \
+         collapse yields an empty mesh)"
+    );
+}
+
+/// Issue #1661: IfcEllipse edge geometry fell to the start-vertex-only branch.
+#[test]
+fn test_advanced_face_ellipse_edge_sampled() {
+    let content = r#"
+#1=IFCCARTESIANPOINT((50.,0.,0.));
+#2=IFCCARTESIANPOINT((-50.,0.,0.));
+#3=IFCCARTESIANPOINT((0.,0.,0.));
+#5=IFCVERTEXPOINT(#1);
+#6=IFCVERTEXPOINT(#2);
+#9=IFCDIRECTION((0.,0.,1.));
+#10=IFCDIRECTION((1.,0.,0.));
+#11=IFCAXIS2PLACEMENT3D(#3,#9,#10);
+#12=IFCPLANE(#11);
+#13=IFCELLIPSE(#11,50.,25.);
+#15=IFCLINE(#2,#20);
+#20=IFCVECTOR(#21,1.);
+#21=IFCDIRECTION((1.,0.,0.));
+#30=IFCEDGECURVE(#5,#6,#13,.T.);
+#31=IFCEDGECURVE(#6,#5,#15,.T.);
+#40=IFCORIENTEDEDGE(*,*,#30,.T.);
+#41=IFCORIENTEDEDGE(*,*,#31,.T.);
+#50=IFCEDGELOOP((#40,#41));
+#51=IFCFACEOUTERBOUND(#50,.T.);
+#52=IFCADVANCEDFACE((#51),#12,.T.);
+#53=IFCOPENSHELL((#52));
+#54=IFCSHELLBASEDSURFACEMODEL((#53));
+"#;
+
+    let mut decoder = EntityDecoder::new(content);
+    let schema = IfcSchema::new();
+    let processor = ShellBasedSurfaceModelProcessor::new();
+
+    let entity = decoder.decode_by_id(54).unwrap();
+    let mesh = processor
+        .process(&entity, &mut decoder, &schema, TessellationQuality::Medium)
+        .expect("half-ellipse face must tessellate");
+
+    let area = mesh_surface_area(&mesh);
+    let expected = std::f64::consts::PI * 50.0 * 25.0 / 2.0;
+    assert!(
+        (area - expected).abs() < expected * 0.1,
+        "half-ellipse area should be ~{expected:.0}, got {area:.0}"
+    );
+    // The semi-minor axis bounds the sampled arc: max |y| must be ~25, not 50
+    // (a circle-style sampler ignoring SemiAxis2 would overshoot).
+    let max_y = mesh
+        .positions
+        .chunks_exact(3)
+        .map(|p| p[1])
+        .fold(f32::MIN, f32::max);
+    assert!(
+        (20.0..=26.0).contains(&max_y),
+        "ellipse apex must be at y~25, got {max_y}"
+    );
+}
+
+/// Issue #1661: the rational NURBS variant missed the exact-string
+/// IFCBSPLINECURVEWITHKNOTS match and collapsed to one vertex.
+#[test]
+fn test_advanced_face_rational_bspline_edge_sampled() {
+    let content = r#"
+#1=IFCCARTESIANPOINT((50.,0.,0.));
+#2=IFCCARTESIANPOINT((-50.,0.,0.));
+#3=IFCCARTESIANPOINT((0.,0.,0.));
+#4=IFCCARTESIANPOINT((0.,60.,0.));
+#5=IFCVERTEXPOINT(#1);
+#6=IFCVERTEXPOINT(#2);
+#9=IFCDIRECTION((0.,0.,1.));
+#10=IFCDIRECTION((1.,0.,0.));
+#11=IFCAXIS2PLACEMENT3D(#3,#9,#10);
+#12=IFCPLANE(#11);
+#13=IFCRATIONALBSPLINECURVEWITHKNOTS(2,(#1,#4,#2),.UNSPECIFIED.,.F.,.F.,(3,3),(0.,1.),.UNSPECIFIED.,(1.,1.,1.));
+#15=IFCLINE(#2,#20);
+#20=IFCVECTOR(#21,1.);
+#21=IFCDIRECTION((1.,0.,0.));
+#30=IFCEDGECURVE(#5,#6,#13,.T.);
+#31=IFCEDGECURVE(#6,#5,#15,.T.);
+#40=IFCORIENTEDEDGE(*,*,#30,.T.);
+#41=IFCORIENTEDEDGE(*,*,#31,.T.);
+#50=IFCEDGELOOP((#40,#41));
+#51=IFCFACEOUTERBOUND(#50,.T.);
+#52=IFCADVANCEDFACE((#51),#12,.T.);
+#53=IFCOPENSHELL((#52));
+#54=IFCSHELLBASEDSURFACEMODEL((#53));
+"#;
+
+    let mut decoder = EntityDecoder::new(content);
+    let schema = IfcSchema::new();
+    let processor = ShellBasedSurfaceModelProcessor::new();
+
+    let entity = decoder.decode_by_id(54).unwrap();
+    let mesh = processor
+        .process(&entity, &mut decoder, &schema, TessellationQuality::Medium)
+        .expect("rational-bspline-bounded face must tessellate");
+
+    assert!(
+        mesh.positions.len() / 3 >= 5,
+        "rational B-spline edge must contribute intermediate samples, got {} vertices",
+        mesh.positions.len() / 3
+    );
+    // Quadratic Bezier from (50,0) to (-50,0) with control (0,60): apex y=30.
+    let max_y = mesh
+        .positions
+        .chunks_exact(3)
+        .map(|p| p[1])
+        .fold(f32::MIN, f32::max);
+    assert!(
+        max_y > 20.0,
+        "curve interior must be sampled (apex y~30), got max y = {max_y}"
+    );
+}
+
+/// Issue #1661: IfcCompositeCurve edge geometry (two quarter-arc trimmed
+/// segments) collapsed to a single vertex per edge.
+#[test]
+fn test_advanced_face_composite_curve_edge_sampled() {
+    let content = r#"
+#1=IFCCARTESIANPOINT((50.,0.,0.));
+#2=IFCCARTESIANPOINT((-50.,0.,0.));
+#3=IFCCARTESIANPOINT((0.,0.,0.));
+#4=IFCCARTESIANPOINT((0.,50.,0.));
+#5=IFCVERTEXPOINT(#1);
+#6=IFCVERTEXPOINT(#2);
+#9=IFCDIRECTION((0.,0.,1.));
+#10=IFCDIRECTION((1.,0.,0.));
+#11=IFCAXIS2PLACEMENT3D(#3,#9,#10);
+#12=IFCPLANE(#11);
+#13=IFCCIRCLE(#11,50.);
+#14=IFCTRIMMEDCURVE(#13,(#1),(#4),.T.,.CARTESIAN.);
+#16=IFCTRIMMEDCURVE(#13,(#4),(#2),.T.,.CARTESIAN.);
+#17=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#14);
+#18=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#16);
+#19=IFCCOMPOSITECURVE((#17,#18),.F.);
+#15=IFCLINE(#2,#20);
+#20=IFCVECTOR(#21,1.);
+#21=IFCDIRECTION((1.,0.,0.));
+#30=IFCEDGECURVE(#5,#6,#19,.T.);
+#31=IFCEDGECURVE(#6,#5,#15,.T.);
+#40=IFCORIENTEDEDGE(*,*,#30,.T.);
+#41=IFCORIENTEDEDGE(*,*,#31,.T.);
+#50=IFCEDGELOOP((#40,#41));
+#51=IFCFACEOUTERBOUND(#50,.T.);
+#52=IFCADVANCEDFACE((#51),#12,.T.);
+#53=IFCOPENSHELL((#52));
+#54=IFCSHELLBASEDSURFACEMODEL((#53));
+"#;
+
+    let mut decoder = EntityDecoder::new(content);
+    let schema = IfcSchema::new();
+    let processor = ShellBasedSurfaceModelProcessor::new();
+
+    let entity = decoder.decode_by_id(54).unwrap();
+    let mesh = processor
+        .process(&entity, &mut decoder, &schema, TessellationQuality::Medium)
+        .expect("composite-curve-bounded face must tessellate");
+
+    let area = mesh_surface_area(&mesh);
+    let expected = std::f64::consts::PI * 50.0 * 50.0 / 2.0;
+    assert!(
+        (area - expected).abs() < expected * 0.1,
+        "half-disc (two quarter-arc segments) area should be ~{expected:.0}, got {area:.0}"
+    );
+}
+
+/// Issue #1661: CATIA writes IFCSHAPEREPRESENTATION(#ctx,'Body','',(items)) -
+/// RepresentationIdentifier 'Body', RepresentationType EMPTY STRING. The body
+/// filter ran on the raw type, so the whole representation was vetoed and the
+/// element meshed to zero triangles ($ null type never hit the filter; only
+/// the empty-string spelling did). The filter must fall back to the
+/// identifier when the type is blank - and an 'Axis' identifier with a blank
+/// type must still be skipped.
+#[test]
+fn test_element_with_blank_representation_type_uses_identifier() {
+    use crate::router::GeometryRouter;
+
+    let content = r#"
+#1=IFCCARTESIANPOINT((0.,0.,0.));
+#2=IFCCARTESIANPOINT((100.,0.,0.));
+#3=IFCCARTESIANPOINT((100.,100.,0.));
+#4=IFCCARTESIANPOINT((0.,100.,0.));
+#10=IFCPOLYLOOP((#1,#2,#3,#4));
+#11=IFCFACEBOUND(#10,.T.);
+#12=IFCFACE((#11));
+#13=IFCOPENSHELL((#12));
+#14=IFCSHELLBASEDSURFACEMODEL((#13));
+#20=IFCSHAPEREPRESENTATION(#99,'Body','',(#14));
+#21=IFCPRODUCTDEFINITIONSHAPE($,$,(#20));
+#22=IFCWALL('3xxxxxxxxxxxxxxxxxxxx1',$,$,$,$,$,#21,$);
+#30=IFCSHAPEREPRESENTATION(#99,'Axis','',(#14));
+#31=IFCPRODUCTDEFINITIONSHAPE($,$,(#30));
+#32=IFCWALL('3xxxxxxxxxxxxxxxxxxxx2',$,$,$,$,$,#31,$);
+"#;
+
+    let entity_index = ifc_lite_core::build_entity_index(content);
+    let mut decoder = EntityDecoder::with_index(content, entity_index);
+    let router = GeometryRouter::new();
+
+    let wall = decoder.decode_by_id(22).expect("decode wall");
+    let mesh = router
+        .process_element(&wall, &mut decoder)
+        .expect("process wall");
+    assert!(
+        !mesh.is_empty(),
+        "blank RepresentationType with 'Body' identifier must still mesh (#1661)"
+    );
+
+    let axis_wall = decoder.decode_by_id(32).expect("decode axis wall");
+    let axis_mesh = router
+        .process_element(&axis_wall, &mut decoder)
+        .expect("process axis wall");
+    assert!(
+        axis_mesh.is_empty(),
+        "blank RepresentationType with 'Axis' identifier must stay skipped"
+    );
+}
+
+/// PR #1673 review follow-up: an IfcTrimmedCurve over a B-spline basis whose
+/// trims select only a SUBSPAN must not sample the basis curve's full knot
+/// range - intermediate samples would jump outside the trimmed edge and
+/// corrupt the face loop. Quadratic B-spline through (50,0) (25,40) (-25,40)
+/// (-50,0) with knots [0,0,0,.5,1,1,1]; the edge is trimmed to t in [0,0.5]
+/// (endpoints (50,0,0) -> (0,40,0)). Untrimmed sampling would emit points
+/// approaching (-50,0,0).
+#[test]
+fn test_advanced_face_trimmed_bspline_respects_trim_params() {
+    let content = r#"
+#1=IFCCARTESIANPOINT((50.,0.,0.));
+#2=IFCCARTESIANPOINT((0.,40.,0.));
+#3=IFCCARTESIANPOINT((0.,0.,0.));
+#5=IFCVERTEXPOINT(#1);
+#6=IFCVERTEXPOINT(#2);
+#7=IFCCARTESIANPOINT((25.,40.,0.));
+#8=IFCCARTESIANPOINT((-25.,40.,0.));
+#18=IFCCARTESIANPOINT((-50.,0.,0.));
+#9=IFCDIRECTION((0.,0.,1.));
+#10=IFCDIRECTION((1.,0.,0.));
+#11=IFCAXIS2PLACEMENT3D(#3,#9,#10);
+#12=IFCPLANE(#11);
+#13=IFCBSPLINECURVEWITHKNOTS(2,(#1,#7,#8,#18),.UNSPECIFIED.,.F.,.F.,(3,1,3),(0.,0.5,1.),.UNSPECIFIED.);
+#14=IFCTRIMMEDCURVE(#13,(IFCPARAMETERVALUE(0.)),(IFCPARAMETERVALUE(0.5)),.T.,.PARAMETER.);
+#15=IFCLINE(#2,#20);
+#20=IFCVECTOR(#21,1.);
+#21=IFCDIRECTION((1.,0.,0.));
+#30=IFCEDGECURVE(#5,#6,#14,.T.);
+#31=IFCEDGECURVE(#6,#5,#15,.T.);
+#40=IFCORIENTEDEDGE(*,*,#30,.T.);
+#41=IFCORIENTEDEDGE(*,*,#31,.T.);
+#50=IFCEDGELOOP((#40,#41));
+#51=IFCFACEOUTERBOUND(#50,.T.);
+#52=IFCADVANCEDFACE((#51),#12,.T.);
+#53=IFCOPENSHELL((#52));
+#54=IFCSHELLBASEDSURFACEMODEL((#53));
+"#;
+
+    let mut decoder = EntityDecoder::new(content);
+    let schema = IfcSchema::new();
+    let processor = ShellBasedSurfaceModelProcessor::new();
+
+    let entity = decoder.decode_by_id(54).unwrap();
+    let mesh = processor
+        .process(&entity, &mut decoder, &schema, TessellationQuality::Medium)
+        .expect("trimmed-bspline-bounded face must tessellate");
+
+    assert!(
+        mesh.positions.len() / 3 >= 5,
+        "trimmed B-spline edge must contribute intermediate samples, got {} vertices",
+        mesh.positions.len() / 3
+    );
+    // All samples stay on the trimmed half (x in [0, 50]); full-basis sampling
+    // would emit points with x approaching -50.
+    let min_x = mesh
+        .positions
+        .chunks_exact(3)
+        .map(|p| p[0])
+        .fold(f32::MAX, f32::min);
+    assert!(
+        min_x > -5.0,
+        "samples must stay on the trimmed subspan (t <= 0.5, x >= 0), got min x = {min_x}"
+    );
+}

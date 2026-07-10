@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/embed-protocol",
-  "version": "1.14.5",
+  "version": "1.14.6",
   "description": "Shared postMessage protocol types for ifc-lite embed viewer and SDK",
   "type": "module",
   "main": "./dist/index.js",
@@ -27,5 +27,11 @@
   },
   "files": [
     "dist"
-  ]
+  ],
+  "author": "Louis True",
+  "publishConfig": {
+    "access": "public"
+  },
+  "homepage": "https://ltplus-ag.github.io/ifc-lite/",
+  "bugs": "https://github.com/LTplus-AG/ifc-lite/issues"
 }

@@ -61,7 +61,18 @@ export const MAGIC = 0x4C434649; // "IFCL" in little-endian
  * would render stale geometry and the compare/diff feature would flag those hosts as
  * changed. The bump invalidates pre-#1432 caches so they re-mesh.
  */
-export const FORMAT_VERSION = 11;
+/**
+ * v11→v12: source vertex weld. Every element mesh is now welded at the source
+ * (`build_mesh_data`): coincident vertices sharing a position + normal (+ UV)
+ * are collapsed and indices remapped, and the per-EXPORT welds (GLB `to_yup` /
+ * from-meshes) were removed as redundant. A v11 cache holds pre-weld
+ * (per-face-duplicated) geometry; restoring it and exporting would now emit an
+ * unwelded, 3-6x larger GLB (regressing the #1553 export-weld win for
+ * cached-model users) and yields non-watertight raw MeshData. The byte layout
+ * is unchanged, but the vertex/index buffers differ, so the bump invalidates
+ * pre-weld caches to re-mesh (welded).
+ */
+export const FORMAT_VERSION = 12;
 
 /** Section types in the binary format */
 export enum SectionType {
@@ -90,6 +101,15 @@ export enum HeaderFlags {
   Compressed = 1 << 0,
   HasGeometry = 1 << 1,
   HasSpatial = 1 << 2,
+  /**
+   * The `sourceHash` field is NOT a full-file `xxhash64` — it is unset (0) and
+   * must not be used to validate the source. Set by writers that validate the
+   * source by another means (see `omitSourceHash`), so `reader.validate()` /
+   * `read({ sourceBuffer })` can fail LOUD (or skip) instead of silently
+   * fail-closing on a real match. Backward-compatible: entries written before
+   * this flag existed have it unset, so their `sourceHash` stays a real hash.
+   */
+  SourceHashUnset = 1 << 3,
 }
 
 /** Section flags */
@@ -135,6 +155,17 @@ export interface CacheWriteOptions {
   includeSpatialHierarchy?: boolean;
   /** Compress sections (default: false, future feature) */
   compress?: boolean;
+  /**
+   * Skip the header's full-file `xxhash64(sourceBuffer)`: store `sourceHash = 0n`
+   * and set {@link HeaderFlags.SourceHashUnset}. Use when the caller validates
+   * the source by another means (e.g. an application-layer content hash), so a
+   * large source pays NO full-file main-thread hash on write. Consumers that
+   * would validate against the header (`reader.validate()` / `read({
+   * sourceBuffer })`) can then detect the absence via {@link
+   * CacheHeaderInfo.hasSourceHash} instead of silently fail-closing. Default
+   * `false` (the writer hashes the whole `sourceBuffer`, unchanged).
+   */
+  omitSourceHash?: boolean;
 }
 
 /**
@@ -155,7 +186,14 @@ export interface CacheReadOptions {
 export interface CacheHeaderInfo {
   version: number;
   schema: SchemaVersion;
+  /**
+   * Full-file `xxhash64` of the source — VALID only when {@link hasSourceHash}
+   * is true. When false it is `0n` and carries no meaning (see
+   * {@link HeaderFlags.SourceHashUnset}).
+   */
   sourceHash: bigint;
+  /** Is {@link sourceHash} a real full-file hash (vs. an unset `0n`)? */
+  hasSourceHash: boolean;
   entityCount: number;
   totalVertices: number;
   totalTriangles: number;

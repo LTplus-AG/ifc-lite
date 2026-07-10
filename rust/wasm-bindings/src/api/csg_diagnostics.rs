@@ -60,9 +60,8 @@ pub(super) fn drain_and_log_csg_diagnostics(
         // is a failure to surface.
         web_sys::console::info_1(
             &format!(
-                "[IFC-LITE] Opening classifier: rect={} diag={} non_rect={} \
-                 floor_opening_guard_saved={} (total={cls_total})",
-                cls.rectangular, cls.diagonal, cls.non_rectangular, cls.floor_opening_guard_saved
+                "[IFC-LITE] Opening classifier: rect={} diag={} non_rect={} (total={cls_total})",
+                cls.rectangular, cls.diagonal, cls.non_rectangular
             )
             .into(),
         );

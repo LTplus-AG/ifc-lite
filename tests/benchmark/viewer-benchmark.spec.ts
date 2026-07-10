@@ -120,8 +120,13 @@ test.describe('Viewer Performance Benchmarks', () => {
   // Expected mesh counts for geometry correctness validation
   // These help detect if optimizations break geometry (e.g., CSG skipping too much)
   const expectedMeshCounts: Record<string, number> = {
+    // NB: totalMeshes is scraped from "[useIfc] Geometry streaming complete: N batches, M meshes"
+    // = mesh OCCURRENCES streamed (instanced occurrences counted). This is a different quantity
+    // from the deduped allMeshes.length that the "[ifc-lite] … → N meshes" summary and the PostHog
+    // `ifc_model_loaded.mesh_count` report. Keep every expected value below in the SAME occurrence
+    // unit as totalMeshes so this assertion stays apples-to-apples.
     'AC20-FZK-Haus.ifc': 317,  // Verified vs raw WASM pipeline 2026-06-10: incl. 32 type meshes (#957) + 7 IfcSpace (#1022). Was 230 pre-type-geometry/spaces.
-    '01_Snowdon_Towers_Sample_Structural(1).ifc': 1500,  // Structural elements
+    '01_Snowdon_Towers_Sample_Structural(1).ifc': 17380,  // Occurrence count, verified identical across CI SwiftShader + local A/B on 2026-07-02. Was a stale 1500 (deduped/legacy-metric value) that silently disabled this drop check for Snowdon.
     'O-S1-BWK-BIM architectural - BIM bouwkundig.ifc': 16400,  // Large architectural model
     'ISSUE_053_20181220Holter_Tower_10.ifc': 60000,  // Complex model (some walls may skip CSG due to MAX_OPENINGS)
   };

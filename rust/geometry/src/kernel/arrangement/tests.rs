@@ -258,7 +258,8 @@ fn nary_union_of_abutting_and_duplicate_prisms_is_watertight() {
     let b2 = box_mesh([2., 0., 0.], [3., 1., 1.]);
     let b1_dup = b1.clone();
     let meshes: Vec<&[Tri]> = vec![&b0, &b1, &b2, &b1_dup];
-    let u = super::union_all(&meshes);
+    let (u, conforming) = super::union_all(&meshes);
+    assert!(conforming, "clean abutting/duplicate prisms must conform (no unrecovered constraints)");
     let (boundary, nonmanifold) = edge_audit(&u);
     assert_eq!(boundary, 0, "N-ary union has {boundary} open boundary edges");
     assert_eq!(nonmanifold, 0, "N-ary union has {nonmanifold} non-manifold edges");

@@ -29,6 +29,7 @@ import type {
   BCFExtensions,
   BCFDocumentReference,
   BCFBimSnippet,
+  BCFHeaderFile,
 } from './types.js';
 
 /**
@@ -161,6 +162,10 @@ async function readTopic(zip: JSZip, topicFolder: string): Promise<BCFTopic | nu
   const guid = topicMatch[1];
   const topicContent = topicMatch[2];
 
+  // Header (source IFC files) sits before Topic in the markup, so parse it from
+  // the whole document rather than the Topic body.
+  const header = parseHeaderFiles(markupContent);
+
   // Extract topic attributes
   const topicTypeMatch = markupContent.match(/<Topic[^>]*TopicType="([^"]+)"/);
   const topicStatusMatch = markupContent.match(/<Topic[^>]*TopicStatus="([^"]+)"/);
@@ -182,7 +187,7 @@ async function readTopic(zip: JSZip, topicFolder: string): Promise<BCFTopic | nu
   const labels: string[] = [];
   const labelMatches = topicContent.matchAll(/<Labels>([^<]+)<\/Labels>/g);
   for (const match of labelMatches) {
-    labels.push(match[1]);
+    labels.push(unescapeXml(match[1]));
   }
 
   // Extract BIM snippet
@@ -225,15 +230,71 @@ async function readTopic(zip: JSZip, topicFolder: string): Promise<BCFTopic | nu
     relatedTopics: relatedTopics.length > 0 ? relatedTopics : undefined,
     comments,
     viewpoints,
+    header: header.length > 0 ? header : undefined,
   };
 }
 
 /**
+ * Parse the markup `<Header>` block into source-file references.
+ *
+ * Tolerant of both BCF versions: 2.1 nests `<File>` directly under `<Header>`
+ * and 3.0 wraps them in `<Files>`, so we match every `<File>` inside the header
+ * regardless of the wrapper.
+ */
+function parseHeaderFiles(markupContent: string): BCFHeaderFile[] {
+  const headerMatch = markupContent.match(/<Header>([\s\S]*?)<\/Header>/);
+  if (!headerMatch) return [];
+
+  const files: BCFHeaderFile[] = [];
+  const fileMatches = headerMatch[1].matchAll(/<File\b([^>]*?)(?:\/>|>([\s\S]*?)<\/File>)/g);
+  for (const match of fileMatches) {
+    const attrs = match[1] ?? '';
+    const body = match[2] ?? '';
+
+    const ifcProject = attrs.match(/IfcProject="([^"]*)"/)?.[1];
+    const ifcSpatial = attrs.match(/IfcSpatialStructureElement="([^"]*)"/)?.[1];
+    // BCF 2.1 spells this `isExternal`, 3.0 `IsExternal`; accept either casing
+    // (and the xs:boolean `1`/`0` forms a foreign tool may emit).
+    const isExternalRaw = attrs.match(/\b[Ii]sExternal="([^"]*)"/)?.[1];
+
+    files.push({
+      ifcProject: ifcProject || undefined,
+      ifcSpatialStructureElement: ifcSpatial || undefined,
+      isExternal: isExternalRaw === undefined ? undefined : (isExternalRaw === 'true' || isExternalRaw === '1'),
+      filename: extractElement(body, 'Filename'),
+      date: extractElement(body, 'Date'),
+      reference: extractElement(body, 'Reference'),
+    });
+  }
+
+  return files;
+}
+
+/**
  * Extract a simple element value from XML
+ *
+ * Values are unescaped so writer.ts's escapeXml() round-trips correctly
+ * (see escapeXml/unescapeXml regression: & < > " ' in titles/descriptions/
+ * comments must come back exactly as written, not as literal entities).
  */
 function extractElement(content: string, elementName: string): string | undefined {
   const match = content.match(new RegExp(`<${elementName}>([^<]*)<\\/${elementName}>`));
-  return match?.[1];
+  return match?.[1] !== undefined ? unescapeXml(match[1]) : undefined;
+}
+
+/**
+ * Unescape XML entities produced by writer.ts's escapeXml()
+ *
+ * &amp; must be decoded last so a literal "&lt;" written as "&amp;lt;"
+ * doesn't get corrupted into "<" by an earlier pass.
+ */
+function unescapeXml(str: string): string {
+  return str
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&');
 }
 
 /**
@@ -283,14 +344,39 @@ function extractDocumentReferences(content: string): BCFDocumentReference[] {
 
 /**
  * Parse comments from markup.bcf
+ *
+ * The outer `<Comment Guid="...">` wrapper contains a nested `<Comment>text</Comment>`
+ * field with the SAME tag name (see writer.ts writeMarkupFile). A naive non-greedy
+ * `[\s\S]*?<\/Comment>` stops at the first `</Comment>` it sees, which is the inner
+ * field's closer, not the wrapper's -- truncating every comment to an empty string.
+ *
+ * Rather than guess what token follows a comment (which varies by BCF version and
+ * vendor: `<Viewpoints>` in 2.1 schema order, `</Comments>` in 3.0, `</Markup>`, or
+ * a vendor-extension element), we slice each wrapper's span from its own opening tag
+ * to the NEXT wrapper opening (or end of content) and take the last `</Comment>` in
+ * that span as the wrapper's real closer. That is robust across BCF 2.1/3.0 and
+ * tolerates unknown sibling elements, so no comment is silently dropped.
  */
 function parseComments(markupContent: string): BCFComment[] {
   const comments: BCFComment[] = [];
-  const commentMatches = markupContent.matchAll(/<Comment\s+Guid="([^"]+)"[^>]*>([\s\S]*?)<\/Comment>/g);
 
-  for (const match of commentMatches) {
-    const guid = match[1];
-    const content = match[2];
+  // Collect every top-level comment-wrapper opening tag and where its body starts.
+  const openRe = /<Comment\s+Guid="([^"]+)"[^>]*>/g;
+  const opens: { guid: string; tagStart: number; bodyStart: number }[] = [];
+  for (let m = openRe.exec(markupContent); m; m = openRe.exec(markupContent)) {
+    opens.push({ guid: m[1], tagStart: m.index, bodyStart: m.index + m[0].length });
+  }
+
+  for (let i = 0; i < opens.length; i++) {
+    const spanEnd = i + 1 < opens.length ? opens[i + 1].tagStart : markupContent.length;
+    const span = markupContent.slice(opens[i].bodyStart, spanEnd);
+    // The wrapper's own closer is the last </Comment> before the next wrapper/end;
+    // the nested text field's closer comes earlier. (</Comments> does not match
+    // </Comment> because of the trailing 's', so the 3.0 container is not confused
+    // for a wrapper close.)
+    const close = span.lastIndexOf('</Comment>');
+    if (close < 0) continue; // malformed: no wrapper closer, skip rather than throw
+    const content = span.slice(0, close);
 
     const date = extractElement(content, 'Date') || new Date().toISOString();
     const author = extractElement(content, 'Author') || 'Unknown';
@@ -302,7 +388,7 @@ function parseComments(markupContent: string): BCFComment[] {
     const viewpointMatch = content.match(/<Viewpoint\s+Guid="([^"]+)"/);
 
     comments.push({
-      guid,
+      guid: opens[i].guid,
       date,
       author,
       comment,

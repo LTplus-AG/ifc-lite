@@ -18,6 +18,16 @@
 //! aborts the entire host CAD process instead of returning error code `3`.
 //! `server-release` inherits `release` but restores `panic = "unwind"`.
 
+// Native global allocator (#1623): the platform system heap's global lock was
+// ~70% of native geometry self-time and capped rayon scaling to ~1.8x on
+// IfcMappedItem-heavy models; mimalloc's per-thread heaps lifted an all-cores
+// geometry pass on a 462MB metering-station model 35s -> 16.7s (2.1x). Rust-only
+// — the DLL's Rust allocations route through mimalloc; the host process's own
+// malloc/free are untouched.
+#[cfg(feature = "mimalloc")]
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 use ifc_lite_processing::{
     process_geometry_filtered, OpeningFilterMode, ParseResponse, ProcessingResult,
 };

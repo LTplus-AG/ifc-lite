@@ -36,7 +36,7 @@ export function useBcfFromChange(
   modelList: readonly { name?: string }[],
   selectedKey: string | null,
 ): BcfFromChangeController {
-  const { createViewpointFromState } = useBCF();
+  const { createViewpointFromState, headerFilesForViewpoints } = useBCF();
 
   const [formOpen, setFormOpen] = useState(false);
   const [createdTitle, setCreatedTitle] = useState<string | null>(null);
@@ -93,6 +93,16 @@ export function useBcfFromChange(
           const first = modelList[0]?.name?.replace(/\.(ifc|ifczip)$/i, '') || 'Comparison';
           state.setBcfProject(createBCFProject({ name: `${first}_Issues` }));
         }
+        // Resolve the viewpoint first so the topic's source-file Header can be
+        // derived from the models its selection references before it is stored.
+        let vp = options?.includeSnapshot === false ? null : viewpoint;
+        if (options?.includeSnapshot !== false && !vp) {
+          vp = await createViewpointFromState({
+            includeSnapshot: true,
+            includeSelection: true,
+            includeHidden: false,
+          });
+        }
         const topic = createBCFTopic({
           title: data.title || 'Untitled',
           description: data.description,
@@ -104,17 +114,10 @@ export function useBcfFromChange(
           dueDate: data.dueDate,
           labels: data.labels,
         });
+        // Record the distinct source model(s) this topic touches (#1591 federation).
+        const header = headerFilesForViewpoints(vp ? [vp] : [], topic.creationDate);
+        if (header.length > 0) topic.header = header;
         useViewerStore.getState().addTopic(topic);
-        // Attach the previewed viewpoint unless the user opted out; fall back to
-        // a fresh capture if the preview never resolved.
-        let vp = options?.includeSnapshot === false ? null : viewpoint;
-        if (options?.includeSnapshot !== false && !vp) {
-          vp = await createViewpointFromState({
-            includeSnapshot: true,
-            includeSelection: true,
-            includeHidden: false,
-          });
-        }
         if (vp) useViewerStore.getState().addViewpoint(topic.guid, vp);
         posthog.capture('bcf_topic_created', {
           source: 'compare',
@@ -130,7 +133,7 @@ export function useBcfFromChange(
         submitInFlight.current = false;
       }
     },
-    [modelList, viewpoint, createViewpointFromState],
+    [modelList, viewpoint, createViewpointFromState, headerFilesForViewpoints],
   );
 
   return {

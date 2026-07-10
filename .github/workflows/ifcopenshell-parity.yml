@@ -1,0 +1,173 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# Live IfcOpenShell differential parity (plan 07). Two lanes:
+#
+# - per-PR (`quick` job): ifc-lite side ONLY vs the committed reference over
+#   the in-tree geometry fixtures - no reference-engine install, no fixture
+#   download. This is now a REQUIRED status check, so it runs on EVERY PR and
+#   ALWAYS reports: a `dorny/paths-filter` step detects geometry-affecting
+#   changes and gates the parity diff, so a docs/TS-only PR gets a cheap no-op
+#   success instead of a never-reported check. (A required check whose whole
+#   workflow is skipped by a trigger-level `paths:` filter stays "Expected"
+#   forever and blocks unrelated PRs from merging - hence the internal gate.)
+#
+#   Its red path is fault-injection tested (tools/ifcopenshell_reference/
+#   test_harness.py::EndToEndFaultInjection, run by the "Unit tests" step) - it
+#   perturbs an in-memory copy of a REAL committed reference dump and asserts
+#   `compare.py` exits non-zero on bbox/volume divergence and on a dropped
+#   element, plus a positive control that an unperturbed copy stays green.
+#   That evidence is why it was promoted to a required check.
+#
+# - nightly (`full` job): installs the PINNED engine, runs the whole
+#   committed corpus (fetched fixtures included), regenerates the reference
+#   dumps to detect reference-staleness, and uploads diff reports. Modeled on
+#   determinism.yml (free arm runner, cron + dispatch, non-blocking).
+
+name: IfcOpenShell parity
+
+on:
+  # No trigger-level `paths:` filter on purpose: this is a REQUIRED check, and
+  # a required check whose workflow is path-skipped never reports a status,
+  # which blocks unrelated (docs/TS-only) PRs from merging. The quick job runs
+  # on every PR and gates the expensive parity diff on an internal paths-filter.
+  pull_request:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  quick:
+    name: parity (in-tree fixtures, committed reference)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v4
+        with:
+          # Jobs install external packages afterwards and never push; do not
+          # leave the GITHUB_TOKEN in the local git config for them to read.
+          persist-credentials: false
+      # Gate the expensive parity diff on geometry-affecting changes. On a PR
+      # that touches none of these paths, every step below is skipped and the
+      # job succeeds as a no-op, so the required check still reports (no stuck
+      # "Expected" state that would block the PR).
+      - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
+        id: filter
+        with:
+          filters: |
+            geometry:
+              - "rust/geometry/**"
+              - "rust/processing/**"
+              - "rust/core/**"
+              - "rust/python/**"
+              - "tools/ifcopenshell_reference/**"
+              - ".github/workflows/ifcopenshell-parity.yml"
+      - if: steps.filter.outputs.geometry != 'true'
+        name: No geometry changes - parity diff not applicable
+        run: echo "No geometry/processing/core/python/parity-tooling changes; parity diff skipped (check reports success)."
+      - if: steps.filter.outputs.geometry == 'true'
+        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master 2026-05
+        with:
+          toolchain: stable
+      - if: steps.filter.outputs.geometry == 'true'
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+      - if: steps.filter.outputs.geometry == 'true'
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v5
+        with:
+          python-version: "3.12"
+      - name: Build + install ifclite_geom wheel
+        if: steps.filter.outputs.geometry == 'true'
+        run: |
+          pip install maturin
+          maturin build --release -m rust/python/Cargo.toml -o /tmp/wheels
+          pip install /tmp/wheels/*.whl
+      - name: Unit tests (canonical stats + comparator)
+        if: steps.filter.outputs.geometry == 'true'
+        working-directory: tools/ifcopenshell_reference
+        run: python -m unittest test_harness -v
+      - name: Differential vs committed reference (in-tree fixtures)
+        if: steps.filter.outputs.geometry == 'true'
+        working-directory: tools/ifcopenshell_reference
+        run: |
+          python dump_ifclite.py \
+            ../../rust/geometry/tests/fixtures/bath_csg_solid.ifc \
+            ../../rust/geometry/tests/fixtures/issue_1155_halfspace_flyaway.ifc \
+            ../../rust/geometry/tests/fixtures/swept_disk_composite_arc_crankbar.ifc \
+            ../../rust/geometry/tests/fixtures/swept_disk_trimmed_line.ifc \
+            --out-dir /tmp/lite
+          fail=0
+          for f in bath_csg_solid issue_1155_halfspace_flyaway \
+                   swept_disk_composite_arc_crankbar swept_disk_trimmed_line; do
+            python compare.py --reference "reference/$f.reference.json" \
+              --ifclite "/tmp/lite/$f.ifclite.json" \
+              --allowlist allowlist.json || fail=1
+          done
+          exit $fail
+
+  full:
+    name: full corpus (pinned reference engine)
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v4
+        with:
+          # Jobs install external packages afterwards and never push; do not
+          # leave the GITHUB_TOKEN in the local git config for them to read.
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master 2026-05
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v5
+        with:
+          python-version: "3.12"
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22
+      - name: Fetch fixture corpus
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm fixtures
+      - name: Install pinned reference engine + ifclite wheel
+        run: |
+          pip install -r tools/ifcopenshell_reference/requirements.lock maturin
+          maturin build --release -m rust/python/Cargo.toml -o /tmp/wheels
+          pip install /tmp/wheels/*.whl
+      - name: Regenerate reference + differential over the corpus
+        working-directory: tools/ifcopenshell_reference
+        run: |
+          FIXED="../../rust/geometry/tests/fixtures/bath_csg_solid.ifc \
+                 ../../rust/geometry/tests/fixtures/issue_1155_halfspace_flyaway.ifc \
+                 ../../rust/geometry/tests/fixtures/swept_disk_composite_arc_crankbar.ifc \
+                 ../../rust/geometry/tests/fixtures/swept_disk_trimmed_line.ifc \
+                 ../../tests/models/ifcopenshell/1019-column.ifc \
+                 ../../tests/models/ifcopenshell/1030-sphere.ifc \
+                 ../../tests/models/ara3d/IfcOpenHouse_IFC4.ifc \
+                 ../../tests/models/ara3d/duplex.ifc"
+          python dump_reference.py $FIXED --out-dir /tmp/ref
+          python dump_ifclite.py $FIXED --out-dir /tmp/lite
+          mkdir -p /tmp/reports
+          fail=0
+          for r in /tmp/ref/*.reference.json; do
+            f=$(basename "$r" .reference.json)
+            python compare.py --reference "$r" --ifclite "/tmp/lite/$f.ifclite.json" \
+              --allowlist allowlist.json --report "/tmp/reports/$f.json" || fail=1
+            # Reference-staleness: freshly generated vs committed.
+            if ! diff -q "$r" "reference/$f.reference.json" > /dev/null 2>&1; then
+              echo "::warning::committed reference for $f is stale vs the pinned engine"
+            fi
+          done
+          exit $fail
+      - name: Upload diff reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4
+        with:
+          name: ifcopenshell-parity-reports
+          path: /tmp/reports/

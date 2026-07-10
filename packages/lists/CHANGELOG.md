@@ -1,5 +1,41 @@
 # @ifc-lite/lists
 
+## 1.18.1
+
+### Patch Changes
+
+- Updated dependencies [[`d758460`](https://github.com/LTplus-AG/ifc-lite/commit/d758460dce1a564286a9af5579b0a2ba72dfa81d)]:
+  - @ifc-lite/data@2.5.0
+
+## 1.18.0
+
+### Minor Changes
+
+- [#1614](https://github.com/LTplus-AG/ifc-lite/pull/1614) [`f6f8bd2`](https://github.com/LTplus-AG/ifc-lite/commit/f6f8bd2ca0be7b242fb78bef1bd1a1b8a5ab8944) Thanks [@louistrue](https://github.com/louistrue)! - Add federation-identity list columns: a `model` source (source file / model name) and a leveled `spatial` source whose `propertyName` selects `Storey` (default), `Building`, `Site`, or `Project`. Lets a list over several federated models be grouped, sorted, filtered, and exported by which project/site/building/file each row comes from (issue [#1591](https://github.com/LTplus-AG/ifc-lite/issues/1591)). `ListDataProvider` gains optional `getModelName` / `getProjectName` / `getSiteName` / `getBuildingName` accessors; existing storey-only `spatial` columns keep resolving the storey name.
+
+- [#1626](https://github.com/LTplus-AG/ifc-lite/pull/1626) [`07f630e`](https://github.com/LTplus-AG/ifc-lite/commit/07f630e8373e52f37e5c5133d4b92ca5592368eb) Thanks [@louistrue](https://github.com/louistrue)! - Support Bonsai-style `/regex/` patterns for property-set / quantity-set and property / quantity names. A name wrapped in slashes (e.g. `/Qto_.*BaseQuantities/`, optionally with flags like `/qto_.*/i`) is matched as a regular expression; a plain name stays an exact match. This lets one list column or query read a value across several matching sets at once, for example `NetVolume` from `Qto_WallBaseQuantities` AND `Qto_SlabBaseQuantities` (issue [#1591](https://github.com/LTplus-AG/ifc-lite/issues/1591)). Applies to `@ifc-lite/lists` column extraction and filter conditions and to the SDK `bim.query().property()` / `quantity()` getters. `@ifc-lite/lists` exports the new `compileNameMatcher` / `isNamePattern` helpers.
+
+## 1.17.0
+
+### Minor Changes
+
+- [#1580](https://github.com/LTplus-AG/ifc-lite/pull/1580) [`3a2cd42`](https://github.com/LTplus-AG/ifc-lite/commit/3a2cd42158313d8e22f21885e62b6c705814ab47) Thanks [@louistrue](https://github.com/louistrue)! - `ColumnDefinition` gains two optional, execution-time-only fields: `quantityType` (the `QuantityType` a `source: 'quantity'` column resolved to) and `dataType` (the raw IFC measure value type a `source: 'property'` column resolved to, e.g. `"IFCVOLUMETRICFLOWRATEMEASURE"`). `executeList` populates them on the RESULT's columns from the first matching entity's quantity/property — the persisted `ListDefinition` authoring schema is never mutated.
+
+  This lets a consumer apply unit-aware display/export logic (the viewer's list export now honours its display-unit converter, issue [#1573](https://github.com/LTplus-AG/ifc-lite/issues/1573)) without re-deriving a column's measure type from scratch. Existing consumers are unaffected: both fields are optional and `undefined` unless the caller opts in by reading them.
+
+### Patch Changes
+
+- Updated dependencies [[`3a2cd42`](https://github.com/LTplus-AG/ifc-lite/commit/3a2cd42158313d8e22f21885e62b6c705814ab47)]:
+  - @ifc-lite/data@2.4.0
+
+## 1.16.1
+
+### Patch Changes
+
+- Updated dependencies [[`d1e16f9`](https://github.com/LTplus-AG/ifc-lite/commit/d1e16f944ea9f3a35a7153959f13db168a35c229), [`a46dcdf`](https://github.com/LTplus-AG/ifc-lite/commit/a46dcdf68d05e8cdec4199167647f2dfa3c62cb6)]:
+  - @ifc-lite/data@2.3.0
+  - @ifc-lite/encoding@1.14.8
+
 ## 1.16.0
 
 ### Minor Changes

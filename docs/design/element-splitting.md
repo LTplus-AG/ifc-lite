@@ -1,6 +1,14 @@
 # Element Splitting (design)
 
-**Status:** plan only — not yet implemented.
+**Status:** largely implemented. Wall, slab, and linear
+(beam / column / member) split ship via
+`apps/viewer/src/store/slices/splitToolSlice.ts`, `SplitOverlay.tsx` /
+`SplitNumericInput.tsx`, the `splitWallAtDistance` / `splitSlabByLine` /
+`splitLinearElementAtDistance` store actions, and helpers in
+`wall-edit.ts`, `slab-edit.ts`, `linear-element-edit.ts`,
+`metadata-clone.ts`, and `polygon-clip.ts`. The multi-element plane
+split (Phase 6) is not yet wired, and some shipped names differ from the
+sketches below.
 
 Splitting a wall (or slab, beam, column, space, roof, plate) into
 two coherent pieces is the single most-requested authoring gesture

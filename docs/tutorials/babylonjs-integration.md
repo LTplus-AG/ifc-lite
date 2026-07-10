@@ -52,8 +52,19 @@ interface MeshData {
   normals: Float32Array;        // [nx,ny,nz, ...]
   indices: Uint32Array;         // Triangle indices
   color: [number, number, number, number]; // RGBA (0-1)
+  origin?: [number, number, number]; // Per-element local-frame origin (see below)
 }
 ```
+
+Two contracts to respect when consuming `MeshData`:
+
+- **`origin`**: when present, `positions` are relative to a per-element local
+  frame and the world position of vertex `i` is `origin + positions[3i..3i+3]`
+  (this preserves f32 precision on building-scale coordinates). Fold it in by
+  translating the mesh (`mesh.position.set(...)`), or by adding it to the
+  vertices when you merge geometry. Absent means positions are already absolute.
+- **Winding order is unreliable**: IFC triangle winding is not consistently
+  outward. If faces appear missing, set `material.backFaceCulling = false`.
 
 You only need `@ifc-lite/geometry` (and its dependency `@ifc-lite/wasm`) — skip `@ifc-lite/renderer` entirely.
 
@@ -91,6 +102,11 @@ function meshDataToBabylon(meshData: MeshData, scene: Scene): Mesh {
   vertexData.normals = meshData.normals;
   vertexData.indices = meshData.indices;
   vertexData.applyToMesh(mesh);
+
+  // Fold the per-element local-frame origin (world = origin + positions).
+  if (meshData.origin) {
+    mesh.position.set(meshData.origin[0], meshData.origin[1], meshData.origin[2]);
+  }
 
   const [r, g, b, a] = meshData.color;
   const material = new StandardMaterial('mat-' + meshData.expressId, scene);
@@ -143,6 +159,14 @@ for await (const event of processor.processStreaming(buffer)) {
 }
 ```
 
+`processAdaptive(buffer)` yields the same events and picks the strategy for
+you: small files (under 2 MB by default) arrive as a single `batch` event,
+large files go through the streaming or parallel worker path. On the parallel
+path, heavily repeated opaque elements are packed into `instancedShards`
+buffers instead of `event.meshes`; if you consume only `event.meshes`,
+construct the processor with `new GeometryProcessor({ enableInstancing: false })`
+so every element stays on the flat path.
+
 ## Batching for Performance
 
 Individual meshes per entity give you picking granularity but many draw calls. For large models, merge geometry with vertex colors:
@@ -167,7 +191,14 @@ function batchWithVertexColors(
   let vOffset = 0, iOffset = 0;
   for (const m of meshes) {
     const vertCount = m.positions.length / 3;
-    positions.set(m.positions, vOffset * 3);
+    // Merging bakes vertices into one buffer, so fold each mesh's
+    // local-frame origin into the copied positions.
+    const [ox, oy, oz] = m.origin ?? [0, 0, 0];
+    for (let i = 0; i < m.positions.length; i += 3) {
+      positions[vOffset * 3 + i] = m.positions[i] + ox;
+      positions[vOffset * 3 + i + 1] = m.positions[i + 1] + oy;
+      positions[vOffset * 3 + i + 2] = m.positions[i + 2] + oz;
+    }
     normals.set(m.normals, vOffset * 3);
 
     // Write vertex colors
@@ -381,12 +412,13 @@ if (result.coordinateInfo.hasLargeCoordinates) {
   const shift = result.coordinateInfo.originShift;
   console.log(`Coordinates shifted by (${shift.x}, ${shift.y}, ${shift.z})`);
 
-  // If you need world coordinates for geolocation:
-  function toWorld(local: Vector3): Vector3 {
+  // The shift was SUBTRACTED from the mesh positions, so to recover the
+  // original file coordinates (e.g. for geolocation) add it back:
+  function toOriginal(local: Vector3): Vector3 {
     return new Vector3(
-      local.x - shift.x,
-      local.y - shift.y,
-      local.z - shift.z,
+      local.x + shift.x,
+      local.y + shift.y,
+      local.z + shift.z,
     );
   }
 }
@@ -426,13 +458,18 @@ const engine = new Engine(canvas, true, {
 
 ## Vite Configuration
 
-The WASM module needs these headers for `SharedArrayBuffer`:
+The COOP/COEP headers enable `SharedArrayBuffer`, which the geometry worker
+pool uses to share the IFC bytes across workers. The workers are ES modules,
+so force the ESM worker format for production builds:
 
 ```typescript
 // vite.config.ts
 import { defineConfig } from 'vite';
 
 export default defineConfig({
+  worker: {
+    format: 'es',
+  },
   optimizeDeps: {
     exclude: ['@ifc-lite/wasm'],
   },
@@ -444,6 +481,15 @@ export default defineConfig({
   },
 });
 ```
+
+!!! warning "`server.headers` is dev-only"
+    The `server.headers` block above only applies to Vite's dev server. In
+    production or preview builds these responses come from your hosting layer or
+    CDN, so serve the same `Cross-Origin-Opener-Policy: same-origin` and
+    `Cross-Origin-Embedder-Policy: require-corp` headers there too — otherwise
+    `SharedArrayBuffer` is unavailable and the worker pool falls back to slower
+    per-worker copies. (Vite's `preview` server also honours a matching
+    `preview.headers` block.)
 
 ## Full Example
 

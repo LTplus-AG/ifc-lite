@@ -351,10 +351,7 @@ pub fn build_texture_index(
     decoder: &mut EntityDecoder,
 ) -> FxHashMap<u32, ResolvedTextureMap> {
     let mut index = FxHashMap::default();
-    if !content
-        .windows(b"IFCINDEXEDTRIANGLETEXTUREMAP".len())
-        .any(|window| window == b"IFCINDEXEDTRIANGLETEXTUREMAP")
-    {
+    if memchr::memmem::find(content, b"IFCINDEXEDTRIANGLETEXTUREMAP").is_none() {
         return index;
     }
     let mut scanner = EntityScanner::new(content);

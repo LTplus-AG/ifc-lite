@@ -12,9 +12,10 @@ npm install @ifc-lite/wasm
 
 ## Direct WASM use
 
-The text-based parse methods (`parse`, `parseStreaming`) take the raw IFC text
-(a `string`) — decode the buffer first. The geometry methods (`buildPrePassOnce`,
-`processGeometryBatch`, see below) instead take the raw `Uint8Array` bytes.
+The text-based entity scanner (`scanEntitiesFast`) takes the raw IFC text
+(a `string`) — decode the buffer first; `scanEntitiesFastBytes` takes the raw
+`Uint8Array` bytes directly. The geometry methods (`buildPrePassOnce`,
+`processGeometryBatch`, see below) also take the raw `Uint8Array` bytes.
 
 ```typescript
 import init, { IfcAPI } from '@ifc-lite/wasm';
@@ -25,9 +26,9 @@ const api = new IfcAPI();
 const buffer = await fetch('model.ifc').then(r => r.arrayBuffer());
 const content = new TextDecoder().decode(buffer);
 
-// Lightweight parse — returns { entityCount, ... }
-const result = await api.parse(content);
-console.log(`Entities: ${result.entityCount}`);
+// Fast entity scan — returns an array of entity references
+const refs = api.scanEntitiesFast(content);
+console.log(`Entities: ${refs.length}`);
 
 api.free();                           // free the API instance
 ```
@@ -78,7 +79,7 @@ api.free();                           // release the API instance when done
 
 | Class | Purpose |
 |---|---|
-| `IfcAPI` | Top-level entry point — `parse`, `parseStreaming`, `buildPrePassOnce` / `buildPrePassFast` / `buildPrePassStreaming`, `processGeometryBatch`, `scanEntitiesFast` / `scanEntitiesFastBytes` / `scanGeometryEntitiesFast`, `extractProfiles`, `parseSymbolicRepresentations` |
+| `IfcAPI` | Top-level entry point — `scanEntitiesFast` / `scanEntitiesFastBytes` / `scanGeometryEntitiesFast`, `buildPrePassOnce` / `buildPrePassStreaming`, `processGeometryBatch`, `extractProfiles`, `parseSymbolicRepresentations` |
 | `MeshCollection`, `MeshDataJs` | Tessellated geometry output |
 | `ProfileCollection`, `ProfileEntryJs` | Cross-section profile data (extruded-area solids) |
 | `SymbolicRepresentationCollection`, `SymbolicCircle`, `SymbolicPolyline` | 2D symbolic representations (for plan / annotation views) |

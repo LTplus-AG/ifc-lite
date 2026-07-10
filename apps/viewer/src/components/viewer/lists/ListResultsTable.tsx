@@ -24,7 +24,9 @@ import { getVisibleBasketEntityRefsFromStore } from '@/store/basketVisibleSet';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { useEntityListMultiSelect, type MultiSelectItem } from '@/hooks/useEntityListMultiSelect';
 import type { ListResult, ListRow, ColumnDefinition, ListGrouping } from '@ifc-lite/lists';
+import type { ProjectUnits } from '@ifc-lite/parser';
 import { exportList, buildExportModel, EXPORT_LABELS, type ExportFormat } from '@/lib/lists/export';
+import { resolveListColumnUnits } from '@/lib/units/list-column-units';
 import { posthog } from '@/lib/analytics';
 import { cn } from '@/lib/utils';
 import { columnToAutoColor } from '@/lib/lists/columnToAutoColor';
@@ -44,9 +46,16 @@ interface ListResultsTableProps {
   grouping?: ListGrouping;
   /** Persist a grouping change made from the table back to the definition. */
   onGroupingChange?: (grouping: ListGrouping | undefined) => void;
+  /** Per-model declared units (issue #1573 follow-up), keyed by the same
+   *  `modelId` every `ListRow` carries — lets quantity/measure columns
+   *  render (and export) CONVERTED into one resolved target unit via
+   *  `resolveListColumnUnits`, the same resolver `buildExportModel` uses, so
+   *  the on-screen table and the export can never disagree. */
+  modelUnits: Map<string, ProjectUnits>;
 }
 
-export function ListResultsTable({ result, listName, grouping, onGroupingChange }: ListResultsTableProps) {
+export function ListResultsTable({ result, listName, grouping, onGroupingChange, modelUnits }: ListResultsTableProps) {
+  const unitDisplayOverrides = useViewerStore((s) => s.unitDisplayOverrides);
   const parentRef = useRef<HTMLDivElement>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortCol, setSortCol] = useState<number | null>(null);
@@ -78,6 +87,13 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange 
   const columns = result.columns;
   const numericCols = useMemo(() => detectNumericColumns(columns, result.rows), [columns, result.rows]);
 
+  // Single per-column unit resolution (issue #1573 follow-up), shared with
+  // `buildExportModel` so the table and the export can never disagree.
+  const unitResolver = useMemo(
+    () => resolveListColumnUnits(columns, modelUnits, unitDisplayOverrides),
+    [columns, modelUnits, unitDisplayOverrides],
+  );
+
   const visibilityFilteredRows = useMemo(() => {
     if (!filterByVisibility) return result.rows;
     const visibleSet = new Set<string>();
@@ -99,11 +115,21 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange 
       row.values.some((v) => v !== null && String(v).toLowerCase().includes(q)));
   }, [visibilityFilteredRows, searchQuery]);
 
+  // Sorts on the RAW value (single-model monotonic either way; a federated
+  // column mixing declared units sorts by each row's pre-conversion number —
+  // pre-existing, units aren't resolved per-row for sorting).
   const sortedRows = useMemo(() => {
     if (sortCol === null) return filteredRows;
     return [...filteredRows].sort((a, b) =>
       compareCells(a.values[sortCol], b.values[sortCol]) * (sortDir === 'asc' ? 1 : -1));
   }, [filteredRows, sortCol, sortDir]);
+
+  // Rows as DISPLAYED (converted via `unitResolver`) — cell rendering, group
+  // subtotals, and the grand-totals row all agree with the export (#1573).
+  const displayRows = useMemo(
+    () => sortedRows.map((r) => ({ ...r, values: r.values.map((v, i) => unitResolver.convertCell(i, v, r.modelId)) })),
+    [sortedRows, unitResolver],
+  );
 
   // ── Grouping / aggregation derived from the definition ──
   const groupByColumnId = grouping?.columnId ?? '';
@@ -118,19 +144,20 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange 
     items: DisplayItem[]; groupCount: number; totals: Totals; groupKeys: string[];
   }>(() => {
     if (isGrouped) {
-      const view = buildGroupedView(sortedRows, columns, { columnId: groupByColumnId, sumColumnIds }, expandedGroups);
+      const sort = sortCol === null ? null : { colIdx: sortCol, dir: sortDir };
+      const view = buildGroupedView(displayRows, columns, { columnId: groupByColumnId, sumColumnIds }, expandedGroups, sort);
       return {
         items: view.items, groupCount: view.groupCount, totals: view.totals,
         groupKeys: view.items.filter((i) => i.kind === 'group').map((i) => (i as { key: string }).key),
       };
     }
     return {
-      items: sortedRows.map((row): DisplayItem => ({ kind: 'row', row })),
+      items: displayRows.map((row): DisplayItem => ({ kind: 'row', row })),
       groupCount: 0,
-      totals: flatTotals(sortedRows, columns, sumColumnIds),
+      totals: flatTotals(displayRows, columns, sumColumnIds),
       groupKeys: [],
     };
-  }, [isGrouped, sortedRows, columns, groupByColumnId, sumColumnIds, expandedGroups]);
+  }, [isGrouped, displayRows, columns, groupByColumnId, sumColumnIds, expandedGroups, sortCol, sortDir]);
 
   const columnWidths = useMemo(
     () => columns.map((c, i) => widthOverrides[c.id] ?? autoColumnWidth(c.label ?? c.propertyName, result.rows, i)),
@@ -204,9 +231,12 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange 
       columns,
       rows: sortedRows,
       grouping,
+      sort: sortCol === null ? null : { colIdx: sortCol, dir: sortDir },
       numericCols,
       columnWidths,
       generatedAt: new Date().toLocaleString(),
+      modelUnits,
+      unitDisplayOverrides,
     });
     void exportList(format, model);
     // Counts only — never the list title or column/property names (confidential).
@@ -216,7 +246,7 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange 
       row_count: sortedRows.length,
       column_count: columns.length,
     });
-  }, [listName, columns, sortedRows, grouping, numericCols, columnWidths]);
+  }, [listName, columns, sortedRows, grouping, sortCol, sortDir, numericCols, columnWidths, modelUnits, unitDisplayOverrides]);
 
   // Flat, ordered list of the selectable rows (group headers excluded) and a
   // lookup from a row to its position, so Shift+click range-select works over
@@ -324,6 +354,7 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange 
               const colored = activeLensId === AUTO_COLOR_FROM_LIST_ID && colorByColIdx === colIdx;
               const groupedBy = groupByColumnId === col.id;
               const summed = sumColumnIds.includes(col.id);
+              const unit = unitResolver.unitSymbol(colIdx);
               return (
                 <div
                   key={col.id}
@@ -336,7 +367,7 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange 
                 >
                   <button className="flex min-w-0 flex-1 items-center gap-1 hover:text-foreground" onClick={() => handleHeaderClick(colIdx)}>
                     {groupedBy && <ChevronDown className="h-3 w-3 shrink-0 text-primary" aria-label="grouped" />}
-                    <span className="truncate">{col.label ?? col.propertyName}</span>
+                    <span className="truncate">{col.label ?? col.propertyName}{unit ? ` (${unit})` : ''}</span>
                     {summed && <span className="text-primary">Σ</span>}
                     {sortCol === colIdx && (sortDir === 'asc' ? <ArrowUp className="h-3 w-3 shrink-0" /> : <ArrowDown className="h-3 w-3 shrink-0" />)}
                   </button>

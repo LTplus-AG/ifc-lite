@@ -28,7 +28,7 @@ function entry(
 
 function diffOf(entries: DiffEntry<CompareRef>[]): ModelDiff<CompareRef> {
   // buildCompareOverlay only reads `entries`; the rest satisfies the type.
-  return { scope: 'both', entries, byKey: new Map(), counts: { added: 0, modified: 0, deleted: 0, unchanged: 0 } };
+  return { scope: 'both', excludedTypes: [], entries, byKey: new Map(), counts: { added: 0, modified: 0, deleted: 0, unchanged: 0 } };
 }
 
 describe('buildCompareOverlay', () => {
@@ -95,5 +95,27 @@ describe('buildCompareOverlay', () => {
     const { colorOverrides, hiddenIds } = buildCompareOverlay(diffOf([entry('added', {})]), false);
     assert.strictEqual(colorOverrides.size, 0);
     assert.strictEqual(hiddenIds.size, 0);
+  });
+
+  it('hides blacklisted (excluded) ids without colouring them (#1470)', () => {
+    const { colorOverrides, hiddenIds } = buildCompareOverlay(
+      diffOf([entry('added', { head: 1001 })]),
+      false,
+      new Set([7, 1007]),
+    );
+    // The real change is still coloured...
+    assert.deepStrictEqual(colorOverrides.get(1001), COMPARE_COLORS.added);
+    // ...and the excluded copies are hidden, not coloured.
+    assert.ok(!colorOverrides.has(7) && !colorOverrides.has(1007), 'excluded ids not coloured');
+    assert.deepStrictEqual([...hiddenIds].sort((a, b) => a - b), [7, 1007]);
+  });
+
+  it('keeps excluded ids hidden even when showing unchanged', () => {
+    const { hiddenIds } = buildCompareOverlay(
+      diffOf([entry('unchanged', { base: 5, head: 1005 })]),
+      true,
+      new Set([9]),
+    );
+    assert.ok(hiddenIds.has(9), 'excluded id stays hidden regardless of showUnchanged');
   });
 });

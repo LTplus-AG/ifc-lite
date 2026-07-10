@@ -70,19 +70,6 @@ export default defineConfig({
       },
     },
     {
-      name: 'browser-benchmark',
-      testMatch: /benchmark\.spec\.ts/,
-      webServer: {
-        command: 'npx serve . -p 3333',
-        port: 3333,
-        reuseExistingServer: true,
-        timeout: 30000,
-      },
-      use: {
-        baseURL: 'http://localhost:3333',
-      },
-    },
-    {
       name: 'viewer-benchmark',
       testMatch: /viewer-benchmark\.spec\.ts/,
       timeout: 600000, // 10 min for very large files (327MB)
@@ -143,36 +130,6 @@ export default defineConfig({
             '--enable-webgpu',
             '--enable-unsafe-webgpu',
             '--use-angle=swiftshader', // Software rendering for CI
-            '--ignore-gpu-blocklist',
-          ],
-        },
-      },
-    },
-    {
-      name: 'holter-debug',
-      testMatch: /holter-tower-debug\.spec\.ts/,
-      timeout: 600000, // 10 min for large file
-      webServer: {
-        command: 'pnpm --filter @ifc-lite/viewer dev --port 3000',
-        port: 3000,
-        reuseExistingServer: true,
-        timeout: 60000,
-        env: {
-          BROWSER: 'none',
-        },
-      },
-      use: {
-        ...devices['Desktop Chrome'],
-        baseURL: 'http://localhost:3000',
-        actionTimeout: 300000,
-        headless: false,
-        channel: 'chrome',
-        launchOptions: {
-          args: [
-            '--enable-gpu',
-            '--enable-webgpu',
-            '--enable-unsafe-webgpu',
-            '--use-angle=default',
             '--ignore-gpu-blocklist',
           ],
         },

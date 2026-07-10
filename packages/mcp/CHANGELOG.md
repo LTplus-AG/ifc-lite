@@ -1,5 +1,112 @@
 # @ifc-lite/mcp
 
+## 0.7.0
+
+### Minor Changes
+
+- [#1580](https://github.com/LTplus-AG/ifc-lite/pull/1580) [`3a2cd42`](https://github.com/LTplus-AG/ifc-lite/commit/3a2cd42158313d8e22f21885e62b6c705814ab47) Thanks [@louistrue](https://github.com/louistrue)! - Plumb the IFC measure type through the property pipeline so consumers can show units (issue [#1573](https://github.com/LTplus-AG/ifc-lite/issues/1573)):
+
+  - `@ifc-lite/data`: `Property` gains an optional `dataType?: string` carrying the raw IFC measure value type (e.g. `"IFCVOLUMETRICFLOWRATEMEASURE"`) of a typed nominal value. Additive and optional; existing consumers are unaffected.
+  - `@ifc-lite/mutations`: the `PropertyExtractor` function type now carries the same optional `dataType?` per property, and `MutablePropertyView.getForEntity` preserves it through the base and mutation-merge paths, so a property's measure type survives the merge for unit display.
+  - `@ifc-lite/mcp`: `geometry_volume` / `geometry_area` now resolve the volume/area symbol from the file's declared `IfcUnitAssignment` (via `@ifc-lite/parser`'s `extractProjectUnits`) instead of hardcoding `m³` / `m²`, and report the resolved symbol in a new `unit` response field. Falls back to the SI default when the store has no source buffer or declares no such unit.
+
+### Patch Changes
+
+- Updated dependencies [[`3a2cd42`](https://github.com/LTplus-AG/ifc-lite/commit/3a2cd42158313d8e22f21885e62b6c705814ab47), [`3a2cd42`](https://github.com/LTplus-AG/ifc-lite/commit/3a2cd42158313d8e22f21885e62b6c705814ab47)]:
+  - @ifc-lite/parser@3.7.0
+  - @ifc-lite/data@2.4.0
+  - @ifc-lite/mutations@1.18.0
+  - @ifc-lite/ids@1.15.24
+
+## 0.6.0
+
+### Minor Changes
+
+- [#1497](https://github.com/LTplus-AG/ifc-lite/pull/1497) [`d7a3205`](https://github.com/LTplus-AG/ifc-lite/commit/d7a3205524e023f936b29ee1bc113d1d10e3b0b1) Thanks [@Blogbotana](https://github.com/Blogbotana)! - feat(parser): support opening `.ifcZIP` containers (issue [#1494](https://github.com/LTplus-AG/ifc-lite/issues/1494))
+
+  The buildingSMART IFC container format — a zip archive wrapping a single
+  `.ifc`/`.ifcxml` file — is now unwrapped transparently. New `@ifc-lite/parser`
+  exports:
+
+  - `isZipBuffer(buffer)` — cheap magic-byte check.
+  - `unwrapIfcZip(buffer)` — returns the model file's bytes if `buffer` is a
+    zip container, or `buffer` unchanged otherwise (safe to call
+    unconditionally on every load). Throws if the archive has zero or more
+    than one `.ifc`/`.ifcxml` entry rather than guessing which to load, or if
+    the entry's declared uncompressed size exceeds 4 GiB (a zip-bomb guard,
+    checked from the zip central directory — no decompression needed to check).
+  - `unwrapIfcZipView(view)` — same contract for a Node `Buffer`/`Uint8Array`.
+
+  `parseAuto` calls it automatically. The CLI and MCP loaders (`loadIfcFile`,
+  `loadIfcModel`) unwrap before their STEP-signature check, so `ifc-lite info
+model.ifcZIP` and MCP's `model_load` just work. The viewer's file picker and
+  drag-and-drop now accept `.ifczip` alongside `.ifc`/`.ifcx`/`.glb`.
+
+  The hosted Rust parsing server (`apps/server`) unwraps `.ifcZIP` too, in its
+  multipart `extract_file` path (alongside the existing gzip handling), so an
+  uploaded container is decompressed server-side before parsing and the viewer's
+  multi-core server fast-path works for zipped uploads. It applies the same
+  single-`.ifc`/`.ifcxml`-entry rule and bounds the decompressed size against the
+  server's max-file-size ceiling (zip-bomb guard).
+
+  Referenced resources inside the container (textures, documents) are not
+  extracted in this pass — only the model file's bytes.
+
+### Patch Changes
+
+- Updated dependencies [[`218e613`](https://github.com/LTplus-AG/ifc-lite/commit/218e613b06cc5ca2a74c84f72e039b430be6caee), [`0762522`](https://github.com/LTplus-AG/ifc-lite/commit/076252241ec4201462f7fcf0555c83606de5fecd), [`d7a3205`](https://github.com/LTplus-AG/ifc-lite/commit/d7a3205524e023f936b29ee1bc113d1d10e3b0b1), [`52dd7a1`](https://github.com/LTplus-AG/ifc-lite/commit/52dd7a16788375a9507c40fbde106b78236801db), [`47bde10`](https://github.com/LTplus-AG/ifc-lite/commit/47bde10dcacddf8f99e1e6b2bf036c78c192c5ff), [`b157b48`](https://github.com/LTplus-AG/ifc-lite/commit/b157b4841bfa795f8a937a9be20c21b645757fbe)]:
+  - @ifc-lite/clash@1.5.0
+  - @ifc-lite/geometry@3.1.0
+  - @ifc-lite/parser@3.6.0
+  - @ifc-lite/export@2.5.0
+  - @ifc-lite/ids@1.15.23
+
+## 0.5.0
+
+### Minor Changes
+
+- [#1491](https://github.com/LTplus-AG/ifc-lite/pull/1491) [`6d2cb21`](https://github.com/LTplus-AG/ifc-lite/commit/6d2cb21a170413c6c98aadf10d254667b2ed2b53) Thanks [@louistrue](https://github.com/louistrue)! - feat(export): large-model GLB reliability - bounded memory, fail-closed, byte returns
+
+  Three related hardening changes on the export surface:
+
+  - **Bounded-memory GLB.** Inputs at or above 64 MB (native override
+    `IFC_LITE_GLB_STREAM_THRESHOLD_MB`, `0` disables) are exported through a
+    two-pass streaming assembler: pass 1 records per-mesh metadata only, pass 2
+    re-streams and bakes vertex bytes directly into an exactly-preallocated GLB.
+    Peak memory is the final artifact plus one mesh batch instead of the whole
+    model's meshes plus multiple full-buffer copies - this fixes the wasm
+    `RuntimeError: unreachable` / OOM on large in-browser exports. Models without
+    instanceable groups produce byte-identical output; instanced models keep
+    identical world geometry (rep-identity instancing is skipped above the
+    threshold, content-hash dedup is kept).
+
+  - **Fail-closed empty GLB at the boundary.** `exportGlb` now throws a typed
+    `Error` whose message starts with `NO_RENDER_GEOMETRY` when the visible mesh
+    set is empty, instead of returning a structurally valid but empty GLB.
+    `@ifc-lite/geometry` exports `NO_RENDER_GEOMETRY` and
+    `isNoRenderGeometryError(err)` to match it; the CLI and MCP map it to their
+    existing tailored messages.
+
+  - **BREAKING: sibling exporters return bytes.** `exportObj`, `exportCsv`,
+    `exportJson`, `exportJsonld`, `exportIfcx`, `exportStep`, `exportMerged` and
+    `exportHbjson` (wasm boundary, `IfcLiteBridge`, and `GeometryProcessor`) now
+    return `Uint8Array` (UTF-8) instead of `string`, so output is no longer capped
+    by the V8 max-string ceiling (~512 MB) - the same escape GLB already had.
+    Decode with `TextDecoder` where a string is genuinely needed; file writers
+    should write the bytes directly.
+
+### Patch Changes
+
+- Updated dependencies [[`8e43ecf`](https://github.com/LTplus-AG/ifc-lite/commit/8e43ecf540b88b942a4ec2127dd9bcf24ec244fa), [`d1e16f9`](https://github.com/LTplus-AG/ifc-lite/commit/d1e16f944ea9f3a35a7153959f13db168a35c229), [`6d2cb21`](https://github.com/LTplus-AG/ifc-lite/commit/6d2cb21a170413c6c98aadf10d254667b2ed2b53), [`204cab4`](https://github.com/LTplus-AG/ifc-lite/commit/204cab48f8e3b6326a8005628ed5b7174d9d694c), [`a48abac`](https://github.com/LTplus-AG/ifc-lite/commit/a48abacfacdf226702f2454859afe9abe018e029), [`3d25765`](https://github.com/LTplus-AG/ifc-lite/commit/3d25765edc2cee40268a6d5a27d4055f88f76489), [`b66ff1d`](https://github.com/LTplus-AG/ifc-lite/commit/b66ff1dd915a0ff4f60198a511adb7ed7f714079)]:
+  - @ifc-lite/geometry@3.0.0
+  - @ifc-lite/data@2.3.0
+  - @ifc-lite/query@1.14.11
+  - @ifc-lite/export@2.4.0
+  - @ifc-lite/clash@1.4.1
+  - @ifc-lite/parser@3.5.2
+  - @ifc-lite/viewer-core@0.2.7
+  - @ifc-lite/ids@1.15.22
+
 ## 0.4.1
 
 ### Patch Changes

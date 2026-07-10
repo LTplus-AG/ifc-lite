@@ -11,6 +11,8 @@ import { Renderer, type VisualEnhancementOptions, type LightingEnvironment } fro
 import type { MeshData, CoordinateInfo, PointCloudAsset } from '@ifc-lite/geometry';
 import { useViewerStore, resolveEntityRef, type MeasurePoint, type SnapVisualization } from '@/store';
 import { LIGHTING_PRESETS } from '@/lib/lighting-presets';
+import { presetViewRotation } from '@/lib/preset-view-orientation';
+import { isGeometryLoadStreaming } from '@/lib/pick-gating';
 import { sunLightingForAltitude } from '@/lib/geo/solar-direction';
 import {
   useSelectionState,
@@ -652,11 +654,12 @@ export function Viewport({
   // Helper: get pick options with visibility filtering
   const getPickOptions = () => {
     const currentState = useViewerStore.getState();
-    const currentProgress = currentState.progress;
-    const currentIsStreaming = currentState.geometryStreamingActive
-      || (currentProgress !== null && currentProgress.percent < 100);
     return {
-      isStreaming: currentIsStreaming,
+      // `isStreaming` gates picking off during an active load. It must stay
+      // false once a load has finished — a federated georef model leaves
+      // `progress` stuck at 90%, which would otherwise disable picking forever
+      // for every loaded model (#1570). See isGeometryLoadStreaming.
+      isStreaming: isGeometryLoadStreaming(currentState),
       hiddenIds: hiddenEntitiesRef.current,
       isolatedIds: isolatedEntitiesRef.current,
     };
@@ -719,8 +722,17 @@ export function Viewport({
       // Register camera callbacks for ViewCube and other controls
       setCameraCallbacks({
         setPresetView: (view) => {
-          // Pass actual geometry bounds to avoid distance drift
-          const rotation = coordinateInfoRef.current?.buildingRotation;
+          // Pass actual geometry bounds to avoid distance drift. When the Cesium
+          // world-context basemap is actually rendering, TOP/BOTTOM read as a map
+          // (north up) instead of the building's IfcSite axes; elsewhere they stay
+          // building-aligned (#1532). cesiumAvailable gates out a stale
+          // cesiumEnabled after georef disappears (no basemap = no north-up).
+          const { cesiumEnabled, cesiumAvailable } = useViewerStore.getState();
+          const rotation = presetViewRotation(
+            view,
+            coordinateInfoRef.current?.buildingRotation,
+            cesiumEnabled && cesiumAvailable,
+          );
           camera.setPresetView(view, geometryBoundsRef.current, rotation);
           // Initial render - animation loop will continue rendering during animation
           renderCurrent();
@@ -804,6 +816,22 @@ export function Viewport({
           } else {
             console.warn('[Viewport] frameSelection: Could not get bounds for selected element');
           }
+        },
+        frameClashRegion: (min, max) => {
+          // Frame the clash's (already context-padded) contact box from the
+          // canonical isometric pose so the penetration is read at a 3/4 angle,
+          // never top-down or edge-on (#1466). `fitBoundsAdaptive` is the same
+          // fit the Home view / post-load auto-fit use, so a clash-sized box
+          // gets the compact SE-isometric pose and handles orthographic zoom.
+          // Pass the real viewport short side (as the Home handler does) so the
+          // fit is viewport-accurate for any policy.
+          const canvas = rendererRef.current?.getCanvas();
+          const canvasShort = Math.min(canvas?.height ?? 0, canvas?.width ?? 0);
+          camera.fitBoundsAdaptive(
+            { min, max },
+            { animate: true, duration: 300, viewportShortPx: canvasShort > 0 ? canvasShort : undefined },
+          );
+          calculateScale();
         },
         orbit: (deltaX: number, deltaY: number) => {
           // Orbit camera from ViewCube drag

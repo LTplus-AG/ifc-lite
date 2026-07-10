@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { X, Info, Keyboard, ExternalLink, Sparkles, ChevronDown, ChevronRight, Zap, Wrench, Plus, Package, ShieldCheck } from 'lucide-react';
+import { X, Info, Keyboard, ExternalLink, Sparkles, ChevronDown, ChevronRight, Zap, Wrench, Plus, Package, ShieldCheck, GraduationCap } from 'lucide-react';
 
 function GithubIcon({ className }: { className?: string }) {
   return (
@@ -20,13 +20,18 @@ function GithubIcon({ className }: { className?: string }) {
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { KEYBOARD_SHORTCUTS } from '@/hooks/useKeyboardShortcuts';
+import { LearnTab } from '@/components/tours/LearnTab';
 import { navigateToPath } from '@/services/app-navigation';
 
 const GITHUB_URL = 'https://github.com/LTplus-AG/ifc-lite';
 
+export type InfoDialogTab = 'about' | 'whatsnew' | 'shortcuts' | 'learn';
+
 interface InfoDialogProps {
   open: boolean;
   onClose: () => void;
+  /** Tab shown when the dialog opens (deep link, e.g. the Learn hub). */
+  initialTab?: InfoDialogTab;
 }
 
 function formatBuildDate(iso: string): string {
@@ -427,7 +432,7 @@ function ShortcutsTab() {
   );
 }
 
-export function KeyboardShortcutsDialog({ open, onClose }: InfoDialogProps) {
+export function KeyboardShortcutsDialog({ open, onClose, initialTab }: InfoDialogProps) {
   // Close on escape
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -467,7 +472,9 @@ export function KeyboardShortcutsDialog({ open, onClose }: InfoDialogProps) {
         </div>
 
         {/* Tabbed Content */}
-        <Tabs defaultValue="about" className="w-full">
+        {/* The dialog unmounts when closed, so defaultValue re-applies on
+            every open - enough for deep-linking without controlled tabs. */}
+        <Tabs defaultValue={initialTab ?? 'about'} className="w-full">
           <div className="px-4 pt-4">
             <TabsList className="w-full">
               <TabsTrigger value="about" className="flex-1 gap-1.5 data-[state=active]:bg-background data-[state=active]:text-foreground">
@@ -482,6 +489,10 @@ export function KeyboardShortcutsDialog({ open, onClose }: InfoDialogProps) {
                 <Keyboard className="h-3.5 w-3.5" />
                 Shortcuts
               </TabsTrigger>
+              <TabsTrigger value="learn" className="flex-1 gap-1.5 data-[state=active]:bg-background data-[state=active]:text-foreground">
+                <GraduationCap className="h-3.5 w-3.5" />
+                Learn
+              </TabsTrigger>
             </TabsList>
           </div>
 
@@ -495,6 +506,10 @@ export function KeyboardShortcutsDialog({ open, onClose }: InfoDialogProps) {
 
           <TabsContent value="shortcuts" className="p-4 max-h-80 overflow-y-auto">
             <ShortcutsTab />
+          </TabsContent>
+
+          <TabsContent value="learn" className="p-4 max-h-80 overflow-y-auto">
+            <LearnTab onClose={onClose} />
           </TabsContent>
         </Tabs>
 
@@ -516,9 +531,18 @@ export function KeyboardShortcutsDialog({ open, onClose }: InfoDialogProps) {
 // Hook to manage info dialog state (renamed export for backward compatibility)
 export function useKeyboardShortcutsDialog() {
   const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState<InfoDialogTab | undefined>(undefined);
 
-  const toggle = useCallback(() => setOpen((o) => !o), []);
+  const toggle = useCallback(() => {
+    setTab(undefined);
+    setOpen((o) => !o);
+  }, []);
   const close = useCallback(() => setOpen(false), []);
+  /** Deep-link open on a specific tab (e.g. the Learn hub). Always opens. */
+  const openTab = useCallback((next: InfoDialogTab) => {
+    setTab(next);
+    setOpen(true);
+  }, []);
 
   // Listen for '?' key to toggle
   useEffect(() => {
@@ -541,5 +565,5 @@ export function useKeyboardShortcutsDialog() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [toggle]);
 
-  return { open, toggle, close };
+  return { open, tab, toggle, close, openTab };
 }

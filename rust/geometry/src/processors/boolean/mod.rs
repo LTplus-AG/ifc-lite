@@ -71,9 +71,8 @@ impl BooleanClippingProcessor {
     /// Construct with the per-build small-cut skip set (see
     /// [`Self::skip_small_cuts`]). The router injects the build's value here;
     /// nested boolean operands reuse the same `self`, and the only cross-
-    /// processor boolean construction sites (`CsgSolidProcessor`,
-    /// `MappedItemProcessor`) forward their own field so a whole CSG tree shares
-    /// one scoped value.
+    /// processor boolean construction site (`CsgSolidProcessor`) forwards its
+    /// own field so a whole CSG tree shares one scoped value.
     pub fn with_skip_small_cuts(skip_small_cuts: bool) -> Self {
         Self {
             schema: IfcSchema::new(),

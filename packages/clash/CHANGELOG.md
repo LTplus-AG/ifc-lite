@@ -1,5 +1,42 @@
 # @ifc-lite/clash
 
+## 1.6.0
+
+### Minor Changes
+
+- [#1619](https://github.com/LTplus-AG/ifc-lite/pull/1619) [`6be7ad4`](https://github.com/LTplus-AG/ifc-lite/commit/6be7ad477e1f20d6ba1a90e5b5db4645fc48a960) Thanks [@louistrue](https://github.com/louistrue)! - Clash-to-BCF export (`createBCFFromClashResult`) now records a markup `<Header>` source file per distinct model each clash group spans, derived from the group members' `model` names. A cross-model clash topic therefore round-trips the provenance of both models it references (issue [#1591](https://github.com/LTplus-AG/ifc-lite/issues/1591)). Topics with no resolvable model name are unaffected.
+
+### Patch Changes
+
+- Updated dependencies [[`6be7ad4`](https://github.com/LTplus-AG/ifc-lite/commit/6be7ad477e1f20d6ba1a90e5b5db4645fc48a960), [`8c01c19`](https://github.com/LTplus-AG/ifc-lite/commit/8c01c19a09d9fa550329ad482b7a3ddf2b5c9d96), [`6b9418d`](https://github.com/LTplus-AG/ifc-lite/commit/6b9418d2bbd6765d33c60ecf04eb47362c8b856a)]:
+  - @ifc-lite/bcf@1.16.0
+  - @ifc-lite/wasm@3.0.9
+
+## 1.5.0
+
+### Minor Changes
+
+- [#1577](https://github.com/LTplus-AG/ifc-lite/pull/1577) [`218e613`](https://github.com/LTplus-AG/ifc-lite/commit/218e613b06cc5ca2a74c84f72e039b430be6caee) Thanks [@louistrue](https://github.com/louistrue)! - Add a coordination REVIEW state for clashes, distinct from the detection classification ([#1468](https://github.com/LTplus-AG/ifc-lite/issues/1468)). A clash can now carry an `open` / `resolved` / `accepted` review status plus an optional comment, keyed by a new durable `clashReviewKey` that (unlike `Clash.id`) is independent of the ephemeral runtime `model` id, so a review re-attaches to the same clash across a reload, a re-run, or a model revision. `createBCFFromClashResult` gains an optional `reviewStatusOf` resolver: when given, each BCF topic's `TopicStatus` follows the least-resolved status among its members (`aggregateReviewStatus`), mapped to a BCF status via `reviewStatusToBcfTopicStatus` (max-interop: `open` -> `Open`, `resolved`/`accepted` -> `Closed`), and the finer review breakdown is recorded in the topic description so the resolved-vs-accepted split is not lost. Without the resolver, the previous flat `status` behaviour is unchanged. New exports: `clashReviewKey`, `aggregateReviewStatus`, `reviewStatusToBcfTopicStatus`, and the `ClashReviewStatus` / `ClashReview` types plus `CLASH_REVIEW_STATUSES` / `DEFAULT_CLASH_REVIEW_STATUS` constants.
+
+### Patch Changes
+
+- Updated dependencies [[`0762522`](https://github.com/LTplus-AG/ifc-lite/commit/076252241ec4201462f7fcf0555c83606de5fecd), [`d7a3205`](https://github.com/LTplus-AG/ifc-lite/commit/d7a3205524e023f936b29ee1bc113d1d10e3b0b1), [`52dd7a1`](https://github.com/LTplus-AG/ifc-lite/commit/52dd7a16788375a9507c40fbde106b78236801db), [`b157b48`](https://github.com/LTplus-AG/ifc-lite/commit/b157b4841bfa795f8a937a9be20c21b645757fbe)]:
+  - @ifc-lite/geometry@3.1.0
+  - @ifc-lite/parser@3.6.0
+  - @ifc-lite/wasm@3.0.4
+
+## 1.4.1
+
+### Patch Changes
+
+- Updated dependencies [[`8e43ecf`](https://github.com/LTplus-AG/ifc-lite/commit/8e43ecf540b88b942a4ec2127dd9bcf24ec244fa), [`796f50a`](https://github.com/LTplus-AG/ifc-lite/commit/796f50a3b0072dd2c07b60ef84e3f1d2996444e2), [`d1e16f9`](https://github.com/LTplus-AG/ifc-lite/commit/d1e16f944ea9f3a35a7153959f13db168a35c229), [`6d2cb21`](https://github.com/LTplus-AG/ifc-lite/commit/6d2cb21a170413c6c98aadf10d254667b2ed2b53), [`66f31ac`](https://github.com/LTplus-AG/ifc-lite/commit/66f31acb761209f7cf78e83ef01c02a1ec3dc13a), [`3d25765`](https://github.com/LTplus-AG/ifc-lite/commit/3d25765edc2cee40268a6d5a27d4055f88f76489), [`6a515ba`](https://github.com/LTplus-AG/ifc-lite/commit/6a515ba31bbe31bb6f018f7476cc9616e4691448), [`b66ff1d`](https://github.com/LTplus-AG/ifc-lite/commit/b66ff1dd915a0ff4f60198a511adb7ed7f714079)]:
+  - @ifc-lite/wasm@3.0.0
+  - @ifc-lite/geometry@3.0.0
+  - @ifc-lite/ifcx@2.1.6
+  - @ifc-lite/query@1.14.11
+  - @ifc-lite/parser@3.5.2
+  - @ifc-lite/spatial@1.14.10
+
 ## 1.4.0
 
 ### Minor Changes

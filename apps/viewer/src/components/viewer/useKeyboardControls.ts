@@ -10,8 +10,9 @@
 import { useEffect, type MutableRefObject } from 'react';
 import type { Renderer } from '@ifc-lite/renderer';
 import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
-import type { SectionPlane } from '@/store';
+import { useViewerStore, type SectionPlane } from '@/store';
 import { goHomeFromStore } from '@/store/homeView';
+import { presetViewRotation } from '@/lib/preset-view-orientation';
 import { getEntityBounds } from '../../utils/viewportUtils.js';
 
 export interface UseKeyboardControlsParams {
@@ -99,7 +100,16 @@ export function useKeyboardControls(params: UseKeyboardControlsParams): void {
 
       // Preset views - set view and re-render
       const setViewAndRender = (view: 'top' | 'bottom' | 'front' | 'back' | 'left' | 'right') => {
-        const rotation = coordinateInfoRef.current?.buildingRotation;
+        // Match the viewcube: when the Cesium world-context basemap is rendering,
+        // TOP/BOTTOM read north-up rather than following the building's IfcSite
+        // axes (#1532). cesiumAvailable guards a stale cesiumEnabled after georef
+        // disappears.
+        const { cesiumEnabled, cesiumAvailable } = useViewerStore.getState();
+        const rotation = presetViewRotation(
+          view,
+          coordinateInfoRef.current?.buildingRotation,
+          cesiumEnabled && cesiumAvailable,
+        );
         camera.setPresetView(view, geometryBoundsRef.current, rotation);
         renderScene();
         updateCameraRotationRealtime(camera.getRotation());

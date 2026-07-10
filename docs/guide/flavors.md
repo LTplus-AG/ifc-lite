@@ -71,7 +71,7 @@ Click the download icon on a flavor row. The flavor serialises to a `.iflv` file
 What goes into the export:
 
 - The flavor's full state (extensions list, lenses, queries, keybindings, layout, settings, overlay)
-- **No extension bundle bytes by default** — the `.iflv` references extensions by id + version. To produce a portable export that includes the bundles, use the future `--include-bundles` flag (Phase 5).
+- **No extension bundle bytes by default** — the `.iflv` references extensions by id + version. The packer API (`packFlavor`) can embed bundle bytes for a portable "thick" export, but the viewer's export button currently produces thin exports only.
 - **No personal data** — the action log and audit log do not travel with a flavor.
 
 ### Import
@@ -107,12 +107,12 @@ For each conflict you pick a winner: theirs, ours, or base. Conflict kinds:
 
 | Kind | What conflicts | Default winner |
 |------|----------------|----------------|
-| `extension_version` | Same extension id, different version | Ours |
-| `extension_capabilities` | Same extension, different granted caps | Ours |
+| `extension_version` | Same extension id, different version | Higher version (granted capabilities intersected) |
+| `extension_capabilities` | Same extension, different granted caps | Intersection of both grants |
 | `lens` | Same lens id, different definition | Ours |
 | `saved_query` | Same query id, different filter | Ours |
-| `keybinding` | Same key, different command | Ours |
-| `setting` | Same key, different value | Ours |
+| `keybinding` | Same command + key pair, different definition | Ours |
+| `setting` | Same key, both sides diverged from base | Ours (a side that matches base loses automatically without a conflict) |
 
 For each conflict, the dialog renders a 3-cell (or 2-cell when no base is available) chooser. Pick **Theirs** / **Ours** / **Base** per row, then click **Save merged flavor**.
 
@@ -132,14 +132,14 @@ The merged result is saved under a fresh id (`<their-id>.merge-<ts>`) so neither
   "summary": "Optional free-text note explaining the flavor",
   "flavor": { ... full Flavor object ... },
   "extensionBundles": {
-    "com.example.my-ext": "<base64 of bundle bytes>"
+    "com.example.my-ext@1.0.0": "<base64 of .iflx bundle bytes>"
   }
 }
 ```
 
 - **Magic + version** are checked before any other parsing — a corrupt or mismatched envelope rejects with a structured error, never crashes the viewer.
-- **Extension bundles** are optional. A "thin" export lists ids only; a "thick" export embeds the bundle bytes (Phase 5).
-- **Max uncompressed size** is enforced during unpack to defend against decompression bombs.
+- **Extension bundles** are optional and keyed by `<id>@<version>`. A "thin" export lists ids only; a "thick" export embeds the bundle bytes.
+- **Max uncompressed size** (64 MiB) is enforced during unpack to defend against decompression bombs.
 
 The full schema lives in `packages/extensions/src/flavor/types.ts`; `validateFlavor` runs on every import.
 

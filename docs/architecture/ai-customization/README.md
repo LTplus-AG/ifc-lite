@@ -1,6 +1,6 @@
 # AI Customization & User Flavors — RFC
 
-Status: **Draft** — design phase, no implementation merged.
+Status: **Draft** — design phase; the foundational `@ifc-lite/extensions` package and CLI `ext` commands have begun landing (see [`09-implementation-plan.md`](./09-implementation-plan.md)).
 Owner: TBD.
 Last updated: 2026-05-16.
 

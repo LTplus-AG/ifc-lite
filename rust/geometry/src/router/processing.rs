@@ -23,9 +23,7 @@ const IDENTITY_ROW_MAJOR: [f64; 16] = [
     0.0, 0.0, 1.0, 0.0, //
     0.0, 0.0, 0.0, 1.0, //
 ];
-use ifc_lite_core::{
-    DecodedEntity, EntityDecoder, GeometryCategory, IfcType,
-};
+use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use rustc_hash::FxHashSet;
 use std::sync::Arc;
 
@@ -99,31 +97,10 @@ impl GeometryRouter {
         // First pass: check if we have any direct geometry representations
         // This prevents duplication when both direct and MappedRepresentation exist
         let has_direct_geometry = representations.iter().any(|rep| {
-            if rep.ifc_type != IfcType::IfcShapeRepresentation {
-                return false;
-            }
-            if let Some(rep_type_attr) = rep.get(2) {
-                if let Some(rep_type) = rep_type_attr.as_string() {
-                    matches!(
-                        rep_type,
-                        "Body"
-                            | "SweptSolid"
-                            | "SolidModel"
-                            | "Brep"
-                            | "CSG"
-                            | "Clipping"
-                            | "SurfaceModel"
-                            | "Surface3D"
-                            | "Tessellation"
-                            | "AdvancedSweptSolid"
-                            | "AdvancedBrep"
-                    )
-                } else {
-                    false
-                }
-            } else {
-                false
-            }
+            rep.ifc_type == IfcType::IfcShapeRepresentation
+                && super::effective_rep_type(rep)
+                    .map(super::is_direct_body_representation)
+                    .unwrap_or(false)
         });
 
         for shape_rep in representations {
@@ -131,34 +108,19 @@ impl GeometryRouter {
                 continue;
             }
 
-            // Check RepresentationType (attribute 2) - only process geometric representations
+            // Check the effective representation type (RepresentationType, falling
+            // back to RepresentationIdentifier when the type is blank - #1661).
             // Skip 'Axis', 'Curve2D', 'FootPrint', etc. - only process 'Body', 'SweptSolid', 'Brep', etc.
-            if let Some(rep_type_attr) = shape_rep.get(2) {
-                if let Some(rep_type) = rep_type_attr.as_string() {
-                    // Skip MappedRepresentation if we already have direct geometry
-                    // This prevents duplication when an element has both direct and mapped representations
-                    if rep_type == "MappedRepresentation" && has_direct_geometry {
-                        continue;
-                    }
+            if let Some(rep_type) = super::effective_rep_type(&shape_rep) {
+                // Skip MappedRepresentation if we already have direct geometry
+                // This prevents duplication when an element has both direct and mapped representations
+                if rep_type == "MappedRepresentation" && has_direct_geometry {
+                    continue;
+                }
 
-                    // Only process solid geometry representations
-                    if !matches!(
-                        rep_type,
-                        "Body"
-                            | "SweptSolid"
-                            | "SolidModel"
-                            | "Brep"
-                            | "CSG"
-                            | "Clipping"
-                            | "SurfaceModel"
-                            | "Surface3D"
-                            | "Tessellation"
-                            | "MappedRepresentation"
-                            | "AdvancedSweptSolid"
-                            | "AdvancedBrep"
-                    ) {
-                        continue; // Skip non-solid representations like 'Axis', 'Curve2D', etc.
-                    }
+                // Only process solid/surface geometry representations
+                if !super::is_body_representation(rep_type) {
+                    continue; // Skip non-solid representations like 'Axis', 'Curve2D', etc.
                 }
             }
 
@@ -214,6 +176,25 @@ impl GeometryRouter {
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<SubMeshCollection> {
+        // Public entry: the ordinary (non-void) element path, so the #1623 Phase 2
+        // don't-bake instancing is allowed here. The void path
+        // (`process_element_with_submeshes_and_voids`) calls the impl below with
+        // `allow_instancing = false` — a voided occurrence must materialize its cut
+        // geometry, never instance an un-cut shared template.
+        self.process_element_with_submeshes_impl(element, decoder, true)
+    }
+
+    /// [`Self::process_element_with_submeshes`] with an explicit don't-bake gate.
+    /// `allow_instancing` is `true` only on the ordinary (non-void) path; the void
+    /// path passes `false` so its occurrences always materialize. The don't-bake
+    /// additionally requires an armed [`GeometryRouter::enable_output_instancing`]
+    /// plan, so with no plan this is byte-identical to the historical flat path.
+    pub(super) fn process_element_with_submeshes_impl(
+        &self,
+        element: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        allow_instancing: bool,
+    ) -> Result<SubMeshCollection> {
         // If a material-layer buildup is attached, try slicing single-solid
         // elements (walls / slabs with IfcMaterialLayerSetUsage) first so each
         // layer gets its own sub-mesh keyed by IfcMaterial id. An empty void
@@ -257,31 +238,10 @@ impl GeometryRouter {
 
         // Check if we have direct geometry
         let has_direct_geometry = representations.iter().any(|rep| {
-            if rep.ifc_type != IfcType::IfcShapeRepresentation {
-                return false;
-            }
-            if let Some(rep_type_attr) = rep.get(2) {
-                if let Some(rep_type) = rep_type_attr.as_string() {
-                    matches!(
-                        rep_type,
-                        "Body"
-                            | "SweptSolid"
-                            | "SolidModel"
-                            | "Brep"
-                            | "CSG"
-                            | "Clipping"
-                            | "SurfaceModel"
-                            | "Surface3D"
-                            | "Tessellation"
-                            | "AdvancedSweptSolid"
-                            | "AdvancedBrep"
-                    )
-                } else {
-                    false
-                }
-            } else {
-                false
-            }
+            rep.ifc_type == IfcType::IfcShapeRepresentation
+                && super::effective_rep_type(rep)
+                    .map(super::is_direct_body_representation)
+                    .unwrap_or(false)
         });
 
         for shape_rep in representations {
@@ -289,31 +249,15 @@ impl GeometryRouter {
                 continue;
             }
 
-            if let Some(rep_type_attr) = shape_rep.get(2) {
-                if let Some(rep_type) = rep_type_attr.as_string() {
-                    // Skip MappedRepresentation if we have direct geometry
-                    if rep_type == "MappedRepresentation" && has_direct_geometry {
-                        continue;
-                    }
+            if let Some(rep_type) = super::effective_rep_type(&shape_rep) {
+                // Skip MappedRepresentation if we have direct geometry
+                if rep_type == "MappedRepresentation" && has_direct_geometry {
+                    continue;
+                }
 
-                    // Only process solid geometry representations
-                    if !matches!(
-                        rep_type,
-                        "Body"
-                            | "SweptSolid"
-                            | "SolidModel"
-                            | "Brep"
-                            | "CSG"
-                            | "Clipping"
-                            | "SurfaceModel"
-                            | "Surface3D"
-                            | "Tessellation"
-                            | "MappedRepresentation"
-                            | "AdvancedSweptSolid"
-                            | "AdvancedBrep"
-                    ) {
-                        continue;
-                    }
+                // Only process solid/surface geometry representations
+                if !super::is_body_representation(rep_type) {
+                    continue;
                 }
             }
 
@@ -326,7 +270,12 @@ impl GeometryRouter {
 
             // Process each representation item, preserving geometry IDs
             for item in items {
-                self.collect_submeshes_from_item(&item, decoder, &mut sub_meshes)?;
+                self.collect_submeshes_from_item(
+                    &item,
+                    decoder,
+                    &mut sub_meshes,
+                    allow_instancing,
+                )?;
             }
         }
 
@@ -386,14 +335,17 @@ impl GeometryRouter {
     }
 
     /// Collect sub-meshes from a representation item, following MappedItem references.
+    /// `allow_instancing` enables the #1623 Phase 2 don't-bake path at the top-level
+    /// mapped item (see [`Self::collect_submeshes_from_item_inner`]).
     fn collect_submeshes_from_item(
         &self,
         item: &DecodedEntity,
         decoder: &mut EntityDecoder,
         sub_meshes: &mut SubMeshCollection,
+        allow_instancing: bool,
     ) -> Result<()> {
         let mut visited = FxHashSet::default();
-        self.collect_submeshes_from_item_inner(item, decoder, sub_meshes, 0, &mut visited)
+        self.collect_submeshes_from_item_inner(item, decoder, sub_meshes, 0, &mut visited, allow_instancing)
     }
 
     fn collect_submeshes_from_item_inner(
@@ -403,6 +355,7 @@ impl GeometryRouter {
         sub_meshes: &mut SubMeshCollection,
         depth: usize,
         visited: &mut FxHashSet<u32>,
+        allow_instancing: bool,
     ) -> Result<()> {
         if depth >= MAX_MAPPED_ITEM_DEPTH {
             return Err(Error::geometry(format!(
@@ -428,6 +381,7 @@ impl GeometryRouter {
             let source_entity = decoder
                 .resolve_ref(source_attr)?
                 .ok_or_else(|| Error::geometry("Failed to resolve MappingSource".to_string()))?;
+            let source_id = source_entity.id;
 
             // Get MappedRepresentation from RepresentationMap (attribute 1)
             let mapped_repr_attr = source_entity.get(1).ok_or_else(|| {
@@ -453,11 +407,102 @@ impl GeometryRouter {
                 None
             };
 
+            // #1623 Phase 2/3 "don't-bake": if this top-level mapped item's source is
+            // a REPEATED (count >= 2) single-solid `IfcRepresentationMap` the armed
+            // plan lists, exactly ONE occurrence (the "template") materializes its
+            // geometry; every OTHER occurrence skips the per-occurrence vertex clone /
+            // MappingTarget bake / weld and emits an instance-only placeholder (empty
+            // geometry carrying the mapping transform + rep_identity in `InstanceMeta`).
+            // `apply_submesh_placement` folds the world placement into `im.transform`;
+            // the finalize turns the placeholder into an occurrence against the template.
+            //
+            // `instance_solid_id` is the nested SOLID's id (used as the placeholder's
+            // geometry_id so colour resolves EXACTLY as the flat/template sub-mesh).
+            // Only fires at the TOP level (`depth == 0`) — a mapped item nested inside
+            // another map is part of its parent's shared geometry, not an independent
+            // occurrence — and only when `allow_instancing` (the non-void path). With
+            // no armed plan this is skipped entirely, so the flat output is unchanged.
+            let instance_solid_id: Option<u32> = if allow_instancing && depth == 0 {
+                self.output_instancing_plan()
+                    .and_then(|plan| plan.get(&source_id).copied())
+                    .filter(|&(count, _)| count >= 2)
+                    .and_then(|_| {
+                        self.mapped_source_single_item(&mapped_repr, decoder)
+                            // #858: a source whose single solid carries an
+                            // IfcIndexedColourMap must materialize flat so
+                            // emit_sub_meshes can split it into one mesh per palette
+                            // group. An instance placeholder resolves ONE colour,
+                            // collapsing the palette (WRONG vs the flat path); route
+                            // to flat instead (byte-identical to instancing-off).
+                            .filter(|&item_id| !self.is_indexed_colour_split_source(item_id))
+                    })
+            } else {
+                None
+            };
+            // Which occurrence MATERIALIZES the template. Native (global) mode: the
+            // plan's deterministic min-id occurrence, so all occurrences resolve
+            // against ONE model-wide template across the rayon pool. WASM batch-local
+            // mode: the FIRST occurrence of this source seen by this router/batch (the
+            // rest don't-bake), so each per-batch shard is self-contained. Both emit
+            // geometrically identical world triangles.
+            let is_template = match instance_solid_id {
+                None => true, // not eligible ⇒ materialize flat as usual
+                Some(_) if self.instancing_batch_local() => {
+                    self.mark_source_materialized_if_first(source_id)
+                }
+                Some(_) => {
+                    let template_item_id = self
+                        .output_instancing_plan()
+                        .and_then(|plan| plan.get(&source_id))
+                        .map(|&(_, t)| t)
+                        .unwrap_or(item.id);
+                    item.id == template_item_id
+                }
+            };
+            if let Some(solid_item_id) = instance_solid_id {
+                if !is_template {
+                    // NON-template occurrence: don't-bake. Ensure the shared registry
+                    // holds the source geometry (meshed once model-wide) so the
+                    // finalize can recover geometry even in the (effectively
+                    // unreachable) case that the template occurrence never
+                    // materialized, then push the instance-only placeholder. Its
+                    // geometry_id is the nested SOLID's id (not the mapped-item id) so
+                    // emit_sub_meshes resolves the occurrence colour identically to the
+                    // flat/template sub-mesh.
+                    self.ensure_shared_mapped_source(&mapped_repr, source_id, decoder);
+                    let local_rm = mapping_transform.map(|mut t| {
+                        self.scale_transform(&mut t);
+                        mat4_to_row_major(&t)
+                    });
+                    let mut placeholder = Mesh::new();
+                    placeholder.instance_meta = Some(InstanceMeta {
+                        transform: IDENTITY_ROW_MAJOR,
+                        local_transform: local_rm,
+                        canonical_transform: None,
+                        rep_identity: source_id as u128,
+                        instanceable: true,
+                    });
+                    // Push directly (SubMeshCollection::add drops empty meshes; this
+                    // placeholder is intentionally empty — its InstanceMeta is the payload).
+                    sub_meshes
+                        .sub_meshes
+                        .push(crate::SubMesh::new(solid_item_id, placeholder));
+                    visited.remove(&item.id);
+                    return Ok(());
+                }
+            }
+            // Record where THIS mapped item's sub-meshes start, so the don't-bake
+            // TEMPLATE occurrence can be re-tagged with the source-id rep_identity
+            // after the normal materialize below (see the retag after the loop).
+            let mapped_items_start = sub_meshes.len();
+
             // Get items from the mapped representation
             if let Some(items_attr) = mapped_repr.get(3) {
                 let items = decoder.resolve_ref_list(items_attr)?;
                 for nested_item in items {
-                    // Recursively collect sub-meshes (skip unsupported geometry types)
+                    // Recursively collect sub-meshes (skip unsupported geometry types).
+                    // Nested items never independently don't-bake (`allow_instancing =
+                    // false`): they are this occurrence's own shared geometry.
                     let count_before = sub_meshes.len();
                     if let Err(_e) = self.collect_submeshes_from_item_inner(
                         &nested_item,
@@ -465,44 +510,74 @@ impl GeometryRouter {
                         sub_meshes,
                         depth + 1,
                         visited,
+                        false,
                     ) {
-                        #[cfg(debug_assertions)]
-                        eprintln!(
-                            "[ifc-lite] Skipping unsupported nested geometry #{} ({:?}): {}",
-                            nested_item.id, nested_item.ifc_type, _e
+                        crate::diag::diag_debug!(
+                            { item_id = nested_item.id, ifc_type = ?nested_item.ifc_type,
+                              error = %_e, "skipping unsupported nested geometry item" }
+                            else {
+                                #[cfg(debug_assertions)]
+                                eprintln!(
+                                    "[ifc-lite] Skipping unsupported nested geometry #{} ({:?}): {}",
+                                    nested_item.id, nested_item.ifc_type, _e
+                                );
+                            }
                         );
                         continue;
                     }
 
-                    // Apply MappedItem transform to newly added sub-meshes
+                    // Apply MappedItem transform to newly added sub-meshes.
                     if let Some(mut transform) = mapping_transform {
                         self.scale_transform(&mut transform);
-                        // The MappingTarget is baked into the vertices here, but
-                        // `rep_identity` was hashed from the canonical (pre-target)
-                        // geometry during the recursion. Two occurrences sharing a map
-                        // with DIFFERENT targets would therefore collate under one
-                        // template and reuse the reference's target offset/orientation.
-                        // When the target actually changes the geometry, re-hash the
-                        // post-target local geometry so rep_identity matches what is
-                        // baked. Identity targets (the common Revit case) leave the
-                        // geometry unchanged, so the canonical hash already matches —
-                        // skip the re-hash there to avoid the O(verts) cost.
+                        // The MappingTarget is a PER-OCCURRENCE transform: baked into the
+                        // vertices here (flat output byte-for-byte unchanged), and for
+                        // INSTANCING recorded in `local_transform` (keeping the canonical,
+                        // pre-target `rep_identity`) — mirroring `process_mapped_item_cached`
+                        // and the don't-bake TEMPLATE re-tag below — so occurrences sharing a
+                        // map but differing by target collate under one template. Previously
+                        // this RE-HASHED into `rep_identity`, giving every target a unique id
+                        // and disabling instancing (GLB export #1443) for the MULTI-item class
+                        // Phase 2 leaves flat (Tekla assemblies / MEP / metering skids). #1623
                         let nontrivial_target = !transform.is_identity(1e-9);
                         for sub in &mut sub_meshes.sub_meshes[count_before..] {
                             self.transform_mesh_local(&mut sub.mesh, &transform);
-                            if nontrivial_target
-                                && sub
-                                    .mesh
-                                    .instance_meta
-                                    .as_ref()
-                                    .is_some_and(|im| im.instanceable)
-                            {
-                                let h = Self::compute_mesh_hash_full(&sub.mesh) | DIRECT_SOLID_TAG;
-                                if let Some(im) = sub.mesh.instance_meta.as_mut() {
-                                    im.rep_identity = h;
+                            if nontrivial_target {
+                                if let Some(im) =
+                                    sub.mesh.instance_meta.as_mut().filter(|im| im.instanceable)
+                                {
+                                    im.local_transform = Some(match im.local_transform {
+                                        // Nested map: outer target ∘ inner, bake order.
+                                        Some(inner) => mat4_to_row_major(
+                                            &(transform * nalgebra::Matrix4::from_row_slice(&inner)),
+                                        ),
+                                        None => mat4_to_row_major(&transform),
+                                    });
                                 }
                             }
                         }
+                    }
+                }
+            }
+
+            // #1623 Phase 2/3: this is the don't-bake TEMPLATE occurrence. It
+            // materialized normally above (byte-identical to a flat occurrence — a
+            // single-solid source ⇒ exactly one sub-mesh). Re-tag its `rep_identity`
+            // to the source id and record the (scaled) MappingTarget as
+            // `local_transform`, MATCHING the instance placeholders so the finalize
+            // collates them onto this template. The baked geometry is untouched — the
+            // MappingTarget is already folded into both the vertices AND
+            // `local_transform`, which is consistent (the template's world geometry is
+            // `transform · local_transform · source`, so `m_ref` recovers the same
+            // `source` the placeholders reference). See the finalize in processor/mod.rs.
+            if instance_solid_id.is_some() && is_template {
+                let local_rm = mapping_transform.map(|mut t| {
+                    self.scale_transform(&mut t);
+                    mat4_to_row_major(&t)
+                });
+                for sub in &mut sub_meshes.sub_meshes[mapped_items_start..] {
+                    if let Some(im) = sub.mesh.instance_meta.as_mut() {
+                        im.rep_identity = source_id as u128;
+                        im.local_transform = local_rm;
                     }
                 }
             }
@@ -518,10 +593,16 @@ impl GeometryRouter {
                     }
                 }
                 Err(_e) => {
-                    #[cfg(debug_assertions)]
-                    eprintln!(
-                        "[ifc-lite] Skipping unsupported geometry #{} ({:?}): {}",
-                        item.id, item.ifc_type, _e
+                    crate::diag::diag_debug!(
+                        { item_id = item.id, ifc_type = ?item.ifc_type, error = %_e,
+                          "skipping unsupported geometry item" }
+                        else {
+                            #[cfg(debug_assertions)]
+                            eprintln!(
+                                "[ifc-lite] Skipping unsupported geometry #{} ({:?}): {}",
+                                item.id, item.ifc_type, _e
+                            );
+                        }
                     );
                 }
             }
@@ -555,7 +636,11 @@ impl GeometryRouter {
         // the cached item mesh; meshing is skipped entirely.
         let dedup_key = self.item_dedup_key(item, decoder);
         if let (Some(key), Some(cache)) = (dedup_key, self.item_dedup_cache.as_ref()) {
-            let hit = cache.lock().expect("dedup cache poisoned").get(&key).cloned();
+            let hit = cache
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .get(&key)
+                .cloned();
             if let Some(mesh) = hit {
                 return Ok(self.tag_direct_instance((*mesh).clone()));
             }
@@ -576,7 +661,7 @@ impl GeometryRouter {
             if !mesh.positions.is_empty() && !crate::kernel::budget::tripped() {
                 cache
                     .lock()
-                    .expect("dedup cache poisoned")
+                    .unwrap_or_else(|e| e.into_inner())
                     .insert(key, Arc::new(mesh.clone()));
             }
         }
@@ -599,17 +684,6 @@ impl GeometryRouter {
             // so a sampled-hash collision (#833 family) would silently group
             // non-identical geometry. The 128-bit content hash makes that ~2^-127.
             let exact_rep = Self::compute_mesh_hash_full(&mesh) | DIRECT_SOLID_TAG;
-            // Stash the PRE-PLACEMENT local mesh (the exact state this hash saw)
-            // for the rigid post-pass (build_rigid_map) — needed by both the
-            // offline analysis and the production rigid emit.
-            if crate::congruence::analysis_enabled() || crate::congruence::rigid_enabled() {
-                crate::congruence::record_local(exact_rep, &mesh);
-            }
-            // NOTE: the rotation-normalized rigid tier (RigidCache) is NOT run here.
-            // Verify-on-insert with a shared cache serialises the parallel geometry
-            // workers and stalls large streams (measured). Production integration is
-            // a rayon POST-PASS on captured local meshes in a collect-all path
-            // (coupled with the instanced wire format); the exact-bit tier ships now.
             mesh.instance_meta = Some(InstanceMeta {
                 transform: IDENTITY_ROW_MAJOR,
                 local_transform: None,
@@ -737,29 +811,16 @@ impl GeometryRouter {
             return Ok(mesh);
         }
 
-        // Check category for fallback handling
-        match self.schema.geometry_category(&item.ifc_type) {
-            Some(GeometryCategory::SweptSolid) => {
-                // For now, return empty mesh - processors will handle this
-                Ok(Mesh::new())
-            }
-            Some(GeometryCategory::ExplicitMesh) => {
-                // For now, return empty mesh - processors will handle this
-                Ok(Mesh::new())
-            }
-            Some(GeometryCategory::Boolean) => {
-                // For now, return empty mesh - processors will handle this
-                Ok(Mesh::new())
-            }
-            Some(GeometryCategory::MappedItem) => {
-                // For now, return empty mesh - processors will handle this
-                Ok(Mesh::new())
-            }
-            _ => Err(Error::geometry(format!(
-                "Unsupported representation type: {}",
-                item.ifc_type
-            ))),
-        }
+        // No processor is registered for this type. Every `GeometryCategory`
+        // that has a real implementation (SweptSolid, ExplicitMesh, Boolean) is
+        // already caught by the processor lookup above; `MappedItem` never
+        // reaches here (`process_representation_item` intercepts it first, see
+        // `process_mapped_item_cached`). So landing here means the type is
+        // genuinely unsupported, not merely "not implemented yet".
+        Err(Error::geometry(format!(
+            "Unsupported representation type: {}",
+            item.ifc_type
+        )))
     }
 
     /// Process MappedItem with caching for repeated geometry
@@ -799,34 +860,45 @@ impl GeometryRouter {
             None
         };
 
-        // Check cache first
-        {
-            let cache = self.mapped_item_cache.borrow();
-            if let Some(cached_mesh) = cache.get(&source_id) {
-                let mut mesh = cached_mesh.as_ref().clone();
-                let mut local_rm = None;
-                if let Some(mut transform) = mapping_transform {
-                    self.scale_transform(&mut transform);
-                    if instancing_enabled() {
-                        local_rm = Some(mat4_to_row_major(&transform));
-                    }
-                    self.transform_mesh_local(&mut mesh, &transform);
-                }
-                // Instancing: all occurrences of this RepresentationMap share the
-                // cached source-coords geometry; `local_transform` is the mapping
-                // (canonical -> element-local), `transform` is filled later by the
-                // element's apply_placement (element-local -> world).
+        // Check cache first. The model-wide shared cache (#1623) takes precedence
+        // over the per-router RefCell fallback so a source shared across owning
+        // elements is meshed once model-wide (a fresh router — hence a fresh
+        // RefCell — is built per element). Only a brief get/clone runs under the
+        // shared lock; the source build below (which nests faceted-brep's rayon
+        // `par_iter`) runs OUTSIDE any lock, so a lock is never held across a nested
+        // join (the #1587 deadlock class).
+        let cached_source: Option<Arc<Mesh>> = match &self.shared_mapped_item_cache {
+            Some(shared) => shared
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .get(&source_id)
+                .cloned(),
+            None => self.mapped_item_cache.borrow().get(&source_id).cloned(),
+        };
+        if let Some(cached_mesh) = cached_source {
+            let mut mesh = cached_mesh.as_ref().clone();
+            let mut local_rm = None;
+            if let Some(mut transform) = mapping_transform {
+                self.scale_transform(&mut transform);
                 if instancing_enabled() {
-                    mesh.instance_meta = Some(InstanceMeta {
-                        transform: IDENTITY_ROW_MAJOR,
-                        local_transform: local_rm,
-                        canonical_transform: None,
-                        rep_identity: source_id as u128,
-                        instanceable: true,
-                    });
+                    local_rm = Some(mat4_to_row_major(&transform));
                 }
-                return Ok(mesh);
+                self.transform_mesh_local(&mut mesh, &transform);
             }
+            // Instancing: all occurrences of this RepresentationMap share the
+            // cached source-coords geometry; `local_transform` is the mapping
+            // (canonical -> element-local), `transform` is filled later by the
+            // element's apply_placement (element-local -> world).
+            if instancing_enabled() {
+                mesh.instance_meta = Some(InstanceMeta {
+                    transform: IDENTITY_ROW_MAJOR,
+                    local_transform: local_rm,
+                    canonical_transform: None,
+                    rep_identity: source_id as u128,
+                    instanceable: true,
+                });
+            }
+            return Ok(mesh);
         }
 
         // Cache miss - process the geometry
@@ -868,10 +940,33 @@ impl GeometryRouter {
             }
         }
 
-        // Store in cache (before transformation, so cached mesh is in source coordinates)
-        {
-            let mut cache = self.mapped_item_cache.borrow_mut();
-            cache.insert(source_id, Arc::new(mesh.clone()));
+        // Store in cache (before transformation, so cached mesh is in source
+        // coordinates). Shared model-wide cache first (#1623), else the per-router
+        // RefCell. A concurrent miss on the same source by another router rebuilds
+        // an identical source-coords mesh, so an overwrite here is byte-identical.
+        // Brief lock only — the source build above ran outside it (no join held).
+        let source_arc = Arc::new(mesh.clone());
+        match &self.shared_mapped_item_cache {
+            Some(shared) => {
+                // Mirror the item-dedup #1257 guard: a mapped source can contain
+                // IfcBooleanResult/IfcCsgSolid, and on a per-element CSG-budget trip
+                // the boolean bails and returns the UNCUT host. Caching that degraded
+                // source MODEL-WIDE would serve the wrong (uncut) mesh to a later
+                // occurrence in a fresh-budget element that would otherwise get the
+                // full exact cut. Skip the shared insert on a trip (or empty mesh) —
+                // the next occurrence re-meshes and a clean element caches it. The
+                // RefCell fallback arm below stays UNGUARDED: it is per-element
+                // (consistent budget within the element), reproducing main exactly.
+                if !mesh.positions.is_empty() && !crate::kernel::budget::tripped() {
+                    shared
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .insert(source_id, source_arc);
+                }
+            }
+            None => {
+                self.mapped_item_cache.borrow_mut().insert(source_id, source_arc);
+            }
         }
 
         // Apply MappingTarget transformation to this instance

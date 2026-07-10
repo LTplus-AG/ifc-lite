@@ -102,53 +102,6 @@ pub fn subtract_multiple_2d(
     shapes_to_profile(&result)
 }
 
-/// Union multiple void contours into a single shape
-///
-/// Useful for combining overlapping voids before subtraction.
-pub fn union_contours(contours: &[Vec<Point2<f64>>]) -> Result<Vec<Vec<Point2<f64>>>> {
-    if contours.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    if contours.len() == 1 {
-        return Ok(contours.to_vec());
-    }
-
-    // Start with first contour as subject
-    let subject: Vec<Vec<[f64; 2]>> = vec![contour_to_path(&contours[0])];
-
-    // Collect all other contours as clip
-    let clip: Vec<Vec<[f64; 2]>> = contours
-        .iter()
-        .skip(1)
-        .filter(|c| c.len() >= 3)
-        .map(|c| contour_to_path(c))
-        .collect();
-
-    if clip.is_empty() {
-        return Ok(contours[..1].to_vec());
-    }
-
-    // Perform union
-    let result = subject.overlay(&clip, OverlayRule::Union, FillRule::EvenOdd);
-
-    // Convert back to Point2 format - flatten all shapes and contours
-    let mut all_contours = Vec::new();
-    for shape in result {
-        for contour in shape {
-            let points: Vec<Point2<f64>> = contour
-                .into_iter()
-                .map(|p| Point2::new(p[0], p[1]))
-                .collect();
-            if points.len() >= 3 {
-                all_contours.push(points);
-            }
-        }
-    }
-
-    Ok(all_contours)
-}
-
 /// Check if a contour is valid (has area, not degenerate)
 pub fn is_valid_contour(contour: &[Point2<f64>]) -> bool {
     if contour.len() < 3 {
@@ -200,36 +153,6 @@ pub fn ensure_cw(contour: &[Point2<f64>]) -> Vec<Point2<f64>> {
     }
 }
 
-/// Simplify a contour by removing collinear points
-pub fn simplify_contour(contour: &[Point2<f64>], epsilon: f64) -> Vec<Point2<f64>> {
-    if contour.len() <= 3 {
-        return contour.to_vec();
-    }
-
-    let mut result = Vec::with_capacity(contour.len());
-    let n = contour.len();
-
-    for i in 0..n {
-        let prev = &contour[(i + n - 1) % n];
-        let curr = &contour[i];
-        let next = &contour[(i + 1) % n];
-
-        // Check if current point is collinear with prev and next
-        let cross = (curr.x - prev.x) * (next.y - prev.y) - (curr.y - prev.y) * (next.x - prev.x);
-
-        if cross.abs() > epsilon {
-            result.push(*curr);
-        }
-    }
-
-    // Ensure we have at least 3 points
-    if result.len() < 3 {
-        return contour.to_vec();
-    }
-
-    result
-}
-
 /// Check if a point is inside a contour using ray casting
 pub fn point_in_contour(point: &Point2<f64>, contour: &[Point2<f64>]) -> bool {
     if contour.len() < 3 {
@@ -255,40 +178,13 @@ pub fn point_in_contour(point: &Point2<f64>, contour: &[Point2<f64>]) -> bool {
     inside
 }
 
-/// Check if contour A is completely inside contour B
-pub fn contour_inside_contour(inner: &[Point2<f64>], outer: &[Point2<f64>]) -> bool {
-    // All points of inner must be inside outer
-    inner.iter().all(|p| point_in_contour(p, outer))
-}
-
-/// Compute bounding box of a contour
-pub fn contour_bounds(contour: &[Point2<f64>]) -> Option<(Point2<f64>, Point2<f64>)> {
-    if contour.is_empty() {
-        return None;
-    }
-
-    let mut min = contour[0];
-    let mut max = contour[0];
-
-    for p in contour.iter().skip(1) {
-        min.x = min.x.min(p.x);
-        min.y = min.y.min(p.y);
-        max.x = max.x.max(p.x);
-        max.y = max.y.max(p.y);
-    }
-
-    Some((min, max))
-}
-
-/// Check if two bounding boxes overlap
-pub fn bounds_overlap(
-    a_min: &Point2<f64>,
-    a_max: &Point2<f64>,
-    b_min: &Point2<f64>,
-    b_max: &Point2<f64>,
-) -> bool {
-    a_min.x <= b_max.x && a_max.x >= b_min.x && a_min.y <= b_max.y && a_max.y >= b_min.y
-}
+// `contour_inside_contour` and `contour_bounds` were deleted here: the C3.2
+// `pub(crate)` narrowing orphaned them (zero callers, production or test), so
+// per the anti-cruft rule they go rather than gain a dead-code allow.
+//
+// `simplify_contour`, `union_contours`, and `bounds_overlap` were deleted here
+// for the same reason (D15 dead-code sweep): each had zero production callers,
+// only their own now-deleted unit tests.
 
 // ============================================================================
 // Internal Helper Functions
@@ -491,21 +387,6 @@ mod tests {
     }
 
     #[test]
-    fn test_simplify_contour() {
-        // Square with redundant collinear points
-        let contour = vec![
-            Point2::new(0.0, 0.0),
-            Point2::new(5.0, 0.0), // Collinear
-            Point2::new(10.0, 0.0),
-            Point2::new(10.0, 10.0),
-            Point2::new(0.0, 10.0),
-        ];
-
-        let simplified = simplify_contour(&contour, 1e-6);
-        assert_eq!(simplified.len(), 4);
-    }
-
-    #[test]
     fn test_is_valid_contour() {
         // Valid square
         let valid = vec![
@@ -529,40 +410,4 @@ mod tests {
         assert!(!is_valid_contour(&too_few));
     }
 
-    #[test]
-    fn test_union_contours() {
-        // Two overlapping squares
-        let contours = vec![
-            vec![
-                Point2::new(0.0, 0.0),
-                Point2::new(2.0, 0.0),
-                Point2::new(2.0, 2.0),
-                Point2::new(0.0, 2.0),
-            ],
-            vec![
-                Point2::new(1.0, 1.0),
-                Point2::new(3.0, 1.0),
-                Point2::new(3.0, 3.0),
-                Point2::new(1.0, 3.0),
-            ],
-        ];
-
-        let result = union_contours(&contours).unwrap();
-
-        // Should produce a single L-shaped contour
-        assert!(!result.is_empty());
-    }
-
-    #[test]
-    fn test_bounds_overlap() {
-        let a_min = Point2::new(0.0, 0.0);
-        let a_max = Point2::new(10.0, 10.0);
-        let b_min = Point2::new(5.0, 5.0);
-        let b_max = Point2::new(15.0, 15.0);
-        let c_min = Point2::new(20.0, 20.0);
-        let c_max = Point2::new(30.0, 30.0);
-
-        assert!(bounds_overlap(&a_min, &a_max, &b_min, &b_max));
-        assert!(!bounds_overlap(&a_min, &a_max, &c_min, &c_max));
-    }
 }

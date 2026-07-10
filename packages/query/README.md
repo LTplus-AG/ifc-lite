@@ -26,7 +26,7 @@ console.log(`${walls.length} external load-bearing walls`);
 
 for (const wall of walls) {
   console.log(wall.name, wall.globalId);
-  console.log(wall.properties()); // lazily-loaded psets
+  console.log(wall.properties); // lazily-loaded psets
 }
 ```
 
@@ -52,7 +52,7 @@ query
   .execute();
 ```
 
-Supported: `=`, `!=`, `>`, `<`, `>=`, `<=`, `CONTAINS`, `STARTS_WITH`, `IS_NULL`, `IS_NOT_NULL`.
+Supported: `=`, `!=`, `>`, `<`, `>=`, `<=`, `contains`, `startsWith`.
 
 ## Graph traversal
 
@@ -65,18 +65,18 @@ console.log(wall.building()?.name);  // 'Office Tower'
 
 // Containment + composition
 const openings = wall.contains(); // openings hosted by the wall
-const aggregates = wall.composedOf();
+const aggregates = wall.decomposes();
 ```
 
 ## SQL via DuckDB-WASM
 
 ```typescript
 const result = await query.sql(`
-  SELECT type, COUNT(*) AS count, AVG(volume) AS avg_volume
+  SELECT e.type, COUNT(*) AS count, AVG(q.value) AS avg_volume
   FROM entities e
   JOIN quantities q ON q.entity_id = e.express_id
-  WHERE q.name = 'NetVolume'
-  GROUP BY type
+  WHERE q.quantity_name = 'NetVolume'
+  GROUP BY e.type
   ORDER BY count DESC
   LIMIT 10
 `);
@@ -85,6 +85,14 @@ console.table(result.rows);
 ```
 
 Tables exposed: `entities`, `properties`, `quantities`, `relationships`. Useful when you'd rather write SQL than chain method calls.
+
+DuckDB is loaded lazily on the first `sql()` call and is not bundled (it would add ~4 MB). To use the SQL API, install it alongside:
+
+```bash
+npm install @duckdb/duckdb-wasm
+```
+
+The fluent query API works without it.
 
 ## API
 

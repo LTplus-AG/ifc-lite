@@ -22,6 +22,7 @@ import type {
 import type { MeasurementConstraintEdge, OrthogonalAxis, Vec3 } from '@/store/types.js';
 import { getEntityCenter } from '../../utils/viewportUtils.js';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
+import { emitCameraInteracted } from '@/lib/tours/events';
 import { useViewerStore } from '@/store';
 import {
   handleMeasureDown,
@@ -756,6 +757,13 @@ export function useMouseControls(params: UseMouseControlsParams): void {
         if (handleMeasureUp(ctx, e)) return;
       }
 
+      // Genuine completed camera gesture - the tour engine (and anything
+      // else) listens for this; the callback-based realtime rotation path
+      // deliberately never writes the store, so this is the only signal.
+      if (mouseState.isDragging && mouseState.didDrag) {
+        emitCameraInteracted(mouseState.isPanning ? 'pan' : 'orbit');
+      }
+
       mouseState.isDragging = false;
       mouseState.isPanning = false;
       canvas.style.cursor = tool === 'pan' ? 'grab' : (tool === 'walk' ? 'crosshair' : (tool === 'measure' ? 'crosshair' : 'default'));
@@ -803,6 +811,8 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       wheelIdleTimer = setTimeout(() => {
         isInteractingRef.current = false;
         renderer.requestRender();
+        // One signal per zoom gesture, on the trailing edge of the debounce.
+        emitCameraInteracted('zoom');
       }, 150);
       const rect = canvas.getBoundingClientRect();
       const mouseX = e.clientX - rect.left;

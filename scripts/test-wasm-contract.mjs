@@ -194,6 +194,165 @@ test('issue #1023: raw byte geometry and scans accept non-UTF-8 string bytes', (
   }
 });
 
+// ===== setSourceBytes + *FromSource (cold-load lever 1c) =====
+// The whole file was memcpy'd into the wasm heap on EVERY processGeometryBatch*
+// call (the wasm-bindgen `data: &[u8]` arg). setSourceBytes holds it ONCE and
+// the *FromSource variants read it, so a huge model no longer pays 600+ full
+// file copies/worker. The HARD gate is byte-identical output: the meshing reads
+// the exact same bytes whether copied once or per call. These tests prove that
+// at the real wasm boundary (mocked TS tests can't).
+console.log('\n📋 setSourceBytes + *FromSource batch (byte-identical)');
+
+/**
+ * Byte-identical fingerprint of a MeshCollection: per-mesh identity + full
+ * geometry arrays, in collection order. Copies out of wasm memory and frees
+ * each MeshDataJs handle so the caller can free() the collection right after.
+ */
+function meshFingerprint(collection) {
+  const meshes = [];
+  for (let i = 0; i < collection.length; i++) {
+    const m = collection.get(i);
+    if (!m) continue;
+    try {
+      meshes.push({
+        expressId: m.expressId,
+        ifcType: m.ifcType,
+        geometryClass: m.geometryClass,
+        color: Array.from(m.color),
+        origin: Array.from(m.origin),
+        positions: Array.from(m.positions),
+        normals: Array.from(m.normals),
+        indices: Array.from(m.indices),
+      });
+    } finally {
+      m.free();
+    }
+  }
+  return meshes;
+}
+
+test('processGeometryBatchFromSource is byte-identical to processGeometryBatch', () => {
+  const bytes = new TextEncoder().encode(columnContent);
+
+  // Reference: the legacy per-call `data`-taking path.
+  const preRef = api.buildPrePassOnce(bytes);
+  let ref;
+  try {
+    const col = api.processGeometryBatch(
+      bytes, preRef.jobs, preRef.unitScale,
+      preRef.rtcOffset[0], preRef.rtcOffset[1], preRef.rtcOffset[2], preRef.needsShift,
+      preRef.voidKeys, preRef.voidCounts, preRef.voidValues, preRef.styleIds, preRef.styleColors,
+      preRef.planeAngleToRadians, preRef.materialElementIds, preRef.materialColorCounts, preRef.materialColors,
+    );
+    try { ref = meshFingerprint(col); } finally { col.free(); }
+  } finally {
+    api.clearPrePassCache();
+  }
+  assert.ok(ref.length > 0, 'reference batch must produce meshes');
+
+  // Candidate: hold the source ONCE, run the no-`data` variant.
+  const pre = api.buildPrePassOnce(bytes);
+  let got;
+  try {
+    api.setSourceBytes(bytes);
+    const col = api.processGeometryBatchFromSource(
+      pre.jobs, pre.unitScale,
+      pre.rtcOffset[0], pre.rtcOffset[1], pre.rtcOffset[2], pre.needsShift,
+      pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors,
+      pre.planeAngleToRadians, pre.materialElementIds, pre.materialColorCounts, pre.materialColors,
+    );
+    try { got = meshFingerprint(col); } finally { col.free(); }
+  } finally {
+    api.clearPrePassCache();
+  }
+
+  assert.deepEqual(got, ref,
+    'processGeometryBatchFromSource must be byte-for-byte identical to processGeometryBatch');
+});
+
+test('processGeometryBatchPartitionedFromSource matches processGeometryBatchPartitioned', () => {
+  if (typeof api.processGeometryBatchPartitioned !== 'function'
+    || typeof api.processGeometryBatchPartitionedFromSource !== 'function') {
+    throw new Error('partitioned exports missing from the built wasm');
+  }
+  const bytes = new TextEncoder().encode(columnContent);
+
+  // Reference partitioned (legacy per-call data).
+  const preRef = api.buildPrePassOnce(bytes);
+  let refFlat, refShard, refOcc;
+  try {
+    const p = api.processGeometryBatchPartitioned(
+      bytes, preRef.jobs, preRef.unitScale,
+      preRef.rtcOffset[0], preRef.rtcOffset[1], preRef.rtcOffset[2], preRef.needsShift,
+      preRef.voidKeys, preRef.voidCounts, preRef.voidValues, preRef.styleIds, preRef.styleColors,
+      preRef.planeAngleToRadians, preRef.materialElementIds, preRef.materialColorCounts, preRef.materialColors,
+    );
+    try {
+      refOcc = p.instancedOccurrences;
+      refShard = Array.from(p.takeShard());
+      const flat = p.takeMeshes();
+      refFlat = flat ? meshFingerprint(flat) : [];
+      if (flat) flat.free();
+    } finally {
+      p.free?.();
+    }
+  } finally {
+    api.clearPrePassCache();
+  }
+
+  // Candidate partitioned FromSource (source held once).
+  const pre = api.buildPrePassOnce(bytes);
+  let gotFlat, gotShard, gotOcc;
+  try {
+    api.setSourceBytes(bytes);
+    const p = api.processGeometryBatchPartitionedFromSource(
+      pre.jobs, pre.unitScale,
+      pre.rtcOffset[0], pre.rtcOffset[1], pre.rtcOffset[2], pre.needsShift,
+      pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors,
+      pre.planeAngleToRadians, pre.materialElementIds, pre.materialColorCounts, pre.materialColors,
+    );
+    try {
+      gotOcc = p.instancedOccurrences;
+      gotShard = Array.from(p.takeShard());
+      const flat = p.takeMeshes();
+      gotFlat = flat ? meshFingerprint(flat) : [];
+      if (flat) flat.free();
+    } finally {
+      p.free?.();
+    }
+  } finally {
+    api.clearPrePassCache();
+  }
+
+  assert.equal(gotOcc, refOcc, 'instanced occurrence count must match');
+  assert.deepEqual(gotShard, refShard, 'IFNS instancing shard bytes must be identical');
+  assert.deepEqual(gotFlat, refFlat, 'flat MeshCollection must be byte-identical');
+});
+
+test('processGeometryBatchFromSource returns empty when no source is installed (defensive)', () => {
+  const freshApi = new IfcAPI();
+  const bytes = new TextEncoder().encode(columnContent);
+  const pre = freshApi.buildPrePassOnce(bytes);
+  try {
+    // No setSourceBytes: the held bytes are empty → zero meshes, and crucially
+    // NO panic (the decoder validates every byte span). The JS worker gates the
+    // *FromSource path on a successful setSourceBytes, so this is unreachable in
+    // production, but it must degrade gracefully rather than corrupt/crash.
+    const col = freshApi.processGeometryBatchFromSource(
+      pre.jobs, pre.unitScale,
+      pre.rtcOffset[0], pre.rtcOffset[1], pre.rtcOffset[2], pre.needsShift,
+      pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors,
+    );
+    try {
+      assert.equal(col.length, 0, 'FromSource without setSourceBytes must produce no meshes');
+    } finally {
+      col.free();
+    }
+  } finally {
+    freshApi.clearPrePassCache();
+  }
+});
+
 // ===== Pre-pass contract (viewer boundary) =====
 // The TS GeometryProcessor (packages/geometry) destructures these exact
 // fields off buildPrePassOnce() and forwards them to processGeometryBatch.
@@ -533,6 +692,148 @@ test('exportKmz accepts undefined optional grid axes at the JS boundary (heading
   const kmz = api.exportKmz(glbBytes, 0, 0, 0, undefined, undefined, '');
   assert.ok(kmz instanceof Uint8Array);
   assert.ok(Buffer.from(kmz).toString('latin1').includes('<heading>0</heading>'), 'undefined axes → heading 0');
+});
+
+// ===== Pipeline diagnostics channel (wasm boundary) =====
+// This replaces the orphaned rust/wasm-bindings/tests/pipeline_diagnostics.rs
+// (a #![cfg(target_arch="wasm32")] test no CI lane ran) with an assertion in
+// the lane that DOES gate (node-tests -> the required Build+WASM+Rust+Node
+// check). It pins the versioned wire shape across the real serde-wasm-bindgen
+// boundary, mirroring the Rust serde-key stability test.
+test('getPipelineDiagnostics: undefined before load, accumulates across batches, versioned, persists post-load, resets on the next load', () => {
+  const diagApi = new IfcAPI();
+  const bytes = new TextEncoder().encode(columnContent);
+  try {
+    assert.equal(diagApi.getPipelineDiagnostics(), undefined,
+      'diagnostics must be undefined before any batch runs');
+
+    // One load = one buildPrePassOnce (which resets the accumulator) followed by
+    // N processGeometryBatch calls (the viewer's per-batch loop).
+    const pre = diagApi.buildPrePassOnce(bytes);
+    assert.ok(pre.totalJobs > 0, 'fixture must produce geometry jobs');
+    const runBatch = () => {
+      const c = diagApi.processGeometryBatch(
+        bytes, pre.jobs, pre.unitScale,
+        pre.rtcOffset[0], pre.rtcOffset[1], pre.rtcOffset[2], pre.needsShift,
+        pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors,
+      );
+      c.free();
+    };
+
+    runBatch();
+    const one = diagApi.getPipelineDiagnostics();
+    assert.ok(one && typeof one === 'object', 'diagnostics must be an object after a batch');
+    // Versioned wire shape: the schema-stability contract on the real boundary.
+    assert.equal(one.schemaVersion, 1, 'schemaVersion must match the pinned contract (bump = breaking)');
+    assert.equal(one.batches, 1, 'exactly one batch recorded');
+    // Real VALUES, not just key presence: the column fixture has geometry, so a
+    // serde bug emitting zero/wrong counts would be caught.
+    assert.ok(one.meshCount > 0, 'meshCount > 0');
+    assert.ok(one.triangleCount > 0, 'triangleCount > 0');
+    assert.ok(one.elementCount > 0, 'elementCount > 0');
+    for (const key of ['backstopCount', 'totalCsgFailures', 'productsWithFailures',
+      'hostsWithOpenings', 'silentNoOps', 'rectFast', 'phaseMs']) {
+      assert.ok(key in one, `diagnostics must carry ${key}`);
+    }
+    for (const key of ['entityScanMs', 'lookupMs', 'preprocessMs', 'parseMs', 'geometryMs', 'totalMs']) {
+      assert.ok(key in one.phaseMs, `phaseMs must carry ${key}`);
+    }
+
+    // A second processGeometryBatch of the SAME load ACCUMULATES: record_batch
+    // sums per batch, so batches increments and the counts never decrease.
+    runBatch();
+    const two = diagApi.getPipelineDiagnostics();
+    assert.equal(two.batches, 2, 'batches accumulate across processGeometryBatch calls');
+    assert.ok(two.meshCount >= one.meshCount, 'meshCount accumulates (monotonic)');
+    assert.ok(two.elementCount >= one.elementCount, 'elementCount accumulates (monotonic)');
+    assert.ok(two.triangleCount >= one.triangleCount, 'triangleCount accumulates (monotonic)');
+
+    // Diagnostics survive clearPrePassCache: it runs at end-of-load, and a host
+    // reads the per-load diagnostics AFTER it (see IfcAPI::clear_pre_pass_cache,
+    // which clears the entity/parts caches but NOT the accumulator).
+    diagApi.clearPrePassCache();
+    assert.ok(diagApi.getPipelineDiagnostics(), 'diagnostics persist for reading after clearPrePassCache');
+
+    // The next load resets the accumulator (buildPrePassOnce calls
+    // reset_pipeline_diagnostics before the new batch runs).
+    diagApi.buildPrePassOnce(bytes);
+    assert.equal(diagApi.getPipelineDiagnostics(), undefined,
+      'a new load (buildPrePassOnce) resets the accumulator until its first batch');
+  } finally {
+    diagApi.clearPrePassCache();
+  }
+});
+
+// ===== setEntityIndex (production load-start reset path, #1551) =====
+// The `getPipelineDiagnostics` test above only exercises the buildPrePassOnce
+// reset. `setEntityIndex` is the OTHER load-start reset path: the geometry
+// PROCESS worker (packages/geometry/src/geometry.worker.ts) is a separate
+// wasm realm from the pre-pass worker, so it never calls buildPrePassOnce
+// itself — it receives an already-built entity index over SAB and installs
+// it via setEntityIndex before its first processGeometryBatch. Nothing
+// previously asserted that this path resets load-scoped state the same way.
+test('setEntityIndex resets pipeline diagnostics like a fresh load, and installs a working entity-index cache', () => {
+  const entityIdxApi = new IfcAPI();
+  const bytes = new TextEncoder().encode(columnContent);
+  try {
+    // First "load", via the normal buildPrePassOnce + processGeometryBatch
+    // path, to put this IfcAPI into a NON-fresh state (diagnostics
+    // populated) — the state setEntityIndex must reset on the next load.
+    const pre = entityIdxApi.buildPrePassOnce(bytes);
+    assert.ok(pre.totalJobs > 0, 'fixture must produce geometry jobs');
+    const runBatch = () => {
+      const c = entityIdxApi.processGeometryBatch(
+        bytes, pre.jobs, pre.unitScale,
+        pre.rtcOffset[0], pre.rtcOffset[1], pre.rtcOffset[2], pre.needsShift,
+        pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors,
+      );
+      try {
+        assert.ok(c.length > 0, 'first-load batch must produce meshes');
+      } finally {
+        c.free();
+      }
+    };
+    runBatch();
+    const before = entityIdxApi.getPipelineDiagnostics();
+    assert.ok(before && before.batches === 1, 'diagnostics must be populated before setEntityIndex');
+
+    // Build the (ids, starts, lengths) columns the worker realm would receive
+    // over SAB, the same way scanEntitiesFastBytes already exposes them.
+    const refs = entityIdxApi.scanEntitiesFastBytes(bytes);
+    assert.ok(Array.isArray(refs) && refs.length > 0, 'scan must find entities');
+    const ids = Uint32Array.from(refs.map((r) => r.expressId));
+    const starts = Uint32Array.from(refs.map((r) => r.byteOffset));
+    const lengths = Uint32Array.from(refs.map((r) => r.byteLength));
+
+    entityIdxApi.setEntityIndex(ids, starts, lengths);
+
+    // (a) setEntityIndex is a load-START reset, same contract as
+    // buildPrePassOnce (rust/wasm-bindings/src/api/mod.rs set_entity_index ->
+    // reset_pipeline_diagnostics): the PREVIOUS load's diagnostics must not
+    // leak into the next one on a reused IfcAPI.
+    assert.equal(entityIdxApi.getPipelineDiagnostics(), undefined,
+      'setEntityIndex must reset pipeline diagnostics like a fresh load');
+
+    // (b) Functional correctness of the installed cache: a subsequent
+    // processGeometryBatch must still produce valid meshes by reusing the
+    // Arc<EntityIndex> setEntityIndex populated, not a silently empty/corrupt
+    // one that would make every job fail to decode.
+    const collection = entityIdxApi.processGeometryBatch(
+      bytes, pre.jobs, pre.unitScale,
+      pre.rtcOffset[0], pre.rtcOffset[1], pre.rtcOffset[2], pre.needsShift,
+      pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors,
+    );
+    try {
+      assert.ok(collection.length > 0, 'batch after setEntityIndex must still produce meshes');
+    } finally {
+      collection.free();
+    }
+    const after = entityIdxApi.getPipelineDiagnostics();
+    assert.ok(after && after.batches === 1,
+      'the post-setEntityIndex batch must start a fresh accumulator at 1, not accumulate onto the prior load');
+  } finally {
+    entityIdxApi.clearPrePassCache();
+  }
 });
 
 // Summary

@@ -1,5 +1,205 @@
 # @ifc-lite/cli
 
+## 0.17.0
+
+### Minor Changes
+
+- [#1656](https://github.com/LTplus-AG/ifc-lite/pull/1656) [`94f4713`](https://github.com/LTplus-AG/ifc-lite/commit/94f471365b7185822f15f02202ef52c81e4f203e) Thanks [@louistrue](https://github.com/louistrue)! - Add `ifc-lite extract-entities` — isolate a handful of entities from a large IFC into a small, valid, viewable standalone model, the "reproduce a suspect element" step of a geometry-triage loop.
+
+  Selectors (unioned): `--product <GUID|expressId>` (repeatable / comma-list), `--type <IfcType>`, `--storey <GUID|name|expressId>` (every product placed under a storey via its placement chain), and `--detect [--top N]` (the meshes a geometry-triage pass ranks most unusual). The output carries each selected product's full forward reference closure plus the shared context roots (IfcProject, unit assignment, geometric contexts, and the site/building/storey spatial skeleton) and every spatial-containment relation whose members are all kept — so the result parses and renders on its own with zero dangling references. Add `--view` to open it in the viewer.
+
+  Crucially, a selected element also carries its openings and their fillers: every `IfcRelVoidsElement` whose host is kept (plus the `IfcOpeningElement` cutter) and every `IfcRelFillsElement` whose opening is kept (plus the window/door). These relations point _backward_ to the host, so forward closure alone never reaches them — without this an isolated wall extracts as an uncut box, hiding the very void-cut geometry a triage loop needs to reproduce.
+
+  `extract-entities <file> --detect --report [--json]` prints a triage report without extracting, separating HARD defects (non-finite or `|coord|>1e4` vertices after the per-element local-frame/RTC recentre — genuine corruption) from REVIEW heuristics (oversized AABB) that are frequently legitimate for thin or large elements and must be eyeballed, not trusted.
+
+### Patch Changes
+
+- [#1651](https://github.com/LTplus-AG/ifc-lite/pull/1651) [`52d861c`](https://github.com/LTplus-AG/ifc-lite/commit/52d861cdace765965dc79953916403b3ab0e3da6) Thanks [@louistrue](https://github.com/louistrue)! - Surface the rect-fast `deferTooManyOpenings` counter in the geometry diagnostics. The Rust `RectFastSummary` already emits it (the opening-count DoS cap, [#1649](https://github.com/LTplus-AG/ifc-lite/issues/1649)); the `GeometryDiagnostics.rectFast` and server-client types now include it (optional, defaulted to 0 when absent so older payloads merge cleanly), `mergeGeometryDiagnostics` sums it, and the CLI geometry report renders it in the rect_fast defer breakdown.
+
+- Updated dependencies [[`5e1fe56`](https://github.com/LTplus-AG/ifc-lite/commit/5e1fe568b007f5f434db5f585e90551979f32aae), [`52d861c`](https://github.com/LTplus-AG/ifc-lite/commit/52d861cdace765965dc79953916403b3ab0e3da6)]:
+  - @ifc-lite/wasm@3.0.12
+  - @ifc-lite/geometry@3.1.3
+
+## 0.16.1
+
+### Patch Changes
+
+- Updated dependencies [[`1d53646`](https://github.com/LTplus-AG/ifc-lite/commit/1d536460663b8ce607fb648ab2e996ac445ff651), [`fcbb667`](https://github.com/LTplus-AG/ifc-lite/commit/fcbb6679dd752f5b8be670c6a9e2d3fdc0b57e3d), [`7c65f23`](https://github.com/LTplus-AG/ifc-lite/commit/7c65f232952dcf0c1f7f6ebee3605fd556323035), [`3a2cd42`](https://github.com/LTplus-AG/ifc-lite/commit/3a2cd42158313d8e22f21885e62b6c705814ab47), [`3a2cd42`](https://github.com/LTplus-AG/ifc-lite/commit/3a2cd42158313d8e22f21885e62b6c705814ab47)]:
+  - @ifc-lite/wasm@3.0.5
+  - @ifc-lite/parser@3.7.0
+  - @ifc-lite/data@2.4.0
+  - @ifc-lite/mutations@1.18.0
+  - @ifc-lite/mcp@0.7.0
+  - @ifc-lite/ids@1.15.24
+
+## 0.16.0
+
+### Minor Changes
+
+- [#1564](https://github.com/LTplus-AG/ifc-lite/pull/1564) [`0762522`](https://github.com/LTplus-AG/ifc-lite/commit/076252241ec4201462f7fcf0555c83606de5fecd) Thanks [@louistrue](https://github.com/louistrue)! - `diagnose-geometry` gains `--product <expressId|GlobalId>` and `--type <IfcType>` flags to narrow the worst-failing-hosts detail list to a single product or IFC type. Worst-failing hosts now also report a world-space bounding box and final triangle count when a void cut captured them, surfaced in both `--json` and the human-readable report.
+
+  Fixed `--quiet`/`--verbose` on `diagnose-geometry`: its status line ("Wrote diagnostics to...") now routes through the leveled logger like every other command, so `--quiet` actually silences it instead of always printing to stdout via a raw `console.log`. The JSON/report payload itself is unaffected by verbosity, same as every other command.
+
+- [#1497](https://github.com/LTplus-AG/ifc-lite/pull/1497) [`d7a3205`](https://github.com/LTplus-AG/ifc-lite/commit/d7a3205524e023f936b29ee1bc113d1d10e3b0b1) Thanks [@Blogbotana](https://github.com/Blogbotana)! - feat(parser): support opening `.ifcZIP` containers (issue [#1494](https://github.com/LTplus-AG/ifc-lite/issues/1494))
+
+  The buildingSMART IFC container format — a zip archive wrapping a single
+  `.ifc`/`.ifcxml` file — is now unwrapped transparently. New `@ifc-lite/parser`
+  exports:
+
+  - `isZipBuffer(buffer)` — cheap magic-byte check.
+  - `unwrapIfcZip(buffer)` — returns the model file's bytes if `buffer` is a
+    zip container, or `buffer` unchanged otherwise (safe to call
+    unconditionally on every load). Throws if the archive has zero or more
+    than one `.ifc`/`.ifcxml` entry rather than guessing which to load, or if
+    the entry's declared uncompressed size exceeds 4 GiB (a zip-bomb guard,
+    checked from the zip central directory — no decompression needed to check).
+  - `unwrapIfcZipView(view)` — same contract for a Node `Buffer`/`Uint8Array`.
+
+  `parseAuto` calls it automatically. The CLI and MCP loaders (`loadIfcFile`,
+  `loadIfcModel`) unwrap before their STEP-signature check, so `ifc-lite info
+model.ifcZIP` and MCP's `model_load` just work. The viewer's file picker and
+  drag-and-drop now accept `.ifczip` alongside `.ifc`/`.ifcx`/`.glb`.
+
+  The hosted Rust parsing server (`apps/server`) unwraps `.ifcZIP` too, in its
+  multipart `extract_file` path (alongside the existing gzip handling), so an
+  uploaded container is decompressed server-side before parsing and the viewer's
+  multi-core server fast-path works for zipped uploads. It applies the same
+  single-`.ifc`/`.ifcxml`-entry rule and bounds the decompressed size against the
+  server's max-file-size ceiling (zip-bomb guard).
+
+  Referenced resources inside the container (textures, documents) are not
+  extracted in this pass — only the model file's bytes.
+
+### Patch Changes
+
+- [#1562](https://github.com/LTplus-AG/ifc-lite/pull/1562) [`52dd7a1`](https://github.com/LTplus-AG/ifc-lite/commit/52dd7a16788375a9507c40fbde106b78236801db) Thanks [@louistrue](https://github.com/louistrue)! - Weld per-face-duplicated faceted-brep vertices at the mesh SOURCE instead of per export. The faceted-brep mesher emits geometry per `IfcFace` with no cross-face vertex sharing, so a closed shell duplicates every shared corner once per incident face (~3-6x). That collapse now happens once, at the single per-element mesh funnel (`build_mesh_data` in `produce_element_meshes`), so every element -- render, GLB/OBJ export, and analysis -- arrives welded in its `MeshData`, and the previously separate per-export welds (from-bytes `to_yup` and the viewer's from-meshes GLB path) are removed as redundant. The weld keys on the exact position plus a quantized normal, so creases (a cube corner shared by three faces with distinct normals) stay split and flat/crease shading is preserved; world triangles, winding, and the world AABB are unchanged. It is deterministic and byte-identical cross-arch (native == wasm32, positions and topology identical, only the documented libm-trig normals differ), and closes the volume/watertightness gap for non-voided faceted breps on the render path (voided elements already welded via the coplanar-facet pass). The mesh-output determinism manifests are re-pinned for the one affected battery element (the round column [#500](https://github.com/LTplus-AG/ifc-lite/issues/500), an extruded circular profile: 216 -> 144 vertices, triangle count unchanged).
+
+- Updated dependencies [[`218e613`](https://github.com/LTplus-AG/ifc-lite/commit/218e613b06cc5ca2a74c84f72e039b430be6caee), [`0762522`](https://github.com/LTplus-AG/ifc-lite/commit/076252241ec4201462f7fcf0555c83606de5fecd), [`d7a3205`](https://github.com/LTplus-AG/ifc-lite/commit/d7a3205524e023f936b29ee1bc113d1d10e3b0b1), [`52dd7a1`](https://github.com/LTplus-AG/ifc-lite/commit/52dd7a16788375a9507c40fbde106b78236801db), [`47bde10`](https://github.com/LTplus-AG/ifc-lite/commit/47bde10dcacddf8f99e1e6b2bf036c78c192c5ff), [`b157b48`](https://github.com/LTplus-AG/ifc-lite/commit/b157b4841bfa795f8a937a9be20c21b645757fbe)]:
+  - @ifc-lite/clash@1.5.0
+  - @ifc-lite/geometry@3.1.0
+  - @ifc-lite/parser@3.6.0
+  - @ifc-lite/mcp@0.6.0
+  - @ifc-lite/wasm@3.0.4
+  - @ifc-lite/export@2.5.0
+  - @ifc-lite/ids@1.15.23
+
+## 0.15.1
+
+### Patch Changes
+
+- [#1553](https://github.com/LTplus-AG/ifc-lite/pull/1553) [`369ee9b`](https://github.com/LTplus-AG/ifc-lite/commit/369ee9b680309ca70c569b3f26bd07acfb83c19d) Thanks [@louistrue](https://github.com/louistrue)! - Shrink GLB exports by welding per-face-duplicated vertices. The faceted-brep mesher emits geometry per `IfcFace` with no cross-face vertex sharing, so a closed shell duplicated every shared corner once per incident face (~3-6x) -- the direct cause of the ~8x-larger GLBs seen on structural (faceted-brep-heavy) models versus reference extractors. Exports now collapse vertices that share an identical position and coinciding normal at the single glTF write funnel, then remap indices. World triangles, the world AABB, and flat/crease shading are preserved exactly (creases keep distinct normals and stay split); the weld is deterministic and cross-arch, applies to every GLB path (in-memory, streaming, bounded, and the viewer's from-meshes export), and leaves `process_geometry` output and the mesh-output determinism manifests untouched.
+
+- Updated dependencies [[`369ee9b`](https://github.com/LTplus-AG/ifc-lite/commit/369ee9b680309ca70c569b3f26bd07acfb83c19d)]:
+  - @ifc-lite/wasm@3.0.3
+  - @ifc-lite/geometry@3.0.3
+  - @ifc-lite/export@2.4.1
+
+## 0.15.0
+
+### Minor Changes
+
+- [#1512](https://github.com/LTplus-AG/ifc-lite/pull/1512) [`452b1c0`](https://github.com/LTplus-AG/ifc-lite/commit/452b1c0d9e7db215b9194f38503dec683a5d6046) Thanks [@louistrue](https://github.com/louistrue)! - CLI-wide verbosity convention: global `--verbose`, `--quiet`, `--debug`, and `--log-level <error|warn|info|debug>` flags (parsed and stripped before dispatch, so positional file paths are never confused with flag values). Human logs go to stderr only; stdout stays reserved for payloads and `--json`. Failures now print `Error [<command>]: <message>` with a remediation hint, and stack traces show under `--debug`/`--verbose` (the `DEBUG` env var still works). Parser diagnostics are no longer hard-silenced: they surface on stderr under `--verbose`. `export` gains `--diagnostics` (implied by `--verbose`), printing the same CSG/opening geometry report as `diagnose-geometry` from the export's own context.
+
+- [#1491](https://github.com/LTplus-AG/ifc-lite/pull/1491) [`6d2cb21`](https://github.com/LTplus-AG/ifc-lite/commit/6d2cb21a170413c6c98aadf10d254667b2ed2b53) Thanks [@louistrue](https://github.com/louistrue)! - feat(export): large-model GLB reliability - bounded memory, fail-closed, byte returns
+
+  Three related hardening changes on the export surface:
+
+  - **Bounded-memory GLB.** Inputs at or above 64 MB (native override
+    `IFC_LITE_GLB_STREAM_THRESHOLD_MB`, `0` disables) are exported through a
+    two-pass streaming assembler: pass 1 records per-mesh metadata only, pass 2
+    re-streams and bakes vertex bytes directly into an exactly-preallocated GLB.
+    Peak memory is the final artifact plus one mesh batch instead of the whole
+    model's meshes plus multiple full-buffer copies - this fixes the wasm
+    `RuntimeError: unreachable` / OOM on large in-browser exports. Models without
+    instanceable groups produce byte-identical output; instanced models keep
+    identical world geometry (rep-identity instancing is skipped above the
+    threshold, content-hash dedup is kept).
+
+  - **Fail-closed empty GLB at the boundary.** `exportGlb` now throws a typed
+    `Error` whose message starts with `NO_RENDER_GEOMETRY` when the visible mesh
+    set is empty, instead of returning a structurally valid but empty GLB.
+    `@ifc-lite/geometry` exports `NO_RENDER_GEOMETRY` and
+    `isNoRenderGeometryError(err)` to match it; the CLI and MCP map it to their
+    existing tailored messages.
+
+  - **BREAKING: sibling exporters return bytes.** `exportObj`, `exportCsv`,
+    `exportJson`, `exportJsonld`, `exportIfcx`, `exportStep`, `exportMerged` and
+    `exportHbjson` (wasm boundary, `IfcLiteBridge`, and `GeometryProcessor`) now
+    return `Uint8Array` (UTF-8) instead of `string`, so output is no longer capped
+    by the V8 max-string ceiling (~512 MB) - the same escape GLB already had.
+    Decode with `TextDecoder` where a string is genuinely needed; file writers
+    should write the bytes directly.
+
+- [#1481](https://github.com/LTplus-AG/ifc-lite/pull/1481) [`204cab4`](https://github.com/LTplus-AG/ifc-lite/commit/204cab48f8e3b6326a8005628ed5b7174d9d694c) Thanks [@louistrue](https://github.com/louistrue)! - feat(export): add `unitReconciliation: 'normalize'` merge mode
+
+  `MergedExporter` can now rescale a model whose length unit differs from the first
+  model's into the primary unit, so a mixed-unit merge produces one ordinary
+  single-unit `IfcProject` with one `IfcUnitAssignment` (opens correctly everywhere,
+  BIM Vision included) instead of a multi-project federation.
+
+  - Every length-valued datum is rescaled: all `IfcCartesianPoint` /
+    `IfcCartesianPointList` coordinates, scalar lengths (extrusion depths, profile
+    dimensions, radii, thicknesses, `IfcVector.Magnitude`, CSG primitive sizes,
+    `IfcBuildingStorey.Elevation`, `IfcSite.RefElevation`), `IfcLengthMeasure`
+    property values, and `IfcQuantityLength`. Which attributes are length-valued is
+    derived from the IFC schema registry, not hand-rolled.
+  - Areas and volumes are converted by their own declared `AREAUNIT`/`VOLUMEUNIT`
+    ratio (not the length factor squared/cubed), so a model with millimetre lengths
+    but square-/cubic-metre quantities (the common authoring-tool default) is not
+    corrupted.
+  - Angles, direction ratios, counts, unit definitions and georeferencing offsets
+    are left untouched. `MergeExportResult.stats.normalizedModelCount` reports how
+    many models were rescaled, and advisories are surfaced for schemas the length
+    registry does not fully cover (IFC4X3) and for georeferenced models.
+
+  The CLI `merge` command gains a `--unit-reconciliation <auto|normalize|assume-shared>`
+  flag, and the viewer's merged export adds a "Mixed units" selector.
+
+- [#1484](https://github.com/LTplus-AG/ifc-lite/pull/1484) [`a48abac`](https://github.com/LTplus-AG/ifc-lite/commit/a48abacfacdf226702f2454859afe9abe018e029) Thanks [@Blogbotana](https://github.com/Blogbotana)! - feat(export): configurable spatial merge matching in `MergedExporter`
+
+  `MergedExporter` unifies `IfcSite`/`IfcBuilding`/`IfcBuildingStorey` across
+  merged models with a single fixed heuristic today. It now accepts explicit
+  matching strategies, mirroring IfcOpenShell/BlenderBIM's "Merge Projects"
+  recipe:
+
+  - `mergeSites?: 'single' | 'by-name'` — `'single'` ignores Name and unifies
+    iff each model contributes exactly one `IfcSite`; `'by-name'` matches only
+    same-name (case-insensitive) sites, with no single-instance fallback.
+  - `mergeBuildings?: 'single' | 'by-name'` — same strategy, for `IfcBuilding`.
+  - `mergeStoreys?: 'by-name' | 'by-elevation' | 'by-name-then-elevation'` —
+    `'by-name'`/`'by-elevation'` match on exactly one criterion with no
+    fallback; `'by-name-then-elevation'` is the pre-existing combined heuristic
+    made explicit.
+
+  All three options are optional and, when omitted, preserve today's exact
+  default behavior (name match, else single-instance fallback for site/building;
+  name-then-elevation for storeys) — purely additive, no default behavior change.
+
+  One edge-case hardening applies in every mode, including the default: when two
+  sites (or buildings) in the same secondary model would match the same
+  first-model target (e.g. identical names), only the first claims it and the
+  second is kept as its own root instead of being silently collapsed onto the
+  same target. This brings site/building matching to parity with the
+  pre-existing storey behavior.
+
+  The CLI `merge` command gains matching `--merge-sites` / `--merge-buildings` /
+  `--merge-storeys` flags.
+
+### Patch Changes
+
+- Updated dependencies [[`8e43ecf`](https://github.com/LTplus-AG/ifc-lite/commit/8e43ecf540b88b942a4ec2127dd9bcf24ec244fa), [`d1e16f9`](https://github.com/LTplus-AG/ifc-lite/commit/d1e16f944ea9f3a35a7153959f13db168a35c229), [`6d2cb21`](https://github.com/LTplus-AG/ifc-lite/commit/6d2cb21a170413c6c98aadf10d254667b2ed2b53), [`66f31ac`](https://github.com/LTplus-AG/ifc-lite/commit/66f31acb761209f7cf78e83ef01c02a1ec3dc13a), [`54b5c6b`](https://github.com/LTplus-AG/ifc-lite/commit/54b5c6b043ebd83dc9b10bd15e9973e6a58293cb), [`204cab4`](https://github.com/LTplus-AG/ifc-lite/commit/204cab48f8e3b6326a8005628ed5b7174d9d694c), [`a48abac`](https://github.com/LTplus-AG/ifc-lite/commit/a48abacfacdf226702f2454859afe9abe018e029), [`3d25765`](https://github.com/LTplus-AG/ifc-lite/commit/3d25765edc2cee40268a6d5a27d4055f88f76489), [`6a515ba`](https://github.com/LTplus-AG/ifc-lite/commit/6a515ba31bbe31bb6f018f7476cc9616e4691448), [`b66ff1d`](https://github.com/LTplus-AG/ifc-lite/commit/b66ff1dd915a0ff4f60198a511adb7ed7f714079)]:
+  - @ifc-lite/wasm@3.0.0
+  - @ifc-lite/geometry@3.0.0
+  - @ifc-lite/data@2.3.0
+  - @ifc-lite/query@1.14.11
+  - @ifc-lite/mcp@0.5.0
+  - @ifc-lite/extensions@0.3.3
+  - @ifc-lite/export@2.4.0
+  - @ifc-lite/clash@1.4.1
+  - @ifc-lite/parser@3.5.2
+  - @ifc-lite/viewer-core@0.2.7
+  - @ifc-lite/ids@1.15.22
+
 ## 0.14.0
 
 ### Minor Changes

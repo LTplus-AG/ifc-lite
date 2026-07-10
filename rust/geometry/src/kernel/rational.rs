@@ -8,7 +8,7 @@
 
 use super::{DropAxis, ImplicitPoint, Lpi, Sign, Tpi};
 use num_rational::BigRational;
-use num_traits::Signed;
+use num_traits::{Signed, Zero};
 
 #[inline]
 fn r(x: f64) -> BigRational {
@@ -31,6 +31,18 @@ type V3 = [BigRational; 3];
 #[inline]
 fn vec(p: [f64; 3]) -> V3 {
     [r(p[0]), r(p[1]), r(p[2])]
+}
+
+/// Exact average of explicit points. Finite fallback for a degenerate (d==0)
+/// implicit point whose λ/d is undefined (avoids a worker-aborting div-by-zero).
+fn average(pts: &[[f64; 3]]) -> V3 {
+    let n = BigRational::from_float(pts.len() as f64).unwrap();
+    let mut acc = [r(0.0), r(0.0), r(0.0)];
+    for p in pts {
+        let v = vec(*p);
+        acc = [&acc[0] + &v[0], &acc[1] + &v[1], &acc[2] + &v[2]];
+    }
+    [&acc[0] / &n, &acc[1] / &n, &acc[2] / &n]
 }
 
 #[inline]
@@ -103,6 +115,12 @@ pub fn lpi_lambda(l: &Lpi) -> (V3, BigRational) {
 /// independently checks the homogenised form in [`lpi_orient3d`].
 pub fn lpi_point(l: &Lpi) -> V3 {
     let (lambda, d) = lpi_lambda(l);
+    if d.is_zero() {
+        // Degenerate LPI (line parallel to plane): λ/d undefined. Return the
+        // segment midpoint instead of dividing by zero (which aborts the worker;
+        // reachable via classify::to_f64_pt / boolean::point_via_interner).
+        return average(&[l.p, l.q]);
+    }
     [&lambda[0] / &d, &lambda[1] / &d, &lambda[2] / &d]
 }
 
@@ -168,6 +186,11 @@ pub fn tpi_orient3d(t: &Tpi, p2: [f64; 3], p3: [f64; 3], p4: [f64; 3]) -> Sign {
 /// Materialised TPI point `λ/d` (exact) — for the oracle cross-check.
 pub fn tpi_point(t: &Tpi) -> V3 {
     let (lambda, d) = tpi_lambda(t);
+    if d.is_zero() {
+        // Degenerate TPI (planes not concurrent at a point): λ/d undefined. Fall
+        // back to the first plane's centroid instead of dividing by zero.
+        return average(&t.planes[0]);
+    }
     [&lambda[0] / &d, &lambda[1] / &d, &lambda[2] / &d]
 }
 
@@ -370,3 +393,7 @@ pub fn cmp_lex(a: &ImplicitPoint, b: &ImplicitPoint) -> Sign {
     }
     Sign::Zero
 }
+
+#[cfg(test)]
+#[path = "rational_tests.rs"]
+mod rational_tests;

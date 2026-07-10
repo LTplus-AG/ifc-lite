@@ -1,5 +1,39 @@
 # @ifc-lite/data
 
+## 2.5.0
+
+### Minor Changes
+
+- [#1642](https://github.com/LTplus-AG/ifc-lite/pull/1642) [`d758460`](https://github.com/LTplus-AG/ifc-lite/commit/d758460dce1a564286a9af5579b0a2ba72dfa81d) Thanks [@louistrue](https://github.com/louistrue)! - Carry a spatial node's IFC `LongName` through the hierarchy so the spatial structure can show both the short code and the descriptive label, e.g. "01" + "Main Residence" (issue [#1634](https://github.com/LTplus-AG/ifc-lite/issues/1634)):
+
+  - `@ifc-lite/data`: `SpatialNode` gains an optional `longName?: string` (the descriptive name, kept only when present and distinct from `name`). Additive and optional; existing consumers are unaffected.
+  - `@ifc-lite/parser`: `SpatialHierarchyBuilder` now reads `LongName` off the source record by schema attribute _name_ and populates `SpatialNode.longName`. Resolving by name (not a fixed index) keeps it correct across the IfcRoot family, since `IfcProject` carries `LongName` at a different index than the `IfcSpatialStructureElement` subtypes; the lookup spans the bundled schema union (2X3 + 4 + 4X3) via the new `getAttributeNamesAcrossSchemas`, so IFC4.3 facility/infra containers (`IfcFacility`, `IfcBridge`, `IfcRoad`, …) outside the parser's IFC4 codegen pin resolve too. When `Name` is empty it falls back to `LongName` for the primary label. The source-less `buildFromCache` path leaves it undefined, exactly like storey elevation. `data-store-transport` serializes the new field so the worker→main transfer preserves it.
+  - `@ifc-lite/ifcx`: the IFCX/IFC5 hierarchy builder populates `SpatialNode.longName` from `bsi::ifc::prop::LongName` for parity.
+
+## 2.4.0
+
+### Minor Changes
+
+- [#1580](https://github.com/LTplus-AG/ifc-lite/pull/1580) [`3a2cd42`](https://github.com/LTplus-AG/ifc-lite/commit/3a2cd42158313d8e22f21885e62b6c705814ab47) Thanks [@louistrue](https://github.com/louistrue)! - Plumb the IFC measure type through the property pipeline so consumers can show units (issue [#1573](https://github.com/LTplus-AG/ifc-lite/issues/1573)):
+
+  - `@ifc-lite/data`: `Property` gains an optional `dataType?: string` carrying the raw IFC measure value type (e.g. `"IFCVOLUMETRICFLOWRATEMEASURE"`) of a typed nominal value. Additive and optional; existing consumers are unaffected.
+  - `@ifc-lite/mutations`: the `PropertyExtractor` function type now carries the same optional `dataType?` per property, and `MutablePropertyView.getForEntity` preserves it through the base and mutation-merge paths, so a property's measure type survives the merge for unit display.
+  - `@ifc-lite/mcp`: `geometry_volume` / `geometry_area` now resolve the volume/area symbol from the file's declared `IfcUnitAssignment` (via `@ifc-lite/parser`'s `extractProjectUnits`) instead of hardcoding `m³` / `m²`, and report the resolved symbol in a new `unit` response field. Falls back to the SI default when the store has no source buffer or declares no such unit.
+
+## 2.3.0
+
+### Minor Changes
+
+- [#1503](https://github.com/LTplus-AG/ifc-lite/pull/1503) [`d1e16f9`](https://github.com/LTplus-AG/ifc-lite/commit/d1e16f944ea9f3a35a7153959f13db168a35c229) Thanks [@louistrue](https://github.com/louistrue)! - fix(query): scope `whereProperty` to the named property set
+
+  `EntityQuery.whereProperty(psetName, propName, ...)` recorded the property-set
+  name but never passed it to `findByProperty`, so a property matched in _any_
+  property set — e.g. filtering `Pset_WallCommon.IsExternal` also returned doors
+  whose `Pset_DoorCommon.IsExternal` matched. `findByProperty` gains an optional
+  `psetName` argument (honored by the in-memory, cache-restored, and
+  server-converted property tables), and `whereProperty` now passes it. An unknown
+  pset name matches nothing.
+
 ## 2.2.0
 
 ### Minor Changes

@@ -51,7 +51,15 @@ export interface ModelGeorefInput {
   preAlignmentCoordinateInfo?: CoordinateInfo;
 }
 
-function totalYupOffset(info?: CoordinateInfo): { x: number; y: number; z: number } {
+/**
+ * Total Y-up (viewer-space) offset applied to a model's IFC (0,0,0) point:
+ * `originShift` plus the wasm RTC offset re-expressed in the viewer's Y-up
+ * frame. A model's IFC origin sits at `-totalYupOffset` in viewer space, so for
+ * a standalone load or the federation anchor this yields the origin
+ * synchronously (no proj4 hop). Exported so the measure-tool XYZ readout can
+ * derive the anchor origin without awaiting {@link computeIfcOriginViewerPosition}.
+ */
+export function totalYupOffset(info?: CoordinateInfo): { x: number; y: number; z: number } {
   const shift = info?.originShift ?? { x: 0, y: 0, z: 0 };
   const rtc = info?.wasmRtcOffset;
   const rtcYup = rtc ? { x: rtc.x, y: rtc.z, z: -rtc.y } : { x: 0, y: 0, z: 0 };

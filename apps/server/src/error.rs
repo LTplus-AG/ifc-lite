@@ -44,6 +44,9 @@ pub enum ApiError {
 
     #[error("Parquet serialization error: {0}")]
     Parquet(String),
+
+    #[error("Server overloaded, retry after {retry_after_secs}s")]
+    Overloaded { retry_after_secs: u64 },
 }
 
 /// Error response body.
@@ -66,6 +69,12 @@ impl IntoResponse for ApiError {
             ApiError::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR"),
             ApiError::Join(_) => (StatusCode::INTERNAL_SERVER_ERROR, "TASK_ERROR"),
             ApiError::Parquet(_) => (StatusCode::INTERNAL_SERVER_ERROR, "PARQUET_ERROR"),
+            ApiError::Overloaded { .. } => (StatusCode::SERVICE_UNAVAILABLE, "OVERLOADED"),
+        };
+
+        let retry_after = match &self {
+            ApiError::Overloaded { retry_after_secs } => Some(*retry_after_secs),
+            _ => None,
         };
 
         let body = ErrorResponse {
@@ -73,7 +82,13 @@ impl IntoResponse for ApiError {
             code: code.to_string(),
         };
 
-        (status, Json(body)).into_response()
+        let mut response = (status, Json(body)).into_response();
+        if let Some(secs) = retry_after {
+            if let Ok(v) = axum::http::HeaderValue::from_str(&secs.to_string()) {
+                response.headers_mut().insert(axum::http::header::RETRY_AFTER, v);
+            }
+        }
+        response
     }
 }
 

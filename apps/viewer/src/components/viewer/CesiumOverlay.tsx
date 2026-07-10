@@ -29,7 +29,6 @@ import {
   computeCesiumPlacement,
   shouldPreferOrthometricTerrain,
 } from '@/lib/geo/cesium-placement';
-import { getEffectiveHorizontalScale, resolveMapUnitToMetreScale } from '@/lib/geo/geo-scale';
 import { egm96Undulation } from '@/lib/geo/egm96-undulation';
 import { buildMergedGLB } from '@/lib/geo/cesium-glb';
 import { applySolarScene, SunPathDome } from '@/lib/geo/cesium-sun';
@@ -61,19 +60,10 @@ function loadCesium() {
 function buildModelMatrix(
   Cesium: typeof import('cesium'),
   bridge: CesiumBridge,
-  mapConversion: MapConversion | undefined,
-  projectedCRS: ProjectedCRS | undefined,
   coordinateInfo: CoordinateInfo | undefined,
-  lengthUnitScale: number,
 ) {
   // GLB vertices are in viewer-space metres (geometry engine converts during
-  // extraction). IfcMapConversion.Scale is defined per IFC spec relative to
-  // the project length unit, so applying it raw to metre-converted geometry
-  // double-scales the model — see issue #595. Use the effective scale.
-  const mapUnitScale = resolveMapUnitToMetreScale(projectedCRS?.mapUnitScale, lengthUnitScale);
-  const hScale = getEffectiveHorizontalScale(mapConversion?.scale, mapUnitScale, lengthUnitScale);
-  const absc = mapConversion?.xAxisAbscissa ?? 1.0;
-  const ordi = mapConversion?.xAxisOrdinate ?? 0.0;
+  // extraction; the effective map scale is already folded into the rotation).
   const bounds = coordinateInfo?.originalBounds;
   // Viewer bounds are already in metres (geometry engine converts from IFC native unit)
   const mvx = bounds ? (bounds.min.x + bounds.max.x) / 2 : 0;
@@ -87,16 +77,20 @@ function buildModelMatrix(
     bridge.modelOrigin.longitude, bridge.modelOrigin.latitude, bridge.modelOrigin.height,
   );
   const enuToEcef = Cesium.Transforms.eastNorthUpToFixedFrame(origin);
-  // No lengthUnitScale here — viewer-space GLB vertices are already in metres.
-  const sa = hScale * absc, so = hScale * ordi;
-  const tx = -(sa * mvx + so * mvz);
-  const ty = -(so * mvx - sa * mvz);
+  // No lengthUnitScale here: viewer-space GLB vertices are already in metres.
+  // Reuse the bridge's convergence-corrected viewer-to-ENU rotation so the
+  // model geometry and the camera frame agree on north; a grid-only rotation
+  // here would leave the model rotated by the meridian convergence off the
+  // true-north basemap (up to ~8 deg for Krovak). See #1408.
+  const rot = bridge.viewerRotation;
+  const tx = -(rot.eastFromVx * mvx + rot.eastFromVz * mvz);
+  const ty = -(rot.northFromVx * mvx + rot.northFromVz * mvz);
   const tz = -mvy;
   const ifcToEnu = new Cesium.Matrix4(
-    sa, 0,  so, tx,
-    so, 0, -sa, ty,
-    0,  1,  0,  tz,
-    0,  0,  0,  1,
+    rot.eastFromVx,  0, rot.eastFromVz,  tx,
+    rot.northFromVx, 0, rot.northFromVz, ty,
+    0,               1, 0,               tz,
+    0,               0, 0,               1,
   );
   return Cesium.Matrix4.multiply(enuToEcef, ifcToEnu, new Cesium.Matrix4());
 }
@@ -544,7 +538,7 @@ export function CesiumOverlay({
         if (cancelled) return;
 
         // Build initial model matrix
-        const modelMatrix = buildModelMatrix(Cesium, bridge, mapConversion, projectedCRS, coordinateInfo, lengthUnitScale);
+        const modelMatrix = buildModelMatrix(Cesium, bridge, coordinateInfo);
 
         const blob = new Blob([glbBytes as BlobPart], { type: 'model/gltf-binary' });
         const glbUrl = URL.createObjectURL(blob);
@@ -618,7 +612,7 @@ export function CesiumOverlay({
     const Cesium = cesiumModule;
     if (!model || !bridge || !viewer || !Cesium) return;
 
-    const newMatrix = buildModelMatrix(Cesium, bridge, mapConversion, projectedCRS, coordinateInfo, lengthUnitScale);
+    const newMatrix = buildModelMatrix(Cesium, bridge, coordinateInfo);
     model.modelMatrix = newMatrix;
     viewer.scene.requestRender();
     // Depend on bridgeVersion so the matrix is rebuilt with the *new* bridge

@@ -4,8 +4,9 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveVisibilityFilterSets, injectScheduleIntoStep } from './export-adapter.js';
+import { resolveVisibilityFilterSets, injectScheduleIntoStep, createExportAdapter } from './export-adapter.js';
 import { LEGACY_MODEL_ID } from './model-compat.js';
+import type { StoreApi } from './types.js';
 import type { ScheduleExtraction, IfcDataStore } from '@ifc-lite/parser';
 
 test('resolveVisibilityFilterSets honors legacy single-model hidden and isolated state', () => {
@@ -454,4 +455,97 @@ test("stripScheduleEntities respects ';' inside string literals", () => {
   assert.ok(!out.includes("'ws'"), 'workschedule stripped despite semicolons in string');
   assert.ok(out.includes("'w;all'"), 'wall with semicolon in name preserved');
   assert.ok(out.includes('A;B;C'), 'wall attribute with semicolons preserved');
+});
+
+// ─── createExportAdapter().csv() — CWE-1236 formula-injection defense ──
+
+/**
+ * Build a minimal legacy-single-model StoreApi whose entities resolve
+ * `Name` to whatever the caller wants, so the CSV escaping path in
+ * `escapeCsv()` (private to export-adapter.ts) can be exercised through
+ * the real `csv()` method rather than reimplemented in the test.
+ */
+function makeCsvFixtureStore(names: Record<number, string>): StoreApi {
+  const dataStore = {
+    entities: {
+      getGlobalId: (id: number) => `gid-${id}`,
+      getName: (id: number) => names[id] ?? '',
+      getDescription: () => '',
+      getObjectType: () => '',
+      getTypeName: () => 'IfcWall',
+    },
+    getProperties: () => [],
+    getQuantities: () => [],
+    // Description/ObjectType are empty ('') for every fixture entity, which
+    // is falsy — EntityNode falls back to on-demand extraction from the raw
+    // entity in that case, so getEntity() must exist (returning nothing is
+    // fine: extractRootAttributesFromEntity then yields blank strings).
+    getEntity: () => undefined,
+  } as unknown as IfcDataStore;
+
+  const state = { models: new Map(), ifcDataStore: dataStore };
+  return {
+    getState: () => state as never,
+    subscribe: () => () => {},
+  };
+}
+
+function csvCellsFor(names: Record<number, string>): string[] {
+  const adapter = createExportAdapter(makeCsvFixtureStore(names));
+  const refs = Object.keys(names).map((id) => ({ modelId: LEGACY_MODEL_ID, expressId: Number(id) }));
+  const out = adapter.csv(refs, { columns: ['Name'] }) as string;
+  const lines = out.split('\n');
+  assert.equal(lines[0], 'Name', 'header row is the requested column');
+  // One data line per ref, in ref order.
+  return lines.slice(1);
+}
+
+test('export.csv escapeCsv prefixes a leading = with an apostrophe (CWE-1236)', () => {
+  const [cell] = csvCellsFor({ 1: '=SUM(A1:A9)' });
+  assert.equal(cell, "'=SUM(A1:A9)");
+});
+
+test('export.csv escapeCsv prefixes leading +, -, @ with an apostrophe (CWE-1236)', () => {
+  const [plus, minus, at] = csvCellsFor({ 1: '+1+1', 2: '-2+3', 3: '@SUM(1+1)' });
+  assert.equal(plus, "'+1+1");
+  assert.equal(minus, "'-2+3");
+  assert.equal(at, "'@SUM(1+1)");
+});
+
+test('export.csv escapeCsv prefixes a leading TAB with an apostrophe and leaves it unquoted', () => {
+  const [cell] = csvCellsFor({ 1: '\tstartsWithTab' });
+  // No separator/quote/newline present besides the leading tab itself, so
+  // the apostrophe defense fires without also triggering CSV quoting.
+  assert.equal(cell, "'\tstartsWithTab");
+});
+
+test('export.csv escapeCsv prefixes a leading CR and also quotes it (CR triggers both defenses)', () => {
+  const [cell] = csvCellsFor({ 1: '\rstartsWithCR' });
+  // The apostrophe defuses the formula; the CR itself still forces
+  // RFC4180 quoting because it's a raw control character in the cell.
+  assert.equal(cell, '"\'\rstartsWithCR"');
+});
+
+test('export.csv escapeCsv leaves a benign value unprefixed and unquoted', () => {
+  const [cell] = csvCellsFor({ 1: 'NormalValue' });
+  assert.equal(cell, 'NormalValue');
+});
+
+test('export.csv escapeCsv quotes a value containing the separator', () => {
+  const [cell] = csvCellsFor({ 1: 'Contains, comma' });
+  assert.equal(cell, '"Contains, comma"');
+});
+
+test('export.csv escapeCsv quotes and doubles embedded double-quotes', () => {
+  const [cell] = csvCellsFor({ 1: 'Has "quotes" inside' });
+  assert.equal(cell, '"Has ""quotes"" inside"');
+});
+
+test('export.csv escapeCsv quotes a value containing a newline', () => {
+  // The escaped cell itself carries a raw '\n', so it can't be recovered
+  // by splitting the whole CSV output on '\n' (that's exactly what RFC4180
+  // quoting protects against) — assert on the full output string instead.
+  const adapter = createExportAdapter(makeCsvFixtureStore({ 1: 'Line1\nLine2' }));
+  const out = adapter.csv([{ modelId: LEGACY_MODEL_ID, expressId: 1 }], { columns: ['Name'] }) as string;
+  assert.equal(out, 'Name\n"Line1\nLine2"');
 });

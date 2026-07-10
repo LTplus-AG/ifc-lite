@@ -343,15 +343,14 @@ pub fn triangulate_polygon_with_holes(
 /// outer+holes vertex list and an earcut index list (no Steiner) if the CDT
 /// declines, so the caller always gets a usable result.
 ///
-/// `allow_boundary_split = false` keeps refinement OFF the outer/hole rings so a
-/// region whose boundary is SHARED with neighbouring plane buckets stays
-/// watertight at the seam (no boundary Steiner T-junction). The consolidate path
-/// passes `false`; a standalone single-region caller can pass `true` for full
-/// Ruppert.
+/// Refinement is interior-only and NEVER touches the outer/hole rings, so a
+/// region whose boundary is SHARED with neighbouring plane buckets (the
+/// consolidate path — the only caller) stays watertight at the seam (no
+/// boundary Steiner T-junction). See [`crate::cdt::triangulate_refined`] for
+/// why this is the only supported mode.
 pub fn triangulate_polygon_with_holes_refined(
     outer: &[Point2<f64>],
     holes: &[Vec<Point2<f64>>],
-    allow_boundary_split: bool,
 ) -> Result<(Vec<Point2<f64>>, Vec<usize>)> {
     if outer.len() < 3 {
         return Err(Error::TriangulationError(
@@ -362,9 +361,7 @@ pub fn triangulate_polygon_with_holes_refined(
         holes.iter().filter(|h| h.len() >= 3).cloned().collect();
 
     // Quality CDT + bounded refinement.
-    if let Some((pts, idx)) =
-        crate::cdt::triangulate_refined(outer, &valid_holes, allow_boundary_split)
-    {
+    if let Some((pts, idx)) = crate::cdt::triangulate_refined(outer, &valid_holes) {
         return Ok((pts, idx));
     }
 
@@ -617,7 +614,7 @@ mod tests {
             Point2::new(3.0, 7.0),
         ];
         let (pts, idx) =
-            triangulate_polygon_with_holes_refined(&outer, std::slice::from_ref(&hole), false).unwrap();
+            triangulate_polygon_with_holes_refined(&outer, std::slice::from_ref(&hole)).unwrap();
 
         let n_input = outer.len() + hole.len();
         assert!(pts.len() >= n_input, "input vertices must all be present");
@@ -651,9 +648,12 @@ mod tests {
 
     /// `triangulate_polygon_with_holes_refined`, degenerate path: a fully
     /// collinear outer ring is declined by the CDT (its closing constraint
-    /// passes through the intermediate vertices and cannot be recovered); the
-    /// earcut/fan fallback must still return `Ok` with the `outer ++ holes`
-    /// vertex set and in-range indices.
+    /// passes through the intermediate vertices and cannot be recovered), so the
+    /// function must bail to the earcut/fan fallback and still return `Ok` with
+    /// the `outer ++ holes` vertex set and in-range indices. This fallback is
+    /// independent of the (removed) Ruppert boundary-split path — it fires on
+    /// the CDT-decline branch before any refinement — so it still needs its own
+    /// regression coverage under the no-arg signature.
     #[test]
     fn test_refined_collinear_outer_falls_back() {
         let outer = vec![
@@ -662,7 +662,7 @@ mod tests {
             Point2::new(2.0, 0.0),
             Point2::new(3.0, 0.0),
         ];
-        let (pts, idx) = triangulate_polygon_with_holes_refined(&outer, &[], true)
+        let (pts, idx) = triangulate_polygon_with_holes_refined(&outer, &[])
             .expect("degenerate input must fall back, not error");
         assert_eq!(pts.len(), outer.len(), "fallback must return the input vertex set");
         for (i, p) in outer.iter().enumerate() {

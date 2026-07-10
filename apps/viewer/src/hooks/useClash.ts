@@ -18,11 +18,13 @@ import {
   rulesFromPresets,
   groupClashes,
   findDuplicates,
+  clashReviewKey,
   type Clash,
   type ClashElement,
   type ClashElementRef,
   type ClashGroup,
   type ClashResult,
+  type ClashReviewStatus,
   type ClashRule,
   type ClashSeverity,
   type ExclusionSet,
@@ -33,6 +35,7 @@ import { contactClusters, type SharedFaceCluster, type Vec3 } from '@ifc-lite/cl
 import { writeBCF } from '@ifc-lite/bcf';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { buildClashPairColors, CLASH_COLOR_A, CLASH_COLOR_OVERLAP } from '@/lib/clash/clash-colors';
+import { clashFramingBounds } from '@/lib/clash/clash-framing';
 import { posthog } from '@/lib/analytics';
 import { downloadBlob } from '@/lib/export/download';
 
@@ -98,8 +101,6 @@ export interface ClashBcfConfig {
   severities: ClashSeverity[];
   /** Render each topic's viewpoint offscreen and embed a PNG snapshot. */
   includeSnapshots: boolean;
-  /** Initial BCF topic status (Open / In Progress / ...). */
-  status: string;
   /** Safety cap on topic count; overflow is recorded in one marker topic. */
   maxTopics: number;
 }
@@ -142,6 +143,9 @@ export function useClash() {
   const clashPresets = useViewerStore((s) => s.clashPresets);
   const selectedId = useViewerStore((s) => s.clashSelectedId);
   const panelVisible = useViewerStore((s) => s.clashPanelVisible);
+  /** Per-clash review state + the status view filter (#1468). */
+  const reviews = useViewerStore((s) => s.clashReviews);
+  const statusFilter = useViewerStore((s) => s.clashStatusFilter);
   /** Number of loaded models — drives the "checking a single model" framing (#1271). */
   const modelCount = useViewerStore((s) => s.models.size);
 
@@ -151,6 +155,8 @@ export function useClash() {
   const setGroupBy = useViewerStore((s) => s.setClashGroupBy);
   const setSelectedId = useViewerStore((s) => s.setClashSelectedId);
   const setPanelVisible = useViewerStore((s) => s.setClashPanelVisible);
+  const setClashReview = useViewerStore((s) => s.setClashReview);
+  const toggleStatusFilter = useViewerStore((s) => s.toggleClashStatusFilter);
   const clear = useViewerStore((s) => s.clearClash);
 
   // Geometry of the last-gathered clash elements, keyed by federated ref, so a
@@ -200,6 +206,8 @@ export function useClash() {
           onProgress: (p) => useViewerStore.getState().setClashProgress(p),
         });
         state.setClashResult(res);
+        // Completed-run signal for baseline consumers (clash tour run gate).
+        state.bumpClashRunSeq();
         // Spatial clustering is the sensible BCF unit; the panel list groups by
         // its own dimension separately. Radius is the user's cluster epsilon.
         state.setClashGroups(groupClashes(res, { by: 'cluster', epsilon: state.clashClusterEpsilon }));
@@ -286,6 +294,8 @@ export function useClash() {
       }
       const res = findDuplicates(elements, { exclusions });
       state.setClashResult(res);
+      // Completed-run signal for baseline consumers (clash tour run gate).
+      state.bumpClashRunSeq();
       state.setClashGroups(groupClashes(res, { by: 'cluster', epsilon: state.clashClusterEpsilon }));
       state.setClashSelectedId(null);
       posthog.capture('clash_duplicate_scan', { duplicate_count: res.clashes.length });
@@ -381,9 +391,23 @@ export function useClash() {
       }
       applyFocusMode(globalIds, mode);
       state.setClashSelectedId(clash.id);
-      // frameSelection also frames the clash ids (see Viewport), so the camera
-      // encloses the pair without a selection.
-      requestAnimationFrame(() => state.cameraCallbacks.frameSelection?.());
+      // Frame the CONTACT region (tight overlap box grown by a little context),
+      // not the union of the two whole elements; a long clashing member would
+      // otherwise dominate and push the overlap tiny and off-centre (#1466).
+      // Fall back to frameSelection if the bounds are missing or the isometric
+      // callback isn't registered yet (renderer not mounted).
+      const framing = clash.bounds ? clashFramingBounds(clash.bounds) : null;
+      requestAnimationFrame(() => {
+        const cb = useViewerStore.getState().cameraCallbacks;
+        if (framing && cb.frameClashRegion) {
+          cb.frameClashRegion(
+            { x: framing.min[0], y: framing.min[1], z: framing.min[2] },
+            { x: framing.max[0], y: framing.max[1], z: framing.max[2] },
+          );
+        } else {
+          cb.frameSelection?.();
+        }
+      });
     },
     [refOf, applyFocusMode],
   );
@@ -452,6 +476,27 @@ export function useClash() {
     state.setClashOverlapBox(null); state.setClashContactLines(null);
     setSelectedId(null);
   }, [setSelectedId]);
+
+  /** Current review status of a clash ('open' when unreviewed). Reactive: reads
+   *  the subscribed reviews map so the panel repaints on any review change. (#1468) */
+  const reviewOf = useCallback(
+    (clash: Clash): ClashReviewStatus => reviews.get(clashReviewKey(clash))?.status ?? 'open',
+    [reviews],
+  );
+
+  /** Current review comment of a clash ('' when none). */
+  const reviewCommentOf = useCallback(
+    (clash: Clash): string => reviews.get(clashReviewKey(clash))?.comment ?? '',
+    [reviews],
+  );
+
+  /** Set a clash's review status and/or comment (persists). Resetting to open
+   *  with no comment drops the entry. (#1468) */
+  const setReview = useCallback(
+    (clash: Clash, patch: { status?: ClashReviewStatus; comment?: string }) =>
+      setClashReview(clashReviewKey(clash), patch),
+    [setClashReview],
+  );
 
   /**
    * Preview what a given export config would produce, WITHOUT building anything:
@@ -550,11 +595,20 @@ export function useClash() {
         }
       }
 
+      // Each topic's status follows its members' review status (least-resolved
+      // wins), mapped to a BCF status in the bridge. Read the live reviews map so
+      // an edit made just before export is reflected. (#1468)
+      const reviewsMap = state.clashReviews;
+      const reviewStatusOf = (clash: Clash): ClashReviewStatus =>
+        reviewsMap.get(clashReviewKey(clash))?.status ?? 'open';
+
       try {
         const project = await createBCFFromClashResult(filtered, groups, {
           author: 'clash@ifc-lite',
           projectName: 'Clash report',
-          status: config.status,
+          reviewStatusOf,
+          // Resolve model ids to file names for the BCF Header (#1591).
+          modelNameOf: (id) => state.models.get(id)?.name ?? id,
           maxTopics: config.maxTopics,
           ...(snapshotProvider ? { snapshotProvider } : {}),
         });
@@ -592,6 +646,7 @@ export function useClash() {
     selectedId,
     panelVisible,
     modelCount,
+    statusFilter,
     // Only enabled presets show as run chips; the settings dialog manages the full set.
     presets: clashPresets.filter((p) => p.enabled),
     // settings
@@ -600,6 +655,11 @@ export function useClash() {
     setClearance,
     setGroupBy,
     setPanelVisible,
+    // review (#1468)
+    reviewOf,
+    reviewCommentOf,
+    setReview,
+    toggleStatusFilter,
     // actions
     run,
     runAll,

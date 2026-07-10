@@ -392,11 +392,12 @@ To ground the design, this RFC also ships the cryptographic kernel as
 code. What's in:
 
 - **`@ifc-lite/extensions/signing`** — `generateKeyPair`,
-  `exportKey`, `importKey`, `fingerprint`, `signBundle`, `verifyBundle`,
-  `canonicalContentHash`, plus `SignatureMismatchError`,
+  `exportPrivateKey`, `exportPublicKey`, `importKey`,
+  `fingerprintFromBytes`, `compactFingerprint`, `signBundle`,
+  `verifyBundle`, `canonicalContentHash`, plus `SignatureMismatchError`,
   `SignatureFormatError`, `KeyFormatError`.
 - **`.iflx` envelope update** — `signature` field accepted on unpack,
-  emitted on `packSignedBundle`. Unsigned bundles continue to round-trip
+  emitted on `packBundle`. Unsigned bundles continue to round-trip
   unchanged.
 - **CLI** — `ifc-lite ext keygen`, `ifc-lite ext pack`,
   `ifc-lite ext sign`, `ifc-lite ext verify`. The CLI is the on-ramp

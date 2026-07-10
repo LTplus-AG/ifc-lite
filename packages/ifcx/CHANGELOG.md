@@ -1,5 +1,36 @@
 # @ifc-lite/ifcx
 
+## 2.2.0
+
+### Minor Changes
+
+- [#1642](https://github.com/LTplus-AG/ifc-lite/pull/1642) [`d758460`](https://github.com/LTplus-AG/ifc-lite/commit/d758460dce1a564286a9af5579b0a2ba72dfa81d) Thanks [@louistrue](https://github.com/louistrue)! - Carry a spatial node's IFC `LongName` through the hierarchy so the spatial structure can show both the short code and the descriptive label, e.g. "01" + "Main Residence" (issue [#1634](https://github.com/LTplus-AG/ifc-lite/issues/1634)):
+
+  - `@ifc-lite/data`: `SpatialNode` gains an optional `longName?: string` (the descriptive name, kept only when present and distinct from `name`). Additive and optional; existing consumers are unaffected.
+  - `@ifc-lite/parser`: `SpatialHierarchyBuilder` now reads `LongName` off the source record by schema attribute _name_ and populates `SpatialNode.longName`. Resolving by name (not a fixed index) keeps it correct across the IfcRoot family, since `IfcProject` carries `LongName` at a different index than the `IfcSpatialStructureElement` subtypes; the lookup spans the bundled schema union (2X3 + 4 + 4X3) via the new `getAttributeNamesAcrossSchemas`, so IFC4.3 facility/infra containers (`IfcFacility`, `IfcBridge`, `IfcRoad`, …) outside the parser's IFC4 codegen pin resolve too. When `Name` is empty it falls back to `LongName` for the primary label. The source-less `buildFromCache` path leaves it undefined, exactly like storey elevation. `data-store-transport` serializes the new field so the worker→main transfer preserves it.
+  - `@ifc-lite/ifcx`: the IFCX/IFC5 hierarchy builder populates `SpatialNode.longName` from `bsi::ifc::prop::LongName` for parity.
+
+### Patch Changes
+
+- Updated dependencies [[`d758460`](https://github.com/LTplus-AG/ifc-lite/commit/d758460dce1a564286a9af5579b0a2ba72dfa81d)]:
+  - @ifc-lite/data@2.5.0
+
+## 2.1.6
+
+### Patch Changes
+
+- [#1506](https://github.com/LTplus-AG/ifc-lite/pull/1506) [`796f50a`](https://github.com/LTplus-AG/ifc-lite/commit/796f50a3b0072dd2c07b60ef84e3f1d2996444e2) Thanks [@louistrue](https://github.com/louistrue)! - fix(ifcx): guard PathIndex hierarchical indexing against child cycles
+
+  `PathIndex.indexHierarchicalPaths` recursed through a node's children with no
+  ancestor tracking, so a malformed IFCX layer with a child cycle (`A -> B -> A`)
+  recursed until the stack overflowed and crashed the load. The recursion now
+  tracks the uuids on the current DFS branch and skips a child that is already an
+  ancestor; a node reached by two distinct non-ancestral paths (a diamond) is
+  still indexed under both.
+
+- Updated dependencies [[`d1e16f9`](https://github.com/LTplus-AG/ifc-lite/commit/d1e16f944ea9f3a35a7153959f13db168a35c229)]:
+  - @ifc-lite/data@2.3.0
+
 ## 2.1.5
 
 ### Patch Changes

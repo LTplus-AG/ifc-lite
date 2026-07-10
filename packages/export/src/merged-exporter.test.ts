@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { MergedExporter, type MergeModelInput } from './merged-exporter.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView as LiveMutablePropertyView } from '@ifc-lite/mutations';
@@ -91,6 +91,43 @@ function findDanglingRefs(content: string): number[] {
 }
 
 describe('MergedExporter', () => {
+  it('exportBlobAsync produces byte-identical content to exportAsync', async () => {
+    const model1 = buildModel('m1', 'Arch', [
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('g1',$,'Projekt mit Umlaut äöü',$,$,$,$,$,$);"],
+      [2, 'IFCSITE', "#2=IFCSITE('g2',$,'Baustelle 現場',$,$,$,$,$,$,$);"],
+      [3, 'IFCWALL', "#3=IFCWALL('g3',#1,'Wand 🧱',$,#2,$,$,$);"],
+    ]);
+    const model2 = buildModel('m2', 'Struct', [
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('g4',$,'P2',$,$,$,$,$,$);"],
+      [2, 'IFCBUILDING', "#2=IFCBUILDING('g5',$,'B',$,$,$,$,$,$,$);"],
+      [3, 'IFCCOLUMN', "#3=IFCCOLUMN('g6',#1,'C',$,#2,$,$,$);"],
+    ]);
+    const options = { schema: 'IFC4' as const, projectStrategy: 'keep-first' as const };
+
+    // The two paths differ only in how they assemble already-rendered bytes, so
+    // their output must be byte-identical. The STEP header embeds a wall-clock
+    // FILE_NAME timestamp (generateHeader -> new Date()), captured independently
+    // by each call; without pinning the clock, the two sequential exports flake
+    // whenever they straddle a second boundary. Freeze *only* Date (real timers
+    // stay live so the exporter's event-loop yielding still runs).
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+    try {
+      const bytesResult = await new MergedExporter([model1, model2]).exportAsync(options);
+      const blobResult = await new MergedExporter([model1, model2]).exportBlobAsync(options);
+
+      const blobBytes = new Uint8Array(await blobResult.content.arrayBuffer());
+      expect(blobBytes).toEqual(bytesResult.content);
+      expect(blobResult.content.size).toBe(bytesResult.content.byteLength);
+      // Stats parity: the Blob path reports the same size and counts.
+      expect(blobResult.stats.fileSize).toBe(bytesResult.stats.fileSize);
+      expect(blobResult.stats.totalEntityCount).toBe(bytesResult.stats.totalEntityCount);
+      expect(blobResult.stats.modelCount).toBe(bytesResult.stats.modelCount);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('should export a single model unchanged', () => {
     const model = buildModel('m1', 'Model1', [
       [1, 'IFCPROJECT', "#1=IFCPROJECT('g1',$,'Project',$,$,$,$,$,$);"],
@@ -285,6 +322,191 @@ describe('MergedExporter', () => {
 
   it('should throw if no models provided', () => {
     expect(() => new MergedExporter([])).toThrow('at least one model');
+  });
+
+  describe('configurable spatial merge matching (mergeSites/mergeBuildings/mergeStoreys)', () => {
+    it('mergeSites "single" unifies by count alone, ignoring differing names', () => {
+      const model1 = buildModel('m1', 'Arch', [
+        [1, 'IFCPROJECT', "#1=IFCPROJECT('g1',$,'P',$,$,$,$,$,$);"],
+        [2, 'IFCSITE', "#2=IFCSITE('g2',$,'Site A',$,$,$,$,$,$,$);"],
+      ]);
+      const model2 = buildModel('m2', 'Struct', [
+        [1, 'IFCPROJECT', "#1=IFCPROJECT('g3',$,'P2',$,$,$,$,$,$);"],
+        [2, 'IFCSITE', "#2=IFCSITE('g4',$,'Site B',$,$,$,$,$,$,$);"],
+      ]);
+
+      const exporter = new MergedExporter([model1, model2]);
+      const result = exporter.export({ schema: 'IFC4', projectStrategy: 'keep-first', mergeSites: 'single' });
+      const content = decode(result.content);
+
+      expect(content).not.toContain("IFCSITE('g4'");
+      expect(content.match(/=IFCSITE\(/g)?.length).toBe(1);
+    });
+
+    it('mergeSites "by-name" keeps differing-name lone sites separate (no single fallback)', () => {
+      const model1 = buildModel('m1', 'Arch', [
+        [1, 'IFCPROJECT', "#1=IFCPROJECT('g1',$,'P',$,$,$,$,$,$);"],
+        [2, 'IFCSITE', "#2=IFCSITE('g2',$,'Site A',$,$,$,$,$,$,$);"],
+      ]);
+      const model2 = buildModel('m2', 'Struct', [
+        [1, 'IFCPROJECT', "#1=IFCPROJECT('g3',$,'P2',$,$,$,$,$,$);"],
+        [2, 'IFCSITE', "#2=IFCSITE('g4',$,'Site B',$,$,$,$,$,$,$);"],
+      ]);
+
+      const exporter = new MergedExporter([model1, model2]);
+      const result = exporter.export({ schema: 'IFC4', projectStrategy: 'keep-first', mergeSites: 'by-name' });
+      const content = decode(result.content);
+
+      // Differing names, no single-instance fallback → both kept
+      expect(content).toContain("IFCSITE('g2'");
+      expect(content).toContain("IFCSITE('g4'");
+      expect(content.match(/=IFCSITE\(/g)?.length).toBe(2);
+    });
+
+    it('mergeBuildings "single" unifies by count alone, ignoring differing names', () => {
+      const model1 = buildModel('m1', 'Arch', [
+        [1, 'IFCPROJECT', "#1=IFCPROJECT('g1',$,'P',$,$,$,$,$,$);"],
+        [2, 'IFCBUILDING', "#2=IFCBUILDING('g2',$,'Building A',$,$,$,$,$,$,$);"],
+      ]);
+      const model2 = buildModel('m2', 'Struct', [
+        [1, 'IFCPROJECT', "#1=IFCPROJECT('g3',$,'P2',$,$,$,$,$,$);"],
+        [2, 'IFCBUILDING', "#2=IFCBUILDING('g4',$,'Building B',$,$,$,$,$,$,$);"],
+      ]);
+
+      const exporter = new MergedExporter([model1, model2]);
+      const result = exporter.export({ schema: 'IFC4', projectStrategy: 'keep-first', mergeBuildings: 'single' });
+      const content = decode(result.content);
+
+      expect(content).not.toContain("IFCBUILDING('g4'");
+      expect(content.match(/=IFCBUILDING\(/g)?.length).toBe(1);
+    });
+
+    it('mergeBuildings "by-name" keeps differing-name lone buildings separate (no single fallback)', () => {
+      const model1 = buildModel('m1', 'Arch', [
+        [1, 'IFCPROJECT', "#1=IFCPROJECT('g1',$,'P',$,$,$,$,$,$);"],
+        [2, 'IFCBUILDING', "#2=IFCBUILDING('g2',$,'Building A',$,$,$,$,$,$,$);"],
+      ]);
+      const model2 = buildModel('m2', 'Struct', [
+        [1, 'IFCPROJECT', "#1=IFCPROJECT('g3',$,'P2',$,$,$,$,$,$);"],
+        [2, 'IFCBUILDING', "#2=IFCBUILDING('g4',$,'Building B',$,$,$,$,$,$,$);"],
+      ]);
+
+      const exporter = new MergedExporter([model1, model2]);
+      const result = exporter.export({ schema: 'IFC4', projectStrategy: 'keep-first', mergeBuildings: 'by-name' });
+      const content = decode(result.content);
+
+      expect(content).toContain("IFCBUILDING('g2'");
+      expect(content).toContain("IFCBUILDING('g4'");
+      expect(content.match(/=IFCBUILDING\(/g)?.length).toBe(2);
+    });
+
+    it('mergeStoreys "by-name" does not fall back to elevation', () => {
+      const model1 = buildModel('m1', 'Arch', [
+        [1, 'IFCPROJECT', "#1=IFCPROJECT('g1',$,'P',$,$,$,$,$,$);"],
+        [2, 'IFCBUILDINGSTOREY', "#2=IFCBUILDINGSTOREY('g2',$,'EG',$,$,$,$,$,.ELEMENT.,0.);"],
+      ]);
+      const model2 = buildModel('m2', 'Struct', [
+        [1, 'IFCPROJECT', "#1=IFCPROJECT('g3',$,'P2',$,$,$,$,$,$);"],
+        // Same elevation, different name — would unify under the elevation fallback.
+        [2, 'IFCBUILDINGSTOREY', "#2=IFCBUILDINGSTOREY('g4',$,'Ground',$,$,$,$,$,.ELEMENT.,0.);"],
+      ]);
+
+      const exporter = new MergedExporter([model1, model2]);
+      const result = exporter.export({ schema: 'IFC4', projectStrategy: 'keep-first', mergeStoreys: 'by-name' });
+      const content = decode(result.content);
+
+      // Strict by-name: no elevation fallback → kept separate
+      expect(content).toContain("IFCBUILDINGSTOREY('g4'");
+    });
+
+    it('mergeStoreys "by-elevation" ignores matching names when elevation differs', () => {
+      const model1 = buildModel('m1', 'Arch', [
+        [1, 'IFCPROJECT', "#1=IFCPROJECT('g1',$,'P',$,$,$,$,$,$);"],
+        [2, 'IFCBUILDINGSTOREY', "#2=IFCBUILDINGSTOREY('g2',$,'Ground Floor',$,$,$,$,$,.ELEMENT.,0.);"],
+      ]);
+      const model2 = buildModel('m2', 'Struct', [
+        [1, 'IFCPROJECT', "#1=IFCPROJECT('g3',$,'P2',$,$,$,$,$,$);"],
+        // Same name, very different elevation — would unify under the name match.
+        [2, 'IFCBUILDINGSTOREY', "#2=IFCBUILDINGSTOREY('g4',$,'Ground Floor',$,$,$,$,$,.ELEMENT.,9000.);"],
+      ]);
+
+      const exporter = new MergedExporter([model1, model2]);
+      const result = exporter.export({ schema: 'IFC4', projectStrategy: 'keep-first', mergeStoreys: 'by-elevation' });
+      const content = decode(result.content);
+
+      // Strict by-elevation: name is ignored, elevation is out of tolerance → kept separate
+      expect(content).toContain("IFCBUILDINGSTOREY('g4'");
+    });
+
+    it('mergeStoreys "by-name-then-elevation" explicitly matches by name, then by elevation', () => {
+      // Same fixtures as the two strict-mode tests above, but combined under
+      // the explicit combined mode: 'Level 1'-style name match unifies the
+      // first pair, and the elevation fallback unifies a differently-named pair.
+      const model1 = buildModel('m1', 'Arch', [
+        [1, 'IFCPROJECT', "#1=IFCPROJECT('g1',$,'P',$,$,$,$,$,$);"],
+        [2, 'IFCBUILDINGSTOREY', "#2=IFCBUILDINGSTOREY('g2',$,'Ground Floor',$,$,$,$,$,.ELEMENT.,0.);"],
+        [3, 'IFCBUILDINGSTOREY', "#3=IFCBUILDINGSTOREY('g3',$,'EG',$,$,$,$,$,.ELEMENT.,3000.);"],
+      ]);
+      const model2 = buildModel('m2', 'Struct', [
+        [1, 'IFCPROJECT', "#1=IFCPROJECT('g4',$,'P2',$,$,$,$,$,$);"],
+        [2, 'IFCBUILDINGSTOREY', "#2=IFCBUILDINGSTOREY('g5',$,'Ground Floor',$,$,$,$,$,.ELEMENT.,0.);"], // name match
+        [3, 'IFCBUILDINGSTOREY', "#3=IFCBUILDINGSTOREY('g6',$,'Ground',$,$,$,$,$,.ELEMENT.,3000.);"], // elevation-fallback match
+      ]);
+
+      const exporter = new MergedExporter([model1, model2]);
+      const result = exporter.export({ schema: 'IFC4', projectStrategy: 'keep-first', mergeStoreys: 'by-name-then-elevation' });
+      const content = decode(result.content);
+
+      expect(content).not.toContain("IFCBUILDINGSTOREY('g5'");
+      expect(content).not.toContain("IFCBUILDINGSTOREY('g6'");
+      expect(content.match(/=IFCBUILDINGSTOREY\(/g)?.length).toBe(2);
+    });
+
+    it('omitted mergeSites keeps the pre-existing combined heuristic', () => {
+      // Storey/building default-heuristic coverage lives in the top-level
+      // 'should unify storeys with matching names' / 'by elevation' tests
+      // above, which already call export() with no mergeStoreys override.
+      const model1 = buildModel('m1', 'Arch', [
+        [1, 'IFCPROJECT', "#1=IFCPROJECT('g1',$,'P',$,$,$,$,$,$);"],
+        [2, 'IFCSITE', "#2=IFCSITE('g2',$,'Site A',$,$,$,$,$,$,$);"],
+      ]);
+      const model2 = buildModel('m2', 'Struct', [
+        [1, 'IFCPROJECT', "#1=IFCPROJECT('g3',$,'P2',$,$,$,$,$,$);"],
+        [2, 'IFCSITE', "#2=IFCSITE('g4',$,'Site B',$,$,$,$,$,$,$);"],
+      ]);
+
+      const exporter = new MergedExporter([model1, model2]);
+      const result = exporter.export({ schema: 'IFC4', projectStrategy: 'keep-first' });
+      const content = decode(result.content);
+
+      expect(content).not.toContain("IFCSITE('g4'");
+      expect(content.match(/=IFCSITE\(/g)?.length).toBe(1);
+    });
+
+    it('does not drop a secondary model\'s second site when both name-match the same first-model target', () => {
+      // Regression guard: without matchedFirstSites, both of model2's
+      // identically-named sites would resolve to model1's single site,
+      // silently dropping the second site's spatial sub-tree.
+      const model1 = buildModel('m1', 'Arch', [
+        [1, 'IFCPROJECT', "#1=IFCPROJECT('g1',$,'P',$,$,$,$,$,$);"],
+        [2, 'IFCSITE', "#2=IFCSITE('g2',$,'Site',$,$,$,$,$,$,$);"],
+      ]);
+      const model2 = buildModel('m2', 'Struct', [
+        [1, 'IFCPROJECT', "#1=IFCPROJECT('g3',$,'P2',$,$,$,$,$,$);"],
+        [2, 'IFCSITE', "#2=IFCSITE('g4',$,'Site',$,$,$,$,$,$,$);"],
+        [3, 'IFCSITE', "#3=IFCSITE('g5',$,'Site',$,$,$,$,$,$,$);"],
+      ]);
+
+      const exporter = new MergedExporter([model1, model2]);
+      const result = exporter.export({ schema: 'IFC4', projectStrategy: 'keep-first', mergeSites: 'by-name' });
+      const content = decode(result.content);
+
+      // First 'Site' claims model1's target and is dropped; the second is
+      // kept as its own root instead of also being silently swallowed.
+      expect(content).not.toContain("IFCSITE('g4'");
+      expect(content).toContain("IFCSITE('g5'");
+      expect(content.match(/=IFCSITE\(/g)?.length).toBe(2);
+    });
   });
 
   // Regression: github.com/LTplus-AG/ifc-lite/issues/1110

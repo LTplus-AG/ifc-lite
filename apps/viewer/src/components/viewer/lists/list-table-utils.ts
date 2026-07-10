@@ -9,6 +9,11 @@
  */
 
 import type { CellValue, ColumnDefinition, ListRow, ListGrouping } from '@ifc-lite/lists';
+import { buildGroupBuckets, compareCells, orderGroups, type GroupSort, type OrderableGroup } from '@/lib/lists/group-sort';
+
+// Re-exported so existing consumers keep importing the list-table barrel.
+export { compareCells, orderGroups };
+export type { GroupSort, OrderableGroup };
 
 export function formatCellValue(value: CellValue): string {
   if (value === null || value === undefined) return '';
@@ -18,14 +23,6 @@ export function formatCellValue(value: CellValue): string {
     return value.toFixed(4).replace(/\.?0+$/, '');
   }
   return String(value);
-}
-
-export function compareCells(a: CellValue, b: CellValue): number {
-  if (a === null && b === null) return 0;
-  if (a === null) return -1;
-  if (b === null) return 1;
-  if (typeof a === 'number' && typeof b === 'number') return a - b;
-  return String(a).localeCompare(String(b));
 }
 
 /** A column is numeric (summable) when every sampled non-empty value is a
@@ -79,28 +76,24 @@ export function buildGroupedView(
   columns: ColumnDefinition[],
   grouping: ListGrouping,
   expanded: Set<string>,
+  sort: GroupSort = null,
 ): GroupedView {
   const groupIdx = columns.findIndex((c) => c.id === grouping.columnId);
   const sums = sumIndices(columns, grouping.sumColumnIds);
-  const zero = (): Record<string, number> => Object.fromEntries(sums.map((s) => [s.id, 0]));
 
-  const totals: Totals = { count: rows.length, sums: zero() };
-  const byKey = new Map<string, { key: string; label: string; count: number; sums: Record<string, number>; rows: ListRow[] }>();
+  const byKey = buildGroupBuckets(
+    rows,
+    (r) => (groupIdx >= 0 ? r.values[groupIdx] : null),
+    sums,
+    (r, idx) => r.values[idx],
+    formatCellValue,
+  );
 
-  for (const row of rows) {
-    const raw = groupIdx >= 0 ? row.values[groupIdx] : null;
-    const label = raw === null || raw === undefined || raw === '' ? '(none)' : formatCellValue(raw);
-    let g = byKey.get(label);
-    if (!g) { g = { key: label, label, count: 0, sums: zero(), rows: [] }; byKey.set(label, g); }
-    g.count++;
-    g.rows.push(row);
-    for (const s of sums) {
-      const v = row.values[s.idx];
-      if (typeof v === 'number' && Number.isFinite(v)) { g.sums[s.id] += v; totals.sums[s.id] += v; }
-    }
-  }
+  // Grand totals are the sum of the per-group subtotals.
+  const totals: Totals = { count: rows.length, sums: Object.fromEntries(sums.map((s) => [s.id, 0])) };
+  for (const g of byKey.values()) for (const s of sums) totals.sums[s.id] += g.sums[s.id];
 
-  const groups = Array.from(byKey.values()).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+  const groups = orderGroups(Array.from(byKey.values()), sort, groupIdx, sums);
   const items: DisplayItem[] = [];
   for (const g of groups) {
     items.push({ kind: 'group', key: g.key, label: g.label, count: g.count, sums: g.sums });

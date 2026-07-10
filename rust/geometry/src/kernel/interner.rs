@@ -10,8 +10,8 @@
 //! adjacent re-triangulated triangles conform along shared seams (design D3).
 //! Identity is purely SYMBOLIC: no float coordinate is ever rounded to a bucket
 //! (a float weld re-introduces cross-platform topology divergence — the
-//! documented fatal risk). `Vid` is a STABLE append-only id (D4); the canonical
-//! processing order is the position in the `cmp_lex`-sorted index (`lex_order`).
+//! documented fatal risk). `Vid` is a STABLE append-only id (D4); dedup lookup
+//! uses the internal `cmp_lex`-sorted index (`sorted`).
 
 use super::predicates::cmp_lex;
 use super::{fixed, interval, ImplicitPoint, Sign};
@@ -24,7 +24,7 @@ pub type Vid = u32;
 pub struct Interner {
     points: Vec<ImplicitPoint>, // indexed by Vid
     sorted: Vec<Vid>,           // Vids in cmp_lex (lexicographic) order
-    // Per-Vid cached I1024 homogeneous lambda (computed once at intern). The hot
+    // Per-Vid cached I512 homogeneous lambda (computed once at intern). The hot
     // re-triangulation predicates evaluate exactly from this instead of
     // recomputing the LPI/TPI cross products every call. `None` = off-grid /
     // overflow ⇒ predicates fall back to the exact BigRational cascade.
@@ -49,11 +49,11 @@ impl Interner {
         // Compute the new point's cached lambda once; the binary-search compares
         // use it (fast exact) and fall back to the ImplicitPoint cmp_lex only on
         // off-grid/overflow.
-        let new_lam = fixed::lambda1024(&p);
+        let new_lam = fixed::cached_lambda(&p);
         let new_lam_iv = interval::ilambda_cached(&p);
         let search = self.sorted.binary_search_by(|&vid| {
             // f64 interval compare from the cached lambdas first (pure f64, no
-            // wide-int) → cached-I1024 compare → ImplicitPoint cascade. Each tier
+            // wide-int) → cached-I512 compare → ImplicitPoint cascade. Each tier
             // gives the SAME exact order; the interval just carries the
             // distinct-coordinate majority off the wasm-emulated I512 path.
             let s = interval::cmp_lex_from_lam_iv(&self.lambdas_iv[vid as usize], &new_lam_iv)
@@ -85,7 +85,7 @@ impl Interner {
         &self.points[v as usize]
     }
 
-    /// The cached I1024 lambda for a Vid (`None` if off-grid/overflow).
+    /// The cached I512 lambda for a Vid (`None` if off-grid/overflow).
     #[inline]
     pub fn lam(&self, v: Vid) -> &Option<fixed::Lam> {
         &self.lambdas[v as usize]
@@ -97,24 +97,18 @@ impl Interner {
         &self.lambdas_iv[v as usize]
     }
 
+    // `is_empty` was deleted as dead code (D13 dead-code sweep: zero callers,
+    // production or test) alongside `lex_order`; an interner is never
+    // constructed and left empty in any live code path, so the clippy pairing
+    // convention doesn't apply here.
+    #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         self.points.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.points.is_empty()
-    }
-
-    /// The `Vid`s in canonical (lexicographic) order — the deterministic
-    /// processing order for the re-triangulation.
-    pub fn lex_order(&self) -> &[Vid] {
-        &self.sorted
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::super::rational::point_of;
     use super::super::{Lpi, Tpi};
     use super::*;
 
@@ -148,29 +142,5 @@ mod tests {
         let c = it.intern(lpi_at(0.5, 0.4)); // distinct
         assert_ne!(a, c);
         assert_eq!(it.len(), 2);
-    }
-
-    #[test]
-    fn interning_is_order_independent_canonically() {
-        let inputs = || {
-            vec![
-                lpi_at(0.5, 0.1),
-                tpi_at(0.2, 0.7),
-                ImplicitPoint::Explicit([0.9, 0.9, 0.0]),
-                lpi_at(0.2, 0.7), // coincides with tpi_at(0.2,0.7)
-            ]
-        };
-        let canonical = |order: &[usize]| {
-            let mut it = Interner::new();
-            let ps = inputs();
-            for &i in order {
-                it.intern(ps[i].clone());
-            }
-            it.lex_order().iter().map(|&v| point_of(it.get(v))).collect::<Vec<_>>()
-        };
-        let forward = canonical(&[0, 1, 2, 3]);
-        let backward = canonical(&[3, 2, 1, 0]);
-        assert_eq!(forward, backward, "canonical lex order is insertion-order dependent");
-        assert_eq!(forward.len(), 3, "one coincidence should leave 3 distinct points");
     }
 }

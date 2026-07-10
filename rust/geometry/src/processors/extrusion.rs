@@ -100,7 +100,13 @@ impl GeometryProcessor for ExtrudedAreaSolidProcessor {
             .and_then(|v: &AttributeValue| v.as_float())
             .unwrap_or(1.0);
 
-        let local_direction = Vector3::new(dir_x, dir_y, dir_z).normalize();
+        let direction = Vector3::new(dir_x, dir_y, dir_z);
+        if direction.norm_squared() <= f64::EPSILON {
+            return Err(Error::geometry(
+                "ExtrudedAreaSolid has zero-length ExtrudedDirection".to_string(),
+            ));
+        }
+        let local_direction = direction.normalize();
 
         // Get depth
         let depth = entity

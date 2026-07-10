@@ -28,6 +28,7 @@ import {
   type ModelGeorefInput,
 } from '@/lib/geo/ifc-origin';
 import { getEffectiveGeoreference } from '@/lib/geo/effective-georef';
+import { selectAnchorGeoref } from '@/lib/geo/useAnchorGeoreference';
 import type { FederatedModel } from '@/store/types';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { Renderer } from '@ifc-lite/renderer';
@@ -70,43 +71,23 @@ export function BasepointOverlay() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rafRef = useRef<number | null>(null);
 
-  // Compute the anchor's georef input once per dependency change.
+  // Compute the anchor's georef input once per dependency change. Shares the
+  // "user-pinned anchor, else earliest-loaded model with a usable map-conversion
+  // georef" selection with the measure-tool readout and findReferenceGeorefModel.
   const anchorInput = useMemo((): { id: string | null; input: ModelGeorefInput | null } => {
-    if (models.size === 0) return { id: null, input: null };
-    // Honour the user-pinned anchor first; fall back to earliest-loaded model
-    // with a valid georef. Matches findReferenceGeorefModel in useIfcFederation.
-    const buildInput = (model: FederatedModel): ModelGeorefInput | null => {
-      const ds = model.ifcDataStore;
-      if (!ds) return null;
-      const eff = getEffectiveGeoreference(
-        ds as IfcDataStore,
-        model.geometryResult?.coordinateInfo,
-        georefMutations.get(model.id),
-      );
-      if (!eff?.mapConversion || !eff.projectedCRS?.name) return null;
-      return {
-        coordinateInfo: model.geometryResult?.coordinateInfo,
-        mapConversion: eff.mapConversion,
-        projectedCRS: eff.projectedCRS,
-        lengthUnitScale: eff.lengthUnitScale,
-        preAlignmentCoordinateInfo: model.preAlignmentCoordinateInfo,
-      };
+    const selection = selectAnchorGeoref({ models, anchorModelIdOverride, georefMutations });
+    if (!selection) return { id: null, input: null };
+    const model = models.get(selection.modelId);
+    return {
+      id: selection.modelId,
+      input: {
+        coordinateInfo: selection.coordinateInfo,
+        mapConversion: selection.eff.mapConversion,
+        projectedCRS: selection.eff.projectedCRS,
+        lengthUnitScale: selection.eff.lengthUnitScale,
+        preAlignmentCoordinateInfo: model?.preAlignmentCoordinateInfo,
+      },
     };
-
-    if (anchorModelIdOverride) {
-      const m = models.get(anchorModelIdOverride);
-      if (m) {
-        const input = buildInput(m);
-        if (input) return { id: anchorModelIdOverride, input };
-      }
-    }
-    const sorted = Array.from(models.values()).sort((a, b) => (a.loadedAt ?? 0) - (b.loadedAt ?? 0));
-    for (const m of sorted) {
-      const input = buildInput(m);
-      if (input) return { id: m.id, input };
-    }
-    return { id: null, input: null };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [models, anchorModelIdOverride, georefMutations]);
 
   // Recompute every model's IFC-origin viewer position when the inputs change.

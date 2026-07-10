@@ -20,11 +20,15 @@
 //!    constraint segments, so a hole stays a hole and the boundary is exact).
 //!    The empty-circumcircle property alone already avoids the long ear-clip
 //!    slivers.
-//! 2. **Bounded Ruppert/Chew refinement**: insert the circumcenter of any
-//!    skinny interior triangle; if that circumcenter would *encroach* a
-//!    constraint segment (lie inside its diametral circle), split that segment
-//!    at its midpoint instead — the classic Ruppert split that keeps the
-//!    boundary/holes watertight and makes refinement terminate.
+//! 2. **Bounded, interior-only Ruppert/Chew refinement**: insert the
+//!    circumcenter of any skinny interior triangle. The constraint segments
+//!    (boundary + hole rings) are NEVER split — the sole production caller
+//!    (`consolidate_coplanar`) re-triangulates a region whose boundary is
+//!    SHARED with neighbouring plane buckets triangulated independently, so a
+//!    boundary Steiner point would open a T-junction at the bucket seam. A
+//!    skinny triangle whose circumcenter would *encroach* a constraint segment
+//!    (lie inside its diametral circle) is simply left as-is (best-effort
+//!    quality, not torn) instead of splitting the segment.
 //!
 //! ## Determinism (native == wasm)
 //!
@@ -33,17 +37,19 @@
 //! predicates (`geometry_predicates::{orient2d, incircle}`), which are
 //! sign-exact and bit-identical across x86_64 / aarch64 / wasm. Every worklist
 //! is processed in a **canonical order** (point insertion in index order;
-//! refinement queues drained by sorted/lowest-index triangle; segment splits
-//! keyed by sorted integer tuples), never via `HashMap` iteration. The same
-//! input therefore yields a byte-identical triangle list on every target,
-//! which the mesh diff / `geom_hash` relies on.
+//! refinement queues drained by sorted/lowest-index triangle), never via
+//! `HashMap` iteration. The same input therefore yields a byte-identical
+//! triangle list on every target, which the mesh diff / `geom_hash` relies on.
 //!
 //! ## Watertightness & T-junctions
 //!
-//! Constraint segments are recovered exactly and never flipped or crossed. A
-//! Steiner point that splits a constraint segment becomes a real shared vertex
-//! and BOTH incident triangles are re-filled around it, so no T-junction is
-//! left on a shared edge. Hole rings are excluded from the emitted domain by an
+//! Constraint segments are recovered exactly and never flipped, crossed, or
+//! split — refinement only ever inserts a Steiner point strictly INTERIOR to
+//! the domain, so the boundary/hole rings a caller shares across independently
+//! triangulated regions are never touched (no T-junction risk there). An
+//! interior Steiner point still splits every triangle incident to its
+//! insertion cavity in lockstep, so no T-junction is left on a shared interior
+//! edge either. Hole rings are excluded from the emitted domain by an
 //! inside/outside flood-fill across constraint edges.
 //!
 //! ## Bound
@@ -147,8 +153,6 @@ struct Cdt {
     tris: Vec<Tri>,
     /// Constraint segments (canonical edge keys); never flipped, never crossed.
     constraints: BTreeSet<(usize, usize)>,
-    #[allow(dead_code)] // retained for diagnostics/parity with the input-vertex count
-    n_input: usize,
     super_base: usize,
     /// Per-triangle inside-domain flag, parallel to `tris`. Maintained
     /// incrementally during NO-SPLIT refinement (after [`Cdt::start_refinement`]):
@@ -165,17 +169,13 @@ struct Cdt {
     track: bool,
     /// Quality target used by the tracking hooks.
     cos_min_angle: f64,
-}
-
-/// The next refinement step chosen for a triangulation (see `Cdt::next_action`).
-#[derive(Clone, Copy, PartialEq)]
-enum Action {
-    /// Split this constraint segment at its midpoint.
-    SplitSegment(usize, usize),
-    /// Insert this circumcenter as a Steiner point.
-    AddPoint(P2),
-    /// Quality bound met everywhere — stop.
-    Done,
+    /// Set when an insertion hits a "can't happen" topology invariant (e.g. a
+    /// shared edge whose neighbour has no apex vertex). Rather than panic, the
+    /// insertion bails and every `Option`-returning entry point (`build_from`,
+    /// the incremental refinement driver) treats the CDT as unbuildable and
+    /// returns `None`, so the caller falls back to ear-clipping — matching how
+    /// every other degenerate case in this module degrades.
+    failed: bool,
 }
 
 impl Cdt {
@@ -223,12 +223,12 @@ impl Cdt {
             points,
             tris: Vec::new(),
             constraints,
-            n_input,
             super_base,
             inside: Vec::new(),
             skinny: BTreeSet::new(),
             track: false,
             cos_min_angle: COS_MIN_ANGLE,
+            failed: false,
         };
         cdt.tris.push(Tri {
             v: [super_base, super_base + 1, super_base + 2],
@@ -240,6 +240,9 @@ impl Cdt {
         // Incremental Delaunay insertion in canonical index order.
         for vi in 0..n_input {
             cdt.insert_point(vi);
+        }
+        if cdt.failed {
+            return None; // an insertion tripped a topology invariant — fall back to ear-clipping
         }
         if !cdt.enforce_constraints() {
             return None;
@@ -262,6 +265,9 @@ impl Cdt {
     /// the incremental-refinement entry skips the O(T) `locate` scan (the
     /// caller walked to it via [`Cdt::locate_from`]).
     fn insert_point_at(&mut self, vi: usize, start: usize) {
+        if self.failed {
+            return; // a prior insertion tripped a topology invariant; stop touching topology
+        }
         let p = self.points[vi];
         // Region of the seed = region of every cavity triangle (the cavity BFS
         // never crosses a constraint), inherited by the re-fan below.
@@ -508,12 +514,14 @@ impl Cdt {
         // both parents in lockstep. Each child inherits its OWN parent's
         // region flag — the two regions can differ across a constraint edge.
         let region_nb = self.inside.get(nb).copied().unwrap_or(false);
-        let d = self.tris[nb]
-            .v
-            .iter()
-            .copied()
-            .find(|&x| x != a && x != b)
-            .expect("cdt: neighbour across a shared edge must have an apex vertex");
+        let Some(d) = self.tris[nb].v.iter().copied().find(|&x| x != a && x != b) else {
+            // "Can't happen": the neighbour across a shared edge must have a
+            // third (apex) vertex. Degrade to ear-clipping instead of panicking
+            // — `t` is already retired above, so leave the CDT flagged
+            // unbuildable and let the entry point return `None`.
+            self.failed = true;
+            return;
+        };
         let outer_of = |s: &Self, t: usize, x: usize, y: usize| -> usize {
             s.tris[t].edge_of(x, y).map(|oe| s.tris[t].n[oe]).unwrap_or(NONE)
         };
@@ -998,80 +1006,16 @@ impl Cdt {
 
     // ──────────────────────────── refinement ──────────────────────────────
 
-    /// Decide the NEXT refinement action for the current triangulation, without
-    /// mutating it. Returns:
-    /// * `Action::SplitSegment(a,b)` — a constraint segment is encroached (by a
-    ///   vertex, or by the circumcenter of a skinny triangle); split it.
-    /// * `Action::AddPoint(p)` — insert circumcenter `p` of a skinny interior
-    ///   triangle (guaranteed not to encroach any constraint).
-    /// * `Action::Done` — every interior triangle meets the quality bound.
-    ///
-    /// The driver in [`refine_to_fixpoint`] applies the action by editing the
-    /// `(points, segments)` lists and REBUILDING a fresh CDT — so this method
-    /// never performs fragile in-place topology surgery.
-    /// `allow_segment_split` gates whether Ruppert may subdivide a CONSTRAINT
-    /// (boundary / hole-ring) segment. The coplanar-consolidation caller sets it
-    /// `false`: its region boundary is SHARED with neighbouring plane buckets
-    /// that are triangulated independently, so a Steiner point on the boundary
-    /// would create a T-junction / open edge at the bucket seam. With splits
-    /// disabled, a skinny triangle whose circumcenter encroaches the boundary is
-    /// simply LEFT as-is (best-effort quality) rather than torn — interior
-    /// circumcenters are always safe because they never touch the boundary.
-    fn next_action(&self, cos_min_angle: f64, allow_segment_split: bool) -> Action {
-        // 1) Encroached constraint segment (Ruppert priority). Lowest-key first.
-        if allow_segment_split {
-            if let Some(seg) = self.find_encroached_segment() {
-                return Action::SplitSegment(seg.0, seg.1);
-            }
-        }
-        // 2) Worst skinny interior triangle (lowest index wins ties).
-        let inside = self.inside_flags();
-        for ti in 0..self.tris.len() {
-            if !self.tris[ti].alive || !inside[ti] {
-                continue;
-            }
-            if self.tris[ti].v.iter().any(|&x| x >= self.super_base) {
-                continue;
-            }
-            if !self.tri_is_skinny(ti, cos_min_angle) {
-                continue;
-            }
-            let Some(cc) = self.circumcenter(ti) else {
-                continue; // degenerate; skip (don't spin)
-            };
-            // If the circumcenter would encroach a constraint:
-            //  * split mode  → split the segment (classic Ruppert);
-            //  * no-split mode → leave THIS triangle (skip), keeping the
-            //    boundary untouched so bucket seams stay watertight.
-            if let Some((a, b)) = self.encroached_by_point(cc) {
-                if allow_segment_split {
-                    return Action::SplitSegment(a, b);
-                }
-                continue;
-            }
-            // The circumcenter must fall inside the domain to be a valid Steiner
-            // point. If it lands outside (numerical / near-boundary), skip this
-            // triangle rather than inserting a stray point.
-            match self.locate(cc) {
-                Some(loc) if inside.get(loc).copied().unwrap_or(false) => {
-                    return Action::AddPoint(cc);
-                }
-                _ => continue,
-            }
-        }
-        Action::Done
-    }
-
-    /// Incremental analogue of [`Cdt::next_action`] for NO-SPLIT refinement:
-    /// pull the lowest-index skinny candidate from the maintained worklist.
+    /// NO-SPLIT refinement step: pull the lowest-index skinny candidate from
+    /// the maintained worklist.
     ///
     /// A candidate whose circumcenter encroaches a constraint, or falls outside
-    /// the domain, is removed PERMANENTLY: with segment splits disabled the
-    /// constraint set and the domain partition are immutable, and a triangle's
-    /// circumcenter is a function of its own (immutable) vertices — the verdict
-    /// can never change while the triangle slot is unchanged. (A slot rewrite
-    /// re-evaluates via [`Cdt::track_tri`].) This matches the rescan-and-skip
-    /// semantics of [`Cdt::next_action`] without re-paying the skip each round.
+    /// the domain, is removed PERMANENTLY: the constraint set and the domain
+    /// partition are immutable (boundary/hole-ring segments are never split —
+    /// see the module doc), and a triangle's circumcenter is a function of its
+    /// own (immutable) vertices — the verdict can never change while the
+    /// triangle slot is unchanged. (A slot rewrite re-evaluates via
+    /// [`Cdt::track_tri`].)
     ///
     /// Returns the Steiner point and the alive triangle containing it (the
     /// walk-located insertion seed), or `None` when the quality bound is met.
@@ -1129,32 +1073,6 @@ impl Cdt {
         }
         // Constraints reference input vertices only (< n_input <= vi): unchanged.
         self.insert_point_at(vi, loc);
-    }
-
-    /// A constraint segment is encroached if some OTHER vertex lies inside its
-    /// diametral circle. Returns the lowest-key such segment.
-    fn find_encroached_segment(&self) -> Option<(usize, usize)> {
-        for &(a, b) in &self.constraints {
-            let pa = self.points[a];
-            let pb = self.points[b];
-            // Diametral circle: center = midpoint, radius² = |ab|²/4.
-            let mid = [(pa[0] + pb[0]) * 0.5, (pa[1] + pb[1]) * 0.5];
-            let r2 = dist2(pa, pb) * 0.25;
-            // Check every vertex that is a corner of a triangle incident to the
-            // segment edge — but scanning all points is simplest & determinate.
-            for vi in 0..self.points.len() {
-                if vi == a || vi == b || vi >= self.super_base {
-                    continue;
-                }
-                if dist2(self.points[vi], mid) < r2 * (1.0 - 1e-12) {
-                    // Only counts if the vertex is "visible" — but for a valid
-                    // CDT a strictly-inside diametral-circle vertex always
-                    // encroaches. Return it.
-                    return Some((a, b));
-                }
-            }
-        }
-        None
     }
 
     /// Does point `p` lie inside the diametral circle of any constraint
@@ -1325,85 +1243,44 @@ fn rings_to_pslg(rings: &[Vec<P2>]) -> (Vec<P2>, Vec<(usize, usize)>) {
     (points, segments)
 }
 
-/// Run bounded Ruppert refinement on a planar straight-line graph (`points` +
-/// `segments`) by REBUILDING a fresh CDT each round. Each round inserts at most
-/// ONE Steiner point (a circumcenter) or splits ONE encroached segment, then
-/// rebuilds — so every triangulation is a clean from-scratch build with no
-/// fragile incremental topology surgery. Deterministic: the same PSLG yields the
-/// same action sequence on every platform. Bounded by Steiner budget +
-/// iteration cap.
-fn refine_to_fixpoint(
-    mut points: Vec<P2>,
-    mut segments: Vec<(usize, usize)>,
-    allow_segment_split: bool,
-) -> Option<Cdt> {
+/// Run bounded, INTERIOR-ONLY Ruppert/Chew refinement on a planar
+/// straight-line graph (`points` + `segments`): the constraint set (boundary /
+/// hole-ring segments) is immutable, so every refinement action is an interior
+/// circumcenter insertion, applied INCREMENTALLY to the live CDT (never a
+/// rebuild). This is the only mode the crate uses — the coplanar-consolidation
+/// production path requires it, because its region boundary is SHARED with
+/// neighbouring plane buckets triangulated independently; a boundary Steiner
+/// point would create a T-junction / open edge at the bucket seam.
+///
+/// A historical full-Ruppert mode existed that also allowed splitting encroached
+/// boundary/hole segments (rebuilding a fresh CDT after every single Steiner
+/// point or split); it was deleted as dead code (D4 dead-code sweep) once both
+/// production callers were confirmed to always run interior-only. The
+/// rebuild-per-point driver was O(P²) per rebuild anyway (each rebuild
+/// re-inserts every point with an O(T) `locate` scan), i.e. O(P³) per
+/// refinement: 13.8 s for ONE 582-vertex/16-hole slab face, ×2 faces ×16
+/// re-consolidates = the 155 s advanced_model #798926 many-void cliff.
+/// Incremental insertion + walk-locate + the maintained skinny worklist
+/// refines the same face in ~10 ms.
+///
+/// Deterministic: the same PSLG yields the same Steiner sequence on every
+/// platform. Bounded by Steiner budget + iteration cap.
+fn refine_to_fixpoint(points: Vec<P2>, segments: Vec<(usize, usize)>) -> Option<Cdt> {
     let n_input = points.len();
     let max_steiner = (n_input * 3).max(32);
     let mut steiner = 0usize;
-    let mut cdt = Cdt::build_from(points.clone(), &segments)?;
+    let mut cdt = Cdt::build_from(points, &segments)?;
 
-    if !allow_segment_split {
-        // NO-SPLIT MODE (the consolidate_coplanar production path): the
-        // constraint set never changes, so every action is an interior
-        // circumcenter insertion — apply it INCREMENTALLY to the live CDT.
-        // The rebuild-per-point driver below is O(P²) per rebuild (each
-        // rebuild re-inserts every point with an O(T) `locate` scan), i.e.
-        // O(P³) per refinement: 13.8 s for ONE 582-vertex/16-hole slab face,
-        // ×2 faces ×16 re-consolidates = the 155 s advanced_model #798926
-        // many-void cliff (the many-void CDT cliff). Incremental insertion + walk-locate +
-        // the maintained skinny worklist refines the same face in ~10 ms.
-        cdt.start_refinement(COS_MIN_ANGLE);
-        while steiner < max_steiner.min(MAX_REFINE_ITERS) {
-            let Some((p, loc)) = cdt.next_steiner() else {
-                break;
-            };
-            cdt.insert_steiner(p, loc);
-            steiner += 1;
-        }
-        return Some(cdt);
-    }
-
-    for _ in 0..MAX_REFINE_ITERS {
-        if steiner >= max_steiner {
+    cdt.start_refinement(COS_MIN_ANGLE);
+    while steiner < max_steiner.min(MAX_REFINE_ITERS) {
+        let Some((p, loc)) = cdt.next_steiner() else {
             break;
+        };
+        cdt.insert_steiner(p, loc);
+        if cdt.failed {
+            return None; // Steiner insertion tripped a topology invariant — ear-clip fallback
         }
-        match cdt.next_action(COS_MIN_ANGLE, allow_segment_split) {
-            Action::Done => break,
-            Action::AddPoint(p) => {
-                points.push(p);
-                steiner += 1;
-                match Cdt::build_from(points.clone(), &segments) {
-                    Some(next) => cdt = next,
-                    None => {
-                        // Rebuild failed (numerical) — drop the point and stop
-                        // with the last good triangulation.
-                        points.pop();
-                        break;
-                    }
-                }
-            }
-            Action::SplitSegment(a, b) => {
-                let pa = points[a];
-                let pb = points[b];
-                let mid = [(pa[0] + pb[0]) * 0.5, (pa[1] + pb[1]) * 0.5];
-                let vi = points.len();
-                points.push(mid);
-                // Replace segment a-b by its two halves (canonical keys).
-                segments.retain(|&s| s != ekey(a, b));
-                segments.push(ekey(a, vi));
-                segments.push(ekey(vi, b));
-                steiner += 1;
-                match Cdt::build_from(points.clone(), &segments) {
-                    Some(next) => cdt = next,
-                    None => {
-                        points.pop();
-                        segments.retain(|&s| s != ekey(a, vi) && s != ekey(vi, b));
-                        segments.push(ekey(a, b));
-                        break;
-                    }
-                }
-            }
-        }
+        steiner += 1;
     }
     Some(cdt)
 }
@@ -1418,15 +1295,15 @@ fn refine_to_fixpoint(
 /// followed by any Steiner points; indices reference that combined list.
 /// Returns `None` if the CDT can't be built (caller should fall back to
 /// ear-clipping).
-/// `allow_boundary_split`: when `true`, full Ruppert (may subdivide the outer /
-/// hole rings to hit the angle target). When `false`, interior-only refinement
-/// that NEVER touches the boundary — required when the boundary is shared with
-/// other independently-triangulated regions (the coplanar-consolidation path),
-/// so seams stay watertight / T-junction-free.
+///
+/// Refinement is interior-only and NEVER touches the boundary/hole rings —
+/// required because the boundary is shared with other independently-
+/// triangulated regions (the coplanar-consolidation path), so seams stay
+/// watertight / T-junction-free. See [`refine_to_fixpoint`] for why this is
+/// the only supported mode.
 pub(crate) fn triangulate_refined(
     outer: &[Point2<f64>],
     holes: &[Vec<Point2<f64>>],
-    allow_boundary_split: bool,
 ) -> Option<(Vec<Point2<f64>>, Vec<usize>)> {
     let mut rings: Vec<Vec<P2>> = Vec::with_capacity(1 + holes.len());
     rings.push(outer.iter().map(p2).collect());
@@ -1436,59 +1313,13 @@ pub(crate) fn triangulate_refined(
         }
     }
     let (points, segments) = rings_to_pslg(&rings);
-    let cdt = refine_to_fixpoint(points, segments, allow_boundary_split)?;
+    let cdt = refine_to_fixpoint(points, segments)?;
     let (pts, idx) = cdt.emit();
     if idx.is_empty() {
         return None;
     }
     let out_pts: Vec<Point2<f64>> = pts.iter().map(|p| Point2::new(p[0], p[1])).collect();
     Some((out_pts, idx))
-}
-
-/// Quality-triangulate a simple polygon (no holes) WITHOUT adding Steiner
-/// points: returns indices into the ORIGINAL `points` only. Used by callers
-/// that cannot absorb new vertices (they map indices straight onto a fixed 3D
-/// ring). Returns `None` if a constrained-Delaunay over just the input vertices
-/// can't be produced (caller falls back to ear-clipping).
-// Only exercised by unit tests today; kept as a no-Steiner triangulation entry point.
-#[cfg_attr(not(test), allow(dead_code))]
-pub(crate) fn triangulate_simple_no_steiner(points: &[Point2<f64>]) -> Option<Vec<usize>> {
-    let rings = vec![points.iter().map(p2).collect::<Vec<P2>>()];
-    let (pts, segs) = rings_to_pslg(&rings);
-    let cdt = Cdt::build_from(pts, &segs)?;
-    let (_pts, idx) = cdt.emit();
-    // All indices must reference original input points only (no Steiner here).
-    if idx.is_empty() || idx.iter().any(|&i| i >= points.len()) {
-        return None;
-    }
-    Some(idx)
-}
-
-/// Quality-triangulate a polygon-with-holes WITHOUT adding Steiner points:
-/// indices reference the combined `outer ++ holes` vertex list only. For
-/// callers that lay out exactly those vertices in 3D and index them directly.
-// Only exercised by unit tests today; kept as a no-Steiner triangulation entry point.
-#[cfg_attr(not(test), allow(dead_code))]
-pub(crate) fn triangulate_holes_no_steiner(
-    outer: &[Point2<f64>],
-    holes: &[Vec<Point2<f64>>],
-) -> Option<Vec<usize>> {
-    let mut rings: Vec<Vec<P2>> = Vec::with_capacity(1 + holes.len());
-    rings.push(outer.iter().map(p2).collect());
-    let mut total = outer.len();
-    for h in holes {
-        if h.len() >= 3 {
-            rings.push(h.iter().map(p2).collect());
-            total += h.len();
-        }
-    }
-    let (pts, segs) = rings_to_pslg(&rings);
-    let cdt = Cdt::build_from(pts, &segs)?;
-    let (_pts, idx) = cdt.emit();
-    if idx.is_empty() || idx.iter().any(|&i| i >= total) {
-        return None;
-    }
-    Some(idx)
 }
 
 #[cfg(test)]
@@ -1508,152 +1339,6 @@ mod tests {
             a += ((p1.x - p0.x) * (p2.y - p0.y) - (p2.x - p0.x) * (p1.y - p0.y)).abs() * 0.5;
         }
         a
-    }
-
-    fn worst_aspect(points: &[Point2<f64>], idx: &[usize]) -> f64 {
-        let mut worst = 0.0_f64;
-        for t in idx.chunks_exact(3) {
-            let p0 = points[t[0]];
-            let p1 = points[t[1]];
-            let p2 = points[t[2]];
-            let d = |a: Point2<f64>, b: Point2<f64>| ((a.x - b.x).powi(2) + (a.y - b.y).powi(2)).sqrt();
-            let e0 = d(p0, p1);
-            let e1 = d(p1, p2);
-            let e2 = d(p2, p0);
-            let mn = e0.min(e1).min(e2);
-            let mx = e0.max(e1).max(e2);
-            if mn > 1e-12 {
-                worst = worst.max(mx / mn);
-            }
-        }
-        worst
-    }
-
-    #[test]
-    fn refined_thin_strip_with_hole_no_far_corner_sliver() {
-        // A long thin rectangle (40 x 1) with a small hole near the left end.
-        // Ear-clipping fans the hole notch all the way to the far-right corner,
-        // producing a ~25:1 sliver. The CDT+refine must keep it well bounded.
-        let outer = vec![
-            pt(0.0, 0.0),
-            pt(40.0, 0.0),
-            pt(40.0, 1.0),
-            pt(0.0, 1.0),
-        ];
-        let hole = vec![
-            pt(2.0, 0.4),
-            pt(2.6, 0.4),
-            pt(2.6, 0.6),
-            pt(2.0, 0.6),
-        ];
-        let (pts, idx) =
-            triangulate_refined(&outer, &[hole], true).expect("refined triangulation");
-        assert_eq!(idx.len() % 3, 0);
-        let wa = worst_aspect(&pts, &idx);
-        assert!(
-            wa <= 8.0,
-            "thin-strip-with-hole worst aspect {wa:.2} should be <= 8 after refinement"
-        );
-    }
-
-    /// Watertight + T-junction-free: every Steiner point on a shared edge must
-    /// split BOTH incident triangles. We verify it via the mesh invariant: every
-    /// interior triangle edge is shared by exactly one other emitted triangle
-    /// (closed manifold interior), except boundary/hole-ring edges which are
-    /// used exactly once. A T-junction would leave an interior edge used once
-    /// (open) and its colliding vertex on a longer edge used once on the far
-    /// side — counted here as a non-matching half-edge.
-    #[test]
-    fn refined_is_watertight_no_tjunction() {
-        let outer = vec![pt(0.0, 0.0), pt(40.0, 0.0), pt(40.0, 1.0), pt(0.0, 1.0)];
-        let hole = vec![pt(2.0, 0.4), pt(2.6, 0.4), pt(2.6, 0.6), pt(2.0, 0.6)];
-        let (pts, idx) = triangulate_refined(&outer, &[hole], true).expect("triangulation");
-
-        // Directed half-edge multiset: a watertight, T-junction-free interior
-        // triangulation of a CCW domain has every interior edge appear once in
-        // each direction; boundary/hole edges appear once total. So no UNDIRECTED
-        // edge may be used by more than 2 triangles, and the count of edges used
-        // exactly once equals the boundary perimeter vertex count.
-        use std::collections::BTreeMap;
-        let mut undirected: BTreeMap<(usize, usize), u32> = BTreeMap::new();
-        for t in idx.chunks_exact(3) {
-            for (a, b) in [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])] {
-                *undirected.entry(if a < b { (a, b) } else { (b, a) }).or_insert(0) += 1;
-            }
-        }
-        // No non-manifold edges (used > 2): that is the signature of overlap.
-        let non_manifold = undirected.values().filter(|&&c| c > 2).count();
-        assert_eq!(non_manifold, 0, "found {non_manifold} non-manifold edges (overlap)");
-        // Boundary edges (used once) must form closed rings: their total length
-        // must equal the input boundary + hole perimeters (no T-junction gaps).
-        let mut boundary_len = 0.0_f64;
-        for (&(a, b), &c) in &undirected {
-            if c == 1 {
-                let pa = pts[a];
-                let pb = pts[b];
-                boundary_len += ((pa.x - pb.x).powi(2) + (pa.y - pb.y).powi(2)).sqrt();
-            }
-        }
-        // outer perimeter 2*(40+1)=82 ; hole is 0.6 wide x 0.2 tall ->
-        // perimeter 2*(0.6+0.2)=1.6. Boundary edges may be SPLIT by Steiner
-        // points but the two halves still sum to the original edge length, so
-        // the total once-used length is exactly the input perimeter.
-        let expected = 82.0 + 1.6;
-        assert!(
-            (boundary_len - expected).abs() < 1e-6,
-            "boundary length {boundary_len} != {expected}: a T-junction left a gap or overlap"
-        );
-    }
-
-    #[test]
-    fn refined_area_is_preserved() {
-        let outer = vec![
-            pt(0.0, 0.0),
-            pt(10.0, 0.0),
-            pt(10.0, 10.0),
-            pt(0.0, 10.0),
-        ];
-        let hole = vec![
-            pt(3.0, 3.0),
-            pt(7.0, 3.0),
-            pt(7.0, 7.0),
-            pt(3.0, 7.0),
-        ];
-        let (pts, idx) = triangulate_refined(&outer, &[hole], true).expect("triangulation");
-        let area = area_of(&pts, &idx);
-        let expected = 100.0 - 16.0; // outer 10x10 minus 4x4 hole
-        assert!(
-            (area - expected).abs() < 1e-6,
-            "area {area} should equal {expected} (outer minus hole)"
-        );
-    }
-
-    #[test]
-    fn refined_is_deterministic() {
-        let outer = vec![
-            pt(0.0, 0.0),
-            pt(12.0, 0.0),
-            pt(12.0, 3.0),
-            pt(6.0, 5.0),
-            pt(0.0, 3.0),
-        ];
-        let hole = vec![pt(4.0, 1.0), pt(8.0, 1.0), pt(6.0, 2.5)];
-        let a = triangulate_refined(&outer, std::slice::from_ref(&hole), true).unwrap();
-        let b = triangulate_refined(&outer, std::slice::from_ref(&hole), true).unwrap();
-        // The full-Ruppert run must actually ADD Steiner points (otherwise this
-        // would only exercise the base CDT, not the refinement loop).
-        let n_input = outer.len() + hole.len();
-        assert!(
-            a.0.len() > n_input,
-            "expected Steiner points to be added (got {} verts for {n_input} inputs)",
-            a.0.len()
-        );
-        assert_eq!(a.1, b.1, "index lists must be identical run-to-run");
-        assert_eq!(a.0.len(), b.0.len(), "vertex counts must match");
-        for (pa, pb) in a.0.iter().zip(b.0.iter()) {
-            assert_eq!(pa.x.to_bits(), pb.x.to_bits(), "x bits must be identical");
-            assert_eq!(pa.y.to_bits(), pb.y.to_bits(), "y bits must be identical");
-        }
     }
 
     /// Many-void CDT-cliff regression (advanced_model.ifc IFCSLAB #798926): the no-split
@@ -1705,8 +1390,7 @@ mod tests {
         let n_input = outer.len() + holes.iter().map(|h| h.len()).sum::<usize>();
 
         let t0 = std::time::Instant::now();
-        let (pts, idx) =
-            triangulate_refined(&outer, &holes, false).expect("no-split refinement");
+        let (pts, idx) = triangulate_refined(&outer, &holes).expect("no-split refinement");
         let dt = t0.elapsed();
 
         // Refinement ran (Steiner points beyond the input rings) and the domain
@@ -1731,7 +1415,7 @@ mod tests {
             "area {area} != {expected} (outer minus 16 holes)"
         );
         // Bit-stable run-to-run (the incremental driver is deterministic).
-        let (pts2, idx2) = triangulate_refined(&outer, &holes, false).unwrap();
+        let (pts2, idx2) = triangulate_refined(&outer, &holes).unwrap();
         assert_eq!(idx, idx2, "index lists must be identical run-to-run");
         assert_eq!(pts.len(), pts2.len());
         for (a, b) in pts.iter().zip(pts2.iter()) {
@@ -1839,37 +1523,4 @@ mod tests {
         assert_structurally_valid(&cdt);
     }
 
-    #[test]
-    fn no_steiner_square_is_two_triangles() {
-        let sq = vec![pt(0.0, 0.0), pt(1.0, 0.0), pt(1.0, 1.0), pt(0.0, 1.0)];
-        let idx = triangulate_simple_no_steiner(&sq).expect("square");
-        assert_eq!(idx.len(), 6);
-        assert!(idx.iter().all(|&i| i < 4));
-        let pts = sq.clone();
-        assert!((area_of(&pts, &idx) - 1.0).abs() < 1e-9);
-    }
-
-    #[test]
-    fn no_steiner_square_with_hole_preserves_hole() {
-        let outer = vec![
-            pt(0.0, 0.0),
-            pt(10.0, 0.0),
-            pt(10.0, 10.0),
-            pt(0.0, 10.0),
-        ];
-        let hole = vec![
-            pt(3.0, 3.0),
-            pt(7.0, 3.0),
-            pt(7.0, 7.0),
-            pt(3.0, 7.0),
-        ];
-        let idx = triangulate_holes_no_steiner(&outer, std::slice::from_ref(&hole)).expect("holes");
-        let mut pts = outer.clone();
-        pts.extend(hole);
-        let area = area_of(&pts, &idx);
-        assert!(
-            (area - 84.0).abs() < 1e-6,
-            "area {area} should be 84 (100 - 16 hole)"
-        );
-    }
 }

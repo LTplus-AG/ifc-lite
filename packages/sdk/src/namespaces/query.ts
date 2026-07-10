@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { compileNameMatcher } from '@ifc-lite/lists';
 import type {
   BimBackend,
   EntityRef,
@@ -128,13 +129,22 @@ export class QueryNamespace {
     return this.backend.query.properties(ref);
   }
 
-  /** Get a single property value */
+  /**
+   * Get a single property value. `psetName` / `propName` accept Bonsai-style
+   * `/regex/` patterns (e.g. `/Pset_.*Common/`), so one call can read across
+   * several matching property sets; a plain name is an exact match. Returns the
+   * first match in set/property order.
+   */
   property(ref: EntityRef, psetName: string, propName: string): string | number | boolean | null {
     const psets = this.properties(ref);
-    const pset = psets.find(p => p.name === psetName);
-    if (!pset) return null;
-    const prop = pset.properties.find(p => p.name === propName);
-    return prop?.value ?? null;
+    const matchSet = compileNameMatcher(psetName);
+    const matchProp = compileNameMatcher(propName);
+    for (const pset of psets) {
+      if (!matchSet(pset.name)) continue;
+      const prop = pset.properties.find(p => matchProp(p.name));
+      if (prop) return prop.value ?? null;
+    }
+    return null;
   }
 
   /** Get all quantity sets for an entity */
@@ -167,20 +177,30 @@ export class QueryNamespace {
     return this.backend.query.relationships(ref);
   }
 
-  /** Get a single quantity value. Supports 2-arg (ref, quantityName) or 3-arg (ref, qsetName, quantityName). */
+  /**
+   * Get a single quantity value. Supports 2-arg (ref, quantityName) or 3-arg
+   * (ref, qsetName, quantityName). Qset / quantity names accept Bonsai-style
+   * `/regex/` patterns (e.g. `/Qto_.*BaseQuantities/`), so one call can read a
+   * quantity across several matching sets; a plain name is an exact match.
+   * Returns the first match in set/quantity order.
+   */
   quantity(ref: EntityRef, qsetNameOrQuantityName: string, quantityName?: string): number | null {
     const qsets = this.quantities(ref);
     if (quantityName !== undefined) {
       // 3-arg: (ref, qsetName, quantityName)
-      const qset = qsets.find(q => q.name === qsetNameOrQuantityName);
-      if (!qset) return null;
-      const qty = qset.quantities.find(q => q.name === quantityName);
-      return qty?.value ?? null;
+      const matchSet = compileNameMatcher(qsetNameOrQuantityName);
+      const matchQuant = compileNameMatcher(quantityName);
+      for (const qset of qsets) {
+        if (!matchSet(qset.name)) continue;
+        const qty = qset.quantities.find(q => matchQuant(q.name));
+        if (qty != null) return qty.value ?? null;
+      }
+      return null;
     }
     // 2-arg: (ref, quantityName) — search all qsets
-    const name = qsetNameOrQuantityName;
+    const matchQuant = compileNameMatcher(qsetNameOrQuantityName);
     for (const qset of qsets) {
-      const qty = qset.quantities.find(q => q.name === name);
+      const qty = qset.quantities.find(q => matchQuant(q.name));
       if (qty != null) return qty.value ?? null;
     }
     return null;

@@ -107,6 +107,7 @@ interface SerializedSpatialNode {
   expressId: number;
   type: number;
   name: string;
+  longName?: string;
   elevation?: number;
   children: SerializedSpatialNode[];
   elements: number[];
@@ -128,6 +129,7 @@ function serializeSpatialNode(node: SpatialNode): SerializedSpatialNode {
     expressId: node.expressId,
     type: node.type,
     name: node.name,
+    longName: node.longName,
     elevation: node.elevation,
     children: node.children.map(serializeSpatialNode),
     elements: [...node.elements],
@@ -139,6 +141,7 @@ function deserializeSpatialNode(node: SerializedSpatialNode): SpatialNode {
     expressId: node.expressId,
     type: node.type as IfcTypeEnum,
     name: node.name,
+    longName: node.longName,
     elevation: node.elevation,
     children: node.children.map(deserializeSpatialNode),
     elements: [...node.elements],

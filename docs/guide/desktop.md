@@ -8,11 +8,10 @@ This page describes the extension points the packages expose and the host-side c
 
 | Feature | Web (WASM) | Desktop (Native) |
 |---------|-----------|------------------|
-| **Parsing** | Single-threaded | Multi-threaded (Rayon) |
-| **Memory** | WASM 4GB limit | System RAM |
-| **File Access** | User upload only | Direct filesystem |
-| **Startup** | Download WASM | Instant |
-| **Large Files** | ~100MB practical limit | 500MB+ supported |
+| **Parallelism** | Pool of single-threaded WASM workers | In-process Rayon thread pool |
+| **Memory** | wasm32 4GB address space per instance, plus browser limits | System RAM |
+| **File Access** | User upload only | Direct filesystem (path-based commands) |
+| **Startup** | Download WASM bundle | No WASM download |
 
 A desktop shell reuses the same Rust crates (`ifc-lite-core`, `ifc-lite-geometry`) as the WASM build, but compiled natively with full multi-threading.
 
@@ -74,8 +73,10 @@ The web viewer UI (`apps/viewer`) is a standard browser app. A desktop shell can
 ## Differences from the web build
 
 - **Parsing backend**: native Rust vs WASM
-- **Threading**: Rayon thread pool vs single-threaded WASM
+- **Threading**: one in-process Rayon pool vs a pool of single-threaded WASM workers
 - **File access**: direct filesystem vs browser upload
-- **Memory**: no WASM 4GB limit
+- **Memory**: no wasm32 4GB address-space limit
 - **Caching**: disk-based binary cache vs browser IndexedDB
 - **Startup**: no WASM download needed
+- **Tessellation quality**: the `tessellationQuality` level currently applies
+  to the WASM paths only; the native pipeline does not consume it yet

@@ -41,7 +41,8 @@ import {
   createListDataProvider,
 } from '@/lib/lists';
 import type { ListDefinition, ListResult, ListDataProvider, ListGrouping } from '@/lib/lists';
-import type { IfcDataStore } from '@ifc-lite/parser';
+import { mergeResultColumns } from '@/lib/lists/merge-result-columns';
+import { extractProjectUnits, ProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
 import { ListBuilder } from './ListBuilder';
 import { ListResultsTable } from './ListResultsTable';
 
@@ -90,7 +91,7 @@ export function ListPanel({ onClose }: ListPanelProps) {
         // Skip native-metadata models — they don't have a parsed
         // IfcDataStore, so the list provider can't query them.
         if (!model.ifcDataStore) continue;
-        pairs.push({ modelId, provider: createListDataProvider(model.ifcDataStore), store: model.ifcDataStore });
+        pairs.push({ modelId, provider: createListDataProvider(model.ifcDataStore, model.name), store: model.ifcDataStore });
       }
     } else if (ifcDataStore) {
       pairs.push({ modelId: 'default', provider: createListDataProvider(ifcDataStore), store: ifcDataStore });
@@ -100,6 +101,20 @@ export function ListPanel({ onClose }: ListPanelProps) {
 
   const allProviders = useMemo(() => modelProviderPairs.map((p) => p.provider), [modelProviderPairs]);
   const allStores = useMemo(() => modelProviderPairs.map((p) => p.store), [modelProviderPairs]);
+
+  // Every loaded model's declared units, keyed by the same modelId the rows
+  // carry (issue #1573 follow-up) — the single per-model source both the
+  // on-screen table and the export resolve quantity/measure columns against
+  // (`resolveListColumnUnits`), so a federation of models with different
+  // declared units converts each row from ITS OWN model's unit rather than
+  // assuming every row shares the first model's units.
+  const modelUnits = useMemo(() => {
+    const map = new Map<string, ProjectUnits>();
+    for (const { modelId, store } of modelProviderPairs) {
+      map.set(modelId, store.source.length > 0 ? extractProjectUnits(store.source, store.entityIndex) : ProjectUnits.empty());
+    }
+    return map;
+  }, [modelProviderPairs]);
 
   const hasData = allProviders.length > 0;
 
@@ -125,8 +140,13 @@ export function ListPanel({ onClose }: ListPanelProps) {
         // across federated models (and isn't dropped on the merge).
         const { groups, summary } = summariseListRows(definition, allRows);
 
+        // Merge each part's execution-time quantityType/dataType onto the
+        // columns (P0 fix, #1573 follow-up): `definition.columns` alone never
+        // carries them, which silently killed the export unit conversion.
+        const columns = mergeResultColumns(resultParts, definition.columns);
+
         setListResult({
-          columns: definition.columns,
+          columns,
           rows: allRows,
           totalCount: allRows.length,
           executionTime: totalTime,
@@ -303,6 +323,7 @@ export function ListPanel({ onClose }: ListPanelProps) {
           listName={editingList?.name}
           grouping={editingList?.grouping}
           onGroupingChange={handleGroupingFromTable}
+          modelUnits={modelUnits}
         />
       )}
 

@@ -52,8 +52,20 @@ interface MeshData {
   normals: Float32Array;        // [nx,ny,nz, ...]
   indices: Uint32Array;         // Triangle indices
   color: [number, number, number, number]; // RGBA (0-1)
+  origin?: [number, number, number]; // Per-element local-frame origin (see below)
 }
 ```
+
+Two contracts to respect when consuming `MeshData`:
+
+- **`origin`**: when present, `positions` are relative to a per-element local
+  frame and the world position of vertex `i` is `origin + positions[3i..3i+3]`
+  (this preserves f32 precision on building-scale coordinates). Fold it in by
+  translating the mesh (`threeMesh.position.fromArray(mesh.origin)`), or by
+  adding it to the vertices when you merge geometry. Absent means positions are
+  already absolute.
+- **Winding order is unreliable**: IFC triangle winding is not consistently
+  outward, so render with `THREE.DoubleSide` even for opaque materials.
 
 You only need `@ifc-lite/geometry` (and its dependency `@ifc-lite/wasm`) — skip `@ifc-lite/renderer` entirely.
 
@@ -99,11 +111,14 @@ function meshDataToThree(mesh: MeshData): THREE.Mesh {
     color: new THREE.Color(r, g, b),
     transparent: a < 1,
     opacity: a,
-    side: a < 1 ? THREE.DoubleSide : THREE.FrontSide,
+    // DoubleSide even for opaque: IFC triangle winding is not reliably outward.
+    side: THREE.DoubleSide,
     depthWrite: a >= 1,
   });
 
   const threeMesh = new THREE.Mesh(geometry, material);
+  // Fold the per-element local-frame origin (world = origin + positions).
+  if (mesh.origin) threeMesh.position.fromArray(mesh.origin);
   threeMesh.userData.expressId = mesh.expressId;
   return threeMesh;
 }
@@ -146,6 +161,11 @@ for await (const event of processor.processStreaming(buffer)) {
 }
 ```
 
+`processAdaptive(buffer)` yields the same events and picks the strategy for
+you: small files (under 2 MB by default) arrive as a single `batch` event,
+large files go through the streaming or parallel worker path (see the
+instancing note under Performance Tips before consuming the parallel path).
+
 ## Batching for Performance
 
 Individual meshes per entity give you picking granularity but many draw calls. For large models, batch by color:
@@ -178,7 +198,14 @@ function batchMeshesByColor(
 
     let pOff = 0, iOff = 0, vOff = 0;
     for (const m of group) {
-      positions.set(m.positions, pOff);
+      // Merging bakes vertices into one buffer, so fold each mesh's
+      // local-frame origin into the copied positions.
+      const [ox, oy, oz] = m.origin ?? [0, 0, 0];
+      for (let i = 0; i < m.positions.length; i += 3) {
+        positions[pOff + i] = m.positions[i] + ox;
+        positions[pOff + i + 1] = m.positions[i + 1] + oy;
+        positions[pOff + i + 2] = m.positions[i + 2] + oz;
+      }
       normals.set(m.normals, pOff);
       for (let i = 0; i < m.indices.length; i++) {
         indices[iOff + i] = m.indices[i] + vOff;
@@ -198,6 +225,7 @@ function batchMeshesByColor(
       color: new THREE.Color(r, g, b),
       transparent: a < 1,
       opacity: a,
+      side: THREE.DoubleSide,
       depthWrite: a >= 1,
     });
 
@@ -237,12 +265,12 @@ function IfcMesh({ mesh }: { mesh: MeshData }) {
   const [r, g, b, a] = mesh.color;
 
   return (
-    <mesh geometry={geometry}>
+    <mesh geometry={geometry} position={mesh.origin ?? [0, 0, 0]}>
       <meshStandardMaterial
         color={new THREE.Color(r, g, b)}
         transparent={a < 1}
         opacity={a}
-        side={a < 1 ? THREE.DoubleSide : THREE.FrontSide}
+        side={THREE.DoubleSide}
       />
     </mesh>
   );
@@ -271,8 +299,10 @@ function IfcModel({ url }: { url: string }) {
 
   return (
     <group>
-      {meshes.map((mesh) => (
-        <IfcMesh key={mesh.expressId} mesh={mesh} />
+      {meshes.map((mesh, i) => (
+        // Index key: one entity can emit several MeshData (one per material/part),
+        // so expressId alone is not unique.
+        <IfcMesh key={i} mesh={mesh} />
       ))}
     </group>
   );
@@ -358,12 +388,13 @@ if (result.coordinateInfo.hasLargeCoordinates) {
   const shift = result.coordinateInfo.originShift;
   console.log(`Coordinates shifted by (${shift.x}, ${shift.y}, ${shift.z})`);
 
-  // If you need world coordinates for geolocation:
-  function toWorld(local: THREE.Vector3): THREE.Vector3 {
+  // The shift was SUBTRACTED from the mesh positions, so to recover the
+  // original file coordinates (e.g. for geolocation) add it back:
+  function toOriginal(local: THREE.Vector3): THREE.Vector3 {
     return new THREE.Vector3(
-      local.x - shift.x,
-      local.y - shift.y,
-      local.z - shift.z,
+      local.x + shift.x,
+      local.y + shift.y,
+      local.z + shift.z,
     );
   }
 }
@@ -378,12 +409,17 @@ if (result.coordinateInfo.hasLargeCoordinates) {
 | **LOD** | Large models | Reduce triangle count at distance |
 | **Frustum culling** | Large scenes | Only render visible geometry |
 
-> **Note:** the geometry engine expands mapped/repeated representations into
-> regular per-element meshes and the renderer batches them by colour — it does
-> not emit instance buffers, so there is no `processInstancedStreaming` API.
-> If you need true `THREE.InstancedMesh`, detect repeats yourself from the
-> emitted `MeshData` (e.g. hash positions/indices) and build the instances in
-> application code.
+> **Note on instancing:** on the single-threaded streaming path, mapped and
+> repeated representations arrive as regular per-element `MeshData`. On the
+> parallel worker path (what `processAdaptive` uses for large files when
+> `SharedArrayBuffer` is available), heavily repeated opaque elements are
+> instead packed into per-batch `instancedShards` buffers on the `batch`
+> event and do NOT appear in `event.meshes`. If you consume only
+> `event.meshes`, construct the processor with
+> `new GeometryProcessor({ enableInstancing: false })` so every element stays
+> on the flat path. Alternatively, decode the shards with the exported
+> `decodeInstancedShard()` and build `THREE.InstancedMesh` from the templates
+> and per-instance transforms yourself.
 
 ## Extracting IFC Object Data
 
@@ -486,16 +522,20 @@ const hierarchy = store.spatialHierarchy;
 if (hierarchy) {
   const project = hierarchy.project; // SpatialNode (root)
 
-  // Walk: project.children → sites → buildings → storeys
-  for (const storey of building.children) {
-    console.log(`${storey.name} (${storey.elevation}m) — ${storey.elements.length} elements`);
+  // Walk: project.children -> sites -> buildings -> storeys
+  for (const site of project.children) {
+    for (const building of site.children) {
+      for (const storey of building.children) {
+        console.log(`${storey.name} (${storey.elevation}m) - ${storey.elements.length} elements`);
+      }
+    }
   }
 }
 ```
 
 Each `SpatialNode` has:
 
-- `expressId`, `name`, `type` (IfcProject / IfcSite / IfcBuilding / IfcBuildingStorey / IfcSpace)
+- `expressId`, `name`, `type` (an `IfcTypeEnum` value: IfcProject / IfcSite / IfcBuilding / IfcBuildingStorey / IfcSpace, ...)
 - `elevation` — metres above project base (storeys only)
 - `children` — child spatial containers
 - `elements` — expressIds of directly contained elements
@@ -554,13 +594,18 @@ sequenceDiagram
 
 ## Vite Configuration
 
-The WASM module needs these headers for `SharedArrayBuffer`:
+The COOP/COEP headers enable `SharedArrayBuffer`, which the geometry worker
+pool uses to share the IFC bytes across workers. The workers are ES modules,
+so force the ESM worker format for production builds:
 
 ```typescript
 // vite.config.ts
 import { defineConfig } from 'vite';
 
 export default defineConfig({
+  worker: {
+    format: 'es',
+  },
   optimizeDeps: {
     exclude: ['@ifc-lite/wasm'],
   },
@@ -572,6 +617,15 @@ export default defineConfig({
   },
 });
 ```
+
+!!! warning "`server.headers` is dev-only"
+    The `server.headers` block above only applies to Vite's dev server. In
+    production or preview builds these responses come from your hosting layer or
+    CDN, so serve the same `Cross-Origin-Opener-Policy: same-origin` and
+    `Cross-Origin-Embedder-Policy: require-corp` headers there too — otherwise
+    `SharedArrayBuffer` is unavailable and the worker pool falls back to slower
+    per-worker copies. (Vite's `preview` server also honours a matching
+    `preview.headers` block.)
 
 ## Full Example
 

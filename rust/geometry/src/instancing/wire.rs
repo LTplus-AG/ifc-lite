@@ -228,6 +228,16 @@ pub fn decode_instanced(bytes: &[u8]) -> Option<DecodedInstanced> {
     let nrm_data = data_off + positions_len * 4;
     let idx_data = nrm_data + normals_len * 4;
 
+    // A corrupt/hostile header can claim an arbitrary template_count or
+    // instance_count. Bound both against the buffer we actually have BEFORE
+    // sizing `Vec::with_capacity` below — otherwise a bogus huge count tries
+    // to reserve gigabytes (or aborts the process via the allocator's OOM
+    // handler) long before the per-field `ru32`/`rf32` reads below would ever
+    // get a chance to fail gracefully and return `None`.
+    if bytes.len() < data_off {
+        return None;
+    }
+
     let mut templates = Vec::with_capacity(template_count);
     for t in 0..template_count {
         let r = tt_off + t * 48;

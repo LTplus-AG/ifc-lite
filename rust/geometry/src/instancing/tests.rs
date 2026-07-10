@@ -5,7 +5,7 @@
 use super::collate::mat4_to_row_major_f32;
 use super::{
     collate_and_encode, collate_instances, decode_instanced, encode_instanced, verify_recomposition,
-    Collated, InstanceMeshRef,
+    Collated, InstanceMeshRef, INSTANCED_MAGIC, INSTANCED_VERSION,
 };
 use crate::mesh::{InstanceMeta, Mesh};
 use nalgebra::Matrix4;
@@ -385,9 +385,216 @@ fn collate_and_encode_matches_mesh_path() {
 }
 
 #[test]
+fn dont_bake_empty_occurrence_refs_recompose_like_materialized() {
+    // #1623 Phase 3: the browser don't-bake path feeds `collate_refs` a single
+    // MATERIALIZED template plus EMPTY-geometry occurrence placeholders (each
+    // carrying only the pre-RTC world transform, id, and colour). The resulting
+    // shard must recompose to the EXACT same world triangles as if every
+    // occurrence had been materialized flat — the byte-identity gate.
+    use std::f64::consts::FRAC_PI_4;
+    let placements = [
+        Matrix4::new_translation(&nalgebra::Vector3::new(2.0, 0.0, 0.0)),
+        Matrix4::from_euler_angles(0.0, 0.0, FRAC_PI_4)
+            * Matrix4::new_translation(&nalgebra::Vector3::new(-6.0, 4.0, 1.0)),
+        Matrix4::from_euler_angles(FRAC_PI_4, 0.0, 0.0)
+            * Matrix4::new_translation(&nalgebra::Vector3::new(30.0, -12.0, 5.0)),
+    ];
+    let meta_for = |m: &Matrix4<f64>| InstanceMeta {
+        transform: mat_rm(m),
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: 314,
+        instanceable: true,
+    };
+
+    // A: the FLAT baseline — every occurrence materialized (baked verts + meta).
+    let materialized: Vec<Mesh> = placements
+        .iter()
+        .map(|m| mesh_from(baked(&CANON, m), meta_for(m)))
+        .collect();
+    let flat_shard = {
+        let refs: Vec<InstanceMeshRef> = materialized
+            .iter()
+            .enumerate()
+            .map(|(i, m)| {
+                let mut r = InstanceMeshRef::from_mesh(m);
+                r.entity_id = 1000 + i as u32;
+                r.color = [0.2, 0.4, 0.6, 1.0];
+                r
+            })
+            .collect();
+        collate_and_encode(&refs, 2, [0.0, 0.0, 0.0])
+    };
+
+    // B: the don't-bake path — occurrence 0 materialized as the template, 1 & 2 as
+    // EMPTY placeholders carrying only their world transform (no baked geometry).
+    let template = &materialized[0];
+    let metas: Vec<InstanceMeta> = placements[1..].iter().map(meta_for).collect();
+    let mut refs_db: Vec<InstanceMeshRef> = Vec::new();
+    let mut tmpl_ref = InstanceMeshRef::from_mesh(template);
+    tmpl_ref.entity_id = 1000;
+    tmpl_ref.color = [0.2, 0.4, 0.6, 1.0];
+    refs_db.push(tmpl_ref);
+    for (k, meta) in metas.iter().enumerate() {
+        refs_db.push(InstanceMeshRef {
+            positions: &[],
+            normals: &[],
+            indices: &[],
+            origin: [0.0; 3],
+            instance_meta: Some(meta),
+            entity_id: 1000 + (k as u32 + 1),
+            color: [0.2, 0.4, 0.6, 1.0],
+        });
+    }
+    let db_shard = collate_and_encode(&refs_db, 2, [0.0, 0.0, 0.0]);
+
+    // Both shards must be byte-identical: same one template geometry (occurrence 0),
+    // same three instances, same ids/colours/transforms. The don't-bake path never
+    // materialized occurrences 1 & 2, yet produces the identical wire shard.
+    assert_eq!(
+        flat_shard, db_shard,
+        "don't-bake empty-occurrence shard must equal the fully-materialized shard byte-for-byte"
+    );
+
+    // And it recomposes to the flat baked world verts within a micrometre.
+    let dec = decode_instanced(&db_shard).expect("decodes");
+    assert_eq!(dec.templates.len(), 1, "one shared template");
+    assert_eq!(dec.instances.len(), 3, "template + two don't-bake occurrences");
+    for inst in &dec.instances {
+        let tmpl = &dec.templates[inst.template_index as usize];
+        let rel = Matrix4::from_row_slice(&inst.transform.map(|v| v as f64));
+        let orig_idx = (inst.entity_id - 1000) as usize;
+        let orig = &materialized[orig_idx];
+        let n = tmpl.positions.len() / 3;
+        for v in 0..n {
+            let w = rel
+                * nalgebra::Vector4::new(
+                    tmpl.origin[0] + tmpl.positions[v * 3] as f64,
+                    tmpl.origin[1] + tmpl.positions[v * 3 + 1] as f64,
+                    tmpl.origin[2] + tmpl.positions[v * 3 + 2] as f64,
+                    1.0,
+                );
+            let gx = orig.origin[0] + orig.positions[v * 3] as f64;
+            let gy = orig.origin[1] + orig.positions[v * 3 + 1] as f64;
+            let gz = orig.origin[2] + orig.positions[v * 3 + 2] as f64;
+            let err = ((w.x / w.w - gx).powi(2)
+                + (w.y / w.w - gy).powi(2)
+                + (w.z / w.w - gz).powi(2))
+            .sqrt();
+            assert!(err < 1e-4, "don't-bake recompose vertex error {err}");
+        }
+    }
+}
+
+#[test]
 fn decode_rejects_bad_magic() {
     assert!(decode_instanced(&[0u8; 32]).is_none());
     assert!(decode_instanced(&[]).is_none());
+}
+
+/// Little-endian instanced-shard header (mirrors the packed-instanced-decoder.test.ts
+/// header helper): magic, version, template_count, instance_count, positions_len,
+/// normals_len, indices_len, reserved.
+fn header_bytes(
+    magic: u32,
+    version: u32,
+    template_count: u32,
+    instance_count: u32,
+    positions_len: u32,
+    normals_len: u32,
+    indices_len: u32,
+) -> Vec<u8> {
+    let mut b = Vec::with_capacity(32);
+    for v in [
+        magic,
+        version,
+        template_count,
+        instance_count,
+        positions_len,
+        normals_len,
+        indices_len,
+        0,
+    ] {
+        b.extend_from_slice(&v.to_le_bytes());
+    }
+    b
+}
+
+#[test]
+fn decode_rejects_truncated_payload_with_valid_header() {
+    // Mirrors the TS conformance test "rejects a truncated buffer": valid
+    // magic/version and a header whose counts describe a real shard, but the
+    // byte buffer is cut short before the data actually ends.
+    let m0 = Matrix4::new_translation(&nalgebra::Vector3::new(1.0, 0.0, 0.0));
+    let m1 = Matrix4::new_translation(&nalgebra::Vector3::new(0.0, 2.0, 0.0));
+    let mk = |m: &Matrix4<f64>, rep: u128| {
+        mesh_from(
+            baked(&CANON, m),
+            InstanceMeta {
+                transform: mat_rm(m),
+                local_transform: None,
+                canonical_transform: None,
+                rep_identity: rep,
+                instanceable: true,
+            },
+        )
+    };
+    let meshes = vec![mk(&m0, 50), mk(&m1, 50)];
+    let collated = collate_instances(&meshes, 2, [0.0, 0.0, 0.0]);
+    let bytes = encode_instanced(&meshes, &collated, |i| i as u32, |_| [1.0, 1.0, 1.0, 1.0]);
+    assert!(decode_instanced(&bytes).is_some(), "sanity: full buffer decodes");
+
+    // Chop off the last byte of the data pool: the header/tables still claim
+    // the original counts, but the trailing index read now runs off the end
+    // of the slice.
+    let truncated = &bytes[..bytes.len() - 1];
+    assert!(
+        decode_instanced(truncated).is_none(),
+        "truncated payload (valid magic/version, short data) must decode to None, not panic"
+    );
+
+    // Chopping mid-table (well before any data) must also fail gracefully.
+    let mid_table = &bytes[..40];
+    assert!(
+        decode_instanced(mid_table).is_none(),
+        "buffer truncated inside the template table must decode to None"
+    );
+}
+
+#[test]
+fn decode_rejects_bogus_huge_counts_without_oom() {
+    // A corrupt/hostile header can claim an arbitrary template_count or
+    // instance_count. Before wire.rs's buffer-length guard, `decode_instanced`
+    // sized `Vec::with_capacity(template_count)` / `Vec::with_capacity(instance_count)`
+    // directly off these untrusted header fields (wire.rs ~231/253) — a bogus
+    // huge count would try to reserve hundreds of GB and abort the process via
+    // the allocator's OOM handler, well before the per-field truncation checks
+    // ever got a chance to return `None`. The buffer here is only 32 bytes (a
+    // bare header), so any allocation sized off these counts would be
+    // wildly disproportionate to the data actually available.
+    let huge = u32::MAX;
+
+    // Huge template_count, no instances.
+    let bytes = header_bytes(INSTANCED_MAGIC, INSTANCED_VERSION, huge, 0, 0, 0, 0);
+    assert_eq!(bytes.len(), 32);
+    assert!(
+        decode_instanced(&bytes).is_none(),
+        "bogus huge template_count must decode to None, not attempt a huge allocation"
+    );
+
+    // Huge instance_count, no templates.
+    let bytes = header_bytes(INSTANCED_MAGIC, INSTANCED_VERSION, 0, huge, 0, 0, 0);
+    assert!(
+        decode_instanced(&bytes).is_none(),
+        "bogus huge instance_count must decode to None, not attempt a huge allocation"
+    );
+
+    // Both huge at once.
+    let bytes = header_bytes(INSTANCED_MAGIC, INSTANCED_VERSION, huge, huge, huge, huge, huge);
+    assert!(
+        decode_instanced(&bytes).is_none(),
+        "bogus huge counts across the board must decode to None, not attempt a huge allocation"
+    );
 }
 
 #[test]

@@ -15,6 +15,8 @@ import { Badge } from '@/components/ui/badge';
 import { decodeIfcString, parsePropertyValue } from './encodingUtils';
 import type { PropertySet } from './encodingUtils';
 import { PropertyValueType } from '@ifc-lite/data';
+import type { ProjectUnits } from '@ifc-lite/parser';
+import { resolveMeasureDisplay, formatConverted } from '@/lib/units/display';
 
 export interface PropertySetCardProps {
   pset: PropertySet;
@@ -27,9 +29,17 @@ export interface PropertySetCardProps {
   /** `"PsetName:PropName"` of a row to transiently highlight + scroll to
    *  (the bSDD "jump to added property" flow, issue #1107). */
   focusedPropKey?: string | null;
+  /** The file's declared units, for rendering a unit suffix next to measure
+   *  values (issue #1573). */
+  projectUnits: ProjectUnits;
+  /** Per-unit-type display-unit overrides (issue #1573 proposal 2) when a
+   *  property's measure type maps to an overridden unit kind, its value
+   *  renders CONVERTED into that unit instead of the file's raw value.
+   *  Omitted (or empty) keeps the existing unconverted-file-unit display. */
+  unitDisplayOverrides?: Record<string, string>;
 }
 
-export function PropertySetCard({ pset, modelId, entityId, enableEditing, isTypeProperty, typeEditScope, focusedPropKey }: PropertySetCardProps) {
+export function PropertySetCard({ pset, modelId, entityId, enableEditing, isTypeProperty, typeEditScope, focusedPropKey, projectUnits, unitDisplayOverrides }: PropertySetCardProps) {
   // Check if any property in this set is mutated
   const hasMutations = pset.properties.some(p => p.isMutated);
   const isNewPset = pset.isNewPset;
@@ -96,12 +106,14 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div className="border-t-2 border-zinc-200 dark:border-zinc-800 divide-y divide-zinc-100 dark:divide-zinc-900">
-          {pset.properties.map((prop: { name: string; value: unknown; isMutated?: boolean; type?: number }) => {
+          {pset.properties.map((prop: { name: string; value: unknown; isMutated?: boolean; type?: number; dataType?: string }) => {
             const parsed = parsePropertyValue(prop.value);
             const decodedName = decodeIfcString(prop.name);
             const isMutated = prop.isMutated;
             const propKey = keyFor(prop.name);
             const isFocused = focusedPropKey != null && focusedPropKey === propKey;
+            const disp = resolveMeasureDisplay(prop.value, prop.dataType, projectUnits, unitDisplayOverrides ?? {});
+            const unit = disp.unit;
 
             return (
               <div
@@ -160,7 +172,10 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
                     />
                   ) : (
                     <span className={`font-mono select-all break-words ${isMutated ? 'text-purple-900 dark:text-purple-100 font-semibold' : 'text-zinc-900 dark:text-zinc-100'}`}>
-                      {parsed.displayValue}
+                      {disp.converted !== null ? formatConverted(disp.converted) : parsed.displayValue}
+                      {unit && parsed.displayValue !== '\u2014' && (
+                        <span className="ml-1 text-zinc-400 dark:text-zinc-500">{unit}</span>
+                      )}
                     </span>
                   )}
                 </div>

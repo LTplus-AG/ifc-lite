@@ -9,8 +9,9 @@
  * and property/quantity accessors for O(1) lookups per entity.
  */
 
-import type { PropertySet, QuantitySet } from '@ifc-lite/data';
+import type { PropertySet, Property, QuantitySet, Quantity } from '@ifc-lite/data';
 import { parsePropertyValue } from '@ifc-lite/encoding';
+import { compileNameMatcher } from './name-pattern.js';
 import type {
   ListDataProvider,
   ListDefinition,
@@ -37,12 +38,17 @@ export function executeList(
   // Step 1: Resolve source set (which entities match)
   const matchedIds = resolveSourceSet(definition, provider, modelId);
 
-  // Step 2: Extract column values for matched entities
+  // Step 2: Extract column values for matched entities. `columnMeta` collects,
+  // per quantity/property column, the QuantityType / measure dataType of the
+  // first matching entry seen — a side artifact of the same lookup used to
+  // resolve `values[i]`, so display-unit conversion downstream (issue #1573)
+  // knows what unit-KIND a raw numeric cell is in without re-deriving it.
   const rows: ListRow[] = new Array(matchedIds.length);
+  const columnMeta: ColumnMeta[] = definition.columns.map(() => ({}));
 
   for (let i = 0; i < matchedIds.length; i++) {
     const entityId = matchedIds[i];
-    const values = extractColumnValues(definition.columns, entityId, provider);
+    const values = extractColumnValues(definition.columns, entityId, provider, columnMeta);
     rows[i] = { entityId, modelId, values };
   }
 
@@ -58,14 +64,29 @@ export function executeList(
   // Step 4: Group + summarise if configured
   const { groups, summary } = summariseListRows(definition, rows);
 
+  // Merge the derived unit metadata onto the columns returned to the caller.
+  // `definition.columns` (the persisted authoring schema) is left untouched —
+  // only the RESULT's columns carry the execution-time annotation.
+  const columns = columnMeta.some((m) => m.quantityType !== undefined || m.dataType !== undefined)
+    ? definition.columns.map((c, i) => (columnMeta[i].quantityType !== undefined || columnMeta[i].dataType !== undefined)
+        ? { ...c, ...columnMeta[i] }
+        : c)
+    : definition.columns;
+
   return {
-    columns: definition.columns,
+    columns,
     rows,
     totalCount: rows.length,
     executionTime: performance.now() - startTime,
     groups,
     summary,
   };
+}
+
+/** Per-column derived unit metadata, keyed by column index (see `executeList`). */
+interface ColumnMeta {
+  quantityType?: number;
+  dataType?: string;
 }
 
 // ============================================================================
@@ -240,9 +261,35 @@ function getConditionValue(
     case 'quantity':
       return getQuantityValue(entityId, condition.psetName ?? '', condition.propertyName, provider);
     case 'spatial':
-      return provider.getStoreyName?.(entityId) || null;
+      return getSpatialValue(entityId, condition.propertyName, provider);
+    case 'model':
+      return provider.getModelName?.() || null;
     default:
       return null;
+  }
+}
+
+/**
+ * Resolve a `spatial` column/condition to a spatial-container name at the
+ * requested level. `propertyName` selects the level; an empty or unrecognised
+ * level falls back to `Storey`, so lists authored before the level existed
+ * keep resolving the storey name. `Project` is constant per model.
+ */
+function getSpatialValue(
+  entityId: number,
+  level: string,
+  provider: ListDataProvider,
+): CellValue {
+  switch (level) {
+    case 'Building':
+      return provider.getBuildingName?.(entityId) || null;
+    case 'Site':
+      return provider.getSiteName?.(entityId) || null;
+    case 'Project':
+      return provider.getProjectName?.() || null;
+    case 'Storey':
+    default:
+      return provider.getStoreyName?.(entityId) || null;
   }
 }
 
@@ -299,6 +346,7 @@ function extractColumnValues(
   columns: ColumnDefinition[],
   entityId: number,
   provider: ListDataProvider,
+  columnMeta: ColumnMeta[],
 ): CellValue[] {
   // For efficiency, batch extract properties and quantities once per entity
   const needsProperties = columns.some(c => c.source === 'property');
@@ -321,12 +369,18 @@ function extractColumnValues(
       case 'attribute':
         values[i] = getAttributeValue(entityId, col.propertyName, provider);
         break;
-      case 'property':
-        values[i] = findPropertyInSets(psets ?? [], col.psetName ?? '', col.propertyName);
+      case 'property': {
+        const prop = findPropertyEntry(psets ?? [], col.psetName ?? '', col.propertyName);
+        values[i] = prop ? resolvePropertyValue(prop.value) : null;
+        if (prop?.dataType && columnMeta[i].dataType === undefined) columnMeta[i].dataType = prop.dataType;
         break;
-      case 'quantity':
-        values[i] = findQuantityInSets(qsets ?? [], col.psetName ?? '', col.propertyName);
+      }
+      case 'quantity': {
+        const quant = findQuantityEntry(qsets ?? [], col.psetName ?? '', col.propertyName);
+        values[i] = quant ? formatQuantityValue(quant.value, quant.type) : null;
+        if (quant && columnMeta[i].quantityType === undefined) columnMeta[i].quantityType = quant.type;
         break;
+      }
       case 'material': {
         const names = provider.getMaterialNames?.(entityId) ?? [];
         values[i] = names.length > 0 ? uniqueJoin(names) : null;
@@ -339,7 +393,10 @@ function extractColumnValues(
         break;
       }
       case 'spatial':
-        values[i] = provider.getStoreyName?.(entityId) || null;
+        values[i] = getSpatialValue(entityId, col.propertyName, provider);
+        break;
+      case 'model':
+        values[i] = provider.getModelName?.() || null;
         break;
       default:
         values[i] = null;
@@ -399,17 +456,28 @@ function getQuantityValue(
   return findQuantityInSets(qsets, qsetName, quantName);
 }
 
-function findPropertyInSets(psets: PropertySet[], psetName: string, propName: string): CellValue {
+/** Find the raw matching property entry (name + value + dataType), so
+ *  callers that need the measure `dataType` (issue #1573) don't have to
+ *  re-walk the sets. */
+function findPropertyEntry(psets: PropertySet[], psetName: string, propName: string): Property | undefined {
+  // Set and property names support Bonsai-style `/regex/` patterns, so one
+  // column can pull a value from several psets at once (issue #1591); a plain
+  // name stays an exact match.
+  const matchSet = compileNameMatcher(psetName);
+  const matchProp = compileNameMatcher(propName);
   for (const pset of psets) {
-    if (pset.name === psetName) {
+    if (matchSet(pset.name)) {
       for (const prop of pset.properties) {
-        if (prop.name === propName) {
-          return resolvePropertyValue(prop.value);
-        }
+        if (matchProp(prop.name)) return prop;
       }
     }
   }
-  return null;
+  return undefined;
+}
+
+function findPropertyInSets(psets: PropertySet[], psetName: string, propName: string): CellValue {
+  const prop = findPropertyEntry(psets, psetName, propName);
+  return prop ? resolvePropertyValue(prop.value) : null;
 }
 
 /**
@@ -438,20 +506,26 @@ function resolvePropertyValue(value: unknown): CellValue {
   return display;
 }
 
-/** Unit suffixes indexed by QuantityType enum */
-const QUANTITY_UNITS = ['m', 'm²', 'm³', '', 'kg', 's'];
-
-function findQuantityInSets(qsets: QuantitySet[], qsetName: string, quantName: string): CellValue {
+/** Find the raw matching quantity entry (name + value + type), so callers
+ *  that need the `QuantityType` (issue #1573) don't have to re-walk the
+ *  sets. */
+function findQuantityEntry(qsets: QuantitySet[], qsetName: string, quantName: string): Quantity | undefined {
+  // Qset and quantity names support `/regex/` patterns too (see findPropertyEntry).
+  const matchSet = compileNameMatcher(qsetName);
+  const matchQuant = compileNameMatcher(quantName);
   for (const qset of qsets) {
-    if (qset.name === qsetName) {
+    if (matchSet(qset.name)) {
       for (const quant of qset.quantities) {
-        if (quant.name === quantName) {
-          return formatQuantityValue(quant.value, quant.type);
-        }
+        if (matchQuant(quant.name)) return quant;
       }
     }
   }
-  return null;
+  return undefined;
+}
+
+function findQuantityInSets(qsets: QuantitySet[], qsetName: string, quantName: string): CellValue {
+  const quant = findQuantityEntry(qsets, qsetName, quantName);
+  return quant ? formatQuantityValue(quant.value, quant.type) : null;
 }
 
 function formatQuantityValue(value: number, _type: number): CellValue {

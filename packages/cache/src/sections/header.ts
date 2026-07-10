@@ -120,6 +120,7 @@ export function readHeader(reader: BufferReader): CacheHeaderInfo {
     version,
     schema,
     sourceHash,
+    hasSourceHash: (flags & HeaderFlags.SourceHashUnset) === 0,
     entityCount,
     totalVertices,
     totalTriangles,

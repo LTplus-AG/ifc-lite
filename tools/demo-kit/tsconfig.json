@@ -1,0 +1,11 @@
+{
+  "//": "Standalone tsconfig with NO path aliases. generate.mts sets TSX_TSCONFIG_PATH to this file before re-executing itself (see the bootstrap block at the top of generate.mts) to work around a tsx + tsconfig-paths bug: the repo root tsconfig.json maps a handful of @ifc-lite/* package names (notably @ifc-lite/ifcx) to their packages/*/dist/index.d.ts declaration file, and tsx's per-importer tsconfig-paths resolver loads that .d.ts AS the runtime module for bare imports of those names anywhere in the module graph -- silently producing an incomplete module (observed: @ifc-lite/ifcx loses detectFormat/parseIfcx/parseFederatedIfcx/addIfcxOverlay), which breaks @ifc-lite/parser's barrel (it re-exports from @ifc-lite/ifcx). Pointing TSX_TSCONFIG_PATH at this alias-free config for the whole process sidesteps the bug: bare @ifc-lite/* specifiers then resolve via normal node_modules symlinks (workspace packages), which are correct. This file intentionally does NOT extend the root tsconfig.",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "strict": false
+  }
+}

@@ -239,11 +239,10 @@ pub(crate) fn cap_half_space_clip(mesh: &mut Mesh, plane_point: Point3<f64>, cli
             holes.push(h);
         }
 
-        let (verts2d, indices) =
-            match triangulate_polygon_with_holes_refined(&outer, &holes, false) {
-                Ok(r) => r,
-                Err(_) => continue,
-            };
+        let (verts2d, indices) = match triangulate_polygon_with_holes_refined(&outer, &holes) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
         let verts3d: Vec<Point3<f64>> = verts2d.iter().map(lift).collect();
         let base = (mesh.positions.len() / 3) as u32;
         for p in &verts3d {

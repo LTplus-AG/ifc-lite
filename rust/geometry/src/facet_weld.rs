@@ -70,16 +70,17 @@ use crate::mesh::Mesh;
 use std::collections::BTreeMap;
 
 /// f32-snap / kernel-reconcile grid (metres). Power of two ⇒ `(c/G).round()*G`
-/// is an EXACT f64 op, bit-deterministic across targets. Mirrors
-/// `kernel::mesh_bridge::SNAP_GRID` so welded vertices land exactly where the
-/// kernel would snap them anyway.
-const SNAP_GRID: f64 = 1.0 / 65536.0;
+/// is an EXACT f64 op, bit-deterministic across targets. The kernel's own
+/// canonical grid, so welded vertices land exactly where the kernel would
+/// snap them anyway.
+use crate::kernel::mesh_bridge::SNAP_GRID;
 
 /// Normal-direction quantisation for the plane bucket. 1e3 ⇒ ~0.057° resolution
-/// — matches `consolidate_coplanar`'s `NORMAL_QUANT` so a weld merges exactly
-/// the facets that bucket would otherwise scatter. A real roof pitch / dormer
-/// has a distinct normal bucket and never clusters with the slope.
-const NORMAL_QUANT: f64 = 1.0e3;
+/// — the shared grid also used by `consolidate_coplanar`'s `NORMAL_QUANT`, so
+/// a weld merges exactly the facets that bucket would otherwise scatter. A
+/// real roof pitch / dormer has a distinct normal bucket and never clusters
+/// with the slope.
+use crate::grid::NORMAL_QUANT_F64 as NORMAL_QUANT;
 
 /// Max plane-offset jitter (metres) for two same-normal facets to weld into one
 /// plane cluster. 50 µm comfortably spans the ~15 µm f32 offset jitter but is
@@ -599,23 +600,27 @@ pub fn refine_high_aspect_slivers(mesh: &Mesh) -> Mesh {
 
     // Rebuild a flat mesh from the refined canonical triangles, re-deriving a
     // per-face flat normal (the input may not carry usable normals after a cut).
-    let mut out = Mesh::with_capacity(tris.len() * 3, tris.len() * 3);
+    let mut positions: Vec<f32> = Vec::with_capacity(tris.len() * 9);
+    let mut normals: Vec<f32> = Vec::with_capacity(tris.len() * 9);
+    let mut indices: Vec<u32> = Vec::with_capacity(tris.len() * 3);
     for t in &tris {
         let a = cpos[t[0]];
         let b = cpos[t[1]];
         let c = cpos[t[2]];
         let n = tri_normal(a, b, c).map(|(n, _)| n).unwrap_or([0.0, 0.0, 1.0]);
-        let base = (out.positions.len() / 3) as u32;
+        let base = (positions.len() / 3) as u32;
         for p in [a, b, c] {
-            out.positions
-                .extend_from_slice(&[p[0] as f32, p[1] as f32, p[2] as f32]);
-            out.normals
-                .extend_from_slice(&[n[0] as f32, n[1] as f32, n[2] as f32]);
+            positions.extend_from_slice(&[p[0] as f32, p[1] as f32, p[2] as f32]);
+            normals.extend_from_slice(&[n[0] as f32, n[1] as f32, n[2] as f32]);
         }
-        out.indices.extend_from_slice(&[base, base + 1, base + 2]);
+        indices.extend_from_slice(&[base, base + 1, base + 2]);
     }
-    out.rtc_applied = mesh.rtc_applied;
-    out
+    // Carry the host's placement / frame metadata (origin, rtc, #1474 capture)
+    // forward. This pass runs AFTER placement, so a bare rebuild would reset the
+    // local-frame origin + #1474 capture to defaults and mis-place exactly the
+    // hosts whose cuts slivered. `instance_meta` is dropped (the refined mesh no
+    // longer matches its canonical rep) — see `Mesh::rebuilt_like`.
+    mesh.rebuilt_like(positions, normals, indices)
 }
 
 #[cfg(test)]

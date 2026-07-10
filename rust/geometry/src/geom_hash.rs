@@ -42,9 +42,11 @@
 /// the `tolerance_sweep` test against real revision pairs.
 pub const DEFAULT_GEOM_HASH_TOLERANCE: f64 = 1.0e-3;
 
-/// splitmix64 finalizer — strong avalanche for a single `u64`.
+/// splitmix64 finalizer — strong avalanche for a single `u64`. Shared with
+/// `router::content_hash`'s 128-bit content hash, which uses this SAME
+/// finalizer per lane.
 #[inline]
-fn mix64(mut x: u64) -> u64 {
+pub(crate) fn mix64(mut x: u64) -> u64 {
     x = (x ^ (x >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
     x = (x ^ (x >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
     x ^ (x >> 31)

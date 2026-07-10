@@ -9,7 +9,16 @@ import { FORMAT_VERSION } from '@ifc-lite/cache';
  *
  * The key folds together everything that changes the *bytes* of the cached
  * geometry so a stale entry can never be served for a different input:
- *   - `byteLength` + `fingerprint`: identify the source file content
+ *   - `byteLength` + `fingerprint`: identify the source file content for LOOKUP.
+ *     The fingerprint is the spread-sampled hash from `computeSourceFingerprint`
+ *     (head + tail + interior windows + exact length). It is a strong KEY, not a
+ *     content validation: being O(1) it never reads the bytes between its sample
+ *     windows, so a byte-length-preserving in-place edit in a gap keys the same
+ *     entry. That is fine for the source-persisting tier (cached geometry + cached
+ *     source are self-consistent); the source-decoupled (mesh-only) tier, which
+ *     hydrates against the fresh buffer, validates a hit separately via the mtime
+ *     guard + a full-file hash (see `sourceFingerprint.ts` and
+ *     `cacheTier.decideMeshOnlyCacheHit`).
  *   - `FORMAT_VERSION`: a format bump invalidates incompatible entries
  *   - `mergeLayers`: the multi-layer-wall merge flag is a load-time WASM
  *     tessellation input (issue #540). It was previously absent from the key,

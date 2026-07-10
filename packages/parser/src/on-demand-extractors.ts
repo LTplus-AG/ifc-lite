@@ -452,7 +452,7 @@ export function extractTypePropertiesOnDemand(
 export function extractTypeEntityOwnProperties(
     store: IfcDataStore,
     typeEntityId: number
-): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[] }> }> {
+): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string }> }> {
     const ref = store.entityIndex.byId.get(typeEntityId);
     if (!ref || !store.source?.length) return [];
 
@@ -460,7 +460,7 @@ export function extractTypeEntityOwnProperties(
     const typeEntity = extractor.extractEntity(ref);
     if (!typeEntity) return [];
 
-    const allPsets: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[] }> }> = [];
+    const allPsets: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string }> }> = [];
     const seenPsetNames = new Set<string>();
 
     // Source 1: HasPropertySets attribute (index 5 for IfcTypeObject subtypes)

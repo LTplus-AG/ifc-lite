@@ -6,7 +6,28 @@
 //! and first geometry vertices to decide whether a model needs re-basing.
 
 use super::GeometryRouter;
+use crate::LARGE_COORD_THRESHOLD_METERS;
 use ifc_lite_core::{has_geometry_by_name, DecodedEntity, EntityDecoder, IfcType};
+
+/// Whether a near-origin element with this `RepresentationType` may cast a
+/// "no-shift" `(0,0,0)` RTC vote when the vertex probe can't cheaply read a
+/// coordinate. This is [`is_body_representation`](super::is_body_representation)
+/// MINUS `"Surface3D"` — meshable does NOT imply RTC-votable.
+///
+/// A `Surface3D` rep (`IfcBSplineSurfaceWithKnots`, `IfcSectionedSurface`,
+/// trimmed/curve-bounded surfaces) keeps its geometry in absolute model-space
+/// control points that `sample_first_geometry_vertex` cannot navigate, so a
+/// near-origin identity-placed Surface3D element would fall through to voting
+/// its placement `(0,0,0)` even though its real geometry can sit on a national
+/// grid hundreds of km away. On IFC4X3 corridor models with many such surfaces
+/// ahead of a few large-coordinate solids, those origin votes drag the median
+/// to zero and/or exhaust the 50-sample budget, suppressing a legitimate
+/// rebase — the #1526 curve-only pollution rebuilt via Surface3D. So Surface3D
+/// must ABSTAIN here, like a curve/axis rep. Scoped to RTC voting only: the
+/// meshing / void / layer paths still treat Surface3D as body geometry.
+fn is_rtc_votable_representation(rep_type: &str) -> bool {
+    rep_type != "Surface3D" && super::is_body_representation(rep_type)
+}
 
 impl GeometryRouter {
     /// Compute median-based RTC offset from sampled translations.
@@ -87,9 +108,70 @@ impl GeometryRouter {
                     return Some((world.x, world.y, world.z));
                 }
             }
+            // Placement sits at the origin and we could not cheaply read a body
+            // vertex. If this element has NO meshable body/surface representation
+            // at all — only a curve/axis (e.g. an IfcAlignmentSegment carrying just
+            // its 'Axis'/'Segment' curve) — it carries no reliable world position
+            // and must NOT vote (0,0,0) into the RTC sample set. Infrastructure
+            // files pair a handful of large-coordinate solids with many
+            // origin-placed alignment segments, and those spurious origin votes
+            // would drag the median back to zero and suppress the re-basing the
+            // solids actually need. Report "no evidence" instead.
+            //
+            // A body element we simply could not sample cheaply (e.g. a swept
+            // solid near the origin, which the vertex probe does not walk) still
+            // votes (0,0,0): its geometry genuinely sits at the origin, and that
+            // "no shift" vote is what keeps origin-local building models with a
+            // far georef datum from falling through to the placement-bounds
+            // fallback (which would re-base them off-screen).
+            if !self.element_has_body_representation(entity, decoder) {
+                return None;
+            }
         }
 
         Some((tx, ty, tz))
+    }
+
+    /// True when the element carries at least one RTC-votable body shape
+    /// representation (see [`is_rtc_votable_representation`]), as opposed to
+    /// only curve/axis/footprint reps (e.g. an IfcAlignmentSegment) OR a
+    /// `Surface3D` rep whose coordinates the vertex probe cannot read. Used to
+    /// decide whether an origin-placed element with no cheaply-samplable vertex
+    /// may still cast a "no shift" (0,0,0) vote during RTC detection.
+    ///
+    /// NOTE: this uses [`is_rtc_votable_representation`], NOT
+    /// [`is_body_representation`](super::is_body_representation) — the two
+    /// differ only in `Surface3D`, which is meshable but not RTC-votable (see
+    /// the predicate's doc; #1526).
+    fn element_has_body_representation(
+        &self,
+        entity: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> bool {
+        let Some(rep_attr) = entity.get(6) else {
+            return false;
+        };
+        if rep_attr.is_null() {
+            return false;
+        }
+        let Ok(Some(rep)) = decoder.resolve_ref(rep_attr) else {
+            return false;
+        };
+        if rep.ifc_type != IfcType::IfcProductDefinitionShape {
+            return false;
+        }
+        let Some(reps_attr) = rep.get(2) else {
+            return false;
+        };
+        let Ok(reps) = decoder.resolve_ref_list(reps_attr) else {
+            return false;
+        };
+        reps.iter().any(|sr| {
+            sr.ifc_type == IfcType::IfcShapeRepresentation
+                && super::effective_rep_type(sr)
+                    .map(is_rtc_votable_representation)
+                    .unwrap_or(false)
+        })
     }
 
     /// Read the first geometry vertex (f64) from an element's representation.
@@ -254,7 +336,6 @@ impl GeometryRouter {
     }
 
     fn raw_coordinate_is_large(&self, point: (f64, f64, f64)) -> bool {
-        const LARGE_COORD_THRESHOLD_METERS: f64 = 10000.0;
         let max_abs = point.0.abs().max(point.1.abs()).max(point.2.abs());
         max_abs * self.unit_scale > LARGE_COORD_THRESHOLD_METERS
     }
@@ -343,13 +424,21 @@ impl GeometryRouter {
         decoder: &mut EntityDecoder,
     ) -> Option<(f64, f64, f64)> {
         const MAX_SAMPLES: usize = 50;
+        // Cap on USABLE samples, not raw jobs: `take` follows `filter_map` so
+        // elements that abstain (origin-placed curve/axis-only reps such as
+        // IfcAlignmentSegment, which return None) do not consume the sample
+        // budget. Otherwise a file that emits 50+ alignment segments before its
+        // real large-coordinate solids would fill the window with abstentions,
+        // sample zero positions, and miss the re-basing the solids need.
+        // Matches `detect_rtc_offset_from_first_element`, which likewise counts
+        // pushed samples rather than scanned entities.
         let translations: Vec<(f64, f64, f64)> = jobs
             .iter()
-            .take(MAX_SAMPLES)
             .filter_map(|&(id, start, end, _)| {
                 let entity = decoder.decode_at_with_id(id, start, end).ok()?;
                 self.sample_element_translation(&entity, decoder)
             })
+            .take(MAX_SAMPLES)
             .collect();
 
         if translations.is_empty() {

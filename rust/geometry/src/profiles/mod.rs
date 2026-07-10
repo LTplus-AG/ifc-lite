@@ -17,6 +17,7 @@ mod curves_3d;
 mod outline;
 mod placement;
 mod shapes;
+mod steel_shapes;
 mod simplify;
 #[cfg(test)]
 mod tests;

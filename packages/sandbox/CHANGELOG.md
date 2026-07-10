@@ -1,5 +1,11 @@
 # @ifc-lite/sandbox
 
+## 1.16.1
+
+### Patch Changes
+
+- [#1548](https://github.com/LTplus-AG/ifc-lite/pull/1548) [`ec89d3f`](https://github.com/LTplus-AG/ifc-lite/commit/ec89d3f871f54b58fbfe32915ac6304505de1174) Thanks [@louistrue](https://github.com/louistrue)! - Fix `naiveTypeStrip` mangling namespace imports on the esbuild-free fallback path. The `as`-cast removal regex only protected the `import { Foo as Bar }` alias form, so `import * as utils from 'x'` was rewritten to the invalid `import * from 'x'`, which then survived module-syntax stripping and reached QuickJS verbatim. The negative lookbehind now also excludes `* as name`, so namespace imports are stripped correctly.
+
 ## 1.16.0
 
 ### Minor Changes

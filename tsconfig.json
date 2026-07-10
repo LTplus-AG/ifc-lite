@@ -4,6 +4,7 @@
     "module": "ESNext",
     "lib": [
       "ES2022",
+      "ESNext.Disposable",
       "DOM",
       "DOM.Iterable"
     ],

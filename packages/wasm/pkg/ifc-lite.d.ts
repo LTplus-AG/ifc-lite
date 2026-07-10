@@ -156,6 +156,34 @@ export class IfcAPI {
    */
   exportObj(content: Uint8Array, include_normals: boolean, hidden: Uint32Array, isolated: Uint32Array): Uint8Array;
   /**
+   * Store the whole IFC source file ONCE per load so the `*FromSource` batch
+   * variants can read it from the wasm heap instead of re-copying it per call.
+   *
+   * Mirrors the `setEntityIndex` lifecycle: called once per worker per load,
+   * and REPLACES the previous file wholesale (repeated calls swap the bytes),
+   * so a parser/geometry worker reusing one `IfcAPI` across loads is safe.
+   * The bytes must be the exact source the batch jobs' byte spans index into
+   * (the same buffer passed as `data` to the legacy `processGeometryBatch*`),
+   * or the decoded entities won't match — the JS worker installs its own
+   * session buffer, so this holds by construction.
+   *
+   * Taking `Vec<u8>` (by value) means wasm-bindgen hands us ownership of the
+   * single JS→wasm copy directly; we wrap it in `Arc` with no second copy.
+   */
+  setSourceBytes(data: Uint8Array): void;
+  /**
+   * Like [`IfcAPI::process_geometry_batch`] but reads the source bytes held by
+   * [`IfcAPI::set_source_bytes`] instead of taking `data`. Byte-for-byte
+   * identical output — it delegates to the legacy twin with the held slice.
+   */
+  processGeometryBatchFromSource(jobs_flat: Uint32Array, unit_scale: number, rtc_x: number, rtc_y: number, rtc_z: number, needs_shift: boolean, void_keys: Uint32Array, void_counts: Uint32Array, void_values: Uint32Array, style_ids: Uint32Array, style_colors: Uint8Array, plane_angle_to_radians?: number | null, material_element_ids?: Uint32Array | null, material_color_counts?: Uint32Array | null, material_colors_rgba?: Uint8Array | null): MeshCollection;
+  /**
+   * Like [`IfcAPI::process_geometry_batch_partitioned`] but reads the source
+   * bytes held by [`IfcAPI::set_source_bytes`] instead of taking `data`.
+   * Byte-for-byte identical output — it delegates to the legacy twin.
+   */
+  processGeometryBatchPartitionedFromSource(jobs_flat: Uint32Array, unit_scale: number, rtc_x: number, rtc_y: number, rtc_z: number, needs_shift: boolean, void_keys: Uint32Array, void_counts: Uint32Array, void_values: Uint32Array, style_ids: Uint32Array, style_colors: Uint8Array, plane_angle_to_radians?: number | null, material_element_ids?: Uint32Array | null, material_color_counts?: Uint32Array | null, material_colors_rgba?: Uint8Array | null): PartitionedBatch;
+  /**
    * Process geometry for a subset of pre-scanned entities → flat
    * MeshCollection. Takes raw bytes + pre-pass data from buildPrePassOnce.
    * Thin wrapper over [`IfcAPI::produce_batch`]; converts each produced mesh
@@ -334,6 +362,15 @@ export class IfcAPI {
    */
   extractProfiles(content: string, model_index: number): ProfileCollection;
   /**
+   * Structured pipeline diagnostics accumulated across every
+   * `processGeometryBatch*` call since the last load reset
+   * (`clearPrePassCache` / `setEntityIndex`), as a JS object with a
+   * `schemaVersion` field — or `undefined` when no batch has run yet.
+   * Includes per-batch summed geometry wall time, mesh/triangle counts,
+   * the degenerate-backstop drop count, and the CSG failure aggregates.
+   */
+  getPipelineDiagnostics(): any;
+  /**
    * Get WASM memory for zero-copy access
    */
   getMemory(): any;
@@ -390,22 +427,66 @@ export class IfcAPI {
    * the same `IfcAPI` instance — e.g. the parser worker keeps one
    * `IfcAPI` alive across multiple `parse` requests).
    *
-   * Panics if the cache Mutex is poisoned. Poisoning means an
-   * earlier panic occurred while the lock was held — silently
-   * continuing would mean operating on an inconsistent cache, so
-   * fail fast.
+   * Recovers a poisoned cache Mutex instead of panicking; see `mod_tests.rs`.
    */
   clearPrePassCache(): void;
+  /**
+   * Install the pre-computed set of `IfcRepresentationMap` ids referenced by
+   * an `IfcMappedItem` (issue #957), so the worker's first type-product batch
+   * SKIPS the per-worker [`Self::get_or_build_referenced_repmaps`] full-file
+   * walk. The streaming pre-pass built the same set once from the
+   * `IfcMappedItem` spans it already scanned (see
+   * `styling::build_referenced_representation_maps_from_spans`) and ships the
+   * id list here — bit-identical to what each worker would compute, since a
+   * set's membership is order-invariant and consumers only call `.contains`.
+   *
+   * Installed AFTER `setEntityIndex` (which clears this cache on content
+   * swap), so the injected value survives. When this setter is never called
+   * (native path, non-streaming callers), the lazy build path is unchanged.
+   */
+  setReferencedRepmaps(ids: Uint32Array): void;
+  /**
+   * Install the pre-computed #1623 Phase 3 don't-bake plan: the flat list of
+   * `IfcRepresentationMap` ids that an `IfcMappedItem` instantiates >= 2 times.
+   * The streaming pre-pass tallies it in the SAME scan that builds the referenced-
+   * repmap set (`styling::build_mapped_instance_plan_from_spans`) and ships the id
+   * list here. The batch path arms its router with it (batch-local template mode),
+   * so a repeated single-solid mapped source materializes ONCE per batch and the
+   * rest ride as instances in the IFNS shard.
+   *
+   * Same injection contract as [`Self::set_referenced_repmaps`]: installed after
+   * `setEntityIndex` (which clears it on content swap), and a no-op absence leaves
+   * the batch path materializing every occurrence (byte-identical). Each id is
+   * stored as `(2, id)` — the batch-local router only needs the eligibility set
+   * (count >= 2); the min-id template slot is unused in batch-local mode.
+   */
+  setMappedInstancePlan(source_ids: Uint32Array): void;
+  /**
+   * Install the pre-computed [`ifc_lite_geometry::MaterialLayerIndex`] (#563)
+   * from its flat SoA encoding, so the worker's first batch skips the
+   * per-worker [`Self::get_or_build_material_layer_index`] full-file decode
+   * scan (the dominant first-batch cost on layered architectural models,
+   * which run this on the DEFAULT view). The streaming pre-pass built the
+   * index once from the `IfcRelAssociatesMaterial` spans it already scanned
+   * (`MaterialLayerIndex::from_spans`) and flat-encoded it here; the flat
+   * encoding round-trips bit-for-bit (proven in `material_layer_index` tests),
+   * so the injected index equals each worker's `from_content` result.
+   *
+   * Same injection contract as [`Self::set_referenced_repmaps`]: installed
+   * after `setEntityIndex`, and a no-op absence leaves the lazy build intact.
+   */
+  setMaterialLayerIndex(element_ids: Uint32Array, axis: Uint32Array, layer_counts: Uint32Array, direction_sense: Float64Array, offset: Float64Array, layer_material_ids: Uint32Array, layer_thicknesses: Float64Array): void;
   /**
    * Enable or disable the PARAMETRIC rectangular-opening fast path (the
    * placement-frame, ground-truth-exact analytic cut) for `processGeometryBatch`.
    *
-   * DEFAULT OFF. This is the wasm-side toggle that lets native and wasm flip the
-   * flag in LOCKSTEP — the byte-identical native==wasm contract requires both
-   * targets take the same path, and wasm has no env to read `IFC_LITE_RECT_PARAM`.
+   * DEFAULT ON (corpus-validated; native defaults ON too, and wasm has no env to
+   * read `IFC_LITE_RECT_PARAM`, so both targets default in LOCKSTEP -- the
+   * byte-identical native==wasm contract requires both take the same path). This
+   * toggle is the wasm-side escape hatch mirroring `IFC_LITE_RECT_PARAM=0`.
    * The path subtracts rectangular openings as exact parametric boxes in the host's
    * own placement frame (rotated walls included), deferring any non-clean case to
-   * the exact kernel. Pass `true` before `processGeometryBatch`.
+   * the exact kernel. Pass `false` before `processGeometryBatch` to opt out.
    */
   setRectParamFastPath(enabled: boolean): void;
   /**
@@ -424,6 +505,13 @@ export class IfcAPI {
    * silently rendering at the wrong density.
    */
   setTessellationQuality(level?: string | null): void;
+  /**
+   * Install the pre-computed set of type ids that an `IfcRelDefinesByType`
+   * instantiates (#957 follow-up), so the worker's first type-product batch
+   * skips the per-worker [`Self::get_or_build_instantiated_type_ids`]
+   * full-file walk. Same injection contract as [`Self::set_referenced_repmaps`].
+   */
+  setInstantiatedTypeIds(ids: Uint32Array): void;
   /**
    * Enable or disable per-entity geometry fingerprinting in
    * `processGeometryBatch`, used by the viewer's revision-diff feature.
@@ -584,6 +672,12 @@ export class MeshDataJs {
    */
   readonly hasTexture: boolean;
   /**
+   * Local (pre-placement, object-space) AABB (issue #1474), WebGL Y-up,
+   * `[minX,minY,minZ,maxX,maxY,maxZ]`. `undefined` when not captured
+   * (wasm-bindgen maps `Option::None` to `undefined`, not `null`).
+   */
+  readonly localBounds: Float32Array | undefined;
+  /**
    * Decoded RGBA8 texture bytes (`width*height*4`). Empty when untextured.
    */
   readonly textureRgba: Uint8Array;
@@ -604,6 +698,12 @@ export class MeshDataJs {
    * type geometry (hidden in Model mode, shown in Types mode).
    */
   readonly geometryClass: number;
+  /**
+   * The resolved `IfcLocalPlacement` chain for this mesh (issue #1474),
+   * row-major 4×4, WebGL Y-up. `undefined` when not captured (see
+   * `local_bounds` above).
+   */
+  readonly localToWorld: Float64Array | undefined;
   readonly textureHeight: number;
   /**
    * Get triangle count
@@ -1154,6 +1254,7 @@ export interface InitOutput {
   readonly ifcapi_exportStep: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => void;
   readonly ifcapi_extractProfiles: (a: number, b: number, c: number, d: number) => number;
   readonly ifcapi_getMemory: (a: number) => number;
+  readonly ifcapi_getPipelineDiagnostics: (a: number) => number;
   readonly ifcapi_is_ready: (a: number) => number;
   readonly ifcapi_new: () => number;
   readonly ifcapi_parseAlignmentLines: (a: number, b: number, c: number) => number;
@@ -1161,16 +1262,23 @@ export interface InitOutput {
   readonly ifcapi_parseGridLines: (a: number, b: number, c: number) => number;
   readonly ifcapi_parseSymbolicRepresentations: (a: number, b: number, c: number) => number;
   readonly ifcapi_processGeometryBatch: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number, b1: number) => number;
+  readonly ifcapi_processGeometryBatchFromSource: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number) => number;
   readonly ifcapi_processGeometryBatchInstanced: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number, b1: number, c1: number) => void;
   readonly ifcapi_processGeometryBatchPartitioned: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number, b1: number) => number;
+  readonly ifcapi_processGeometryBatchPartitionedFromSource: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number) => number;
   readonly ifcapi_scanEntitiesFast: (a: number, b: number, c: number) => number;
   readonly ifcapi_scanEntitiesFastBytes: (a: number, b: number, c: number) => number;
   readonly ifcapi_scanGeometryEntitiesFast: (a: number, b: number, c: number) => number;
   readonly ifcapi_setComputeGeometryHashes: (a: number, b: number, c: number) => void;
   readonly ifcapi_setEntityIndex: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
+  readonly ifcapi_setInstantiatedTypeIds: (a: number, b: number, c: number) => void;
+  readonly ifcapi_setMappedInstancePlan: (a: number, b: number, c: number) => void;
+  readonly ifcapi_setMaterialLayerIndex: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number) => void;
   readonly ifcapi_setMergeLayers: (a: number, b: number) => void;
   readonly ifcapi_setRectParamFastPath: (a: number, b: number) => void;
+  readonly ifcapi_setReferencedRepmaps: (a: number, b: number, c: number) => void;
   readonly ifcapi_setSkipSmallCuts: (a: number, b: number) => void;
+  readonly ifcapi_setSourceBytes: (a: number, b: number, c: number) => void;
   readonly ifcapi_setTessellationQuality: (a: number, b: number, c: number, d: number) => void;
   readonly ifcapi_version: (a: number, b: number) => void;
   readonly meshOutline2d: (a: number, b: number, c: number, d: number, e: number, f: number) => number;
@@ -1194,6 +1302,8 @@ export interface InitOutput {
   readonly meshdatajs_hasTexture: (a: number) => number;
   readonly meshdatajs_ifcType: (a: number, b: number) => void;
   readonly meshdatajs_indices: (a: number) => number;
+  readonly meshdatajs_localBounds: (a: number, b: number) => void;
+  readonly meshdatajs_localToWorld: (a: number, b: number) => void;
   readonly meshdatajs_normals: (a: number) => number;
   readonly meshdatajs_origin: (a: number) => number;
   readonly meshdatajs_positions: (a: number) => number;
@@ -1215,6 +1325,7 @@ export interface InitOutput {
   readonly partitionedbatch_takeShard: (a: number, b: number) => void;
   readonly profilecollection_get: (a: number, b: number) => number;
   readonly profilecollection_length: (a: number) => number;
+  readonly profileentryjs_expressId: (a: number) => number;
   readonly profileentryjs_extrusionDepth: (a: number) => number;
   readonly profileentryjs_extrusionDir: (a: number) => number;
   readonly profileentryjs_holeCounts: (a: number) => number;
@@ -1297,7 +1408,6 @@ export interface InitOutput {
   readonly init: () => void;
   readonly symbolicpolyline_pointCount: (a: number) => number;
   readonly get_memory: () => number;
-  readonly profileentryjs_expressId: (a: number) => number;
   readonly symbolicfillarea_expressId: (a: number) => number;
   readonly symbolicpolyline_worldY: (a: number) => number;
   readonly symbolictext_colorB: (a: number) => number;

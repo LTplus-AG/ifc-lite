@@ -49,7 +49,7 @@ import {
   AlertTitle,
 } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
-import { useViewerStore } from '@/store';
+import { useViewerStore, countGeneratedTasks } from '@/store';
 import { posthog } from '@/lib/analytics';
 import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { configureMutationView } from '@/utils/configureMutationView';
@@ -76,6 +76,14 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
   const getMutationView = useViewerStore((s) => s.getMutationView);
   const registerMutationView = useViewerStore((s) => s.registerMutationView);
   const getModifiedEntityCount = useViewerStore((s) => s.getModifiedEntityCount);
+  // Subscribed so the pending-changes count refreshes while the dialog is open
+  // (getModifiedEntityCount / getMutationView are stable action refs). Schedule
+  // edits don't bump mutationVersion, so the schedule fields are subscribed too.
+  const mutationVersion = useViewerStore((s) => s.mutationVersion);
+  const scheduleData = useViewerStore((s) => s.scheduleData);
+  const scheduleIsEdited = useViewerStore((s) => s.scheduleIsEdited);
+  const scheduleSourceModelId = useViewerStore((s) => s.scheduleSourceModelId);
+  const georefMutations = useViewerStore((s) => s.georefMutations);
   const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
   const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
   const hiddenEntitiesByModel = useViewerStore((s) => s.hiddenEntitiesByModel);
@@ -217,8 +225,35 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
   }, [isIfc5]);
 
   const modifiedCount = useMemo(() => {
+    // A single-model export writes only the selected model, so the pending
+    // changes banner and the "N modifications" file header must reflect that
+    // one model's count — not every loaded model's (getModifiedEntityCount).
+    // A merged export writes all models, so it keeps the aggregate count.
+    if (exportScope === 'single') {
+      let count = getMutationView(selectedModelId)?.getModifiedEntityCount() ?? 0;
+      // The single-model STEP export also applies the selected model's
+      // georeferencing edits, so count them (+1) when present.
+      const gm = georefMutations.get(selectedModelId);
+      const hasGeoref = !!gm && (
+        (gm.projectedCRS && Object.keys(gm.projectedCRS).length > 0) ||
+        (gm.mapConversion && Object.keys(gm.mapConversion).length > 0)
+      );
+      if (hasGeoref) count += 1;
+      // ...and it splices the schedule when the selected model owns it (or it's
+      // unattributed with pending tasks) — the same gate spliceScheduleIntoExport
+      // uses — so count those tasks too, matching what actually gets written.
+      const ownsSchedule = scheduleSourceModelId === selectedModelId
+        || (scheduleSourceModelId === null && (scheduleData?.tasks.length ?? 0) > 0);
+      if (ownsSchedule) {
+        const generated = countGeneratedTasks(scheduleData);
+        if (generated > 0) count += generated;
+        else if (scheduleIsEdited) count += 1;
+      }
+      return count;
+    }
     return getModifiedEntityCount();
-  }, [getModifiedEntityCount]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exportScope, selectedModelId, getModifiedEntityCount, getMutationView, mutationVersion, scheduleData, scheduleIsEdited, scheduleSourceModelId, georefMutations]);
 
   /**
    * Convert global visibility state IDs to local expressIds for a given model.
@@ -365,7 +400,12 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
           }
         }
 
-        const result = await mergedExporter.exportAsync({
+        // Merged files are the largest STEP output (every federated model
+        // concatenated) and this branch downloads them directly — no schedule
+        // splice sits between the exporter and the save. Assemble off-heap as a
+        // Blob so the file never materialises as one contiguous Uint8Array on
+        // the JS heap (and downloadFile skips its Uint8Array-to-BlobPart copy).
+        const result = await mergedExporter.exportBlobAsync({
           schema,
           projectStrategy: 'keep-first',
           unitReconciliation,
@@ -574,7 +614,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent className="sm:max-w-md overflow-hidden">
+      <DialogContent className="sm:max-w-lg overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Download className="h-5 w-5" />
@@ -585,7 +625,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
           </DialogDescription>
         </DialogHeader>
 
-        <div ref={scrollAreaRef} className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto">
+        <div ref={scrollAreaRef} className="grid gap-4 py-4 max-h-[70vh] overflow-y-auto">
           {/* Scope selector (only for STEP schemas with multiple models) */}
           {!isIfc5 && !changesOnly && modelList.length > 1 && (
             <div className="flex items-center gap-4">
@@ -629,7 +669,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
               </SelectTrigger>
               <SelectContent>
                 {modelList.map((m) => {
-                  const maxLen = 24;
+                  const maxLen = 32;
                   const displayName = m.name.length > maxLen ? m.name.slice(0, maxLen) + '\u2026' : m.name;
                   return (
                   <SelectItem key={m.id} value={m.id} title={m.name}>

@@ -21,17 +21,24 @@ is covered by malformed-input regression tests and a coverage-guided fuzz target
 At the WASM boundary, a hard failure surfaces as a thrown JavaScript error. Wrap
 calls that ingest untrusted files in `try/catch`.
 
-## The WASM cache is fail-fast (long-lived workers and servers)
+## The WASM cache survives a mid-load panic (long-lived workers and servers)
 
 `IfcAPI` keeps per-load caches (entity index, parts-to-skip, material-layer
-index) behind mutexes that **fail fast**: if an earlier call panicked while
-holding a lock, the lock is poisoned and the next call panics rather than
-operating on inconsistent cache state. In a long-lived worker or a multi-tenant
-server, one malformed file can therefore leave that specific `IfcAPI` instance
-unusable.
+index, and others) behind mutexes. If a call panics while holding one of those
+locks, the lock is marked poisoned, but every later access **recovers** from
+the poison instead of panicking. This is safe because each cache slot is only
+ever replaced wholesale after the new value is fully built, so a poisoned lock
+can only mean the guarded value was left untouched, never half-written. One
+malformed file therefore does not brick a long-lived or multi-tenant `IfcAPI`
+instance.
 
-The recovery contract is simple: **on any thrown error, discard that `IfcAPI`
-instance and create a fresh one.** Do not keep using an instance that has thrown.
+Two practices still apply when reusing an instance across loads:
+
+- Call `clearPrePassCache()` between files. It drops every per-load cache slot
+  (including the retained source bytes), and it also recovers poisoned locks.
+- Treat a thrown error as failing that call, not the instance. If you want
+  belt-and-braces isolation anyway (e.g. per-tenant workers), recreating the
+  instance is cheap:
 
 ```ts
 let api = new IfcAPI();
@@ -39,7 +46,7 @@ try {
   const result = api.processGeometryBatch(/* ... */);
   // ... use result ...
 } catch (err) {
-  // The instance may be poisoned; do not reuse it.
+  // Optional hard isolation: replace the instance.
   api.free();
   api = new IfcAPI();
   throw err; // or handle and continue with the fresh instance
@@ -73,7 +80,16 @@ function withMeshes(collection: MeshCollection) {
 
 Most consumers should not manage this by hand: use
 [`@ifc-lite/geometry`](geometry.md)'s `GeometryProcessor`, which wraps the
-pre-pass and job-batch flow and frees handles for you.
+pre-pass and job-batch flow and frees handles for you. The processor itself
+implements `dispose()` and `[Symbol.dispose]()` (both idempotent), so a
+one-shot use can be scoped:
+
+```ts
+using processor = new GeometryProcessor();
+await processor.init();
+const result = await processor.process(bytes);
+// the underlying WASM IfcAPI handle is freed at scope exit
+```
 
 ## Determinism scope
 

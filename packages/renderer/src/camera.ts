@@ -160,14 +160,6 @@ export class Camera {
   }
 
   /**
-   * Animate camera to fit bounds (southeast isometric view)
-   * Y-up coordinate system
-   */
-  async zoomToFit(min: Vec3, max: Vec3, duration = 500): Promise<void> {
-    return this.animator.zoomToFit(min, max, duration);
-  }
-
-  /**
    * Frame/center view on a point (keeps current distance and direction)
    * Standard CAD "Frame Selection" behavior
    */

@@ -32,7 +32,8 @@ mod wire;
 mod tests;
 
 pub use collate::{
-    collate_instances, collate_refs, verify_recomposition, Collated, InstanceMeshRef,
+    bake_source_at_world, collate_instances, collate_refs, compose_instance_world_row_major,
+    instance_rel_row_major_f32, verify_recomposition, Collated, InstanceMeshRef,
     InstanceOccurrence, InstanceTemplate,
 };
 pub use wire::{

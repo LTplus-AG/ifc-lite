@@ -22,6 +22,10 @@ export interface Property {
   type: PropertyValueType;
   value: PropertyValue;
   unit?: string;
+  /** Raw IFC measure value type of this property (e.g. "IFCVOLUMETRICFLOWRATEMEASURE"),
+   *  used to resolve the file's declared display unit (issue #1573). Absent for
+   *  properties whose value type carries no measure semantics (labels, enums, ...). */
+  dataType?: string;
 }
 
 export type PropertyValue = string | number | boolean | null | PropertyValue[];
@@ -46,7 +50,17 @@ export interface PropertyTable {
   
   getForEntity(expressId: number): PropertySet[];
   getPropertyValue(expressId: number, psetName: string, propName: string): PropertyValue | null;
-  findByProperty(propName: string, operator: string, value: PropertyValue): number[];
+  /**
+   * Find entity ids whose property `propName` satisfies `operator`/`value`.
+   * When `psetName` is given, only matches within that property set (a
+   * same-named property in another pset does not match).
+   */
+  findByProperty(
+    propName: string,
+    operator: string,
+    value: PropertyValue,
+    psetName?: string,
+  ): number[];
 }
 
 export class PropertyTableBuilder {
@@ -230,12 +244,18 @@ export function propertyTableFromColumns(columns: PropertyTableColumns, strings:
       return null;
     },
 
-    findByProperty: (prop, operator, value) => {
+    findByProperty: (prop, operator, value, pset) => {
       const propIdx = strings.indexOf(prop);
       if (propIdx < 0) return [];
+      // When a property-set is named, only rows in that pset match; a property
+      // of the same name in a different pset must not. An unknown pset name
+      // matches nothing.
+      const psetIdx = pset === undefined ? -1 : strings.indexOf(pset);
+      if (pset !== undefined && psetIdx < 0) return [];
       const rowIndices = propIndex.get(propIdx) || [];
       const results: number[] = [];
       for (const idx of rowIndices) {
+        if (psetIdx >= 0 && psetName[idx] !== psetIdx) continue;
         const propValue = getPropertyValue(table, idx, strings);
         if (compareValues(propValue, operator, value)) {
           results.push(entityId[idx]);

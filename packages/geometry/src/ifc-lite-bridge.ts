@@ -176,6 +176,33 @@ export class IfcLiteBridge {
   }
 
   /**
+   * Free the underlying WASM `IfcAPI` handle deterministically (AGENTS.md
+   * "Free every WASM handle deterministically"). `clearPrePassCache` only
+   * drops the per-load caches held *inside* the handle; the handle itself
+   * (and everything still cached on it — see the poisoned-mutex recovery
+   * note in `IfcAPI`) is only released here, via wasm-bindgen's generated
+   * `free()`, when the whole bridge is being torn down.
+   *
+   * Idempotent and safe to call more than once, before `init()`, or after
+   * a fatal WASM runtime error already nulled the handle: a missing handle
+   * is a no-op. The reference is nulled immediately after freeing (via
+   * `reset()`), so a repeat call can never double-free the same
+   * wasm-bindgen pointer.
+   */
+  dispose(): void {
+    this.ifcApi?.free();
+    this.reset();
+  }
+
+  /**
+   * `using bridge = new IfcLiteBridge()` support (TS 5.2+ / ES2022 target):
+   * frees the WASM handle deterministically at scope exit.
+   */
+  [Symbol.dispose](): void {
+    this.dispose();
+  }
+
+  /**
    * Parse IFC content and return symbolic representations (Plan, Annotation, FootPrint)
    * These are pre-authored 2D curves for architectural drawings
    */

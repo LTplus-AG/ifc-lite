@@ -10,11 +10,13 @@
  * from the command line. Designed for both humans and LLM terminals.
  */
 
+import { logger, parseVerbosity } from './logger.js';
 import { infoCommand } from './commands/info.js';
 import { queryCommand } from './commands/query.js';
 import { propsCommand } from './commands/props.js';
 import { exportCommand } from './commands/export.js';
 import { diagnoseGeometryCommand } from './commands/diagnose-geometry.js';
+import { extractEntitiesCommand } from './commands/extract-entities.js';
 import { idsCommand } from './commands/ids.js';
 import { bcfCommand } from './commands/bcf.js';
 import { clashCommand } from './commands/clash.js';
@@ -67,6 +69,9 @@ const HELP = `
     props     <file.ifc> --id <N>                 All properties for a single entity
     export    <file.ifc> --format csv|json|ifc|hbjson  Export data / Honeybee energy model
     diagnose-geometry <file.ifc> [--json]        CSG / opening diagnostics (failures, classification)
+                      [--product ID|GUID] [--type T]  Filter worst-hosts detail to one product/type
+    extract-entities <file.ifc> --out F          Isolate entities into a small, viewable standalone IFC
+                      [--product ID|GUID] [--storey S] [--detect] [--view]  by GUID/type/storey or auto-triage
     ids       <file.ifc> <rules.ids>              Validate against IDS rules
     bcf       <create|list|add-comment>           Work with BCF collaboration files
     clash     <file.ifc> [--matrix] [--bcf F]      Detect geometric clashes between elements
@@ -90,10 +95,14 @@ const HELP = `
     ext       validate <path>|init <dir>          Manage IFClite extensions (Phase 0 — validate, init)
 
   Options:
-    --help, -h       Show help
-    --version, -v    Show version
-    --json           Output as JSON (machine-readable)
-    --out <file>     Write output to file instead of stdout
+    --help, -h           Show help
+    --version, -v        Show version
+    --json               Output as JSON (machine-readable)
+    --out <file>         Write output to file instead of stdout
+    --verbose            Show parser + geometry diagnostics (stderr)
+    --quiet              Errors only
+    --debug              Verbose + stack traces on error
+    --log-level <level>  error|warn|info|debug (explicit wins over shorthands)
 
   Examples:
     ifc-lite info model.ifc
@@ -109,6 +118,9 @@ const HELP = `
     ifc-lite props model.ifc --id 42
     ifc-lite export model.ifc --format csv --type IfcWall --columns Name,Type,GlobalId
     ifc-lite export model.ifc --format json --type IfcWall,IfcDoor
+    ifc-lite diagnose-geometry model.ifc --json
+    ifc-lite diagnose-geometry model.ifc --type IfcWall
+    ifc-lite diagnose-geometry model.ifc --product 0YvCT2_$X3_xJG3rzD8L_8
     ifc-lite ids model.ifc requirements.ids --json
     ifc-lite bcf create --title "Missing door" --out issue.bcf
     ifc-lite clash model.ifc --matrix --json
@@ -167,8 +179,18 @@ const HELP = `
   Learn more: https://ifclite.com
 `;
 
+/** Command being executed, captured for the top-level error handler. */
+let activeCommand = '';
+/** True when --debug was passed (stack traces on error). */
+let debugFlag = false;
+
 async function main(): Promise<void> {
-  const args = process.argv.slice(2);
+  // Global verbosity flags are parsed and STRIPPED before dispatch so a
+  // command's positional-argument scan never mistakes them for a file path.
+  const verbosity = parseVerbosity(process.argv.slice(2));
+  logger.configure({ level: verbosity.level });
+  debugFlag = verbosity.debug;
+  const args = verbosity.rest;
 
   if (args.length === 0 || args.includes('--help') || args.includes('-h')) {
     process.stdout.write(HELP + '\n');
@@ -181,6 +203,7 @@ async function main(): Promise<void> {
   }
 
   const command = args[0];
+  activeCommand = command;
   const commandArgs = args.slice(1);
 
   switch (command) {
@@ -198,6 +221,9 @@ async function main(): Promise<void> {
       break;
     case 'diagnose-geometry':
       await diagnoseGeometryCommand(commandArgs);
+      break;
+    case 'extract-entities':
+      await extractEntitiesCommand(commandArgs);
       break;
     case 'ids':
       await idsCommand(commandArgs);
@@ -270,9 +296,16 @@ async function main(): Promise<void> {
 }
 
 main().catch((err: Error) => {
-  process.stderr.write(`Error: ${err.message}\n`);
-  if (process.env.DEBUG) {
+  const label = activeCommand ? `Error [${activeCommand}]` : 'Error';
+  process.stderr.write(`${label}: ${err.message}\n`);
+  // Stack traces with --debug/--verbose/--log-level debug, or the legacy
+  // DEBUG env var (kept for back-compat).
+  if (debugFlag || logger.level() === 'debug' || process.env.DEBUG) {
     process.stderr.write((err.stack ?? '') + '\n');
+  } else {
+    process.stderr.write(
+      `Hint: re-run with --debug for a stack trace, or \`ifc-lite ${activeCommand || '<command>'} --help\` for usage.\n`,
+    );
   }
   process.exit(1);
 });

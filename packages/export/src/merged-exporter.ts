@@ -17,7 +17,7 @@ import { safeUtf8Decode } from '@ifc-lite/data';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { collectReferencedEntityIds, getVisibleEntityIds, collectStyleEntities } from './reference-collector.js';
 import { convertStepLine, needsConversion, type IfcSchemaVersion } from './schema-converter.js';
-import { assembleStepBytes } from './step-serialization.js';
+import { assembleStepBytes, assembleStepBlob } from './step-serialization.js';
 import { getCompleteEntityIndex, getMaxExpressId, type CompleteEntityIndex, type ExportEntityRef } from './entity-iteration.js';
 import { StepExporter } from './step-exporter.js';
 import { rescaleEntityLengths, computeNormalizeFactor } from './unit-normalize.js';
@@ -134,6 +134,12 @@ interface MergeSetup {
    * unified into the primary project (rather than federated).
    */
   normalize: boolean;
+  /** Spatial matching strategy for IfcSite — see {@link MergeExportOptions.mergeSites}. */
+  mergeSites?: 'single' | 'by-name';
+  /** Spatial matching strategy for IfcBuilding — see {@link MergeExportOptions.mergeBuildings}. */
+  mergeBuildings?: 'single' | 'by-name';
+  /** Spatial matching strategy for IfcBuildingStorey — see {@link MergeExportOptions.mergeStoreys}. */
+  mergeStoreys?: 'by-name' | 'by-elevation' | 'by-name-then-elevation';
 }
 
 /**
@@ -314,6 +320,35 @@ export interface MergeExportOptions {
    */
   unitReconciliation?: 'auto' | 'normalize' | 'assume-shared';
 
+  /**
+   * How IfcSite instances are matched across models for spatial unification
+   * (mirrors IfcOpenShell/BlenderBIM's "Merge Projects" recipe). Omitted
+   * (default) keeps today's combined heuristic: match by Name
+   * (case-insensitive), else unify when both models contribute exactly one
+   * site.
+   *
+   * - `'single'`: unify only when each model contributes exactly one
+   *   IfcSite — Name is ignored entirely.
+   * - `'by-name'`: unify only sites with a matching Name; a lone,
+   *   differently-named site in each model is kept as two separate roots.
+   */
+  mergeSites?: 'single' | 'by-name';
+
+  /** Same matching strategy as {@link mergeSites}, applied to IfcBuilding. */
+  mergeBuildings?: 'single' | 'by-name';
+
+  /**
+   * How IfcBuildingStorey instances are matched across models. Omitted
+   * (default) is `'by-name-then-elevation'` — today's behavior.
+   *
+   * - `'by-name'`: match only by Name (case-insensitive); no elevation
+   *   fallback.
+   * - `'by-elevation'`: match only by Elevation (±0.5 model-unit tolerance,
+   *   same as today), ignoring Name entirely.
+   * - `'by-name-then-elevation'`: try Name first, fall back to Elevation.
+   */
+  mergeStoreys?: 'by-name' | 'by-elevation' | 'by-name-then-elevation';
+
   /** Apply visibility filtering to each model before merging */
   visibleOnly?: boolean;
   /** Hidden entity IDs per model (local expressIds) */
@@ -373,6 +408,21 @@ export interface MergeExportResult {
      */
     warnings: string[];
   };
+}
+
+/**
+ * Result of a merged STEP export assembled as an off-heap {@link Blob}
+ * ({@link MergedExporter.exportBlobAsync}) instead of one contiguous
+ * `Uint8Array`. Same stats as {@link MergeExportResult}; only the content
+ * container differs. Suited for the browser download path, where the merged
+ * file (the largest STEP output — every federated model concatenated) is
+ * handed straight to `downloadBlob` with no contiguous buffer materialised.
+ */
+export interface MergeBlobExportResult {
+  /** STEP file content as a multi-part Blob (never assembled into one buffer). */
+  content: Blob;
+  /** Statistics about the export (identical shape to {@link MergeExportResult}). */
+  stats: MergeExportResult['stats'];
 }
 
 /**
@@ -490,6 +540,56 @@ export class MergedExporter {
    * responsive during large merged exports.
    */
   async exportAsync(options: MergeExportOptions): Promise<MergeExportResult> {
+    const doc = await this.collectMergedDocument(options);
+    const content = assembleStepBytes(doc.header, doc.allEntityLines);
+    if (options.onProgress) {
+      options.onProgress({ phase: 'assembling', percent: 1, entitiesProcessed: doc.totalEntities, entitiesTotal: doc.totalEntities });
+    }
+    return {
+      content,
+      stats: this.buildStats(doc.allEntityLines.length, content.byteLength, doc.federatedModelCount, doc.normalizedModelCount, doc.normalizeWarnings),
+    };
+  }
+
+  /**
+   * Like {@link exportAsync}, but assembles the merged STEP file as an
+   * off-heap multi-part {@link Blob} (via {@link assembleStepBlob}) rather
+   * than one contiguous `Uint8Array`. The merged file is the largest STEP
+   * output ifc-lite produces (every federated model concatenated), so
+   * skipping the final contiguous buffer is where the memory saving matters
+   * most; the browser download path hands the Blob straight to `downloadBlob`
+   * with no `Uint8Array`-to-`BlobPart` copy. Byte content is identical to
+   * {@link exportAsync}.
+   */
+  async exportBlobAsync(options: MergeExportOptions): Promise<MergeBlobExportResult> {
+    const doc = await this.collectMergedDocument(options);
+    const content = assembleStepBlob(doc.header, doc.allEntityLines);
+    if (options.onProgress) {
+      options.onProgress({ phase: 'assembling', percent: 1, entitiesProcessed: doc.totalEntities, entitiesTotal: doc.totalEntities });
+    }
+    return {
+      content,
+      stats: this.buildStats(doc.allEntityLines.length, content.size, doc.federatedModelCount, doc.normalizedModelCount, doc.normalizeWarnings),
+    };
+  }
+
+  /**
+   * Shared work of {@link exportAsync} / {@link exportBlobAsync}: bake pending
+   * edits, plan the merge, and render every entity line (yielding to the event
+   * loop between chunks so the UI stays responsive). Returns the header, the
+   * rendered entity lines, and the counters the stats builder needs — the two
+   * public methods differ only in how they turn these into a final container
+   * (`Uint8Array` vs off-heap `Blob`), so the entity-rendering logic lives here
+   * once and can't drift between them.
+   */
+  private async collectMergedDocument(options: MergeExportOptions): Promise<{
+    header: string;
+    allEntityLines: string[];
+    federatedModelCount: number;
+    normalizedModelCount: number;
+    normalizeWarnings: Set<string>;
+    totalEntities: number;
+  }> {
     const onProgress = options.onProgress;
     const schema = (options.schema || 'IFC4') as IfcSchemaVersion;
     // See export(): merged files emit an ifc-lite provenance header by policy
@@ -579,16 +679,7 @@ export class MergedExporter {
     }
     await new Promise(r => setTimeout(r, 0));
 
-    const content = assembleStepBytes(header, allEntityLines);
-
-    if (onProgress) {
-      onProgress({ phase: 'assembling', percent: 1, entitiesProcessed: totalEntities, entitiesTotal: totalEntities });
-    }
-
-    return {
-      content,
-      stats: this.buildStats(allEntityLines.length, content.byteLength, federatedModelCount, normalizedModelCount, normalizeWarnings),
-    };
+    return { header, allEntityLines, federatedModelCount, normalizedModelCount, normalizeWarnings, totalEntities };
   }
 
   /**
@@ -729,6 +820,9 @@ export class MergedExporter {
       primaryVolumeScale: this.resolveDerivedUnitScale(firstModel.dataStore, 'VOLUMEUNIT', primaryScale, 3),
       assumeShared: options.unitReconciliation === 'assume-shared',
       normalize: options.unitReconciliation === 'normalize',
+      mergeSites: options.mergeSites,
+      mergeBuildings: options.mergeBuildings,
+      mergeStoreys: options.mergeStoreys,
     };
   }
 
@@ -944,7 +1038,7 @@ export class MergedExporter {
       // Unify spatial hierarchy: match Site, Building, Storey to first model.
       // Under normalize, this model's raw elevations are in its own unit, so the
       // elevation match is done in the primary unit (rawElevation * lengthFactor).
-      this.unifySpatialEntities(model.dataStore, setup.spatialLookup, setup.firstModelOffset, lengthFactor, sharedRemap, skipEntityIds);
+      this.unifySpatialEntities(model.dataStore, setup.spatialLookup, setup.firstModelOffset, lengthFactor, sharedRemap, skipEntityIds, setup);
 
       // Skip IfcRelAggregates that become fully redundant after unification.
       this.skipRedundantRelAggregates(model.dataStore, sharedRemap, skipEntityIds);
@@ -1257,9 +1351,14 @@ export class MergedExporter {
    * to the first model's equivalents. Matched entities are remapped and
    * their duplicate entity is skipped from output.
    *
-   * Matching strategy:
-   * - Sites/Buildings: by name (case-insensitive), or if only one in each model
-   * - Storeys: by name first, then by elevation (tolerance ±0.5 model units)
+   * Matching strategy per container type is driven by
+   * {@link MergeExportOptions.mergeSites} / `mergeBuildings` / `mergeStoreys`
+   * (all optional; omitted keeps the pre-existing combined heuristic):
+   * - Sites/Buildings: `'single'` (ignore name, unify iff exactly one in each
+   *   model), `'by-name'` (name only, no fallback), or omitted — name first,
+   *   else single-instance fallback.
+   * - Storeys: `'by-name'`, `'by-elevation'` (tolerance ±0.5 model units), or
+   *   `'by-name-then-elevation'` (default, also the omitted behavior).
    */
   private unifySpatialEntities(
     dataStore: IfcDataStore,
@@ -1268,56 +1367,61 @@ export class MergedExporter {
     elevationFactor: number,
     sharedRemap: Map<number, number>,
     skipEntityIds: Set<number>,
+    mergeModes: Pick<MergeSetup, 'mergeSites' | 'mergeBuildings' | 'mergeStoreys'>,
   ): void {
-    // Unify IfcSite
+    // Unify IfcSite. matchedFirstSites guards against two of this model's
+    // sites (e.g. duplicate/identically-named) both matching the same
+    // first-model target — only the first claims it, the second is kept as
+    // its own root instead of silently losing its spatial sub-tree.
     const sites = this.findEntitiesByType(dataStore, 'IFCSITE');
+    const matchedFirstSites = new Set<number>();
     for (const id of sites) {
-      const name = this.extractEntityName(id, dataStore);
-      let match: number | undefined;
-      if (name) match = lookup.sitesByName.get(name.toLowerCase());
-      // If single site in both models, unify regardless of name
-      if (match === undefined && sites.length === 1 && lookup.siteIds.length === 1) {
-        match = lookup.siteIds[0];
-      }
+      const match = this.matchRootContainer(
+        id, dataStore, mergeModes.mergeSites, sites.length,
+        lookup.sitesByName, lookup.siteIds, matchedFirstSites,
+      );
       if (match !== undefined) {
+        matchedFirstSites.add(match);
         sharedRemap.set(id, match + firstModelOffset);
         skipEntityIds.add(id);
       }
     }
 
-    // Unify IfcBuilding
+    // Unify IfcBuilding — same already-matched guard as sites.
     const buildings = this.findEntitiesByType(dataStore, 'IFCBUILDING');
+    const matchedFirstBuildings = new Set<number>();
     for (const id of buildings) {
-      const name = this.extractEntityName(id, dataStore);
-      let match: number | undefined;
-      if (name) match = lookup.buildingsByName.get(name.toLowerCase());
-      if (match === undefined && buildings.length === 1 && lookup.buildingIds.length === 1) {
-        match = lookup.buildingIds[0];
-      }
+      const match = this.matchRootContainer(
+        id, dataStore, mergeModes.mergeBuildings, buildings.length,
+        lookup.buildingsByName, lookup.buildingIds, matchedFirstBuildings,
+      );
       if (match !== undefined) {
+        matchedFirstBuildings.add(match);
         sharedRemap.set(id, match + firstModelOffset);
         skipEntityIds.add(id);
       }
     }
 
-    // Unify IfcBuildingStorey — name match first, then elevation fallback
+    // Unify IfcBuildingStorey — mode-driven name/elevation matching
+    const storeyMode = mergeModes.mergeStoreys ?? 'by-name-then-elevation';
     const matchedFirstStoreys = new Set<number>();
     for (const id of this.findEntitiesByType(dataStore, 'IFCBUILDINGSTOREY')) {
       const name = this.extractEntityName(id, dataStore);
       let match: number | undefined;
 
-      // Try name match
-      if (name) {
+      // Name match (skipped entirely under 'by-elevation')
+      if (storeyMode !== 'by-elevation' && name) {
         const candidate = lookup.storeysByName.get(name.toLowerCase());
         if (candidate !== undefined && !matchedFirstStoreys.has(candidate)) {
           match = candidate;
         }
       }
 
-      // Fallback: match by elevation. The candidate's raw elevation is in this
-      // model's unit; scale it into the primary unit so the comparison (and the
-      // ±0.5 m tolerance) is unit-consistent under normalize (factor 1 otherwise).
-      if (match === undefined) {
+      // Elevation match (skipped entirely under 'by-name'). The candidate's raw
+      // elevation is in this model's unit; scale it into the primary unit so the
+      // comparison (and the ±0.5 m tolerance) is unit-consistent under normalize
+      // (factor 1 otherwise).
+      if (match === undefined && storeyMode !== 'by-name') {
         const rawElevation = this.extractStoreyElevation(id, dataStore);
         if (rawElevation !== undefined) {
           const elevation = rawElevation * elevationFactor;
@@ -1338,6 +1442,45 @@ export class MergedExporter {
         skipEntityIds.add(id);
       }
     }
+  }
+
+  /**
+   * Match one IfcSite/IfcBuilding instance against the first model's
+   * equivalents, per {@link mergeMode}:
+   * - `'single'`: ignore name — unify iff both models contribute exactly one.
+   * - `'by-name'`: name match only, no single-instance fallback.
+   * - omitted: name match, else single-instance fallback (pre-existing heuristic).
+   *
+   * `matchedFirst` excludes first-model targets already claimed by an earlier
+   * entity in this same model's loop — without it, two of this model's sites
+   * (or buildings) sharing a name/being the sole instance would both resolve
+   * to the same target, and the second would be dropped (skipped + remapped)
+   * rather than kept as its own root.
+   */
+  private matchRootContainer(
+    id: number,
+    dataStore: IfcDataStore,
+    mergeMode: 'single' | 'by-name' | undefined,
+    countInThisModel: number,
+    firstModelByName: Map<string, number>,
+    firstModelIds: number[],
+    matchedFirst: Set<number>,
+  ): number | undefined {
+    const bySingle = () => {
+      if (countInThisModel !== 1 || firstModelIds.length !== 1) return undefined;
+      const candidate = firstModelIds[0];
+      return matchedFirst.has(candidate) ? undefined : candidate;
+    };
+    const byName = () => {
+      const name = this.extractEntityName(id, dataStore);
+      if (!name) return undefined;
+      const candidate = firstModelByName.get(name.toLowerCase());
+      return candidate !== undefined && !matchedFirst.has(candidate) ? candidate : undefined;
+    };
+
+    if (mergeMode === 'single') return bySingle();
+    if (mergeMode === 'by-name') return byName();
+    return byName() ?? bySingle();
   }
 
   /**

@@ -27,17 +27,20 @@ import {
 } from '@ifc-lite/data';
 import type { EntityRef } from './types.js';
 import { EntityExtractor } from './entity-extractor.js';
+import { getAttributeNamesAcrossSchemas } from './ifc-schema.js';
 
 const log = createLogger('SpatialHierarchy');
 
-/** Source needed to extract storey elevations on the fresh-parse path. */
-interface ElevationSource {
+/** Source bytes needed to read on-demand attributes off the raw records
+ *  (storey elevation, LongName). Present on the fresh-parse / cache-with-source
+ *  path, absent on the source-less `buildFromCache` fallback. */
+interface AttributeSource {
   source: Uint8Array;
   entityIndex: { byId: { get(expressId: number): EntityRef | undefined } };
   lengthUnitScale: number;
 }
 
-/** Accumulators threaded through the recursion, plus the optional elevation source. */
+/** Accumulators threaded through the recursion, plus the optional attribute source. */
 interface BuildContext {
   entities: EntityTable;
   relationships: RelationshipGraph;
@@ -48,7 +51,10 @@ interface BuildContext {
   storeyElevations: Map<number, number>;
   elementToStorey: Map<number, number>;
   visited: Set<number>;
-  elevation?: ElevationSource;
+  attrSource?: AttributeSource;
+  /** One extractor reused across the recursion when a source is available, so
+   *  LongName reads don't re-allocate per spatial node. */
+  attrExtractor?: EntityExtractor;
 }
 
 export class SpatialHierarchyBuilder {
@@ -85,7 +91,7 @@ export class SpatialHierarchyBuilder {
   private assemble(
     entities: EntityTable,
     relationships: RelationshipGraph,
-    elevation: ElevationSource | undefined,
+    attrSource: AttributeSource | undefined,
     throwOnNoProject: boolean
   ): SpatialHierarchy | undefined {
     const ctx: BuildContext = {
@@ -98,7 +104,8 @@ export class SpatialHierarchyBuilder {
       storeyElevations: new Map(),
       elementToStorey: new Map(),
       visited: new Set(),
-      elevation,
+      attrSource,
+      attrExtractor: attrSource ? new EntityExtractor(attrSource.source) : undefined,
     };
 
     const projectIds = entities.getByType(IfcTypeEnum.IfcProject);
@@ -189,21 +196,33 @@ export class SpatialHierarchyBuilder {
   private buildNode(expressId: number, ctx: BuildContext): SpatialNode {
     const { entities, relationships } = ctx;
     const typeEnum = entities.getTypeEnum(expressId);
-    const name = entities.getName(expressId) || `Entity #${expressId}`;
+    const rawName = entities.getName(expressId);
+    // LongName is the descriptive label authors put alongside an ISO 19650 code
+    // in Name (Name "01" / LongName "Main Residence"), so the hierarchy panel can
+    // show both (issue #1634). It lives only in the raw record, so it needs the
+    // source bytes; the source-less buildFromCache fallback leaves it undefined,
+    // exactly like storey elevation.
+    const rawLongName = this.extractLongName(expressId, ctx);
+    // Fall back to LongName when Name is empty (common for IfcSpace), then to a
+    // stable placeholder, so every node still renders a label.
+    const name = rawName || rawLongName || `Entity #${expressId}`;
+    // Only keep LongName as a distinct descriptor when it adds something beyond
+    // the primary label (never duplicate it into the secondary slot).
+    const longName = rawLongName && rawLongName !== name ? rawLongName : undefined;
 
     // Guard against cyclic IfcRelAggregates chains (A aggregates B, B aggregates
     // A), which would otherwise recurse unbounded and overflow the stack. A
     // revisited node is returned as a leaf so the rest of the hierarchy still
     // builds.
     if (ctx.visited.has(expressId)) {
-      return { expressId, type: typeEnum, name, elevation: undefined, children: [], elements: [] };
+      return { expressId, type: typeEnum, name, longName, elevation: undefined, children: [], elements: [] };
     }
     ctx.visited.add(expressId);
 
     // Storey elevation (fresh path only): apply unit scale to convert to meters.
     let elevation: number | undefined;
-    if (typeEnum === IfcTypeEnum.IfcBuildingStorey && ctx.elevation) {
-      const { source, entityIndex, lengthUnitScale } = ctx.elevation;
+    if (typeEnum === IfcTypeEnum.IfcBuildingStorey && ctx.attrSource) {
+      const { source, entityIndex, lengthUnitScale } = ctx.attrSource;
       let rawElevation = this.extractElevation(expressId, source, entityIndex);
       if (rawElevation === undefined) {
         // Elevation is optional and frequently null (Revit / ArchiCAD). Fall back
@@ -300,7 +319,38 @@ export class SpatialHierarchyBuilder {
       }
     }
 
-    return { expressId, type: typeEnum, name, elevation, children: childNodes, elements: containedElements };
+    return { expressId, type: typeEnum, name, longName, elevation, children: childNodes, elements: containedElements };
+  }
+
+  /**
+   * Read an entity's LongName by schema attribute *name*. IfcSite / IfcBuilding /
+   * IfcBuildingStorey / IfcSpace (and the IFC4.3 facility/infra containers)
+   * declare LongName at index 7, but IfcProject carries it at a different slot,
+   * so resolving by name (not a fixed index) stays correct across the IfcRoot
+   * family. The lookup spans every bundled schema, so IFC4.3 leaves outside the
+   * parser's IFC4 codegen pin resolve too. Returns the trimmed value, or
+   * undefined when the type declares no LongName, it is empty, or no source
+   * buffer is available (the buildFromCache path).
+   */
+  private extractLongName(expressId: number, ctx: BuildContext): string | undefined {
+    if (!ctx.attrSource || !ctx.attrExtractor) return undefined;
+    const ref = ctx.attrSource.entityIndex.byId.get(expressId);
+    if (!ref) return undefined;
+    try {
+      const entity = ctx.attrExtractor.extractEntity(ref);
+      if (!entity) return undefined;
+      const idx = getAttributeNamesAcrossSchemas(entity.type).indexOf('LongName');
+      if (idx < 0) return undefined;
+      const raw = (entity.attributes || [])[idx];
+      const value = typeof raw === 'string' ? raw.trim() : '';
+      return value.length > 0 ? value : undefined;
+    } catch (error) {
+      log.caught('Failed to extract LongName', error, {
+        operation: 'extractLongName',
+        entityId: expressId,
+      });
+      return undefined;
+    }
   }
 
   /**

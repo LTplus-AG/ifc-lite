@@ -14,7 +14,7 @@ export { ParquetExporter, type ParquetExportOptions } from './parquet-exporter.j
 // JSONLDExporter removed — JSON-LD is now produced in Rust (ifc-lite-export).
 // Use GeometryProcessor.exportJsonld(bytes, …).
 export { StepExporter, exportToStep, type StepExportOptions, type StepExportResult, type StepExportProgress } from './step-exporter.js';
-export { MergedExporter, type MergeModelInput, type MergeExportOptions, type MergeExportResult, type ExportProgress } from './merged-exporter.js';
+export { MergedExporter, type MergeModelInput, type MergeExportOptions, type MergeExportResult, type MergeBlobExportResult, type ExportProgress } from './merged-exporter.js';
 export { collectReferencedEntityIds, getVisibleEntityIds, collectStyleEntities } from './reference-collector.js';
 export { convertEntityType, convertStepLine, needsConversion, describeConversion, type IfcSchemaVersion } from './schema-converter.js';
 export { Ifc5Exporter, IFC5_KNOWN_PROP_NAMES, type Ifc5ExportOptions, type Ifc5ExportResult } from './ifc5-exporter.js';

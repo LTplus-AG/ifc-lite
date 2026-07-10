@@ -36,10 +36,20 @@ export class BinaryCacheReader {
   }
 
   /**
-   * Validate cache against source file
+   * Validate cache against source file.
+   *
+   * Throws when the entry was written with {@link HeaderFlags.SourceHashUnset}
+   * (its `sourceHash` is not a real full-file hash), so the caller cannot
+   * accidentally read this as a mismatch and silently discard a valid cache —
+   * it must validate the source another way (see the header note).
    */
   validate(cacheBuffer: ArrayBuffer, sourceBuffer: ArrayBuffer): boolean {
     const header = this.readHeader(cacheBuffer);
+    if (!header.hasSourceHash) {
+      throw new Error(
+        'Cache entry has no full-file source hash (SourceHashUnset); validate the source at the application layer instead of reader.validate().',
+      );
+    }
     const sourceHash = xxhash64(sourceBuffer);
     return header.sourceHash === sourceHash;
   }
@@ -56,8 +66,11 @@ export class BinaryCacheReader {
     const reader = new BufferReader(buffer);
     const header = readHeader(reader);
 
-    // Validate source if provided
-    if (sourceBuffer) {
+    // Validate source if provided AND this entry actually carries a full-file
+    // hash. Entries written with SourceHashUnset (their `sourceHash` is 0n)
+    // are validated by the application layer — skip here so a provided
+    // `sourceBuffer` can't spuriously fail-close a valid cache.
+    if (sourceBuffer && header.hasSourceHash) {
       const sourceHash = xxhash64(sourceBuffer);
       if (header.sourceHash !== sourceHash) {
         throw new Error('Cache validation failed: source file has changed');

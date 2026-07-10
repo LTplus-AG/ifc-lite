@@ -150,7 +150,7 @@ impl PolygonalFaceSetProcessor {
             normals: flat_normals,
             indices: flat_indices,
             rtc_applied: false,
-            origin: [0.0; 3],        instance_meta: None, }
+            origin: [0.0; 3],        instance_meta: None, local_bounds: None, local_to_world: None }
     }
 
     /// Like [`Self::build_flat_shaded_mesh`] but also emits a per-vertex UV
@@ -237,7 +237,7 @@ impl PolygonalFaceSetProcessor {
                 normals: flat_normals,
                 indices: flat_indices,
                 rtc_applied: false,
-                origin: [0.0; 3],            instance_meta: None, },
+                origin: [0.0; 3],            instance_meta: None, local_bounds: None, local_to_world: None },
             uvs,
         )
     }

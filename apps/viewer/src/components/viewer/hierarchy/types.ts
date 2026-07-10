@@ -24,6 +24,8 @@ export type NodeType =
   | 'type-group'          // IFC class grouping header (e.g., "IfcWall (47)")
   | 'ifc-type'            // IFC type entity node (e.g., "IfcWallType/W01")
   | 'material-group'      // Material grouping (e.g., "Concrete (47)") from the Materials tab
+  | 'group'               // IfcGroup/IfcSystem/IfcZone entity row from the Groups tab (#1622)
+  | 'group-member'        // Member row under an expanded group (#1622)
   | 'element';            // Individual element
 
 export interface TreeNode {
@@ -37,6 +39,14 @@ export interface TreeNode {
   /** Model IDs this node belongs to */
   modelIds: string[];
   name: string;
+  /**
+   * Secondary descriptive label rendered muted after `name`, currently the IFC
+   * `LongName` of a spatial node when it differs from the primary Name. Lets the
+   * panel show an ISO 19650 code and its meaning together, e.g. "01" +
+   * "Main Residence" (issue #1634). Undefined for rows with no distinct
+   * secondary label.
+   */
+  secondaryName?: string;
   type: NodeType;
   /** Actual IFC class for element rows and type groups */
   ifcType?: string;

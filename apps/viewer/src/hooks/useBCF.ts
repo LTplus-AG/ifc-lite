@@ -13,7 +13,7 @@
 
 import { useCallback, useRef } from 'react';
 import { useViewerStore } from '@/store';
-import type { BCFTopic, BCFViewpoint } from '@ifc-lite/bcf';
+import type { BCFTopic, BCFViewpoint, BCFHeaderFile } from '@ifc-lite/bcf';
 import {
   createViewpoint,
   extractViewpointState,
@@ -24,10 +24,13 @@ import {
   type OverlayBBox,
 } from '@ifc-lite/bcf';
 import type { Renderer } from '@ifc-lite/renderer';
+import type { EntityRef } from '@/store/types';
 import {
   globalIdToExpressId as globalIdToExpressIdLookup,
   expressIdToGlobalId as expressIdToGlobalIdLookup,
 } from './bcfIdLookup';
+import { fromGlobalIdFromModels } from '@/store/globalId';
+import { deriveHeaderFiles } from './bcfHeaderFiles';
 
 // ============================================================================
 // Types
@@ -52,6 +55,14 @@ interface CreateViewpointOptions {
 interface UseBCFResult {
   /** Create a viewpoint from current viewer state */
   createViewpointFromState: (options?: CreateViewpointOptions) => Promise<BCFViewpoint | null>;
+  /**
+   * Derive the BCF `<Header>` source files for a topic from the distinct source
+   * models its viewpoint components reference (single-model fallback when none).
+   */
+  headerFilesForViewpoints: (
+    viewpoints: readonly BCFViewpoint[],
+    date?: string,
+  ) => BCFHeaderFile[];
   /** Apply a viewpoint to the viewer */
   applyViewpoint: (viewpoint: BCFViewpoint, animate?: boolean) => void;
   /** Animate the camera to a BCF topic's 3D location (without changing selection/visibility) */
@@ -142,6 +153,10 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
 
   // Selection and visibility actions
   const setSelectedEntityId = useViewerStore((s) => s.setSelectedEntityId);
+  const setSelectedEntityIds = useViewerStore((s) => s.setSelectedEntityIds);
+  const setSelectedEntity = useViewerStore((s) => s.setSelectedEntity);
+  const addEntitiesToSelection = useViewerStore((s) => s.addEntitiesToSelection);
+  const clearEntitySelection = useViewerStore((s) => s.clearEntitySelection);
   const setHiddenEntities = useViewerStore((s) => s.setHiddenEntities);
   const setIsolatedEntities = useViewerStore((s) => s.setIsolatedEntities);
 
@@ -372,6 +387,56 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
     ]
   );
 
+  /**
+   * Derive `<Header>` source files for a topic: one per distinct model it
+   * references. Falls back to the single loaded model when nothing resolves, so
+   * a lone-model topic still records its source file.
+   */
+  const headerFilesForViewpoints = useCallback(
+    (viewpoints: readonly BCFViewpoint[], date?: string): BCFHeaderFile[] => {
+      const modelIds = new Set<string>();
+
+      // Primary source: the live selection's model ids. A topic is created from
+      // the current selection, and the selection knows each element's model
+      // exactly. Resolving component GlobalIds instead would lose a model whose
+      // elements share GlobalIds with another loaded model (revision
+      // federations), collapsing every component onto the first match.
+      const selected = useViewerStore.getState().selectedEntitiesSet;
+      for (const key of selected) {
+        const modelId = key.slice(0, key.indexOf(':'));
+        if (modelId) modelIds.add(modelId);
+      }
+
+      // Also union any model referenced by the viewpoint components but not the
+      // live selection (e.g. hidden/coloured components, or a restored viewpoint).
+      for (const vp of viewpoints) {
+        const components: { ifcGuid?: string }[] = [
+          ...(vp.components?.selection ?? []),
+          ...(vp.components?.visibility?.exceptions ?? []),
+          ...(vp.components?.coloring?.flatMap((c) => c.components) ?? []),
+        ];
+        for (const comp of components) {
+          if (!comp.ifcGuid) continue;
+          const resolved = globalIdToExpressId(comp.ifcGuid);
+          if (resolved) modelIds.add(resolved.modelId);
+        }
+      }
+
+      // Nothing resolved: record the single loaded model so a lone-model topic
+      // still carries its provenance.
+      if (modelIds.size === 0) {
+        if (models.size === 1) {
+          modelIds.add(models.keys().next().value!);
+        } else if (models.size === 0 && ifcDataStore) {
+          modelIds.add('legacy');
+        }
+      }
+
+      return deriveHeaderFiles(modelIds, models, ifcDataStore, date);
+    },
+    [globalIdToExpressId, models, ifcDataStore],
+  );
+
   /** Restore only the viewpoint camera (used by zoom-to-topic fallback). */
   const applyViewpointCamera = useCallback(
     (viewpoint: BCFViewpoint, animate = true) => {
@@ -438,26 +503,40 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
         }
       }
 
-      // Apply selection from BCF components
+      // Apply selection from BCF components. A federated viewpoint can select
+      // elements across several models, so drive BOTH selection channels:
+      // `selectedEntityIds` (global ids) for the renderer highlight, and the
+      // model-aware `selectedEntitiesSet` (local {modelId, expressId} refs) for
+      // property/federation context. (#1591: previously this collapsed to the
+      // first element, losing every other selection and all model context.)
       if (state.selectedGuids.length > 0) {
-        // Convert GlobalId strings to expressIds
-        const selectedExpressIds: number[] = [];
+        const globalIds: number[] = []; // renderer highlight (federated global ids)
+        const refs: EntityRef[] = []; // model-aware multi-selection
         for (const guid of state.selectedGuids) {
           const result = globalIdToExpressId(guid);
-          if (result) {
-            selectedExpressIds.push(result.expressId);
-          }
+          if (!result) continue;
+          // result.expressId is already the federation-offset global id.
+          globalIds.push(result.expressId);
+          // Reverse the offset with the SAME store `models` map the forward
+          // mapping used, not the renderer singleton, so refs can never desync
+          // from globalIds if the registry lags the store.
+          const localRef = fromGlobalIdFromModels(models, result.expressId);
+          if (localRef) refs.push(localRef);
         }
 
-        if (selectedExpressIds.length > 0) {
-          // Select the first entity (primary selection)
-          // The expressId here already includes the federation offset
-          setSelectedEntityId(selectedExpressIds[0]);
-          // Note: Multi-selection would require additional store support
+        if (globalIds.length > 0) {
+          // Reset both channels, then apply the full multi-model selection.
+          clearEntitySelection();
+          setSelectedEntityIds(globalIds);
+          if (refs.length > 0) addEntitiesToSelection(refs);
+          // Pin the primary selection to the first element for consistent
+          // property display / framing (both channels keep the full set).
+          setSelectedEntityId(globalIds[0]);
+          if (refs.length > 0) setSelectedEntity(refs[0]);
         }
       } else {
         // Clear selection if viewpoint has no selection
-        setSelectedEntityId(null);
+        clearEntitySelection();
       }
 
       // Apply visibility from BCF components
@@ -505,7 +584,12 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
       toggleSectionPlane,
       flipSectionPlane,
       globalIdToExpressId,
+      models,
       setSelectedEntityId,
+      setSelectedEntityIds,
+      setSelectedEntity,
+      addEntitiesToSelection,
+      clearEntitySelection,
       setHiddenEntities,
       setIsolatedEntities,
     ]
@@ -564,6 +648,7 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
 
   return {
     createViewpointFromState,
+    headerFilesForViewpoints,
     applyViewpoint,
     zoomToTopic,
     canZoomToTopic,

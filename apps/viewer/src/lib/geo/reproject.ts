@@ -525,7 +525,12 @@ export function reprojectionInputKey(
   const mapScale = resolveMapUnitToMetreScale(crs.mapUnitScale, lengthUnitScale);
   const eMm = Math.round(eastings * mapScale * 1000);
   const nMm = Math.round(northings * mapScale * 1000);
-  return [
+  // JSON-encode rather than join with a delimiter: the free-text CRS fields
+  // (name, mapZone, description, mapProjection) can legally contain any
+  // character, and a delimiter that also appears in a field lets two different
+  // georefs collide to one key, freezing the async lat/lon effect on a stale
+  // value. JSON escaping keeps the key injective.
+  return JSON.stringify([
     crs.name ?? '',
     crs.mapZone ?? '',
     crs.description ?? '',
@@ -534,7 +539,7 @@ export function reprojectionInputKey(
     lengthUnitScale,
     eMm,
     nMm,
-  ].join('|');
+  ]);
 }
 
 /**

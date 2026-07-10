@@ -27,7 +27,7 @@ import type { Camera } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
 import { SPACEMOUSE_VENDOR_ID } from '@/lib/spacemouse/constants';
 import { parseSpaceMouseReport, zeroSixDof, type SixDof } from '@/lib/spacemouse/parser';
-import { mapSixDofToCameraDeltas, deltasAreZero } from '@/lib/spacemouse/mapping';
+import { mapSixDofToCameraDeltas, deltasAreZero, isInputStale } from '@/lib/spacemouse/mapping';
 
 /** Per-frame camera driver: applies the latest 6DoF sample; returns true if it moved the camera. */
 export type SpaceMouseDrive = (camera: Camera, deltaMs: number) => boolean;
@@ -61,11 +61,16 @@ export function useSpaceMouse({ driveRef }: UseSpaceMouseParams): void {
     const state: SixDof = zeroSixDof();
     let activeDevice: HIDDevice | null = null;
     let disposed = false;
+    // Timestamp of the last input report - the silent-stall watchdog. A HID
+    // stack that stops emitting reports WITHOUT a disconnect event would
+    // otherwise latch the last non-zero sample and drive the camera forever.
+    let lastReportAt = Number.NEGATIVE_INFINITY;
 
     const onInputReport = (event: HIDInputReportEvent) => {
       const next = parseSpaceMouseReport(event.reportId, event.data, state);
       state.tx = next.tx; state.ty = next.ty; state.tz = next.tz;
       state.rx = next.rx; state.ry = next.ry; state.rz = next.rz;
+      lastReportAt = performance.now();
     };
 
     const resetState = () => {
@@ -125,7 +130,10 @@ export function useSpaceMouse({ driveRef }: UseSpaceMouseParams): void {
 
     // Unplug handling: clean up if OUR device disconnects.
     const onDisconnect = (event: HIDConnectionEvent) => {
-      if (event.device === activeDevice || isSpaceMouse(event.device)) {
+      // ONLY tear down for the device we are actually bound to. Matching any
+      // SpaceMouse here killed the ACTIVE device's session when a second,
+      // unused SpaceMouse was unplugged (adversarial finding on #1688).
+      if (event.device === activeDevice) {
         detachDevice();
         setConnected(false);
       }
@@ -135,6 +143,13 @@ export function useSpaceMouse({ driveRef }: UseSpaceMouseParams): void {
     // Per-frame driver — installed into the shared render loop.
     driveRef.current = (camera: Camera, deltaMs: number): boolean => {
       if (!activeDevice) return false;
+      // Silent-stall watchdog: a report older than the timeout no longer
+      // drives the camera (and the latched sample is cleared so recovery
+      // starts from rest).
+      if (isInputStale(lastReportAt, performance.now())) {
+        resetState();
+        return false;
+      }
       const sensitivity = useViewerStore.getState().spaceMouseSensitivity;
       const deltas = mapSixDofToCameraDeltas(state, sensitivity, deltaMs);
       if (deltasAreZero(deltas)) return false;

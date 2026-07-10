@@ -12,6 +12,8 @@
  */
 
 import {
+  MAX_FRAME_DELTA_MS,
+  STALE_REPORT_TIMEOUT_MS,
   AXIS_FULL_SCALE,
   AXIS_SIGN,
   BASE_RATES,
@@ -59,7 +61,9 @@ export function applyDeadzone(raw: number, fullScale = AXIS_FULL_SCALE, deadzone
 export function mapSixDofToCameraDeltas(state: SixDof, sensitivity: number, deltaMs: number): CameraDeltas {
   if (!(deltaMs > 0) || !(sensitivity > 0)) return { ...ZERO_DELTAS };
 
-  const dt = deltaMs / 1000;
+  // Backgrounded-tab resume produces one huge frame delta; clamp so a held
+  // puck can never integrate seconds of motion into a single frame.
+  const dt = Math.min(deltaMs, MAX_FRAME_DELTA_MS) / 1000;
   const gain = sensitivity * dt;
 
   // Normalised, dead-zoned axis responses in [-1, 1].
@@ -79,6 +83,16 @@ export function mapSixDofToCameraDeltas(state: SixDof, sensitivity: number, delt
     panDy: (AXIS_SIGN.panY * ty * BASE_RATES.panPxPerSec * gain) || 0,
     zoomDelta: (AXIS_SIGN.dolly * tz * BASE_RATES.zoomDeltaPerSec * gain) || 0,
   };
+}
+
+/**
+ * True when the last input report is too old to keep driving the camera.
+ * Pure so the silent-stall watchdog is unit-testable. Non-finite timestamps
+ * count as stale (never move the camera on corrupt clocks).
+ */
+export function isInputStale(lastReportAtMs: number, nowMs: number): boolean {
+  if (!Number.isFinite(lastReportAtMs) || !Number.isFinite(nowMs)) return true;
+  return nowMs - lastReportAtMs > STALE_REPORT_TIMEOUT_MS;
 }
 
 /** True when every delta is zero (device idle / fully dead-zoned). */

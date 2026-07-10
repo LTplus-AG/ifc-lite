@@ -48,10 +48,12 @@ test('non-positive deltaMs or sensitivity produces zero deltas', () => {
 });
 
 test('translation axes map to pan and dolly at the expected rate', () => {
-  // Full deflection on tx only, sensitivity 1, exactly 1000ms → base rate.
+  // Full deflection on tx only, sensitivity 1, one 16ms frame -> base rate
+  // integrated over 16ms (dt above MAX_FRAME_DELTA_MS is clamped, so
+  // per-second rates are asserted via dt-proportionality, not dt=1000).
   const s: SixDof = { ...zeroSixDof(), tx: AXIS_FULL_SCALE };
-  const d = mapSixDofToCameraDeltas(s, 1, 1000);
-  assert.equal(d.panDx, AXIS_SIGN.panX * BASE_RATES.panPxPerSec);
+  const d = mapSixDofToCameraDeltas(s, 1, 16);
+  assert.equal(d.panDx, AXIS_SIGN.panX * BASE_RATES.panPxPerSec * 0.016);
   assert.equal(d.panDy, 0);
   assert.equal(d.zoomDelta, 0);
   assert.equal(d.orbitDx, 0);
@@ -60,17 +62,17 @@ test('translation axes map to pan and dolly at the expected rate', () => {
 
 test('push/pull (tz) drives zoom with the configured sign', () => {
   const s: SixDof = { ...zeroSixDof(), tz: AXIS_FULL_SCALE };
-  const d = mapSixDofToCameraDeltas(s, 1, 1000);
-  assert.equal(d.zoomDelta, AXIS_SIGN.dolly * BASE_RATES.zoomDeltaPerSec);
+  const d = mapSixDofToCameraDeltas(s, 1, 16);
+  assert.equal(d.zoomDelta, AXIS_SIGN.dolly * BASE_RATES.zoomDeltaPerSec * 0.016);
   assert.equal(d.panDx, 0);
   assert.equal(d.panDy, 0);
 });
 
 test('yaw (rz) and pitch (rx) drive orbit; roll (ry) is ignored', () => {
   const s: SixDof = { ...zeroSixDof(), rz: AXIS_FULL_SCALE, rx: AXIS_FULL_SCALE, ry: AXIS_FULL_SCALE };
-  const d = mapSixDofToCameraDeltas(s, 1, 1000);
-  assert.equal(d.orbitDx, AXIS_SIGN.orbitYaw * BASE_RATES.orbitPxPerSec);
-  assert.equal(d.orbitDy, AXIS_SIGN.orbitPitch * BASE_RATES.orbitPxPerSec);
+  const d = mapSixDofToCameraDeltas(s, 1, 16);
+  assert.equal(d.orbitDx, AXIS_SIGN.orbitYaw * BASE_RATES.orbitPxPerSec * 0.016);
+  assert.equal(d.orbitDy, AXIS_SIGN.orbitPitch * BASE_RATES.orbitPxPerSec * 0.016);
   // roll contributes to nothing
   assert.equal(d.panDx, 0);
   assert.equal(d.panDy, 0);
@@ -79,8 +81,8 @@ test('yaw (rz) and pitch (rx) drive orbit; roll (ry) is ignored', () => {
 
 test('sensitivity scales deltas linearly', () => {
   const s: SixDof = { ...zeroSixDof(), tx: AXIS_FULL_SCALE };
-  const base = mapSixDofToCameraDeltas(s, 1, 1000);
-  const doubled = mapSixDofToCameraDeltas(s, 2, 1000);
+  const base = mapSixDofToCameraDeltas(s, 1, 16);
+  const doubled = mapSixDofToCameraDeltas(s, 2, 16);
   assert.ok(Math.abs(doubled.panDx - 2 * base.panDx) < 1e-9);
 });
 

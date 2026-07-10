@@ -41,6 +41,21 @@ export const AXIS_FULL_SCALE = 350;
 export const DEADZONE_FRACTION = 0.03;
 
 /**
+ * Cap on the frame delta the mapping will integrate. rAF pauses while a tab
+ * is backgrounded, so the first resumed frame can report tens of seconds; a
+ * held puck multiplied by that dt teleports the camera (adversarial finding
+ * on #1688). Anything above ~3 frames is treated as one nominal frame.
+ */
+export const MAX_FRAME_DELTA_MS = 50;
+
+/**
+ * Reports older than this no longer drive the camera. A silent HID stall
+ * (driver hiccup, stack freeze - no `disconnect` event) would otherwise latch
+ * the last non-zero sample and move the camera forever.
+ */
+export const STALE_REPORT_TIMEOUT_MS = 250;
+
+/**
  * Per-axis role + sign. Change a sign here to invert an axis; change the role
  * mapping if a device orients its axes differently. Translation x/y drive pan,
  * translation z drives dolly, rotation yaw/pitch drive orbit, roll is ignored.

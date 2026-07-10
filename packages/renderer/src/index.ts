@@ -1874,6 +1874,13 @@ export class Renderer {
                             if (visibleIds.size > 0) {
                                 pushVisibleAsPartial(batch, visibleIds, nativelyTransparent);
                             }
+                            // A COLD parent has no CPU meshData, so the partial
+                            // sub-batch above comes back empty — queue the
+                            // residency restore or the visible subset would
+                            // stay missing under hide/isolate forever.
+                            if (batch.gpuResident === false) {
+                                this.scene.requestBatchResidency(batch);
+                            }
                             continue; // Don't add batch to render list
                         }
                     }

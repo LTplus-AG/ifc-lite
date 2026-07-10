@@ -414,10 +414,17 @@ export class Scene {
       if (bucket.meshData.length === 0) continue;              // already cold
       if (bucket.key.includes('#')) continue;                  // overflow sub-bucket
       if (this.dirtyBuckets.has(bucket.key)) continue;         // diverged from disk
+      // Colour-merged meshes (per-vertex entityIds) are registered in
+      // meshDataMap under EVERY contained id; evicting only the primary id's
+      // entry would leave the typed arrays reachable (no memory freed) and a
+      // later restore would duplicate the object. Ineligible.
+      let colorMerged = false;
       let bytes = 0;
       for (const md of bucket.meshData) {
+        if (md.entityIds && md.entityIds.length > 0) { colorMerged = true; break; }
         bytes += md.positions.byteLength + md.normals.byteLength + md.indices.byteLength;
       }
+      if (colorMerged) continue;
       shells.push({
         key: bucket.key,
         bytes,
@@ -455,6 +462,21 @@ export class Scene {
         `remaining buckets are hot, dirty, or overflow sub-buckets. Rendering is unaffected.`
       );
     }
+  }
+
+  /**
+   * Restore EVERY cold bucket to warm (used before the cold provider goes
+   * away, e.g. a federated add invalidates the entry-backed provider while
+   * primary chunks are cold — without this they would be stranded shells).
+   * Resolves when all in-flight restores settle; failures are logged by the
+   * per-bucket restore path and leave those buckets cold.
+   */
+  async drainColdTier(): Promise<void> {
+    if (this.coldBuckets.size === 0) return;
+    for (const key of Array.from(this.coldBuckets)) {
+      this.startColdRestore(key);
+    }
+    await Promise.all(Array.from(this.coldRestoresInFlight.values()));
   }
 
   /** Kick off the async disk restore for a cold bucket the draw loop wants.

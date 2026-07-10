@@ -240,8 +240,21 @@ export function useIfcLoader() {
     // the previous entry-backed provider — a primary load replaces the model,
     // and a federated add's geometry is not in the primary's cache entry (a
     // cold restore could not serve it, so the tier must switch off).
-    // loadFromCache re-wires it for v13 primary hits.
-    getGlobalRenderer()?.getScene().setColdGeometryProvider(null);
+    // loadFromCache re-wires it for v13 primary hits. A FEDERATED add must
+    // first drain existing cold buckets back to warm while the provider still
+    // exists, or the primary's cold chunks would be stranded shells (their
+    // geometry unreachable). Primary loads skip the drain: the scene is
+    // replaced wholesale anyway.
+    {
+      const scene = getGlobalRenderer()?.getScene();
+      if (scene) {
+        if (target.kind === 'federated') {
+          await scene.drainColdTier().catch((err) =>
+            console.warn('[useIfc] cold-tier drain before federated add failed:', err));
+        }
+        scene.setColdGeometryProvider(null);
+      }
+    }
 
     // Track total elapsed time for complete user experience
     const totalStartTime = performance.now();

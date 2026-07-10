@@ -161,7 +161,7 @@ export interface StartCollabServerOptions {
    * peer by awareness clientId. The server binds the kick to its room manager;
    * only the verifying `secret` is supplied here. Omit to disable (404).
    */
-  kickEndpoint?: Pick<KickEndpointOptions, 'secret'>;
+  kickEndpoint?: Pick<KickEndpointOptions, 'secret' | 'isRevoked'>;
   /**
    * Cross-origin access for the HTTP routes. Default: enabled with origin
    * reflection (permissive). Pass an allow-list to restrict, or `false` to
@@ -281,6 +281,7 @@ export async function startCollabServer(
         if (opts.kickEndpoint && pathname === '/collab/kick') {
           const handled = await handleKickRequest(req, res, {
             secret: opts.kickEndpoint.secret,
+            isRevoked: opts.kickEndpoint.isRevoked,
             kick: async (room, clientId) => {
               const pending = roomManager.peek(room);
               if (!pending) return false;

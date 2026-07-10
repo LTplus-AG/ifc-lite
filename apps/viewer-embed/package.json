@@ -13,6 +13,7 @@
   "dependencies": {
     "@ifc-lite/bcf": "workspace:^",
     "@ifc-lite/cache": "workspace:^",
+    "@ifc-lite/collab": "workspace:^",
     "@ifc-lite/create": "workspace:^",
     "@ifc-lite/data": "workspace:^",
     "@ifc-lite/drawing-2d": "workspace:^",

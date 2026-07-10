@@ -238,6 +238,13 @@ export interface TokenEndpointOptions {
   ) => Promise<Role | null> | Role | null;
   /** Secret(s) used to verify the caller's bearer token (default: `secret`). */
   verifySecret?: SecretResolver;
+  /**
+   * Deny-list check for revoked `jti`s. A revoked bearer (e.g. a kicked
+   * admin's token) must not keep minting links even though its signature +
+   * expiry still verify — when this returns true the bearer is treated as
+   * absent, so `authorize` sees `bearerClaims: null`.
+   */
+  isRevoked?: (jti: string) => boolean | Promise<boolean>;
   /** Lifetime for minted tokens when the request omits one (default 7 days). */
   defaultTtlSeconds?: number;
   /** Upper bound applied to a requested `ttlSeconds` (default 30 days). */
@@ -343,10 +350,15 @@ export async function handleTokenMintRequest(
     ttlSeconds: typeof reqBody.ttlSeconds === 'number' ? reqBody.ttlSeconds : undefined,
   };
 
-  const bearerClaims = verifyRoomToken(bearerToken(req) ?? '', {
+  let bearerClaims = verifyRoomToken(bearerToken(req) ?? '', {
     secret: opts.verifySecret ?? opts.secret,
     now: opts.now,
   });
+  // A revoked bearer (kicked admin / revoked link) is treated as no bearer at
+  // all, so the mint policy can't be exercised with a denied credential.
+  if (bearerClaims && opts.isRevoked && (await opts.isRevoked(bearerClaims.jti))) {
+    bearerClaims = null;
+  }
 
   let grantedRole: Role | null;
   try {
@@ -395,6 +407,9 @@ export interface RevokeEndpointOptions {
   /** Add a `jti` to the server's deny-list. The authenticator's `isRevoked`
    *  should consult the same store so future joins with this token are rejected. */
   recordRevocation: (jti: string, room: string) => void | Promise<void>;
+  /** Deny-list check — a bearer whose own `jti` was revoked (e.g. a kicked
+   *  admin) must not be able to keep revoking other people's links. */
+  isRevoked?: (jti: string) => boolean | Promise<boolean>;
   allowOrigin?: string;
   maxBodyBytes?: number;
   now?: () => number;
@@ -450,13 +465,17 @@ export async function handleRevokeRequest(
     return true;
   }
 
-  // Only an admin token for the *same room* may revoke.
+  // Only a non-revoked admin token for the *same room* may revoke.
   const bearer = verifyRoomToken(bearerToken(req) ?? '', {
     secret: opts.secret,
     room: target.room,
     now: opts.now,
   });
-  if (!bearer || bearer.role !== 'admin') {
+  if (
+    !bearer ||
+    bearer.role !== 'admin' ||
+    (opts.isRevoked && (await opts.isRevoked(bearer.jti)))
+  ) {
     res.writeHead(403, { ...cors, 'content-type': 'application/json' });
     res.end(JSON.stringify({ error: 'forbidden' }));
     return true;
@@ -481,6 +500,9 @@ export interface KickEndpointOptions {
   secret: SecretResolver;
   /** Force-disconnect a peer by awareness clientId; returns whether one matched. */
   kick: (roomId: string, clientId: number) => boolean | Promise<boolean>;
+  /** Deny-list check — a bearer whose own `jti` was revoked (e.g. an admin who
+   *  was themselves kicked) must not be able to keep kicking peers. */
+  isRevoked?: (jti: string) => boolean | Promise<boolean>;
   allowOrigin?: string;
   maxBodyBytes?: number;
   now?: () => number;
@@ -538,7 +560,11 @@ export async function handleKickRequest(
     room: reqBody.roomId,
     now: opts.now,
   });
-  if (!bearer || bearer.role !== 'admin') {
+  if (
+    !bearer ||
+    bearer.role !== 'admin' ||
+    (opts.isRevoked && (await opts.isRevoked(bearer.jti)))
+  ) {
     res.writeHead(403, { ...cors, 'content-type': 'application/json' });
     res.end(JSON.stringify({ error: 'forbidden' }));
     return true;

@@ -78,6 +78,10 @@ function tokenOptions(secret: string, dir: string): Partial<StartCollabServerOpt
     },
     tokenEndpoint: {
       secret,
+      // A revoked bearer (e.g. a kicked admin) is treated as absent before the
+      // authorize policy even runs; the policy's own check below is defense in
+      // depth for custom deployments that omit `isRevoked`.
+      isRevoked: (jti) => revoked.has(jti),
       authorize: (request, { bearerClaims }): Role | null => {
         const room = request.roomId;
         // A revoked bearer must not be able to keep minting links, even though
@@ -94,12 +98,13 @@ function tokenOptions(secret: string, dir: string): Partial<StartCollabServerOpt
     },
     revokeEndpoint: {
       secret,
+      isRevoked: (jti) => revoked.has(jti),
       recordRevocation: (jti) => {
         revoked.add(jti);
         persist();
       },
     },
-    kickEndpoint: { secret },
+    kickEndpoint: { secret, isRevoked: (jti) => revoked.has(jti) },
   };
 }
 

@@ -28,6 +28,7 @@ async function start() {
     authenticate: createRoomTokenAuthenticator({ secret: SECRET, isRevoked: (j) => revoked.has(j) }),
     tokenEndpoint: {
       secret: SECRET,
+      isRevoked: (j) => revoked.has(j),
       authorize: (request, { bearerClaims }): Role | null => {
         const room = request.roomId;
         if (bearerClaims?.room === room && bearerClaims.role === 'admin') return request.role;
@@ -40,11 +41,12 @@ async function start() {
     },
     revokeEndpoint: {
       secret: SECRET,
+      isRevoked: (j) => revoked.has(j),
       recordRevocation: (j) => {
         revoked.add(j);
       },
     },
-    kickEndpoint: { secret: SECRET },
+    kickEndpoint: { secret: SECRET, isRevoked: (j) => revoked.has(j) },
   });
   const { port } = handle.httpServer.address() as { port: number };
   return `http://127.0.0.1:${port}`;
@@ -131,5 +133,49 @@ describe('room-token auth + revoke (bin policy)', () => {
     });
     expect(ok.status).toBe(200);
     expect(((await ok.json()) as { kicked: boolean }).kicked).toBe(false);
+  });
+
+  it('a revoked admin bearer is rejected by mint, revoke, and kick', async () => {
+    const base = await start();
+    const admin = (await (await mint(base, { roomId: 'roomD', role: 'admin' })).json()) as { token: string };
+    // A second admin link, revoked by the first — its bearer must lose ALL
+    // admin capabilities, not just the ability to join (kicked-admin case).
+    const admin2 = (await (await mint(base, { roomId: 'roomD', role: 'admin' }, admin.token)).json()) as {
+      token: string;
+    };
+    const rev = await fetch(`${base}/collab/revoke`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${admin.token}` },
+      body: JSON.stringify({ token: admin2.token }),
+    });
+    expect(rev.status).toBe(200);
+
+    // Revoked admin can no longer mint (treated as no bearer on a claimed room)…
+    const mintDenied = await mint(base, { roomId: 'roomD', role: 'editor' }, admin2.token);
+    expect(mintDenied.status).toBe(403);
+    await mintDenied.body?.cancel();
+
+    // …nor revoke someone else's link…
+    const revDenied = await fetch(`${base}/collab/revoke`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${admin2.token}` },
+      body: JSON.stringify({ token: admin.token }),
+    });
+    expect(revDenied.status).toBe(403);
+    await revDenied.body?.cancel();
+
+    // …nor kick peers.
+    const kickDenied = await fetch(`${base}/collab/kick`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${admin2.token}` },
+      body: JSON.stringify({ roomId: 'roomD', clientId: 1 }),
+    });
+    expect(kickDenied.status).toBe(403);
+    await kickDenied.body?.cancel();
+
+    // The still-valid first admin keeps working.
+    const stillOk = await mint(base, { roomId: 'roomD', role: 'viewer' }, admin.token);
+    expect(stillOk.status).toBe(200);
+    await stillOk.body?.cancel();
   });
 });

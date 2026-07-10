@@ -20,7 +20,6 @@
  */
 
 import {
-  extractEntityAttributesOnDemand,
   extractPropertiesOnDemand,
   extractClassificationsOnDemand,
   extractMaterialsOnDemand,
@@ -84,16 +83,18 @@ export function buildStepSeedSource(store: IfcDataStore, fileName?: string): Ste
 
   function* iterate(): Generator<StepSeedEntity> {
     for (const [expressId, ref] of store.entityIndex.byId.entries()) {
-      // Resolve the GUID from the entity TABLE, not on-demand attribute
-      // extraction: on large models the compact index can't extract attributes
-      // for many geometric products, so the extraction-based GUID was empty and
-      // those products (and their geometry) were never seeded. The table carries
-      // their GlobalId reliably. `attrs` is still used (best-effort) for name /
-      // description / properties below.
+      // Resolve EVERYTHING root-attribute-shaped from the columnar entity
+      // TABLE, never `extractEntityAttributesOnDemand`: the on-demand helper
+      // re-parses the source buffer per call, and this loop visits every
+      // entity in the model — on large STEP files that froze the browser
+      // before the room was seeded (AGENTS.md: never call it in loops). The
+      // table also carries GlobalId for geometric products the compact index
+      // can't attribute-extract, so keying by the table is *more* complete.
+      // (`Tag` has no table column; seed attributes are best-effort and it is
+      // dropped rather than paying a per-entity re-parse.)
       const guid = store.entities.getGlobalId(expressId);
       // Only IfcRoot-derived entities carry a GUID — the CRDT key.
       if (!guid) continue;
-      const attrs = extractEntityAttributesOnDemand(store, expressId);
 
       // Proper-cased class from the entity table; fall back to the raw
       // (UPPERCASE) STEP type for resource-level entities ('Unknown').
@@ -104,10 +105,12 @@ export function buildStepSeedSource(store: IfcDataStore, fileName?: string): Ste
       const attributes: Record<string, unknown> = {
         'bsi::ifc::class': { code: ifcClass, uri: IFC_CLASS_URI(ifcClass) },
       };
-      if (attrs.name) attributes['bsi::ifc::prop::Name'] = attrs.name;
-      if (attrs.description) attributes['bsi::ifc::prop::Description'] = attrs.description;
-      if (attrs.objectType) attributes['bsi::ifc::prop::ObjectType'] = attrs.objectType;
-      if (attrs.tag) attributes['bsi::ifc::prop::Tag'] = attrs.tag;
+      const name = store.entities.getName(expressId);
+      const description = store.entities.getDescription(expressId);
+      const objectType = store.entities.getObjectType(expressId);
+      if (name) attributes['bsi::ifc::prop::Name'] = name;
+      if (description) attributes['bsi::ifc::prop::Description'] = description;
+      if (objectType) attributes['bsi::ifc::prop::ObjectType'] = objectType;
 
       // Storey elevation drives the hierarchy builder's storey ordering.
       if (ifcClass === 'IfcBuildingStorey') {

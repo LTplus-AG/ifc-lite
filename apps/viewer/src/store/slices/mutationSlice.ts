@@ -1181,6 +1181,12 @@ export const createMutationSlice: StateCreator<
 
   // Property Mutations
   setProperty: (modelId, entityId, psetName, propName, value, valueType = PropertyValueType.String) => {
+    // Collab role gate BEFORE the local commit: in a shared session only
+    // editor/admin may write. Gating here (not just at the mirror) keeps the
+    // local view/undo/dirty state consistent with what actually syncs — a
+    // viewer-role user must not build up local-only edits that silently never
+    // reach the room. Single-user sessions (role === null) are unaffected.
+    if (!get().canCollabEdit()) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
@@ -1217,6 +1223,8 @@ export const createMutationSlice: StateCreator<
   },
 
   deleteProperty: (modelId, entityId, psetName, propName) => {
+    // Collab role gate before the local commit — see setProperty.
+    if (!get().canCollabEdit()) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
@@ -1251,6 +1259,10 @@ export const createMutationSlice: StateCreator<
   },
 
   createPropertySet: (modelId, entityId, psetName, properties) => {
+    // Collab role gate before the local commit — see setProperty. (Pset
+    // creation isn't mirrored yet, which is all the more reason a read-only
+    // role must not accumulate local-only psets in a shared session.)
+    if (!get().canCollabEdit()) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
@@ -1365,6 +1377,8 @@ export const createMutationSlice: StateCreator<
 
   // Attribute Mutations
   setAttribute: (modelId, entityId, attrName, value, oldValue) => {
+    // Collab role gate before the local commit — see setProperty.
+    if (!get().canCollabEdit()) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 

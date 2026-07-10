@@ -34,6 +34,7 @@ export default defineConfig({
       '@ifc-lite/data': path.resolve(__dirname, '../../packages/data/src'),
       '@ifc-lite/bcf': path.resolve(__dirname, '../../packages/bcf/src'),
       '@ifc-lite/cache': path.resolve(__dirname, '../../packages/cache/src'),
+      '@ifc-lite/collab': path.resolve(__dirname, '../../packages/collab/src'),
       '@ifc-lite/drawing-2d': path.resolve(__dirname, '../../packages/drawing-2d/src'),
       '@ifc-lite/export': path.resolve(__dirname, '../../packages/export/src'),
       '@ifc-lite/ids': path.resolve(__dirname, '../../packages/ids/src'),

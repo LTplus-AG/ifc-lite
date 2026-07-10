@@ -1,5 +1,17 @@
 # @ifc-lite/wasm
 
+## 3.0.13
+
+### Patch Changes
+
+- [#1660](https://github.com/LTplus-AG/ifc-lite/pull/1660) [`84cd5aa`](https://github.com/LTplus-AG/ifc-lite/commit/84cd5aa3b59bfb5cb5599423f22406f56f3c0e6c) Thanks [@louistrue](https://github.com/louistrue)! - Repair the residual void-cut tearing on the densest faceted-BREP splayed-reveal walls (ara3d ISSUE_098 Poroton Ventilata, wall `3FceP9AqX1_92g5eDdrV5C`). Where many windows batch onto one wall face, the incremental channel recovery leaves a few constraints unforced (a self-touching "figure-8" channel the boundary walk can't traverse), which rejected the whole batched cut to the sequential re-jitter path and re-fragmented the wall.
+
+  Two kernel additions: (1) a robust Sloan ordered-traversal fallback (`recover_via_traversal`) that forces those constraints by walking the crossed triangles in segment order, immune to the pinch; and (2) a volume-safe batched-difference accept (`subtract_many`) that keeps the exact (cleaner) batched cut when its removed volume matches a sequential reference, and only falls back to sequential when it would over/under-cut. The dense wall drops from ~2072 to ~108 open edges with its removed volume unchanged; the [#1167](https://github.com/LTplus-AG/ifc-lite/issues/1167) rotated-wall under-cut and the full CSG corpus stay green.
+
+- [#1673](https://github.com/LTplus-AG/ifc-lite/pull/1673) [`2c52076`](https://github.com/LTplus-AG/ifc-lite/commit/2c5207631c3dbc164ffde0147a3cd71104006d36) Thanks [@louistrue](https://github.com/louistrue)! - CATIA walls no longer disappear (issue [#1661](https://github.com/LTplus-AG/ifc-lite/issues/1661)). Two geometry fixes: (1) representations whose `RepresentationType` is an empty string now fall back to the `RepresentationIdentifier` for body filtering - CATIA writes `IFCSHAPEREPRESENTATION(#ctx,'Body','',(items))`, and the empty type vetoed the entire representation, meshing the element to zero triangles. (2) Advanced-face edge loops now sample every curved edge-geometry type (trimmed curves over circle/ellipse/B-spline bases, rational B-splines, ellipses, composite curves, polylines) instead of collapsing them to a single vertex, and the B-spline edge sampler reads KnotMultiplicities/Knots at their schema positions (an off-by-one meant real-file B-spline edges never sampled).
+
+- [#1678](https://github.com/LTplus-AG/ifc-lite/pull/1678) [`a90182b`](https://github.com/LTplus-AG/ifc-lite/commit/a90182bac110fdd4c15b8b51866e31deefc0378e) Thanks [@louistrue](https://github.com/louistrue)! - Package metadata hygiene: correct the @ifc-lite/codegen license field to MPL-2.0 (the source has always carried MPL headers; the MIT value was a scaffolding accident) and give it a files allowlist so the npm tarball ships dist, schemas, and README instead of the whole package directory. Add the missing publishConfig, homepage, and bugs fields to codegen, embed-protocol, embed-sdk, and wasm, and homepage/bugs to create-ifc-lite, matching the rest of the workspace.
+
 ## 3.0.12
 
 ### Patch Changes

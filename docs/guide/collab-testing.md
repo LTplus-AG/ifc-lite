@@ -241,7 +241,8 @@ const handle = await startSecureCollabServer({
   }),
   verifyMessage: verifyAgainstPathLocks(locks),
   authenticate: async (token) => {
-    // Validate JWT, return { userId, role } or null.
+    // Validate JWT, return a { userId, role } principal, or null to reject.
+    return null;
   },
   rateLimit: (principal) =>
     principal.role === 'admin'

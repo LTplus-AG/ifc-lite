@@ -272,9 +272,9 @@ for await (const event of client.parseStream(file)) {
       break;
 
     case 'batch':
-      // Add meshes to renderer as they arrive (isStreaming=true for throttled batching)
-      renderer.addMeshes(event.meshes, true);
-      console.log(`Batch ${event.batch_number}: ${event.mesh_count} meshes`);
+      // event.meshes are server MeshData (snake_case fields like express_id);
+      // map them to your renderer's mesh format before uploading.
+      console.log(`Batch ${event.batch_number}: ${event.meshes.length} meshes`);
       break;
 
     case 'complete':

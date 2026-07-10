@@ -221,9 +221,22 @@ const result = await client.parseParquetOptimized(file);
 Progressive rendering for large files (>50MB).
 
 ```typescript
+import type { MeshData as ServerMeshData } from '@ifc-lite/server-client';
+
+// Server meshes use snake_case fields (express_id); map them into the
+// renderer's camelCase MeshData shape before uploading.
+const toRendererMesh = (m: ServerMeshData) => ({
+  expressId: m.express_id,
+  ifcType: m.ifc_type,
+  positions: m.positions,
+  normals: m.normals,
+  indices: m.indices,
+  color: m.color,
+});
+
 const streamResult = await client.parseParquetStream(file, (batch) => {
   // Called for each geometry batch
-  renderer.addMeshes(batch.meshes);
+  renderer.addMeshes(batch.meshes.map(toRendererMesh));
 });
 
 // Or use async iterator
@@ -233,7 +246,7 @@ for await (const event of client.parseStream(file)) {
       console.log(`Processing ~${event.total_estimate} entities`);
       break;
     case 'batch':
-      renderer.addMeshes(event.meshes);
+      renderer.addMeshes(event.meshes.map(toRendererMesh));
       break;
     case 'progress':
       console.log(`${event.processed}/${event.total}`);
@@ -292,6 +305,8 @@ returns a `ParseResponse`; it is not the retrieval path for Parquet geometry.
 Properties and spatial hierarchy are computed in parallel and cached:
 
 ```typescript
+import { decodeDataModel } from '@ifc-lite/server-client';
+
 const result = await client.parseParquet(file);
 
 // Data model might still be processing
@@ -456,7 +471,7 @@ import {
 const meshes = await decodeParquetGeometry(parquetBuffer);
 
 // Optimized Parquet (with vertex dequantization)
-const meshes = await decodeOptimizedParquetGeometry(parquetBuffer, 10000);
+const optimizedMeshes = await decodeOptimizedParquetGeometry(parquetBuffer, 10000);
 
 // Data model
 const dataModel = await decodeDataModel(dataModelBuffer);
@@ -630,16 +645,28 @@ sequenceDiagram
 ### Client-Side Streaming
 
 ```typescript
+import type { MeshData as ServerMeshData } from '@ifc-lite/server-client';
+
+// Server meshes use snake_case fields; map to the renderer's shape.
+const toRendererMesh = (m: ServerMeshData) => ({
+  expressId: m.express_id,
+  ifcType: m.ifc_type,
+  positions: m.positions,
+  normals: m.normals,
+  indices: m.indices,
+  color: m.color,
+});
+
 // Using callback
 await client.parseParquetStream(file, (batch) => {
-  // batch.meshes are already decoded MeshData
-  renderer.addMeshes(batch.meshes);
+  // batch.meshes are already decoded server MeshData
+  renderer.addMeshes(batch.meshes.map(toRendererMesh));
 });
 
 // Using async iterator
 for await (const event of client.parseStream(file)) {
   if (event.type === 'batch') {
-    renderer.addMeshes(event.meshes);
+    renderer.addMeshes(event.meshes.map(toRendererMesh));
   }
 }
 ```

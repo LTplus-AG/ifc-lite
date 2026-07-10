@@ -327,7 +327,7 @@ bim.store.setPositionalAttribute(profile, 3, 0.7);
 bim.store.removeEntity(unwantedRef);
 
 // High-level builder
-const storey = bim.query.byType('IfcBuildingStorey')[0].ref.expressId;
+const storey = bim.query().byType('IfcBuildingStorey').refs()[0].expressId;
 const col = bim.store.addColumn('arch', storey, {
   Position: [1, 1, 0],
   Width: 0.3, Depth: 0.4, Height: 3,

@@ -363,6 +363,7 @@ function formatValue(value: any): string {
 
 ### Step 3: Main Entry Point
 
+<!-- docs-check: skip -->
 ```typescript
 // src/main.ts
 import { IfcViewer } from './viewer';
@@ -480,6 +481,7 @@ main();
 
 ### Keyboard Shortcuts
 
+<!-- docs-check: skip -->
 ```typescript
 // Add to viewer.ts
 private selectedId: number | null = null;
@@ -525,6 +527,7 @@ private render(): void {
 
 ### View Presets
 
+<!-- docs-check: skip -->
 ```typescript
 // Add toolbar buttons
 const presets = ['front', 'back', 'left', 'right', 'top'] as const;

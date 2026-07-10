@@ -6,44 +6,46 @@ ifc-lite ships 36 public npm packages: 35 scoped `@ifc-lite/*` packages plus the
 
 ## Package Index
 
+<!-- BEGIN GENERATED: package-index -->
 | Package | Description |
 |---------|-------------|
-| [`@ifc-lite/parser`](#ifc-liteparser) | IFC/STEP parser |
-| [`@ifc-lite/geometry`](#ifc-litegeometry) | Geometry processing bridge to the WASM/native kernel |
-| [`@ifc-lite/data`](#ifc-litedata) | Columnar data structures |
-| [`@ifc-lite/query`](#ifc-litequery) | Query system (fluent API, graph navigation, SQL) |
-| [`@ifc-lite/spatial`](#ifc-litespatial) | Spatial indexing (BVH, frustum, raycast) |
-| [`@ifc-lite/renderer`](#ifc-literenderer) | WebGPU renderer |
-| [`@ifc-lite/export`](#ifc-liteexport) | Export formats (STEP, merged STEP, Parquet/.bos, IFC5) |
-| [`@ifc-lite/mutations`](#ifc-litemutations) | Mutation tracking and property editing |
-| [`@ifc-lite/create`](#ifc-litecreate) | IFC creation from scratch and in-store element builders |
-| [`@ifc-lite/bcf`](#ifc-litebcf) | BIM Collaboration Format (BCF 2.1 / 3.0) |
-| [`@ifc-lite/ids`](#ifc-liteids) | IDS (Information Delivery Specification) validation |
-| [`@ifc-lite/drawing-2d`](#ifc-litedrawing-2d) | 2D drawing generation: section cuts, floor plans, elevations |
-| [`@ifc-lite/clash`](#ifc-liteclash) | Clash detection: core engine plus source adapters |
-| [`@ifc-lite/diff`](#ifc-litediff) | Headless model-diff engine across two revisions |
-| [`@ifc-lite/lens`](#ifc-litelens) | Rule-based 3D filtering and colorization |
-| [`@ifc-lite/lists`](#ifc-litelists) | Configurable property tables and schedules |
-| [`@ifc-lite/ifcx`](#ifc-liteifcx) | IFC5 (IFCX) parser |
-| [`@ifc-lite/encoding`](#ifc-liteencoding) | IFC string encoding/decoding and property value parsing |
-| [`@ifc-lite/cache`](#ifc-litecache) | Binary cache format for fast model loading |
-| [`@ifc-lite/pointcloud`](#ifc-litepointcloud) | Point cloud decoders and types |
-| [`@ifc-lite/solar`](#ifc-litesolar) | Solar position, sunrise/sunset, and 3D sun-path geometry |
-| [`@ifc-lite/sdk`](#ifc-litesdk) | Scripting SDK: the `bim.*` API for BIM automation |
-| [`@ifc-lite/sandbox`](#ifc-litesandbox) | QuickJS-in-WASM sandboxed script execution |
-| [`@ifc-lite/extensions`](#ifc-liteextensions) | Extension manifest, capability grammar, and slot registry |
-| [`@ifc-lite/mcp`](#ifc-litemcp) | Model Context Protocol server (stdio + Streamable HTTP) |
-| [`@ifc-lite/cli`](#ifc-litecli) | CLI toolkit: query, validate, export, create, and script BIM data |
+| [`@ifc-lite/parser`](#ifc-liteparser) | IFC/STEP parser for IFC-Lite |
+| [`@ifc-lite/geometry`](#ifc-litegeometry) | Geometry processing bridge for IFC-Lite - 1.9x faster than web-ifc |
+| [`@ifc-lite/data`](#ifc-litedata) | Columnar data structures for IFC-Lite |
+| [`@ifc-lite/query`](#ifc-litequery) | Query system for IFC-Lite |
+| [`@ifc-lite/spatial`](#ifc-litespatial) | Spatial indexing for IFC-Lite |
+| [`@ifc-lite/renderer`](#ifc-literenderer) | WebGPU renderer for IFC-Lite |
+| [`@ifc-lite/export`](#ifc-liteexport) | Export formats for IFC-Lite |
+| [`@ifc-lite/mutations`](#ifc-litemutations) | Mutation tracking and property editing for IFC-Lite |
+| [`@ifc-lite/create`](#ifc-litecreate) | IFC creation from scratch — walls, slabs, beams, columns, stairs, roofs with geometry, properties and quantities |
+| [`@ifc-lite/bcf`](#ifc-litebcf) | BIM Collaboration Format (BCF) support for IFC-Lite |
+| [`@ifc-lite/ids`](#ifc-liteids) | IDS (Information Delivery Specification) support for IFC-Lite |
+| [`@ifc-lite/drawing-2d`](#ifc-litedrawing-2d) | 2D architectural drawing generation from IFC models - section cuts, floor plans, and elevations |
+| [`@ifc-lite/clash`](#ifc-liteclash) | Clash detection for IFC-Lite — representation-agnostic core engine + source adapters |
+| [`@ifc-lite/diff`](#ifc-litediff) | Headless model-diff engine for IFC-Lite — classifies entities as added/modified/deleted/unchanged across two revisions, with separable data vs geometry scope. |
+| [`@ifc-lite/lens`](#ifc-litelens) | Rule-based 3D filtering and colorization for IFC models |
+| [`@ifc-lite/lists`](#ifc-litelists) | Configurable property tables and schedules from IFC data for IFC-Lite |
+| [`@ifc-lite/ifcx`](#ifc-liteifcx) | IFC5 (IFCX) parser for IFC-Lite |
+| [`@ifc-lite/encoding`](#ifc-liteencoding) | IFC string encoding/decoding and property value parsing for IFC-Lite |
+| [`@ifc-lite/cache`](#ifc-litecache) | Binary cache format for IFC-Lite - fast model loading |
+| [`@ifc-lite/pointcloud`](#ifc-litepointcloud) | Point cloud decoders and types for IFC-Lite |
+| [`@ifc-lite/solar`](#ifc-litesolar) | Solar position, sunrise/sunset and 3D sun-path geometry for IFC-Lite |
+| [`@ifc-lite/sdk`](#ifc-litesdk) | Scripting SDK for ifc-lite — the bim.* API for BIM automation |
+| [`@ifc-lite/sandbox`](#ifc-litesandbox) | QuickJS-in-WASM sandboxed script execution for ifc-lite |
+| [`@ifc-lite/extensions`](#ifc-liteextensions) | Extension manifest, capability grammar, and slot registry for ifc-lite user customization |
+| [`@ifc-lite/mcp`](#ifc-litemcp) | Model Context Protocol server for ifc-lite — agent-native BIM via MCP (stdio + Streamable HTTP) |
+| [`@ifc-lite/cli`](#ifc-litecli) | CLI toolkit for IFC files — query, validate, export, create, and script BIM data |
 | [`@ifc-lite/collab`](#ifc-litecollab) | Real-time collaborative BIM via CRDT on IFCX |
-| [`@ifc-lite/collab-server`](#ifc-litecollab-server) | Reference websocket sync server for `@ifc-lite/collab` |
-| [`@ifc-lite/embed-sdk`](#ifc-liteembed-sdk) | Embed the 3D viewer in any web page via iframe |
-| [`@ifc-lite/embed-protocol`](#ifc-liteembed-protocol) | Shared postMessage protocol types for embed viewer and SDK |
-| [`@ifc-lite/viewer-core`](#ifc-liteviewer-core) | Interactive 3D viewer with REST API (lives in `packages/viewer`) |
+| [`@ifc-lite/collab-server`](#ifc-litecollab-server) | Reference websocket sync server for @ifc-lite/collab |
+| [`@ifc-lite/embed-sdk`](#ifc-liteembed-sdk) | SDK for embedding the IFC-Lite 3D viewer in any web page via iframe |
+| [`@ifc-lite/embed-protocol`](#ifc-liteembed-protocol) | Shared postMessage protocol types for ifc-lite embed viewer and SDK |
+| [`@ifc-lite/viewer-core`](#ifc-liteviewer-core) | Interactive 3D viewer for IFC models — WebGL 2 browser viewer with REST API |
 | [`@ifc-lite/server-client`](#ifc-liteserver-client) | TypeScript client SDK for IFC-Lite Server |
-| [`@ifc-lite/server-bin`](#ifc-liteserver-bin) | Pre-built server binary, no Docker or Rust needed |
-| [`@ifc-lite/wasm`](#ifc-litewasm) | WebAssembly bindings |
+| [`@ifc-lite/server-bin`](#ifc-liteserver-bin) | Pre-built IFC-Lite server binary - run without Docker or Rust |
+| [`@ifc-lite/wasm`](#ifc-litewasm) | WebAssembly bindings for IFC-Lite |
 | [`@ifc-lite/codegen`](#ifc-litecodegen) | TypeScript code generator from IFC EXPRESS schemas |
-| [`create-ifc-lite`](#create-ifc-lite) | Project scaffolder: create IFC-Lite projects with one command |
+| [`create-ifc-lite`](#create-ifc-lite) | Create IFC-Lite projects with one command |
+<!-- END GENERATED: package-index -->
 
 ---
 

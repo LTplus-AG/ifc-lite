@@ -39,6 +39,7 @@ jobs:
       rust: ${{ steps.filter.outputs.rust }}
       frontend: ${{ steps.filter.outputs.frontend }}
       geometry: ${{ steps.filter.outputs.geometry }}
+      docs: ${{ steps.filter.outputs.docs }}
       # `true` when the WASM source is byte-identical to the published release
       # tag, so `build` can fetch the prebuilt bundle and run on a FREE runner
       # instead of compiling wasm32 on a paid Depot runner. See the `build`
@@ -80,6 +81,13 @@ jobs:
               - 'rust/processing/**'
               - 'apps/server/Cargo.toml'
               - 'Cargo.lock'
+              - '.github/workflows/test.yml'
+            docs:
+              - 'docs/**'
+              - 'mkdocs.yml'
+              - 'README.md'
+              - 'packages/*/README.md'
+              - 'scripts/docs/**'
               - '.github/workflows/test.yml'
 
       # Decide whether `build` can skip the from-source wasm32 compile. The
@@ -322,6 +330,15 @@ jobs:
       # can't ship silently.
       - name: Check API surface
         run: node scripts/check-api-surface.mjs
+      # Docs upkeep guards (cheap, no build/fixtures needed — the doc-sample
+      # typecheck resolves @ifc-lite/* to each package's src via tsconfig
+      # paths). Keep the docs in lockstep with the code they describe.
+      - name: Check package READMEs
+        run: node scripts/docs/check-package-readmes.mjs
+      - name: Check doc code samples
+        run: node scripts/docs/check-doc-samples.mjs
+      - name: Check generated doc sections
+        run: node scripts/docs/generate-docs-sections.mjs --check
       - run: pnpm test
       - name: Integration tests (parse → quantities → export)
         # Step-scoped timeout: a hung harness must fail fast here, not
@@ -428,13 +445,44 @@ jobs:
       - name: Rust tests
         run: cargo test --workspace --exclude ifc-lite-wasm
 
+  # Docs guards for docs-only PRs. node-tests runs the same three checks,
+  # but it only triggers on frontend/rust changes - and docs-only PRs are
+  # exactly the ones most likely to break code samples or generated
+  # tables. This lightweight twin (install + three node scripts, no build,
+  # no fixtures) fills that gap and is skipped whenever node-tests already
+  # covers it.
+  docs-checks:
+    name: Docs checks (docs-only PRs)
+    needs: changes
+    if: needs.changes.outputs.docs == 'true' && needs.changes.outputs.frontend != 'true' && needs.changes.outputs.rust != 'true'
+    # Free runner - three node scripts, not compute-bound.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          lfs: false
+          persist-credentials: false
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Check package READMEs
+        run: node scripts/docs/check-package-readmes.mjs
+      - name: Check doc code samples
+        run: node scripts/docs/check-doc-samples.mjs
+      - name: Check generated doc sections
+        run: node scripts/docs/generate-docs-sections.mjs --check
+
   # Aggregate gate. Keeps the existing required status check name green
   # for the branch protection rule so we don't have to retouch settings.
   # Succeeds if every dependency succeeded or was skipped (path-filtered
   # out); fails the moment any dependency fails or is cancelled.
   test:
     name: Build + WASM + Rust + Node
-    needs: [changes, build, typecheck, lint, node-tests, viewer-e2e, rust-tests]
+    needs: [changes, build, typecheck, lint, node-tests, viewer-e2e, rust-tests, docs-checks]
     if: always()
     # Free runner — the gate just inspects upstream job results.
     runs-on: ubuntu-latest
@@ -448,6 +496,7 @@ jobs:
             [node-tests]="${{ needs.node-tests.result }}"
             [viewer-e2e]="${{ needs.viewer-e2e.result }}"
             [rust-tests]="${{ needs.rust-tests.result }}"
+            [docs-checks]="${{ needs.docs-checks.result }}"
           )
           fail=0
           for j in "${!results[@]}"; do

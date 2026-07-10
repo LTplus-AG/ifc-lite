@@ -144,7 +144,7 @@ for (const mesh of result.meshes) {
 For large files, use streaming to show geometry as it loads:
 
 ```typescript
-for await (const event of processor.processStreaming(buffer)) {
+for await (const event of processor.processStreaming(new Uint8Array(buffer))) {
   switch (event.type) {
     case 'batch':
       for (const mesh of event.meshes) {
@@ -406,7 +406,7 @@ if (pickResult.hit && pickResult.faceId >= 0) {
 IFC files may use large georeferenced coordinates. The geometry processor handles this automatically:
 
 ```typescript
-const result = await processor.process(buffer);
+const result = await processor.process(new Uint8Array(buffer));
 
 if (result.coordinateInfo.hasLargeCoordinates) {
   const shift = result.coordinateInfo.originShift;

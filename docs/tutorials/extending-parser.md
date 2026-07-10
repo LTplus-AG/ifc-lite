@@ -147,7 +147,7 @@ decoder.register('IFCDOOR', (expressId, store) => {
   };
 });
 
-for await (const door of decoder.decode(store, buffer, geometry)) {
+for await (const door of decoder.decode(store, new Uint8Array(buffer), geometry)) {
   console.log(door);
 }
 ```
@@ -178,7 +178,7 @@ import { GeometryProcessor } from '@ifc-lite/geometry';
 
 const gp = new GeometryProcessor();
 await gp.init();
-const result = await gp.process(buffer);
+const result = await gp.process(new Uint8Array(buffer));
 
 // Post-process the produced meshes (custom simplification, tagging, etc.)
 const processed = result.meshes.map((mesh) => transformMesh(mesh));
@@ -382,6 +382,7 @@ plugins.onParse(store);
 
 ### 1. Keep Extensions Focused
 
+<!-- docs-check: skip -->
 ```typescript
 // Good: Single responsibility
 class FireRatingExtractor {
@@ -423,6 +424,11 @@ class SafeExtractor {
       console.warn(`Failed to extract #${expressId}:`, error);
       return null; // Return null instead of throwing
     }
+  }
+
+  // Your real extraction logic goes here.
+  private doExtract(store: IfcDataStore, expressId: number): Record<string, unknown> {
+    return {};
   }
 }
 ```

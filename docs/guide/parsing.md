@@ -300,6 +300,10 @@ console.log(`Parse time: ${result.parseTime}ms`);
 `SpatialHierarchy`), plus IFCX-specific path mappings:
 
 ```typescript
+import { parseIfcx } from '@ifc-lite/ifcx';
+
+const result = await parseIfcx(buffer);
+
 // Columnar entity table
 const { entities } = result;
 for (const id of entities.expressId) {
@@ -350,7 +354,9 @@ const result = await client.parseParquet(file);
 
 // Streaming for large files (onBatch callback fires per geometry batch)
 await client.parseParquetStream(file, (batch) => {
-  renderer.addMeshes(batch.meshes);
+  // batch.meshes are server MeshData (snake_case fields like express_id);
+  // map them to your renderer's mesh format before uploading.
+  console.log(`Batch ${batch.batch_number}: ${batch.meshes.length} meshes`);
 });
 ```
 
@@ -512,7 +518,9 @@ import {
   getMaterialNameForElement
 } from '@ifc-lite/parser';
 
-const materials = extractMaterials(store);
+// The batch extractors read the legacy Map representation from a
+// ParseResult (`parser.parse`), so pass its entity maps, not the store.
+const materials = extractMaterials(parseResult.entities, parseResult.entityIndex.byType);
 
 // Get material for an element
 // getMaterialForElement returns a material express id (or undefined)
@@ -546,7 +554,8 @@ import {
   transformToLocal
 } from '@ifc-lite/parser';
 
-const georef = extractGeoreferencing(store);
+// Pass a ParseResult's entity maps (`parser.parse`), not the columnar store.
+const georef = extractGeoreferencing(parseResult.entities, parseResult.entityIndex.byType);
 
 if (georef) {
   console.log(`CRS: ${georef.projectedCRS?.name}`);
@@ -570,7 +579,8 @@ import {
   groupElementsByClassification
 } from '@ifc-lite/parser';
 
-const classifications = extractClassifications(store);
+// Pass a ParseResult's entity maps (`parser.parse`), not the columnar store.
+const classifications = extractClassifications(parseResult.entities, parseResult.entityIndex.byType);
 
 // Get classifications for an element
 const codes = getClassificationsForElement(wallId, classifications);

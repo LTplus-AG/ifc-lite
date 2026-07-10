@@ -458,6 +458,13 @@ units). To pin down the exact strategy — mirroring IfcOpenShell/BlenderBIM's
 "Merge Projects" recipe — pass:
 
 ```typescript
+import { MergedExporter } from '@ifc-lite/export';
+
+const exporter = new MergedExporter([
+  { id: 'arch', name: 'Architecture', dataStore: store1 },
+  { id: 'struct', name: 'Structure', dataStore: store2 },
+]);
+
 const result = exporter.export({
   schema: 'IFC4',
   mergeSites: 'single',              // 'single' | 'by-name'
@@ -538,6 +545,12 @@ import {
   extractPropertiesOnDemand,
   extractQuantitiesOnDemand,
 } from '@ifc-lite/parser';
+
+// Shape of the format you are exporting to
+interface CustomFormat {
+  metadata: { schema: string; timestamp: string };
+  elements: Array<Record<string, unknown>>;
+}
 
 // Define custom exporter
 class CustomExporter {

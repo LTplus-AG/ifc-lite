@@ -128,7 +128,7 @@ import { discoverClasses, discoverDataSources } from '@ifc-lite/lens';
 const classes = discoverClasses(provider);
 // sorted unique IFC class names present in the model
 
-const sources = discoverDataSources(provider, ['propertySets', 'materials']);
+const sources = discoverDataSources(provider, { properties: true, materials: true });
 // samples entities to list available psets, qsets, classification systems, materials
 ```
 
@@ -137,8 +137,12 @@ const sources = discoverDataSources(provider, ['propertySets', 'materials']);
 `result.colorMap` is a `Map<number, [r, g, b, a]>` with components in the 0-1 range, which is exactly what `Scene.setColorOverrides` in `@ifc-lite/renderer` accepts:
 
 ```typescript
+import { evaluateLens, BUILTIN_LENSES } from '@ifc-lite/lens';
+
+const lensResult = evaluateLens(BUILTIN_LENSES[0], provider);
+
 // scene is a Scene from @ifc-lite/renderer
-scene.setColorOverrides(result.colorMap, device, pipeline);
+scene.setColorOverrides(lensResult.colorMap, device, pipeline);
 
 // remove the lens
 scene.clearColorOverrides();

@@ -19,6 +19,10 @@ pub mod broadphase;
 pub mod budget;
 pub mod coplanar;
 pub mod fixed;
+// Public because `fixed::Lam` (a `pub type`) and the `pub` cached-lambda
+// predicates expose `FixedInt` exactly as they previously exposed the external
+// `bnum::types::I512`; a narrower visibility would trip `private_interfaces`.
+pub mod fixed_int;
 pub mod interner;
 pub mod interval;
 pub mod manifest;

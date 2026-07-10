@@ -40,6 +40,8 @@
      410 rust/geometry/src/geom_hash.rs
      633 rust/geometry/src/kernel/arrangement/classify.rs
      566 rust/geometry/src/kernel/fixed.rs
+# NEW (#1655): register-resident FixedInt<K> newtype backing the exact predicate cascade; large because it is a drop-in for bnum's I512 and must carry the full num_traits + std::ops trait surface (16 impls) the fixed_impl! macro binds. Its differential fuzz is split into the sibling tests.rs, kept under budget.
+     630 rust/geometry/src/kernel/fixed_int/mod.rs
 # +39: begin()/tripped() budget-guard added to the union & intersection kernel entries (#1109 parity with subtract).
 # +7: union_many threads/documents union_all's new (union, conforming) signal (B8 arrange-many parity).
 # +12: near_band_from_extent (the snap-scatter band formula) single-homed here, next to canonical SNAP_GRID; tritri/classify import it instead of mirroring the expression.

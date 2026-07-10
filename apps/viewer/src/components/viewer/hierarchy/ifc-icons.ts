@@ -21,6 +21,16 @@ export const IFC_ICON_CODEPOINTS: Record<string, string> = {
   // space-like spatial element, distinguished from IfcSpace by name/colour (#1075).
   IfcSpatialZone: '\ueff4',
   IfcZone: '\ueb97', // "workspaces" \u2014 a grouping of spaces/zones
+
+  // Functional groupings (Groups hierarchy tab, #1622). Systems share the
+  // "account_tree" glyph (a network of members); the generic IfcGroup uses
+  // "group_work".
+  IfcGroup: '\ue886', // "group_work"
+  IfcSystem: '\ue97a', // "account_tree"
+  IfcDistributionSystem: '\ue97a',
+  IfcBuiltSystem: '\ue97a',
+  IfcBuildingSystem: '\ue97a',
+  IfcStructuralAnalysisModel: '\ue97a',
   // IFC4.3 facility containers \u2014 same family as IfcBuilding (multi-storey
   // spatial root) but `domain` carries the "campus / infrastructure
   // facility" reading; IfcFacilityPart follows the storey-line icon for

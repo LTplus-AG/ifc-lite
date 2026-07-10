@@ -12,7 +12,9 @@ import {
   FileBox,
   GripHorizontal,
   Palette,
+  Network,
 } from 'lucide-react';
+import { extractGroupMembersOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -69,6 +71,13 @@ export function HierarchyPanel() {
   const clearAllFilters = useViewerStore((s) => s.clearAllFilters);
   const setHierarchyBasketSelection = useViewerStore((s) => s.setHierarchyBasketSelection);
 
+  // Group-isolation needs the camera + the hidden-by-default class toggles
+  // (spaces / spatial zones), mirroring the properties panel's Groups & Zones
+  // isolate action (#1622, pattern from #1075).
+  const cameraCallbacks = useViewerStore((s) => s.cameraCallbacks);
+  const typeVisibility = useViewerStore((s) => s.typeVisibility);
+  const toggleTypeVisibility = useViewerStore((s) => s.toggleTypeVisibility);
+
   const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
   const hideEntities = useViewerStore((s) => s.hideEntities);
   const showEntities = useViewerStore((s) => s.showEntities);
@@ -112,6 +121,8 @@ export function HierarchyPanel() {
     setGroupingMode,
     sortMode,
     setSortMode,
+    groupFilter,
+    setGroupFilter,
     unifiedStoreys,
     filteredNodes: rawFilteredNodes,
     storeysNodes: rawStoreysNodes,
@@ -381,6 +392,78 @@ export function HierarchyPanel() {
       return;
     }
 
+    // Group rows (Groups tab, #1622) - isolate + fit the group's resolved member
+    // geometry and select the GROUP entity so its system-level psets show.
+    if (node.type === 'group') {
+      const modelId = node.modelIds[0] || 'legacy';
+      const groupExpressId = node.entityExpressId;
+      if (!groupExpressId) return;
+      const dataStore = (models.get(modelId)?.ifcDataStore ?? ifcDataStore) as IfcDataStore | null | undefined;
+      const groupGlobalId = modelId !== 'legacy'
+        ? toGlobalIdFromModels(models, modelId, groupExpressId)
+        : groupExpressId;
+
+      // Members can be hidden-by-default classes (IfcSpace / IfcSpatialZone in
+      // an IfcZone): flip only the toggles the group actually needs, or the
+      // isolated set would render nothing (lifted from PropertiesPanel's
+      // handleIsolateGroupMembers, #1075 / PR #1094 review).
+      if (dataStore) {
+        const members = extractGroupMembersOnDemand(dataStore, groupExpressId);
+        if (!typeVisibility.spaces && members.some((m) => m.type === 'IfcSpace')) {
+          toggleTypeVisibility('spaces');
+        }
+        if (!typeVisibility.spatialZones && members.some((m) => m.type === 'IfcSpatialZone')) {
+          toggleTypeVisibility('spatialZones');
+        }
+      }
+
+      // node.globalIds carry the RESOLVED member geometry (ports folded into
+      // their nesting host elements) - see buildGroupTree (#1622).
+      const memberGlobalIds = node.globalIds;
+      if (memberGlobalIds.length > 0) {
+        isolateEntities(memberGlobalIds);
+        // Highlight members + frame them; the group goes last so it becomes the
+        // primary selection and its row reads selected (same trick as
+        // decomposing assemblies, #1133).
+        setSelectedEntityIds([...memberGlobalIds, groupGlobalId]);
+      } else {
+        setSelectedEntityIds([]);
+        setSelectedEntityId(groupGlobalId);
+      }
+      // Model-aware ref so the properties panel shows the group's own psets
+      // (e.g. Pset_DistributionSystemTypeCommon).
+      setSelectedEntity({ modelId, expressId: groupExpressId });
+      if (modelId !== 'legacy') setActiveModel(modelId);
+      if (memberGlobalIds.length > 0 && cameraCallbacks.frameSelection) {
+        window.setTimeout(() => cameraCallbacks.frameSelection?.(), 50);
+      }
+      if (node.hasChildren) {
+        toggleExpand(node.id);
+      }
+      return;
+    }
+
+    // Group member rows (Groups tab, #1622) - select + focus, like picking the
+    // element in 3D plus a camera frame (no-op frame for geometry-less members).
+    if (node.type === 'group-member') {
+      const memberExpressId = node.expressIds[0];
+      const modelId = node.modelIds[0] || 'legacy';
+      const globalId = node.globalIds[0] ?? memberExpressId;
+
+      setSelectedEntityIds([]);
+      setSelectedEntityId(globalId);
+      if (modelId !== 'legacy') {
+        setSelectedEntity({ modelId, expressId: memberExpressId });
+        setActiveModel(modelId);
+      } else {
+        setSelectedEntity(resolveEntityRef(globalId));
+      }
+      if (cameraCallbacks.frameSelection) {
+        window.setTimeout(() => cameraCallbacks.frameSelection?.(), 50);
+      }
+      return;
+    }
+
     // IFC type entity nodes (e.g. IfcWallType/W01) - select type entity for property panel + isolate instances
     if (node.type === 'ifc-type') {
       const modelId = node.modelIds[0];
@@ -593,7 +676,7 @@ export function HierarchyPanel() {
         setSelectedEntity(resolveEntityRef(globalId));
       }
     }
-  }, [selectedStoreys, setStoreysSelection, clearStoreySelection, setActiveStorey, setLevelDisplayMode, setSelectedEntityId, setSelectedEntityIds, setSelectedEntity, setSelectedEntities, setActiveModel, toggleExpand, unifiedStoreys, models, isolateEntities, getNodeElements, setHierarchyBasketSelection, toGlobalId, groupingMode, setClassFilter, upsertSearchRule, onMultiSelect, setMultiSelectAnchor, selectableNodeItems, selectableNodeIndexById]);
+  }, [selectedStoreys, setStoreysSelection, clearStoreySelection, setActiveStorey, setLevelDisplayMode, setSelectedEntityId, setSelectedEntityIds, setSelectedEntity, setSelectedEntities, setActiveModel, toggleExpand, unifiedStoreys, models, ifcDataStore, isolateEntities, getNodeElements, setHierarchyBasketSelection, toGlobalId, groupingMode, setClassFilter, upsertSearchRule, onMultiSelect, setMultiSelectAnchor, selectableNodeItems, selectableNodeIndexById, cameraCallbacks, typeVisibility, toggleTypeVisibility]);
 
   // Compute selection and visibility state for a node
   const computeNodeState = useCallback((node: TreeNode): { isSelected: boolean; nodeHidden: boolean; modelVisible?: boolean } => {
@@ -603,14 +686,16 @@ export function HierarchyPanel() {
       ? node.expressIds.some(id => selectedStoreys.has(id))
       : node.type === 'IfcBuildingStorey'
         ? selectedStoreys.has(node.expressIds[0])
-        : node.type === 'IfcSpace' || node.type === 'element'
+        : node.type === 'IfcSpace' || node.type === 'element' || node.type === 'group-member'
           ? (() => {
               const gId = node.globalIds[0] ?? node.expressIds[0];
               // Honour the multi-selection set so Ctrl/Shift-selected rows all
               // read as highlighted in the tree, not just the primary. (#1463)
+              // group-member rows highlight by globalId, so the same element
+              // under two groups lights up in both rows (many-to-many, #1622).
               return selectedEntityId === gId || selectedEntityIds.has(gId);
             })()
-          : node.type === 'ifc-type' || node.type === 'material-group'
+          : node.type === 'ifc-type' || node.type === 'material-group' || node.type === 'group'
             ? (() => {
                 const entityExpressId = node.entityExpressId;
                 if (!entityExpressId) return false;
@@ -624,7 +709,7 @@ export function HierarchyPanel() {
 
     // Compute visibility inline - for elements check directly, for storeys use getNodeElements
     let nodeHidden = false;
-    if (node.type === 'element') {
+    if (node.type === 'element' || node.type === 'group-member') {
       const parts = node.assemblyChildGlobalIds;
       if (parts && parts.length > 0) {
         // An assembly reads as hidden only when every part it owns is hidden
@@ -635,6 +720,7 @@ export function HierarchyPanel() {
       }
     } else if (node.type === 'IfcBuildingStorey' || node.type === 'IfcSpace' || node.type === 'unified-storey' ||
                node.type === 'type-group' || node.type === 'ifc-type' || node.type === 'material-group' ||
+               node.type === 'group' ||
                (node.type === 'model-header' && node.id.startsWith('contrib-'))) {
       const elements = getNodeElements(node);
       nodeHidden = elements.length > 0 && elements.every(id => hiddenEntities.has(id));
@@ -759,8 +845,40 @@ export function HierarchyPanel() {
         <Palette className="h-3 w-3 shrink-0 panel-compact-icon" />
         <span className="panel-compact-text">Material</span>
       </Button>
+      <Button
+        variant={groupingMode === 'groups' ? 'default' : 'outline'}
+        size="sm"
+        className="h-6 text-[10px] flex-1 min-w-0 rounded-none uppercase tracking-wider"
+        onClick={() => setGroupingMode('groups')}
+        title="Groups, systems and zones"
+      >
+        <Network className="h-3 w-3 shrink-0 panel-compact-icon" />
+        <span className="panel-compact-text">Groups</span>
+      </Button>
     </div>
   );
+
+  // Sub-filter chips for the Groups tab (#1622). Session-only; not persisted.
+  const groupFilterChips = groupingMode === 'groups' ? (
+    <div className="flex gap-1 mt-2">
+      {([
+        ['all', 'All'],
+        ['systems', 'Systems'],
+        ['zones', 'Zones'],
+        ['other', 'Other'],
+      ] as const).map(([value, label]) => (
+        <Button
+          key={value}
+          variant={groupFilter === value ? 'default' : 'outline'}
+          size="sm"
+          className="h-5 text-[10px] flex-1 min-w-0 rounded-none uppercase tracking-wider px-1"
+          onClick={() => setGroupFilter(value)}
+        >
+          {label}
+        </Button>
+      ))}
+    </div>
+  ) : null;
 
   // In type/ifc-type grouping mode, always use flat tree layout (even for multi-model)
   if (isMultiModel && groupingMode === 'spatial') {
@@ -899,13 +1017,18 @@ export function HierarchyPanel() {
           className="h-9 text-sm rounded-none border-2 border-zinc-200 dark:border-zinc-800 focus:border-primary focus:ring-0 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-600"
         />
         {groupingToggle}
+        {groupFilterChips}
         {groupingMode === 'spatial' && (
           <HierarchySortControl value={sortMode} onChange={setSortMode} />
         )}
       </div>
 
       {/* Section Header */}
-      <SectionHeader icon={groupingMode === 'spatial' ? Building2 : groupingMode === 'type' ? Layers : groupingMode === 'material' ? Palette : FileBox} title={groupingMode === 'spatial' ? 'Hierarchy' : groupingMode === 'type' ? 'By Class' : groupingMode === 'material' ? 'By Material' : 'By Type'} count={filteredNodes.length} />
+      <SectionHeader
+        icon={groupingMode === 'spatial' ? Building2 : groupingMode === 'type' ? Layers : groupingMode === 'material' ? Palette : groupingMode === 'groups' ? Network : FileBox}
+        title={groupingMode === 'spatial' ? 'Hierarchy' : groupingMode === 'type' ? 'By Class' : groupingMode === 'material' ? 'By Material' : groupingMode === 'groups' ? 'By Group' : 'By Type'}
+        count={filteredNodes.length}
+      />
 
       {/* Level display (Stacked / Exploded / Solo) + floorplan — only in the
           spatial view where storeys are the organising concept. */}

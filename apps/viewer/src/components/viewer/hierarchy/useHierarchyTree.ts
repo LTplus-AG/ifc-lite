@@ -15,12 +15,14 @@ import {
   buildTypeTree,
   buildIfcTypeTree,
   buildMaterialTree,
+  buildGroupTree,
   filterNodes,
   splitNodes,
   type AuthoredProduct,
+  type GroupSubFilter,
 } from './treeDataBuilder';
 
-export type GroupingMode = 'spatial' | 'type' | 'ifc-type' | 'material';
+export type GroupingMode = 'spatial' | 'type' | 'ifc-type' | 'material' | 'groups';
 
 const SORT_STORAGE_KEY = 'hierarchy-sort';
 
@@ -118,6 +120,9 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
     (typeof window !== 'undefined' && localStorage.getItem('hierarchy-grouping') as GroupingMode) || 'spatial'
   );
   const [sortMode, setSortMode] = useState<HierarchySortMode>(readStoredSortMode);
+  // Groups-tab sub-filter (All / Systems / Zones / Other) — session-only state,
+  // deliberately not persisted (#1622).
+  const [groupFilter, setGroupFilter] = useState<GroupSubFilter>('all');
 
   // Build unified storey data for multi-model mode (moved before useEffect that depends on it)
   const unifiedStoreys = useMemo(
@@ -303,9 +308,12 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
       if (groupingMode === 'material') {
         return buildMaterialTree(models, ifcDataStore, expandedNodes, isMultiModel, geometricIds);
       }
+      if (groupingMode === 'groups') {
+        return buildGroupTree(models, ifcDataStore, expandedNodes, isMultiModel, geometricIds, groupFilter);
+      }
       return buildTreeData(models, ifcDataStore, expandedNodes, isMultiModel, unifiedStoreys, sortMode);
     },
-    [models, ifcDataStore, expandedNodes, isMultiModel, unifiedStoreys, sortMode, groupingMode, geometricIds, classTreeIds, authoredProducts]
+    [models, ifcDataStore, expandedNodes, isMultiModel, unifiedStoreys, sortMode, groupingMode, geometricIds, classTreeIds, authoredProducts, groupFilter]
   );
 
   // Filter nodes based on search
@@ -334,8 +342,10 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
 
   // Get all elements for a node (handles type groups, ifc-type, unified storeys, single storeys, model contributions, and elements)
   const getNodeElements = useCallback((node: TreeNode): number[] => {
-    if (node.type === 'type-group' || node.type === 'ifc-type' || node.type === 'material-group') {
-      // GlobalIds are pre-stored on the node during tree construction — O(1)
+    if (node.type === 'type-group' || node.type === 'ifc-type' || node.type === 'material-group' ||
+        node.type === 'group' || node.type === 'group-member') {
+      // GlobalIds are pre-stored on the node during tree construction — O(1).
+      // For 'group' rows these are the RESOLVED member geometry ids (#1622).
       return node.globalIds;
     }
     if (node.type === 'unified-storey') {
@@ -420,6 +430,8 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
     setGroupingMode: handleSetGroupingMode,
     sortMode,
     setSortMode: handleSetSortMode,
+    groupFilter,
+    setGroupFilter,
     unifiedStoreys,
     treeData,
     filteredNodes,

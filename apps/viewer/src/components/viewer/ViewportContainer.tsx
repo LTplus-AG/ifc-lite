@@ -324,6 +324,13 @@ export function ViewportContainer() {
     // Check federated models, preferring the user-pinned anchor when present.
     // Matches findReferenceGeorefModel() in useIfcFederation so the Cesium bridge
     // and the parse-time alignment agree on which model drives the world frame.
+    //
+    // The ungated `selectAnchorGeoref` (lib/geo/useAnchorGeoreference) shares this
+    // "pinned anchor, else first model with a usable map-conversion georef"
+    // selection for the basepoint overlay and the measure-tool XYZ readout. This
+    // memo stays bespoke on purpose: it is gated on Cesium/solar, iterates in the
+    // store's insertion order (not loadedAt), and layers the placement-draft
+    // preview + storey elevations that only the Cesium bridge consumes.
     const orderedModels = (() => {
       if (!anchorModelIdOverride) return Array.from(storeModels);
       const entries = Array.from(storeModels);

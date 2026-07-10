@@ -7,12 +7,47 @@
  */
 
 import React, { useCallback, useState, useEffect } from 'react';
-import { X, Trash2, Ruler, ChevronDown, GripVertical } from 'lucide-react';
+import { X, Trash2, Ruler, ChevronDown, GripVertical, Globe } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useViewerStore, type Measurement } from '@/store';
 import { MeasurementOverlays } from './MeasurementVisuals';
 import { formatDistance } from './formatDistance';
 import { useDraggablePanel } from '@/hooks/useDraggablePanel';
+import { useAnchorGeoreference, type AnchorGeoreference } from '@/lib/geo/useAnchorGeoreference';
+import { viewerPointToProjected } from '@/lib/geo/pick-to-geo';
+import { mapUnitsToMeters } from '@/lib/geo/cesium-placement';
+
+interface Vec3Like { x: number; y: number; z: number }
+interface Enh { e: string; n: string; h: string }
+
+/**
+ * Project a picked viewer point to real-world Eastings/Northings/Height and
+ * format it in the CRS's metre unit to millimetre precision. The stored
+ * MapConversion offsets are in the authored map unit (millimetres for the
+ * bundled sample), so we convert to metres with the anchor's map-unit scale —
+ * the raw offsets would read ~1000x too large for a metre CRS.
+ */
+function projectedEnh(point: Vec3Like, anchor: AnchorGeoreference): Enh {
+  const proj = viewerPointToProjected(point, anchor.eff, anchor.originViewer);
+  const { projectedCRS, lengthUnitScale } = anchor.eff;
+  return {
+    e: mapUnitsToMeters(proj.eastings, projectedCRS, lengthUnitScale).toFixed(3),
+    n: mapUnitsToMeters(proj.northings, projectedCRS, lengthUnitScale).toFixed(3),
+    h: mapUnitsToMeters(proj.height, projectedCRS, lengthUnitScale).toFixed(3),
+  };
+}
+
+/** One compact monospace E/N/H line, optionally labelled (A/B endpoints). */
+function EnhLine({ label, enh }: { label?: string; enh: Enh }) {
+  return (
+    <div className="flex items-center gap-2 font-mono text-[10px] leading-tight text-muted-foreground whitespace-nowrap">
+      {label && <span className="text-muted-foreground/60 w-3 shrink-0">{label}</span>}
+      <span>E {enh.e}</span>
+      <span>N {enh.n}</span>
+      <span>H {enh.h}</span>
+    </div>
+  );
+}
 
 export function MeasureOverlay() {
   const measurements = useViewerStore((s) => s.measurements);
@@ -21,6 +56,8 @@ export function MeasureOverlay() {
   const snapTarget = useViewerStore((s) => s.snapTarget);
   const snapVisualization = useViewerStore((s) => s.snapVisualization);
   const snapEnabled = useViewerStore((s) => s.snapEnabled);
+  const geoReadoutEnabled = useViewerStore((s) => s.geoReadoutEnabled);
+  const toggleGeoReadout = useViewerStore((s) => s.toggleGeoReadout);
   const measurementConstraintEdge = useViewerStore((s) => s.measurementConstraintEdge);
   const toggleSnap = useViewerStore((s) => s.toggleSnap);
   const deleteMeasurement = useViewerStore((s) => s.deleteMeasurement);
@@ -86,6 +123,17 @@ export function MeasureOverlay() {
   // Calculate total distance
   const totalDistance = measurements.reduce((sum, m) => sum + m.distance, 0);
 
+  // Real-world XYZ readout. `anchor` is non-null only when the georef anchor
+  // model carries a usable IfcMapConversion (projected CRS + offsets, not a
+  // bare IfcSite lat/lon), which gates the toggle and the readout.
+  const anchor = useAnchorGeoreference();
+  const showGeo = geoReadoutEnabled && anchor !== null;
+  // Live point: the current drag endpoint while measuring, else the most
+  // recently finalized endpoint. Drives the standalone readout box.
+  const livePoint: Vec3Like | null = activeMeasurement?.current
+    ?? (measurements.length > 0 ? measurements[measurements.length - 1].end : null);
+  const liveEnh = showGeo && anchor && livePoint ? projectedEnh(livePoint, anchor) : null;
+
   const panelRef = React.useRef<HTMLDivElement>(null);
   const drag = useDraggablePanel(panelRef);
 
@@ -141,6 +189,7 @@ export function MeasureOverlay() {
                     measurement={m}
                     index={i}
                     onDelete={handleDeleteMeasurement}
+                    geoAnchor={showGeo ? anchor : null}
                   />
                 ))}
                 {measurements.length > 1 && (
@@ -177,8 +226,29 @@ export function MeasureOverlay() {
         </span>
       </div>
 
-      {/* Snap toggle - brutalist style */}
-      <div className="pointer-events-auto absolute bottom-4 left-1/2 -translate-x-1/2 z-30">
+      {/* Live real-world XYZ readout for the active / last point */}
+      {liveEnh && anchor && (
+        <div className="pointer-events-none absolute bottom-28 left-1/2 -translate-x-1/2 z-30 bg-background/95 backdrop-blur-sm border-2 border-primary/60 px-3 py-1.5 shadow-lg max-w-[92vw] overflow-x-auto">
+          <div className="flex items-baseline gap-2">
+            <Globe className="h-3 w-3 text-primary shrink-0 self-center" />
+            <span className="font-mono text-[10px] uppercase tracking-wider text-primary shrink-0">
+              {activeMeasurement ? 'Live' : 'Last'}
+            </span>
+            <div className="font-mono text-[11px] tabular-nums whitespace-nowrap">
+              <span>E {liveEnh.e}</span>
+              <span className="ml-2">N {liveEnh.n}</span>
+              <span className="ml-2">H {liveEnh.h}</span>
+              <span className="ml-2 text-muted-foreground">m</span>
+            </div>
+          </div>
+          <div className="font-mono text-[9px] text-muted-foreground/80 mt-0.5 pl-5">
+            {anchor.eff.projectedCRS.name}
+          </div>
+        </div>
+      )}
+
+      {/* Snap + Geo toggles - brutalist style */}
+      <div className="pointer-events-auto absolute bottom-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2">
         <button
           onClick={toggleSnap}
           className={`px-2 py-1 font-mono text-[10px] uppercase tracking-wider border-2 transition-colors ${
@@ -190,6 +260,20 @@ export function MeasureOverlay() {
         >
           Snap {snapEnabled ? 'On' : 'Off'}
         </button>
+        {anchor && (
+          <button
+            onClick={toggleGeoReadout}
+            className={`flex items-center gap-1 px-2 py-1 font-mono text-[10px] uppercase tracking-wider border-2 transition-colors ${
+              geoReadoutEnabled
+                ? 'bg-primary text-primary-foreground border-primary'
+                : 'bg-zinc-100 dark:bg-zinc-900 text-zinc-500 border-zinc-300 dark:border-zinc-700'
+            }`}
+            title="Toggle real-world XYZ (Eastings / Northings / Height)"
+          >
+            <Globe className="h-3 w-3" />
+            Geo XYZ {geoReadoutEnabled ? 'On' : 'Off'}
+          </button>
+        )}
       </div>
 
       {/* Render measurement lines, labels, and snap indicators */}
@@ -211,21 +295,31 @@ interface MeasurementItemProps {
   measurement: Measurement;
   index: number;
   onDelete: (id: string) => void;
+  /** When set, show real-world E/N/H for the measurement's two endpoints. */
+  geoAnchor: AnchorGeoreference | null;
 }
 
-function MeasurementItem({ measurement, index, onDelete }: MeasurementItemProps) {
+function MeasurementItem({ measurement, index, onDelete, geoAnchor }: MeasurementItemProps) {
   return (
-    <div className="flex items-center justify-between bg-muted/50 rounded px-2 py-0.5 text-xs">
-      <span className="text-muted-foreground text-xs">#{index + 1}</span>
-      <span className="font-mono font-medium">{formatDistance(measurement.distance)}</span>
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        className="h-4 w-4 hover:bg-destructive/20"
-        onClick={() => onDelete(measurement.id)}
-      >
-        <X className="h-2.5 w-2.5" />
-      </Button>
+    <div className="bg-muted/50 rounded px-2 py-0.5 text-xs">
+      <div className="flex items-center justify-between">
+        <span className="text-muted-foreground text-xs">#{index + 1}</span>
+        <span className="font-mono font-medium">{formatDistance(measurement.distance)}</span>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="h-4 w-4 hover:bg-destructive/20"
+          onClick={() => onDelete(measurement.id)}
+        >
+          <X className="h-2.5 w-2.5" />
+        </Button>
+      </div>
+      {geoAnchor && (
+        <div className="mt-0.5 overflow-x-auto">
+          <EnhLine label="A" enh={projectedEnh(measurement.start, geoAnchor)} />
+          <EnhLine label="B" enh={projectedEnh(measurement.end, geoAnchor)} />
+        </div>
+      )}
     </div>
   );
 }

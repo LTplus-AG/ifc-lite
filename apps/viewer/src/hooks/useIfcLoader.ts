@@ -734,7 +734,11 @@ export function useIfcLoader() {
               posthog.capture('ifc_model_loaded', { format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'cache', total_elapsed_ms: Math.round(performance.now() - totalStartTime) });
               // Steady-state draw-call/GPU telemetry — same reporter as the
               // fresh path so warm (cache) loads are comparable (issue #1682).
-              void reportRenderStats({ fileName: file.name, fileSizeMB });
+              void reportRenderStats({
+                fileName: file.name,
+                fileSizeMB,
+                isStale: () => loadSessionRef.current !== currentSession,
+              });
               setLoading(false);
               // Belt-and-suspenders for the source-decoupled tier: revalidate the
               // TRUE full-file hash off the main thread and, if the source changed
@@ -1492,8 +1496,13 @@ export function useIfcLoader() {
       // Steady-state draw-call/GPU-memory telemetry (issue #1682) — fired
       // separately from ifc_model_loaded because it must wait for the scene
       // to settle (queue drain + fragment finalize), which happens after this
-      // summary on large models. Fire-and-forget by design.
-      void reportRenderStats({ fileName: file.name, fileSizeMB });
+      // summary on large models. Fire-and-forget by design; the stale guard
+      // hands off to the newer load's reporter when a load supersedes this one.
+      void reportRenderStats({
+        fileName: file.name,
+        fileSizeMB,
+        isStale: () => loadSessionRef.current !== currentSession,
+      });
       setLoading(false);
       setGeometryStreamingActive(false);
       // Normalize progress to a terminal state, mirroring the loading /

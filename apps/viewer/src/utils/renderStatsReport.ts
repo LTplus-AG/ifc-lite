@@ -37,8 +37,16 @@ const nextFrame = () =>
  *
  * Numbers are scene-wide: on a federated load they cover ALL loaded models,
  * which is the right shape for "what is this tab holding" telemetry.
+ *
+ * `isStale` lets the caller cancel a superseded report (a newer load started
+ * while this one was settling): a stale reporter exits silently — the newer
+ * load's own reporter emits the definitive line for the current scene.
  */
-export async function reportRenderStats(context: { fileName: string; fileSizeMB: number }): Promise<void> {
+export async function reportRenderStats(context: {
+  fileName: string;
+  fileSizeMB: number;
+  isStale?: () => boolean;
+}): Promise<void> {
   try {
     const renderer = getGlobalRenderer();
     if (!renderer) {
@@ -54,14 +62,17 @@ export async function reportRenderStats(context: { fileName: string; fileSizeMB:
       (scene.hasQueuedMeshes() || scene.hasStreamingFragments()) &&
       performance.now() < deadline
     ) {
+      if (context.isStale?.()) return;
       await sleep(SETTLE_POLL_MS);
     }
+    if (context.isStale?.()) return;
 
     // Ensure the stats snapshot reflects the settled scene: request a frame
     // and give the animation loop two ticks to render it.
     renderer.requestRender();
     await nextFrame();
     await nextFrame();
+    if (context.isStale?.()) return;
 
     const stats = renderer.getFrameStats();
     if (!stats) {

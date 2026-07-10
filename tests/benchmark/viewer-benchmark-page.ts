@@ -288,8 +288,9 @@ export class ViewerBenchmarkPage {
     // Best-effort wait for the steady-state render-stats line — it fires
     // after the scene settles (queue drain + fragment finalize), which is
     // shortly after the final load summary on the CI models. Non-fatal: the
-    // stats metrics stay null when it doesn't arrive in time.
-    const statsDeadline = Date.now() + 30000;
+    // stats metrics stay null when it doesn't arrive in time. Bounded by the
+    // caller's overall timeout budget as well as its own 30s cap.
+    const statsDeadline = Math.min(Date.now() + 30000, startTime + timeoutMs);
     while (
       Date.now() < statsDeadline &&
       !this.consoleLogs.some((log) => log.includes('[ifc-lite] render stats:'))

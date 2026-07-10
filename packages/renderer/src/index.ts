@@ -1715,13 +1715,23 @@ export class Renderer {
                     options.contributionCull,
                     interacting,
                 );
-                const cullCam: CullCameraState | null = contribThresholdPx > 0 ? {
-                    eye: this.camera.getPosition(),
-                    mode: this.camera.getProjectionMode(),
-                    fovYRadians: this.camera.getFOV(),
-                    orthoHalfHeight: this.camera.getOrthoSize(),
-                    viewportHeightPx: this.canvas.height,
-                } : null;
+                let cullCam: CullCameraState | null = null;
+                if (contribThresholdPx > 0) {
+                    const eye = this.camera.getPosition();
+                    const tgt = this.camera.getTarget();
+                    const dx = tgt.x - eye.x, dy = tgt.y - eye.y, dz = tgt.z - eye.z;
+                    const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                    cullCam = {
+                        eye,
+                        // Degenerate (eye == target) stays zero-length — the
+                        // projection helper fails open (never culls) on it.
+                        viewDir: len > 0 ? { x: dx / len, y: dy / len, z: dz / len } : { x: 0, y: 0, z: 0 },
+                        mode: this.camera.getProjectionMode(),
+                        fovYRadians: this.camera.getFOV(),
+                        orthoHalfHeight: this.camera.getOrthoSize(),
+                        viewportHeightPx: this.canvas.height,
+                    };
+                }
 
                 // Pre-compute visibility for each batch (only when filtering is active)
                 // A batch is visible if ANY of its elements are visible

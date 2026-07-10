@@ -13,11 +13,15 @@
  * most pressure (same policy as contribution culling in Cesium/xeokit-class
  * viewers).
  *
- * The math is a conservative bounding-sphere estimate (half the AABB
- * diagonal projected at the AABB centre distance), not an exact projected
- * footprint: it can only OVER-estimate the on-screen size of the box, so a
- * batch is never culled while any part of it could still cover more than
- * the threshold.
+ * The math is a bounding-sphere estimate (half the AABB diagonal projected
+ * at the sphere centre's VIEW DEPTH, not its Euclidean distance — depth is
+ * what perspective projection divides by, so off-axis geometry is not
+ * under-sized). It is exact for a sphere on the view axis and over-estimates
+ * boxes elsewhere, except for one residual: the radial stretch of far-corner
+ * perspective projection can exceed the estimate by at most 1/cos(theta) of
+ * the diagonal half-FOV (~1.7x at fov 60). With the sub-pixel default
+ * thresholds that residual stays visually lossless; treat the threshold as a
+ * perceptual heuristic, not a hard guarantee.
  */
 
 export interface ContributionCullOptions {
@@ -38,6 +42,8 @@ export interface ContributionCullOptions {
 export interface CullCameraState {
   /** Camera eye position in world space. */
   eye: { x: number; y: number; z: number };
+  /** Normalized view direction (eye toward target), perspective mode. */
+  viewDir: { x: number; y: number; z: number };
   mode: 'perspective' | 'orthographic';
   /** Vertical field of view in radians (perspective mode). */
   fovYRadians: number;
@@ -62,12 +68,15 @@ export function resolveContributionThresholdPx(
 }
 
 /**
- * Conservative projected radius of a world-space AABB, in device pixels.
+ * Projected radius of a world-space AABB, in device pixels.
  *
  * Uses the AABB's bounding sphere (radius = half diagonal). In perspective
- * mode the sphere is projected at the distance of the box centre; when the
- * camera is inside (or closer than) the sphere the box can fill the screen,
- * so `Infinity` is returned and the caller never culls. Degenerate/empty
+ * mode the sphere is projected at the box centre's VIEW DEPTH (distance
+ * along `viewDir`), so off-axis boxes never read smaller than an on-axis
+ * box at the same depth. When the sphere reaches the camera plane
+ * (depth <= radius: camera inside, beside, or behind-but-overlapping),
+ * `Infinity` is returned and the caller never culls — a box fully behind
+ * the camera is the frustum test's job, not this one's. Degenerate/empty
  * bounds project to 0 and are culled at any positive threshold.
  */
 export function projectedAabbRadiusPx(
@@ -92,11 +101,16 @@ export function projectedAabbRadiusPx(
   const cx = (min[0] + max[0]) * 0.5 - cam.eye.x;
   const cy = (min[1] + max[1]) * 0.5 - cam.eye.y;
   const cz = (min[2] + max[2]) * 0.5 - cam.eye.z;
-  const dist = Math.sqrt(cx * cx + cy * cy + cz * cz);
-  // Camera inside (or touching) the bounding sphere: never cull.
-  if (dist <= radius) return Infinity;
+  // View depth: what the perspective divide actually uses. A degenerate
+  // (non-normalized garbage / zero) viewDir must fail open, not cull.
+  const dirLenSq =
+    cam.viewDir.x * cam.viewDir.x + cam.viewDir.y * cam.viewDir.y + cam.viewDir.z * cam.viewDir.z;
+  if (!(dirLenSq > 0.5) || !Number.isFinite(dirLenSq)) return Infinity;
+  const depth = cx * cam.viewDir.x + cy * cam.viewDir.y + cz * cam.viewDir.z;
+  // Sphere reaches (or is behind) the camera plane: never cull.
+  if (depth <= radius) return Infinity;
 
   const tanHalfFov = Math.tan(cam.fovYRadians * 0.5);
   if (!(tanHalfFov > 0)) return Infinity;
-  return (radius / (dist * tanHalfFov)) * halfViewportPx;
+  return (radius / (depth * tanHalfFov)) * halfViewportPx;
 }

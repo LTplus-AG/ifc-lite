@@ -39,19 +39,22 @@ export function getContributionCullConfig(): ContributionCullOptions | undefined
   const raw = (globalThis as { __IFC_LITE_CONTRIB_CULL?: unknown }).__IFC_LITE_CONTRIB_CULL;
   if (raw === undefined || raw === null) return DEFAULT_CONTRIBUTION_CULL;
   if (raw === false || raw === 0) return undefined;
+  // Only finite positive thresholds are meaningful — Infinity/NaN would cull
+  // everything (or nothing deterministically), so they disable instead.
+  const finitePositive = (v: unknown): v is number =>
+    typeof v === 'number' && Number.isFinite(v) && v > 0;
   if (typeof raw === 'number') {
-    if (!(raw > 0)) return undefined;
+    if (!finitePositive(raw)) return undefined;
     return { pixelRadius: raw, interactingPixelRadius: raw * INTERACTING_FACTOR };
   }
   if (typeof raw === 'object') {
     const cfg = raw as Partial<ContributionCullOptions>;
-    if (typeof cfg.pixelRadius === 'number' && cfg.pixelRadius > 0) {
+    if (finitePositive(cfg.pixelRadius)) {
       return {
         pixelRadius: cfg.pixelRadius,
-        interactingPixelRadius:
-          typeof cfg.interactingPixelRadius === 'number'
-            ? cfg.interactingPixelRadius
-            : cfg.pixelRadius * INTERACTING_FACTOR,
+        interactingPixelRadius: finitePositive(cfg.interactingPixelRadius)
+          ? cfg.interactingPixelRadius
+          : cfg.pixelRadius * INTERACTING_FACTOR,
       };
     }
     return undefined;

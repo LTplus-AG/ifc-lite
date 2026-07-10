@@ -13,8 +13,9 @@ import {
 
 const perspectiveCam = (overrides: Partial<CullCameraState> = {}): CullCameraState => ({
   eye: { x: 0, y: 0, z: 0 },
+  viewDir: { x: 0, y: 0, z: -1 }, // looking down -Z
   mode: 'perspective',
-  fovYRadians: Math.PI / 2, // tan(fov/2) = 1 → pixels = radius / dist * halfViewport
+  fovYRadians: Math.PI / 2, // tan(fov/2) = 1 → pixels = radius / depth * halfViewport
   orthoHalfHeight: 0,
   viewportHeightPx: 1000,
   ...overrides,
@@ -69,9 +70,31 @@ describe('projectedAabbRadiusPx (perspective)', () => {
     assert.strictEqual(px, 0);
   });
 
-  it('is conservative: a behind-camera box still reports its sphere size (frustum test owns rejection)', () => {
+  it('uses view DEPTH, not Euclidean distance: off-axis boxes never read smaller than on-axis', () => {
+    // Same depth (100), one on-axis, one far off-axis (Euclidean distance 100*sqrt(2)).
+    const onAxis = projectedAabbRadiusPx([-1, -1, -101], [1, 1, -99], perspectiveCam());
+    const offAxis = projectedAabbRadiusPx([99, -1, -101], [101, 1, -99], perspectiveCam());
+    assert.ok(Math.abs(onAxis - offAxis) < 1e-9, `on=${onAxis} off=${offAxis}`);
+  });
+
+  it('never culls a near-camera box even when its centre is beside the eye (depth <= radius)', () => {
+    // Centre at depth 0.5, sphere radius ~1.7: overlaps the camera plane.
+    const px = projectedAabbRadiusPx([9, -1, -1.5], [11, 1, 0.5], perspectiveCam());
+    assert.strictEqual(px, Infinity);
+  });
+
+  it('never culls behind-camera boxes (frustum test owns that rejection)', () => {
     const px = projectedAabbRadiusPx([-1, -1, 99], [1, 1, 101], perspectiveCam());
-    assert.ok(px > 0 && Number.isFinite(px));
+    assert.strictEqual(px, Infinity);
+  });
+
+  it('fails open on a degenerate/zero view direction', () => {
+    const px = projectedAabbRadiusPx(
+      [-1, -1, -101],
+      [1, 1, -99],
+      perspectiveCam({ viewDir: { x: 0, y: 0, z: 0 } }),
+    );
+    assert.strictEqual(px, Infinity);
   });
 });
 

@@ -39,6 +39,7 @@ jobs:
       rust: ${{ steps.filter.outputs.rust }}
       frontend: ${{ steps.filter.outputs.frontend }}
       geometry: ${{ steps.filter.outputs.geometry }}
+      plato: ${{ steps.filter.outputs.plato }}
       # `true` when the WASM source is byte-identical to the published release
       # tag, so `build` can fetch the prebuilt bundle and run on a FREE runner
       # instead of compiling wasm32 on a paid Depot runner. See the `build`
@@ -80,6 +81,12 @@ jobs:
               - 'rust/processing/**'
               - 'apps/server/Cargo.toml'
               - 'Cargo.lock'
+              - '.github/workflows/test.yml'
+            plato:
+              - 'tools/plato/**'
+              - 'rust/clash/src/generated/**'
+              - 'packages/clash/src/math/generated/**'
+              - 'scripts/generate-plato-clash.mjs'
               - '.github/workflows/test.yml'
 
       # Decide whether `build` can skip the from-source wasm32 compile. The
@@ -428,13 +435,46 @@ jobs:
       - name: Rust tests
         run: cargo test --workspace --exclude ifc-lite-wasm
 
+  # Plato clash-math single-source freshness gate. The clash narrow-phase math
+  # is written once in Plato and transpiled to Rust + TypeScript; the committed
+  # rust/clash/src/generated/plato.rs and packages/clash/src/math/generated/
+  # plato.g.ts must stay in sync with the .plato source. The generator clones
+  # plato + ara3d-sdk at pinned SHAs and rebuilds Plato.CLI (needs the .NET 9
+  # SDK), so this runs only when the plato sources / generated files / the
+  # generator change. See tools/plato/README.md.
+  plato-check:
+    name: Plato clash-math freshness
+    needs: changes
+    if: needs.changes.outputs.plato == 'true'
+    # Free runner - the generator clones + builds Plato.CLI with dotnet; no
+    # Depot cores needed.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          lfs: false
+          persist-credentials: false
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22
+      - name: Setup .NET 9 SDK
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          dotnet-version: '9.0.x'
+      # Regenerates the Rust + TypeScript outputs from tools/plato/ at the
+      # pinned plato + ara3d-sdk SHAs and fails (exit 1) if the committed
+      # files drift. The script has no npm deps: pure node + git + dotnet.
+      - name: Check committed Plato outputs are in sync
+        run: node scripts/generate-plato-clash.mjs --check
+
   # Aggregate gate. Keeps the existing required status check name green
   # for the branch protection rule so we don't have to retouch settings.
   # Succeeds if every dependency succeeded or was skipped (path-filtered
   # out); fails the moment any dependency fails or is cancelled.
   test:
     name: Build + WASM + Rust + Node
-    needs: [changes, build, typecheck, lint, node-tests, viewer-e2e, rust-tests]
+    needs: [changes, build, typecheck, lint, node-tests, viewer-e2e, rust-tests, plato-check]
     if: always()
     # Free runner — the gate just inspects upstream job results.
     runs-on: ubuntu-latest
@@ -448,6 +488,7 @@ jobs:
             [node-tests]="${{ needs.node-tests.result }}"
             [viewer-e2e]="${{ needs.viewer-e2e.result }}"
             [rust-tests]="${{ needs.rust-tests.result }}"
+            [plato-check]="${{ needs.plato-check.result }}"
           )
           fail=0
           for j in "${!results[@]}"; do

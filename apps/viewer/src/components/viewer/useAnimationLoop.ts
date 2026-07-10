@@ -21,6 +21,7 @@ import type { Renderer, VisualEnhancementOptions, LightingEnvironment } from '@i
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import type { SectionPlane } from '@/store';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
+import type { SpaceMouseDrive } from './useSpaceMouse.js';
 
 export interface UseAnimationLoopParams {
   canvasRef: RefObject<HTMLCanvasElement | null>;
@@ -66,6 +67,12 @@ export interface UseAnimationLoopParams {
   calculateScale: () => void;
   updateMeasurementScreenCoords: (projector: (worldPos: { x: number; y: number; z: number }) => { x: number; y: number } | null) => void;
   hasPendingMeasurements: () => boolean;
+  /**
+   * Optional external navigation driver (3Dconnexion SpaceMouse). Called once
+   * per frame BEFORE the camera animation update so its deltas ride the same
+   * render loop — no second rAF. Returns true when it moved the camera.
+   */
+  spaceMouseDriveRef?: MutableRefObject<SpaceMouseDrive | null>;
 }
 
 export function useAnimationLoop(params: UseAnimationLoopParams): void {
@@ -98,6 +105,7 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
     calculateScale,
     updateMeasurementScreenCoords,
     hasPendingMeasurements,
+    spaceMouseDriveRef,
   } = params;
 
   useEffect(() => {
@@ -157,6 +165,12 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
           }
         }
       }
+
+      // 1b. External navigation (SpaceMouse). Apply the latest 6DoF sample to
+      // the camera before the animation/inertia update so it renders this frame.
+      // Runs inside THIS loop — no second rAF (issue #1677).
+      const spaceMouseMoved = spaceMouseDriveRef?.current?.(camera, deltaTime) ?? false;
+      if (spaceMouseMoved) renderer.requestRender();
 
       // 2. Camera update (animation / inertia)
       const isAnimating = camera.update(deltaTime);

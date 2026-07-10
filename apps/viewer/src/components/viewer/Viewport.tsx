@@ -42,6 +42,7 @@ import { RectSelectionOverlay, type RectSelectionRect } from './RectSelectionOve
 import { useTouchControls, type TouchState } from './useTouchControls.js';
 import { useKeyboardControls } from './useKeyboardControls.js';
 import { useAnimationLoop } from './useAnimationLoop.js';
+import { useSpaceMouse, type SpaceMouseDrive } from './useSpaceMouse.js';
 import { useGeometryStreaming } from './useGeometryStreaming.js';
 import { usePointCloudSync } from './usePointCloudSync.js';
 import { usePointCloudLifecycle } from './usePointCloudLifecycle.js';
@@ -88,6 +89,9 @@ export function Viewport({
 }: ViewportProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<Renderer | null>(null);
+  // SpaceMouse per-frame camera driver, populated by useSpaceMouse and consumed
+  // by the shared render loop (no second rAF — issue #1677).
+  const spaceMouseDriveRef = useRef<SpaceMouseDrive | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
 
@@ -1250,7 +1254,12 @@ export function Viewport({
     calculateScale,
     updateMeasurementScreenCoords,
     hasPendingMeasurements,
+    spaceMouseDriveRef,
   });
+
+  // 3Dconnexion SpaceMouse (WebHID). Feature-detects navigator.hid; drives the
+  // camera through the shared render loop above via spaceMouseDriveRef.
+  useSpaceMouse({ driveRef: spaceMouseDriveRef });
 
   useGeometryStreaming({
     rendererRef,

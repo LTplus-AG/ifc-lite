@@ -47,6 +47,7 @@ import {
   Globe2,
   Sun,
   Move,
+  Move3d,
   PenLine,
   Undo2,
   Redo2,
@@ -434,6 +435,14 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   const toggleEnvPanel = useViewerStore((state) => state.toggleEnvPanel);
   const envSkyEnabled = useViewerStore((state) => state.envSkyEnabled);
   const envPreset = useViewerStore((state) => state.envPreset);
+  // SpaceMouse (3Dconnexion) navigation — WebHID, Chromium only. The whole
+  // section hides when navigator.hid is unavailable.
+  const spaceMouseSupported = useViewerStore((state) => state.spaceMouseSupported);
+  const spaceMouseConnected = useViewerStore((state) => state.spaceMouseConnected);
+  const spaceMouseDeviceName = useViewerStore((state) => state.spaceMouseDeviceName);
+  const spaceMouseSensitivity = useViewerStore((state) => state.spaceMouseSensitivity);
+  const spaceMouseConnect = useViewerStore((state) => state.spaceMouseConnect);
+  const setSpaceMouseSensitivity = useViewerStore((state) => state.setSpaceMouseSensitivity);
   const storeModels = useViewerStore((state) => state.models);
   const analysisExtensionState = useSyncExternalStore(
     subscribeAnalysisExtensions,
@@ -1778,6 +1787,57 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             <Info className="h-4 w-4 mr-2" />
             Hover tooltips
           </DropdownMenuCheckboxItem>
+
+          {/* 3Dconnexion SpaceMouse — WebHID (Chromium only). The whole block is
+              absent on browsers without navigator.hid, so nothing dangles. */}
+          {spaceMouseSupported && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                SpaceMouse
+              </DropdownMenuLabel>
+              {spaceMouseConnected ? (
+                <>
+                  <DropdownMenuItem disabled className="opacity-100">
+                    <Move3d className="h-4 w-4 mr-2 text-teal-600" />
+                    <span className="truncate">{spaceMouseDeviceName ?? 'Connected'}</span>
+                    <span className="ml-auto h-2 w-2 rounded-full bg-teal-500" aria-hidden />
+                  </DropdownMenuItem>
+                  {/* Plain row (not a menu item) so the slider does not close the
+                      menu; stop propagation so arrow keys tune it instead of
+                      moving menu focus. */}
+                  <div
+                    className="px-2 py-1.5"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => e.stopPropagation()}
+                  >
+                    <div className="flex justify-between text-[10px] text-muted-foreground mb-1">
+                      <span>Sensitivity</span>
+                      <span className="tabular-nums text-foreground">{spaceMouseSensitivity.toFixed(1)}×</span>
+                    </div>
+                    <input
+                      type="range"
+                      aria-label="SpaceMouse sensitivity"
+                      min={0.2}
+                      max={3}
+                      step={0.1}
+                      value={spaceMouseSensitivity}
+                      onChange={(e) => setSpaceMouseSensitivity(Number(e.target.value))}
+                      className="w-full accent-teal-600"
+                    />
+                  </div>
+                </>
+              ) : (
+                <DropdownMenuItem
+                  onSelect={() => spaceMouseConnect?.()}
+                  disabled={!spaceMouseConnect}
+                >
+                  <Move3d className="h-4 w-4 mr-2" />
+                  Connect SpaceMouse
+                </DropdownMenuItem>
+              )}
+            </>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
 

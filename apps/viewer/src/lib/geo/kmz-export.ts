@@ -13,7 +13,7 @@ import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import type { GeorefMutationData } from '@/store/slices/mutationSlice';
 import { mergeMapConversion, mergeProjectedCRS } from './effective-georef';
 import { reprojectToLatLon } from './reproject';
-import { buildKmz } from './kmz-exporter';
+import { buildKmz, type KmzAltitudeMode } from './kmz-exporter';
 
 /** True if the data store carries usable georeferencing (so a KMZ export can run). */
 export function modelHasGeoreference(dataStore: IfcDataStore | null | undefined): boolean {
@@ -28,6 +28,12 @@ export interface BuildKmzInput {
   mutations?: GeorefMutationData;
   /** Display name / file stem. */
   name: string;
+  /**
+   * KML vertical placement (#1427). `'clampToGround'` (default) rests the model on
+   * the terrain — the robust choice that can never float; `'absolute'` honours the
+   * model's OrthogonalHeight as a true MSL elevation. Omit for ground.
+   */
+  altitudeMode?: KmzAltitudeMode;
 }
 
 /** Why a KMZ build could not run (for a precise UI message). */
@@ -58,5 +64,6 @@ export async function buildKmzForModel(input: BuildKmzInput): Promise<Uint8Array
     xAxisOrdinate: conversion.xAxisOrdinate,
     meshes: input.geometryResult.meshes as MeshData[],
     name: input.name,
+    altitudeMode: input.altitudeMode,
   });
 }

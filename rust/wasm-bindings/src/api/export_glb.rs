@@ -7,6 +7,21 @@
 use super::IfcAPI;
 use wasm_bindgen::prelude::*;
 
+/// Map the optional KML altitude-mode string from the JS boundary to the
+/// exporter enum. `None` (or any unrecognised value) ⇒ `ClampToGround` so the
+/// safe, non-floating default (#1427) is preserved and existing callers that
+/// omit the argument are unchanged. The UI exposes only `"clampToGround"`
+/// ("Rest on ground") and `"absolute"` ("True elevation (MSL)"); the literal
+/// `"relativeToGround"` is accepted for completeness.
+fn kmz_altitude_mode(mode: Option<String>) -> ifc_lite_export::AltitudeMode {
+    use ifc_lite_export::AltitudeMode;
+    match mode.as_deref() {
+        Some("absolute") => AltitudeMode::Absolute,
+        Some("relativeToGround") => AltitudeMode::RelativeToGround,
+        _ => AltitudeMode::ClampToGround,
+    }
+}
+
 #[wasm_bindgen]
 impl IfcAPI {
     /// Export the render geometry in `content` as a binary **GLB** (`Uint8Array`).
@@ -106,10 +121,13 @@ impl IfcAPI {
     /// `altitude`) + `model.glb`. `x_axis_abscissa`/`x_axis_ordinate` are the
     /// `IfcMapConversion` grid-north components; pass both as `undefined` for heading 0.
     ///
-    /// The model is placed `clampToGround` (rests on the terrain). Google Earth's
-    /// terrain already encodes the site elevation, so emitting `altitude` as the
-    /// MSL OrthogonalHeight under `relativeToGround` floated the model ~OrthogonalHeight
-    /// metres into the sky — clamping pins it to the ground regardless (#1427).
+    /// `altitude_mode` selects the KML vertical placement: `"clampToGround"`
+    /// (the default when omitted) rests the model on the terrain, ignoring
+    /// `altitude`; `"absolute"` places the origin at `altitude` metres MSL.
+    /// Google Earth's terrain already encodes the site elevation, so clamping
+    /// keeps a wrong/zero/double-counted OrthogonalHeight from floating the
+    /// model into the sky (#1427); absolute is offered for models whose
+    /// OrthogonalHeight is a true MSL elevation the user wants honoured.
     #[wasm_bindgen(js_name = exportKmz)]
     #[allow(clippy::too_many_arguments)]
     pub fn export_kmz(
@@ -121,12 +139,13 @@ impl IfcAPI {
         x_axis_abscissa: Option<f64>,
         x_axis_ordinate: Option<f64>,
         name: String,
+        altitude_mode: Option<String>,
     ) -> Vec<u8> {
         let opts = ifc_lite_export::KmzOptions {
             latitude,
             longitude,
             altitude,
-            altitude_mode: ifc_lite_export::AltitudeMode::ClampToGround,
+            altitude_mode: kmz_altitude_mode(altitude_mode),
             x_axis_abscissa,
             x_axis_ordinate,
             name: if name.is_empty() { None } else { Some(name) },
@@ -138,9 +157,12 @@ impl IfcAPI {
     /// already-produced meshes — the working path (#1427). The model is embedded as
     /// **COLLADA** (`model.dae`), the only `<Model>` format Google Earth loads (a GLB
     /// raises "Unsupported element: Model"), with emission-lit double-sided materials
-    /// and `clampToGround` placement. Mesh arrays match `exportGlbFromMeshes`;
+    /// placement. Mesh arrays match `exportGlbFromMeshes`;
     /// `latitude`/`longitude`/`altitude` + `x_axis_abscissa`/`x_axis_ordinate`
     /// (grid-north, `undefined` ⇒ heading 0) place + orient the model.
+    /// `altitude_mode` (`"clampToGround"` default ⇒ rest on terrain, ignoring
+    /// `altitude`; `"absolute"` ⇒ place at `altitude` metres MSL) selects the
+    /// KML vertical placement (#1427).
     #[wasm_bindgen(js_name = exportKmzFromMeshes)]
     #[allow(clippy::too_many_arguments)]
     pub fn export_kmz_from_meshes(
@@ -158,12 +180,13 @@ impl IfcAPI {
         x_axis_abscissa: Option<f64>,
         x_axis_ordinate: Option<f64>,
         name: String,
+        altitude_mode: Option<String>,
     ) -> Vec<u8> {
         let opts = ifc_lite_export::KmzOptions {
             latitude,
             longitude,
             altitude,
-            altitude_mode: ifc_lite_export::AltitudeMode::ClampToGround,
+            altitude_mode: kmz_altitude_mode(altitude_mode),
             x_axis_abscissa,
             x_axis_ordinate,
             name: if name.is_empty() { None } else { Some(name) },

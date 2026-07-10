@@ -34,6 +34,7 @@ import { useViewerStore } from '@/store';
 import { posthog } from '@/lib/analytics';
 import { toast } from '@/components/ui/toast';
 import { buildKmzForModel, type KmzBuildError } from '@/lib/geo/kmz-export';
+import type { KmzAltitudeMode } from '@/lib/geo/kmz-exporter';
 import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
 
 interface KmzExportDialogProps {
@@ -56,6 +57,10 @@ export function KmzExportDialog({ trigger }: KmzExportDialogProps) {
 
   const [open, setOpen] = useState(false);
   const [selectedModelId, setSelectedModelId] = useState<string>('');
+  // KML vertical placement. Default "Rest on ground" (clampToGround): the model
+  // drapes on Google Earth's terrain and can never float, regardless of the
+  // model's OrthogonalHeight (#1427). "True elevation" places it at MSL.
+  const [altitudeMode, setAltitudeMode] = useState<KmzAltitudeMode>('clampToGround');
   const [isExporting, setIsExporting] = useState(false);
   const [exportResult, setExportResult] = useState<{ success: boolean; message: string } | null>(null);
 
@@ -100,6 +105,7 @@ export function KmzExportDialog({ trigger }: KmzExportDialogProps) {
         dataStore: selectedModel.dataStore,
         mutations: selectedModelId === '__legacy__' ? undefined : georefMutations.get(selectedModelId),
         name: baseName,
+        altitudeMode,
       });
 
       if (typeof result === 'string') {
@@ -122,7 +128,7 @@ export function KmzExportDialog({ trigger }: KmzExportDialogProps) {
     } finally {
       setIsExporting(false);
     }
-  }, [selectedModel, selectedModelId, georefMutations]);
+  }, [selectedModel, selectedModelId, georefMutations, altitudeMode]);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -183,6 +189,31 @@ export function KmzExportDialog({ trigger }: KmzExportDialogProps) {
             <Label className="w-32 text-muted-foreground">Output</Label>
             <Badge variant="secondary">Google Earth</Badge>
             <span className="text-xs text-muted-foreground">.kmz</span>
+          </div>
+
+          <div className="flex items-start gap-4">
+            <Label className="w-32 pt-2" htmlFor="kmz-altitude-mode">
+              Placement
+            </Label>
+            <div className="flex flex-1 flex-col gap-1">
+              <Select
+                value={altitudeMode}
+                onValueChange={(v) => setAltitudeMode(v as KmzAltitudeMode)}
+              >
+                <SelectTrigger id="kmz-altitude-mode">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="clampToGround">Rest on ground</SelectItem>
+                  <SelectItem value="absolute">True elevation (MSL)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {altitudeMode === 'clampToGround'
+                  ? 'Drapes the model on the terrain so it never floats. Recommended.'
+                  : "Places the model at its orthogonal height above sea level. Use only when the model's elevation is a true MSL value."}
+              </p>
+            </div>
           </div>
 
           {exportResult && (

@@ -8,7 +8,7 @@
  */
 
 import { createLogger } from '@ifc-lite/data';
-import type { TessellationQuality } from './types.js';
+import type { KmzAltitudeMode, TessellationQuality } from './types.js';
 import type { GeometryDiagnostics } from './diagnostics.js';
 import init, {
   IfcAPI,
@@ -514,8 +514,10 @@ export class IfcLiteBridge {
    * Build a Google-Earth-ready KMZ directly from already-produced meshes (flattened
    * parallel arrays). The model is embedded as COLLADA (`model.dae`) — the only
    * `<Model>` format Google Earth loads — with emission-lit, double-sided materials
-   * and `clampToGround` placement (#1427). `xAxisAbscissa`/`xAxisOrdinate` are the
-   * `IfcMapConversion` grid-north components (pass `undefined` for heading 0).
+   * (#1427). `xAxisAbscissa`/`xAxisOrdinate` are the `IfcMapConversion` grid-north
+   * components (pass `undefined` for heading 0). `altitudeMode` selects the KML
+   * vertical placement (`'clampToGround'` default rests on the terrain and ignores
+   * `altitude`; `'absolute'` places the origin at `altitude` metres MSL).
    */
   exportKmzFromMeshes(
     positions: Float32Array,
@@ -531,6 +533,7 @@ export class IfcLiteBridge {
     xAxisAbscissa: number | undefined,
     xAxisOrdinate: number | undefined,
     name: string,
+    altitudeMode?: KmzAltitudeMode,
   ): Uint8Array {
     if (!this.ifcApi) {
       throw new Error('IFC-Lite not initialized. Call init() first.');
@@ -538,7 +541,7 @@ export class IfcLiteBridge {
     try {
       return this.ifcApi.exportKmzFromMeshes(
         positions, normals, indices, vertexCounts, indexCounts, colors, origins,
-        latitude, longitude, altitude, xAxisAbscissa, xAxisOrdinate, name,
+        latitude, longitude, altitude, xAxisAbscissa, xAxisOrdinate, name, altitudeMode,
       );
     } catch (error) {
       log.error('Failed to exportKmzFromMeshes', error, { operation: 'exportKmzFromMeshes' });

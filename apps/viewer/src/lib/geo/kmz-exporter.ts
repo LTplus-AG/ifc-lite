@@ -13,13 +13,16 @@
  * The model is embedded as COLLADA, NOT glTF/GLB: Google Earth's KML <Model> only
  * loads COLLADA (a `.glb` fails with "Unsupported element: Model"). The COLLADA
  * assembly (emission-lit, double-sided materials for Google Earth's lighting), the
- * KML placement (clampToGround + the IFC grid-north → heading conversion), and the
+ * KML placement (clampToGround by default, or absolute MSL when the caller opts in,
+ * plus the IFC grid-north → heading conversion), and the
  * zip are all done in Rust (`ifc-lite-export`, via `GeometryProcessor.exportKmzFromMeshes`)
  * — this is a thin async wrapper over the viewer's already-produced meshes (#1427).
  */
 
-import { GeometryProcessor, type MeshData } from '@ifc-lite/geometry';
+import { GeometryProcessor, type MeshData, type KmzAltitudeMode } from '@ifc-lite/geometry';
 import type { LatLon } from './reproject';
+
+export type { KmzAltitudeMode };
 
 export interface KmzOptions {
   /** WGS84 coordinates of the model origin. */
@@ -33,6 +36,12 @@ export interface KmzOptions {
   meshes: MeshData[];
   /** Display name for the placemark. */
   name?: string;
+  /**
+   * KML vertical placement (#1427). `'clampToGround'` (default) rests the model on
+   * the terrain and ignores `altitude`; `'absolute'` places the origin at `altitude`
+   * metres above mean sea level. Omit for the safe, non-floating ground default.
+   */
+  altitudeMode?: KmzAltitudeMode;
 }
 
 /** The slice of `GeometryProcessor` this helper drives — a test seam (see kmz-exporter.test.ts). */
@@ -48,17 +57,23 @@ export async function buildKmz(
   opts: KmzOptions,
   createProcessor: () => KmzProcessor = () => new GeometryProcessor(),
 ): Promise<Uint8Array> {
+  // Drop instanced-type templates (geometryClass 2): they are the type-library
+  // copy of a shape an occurrence already places, never rendered in Model view
+  // (see type-view-visibility.ts), so exporting them would duplicate every
+  // instanced element at the type's location in Google Earth.
+  const meshes = opts.meshes.filter((m) => (m.geometryClass ?? 0) !== 2);
   const gp = createProcessor();
   try {
     await gp.init();
     const kmz = gp.exportKmzFromMeshes(
-      opts.meshes,
+      meshes,
       opts.latLon.lat,
       opts.latLon.lon,
       opts.altitude,
       opts.xAxisAbscissa,
       opts.xAxisOrdinate,
       opts.name ?? 'IFC Model',
+      opts.altitudeMode,
     );
     if (kmz == null) throw new Error('KMZ export returned no data');
     return kmz;

@@ -19,10 +19,17 @@ per-mesh limits) and vertices are deduplicated, so big structural models render 
 
 **It's no longer dark or floating.** COLLADA materials set `<emission>` to the element
 colour (Google Earth has no ambient/IBL and a single hard sun, so plain diffuse renders
-near-black) and are flagged `double_sided` for IFC's unreliable winding. The model is
-placed `clampToGround` so it rests on the terrain instead of floating at its MSL
-`OrthogonalHeight` (a new `AltitudeMode` keeps `absolute`/`relativeToGround` available).
-Vertices are emitted in the IFC-native Z-up frame so the building stands upright.
+near-black) and are flagged `double_sided` for IFC's unreliable winding. By default the
+model is placed `clampToGround` so it rests on the terrain instead of floating at its MSL
+`OrthogonalHeight`. Vertices are emitted in the IFC-native Z-up frame so the building
+stands upright.
+
+**Placement is now a choice.** The KMZ export dialog adds a "Placement" toggle: "Rest on
+ground" (default, `clampToGround`) or "True elevation (MSL)" (`absolute`, honouring the
+model's `OrthogonalHeight`). The choice threads through `exportKmzFromMeshes`
+(`altitudeMode` argument) and the `exportKmz` / `exportKmzFromMeshes` wasm bindings
+(optional `altitude_mode`, defaulting to `clampToGround` so existing callers are
+unchanged). The Location panel's one-click Google Earth button stays ground-clamped.
 
 **It's in the menu.** A new "Export KMZ (Google Earth Pro)" entry sits alongside Export
 GLB / IFC / HBJSON, using the same model-name file-stem scheme (`<name>.kmz`); it reports

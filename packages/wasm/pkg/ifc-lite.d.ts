@@ -110,12 +110,15 @@ export class IfcAPI {
    * `altitude`) + `model.glb`. `x_axis_abscissa`/`x_axis_ordinate` are the
    * `IfcMapConversion` grid-north components; pass both as `undefined` for heading 0.
    *
-   * The model is placed `clampToGround` (rests on the terrain). Google Earth's
-   * terrain already encodes the site elevation, so emitting `altitude` as the
-   * MSL OrthogonalHeight under `relativeToGround` floated the model ~OrthogonalHeight
-   * metres into the sky — clamping pins it to the ground regardless (#1427).
+   * `altitude_mode` selects the KML vertical placement: `"clampToGround"`
+   * (the default when omitted) rests the model on the terrain, ignoring
+   * `altitude`; `"absolute"` places the origin at `altitude` metres MSL.
+   * Google Earth's terrain already encodes the site elevation, so clamping
+   * keeps a wrong/zero/double-counted OrthogonalHeight from floating the
+   * model into the sky (#1427); absolute is offered for models whose
+   * OrthogonalHeight is a true MSL elevation the user wants honoured.
    */
-  exportKmz(glb: Uint8Array, latitude: number, longitude: number, altitude: number, x_axis_abscissa: number | null | undefined, x_axis_ordinate: number | null | undefined, name: string): Uint8Array;
+  exportKmz(glb: Uint8Array, latitude: number, longitude: number, altitude: number, x_axis_abscissa: number | null | undefined, x_axis_ordinate: number | null | undefined, name: string, altitude_mode?: string | null): Uint8Array;
   /**
    * Assemble a **GLB** from already-produced meshes (the viewer's `MeshData`, flattened)
    * — no re-meshing. Per mesh `i`: `vertex_counts[i]` verts + `index_counts[i]` indices
@@ -129,11 +132,14 @@ export class IfcAPI {
    * already-produced meshes — the working path (#1427). The model is embedded as
    * **COLLADA** (`model.dae`), the only `<Model>` format Google Earth loads (a GLB
    * raises "Unsupported element: Model"), with emission-lit double-sided materials
-   * and `clampToGround` placement. Mesh arrays match `exportGlbFromMeshes`;
+   * placement. Mesh arrays match `exportGlbFromMeshes`;
    * `latitude`/`longitude`/`altitude` + `x_axis_abscissa`/`x_axis_ordinate`
    * (grid-north, `undefined` ⇒ heading 0) place + orient the model.
+   * `altitude_mode` (`"clampToGround"` default ⇒ rest on terrain, ignoring
+   * `altitude`; `"absolute"` ⇒ place at `altitude` metres MSL) selects the
+   * KML vertical placement (#1427).
    */
-  exportKmzFromMeshes(positions: Float32Array, normals: Float32Array, indices: Uint32Array, vertex_counts: Uint32Array, index_counts: Uint32Array, colors: Float32Array, origins: Float64Array, latitude: number, longitude: number, altitude: number, x_axis_abscissa: number | null | undefined, x_axis_ordinate: number | null | undefined, name: string): Uint8Array;
+  exportKmzFromMeshes(positions: Float32Array, normals: Float32Array, indices: Uint32Array, vertex_counts: Uint32Array, index_counts: Uint32Array, colors: Float32Array, origins: Float64Array, latitude: number, longitude: number, altitude: number, x_axis_abscissa: number | null | undefined, x_axis_ordinate: number | null | undefined, name: string, altitude_mode?: string | null): Uint8Array;
   /**
    * Export the render geometry in `content` as Wavefront **OBJ** UTF-8 bytes.
    *
@@ -1141,8 +1147,8 @@ export interface InitOutput {
   readonly ifcapi_exportIfcx: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
   readonly ifcapi_exportJson: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
   readonly ifcapi_exportJsonld: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => void;
-  readonly ifcapi_exportKmz: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number) => void;
-  readonly ifcapi_exportKmzFromMeshes: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number) => void;
+  readonly ifcapi_exportKmz: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number) => void;
+  readonly ifcapi_exportKmzFromMeshes: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number) => void;
   readonly ifcapi_exportMerged: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
   readonly ifcapi_exportObj: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
   readonly ifcapi_exportStep: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => void;

@@ -66,7 +66,7 @@ import { BufferBuilder } from './buffer-builder.js';
 import { CoordinateHandler } from './coordinate-handler.js';
 import { GeometryQuality } from './progressive-loader.js';
 import { createPlatformBridge, isTauri, type GeometryStats as PlatformGeometryStats, type IPlatformBridge } from './platform-bridge.js';
-import type { GeometryResult, MeshData, CoordinateInfo, GridAxis, TessellationQuality } from './types.js';
+import type { GeometryResult, MeshData, CoordinateInfo, GridAxis, TessellationQuality, KmzAltitudeMode } from './types.js';
 
 // Extracted sub-modules
 import { getStreamingBatchSize, convertMeshCollectionToBatch, withBuildingRotation } from './geometry-coordinate.js';
@@ -1291,10 +1291,13 @@ export class GeometryProcessor {
    * Build a Google-Earth-ready KMZ from already-produced meshes (no re-meshing) —
    * the working KMZ path (#1427). The model is embedded as COLLADA (`model.dae`),
    * the only `<Model>` format Google Earth loads (a GLB raises "Unsupported element:
-   * Model"), with emission-lit double-sided materials and `clampToGround` placement.
+   * Model"), with emission-lit double-sided materials.
    * Flattens `MeshData[]` into the wasm binding's parallel arrays.
    * `xAxisAbscissa`/`xAxisOrdinate` are the `IfcMapConversion` grid-north components
-   * (pass `undefined` for heading 0). Returns null if not initialized.
+   * (pass `undefined` for heading 0). `altitudeMode` selects the KML vertical
+   * placement (`'clampToGround'` default rests on the terrain and ignores `altitude`;
+   * `'absolute'` places the origin at `altitude` metres MSL). Returns null if not
+   * initialized.
    */
   exportKmzFromMeshes(
     meshes: MeshData[],
@@ -1304,6 +1307,7 @@ export class GeometryProcessor {
     xAxisAbscissa: number | undefined,
     xAxisOrdinate: number | undefined,
     name = 'IFC Model',
+    altitudeMode?: KmzAltitudeMode,
   ): Uint8Array | null {
     if (!this.bridge?.isInitialized()) return null;
     let totalV = 0;
@@ -1337,7 +1341,7 @@ export class GeometryProcessor {
     }
     return this.bridge.exportKmzFromMeshes(
       positions, normals, indices, vertexCounts, indexCounts, colors, origins,
-      latitude, longitude, altitude, xAxisAbscissa, xAxisOrdinate, name,
+      latitude, longitude, altitude, xAxisAbscissa, xAxisOrdinate, name, altitudeMode,
     );
   }
 

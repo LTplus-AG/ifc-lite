@@ -17,6 +17,7 @@ use super::retriangulate::{
     cmp_lex_v, coord2d_cached, earcut, edge_exists, insert_point, lex_cmp, orient2d_v, orient_ring,
     tri_aabb_disjoint, tri_edges, Mesh2d, SubTri, PREFILTER_MIN,
 };
+use super::retriangulate_audit::pocket_rebuild_valid;
 use super::Sign;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -38,16 +39,14 @@ pub(crate) fn recover_subsegment(mesh: &mut Mesh2d, it: &Interner, a: Vid, b: Vi
     mesh.audit_needed = true;
 
     let (axis, w0) = (mesh.axis, mesh.w0);
-    // Does any open edge of `tri` PROPERLY cross the open segment (a,b)? This is
-    // the dominant cost of constraint recovery (#1109): it runs per triangle for
-    // every constraint sub-segment. The naive form recomputes `orient(a,b,vertex)`
-    // for each of the triangle's three edges — but a triangle has only THREE
-    // vertices, so we compute each vertex's side of the (a,b) line ONCE, then an
-    // edge can only cross when its two endpoints straddle that line (opposite
-    // nonzero signs); only then do we run the reciprocal `orient(edge, a/b)` test.
-    // Identical exact result to the per-edge form (same signs, same crossing
-    // definition), ~3 predicates/triangle instead of up to 12 — byte-identical
-    // channel ⇒ parity preserved.
+    // Does any open edge of `tri` PROPERLY cross the open segment (a,b)? The
+    // dominant cost of constraint recovery (#1109): runs per triangle for every
+    // constraint sub-segment. Each vertex's side of the (a,b) line is computed
+    // ONCE (a triangle has only THREE vertices); an edge can only cross when its
+    // endpoints straddle that line (opposite nonzero signs), and only then run
+    // the reciprocal `orient(edge, a/b)` tests. Identical exact result to the
+    // per-edge form, ~3 predicates/triangle instead of up to 12 - byte-identical
+    // channel, parity preserved.
     let tri_crosses = |tri: SubTri| {
         let s = [
             orient2d_v(it, a, b, tri[0], axis),
@@ -71,12 +70,11 @@ pub(crate) fn recover_subsegment(mesh: &mut Mesh2d, it: &Interner, a: Vid, b: Vi
         }
         false
     };
-    // Broadphase: only a triangle whose 2D f64 AABB overlaps the (a,b) segment's
-    // AABB can have an edge that properly crosses (a,b). Skip the four exact
-    // orient2d crossing tests for triangles whose widened AABB is disjoint — the
-    // margin makes this conservative (a genuinely crossing triangle is never
-    // skipped on any platform), so the channel — and recovery — is byte-identical.
-    // Engaged only once the triangle set is large enough to amortise the cache.
+    // Broadphase: only a triangle whose widened 2D f64 AABB overlaps the (a,b)
+    // segment's AABB can properly cross it; skip the exact tests otherwise. The
+    // margin is conservative (a crossing triangle is never skipped on any
+    // platform), so the channel - and recovery - is byte-identical. Engaged
+    // only once the triangle set is large enough to amortise the cache.
     let ab_box: Option<[f64; 4]> = if mesh.tris.len() > PREFILTER_MIN {
         match (
             coord2d_cached(it, a, axis, &mut mesh.coords),
@@ -121,19 +119,17 @@ pub(crate) fn recover_subsegment(mesh: &mut Mesh2d, it: &Interner, a: Vid, b: Vi
             next.insert(u, v);
         }
     }
-    // Walk the boundary loop. A degenerate channel (the segment crosses a
-    // non-simply-connected region, or the boundary branches) yields a non-traversable
-    // loop — bail gracefully (leave the constraint unrecovered) rather than panic.
-    // The triangulation stays valid; only this one sub-segment isn't forced as an edge.
-    //
-    // The walk starts at `a` when `a` is on the boundary; otherwise at the
-    // lexicographically-least boundary vertex (deterministic — Vids and the
+    // Walk the boundary loop. A degenerate channel (non-simply-connected region,
+    // or a branching boundary) yields a non-traversable loop - bail gracefully
+    // (leave the constraint unrecovered) rather than panic; the triangulation
+    // stays valid. The walk starts at `a` when `a` is on the boundary; otherwise
+    // at the lexicographically-least boundary vertex (deterministic - Vids and
     // BTreeMap order are platform-stable). `a`/`b` can legitimately be channel-
     // INTERIOR vertices: a long skinny fan triangle incident to the endpoint can
     // re-cross the open segment far from the endpoint, putting the endpoint's
-    // whole fan in the channel (the 559171 back-face door jamb — the endpoint
-    // is then "swallowed" exactly like 552611's corner, but the a–b pocket
-    // split can't run). See the (ia, ib) match below for that case.
+    // whole fan in the channel (the 559171 back-face door jamb - the endpoint is
+    // then "swallowed" exactly like 552611's corner, but the a-b pocket split
+    // can't run). See the (ia, ib) match below for that case.
     let start = if next.contains_key(&a) {
         a
     } else {
@@ -158,16 +154,15 @@ pub(crate) fn recover_subsegment(mesh: &mut Mesh2d, it: &Interner, a: Vid, b: Vi
         }
     }
     // Vertices STRICTLY INTERIOR to the channel (every incident triangle is in
-    // the channel, so none of their edges reach the boundary loop). This happens
-    // when the segment passes so close to a vertex that it properly crosses ALL
-    // of the vertex's fan spokes (552611: the tiny middle-quad diagonal
-    // (5.027,3.800)→(5.142,3.5) swallows the corner (5.142,3.800) of the
-    // adjacent through-slot rectangle). The pocket-ring rebuild below would
-    // silently DESTROY such vertices — and with them every previously-enforced
-    // constraint edge through them — leaving host sub-triangles that overlap
-    // the cutter footprint (the 552611 4× over-cut). Re-insert them after the
-    // rebuild; the enforcement fixed-point loop in [`triangulate`] then
-    // re-forces any constraint edge the rebuild broke.
+    // the channel, so none of their edges reach the boundary loop): the segment
+    // passes so close to a vertex that it properly crosses ALL of the vertex's
+    // fan spokes (552611: the tiny middle-quad diagonal (5.027,3.800)->(5.142,3.5)
+    // swallows the corner (5.142,3.800) of the adjacent through-slot rectangle).
+    // The pocket-ring rebuild below would silently DESTROY such vertices - and
+    // every previously-enforced constraint edge through them - leaving host
+    // sub-triangles that overlap the cutter footprint (the 552611 4x over-cut).
+    // Re-insert them after the rebuild; the enforcement fixed-point loop in
+    // [`triangulate`] then re-forces any constraint edge the rebuild broke.
     let loop_set: BTreeSet<Vid> = loop_v.iter().copied().collect();
     let mut lost: Vec<Vid> = channel
         .iter()
@@ -275,8 +270,8 @@ pub(crate) fn between(it: &Interner, s: Vid, t: Vid, v: Vid) -> bool {
 /// faces cut by many windows (issue #098 V5C). It removes the crossed triangles
 /// and earcuts the two chains, each closed by `a–b`, forcing `a–b` as their
 /// shared edge. Leaves the mesh UNCHANGED (constraint stays unrecovered, never
-/// wrong geometry) if the traversal can't start or complete. Only runs when the
-/// fast path failed, so the common case is byte-identical.
+/// wrong geometry) if the traversal can't start or complete, or if the rebuilt
+/// cover fails [`pocket_rebuild_valid`]. Only runs when the fast path failed.
 pub(crate) fn recover_via_traversal(mesh: &mut Mesh2d, it: &Interner, a: Vid, b: Vid) {
     let (axis, w0) = (mesh.axis, mesh.w0);
     // Undirected edge -> the (≤2) triangles using it.
@@ -358,6 +353,11 @@ pub(crate) fn recover_via_traversal(mesh: &mut Mesh2d, it: &Interner, a: Vid, b:
             let ring = orient_ring(it, chain, axis, w0);
             new_tris.extend(earcut(it, &ring, axis, w0));
         }
+    }
+    // Post-condition (#1660 follow-up): reject a degenerate/overlapping rebuilt
+    // cover - bail UNCHANGED so the audit counts the edge unrecovered.
+    if !pocket_rebuild_valid(&new_tris) {
+        return;
     }
     let crossed_set: BTreeSet<usize> = crossed.into_iter().collect();
     mesh.tris = mesh

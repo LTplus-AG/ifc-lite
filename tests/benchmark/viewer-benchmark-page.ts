@@ -172,7 +172,9 @@ export class ViewerBenchmarkPage {
     const gpuBudgetEnv = process.env.VIEWER_BENCHMARK_GPU_BUDGET;
     if (gpuBudgetEnv) {
       const mb = Number(gpuBudgetEnv);
-      if (Number.isFinite(mb) && mb > 0) {
+      // 0 is a valid override: it injects the kill switch (the app DEFAULT is
+      // on since the #1682 flip, so an off-baseline must pass 0 through).
+      if (Number.isFinite(mb) && mb >= 0) {
         await this.page.addInitScript((v) => {
           (globalThis as unknown as { __IFC_LITE_GPU_BUDGET_MB?: number }).__IFC_LITE_GPU_BUDGET_MB = v;
         }, mb);
@@ -187,7 +189,8 @@ export class ViewerBenchmarkPage {
     const hostBudgetEnv = process.env.VIEWER_BENCHMARK_HOST_BUDGET;
     if (hostBudgetEnv) {
       const mb = Number(hostBudgetEnv);
-      if (Number.isFinite(mb) && mb > 0) {
+      // 0 = kill switch (see the GPU budget note above).
+      if (Number.isFinite(mb) && mb >= 0) {
         await this.page.addInitScript((v) => {
           (globalThis as unknown as { __IFC_LITE_HOST_BUDGET_MB?: number }).__IFC_LITE_HOST_BUDGET_MB = v;
         }, mb);
@@ -202,7 +205,8 @@ export class ViewerBenchmarkPage {
     const lodEnv = process.env.VIEWER_BENCHMARK_LOD_PX;
     if (lodEnv) {
       const px = Number(lodEnv);
-      if (Number.isFinite(px) && px > 0) {
+      // 0 = kill switch (the app default is 48px since the #1682 flip).
+      if (Number.isFinite(px) && px >= 0) {
         await this.page.addInitScript((v) => {
           (globalThis as unknown as { __IFC_LITE_LOD_PX?: number }).__IFC_LITE_LOD_PX = v;
         }, px);

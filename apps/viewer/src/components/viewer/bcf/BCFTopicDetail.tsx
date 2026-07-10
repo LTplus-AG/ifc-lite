@@ -149,6 +149,7 @@ export function BCFTopicDetail({
           size="sm"
           onClick={() => setShowDeleteConfirm(true)}
           className="text-destructive hover:text-destructive"
+          aria-label="Delete topic"
         >
           <Trash2 className="h-4 w-4" />
         </Button>
@@ -268,6 +269,7 @@ export function BCFTopicDetail({
                           variant="destructive"
                           size="icon"
                           className="absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                          aria-label="Delete viewpoint"
                           onClick={(e) => {
                             e.stopPropagation();
                             onDeleteViewpoint(vp.guid);
@@ -374,6 +376,7 @@ export function BCFTopicDetail({
               variant="ghost"
               size="icon"
               className="h-6 w-6 shrink-0"
+              aria-label="Cancel viewpoint comment"
               onClick={() => setSelectedViewpointGuid(null)}
             >
               <X className="h-3 w-3" />
@@ -388,7 +391,7 @@ export function BCFTopicDetail({
             onKeyDown={handleKeyDown}
             className="flex-1"
           />
-          <Button size="icon" onClick={handleSubmitComment} disabled={!commentText.trim()}>
+          <Button size="icon" aria-label="Send comment" onClick={handleSubmitComment} disabled={!commentText.trim()}>
             <Send className="h-4 w-4" />
           </Button>
         </div>

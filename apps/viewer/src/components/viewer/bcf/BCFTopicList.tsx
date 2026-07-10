@@ -100,7 +100,7 @@ export function BCFTopicList({
             ))}
           </SelectContent>
         </Select>
-        <Button size="sm" variant="outline" onClick={onCreateTopic} {...tourAnchor(TOUR_ANCHORS.bcfNewTopic)}>
+        <Button size="sm" variant="outline" aria-label="New topic" onClick={onCreateTopic} {...tourAnchor(TOUR_ANCHORS.bcfNewTopic)}>
           <Plus className="h-4 w-4" />
         </Button>
       </div>
@@ -175,6 +175,7 @@ export function BCFTopicList({
                         setEditingEmail(true);
                       }}
                       className="h-7 text-xs shrink-0"
+                      aria-label={isDefaultEmail ? undefined : 'Edit author email'}
                     >
                       {isDefaultEmail ? 'Set email' : <Edit2 className="h-3 w-3" />}
                     </Button>

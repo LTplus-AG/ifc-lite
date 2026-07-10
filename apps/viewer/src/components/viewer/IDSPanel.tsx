@@ -77,7 +77,6 @@ import { cn } from '@/lib/utils';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { useViewerStore } from '@/store';
 import { IDSAuditSummary } from './IDSAuditSummary';
-import { ModelBadge } from './ModelBadge';
 import { IDSExportDialog } from './IDSExportDialog';
 import type { IDSBCFExportSettings, IDSExportProgress } from './IDSExportDialog';
 
@@ -406,6 +405,7 @@ function ReportExportButton({
                   variant="outline"
                   size="sm"
                   className="h-8 w-6 p-0 rounded-l-none"
+                  aria-label="Choose report format"
                 >
                   <ChevronDown className="h-3 w-3" />
                 </Button>
@@ -489,16 +489,13 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
     bcfExportProgress,
   } = useIDS();
 
-  // Validation runs against one model at a time (the active model); when a
-  // federation is loaded, name which model these results reflect so the
-  // pass/fail counts aren't ambiguous (#1591). The report's modelId is frozen
-  // at validation time, so resolve its name here (Rules of Hooks) and gate the
-  // label on it — a model removed since validation leaves it unresolvable, and
-  // we must not render a dangling "Validated against" with no name.
+  // Validation runs against one model at a time. When a federation is loaded,
+  // surface which model the results reflect and let the user switch (#1591).
   const idsMultiModel = useViewerStore((s) => s.models.size > 1);
-  const validatedModelName = useViewerStore((s) =>
-    report ? s.models.get(report.modelInfo.modelId)?.name : undefined,
-  );
+  // Full model list for the target-model picker (federation): lets the user
+  // see which model the results reflect and switch to validate another one.
+  const idsModels = useViewerStore((s) => s.models);
+  const idsModelList = useMemo(() => Array.from(idsModels.values()), [idsModels]);
 
   // Handle file selection
   const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -671,7 +668,7 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
             <span className="block">
               <Button
                 className="w-full"
-                onClick={runValidation}
+                onClick={() => { void runValidation(); }}
                 disabled={loading || auditHasErrors}
                 variant={auditHasErrors ? 'secondary' : 'default'}
                 {...tourAnchor(TOUR_ANCHORS.idsRun)}
@@ -717,10 +714,24 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
 
         {/* Summary Header */}
         <div className="p-3 border-b bg-muted/30" {...tourAnchor(TOUR_ANCHORS.idsSummary)}>
-          {idsMultiModel && validatedModelName && (
+          {idsMultiModel && (
             <div className="flex items-center gap-1.5 mb-2 text-xs text-muted-foreground min-w-0">
-              <span className="shrink-0">Validated against</span>
-              <ModelBadge modelId={report.modelInfo.modelId} />
+              <span className="shrink-0">Validate</span>
+              {/* Federation targets one model at a time. Surface it as a picker
+                  (same plain-select pattern as Compare) so the user can both
+                  see which model the results reflect and switch to another.
+                  Changing it re-runs validation against the chosen model. */}
+              <select
+                value={report.modelInfo.modelId}
+                onChange={(e) => { void runValidation(e.target.value); }}
+                disabled={loading}
+                aria-label="Model to validate"
+                className="min-w-0 flex-1 rounded border border-border bg-transparent px-1.5 py-0.5 text-xs text-foreground disabled:opacity-50"
+              >
+                {idsModelList.map((m) => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </select>
             </div>
           )}
           <div className="flex items-center gap-2 mb-2">
@@ -790,6 +801,7 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
                 size="sm"
                 className={cn('h-8 w-8 p-0', failedActive && 'text-red-600')}
                 aria-pressed={failedActive}
+                aria-label={failedActive ? 'Show all (undo isolate failed)' : `Isolate failed${scopeSuffix}`}
                 onClick={handleIsolateFailed}
                 disabled={noActiveSpec}
                 {...tourAnchor(TOUR_ANCHORS.idsIsolateFailed)}
@@ -809,6 +821,7 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
                 size="sm"
                 className={cn('h-8 w-8 p-0', passedActive && 'text-green-600')}
                 aria-pressed={passedActive}
+                aria-label={passedActive ? 'Show all (undo isolate passed)' : `Isolate passed${scopeSuffix}`}
                 onClick={handleIsolatePassed}
                 disabled={noActiveSpec}
               >
@@ -827,6 +840,7 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
                 size="sm"
                 className="h-8 w-8 p-0"
                 aria-pressed={involvedActive}
+                aria-label={involvedActive ? 'Show all (undo isolate involved)' : `Isolate involved${scopeSuffix}`}
                 onClick={handleIsolateInvolved}
                 disabled={noActiveSpec}
               >
@@ -846,6 +860,7 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
                 variant="ghost"
                 size="sm"
                 className="h-8 w-8 p-0"
+                aria-label="Clear isolation (show all)"
                 onClick={clearIsolation}
                 disabled={!isolationActive}
               >
@@ -857,7 +872,7 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={applyColors}>
+              <Button variant="ghost" size="sm" className="h-8 w-8 p-0" aria-label="Reapply Colors" onClick={applyColors}>
                 <RefreshCw className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
@@ -919,6 +934,7 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
                     variant="ghost"
                     size="sm"
                     className="h-7 w-7 p-0"
+                    aria-label="Load New IDS"
                     onClick={() => { void handleLoadIdsClick(); }}
                   >
                     <Upload className="h-3 w-3" />
@@ -937,6 +953,7 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
                   variant="ghost"
                   size="sm"
                   className="h-7 w-7 p-0"
+                  aria-label="Clear IDS"
                   onClick={() => {
                     clearIDS();
                     clearValidation();
@@ -951,7 +968,7 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
 
           {/* Close */}
           {onClose && (
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onClose}>
+            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" aria-label="Close" onClick={onClose}>
               <X className="h-4 w-4" />
             </Button>
           )}

@@ -871,7 +871,13 @@ export function HierarchyPanel() {
           key={value}
           variant={groupFilter === value ? 'default' : 'outline'}
           size="sm"
-          className="h-5 text-[10px] flex-1 min-w-0 rounded-none uppercase tracking-wider px-1"
+          className={cn(
+            'h-5 text-[10px] flex-1 min-w-0 rounded-none uppercase tracking-wider px-1',
+            // Inactive (outline) chips inherited a too-light zinc-400 in light
+            // mode (2.52:1 at 10px). Pin a darker foreground for light mode only;
+            // dark mode kept at zinc-400 which already passes.
+            groupFilter !== value && 'text-zinc-600 dark:text-zinc-400',
+          )}
           onClick={() => setGroupFilter(value)}
         >
           {label}
@@ -1094,7 +1100,7 @@ export function HierarchyPanel() {
           </div>
         </div>
       ) : (
-        <div className="p-2 border-t-2 border-zinc-200 dark:border-zinc-800 text-[10px] uppercase tracking-wide text-zinc-500 dark:text-zinc-500 text-center bg-zinc-50 dark:bg-black font-mono">
+        <div className="p-2 border-t-2 border-zinc-200 dark:border-zinc-800 text-[10px] uppercase tracking-wide text-zinc-600 dark:text-zinc-500 text-center bg-zinc-50 dark:bg-black font-mono">
           Click to filter · Ctrl toggle
         </div>
       )}

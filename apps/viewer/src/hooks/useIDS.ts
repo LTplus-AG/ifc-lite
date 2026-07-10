@@ -118,8 +118,8 @@ export interface UseIDSResult {
   clearIDS: () => void;
 
   // Validation actions
-  /** Run validation against current model(s) */
-  runValidation: () => Promise<IDSValidationReport | null>;
+  /** Run validation. Pass a modelId to target a specific loaded model; defaults to the active model. */
+  runValidation: (targetModelId?: string) => Promise<IDSValidationReport | null>;
   /** Clear validation results */
   clearValidation: () => void;
 
@@ -318,21 +318,30 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
   // Validation Actions
   // ============================================================================
 
-  const runValidation = useCallback(async (): Promise<IDSValidationReport | null> => {
+  const runValidation = useCallback(async (targetModelId?: string): Promise<IDSValidationReport | null> => {
     if (!document) {
       setIdsError('No IDS document loaded');
       return null;
     }
 
-    // Get data store to validate against
-    const dataStore = ifcDataStore || (models.size > 0 ? Array.from(models.values())[0]?.ifcDataStore : null);
+    // Determine model ID - a caller-supplied target wins (federation picker),
+    // otherwise the active model, otherwise the first loaded, otherwise
+    // '__legacy__' for legacy single-model mode.
+    const modelId =
+      targetModelId
+      || activeModelId
+      || (models.size > 0 ? Array.from(models.keys())[0] : '__legacy__');
+
+    // Resolve the data store for that specific model so the picker actually
+    // switches which model is validated (not just the active one).
+    const dataStore =
+      models.get(modelId)?.ifcDataStore
+      || ifcDataStore
+      || (models.size > 0 ? Array.from(models.values())[0]?.ifcDataStore : null);
     if (!dataStore) {
       setIdsError('No IFC model loaded');
       return null;
     }
-
-    // Determine model ID - use '__legacy__' for legacy single-model mode
-    const modelId = activeModelId || (models.size > 0 ? Array.from(models.keys())[0] : '__legacy__');
 
     try {
       setIdsLoading(true);

@@ -130,7 +130,7 @@ export function BCFCreateTopicForm({
     <form onSubmit={handleSubmit} className="p-3 space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="font-medium">{heading}</h3>
-        <Button variant="ghost" size="sm" type="button" onClick={onCancel}>
+        <Button variant="ghost" size="sm" type="button" aria-label="Close" onClick={onCancel}>
           <X className="h-4 w-4" />
         </Button>
       </div>

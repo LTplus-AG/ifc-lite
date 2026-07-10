@@ -114,6 +114,7 @@ nav:
     - Installation: guide/installation.md
     - Quick Start: guide/quickstart.md
     - CLI Toolkit: guide/cli.md
+    - MCP for AI Agents: guide/mcp.md
     - 3D Viewer & Analysis: guide/viewer-api.md
     - Server Guide: guide/server.md
     - Building for Desktop: guide/desktop.md
@@ -131,6 +132,13 @@ nav:
     - Property Editing: guide/mutations.md
     - Performance: guide/performance.md
     - Error Handling & Integration: guide/error-handling.md
+    - Clash Detection: guide/clash-detection.md
+    - Model Diff: guide/model-diff.md
+    - Real-Time Collaboration: guide/collab.md
+    - Lens Visualization: guide/lens.md
+    - Lists & Schedules: guide/lists.md
+    - Solar Analysis: guide/solar.md
+    - Scripting SDK: guide/scripting-sdk.md
   - Customization:
     - Extensions: guide/extensions.md
     - Authoring Extensions: guide/extension-authoring.md

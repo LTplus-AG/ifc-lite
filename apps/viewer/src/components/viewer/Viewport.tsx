@@ -30,6 +30,7 @@ import { useModelSelection } from '../../hooks/useModelSelection.js';
 import { useLatestRef } from '../../hooks/useLatestRef.js';
 import { CLASH_COLOR_OVERLAP } from '@/lib/clash/clash-colors';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
+import { getSpatialChunkingConfig } from '../../utils/spatialChunkConfig.js';
 import {
   getEntityBounds,
   getThemeClearColor,
@@ -715,6 +716,21 @@ export function Viewport({
 
     renderer.init().then(() => {
       if (aborted) return;
+      // Spatial chunk bucketing (issue #1682 phase 2) — must be configured
+      // before any geometry streams into the scene. Session-level A/B knob;
+      // off by default.
+      const chunking = getSpatialChunkingConfig();
+      if (chunking) {
+        renderer.getScene().setSpatialChunking(chunking);
+        console.log(`[Viewport] spatial chunk bucketing on (cellSize=${chunking.cellSize}m)`);
+      }
+      // Read-only debug/e2e hook (same convention as __ifc_lite_viewer_store__):
+      // live frame stats + resident GPU bytes for Playwright assertions and
+      // console inspection. Cleared on viewport teardown below.
+      (globalThis as Record<string, unknown>).__ifc_lite_render_stats__ = () => ({
+        frame: renderer.getFrameStats(),
+        gpu: renderer.getScene().getResidentGpuBytes(),
+      });
       setIsInitialized(true);
 
       const camera = renderer.getCamera();
@@ -960,6 +976,7 @@ export function Viewport({
       renderer.destroy();
       // Clear BCF global refs to prevent memory leaks
       clearGlobalRefs();
+      delete (globalThis as Record<string, unknown>).__ifc_lite_render_stats__;
     };
     // Note: selectedEntityId is intentionally NOT in dependencies
     // The click handler captures setSelectedEntityId via closure

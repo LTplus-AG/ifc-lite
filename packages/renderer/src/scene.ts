@@ -20,6 +20,7 @@ import {
 } from './scene-raycaster.js';
 import { mergeGeometry, splitMeshDataForBufferLimit, colorSaltByte, packEntityLane } from './scene-geometry.js';
 import { sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
+import { bucketBaseKeyFor, type SpatialChunkingConfig } from './chunk-grid.js';
 import { OPAQUE_ALPHA_CUTOFF } from './overlay-routing.js';
 import type { DecodedInstancedShard } from '@ifc-lite/geometry';
 import {
@@ -141,6 +142,10 @@ export class Scene {
   // sub-bucket with a suffixed key (e.g. "500|500|500|1000#1"). This keeps
   // all downstream maps single-valued and the rendering code unchanged.
   private activeBucketKey: Map<string, string> = new Map(); // base colorKey -> current active bucket key
+  // Spatial chunking (issue #1682 phase 2): when set, bucket base keys gain a
+  // grid-cell prefix so batches are spatially compact and cullable. Null = off
+  // (plain colour bucketing, the historical behaviour).
+  private spatialChunking: SpatialChunkingConfig | null = null;
   private nextSplitId: number = 0; // Monotonic counter for sub-bucket keys
   private nextBatchId: number = 0; // Monotonic counter for unique batch identifiers
   // Shared local-frame origin for ALL batches (set from the first batch's world
@@ -212,6 +217,41 @@ export class Scene {
    *  batch's exact f32 path against this so they render bit-coincident. */
   getSharedFrameOrigin(): [number, number, number] | null {
     return this.sharedFrameOrigin;
+  }
+
+  /**
+   * Enable/disable spatial chunk bucketing (issue #1682 phase 2). When set,
+   * colour buckets are additionally partitioned by world grid cell, making
+   * batches spatially compact so per-batch frustum/contribution culling
+   * fires at chunk granularity. Pure reorganization: same triangles, same
+   * shared frame origin, same draw path — only the batch partition changes.
+   *
+   * Set BEFORE geometry loads. Existing buckets keep their keys (keys are
+   * opaque downstream), so flipping mid-model only affects meshes routed
+   * afterwards; the next finalize/recolour re-groups stragglers.
+   */
+  setSpatialChunking(config: SpatialChunkingConfig | null): void {
+    if (config && !(Number.isFinite(config.cellSize) && config.cellSize > 0)) {
+      console.warn('[Scene] ignoring invalid spatial chunking cellSize:', config.cellSize);
+      return;
+    }
+    this.spatialChunking = config;
+  }
+
+  getSpatialChunking(): SpatialChunkingConfig | null {
+    return this.spatialChunking;
+  }
+
+  /**
+   * Bucket BASE key for a mesh: colour key, prefixed with the mesh's grid
+   * cell when spatial chunking is on. EVERY bucket-key derivation
+   * (streaming append, fragment grouping, finalize re-group, recolour move,
+   * partial-batch piece filter) must go through this so a mesh always
+   * resolves to the same bucket. `color` overrides the mesh's own colour for
+   * recolour routing.
+   */
+  private bucketBaseKey(meshData: MeshData, color?: [number, number, number, number]): string {
+    return bucketBaseKeyFor(meshData, this.colorKey(color ?? meshData.color), this.spatialChunking);
   }
 
   /**
@@ -543,9 +583,10 @@ export class Scene {
       }
     }
 
-    // Route each mesh into a size-aware bucket for its color
+    // Route each mesh into a size-aware bucket for its color (and, with
+    // spatial chunking on, its grid cell)
     for (const meshData of renderable) {
-      const baseKey = this.colorKey(meshData.color);
+      const baseKey = this.bucketBaseKey(meshData);
       const bucketKey = this.resolveActiveBucket(baseKey, meshData);
 
       if (retainStreamingGeometry || !isStreaming) {
@@ -814,6 +855,43 @@ export class Scene {
    * Translate every flat (non-instanced) mesh for `expressId` by `delta`. See
    * {@link translateMeshesForEntity} for the full contract; this is the flat half.
    */
+  /**
+   * Mark a mesh's bucket for rebuild after its positions were mutated in
+   * place (move/rotate), migrating it to a new bucket when spatial chunking
+   * is on and the mesh crossed a grid-cell boundary. Without the migration
+   * the mesh would keep its stale cell key, so the partial-batch piece
+   * filter (which re-derives keys from CURRENT positions) would silently
+   * drop it under hide/isolate. Same move mechanics as updateMeshColors.
+   */
+  private rebucketMovedMesh(meshData: MeshData, affectedKeys: Set<string>): void {
+    const bucket = this.meshDataBucket.get(meshData);
+    if (bucket) affectedKeys.add(bucket.key);
+    if (!this.spatialChunking || !bucket) return;
+
+    const newBaseKey = this.bucketBaseKey(meshData);
+    if (this.baseColorKey(bucket.key) === newBaseKey) return;
+
+    const newBucketKey = this.resolveActiveBucket(newBaseKey, meshData);
+    // Swap-remove from the old bucket + decrement its byte accounting
+    const idx = bucket.meshData.indexOf(meshData);
+    if (idx >= 0) {
+      const last = bucket.meshData.length - 1;
+      if (idx !== last) bucket.meshData[idx] = bucket.meshData[last];
+      bucket.meshData.pop();
+    }
+    const meshBytes = (meshData.positions.length / 3) * BATCH_CONSTANTS.BYTES_PER_VERTEX;
+    bucket.vertexBytes = Math.max(0, bucket.vertexBytes - meshBytes);
+    if (bucket.meshData.length === 0) {
+      this.buckets.delete(bucket.key);
+    }
+
+    // resolveActiveBucket already created the target bucket + tracked bytes
+    const newBucket = this.buckets.get(newBucketKey)!;
+    newBucket.meshData.push(meshData);
+    this.meshDataBucket.set(meshData, newBucket);
+    affectedKeys.add(newBucketKey);
+  }
+
   private translateFlatMeshesForEntity(expressId: number, delta: [number, number, number]): boolean {
     const meshDataList = this.meshDataMap.get(expressId);
     if (!meshDataList || meshDataList.length === 0) return false;
@@ -843,8 +921,7 @@ export class Scene {
         pos[i + 1] += dy;
         pos[i + 2] += dz;
       }
-      const bucket = this.meshDataBucket.get(meshData);
-      if (bucket) affectedKeys.add(bucket.key);
+      this.rebucketMovedMesh(meshData, affectedKeys);
       anyMoved = true;
     }
     if (!anyMoved) return false;
@@ -1032,8 +1109,7 @@ export class Scene {
           nrm[i + 2] = -nx * sin + nz * cos;
         }
       }
-      const bucket = this.meshDataBucket.get(meshData);
-      if (bucket) affectedKeys.add(bucket.key);
+      this.rebucketMovedMesh(meshData, affectedKeys);
       anyMoved = true;
     }
     if (!anyMoved) return false;
@@ -1187,11 +1263,14 @@ export class Scene {
   private createStreamingFragments(meshDataArray: MeshData[], device: GPUDevice, pipeline: RenderPipeline): void {
     if (meshDataArray.length === 0) return;
 
-    // Group new meshes by color for efficient fragment batches
+    // Group new meshes by color (and grid cell, when chunking) for efficient
+    // fragment batches. Fragments of one mesh share the PARENT's key: they
+    // are vertex subsets of the same element, and the mesh-never-splits rule
+    // applies to cells exactly like it does to buckets.
     const colorGroups = new Map<string, MeshData[]>();
     for (const meshData of meshDataArray) {
+      const key = this.bucketBaseKey(meshData);
       for (const fragment of this.splitMeshForStreaming(meshData)) {
-        const key = this.colorKey(fragment.color);
         let group = colorGroups.get(key);
         if (!group) {
           group = [];
@@ -1316,12 +1395,12 @@ export class Scene {
     this.partialBatchCache.clear();
     this.partialBatchCacheKeys.clear();
 
-    // 3. Re-group ALL meshData by their CURRENT color.
+    // 3. Re-group ALL meshData by their CURRENT color (and grid cell).
     //    meshData.color may have been mutated in-place since the mesh was
     //    first bucketed, so the original bucket key is stale. Re-grouping
     //    by current color ensures batches render with correct colors.
     for (const meshData of allMeshData) {
-      const baseKey = this.colorKey(meshData.color);
+      const baseKey = this.bucketBaseKey(meshData);
       const bucketKey = this.resolveActiveBucket(baseKey, meshData);
       let bucket = this.buckets.get(bucketKey);
       if (!bucket) {
@@ -1388,9 +1467,9 @@ export class Scene {
     this.partialBatchCache.clear();
     this.partialBatchCacheKeys.clear();
 
-    // 3. Re-group meshData by current color (fast)
+    // 3. Re-group meshData by current color (and grid cell) — fast
     for (const meshData of allMeshData) {
-      const baseKey = this.colorKey(meshData.color);
+      const baseKey = this.bucketBaseKey(meshData);
       const bucketKey = this.resolveActiveBucket(baseKey, meshData);
       let bucket = this.buckets.get(bucketKey);
       if (!bucket) {
@@ -1632,12 +1711,15 @@ export class Scene {
       const meshDataList = this.meshDataMap.get(expressId);
       if (!meshDataList) continue;
 
-      const newBaseKey = this.colorKey(newColor);
-
       for (const meshData of meshDataList) {
+        // Per-mesh, not per-entity: with spatial chunking the base key
+        // carries the mesh's grid cell, which differs between an entity's
+        // pieces. A recolour changes the colour part only — the mesh stays
+        // in its cell.
+        const newBaseKey = this.bucketBaseKey(meshData, newColor);
         // Use reverse-map for O(1) old bucket lookup
         const oldBucket = this.meshDataBucket.get(meshData);
-        const oldBucketKey = oldBucket?.key ?? this.colorKey(meshData.color);
+        const oldBucketKey = oldBucket?.key ?? this.bucketBaseKey(meshData);
         // Derive old color from bucket key, NOT meshData.color.
         // meshData.color may have been mutated in-place by external code
         // (applyColorUpdatesToMeshes), making it unreliable for change detection.
@@ -1903,8 +1985,11 @@ export class Scene {
     }
 
     // Collect MeshData for visible elements
-    // Use base color key (strip bucket suffix) for piece filtering, since
-    // meshData stores the original color, not the bucket key.
+    // Use the base key (strip "#N" bucket suffix) for piece filtering, since
+    // meshData stores the original color, not the bucket key. Pieces are
+    // matched through bucketBaseKey so the comparison stays correct with
+    // spatial chunking on (base key = "cell~colour" then, and a piece only
+    // belongs to this batch when BOTH its cell and colour match).
     const baseKey = this.baseColorKey(colorKey);
     const visibleMeshData: MeshData[] = [];
     for (const expressId of visibleIds) {
@@ -1912,8 +1997,8 @@ export class Scene {
       if (pieces) {
         // Add all pieces for this element
         for (const piece of pieces) {
-          // Only include pieces that match this batch's color
-          if (this.colorKey(piece.color) === baseKey) {
+          // Only include pieces that match this batch's cell + color
+          if (this.bucketBaseKey(piece) === baseKey) {
             visibleMeshData.push(piece);
           }
         }

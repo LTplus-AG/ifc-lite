@@ -151,6 +151,22 @@ export class ViewerBenchmarkPage {
       }
     }
 
+    // Optional spatial-chunk-bucketing override for A/B runs (issue #1682
+    // phase 2). Set VIEWER_BENCHMARK_CHUNKS to "1" (on, default cell), a
+    // number (cell size in metres), or JSON {"cellSize":16}. Unset ⇒ off.
+    const chunksEnv = process.env.VIEWER_BENCHMARK_CHUNKS;
+    if (chunksEnv) {
+      try {
+        const cfg = JSON.parse(chunksEnv);
+        await this.page.addInitScript((c) => {
+          (globalThis as unknown as { __IFC_LITE_CHUNKS?: unknown }).__IFC_LITE_CHUNKS = c;
+        }, cfg);
+        console.log(`[Benchmark] spatial chunking override: ${chunksEnv}`);
+      } catch {
+        console.warn(`[Benchmark] invalid VIEWER_BENCHMARK_CHUNKS: ${chunksEnv}`);
+      }
+    }
+
     // Navigate to viewer app
     await this.page.goto('http://localhost:3000');
     

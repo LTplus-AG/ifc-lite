@@ -15,6 +15,7 @@ import { getMapUnitScale } from './cesium-placement';
 import { mergeMapConversion, mergeProjectedCRS } from './effective-georef';
 import { reprojectToLatLon } from './reproject';
 import { buildKmz, type KmzAltitudeMode } from './kmz-exporter';
+import { suggestAbsoluteAltitudeForKmz } from './kmz-altitude-hint';
 
 /** True if the data store carries usable georeferencing (so a KMZ export can run). */
 export function modelHasGeoreference(dataStore: IfcDataStore | null | undefined): boolean {
@@ -56,6 +57,25 @@ export function computeKmzAltitude(
 ): number {
   const mapScale = getMapUnitScale(crs, lengthUnitScale);
   return (orthogonalHeight ?? 0) * mapScale + (coordinateInfo?.wasmRtcOffset?.z ?? 0);
+}
+
+/**
+ * Whether the KMZ dialog should hint at "True elevation (MSL)" for this model:
+ * true when the geometry's minimum Z is implausibly high for a local datum
+ * while the (merged) map conversion carries ~no OrthogonalHeight - i.e. the
+ * elevation is baked into geometry Z, so the clampToGround default would pin
+ * project zero to the terrain and float the building by that Z (#1427
+ * follow-up). Resolves the georef exactly like {@link buildKmzForModel}
+ * (mutations merged, map-unit scaled); cheap after the first call per store.
+ */
+export function kmzSuggestsAbsoluteAltitude(
+  input: Pick<BuildKmzInput, 'geometryResult' | 'dataStore' | 'mutations'>,
+): boolean {
+  const info = extractGeoreferencingOnDemand(input.dataStore);
+  const scale = extractLengthUnitScale(input.dataStore.source, input.dataStore.entityIndex) ?? 1;
+  const conversion = mergeMapConversion(info?.mapConversion, input.mutations?.mapConversion);
+  const crs = mergeProjectedCRS(info?.projectedCRS, input.mutations?.projectedCRS, scale);
+  return suggestAbsoluteAltitudeForKmz(input.geometryResult.coordinateInfo, conversion, crs, scale);
 }
 
 /**

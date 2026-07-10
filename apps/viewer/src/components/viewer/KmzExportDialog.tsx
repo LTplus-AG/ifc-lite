@@ -33,7 +33,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useViewerStore } from '@/store';
 import { posthog } from '@/lib/analytics';
 import { toast } from '@/components/ui/toast';
-import { buildKmzForModel, type KmzBuildError } from '@/lib/geo/kmz-export';
+import { buildKmzForModel, kmzSuggestsAbsoluteAltitude, type KmzBuildError } from '@/lib/geo/kmz-export';
 import type { KmzAltitudeMode } from '@/lib/geo/kmz-exporter';
 import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
 
@@ -93,6 +93,25 @@ export function KmzExportDialog({ trigger }: KmzExportDialogProps) {
     () => modelList.find((m) => m.id === selectedModelId) ?? modelList[0],
     [modelList, selectedModelId],
   );
+
+  // True when the model's elevation appears baked into geometry Z (min Z >> 0
+  // while the merged conversion's OrthogonalHeight is ~0): the clampToGround
+  // default pins project zero to the terrain and would float the building by
+  // that baked Z, so hint at "True elevation" instead (#1427 follow-up).
+  const suggestTrueElevation = useMemo(() => {
+    if (!open || !selectedModel) return false;
+    try {
+      return kmzSuggestsAbsoluteAltitude({
+        geometryResult: selectedModel.geometryResult,
+        dataStore: selectedModel.dataStore,
+        mutations: selectedModel.id === '__legacy__' ? undefined : georefMutations.get(selectedModel.id),
+      });
+    } catch (err) {
+      // A hint must never break the dialog — log and fall back to no hint.
+      console.debug('[kmz] altitude hint evaluation failed:', err);
+      return false;
+    }
+  }, [open, selectedModel, georefMutations]);
 
   const handleExport = useCallback(async () => {
     if (!selectedModel) return;
@@ -213,6 +232,12 @@ export function KmzExportDialog({ trigger }: KmzExportDialogProps) {
                   ? 'Drapes the model on the terrain so it never floats. Recommended.'
                   : "Places the model at its orthogonal height above sea level. Use only when the model's elevation is a true MSL value."}
               </p>
+              {altitudeMode === 'clampToGround' && suggestTrueElevation && (
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  This model appears to carry absolute elevations in its geometry, so True
+                  elevation (MSL) will place it correctly here.
+                </p>
+              )}
             </div>
           </div>
 

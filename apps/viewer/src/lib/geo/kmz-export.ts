@@ -8,9 +8,10 @@
  * both go through one georef → WGS84 → COLLADA KMZ path (#1427).
  */
 
-import { extractGeoreferencingOnDemand, extractLengthUnitScale, type IfcDataStore } from '@ifc-lite/parser';
-import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
+import { extractGeoreferencingOnDemand, extractLengthUnitScale, type IfcDataStore, type ProjectedCRS } from '@ifc-lite/parser';
+import type { CoordinateInfo, GeometryResult, MeshData } from '@ifc-lite/geometry';
 import type { GeorefMutationData } from '@/store/slices/mutationSlice';
+import { getMapUnitScale } from './cesium-placement';
 import { mergeMapConversion, mergeProjectedCRS } from './effective-georef';
 import { reprojectToLatLon } from './reproject';
 import { buildKmz, type KmzAltitudeMode } from './kmz-exporter';
@@ -40,6 +41,24 @@ export interface BuildKmzInput {
 export type KmzBuildError = 'not-georeferenced' | 'unprojectable' | 'no-geometry';
 
 /**
+ * KML `<altitude>`: metres MSL of the model ORIGIN (ignored under clampToGround).
+ * OrthogonalHeight is authored in map units, not metres — a mm-CRS file was
+ * placed 1000x off — and when the wasm RTC rebase fired it subtracted its offset
+ * from every mesh Z the COLLADA exporter later bakes, so fold `rtc.z` back in.
+ * Mirrors `computeIfcOriginHeight` (cesium-placement.ts), minus the model-centre
+ * term: the .dae keeps geometry Z, whereas the Cesium GLB is re-centred.
+ */
+export function computeKmzAltitude(
+  orthogonalHeight: number | undefined,
+  crs: Pick<ProjectedCRS, 'mapUnitScale'> | undefined,
+  lengthUnitScale: number,
+  coordinateInfo: CoordinateInfo | undefined,
+): number {
+  const mapScale = getMapUnitScale(crs, lengthUnitScale);
+  return (orthogonalHeight ?? 0) * mapScale + (coordinateInfo?.wasmRtcOffset?.z ?? 0);
+}
+
+/**
  * Resolve a model's (merged) georeference to WGS84 and build a Google Earth KMZ
  * (a COLLADA model + KML placement). Returns the KMZ bytes, or a `KmzBuildError`
  * string when the model isn't georeferenced or its location can't be projected.
@@ -59,7 +78,12 @@ export async function buildKmzForModel(input: BuildKmzInput): Promise<Uint8Array
   if (!latLon) return 'unprojectable';
   return buildKmz({
     latLon,
-    altitude: conversion.orthogonalHeight ?? 0,
+    altitude: computeKmzAltitude(
+      conversion.orthogonalHeight,
+      crs,
+      scale,
+      input.geometryResult.coordinateInfo,
+    ),
     xAxisAbscissa: conversion.xAxisAbscissa,
     xAxisOrdinate: conversion.xAxisOrdinate,
     meshes: input.geometryResult.meshes as MeshData[],

@@ -2,21 +2,21 @@
 
 API documentation for the Rust crates.
 
-> **Note**: Full API documentation with source links is available via `cargo doc --open`
+> **Note**: For the crates published to crates.io, full generated rustdoc with source links lives on docs.rs (linked per crate below). Locally, `cargo doc --open` builds the same documentation for the whole workspace.
 
 ## Workspace
 
 All crates live in one Cargo workspace (versioned together, MPL-2.0 licensed):
 
-| Crate | Path | Description |
-|-------|------|-------------|
-| `ifc-lite-core` | `rust/core` | High-performance IFC/STEP parser for building data |
-| `ifc-lite-geometry` | `rust/geometry` | Geometry processing and mesh generation for IFC models |
-| `ifc-lite-processing` | `rust/processing` | Shared IFC processing pipeline and types used by server and FFI |
-| `ifc-lite-export` | `rust/export` | Domain-format exporters (HBJSON, OBJ, glTF/GLB, CSV, JSON, JSON-LD, STEP/IFC, IFC5/IFCX, Merged, Parquet/.bos) |
-| `ifc-lite-clash` | `rust/clash` | High-performance geometry kernel for IFC clash detection |
-| `ifc-lite-ffi` | `rust/ffi` | C FFI bindings: native cdylib for in-process IFC parsing |
-| `ifc-lite-wasm` | `rust/wasm-bindings` | WebAssembly bindings for IFC-Lite |
+| Crate | Path | Rustdoc | Description |
+|-------|------|---------|-------------|
+| `ifc-lite-core` | `rust/core` | [docs.rs](https://docs.rs/ifc-lite-core) | High-performance IFC/STEP parser for building data |
+| `ifc-lite-geometry` | `rust/geometry` | [docs.rs](https://docs.rs/ifc-lite-geometry) | Geometry processing and mesh generation for IFC models |
+| `ifc-lite-processing` | `rust/processing` | [docs.rs](https://docs.rs/ifc-lite-processing) | Shared IFC processing pipeline and types used by server and FFI |
+| `ifc-lite-export` | `rust/export` | local `cargo doc` | Domain-format exporters (HBJSON, OBJ, glTF/GLB, CSV, JSON, JSON-LD, STEP/IFC, IFC5/IFCX, Merged, Parquet/.bos) |
+| `ifc-lite-clash` | `rust/clash` | [docs.rs](https://docs.rs/ifc-lite-clash) | High-performance geometry kernel for IFC clash detection |
+| `ifc-lite-ffi` | `rust/ffi` | [docs.rs](https://docs.rs/ifc-lite-ffi) | C FFI bindings: native cdylib for in-process IFC parsing |
+| `ifc-lite-wasm` | `rust/wasm-bindings` | [docs.rs](https://docs.rs/ifc-lite-wasm) | WebAssembly bindings for IFC-Lite |
 
 The Python bindings (`rust/python`, PyPI package `ifclite-geom`) are excluded from the workspace and documented on the [Python API page](python.md).
 

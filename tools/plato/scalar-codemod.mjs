@@ -29,6 +29,7 @@
 
 import ts from 'typescript';
 import { readFileSync, writeFileSync } from 'node:fs';
+import { appendFlattened } from './flatten-codemod.mjs';
 
 // Scalar operator method name -> native binary operator token.
 const SCALAR_BINARY = new Map([
@@ -284,7 +285,8 @@ export function transform(sourceText, fileName = 'plato.g.ts') {
   const printed = printer.printFile(result.transformed[0]);
   result.dispose();
 
-  const output = HEADER + printed.replace(/\s*$/, '') + '\n';
+  // Phase 2: append the flattened tuple kernels (see flatten-codemod.mjs).
+  const output = appendFlattened(HEADER + printed.replace(/\s*$/, '') + '\n', fileName);
 
   // rule c invariant: fail loudly if any pollution survived.
   if (output.includes('prototype')) {

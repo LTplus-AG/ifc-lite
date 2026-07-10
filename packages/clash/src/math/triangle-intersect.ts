@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { Vec3 } from '../types.js';
-import { Vec3 as PVec3 } from './generated/plato.g.js';
+import * as G from './generated/plato.g.js';
 
 /**
  * Exact triangle–triangle intersection via the Separating Axis Theorem.
@@ -15,8 +15,8 @@ import { Vec3 as PVec3 } from './generated/plato.g.js';
  * clash — genuine interpenetration always produces non-coplanar crossing
  * triangles, which the edge-cross axes separate correctly.
  *
- * The SAT itself lives once, in the single-source generated Vec3 kernel
- * (`TriTriIntersectEps`); this wrapper only marshals tuples into `Vec3`.
+ * The SAT itself lives once, in the single-source generated kernel; this
+ * wrapper binds the flattened tuple-native form (zero per-call allocation).
  */
 export function triTriIntersect(
   a0: Vec3,
@@ -27,6 +27,5 @@ export function triTriIntersect(
   b2: Vec3,
   eps = 1e-12,
 ): boolean {
-  const v = (a: Vec3): PVec3 => new PVec3(a[0], a[1], a[2]);
-  return v(a0).TriTriIntersectEps(v(a1), v(a2), v(b0), v(b1), v(b2), eps);
+  return G.triTriIntersect(a0, a1, a2, b0, b1, b2, eps);
 }

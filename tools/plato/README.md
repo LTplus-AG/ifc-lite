@@ -14,6 +14,13 @@ and TypeScript so the two backends can never drift.
   TypeScript: rewrites scalar method dispatch to native operators and lifts the
   Number/Boolean prototype helpers into a module-scoped namespace, so the
   committed output touches no native prototypes.
+- `flatten-codemod.mjs` -- phase 2 of the post-pass (invoked by
+  scalar-codemod.mjs): symbolically inlines the pure Vec3/Box3 method bodies
+  down to scalar arithmetic over tuple inputs (beta reduction + scalar
+  replacement + hash-consed common-subexpression hoisting) and emits flat
+  tuple-native kernels with zero per-call object allocation. These are what
+  the packages/clash math adapters bind; end to end they benchmark faster
+  than the old hand-written kernel.
 
 The generated outputs are **committed** and are the source of truth for every
 build:

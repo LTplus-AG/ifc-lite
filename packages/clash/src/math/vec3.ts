@@ -2,56 +2,48 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/* Tuple-API surface over the Plato-generated Vec3 kernel (generated/plato.g.ts).
- * Public signatures are unchanged: every function takes and returns `[x, y, z]`
- * tuples. The arithmetic itself lives once, in the single-source generated
- * class; this module only marshals tuple <-> Vec3. `add` maps to the generated
- * `Plus` (renamed from `Add` in the .plato source so no generated method shares
- * a scalar-intrinsic name). */
+/* Tuple-API surface over the Plato-generated vector kernel
+ * (generated/plato.g.ts). Public signatures are unchanged: every function
+ * takes and returns `[x, y, z]` tuples. The arithmetic lives once, in the
+ * single-source generated code; these wrappers bind the flattened tuple-native
+ * kernels (zero per-call allocation beyond the returned tuple, same as the old
+ * hand-written code). */
 
 import type { Vec3 } from '../types.js';
-import { Vec3 as PVec3 } from './generated/plato.g.js';
-
-function v(a: Vec3): PVec3 {
-  return new PVec3(a[0], a[1], a[2]);
-}
-
-function tuple(p: PVec3): Vec3 {
-  return [p.X, p.Y, p.Z];
-}
+import * as G from './generated/plato.g.js';
 
 export function sub(a: Vec3, b: Vec3): Vec3 {
-  return tuple(v(a).Sub(v(b)));
+  return G.sub(a, b);
 }
 
 export function add(a: Vec3, b: Vec3): Vec3 {
-  return tuple(v(a).Plus(v(b)));
+  return G.add(a, b);
 }
 
 export function scale(a: Vec3, s: number): Vec3 {
-  return tuple(v(a).Scale(s));
+  return G.scale(a, s);
 }
 
 export function cross(a: Vec3, b: Vec3): Vec3 {
-  return tuple(v(a).Cross(v(b)));
+  return G.cross(a, b);
 }
 
 export function dot(a: Vec3, b: Vec3): number {
-  return v(a).Dot(v(b));
+  return G.dot(a, b);
 }
 
 export function lenSq(a: Vec3): number {
-  return v(a).LenSq();
+  return G.lenSq(a);
 }
 
 export function distSq(a: Vec3, b: Vec3): number {
-  return v(a).DistSq(v(b));
+  return G.distSq(a, b);
 }
 
 export function mid(a: Vec3, b: Vec3): Vec3 {
-  return tuple(v(a).Mid(v(b)));
+  return G.mid(a, b);
 }
 
 export function centroid(a: Vec3, b: Vec3, c: Vec3): Vec3 {
-  return tuple(v(a).Centroid(v(b), v(c)));
+  return G.centroid(a, b, c);
 }

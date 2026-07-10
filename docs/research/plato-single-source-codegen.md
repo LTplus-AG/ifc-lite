@@ -179,11 +179,15 @@ fuzz verdict PASS).
   no `declare global`. The one ambiguous method name was removed at the source
   (`Vec3.Add` renamed to `Plus`), and the codemod fails loudly on any future
   class/scalar name collision.
-- Post-codemod TS perf: prototype dispatch eliminated; the adapter overhead
-  drops roughly 2.5-3x versus the raw generated code. Remaining overhead versus
-  the old hand-written tuples (about 1.6-2x on the microbench, dominated by the
-  tuple-to-object marshalling allocations) applies to the in-process TS engine;
-  the Rust/WASM engine is at parity with the old code (~1.0x).
+- TS perf ends up ahead of the old hand-written code. Codemod phase 1
+  removes prototype dispatch; phase 2 (flatten-codemod.mjs) symbolically
+  inlines the pure method bodies into flat tuple-native kernels (beta
+  reduction, scalar replacement of the Vec3/Box3 records, hash-consed
+  common-subexpression hoisting), eliminating all per-call object allocation.
+  The flattened SAT alone microbenches 4-5x faster than the old kernel (no
+  per-call axis arrays); end to end, the default TS clash engine runs a dense
+  2,744-element scene about 20 percent faster than main (406ms vs ~528ms,
+  identical clash sets). The Rust engine is at parity (~1.0x).
 - Generation is offline and reproducible: `node scripts/generate-plato-clash.mjs`
   clones plato, parakeet and ara3d-sdk at pinned SHAs, builds Plato.CLI with a
   .NET 9 SDK, verifies output non-trivially exists (the CLI exits 0 even on

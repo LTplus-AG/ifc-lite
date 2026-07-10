@@ -1,5 +1,19 @@
 # @ifc-lite/parser
 
+## 3.8.2
+
+### Patch Changes
+
+- [#1691](https://github.com/LTplus-AG/ifc-lite/pull/1691) [`26af236`](https://github.com/LTplus-AG/ifc-lite/commit/26af236a9128f5fc97493d75d7c9642958343a7a) Thanks [@louistrue](https://github.com/louistrue)! - Documentation moved to https://ifclite.dev/docs/ - README links and package homepage fields now point at the new home (the GitHub Pages site remains as a mirror whose canonical URLs point there).
+
+- [#1680](https://github.com/LTplus-AG/ifc-lite/pull/1680) [`bc1531f`](https://github.com/LTplus-AG/ifc-lite/commit/bc1531f899e5f8d18d1a6ff1ef6d997236a01243) Thanks [@louistrue](https://github.com/louistrue)! - Harden huge-file loads against stale deployments and the wasm32 ceiling. (1) A geometry or pre-pass worker whose SCRIPT fails to load (a redeploy rotated the hashed asset; the 404 is served as text/plain and the browser blocks the worker with an empty-message onerror) now dispatches the existing version-skew recovery event so the viewer reloads once onto the current deployment, instead of dying with "Pre-pass worker failed: undefined". (2) The parser skips the byte-level WASM entity scan for sources over 2.5GB: the buffer copy plus entity index cannot fit in wasm32's 4GB address space, so the scan always trapped with `unreachable executed` before the JS tokeniser fallback ran anyway.
+
+- Updated dependencies [[`41794cd`](https://github.com/LTplus-AG/ifc-lite/commit/41794cde27d31904773bf2042eb0a0331aadf770), [`26af236`](https://github.com/LTplus-AG/ifc-lite/commit/26af236a9128f5fc97493d75d7c9642958343a7a), [`d0647c9`](https://github.com/LTplus-AG/ifc-lite/commit/d0647c9a1801fc03b7c5d32314e53ef922c56f2f), [`633882f`](https://github.com/LTplus-AG/ifc-lite/commit/633882fa15940f5faddb9dcb32031fcf3f38e287), [`40ac0a8`](https://github.com/LTplus-AG/ifc-lite/commit/40ac0a85d5aaac1b6fed9ad96b3e2f9d0378d65b), [`47bf759`](https://github.com/LTplus-AG/ifc-lite/commit/47bf759b1b801d44f6a0ba7408f65d368096cb04)]:
+  - @ifc-lite/wasm@3.0.14
+  - @ifc-lite/data@2.5.2
+  - @ifc-lite/encoding@1.14.10
+  - @ifc-lite/ifcx@2.2.2
+
 ## 3.8.1
 
 ### Patch Changes

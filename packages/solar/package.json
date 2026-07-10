@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/solar",
-  "version": "1.15.1",
+  "version": "1.15.2",
   "description": "Solar position, sunrise/sunset and 3D sun-path geometry for IFC-Lite",
   "type": "module",
   "main": "./dist/index.js",

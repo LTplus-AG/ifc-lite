@@ -1,5 +1,0 @@
----
-"@ifc-lite/wasm": patch
----
-
-Faster browser cold load on RepresentationMap models: the streaming pre-pass's orphan-type-geometry collection (#957) ran a SECOND full `EntityScanner` walk over the whole file — a flagged `#962` TODO — whenever the model contained an `IfcRepresentationMap` (every Revit/Tekla mapped-item export, where the fast-path substring bail-out does not fire). The main scan already stashes the `IfcMappedItem` spans; it now also stashes the `IfcTypeProduct` candidate spans (with their `IfcType` resolved from the scanner's type name), and `collect_type_geometry_jobs_from_spans` builds the orphan-type jobs from those spans instead of re-walking the file — the same span-reuse pattern as the material-layer and referenced-map builders. Byte-identical: same referenced set, same candidates in file order, same unreferenced-map filter (verified on the fixture corpus plus orphan/referenced synthetic cases). Removes one whole-file scan from time-to-first-geometry on affected models.

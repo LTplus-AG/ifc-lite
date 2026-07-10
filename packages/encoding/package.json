@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/encoding",
-  "version": "1.14.9",
+  "version": "1.14.10",
   "description": "IFC string encoding/decoding and property value parsing for IFC-Lite",
   "type": "module",
   "main": "./dist/index.js",

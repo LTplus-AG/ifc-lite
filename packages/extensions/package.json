@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/extensions",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "Extension manifest, capability grammar, and slot registry for ifc-lite user customization",
   "type": "module",
   "main": "./dist/index.js",

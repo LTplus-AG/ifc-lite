@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/server-bin",
-  "version": "1.16.5",
+  "version": "1.16.6",
   "description": "Pre-built IFC-Lite server binary - run without Docker or Rust",
   "type": "module",
   "bin": {

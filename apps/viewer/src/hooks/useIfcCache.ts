@@ -14,6 +14,10 @@ import {
   BinaryCacheWriter,
   BinaryCacheReader,
   SchemaVersion,
+  SectionType,
+  openGeometryChunksV13,
+  readInstancedShards,
+  BufferReader,
   type CachedEntityIndexColumns,
   type CacheDataStore,
   type GeometryData,
@@ -156,11 +160,15 @@ export function useIfcCache() {
     setIfcDataStore,
     setGeometryResult,
     appendInstancedShards,
+    appendGeometryBatch,
+    setGeometryStreamingActive,
   } = useViewerStore(useShallow((s) => ({
     setProgress: s.setProgress,
     setIfcDataStore: s.setIfcDataStore,
     setGeometryResult: s.setGeometryResult,
     appendInstancedShards: s.appendInstancedShards,
+    appendGeometryBatch: s.appendGeometryBatch,
+    setGeometryStreamingActive: s.setGeometryStreamingActive,
   })));
 
   /**
@@ -191,7 +199,17 @@ export function useIfcCache() {
       // dropping it removes the main-thread stall for BOTH cache tiers. A
       // truncated/corrupt cache buffer still fails fast in `reader.read` below →
       // the catch deletes the entry and returns a graceful miss.
-      const result = await reader.read(cacheResult.buffer);
+      // v13+ entries stream their geometry chunk-by-chunk below (first paint
+      // after the FIRST chunk instead of a full deserialize) — read metadata
+      // only here. Older entries keep the legacy one-shot geometry read.
+      const headerInfo = reader.readHeader(cacheResult.buffer);
+      const geometrySection = headerInfo.version >= 13
+        ? headerInfo.sections.find((s) => s.type === SectionType.Geometry)
+        : undefined;
+      const result = await reader.read(
+        cacheResult.buffer,
+        geometrySection ? { skipGeometry: true } : {}
+      );
       const cacheReadTime = performance.now() - cacheLoadStart;
 
       // Restore the source buffer — required for on-demand property extraction
@@ -294,10 +312,65 @@ export function useIfcCache() {
         }
       }
 
-      if (result.geometry) {
-        const { meshes, coordinateInfo, totalVertices, totalTriangles } = result.geometry;
+      let meshCount = 0;
+      let loadedTotalVertices = 0;
+      let loadedTotalTriangles = 0;
 
-        // INSTANT: Set ALL geometry in ONE call - fastest for cached models
+      if (geometrySection && headerInfo.hasGeometry) {
+        // v13 STREAMED path: decode + append geometry chunk-by-chunk so the
+        // first chunks paint while the rest still decompress. Mirrors the
+        // fresh streaming path's store contract (appendGeometryBatch under
+        // geometryStreamingActive, so useGeometryStreaming finalizes the
+        // fragments when the flag flips back off).
+        const open = openGeometryChunksV13(
+          cacheResult.buffer,
+          geometrySection.offset,
+          headerInfo.version
+        );
+        loadedTotalVertices = open.totalVertices;
+        loadedTotalTriangles = open.totalTriangles;
+
+        setGeometryStreamingActive(true);
+        const allMeshes: MeshData[] = [];
+        try {
+          for (let i = 0; i < open.chunks.length; i++) {
+            const chunkMeshes = await open.readChunk(i);
+            allMeshes.push(...chunkMeshes);
+            appendGeometryBatch(chunkMeshes, open.coordinateInfo);
+            if ((i & 3) === 3 || i === open.chunks.length - 1) {
+              setProgress({
+                phase: 'Loading geometry from cache',
+                percent: 20 + Math.round((70 * (i + 1)) / open.chunks.length),
+              });
+            }
+            // Yield so the animation loop can drain the mesh queue between
+            // chunks (paint progresses during the load, like a fresh stream).
+            await new Promise<void>((resolve) => setTimeout(resolve, 0));
+          }
+        } finally {
+          setGeometryStreamingActive(false);
+        }
+        meshCount = allMeshes.length;
+
+        // Restore the GPU-instancing shards (opaque repeated occurrences that
+        // were partitioned off the flat meshes).
+        const shardsSection = headerInfo.sections.find((s) => s.type === SectionType.InstancedShards);
+        if (shardsSection) {
+          const shardsReader = new BufferReader(cacheResult.buffer);
+          shardsReader.position = shardsSection.offset;
+          const shards = readInstancedShards(shardsReader);
+          if (shards.length > 0) appendInstancedShards(shards);
+        }
+
+        setIfcDataStore(dataStore);
+        buildSpatialIndexGuarded(allMeshes, dataStore, setIfcDataStore);
+      } else if (result.geometry) {
+        const { meshes, coordinateInfo, totalVertices, totalTriangles } = result.geometry;
+        meshCount = meshes.length;
+        loadedTotalVertices = totalVertices;
+        loadedTotalTriangles = totalTriangles;
+
+        // Legacy (pre-v13) entries: set ALL geometry in ONE call.
         setGeometryResult({
           meshes,
           totalVertices,
@@ -323,14 +396,13 @@ export function useIfcCache() {
 
       setProgress({ phase: 'Complete (from cache)', percent: 100 });
       const totalCacheTime = performance.now() - cacheLoadStart;
-      const meshCount = result.geometry?.meshes.length || 0;
       console.log(`[useIfcCache] ✓ ${fileName} (cached) → ${meshCount} meshes | ${totalCacheTime.toFixed(0)}ms`);
 
       return {
         success: true,
         meshCount,
-        totalVertices: result.geometry?.totalVertices || 0,
-        totalTriangles: result.geometry?.totalTriangles || 0,
+        totalVertices: loadedTotalVertices,
+        totalTriangles: loadedTotalTriangles,
       };
     } catch (err) {
       console.error('[useIfcCache] Failed to load from cache:', err);

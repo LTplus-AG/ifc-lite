@@ -72,7 +72,52 @@ export const MAGIC = 0x4C434649; // "IFCL" in little-endian
  * is unchanged, but the vertex/index buffers differ, so the bump invalidates
  * pre-weld caches to re-mesh (welded).
  */
-export const FORMAT_VERSION = 12;
+/**
+ * v12→v13: chunked geometry section (issue #1682, phase 4 of the
+ * chunked-residency plan). The geometry section becomes:
+ *   headLength u32, then head = {meshCount/totalVertices/totalTriangles,
+ *   coordinateInfo, chunkCount u32, directory[chunkCount]}, then chunk
+ *   records at their directory offsets. Meshes are grouped into spatially
+ *   coherent chunks (grid cell of origin + first vertex, soft byte cap) and
+ *   each chunk record is independently decodable + optionally deflate-raw
+ *   compressed (browser/Node-native CompressionStream). Enables the streamed
+ *   cache-hit load (first paint after the FIRST chunk instead of a full
+ *   deserialize) and is the on-disk foundation for evict-to-disk residency.
+ *   Per-mesh record layout inside a chunk is UNCHANGED from v12.
+ */
+export const FORMAT_VERSION = 13;
+
+/** Geometry chunking parameters (v13+). Grouping is a WRITE-side layout
+ *  policy: readers only trust the directory, so these can change without a
+ *  format bump. Cell size mirrors the renderer's spatial bucketing default
+ *  but is deliberately independent — the renderer re-buckets on load. */
+export const GEOMETRY_CHUNK_CELL_SIZE = 32;
+/** Soft cap on uncompressed bytes per chunk (mesh records never split). */
+export const GEOMETRY_CHUNK_SOFT_BYTES = 8 * 1024 * 1024;
+/** Chunks smaller than this skip compression (not worth the codec cost). */
+export const GEOMETRY_CHUNK_COMPRESS_MIN_BYTES = 64 * 1024;
+
+/** Per-chunk flags in the v13 geometry directory. */
+export enum GeometryChunkFlags {
+  None = 0,
+  /** Chunk record bytes are deflate-raw compressed. */
+  DeflateRaw = 1 << 0,
+}
+
+/** One entry of the v13 geometry chunk directory. */
+export interface GeometryChunkInfo {
+  /** World AABB of the chunk's meshes (f32, for future priority/culling). */
+  aabbMin: [number, number, number];
+  aabbMax: [number, number, number];
+  /** Byte offset of the chunk record, relative to the geometry SECTION start. */
+  byteOffset: number;
+  /** Stored byte length of the chunk record (compressed length when compressed). */
+  byteLength: number;
+  /** Uncompressed byte length of the chunk record. */
+  uncompressedLength: number;
+  meshCount: number;
+  flags: GeometryChunkFlags;
+}
 
 /** Section types in the binary format */
 export enum SectionType {
@@ -166,6 +211,12 @@ export interface CacheWriteOptions {
    * `false` (the writer hashes the whole `sourceBuffer`, unchanged).
    */
   omitSourceHash?: boolean;
+  /**
+   * v13+: deflate-raw compress geometry chunk records above the size floor
+   * (default true). Disable for byte-inspection/debugging or when write
+   * latency matters more than entry size.
+   */
+  compressGeometryChunks?: boolean;
 }
 
 /**

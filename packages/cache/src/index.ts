@@ -36,7 +36,24 @@ export {
   SchemaVersion,
   HeaderFlags,
   SectionFlags,
+  GeometryChunkFlags,
+  GEOMETRY_CHUNK_CELL_SIZE,
+  GEOMETRY_CHUNK_SOFT_BYTES,
+  GEOMETRY_CHUNK_COMPRESS_MIN_BYTES,
 } from './types.js';
+
+// v13 chunked geometry: incremental access for streamed cache-hit loads
+// (issue #1682 phase 4). openGeometryChunksV13 wants the Geometry section's
+// absolute offset from the header's section table.
+export {
+  openGeometryChunksV13,
+  readGeometryHeadV13,
+  decodeGeometryChunk,
+  groupMeshesIntoChunks,
+} from './sections/geometry-chunks.js';
+export { readInstancedShards } from './sections/instanced-shards.js';
+export type { GeometryHead } from './sections/geometry-chunks.js';
+export type { GeometryChunkInfo } from './types.js';
 
 export type {
   CacheHeader,

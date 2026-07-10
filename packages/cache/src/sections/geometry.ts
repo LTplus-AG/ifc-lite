@@ -35,7 +35,36 @@ export function writeGeometry(
   totalTriangles: number,
   coordinateInfo: CoordinateInfo
 ): void {
-  // First pass: validate and filter meshes, recalculate totals
+  const { validMeshes, actualTotalVertices, actualTotalTriangles } = validateMeshes(meshes);
+
+  // Write header with actual counts
+  writer.writeUint32(validMeshes.length);
+  writer.writeUint32(actualTotalVertices);
+  writer.writeUint32(actualTotalTriangles);
+
+  // Write coordinate info
+  writeCoordinateInfo(writer, coordinateInfo);
+
+  // Write each valid mesh
+  for (const mesh of validMeshes) {
+    writeMeshRecord(writer, mesh);
+  }
+
+  if (validMeshes.length < meshes.length) {
+    console.warn(`[writeGeometry] Wrote ${validMeshes.length}/${meshes.length} meshes (${meshes.length - validMeshes.length} skipped due to data issues)`);
+  }
+}
+
+/**
+ * Validate + filter meshes (detached buffers / size mismatches / absurd
+ * counts) and recompute the real totals. Shared by the legacy sequential
+ * writer above and the v13 chunked writer.
+ */
+export function validateMeshes(meshes: MeshData[]): {
+  validMeshes: MeshData[];
+  actualTotalVertices: number;
+  actualTotalTriangles: number;
+} {
   const validMeshes: MeshData[] = [];
   let actualTotalVertices = 0;
   let actualTotalTriangles = 0;
@@ -63,59 +92,66 @@ export function writeGeometry(
     actualTotalTriangles += indexCount / 3;
   }
 
-  // Write header with actual counts
-  writer.writeUint32(validMeshes.length);
-  writer.writeUint32(actualTotalVertices);
-  writer.writeUint32(actualTotalTriangles);
-
-  // Write coordinate info
-  writeCoordinateInfo(writer, coordinateInfo);
-
-  // Write each valid mesh
-  for (const mesh of validMeshes) {
-    writer.writeUint32(mesh.expressId);
-
-    const vertexCount = mesh.positions.length / 3;
-    const indexCount = mesh.indices.length;
-
-    writer.writeUint32(vertexCount);
-    writer.writeUint32(indexCount);
-
-    // Write color (RGBA)
-    writer.writeFloat32(mesh.color[0]);
-    writer.writeFloat32(mesh.color[1]);
-    writer.writeFloat32(mesh.color[2]);
-    writer.writeFloat32(mesh.color[3]);
-
-    // Write ifcType (as string length + UTF-8 bytes)
-    const ifcType = mesh.ifcType || '';
-    writer.writeString(ifcType);
-
-    // Write geometryClass (#957 Model/Types switch). Without this the viewer's
-    // view-mode filter sees every cache-restored mesh as class 0: instanced
-    // type-library geometry reappears in Model mode and the switch disappears.
-    writer.writeUint8(mesh.geometryClass ?? 0);
-
-    // Write per-element local-frame origin (v6+, 3×f64): world = origin +
-    // position. [0,0,0] for absolute meshes. Without it a cache from a
-    // local-frame load restores small local positions with no origin → every
-    // element renders scattered near scene origin.
-    writer.writeFloat64(mesh.origin ? mesh.origin[0] : 0);
-    writer.writeFloat64(mesh.origin ? mesh.origin[1] : 0);
-    writer.writeFloat64(mesh.origin ? mesh.origin[2] : 0);
-
-    // Write geometry arrays
-    writer.writeTypedArray(mesh.positions);
-    writer.writeTypedArray(mesh.normals);
-    writer.writeTypedArray(mesh.indices);
-  }
-
-  if (validMeshes.length < meshes.length) {
-    console.warn(`[writeGeometry] Wrote ${validMeshes.length}/${meshes.length} meshes (${meshes.length - validMeshes.length} skipped due to data issues)`);
-  }
+  return { validMeshes, actualTotalVertices, actualTotalTriangles };
 }
 
-function writeCoordinateInfo(writer: BufferWriter, info: CoordinateInfo): void {
+/**
+ * One per-mesh record — the layout is IDENTICAL in the legacy sequential
+ * section and inside v13 chunk records (v13 only changes how records are
+ * GROUPED, not what a record is).
+ */
+export function writeMeshRecord(writer: BufferWriter, mesh: MeshData): void {
+  writer.writeUint32(mesh.expressId);
+
+  const vertexCount = mesh.positions.length / 3;
+  const indexCount = mesh.indices.length;
+
+  writer.writeUint32(vertexCount);
+  writer.writeUint32(indexCount);
+
+  // Write color (RGBA)
+  writer.writeFloat32(mesh.color[0]);
+  writer.writeFloat32(mesh.color[1]);
+  writer.writeFloat32(mesh.color[2]);
+  writer.writeFloat32(mesh.color[3]);
+
+  // Write ifcType (as string length + UTF-8 bytes)
+  const ifcType = mesh.ifcType || '';
+  writer.writeString(ifcType);
+
+  // Write geometryClass (#957 Model/Types switch). Without this the viewer's
+  // view-mode filter sees every cache-restored mesh as class 0: instanced
+  // type-library geometry reappears in Model mode and the switch disappears.
+  writer.writeUint8(mesh.geometryClass ?? 0);
+
+  // Write per-element local-frame origin (v6+, 3×f64): world = origin +
+  // position. [0,0,0] for absolute meshes. Without it a cache from a
+  // local-frame load restores small local positions with no origin → every
+  // element renders scattered near scene origin.
+  writer.writeFloat64(mesh.origin ? mesh.origin[0] : 0);
+  writer.writeFloat64(mesh.origin ? mesh.origin[1] : 0);
+  writer.writeFloat64(mesh.origin ? mesh.origin[2] : 0);
+
+  // Write geometry arrays
+  writer.writeTypedArray(mesh.positions);
+  writer.writeTypedArray(mesh.normals);
+  writer.writeTypedArray(mesh.indices);
+}
+
+/** Exact serialized size of one per-mesh record, for chunk byte budgeting. */
+export function meshRecordByteLength(mesh: MeshData): number {
+  const ifcTypeBytes = mesh.ifcType ? new TextEncoder().encode(mesh.ifcType).length : 0;
+  return (
+    4 + 4 + 4 +            // expressId, vertexCount, indexCount
+    16 +                   // color f32x4
+    4 + ifcTypeBytes +     // ifcType string
+    1 +                    // geometryClass
+    24 +                   // origin f64x3
+    mesh.positions.byteLength + mesh.normals.byteLength + mesh.indices.byteLength
+  );
+}
+
+export function writeCoordinateInfo(writer: BufferWriter, info: CoordinateInfo): void {
   // Origin shift
   writeVec3(writer, info.originShift);
 
@@ -182,59 +218,7 @@ export function readGeometry(reader: BufferReader, version: number = 2): {
   const meshes: MeshData[] = [];
 
   for (let i = 0; i < meshCount; i++) {
-    const expressId = reader.readUint32();
-    const vertexCount = reader.readUint32();
-    const indexCount = reader.readUint32();
-
-    // Sanity check vertex/index counts
-    if (vertexCount > MAX_VERTEX_COUNT) {
-      throw new Error(`Invalid cache: vertexCount ${vertexCount} exceeds maximum ${MAX_VERTEX_COUNT} at mesh ${i}. Cache may be corrupted or from incompatible version.`);
-    }
-    if (indexCount > MAX_INDEX_COUNT) {
-      throw new Error(`Invalid cache: indexCount ${indexCount} exceeds maximum ${MAX_INDEX_COUNT} at mesh ${i}. Cache may be corrupted or from incompatible version.`);
-    }
-
-    const color: [number, number, number, number] = [
-      reader.readFloat32(),
-      reader.readFloat32(),
-      reader.readFloat32(),
-      reader.readFloat32(),
-    ];
-
-    // Read ifcType (only in version 2+)
-    let ifcType: string | undefined = undefined;
-    if (version >= 2) {
-      ifcType = reader.readString() || undefined;
-    }
-
-    // Read geometryClass (version 5+) — the Model/Types view-switch tag.
-    // Older caches default to 0 (occurrence); v4 entries are bypassed by the
-    // viewer's bumped cache key, so they re-mesh fresh rather than load here.
-    const geometryClass = version >= 5 ? reader.readUint8() : 0;
-
-    // Read per-element local-frame origin (version 6+); world = origin + position.
-    let origin: [number, number, number] | undefined;
-    if (version >= 6) {
-      const ox = reader.readFloat64();
-      const oy = reader.readFloat64();
-      const oz = reader.readFloat64();
-      if (ox || oy || oz) origin = [ox, oy, oz];
-    }
-
-    const positions = reader.readFloat32Array(vertexCount * 3);
-    const normals = reader.readFloat32Array(vertexCount * 3);
-    const indices = reader.readUint32Array(indexCount);
-
-    meshes.push({
-      expressId,
-      positions,
-      normals,
-      indices,
-      color,
-      ifcType,
-      geometryClass,
-      ...(origin ? { origin } : {}),
-    });
+    meshes.push(readMeshRecord(reader, version, i));
   }
 
   return {
@@ -245,7 +229,64 @@ export function readGeometry(reader: BufferReader, version: number = 2): {
   };
 }
 
-function readCoordinateInfo(reader: BufferReader, version: number = 2): CoordinateInfo {
+/** Read one per-mesh record (see writeMeshRecord for the layout). */
+export function readMeshRecord(reader: BufferReader, version: number, meshIndex: number = 0): MeshData {
+  const expressId = reader.readUint32();
+  const vertexCount = reader.readUint32();
+  const indexCount = reader.readUint32();
+
+  // Sanity check vertex/index counts
+  if (vertexCount > MAX_VERTEX_COUNT) {
+    throw new Error(`Invalid cache: vertexCount ${vertexCount} exceeds maximum ${MAX_VERTEX_COUNT} at mesh ${meshIndex}. Cache may be corrupted or from incompatible version.`);
+  }
+  if (indexCount > MAX_INDEX_COUNT) {
+    throw new Error(`Invalid cache: indexCount ${indexCount} exceeds maximum ${MAX_INDEX_COUNT} at mesh ${meshIndex}. Cache may be corrupted or from incompatible version.`);
+  }
+
+  const color: [number, number, number, number] = [
+    reader.readFloat32(),
+    reader.readFloat32(),
+    reader.readFloat32(),
+    reader.readFloat32(),
+  ];
+
+  // Read ifcType (only in version 2+)
+  let ifcType: string | undefined = undefined;
+  if (version >= 2) {
+    ifcType = reader.readString() || undefined;
+  }
+
+  // Read geometryClass (version 5+) — the Model/Types view-switch tag.
+  // Older caches default to 0 (occurrence); v4 entries are bypassed by the
+  // viewer's bumped cache key, so they re-mesh fresh rather than load here.
+  const geometryClass = version >= 5 ? reader.readUint8() : 0;
+
+  // Read per-element local-frame origin (version 6+); world = origin + position.
+  let origin: [number, number, number] | undefined;
+  if (version >= 6) {
+    const ox = reader.readFloat64();
+    const oy = reader.readFloat64();
+    const oz = reader.readFloat64();
+    if (ox || oy || oz) origin = [ox, oy, oz];
+  }
+
+  const positions = reader.readFloat32Array(vertexCount * 3);
+  const normals = reader.readFloat32Array(vertexCount * 3);
+  const indices = reader.readUint32Array(indexCount);
+
+  return {
+    expressId,
+    positions,
+    normals,
+    indices,
+    color,
+    ifcType,
+    geometryClass,
+    ...(origin ? { origin } : {}),
+  };
+}
+
+export function readCoordinateInfo(reader: BufferReader, version: number = 2): CoordinateInfo {
   const originShift = readVec3(reader);
   const originalBounds = readAABB(reader);
   const shiftedBounds = readAABB(reader);

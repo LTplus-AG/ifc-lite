@@ -23,6 +23,7 @@ import { readProperties } from './sections/properties.js';
 import { readQuantities } from './sections/quantities.js';
 import { readRelationships } from './sections/relationships.js';
 import { readGeometry } from './sections/geometry.js';
+import { readGeometryV13 } from './sections/geometry-chunks.js';
 import { readInstancedShards } from './sections/instanced-shards.js';
 import { readEntityIndex } from './sections/entity-index.js';
 
@@ -142,8 +143,14 @@ export class BinaryCacheReader {
     if (!skipGeometry && header.hasGeometry) {
       const geometrySection = sectionMap.get(SectionType.Geometry);
       if (geometrySection) {
-        reader.position = geometrySection.offset;
-        result.geometry = readGeometry(reader, header.version);
+        if (header.version >= 13) {
+          // v13: chunked section — decode every chunk sequentially. Streamed
+          // consumers use openGeometryChunksV13 instead of this full read.
+          result.geometry = await readGeometryV13(buffer, geometrySection.offset, header.version);
+        } else {
+          reader.position = geometrySection.offset;
+          result.geometry = readGeometry(reader, header.version);
+        }
       }
       // GPU-instancing shards (cache v10+): opaque repeated occurrences that were
       // partitioned off the flat geometry section. Restored via the instanced path.

@@ -27,7 +27,7 @@ import { writeEntities } from './sections/entities.js';
 import { writeProperties } from './sections/properties.js';
 import { writeQuantities } from './sections/quantities.js';
 import { writeRelationships } from './sections/relationships.js';
-import { writeGeometry } from './sections/geometry.js';
+import { buildGeometrySectionV13 } from './sections/geometry-chunks.js';
 import { writeInstancedShards } from './sections/instanced-shards.js';
 import { writeEntityIndex } from './sections/entity-index.js';
 
@@ -125,17 +125,14 @@ export class BinaryCacheWriter {
     let totalTriangles = 0;
 
     if (includeGeometry && geometry) {
-      const geometryBuffer = this.writeSection(() => {
-        const writer = new BufferWriter();
-        writeGeometry(
-          writer,
-          geometry.meshes,
-          geometry.totalVertices,
-          geometry.totalTriangles,
-          geometry.coordinateInfo
-        );
-        return writer.build();
-      });
+      // v13: chunked geometry section (spatially coherent, per-chunk
+      // deflate-raw). The legacy sequential writeGeometry remains only for
+      // format documentation / old-version reads.
+      const geometryBuffer = await buildGeometrySectionV13(
+        geometry.meshes,
+        geometry.coordinateInfo,
+        { compress: options.compressGeometryChunks ?? true }
+      );
       sectionBuffers.push({ type: SectionType.Geometry, buffer: geometryBuffer });
       totalVertices = geometry.totalVertices;
       totalTriangles = geometry.totalTriangles;

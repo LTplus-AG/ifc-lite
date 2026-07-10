@@ -388,7 +388,7 @@ The signature commits to a canonical hash of the bundle contents + the `signedAt
     Your code references `globalThis`, `window`, `process`, `document`, or `self`. The AST walker (`validate/code.ts`) flags these during the AI authoring / repair loop (`ext validate` does not run it). Remove the reference - the sandbox runtime would block the access anyway, this just surfaces it earlier.
 
 ??? question "Manifest fails with `Command "..." is referenced but not declared`"
-    The cross-reference validator says a `toolbar` / `contextMenu` / `keybinding` contribution names a command that's not declared in `contributes.commands` or `entry.commands`. Add the command, or remove the reference.
+    The cross-reference validator says a `toolbar` / `contextMenu` / `keybinding` contribution names a command that's not declared in `contributes.commands` or `entry.commands`. These are two different sides: `contributes.commands` declares the command's UI metadata (id, title, icon), while `entry.commands` maps the command id to its handler file. The validator only needs the id to appear in one of them, but a working command usually needs both (metadata to show it, a handler to run it). Add whichever side is missing, or remove the reference.
 
 ??? question "Pack succeeds but install fails with 'entry script missing'"
     The manifest's `entry.commands["x"]` points at a file that isn't in the bundle. Likely you didn't `git add` the file before packing. Run `ext validate` first — it cross-references entries against the bundle's file map.

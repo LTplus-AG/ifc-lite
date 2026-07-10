@@ -190,7 +190,7 @@ You don't need all packages. Here's what to grab for common tasks:
 
 ## Browser Support
 
-The built-in WebGPU renderer needs a browser with WebGPU: Chrome 113+, Edge 113+, Firefox 141+, Safari 26+.
+The built-in WebGPU renderer needs a browser with WebGPU: Chrome 113+, Edge 113+, Firefox 141+ (Windows; other platforms in later releases), Safari 26+.
 
 Three.js and Babylon.js integrations work with WebGL and don't require WebGPU. See [Browser Requirements](guide/browser-requirements.md) for details.
 

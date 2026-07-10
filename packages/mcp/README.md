@@ -176,12 +176,15 @@ error.
 ## Roadmap
 
 Shipped: stdio + Streamable HTTP transports; query, geometry (bbox, volume,
-area, mesh, raycast), clash, IDS + gherkin validation, mutation, BCF, bSDD,
-diff, export (IFC, CSV, JSON, GLB, OBJ, IFCX, PDF report), and live viewer
-control.
+area), clash, IDS validation, mutation, BCF, bSDD, diff, export (IFC, CSV, JSON,
+GLB, OBJ, IFCX), and live viewer control.
 
-Planned: OAuth 2.1 with PKCE and hosted multi-tenant deployment, sampling for
-natural-language descriptions, public registry listing.
+Planned: mesh geometry (`geometry_get`) and `raycast` (both need the WASM
+geometry pipeline), Gherkin validation (`gherkin_check`), and PDF report export
+(`export_pdf_report`) — these tools are registered but currently return
+`UNSUPPORTED_OPERATION`. Also planned: OAuth 2.1 with PKCE and hosted
+multi-tenant deployment, sampling for natural-language descriptions, and public
+registry listing.
 
 ## Docs
 

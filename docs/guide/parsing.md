@@ -309,6 +309,11 @@ for (const id of entities.expressId) {
   console.log(`  Has geometry: ${entities.hasGeometry(id)}`);
 }
 
+// Pick an element to inspect (first IfcWall in the table)
+const wallId = result.entities.expressId.find(
+  (id) => result.entities.getTypeName(id) === 'IfcWall',
+)!;
+
 // Property sets for an element (namespace-prefixed names)
 for (const pset of result.properties.getForEntity(wallId)) {
   console.log(`PropertySet: ${pset.name}`);

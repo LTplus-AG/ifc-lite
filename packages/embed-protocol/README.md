@@ -13,6 +13,10 @@ npm install @ifc-lite/embed-protocol
 ```ts
 import { createCommand, isEmbedMessage } from '@ifc-lite/embed-protocol';
 
+// Caller-provided: the embed viewer's <iframe> and its origin.
+const iframe = document.querySelector<HTMLIFrameElement>('iframe#embed')!;
+const embedOrigin = new URL(iframe.src).origin;
+
 // Type-safe command construction (payload checked against the command type)
 const msg = createCommand('SELECT', { ids: [42, 43] }, crypto.randomUUID());
 iframe.contentWindow?.postMessage(msg, embedOrigin);

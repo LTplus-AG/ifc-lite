@@ -357,7 +357,7 @@ Run geometry extraction headlessly and report CSG / opening diagnostics: opening
 ifc-lite diagnose-geometry model.ifc
 ifc-lite diagnose-geometry model.ifc --json
 ifc-lite diagnose-geometry model.ifc --type IfcWall
-ifc-lite diagnose-geometry model.ifc --product 0YvCT2_$X3_xJG3rzD8L_8
+ifc-lite diagnose-geometry model.ifc --product '0YvCT2_$X3_xJG3rzD8L_8'
 ```
 
 **Flags:**
@@ -379,7 +379,7 @@ Pull selected entities out of a large IFC into a small, valid, viewable standalo
 
 ```bash
 # By GlobalId or express ID (repeatable, or comma-separated)
-ifc-lite extract-entities model.ifc --product 2O2Fr$t4X7Zf8NOew3FLKr --out subset.ifc
+ifc-lite extract-entities model.ifc --product '2O2Fr$t4X7Zf8NOew3FLKr' --out subset.ifc
 
 # By type or storey
 ifc-lite extract-entities model.ifc --type IfcWall --out walls.ifc
@@ -591,7 +591,7 @@ echo '{"Start":[0,0,0],"End":[10,0,0],"Height":3,"Thickness":0.2}' \
 | Openings | `door`, `window`, `wall-door`, `wall-window` |
 | Circulation | `stair`, `ramp`, `railing` |
 | Foundation | `footing`, `pile` |
-| Other | `space`, `plate`, `furnishing`, `proxy`, `storey` |
+| Other | `space`, `plate`, `furnishing`, `proxy` |
 
 **Common Flags:**
 
@@ -978,6 +978,12 @@ ifc-lite mcp arch.ifc struct.ifc
 ifc-lite mcp model.ifc --transport http --port 8765 --token abc
 ifc-lite mcp model.ifc --viewer          # also start the 3D viewer
 ```
+
+!!! note "HTTP transport starts with an empty session"
+    In `--transport http` mode the positional files are **not** preloaded: every
+    HTTP session gets its own empty model registry. Load a model into the session
+    with the `model_load` tool (which needs `mutate` scope, so it is hidden under
+    `--read-only`). The default `stdio` transport does preload the files you pass.
 
 **Flags:**
 

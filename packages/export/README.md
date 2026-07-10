@@ -30,6 +30,7 @@ const url = URL.createObjectURL(new Blob([new Uint8Array(glb)], { type: 'model/g
 ## CSV / JSON-LD / HBJSON - also via GeometryProcessor
 
 ```typescript
+// `file` is a caller-provided File (e.g. from an <input type="file">)
 const bytes = new Uint8Array(await file.arrayBuffer()); // raw IFC bytes
 
 // CSV: mode is one of entities | properties | quantities | spatial

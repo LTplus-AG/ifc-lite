@@ -74,7 +74,7 @@ flowchart LR
 | Aspect | Client-Side (WASM) | Server-Side (Rust) |
 |--------|-------------------|-------------------|
 | **Processing** | Web Worker pool (one WASM instance per worker) | Multi-threaded (Rayon) |
-| **Memory** | 4GB WASM limit per worker | System RAM |
+| **Memory** | Up to 4 GiB per wasm32 memory instance per worker (browser/runtime ceiling may be lower) | System RAM |
 | **Caching** | Browser storage | Content-addressable disk |
 | **Format** | Raw geometry | Parquet (15-50x smaller) |
 | **Best For** | Privacy, offline | Teams, large files |

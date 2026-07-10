@@ -175,6 +175,9 @@ console.log(view.getMutations()); // change history for undo / export
 import { exportToStep, ParquetExporter, Ifc5Exporter } from '@ifc-lite/export';
 import { GeometryProcessor } from '@ifc-lite/geometry';
 
+// Assumes the earlier parse/geometry steps: `store` (parsed IfcDataStore),
+// `bytes` (raw IFC Uint8Array), `meshes` + `geometryResult` (from geometry).
+
 // IFC STEP, applies any pending mutations
 const stepText = exportToStep(store, { schema: 'IFC4', applyMutations: true });
 

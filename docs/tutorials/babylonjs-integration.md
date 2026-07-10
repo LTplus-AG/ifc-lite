@@ -482,6 +482,15 @@ export default defineConfig({
 });
 ```
 
+!!! warning "`server.headers` is dev-only"
+    The `server.headers` block above only applies to Vite's dev server. In
+    production or preview builds these responses come from your hosting layer or
+    CDN, so serve the same `Cross-Origin-Opener-Policy: same-origin` and
+    `Cross-Origin-Embedder-Policy: require-corp` headers there too — otherwise
+    `SharedArrayBuffer` is unavailable and the worker pool falls back to slower
+    per-worker copies. (Vite's `preview` server also honours a matching
+    `preview.headers` block.)
+
 ## Full Example
 
 See [`examples/babylonjs-viewer/`](https://github.com/LTplus-AG/ifc-lite/tree/main/examples/babylonjs-viewer) for a complete, runnable example with streaming geometry, vertex-color batching, entity picking, property panel, and spatial tree navigation.

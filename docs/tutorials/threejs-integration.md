@@ -618,6 +618,15 @@ export default defineConfig({
 });
 ```
 
+!!! warning "`server.headers` is dev-only"
+    The `server.headers` block above only applies to Vite's dev server. In
+    production or preview builds these responses come from your hosting layer or
+    CDN, so serve the same `Cross-Origin-Opener-Policy: same-origin` and
+    `Cross-Origin-Embedder-Policy: require-corp` headers there too — otherwise
+    `SharedArrayBuffer` is unavailable and the worker pool falls back to slower
+    per-worker copies. (Vite's `preview` server also honours a matching
+    `preview.headers` block.)
+
 ## Full Example
 
 See [`examples/threejs-viewer/`](https://github.com/LTplus-AG/ifc-lite/tree/main/examples/threejs-viewer) for a complete, runnable example with geometry streaming, object picking, a properties panel, and a spatial tree — all wired together.

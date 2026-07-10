@@ -143,6 +143,9 @@ let rtc = self.rtc_offset;
 // Apply RTC once per mesh; `rtc_applied` guards against double-shifting
 // meshes that already went through an RTC-aware path (e.g. CSG operands).
 let needs_rtc = self.has_rtc_offset() && !mesh.rtc_applied;
+// Resolve the offset ONCE from `needs_rtc`: (0, 0, 0) when the shift must not
+// be applied, so the subtraction below is a no-op for already-anchored meshes.
+let (rx, ry, rz) = if needs_rtc { rtc } else { (0.0, 0.0, 0.0) };
 
 for chunk in mesh.positions.chunks_exact_mut(3) {
     let point = Point3::new(chunk[0] as f64, chunk[1] as f64, chunk[2] as f64);

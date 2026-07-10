@@ -256,10 +256,18 @@ class MeshDataJs {
 type PrePassEvent =
   | { type: 'meta'; unitScale: number; rtcOffset: [number, number, number]; needsShift: boolean; buildingRotation?: number }
   | { type: 'jobs'; jobs: Uint32Array }   // [id, start, end] triples
-  | { type: 'complete'; totalJobs: number };
+  | { type: 'complete'; totalJobs: number }
+  // Auxiliary events — carry data the pre-pass already computed so callers can
+  // skip a second file scan. Consumers that only need geometry jobs can ignore
+  // them. Each shape below lists its principal fields; the styles / columns
+  // events also carry additional material-plumbing arrays (see
+  // `geometry-parallel.ts`).
+  | { type: 'entity-index'; ids: Uint32Array; starts: Uint32Array; lengths: Uint32Array }
+  | { type: 'styles'; styleIds: Uint32Array; styleColors: Uint8Array; voidKeys: Uint32Array; voidCounts: Uint32Array; voidValues: Uint32Array }
+  | { type: 'prepass-columns'; referencedRepmaps: Uint32Array; instantiatedTypeIds: Uint32Array; mliElementIds: Uint32Array };
 ```
 
-The callback also receives auxiliary events (`entity-index`, `styles`, `prepass-columns`) carrying the scanned entity index, style colours, and pre-pass column data so callers can skip a second scan; consumers that only need geometry jobs can ignore them.
+The auxiliary events (`entity-index`, `styles`, `prepass-columns`) carry the scanned entity index, style colours, and pre-pass column data. Type the callback against the full union above so exhaustive handling does not silently miss them.
 
 ## Error Handling
 

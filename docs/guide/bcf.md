@@ -66,7 +66,7 @@ addCommentToTopic(topic, comment);
 // Add to project
 addTopicToProject(project, topic);
 
-// Export as .bcf file (returns a Blob)
+// Export as a .bcfzip archive (returns a Blob)
 const bcfBlob = await writeBCF(project);
 ```
 

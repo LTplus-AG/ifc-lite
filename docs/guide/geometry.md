@@ -120,6 +120,7 @@ classDiagram
         +Uint32Array indices
         +Float32Array? uvs
         +number[] color
+        +number[]? origin
     }
 
     class GeometryResult {

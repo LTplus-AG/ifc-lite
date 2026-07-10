@@ -18,7 +18,7 @@ Or install it:
 
 ```sh
 npm install @ifc-lite/collab-server
-ifc-lite-collab-server
+npx ifc-lite-collab-server
 ```
 
 Environment variables:

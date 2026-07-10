@@ -22,10 +22,10 @@ node dist/cli.js schemas/IFC4X3.exp --output ./generated/ifc4x3
 
 Pass `--rust` to also emit Rust type tables (consumed by the ifc-lite Rust core).
 
-Generated files (one per output directory):
+Generated files (one per output directory, e.g. `./generated/ifc4`):
 
 ```text
-src/generated/
+generated/ifc4/
 ├── entities.ts          ← TypeScript interfaces for every entity
 ├── types.ts             ← defined-type aliases
 ├── enums.ts             ← enum definitions
@@ -48,8 +48,8 @@ console.log(`Parsed ${schema.entities.length} entities, ${schema.types.length} t
 
 const generated = generateTypeScript(schema);
 
-await writeFile('./src/generated/entities.ts', generated.entities);
-await writeFile('./src/generated/schema-registry.ts', generated.schemaRegistry);
+await writeFile('./generated/ifc4/entities.ts', generated.entities);
+await writeFile('./generated/ifc4/schema-registry.ts', generated.schemaRegistry);
 ```
 
 ## What you get

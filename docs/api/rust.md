@@ -83,7 +83,16 @@ impl<'a> EntityScanner<'a> {
     /// Create a scanner over the file bytes
     pub fn new<T>(content: &'a T) -> Self;
 
-    /// Create a scanner starting at a byte position
+    /// Create a scanner starting at a byte position.
+    ///
+    /// Preconditions: `position` is a GLOBAL byte offset into `content` (the
+    /// returned entity spans are absolute, not shard-relative), and it must sit
+    /// at a known entity boundary — typically the byte right after a `;\n`
+    /// terminator, not inside the HEADER section or partway through an entity.
+    /// `new_at` does NOT auto-skip the STEP header; that is the caller's
+    /// responsibility (used by the sharded-scan pre-pass). Starting mid-header
+    /// or mid-entity yields incorrect spans. The offset is clamped to the buffer
+    /// length.
     pub fn new_at<T>(content: &'a T, position: usize) -> Self;
 
     /// Advance to the next entity: (express_id, type_name, start, end)
@@ -505,6 +514,7 @@ pub unsafe extern "C" fn ifc_lite_parse(
 ) -> i32;
 
 /// Same, with an explicit opening-filter mode
+/// (`opening_filter_mode`: 0 = Default, 1 = IgnoreAll, 2 = IgnoreOpaque)
 pub unsafe extern "C" fn ifc_lite_parse_ex(
     path_ptr: *const u8, path_len: usize,
     opening_filter_mode: i32,
@@ -514,6 +524,23 @@ pub unsafe extern "C" fn ifc_lite_parse_ex(
 /// Free a buffer returned by the parse calls
 pub unsafe extern "C" fn ifc_lite_free(ptr: *mut u8, len: usize);
 ```
+
+**FFI contract.** These entry points are `unsafe` and cross a C boundary, so the
+caller owns the following guarantees:
+
+- **Inputs.** `path_ptr` / `path_len` describe a UTF-8 file path (need not be
+  NUL-terminated). `out_ptr` and `out_len` must be non-null and valid for
+  writes. A null pointer or non-UTF-8 path returns `1` and writes nothing.
+- **Success (`0`).** `*out_ptr` receives a heap buffer of `*out_len` serialized
+  JSON bytes. The buffer is owned by the caller from that point on.
+- **Failure.** Non-zero return codes leave the out-parameters untouched (no
+  buffer is allocated, so there is nothing to free): `1` null pointer or invalid
+  path, `2` file could not be read, `3` geometry processing panicked, `4` JSON
+  serialization failed.
+- **Freeing.** Pass the exact `ptr` and `len` you received from a successful
+  parse to `ifc_lite_free` **exactly once**. Do not free on a non-zero return,
+  do not free twice, and do not mix in a pointer/length from any other source.
+  `ifc_lite_free` is a no-op when `ptr` is null or `len` is `0`.
 
 ---
 

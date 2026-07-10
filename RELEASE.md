@@ -146,9 +146,10 @@ OIDC trusted publishing for both registries:
 - Check workflow logs in Actions tab
 
 ### Publishing fails
-- Check that secrets are configured correctly
-- Verify npm token has publish access to `@ifc-lite/*` scope
-- For Rust: ensure crates.io token is valid
+- Confirm the release workflow requests `id-token: write` (required for the OIDC handshake) alongside the other GitHub Actions permissions
+- Verify the npm trusted-publisher config lists this repo + workflow for the `@ifc-lite/*` packages
+- For a brand-new package, do the one-time manual first publish before trusted publishing can take over
+- For Rust: confirm the crates.io trusted-publisher config is set for the crate
 - Check if versions already exist on registries
 
 ### Versions out of sync

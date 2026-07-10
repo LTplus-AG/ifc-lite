@@ -4,6 +4,11 @@ Guide to geometry extraction and processing in IFClite.
 
 ## Overview
 
+All geometry is produced by a single Rust pipeline (`produce_element_meshes`
+in the processing crate), whether it runs through the browser WASM build, the
+worker pool, or a native host. Every consumer therefore gets identical
+per-element meshes, and fixes to the mesher land once for all paths.
+
 IFClite processes IFC geometry through a streaming pipeline:
 
 ```mermaid
@@ -107,32 +112,42 @@ curved tessellation scales.
 
 ```mermaid
 classDiagram
-    class Mesh {
+    class MeshData {
         +number expressId
+        +string? ifcType
         +Float32Array positions
         +Float32Array normals
         +Uint32Array indices
         +Float32Array? uvs
         +number[] color
+        +number[]? origin
     }
 
     class GeometryResult {
-        +Mesh[] meshes
-        +BoundingBox bounds
-        +number triangleCount
-        +number vertexCount
+        +MeshData[] meshes
+        +number totalTriangles
+        +number totalVertices
+        +CoordinateInfo coordinateInfo
     }
 
-    class BoundingBox {
-        +Vector3 min
-        +Vector3 max
-        +Vector3 center
-        +Vector3 size
+    class CoordinateInfo {
+        +Vec3 originShift
+        +AABB originalBounds
+        +AABB shiftedBounds
+        +boolean hasLargeCoordinates
     }
 
-    GeometryResult "1" --> "*" Mesh
-    GeometryResult "1" --> "1" BoundingBox
+    GeometryResult "1" --> "*" MeshData
+    GeometryResult "1" --> "1" CoordinateInfo
 ```
+
+!!! warning "Winding order is not outward-guaranteed"
+    Triangle winding in IFC-derived meshes is unreliable by design: source
+    breps and CSG results do not guarantee outward-facing triangles. Renderers
+    must draw double-sided (`cullMode: 'none'` / `DoubleSide`) and must not use
+    winding for front/back-face decisions; shade with
+    `abs(dot(normal, viewDir))` or depth testing instead. The bundled
+    `@ifc-lite/renderer` already does this.
 
 ### Accessing Mesh Data
 
@@ -216,6 +231,44 @@ for await (const event of geometry.processStreaming(new Uint8Array(buffer))) {
   }
 }
 ```
+
+## Parallel and Adaptive Processing
+
+On multi-core machines with `SharedArrayBuffer` available (a
+cross-origin-isolated page), the processor can fan geometry out to a pool of
+Web Workers, each with its own WASM instance processing a disjoint slice of
+the element list. Batches are yielded as they arrive from any worker:
+
+```typescript
+// Explicit worker-pool streaming
+for await (const event of geometry.processParallel(new Uint8Array(buffer))) {
+  if (event.type === 'batch') renderer.addMeshes(event.meshes, true);
+}
+```
+
+`processAdaptive()` is the recommended entry point: it picks the best path
+automatically. Small files (below a 2 MB threshold by default) are processed
+in one shot for instant display; larger files use the parallel worker pool
+when available, falling back to single-worker streaming otherwise:
+
+```typescript
+for await (const event of geometry.processAdaptive(new Uint8Array(buffer))) {
+  switch (event.type) {
+    case 'batch':
+      // Note: multiple meshes may share an expressId (one per material/part);
+      // group by expressId for per-element rendering or picking.
+      renderer.addMeshes(event.meshes, true);
+      break;
+    case 'complete':
+      renderer.fitToView();
+      break;
+  }
+}
+```
+
+The worker count is chosen by a cores/memory heuristic; geometry output is
+identical regardless of the count (workers process deterministic, disjoint
+slices).
 
 ## Coordinate Handling
 
@@ -310,21 +363,17 @@ flowchart LR
 
 ### Brep Processor
 
-Handles `IfcFacetedBrep` entities:
-
-```typescript
-// Brep processing is straightforward - faces are already triangulated
-// in most cases, or need simple fan triangulation
-
-const brepMesh = processBrep({
-  faces: brepEntity.faces,
-  vertices: brepEntity.vertices
-});
-```
+Handles `IfcFacetedBrep` (and tessellated face-set) entities in Rust. Each
+face is projected to its plane and triangulated: simple quads take a fast fan
+path, faces with holes go through polygon triangulation with hole support
+(falling back to a fan if that fails).
 
 ### Boolean Operations
 
-Handles `IfcBooleanClippingResult`:
+Handles `IfcBooleanClippingResult` and opening voids (`IfcRelVoidsElement`).
+Void cutting is a single exact-CSG path in the Rust kernel: boolean
+differences are evaluated with exact arithmetic predicates, so opening cuts
+are watertight rather than approximated.
 
 ```mermaid
 flowchart LR
@@ -360,6 +409,14 @@ const result = await geometry.process(new Uint8Array(buffer));
 // The renderer batches by colour when you load the meshes.
 renderer.loadGeometry(result);
 ```
+
+In addition, repeated opaque geometry (e.g. Tekla-style bolt/part repetition)
+can be routed to a GPU-instancing path: the streaming batch events carry
+packed instanced shards when the processor's `enableInstancing` option is on
+(the default). Federated multi-model loads should pass
+`enableInstancing: false`, since the renderer's instanced path is
+primary-model only. See the [Rendering Guide](rendering.md) for how shards are
+uploaded.
 
 ## Performance Optimization
 
@@ -420,19 +477,11 @@ await geometry.init();
 
 const result = await geometry.process(new Uint8Array(buffer));
 
-// Calculate statistics from meshes
-let totalTriangles = 0;
-let totalVertices = 0;
-
-for (const mesh of result.meshes) {
-  totalTriangles += mesh.indices.length / 3;
-  totalVertices += mesh.positions.length / 3;
-}
-
+// Totals are precomputed on the result
 console.log('Geometry Statistics:');
 console.log(`  Total meshes: ${result.meshes.length}`);
-console.log(`  Total triangles: ${totalTriangles}`);
-console.log(`  Total vertices: ${totalVertices}`);
+console.log(`  Total triangles: ${result.totalTriangles}`);
+console.log(`  Total vertices: ${result.totalVertices}`);
 ```
 
 ## Next Steps

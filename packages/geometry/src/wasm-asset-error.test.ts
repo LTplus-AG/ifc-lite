@@ -5,6 +5,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   isWasmAssetUnavailableError,
+  notifyIfWorkerScriptUnavailable,
   notifyIfWasmAssetUnavailable,
   WASM_ASSET_UNAVAILABLE_EVENT,
 } from './wasm-asset-error.js';
@@ -103,5 +104,58 @@ describe('notifyIfWasmAssetUnavailable', () => {
     vi.stubGlobal('dispatchEvent', dispatchEvent);
     expect(notifyIfWasmAssetUnavailable('some unrelated failure')).toBe(false);
     expect(dispatchEvent).not.toHaveBeenCalled();
+  });
+});
+
+describe('notifyIfWorkerScriptUnavailable', () => {
+  it('treats an empty-message error from a worker that never spoke as version skew', () => {
+    // The stale-deploy signature: the worker SCRIPT 404s (served text/plain),
+    // the browser blocks it and fires onerror with NO message - the MIME
+    // detail goes only to the console.
+    const dispatchEvent = vi.fn();
+    vi.stubGlobal('dispatchEvent', dispatchEvent);
+    expect(notifyIfWorkerScriptUnavailable({ message: undefined }, false)).toBe(true);
+    if (typeof CustomEvent === 'function') {
+      expect(dispatchEvent).toHaveBeenCalledTimes(1);
+      const event = dispatchEvent.mock.calls[0][0] as CustomEvent;
+      expect(event.type).toBe(WASM_ASSET_UNAVAILABLE_EVENT);
+      expect(String(event.detail.message)).toMatch(/worker script/i);
+    }
+  });
+
+  it('does NOT fire for an empty-message error after the worker already spoke', () => {
+    // A hard in-worker crash (e.g. the wasm thread aborting under memory
+    // pressure) can also produce an empty message - but the script
+    // demonstrably loaded, so a reload would loop without fixing anything.
+    const dispatchEvent = vi.fn();
+    vi.stubGlobal('dispatchEvent', dispatchEvent);
+    expect(notifyIfWorkerScriptUnavailable({ message: '' }, true)).toBe(false);
+    expect(dispatchEvent).not.toHaveBeenCalled();
+  });
+
+  it('does NOT fire for a real in-worker error message that is not the wasm signature', () => {
+    const dispatchEvent = vi.fn();
+    vi.stubGlobal('dispatchEvent', dispatchEvent);
+    expect(
+      notifyIfWorkerScriptUnavailable({ message: 'TypeError: x is not a function' }, false),
+    ).toBe(false);
+    expect(dispatchEvent).not.toHaveBeenCalled();
+  });
+
+  it('still fires for the wasm-MIME signature carried in the message, even after speaking', () => {
+    const dispatchEvent = vi.fn();
+    vi.stubGlobal('dispatchEvent', dispatchEvent);
+    const msg =
+      "Response has unsupported MIME type 'text/plain; charset=utf-8' expected 'application/wasm'";
+    expect(notifyIfWorkerScriptUnavailable({ message: msg }, true)).toBe(true);
+    if (typeof CustomEvent === 'function') {
+      expect(dispatchEvent).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it('null/undefined error from a silent spawn failure counts as empty-message', () => {
+    const dispatchEvent = vi.fn();
+    vi.stubGlobal('dispatchEvent', dispatchEvent);
+    expect(notifyIfWorkerScriptUnavailable(undefined, false)).toBe(true);
   });
 });

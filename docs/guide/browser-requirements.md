@@ -12,8 +12,8 @@ The renderer requires **WebGPU**, a next-generation graphics API.
 |---------|----------------|--------|
 | Chrome | 113+ | :material-check-circle:{ .success } Stable |
 | Edge | 113+ | :material-check-circle:{ .success } Stable |
-| Firefox | 141+ | :material-check-circle:{ .success } Stable |
-| Safari | 18+ | :material-check-circle:{ .success } Stable |
+| Firefox | 141+ (Windows; other platforms in later releases) | :material-check-circle:{ .success } Stable |
+| Safari | 26+ | :material-check-circle:{ .success } Stable |
 
 ### Checking WebGPU Support
 
@@ -220,8 +220,8 @@ See the [Three.js](../tutorials/threejs-integration.md) and
 
 | Platform | Browser | Status |
 |----------|---------|--------|
-| iOS | Safari 18+ | :material-check-circle:{ .success } |
-| Android | Chrome 113+ | :material-check-circle:{ .success } |
+| iOS | Safari 26+ | :material-check-circle:{ .success } |
+| Android | Chrome 121+ | :material-check-circle:{ .success } |
 | Android | Firefox | Not enabled by default (behind a flag) |
 
 !!! tip "Mobile Performance"

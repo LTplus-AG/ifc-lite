@@ -96,7 +96,7 @@ The manifest is the contract between your bundle and the host. Every field is ha
 | `version` | Semver string. |
 | `engines.ifcLiteSdk` | SDK range your bundle works against (`>=2.0.0`, `^2.1`, `~2.0.3`, etc.). |
 | `capabilities` | Array of capability strings (see [Capabilities](#capabilities)). |
-| `activation` | When the host should activate your bundle (`onStartup`, `onCommand:<id>`, `onLens:<id>`, etc.). |
+| `activation` | When the host should activate your bundle. Allowed forms: `onStartup`, `onModelLoad`, `onCommand:<id>`, `onLens:<id>`, `onExporter:<id>`, `onIdsValidator:<id>`, `onSchema:<v>`, `onSlot:<id>`. |
 | `contributes` | What your bundle adds to the UI. |
 | `entry` | Map from command id → JS file path. |
 
@@ -107,7 +107,7 @@ The manifest is the contract between your bundle and the host. Every field is ha
 | Slot | What it does |
 |------|--------------|
 | `commands` | Available in the Command Palette and dispatchable from other slots. |
-| `toolbar` | Icon buttons in `toolbar.right` / `toolbar.left`. |
+| `toolbar` | Icon buttons in `toolbar.left` / `toolbar.center` / `toolbar.right`. |
 | `dock` | Tabbed panels in `dock.left` / `dock.right` / `dock.bottom`. |
 | `contextMenu` | Items in `contextMenu.entity` / `contextMenu.canvas` / `contextMenu.tree`. |
 | `keybindings` | Keyboard shortcuts bound to a command. |
@@ -150,9 +150,9 @@ network.fetch:api.example.com
 
 When you declare a capability, the user sees it during install with a plain-English description and a risk badge:
 
-- **Green** — read-only / scoped operations (`model.read`, `viewer.read`)
-- **Yellow** — viewer mutations, scoped exports (`viewer.colorize`, `export.create:csv`)
-- **Red** — network egress, model mutation, unknown capabilities (`network.fetch:*`, `model.mutate:*`)
+- **Green** - read-only / scoped operations (`model.read`, `viewer.read`, `viewer.colorize`)
+- **Yellow** - scoped model mutation, scoped exports, single-host network access (`model.mutate:Pset_WallCommon`, `export.create:csv`, `network.fetch:api.example.com`)
+- **Red** - wildcard network egress, entity deletion, wildcard mutation, unknown capabilities (`network.fetch:*`, `model.delete`, `model.mutate:*`)
 
 !!! warning "Be specific"
     Declare the narrowest capability that works. `model.mutate:Pset_WallCommon` is far less alarming than `model.mutate:*` — and the user is much more likely to grant it.
@@ -301,9 +301,9 @@ Matchers accumulate — every failing matcher is reported in one go so you don't
 
 The `fixture` field names a model the runner resolves. Out of the box:
 
-- `residential-small` — 12 walls, 4 slabs, 6 doors, 8 windows, 5 spaces (IFC4)
-- `office-medium` — 120 walls, 24 slabs, 48 columns, 96 beams (IFC4)
-- `empty-model` — no entities
+- `residential-small` - 12 walls, 4 slabs, 6 doors, 8 windows, 5 spaces (IFC4)
+- `office-medium` - 120 walls, 24 slabs, 48 columns, 96 beams, 32 doors, 64 windows, 40 spaces (IFC4)
+- `empty-model` - no entities
 
 Custom fixtures can be wired by the host. From the CLI:
 
@@ -373,6 +373,9 @@ npx @ifc-lite/cli ext pack ./my-bundle \
   --out my-bundle.iflx \
   --sign --key ~/.config/ifclite/key.private.iflk
 
+# Or sign an existing bundle / directory after the fact.
+npx @ifc-lite/cli ext sign ./my-bundle --key ~/.config/ifclite/key.private.iflk --out my-bundle.iflx
+
 # Verify against a known public key.
 npx @ifc-lite/cli ext verify my-bundle.iflx --key ~/.config/ifclite/key.public.iflk
 ```
@@ -384,8 +387,8 @@ The signature commits to a canonical hash of the bundle contents + the `signedAt
 ??? question "The authoring loop says 'banned global'"
     Your code references `globalThis`, `window`, `process`, `document`, or `self`. The AST walker (`validate/code.ts`) flags these during the AI authoring / repair loop (`ext validate` does not run it). Remove the reference - the sandbox runtime would block the access anyway, this just surfaces it earlier.
 
-??? question "Manifest fails with 'dangling command reference'"
-    Cross-reference validator says a `toolbar` / `contextMenu` / `keybinding` contribution names a command that's not declared in `contributes.commands`. Add the command, or remove the reference.
+??? question "Manifest fails with `Command "..." is referenced but not declared`"
+    The cross-reference validator says a `toolbar` / `contextMenu` / `keybinding` contribution names a command that's not declared in `contributes.commands` or `entry.commands`. These are two different sides: `contributes.commands` declares the command's UI metadata (id, title, icon), while `entry.commands` maps the command id to its handler file. The validator only needs the id to appear in one of them, but a working command usually needs both (metadata to show it, a handler to run it). Add whichever side is missing, or remove the reference.
 
 ??? question "Pack succeeds but install fails with 'entry script missing'"
     The manifest's `entry.commands["x"]` points at a file that isn't in the bundle. Likely you didn't `git add` the file before packing. Run `ext validate` first — it cross-references entries against the bundle's file map.
@@ -397,4 +400,4 @@ The signature commits to a canonical hash of the bundle contents + the `signedAt
 
 - [Extensions](extensions.md) — install and use extensions
 - [Flavors](flavors.md) — bundle your extensions into a shareable profile
-- [CLI reference](cli.md#ext--extension-toolkit) — every `ext` subcommand with flags
+- [CLI reference](cli.md#ext-extension-toolkit) — every `ext` subcommand with flags

@@ -87,13 +87,17 @@ interface ModelSlice {
 ### FederatedModel
 
 ```typescript
+// apps/viewer/src/store/types.ts (abridged)
 interface FederatedModel {
-  id: string;
-  name: string;
-  idOffset: number;
-  maxExpressId: number;
+  id: string;                          // UUID generated on load
+  name: string;                        // filename by default, renameable
+  ifcDataStore: IfcDataStore | null;   // parsed data model
+  geometryResult: GeometryResult | null; // meshes carry globalIds, not raw expressIds
   visible: boolean;
-  collapsed: boolean;
+  collapsed: boolean;                  // hierarchy panel state
+  schemaVersion: SchemaVersion;
+  idOffset: number;                    // from FederationRegistry
+  maxExpressId: number;
 }
 ```
 

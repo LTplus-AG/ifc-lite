@@ -8,6 +8,7 @@
 //! geometry already flows through `ifc-lite-wasm`).
 
 mod adjacency;
+mod collada;
 mod constructions;
 mod csv;
 mod error;
@@ -30,6 +31,7 @@ mod schema_convert;
 mod shades;
 mod step;
 
+pub use collada::export_collada_from_meshes;
 pub use csv::{export_csv, CsvMode, CsvOptions};
 pub use error::ExportError;
 pub use gltf::{
@@ -53,7 +55,9 @@ pub use ifc_lite_core::{build_entity_index, entity_count, EntityIndex};
 pub use ifc5::{export_ifc5, Ifc5Options};
 pub use json::{export_json, JsonOptions};
 pub use jsonld::{export_jsonld, JsonLdOptions};
-pub use kmz::{export_kmz, ifc_angle_to_kml_heading, KmzOptions};
+pub use kmz::{
+    export_kmz, export_kmz_collada_from_meshes, ifc_angle_to_kml_heading, AltitudeMode, KmzOptions,
+};
 pub use merged::{export_merged, export_merged_with_stats, MergedOptions, MergedStats};
 pub use model::{
     build_export_model, stream_export_model, stream_export_model_with_index, EntityRow,

@@ -6,6 +6,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   recoverFromWasmVersionSkew,
+  recoverFromWorkerScriptSkew,
   installWasmVersionSkewRecovery,
   __resetWasmVersionSkewForTests,
   type VersionSkewDeps,
@@ -17,6 +18,8 @@ const MIME_SKEW =
 /** A controllable clock + in-memory reload bookkeeping for the recovery deps. */
 class Harness {
   reloads = 0;
+  /** Simulates sessionStorage being blocked (private mode / sandboxed embed). */
+  storageBlocked = false;
   private now: number;
   private lastReloadAt: number | null = null;
   readonly deps: VersionSkewDeps;
@@ -30,7 +33,9 @@ class Harness {
       },
       hasRecentReload: (n) => this.lastReloadAt != null && n - this.lastReloadAt < 60_000,
       rememberReload: (n) => {
+        if (this.storageBlocked) return false;
         this.lastReloadAt = n;
+        return true;
       },
     };
   }
@@ -77,6 +82,44 @@ describe('recoverFromWasmVersionSkew', () => {
     const h = makeDeps();
     assert.equal(recoverFromWasmVersionSkew(new TypeError(MIME_SKEW), h.deps), true);
     assert.equal(h.reloads, 1);
+  });
+});
+
+describe('recoverFromWorkerScriptSkew (pre-classified by the geometry library)', () => {
+  it('reloads once without re-running the message matcher', () => {
+    // The worker-script 404 signature has NO message (the MIME detail goes
+    // only to the console), so the strict matcher can never accept it; the
+    // library's classification must be trusted (adversarial finding on #1680).
+    const h = makeDeps();
+    assert.equal(recoverFromWorkerScriptSkew(h.deps), true);
+    assert.equal(h.reloads, 1);
+  });
+
+  it('debounces a second worker-script skew within the window', () => {
+    const h = makeDeps(1_000_000);
+    assert.equal(recoverFromWorkerScriptSkew(h.deps), true);
+    h.setNow(1_030_000);
+    assert.equal(recoverFromWorkerScriptSkew(h.deps), false);
+    assert.equal(h.reloads, 1);
+  });
+
+  it('REFUSES to reload when the attempt cannot be recorded (storage blocked)', () => {
+    // A permanent condition (CSP-blocked worker spawn, proxy rewriting
+    // assets) in a storage-partitioned embed would otherwise reload on every
+    // occurrence with no debounce at all - a reload loop.
+    const h = makeDeps();
+    h.storageBlocked = true;
+    assert.equal(recoverFromWorkerScriptSkew(h.deps), false);
+    assert.equal(h.reloads, 0);
+  });
+});
+
+describe('storage-veto applies to the message-matched path too', () => {
+  it('does not reload a matching wasm-MIME error when the attempt cannot be recorded', () => {
+    const h = makeDeps();
+    h.storageBlocked = true;
+    assert.equal(recoverFromWasmVersionSkew(MIME_SKEW, h.deps), false);
+    assert.equal(h.reloads, 0);
   });
 });
 

@@ -81,6 +81,7 @@ import { downloadFile, downloadDataUrl } from '@/lib/export/download';
 import { FileSpreadsheet, FileJson, FileText, Filter, Upload, Pencil, DraftingCompass } from 'lucide-react';
 import { ExportDialog } from './ExportDialog';
 import { GLBExportDialog } from './GLBExportDialog';
+import { KmzExportDialog } from './KmzExportDialog';
 import { HbjsonExportDialog } from './HbjsonExportDialog';
 import { BulkPropertyEditor } from './BulkPropertyEditor';
 import { DataConnector } from './DataConnector';
@@ -999,7 +1000,10 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon-sm" disabled={!geometryResult}>
+          {/* Gate on any loaded model, not the legacy single-model geometryResult:
+              federated / multi-model sessions populate `models` but leave
+              geometryResult null, which would hide the whole export menu (incl. KMZ). */}
+          <Button variant="ghost" size="icon-sm" disabled={!hasModelsLoaded && !ifcDataStore}>
             <Download className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>
@@ -1018,6 +1022,14 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
               <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
                 <Download className="h-4 w-4 mr-2" />
                 Export GLB (3D Model)
+              </DropdownMenuItem>
+            }
+          />
+          <KmzExportDialog
+            trigger={
+              <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                <Globe2 className="h-4 w-4 mr-2" />
+                Export KMZ (Google Earth Pro)
               </DropdownMenuItem>
             }
           />

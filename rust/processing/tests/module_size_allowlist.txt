@@ -22,7 +22,10 @@
     553 rust/core/src/schema_gen.rs
      990 rust/core/src/units.rs
 # +4: build the index once in parallel on the fail-closed try_/project_glb_size large-model GLB paths (perf/parallel-scan).
-    3947 rust/export/src/gltf.rs
+# +81: emissive-material knob for KMZ/Google Earth (#1427) - make_material lit/unlit/emissive branch + emissive param threaded through build_gltf/export_glb_from_meshes and their tests.
+    4028 rust/export/src/gltf.rs
+# COLLADA (.dae) exporter that embeds geometry in the KMZ (#1427); cohesive single-purpose module.
+    635 rust/export/src/collada.rs
      655 rust/export/src/model.rs
      611 rust/export/src/step.rs
 # +45: reject non-positive SegmentLength/HorizontalLength (malformed-input NaN guard) + regression test.
@@ -40,12 +43,17 @@
      410 rust/geometry/src/geom_hash.rs
      633 rust/geometry/src/kernel/arrangement/classify.rs
      566 rust/geometry/src/kernel/fixed.rs
+# NEW (#1655): register-resident FixedInt<K> newtype backing the exact predicate cascade; large because it is a drop-in for bnum's I512 and must carry the full num_traits + std::ops trait surface (16 impls) the fixed_impl! macro binds. Its differential fuzz is split into the sibling tests.rs, kept under budget.
+     630 rust/geometry/src/kernel/fixed_int/mod.rs
 # +39: begin()/tripped() budget-guard added to the union & intersection kernel entries (#1109 parity with subtract).
 # +7: union_many threads/documents union_all's new (union, conforming) signal (B8 arrange-many parity).
 # +12: near_band_from_extent (the snap-scatter band formula) single-homed here, next to canonical SNAP_GRID; tritri/classify import it instead of mirroring the expression.
      904 rust/geometry/src/kernel/mesh_bridge.rs
      700 rust/geometry/src/kernel/predicates.rs
-    1261 rust/geometry/src/kernel/retriangulate.rs
+# -31: extracted the final conformity audit + traversal recovery into kernel/retriangulate_audit.rs and phase-D recovery into retriangulate_recover.rs (issue #098 dense faceted-reveal walls); net down.
+              935 rust/geometry/src/kernel/retriangulate.rs
+# split out of retriangulate.rs: phase-D constraint recovery (recover_subsegment/enforce_constraint/between + the Sloan recover_via_traversal fallback for dense reveal pockets, issue #098).
+         438 rust/geometry/src/kernel/retriangulate_recover.rs
 # new row: adds from_spans (build the index from pre-collected IfcRelAssociatesMaterial spans, no re-walk) + the MaterialLayerFlat wire codec (to_flat/from_flat) + round-trip tests, so the streaming pre-pass ships the index to workers once instead of each worker re-scanning the file (perf/single-scan #563).
      563 rust/geometry/src/material_layer_index.rs
     1529 rust/geometry/src/mesh.rs

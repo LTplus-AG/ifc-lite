@@ -91,14 +91,14 @@ The same `npx` command works as a stdio server in any MCP-aware client.
 | --- | --- |
 | Discovery | `model_info`, `model_list`, `model_load`, `model_unload`, `schema_describe` |
 | Query | `query_entities`, `count_entities`, `get_entity`, `get_entities_bulk`, `spatial_hierarchy`, `containment_chain`, `relationships`, `properties_unique`, `materials_list`, `classifications_list`, `georeferencing`, `units` |
-| Geometry | `geometry_bbox`, `geometry_volume`, `geometry_area`, `clash_check`, `clash_matrix` (mesh/raycast require WASM, planned v0.2) |
-| Validation | `ids_validate`, `ids_explain`, `model_audit`, `gherkin_check` (v0.2) |
+| Geometry | `geometry_bbox`, `geometry_volume`, `geometry_area`, `geometry_get`, `raycast`, `clash_check`, `clash_matrix` |
+| Validation | `ids_validate`, `ids_explain`, `model_audit`, `gherkin_check` |
 | Mutation | `entity_set_property`, `entity_delete_property`, `entity_set_attribute`, `entity_create`, `entity_delete`, `mutation_batch`, `mutation_undo`, `mutation_diff`, `model_save` |
 | BCF | `bcf_topic_list`, `bcf_topic_create`, `bcf_topic_update`, `bcf_topic_close`, `bcf_viewpoint_create`, `bcf_export` |
 | bSDD | `bsdd_search`, `bsdd_class`, `bsdd_property_sets`, `bsdd_match` |
 | Diff | `model_diff`, `quantity_diff` |
-| Export | `export_ifc`, `export_csv`, `export_json`, `export_glb`, `export_ifcx`, `export_pdf_report` (v0.5) |
-| Viewer | `viewer_ask`, `viewer_open`, `viewer_close`, `viewer_status`, `viewer_colorize`, `viewer_isolate`, `viewer_hide`, `viewer_show`, `viewer_reset`, `viewer_fly_to`, `viewer_set_section`, `viewer_clear_section`, `viewer_color_by_storey`, `viewer_color_by_property`, `viewer_get_selection`, `viewer_wait_for_selection` |
+| Export | `export_ifc`, `export_csv`, `export_json`, `export_glb`, `export_obj`, `export_ifcx`, `export_pdf_report` |
+| Viewer | `viewer_ask`, `viewer_open`, `viewer_close`, `viewer_status`, `viewer_colorize`, `viewer_isolate`, `viewer_hide`, `viewer_show`, `viewer_reset`, `viewer_fly_to`, `viewer_set_section`, `viewer_clear_section`, `viewer_color_by_storey`, `viewer_color_by_property`, `viewer_get_selection`, `viewer_wait_for_selection`, `viewer_describe_selection` |
 
 Resources expose live model state under the `ifc-lite://` URI scheme:
 
@@ -175,12 +175,20 @@ error.
 
 ## Roadmap
 
-| Version | Adds |
-| --- | --- |
-| 0.1 | stdio + Streamable HTTP, query / IDS / mutate / BCF / bSDD / diff / viewer |
-| 0.2 | WASM geometry (mesh, raycast, clash), gherkin validation, IFCX export |
-| 0.3 | OAuth 2.1 with PKCE, hosted multi-tenant deployment |
-| 0.5 | Sampling for natural-language descriptions, two-way viewer editing |
-| 1.0 | Public registry listing, full spec coverage |
+Shipped: stdio + Streamable HTTP transports; query, geometry (bbox, volume,
+area), clash, IDS validation, mutation, BCF, bSDD, diff, export (IFC, CSV, JSON,
+GLB, OBJ, IFCX), and live viewer control.
+
+Planned: mesh geometry (`geometry_get`) and `raycast` (both need the WASM
+geometry pipeline), Gherkin validation (`gherkin_check`), and PDF report export
+(`export_pdf_report`) — these tools are registered but currently return
+`UNSUPPORTED_OPERATION`. Also planned: OAuth 2.1 with PKCE and hosted
+multi-tenant deployment, sampling for natural-language descriptions, and public
+registry listing.
+
+## Docs
+
+See the [ifc-lite docs](https://ltplus-ag.github.io/ifc-lite/) for the full
+platform documentation.
 
 Licensed under MPL-2.0.

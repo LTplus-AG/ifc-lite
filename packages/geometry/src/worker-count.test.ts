@@ -223,15 +223,27 @@ describe('computeWorkerCount', () => {
     expect(r.count).toBe(8);
   });
 
-  it('Desktop tower, 2 GB file → memory-capped well below 8', () => {
+  it('Desktop tower, 2 GB file → huge-file bandwidth clamp wins (4 workers)', () => {
     const r = computeWorkerCount({
       fileSizeMB: 2048, cores: 16, deviceMemoryGB: 32, totalJobs: 30000,
     });
-    // 32 GB RAM, 8 GB reserved, 5 GB main-thread budget → 19 GB / (3 GB per
-    // worker) ≈ 6 workers, capped by cores at 8 → memory wins.
-    expect(r.count).toBeGreaterThanOrEqual(2);
-    expect(r.count).toBeLessThanOrEqual(8);
-    expect(r.reason).toBe('memory');
+    // The >512 MB clamp (4) is tighter than the memory budget (~6 here), so
+    // cores is the binding constraint (#1682).
+    expect(r.count).toBe(4);
+    expect(r.reason).toBe('cores');
+  });
+
+  it('16-core desktop, 883 MB model → clamped to 4 workers, not cores/2 = 8 (#1682)', () => {
+    // Each worker is a private MVP-wasm realm holding a full source copy plus
+    // its own entity index (~fileSize x 1.5 ~= 1.3 GB on this model). The
+    // unclamped 16-core tier spawned 8 workers = ~10.6 GB of redundant worker
+    // heap, the reported 16 GB peak. Huge files are memory-bandwidth bound;
+    // the 4-worker ceiling matches the 12-core tier's measured plateau.
+    const r = computeWorkerCount({
+      fileSizeMB: 883, cores: 16, deviceMemoryGB: 32, totalJobs: 59_018,
+    });
+    expect(r.count).toBe(4);
+    expect(r.reason).toBe('cores');
   });
 
   it('huge file on big desktop never returns 0', () => {

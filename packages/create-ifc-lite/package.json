@@ -1,6 +1,6 @@
 {
   "name": "create-ifc-lite",
-  "version": "1.14.9",
+  "version": "1.14.10",
   "description": "Create IFC-Lite projects with one command",
   "type": "module",
   "bin": {
@@ -37,5 +37,7 @@
   "devDependencies": {
     "@types/node": "^26.1.0",
     "typescript": "^5.3.0"
-  }
+  },
+  "homepage": "https://ltplus-ag.github.io/ifc-lite/",
+  "bugs": "https://github.com/LTplus-AG/ifc-lite/issues"
 }

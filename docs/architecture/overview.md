@@ -13,8 +13,8 @@ flowchart TB
     subgraph Clients["Clients"]
         direction LR
         Web["Web App"]
-        Desktop["Desktop (3rd-party Tauri)"]
         CLI["CLI"]
+        SDK["SDK / MCP"]
     end
 
     subgraph Features["Feature Layers"]
@@ -73,8 +73,8 @@ flowchart LR
 
 | Aspect | Client-Side (WASM) | Server-Side (Rust) |
 |--------|-------------------|-------------------|
-| **Processing** | Single-threaded | Multi-threaded (Rayon) |
-| **Memory** | 4GB WASM limit | System RAM |
+| **Processing** | Web Worker pool (one WASM instance per worker) | Multi-threaded (Rayon) |
+| **Memory** | Up to 4 GiB per wasm32 memory instance per worker (browser/runtime ceiling may be lower) | System RAM |
 | **Caching** | Browser storage | Content-addressable disk |
 | **Format** | Raw geometry | Parquet (15-50x smaller) |
 | **Best For** | Privacy, offline | Teams, large files |
@@ -198,9 +198,10 @@ The monorepo contains over 30 TypeScript packages and 8 Rust workspace crates, p
 ```mermaid
 graph TB
     subgraph Rust["Rust Crates"]
-        Core["ifc-lite-core<br/>Parsing"]
-        Geo["ifc-lite-geometry<br/>Triangulation"]
-        Processing["ifc-lite-processing<br/>Element meshing"]
+        Core["ifc-lite-core<br/>STEP parsing"]
+        Geo["ifc-lite-geometry<br/>Meshing + CSG kernel"]
+        Processing["ifc-lite-processing<br/>Element pipeline"]
+        Export["ifc-lite-export<br/>Exporters"]
         Wasm["ifc-lite-wasm<br/>Bindings"]
         Server["ifc-lite-server<br/>HTTP API"]
     end
@@ -228,12 +229,15 @@ graph TB
 
     subgraph Apps["Applications"]
         Viewer["Viewer App"]
-        Desktop["Desktop (3rd-party Tauri)"]
         CLI["@ifc-lite/cli<br/>(ifc-lite)"]
     end
 
-    Wasm --> Core
-    Wasm --> Geo
+    Processing --> Core
+    Processing --> Geo
+    Export --> Core
+    Server --> Processing
+    Wasm --> Processing
+    Wasm --> Export
     Parser --> WasmTS
     WasmTS --> Wasm
     Geometry --> WasmTS
@@ -249,8 +253,6 @@ graph TB
     Viewer --> Parser
     Viewer --> Renderer
     Viewer --> ServerClient
-    Desktop --> Core
-    Desktop --> Geo
 ```
 
 ## Server Architecture
@@ -302,7 +304,7 @@ sequenceDiagram
     participant Cache
 
     Client->>Client: Compute SHA-256 hash
-    Client->>Server: GET /cache/check/{hash}
+    Client->>Server: GET /api/v1/cache/{hash}
 
     alt Cache Hit
         Server->>Cache: Lookup
@@ -310,7 +312,7 @@ sequenceDiagram
         Server-->>Client: 200 (skip upload!)
     else Cache Miss
         Server-->>Client: 404
-        Client->>Server: POST /parse/parquet
+        Client->>Server: POST /api/v1/parse (or /api/v1/parse/stream)
         Server->>Server: Parse (parallel)
         Server->>Cache: Store
         Server-->>Client: Parquet response
@@ -327,43 +329,37 @@ Each model is parsed independently and then registered with the **FederationRegi
 flowchart TB
     Input["IFC File<br/>(ArrayBuffer)"]
 
-    subgraph Tokenize["1. Tokenize"]
-        STEP["STEP Lexer"]
-        Tokens["Token Stream"]
+    subgraph Scan["1. Scan"]
+        EntityScan["Fast Entity Scanner<br/>(memchr, byte-level)"]
+        Index["Entity Index<br/>(id, offset, type)"]
     end
 
-    subgraph Scan["2. Scan"]
-        EntityScan["Entity Scanner"]
-        Index["Entity Index"]
-    end
-
-    subgraph Decode["3. Decode"]
+    subgraph Decode["2. Decode"]
+        Tokenizer["STEP Tokenizer"]
         Decoder["Entity Decoder"]
         Attrs["Attributes"]
     end
 
-    subgraph Store["4. Store"]
+    subgraph Store["3. Store"]
         Tables["Columnar Tables"]
         Graph["Relationship Graph"]
         OnDemand["On-Demand Maps"]
     end
 
-    subgraph Federate["5. Federate"]
+    subgraph Federate["4. Federate"]
         Registry["FederationRegistry"]
         GlobalIDs["Global ID Assignment"]
     end
 
     Output["IfcDataStore"]
 
-    Input --> Tokenize
-    Tokenize --> Scan
+    Input --> Scan
     Scan --> Decode
     Decode --> Store
     Store --> Federate
     Federate --> Output
 
     style Input fill:#6366f1,stroke:#312e81,color:#fff
-    style Tokenize fill:#2563eb,stroke:#1e3a8a,color:#fff
     style Scan fill:#10b981,stroke:#064e3b,color:#fff
     style Decode fill:#f59e0b,stroke:#7c2d12,color:#fff
     style Store fill:#a855f7,stroke:#581c87,color:#fff
@@ -501,6 +497,8 @@ graph TB
 
 ### Client-Side
 
+Geometry uses a worker pool: one pre-pass worker streams the WASM scan (jobs, RTC offset, units, styles), then N geometry workers (a memory-budget-aware count, capped at 8) each run a WASM instance and process job batches sized adaptively to a wall-time target.
+
 ```mermaid
 flowchart LR
     subgraph Main["Main Thread"]
@@ -509,12 +507,18 @@ flowchart LR
         Query["Queries"]
     end
 
-    subgraph Worker["Web Worker"]
-        Parse["Parsing"]
-        Geo["Geometry"]
+    subgraph PreWorker["Pre-Pass Worker"]
+        Scan["WASM streaming scan<br/>(meta + job chunks)"]
     end
 
-    Main <-->|"Transferable"| Worker
+    subgraph Pool["Geometry Worker Pool (N workers)"]
+        W1["WASM processGeometryBatch"]
+        WN["..."]
+    end
+
+    Main <-->|"Transferable / SAB"| PreWorker
+    PreWorker -->|"job chunks<br/>(affinity-routed)"| Pool
+    Pool -->|"mesh batches"| Main
 ```
 
 ### Server-Side
@@ -617,9 +621,11 @@ await processor.init();
 // Small/medium files: process the whole buffer at once
 const result = await processor.process(ifcBytes);
 
-// Large files: stream meshes batch by batch
-for await (const batch of processor.processStreaming(ifcBytes)) {
-  // handle each batch of meshes
+// Large files: stream events (rtcOffset, batches of meshes, progress)
+for await (const event of processor.processStreaming(ifcBytes)) {
+  if (event.type === 'batch') {
+    // handle each batch of meshes
+  }
 }
 ```
 
@@ -638,7 +644,6 @@ graph TB
         WebGPU["WebGPU"]
         Browser["Browser"]
         Node["Node.js"]
-        Tauri["Tauri"]
     end
 
     subgraph Build["Build Tools"]
@@ -649,14 +654,13 @@ graph TB
     end
 
     subgraph Formats["Data Formats"]
-        STEP["STEP (IFC4)"]
+        STEP["STEP (IFC2x3 / IFC4 / IFC4x3)"]
         IFCX["IFCX (IFC5)"]
         Parquet["Apache Parquet"]
         Cache["Binary Cache"]
     end
 
     Rust --> WASM
-    Rust --> Tauri
     TS --> Browser
     TS --> Node
     WGSL --> WebGPU

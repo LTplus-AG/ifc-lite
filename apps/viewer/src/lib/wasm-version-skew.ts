@@ -48,11 +48,17 @@ function recentlyReloaded(now: number): boolean {
   }
 }
 
-function markReloaded(now: number): void {
+function markReloaded(now: number): boolean {
   try {
     sessionStorage.setItem(RELOAD_TS_KEY, String(now));
+    return true;
   } catch {
-    /* sessionStorage blocked (private mode / disabled) — still reload once */
+    // sessionStorage blocked (private mode / sandboxed embed without
+    // allow-same-origin / "block all cookies"). If we cannot RECORD a reload
+    // we must not PERFORM one: a permanent failure (CSP-blocked worker, proxy
+    // rewriting assets) would otherwise reload on every occurrence with no
+    // debounce at all. Mirrors the vite:preloadError policy in main.tsx.
+    return false;
   }
 }
 
@@ -60,7 +66,8 @@ export interface VersionSkewDeps {
   now: () => number;
   reload: () => void;
   hasRecentReload: (now: number) => boolean;
-  rememberReload: (now: number) => void;
+  /** Persist the reload attempt. Returning false VETOES the reload (storage unavailable). */
+  rememberReload: (now: number) => boolean;
 }
 
 const defaultDeps: VersionSkewDeps = {
@@ -80,9 +87,27 @@ export function recoverFromWasmVersionSkew(
   deps: VersionSkewDeps = defaultDeps,
 ): boolean {
   if (!isWasmAssetUnavailableError(err)) return false;
+  return attemptBoundedReload(deps);
+}
+
+/**
+ * Reload for an event the geometry library ALREADY classified as version skew
+ * (`detail.kind === 'worker-script'`): a worker script that failed to load
+ * fires `onerror` with an EMPTY message, so re-running the message matcher
+ * here would reject exactly the case the event exists for. The classification
+ * is trusted; safety comes from the bounded reload policy instead — at most
+ * one reload per debounce window, and none at all when the attempt cannot be
+ * recorded. A rare false positive (a worker OOM-killed before its first post,
+ * a CSP-blocked spawn) therefore costs one debounced reload, not a loop.
+ */
+export function recoverFromWorkerScriptSkew(deps: VersionSkewDeps = defaultDeps): boolean {
+  return attemptBoundedReload(deps);
+}
+
+function attemptBoundedReload(deps: VersionSkewDeps): boolean {
   const now = deps.now();
   if (deps.hasRecentReload(now)) return false;
-  deps.rememberReload(now);
+  if (!deps.rememberReload(now)) return false;
   deps.reload();
   return true;
 }
@@ -101,7 +126,11 @@ export function installWasmVersionSkewRecovery(): void {
   // the common case where the app caught + reported the failure rather than
   // letting it bubble to the global handlers below.
   window.addEventListener(WASM_ASSET_UNAVAILABLE_EVENT, (event) => {
-    const detail = (event as CustomEvent<{ message?: string }>).detail;
+    const detail = (event as CustomEvent<{ message?: string; kind?: string }>).detail;
+    if (detail?.kind === 'worker-script') {
+      recoverFromWorkerScriptSkew();
+      return;
+    }
     recoverFromWasmVersionSkew(detail?.message ?? '');
   });
 

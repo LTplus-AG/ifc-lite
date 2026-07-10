@@ -7,7 +7,17 @@ import assert from 'node:assert';
 import { IfcTypeEnum, RelationshipType, type SpatialHierarchy, type SpatialNode } from '@ifc-lite/data';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore, type FederatedModel } from '@/store';
-import { buildTreeData, buildTypeTree, buildUnifiedStoreys, compareStoreyEntries, type AuthoredProduct } from './treeDataBuilder';
+import {
+  buildTreeData,
+  buildTypeTree,
+  buildUnifiedStoreys,
+  compareStoreyEntries,
+  buildGroupTree,
+  resolveMemberGeometry,
+  groupMatchesSubFilter,
+  GROUP_ENTITY_TYPES,
+  type AuthoredProduct,
+} from './treeDataBuilder';
 import type { HierarchySortMode } from './types';
 
 function createSpatialNode(
@@ -744,5 +754,235 @@ describe('storey sort order — IFC4.3 parts and non-level siblings (#1296)', ()
       .map((n) => n.expressIds[0]);
     // Storeys A(6)/B(4) reorder by name; the space (5) stays in the middle slot.
     assert.deepStrictEqual(order, [6, 5, 4]);
+  });
+});
+
+// ============================================================================
+// Groups tab — buildGroupTree / resolveMemberGeometry (#1622)
+// ============================================================================
+
+/**
+ * A minimal MEP-shaped store for the Groups tab. Legacy mode → globalId ===
+ * expressId, so `geometricIds` are plain express ids.
+ *
+ *  - IfcDistributionSystem #100 "HVAC System": ports #201/#203 (no geometry) +
+ *    duct #202 (geometry). Both ports NEST under #202 (IfcRelNests → the shared
+ *    Aggregates edge bucket, inverse direction).
+ *  - IfcZone #300 (unnamed, ObjectType "Fire Compartment"): spaces #301/#302.
+ *  - IfcGroup #400 "Misc": duct #202 again (many-to-many) + orphan port #999
+ *    (no geometry, no relatives → select-only row).
+ *  - IfcSystem #500 "Empty": no members → skipped.
+ *
+ * Note #100 is an IfcDistributionSystem, NOT an IfcSystem: an exact-match
+ * `byType.get('IFCSYSTEM')` returns only #500, so the tab must enumerate the
+ * subtype explicitly (the #1662 defect class).
+ */
+function createGroupDataStore(): IfcDataStore {
+  const names: Record<number, string> = {
+    100: 'HVAC System', 300: '', 400: 'Misc', 500: 'Empty', 600: 'Lighting Circuit',
+    201: 'Port A', 202: 'Main Duct', 203: 'Port B',
+    301: 'Room 1', 302: 'Room 2', 999: 'Orphan Port',
+  };
+  const types: Record<number, string> = {
+    100: 'IfcDistributionSystem', 300: 'IfcZone', 400: 'IfcGroup', 500: 'IfcSystem',
+    600: 'IfcDistributionCircuit',
+    201: 'IfcDistributionPort', 202: 'IfcDuctSegment', 203: 'IfcDistributionPort',
+    301: 'IfcSpace', 302: 'IfcSpace', 999: 'IfcDistributionPort',
+  };
+  const objectTypes: Record<number, string> = { 300: 'Fire Compartment' };
+
+  const byType = new Map<string, number[]>([
+    ['IFCDISTRIBUTIONSYSTEM', [100]],
+    ['IFCDISTRIBUTIONCIRCUIT', [600]],
+    ['IFCZONE', [300]],
+    ['IFCGROUP', [400]],
+    ['IFCSYSTEM', [500]],
+  ]);
+  const byId = new Map<number, { type: string }>();
+  for (const id of Object.keys(types)) byId.set(Number(id), { type: types[Number(id)].toUpperCase() });
+
+  const members: Record<number, number[]> = {
+    100: [201, 202, 203],
+    300: [301, 302],
+    400: [202, 999],
+    500: [],
+    600: [202],
+  };
+  // IfcRelNests: ports #201/#203 nest under duct #202 (inverse → parent host).
+  const nestParent: Record<number, number[]> = { 201: [202], 203: [202] };
+
+  return {
+    entityIndex: { byType, byId },
+    entities: {
+      count: 0,
+      getName: (id: number) => names[id] ?? '',
+      getTypeName: (id: number) => types[id] ?? 'Unknown',
+      getObjectType: (id: number) => objectTypes[id] ?? '',
+    },
+    relationships: {
+      getRelated: (id: number, relType: RelationshipType, direction: 'forward' | 'inverse') => {
+        if (relType === RelationshipType.AssignsToGroup && direction === 'forward') {
+          return members[id] ?? [];
+        }
+        if (relType === RelationshipType.Aggregates && direction === 'inverse') {
+          return nestParent[id] ?? [];
+        }
+        return [];
+      },
+    },
+  } as unknown as IfcDataStore;
+}
+
+const GROUP_GEO_IDS = new Set<number>([202, 301, 302]);
+
+const toLegacyGlobal = (id: number) => id;
+
+describe('resolveMemberGeometry (#1622)', () => {
+  it('passes a geometry-bearing member through as itself', () => {
+    const ds = createGroupDataStore();
+    const resolved = resolveMemberGeometry(ds, 202, toLegacyGlobal, GROUP_GEO_IDS);
+    assert.deepStrictEqual(resolved, [{ expressId: 202, globalId: 202 }]);
+  });
+
+  it('resolves a geometry-less port to its nesting host element (IfcRelNests / Aggregates inverse)', () => {
+    const ds = createGroupDataStore();
+    const resolved = resolveMemberGeometry(ds, 201, toLegacyGlobal, GROUP_GEO_IDS);
+    assert.deepStrictEqual(resolved, [{ expressId: 202, globalId: 202 }]);
+  });
+
+  it('returns [] for a member with no geometry and no resolvable relatives', () => {
+    const ds = createGroupDataStore();
+    const resolved = resolveMemberGeometry(ds, 999, toLegacyGlobal, GROUP_GEO_IDS);
+    assert.deepStrictEqual(resolved, []);
+  });
+});
+
+describe('groupMatchesSubFilter (#1622)', () => {
+  it('buckets the IfcSystem family (incl. IfcDistributionCircuit, IfcStructuralAnalysisModel) as Systems', () => {
+    assert.strictEqual(groupMatchesSubFilter('IfcDistributionSystem', 'systems'), true);
+    assert.strictEqual(groupMatchesSubFilter('IfcDistributionCircuit', 'systems'), true);
+    assert.strictEqual(groupMatchesSubFilter('IfcStructuralAnalysisModel', 'systems'), true);
+    assert.strictEqual(groupMatchesSubFilter('IfcZone', 'systems'), false);
+  });
+
+  it('buckets IfcZone as Zones and IfcGroup / IfcAsset / IfcInventory as Other', () => {
+    assert.strictEqual(groupMatchesSubFilter('IfcZone', 'zones'), true);
+    assert.strictEqual(groupMatchesSubFilter('IfcGroup', 'other'), true);
+    assert.strictEqual(groupMatchesSubFilter('IfcAsset', 'other'), true);
+    assert.strictEqual(groupMatchesSubFilter('IfcInventory', 'other'), true);
+    assert.strictEqual(groupMatchesSubFilter('IfcStructuralResultGroup', 'other'), true);
+    assert.strictEqual(groupMatchesSubFilter('IfcDistributionCircuit', 'other'), false);
+    assert.strictEqual(groupMatchesSubFilter('IfcDistributionSystem', 'other'), false);
+  });
+
+  it('passes everything under All', () => {
+    for (const t of GROUP_ENTITY_TYPES) {
+      assert.strictEqual(groupMatchesSubFilter(t, 'all'), true);
+    }
+  });
+});
+
+describe('buildGroupTree (#1622)', () => {
+  it('enumerates concrete subtypes an exact-match IfcSystem query would miss', () => {
+    const ds = createGroupDataStore();
+    // Guard: the exact-match index really does NOT fold subtypes.
+    assert.deepStrictEqual(ds.entityIndex!.byType!.get('IFCSYSTEM'), [500]);
+    assert.strictEqual(ds.entityIndex!.byType!.get('IFCDISTRIBUTIONSYSTEM')?.[0], 100);
+
+    const nodes = buildGroupTree(new Map(), ds, new Set(), false, GROUP_GEO_IDS);
+    const distSystem = nodes.find((n) => n.type === 'group' && n.ifcType === 'IfcDistributionSystem');
+    assert.ok(distSystem, 'the IfcDistributionSystem surfaces despite the exact-match index');
+    assert.strictEqual(distSystem.name, 'HVAC System');
+  });
+
+  it('surfaces IfcDistributionCircuit and buckets it under the Systems sub-filter', () => {
+    const ds = createGroupDataStore();
+    // Guard: the circuit is a distinct exact-match bucket, not folded into IfcSystem.
+    assert.strictEqual(ds.entityIndex!.byType!.get('IFCDISTRIBUTIONCIRCUIT')?.[0], 600);
+
+    const all = buildGroupTree(new Map(), ds, new Set(), false, GROUP_GEO_IDS);
+    const circuit = all.find((n) => n.type === 'group' && n.ifcType === 'IfcDistributionCircuit');
+    assert.ok(circuit, 'the IfcDistributionCircuit surfaces despite the exact-match index');
+    assert.strictEqual(circuit.name, 'Lighting Circuit');
+
+    // It is a system, so the Systems sub-filter keeps it and Zones drops it.
+    const systems = buildGroupTree(new Map(), ds, new Set(), false, GROUP_GEO_IDS, 'systems');
+    assert.ok(
+      systems.some((n) => n.type === 'group' && n.ifcType === 'IfcDistributionCircuit'),
+      'IfcDistributionCircuit passes the Systems sub-filter',
+    );
+    const zones = buildGroupTree(new Map(), ds, new Set(), false, GROUP_GEO_IDS, 'zones');
+    assert.ok(
+      !zones.some((n) => n.type === 'group' && n.ifcType === 'IfcDistributionCircuit'),
+      'IfcDistributionCircuit is not a zone',
+    );
+  });
+
+  it('skips a group with zero members', () => {
+    const ds = createGroupDataStore();
+    const nodes = buildGroupTree(new Map(), ds, new Set(), false, GROUP_GEO_IDS);
+    assert.ok(!nodes.some((n) => n.entityExpressId === 500), 'the empty IfcSystem #500 is dropped');
+  });
+
+  it('collapses ports into their host element and carries resolved geometry for isolation', () => {
+    const ds = createGroupDataStore();
+    const nodes = buildGroupTree(new Map(), ds, new Set(['group-legacy-100']), false, GROUP_GEO_IDS);
+    const groupNode = nodes.find((n) => n.type === 'group' && n.entityExpressId === 100)!;
+    // #100 has 3 members (2 ports + 1 duct) but they resolve to ONE geometry row.
+    assert.strictEqual(groupNode.elementCount, 1);
+    assert.deepStrictEqual(groupNode.globalIds, [202], 'isolation ids = resolved host geometry only');
+    const memberRows = nodes.filter((n) => n.type === 'group-member' && n.id.startsWith('groupmember-legacy-100-'));
+    assert.strictEqual(memberRows.length, 1);
+    assert.strictEqual(memberRows[0].expressIds[0], 202, 'the duct, not the ports');
+  });
+
+  it('keeps a select-only row for a member with no resolvable geometry', () => {
+    const ds = createGroupDataStore();
+    const nodes = buildGroupTree(new Map(), ds, new Set(['group-legacy-400']), false, GROUP_GEO_IDS);
+    const groupNode = nodes.find((n) => n.type === 'group' && n.entityExpressId === 400)!;
+    // Duct #202 (geometry) + orphan port #999 (select-only) = 2 rows, but only
+    // the duct contributes to isolation geometry.
+    assert.strictEqual(groupNode.elementCount, 2);
+    assert.deepStrictEqual(groupNode.globalIds, [202]);
+    const orphan = nodes.find((n) => n.type === 'group-member' && n.id === 'groupmember-legacy-400-999');
+    assert.ok(orphan, 'the geometry-less orphan port stays browsable');
+  });
+
+  it('renders the same member under two groups as distinct rows (many-to-many, no dedup)', () => {
+    const ds = createGroupDataStore();
+    const nodes = buildGroupTree(
+      new Map(), ds, new Set(['group-legacy-100', 'group-legacy-400']), false, GROUP_GEO_IDS,
+    );
+    // Duct #202 belongs to BOTH the HVAC system and the Misc group.
+    const rowsFor202 = nodes.filter((n) => n.type === 'group-member' && n.expressIds[0] === 202);
+    assert.strictEqual(rowsFor202.length, 2, 'one row per owning group');
+    const ids = new Set(rowsFor202.map((n) => n.id));
+    assert.strictEqual(ids.size, 2, 'composite ids keep the rows distinct');
+    assert.ok(ids.has('groupmember-legacy-100-202'));
+    assert.ok(ids.has('groupmember-legacy-400-202'));
+  });
+
+  it('falls back to ObjectType for an unnamed group (#1075 display parity)', () => {
+    const ds = createGroupDataStore();
+    const nodes = buildGroupTree(new Map(), ds, new Set(), false, GROUP_GEO_IDS);
+    const zone = nodes.find((n) => n.type === 'group' && n.entityExpressId === 300)!;
+    assert.strictEqual(zone.name, 'Fire Compartment');
+  });
+
+  it('honours the sub-filter, returning only zones', () => {
+    const ds = createGroupDataStore();
+    const nodes = buildGroupTree(new Map(), ds, new Set(), false, GROUP_GEO_IDS, 'zones');
+    const groups = nodes.filter((n) => n.type === 'group');
+    assert.strictEqual(groups.length, 1);
+    assert.strictEqual(groups[0].ifcType, 'IfcZone');
+  });
+
+  it('orders systems before zones before generic groups', () => {
+    const ds = createGroupDataStore();
+    const nodes = buildGroupTree(new Map(), ds, new Set(), false, GROUP_GEO_IDS);
+    const order = nodes.filter((n) => n.type === 'group').map((n) => n.ifcType);
+    assert.deepStrictEqual(order, [
+      'IfcDistributionSystem', 'IfcDistributionCircuit', 'IfcZone', 'IfcGroup',
+    ]);
   });
 });

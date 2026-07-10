@@ -95,6 +95,19 @@ export interface MeshData {
   localToWorld?: number[];
 }
 
+/**
+ * KML `<altitudeMode>` for KMZ (Google Earth) export — how Google Earth places
+ * the model vertically (#1427):
+ *  - `'clampToGround'` (default): rest the origin on the terrain, ignoring the
+ *    KMZ `altitude`. A building can never float and is immune to a wrong / zero /
+ *    double-counted `IfcMapConversion.OrthogonalHeight`.
+ *  - `'absolute'`: place the origin at `altitude` metres above mean sea level.
+ *    Use when the OrthogonalHeight is a true MSL elevation the user wants honoured.
+ * `'relativeToGround'` (altitude above the terrain below the origin) exists in
+ * the Rust exporter but is not surfaced in the viewer UI.
+ */
+export type KmzAltitudeMode = 'clampToGround' | 'absolute' | 'relativeToGround';
+
 /** A decoded RGBA8 surface texture attached to a mesh (issue #961). */
 export interface MeshTexture {
   /** `width * height * 4` bytes, row-major, top-down, straight alpha. */

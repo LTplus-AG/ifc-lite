@@ -1,8 +1,24 @@
 # Rust API Reference
 
-Complete API documentation for the Rust crates.
+API documentation for the Rust crates.
 
 > **Note**: Full API documentation with source links is available via `cargo doc --open`
+
+## Workspace
+
+All crates live in one Cargo workspace (versioned together, MPL-2.0 licensed):
+
+| Crate | Path | Description |
+|-------|------|-------------|
+| `ifc-lite-core` | `rust/core` | High-performance IFC/STEP parser for building data |
+| `ifc-lite-geometry` | `rust/geometry` | Geometry processing and mesh generation for IFC models |
+| `ifc-lite-processing` | `rust/processing` | Shared IFC processing pipeline and types used by server and FFI |
+| `ifc-lite-export` | `rust/export` | Domain-format exporters (HBJSON, OBJ, glTF/GLB, CSV, JSON, JSON-LD, STEP/IFC, IFC5/IFCX, Merged, Parquet/.bos) |
+| `ifc-lite-clash` | `rust/clash` | High-performance geometry kernel for IFC clash detection |
+| `ifc-lite-ffi` | `rust/ffi` | C FFI bindings: native cdylib for in-process IFC parsing |
+| `ifc-lite-wasm` | `rust/wasm-bindings` | WebAssembly bindings for IFC-Lite |
+
+The Python bindings (`rust/python`, PyPI package `ifclite-geom`) are excluded from the workspace and documented on the [Python API page](python.md).
 
 ## ifc-lite-core
 
@@ -11,12 +27,19 @@ Core parsing functionality.
 ### Modules
 
 ```rust
-pub mod parser;      // STEP tokenization
-pub mod generated;   // IFC type definitions (IfcType)
-pub mod decoder;     // Entity decoding
-pub mod streaming;   // Streaming parser
-pub mod schema_gen;  // Generated schema
-pub mod error;       // Error types
+pub mod parser;          // STEP tokenization and entity scanning
+pub mod decoder;         // Lazy entity decoding + entity index
+pub mod generated;       // Generated IFC type enumeration (IfcType)
+pub mod schema_gen;      // Decoded attribute values and entities
+pub mod streaming;       // Streaming parse events
+pub mod fast_parse;      // Fast single-purpose extraction helpers
+pub mod georef;          // Georeferencing extraction
+pub mod legacy_entities; // IFC2X3 legacy entity handling
+pub mod model_bounds;    // Model/placement bounds scanning
+pub mod project_units;   // Project unit resolution
+pub mod step_encoding;   // STEP string encode/decode
+pub mod units;           // Unit conversion helpers
+pub mod error;           // Error types
 ```
 
 ### Parser Module
@@ -27,30 +50,24 @@ pub mod error;       // Error types
 /// STEP token types
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token<'a> {
-    /// Entity reference (#123)
+    /// Entity reference: #123
     EntityRef(u32),
-    /// Keyword (IFCWALL)
-    Keyword(&'a [u8]),
-    /// String literal ('text')
+    /// String literal: 'text'
     String(&'a [u8]),
-    /// Integer value
+    /// Integer: 42
     Integer(i64),
-    /// Floating point value
+    /// Float: 3.14
     Float(f64),
-    /// Enumeration (.ENUM.)
+    /// Enum: .TRUE., .FALSE., .UNKNOWN.
     Enum(&'a [u8]),
-    /// Binary data ("0A1B2C")
-    Binary(&'a [u8]),
-    /// Undefined value (*)
-    Asterisk,
-    /// Null/omitted ($)
-    Dollar,
-    /// Punctuation
-    OpenParen,
-    CloseParen,
-    Comma,
-    Semicolon,
-    Equals,
+    /// List: (1, 2, 3)
+    List(Vec<Token<'a>>),
+    /// Typed value: IFCPARAMETERVALUE(0.), IFCBOOLEAN(.T.)
+    TypedValue(&'a [u8], Vec<Token<'a>>),
+    /// Null value: $
+    Null,
+    /// Asterisk (derived value): *
+    Derived,
 }
 ```
 
@@ -66,115 +83,126 @@ impl<'a> EntityScanner<'a> {
     /// Create a scanner over the file bytes
     pub fn new<T>(content: &'a T) -> Self;
 
+    /// Create a scanner starting at a byte position.
+    ///
+    /// Preconditions: `position` is a GLOBAL byte offset into `content` (the
+    /// returned entity spans are absolute, not shard-relative), and it must sit
+    /// at a known entity boundary — typically the byte right after a `;\n`
+    /// terminator, not inside the HEADER section or partway through an entity.
+    /// `new_at` does NOT auto-skip the STEP header; that is the caller's
+    /// responsibility (used by the sharded-scan pre-pass). Starting mid-header
+    /// or mid-entity yields incorrect spans. The offset is clamped to the buffer
+    /// length.
+    pub fn new_at<T>(content: &'a T, position: usize) -> Self;
+
     /// Advance to the next entity: (express_id, type_name, start, end)
     pub fn next_entity(&mut self) -> Option<(u32, &'a str, usize, usize)>;
 }
 ```
 
-#### parse_entity
+#### parse_entity / entity_count
 
 ```rust
 /// Parse a single entity definition into (express_id, type, attribute tokens)
 pub fn parse_entity<'a, T>(input: &'a T) -> Result<(u32, IfcType, Vec<Token<'a>>)>;
+
+/// Cheap O(scan), O(1)-memory entity tally (no index allocation)
+pub fn entity_count<T>(content: &T) -> usize;
 ```
 
-### Schema Module
+### Generated Schema Module
 
 #### IfcType
 
 ```rust
-/// IFC entity type enumeration
+/// IFC entity types: all 876 entity types from the IFC4X3 schema,
+/// plus Unknown(u32) storing a CRC32 hash of unrecognized names.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[repr(u16)]
 pub enum IfcType {
-    Unknown = 0,
-    IfcProject = 1,
-    IfcSite = 2,
-    IfcBuilding = 3,
-    IfcBuildingStorey = 4,
-    IfcSpace = 5,
-    IfcWall = 6,
-    IfcWallStandardCase = 7,
-    IfcDoor = 8,
-    IfcWindow = 9,
-    // ... ~50 common types
+    IfcBoxedHalfSpace,
+    IfcBridge,
+    IfcBuilding,
+    IfcBuildingStorey,
+    // ... 876 variants ...
+    /// Unknown/unrecognized IFC type (stores CRC32 hash)
+    Unknown(u32),
 }
 
 impl IfcType {
-    /// Parse from type name
-    pub fn from_name(name: &[u8]) -> Self;
+    /// Parse from an (upper-case) type name
+    pub fn from_str(s: &str) -> Self;
 
-    /// Get type name
+    /// Parse from the stable numeric type id
+    pub fn from_id(id: u32) -> Self;
+
+    /// Stable numeric type id
+    pub fn id(&self) -> u32;
+
+    /// Type name (SCREAMING case as written in STEP)
+    pub fn as_str(&self) -> &'static str;
+
+    /// Type name (CamelCase)
     pub fn name(&self) -> &'static str;
 
-    /// Check if type has geometry
-    pub fn has_geometry(&self) -> bool;
+    /// Direct supertype in the schema hierarchy
+    pub fn parent(&self) -> Option<Self>;
+
+    /// Walk the hierarchy: is self a subtype of parent?
+    pub fn is_subtype_of(&self, parent: Self) -> bool;
+
+    /// Whether the entity is abstract in the schema
+    pub fn is_abstract(&self) -> bool;
 }
 ```
 
 #### has_geometry_by_name
 
 ```rust
-/// Check if entity type typically has geometry
+/// Check if entity type typically has geometry (cached, name-based)
 pub fn has_geometry_by_name(type_name: &str) -> bool;
 ```
 
 ### Decoder Module
 
+#### EntityIndex / build_entity_index
+
+```rust
+/// Index of entity byte ranges in the file: express_id -> (start, end)
+pub type EntityIndex = FxHashMap<u32, (usize, usize)>;
+
+/// Build the index in one scan over the file bytes
+pub fn build_entity_index<T>(content: &T) -> EntityIndex;
+```
+
 #### EntityDecoder
 
 ```rust
-/// Decodes entity attributes from raw bytes
+/// Entity decoder for lazy parsing from raw IFC bytes,
+/// with per-decoder caches (decoded entities, points, placements, units).
 pub struct EntityDecoder<'a> {
-    input: &'a [u8],
-    index: &'a EntityIndex,
+    // ...
 }
 
 impl<'a> EntityDecoder<'a> {
-    /// Create decoder with input buffer and index
-    pub fn new(input: &'a [u8], index: &'a EntityIndex) -> Self;
+    /// Create decoder over the file bytes (index built lazily)
+    pub fn new<T>(content: &'a T) -> Self;
 
-    /// Decode entity by express ID
-    pub fn decode(&self, express_id: u32) -> Result<DecodedEntity>;
+    /// Create decoder with a pre-built index
+    pub fn with_index<T>(content: &'a T, index: EntityIndex) -> Self;
+    pub fn with_arc_index<T>(content: &'a T, index: Arc<EntityIndex>) -> Self;
 
-    /// Decode entity attributes only
-    pub fn decode_attributes(&self, express_id: u32) -> Result<Vec<AttributeValue>>;
+    /// Decode an entity by express id (cached)
+    pub fn decode_by_id(&mut self, entity_id: u32) -> Result<DecodedEntity>;
+
+    /// Decode an entity by byte range
+    pub fn decode_at(&mut self, start: usize, end: usize) -> Result<DecodedEntity>;
+
+    /// Length-unit scale of the file (metres per file unit), cached
+    pub fn length_unit_scale(&mut self) -> f64;
 }
 ```
 
-#### EntityIndex
-
-```rust
-/// Index of entity locations in file
-pub struct EntityIndex {
-    locations: HashMap<u32, EntityLocation>,
-    ordered_ids: Vec<u32>,
-}
-
-impl EntityIndex {
-    /// Get entity count
-    pub fn len(&self) -> usize;
-
-    /// Get entity location
-    pub fn get(&self, express_id: u32) -> Option<&EntityLocation>;
-
-    /// Iterate over entities
-    pub fn iter(&self) -> impl Iterator<Item = (u32, &EntityLocation)>;
-}
-```
-
-#### EntityLocation
-
-```rust
-/// Location of entity in file
-#[derive(Debug, Clone)]
-pub struct EntityLocation {
-    pub express_id: u32,
-    pub offset: usize,
-    pub length: usize,
-    pub ifc_type: IfcType,
-}
-```
+The decoder also exposes fast single-purpose accessors used by the geometry pipeline (`get_cartesian_point_fast`, `get_polyloop_coords_cached`, `get_entity_ref_list_fast`, ...); see `rust/core/src/decoder.rs`.
 
 ### Streaming Module
 
@@ -207,36 +235,28 @@ pub enum ParseEvent {
 #### StreamConfig
 
 ```rust
-/// Configuration for streaming parser
+/// Streaming parser configuration
 #[derive(Debug, Clone)]
 pub struct StreamConfig {
-    /// Chunk size in bytes
-    pub chunk_size: usize,
-    /// Report progress every N entities
+    /// Yield progress events every N entities
     pub progress_interval: usize,
-    /// Continue on non-fatal errors
-    pub ignore_errors: bool,
+    /// Skip these entity types during scanning
+    pub skip_types: Vec<IfcType>,
+    /// Only process these entity types (if specified)
+    pub only_types: Option<Vec<IfcType>>,
 }
-
-impl Default for StreamConfig {
-    fn default() -> Self {
-        Self {
-            chunk_size: 1024 * 1024, // 1 MB
-            progress_interval: 100,
-            ignore_errors: true,
-        }
-    }
-}
+// Default: progress_interval = 100; skip_types = owner history,
+// person, organization, application; only_types = None.
 ```
 
 #### parse_stream
 
 ```rust
-/// Stream parse an IFC file
-pub fn parse_stream<'a>(
-    input: &'a [u8],
+/// Stream IFC file parsing with events (async Stream)
+pub fn parse_stream<T>(
+    content: &T,
     config: StreamConfig,
-) -> impl Iterator<Item = ParseEvent> + 'a;
+) -> Pin<Box<dyn Stream<Item = ParseEvent> + '_>>;
 ```
 
 ### Schema Gen Module
@@ -247,31 +267,23 @@ pub fn parse_stream<'a>(
 /// Decoded attribute value
 #[derive(Debug, Clone)]
 pub enum AttributeValue {
-    Null,
+    EntityRef(u32),
+    String(String),
     Integer(i64),
     Float(f64),
-    String(String),
-    Boolean(bool),
     Enum(String),
-    EntityRef(u32),
     List(Vec<AttributeValue>),
+    Null,
     Derived,
 }
 
 impl AttributeValue {
-    /// Get as integer
-    pub fn as_int(&self) -> Option<i64>;
-
-    /// Get as float
+    pub fn from_token(token: &Token) -> Self;
+    pub fn as_entity_ref(&self) -> Option<u32>;
+    pub fn as_string(&self) -> Option<&str>;
+    pub fn as_enum(&self) -> Option<&str>;
     pub fn as_float(&self) -> Option<f64>;
-
-    /// Get as string
-    pub fn as_str(&self) -> Option<&str>;
-
-    /// Get as entity reference
-    pub fn as_ref(&self) -> Option<u32>;
-
-    /// Get as list
+    pub fn as_int(&self) -> Option<i64>;
     pub fn as_list(&self) -> Option<&[AttributeValue]>;
 }
 ```
@@ -282,10 +294,9 @@ impl AttributeValue {
 /// Fully decoded entity
 #[derive(Debug)]
 pub struct DecodedEntity {
-    pub express_id: u32,
-    pub type_name: String,
+    pub id: u32,
     pub ifc_type: IfcType,
-    pub attributes: Vec<AttributeValue>,
+    pub attributes: std::sync::Arc<Vec<AttributeValue>>,
 }
 ```
 
@@ -295,20 +306,23 @@ pub struct DecodedEntity {
 /// Parser error type
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("Token error at position {position}: {message}")]
-    Token { position: usize, message: String },
+    #[error("Parse error at position {position}: {message}")]
+    ParseError { position: usize, message: String },
 
-    #[error("Entity not found: #{0}")]
-    EntityNotFound(u32),
+    #[error("Invalid entity reference: #{0}")]
+    InvalidEntityRef(u32),
 
-    #[error("Invalid attribute at index {index}: {message}")]
-    Attribute { index: usize, message: String },
+    #[error("Invalid IFC type: {0}")]
+    InvalidIfcType(String),
 
-    #[error("Unsupported schema: {0}")]
-    UnsupportedSchema(String),
+    #[error("Unexpected token at position {position}: expected {expected}, got {got}")]
+    UnexpectedToken { position: usize, expected: String, got: String },
 
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
+
+    #[error("UTF-8 error: {0}")]
+    Utf8(#[from] std::str::Utf8Error),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -318,21 +332,20 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 ## ifc-lite-geometry
 
-Geometry processing functionality.
+Geometry processing and mesh generation. CSG (void cutting, boolean clipping) runs on the in-tree pure-Rust exact mesh-arrangement kernel (`src/kernel/`) on every target, native and wasm32 alike.
 
-### Modules
+### Features
 
-```rust
-pub mod mesh;           // Mesh data structures
-pub mod triangulation;  // Polygon triangulation
-pub mod profile;        // Profile handling
-pub mod extrusion;      // Extrusion processing
-pub mod csg;            // Boolean operations
-pub mod router;         // Geometry routing
-pub mod processors;     // Entity processors
+```toml
+default = []          # no optional features
+debug_geometry = []   # extra geometry debugging output
+csg_capture = []      # measurement-only CSG corpus capture for benches
+observability = []    # route diagnostics through `tracing` instead of eprintln
 ```
 
-### Mesh Module
+### Key Types (crate-root re-exports)
+
+Most modules are crate-private; consumers use the re-exports from `ifc_lite_geometry::*`.
 
 #### Mesh
 
@@ -340,147 +353,194 @@ pub mod processors;     // Entity processors
 /// Triangle mesh representation
 #[derive(Debug, Clone)]
 pub struct Mesh {
-    pub express_id: u32,
+    /// Vertex positions (x, y, z)
     pub positions: Vec<f32>,
+    /// Vertex normals (nx, ny, nz)
     pub normals: Vec<f32>,
+    /// Triangle indices (i0, i1, i2)
     pub indices: Vec<u32>,
-    pub color: [f32; 4],
+    /// Whether the RTC offset has already been subtracted from positions
+    pub rtc_applied: bool,
+    /// Per-mesh local origin (f64) in the RTC/world frame; when non-zero,
+    /// positions are stored relative to it for f32 precision
+    pub origin: [f64; 3],
+    /// Instancing side-channel; None on the flat path
+    pub instance_meta: Option<InstanceMeta>,
+    // ...
 }
 
 impl Mesh {
-    /// Create empty mesh
-    pub fn new(express_id: u32) -> Self;
-
-    /// Get vertex count
     pub fn vertex_count(&self) -> usize;
-
-    /// Get triangle count
     pub fn triangle_count(&self) -> usize;
-
-    /// Compute bounding box
-    pub fn bounds(&self) -> BoundingBox;
-
-    /// Apply transformation matrix
-    pub fn transform(&mut self, matrix: &Matrix4<f64>);
+    /// Axis-aligned bounds of positions
+    pub fn bounds(&self) -> (Point3<f32>, Point3<f32>);
 }
 ```
 
-#### BoundingBox
+Related mesh types: `SubMesh`, `SubMeshCollection`, `InstanceMeta`.
+
+#### Profiles and extrusion
 
 ```rust
-/// Axis-aligned bounding box
-#[derive(Debug, Clone, Copy)]
-pub struct BoundingBox {
-    pub min: Point3<f64>,
-    pub max: Point3<f64>,
-}
-
-impl BoundingBox {
-    /// Create from points
-    pub fn from_points(points: &[Point3<f64>]) -> Self;
-
-    /// Get center point
-    pub fn center(&self) -> Point3<f64>;
-
-    /// Get size
-    pub fn size(&self) -> Vector3<f64>;
-
-    /// Merge with another box
-    pub fn merge(&mut self, other: &BoundingBox);
-}
+pub use profile::{Profile2D, Profile2DWithVoids, ProfileType, VoidInfo};
+pub use profile_extractor::{extract_profiles, ExtractedProfile};
+pub use extrusion::{extrude_profile, extrude_profile_lofted, extrude_profile_with_voids};
 ```
 
-### Triangulation Module
-
-```rust
-/// Triangulate a 2D polygon with holes
-pub fn triangulate_polygon(
-    outer: &[Point2<f64>],
-    holes: &[Vec<Point2<f64>>],
-) -> Result<Vec<u32>>;
-
-/// Triangulate a simple polygon (no holes)
-pub fn triangulate_simple(
-    points: &[Point2<f64>],
-) -> Result<Vec<u32>>;
-```
-
-### Profile Module
-
-```rust
-/// Extract profile points from IFC profile definition
-pub fn extract_profile(
-    decoder: &EntityDecoder,
-    profile_id: u32,
-) -> Result<ProfileData>;
-
-/// Profile data with outer boundary and holes
-#[derive(Debug)]
-pub struct ProfileData {
-    pub outer: Vec<Point2<f64>>,
-    pub holes: Vec<Vec<Point2<f64>>>,
-}
-```
-
-### Extrusion Module
-
-```rust
-/// Process extruded area solid
-pub fn process_extrusion(
-    profile: &ProfileData,
-    direction: Vector3<f64>,
-    depth: f64,
-) -> Result<Mesh>;
-
-/// Extrusion parameters
-#[derive(Debug)]
-pub struct ExtrusionParams {
-    pub direction: Vector3<f64>,
-    pub depth: f64,
-    pub position: Matrix4<f64>,
-}
-```
-
-### Router Module
-
-```rust
-/// Route geometry processing based on type
-pub struct GeometryRouter {
-    processors: HashMap<IfcType, Box<dyn GeometryProcessor>>,
-}
-
-impl GeometryRouter {
-    /// Create router with default processors
-    pub fn new() -> Self;
-
-    /// Register custom processor
-    pub fn register(&mut self, processor: Box<dyn GeometryProcessor>);
-
-    /// Process entity geometry
-    pub fn process(
-        &self,
-        decoder: &EntityDecoder,
-        entity: &DecodedEntity,
-    ) -> Result<Option<Mesh>>;
-}
-```
-
-### Processor Trait
+#### GeometryRouter and processors
 
 ```rust
 /// Trait for geometry processors
-pub trait GeometryProcessor: Send + Sync {
-    /// Check if processor can handle entity
-    fn can_process(&self, entity: &DecodedEntity) -> bool;
-
-    /// Process entity into mesh
+pub trait GeometryProcessor {
+    /// Process entity into mesh. `quality` selects tessellation detail.
     fn process(
         &self,
-        decoder: &EntityDecoder,
         entity: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        schema: &IfcSchema,
+        quality: TessellationQuality,
     ) -> Result<Mesh>;
+
+    /// Get supported IFC types
+    fn supported_types(&self) -> Vec<IfcType>;
+}
+
+/// Routes an entity to the processor registered for its IfcType
+pub struct GeometryRouter {
+    // ...
 }
 ```
+
+Built-in processors (all re-exported at the crate root): `ExtrudedAreaSolidProcessor`, `ExtrudedAreaSolidTaperedProcessor`, `FacetedBrepProcessor`, `AdvancedBrepProcessor`, `BooleanClippingProcessor`, `FaceBasedSurfaceModelProcessor`, `PolygonalFaceSetProcessor`, `RevolvedAreaSolidProcessor`, `SurfaceOfLinearExtrusionProcessor`, `SweptDiskSolidProcessor`, `TriangulatedFaceSetProcessor`.
+
+Other notable re-exports: `orient_mesh_outward`, `calculate_normals`, `ClippingProcessor`, `Plane`, `Triangle` (CSG), `hash_mesh_world` / `GeometryHasher` (geometry-diff hashing), instancing encode/decode helpers, and the nalgebra types `Point2`, `Point3`, `Vector2`, `Vector3`.
+
+---
+
+## ifc-lite-processing
+
+Shared processing pipeline used by the native server, the FFI DLL, the Python bindings, and the WASM bindings. Parallelised with rayon on native targets.
+
+Key re-exports:
+
+```rust
+// One-call pipeline: IFC bytes -> per-element meshes
+pub use processor::{
+    process_geometry, process_geometry_filtered, process_geometry_with_index,
+    process_geometry_streaming, /* ...streaming variants with options... */
+    OpeningFilterMode, ProcessingResult, StreamingOptions,
+};
+
+// Analysis-ready export document (welded, Z-up, world metres)
+pub use geometry_export::{build_geometry_data_export, ExportedElement, GeometryDataExport};
+
+pub use georeferencing::{extract_georeferencing, Georeferencing};
+pub use ifc_lite_geometry::TessellationQuality;
+pub use style::{default_color_for_type, Rgba};
+pub use types::mesh::{InstanceRecord, MeshData, RawInstanceOccurrence};
+pub use types::response::{CoordinateInfo, ModelMetadata, ParseResponse, ProcessingStats};
+pub use parallel_scan::build_entity_index_parallel;
+```
+
+---
+
+## ifc-lite-export
+
+Domain-format exporters. Every exporter takes IFC bytes (or already-produced meshes) and returns the serialized output.
+
+```rust
+pub use csv::{export_csv, CsvMode, CsvOptions};
+pub use gltf::{export_glb, export_glb_from_meshes, export_glb_with_stats,
+               export_gltf_streaming, try_export_glb, GltfOptions, GltfStats /* ... */};
+pub use hbjson::Model;
+pub use ifc5::{export_ifc5, Ifc5Options};
+pub use json::{export_json, JsonOptions};
+pub use jsonld::{export_jsonld, JsonLdOptions};
+pub use kmz::{export_kmz, ifc_angle_to_kml_heading, KmzOptions};
+pub use merged::{export_merged, export_merged_with_stats, MergedOptions, MergedStats};
+pub use obj::{export_obj, export_obj_with_stats, ObjOptions, ObjStats};
+pub use step::{export_step, export_step_json, export_step_with_stats,
+               AttrMutation, PropMutation, StepOptions, StepStats};
+pub use model::{build_export_model, stream_export_model, ExportModel /* ... */};
+
+// Behind the `parquet-bos` feature (native only; kept out of the wasm bundle):
+pub use parquet_bos::{export_bos, ParquetBosOptions};
+```
+
+### Features
+
+```toml
+default = []
+parquet-bos = []      # Parquet/.bos export (arrow + parquet + zip; not wasm32-safe)
+observability = []    # surface faceted-brep phase timing for profiling examples
+```
+
+---
+
+## ifc-lite-clash
+
+Native clash-detection kernel: a faithful port of the TypeScript reference engine in `packages/clash` (same AABB math, SAT triangle-triangle intersection, minimum-distance routines, per-element triangle BVHs, and narrow-phase classification). All computation in `f64` over `f32` input buffers.
+
+```rust
+pub use aabb::Aabb;
+pub use narrow::ClashStatus;
+pub use session::{ClashRecord, ClashSession, RuleResult};
+```
+
+```rust
+use ifc_lite_clash::ClashSession;
+
+let mut session = ClashSession::new();
+// positions: concatenated per-element vertex coords (x, y, z, ...)
+// pos_ranges: [float_offset, float_len] per element
+// indices: concatenated per-element LOCAL triangle indices
+// idx_ranges: [idx_offset, idx_len] per element
+// aabbs: [minx, miny, minz, maxx, maxy, maxz] per element
+session.ingest(&[], &[], &[], &[], &[]);
+let result = session.run_rule(&[], &[], 0, 0.0, 0.0, false);
+```
+
+---
+
+## ifc-lite-ffi
+
+C FFI bindings: a native cdylib for in-process IFC parsing (used by desktop-style hosts). By default it routes allocations through mimalloc (`default = ["mimalloc"]`; opt out with `--no-default-features`).
+
+```rust
+/// Parse an IFC file at `path` and write a serialized result buffer
+pub unsafe extern "C" fn ifc_lite_parse(
+    path_ptr: *const u8, path_len: usize,
+    out_ptr: *mut *mut u8, out_len: *mut usize,
+) -> i32;
+
+/// Same, with an explicit opening-filter mode
+/// (`opening_filter_mode`: 0 = Default, 1 = IgnoreAll, 2 = IgnoreOpaque)
+pub unsafe extern "C" fn ifc_lite_parse_ex(
+    path_ptr: *const u8, path_len: usize,
+    opening_filter_mode: i32,
+    out_ptr: *mut *mut u8, out_len: *mut usize,
+) -> i32;
+
+/// Free a buffer returned by the parse calls
+pub unsafe extern "C" fn ifc_lite_free(ptr: *mut u8, len: usize);
+```
+
+**FFI contract.** These entry points are `unsafe` and cross a C boundary, so the
+caller owns the following guarantees:
+
+- **Inputs.** `path_ptr` / `path_len` describe a UTF-8 file path (need not be
+  NUL-terminated). `out_ptr` and `out_len` must be non-null and valid for
+  writes. A null pointer or non-UTF-8 path returns `1` and writes nothing.
+- **Success (`0`).** `*out_ptr` receives a heap buffer of `*out_len` serialized
+  JSON bytes. The buffer is owned by the caller from that point on.
+- **Failure.** Non-zero return codes leave the out-parameters untouched (no
+  buffer is allocated, so there is nothing to free): `1` null pointer or invalid
+  path, `2` file could not be read, `3` geometry processing panicked, `4` JSON
+  serialization failed.
+- **Freeing.** Pass the exact `ptr` and `len` you received from a successful
+  parse to `ifc_lite_free` **exactly once**. Do not free on a non-zero return,
+  do not free twice, and do not mix in a pointer/length from any other source.
+  `ifc_lite_free` is a no-op when `ptr` is null or `len` is `0`.
 
 ---
 
@@ -492,7 +552,8 @@ WebAssembly bindings.
 
 The WASM surface is split across `rust/wasm-bindings/src/api/*.rs`; every method
 is exported to JS under a camelCase `js_name` that mirrors `pkg/ifc-lite.d.ts`.
-The methods below are representative, not exhaustive.
+The methods below are representative, not exhaustive; see the
+[WASM API page](wasm.md) for the full JS-side surface.
 
 ```rust
 /// Main IFC-Lite API
@@ -560,6 +621,15 @@ impl IfcAPI {
 }
 ```
 
+### Features
+
+```toml
+default = ["console_error_panic_hook"]
+threads = []          # threaded bundle via wasm-bindgen-rayon (built separately)
+console-tracing = []  # forward structured diagnostics to the DevTools console
+debug_geometry = []   # forwards to ifc-lite-geometry/debug_geometry
+```
+
 ---
 
 ## Building Documentation
@@ -567,7 +637,6 @@ impl IfcAPI {
 Generate full Rustdoc documentation:
 
 ```bash
-cd rust
 cargo doc --no-deps --document-private-items --open
 ```
 

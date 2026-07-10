@@ -1,5 +1,23 @@
 # @ifc-lite/mcp
 
+## 0.7.1
+
+### Patch Changes
+
+- [#1676](https://github.com/LTplus-AG/ifc-lite/pull/1676) [`da04601`](https://github.com/LTplus-AG/ifc-lite/commit/da0460183dcb4e2b26ceb53cfebd8cca33c78c39) Thanks [@louistrue](https://github.com/louistrue)! - Docs refresh: correct stale README claims and API samples against the current codebase; add READMEs to the ten published packages that shipped without one (cli, create, sdk, sandbox, lens, lists, embed-sdk, embed-protocol, encoding, viewer-core).
+
+- Updated dependencies [[`da04601`](https://github.com/LTplus-AG/ifc-lite/commit/da0460183dcb4e2b26ceb53cfebd8cca33c78c39)]:
+  - @ifc-lite/bcf@1.16.1
+  - @ifc-lite/clash@1.6.1
+  - @ifc-lite/create@1.16.3
+  - @ifc-lite/data@2.5.1
+  - @ifc-lite/export@2.5.1
+  - @ifc-lite/ids@1.15.26
+  - @ifc-lite/parser@3.8.1
+  - @ifc-lite/query@1.14.12
+  - @ifc-lite/sdk@1.21.1
+  - @ifc-lite/viewer-core@0.2.8
+
 ## 0.7.0
 
 ### Minor Changes

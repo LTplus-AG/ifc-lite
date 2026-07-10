@@ -4,30 +4,28 @@ Detailed architecture of the IFClite parsing system.
 
 ## Overview
 
-The parsing pipeline transforms STEP/IFC files into structured data:
+The parsing pipeline transforms STEP/IFC files into structured data. Two independent components cooperate:
+
+- A **fast entity scanner** (`rust/core/src/parser/scanner.rs`): a hand-rolled, memchr-accelerated byte scanner that walks the raw file once and records every entity's id, byte span, and type name. It is quote- and comment-aware and skips the STEP HEADER, but it never builds tokens.
+- A **nom tokenizer** (`rust/core/src/parser/tokenizer.rs`): a zero-copy combinator lexer used only when an entity's attributes are actually decoded. String-like tokens borrow their original bytes.
 
 ```mermaid
 flowchart TB
-    subgraph Stage1["Stage 1: Tokenization"]
-        Input["UTF-8 Bytes"]
-        Lexer["STEP Lexer (nom)"]
-        Tokens["Token Stream"]
-        Input --> Lexer --> Tokens
+    subgraph Stage1["Stage 1: Entity Scanning"]
+        Input["Raw Bytes"]
+        Scanner["Fast Entity Scanner<br/>(memchr, quote-aware)"]
+        Index["Entity Index<br/>id → (start, end) span"]
+        Input --> Scanner --> Index
     end
 
-    subgraph Stage2["Stage 2: Entity Scanning"]
-        Scanner["Entity Scanner"]
-        Index["Entity Index"]
-        Tokens --> Scanner --> Index
-    end
-
-    subgraph Stage3["Stage 3: Decoding"]
+    subgraph Stage2["Stage 2: Decoding (lazy)"]
+        Lexer["STEP Tokenizer (nom)"]
         Decoder["Entity Decoder"]
         Entities["Decoded Entities"]
-        Index --> Decoder --> Entities
+        Index --> Lexer --> Decoder --> Entities
     end
 
-    subgraph Stage4["Stage 4: Building"]
+    subgraph Stage3["Stage 3: Building"]
         Builder["Data Builder"]
         Tables["Columnar Tables"]
         Graph["Relationship Graph"]
@@ -36,46 +34,36 @@ flowchart TB
         Builder --> Graph
     end
 
-    style Stage1 fill:#6366f1,stroke:#312e81,color:#fff
-    style Stage2 fill:#2563eb,stroke:#1e3a8a,color:#fff
-    style Stage3 fill:#10b981,stroke:#064e3b,color:#fff
-    style Stage4 fill:#f59e0b,stroke:#7c2d12,color:#fff
+    style Stage1 fill:#2563eb,stroke:#1e3a8a,color:#fff
+    style Stage2 fill:#10b981,stroke:#064e3b,color:#fff
+    style Stage3 fill:#f59e0b,stroke:#7c2d12,color:#fff
 ```
 
-## Stage 1: Tokenization
+On native targets the entity index is additionally built **in parallel** (`rust/processing/src/parallel_scan.rs`): the file is split into byte ranges scanned concurrently, and a handoff-stitch pass makes the merged index byte-identical to the serial single-walk scanner. On wasm32 the serial scanner is used directly.
+
+## Tokenization
 
 ### Token Types
+
+The tokenizer produces structured tokens directly (there are no separate punctuation tokens; lists and typed values are parsed as nested structures):
 
 ```mermaid
 classDiagram
     class Token {
         <<enumeration>>
-        Keyword
-        String
-        Integer
-        Float
-        EntityRef
-        Enum
-        Binary
-        Asterisk
-        Dollar
-        OpenParen
-        CloseParen
-        Comma
-        Semicolon
-        Equals
+        EntityRef(u32)
+        String(bytes)
+        Integer(i64)
+        Float(f64)
+        Enum(bytes)
+        List(Vec~Token~)
+        TypedValue(bytes, Vec~Token~)
+        Null
+        Derived
     }
-
-    class TokenValue {
-        +string raw
-        +number? intValue
-        +number? floatValue
-        +string? strValue
-        +number? refId
-    }
-
-    Token --> TokenValue
 ```
+
+`String` and `Enum` tokens borrow their original bytes; STEP escape decoding (`\X2\`, `\S\`, ...) happens only when a value crosses a user-facing boundary.
 
 ### Lexer Architecture
 
@@ -103,28 +91,16 @@ flowchart LR
 ### Key Lexer Functions
 
 ```rust
-// Entity reference: #123
-fn entity_ref(input: &[u8]) -> IResult<&[u8], Token> {
-    let (input, _) = tag(b"#")(input)?;
-    let (input, num) = digit1(input)?;
-    let id = parse_u32(num)?;
-    Ok((input, Token::EntityRef(id)))
-}
-
-// String literal: 'Hello World'
-fn string_literal(input: &[u8]) -> IResult<&[u8], Token> {
-    let (input, _) = tag(b"'")(input)?;
-    let (input, content) = take_until("'")(input)?;
-    let (input, _) = tag(b"'")(input)?;
-    Ok((input, Token::String(content)))
-}
-
-// Keyword: IFCWALL
-fn keyword(input: &[u8]) -> IResult<&[u8], Token> {
-    let (input, word) = alpha1(input)?;
-    Ok((input, Token::Keyword(word)))
+// Entity reference: #123 (rust/core/src/parser/tokenizer.rs)
+fn entity_ref(input: &[u8]) -> IResult<&[u8], Token<'_>> {
+    map(
+        preceded(char('#'), map_res(digit1, lexical_core::parse::<u32>)),
+        Token::EntityRef,
+    )(input)
 }
 ```
+
+String literals use memchr to find the closing quote (with `''` escape handling), and numbers are parsed with `lexical-core`.
 
 ### Performance Optimizations
 
@@ -135,7 +111,7 @@ fn keyword(input: &[u8]) -> IResult<&[u8], Token> {
 | Fast numbers | lexical-core | 5x faster parsing |
 | Branch prediction | Ordered alternatives | Better CPU prediction |
 
-## Stage 2: Entity Scanning
+## Entity Scanning
 
 ### Scanner State Machine
 
@@ -155,64 +131,27 @@ stateDiagram-v2
 
 ### Entity Index Structure
 
-```mermaid
-classDiagram
-    class EntityIndex {
-        +HashMap~u32, EntityLocation~ locations
-        +Vec~u32~ orderedIds
-        +u32 count
-        +get(id: u32) EntityLocation
-        +iter() Iterator
-    }
+The entity index is deliberately minimal: a hash map from express ID to the entity's byte span in the file buffer.
 
-    class EntityLocation {
-        +u32 expressId
-        +usize offset
-        +usize length
-        +IfcType type
-    }
-
-    EntityIndex "1" --> "*" EntityLocation
+```rust
+// rust/core/src/decoder.rs
+pub type EntityIndex = FxHashMap<u32, (usize, usize)>; // id -> (start, end)
 ```
+
+The scanner also yields the entity's type name during the same walk, so callers that need type-filtered job lists (the geometry pre-pass, the RTC sampler) get it without a second pass.
 
 ### Scanning Algorithm
 
-```rust
-pub fn scan_entities(input: &[u8]) -> EntityIndex {
-    let mut index = EntityIndex::new();
-    let mut pos = 0;
+The real scanner (`EntityScanner` in `rust/core/src/parser/scanner.rs`) is more careful than a naive `#` hunt:
 
-    while pos < input.len() {
-        // Find next entity marker
-        if let Some(hash_pos) = memchr(b'#', &input[pos..]) {
-            pos += hash_pos;
+- Skips the STEP HEADER section first, so a stray `#` inside a header string cannot corrupt quote parity for the rest of the file.
+- Hunts for `#` with memchr (SIMD-accelerated), then parses `#id = TYPE(...)` in place.
+- Tracks quoted strings and `/* ... */` comments so `;` inside strings never terminates a record.
+- Returns `(id, type_name, start, end)` per entity; `build_entity_index` inserts spans with last-wins semantics on duplicate IDs.
 
-            // Parse entity ID
-            let (id, id_end) = parse_entity_id(&input[pos..]);
+On native, `parallel_scan` shards this walk across all cores and stitches the shard results back into the exact serial output (same key set, same spans, same last-wins order).
 
-            // Find '=' and type name
-            if let Some(type_start) = find_type_start(&input[pos + id_end..]) {
-                let type_name = extract_type_name(&input[pos + id_end + type_start..]);
-
-                // Store location
-                index.insert(id, EntityLocation {
-                    expressId: id,
-                    offset: pos,
-                    type: IfcType::from_name(type_name),
-                });
-            }
-
-            pos += 1;
-        } else {
-            break;
-        }
-    }
-
-    index
-}
-```
-
-## Stage 3: Entity Decoding
+## Entity Decoding
 
 ### Decoder Architecture
 
@@ -263,19 +202,20 @@ flowchart LR
 classDiagram
     class AttributeValue {
         <<enumeration>>
-        Null
+        EntityRef(u32)
+        String(String)
         Integer(i64)
         Float(f64)
-        String(String)
-        Boolean(bool)
         Enum(String)
-        EntityRef(u32)
         List(Vec~AttributeValue~)
+        Null
         Derived
     }
 ```
 
-## Stage 4: Data Building
+Booleans arrive as `Enum` values (`.T.` / `.F.`); typed values such as `IFCBOOLEAN(.T.)` are unwrapped during decoding. Tessellation-heavy payloads (coordinate and index lists) can bypass the token pipeline entirely via the zero-allocation fast path in `rust/core/src/fast_parse.rs`.
+
+## Data Building
 
 ### Builder Pipeline
 
@@ -306,37 +246,27 @@ flowchart TB
 
 ### Columnar Table Building
 
-```rust
-pub struct EntityTableBuilder {
-    express_ids: Vec<u32>,
-    type_enums: Vec<u16>,
-    global_id_indices: Vec<u32>,
-    name_indices: Vec<u32>,
-    flags: Vec<u8>,
-}
+In the browser, the columnar tables live in `@ifc-lite/data` and are filled by the single-pass columnar parser in `@ifc-lite/parser` (`columnar-parser.ts`):
 
-impl EntityTableBuilder {
-    pub fn add(&mut self, entity: &DecodedEntity, strings: &mut StringTable) {
-        self.express_ids.push(entity.express_id);
-        self.type_enums.push(entity.type_enum);
-        self.global_id_indices.push(
-            strings.intern(&entity.global_id)
-        );
-        self.name_indices.push(
-            entity.name.map(|n| strings.intern(n)).unwrap_or(0)
-        );
-        self.flags.push(entity.compute_flags());
-    }
-
-    pub fn build(self) -> EntityTable {
-        EntityTable {
-            express_ids: Uint32Array::from(self.express_ids),
-            type_enums: Uint16Array::from(self.type_enums),
-            // ...
-        }
-    }
+```typescript
+// packages/data/src/entity-table.ts (abridged)
+export class EntityTableBuilder {
+  expressId: Uint32Array;
+  typeEnum: Uint16Array;
+  globalId: Uint32Array;        // StringTable index
+  name: Uint32Array;            // StringTable index
+  description: Uint32Array;
+  objectType: Uint32Array;
+  flags: Uint8Array;
+  containedInStorey: Int32Array;
+  definedByType: Int32Array;
+  geometryIndex: Int32Array;
+  rawTypeName: Uint32Array;     // fallback display for unknown types
+  // add(...) interns strings; build() shrinks arrays to count
 }
 ```
+
+String-valued columns store indices into a shared deduplicating `StringTable`. Properties and quantities are NOT bulk-parsed here; the builder records `entityId -> psetIds` maps and values are decoded on access (see the on-demand extractors).
 
 ### Relationship Graph Building
 
@@ -363,55 +293,22 @@ flowchart TB
     Input --> Extract --> Sort --> Build --> Output
 ```
 
-## Streaming Architecture
+## Browser Scan Paths
 
-```mermaid
-sequenceDiagram
-    participant File
-    participant Chunker
-    participant Parser
-    participant Builder
-    participant Client
-
-    File->>Chunker: Read file
-    loop For each chunk
-        Chunker->>Parser: Chunk bytes
-        Parser->>Parser: Tokenize
-        Parser->>Parser: Scan entities
-        Parser->>Builder: Entity batch
-        Builder->>Client: Progress event
-    end
-    Builder->>Client: Complete event
-```
-
-### Chunk Processing
+The TypeScript parser (`@ifc-lite/parser`) picks the fastest available scan path at runtime (`entity-scanner.ts`):
 
 ```typescript
-interface StreamConfig {
-  chunkSize: number;      // Bytes per chunk (default: 1MB)
-  batchSize: number;      // Entities per batch (default: 100)
-  onProgress: (p: Progress) => void;
-  onBatch: (b: EntityBatch) => void;
-}
-
-async function parseStreaming(
-  buffer: ArrayBuffer,
-  config: StreamConfig
-): Promise<ParseResult> {
-  const totalSize = buffer.byteLength;
-  let offset = 0;
-
-  while (offset < totalSize) {
-    const chunk = buffer.slice(offset, offset + config.chunkSize);
-    const entities = await parseChunk(chunk);
-
-    config.onBatch({ entities });
-    config.onProgress({ percent: (offset / totalSize) * 100 });
-
-    offset += config.chunkSize;
-  }
-}
+export type EntityScanPath = 'worker' | 'wasm' | 'tokenizer' | 'pre-scanned';
 ```
+
+| Path | When | How |
+|------|------|-----|
+| `pre-scanned` | Geometry pre-pass already indexed the file | Reuses the WASM scan's `(ids, starts, lengths)` arrays, zero rescan |
+| `worker` | Default for large buffers | Inline Web Worker runs the scan off the main thread |
+| `wasm` | WASM API available | `scanEntitiesFastBytes` (memchr scanner in Rust) |
+| `tokenizer` | Fallback | Pure-TS `StepTokenizer` scan |
+
+After the scan, the columnar parser (`columnar-parser.ts`) does a single pass over the entity refs to build tables, relationships, and the spatial hierarchy, yielding to the event loop periodically so the UI stays responsive.
 
 ## Error Handling
 
@@ -464,19 +361,13 @@ flowchart TD
     Check -->|No| Throw
 ```
 
-## Performance Metrics
+## Performance Characteristics
 
-| File Size | Tokenize | Scan | Decode | Build | Total |
-|-----------|----------|------|--------|-------|-------|
-| 10 MB | 8ms | 15ms | 200ms | 50ms | ~300ms |
-| 50 MB | 40ms | 75ms | 800ms | 200ms | ~1.1s |
-| 100 MB | 80ms | 150ms | 1.5s | 400ms | ~2.1s |
+Indicative orders of magnitude (hardware and model dependent):
 
-### Throughput
-
-- **Tokenization**: ~1,259 MB/s
-- **Entity scanning**: ~650 MB/s
-- **Full parsing**: ~50 MB/s
+- **Entity scanning** is memchr-bound and runs at hundreds of MB/s; on native it additionally parallelizes across cores.
+- **Decoding** dominates when many entities are actually materialized, which is why decoding is lazy and properties are parsed on access.
+- **Full parse** (scan + columnar build) is typically tens of MB/s in the browser; STEP parse can be 25-80% of total load time on entity-heavy files, which is what motivated the fast scanner and the on-demand property model.
 
 ## Next Steps
 

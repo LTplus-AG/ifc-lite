@@ -7,6 +7,7 @@
 //! Routes IFC representation entities to appropriate processors based on type.
 
 mod caching;
+mod rep_filter;
 mod content_hash;
 mod diagnostics;
 mod instancing;
@@ -25,6 +26,7 @@ pub use diagnostics::{
     WorstHost,
 };
 pub(crate) use diagnostics::ClassificationKind;
+pub(super) use rep_filter::{effective_rep_type, is_body_representation, is_direct_body_representation};
 
 #[cfg(test)]
 mod tests;
@@ -247,44 +249,6 @@ pub struct GeometryRouter {
     /// the id present and don't-bake. Reset implicitly per batch — a fresh router is
     /// built per `produce_batch`. Unused (stays empty) in the native global mode.
     instanced_sources_materialized: RefCell<FxHashSet<u32>>,
-}
-
-/// Whether an `IfcShapeRepresentation.RepresentationType` names a meshable
-/// body/surface (as opposed to a curve/axis/annotation/footprint/box). This is
-/// the SINGLE canonical definition of "renderable 3D geometry", shared by the
-/// element meshing path (`processing.rs`), the void probe (opening extraction),
-/// RTC-offset detection, and material-layer slicing so every site agrees on what
-/// counts as real geometry. Drift here is a bug: an element meshed as body but
-/// judged non-body by RTC detection casts a spurious origin vote (see
-/// `rtc_offset::sample_element_translation`).
-///
-/// `MappedRepresentation` is included (its `IfcMappedItem`s expand to real
-/// solids); callers that specifically mean DIRECT (non-mapped) geometry use
-/// [`is_direct_body_representation`] instead.
-pub(super) fn is_body_representation(rep_type: &str) -> bool {
-    matches!(
-        rep_type,
-        "Body"
-            | "SweptSolid"
-            | "Brep"
-            | "CSG"
-            | "Clipping"
-            | "Tessellation"
-            | "MappedRepresentation"
-            | "SolidModel"
-            | "SurfaceModel"
-            | "Surface3D"
-            | "AdvancedSweptSolid"
-            | "AdvancedBrep"
-    )
-}
-
-/// Whether a `RepresentationType` names DIRECT (non-mapped) body geometry, i.e.
-/// [`is_body_representation`] minus the `MappedRepresentation` sentinel. Used to
-/// decide whether an element's `MappedRepresentation` duplicates geometry it
-/// already carries directly (and so can be skipped to avoid double-meshing).
-pub(super) fn is_direct_body_representation(rep_type: &str) -> bool {
-    rep_type != "MappedRepresentation" && is_body_representation(rep_type)
 }
 
 impl GeometryRouter {

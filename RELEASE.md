@@ -94,13 +94,18 @@ Packages are versioned independently:
 - **Automatic sync**: `scripts/sync-versions.js` syncs the root package version, `Cargo.toml` workspace version, and internal Rust workspace dependency versions to the highest released workspace package version
 - **Dependency propagation**: `updateInternalDependencies: "patch"` keeps dependents aligned when an internal package version changes
 
-## Secrets Required
+## Publish Authentication
 
-The GitHub Actions workflow needs these secrets:
+No long-lived registry tokens are stored as secrets. The release workflow uses
+OIDC trusted publishing for both registries:
 
-- `NPM_TOKEN`: npm access token with publish permissions
-- `CARGO_TOKEN`: crates.io API token
-- `GITHUB_TOKEN`: Automatically provided by GitHub Actions
+- **npm**: the workflow's `id-token: write` permission plus the npm CLI's OIDC
+  handshake mints a short-lived credential at publish time (with SLSA
+  provenance). New packages need one manual first publish before trusted
+  publishing can take over.
+- **crates.io**: `rust-lang/crates-io-auth-action` exchanges the workflow's
+  OIDC token for a short-lived crates.io token.
+- `GITHUB_TOKEN`: automatically provided by GitHub Actions.
 
 ## FAQ
 
@@ -141,9 +146,10 @@ The GitHub Actions workflow needs these secrets:
 - Check workflow logs in Actions tab
 
 ### Publishing fails
-- Check that secrets are configured correctly
-- Verify npm token has publish access to `@ifc-lite/*` scope
-- For Rust: ensure crates.io token is valid
+- Confirm the release workflow requests `id-token: write` (required for the OIDC handshake) alongside the other GitHub Actions permissions
+- Verify the npm trusted-publisher config lists this repo + workflow for the `@ifc-lite/*` packages
+- For a brand-new package, do the one-time manual first publish before trusted publishing can take over
+- For Rust: confirm the crates.io trusted-publisher config is set for the crate
 - Check if versions already exist on registries
 
 ### Versions out of sync

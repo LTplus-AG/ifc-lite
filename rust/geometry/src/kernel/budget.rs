@@ -290,6 +290,16 @@ pub fn element_count() -> u64 {
     ELEM_COUNT.with(|c| c.get())
 }
 
+/// Snapshot / restore the accumulators so a REFERENCE computation (`subtract_many`'s
+/// volume-safe oracle) can't charge or trip the caller's #1109 batch budget (codex P2).
+pub(crate) fn snapshot_counters() -> (u64, u64) {
+    (COUNT.with(|c| c.get()), ELEM_COUNT.with(|c| c.get()))
+}
+pub(crate) fn restore_counters((op, elem): (u64, u64)) {
+    COUNT.with(|c| c.set(op));
+    ELEM_COUNT.with(|c| c.set(elem));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

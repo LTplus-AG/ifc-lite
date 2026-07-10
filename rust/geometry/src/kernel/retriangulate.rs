@@ -17,6 +17,7 @@
 
 use super::interner::{Interner, Vid};
 use super::predicates::{cmp_lex, orient2d, orient2d_any};
+use super::retriangulate_recover::enforce_constraint;
 use super::{fixed, interval};
 use super::{DropAxis, ImplicitPoint, Lpi, Sign, Tpi};
 use std::cmp::Ordering;
@@ -35,7 +36,7 @@ fn e(p: [f64; 3]) -> ImplicitPoint {
 /// predicates in pure f64, so the wasm-emulated I512 path is reached only on a
 /// genuine zero-straddle — the fix for the dense-opening-wall wasm cost.
 #[inline]
-fn orient2d_v(it: &Interner, a: Vid, b: Vid, c: Vid, axis: DropAxis) -> Sign {
+pub(crate) fn orient2d_v(it: &Interner, a: Vid, b: Vid, c: Vid, axis: DropAxis) -> Sign {
     let (pa, pb, pc) = (it.get(a), it.get(b), it.get(c));
     // All-explicit: the Shewchuk adaptive predicate is EXACT yet pure f64.
     if let (ImplicitPoint::Explicit(_), ImplicitPoint::Explicit(_), ImplicitPoint::Explicit(_)) =
@@ -59,7 +60,7 @@ fn orient2d_v(it: &Interner, a: Vid, b: Vid, c: Vid, axis: DropAxis) -> Sign {
 /// Vid-based exact lexicographic compare — f64 interval from the cached lambdas
 /// first, then the cached-I512 compare, then the ImplicitPoint cascade.
 #[inline]
-fn cmp_lex_v(it: &Interner, a: Vid, b: Vid) -> Sign {
+pub(crate) fn cmp_lex_v(it: &Interner, a: Vid, b: Vid) -> Sign {
     if let Some(s) = interval::cmp_lex_from_lam_iv(it.lam_iv(a), it.lam_iv(b)) {
         return s;
     }
@@ -152,7 +153,7 @@ pub struct Canonical {
     pub points: Vec<Vid>,
 }
 
-fn lex_cmp(it: &Interner, a: Vid, b: Vid) -> Ordering {
+pub(crate) fn lex_cmp(it: &Interner, a: Vid, b: Vid) -> Ordering {
     match cmp_lex_v(it, a, b) {
         Sign::Negative => Ordering::Less,
         Sign::Positive => Ordering::Greater,
@@ -258,7 +259,7 @@ fn locate(it: &Interner, tri: SubTri, p: Vid, axis: DropAxis, w0: Sign) -> Locat
 /// would be pure overhead (it measurably slowed boolean-dense-but-simple models);
 /// above it the O(N²) exact-predicate blow-up dominates and the prefilter wins.
 /// Purely a performance gate — it never changes which triangles `locate` accepts.
-const PREFILTER_MIN: usize = 32;
+pub(crate) const PREFILTER_MIN: usize = 32;
 
 /// `p`'s coordinates dropped to the kept 2D plane for projection `axis`.
 #[inline]
@@ -275,7 +276,7 @@ pub(crate) fn project2d(p: [f64; 3], axis: DropAxis) -> [f64; 2] {
 /// by the [`insert_point`] broadphase, never by an exact decision; cached
 /// because the same vertices are re-scanned on every point insertion.
 #[inline]
-fn coord2d_cached(
+pub(crate) fn coord2d_cached(
     it: &Interner,
     v: Vid,
     axis: DropAxis,
@@ -325,7 +326,7 @@ fn aabb_excludes(
 /// cross a segment contained in `bx`. Conservative (margin dwarfs the f64 /
 /// implicit-point error); a vertex with no finite f64 image disables the reject.
 #[inline]
-fn tri_aabb_disjoint(
+pub(crate) fn tri_aabb_disjoint(
     it: &Interner,
     tri: SubTri,
     bx: [f64; 4],
@@ -354,7 +355,7 @@ fn tri_aabb_disjoint(
 /// fan `p` to each. `p` is interior to the cavity, so every boundary edge `u→v`
 /// has `p` on its left ⇒ `[u,v,p]` preserves `w0`. Handles interior (1→3) and
 /// on-edge (→4) uniformly; an already-present vertex is a no-op.
-fn insert_point(mesh: &mut Mesh2d, it: &Interner, p: Vid) {
+pub(crate) fn insert_point(mesh: &mut Mesh2d, it: &Interner, p: Vid) {
     let axis = mesh.axis;
     let w0 = mesh.w0;
     // Conservative broadphase prefilter. `pc` is `p`'s f64 image dropped to the
@@ -528,19 +529,19 @@ pub fn earcut(it: &Interner, ring: &[Vid], axis: DropAxis, w0: Sign) -> Vec<SubT
 }
 
 #[inline]
-fn tri_edges(t: SubTri) -> [(Vid, Vid); 3] {
+pub(crate) fn tri_edges(t: SubTri) -> [(Vid, Vid); 3] {
     [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])]
 }
 
 /// Is there a triangle with both `s` and `t` as vertices? (In a triangle any two
 /// vertices form an edge, so this is exactly "the segment s–t is already an edge".)
-fn edge_exists(mesh: &Mesh2d, s: Vid, t: Vid) -> bool {
+pub(crate) fn edge_exists(mesh: &Mesh2d, s: Vid, t: Vid) -> bool {
     mesh.tris.iter().any(|tri| tri.contains(&s) && tri.contains(&t))
 }
 
 /// Reverse `ring` if its winding doesn't match `w0`, so earcut sees a CCW polygon.
 /// The lexicographically-least vertex is convex, so its turn gives the winding.
-fn orient_ring(it: &Interner, ring: Vec<Vid>, axis: DropAxis, w0: Sign) -> Vec<Vid> {
+pub(crate) fn orient_ring(it: &Interner, ring: Vec<Vid>, axis: DropAxis, w0: Sign) -> Vec<Vid> {
     let n = ring.len();
     let i = (0..n).min_by(|&x, &y| lex_cmp(it, ring[x], ring[y])).unwrap();
     let w = orient2d_v(it, ring[(i + n - 1) % n], ring[i], ring[(i + 1) % n], axis);
@@ -553,311 +554,6 @@ fn orient_ring(it: &Interner, ring: Vec<Vid>, axis: DropAxis, w0: Sign) -> Vec<V
     }
 }
 
-/// PHASE D (core) — force sub-segment `(a,b)` (no vertex strictly between them) to
-/// be an edge. If it already is, done. Otherwise delete the triangles the open
-/// segment crosses (the "channel"), split the channel's boundary loop at `a` and
-/// `b` into two pocket rings, and earcut each — after which `a–b` is a shared
-/// edge of both pockets. (seg×seg — a crossed edge that is itself a constraint —
-/// is a later increment.)
-fn recover_subsegment(mesh: &mut Mesh2d, it: &Interner, a: Vid, b: Vid) {
-    if edge_exists(mesh, a, b) {
-        return;
-    }
-    // Pessimistically request the final conformity audit; restored below only
-    // when this recovery demonstrably forced the edge (a PREVIOUS attempt's
-    // request must survive). Every bail path (empty or degenerate channel,
-    // non-star swallowed endpoint, earcut failure) leaves it set.
-    let audit_before = mesh.audit_needed;
-    mesh.audit_needed = true;
-
-    let (axis, w0) = (mesh.axis, mesh.w0);
-    // Does any open edge of `tri` PROPERLY cross the open segment (a,b)? This is
-    // the dominant cost of constraint recovery (#1109): it runs per triangle for
-    // every constraint sub-segment. The naive form recomputes `orient(a,b,vertex)`
-    // for each of the triangle's three edges — but a triangle has only THREE
-    // vertices, so we compute each vertex's side of the (a,b) line ONCE, then an
-    // edge can only cross when its two endpoints straddle that line (opposite
-    // nonzero signs); only then do we run the reciprocal `orient(edge, a/b)` test.
-    // Identical exact result to the per-edge form (same signs, same crossing
-    // definition), ~3 predicates/triangle instead of up to 12 — byte-identical
-    // channel ⇒ parity preserved.
-    let tri_crosses = |tri: SubTri| {
-        let s = [
-            orient2d_v(it, a, b, tri[0], axis),
-            orient2d_v(it, a, b, tri[1], axis),
-            orient2d_v(it, a, b, tri[2], axis),
-        ];
-        for k in 0..3 {
-            let (su, sv) = (s[k], s[(k + 1) % 3]);
-            if su == Sign::Zero || sv == Sign::Zero || su == sv {
-                continue; // endpoints don't straddle (a,b) ⇒ no proper crossing
-            }
-            let (u, v) = (tri[k], tri[(k + 1) % 3]);
-            let s3 = orient2d_v(it, u, v, a, axis);
-            if s3 == Sign::Zero {
-                continue;
-            }
-            let s4 = orient2d_v(it, u, v, b, axis);
-            if s4 != Sign::Zero && s3 != s4 {
-                return true;
-            }
-        }
-        false
-    };
-    // Broadphase: only a triangle whose 2D f64 AABB overlaps the (a,b) segment's
-    // AABB can have an edge that properly crosses (a,b). Skip the four exact
-    // orient2d crossing tests for triangles whose widened AABB is disjoint — the
-    // margin makes this conservative (a genuinely crossing triangle is never
-    // skipped on any platform), so the channel — and recovery — is byte-identical.
-    // Engaged only once the triangle set is large enough to amortise the cache.
-    let ab_box: Option<[f64; 4]> = if mesh.tris.len() > PREFILTER_MIN {
-        match (
-            coord2d_cached(it, a, axis, &mut mesh.coords),
-            coord2d_cached(it, b, axis, &mut mesh.coords),
-        ) {
-            (Some(a2), Some(b2)) => Some([
-                a2[0].min(b2[0]),
-                a2[1].min(b2[1]),
-                a2[0].max(b2[0]),
-                a2[1].max(b2[1]),
-            ]),
-            _ => None,
-        }
-    } else {
-        None
-    };
-    let channel: Vec<usize> = (0..mesh.tris.len())
-        .filter(|&ti| {
-            let tri = mesh.tris[ti];
-            if let Some(bx) = ab_box {
-                if tri_aabb_disjoint(it, tri, bx, axis, &mut mesh.coords) {
-                    return false;
-                }
-            }
-            tri_crosses(tri)
-        })
-        .collect();
-    if channel.is_empty() {
-        return;
-    }
-    // boundary loop of the channel (directed edges whose reverse isn't internal)
-    let channel_set: BTreeSet<usize> = channel.iter().copied().collect();
-    let mut edges: BTreeSet<(Vid, Vid)> = BTreeSet::new();
-    for &ti in &channel {
-        for e in tri_edges(mesh.tris[ti]) {
-            edges.insert(e);
-        }
-    }
-    let mut next: BTreeMap<Vid, Vid> = BTreeMap::new();
-    for &(u, v) in &edges {
-        if !edges.contains(&(v, u)) {
-            next.insert(u, v);
-        }
-    }
-    // Walk the boundary loop. A degenerate channel (the segment crosses a
-    // non-simply-connected region, or the boundary branches) yields a non-traversable
-    // loop — bail gracefully (leave the constraint unrecovered) rather than panic.
-    // The triangulation stays valid; only this one sub-segment isn't forced as an edge.
-    //
-    // The walk starts at `a` when `a` is on the boundary; otherwise at the
-    // lexicographically-least boundary vertex (deterministic — Vids and the
-    // BTreeMap order are platform-stable). `a`/`b` can legitimately be channel-
-    // INTERIOR vertices: a long skinny fan triangle incident to the endpoint can
-    // re-cross the open segment far from the endpoint, putting the endpoint's
-    // whole fan in the channel (the 559171 back-face door jamb — the endpoint
-    // is then "swallowed" exactly like 552611's corner, but the a–b pocket
-    // split can't run). See the (ia, ib) match below for that case.
-    let start = if next.contains_key(&a) {
-        a
-    } else {
-        match next.keys().next() {
-            Some(&v) => v,
-            None => return,
-        }
-    };
-    let mut loop_v = vec![start];
-    let mut cur = match next.get(&start) {
-        Some(&v) => v,
-        None => return,
-    };
-    while cur != start {
-        loop_v.push(cur);
-        cur = match next.get(&cur) {
-            Some(&v) => v,
-            None => return,
-        };
-        if loop_v.len() > next.len() + 1 {
-            return; // cycle that never returns to the start — degenerate
-        }
-    }
-    // Vertices STRICTLY INTERIOR to the channel (every incident triangle is in
-    // the channel, so none of their edges reach the boundary loop). This happens
-    // when the segment passes so close to a vertex that it properly crosses ALL
-    // of the vertex's fan spokes (552611: the tiny middle-quad diagonal
-    // (5.027,3.800)→(5.142,3.5) swallows the corner (5.142,3.800) of the
-    // adjacent through-slot rectangle). The pocket-ring rebuild below would
-    // silently DESTROY such vertices — and with them every previously-enforced
-    // constraint edge through them — leaving host sub-triangles that overlap
-    // the cutter footprint (the 552611 4× over-cut). Re-insert them after the
-    // rebuild; the enforcement fixed-point loop in [`triangulate`] then
-    // re-forces any constraint edge the rebuild broke.
-    let loop_set: BTreeSet<Vid> = loop_v.iter().copied().collect();
-    let mut lost: Vec<Vid> = channel
-        .iter()
-        .flat_map(|&ti| mesh.tris[ti])
-        .filter(|v| !loop_set.contains(v))
-        .collect::<BTreeSet<Vid>>()
-        .into_iter()
-        .collect();
-    lost.sort_by(|&x, &y| lex_cmp(it, x, y)); // deterministic re-insert order
-    let ia = loop_v.iter().position(|&x| x == a);
-    let ib = loop_v.iter().position(|&x| x == b);
-    // The replacement triangles for the channel region: either two earcut
-    // pocket rings split along a–b (the normal case), or — when a constraint
-    // ENDPOINT is itself channel-interior — a star fan from that endpoint.
-    let mut new_tris: Vec<[Vid; 3]> = Vec::new();
-    let mut fan_hub: Option<Vid> = None;
-    match (ia, ib) {
-        (Some(ia), Some(ib)) => {
-            // Both endpoints on the boundary: rotate the loop to start at `a`,
-            // split at `b` into the two pocket rings — after the earcut `a–b`
-            // is a shared edge of both pockets.
-            let n = loop_v.len();
-            let rot: Vec<Vid> = (0..n).map(|k| loop_v[(ia + k) % n]).collect();
-            let jb = (ib + n - ia) % n;
-            let arc1: Vec<Vid> = rot[0..=jb].to_vec(); // a .. b
-            let mut arc2: Vec<Vid> = rot[jb..].to_vec(); // b .. end
-            arc2.push(a); // .. a
-            for ring in [arc1, arc2] {
-                if ring.len() >= 3 {
-                    let oriented = orient_ring(it, ring, axis, w0);
-                    new_tris.extend(earcut(it, &oriented, axis, w0));
-                }
-            }
-        }
-        _ => {
-            // A constraint endpoint is channel-INTERIOR (swallowed): a long
-            // skinny fan triangle incident to the endpoint re-crosses the open
-            // segment far away, so the endpoint's entire fan is in the channel
-            // and the a–b pocket split can't run. Bailing here (the pre-fix
-            // behavior) left sub-triangles STRADDLING the unrecovered
-            // constraint, whose centroids misclassify — the disjoint-cutter
-            // over-cut family (#559171: the door jamb never carved into the
-            // back face ⇒ −0.43 m³ + 14 open edges). When the channel region
-            // is STAR-SHAPED from the swallowed endpoint (every boundary edge
-            // subtends a strictly-w0 triangle — the typical skinny-fan case),
-            // re-triangulate it as the fan from that endpoint: the fan
-            // contains the edge from the endpoint to EVERY boundary vertex,
-            // including the other constraint endpoint ⇒ (a,b) is recovered in
-            // THIS pass. Otherwise rebuild the region as one earcut ring and
-            // let the fixed-point loop retry.
-            let inner = if ia.is_none() { a } else { b };
-            let oriented = orient_ring(it, loop_v.clone(), axis, w0);
-            let n = oriented.len();
-            let star = !loop_set.contains(&inner)
-                && (0..n).all(|k| {
-                    orient2d_v(it, inner, oriented[k], oriented[(k + 1) % n], axis) == w0
-                });
-            if star {
-                for k in 0..n {
-                    new_tris.push([inner, oriented[k], oriented[(k + 1) % n]]);
-                }
-                fan_hub = Some(inner);
-            } else {
-                new_tris.extend(earcut(it, &oriented, axis, w0));
-            }
-        }
-    }
-    mesh.tris = mesh
-        .tris
-        .iter()
-        .enumerate()
-        .filter(|(i, _)| !channel_set.contains(i))
-        .map(|(_, t)| *t)
-        .collect();
-    mesh.tris.extend(new_tris);
-    for v in lost {
-        if Some(v) == fan_hub {
-            continue; // already a vertex of every fan triangle
-        }
-        insert_point(mesh, it, v);
-    }
-    if edge_exists(mesh, a, b) {
-        mesh.audit_needed = audit_before; // forced — THIS attempt needs no audit
-    }
-}
-
-/// Strictly-between test for COLLINEAR points: `v` lies strictly inside segment
-/// `(s,t)`. The lex order equals the line order for collinear points, so `v` is
-/// between iff it compares the same way against both ends.
-fn between(it: &Interner, s: Vid, t: Vid, v: Vid) -> bool {
-    let sv = cmp_lex_v(it, s, v);
-    sv != Sign::Zero && sv == cmp_lex_v(it, v, t)
-}
-
-/// PHASE D — force constraint `(s,t)` to be a chain of edges: split it at any
-/// mesh vertices lying strictly on it (collinear, ordered s→t), then recover each
-/// sub-segment.
-fn enforce_constraint(mesh: &mut Mesh2d, it: &Interner, s: Vid, t: Vid) {
-    let axis = mesh.axis;
-    let verts: BTreeSet<Vid> = mesh.tris.iter().flatten().copied().collect();
-    // Broadphase: a vertex collinear with AND between s,t must lie in the
-    // segment's 2D f64 AABB. Skip the (i1024, WASM-emulated) exact orient2d for
-    // vertices outside the widened box. Same conservative margin as the
-    // insert_point prefilter ⇒ a real on-segment vertex is never skipped on any
-    // platform, so `on_seg` — and the recovered topology — is byte-identical.
-    // This is the hot loop: enforce runs per constraint per fixed-point pass, so
-    // the unfiltered O(verts) exact scan is what stalls many-opening facades.
-    // Engaged only once the vertex set is large enough to amortise the cache.
-    let seg_box: Option<[f64; 4]> = if verts.len() > PREFILTER_MIN {
-        match (
-            coord2d_cached(it, s, axis, &mut mesh.coords),
-            coord2d_cached(it, t, axis, &mut mesh.coords),
-        ) {
-            (Some(s2), Some(t2)) => Some([
-                s2[0].min(t2[0]),
-                s2[1].min(t2[1]),
-                s2[0].max(t2[0]),
-                s2[1].max(t2[1]),
-            ]),
-            _ => None,
-        }
-    } else {
-        None
-    };
-    let mut on_seg: Vec<Vid> = verts
-        .into_iter()
-        .filter(|&v| {
-            if v == s || v == t {
-                return false;
-            }
-            if let Some(bx) = seg_box {
-                if let Some(vc) = coord2d_cached(it, v, axis, &mut mesh.coords) {
-                    let mx = 1e-6 + vc[0].abs() * 1e-9;
-                    let my = 1e-6 + vc[1].abs() * 1e-9;
-                    if vc[0] < bx[0] - mx
-                        || vc[0] > bx[2] + mx
-                        || vc[1] < bx[1] - my
-                        || vc[1] > bx[3] + my
-                    {
-                        return false; // outside segment AABB ⇒ cannot lie on it
-                    }
-                }
-            }
-            orient2d_v(it, s, t, v, axis) == Sign::Zero && between(it, s, t, v)
-        })
-        .collect();
-    on_seg.sort_by(|&x, &y| lex_cmp(it, x, y));
-    if cmp_lex_v(it, s, t) == Sign::Positive {
-        on_seg.reverse(); // order from s toward t
-    }
-    let mut chain = vec![s];
-    chain.extend(on_seg);
-    chain.push(t);
-    for w in chain.windows(2) {
-        recover_subsegment(mesh, it, w[0], w[1]);
-    }
-}
 
 /// Phases A–D: project, canonicalise, insert all constraint points, then force
 /// every constraint to appear as an edge (chain). `None` ⇒ `T` is degenerate.
@@ -951,30 +647,7 @@ pub fn triangulate(input: &RetriInput, interner: &mut Interner) -> Option<Mesh2d
     if !mesh.audit_needed {
         return Some(mesh);
     }
-    for &(cs, ct) in &canon.segments {
-        let verts: BTreeSet<Vid> = mesh.tris.iter().flatten().copied().collect();
-        let mut on_seg: Vec<Vid> = verts
-            .into_iter()
-            .filter(|&v| {
-                v != cs
-                    && v != ct
-                    && orient2d_v(interner, cs, ct, v, axis) == Sign::Zero
-                    && between(interner, cs, ct, v)
-            })
-            .collect();
-        on_seg.sort_by(|&x, &y| lex_cmp(interner, x, y));
-        if cmp_lex_v(interner, cs, ct) == Sign::Positive {
-            on_seg.reverse();
-        }
-        let mut chain = vec![cs];
-        chain.extend(on_seg);
-        chain.push(ct);
-        for w in chain.windows(2) {
-            if !edge_exists(&mesh, w[0], w[1]) {
-                mesh.unrecovered += 1;
-            }
-        }
-    }
+    super::retriangulate_audit::audit_and_recover(&mut mesh, interner, &canon, axis);
     // Deliberate trade-off: return Some even if a constraint stayed unrecovered —
     // the caller (arrangement.rs) maps None to a FULL passthrough of the input
     // triangle, dropping ALL constraints, which is strictly worse than a mesh
@@ -1050,6 +723,7 @@ pub fn retriangulation_manifest() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::super::rational::point_of;
+    use super::super::retriangulate_recover::recover_subsegment;
     use super::super::Lpi;
     use super::*;
 

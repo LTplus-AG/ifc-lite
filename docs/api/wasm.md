@@ -108,11 +108,19 @@ processGeometryBatch(
   data: Uint8Array,
   jobsFlat: Uint32Array,
   unitScale: number,
-  /* rtcX, rtcY, rtcZ, needsShift, void + style args */
+  /* rtcX, rtcY, rtcZ, needsShift, void + style + material args */
 ): MeshCollection;
 ```
 
 `processGeometryBatchInstanced` (returns an IFNS instancing shard as a `Uint8Array`) and `processGeometryBatchPartitioned` (returns a `PartitionedBatch`) are variants of the same call. Each returned `MeshCollection` exposes `length`, `get(i)` / `takeMesh(i)`, and RTC offsets (see Data Types).
+
+To avoid re-copying the file bytes on every batch, call `setSourceBytes(data)` once and then use the `FromSource` twins, which read the held bytes and are byte-for-byte identical to the legacy calls:
+
+```typescript
+setSourceBytes(data: Uint8Array): void;
+processGeometryBatchFromSource(jobsFlat, unitScale, /* same trailing args */): MeshCollection;
+processGeometryBatchPartitionedFromSource(jobsFlat, unitScale, /* ... */): PartitionedBatch;
+```
 
 #### Export
 
@@ -163,6 +171,10 @@ setSkipSmallCuts(on: boolean): void;
 setRectParamFastPath(enabled: boolean): void;
 setTessellationQuality(level?: string | null): void;
 setComputeGeometryHashes(tolerance?: number | null): void;
+setReferencedRepmaps(ids: Uint32Array): void;
+setMappedInstancePlan(sourceIds: Uint32Array): void;
+setInstantiatedTypeIds(ids: Uint32Array): void;
+setMaterialLayerIndex(/* per-element layer buildup columns, see the .d.ts */): void;
 clearPrePassCache(): void;
 ```
 
@@ -172,6 +184,10 @@ clearPrePassCache(): void;
 readonly version: string;   // build version string
 readonly is_ready: boolean; // true once the API is initialized
 ```
+
+### Other Exported Classes
+
+Beyond `IfcAPI` and the mesh types below, the module exports `ClashSession` / `ClashRunResult` (native clash detection over ingested mesh buffers), `GridAxisCollection` / `GridAxisJs` (parsed grid axes), `ProfileCollection` / `ProfileEntryJs`, `PartitionedBatch`, `MeshOutlineJs`, `SpacePlateHandle` (interactive space-sketch topology), and the `Symbolic*` classes (`SymbolicRepresentationCollection`, `SymbolicPolyline`, `SymbolicCircle`, `SymbolicText`, `SymbolicFillArea`). See `packages/wasm/pkg/ifc-lite.d.ts` for their full definitions.
 
 ## Data Types
 
@@ -192,6 +208,10 @@ class MeshCollection {
   readonly totalTriangles: number;
   readonly buildingRotation: number | undefined;
   readonly diagnostics: any;
+  // Geometry-diff hashes, populated when setComputeGeometryHashes() is on
+  readonly geometryHashIds: Uint32Array;
+  readonly geometryHashValues: BigUint64Array;
+  readonly geometryHashCount: number;
 }
 ```
 
@@ -212,6 +232,19 @@ class MeshDataJs {
   readonly vertexCount: number;
   readonly triangleCount: number;
   readonly geometryClass: number;     // 0 = occurrence, 1 = orphan type, 2 = instanced type
+
+  // Optional capture of the local frame (undefined when not captured)
+  readonly localBounds: Float32Array | undefined;   // object-space AABB [minX..maxZ]
+  readonly localToWorld: Float64Array | undefined;  // resolved placement, row-major 4x4
+
+  // Surface textures (empty / false when untextured)
+  readonly hasTexture: boolean;
+  readonly textureRgba: Uint8Array;   // decoded RGBA8 bytes (width*height*4)
+  readonly textureWidth: number;
+  readonly textureHeight: number;
+  readonly textureRepeatS: boolean;
+  readonly textureRepeatT: boolean;
+  readonly shadingColor: Float32Array | undefined;  // authored SurfaceColour, when distinct
 }
 ```
 
@@ -223,8 +256,18 @@ class MeshDataJs {
 type PrePassEvent =
   | { type: 'meta'; unitScale: number; rtcOffset: [number, number, number]; needsShift: boolean; buildingRotation?: number }
   | { type: 'jobs'; jobs: Uint32Array }   // [id, start, end] triples
-  | { type: 'complete'; totalJobs: number };
+  | { type: 'complete'; totalJobs: number }
+  // Auxiliary events — carry data the pre-pass already computed so callers can
+  // skip a second file scan. Consumers that only need geometry jobs can ignore
+  // them. Each shape below lists its principal fields; the styles / columns
+  // events also carry additional material-plumbing arrays (see
+  // `geometry-parallel.ts`).
+  | { type: 'entity-index'; ids: Uint32Array; starts: Uint32Array; lengths: Uint32Array }
+  | { type: 'styles'; styleIds: Uint32Array; styleColors: Uint8Array; voidKeys: Uint32Array; voidCounts: Uint32Array; voidValues: Uint32Array }
+  | { type: 'prepass-columns'; referencedRepmaps: Uint32Array; instantiatedTypeIds: Uint32Array; mliElementIds: Uint32Array };
 ```
+
+The auxiliary events (`entity-index`, `styles`, `prepass-columns`) carry the scanned entity index, style colours, and pre-pass column data. Type the callback against the full union above so exhaustive handling does not silently miss them.
 
 ## Error Handling
 
@@ -285,14 +328,7 @@ api.free();
 
 ## Module Size
 
-Approximate on-disk sizes of the built `packages/wasm/pkg/` artifacts (uncompressed):
-
-| Component | Size |
-|-----------|------|
-| WASM binary (`ifc-lite_bg.wasm`) | ~3.4 MB |
-| JS glue code (`ifc-lite.js`) | ~140 KB |
-
-`scripts/build-wasm.sh` targets a 1100 KB budget for the single-thread bundle and warns when the binary exceeds it (`wasm-opt` is currently disabled). Sizes vary by build profile and target.
+The built artifacts land in `packages/wasm/pkg/` (`ifc-lite_bg.wasm` binary plus `ifc-lite.js` glue). `scripts/build-wasm.sh` targets a 1100 KB budget for the single-thread bundle and warns when the binary exceeds it (`wasm-opt` is disabled in the crate's wasm-pack profile). The threaded bundle is built separately and carries no budget. Sizes vary by build profile and target.
 
 ## Building from Source
 

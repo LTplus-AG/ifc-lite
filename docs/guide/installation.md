@@ -47,6 +47,7 @@ The fastest way to get started is using the `create-ifc-lite` CLI:
     ```bash
     npx create-ifc-lite my-backend --template server
     cd my-backend
+    npm install
     npm run server:start
     npm run example sample.ifc
     ```
@@ -125,31 +126,42 @@ The fastest way to get started is using the `create-ifc-lite` CLI:
 
 ### Available Packages
 
+IFClite is published as many small packages under the `@ifc-lite/*` scope; install only what you need. The most commonly used:
+
 #### Core Packages
 
-| Package | Description | Size |
-|---------|-------------|------|
-| `@ifc-lite/parser` | IFC4 parsing, entity extraction, schema registry | ~45 KB |
-| `@ifc-lite/ifcx` | IFC5 (IFCX) JSON format parser | ~20 KB |
-| `@ifc-lite/geometry` | Geometry processing (WASM bridge) | ~30 KB |
-| `@ifc-lite/renderer` | WebGPU rendering pipeline | ~25 KB |
-| `@ifc-lite/data` | Columnar data structures | ~10 KB |
+| Package | Description |
+|---------|-------------|
+| `@ifc-lite/parser` | IFC STEP parsing (IFC2X3 / IFC4 / IFC4X3), entity extraction, schema registry |
+| `@ifc-lite/ifcx` | IFC5 (IFCX) JSON format parser |
+| `@ifc-lite/geometry` | Geometry processing (WASM bridge) |
+| `@ifc-lite/renderer` | WebGPU rendering pipeline |
+| `@ifc-lite/data` | Columnar data structures |
 
 #### Server Packages
 
-| Package | Description | Size |
-|---------|-------------|------|
-| `@ifc-lite/server-client` | Server SDK with caching & streaming | ~15 KB |
-| `@ifc-lite/server-bin` | Native server binary wrapper | ~5 KB |
+| Package | Description |
+|---------|-------------|
+| `@ifc-lite/server-client` | Server SDK with caching and streaming |
+| `@ifc-lite/server-bin` | Native server binary wrapper |
 
 #### Additional Packages
 
-| Package | Description | Size |
-|---------|-------------|------|
-| `@ifc-lite/query` | Fluent API & SQL queries | ~15 KB |
-| `@ifc-lite/cache` | Binary cache format (.ifc-lite) | ~12 KB |
-| `@ifc-lite/spatial` | Spatial indexing & culling | ~8 KB |
-| `@ifc-lite/export` | Export (glTF, Parquet, CSV) | ~20 KB |
+| Package | Description |
+|---------|-------------|
+| `@ifc-lite/query` | Fluent query API |
+| `@ifc-lite/cache` | Binary cache format (.ifc-lite) |
+| `@ifc-lite/spatial` | Spatial indexing and culling |
+| `@ifc-lite/export` | Export (glTF, IFC STEP, Parquet, CSV) |
+| `@ifc-lite/cli` | `ifc-lite` terminal toolkit (see the [CLI guide](cli.md)) |
+| `@ifc-lite/sdk` | High-level `bim` scripting SDK used by the CLI |
+| `@ifc-lite/ids` | IDS validation |
+| `@ifc-lite/bcf` | BCF collaboration files |
+| `@ifc-lite/mutations` | Property/attribute editing |
+| `@ifc-lite/clash` | Clash detection engine |
+| `@ifc-lite/drawing-2d` | 2D drawing generation |
+
+See the [TypeScript API Reference](../api/typescript.md) for the documented API surface.
 
 ## Server Installation
 
@@ -199,9 +211,10 @@ npx @ifc-lite/server-bin
 
 ### Option 3: Build from Source
 
+From the repository root (the server is a workspace member, so the binary lands in the root `target/` directory):
+
 ```bash
-cd apps/server
-cargo build --release
+cargo build --release -p ifc-lite-server
 ./target/release/ifc-lite-server
 ```
 
@@ -220,6 +233,18 @@ Or install via cargo:
 ```bash
 cargo add ifc-lite-core ifc-lite-geometry
 ```
+
+Additional crates: `ifc-lite-processing` (streaming/entity scan), `ifc-lite-export` (glTF/IFC5 export), and `ifc-lite-clash` (clash detection).
+
+## Python Installation
+
+Native geometry tessellation for Python (no Node, no WASM) is published as [`ifclite-geom`](https://pypi.org/project/ifclite-geom/):
+
+```bash
+pip install ifclite-geom
+```
+
+Prebuilt wheels ship for CPython 3.9+ on Linux (x86_64, aarch64), macOS (Apple silicon and Intel), and Windows (x64). See `rust/python/README.md` in the repository for the API.
 
 ## Desktop App (Tauri)
 
@@ -354,7 +379,7 @@ console.log('Server status:', health.status);
 ```typescript
 import { parseIfcx, detectFormat } from '@ifc-lite/ifcx';
 
-const format = detectFormat(buffer); // 'ifc', 'ifcx', or 'unknown'
+const format = detectFormat(buffer); // 'ifc', 'ifcx', 'glb', or 'unknown'
 if (format === 'ifcx') {
   const result = await parseIfcx(buffer);
   console.log('IFC5 entities:', result.entityCount);
@@ -370,24 +395,29 @@ ifc-lite/
 ├── rust/                      # Rust/WASM backend
 │   ├── core/                  # IFC/STEP parsing
 │   ├── geometry/              # Geometry processing
+│   ├── processing/            # Streaming / entity scan
+│   ├── export/                # glTF / IFC5 export
+│   ├── clash/                 # Clash detection
+│   ├── ffi/                   # C FFI bindings
+│   ├── python/                # Python wheel (ifclite-geom)
 │   └── wasm-bindings/         # JavaScript API
 │
-├── packages/                  # TypeScript packages
+├── packages/                  # TypeScript packages (@ifc-lite/*)
 │   ├── parser/                # High-level IFC parser
 │   ├── ifcx/                  # IFC5 (IFCX) parser
 │   ├── geometry/              # Geometry bridge (WASM)
 │   ├── renderer/              # WebGPU rendering
-│   ├── cache/                 # Binary cache format
+│   ├── cli/                   # Terminal toolkit
+│   ├── sdk/                   # Scripting SDK
+│   ├── viewer/                # @ifc-lite/viewer-core (CLI 3D viewer)
 │   ├── server-client/         # Server SDK
-│   ├── server-bin/            # Native server binary
-│   ├── query/                 # Query system
-│   ├── data/                  # Columnar data structures
-│   ├── spatial/               # Spatial indexing
-│   ├── export/                # Export formats
-│   └── create-ifc-lite/       # Project scaffolding CLI
+│   ├── create-ifc-lite/       # Project scaffolding CLI
+│   └── ...                    # query, data, spatial, export, ids, bcf, ...
 │
 ├── apps/
 │   ├── viewer/                # React web application
+│   ├── viewer-embed/          # Embeddable viewer
+│   ├── landing/               # Landing page
 │   └── server/                # Rust HTTP server
 │
 └── docs/                      # Documentation (MkDocs)

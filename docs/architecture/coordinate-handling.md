@@ -69,9 +69,8 @@ flowchart TB
     end
 
     subgraph Paths["Processing Paths"]
-        WASM["WASM Parser<br/>(Browser Direct)"]
-        Server["Server Parser<br/>(Streaming)"]
-        Desktop["Desktop Parser<br/>(Tauri)"]
+        WASM["WASM Geometry<br/>(Browser)"]
+        Server["Server Pipeline<br/>(Native)"]
     end
 
     subgraph RTC["RTC Application"]
@@ -81,12 +80,11 @@ flowchart TB
     end
 
     subgraph Output["GPU-Ready"]
-        Mesh["Shifted Vertices<br/>+ RTC Offset"]
+        Mesh["Shifted Vertices<br/>+ RTC Offset<br/>+ Per-Element Origin"]
     end
 
     File --> WASM --> WasmRTC --> Mesh
     File --> Server --> ServerRTC --> Mesh
-    File --> Desktop --> WasmRTC --> Mesh
 
     WasmRTC -.-> TSHandler
     ServerRTC -.-> TSHandler
@@ -96,16 +94,25 @@ flowchart TB
 
 ### GeometryRouter
 
-The `GeometryRouter` in `rust/geometry/src/router/mod.rs` handles RTC:
+The `GeometryRouter` (`rust/geometry/src/router/`, RTC logic in `rtc_offset.rs`) handles RTC:
 
 ```rust
 impl GeometryRouter {
-    /// Detect RTC offset from first building element's placement
-    pub fn detect_rtc_offset_from_first_element(
-        &mut self,
-        content: &str,
+    /// Detect RTC offset by sampling placement translations of
+    /// geometry-bearing elements (scan-based paths)
+    pub fn detect_rtc_offset_from_first_element<T>(
+        &self,
+        content: &T,
         decoder: &mut EntityDecoder,
     ) -> (f64, f64, f64);
+
+    /// Same detection over pre-collected geometry jobs (avoids re-scanning);
+    /// None = no usable samples (distinct from "no shift needed")
+    pub fn detect_rtc_offset_from_jobs(
+        &self,
+        jobs: &[(u32, usize, usize, IfcType)],
+        decoder: &mut EntityDecoder,
+    ) -> Option<(f64, f64, f64)>;
 
     /// Set RTC offset - all subsequent transforms will apply this
     pub fn set_rtc_offset(&mut self, offset: (f64, f64, f64));
@@ -117,53 +124,55 @@ impl GeometryRouter {
 
 ### RTC Detection Logic
 
-```rust
-// In detect_rtc_offset_from_first_element:
-// 1. Find first IfcBuildingElement with geometry
-// 2. Compute its full placement transform
-// 3. Check translation component magnitude
-let tx = transform[(0, 3)];
-let ty = transform[(1, 3)];
-let tz = transform[(2, 3)];
+Detection is sample-based, not first-element-wins:
 
-if tx.abs() > 10000.0 || ty.abs() > 10000.0 || tz.abs() > 10000.0 {
-    // Large coordinates detected - use translation as RTC offset
-    return (tx, ty, tz);
-}
-```
+1. Scan for entities whose class carries geometry (`has_geometry_by_name`, schema-driven).
+2. Sample each element's placement translation, up to 50 usable samples (elements that abstain, such as origin-placed axis-only representations, do not consume the budget).
+3. Take the per-axis **median** of the samples.
+4. If any median axis exceeds 10 km (`LARGE_COORD_THRESHOLD_METERS`), that centroid becomes the RTC offset; otherwise the offset is `(0, 0, 0)`.
+
+Using the median of many samples instead of the first element makes detection robust against a single outlier element parked at a survey point.
 
 ### Consistent Per-Mesh Application
 
-**Critical**: RTC must be applied consistently to ALL vertices in a mesh:
+**Critical**: RTC must be applied consistently to ALL vertices in a mesh. The decision is made once per mesh, tracked by an explicit flag rather than re-derived from coordinate magnitudes:
 
 ```rust
-fn transform_mesh(&self, mesh: &mut Mesh, transform: &Matrix4<f64>) {
-    // Decide ONCE for the whole mesh based on transform translation
-    let tx = transform[(0, 3)];
-    let ty = transform[(1, 3)];
-    let tz = transform[(2, 3)];
+// rust/geometry/src/router/transforms/mesh_world.rs (abridged)
+let rtc = self.rtc_offset;
+// Apply RTC once per mesh; `rtc_applied` guards against double-shifting
+// meshes that already went through an RTC-aware path (e.g. CSG operands).
+let needs_rtc = self.has_rtc_offset() && !mesh.rtc_applied;
+// Resolve the offset ONCE from `needs_rtc`: (0, 0, 0) when the shift must not
+// be applied, so the subtraction below is a no-op for already-anchored meshes.
+let (rx, ry, rz) = if needs_rtc { rtc } else { (0.0, 0.0, 0.0) };
 
-    let needs_rtc = self.has_rtc_offset() &&
-        (tx.abs() > 1000.0 || ty.abs() > 1000.0 || tz.abs() > 1000.0);
-
-    if needs_rtc {
-        // Apply RTC to ALL vertices uniformly
-        for vertex in mesh.positions.chunks_exact_mut(3) {
-            let t = transform.transform_point(&point);
-            vertex[0] = (t.x - rtc.0) as f32;
-            vertex[1] = (t.y - rtc.1) as f32;
-            vertex[2] = (t.z - rtc.2) as f32;
-        }
-    } else {
-        // No RTC - just transform
-        for vertex in mesh.positions.chunks_exact_mut(3) {
-            // ... standard transform
-        }
-    }
+for chunk in mesh.positions.chunks_exact_mut(3) {
+    let point = Point3::new(chunk[0] as f64, chunk[1] as f64, chunk[2] as f64);
+    let t = transform.transform_point(&point); // full f64 transform
+    chunk[0] = (t.x - rx) as f32;
+    chunk[1] = (t.y - ry) as f32;
+    chunk[2] = (t.z - rz) as f32;
+}
+if needs_rtc {
+    mesh.rtc_applied = true;
 }
 ```
 
 **Why per-mesh, not per-vertex?** If some vertices in a mesh get RTC applied and others don't, the mesh becomes corrupted with vertices at wildly different scales.
+
+## Per-Element Local-Frame Origin
+
+RTC removes the model-wide offset, but a building placement of a few hundred metres is still enough to degrade f32: one ULP at 220 m is about 15 um, which can collapse adjacent vertices of finely tessellated geometry into degenerate needles. To prevent this, meshes carry a **per-element origin**:
+
+```typescript
+// MeshData (packages/geometry/src/types.ts)
+// Per-element local-frame origin (metres): world position of vertex i =
+// origin + positions[3i..3i+3].
+origin?: [number, number, number];
+```
+
+The framed transform path (`mesh_world.rs`) transforms every vertex in f64, tracks the AABB, and then stores positions relative to an AABB-derived origin so the f32 payload stays small. `origin` is `[f64; 3]` on the Rust side (`MeshData.origin`). Every world-space consumer (raycasting, measurement, export, snapping) must fold `origin` back in; normals are translation-invariant and unaffected. The renderer relativizes all batches against a shared scene-level origin and expresses it as a translation in the model matrix, so the GPU only ever sees small local coordinates.
 
 ## TypeScript Layer (Fallback)
 
@@ -280,6 +289,7 @@ const collection = api.processGeometryBatch(
     pre.needsShift,
     pre.voidKeys, pre.voidCounts, pre.voidValues,
     pre.styleIds, pre.styleColors,
+    // ... plus optional plane-angle scale and material palette arguments
 );
 ```
 

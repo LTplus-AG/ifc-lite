@@ -43,8 +43,25 @@ export interface CesiumSlice {
   cesiumTerrainHeight: number | null;
   /** Human-readable source label for the sampled terrain height. */
   cesiumTerrainSource: string | null;
+  /**
+   * OrthogonalHeight-frame target for the "snap to terrain" action: the sampled
+   * terrain altitude already inverted through the geoid correction
+   * (ellipsoidal terrain - applied undulation N), so saving it as
+   * OrthogonalHeight round-trips back onto the terrain. null = not queried. (#1456)
+   */
+  cesiumTerrainSaveHeight: number | null;
   /** Model ID that the Cesium overlay is currently displaying. */
   cesiumSourceModelId: string | null;
+  /**
+   * When true, the model's authored `IfcMapConversion.OrthogonalHeight` is
+   * treated as an ELLIPSOIDAL height and the EGM96 geoid correction is skipped.
+   *
+   * Default false: heights are orthometric per the IFC spec, so the geoid
+   * undulation N is added to avoid the model sinking ~N below world terrain
+   * (#1355). Only the rare file whose OrthogonalHeight is genuinely ellipsoidal
+   * needs this turned on.
+   */
+  cesiumHeightsAreEllipsoidal: boolean;
   /**
    * User-selected federation anchor model.
    *
@@ -85,7 +102,9 @@ export interface CesiumSlice {
   setCesiumTerrainEnabled: (enabled: boolean) => void;
   setCesiumTerrainHeight: (height: number | null) => void;
   setCesiumTerrainSource: (source: string | null) => void;
+  setCesiumTerrainSaveHeight: (height: number | null) => void;
   setCesiumSourceModelId: (modelId: string | null) => void;
+  setCesiumHeightsAreEllipsoidal: (ellipsoidal: boolean) => void;
   setAnchorModelIdOverride: (modelId: string | null) => void;
   setShowModelBasepoints: (show: boolean) => void;
   toggleShowModelBasepoints: () => void;
@@ -161,7 +180,9 @@ export const createCesiumSlice: StateCreator<CesiumSlice & CesiumCrossSliceState
   cesiumTerrainEnabled: true,
   cesiumTerrainHeight: null,
   cesiumTerrainSource: null,
+  cesiumTerrainSaveHeight: null,
   cesiumSourceModelId: null,
+  cesiumHeightsAreEllipsoidal: false,
   anchorModelIdOverride: null,
   showModelBasepoints: false,
   cesiumTerrainClipY: null,
@@ -189,6 +210,7 @@ export const createCesiumSlice: StateCreator<CesiumSlice & CesiumCrossSliceState
       cesiumDataSource: source,
       cesiumTerrainHeight: null,
       cesiumTerrainSource: null,
+      cesiumTerrainSaveHeight: null,
       cesiumTerrainClipY: null,
     });
   },
@@ -199,6 +221,7 @@ export const createCesiumSlice: StateCreator<CesiumSlice & CesiumCrossSliceState
       cesiumIonToken: token || DEFAULT_ION_TOKEN,
       cesiumTerrainHeight: null,
       cesiumTerrainSource: null,
+      cesiumTerrainSaveHeight: null,
       cesiumTerrainClipY: null,
     });
   },
@@ -208,12 +231,20 @@ export const createCesiumSlice: StateCreator<CesiumSlice & CesiumCrossSliceState
       cesiumTerrainEnabled: enabled,
       cesiumTerrainHeight: null,
       cesiumTerrainSource: null,
+      cesiumTerrainSaveHeight: null,
       cesiumTerrainClipY: null,
     });
   },
   setCesiumTerrainHeight: (height) => set({ cesiumTerrainHeight: height }),
   setCesiumTerrainSource: (source) => set({ cesiumTerrainSource: source }),
+  setCesiumTerrainSaveHeight: (height) => set({ cesiumTerrainSaveHeight: height }),
   setCesiumSourceModelId: (modelId) => set({ cesiumSourceModelId: modelId }),
+  setCesiumHeightsAreEllipsoidal: (ellipsoidal) => set({
+    cesiumHeightsAreEllipsoidal: ellipsoidal,
+    // The snap target is geoid-mode-dependent; drop the stale value so a snap
+    // can't persist the old frame before the overlay recomputes it (#1456).
+    cesiumTerrainSaveHeight: null,
+  }),
   setAnchorModelIdOverride: (modelId) => set({ anchorModelIdOverride: modelId }),
   setShowModelBasepoints: (show) => set({ showModelBasepoints: show }),
   toggleShowModelBasepoints: () => set((s) => ({ showModelBasepoints: !s.showModelBasepoints })),

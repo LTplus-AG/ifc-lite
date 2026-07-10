@@ -27,9 +27,9 @@ Open, view, and work with IFC files. Right in the browser.
 
 # IFClite
 
-Parse, view, query, edit, and export IFC files in the browser. Rust + WASM core, WebGPU rendering, ~260 KB gzipped, 5× faster geometry than the next best option.
+Parse, view, query, edit, validate, and export IFC files, entirely client-side. A Rust core compiled to WASM does the parsing and geometry, a WebGPU renderer puts it on screen, and 36 npm packages let you pick exactly the pieces you need. Geometry processing is up to 5x faster than web-ifc (median ~2.2x across the benchmark corpus).
 
-Works with **IFC2X3**, **IFC4 / IFC4X3** and **IFC5 (IFCX)**. Live demo at [ifclite.com](https://www.ifclite.com/) and more info here: [ifclite.dev](https://www.ifclite.dev/).
+Works with **IFC2X3**, **IFC4 / IFC4X3** and **IFC5 (IFCX)**. Live demo at [ifclite.com](https://www.ifclite.com/) and more info at [ifclite.dev](https://www.ifclite.dev/).
 
 ## Get Started
 
@@ -44,6 +44,13 @@ To add IFClite to an existing project:
 
 ```bash
 npm install @ifc-lite/parser @ifc-lite/geometry @ifc-lite/renderer
+```
+
+Prefer the terminal? The whole toolkit is also a CLI:
+
+```bash
+npm install -g @ifc-lite/cli
+ifc-lite info model.ifc
 ```
 
 ## Parse an IFC file
@@ -90,7 +97,7 @@ const hit = await renderer.pick(120, 240);
 if (hit) console.log(`Picked expressId ${hit.expressId}`);
 ```
 
-For Three.js or Babylon.js, parse + extract geometry the same way and feed `meshes` to your engine. See [Three.js integration](https://ltplus-ag.github.io/ifc-lite/tutorials/threejs-integration/) and [Babylon.js integration](https://ltplus-ag.github.io/ifc-lite/tutorials/babylonjs-integration/).
+For Three.js or Babylon.js, parse and extract geometry the same way and feed `meshes` to your engine. See [Three.js integration](https://ltplus-ag.github.io/ifc-lite/tutorials/threejs-integration/) and [Babylon.js integration](https://ltplus-ag.github.io/ifc-lite/tutorials/babylonjs-integration/).
 
 ## Query entities
 
@@ -168,24 +175,44 @@ console.log(view.getMutations()); // change history for undo / export
 import { exportToStep, ParquetExporter, Ifc5Exporter } from '@ifc-lite/export';
 import { GeometryProcessor } from '@ifc-lite/geometry';
 
-// IFC STEP — applies any pending mutations
+// Assumes the earlier parse/geometry steps: `store` (parsed IfcDataStore),
+// `bytes` (raw IFC Uint8Array), `meshes` + `geometryResult` (from geometry).
+
+// IFC STEP, applies any pending mutations
 const stepText = exportToStep(store, { schema: 'IFC4', applyMutations: true });
 
-// glTF / GLB, CSV and JSON-LD are assembled in Rust (ifc-lite-export) via the
-// GeometryProcessor — the standalone GLTFExporter/CSVExporter/JSONLDExporter
-// classes were retired.
+// glTF / GLB, CSV and JSON-LD are assembled in Rust (ifc-lite-export)
+// via the GeometryProcessor
 const gp = new GeometryProcessor();
 await gp.init();
-const glb = gp.exportGlbFromMeshes(result.meshes); // Uint8Array (no re-mesh)
-const csv = gp.exportCsv(buffer, 'entities', ',', /* includeProperties */ true);
-const jsonld = gp.exportJsonld(buffer);
+const glb = gp.exportGlbFromMeshes(meshes);  // Uint8Array (no re-mesh)
+const csv = gp.exportCsv(bytes, 'entities', ',', /* includeProperties */ true);
+const jsonld = gp.exportJsonld(bytes);
 
-// Parquet — columnar, ~20× smaller than JSON, queryable from DuckDB / Polars
+// Parquet: columnar, queryable from DuckDB / Polars
 const parquet = await new ParquetExporter(store).exportTable('entities');
 
-// IFC5 / IFCX — JSON + USD geometry
-const ifcx = new Ifc5Exporter(store, result).export({ includeGeometry: true });
+// IFC5 / IFCX: JSON + USD geometry
+const ifcx = new Ifc5Exporter(store, geometryResult).export({ includeGeometry: true });
 ```
+
+## Work from the terminal
+
+The [`ifc-lite` CLI](https://ltplus-ag.github.io/ifc-lite/guide/cli/) covers the full toolkit: inspect, query, validate, export, create, diff, clash-check, merge, convert, and script IFC models without writing a line of app code.
+
+```bash
+ifc-lite info model.ifc                                  # schema, entities, storeys
+ifc-lite query model.ifc --type IfcWall --json           # entities with properties
+ifc-lite ids model.ifc requirements.ids                  # IDS validation
+ifc-lite clash model.ifc --matrix --bcf clashes.bcfzip   # clash detection to BCF
+ifc-lite diff model-v1.ifc model-v2.ifc                  # model comparison
+ifc-lite merge arch.ifc struct.ifc mep.ifc --out fed.ifc # federation
+ifc-lite convert model.ifc --schema IFC4 --out out.ifc   # schema conversion
+ifc-lite view model.ifc                                  # 3D viewer + REST API
+ifc-lite eval model.ifc "bim.query().byType('IfcWall').count()"
+```
+
+Building AI tooling? `ifc-lite mcp model.ifc` starts a [Model Context Protocol](https://ltplus-ag.github.io/ifc-lite/guide/cli/) server (stdio or HTTP) so agents can query and edit BIM data directly, and `ifc-lite ask model.ifc "how many walls?"` answers natural-language questions.
 
 ## Choose your setup
 
@@ -193,6 +220,7 @@ const ifcx = new Ifc5Exporter(store, result).export({ includeGeometry: true });
 |-------|----------|---------|
 | [**Browser (WebGPU)**](https://ltplus-ag.github.io/ifc-lite/guide/quickstart/) | Viewing and inspecting models | Full-featured 3D viewer, runs entirely client-side |
 | [**Three.js / Babylon.js**](https://ltplus-ag.github.io/ifc-lite/tutorials/threejs-integration/) | Adding IFC support to an existing 3D app | IFC parsing + geometry, rendered by your engine |
+| [**CLI**](https://ltplus-ag.github.io/ifc-lite/guide/cli/) | Scripting, CI pipelines, AI agents | The whole toolkit from the terminal, JSON output everywhere |
 | [**Server**](https://ltplus-ag.github.io/ifc-lite/guide/server/) | Teams, large files, repeat access | Rust backend with caching, parallel processing, streaming |
 | [**Build for Desktop**](https://ltplus-ag.github.io/ifc-lite/guide/desktop/) | Your own offline native app, very large files (500 MB+) | Extension points to wrap the packages in Tauri, with an optional native-Rust geometry fast path |
 | [**Python (native wheel)**](https://ltplus-ag.github.io/ifc-lite/api/python/) | Analysis, scripting, scientific Python | `pip install ifclite-geom` runs the geometry kernel in-process, meshes straight to numpy |
@@ -212,18 +240,26 @@ Not sure? Start with the browser setup. You can add a server or switch engines l
 | Generate 2D drawings | + `@ifc-lite/drawing-2d` |
 | Create IFC files from scratch | `@ifc-lite/create` |
 | Export to glTF / IFC / Parquet | + `@ifc-lite/export` |
-| Connect to a server backend | + `@ifc-lite/server-client` |
+| Detect clashes | + `@ifc-lite/clash` |
+| Diff two model versions | + `@ifc-lite/diff` |
 | BCF issue tracking | + `@ifc-lite/bcf` |
+| Filter and colorize in 3D by rules | + `@ifc-lite/lens` |
+| Build schedules and property tables | + `@ifc-lite/lists` |
+| Script models with the `bim.*` API | + `@ifc-lite/sdk` |
+| Real-time collaboration (CRDT on IFCX) | + `@ifc-lite/collab` + `@ifc-lite/collab-server` |
+| Embed the viewer in any page (iframe) | + `@ifc-lite/embed-sdk` |
+| Connect to a server backend | + `@ifc-lite/server-client` |
+| Give AI agents BIM access (MCP) | + `@ifc-lite/mcp` |
 
-Full list: [API Reference](https://ltplus-ag.github.io/ifc-lite/api/typescript/) (14 TypeScript packages, 3 Rust crates).
+Full list: [API Reference](https://ltplus-ag.github.io/ifc-lite/api/typescript/) (36 npm packages, 6 Rust crates on crates.io, and the `ifclite-geom` Python wheel on PyPI).
 
 ## Performance
 
-- **First triangles:** 200–500ms for a typical 50 MB model in the browser.
-- **Geometry processing:** up to 5× faster than `web-ifc` on the same hardware.
-- **Bundle size:** ~260 KB gzipped (parser + geometry + renderer).
+- **Streaming first render:** geometry is processed in batches, so the first triangles are on screen while the rest of the file is still parsing.
+- **Geometry processing:** up to 5x faster than `web-ifc` (median ~2.2x across the benchmark corpus).
+- **Parse speed:** STEP tokenization runs at roughly 1.2 GB/s; a full parse lands around 50 MB/s.
 - **Schema coverage:** 100% of IFC4 (776 entities) and IFC4X3 (876 entities).
-- **Parse throughput:** ~1,259 MB/s tokenization on a typical M1 / M2 laptop.
+- **Footprint:** one lazily fetched WASM module (~1.2 MB gzipped) plus small per-package JS wrappers.
 
 See [benchmarks](https://ltplus-ag.github.io/ifc-lite/guide/performance/) for full numbers across model sizes and hardware.
 
@@ -231,16 +267,19 @@ See [benchmarks](https://ltplus-ag.github.io/ifc-lite/guide/performance/) for fu
 
 Ready-to-run projects in [`examples/`](examples/):
 
-- [**Three.js Viewer**](examples/threejs-viewer/) — IFC viewer using Three.js (WebGL)
-- [**Babylon.js Viewer**](examples/babylonjs-viewer/) — IFC viewer using Babylon.js (WebGL)
+- [**Three.js Viewer**](examples/threejs-viewer/) - IFC viewer using Three.js (WebGL)
+- [**Babylon.js Viewer**](examples/babylonjs-viewer/) - IFC viewer using Babylon.js (WebGL)
+- [**Collab Demo**](examples/collab-demo/) - real-time collaborative editing over websockets
+- [**Three.js Collab**](examples/threejs-collab/) - collaborative 3D viewing in Three.js
 
 ## Documentation
 
 | | |
 |---|---|
-| **Start here** | [Quick Start](https://ltplus-ag.github.io/ifc-lite/guide/quickstart/) · [Installation](https://ltplus-ag.github.io/ifc-lite/guide/installation/) · [Browser Requirements](https://ltplus-ag.github.io/ifc-lite/guide/browser-requirements/) |
+| **Start here** | [Quick Start](https://ltplus-ag.github.io/ifc-lite/guide/quickstart/) · [Installation](https://ltplus-ag.github.io/ifc-lite/guide/installation/) · [CLI Toolkit](https://ltplus-ag.github.io/ifc-lite/guide/cli/) · [Browser Requirements](https://ltplus-ag.github.io/ifc-lite/guide/browser-requirements/) |
 | **Guides** | [Parsing](https://ltplus-ag.github.io/ifc-lite/guide/parsing/) · [Geometry](https://ltplus-ag.github.io/ifc-lite/guide/geometry/) · [Rendering](https://ltplus-ag.github.io/ifc-lite/guide/rendering/) · [Querying](https://ltplus-ag.github.io/ifc-lite/guide/querying/) · [Exporting](https://ltplus-ag.github.io/ifc-lite/guide/exporting/) |
 | **BIM features** | [Federation](https://ltplus-ag.github.io/ifc-lite/guide/federation/) · [BCF](https://ltplus-ag.github.io/ifc-lite/guide/bcf/) · [IDS Validation](https://ltplus-ag.github.io/ifc-lite/guide/ids/) · [2D Drawings](https://ltplus-ag.github.io/ifc-lite/guide/drawing-2d/) · [Property Editing](https://ltplus-ag.github.io/ifc-lite/guide/mutations/) |
+| **Customization** | [Extensions](https://ltplus-ag.github.io/ifc-lite/guide/extensions/) · [Authoring Extensions](https://ltplus-ag.github.io/ifc-lite/guide/extension-authoring/) · [Flavors](https://ltplus-ag.github.io/ifc-lite/guide/flavors/) |
 | **Tutorials** | [Build a Viewer](https://ltplus-ag.github.io/ifc-lite/tutorials/building-viewer/) · [Three.js](https://ltplus-ag.github.io/ifc-lite/tutorials/threejs-integration/) · [Babylon.js](https://ltplus-ag.github.io/ifc-lite/tutorials/babylonjs-integration/) · [Custom Queries](https://ltplus-ag.github.io/ifc-lite/tutorials/custom-queries/) |
 | **Deep dives** | [Architecture](https://ltplus-ag.github.io/ifc-lite/architecture/overview/) · [Data Flow](https://ltplus-ag.github.io/ifc-lite/architecture/data-flow/) · [Performance](https://ltplus-ag.github.io/ifc-lite/guide/performance/) |
 | **API** | [TypeScript](https://ltplus-ag.github.io/ifc-lite/api/typescript/) · [Rust](https://ltplus-ag.github.io/ifc-lite/api/rust/) · [WASM](https://ltplus-ag.github.io/ifc-lite/api/wasm/) · [Python](https://ltplus-ag.github.io/ifc-lite/api/python/) |
@@ -249,7 +288,7 @@ Ready-to-run projects in [`examples/`](examples/):
 
 The WASM bundle is built from `rust/` on every fresh build, so a Rust
 toolchain is required. `rust-toolchain.toml` pins the nightly channel
-and the `wasm32-unknown-unknown` target — `rustup show` (or the
+and the `wasm32-unknown-unknown` target. `rustup show` (or the
 contributing setup guide) installs everything needed.
 
 ```bash
@@ -271,7 +310,7 @@ pnpm fixtures:check     # CI-friendly: exit 1 if anything is missing or stale
 ```
 
 The fixtures are stored on a GitHub Release and catalogued in
-[`tests/models/manifest.json`](tests/models/manifest.json) — see
+[`tests/models/manifest.json`](tests/models/manifest.json). See
 [`tests/models/README.md`](tests/models/README.md) for the full design and
 maintainer workflow.
 
@@ -279,10 +318,10 @@ See the [Contributing Guide](https://ltplus-ag.github.io/ifc-lite/contributing/s
 
 ## Community
 
-- [GitHub Discussions](https://github.com/LTplus-AG/ifc-lite/discussions) — questions, ideas, show-and-tell
-- [Issues](https://github.com/LTplus-AG/ifc-lite/issues) — bug reports and feature requests
-- [Releases](https://github.com/LTplus-AG/ifc-lite/releases) — changelog and version notes
+- [GitHub Discussions](https://github.com/LTplus-AG/ifc-lite/discussions) - questions, ideas, show-and-tell
+- [Issues](https://github.com/LTplus-AG/ifc-lite/issues) - bug reports and feature requests
+- [Releases](https://github.com/LTplus-AG/ifc-lite/releases) - changelog and version notes
 
 ## License
 
-[MPL-2.0](LICENSE) — use, modify, redistribute. Source files modified under MPL must remain MPL.
+[MPL-2.0](LICENSE) - use, modify, redistribute. Source files modified under MPL must remain MPL.

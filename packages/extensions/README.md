@@ -4,11 +4,17 @@ Extension manifest, capability grammar, and slot registry for IFClite's
 user-customization system.
 
 This package implements the **non-UI** half of the design described in
-[`docs/architecture/ai-customization/`](../../docs/architecture/ai-customization/).
+[docs/architecture/ai-customization/](https://github.com/LTplus-AG/ifc-lite/tree/main/docs/architecture/ai-customization).
 It is host-agnostic — the same code is consumed by the browser viewer,
 the CLI, and the headless server.
 
-## What's here (v0.3.3)
+## Installation
+
+```bash
+npm install @ifc-lite/extensions
+```
+
+## What's here
 
 - **Manifest** — typed schema + hand-rolled validator producing
   structured `{ path, code, hint }` errors.
@@ -64,10 +70,9 @@ if (result.ok) {
 }
 ```
 
-## Design references
+## Docs
 
-- `docs/architecture/ai-customization/01-extension-model.md`
-- `docs/architecture/ai-customization/02-security.md`
-- `docs/architecture/ai-customization/03-ui-surface.md`
+- [Extensions Guide](https://ltplus-ag.github.io/ifc-lite/guide/extensions/) and [Extension Authoring](https://ltplus-ag.github.io/ifc-lite/guide/extension-authoring/)
+- Design references: [01-extension-model.md](https://github.com/LTplus-AG/ifc-lite/blob/main/docs/architecture/ai-customization/01-extension-model.md), [02-security.md](https://github.com/LTplus-AG/ifc-lite/blob/main/docs/architecture/ai-customization/02-security.md), [03-ui-surface.md](https://github.com/LTplus-AG/ifc-lite/blob/main/docs/architecture/ai-customization/03-ui-surface.md)
 
 Licensed under MPL-2.0.

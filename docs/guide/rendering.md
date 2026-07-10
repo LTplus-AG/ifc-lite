@@ -162,6 +162,15 @@ sectionPlane.flipped = true;
 // Storey-based range override
 sectionPlane.min = storeyElevation;
 sectionPlane.max = storeyElevation + storeyHeight;
+
+// Cut-surface rendering (both default true)
+sectionPlane.showCap = true;       // filled cap surfaces with screen-space hatch
+sectionPlane.showOutlines = true;  // polygon outlines on the cut surfaces
+
+// Arbitrary slice plane: providing a world-space unit normal + distance
+// bypasses axis/position/min/max entirely (face-pick section planes)
+sectionPlane.normal = [0.3, 0.9, 0.1];
+sectionPlane.distance = 12.5;
 ```
 
 ### Section Plane Visualization
@@ -184,9 +193,11 @@ graph TD
 ### Section Plane Example
 
 ```typescript
+import type { SectionPlane } from '@ifc-lite/renderer';
+
 // Interactive section plane control
-let sectionPlane = {
-  axis: 'down' as const,
+let sectionPlane: SectionPlane = {
+  axis: 'down',
   position: 50,
   enabled: true,
   flipped: false
@@ -579,7 +590,7 @@ The `@ifc-lite/spatial` package provides spatial indexing utilities for efficien
 Builds a BVH (Bounding Volume Hierarchy) spatial index from geometry meshes for fast spatial queries.
 
 ```typescript
-import { buildSpatialIndex, type SpatialIndex } from '@ifc-lite/spatial';
+import type { SpatialIndex } from '@ifc-lite/spatial';
 import type { MeshData } from '@ifc-lite/geometry';
 
 /**
@@ -587,7 +598,7 @@ import type { MeshData } from '@ifc-lite/geometry';
  * @param meshes - Array of MeshData objects from GeometryProcessor
  * @returns BVH spatial index that implements SpatialIndex interface
  */
-function buildSpatialIndex(meshes: MeshData[]): SpatialIndex;
+declare function buildSpatialIndex(meshes: MeshData[]): SpatialIndex;
 ```
 
 **Parameters:**
@@ -699,6 +710,39 @@ Meshes are automatically grouped by color for efficient rendering:
 renderer.addMeshes(meshes, true);  // isStreaming = true
 ```
 
+### GPU Instancing
+
+Repeated opaque geometry is production-ready on a dedicated GPU-instancing
+path: unique mesh templates are stored once and drawn with per-occurrence
+transform/color buffers, which keeps draw calls and GPU memory low on models
+with heavy repetition (steel connections, bolts, standard components).
+
+The geometry processor emits packed instanced shards on its streaming batch
+events (see the [Geometry Guide](geometry.md)); decode and upload them to the
+scene:
+
+```typescript
+import { decodeInstancedShard } from '@ifc-lite/geometry';
+
+const device = renderer.getGPUDevice();
+
+for await (const event of geometry.processAdaptive(new Uint8Array(buffer))) {
+  if (event.type === 'batch') {
+    renderer.addMeshes(event.meshes, true);
+    for (const bytes of event.instancedShards ?? []) {
+      const shard = decodeInstancedShard(new Uint8Array(bytes));
+      if (shard && device) renderer.getScene().addInstancedShard(device, shard);
+    }
+  }
+}
+```
+
+Selection, hide/isolate, section planes, and picking all work on instanced
+occurrences; the renderer mirrors `selectedIds`, `hiddenIds`, and
+`isolatedIds` onto the instanced pass automatically. Instancing is
+primary-model only: disable it (`enableInstancing: false` on the
+`GeometryProcessor`) for federated multi-model loads.
+
 ## Complete Example
 
 ```typescript
@@ -714,8 +758,16 @@ async function createViewer() {
   const client = new IfcServerClient({ baseUrl: 'http://localhost:3001' });
   const result = await client.parseParquet(file);
 
-  // Add meshes
-  renderer.addMeshes(result.meshes);
+  // Server meshes use snake_case fields (express_id); map them into the
+  // renderer's camelCase MeshData shape before uploading.
+  renderer.addMeshes(result.meshes.map((m) => ({
+    expressId: m.express_id,
+    ifcType: m.ifc_type,
+    positions: m.positions,
+    normals: m.normals,
+    indices: m.indices,
+    color: m.color,
+  })));
   renderer.fitToView();
 
   // Visibility and selection state

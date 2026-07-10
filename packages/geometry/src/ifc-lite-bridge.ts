@@ -8,7 +8,7 @@
  */
 
 import { createLogger } from '@ifc-lite/data';
-import type { TessellationQuality } from './types.js';
+import type { KmzAltitudeMode, TessellationQuality } from './types.js';
 import type { GeometryDiagnostics } from './diagnostics.js';
 import init, {
   IfcAPI,
@@ -374,7 +374,9 @@ export class IfcLiteBridge {
 
   /**
    * Export the render geometry in `content` as a binary glTF (GLB).
-   * `hiddenTypesCsv` is a comma-separated IFC-type visibility filter.
+   * `hiddenTypesCsv` is a comma-separated IFC-type visibility filter. `emissive`
+   * self-illuminates each material at its base colour for renderers without
+   * ambient/IBL (Google Earth) — see #1427.
    */
   exportGlb(
     content: Uint8Array,
@@ -383,9 +385,10 @@ export class IfcLiteBridge {
     isolated: Uint32Array = new Uint32Array(),
     hiddenTypesCsv = '',
     lit = true,
+    emissive = false,
   ): Uint8Array {
     return this.runExport('exportGlb', content, (api) =>
-      api.exportGlb(content, includeMetadata, hidden, isolated, hiddenTypesCsv, lit),
+      api.exportGlb(content, includeMetadata, hidden, isolated, hiddenTypesCsv, lit, emissive),
     );
   }
 
@@ -488,13 +491,14 @@ export class IfcLiteBridge {
     expressIds: Uint32Array,
     includeMetadata: boolean,
     lit = true,
+    emissive = false,
   ): Uint8Array {
     if (!this.ifcApi) {
       throw new Error('IFC-Lite not initialized. Call init() first.');
     }
     try {
       return this.ifcApi.exportGlbFromMeshes(
-        positions, normals, indices, vertexCounts, indexCounts, colors, origins, expressIds, includeMetadata, lit,
+        positions, normals, indices, vertexCounts, indexCounts, colors, origins, expressIds, includeMetadata, lit, emissive,
       );
     } catch (error) {
       log.error('Failed to exportGlbFromMeshes', error, { operation: 'exportGlbFromMeshes' });
@@ -526,6 +530,48 @@ export class IfcLiteBridge {
       return this.ifcApi.exportKmz(glb, latitude, longitude, altitude, xAxisAbscissa, xAxisOrdinate, name);
     } catch (error) {
       log.error('Failed to exportKmz', error, { operation: 'exportKmz' });
+      if (this.isWasmRuntimeError(error)) {
+        this.markFatalWasmRuntimeError();
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Build a Google-Earth-ready KMZ directly from already-produced meshes (flattened
+   * parallel arrays). The model is embedded as COLLADA (`model.dae`) — the only
+   * `<Model>` format Google Earth loads — with emission-lit, double-sided materials
+   * (#1427). `xAxisAbscissa`/`xAxisOrdinate` are the `IfcMapConversion` grid-north
+   * components (pass `undefined` for heading 0). `altitudeMode` selects the KML
+   * vertical placement (`'clampToGround'` default rests on the terrain and ignores
+   * `altitude`; `'absolute'` places the origin at `altitude` metres MSL).
+   */
+  exportKmzFromMeshes(
+    positions: Float32Array,
+    normals: Float32Array,
+    indices: Uint32Array,
+    vertexCounts: Uint32Array,
+    indexCounts: Uint32Array,
+    colors: Float32Array,
+    origins: Float64Array,
+    latitude: number,
+    longitude: number,
+    altitude: number,
+    xAxisAbscissa: number | undefined,
+    xAxisOrdinate: number | undefined,
+    name: string,
+    altitudeMode?: KmzAltitudeMode,
+  ): Uint8Array {
+    if (!this.ifcApi) {
+      throw new Error('IFC-Lite not initialized. Call init() first.');
+    }
+    try {
+      return this.ifcApi.exportKmzFromMeshes(
+        positions, normals, indices, vertexCounts, indexCounts, colors, origins,
+        latitude, longitude, altitude, xAxisAbscissa, xAxisOrdinate, name, altitudeMode,
+      );
+    } catch (error) {
+      log.error('Failed to exportKmzFromMeshes', error, { operation: 'exportKmzFromMeshes' });
       if (this.isWasmRuntimeError(error)) {
         this.markFatalWasmRuntimeError();
       }

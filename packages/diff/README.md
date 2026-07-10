@@ -9,6 +9,12 @@ The package is **pure and store-agnostic**: it never touches a parser, a WASM
 module, or a renderer. Adapters (the CLI, the viewer) extract a fingerprint per
 entity and hand them over; the engine matches by key and classifies.
 
+## Installation
+
+```bash
+npm install @ifc-lite/diff
+```
+
 ## Usage
 
 ```ts
@@ -74,6 +80,11 @@ exposed over the WASM boundary (`IfcAPI.setComputeGeometryHashes` →
 `MeshCollection.geometryHashValues`). It is RTC-invariant (a file's origin-shift
 never registers as a change) and tolerance-quantized. This package only
 *consumes* those hashes, keeping it dependency-free and unit-testable.
+
+## Docs
+
+See the [ifc-lite docs](https://ltplus-ag.github.io/ifc-lite/) and the
+[API Reference](https://ltplus-ag.github.io/ifc-lite/api/typescript/).
 
 ## License
 

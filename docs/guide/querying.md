@@ -206,7 +206,10 @@ const fillings = query.entity(openingId).filledBy();
 
 ## SQL Queries
 
-For complex analytics, use SQL via DuckDB:
+For complex analytics, use SQL via DuckDB. SQL support is optional: install the
+`@duckdb/duckdb-wasm` package in your app (it is lazy-loaded on the first `sql()`
+call, so it adds nothing to your bundle until used; `sql()` throws if the package
+is not installed):
 
 ```typescript
 import { IfcQuery } from '@ifc-lite/query';
@@ -357,9 +360,9 @@ const externalWallIds = store.properties.findByProperty(
 ```mermaid
 graph LR
     subgraph Performance["Query Performance"]
-        Fluent["Fluent API<br/>~1ms"]
-        Direct["Direct Access<br/>~0.1ms"]
-        SQL["SQL Query<br/>~10-100ms"]
+        Fluent["Fluent API<br/>fast, type-indexed"]
+        Direct["Direct Access<br/>fastest, no wrappers"]
+        SQL["SQL Query<br/>heavier: tables are loaded into DuckDB first"]
     end
 
     Simple["Simple Queries"] --> Fluent

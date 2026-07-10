@@ -81,7 +81,7 @@ Five tabs across the header:
 
 === "Audit"
 
-    Append-only ledger of lifecycle events: `install`, `uninstall`, `update`, `enable`, `disable`, `activate`, `deactivate`, `capability_grant`, `capability_revoke`, `unhealthy`, `killed`. Filter by event kind, export the log as JSON, or clear it.
+    Append-only ledger of lifecycle events: `install`, `uninstall`, `update`, `enable`, `disable`, `activate`, `deactivate`, `capability_grant`, `capability_revoke`, `mutation_summary`, `network_fetch`, `unhealthy`, `killed`. Filter by event kind, export the log as JSON, or clear it.
 
 === "Privacy"
 
@@ -92,7 +92,7 @@ Five tabs across the header:
 The Capability Review modal is the consent boundary for everything an extension can touch. Three things make it stricter than a typical "Accept" button:
 
 1. **Per-row checkboxes.** You can grant `model.read` while denying `network.fetch:*`; the extension installs, calls that need the denied capability throw a structured `CapabilityDeniedError`.
-2. **Risk tiers.** Green is read-only / scoped. Yellow needs a second look. Red is network egress, model mutation, or unknown capability — those force you to type `approve` before the Install button enables.
+2. **Risk tiers.** Green is read-only / scoped. Yellow needs a second look (scoped mutation, scoped export, single-host network access). Red is wildcard network egress, entity deletion, wildcard model mutation, or an unknown capability — those force you to type `approve` before the Install button enables.
 3. **Source preview tab.** Click **Source** to browse the manifest plus every JS/widget file in the bundle. Comes from the bundle's `files` map, not an external link; you read the actual installed code.
 
 !!! warning "Unknown capabilities are red"
@@ -153,11 +153,11 @@ https://your-viewer.example.com/?safe=1
 ??? question "A command throws `CapabilityDeniedError`"
     The extension is calling a method that requires a capability you denied during install. Open the Extensions panel, click the row's Audit entry, and re-install with the capability granted — or read the source first to decide whether the call is reasonable.
 
-??? question "Tests fail with `Entry "src/foo.js" missing from bundle files`"
+??? question "Tests fail with `Referenced file "src/foo.js" not found in bundle.`"
     The manifest declares an entry that isn't packed into the `.iflx`. If you authored the bundle, run `ifc-lite ext validate <bundle-dir>` to catch this before packing.
 
 ??? question "I want to inspect what an extension is doing"
-    The **Audit** tab logs every lifecycle event and unhealthy runtime error. For per-command observability, run the extension and then check the browser DevTools console — `console.log` calls from sandbox code surface there with an `[ext:<id>]` prefix.
+    The **Audit** tab logs every lifecycle event and unhealthy runtime error. Capability denials are also warned to the browser DevTools console with an `[ext:<id>]` prefix. `console.log` / `warn` / `error` calls from sandbox code are captured into the run result (they show up in test runs via `ext test` and in the authoring loop's diagnostics).
 
 ## Next steps
 

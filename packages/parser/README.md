@@ -1,6 +1,6 @@
 # @ifc-lite/parser
 
-High-performance IFC parser. Tokenizes STEP files at high throughput, builds columnar TypedArray storage, and ships full type-safe coverage of all 776 IFC4 entities. IFC4X3 files are detected and parsed at runtime.
+High-performance IFC parser. Tokenizes STEP files at high throughput, builds columnar TypedArray storage, and ships full type-safe coverage of all 776 IFC4 entities. IFC2X3, IFC4, and IFC4X3 files are detected and parsed at runtime; IFC5 (IFCX) files are handled via `parseAuto`.
 
 ## Installation
 
@@ -31,11 +31,20 @@ materials, classifications, documents, and attributes.
 ```typescript
 const store = await parser.parseColumnar(buffer);
 
-// store.entities    — typed access by expressId
-// store.properties  — flattened pset table
-// store.quantities  — flattened qset table
-// store.spatialHierarchy.byStorey  — Map<storeyId, Set<elementId>>
+// store.entities    - typed access by expressId
+// store.properties  - flattened pset table
+// store.quantities  - flattened qset table
+// store.spatialHierarchy.byStorey  - Map<storeyId, elementIds[]>
 console.log(`${store.entityCount} entities, schema ${store.schemaVersion}`);
+```
+
+To handle IFC5 (IFCX) files with the same entry point, use `parseAuto`:
+
+```typescript
+import { parseAuto } from '@ifc-lite/parser';
+
+const result = await parseAuto(buffer);
+// result.format is 'ifc' (STEP -> IfcDataStore) or 'ifcx' (JSON -> IfcxParseResult + meshes)
 ```
 
 ## Type-safe entity access
@@ -81,7 +90,7 @@ const material = extractMaterialsOnDemand(store, wallId);
 //   { name: 'Concrete C30/37', layers: [{ name: 'Concrete', thickness: 0.15 }, ...] }
 
 const classifications = extractClassificationsOnDemand(store, wallId);
-//   [{ system: 'Uniclass 2015', code: 'Pr_60_10_32', name: 'External walls', ... }]
+//   [{ system: 'Uniclass 2015', identification: 'Pr_60_10_32', name: 'External walls', ... }]
 ```
 
 ## Georeferencing

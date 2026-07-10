@@ -1,6 +1,6 @@
 # Privacy
 
-Everything the customisation system stores stays on your device. There is no telemetry, no analytics endpoint, no usage reporting. This page covers exactly what's stored, where, and how to inspect or clear it.
+Everything the customisation system stores stays on your device: the action log, audit log, flavor library, and prompt overlay never leave your browser. Your models are processed entirely client-side too — parsing and geometry run in your browser, and model content is never uploaded. This page covers exactly what's stored, where, and how to inspect or clear it, plus an honest account of what the hosted viewer sends over the network.
 
 ## TL;DR
 
@@ -9,7 +9,7 @@ Everything the customisation system stores stays on your device. There is no tel
 - **Flavor library** — your extensions, lenses, queries, layout, settings, prompt overlay.
 - **Prompt overlay** — durable notes the AI assistant sees in every chat (per flavor).
 
-All four live in your browser's IndexedDB. Nothing is sent off-device unless you explicitly export.
+All four live in your browser's IndexedDB. None of it is sent off-device unless you explicitly export. Separately, the hosted viewer can emit anonymous, scrubbed product analytics — see [What flows over the network](#what-flows-over-the-network).
 
 ## Where data is stored
 
@@ -92,11 +92,17 @@ A caveat banner sits above the proposal list: "Rule-based scan — review each l
 
 ## What flows over the network
 
-The customisation system itself does not make network calls. Two adjacent surfaces do:
+The customisation system itself does not make network calls, and the model-loading path keeps your IFC models on your device: parsing and geometry run entirely in your browser, and there is no upload endpoint in the load path. That guarantee covers loading, parsing, and geometry only — if you explicitly attach model content to an AI chat message (see below), that content is sent to your chosen provider. Three adjacent surfaces send data over the network.
 
-1. **Chat with the AI assistant.** When you send a chat message, your prompt + the (cached) system prompt + any attachments + recent conversation goes to your chosen provider (Anthropic / OpenAI), either through the BYOK direct flow or the proxy. The chat panel's existing privacy notes apply.
+1. **Hosted viewer product analytics.** The hosted viewer at ifclite.com emits anonymous, coarse product-usage events via PostHog. This is the only telemetry in the project, and it lives only in the viewer app (`apps/viewer`). The published npm packages (`@ifc-lite/*`) contain no analytics code at all, and a viewer you build yourself with no PostHog key configured (`VITE_POSTHOG_KEY` / `VITE_POSTHOG_HOST`) sends nothing.
 
-2. **Extension code with `network.fetch:<host>` capability.** An extension can ONLY make fetches you explicitly grant during install. The capability is host-scoped — `network.fetch:api.example.com` cannot reach any other host. Network egress is red-tier in the Capability Review screen; you have to type `approve` to grant it.
+   What it records: coarse product events such as `ifc_model_loaded` (schema string and integer counts/sizes), `export_completed`, `ids_validation_completed`, `clash_detection_run`, `lens_applied`, tour progress, `ai_chat_message_sent`, and crash/error reports tagged with the build version for regression triage. Events are anonymous by default (PostHog `person_profiles: 'identified_only'`, no autocapture, no page-view capture).
+
+   What it never records: every event passes through a `before_send` scrubber (`apps/viewer/src/lib/analytics-scrub.ts`) that strips any property whose key looks like a file name, model name, title, path, comment, query, or property/pset name; redacts string values that look like a file path or a model file name; and removes the query string and hash from URLs (keeping only the route). Model content, GlobalIds, property values, and file names never leave the browser through analytics.
+
+2. **Chat with the AI assistant.** When you send a chat message, your prompt + the (cached) system prompt + any attachments + recent conversation goes to your chosen provider (Anthropic / OpenAI), either through the BYOK direct flow or the proxy. Attachments can include model content (GlobalIds, property values, selected entities), so attaching model context to a chat message deliberately sends that content off-device to the provider. The chat panel's existing privacy notes apply.
+
+3. **Extension code with `network.fetch:<host>` capability.** An extension can ONLY make fetches you explicitly grant during install. The capability is host-scoped — `network.fetch:api.example.com` cannot reach any other host. Network egress is red-tier in the Capability Review screen; you have to type `approve` to grant it.
 
 ## What you can do
 

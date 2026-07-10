@@ -98,9 +98,7 @@ impl GeometryRouter {
         // This prevents duplication when both direct and MappedRepresentation exist
         let has_direct_geometry = representations.iter().any(|rep| {
             rep.ifc_type == IfcType::IfcShapeRepresentation
-                && rep
-                    .get(2)
-                    .and_then(|a| a.as_string())
+                && super::effective_rep_type(rep)
                     .map(super::is_direct_body_representation)
                     .unwrap_or(false)
         });
@@ -110,20 +108,19 @@ impl GeometryRouter {
                 continue;
             }
 
-            // Check RepresentationType (attribute 2) - only process geometric representations
+            // Check the effective representation type (RepresentationType, falling
+            // back to RepresentationIdentifier when the type is blank - #1661).
             // Skip 'Axis', 'Curve2D', 'FootPrint', etc. - only process 'Body', 'SweptSolid', 'Brep', etc.
-            if let Some(rep_type_attr) = shape_rep.get(2) {
-                if let Some(rep_type) = rep_type_attr.as_string() {
-                    // Skip MappedRepresentation if we already have direct geometry
-                    // This prevents duplication when an element has both direct and mapped representations
-                    if rep_type == "MappedRepresentation" && has_direct_geometry {
-                        continue;
-                    }
+            if let Some(rep_type) = super::effective_rep_type(&shape_rep) {
+                // Skip MappedRepresentation if we already have direct geometry
+                // This prevents duplication when an element has both direct and mapped representations
+                if rep_type == "MappedRepresentation" && has_direct_geometry {
+                    continue;
+                }
 
-                    // Only process solid/surface geometry representations
-                    if !super::is_body_representation(rep_type) {
-                        continue; // Skip non-solid representations like 'Axis', 'Curve2D', etc.
-                    }
+                // Only process solid/surface geometry representations
+                if !super::is_body_representation(rep_type) {
+                    continue; // Skip non-solid representations like 'Axis', 'Curve2D', etc.
                 }
             }
 
@@ -242,9 +239,7 @@ impl GeometryRouter {
         // Check if we have direct geometry
         let has_direct_geometry = representations.iter().any(|rep| {
             rep.ifc_type == IfcType::IfcShapeRepresentation
-                && rep
-                    .get(2)
-                    .and_then(|a| a.as_string())
+                && super::effective_rep_type(rep)
                     .map(super::is_direct_body_representation)
                     .unwrap_or(false)
         });
@@ -254,17 +249,15 @@ impl GeometryRouter {
                 continue;
             }
 
-            if let Some(rep_type_attr) = shape_rep.get(2) {
-                if let Some(rep_type) = rep_type_attr.as_string() {
-                    // Skip MappedRepresentation if we have direct geometry
-                    if rep_type == "MappedRepresentation" && has_direct_geometry {
-                        continue;
-                    }
+            if let Some(rep_type) = super::effective_rep_type(&shape_rep) {
+                // Skip MappedRepresentation if we have direct geometry
+                if rep_type == "MappedRepresentation" && has_direct_geometry {
+                    continue;
+                }
 
-                    // Only process solid/surface geometry representations
-                    if !super::is_body_representation(rep_type) {
-                        continue;
-                    }
+                // Only process solid/surface geometry representations
+                if !super::is_body_representation(rep_type) {
+                    continue;
                 }
             }
 

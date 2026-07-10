@@ -344,8 +344,13 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
   const setGeorefFields = useViewerStore(s => s.setGeorefFields);
   const cesiumEnabled = useViewerStore(s => s.cesiumEnabled);
   const cesiumTerrainHeight = useViewerStore(s => s.cesiumTerrainHeight);
+  // Geoid-inverted target for snapping OrthogonalHeight to terrain (#1456); the
+  // raw cesiumTerrainHeight is still shown to the user.
+  const cesiumTerrainSaveHeight = useViewerStore(s => s.cesiumTerrainSaveHeight);
   const cesiumTerrainSource = useViewerStore(s => s.cesiumTerrainSource);
   const cesiumSourceModelId = useViewerStore(s => s.cesiumSourceModelId);
+  const heightsAreEllipsoidal = useViewerStore(s => s.cesiumHeightsAreEllipsoidal);
+  const setHeightsAreEllipsoidal = useViewerStore(s => s.setCesiumHeightsAreEllipsoidal);
   const models = useViewerStore(s => s.models);
   const loading = useViewerStore(s => s.loading);
   const { addModel, clearAllModels } = useIfc();
@@ -779,10 +784,10 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
               sampled via {cesiumTerrainSource}
             </div>
           )}
-          {cesiumTerrainHeight !== null && editable && modelId && (
+          {cesiumTerrainHeight !== null && cesiumTerrainSaveHeight !== null && editable && modelId && (
             <div className="flex items-center gap-1 ml-5">
               <button
-                onClick={() => handleSave('mapConversion', 'orthogonalHeight', oHeightForBaseAltitude(cesiumTerrainHeight))}
+                onClick={() => handleSave('mapConversion', 'orthogonalHeight', oHeightForBaseAltitude(cesiumTerrainSaveHeight))}
                 className="text-[9px] text-teal-500 hover:text-teal-700 dark:hover:text-teal-300 transition-colors flex items-center gap-0.5"
               >
                 <Mountain className="h-2.5 w-2.5" />
@@ -790,6 +795,25 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
               </button>
             </div>
           )}
+          {/* Vertical-datum interpretation: OrthogonalHeight is orthometric by
+              spec, so we add the geoid undulation N to convert it to the
+              ellipsoidal height Cesium expects (default). Allow opting out for
+              the rare file whose heights are already ellipsoidal (#1355). */}
+          <label className="flex items-start gap-1.5 ml-5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={heightsAreEllipsoidal}
+              onChange={(e) => setHeightsAreEllipsoidal(e.target.checked)}
+              className="mt-0.5 h-3 w-3 accent-teal-500 shrink-0"
+            />
+            <span className="text-[9px] text-zinc-600 dark:text-zinc-400 leading-snug">
+              Heights are ellipsoidal (skip geoid correction)
+              <span className="block text-zinc-400 dark:text-zinc-500">
+                Off by default: OrthogonalHeight is treated as orthometric and the
+                geoid undulation is added so the model is not buried under terrain.
+              </span>
+            </span>
+          </label>
         </div>
       )}
 
@@ -815,11 +839,15 @@ function TerrainHeightButton({ modelId, editable, onApply }: {
 }) {
   const cesiumEnabled = useViewerStore(s => s.cesiumEnabled);
   const terrainHeight = useViewerStore(s => s.cesiumTerrainHeight);
+  // Geoid-inverted snap target (#1456); display still uses terrainHeight.
+  const terrainSaveHeight = useViewerStore(s => s.cesiumTerrainSaveHeight);
   const terrainSource = useViewerStore(s => s.cesiumTerrainSource);
   const sourceModelId = useViewerStore(s => s.cesiumSourceModelId);
 
-  // Only show when this panel's model is the active Cesium model
-  if (!cesiumEnabled || terrainHeight === null || !editable || !modelId || modelId !== sourceModelId) return null;
+  // Only show when this panel's model is the active Cesium model and the
+  // geoid-corrected snap target is ready (#1456): never fall back to the raw
+  // ellipsoidal sample, which would skip the correction.
+  if (!cesiumEnabled || terrainHeight === null || terrainSaveHeight === null || !editable || !modelId || modelId !== sourceModelId) return null;
 
   return (
     <Tooltip>
@@ -827,7 +855,7 @@ function TerrainHeightButton({ modelId, editable, onApply }: {
         <button
           onClick={(e) => {
             e.stopPropagation();
-            onApply(terrainHeight);
+            onApply(terrainSaveHeight);
           }}
           className="flex items-center gap-0.5 text-[9px] text-teal-500 hover:text-teal-700 dark:hover:text-teal-300 transition-colors mt-0.5"
         >

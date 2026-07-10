@@ -15,7 +15,8 @@ import { buildSpatialIndex } from '@ifc-lite/spatial';
 
 const index = buildSpatialIndex(meshes); // MeshData[] from @ifc-lite/geometry
 
-// For very large models (50K+ meshes), build off the main thread:
+// For very large models (50K+ meshes), use the time-sliced builder:
+// it yields to the event loop between chunks so the UI stays responsive.
 import { buildSpatialIndexAsync } from '@ifc-lite/spatial';
 const indexAsync = await buildSpatialIndexAsync(meshes);
 ```

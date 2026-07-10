@@ -397,9 +397,7 @@ fn element_is_single_unshifted_item(
         // body-geometry predicate so this stays in lockstep with the meshing
         // path (a mapped/surface item disqualifies slicing below regardless,
         // via item_has_identity_position).
-        let is_body = shape_rep
-            .get(2)
-            .and_then(|a| a.as_string())
+        let is_body = super::effective_rep_type(shape_rep)
             .map(super::is_body_representation)
             .unwrap_or(false);
         if !is_body {

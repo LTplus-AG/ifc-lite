@@ -34,6 +34,18 @@
  */
 export const WASM_ASSET_UNAVAILABLE_EVENT = 'ifclite:wasm-asset-unavailable';
 
+/**
+ * Discriminates WHY the event fired, so the host does not have to re-derive
+ * the classification from the message text (a synthetic worker-script message
+ * carries none of the wasm-MIME tokens the strict matcher looks for - re-running
+ * the matcher host-side would silently drop exactly the case this exists for).
+ *
+ * - `wasm-asset`:    the engine binary fetch hit the #1363 MIME/404 signature.
+ * - `worker-script`: a Worker script failed to load (empty-message onerror
+ *                    from a worker that never posted; stale-deploy 404).
+ */
+export type WasmAssetUnavailableKind = 'wasm-asset' | 'worker-script';
+
 function messageOf(err: unknown): string {
   if (err == null) return '';
   if (typeof err === 'string') return err;
@@ -119,15 +131,60 @@ function domDispatcher(): DomDispatcher | null {
  */
 export function notifyIfWasmAssetUnavailable(err: unknown): boolean {
   if (!isWasmAssetUnavailableError(err)) return false;
+  dispatchAssetUnavailable(messageOf(err), 'wasm-asset');
+  return true;
+}
+
+function dispatchAssetUnavailable(message: string, kind: WasmAssetUnavailableKind): void {
   const target = domDispatcher();
-  if (target) {
-    try {
-      target.dispatchEvent(
-        new CustomEvent(WASM_ASSET_UNAVAILABLE_EVENT, { detail: { message: messageOf(err) } }),
-      );
-    } catch {
-      /* CustomEvent unavailable — best effort, nothing more to do */
-    }
+  if (!target) return;
+  try {
+    target.dispatchEvent(
+      new CustomEvent(WASM_ASSET_UNAVAILABLE_EVENT, { detail: { message, kind } }),
+    );
+  } catch {
+    /* CustomEvent unavailable — best effort, nothing more to do */
   }
+}
+
+/**
+ * Classify a Worker `onerror` that fired on a worker and broadcast
+ * {@link WASM_ASSET_UNAVAILABLE_EVENT} when it is the version-skew signature.
+ *
+ * When a deploy rotates hashed assets under an open tab, the worker SCRIPT
+ * itself can 404 — the host serves the 404 body as `text/plain`, the browser
+ * blocks the load ("disallowed MIME type"), and fires `onerror` with an
+ * EMPTY/undefined `message` (the MIME detail goes only to the console). The
+ * strict wasm matcher above never sees a signature there, so such a load used
+ * to die with "Pre-pass worker failed: undefined" instead of recovering.
+ *
+ * Rules:
+ * - the error carries a message → strict wasm matcher only (a genuine
+ *   in-worker crash must not trigger a reload; the host reload policy is
+ *   additionally sessionStorage-bounded as defence in depth).
+ * - empty message AND `receivedAnyMessage` is true → NOT a spawn failure (the
+ *   script demonstrably ran); no dispatch.
+ * - empty message AND the worker never spoke → the script failed to load;
+ *   treat as version skew.
+ */
+export function notifyIfWorkerScriptUnavailable(
+  err: unknown,
+  receivedAnyMessage: boolean,
+): boolean {
+  // Strict string-only extraction: `messageOf`'s `String(err)` fallback would
+  // turn an ErrorEvent whose `.message` is undefined into "[object Object]",
+  // which would mask exactly the empty-message spawn failure this exists for.
+  const msg =
+    typeof err === 'string'
+      ? err
+      : err != null && typeof (err as { message?: unknown }).message === 'string'
+        ? ((err as { message: string }).message)
+        : '';
+  if (msg) return notifyIfWasmAssetUnavailable(msg);
+  if (receivedAnyMessage) return false;
+  dispatchAssetUnavailable(
+    'worker script failed to load (no error message; likely a rotated asset after a redeploy)',
+    'worker-script',
+  );
   return true;
 }

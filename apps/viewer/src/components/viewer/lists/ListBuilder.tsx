@@ -36,7 +36,9 @@ import type {
   PropertyCondition,
   ConditionOperator,
 } from '@ifc-lite/lists';
-import { discoverColumns, ENTITY_ATTRIBUTES, isNamePattern } from '@ifc-lite/lists';
+import { discoverColumns, ENTITY_ATTRIBUTES } from '@ifc-lite/lists';
+import { collectScopeTypes } from '@/lib/lists/scope-types';
+import { previewSetPattern, formatMatchHint } from './pattern-preview';
 
 const NO_OPTIONS: readonly string[] = [];
 
@@ -77,33 +79,6 @@ function discoverConditionValues(stores: IfcDataStore[]): ListConditionValues {
   for (const [k, s] of propertyValues) pv.set(k, sort(s));
   return { materials: sort(materials), classifications: sort(classifications), propertyValues: pv };
 }
-
-// Building element types available for selection
-const SELECTABLE_TYPES: { type: IfcTypeEnum; label: string }[] = [
-  { type: IfcTypeEnum.IfcWall, label: 'Walls' },
-  { type: IfcTypeEnum.IfcWallStandardCase, label: 'Walls (Standard)' },
-  { type: IfcTypeEnum.IfcDoor, label: 'Doors' },
-  { type: IfcTypeEnum.IfcWindow, label: 'Windows' },
-  { type: IfcTypeEnum.IfcSlab, label: 'Slabs' },
-  { type: IfcTypeEnum.IfcColumn, label: 'Columns' },
-  { type: IfcTypeEnum.IfcBeam, label: 'Beams' },
-  { type: IfcTypeEnum.IfcStair, label: 'Stairs' },
-  { type: IfcTypeEnum.IfcRamp, label: 'Ramps' },
-  { type: IfcTypeEnum.IfcRoof, label: 'Roofs' },
-  { type: IfcTypeEnum.IfcCovering, label: 'Coverings' },
-  { type: IfcTypeEnum.IfcCurtainWall, label: 'Curtain Walls' },
-  { type: IfcTypeEnum.IfcRailing, label: 'Railings' },
-  { type: IfcTypeEnum.IfcSpace, label: 'Spaces' },
-  { type: IfcTypeEnum.IfcSpatialZone, label: 'Spatial Zones' },
-  { type: IfcTypeEnum.IfcZone, label: 'Zones' },
-  { type: IfcTypeEnum.IfcSystem, label: 'Systems' },
-  { type: IfcTypeEnum.IfcDistributionSystem, label: 'Distribution Systems' },
-  { type: IfcTypeEnum.IfcBuildingStorey, label: 'Storeys' },
-  { type: IfcTypeEnum.IfcDistributionElement, label: 'MEP Distribution' },
-  { type: IfcTypeEnum.IfcFlowTerminal, label: 'MEP Terminals' },
-  { type: IfcTypeEnum.IfcFlowSegment, label: 'MEP Segments' },
-  { type: IfcTypeEnum.IfcFlowFitting, label: 'MEP Fittings' },
-];
 
 /** Column descriptor shared by the quick-add grid. */
 interface CommonColumn { id: string; source: ColumnDefinition['source']; propertyName: string; label: string }
@@ -229,18 +204,16 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
     new Set(initial?.grouping?.sumColumnIds ?? [])
   );
 
-  // Count entities per type across all providers
+  // Scope classes offered as chips: every element class actually present in
+  // the loaded model(s), with instance counts. Derived from the models rather
+  // than a curated allowlist, so a present class the curator never listed —
+  // e.g. IfcDuctSegment / IfcPipeSegment — is still selectable (#1662).
+  const scopeTypes = useMemo(() => collectScopeTypes(stores), [stores]);
   const typeCounts = useMemo(() => {
     const counts = new Map<IfcTypeEnum, number>();
-    for (const { type } of SELECTABLE_TYPES) {
-      let total = 0;
-      for (const p of providers) {
-        total += p.getEntitiesByType(type).length;
-      }
-      if (total > 0) counts.set(type, total);
-    }
+    for (const { type, count } of scopeTypes) counts.set(type, count);
     return counts;
-  }, [providers]);
+  }, [scopeTypes]);
 
   // Available columns. Prefer COMPLETE, type-independent discovery (every
   // property set / quantity set in the model) so all properties/quantities
@@ -392,20 +365,16 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
             ) : (
               <>
                 <div className="flex flex-wrap gap-1.5">
-                  {SELECTABLE_TYPES.map(({ type, label }) => {
-                    const count = typeCounts.get(type);
-                    if (!count) return null;
-                    return (
-                      <Chip
-                        key={type}
-                        selected={selectedTypes.has(type)}
-                        onClick={() => toggleType(type)}
-                        trailing={count.toLocaleString()}
-                      >
-                        {label}
-                      </Chip>
-                    );
-                  })}
+                  {scopeTypes.map(({ type, label, count }) => (
+                    <Chip
+                      key={type}
+                      selected={selectedTypes.has(type)}
+                      onClick={() => toggleType(type)}
+                      trailing={count.toLocaleString()}
+                    >
+                      {label}
+                    </Chip>
+                  ))}
                 </div>
                 {selectedTypes.size === 0 && (
                   <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
@@ -753,12 +722,15 @@ function CustomColumnEntry({
 
   const set = setName.trim();
   const prop = propName.trim();
-  const isPattern = isNamePattern(set);
+  // Live preview: which discovered sets a `/regex/` set field matches, so a
+  // power user sees "matches 2 sets: ..." before adding, and a malformed pattern
+  // is flagged rather than silently added as a dead literal (issue #1591).
+  const preview = useMemo(() => previewSetPattern(set, setOptions), [set, setOptions]);
   // Slugify like the discovered-column ids (collapse whitespace) but keep the
   // original case: regex patterns are case-sensitive, so `/A/` and `/a/` are
   // distinct sets and must not collapse to one id.
   const columnId = `custom-${source}-${set}-${prop}`.replace(/\s+/g, '-');
-  const canAdd = set.length > 0 && prop.length > 0 && !selectedIds.has(columnId);
+  const canAdd = set.length > 0 && prop.length > 0 && !selectedIds.has(columnId) && !preview.isInvalid;
 
   const add = () => {
     if (!canAdd) return;
@@ -785,7 +757,7 @@ function CustomColumnEntry({
       <div className="flex items-center gap-1.5">
         <Chip selected={source === 'property'} onClick={() => setSource('property')}>Property</Chip>
         <Chip selected={source === 'quantity'} onClick={() => setSource('quantity')}>Quantity</Chip>
-        {isPattern && (
+        {preview.isPattern && (
           <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-primary">
             regex
           </span>
@@ -823,11 +795,21 @@ function CustomColumnEntry({
           <Plus className="h-3.5 w-3.5" />
         </Button>
       </div>
-      <p className="text-[11px] leading-relaxed text-muted-foreground">
-        Type an exact set name, or wrap a pattern in{' '}
-        <code className="rounded bg-muted px-1 font-mono text-[10px]">/…/</code> to pull one value across every
-        matching set, e.g. <code className="rounded bg-muted px-1 font-mono text-[10px]">/Qto_.*BaseQuantities/</code>.
-      </p>
+      {preview.isInvalid ? (
+        <p className="text-[11px] leading-relaxed text-destructive">
+          Invalid pattern. It would be matched as a literal name, so it likely hits nothing.
+        </p>
+      ) : preview.isPattern ? (
+        <p className="text-[11px] leading-relaxed text-muted-foreground">
+          {formatMatchHint(preview.matches)}
+        </p>
+      ) : (
+        <p className="text-[11px] leading-relaxed text-muted-foreground">
+          Type an exact set name, or wrap a pattern in{' '}
+          <code className="rounded bg-muted px-1 font-mono text-[10px]">/…/</code> to pull one value across every
+          matching set, e.g. <code className="rounded bg-muted px-1 font-mono text-[10px]">/Qto_.*BaseQuantities/</code>.
+        </p>
+      )}
     </div>
   );
 }

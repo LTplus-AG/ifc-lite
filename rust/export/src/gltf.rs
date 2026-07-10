@@ -39,6 +39,14 @@ pub struct GltfOptions {
     /// render flat with just the apparent base colour (the historical behaviour,
     /// kept for colour-accurate exports). Default `true`. (#1321)
     pub lit: bool,
+    /// Make every material self-illuminating by setting `emissiveFactor` to its
+    /// base colour. Targets renderers with no ambient/IBL and a single hard sun —
+    /// notably **Google Earth**, which ignores `KHR_materials_unlit` and lit the
+    /// model so dark that shadow-side faces went black (#1427). `emissiveFactor`
+    /// is core glTF 2.0 (not an extension), so every compliant renderer honours
+    /// it; the base colour is kept too, so a viewer that ignores emissive is no
+    /// worse than today (never blacker than the lit result). Default `false`.
+    pub emissive: bool,
     /// Per-model id stamped into every node's `extras.modelId` (federation: lets a
     /// host distinguish elements from different models that share express-id space).
     /// `None` ⇒ single model, no `modelId` emitted. Requires `include_metadata`.
@@ -60,6 +68,7 @@ impl Default for GltfOptions {
             hidden: Vec::new(),
             hidden_types: Vec::new(),
             lit: true,
+            emissive: false,
             model_id: None,
             quantize: false,
         }
@@ -157,6 +166,11 @@ struct Attributes {
 struct Material {
     #[serde(rename = "pbrMetallicRoughness")]
     pbr: Pbr,
+    // `Some` only for emissive exports (#1427): RGB self-illumination equal to the
+    // base colour, so renderers without ambient/IBL (Google Earth) still show the
+    // true colour instead of a sun-shaded near-black. Core glTF 2.0, so universal.
+    #[serde(rename = "emissiveFactor", skip_serializing_if = "Option::is_none")]
+    emissive_factor: Option<[f32; 3]>,
     // `Some` only for unlit exports (#1321); a lit material omits it entirely so
     // the viewer applies standard PBR lighting from the mesh normals.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -258,6 +272,29 @@ fn mesh_visible(mesh: &MeshData, opts: &GltfOptions) -> bool {
 fn color_key(c: [f32; 4]) -> (i32, i32, i32, i32) {
     let r = |v: f32| (v * 100.0).round() as i32;
     (r(c[0]), r(c[1]), r(c[2]), r(c[3]))
+}
+
+/// One material for a mesh colour: the single source of the lit / unlit / emissive
+/// rules, shared by every assembler so the paths cannot drift. `emissive` takes
+/// precedence over `unlit` because the KHR_materials_unlit spec mandates
+/// `emissiveFactor = 0`, making the two mutually exclusive; never emit a
+/// spec-violating material that declares unlit AND a non-zero emissiveFactor (#1427).
+fn make_material(color: [f32; 4], lit: bool, emissive: bool) -> Material {
+    Material {
+        pbr: Pbr {
+            base_color_factor: color,
+            metallic_factor: 0.0,
+            roughness_factor: 1.0,
+        },
+        emissive_factor: emissive.then_some([color[0], color[1], color[2]]),
+        extensions: if lit || emissive {
+            None
+        } else {
+            Some(Extensions { khr_materials_unlit: EmptyObj {} })
+        },
+        alpha_mode: if color[3] < 1.0 { Some("BLEND") } else { None },
+        double_sided: true,
+    }
 }
 
 /// 128-bit content key for the flat-remainder dedup: the mesh's LOCAL geometry
@@ -561,6 +598,7 @@ fn push_mesh(
     mesh: &MeshView,
     vertex_offset: [f64; 3],
     lit: bool,
+    emissive: bool,
     stats: &mut GltfStats,
 ) -> u32 {
     let nverts = (mesh.positions.len() / 3) as u32;
@@ -629,20 +667,7 @@ fn push_mesh(
     let key = color_key(mesh.color);
     let material = *material_map.entry(key).or_insert_with(|| {
         let idx = materials.len() as u32;
-        materials.push(Material {
-            pbr: Pbr {
-                base_color_factor: mesh.color,
-                metallic_factor: 0.0,
-                roughness_factor: 1.0,
-            },
-            extensions: if lit {
-                None
-            } else {
-                Some(Extensions { khr_materials_unlit: EmptyObj {} })
-            },
-            alpha_mode: if mesh.color[3] < 1.0 { Some("BLEND") } else { None },
-            double_sided: true,
-        });
+        materials.push(make_material(mesh.color, lit, emissive));
         idx
     });
 
@@ -677,6 +702,7 @@ fn push_mesh_quantized(
     material_map: &mut HashMap<(i32, i32, i32, i32), u32>,
     mesh: &MeshView,
     lit: bool,
+    emissive: bool,
     stats: &mut GltfStats,
 ) -> (u32, [f64; 3], [f64; 3]) {
     let nverts = (mesh.positions.len() / 3) as u32;
@@ -802,20 +828,7 @@ fn push_mesh_quantized(
     let key = color_key(mesh.color);
     let material = *material_map.entry(key).or_insert_with(|| {
         let idx = materials.len() as u32;
-        materials.push(Material {
-            pbr: Pbr {
-                base_color_factor: mesh.color,
-                metallic_factor: 0.0,
-                roughness_factor: 1.0,
-            },
-            extensions: if lit {
-                None
-            } else {
-                Some(Extensions { khr_materials_unlit: EmptyObj {} })
-            },
-            alpha_mode: if mesh.color[3] < 1.0 { Some("BLEND") } else { None },
-            double_sided: true,
-        });
+        materials.push(make_material(mesh.color, lit, emissive));
         idx
     });
 
@@ -915,11 +928,16 @@ fn view_ok(v: &MeshView) -> bool {
 /// GLB, or chunked external buffers for multi-buffer glTF). Returns the `Gltf` for the
 /// caller to pack (GLB) or serialize (glTF); the binary lives in `ch` afterwards
 /// (`ch.embedded_bin` for the single-buffer case, or already handed to the chunk sink).
+// Cohesive builder: these are the orthogonal knobs of one glTF pass (metadata,
+// model id, lit/emissive material, RTC origin, quantization) and packing them
+// into a struct would not reduce the real coupling. #1427 added `emissive`.
+#[allow(clippy::too_many_arguments)]
 fn build_gltf(
     views: &[MeshView],
     include_metadata: bool,
     model_id: Option<&str>,
     lit: bool,
+    emissive: bool,
     rtc_zup: [f64; 3],
     quantize: bool,
     ch: &mut Chunker,
@@ -1063,13 +1081,13 @@ fn build_gltf(
                 *flat_cache.entry(key).or_insert_with(|| {
                     push_mesh_quantized(
                         &mut *ch, &mut accessors, &mut meshes,
-                        &mut materials, &mut material_map, mesh, lit, &mut stats,
+                        &mut materials, &mut material_map, mesh, lit, emissive, &mut stats,
                     )
                 })
             } else {
                 push_mesh_quantized(
                     &mut *ch, &mut accessors, &mut meshes,
-                    &mut materials, &mut material_map, mesh, lit, &mut stats,
+                    &mut materials, &mut material_map, mesh, lit, emissive, &mut stats,
                 )
             };
             mesh_idx = mi;
@@ -1084,7 +1102,7 @@ fn build_gltf(
             let (mi, _, _) = *flat_cache.entry(key).or_insert_with(|| {
                 let mi = push_mesh(
                     &mut *ch, &mut accessors, &mut meshes,
-                    &mut materials, &mut material_map, mesh, [0.0, 0.0, 0.0], lit, &mut stats,
+                    &mut materials, &mut material_map, mesh, [0.0, 0.0, 0.0], lit, emissive, &mut stats,
                 );
                 (mi, [0.0; 3], [0.0; 3])
             });
@@ -1095,7 +1113,7 @@ fn build_gltf(
             // Singleton: bake world-minus-center into the vertices, identity node.
             mesh_idx = push_mesh(
                 &mut *ch, &mut accessors, &mut meshes,
-                &mut materials, &mut material_map, mesh, placement, lit, &mut stats,
+                &mut materials, &mut material_map, mesh, placement, lit, emissive, &mut stats,
             );
             translation = None;
             scale = None;
@@ -1155,14 +1173,14 @@ fn build_gltf(
             let (mesh_idx, dequant) = if quantize {
                 let (mi, center, half) = push_mesh_quantized(
                     &mut *ch, &mut accessors,
-                    &mut meshes, &mut materials, &mut material_map, &tmpl_mesh, lit, &mut stats,
+                    &mut meshes, &mut materials, &mut material_map, &tmpl_mesh, lit, emissive, &mut stats,
                 );
                 (mi, Some((center, half)))
             } else {
                 let mi = push_mesh(
                     &mut *ch, &mut accessors,
                     &mut meshes, &mut materials, &mut material_map, &tmpl_mesh,
-                    [0.0, 0.0, 0.0], lit, &mut stats,
+                    [0.0, 0.0, 0.0], lit, emissive, &mut stats,
                 );
                 (mi, None)
             };
@@ -1264,7 +1282,8 @@ fn build_gltf(
         buffers: std::mem::take(&mut ch.buffers),
         extensions_used: {
             let mut ext: Vec<&'static str> = Vec::new();
-            if !lit && stats.materials > 0 {
+            // Emissive suppresses unlit (mutually exclusive; see make_material).
+            if !lit && !emissive && stats.materials > 0 {
                 ext.push("KHR_materials_unlit");
             }
             if quantize {
@@ -1401,8 +1420,8 @@ fn export_glb_from_result(result: ProcessingResult, opts: &GltfOptions) -> (Vec<
     with_result_views(result, opts, |views, rtc_zup| {
         let mut ch = Chunker::new(if opts.quantize { 8 } else { 12 }, usize::MAX, None);
         let (gltf, stats) = build_gltf(
-            views, opts.include_metadata, opts.model_id.as_deref(), opts.lit, rtc_zup,
-            opts.quantize, &mut ch,
+            views, opts.include_metadata, opts.model_id.as_deref(), opts.lit, opts.emissive,
+            rtc_zup, opts.quantize, &mut ch,
         );
         let json = serde_json::to_vec(&gltf).expect("glTF JSON serializes");
         (pack_glb(&json, &ch.embedded_bin), stats)
@@ -1552,7 +1571,7 @@ fn export_gltf_streaming_impl(
                 if opts.quantize {
                     let (mi, center, half) = push_mesh_quantized(
                         &mut ch, &mut accessors, &mut meshes, &mut materials,
-                        &mut material_map, &view, opts.lit, &mut stats,
+                        &mut material_map, &view, opts.lit, opts.emissive, &mut stats,
                     );
                     mesh_idx = mi;
                     translation = Some([
@@ -1564,7 +1583,7 @@ fn export_gltf_streaming_impl(
                 } else {
                     mesh_idx = push_mesh(
                         &mut ch, &mut accessors, &mut meshes, &mut materials,
-                        &mut material_map, &view, placement, opts.lit, &mut stats,
+                        &mut material_map, &view, placement, opts.lit, opts.emissive, &mut stats,
                     );
                     translation = None;
                     scale = None;
@@ -1626,7 +1645,8 @@ fn export_gltf_streaming_impl(
         buffers: std::mem::take(&mut ch.buffers),
         extensions_used: {
             let mut ext: Vec<&'static str> = Vec::new();
-            if !opts.lit && stats.materials > 0 {
+            // Emissive suppresses unlit (mutually exclusive; see make_material).
+            if !opts.lit && !opts.emissive && stats.materials > 0 {
                 ext.push("KHR_materials_unlit");
             }
             if opts.quantize {
@@ -2125,20 +2145,7 @@ fn plan_bounded_glb(
             };
             let material = *material_map.entry(color_key(meta.color)).or_insert_with(|| {
                 let idx = materials.len() as u32;
-                materials.push(Material {
-                    pbr: Pbr {
-                        base_color_factor: meta.color,
-                        metallic_factor: 0.0,
-                        roughness_factor: 1.0,
-                    },
-                    extensions: if opts.lit {
-                        None
-                    } else {
-                        Some(Extensions { khr_materials_unlit: EmptyObj {} })
-                    },
-                    alpha_mode: if meta.color[3] < 1.0 { Some("BLEND") } else { None },
-                    double_sided: true,
-                });
+                materials.push(make_material(meta.color, opts.lit, opts.emissive));
                 idx
             });
             let mesh_idx = meshes.len() as u32;
@@ -2293,7 +2300,8 @@ fn plan_bounded_glb(
         buffers,
         extensions_used: {
             let mut ext: Vec<&'static str> = Vec::new();
-            if !opts.lit && stats.materials > 0 {
+            // Emissive suppresses unlit (mutually exclusive; see make_material).
+            if !opts.lit && !opts.emissive && stats.materials > 0 {
                 ext.push("KHR_materials_unlit");
             }
             if quantize {
@@ -2493,6 +2501,7 @@ pub fn export_glb_from_meshes(
     express_ids: &[u32],
     include_metadata: bool,
     lit: bool,
+    emissive: bool,
 ) -> (Vec<u8>, GltfStats) {
     let n = vertex_counts.len();
     // The viewer's `MeshData` arrives pre-welded from the mesh source
@@ -2547,7 +2556,8 @@ pub fn export_glb_from_meshes(
     // side-channel), so there is no RTC frame to compensate. Quantization is a
     // from-bytes feature; the viewer path stays f32.
     let mut ch = Chunker::new(12, usize::MAX, None);
-    let (gltf, stats) = build_gltf(&views, include_metadata, None, lit, [0.0, 0.0, 0.0], false, &mut ch);
+    let (gltf, stats) =
+        build_gltf(&views, include_metadata, None, lit, emissive, [0.0, 0.0, 0.0], false, &mut ch);
     let json = serde_json::to_vec(&gltf).expect("glTF JSON serializes");
     (pack_glb(&json, &ch.embedded_bin), stats)
 }
@@ -3220,6 +3230,7 @@ mod tests {
             &[1u32],
             true,
             false,
+            false, // emissive off (#1427 added the emissive param)
         );
         assert_eq!(stats.triangles, 2 * G * G, "triangles unchanged");
 
@@ -3266,7 +3277,7 @@ mod tests {
 
         let (glb, stats) = export_glb_from_meshes(
             &positions, &normals, &indices, &vertex_counts, &index_counts, &colors, &origins,
-            &express_ids, true, true,
+            &express_ids, true, true, false,
         );
         assert_eq!(stats.meshes, 2);
         assert_eq!(stats.triangles, 4);
@@ -3699,6 +3710,7 @@ mod tests {
             &[10],
             false,
             false, // lit = false ⇒ unlit
+            false, // emissive off
         );
         let (json, _) = parse_glb(&glb);
         assert_eq!(json["extensionsUsed"][0], "KHR_materials_unlit");
@@ -3707,6 +3719,75 @@ mod tests {
                 ["KHR_materials_unlit"]
                 .is_object()),
             "unlit materials carry the KHR_materials_unlit extension"
+        );
+    }
+
+    #[test]
+    fn emissive_option_sets_emissive_factor_to_base_colour() {
+        // #1427: emissive = true self-illuminates every material at its base colour
+        // so Google Earth (no ambient/IBL, hard sun) shows the true colour instead of
+        // a near-black shaded surface. emissiveFactor is core glTF 2.0 — no extension.
+        let positions: Vec<f32> = vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0];
+        let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 0.0, 1.0], 4).flatten().collect();
+        let indices: Vec<u32> = vec![0, 1, 2, 0, 2, 3];
+        let (glb, _) = export_glb_from_meshes(
+            &positions,
+            &normals,
+            &indices,
+            &[4],
+            &[6],
+            &[0.25, 0.5, 0.75, 1.0],
+            &[0.0, 0.0, 0.0],
+            &[10],
+            true, // include_metadata
+            true, // lit (no unlit extension — mutually exclusive with emissive)
+            true, // emissive on
+        );
+        let (json, _) = parse_glb(&glb);
+        let mats = json["materials"].as_array().unwrap();
+        // emissiveFactor == base colour RGB; base colour is preserved (safe fallback).
+        let m = &mats[0];
+        let ef = m["emissiveFactor"].as_array().unwrap();
+        assert!((ef[0].as_f64().unwrap() - 0.25).abs() < 1e-6);
+        assert!((ef[1].as_f64().unwrap() - 0.5).abs() < 1e-6);
+        assert!((ef[2].as_f64().unwrap() - 0.75).abs() < 1e-6);
+        let bc = m["pbrMetallicRoughness"]["baseColorFactor"].as_array().unwrap();
+        assert!((bc[0].as_f64().unwrap() - 0.25).abs() < 1e-6, "base colour kept (no regression)");
+        // emissive is core glTF: no extension is declared for it.
+        assert!(json.get("extensionsUsed").is_none(), "emissive needs no extension");
+    }
+
+    #[test]
+    fn emissive_takes_precedence_over_unlit() {
+        // #1427: emissive and KHR_materials_unlit are mutually exclusive (the unlit
+        // spec mandates emissiveFactor = 0). If a caller asks for BOTH (lit = false
+        // AND emissive = true), emissive must win — never emit a material that
+        // declares unlit alongside a non-zero emissiveFactor (a spec violation).
+        let positions: Vec<f32> = vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0];
+        let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 0.0, 1.0], 4).flatten().collect();
+        let indices: Vec<u32> = vec![0, 1, 2, 0, 2, 3];
+        let (glb, _) = export_glb_from_meshes(
+            &positions,
+            &normals,
+            &indices,
+            &[4],
+            &[6],
+            &[0.5, 0.5, 0.5, 1.0],
+            &[0.0, 0.0, 0.0],
+            &[10],
+            false,
+            false, // lit = false (would normally request unlit)…
+            true,  // …but emissive = true wins.
+        );
+        let (json, _) = parse_glb(&glb);
+        assert!(json.get("extensionsUsed").is_none(), "emissive suppresses the unlit extension");
+        assert!(
+            json["materials"].as_array().unwrap().iter().all(|m| m.get("extensions").is_none()),
+            "no material carries KHR_materials_unlit when emissive is on"
+        );
+        assert!(
+            json["materials"].as_array().unwrap().iter().all(|m| m["emissiveFactor"].is_array()),
+            "materials carry emissiveFactor"
         );
     }
 

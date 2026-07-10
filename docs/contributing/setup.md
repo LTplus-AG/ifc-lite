@@ -8,10 +8,10 @@ Guide to setting up a development environment for IFClite.
 
 | Tool | Version | Purpose |
 |------|---------|---------|
-| Node.js | 22.x | JavaScript runtime |
-| pnpm | 8.0+ | Package manager |
-| Rust | stable | WASM compilation |
-| wasm-pack | 0.12+ | WASM toolchain |
+| Node.js | 22.x | JavaScript runtime (`engines` in `package.json`) |
+| pnpm | 10.x (8.0+ minimum) | Package manager (pinned via `packageManager: pnpm@10.8.1`) |
+| Rust | pinned nightly | WASM compilation; `rust-toolchain.toml` pins the nightly channel and the `wasm32-unknown-unknown` target, and rustup installs both automatically on first use in the repo |
+| wasm-pack | 0.12+ | WASM toolchain (only needed to rebuild WASM; see `pnpm build:wasm:fetch` below) |
 
 ### Installing Prerequisites
 
@@ -24,11 +24,9 @@ Guide to setting up a development environment for IFClite.
     # Install pnpm
     npm install -g pnpm
 
-    # Install Rust
+    # Install Rust (rustup reads rust-toolchain.toml and installs the
+    # pinned nightly plus the wasm32-unknown-unknown target automatically)
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-
-    # Add WASM target
-    rustup target add wasm32-unknown-unknown
 
     # Install wasm-pack
     cargo install wasm-pack
@@ -44,12 +42,10 @@ Guide to setting up a development environment for IFClite.
     # Install pnpm
     npm install -g pnpm
 
-    # Install Rust
+    # Install Rust (rustup reads rust-toolchain.toml and installs the
+    # pinned nightly plus the wasm32-unknown-unknown target automatically)
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
     source ~/.cargo/env
-
-    # Add WASM target
-    rustup target add wasm32-unknown-unknown
 
     # Install wasm-pack
     cargo install wasm-pack
@@ -64,30 +60,29 @@ Guide to setting up a development environment for IFClite.
     # Install pnpm
     npm install -g pnpm
 
-    # Install Rust via rustup-init.exe
-    # Download from https://rustup.rs
-
-    # Add WASM target
-    rustup target add wasm32-unknown-unknown
+    # Install Rust via rustup-init.exe (download from https://rustup.rs).
+    # rustup reads rust-toolchain.toml and installs the pinned nightly
+    # plus the wasm32-unknown-unknown target automatically.
 
     # Install wasm-pack
     cargo install wasm-pack
     ```
+
+If you do not want a Rust toolchain at all, `pnpm build:wasm:fetch` downloads
+the prebuilt `@ifc-lite/wasm` bundle from npm instead of compiling it.
 
 ## Clone and Build
 
 ### 1. Clone Repository
 
 ```bash
-GIT_LFS_SKIP_SMUDGE=1 git clone https://github.com/LTplus-AG/ifc-lite.git
+git clone https://github.com/LTplus-AG/ifc-lite.git
 cd ifc-lite
 ```
 
-This skips automatic Git LFS downloads during clone. For heavy benchmark or stress-test fixtures, fetch only the exact files you need later:
-
-```bash
-git lfs pull --include="tests/models/ara3d/AC20-FZK-Haus.ifc"
-```
+The repository does not use Git LFS. Test model files (IFC/IFCX fixtures) are
+not stored in git at all; they are fetched from a GitHub Release in the next
+steps.
 
 ### 2. Install Dependencies
 
@@ -95,54 +90,70 @@ git lfs pull --include="tests/models/ara3d/AC20-FZK-Haus.ifc"
 pnpm install
 ```
 
-### 3. Build All Packages
+### 3. Fetch Test Fixtures
+
+```bash
+pnpm fixtures
+```
+
+This downloads the IFC/IFCX test models catalogued in
+`tests/models/manifest.json` from a GitHub Release. The fetch is selective and
+idempotent: files already on disk with a matching SHA-256 are skipped, and
+every download is hash-verified. Tests skip cleanly when fixtures are absent,
+so this step is optional for a first build. See `tests/models/README.md` for
+details.
+
+### 4. Build All Packages
 
 ```bash
 pnpm build
 ```
 
-### 4. Verify Build
+### 5. Verify Build
 
 ```bash
 # Run tests
 pnpm test
 
-# Start viewer
-cd apps/viewer && pnpm dev
+# Start viewer (builds packages, then runs the viewer dev server)
+pnpm dev
 ```
 
 ## Project Structure
 
 ```
 ifc-lite/
+├── Cargo.toml             # Rust workspace root (members under rust/ and apps/server)
 ├── rust/                  # Rust crates
-│   ├── core/              # Parser crate
-│   ├── geometry/          # Geometry crate
-│   └── wasm-bindings/     # WASM crate
-├── packages/              # TypeScript packages
+│   ├── core/              # ifc-lite-core (STEP parser)
+│   ├── geometry/          # ifc-lite-geometry (geometry kernel, CSG)
+│   ├── processing/        # ifc-lite-processing
+│   ├── clash/             # ifc-lite-clash
+│   ├── export/            # ifc-lite-export
+│   ├── ffi/               # ifc-lite-ffi (native bindings)
+│   └── wasm-bindings/     # ifc-lite-wasm (WASM crate)
+├── packages/              # TypeScript packages (@ifc-lite/*)
 │   ├── parser/            # @ifc-lite/parser
 │   ├── geometry/          # @ifc-lite/geometry
 │   ├── renderer/          # @ifc-lite/renderer
 │   ├── query/             # @ifc-lite/query
 │   ├── data/              # @ifc-lite/data
 │   ├── export/            # @ifc-lite/export
-│   └── codegen/           # Schema generator
+│   ├── wasm/              # @ifc-lite/wasm (built bundle in pkg/)
+│   └── ...                # cli, sdk, mcp, ids, bcf, collab, and more
 ├── apps/
-│   └── viewer/            # Demo viewer app
-└── docs/                  # Documentation
+│   ├── viewer/            # Viewer app
+│   ├── viewer-embed/      # Embeddable viewer
+│   ├── server/            # HTTP server (Rust)
+│   └── landing/           # Landing page
+└── docs/                  # Documentation (MkDocs)
 ```
 
 ## Development Workflow
 
 ### Watch Mode
 
-Run all packages in watch mode:
-
-```bash
-pnpm -r dev
-```
-
-Or specific packages:
+Run a specific package in watch mode:
 
 ```bash
 # Watch parser
@@ -153,6 +164,14 @@ cd packages/renderer && pnpm dev
 ```
 
 ### Running the Viewer
+
+From the repo root (builds workspace packages first):
+
+```bash
+pnpm dev
+```
+
+Or, if packages are already built:
 
 ```bash
 cd apps/viewer
@@ -167,13 +186,16 @@ Open http://localhost:3000 in your browser.
 pnpm build:wasm
 ```
 
-The output goes to `packages/wasm/pkg/`.
+The output goes to `packages/wasm/pkg/`. This needs the pinned nightly
+toolchain and `wasm-pack`. Without a Rust toolchain, use
+`pnpm build:wasm:fetch` to download the prebuilt bundle from npm.
 
 ### Running Rust Tests
 
+The Cargo workspace root is the repo root:
+
 ```bash
-cd rust
-cargo test
+cargo test --workspace
 ```
 
 ### Generating Documentation
@@ -181,11 +203,11 @@ cargo test
 **Rust Documentation (rustdoc):**
 
 ```bash
-# Generate and open in browser
-cd rust && cargo doc --no-deps --open
+# Generate and open in browser (from the repo root)
+cargo doc --no-deps --open
 
-# Generate for specific crate
-cd rust/core && cargo doc --open
+# Generate for a specific crate
+cargo doc -p ifc-lite-core --open
 
 # Generate without opening
 cargo doc --no-deps
@@ -195,7 +217,11 @@ cargo doc --no-deps
 **MkDocs (Project Documentation):**
 
 ```bash
-mkdocs serve
+# One-off: install MkDocs and plugins
+pip install -r requirements-docs.txt
+
+# Serve the docs site
+pnpm docs:serve
 # Opens at http://127.0.0.1:8000
 ```
 
@@ -283,8 +309,8 @@ pnpm build:wasm
 ### Node Modules Issues
 
 ```bash
-# Clean install
-rm -rf node_modules pnpm-lock.yaml
+# Clean install (keep pnpm-lock.yaml; it is the source of truth)
+rm -rf node_modules
 pnpm install
 ```
 
@@ -312,6 +338,10 @@ Make your changes and test them:
 ```bash
 # Run tests
 pnpm test
+
+# Type check and lint
+pnpm typecheck
+pnpm lint
 
 # Build to verify
 pnpm build

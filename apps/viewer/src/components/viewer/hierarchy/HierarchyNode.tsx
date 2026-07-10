@@ -76,7 +76,8 @@ export function HierarchyNode({
     node.type === 'IfcSpatialZone' ||
     node.type === 'unified-storey' ||
     node.type === 'type-group' ||
-    node.type === 'material-group'
+    node.type === 'material-group' ||
+    node.type === 'group'
       ? 'font-medium text-zinc-900 dark:text-zinc-100'
       : 'text-zinc-700 dark:text-zinc-300';
   const strikeWhenHidden = nodeHidden && 'line-through decoration-zinc-400 dark:decoration-zinc-600';
@@ -306,7 +307,7 @@ export function HierarchyNode({
           </span>
         )}
 
-        {node.ifcType && node.type === 'element' && (
+        {node.ifcType && (node.type === 'element' || node.type === 'group-member') && (
           <span className="text-[10px] font-mono text-zinc-400 dark:text-zinc-500 truncate max-w-[90px]">
             {node.ifcType}
           </span>

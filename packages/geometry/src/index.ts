@@ -66,7 +66,7 @@ import { BufferBuilder } from './buffer-builder.js';
 import { CoordinateHandler } from './coordinate-handler.js';
 import { GeometryQuality } from './progressive-loader.js';
 import { createPlatformBridge, isTauri, type GeometryStats as PlatformGeometryStats, type IPlatformBridge } from './platform-bridge.js';
-import type { GeometryResult, MeshData, CoordinateInfo, GridAxis, TessellationQuality } from './types.js';
+import type { GeometryResult, MeshData, CoordinateInfo, GridAxis, TessellationQuality, KmzAltitudeMode } from './types.js';
 
 // Extracted sub-modules
 import { getStreamingBatchSize, convertMeshCollectionToBatch, withBuildingRotation } from './geometry-coordinate.js';
@@ -1142,9 +1142,10 @@ export class GeometryProcessor {
     isolated: Uint32Array = new Uint32Array(),
     hiddenTypesCsv = '',
     lit = true,
+    emissive = false,
   ): Uint8Array | null {
     if (!this.bridge?.isInitialized()) return null;
-    return this.bridge.exportGlb(buffer, includeMetadata, hidden, isolated, hiddenTypesCsv, lit);
+    return this.bridge.exportGlb(buffer, includeMetadata, hidden, isolated, hiddenTypesCsv, lit, emissive);
   }
 
   /**
@@ -1226,9 +1227,11 @@ export class GeometryProcessor {
    * Flattens `MeshData[]` into the wasm binding's parallel arrays. The caller passes
    * exactly the meshes it wants emitted (its own visibility filtering). `lit` emits
    * standard PBR materials that shade from normals; `false` ⇒ flat
-   * `KHR_materials_unlit` (the historical look — #1321).
+   * `KHR_materials_unlit` (the historical look — #1321). `emissive` self-illuminates
+   * each material at its base colour (core glTF `emissiveFactor`) so renderers with
+   * no ambient/IBL — Google Earth — don't render it near-black (#1427).
    */
-  exportGlbFromMeshes(meshes: MeshData[], includeMetadata = false, lit = true): Uint8Array | null {
+  exportGlbFromMeshes(meshes: MeshData[], includeMetadata = false, lit = true, emissive = false): Uint8Array | null {
     if (!this.bridge?.isInitialized()) return null;
     let totalV = 0;
     let totalI = 0;
@@ -1262,7 +1265,7 @@ export class GeometryProcessor {
       io += m.indices.length;
     }
     return this.bridge.exportGlbFromMeshes(
-      positions, normals, indices, vertexCounts, indexCounts, colors, origins, expressIds, includeMetadata, lit,
+      positions, normals, indices, vertexCounts, indexCounts, colors, origins, expressIds, includeMetadata, lit, emissive,
     );
   }
 
@@ -1282,6 +1285,64 @@ export class GeometryProcessor {
   ): Uint8Array | null {
     if (!this.bridge?.isInitialized()) return null;
     return this.bridge.exportKmz(glb, latitude, longitude, altitude, xAxisAbscissa, xAxisOrdinate, name);
+  }
+
+  /**
+   * Build a Google-Earth-ready KMZ from already-produced meshes (no re-meshing) —
+   * the working KMZ path (#1427). The model is embedded as COLLADA (`model.dae`),
+   * the only `<Model>` format Google Earth loads (a GLB raises "Unsupported element:
+   * Model"), with emission-lit double-sided materials.
+   * Flattens `MeshData[]` into the wasm binding's parallel arrays.
+   * `xAxisAbscissa`/`xAxisOrdinate` are the `IfcMapConversion` grid-north components
+   * (pass `undefined` for heading 0). `altitudeMode` selects the KML vertical
+   * placement (`'clampToGround'` default rests on the terrain and ignores `altitude`;
+   * `'absolute'` places the origin at `altitude` metres MSL). Returns null if not
+   * initialized.
+   */
+  exportKmzFromMeshes(
+    meshes: MeshData[],
+    latitude: number,
+    longitude: number,
+    altitude: number,
+    xAxisAbscissa: number | undefined,
+    xAxisOrdinate: number | undefined,
+    name = 'IFC Model',
+    altitudeMode?: KmzAltitudeMode,
+  ): Uint8Array | null {
+    if (!this.bridge?.isInitialized()) return null;
+    let totalV = 0;
+    let totalI = 0;
+    for (const m of meshes) {
+      totalV += m.positions.length;
+      totalI += m.indices.length;
+    }
+    const positions = new Float32Array(totalV);
+    const normals = new Float32Array(totalV);
+    const indices = new Uint32Array(totalI);
+    const vertexCounts = new Uint32Array(meshes.length);
+    const indexCounts = new Uint32Array(meshes.length);
+    const colors = new Float32Array(meshes.length * 4);
+    const origins = new Float64Array(meshes.length * 3);
+    let vo = 0;
+    let io = 0;
+    for (let i = 0; i < meshes.length; i++) {
+      const m = meshes[i];
+      positions.set(m.positions, vo);
+      if (m.normals && m.normals.length === m.positions.length) normals.set(m.normals, vo);
+      indices.set(m.indices, io);
+      vertexCounts[i] = m.positions.length / 3;
+      indexCounts[i] = m.indices.length;
+      const c = m.color ?? [0.8, 0.8, 0.8, 1];
+      colors[i * 4] = c[0]; colors[i * 4 + 1] = c[1]; colors[i * 4 + 2] = c[2]; colors[i * 4 + 3] = c[3];
+      const o = m.origin ?? [0, 0, 0];
+      origins[i * 3] = o[0]; origins[i * 3 + 1] = o[1]; origins[i * 3 + 2] = o[2];
+      vo += m.positions.length;
+      io += m.indices.length;
+    }
+    return this.bridge.exportKmzFromMeshes(
+      positions, normals, indices, vertexCounts, indexCounts, colors, origins,
+      latitude, longitude, altitude, xAxisAbscissa, xAxisOrdinate, name, altitudeMode,
+    );
   }
 
   /**

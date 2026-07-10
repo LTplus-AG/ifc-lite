@@ -56,10 +56,11 @@
 - **Validate models** against IDS (Information Delivery Specification) rules
 - **Generate 2D drawings** like floor plans, sections, and elevations from 3D models
 - **Collaborate** with BCF support for issues, viewpoints, and comments
-- **Export** to glTF, IFC, or Parquet
+- **Export** to glTF, IFC, CSV, or Parquet
 - **Work with multiple models** at once with federated selection and visibility
+- **Automate from the terminal** with the [ifc-lite CLI](guide/cli.md), including an MCP server for AI assistants
 
-Supports **IFC4 / IFC4X3** (876 entities) and **IFC5 (IFCX)** JSON format. ~260 KB gzipped.
+Supports **IFC2X3, IFC4, and IFC4X3** (STEP) plus **IFC5 (IFCX)** JSON. Open source under MPL-2.0.
 
 ## Choose Your Setup
 
@@ -91,7 +92,7 @@ flowchart TD
 
     ```bash
     npx create-ifc-lite my-app
-    cd my-app && npm install && npm run parse
+    cd my-app && npm install && npm run parse ./model.ifc
     ```
 
     Or in your own code:
@@ -151,7 +152,7 @@ flowchart TD
 
     ```bash
     npx create-ifc-lite my-backend --template server
-    cd my-backend && npm run server:start
+    cd my-backend && npm install && npm run server:start
     ```
 
     ```typescript
@@ -185,11 +186,11 @@ You don't need all packages. Here's what to grab for common tasks:
 | Export to glTF / IFC / Parquet | + `@ifc-lite/export` |
 | Connect to a server backend | + `@ifc-lite/server-client` |
 
-> Full list: [TypeScript API Reference](api/typescript.md) (14 packages) · [Rust API Reference](api/rust.md) (3 crates)
+> More: [TypeScript API Reference](api/typescript.md) · [Rust API Reference](api/rust.md) · [CLI Toolkit](guide/cli.md)
 
 ## Browser Support
 
-Chrome 113+ · Edge 113+ · Firefox 127+ · Safari 18+ (all with WebGPU)
+The built-in WebGPU renderer needs a browser with WebGPU: Chrome 113+, Edge 113+, Firefox 141+ (Windows; other platforms in later releases), Safari 26+.
 
 Three.js and Babylon.js integrations work with WebGL and don't require WebGPU. See [Browser Requirements](guide/browser-requirements.md) for details.
 

@@ -139,7 +139,7 @@ Returns entity list and IFC size:
 {"ok":true,"count":3,"entities":[...],"ifcSize":3646}
 ```
 
-All 29 element types from the [`create` command](cli.md#create--create-ifc-files) are supported. Coordinates use IFC Z-up convention.
+All 29 element types from the [`create` command](cli.md#create-create-ifc-files) are supported. Coordinates use IFC Z-up convention.
 
 ### `POST /api/clear-created` — Remove Live Geometry
 
@@ -300,7 +300,8 @@ viewer.close();
 |--------|-------------|
 | `startViewerServer(opts)` | Start the HTTP + SSE server |
 | `VALID_ACTIONS` | `Set<string>` of accepted command actions |
-| `getViewerHtml(title)` | Get the self-contained viewer HTML |
+| `getViewerHtml(modelName)` | Get the self-contained viewer HTML |
 | `createStreamingViewerAdapter(port)` | SDK adapter for `bim.viewer.*` calls |
+| `createStreamingVisibilityAdapter(port)` | SDK adapter for visibility calls |
 | `ViewerServer` | Server instance type |
 | `CreateHandler` | Handler type for `/api/create` |

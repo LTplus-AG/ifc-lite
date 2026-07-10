@@ -1607,6 +1607,7 @@
     "GridAxis: interface",
     "IPlatformBridge: interface",
     "IfcLiteBridge: class",
+    "KmzAltitudeMode: type",
     "MeshData: interface",
     "MeshTexture: interface",
     "MetadataBootstrapEntitySummary: interface",

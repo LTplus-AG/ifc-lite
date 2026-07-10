@@ -8,7 +8,7 @@ From any 3D IFC model, you can produce:
 
 - **Floor plans** - Horizontal section cuts at a specified height
 - **Section cuts** - Vertical sections through the model
-- **Elevations** - Projected views from a direction
+- **Elevations** - A vertical section placed just outside the building, with projection lines enabled, reads as an elevation (there is no separate elevation API)
 
 Each drawing includes:
 

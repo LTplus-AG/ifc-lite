@@ -27,6 +27,23 @@ const glb = gp.exportGlbFromMeshes(result.meshes, /* includeMetadata */ true);
 const url = URL.createObjectURL(new Blob([new Uint8Array(glb)], { type: 'model/gltf-binary' }));
 ```
 
+## CSV / JSON-LD / HBJSON - also via GeometryProcessor
+
+```typescript
+// `file` is a caller-provided File (e.g. from an <input type="file">)
+const bytes = new Uint8Array(await file.arrayBuffer()); // raw IFC bytes
+
+// CSV: mode is one of entities | properties | quantities | spatial
+const csv = gp.exportCsv(bytes, 'properties');
+
+// JSON-LD knowledge graph
+const jsonld = gp.exportJsonld(bytes);
+
+// HBJSON (Honeybee JSON for energy simulation)
+const hbjson = gp.exportHbjson(bytes, 'model');
+// Each returns Uint8Array | null (null until the processor is initialized)
+```
+
 ## IFC STEP — with mutations
 
 ```typescript
@@ -100,6 +117,12 @@ const lod1 = await generateLod1(bytes, { quality: 'medium' });
 
 // Falls back gracefully to box geometry if a complex element fails to mesh
 ```
+
+## Also exported
+
+- `MergedExporter` - merge several parsed models into one STEP export
+- `convertEntityType` / `convertStepLine` / `needsConversion` - IFC2X3 / IFC4 / IFC4X3 schema conversion helpers
+- `parseGLB` / `parseGLBToMeshData` / `extractGlbMapping` - GLB round-trip readers
 
 ## API
 

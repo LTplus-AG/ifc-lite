@@ -8,6 +8,14 @@ IFCx pointcloud schemas authored by buildingSMART:
 - `points::array` — inline JSON `{ positions: number[][], colors?: number[][] }`.
 - `points::base64` — `{ positions: base64-Float32, colors?: base64-Float32 }`.
 
+## Installation
+
+```bash
+npm install @ifc-lite/pointcloud
+```
+
+## Decode IFCX point attributes
+
 ```ts
 import { decodeIfcxPointAttribute } from '@ifc-lite/pointcloud';
 
@@ -18,8 +26,9 @@ if (chunk) {
 }
 ```
 
-The renderer (`@ifc-lite/renderer`) consumes `DecodedPointChunk` values via
-`Renderer.setPointClouds()` / `Renderer.addPointClouds()`.
+The renderer (`@ifc-lite/renderer`) uploads decoded chunks (wrapped as
+`PointCloudAsset` values) via `Renderer.setPointClouds()` /
+`Renderer.addPointClouds()`.
 
 ## Streaming decode worker (zero Vite config)
 
@@ -48,6 +57,10 @@ Notes:
   wasm (see `DecodeWorkerOptions.spawn`).
 - Strict CSPs need `script-src 'self' blob:` to allow the `Blob`-URL
   worker.
+
+## API
+
+See the [docs site](https://ltplus-ag.github.io/ifc-lite/) for guides and the full API reference.
 
 ## License
 

@@ -1,18 +1,24 @@
 # @ifc-lite/collab-server
 
-Reference websocket sync server for [`@ifc-lite/collab`](../collab).
+Reference websocket sync server for [`@ifc-lite/collab`](https://www.npmjs.com/package/@ifc-lite/collab).
 
-> **Status: v0.2 scaffold.** y-websocket-compatible sync, in-memory room
-> registry, append-only file persistence, pluggable auth hook, healthcheck.
-> Production hardening (auth roles, S3 persistence, observability) lands
-> in v0.5 per `docs/architecture/collab-plan.md`.
+> **Status: early (0.x).** y-websocket-compatible sync, room manager,
+> pluggable auth hook (viewer / commenter / editor / admin roles), file,
+> S3 and Redis persistence, audit log, rate limiting, retention policies,
+> metrics endpoint, blob route, and healthcheck.
 
 ## Run it
 
 ```sh
-pnpm --filter @ifc-lite/collab-server build
-pnpm --filter @ifc-lite/collab-server start
-# default port 1234, persistence at ./.collab-data/
+npx @ifc-lite/collab-server
+# default port 1234
+```
+
+Or install it:
+
+```sh
+npm install @ifc-lite/collab-server
+npx ifc-lite-collab-server
 ```
 
 Environment variables:
@@ -40,6 +46,13 @@ const server = await startCollabServer({
 // Later:
 await server.stop();
 ```
+
+Also exported: `S3Persistence`, `RedisPersistence`, `MemoryPersistence`,
+`FilePersistence`, `RoomManager`, audit sinks, and retention helpers.
+
+## Docs
+
+See the [ifc-lite docs](https://ltplus-ag.github.io/ifc-lite/).
 
 ## License
 

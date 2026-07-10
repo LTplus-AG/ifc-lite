@@ -11,6 +11,14 @@ version-specific **source adapters**.
 - Results classify as `hard` (interpenetration), `clearance` (within a gap), or `touch`
   (within tolerance, suppressed by default).
 
+## Installation
+
+```bash
+npm install @ifc-lite/clash
+```
+
+## Usage
+
 ```ts
 import { createClashEngine, CLASH_RULE_PRESETS } from '@ifc-lite/clash';
 import { elementsFromStep } from '@ifc-lite/clash/step';
@@ -26,8 +34,19 @@ console.log(result.summary.total, 'clashes');
 
 Includes the TypeScript reference engine, a Rust→WASM kernel kept in lockstep by a
 differential test (opt-in via `@ifc-lite/clash/wasm`; `backend: 'auto'` currently
-resolves to the TS engine), STEP and IFC5/USD source adapters, spatial grouping, and
-a *sensible* BCF bridge (grouped
+resolves to the TS engine), STEP and IFC5/USD source adapters, spatial grouping,
+duplicate-element detection, clash review status (open / resolved / accepted) that
+round-trips through BCF, and a *sensible* BCF bridge (grouped
 topics, deterministic GUIDs, optional snapshots). Surfaced through the viewer's
 clash panel, the `ifc-lite clash` CLI, the MCP `clash_check` / `clash_matrix` tools,
-and the SDK `clash` namespace. Design rationale: `docs/architecture/clash-detection-plan.md`.
+and the SDK `clash` namespace.
+
+## Docs
+
+See the [ifc-lite docs](https://ltplus-ag.github.io/ifc-lite/) and the design
+rationale in
+[clash-detection-plan.md](https://github.com/LTplus-AG/ifc-lite/blob/main/docs/architecture/clash-detection-plan.md).
+
+## License
+
+MPL-2.0

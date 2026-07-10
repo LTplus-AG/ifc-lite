@@ -147,7 +147,7 @@ decoder.register('IFCDOOR', (expressId, store) => {
   };
 });
 
-for await (const door of decoder.decode(store, buffer, geometry)) {
+for await (const door of decoder.decode(store, new Uint8Array(buffer), geometry)) {
   console.log(door);
 }
 ```
@@ -160,7 +160,7 @@ handler is added by contributing a processor to that crate rather than by
 registering a class at runtime:
 
 - Representation and profile handling lives in `rust/geometry/src/processors/`
-  and `rust/geometry/src/profile/`.
+  and `rust/geometry/src/profiles/`.
 - The `GeometryRouter` (`rust/geometry/src/router/mod.rs`) dispatches each
   representation to the right processor.
 - See [Geometry Pipeline](../architecture/geometry-pipeline.md) for how a
@@ -168,16 +168,17 @@ registering a class at runtime:
 
 On the TypeScript side, `GeometryProcessor` from `@ifc-lite/geometry` is a
 concrete driver, not an extension point: it exposes `init()`,
-`process(buffer, entityIndex?)` and `processStreaming(buffer)` and returns a
-`GeometryResult`. To customize output, consume that result and transform the
-`MeshData[]` yourself:
+`process(buffer, entityIndex?)` (returns a `GeometryResult`), plus the
+streaming iterators `processStreaming(buffer)` and
+`processAdaptive(buffer, options?)`. To customize output, consume that result
+and transform the `MeshData[]` yourself:
 
 ```typescript
 import { GeometryProcessor } from '@ifc-lite/geometry';
 
 const gp = new GeometryProcessor();
 await gp.init();
-const result = await gp.process(buffer);
+const result = await gp.process(new Uint8Array(buffer));
 
 // Post-process the produced meshes (custom simplification, tagging, etc.)
 const processed = result.meshes.map((mesh) => transformMesh(mesh));
@@ -231,7 +232,7 @@ function extractCustom(store: IfcDataStore, expressId: number): Record<string, u
 ### Custom Shaders
 
 ```typescript
-import { Renderer, ShaderModule } from '@ifc-lite/renderer';
+import { Renderer } from '@ifc-lite/renderer';
 
 const customVertexShader = `
   struct Uniforms {
@@ -272,11 +273,7 @@ const customFragmentShader = `
 For highlighting specific entities, use visibility controls:
 
 ```typescript
-interface HighlightManager {
-  isolated: Set<number>;
-  hidden: Set<number>;
-  selected: Set<number>;
-}
+import { Renderer } from '@ifc-lite/renderer';
 
 class HighlightManager {
   isolated: Set<number> | null = null;
@@ -385,6 +382,7 @@ plugins.onParse(store);
 
 ### 1. Keep Extensions Focused
 
+<!-- docs-check: skip -->
 ```typescript
 // Good: Single responsibility
 class FireRatingExtractor {
@@ -426,6 +424,11 @@ class SafeExtractor {
       console.warn(`Failed to extract #${expressId}:`, error);
       return null; // Return null instead of throwing
     }
+  }
+
+  // Your real extraction logic goes here.
+  private doExtract(store: IfcDataStore, expressId: number): Record<string, unknown> {
+    return {};
   }
 }
 ```

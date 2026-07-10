@@ -362,7 +362,14 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       cesiumAvailable: false,
       cesiumEnabled: false,
       cesiumTerrainHeight: null,
+      // The snap target is model-specific terrain state; drop it with the
+      // sampled height so a new file can't reuse the old target (#1456).
+      cesiumTerrainSaveHeight: null,
       cesiumSourceModelId: null,
+      // A new file is orthometric by default — re-arm the geoid correction
+      // so a previous file's "heights are ellipsoidal" opt-out doesn't carry
+      // over (#1355).
+      cesiumHeightsAreEllipsoidal: false,
       cesiumTerrainClipY: null,
       cesiumGlbLoaded: false,
       cesiumPlacementEditMode: false,

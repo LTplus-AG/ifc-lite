@@ -35,7 +35,7 @@ import {
   type TerrainElevationSample,
 } from './terrain-elevation';
 import { getEffectiveHorizontalScale, resolveMapUnitToMetreScale } from './geo-scale';
-import { shouldPreferOrthometricTerrain } from './cesium-placement';
+import { shouldApplyGeoidUndulation } from './cesium-placement';
 import { egm96Undulation } from './egm96-undulation';
 import { viewerToEnuRotation, type ViewerToEnuRotation } from './viewer-enu-rotation';
 
@@ -112,6 +112,13 @@ export async function computeCesiumModelOrigin(
   coordinateInfo?: CoordinateInfo,
   lengthUnitScale = 1,
   placementHeightOverride?: number,
+  /**
+   * When true, the authored `OrthogonalHeight` is treated as already
+   * ellipsoidal and the geoid undulation N is NOT added. Default (false /
+   * undefined) applies the correction — the authored altitude is orthometric
+   * per the IFC spec. (#1355)
+   */
+  heightsAreEllipsoidal?: boolean,
 ): Promise<CesiumModelOriginInfo | null> {
   const projDef = await resolveProjection(projectedCRS);
   if (!projDef) return null;
@@ -138,10 +145,11 @@ export async function computeCesiumModelOrigin(
     // IFC OrthogonalHeight is orthometric (above the vertical datum); Cesium
     // places geometry by ellipsoidal height. Add the geoid undulation N so the
     // model isn't buried ~N below the world terrain (≈ +45 m in Czechia,
-    // +49 m in Switzerland). Gated on a declared vertical datum — the
-    // unambiguous "these heights are orthometric" signal; models that don't
-    // declare one are left exactly as before. (#1355)
-    const geoidUndulation = shouldPreferOrthometricTerrain(projectedCRS)
+    // +49 m in Switzerland). This is the DEFAULT for every georeferenced model
+    // — the authored altitude is orthometric by spec, whether or not a
+    // VerticalDatum is declared (it is optional and routinely omitted). The
+    // only opt-out is a file whose heights are already ellipsoidal. (#1355)
+    const geoidUndulation = shouldApplyGeoidUndulation(heightsAreEllipsoidal)
       ? egm96Undulation(lat, lon)
       : 0;
     return {
@@ -220,6 +228,12 @@ export async function createCesiumBridge(
    * model never has to be moved after loading into Cesium.
    */
   placementHeightOverride?: number,
+  /**
+   * When true, the authored `OrthogonalHeight` is treated as already
+   * ellipsoidal and the geoid undulation N is NOT added (forwarded to
+   * `computeCesiumModelOrigin`). Default applies the correction. (#1355)
+   */
+  heightsAreEllipsoidal?: boolean,
 ): Promise<CesiumBridge | null> {
   const projDef = await resolveProjection(projectedCRS);
   if (!projDef) return null;
@@ -244,6 +258,7 @@ export async function createCesiumBridge(
     coordinateInfo,
     lengthUnitScale,
     placementHeightOverride,
+    heightsAreEllipsoidal,
   );
   if (!origin) return null;
   const modelOrigin: GeodesicPosition = {

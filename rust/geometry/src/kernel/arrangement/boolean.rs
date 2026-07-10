@@ -180,9 +180,8 @@ pub fn difference_all(a: &[Tri], comps: &[&[Tri]]) -> Option<Vec<Tri>> {
     // an unrecovered constraint means some sub-triangle STRADDLES a cutter
     // boundary and its centroid classification can silently over/under-cut
     // (the #559171 batched-door family: the jamb never carved into the back
-    // face ⇒ −0.43 m³ and an open rim). The caller falls back to sequential
-    // per-cutter subtraction, which carves few constraints per arrangement and
-    // avoids the degenerate channel.
+    // face ⇒ −0.43 m³ and an open rim). The caller (`subtract_many`) then either
+    // accepts the volume-safe lenient batch or falls back to sequential.
     if arr.unrecovered > 0 {
         return None;
     }
@@ -193,6 +192,25 @@ pub fn difference_all(a: &[Tri], comps: &[&[Tri]]) -> Option<Vec<Tri>> {
             .map(|t| [to_f64_pt(&arr, t[0]), to_f64_pt(&arr, t[1]), to_f64_pt(&arr, t[2])])
             .collect(),
     )
+}
+
+/// Like [`difference_all`] but WITHOUT the conformity gate — returns the batched
+/// difference even when an unrecovered constraint leaves it non-conforming. The
+/// exact batched topology is cleaner than the sequential re-jitter on dense
+/// faceted-reveal walls (issue #098), but its centroid classification can
+/// over/under-cut volume, so the caller (`subtract_many`) VERIFIES the removed
+/// volume against a sequential reference before trusting it.
+pub fn difference_all_lenient(a: &[Tri], comps: &[&[Tri]]) -> Vec<Tri> {
+    if comps.is_empty() {
+        return a.to_vec();
+    }
+    let b_all: Vec<Tri> = comps.iter().flat_map(|c| c.iter().copied()).collect();
+    let arr = arrange(a, &b_all);
+    let bc = BComponents::new(comps);
+    boolean_vids_components(&arr, a, &bc, BoolOp::Difference)
+        .into_iter()
+        .map(|t| [to_f64_pt(&arr, t[0]), to_f64_pt(&arr, t[1]), to_f64_pt(&arr, t[2])])
+        .collect()
 }
 
 /// Topology fingerprint of a boolean result: each oriented Vid triangle rotated

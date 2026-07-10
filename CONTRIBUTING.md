@@ -17,16 +17,18 @@ pnpm dev             # run the viewer
 ```
 
 Rust lives under `rust/` and `apps/server`; the TS packages under `packages/`
-and `apps/`. The WASM bundle is rebuilt with `scripts/build-wasm.sh` (needs the
-pinned nightly + `wasm-pack`); the committed `pkg/ifc-lite.d.ts` type surface is
-what lets `pnpm typecheck` run without the Rust toolchain.
+and `apps/`. The WASM bundle is rebuilt with `pnpm build:wasm` (wraps
+`scripts/build-wasm.sh`; needs the nightly pinned in `rust-toolchain.toml` plus
+`wasm-pack`), or fetched prebuilt from npm with `pnpm build:wasm:fetch`; the
+committed `pkg/ifc-lite.d.ts` type surface is what lets `pnpm typecheck` run
+without the Rust toolchain.
 
 ## Test
 
 ```bash
 pnpm test                  # TS (turbo)
 cargo test --workspace     # Rust (use test, not check: check skips #[cfg(test)])
-pnpm test:wasm-contract    # the real wasm boundary (build-wasm.sh first, or it skips)
+pnpm test:wasm-contract    # the real wasm boundary (pnpm build:wasm first, or it skips)
 ```
 
 A change ships with a test that asserts real behavior through a fixture or a

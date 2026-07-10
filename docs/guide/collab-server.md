@@ -111,8 +111,13 @@ const handle = await startCollabServer({
   persistence: new FilePersistence({ dataDir: '/var/lib/ifc-collab' }),
   // Verify signed tokens + consult a revocation deny-list.
   authenticate: createRoomTokenAuthenticator({ secret, isRevoked: (jti) => revoked.has(jti) }),
-  // Mint policy (here: first-touch creator → admin).
-  tokenEndpoint: { secret, authorize: (req, { bearerClaims }) => /* … */ },
+  // Mint policy (here: only an admin bearer for the same room may mint more links).
+  tokenEndpoint: {
+    secret,
+    isRevoked: (jti) => revoked.has(jti),
+    authorize: (req, { bearerClaims }) =>
+      bearerClaims?.role === 'admin' && bearerClaims.room === req.roomId ? req.role : null,
+  },
   revokeEndpoint: { secret, recordRevocation: (jti) => { revoked.add(jti); } },
   kickEndpoint: { secret },
   // blobStorage: new S3BlobStorage(...),   // durable geometry blobs

@@ -3230,6 +3230,7 @@ mod tests {
             &[1u32],
             true,
             false,
+            false, // emissive off (#1427 added the emissive param)
         );
         assert_eq!(stats.triangles, 2 * G * G, "triangles unchanged");
 

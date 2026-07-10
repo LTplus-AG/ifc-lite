@@ -74,7 +74,7 @@ describe('ADVERSARIAL: reprojectionInputKey collisions', () => {
   });
 
   it('PROBE_empty_vs_undefined_name: undefined and empty-string name share a key', () => {
-    const a = reprojectionInputKey(1, 2, { id: 1, name: undefined } as ProjectedCRS, 1);
+    const a = reprojectionInputKey(1, 2, { id: 1, name: undefined } as unknown as ProjectedCRS, 1);
     const b = reprojectionInputKey(1, 2, { id: 1, name: '' } as ProjectedCRS, 1);
     assert.strictEqual(a, b, 'name ?? "" collapses undefined and "" (benign: same resolveProjection path)');
   });

@@ -2,6 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   parseStep,
@@ -10,6 +13,7 @@ import {
   buildSubset,
   serializeSubset,
   scoreTriage,
+  extractEntitiesCommand,
 } from './extract-entities.js';
 
 // A tiny but representative model: project + units + geometric context + a
@@ -188,6 +192,55 @@ describe('buildSubset — voids and fills', () => {
     for (const m of out.matchAll(/^#(\d+)=/gm)) defined.add(Number(m[1]));
     const data = out.slice(out.indexOf('DATA;'));
     for (const m of data.matchAll(/#(\d+)/g)) expect(defined.has(Number(m[1]))).toBe(true);
+  });
+});
+
+// Variant where each relation carries a DEDICATED IfcOwnerHistory (#11/#12)
+// referenced by nothing else in the file. Closing over only the opening/filler
+// (instead of the relation itself) used to leave these dangling in the subset.
+const REL_OWNED_MODEL = VOID_MODEL.replace(
+  "#104= IFCRELVOIDSELEMENT('VOID00000000000000000X',$,$,$,#70,#103);",
+  "#11= IFCOWNERHISTORY(#13,#14,$,.NOCHANGE.,$,$,$,0);\n" +
+    "#13= IFCPERSONANDORGANIZATION(#15,#16,$);\n" +
+    "#15= IFCPERSON($,'p',$,$,$,$,$,$);\n" +
+    "#16= IFCORGANIZATION($,'o',$,$,$);\n" +
+    "#14= IFCAPPLICATION(#16,'1','app','app');\n" +
+    "#104= IFCRELVOIDSELEMENT('VOID00000000000000000X',#11,$,$,#70,#103);",
+).replace(
+  "#113= IFCRELFILLSELEMENT('FILL00000000000000000X',$,$,$,#103,#112);",
+  "#12= IFCOWNERHISTORY($,$,$,$,$,$,$,0);\n" +
+    "#113= IFCRELFILLSELEMENT('FILL00000000000000000X',#12,$,$,#103,#112);",
+);
+
+describe('buildSubset — void/fill relations close over their own refs', () => {
+  const p = parseStep(REL_OWNED_MODEL);
+  const keep = buildSubset(new Set([70]), p);
+
+  it('keeps a rel-only OwnerHistory (and its subtree) for both relation kinds', () => {
+    for (const id of [11, 13, 14, 15, 16, 12]) expect(keep.has(id)).toBe(true);
+  });
+
+  it('serializes with zero dangling references', () => {
+    const out = serializeSubset(keep, p);
+    const defined = new Set<number>();
+    for (const m of out.matchAll(/^#(\d+)=/gm)) defined.add(Number(m[1]));
+    const data = out.slice(out.indexOf('DATA;'));
+    for (const m of data.matchAll(/#(\d+)/g)) expect(defined.has(Number(m[1]))).toBe(true);
+  });
+});
+
+describe('extract-entities byte fidelity', () => {
+  it('round-trips raw Latin-1 high bytes unchanged (no U+FFFD mangling)', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'ifc-extract-'));
+    const src = join(dir, 'in.ifc');
+    const out = join(dir, 'sub.ifc');
+    // 0xFC ('ü' in Latin-1) is an invalid standalone UTF-8 byte; real-world
+    // exports carry such raw bytes and must survive extraction untouched.
+    await writeFile(src, Buffer.from(VOID_MODEL.replace("'Wall'", "'Türwand'"), 'latin1'));
+    await extractEntitiesCommand([src, '--product', '#70', '--out', out]);
+    const bytes = await readFile(out);
+    expect(bytes.includes(Buffer.from([0xfc]))).toBe(true);
+    expect(bytes.includes(Buffer.from([0xef, 0xbf, 0xbd]))).toBe(false); // U+FFFD
   });
 });
 

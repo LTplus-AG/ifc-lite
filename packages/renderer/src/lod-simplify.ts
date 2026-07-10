@@ -51,6 +51,17 @@ export function simplifyIndicesByClustering(
   const cellOf = new Map<number, number>(); // vertexIndex -> cluster representative vertexIndex
   const repOfCell = new Map<string, number>(); // cell key -> representative vertexIndex
 
+  // Clustering is ENTITY-SCOPED: the per-vertex entityId lane (u32 bit-cast
+  // at float offset 6 in the batch layout) joins the cell key, so co-located
+  // vertices from DIFFERENT entities (a wall face touching a slab face)
+  // never share a representative. Without this a LOD triangle could inherit
+  // a neighbour entity's id lane — wrong object-id target output (separation
+  // lines) and wrong overlay depth-salt at LOD distance. Costs a little
+  // reduction ratio; correctness first.
+  const idLane = strideFloats > 6
+    ? new Uint32Array(vertexData.buffer, vertexData.byteOffset, vertexData.length)
+    : null;
+
   const repOf = (vi: number): number => {
     let rep = cellOf.get(vi);
     if (rep !== undefined) return rep;
@@ -58,7 +69,8 @@ export function simplifyIndicesByClustering(
     const cx = Math.floor(vertexData[base] / cellSize);
     const cy = Math.floor(vertexData[base + 1] / cellSize);
     const cz = Math.floor(vertexData[base + 2] / cellSize);
-    const key = `${cx},${cy},${cz}`;
+    const entity = idLane ? idLane[base + 6] : 0;
+    const key = `${cx},${cy},${cz},${entity}`;
     rep = repOfCell.get(key);
     if (rep === undefined) {
       rep = vi;

@@ -92,6 +92,9 @@ export function projectedAabbRadiusPx(
   if (!Number.isFinite(radius)) return Infinity;
 
   const halfViewportPx = cam.viewportHeightPx * 0.5;
+  // Fail open on a zero/negative viewport (e.g. mid-resize race): 0 would
+  // project EVERY box to 0 px and cull the whole scene.
+  if (!(halfViewportPx > 0)) return Infinity;
 
   if (cam.mode === 'orthographic') {
     if (!(cam.orthoHalfHeight > 0)) return Infinity;

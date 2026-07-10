@@ -88,6 +88,17 @@ describe('projectedAabbRadiusPx (perspective)', () => {
     assert.strictEqual(px, Infinity);
   });
 
+  it('fails open on a zero/negative viewport height (mid-resize race)', () => {
+    for (const viewportHeightPx of [0, -100]) {
+      const px = projectedAabbRadiusPx(
+        [-1, -1, -101],
+        [1, 1, -99],
+        perspectiveCam({ viewportHeightPx }),
+      );
+      assert.strictEqual(px, Infinity);
+    }
+  });
+
   it('fails open on a degenerate/zero view direction', () => {
     const px = projectedAabbRadiusPx(
       [-1, -1, -101],

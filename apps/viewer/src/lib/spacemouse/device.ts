@@ -130,13 +130,24 @@ export class SpaceMouseSession {
     return this.device.productName || 'SpaceMouse';
   }
 
-  /** Close the device and detach listeners. Safe to call more than once. */
-  async close(): Promise<void> {
+  /**
+   * Detach listeners WITHOUT closing the device or firing onDisconnect. For
+   * discarding a duplicate session whose underlying device another session
+   * still streams from (overlapping connect attempts can wrap the same
+   * HIDDevice). Safe to call more than once.
+   */
+  detach(): void {
     if (this.closed) return;
     this.closed = true;
     this.state = zeroSixDof();
     this.device.removeEventListener('inputreport', this.handleInputReport);
     navigator.hid?.removeEventListener('disconnect', this.handleGlobalDisconnect);
+  }
+
+  /** Close the device and detach listeners. Safe to call more than once. */
+  async close(): Promise<void> {
+    if (this.closed) return;
+    this.detach();
     try {
       await this.device.close();
     } catch { /* already closed / gone */ }

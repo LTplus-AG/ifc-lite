@@ -140,8 +140,16 @@ export function useSpaceMouseControls(params: UseSpaceMouseControlsParams): void
     const adopt = (next: SpaceMouseSession | null) => {
       if (!next) return;
       if (aborted || session) {
-        // Torn down (or a device already streams) before the open resolved.
-        void next.close();
+        // Torn down (or a device already streams) before this open resolved.
+        // Detach quietly: close() would fire the shared onDisconnect and, when
+        // overlapping connects wrapped the SAME HIDDevice, close the winner's
+        // device out from under it. Only close the physical device when it is
+        // not the active session's.
+        const sharesDevice = session?.device === next.device;
+        next.detach();
+        if (!sharesDevice) {
+          next.device.close().catch(() => { /* already closed / gone */ });
+        }
         return;
       }
       session = next;
@@ -151,25 +159,43 @@ export function useSpaceMouseControls(params: UseSpaceMouseControlsParams): void
       startLoop();
     };
 
+    // Serialize connect attempts: a manual Connect click overlapping the
+    // startup reconnect (or a double-click) must not produce two sessions
+    // racing over the same device.
+    let connectInFlight = false;
+
     const connect = async () => {
-      if (session) return;
+      if (session || connectInFlight) return;
+      connectInFlight = true;
       try {
         adopt(await connectSpaceMouse(sessionOptions));
       } catch (err) {
         if (!aborted) {
           useViewerStore.getState().setSpaceMouseError(err instanceof Error ? err.message : String(err));
         }
+      } finally {
+        connectInFlight = false;
+      }
+    };
+
+    const reconnect = async () => {
+      if (session || connectInFlight || aborted) return;
+      connectInFlight = true;
+      try {
+        adopt(await reconnectGrantedSpaceMouse(sessionOptions));
+      } finally {
+        connectInFlight = false;
       }
     };
 
     store.setSpaceMouseConnect(() => { void connect(); });
 
     // Reopen a device granted in an earlier visit, without prompting.
-    void reconnectGrantedSpaceMouse(sessionOptions).then(adopt);
+    void reconnect();
 
     // When a granted device is plugged back in, pick it up automatically.
     const handleHidConnect = () => {
-      if (!session && !aborted) void reconnectGrantedSpaceMouse(sessionOptions).then(adopt);
+      void reconnect();
     };
     navigator.hid?.addEventListener('connect', handleHidConnect);
 

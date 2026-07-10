@@ -804,7 +804,7 @@ export function HierarchyPanel() {
   // Multi-model layout with resizable split
   // Grouping mode toggle component (shared by both layouts)
   const groupingToggle = (
-    <div className="flex gap-1 mt-2">
+    <div className="hierarchy-grouping-tabs flex gap-1 mt-2">
       <Button
         variant={groupingMode === 'spatial' ? 'default' : 'outline'}
         size="sm"

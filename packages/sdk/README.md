@@ -40,7 +40,7 @@ Also exported: `BimHost` (viewer side), `RemoteBackend`, `MessagePortTransport`,
 
 ## Links
 
-- Docs: https://ltplus-ag.github.io/ifc-lite/
+- Docs: https://ifclite.dev/docs/
 - Source: https://github.com/LTplus-AG/ifc-lite
 
 ## License

@@ -1,5 +1,25 @@
 # @ifc-lite/mcp
 
+## 0.7.2
+
+### Patch Changes
+
+- [#1691](https://github.com/LTplus-AG/ifc-lite/pull/1691) [`26af236`](https://github.com/LTplus-AG/ifc-lite/commit/26af236a9128f5fc97493d75d7c9642958343a7a) Thanks [@louistrue](https://github.com/louistrue)! - Documentation moved to https://ifclite.dev/docs/ - README links and package homepage fields now point at the new home (the GitHub Pages site remains as a mirror whose canonical URLs point there).
+
+- Updated dependencies [[`26af236`](https://github.com/LTplus-AG/ifc-lite/commit/26af236a9128f5fc97493d75d7c9642958343a7a), [`d0647c9`](https://github.com/LTplus-AG/ifc-lite/commit/d0647c9a1801fc03b7c5d32314e53ef922c56f2f), [`3267aaf`](https://github.com/LTplus-AG/ifc-lite/commit/3267aaf5dfe98f9550695d44c1d12644f2c04b88), [`26de705`](https://github.com/LTplus-AG/ifc-lite/commit/26de705b8608b9cd75e90411288c7ada96b3352b), [`bc1531f`](https://github.com/LTplus-AG/ifc-lite/commit/bc1531f899e5f8d18d1a6ff1ef6d997236a01243)]:
+  - @ifc-lite/bcf@1.16.2
+  - @ifc-lite/clash@1.6.2
+  - @ifc-lite/create@1.16.4
+  - @ifc-lite/data@2.5.2
+  - @ifc-lite/export@2.5.2
+  - @ifc-lite/geometry@3.1.4
+  - @ifc-lite/ids@1.15.27
+  - @ifc-lite/mutations@1.18.1
+  - @ifc-lite/parser@3.8.2
+  - @ifc-lite/query@1.14.13
+  - @ifc-lite/sdk@1.21.2
+  - @ifc-lite/viewer-core@0.2.9
+
 ## 0.7.1
 
 ### Patch Changes

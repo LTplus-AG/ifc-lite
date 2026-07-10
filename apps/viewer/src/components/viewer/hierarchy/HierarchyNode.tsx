@@ -138,6 +138,7 @@ export function HierarchyNode({
                   e.stopPropagation();
                   onModelVisibilityToggle(modelId, e);
                 }}
+                aria-label={modelVisible ? `Hide model ${node.name}` : `Show model ${node.name}`}
                 className="p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
               >
                 {modelVisible ? (
@@ -160,6 +161,7 @@ export function HierarchyNode({
                     e.stopPropagation();
                     onRemoveModel(modelId, e);
                   }}
+                  aria-label={`Remove model ${node.name}`}
                   className="p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
                 >
                   <X className="h-3.5 w-3.5 text-zinc-400 hover:text-red-500" />
@@ -225,6 +227,8 @@ export function HierarchyNode({
               e.stopPropagation();
               onToggleExpand(node.id);
             }}
+            aria-label={node.isExpanded ? `Collapse ${node.name}` : `Expand ${node.name}`}
+            aria-expanded={node.isExpanded}
             className="p-0.5 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-none mr-1"
           >
             <ChevronRight
@@ -247,6 +251,7 @@ export function HierarchyNode({
                   e.stopPropagation();
                   onVisibilityToggle(node);
                 }}
+                aria-label={node.isVisible ? `Hide ${node.name}` : `Show ${node.name}`}
                 className={cn(
                   'p-0.5 opacity-0 group-hover:opacity-100 transition-opacity mr-1',
                   nodeHidden && 'opacity-100'

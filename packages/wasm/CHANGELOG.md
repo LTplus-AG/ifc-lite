@@ -1,5 +1,59 @@
 # @ifc-lite/wasm
 
+## 3.0.14
+
+### Patch Changes
+
+- [#1696](https://github.com/LTplus-AG/ifc-lite/pull/1696) [`41794cd`](https://github.com/LTplus-AG/ifc-lite/commit/41794cde27d31904773bf2042eb0a0331aadf770) Thanks [@louistrue](https://github.com/louistrue)! - Point the remaining old docs links at https://ifclite.dev/docs/: the project templates scaffolded by create-ifc-lite, and the committed wasm pkg README (wasm-pack's copy of the root README, refreshed to the current one).
+
+- [#1691](https://github.com/LTplus-AG/ifc-lite/pull/1691) [`26af236`](https://github.com/LTplus-AG/ifc-lite/commit/26af236a9128f5fc97493d75d7c9642958343a7a) Thanks [@louistrue](https://github.com/louistrue)! - Documentation moved to https://ifclite.dev/docs/ - README links and package homepage fields now point at the new home (the GitHub Pages site remains as a mirror whose canonical URLs point there).
+
+- [#1430](https://github.com/LTplus-AG/ifc-lite/pull/1430) [`d0647c9`](https://github.com/LTplus-AG/ifc-lite/commit/d0647c9a1801fc03b7c5d32314e53ef922c56f2f) Thanks [@louistrue](https://github.com/louistrue)! - Make the Google Earth **Pro** (KMZ) export actually load and render correctly, and add
+  it to the export menu ([#1427](https://github.com/LTplus-AG/ifc-lite/issues/1427)).
+
+  > Note: KMZ 3D models (`<Model>`) only render in Google Earth **Pro** (desktop). Google
+  > Earth on the web does not support `<Model>` — for the web, export GLB and use the web
+  > app's "Import 3D model". The dialog and menu say so.
+
+  **It now loads in Pro.** Google Earth's KML `<Model>` only accepts **COLLADA** — a
+  glTF/GLB model fails with "Unsupported element: Model". The KMZ now embeds a COLLADA
+  `.dae` (new `exportKmzFromMeshes` / `export_collada_from_meshes`, schema-validated against
+  the COLLADA 1.4.1 XSD) instead of a GLB. Large models are split into multiple `<geometry>`
+  chunks bounded by 60k vertices / 20k triangles (Google Earth's 64K-vertex / 21,845-triangle
+  per-mesh limits) and vertices are deduplicated, so big structural models render in Pro.
+
+  **It's no longer dark or floating.** COLLADA materials set `<emission>` to the element
+  colour (Google Earth has no ambient/IBL and a single hard sun, so plain diffuse renders
+  near-black) and are flagged `double_sided` for IFC's unreliable winding. By default the
+  model is placed `clampToGround` so it rests on the terrain instead of floating at its MSL
+  `OrthogonalHeight`. Vertices are emitted in the IFC-native Z-up frame so the building
+  stands upright.
+
+  **Placement is now a choice.** The KMZ export dialog adds a "Placement" toggle: "Rest on
+  ground" (default, `clampToGround`) or "True elevation (MSL)" (`absolute`, honouring the
+  model's `OrthogonalHeight`). The choice threads through `exportKmzFromMeshes`
+  (`altitudeMode` argument) and the `exportKmz` / `exportKmzFromMeshes` wasm bindings
+  (optional `altitude_mode`, defaulting to `clampToGround` so existing callers are
+  unchanged). The Location panel's one-click Google Earth button stays ground-clamped.
+
+  **It's in the menu.** A new "Export KMZ (Google Earth Pro)" entry sits alongside Export
+  GLB / IFC / HBJSON, using the same model-name file-stem scheme (`<name>.kmz`); it reports
+  a clear message when a model isn't georeferenced.
+
+  Also adds a general `emissive` option to the GLB exporter (`exportGlb` /
+  `exportGlbFromMeshes`) — `emissiveFactor = base colour` for renderers without ambient/IBL.
+
+- [#1659](https://github.com/LTplus-AG/ifc-lite/pull/1659) [`633882f`](https://github.com/LTplus-AG/ifc-lite/commit/633882fa15940f5faddb9dcb32031fcf3f38e287) Thanks [@louistrue](https://github.com/louistrue)! - Hoist the item-dedup mesh clone out of the shared cache's lock. `process_representation_item`'s content-dedup cache is a single `Arc<Mutex<FxHashMap>>` hit by every element; on a dedup miss it inserted `Arc::new(mesh.clone())` — a full mesh deep-copy that Rust evaluates _inside_ the acquired lock, so under a multi-worker pool every miss serialized the pool behind one another's mesh copies. Clone into the Arc before taking the lock so the critical section is just the map insert. Byte-identical (the cache is pure memoization); most visible on high-core servers processing unique geometry (many misses, high contention).
+
+- [#1653](https://github.com/LTplus-AG/ifc-lite/pull/1653) [`40ac0a8`](https://github.com/LTplus-AG/ifc-lite/commit/40ac0a85d5aaac1b6fed9ad96b3e2f9d0378d65b) Thanks [@louistrue](https://github.com/louistrue)! - Two byte-identical cold-load micro-optimizations found by profiling the post-parse-optimization pipeline:
+
+  - **SIMD schema detection.** Schema-version detection walked the whole file with a naive per-position `content.windows(n).any(|w| w == b"IFC4X3")` (then again for `IFC4`) — for an IFC2X3 file both scans traverse every byte and fail. Swapped to `memchr::memmem::find`, the same predicate with a SIMD scan. This sat in an untimed gap between phase counters, so it hid from the per-phase profile; measured **-14% total load on a 47 MB IFC2X3 model**, less on IFC4.
+  - **Skip the no-op sliver-refine pass.** `refine_high_aspect_slivers` runs after every voided host; on a clean cut (no high-aspect slivers, the common case) it still built a per-round edge→triangle `BTreeMap` and scanned it only to discover there was nothing to split. It now does one O(T) aspect scan first and returns the mesh unchanged when no triangle exceeds the sliver threshold — byte-identical to the former `changed_any == false` return — and uses an `FxHashMap` for the vertex-canonicalization lookup (ids are insertion-ordered, map never iterated). A few percent on void-heavy architectural models.
+
+  Output is byte-identical (mesh/vertex/triangle counts unchanged across the fixture set; no mesh-determinism manifest change).
+
+- [#1654](https://github.com/LTplus-AG/ifc-lite/pull/1654) [`47bf759`](https://github.com/LTplus-AG/ifc-lite/commit/47bf759b1b801d44f6a0ba7408f65d368096cb04) Thanks [@louistrue](https://github.com/louistrue)! - Faster browser cold load on RepresentationMap models: the streaming pre-pass's orphan-type-geometry collection ([#957](https://github.com/LTplus-AG/ifc-lite/issues/957)) ran a SECOND full `EntityScanner` walk over the whole file — a flagged `[#962](https://github.com/LTplus-AG/ifc-lite/issues/962)` TODO — whenever the model contained an `IfcRepresentationMap` (every Revit/Tekla mapped-item export, where the fast-path substring bail-out does not fire). The main scan already stashes the `IfcMappedItem` spans; it now also stashes the `IfcTypeProduct` candidate spans (with their `IfcType` resolved from the scanner's type name), and `collect_type_geometry_jobs_from_spans` builds the orphan-type jobs from those spans instead of re-walking the file — the same span-reuse pattern as the material-layer and referenced-map builders. Byte-identical: same referenced set, same candidates in file order, same unreferenced-map filter (verified on the fixture corpus plus orphan/referenced synthetic cases). Removes one whole-file scan from time-to-first-geometry on affected models.
+
 ## 3.0.13
 
 ### Patch Changes

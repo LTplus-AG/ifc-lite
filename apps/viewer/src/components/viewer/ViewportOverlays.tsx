@@ -157,7 +157,7 @@ export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: bool
         >
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon-sm" className={cn(isMobile && 'min-h-[44px] min-w-[44px]')} onClick={handleHome}>
+              <Button variant="ghost" size="icon-sm" aria-label="Home view" className={cn(isMobile && 'min-h-[44px] min-w-[44px]')} onClick={handleHome}>
                 <Home className={cn(isMobile ? 'h-5 w-5' : 'h-4 w-4')} />
               </Button>
             </TooltipTrigger>
@@ -166,7 +166,7 @@ export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: bool
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon-sm" className={cn(isMobile && 'min-h-[44px] min-w-[44px]')} onClick={handleZoomIn}>
+              <Button variant="ghost" size="icon-sm" aria-label="Zoom in" className={cn(isMobile && 'min-h-[44px] min-w-[44px]')} onClick={handleZoomIn}>
                 <ZoomIn className={cn(isMobile ? 'h-5 w-5' : 'h-4 w-4')} />
               </Button>
             </TooltipTrigger>
@@ -175,7 +175,7 @@ export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: bool
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon-sm" className={cn(isMobile && 'min-h-[44px] min-w-[44px]')} onClick={handleZoomOut}>
+              <Button variant="ghost" size="icon-sm" aria-label="Zoom out" className={cn(isMobile && 'min-h-[44px] min-w-[44px]')} onClick={handleZoomOut}>
                 <ZoomOut className={cn(isMobile ? 'h-5 w-5' : 'h-4 w-4')} />
               </Button>
             </TooltipTrigger>

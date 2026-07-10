@@ -17,20 +17,15 @@ import { collectScopeTypes, isScopeTargetType, type ScopeTypeStore } from './sco
 /** [expressId, STEP type name, hasGeometry, isType] */
 type Row = [number, string, boolean?, boolean?];
 
-/** Build a minimal store (entity table + byType index) from a row list. */
+/** Build a minimal store (entity table only, like an IFCX ingest) from a row list. */
 function makeStore(rows: Row[]): ScopeTypeStore {
   const strings = new StringTable();
   const builder = new EntityTableBuilder(rows.length, strings);
-  const byType = new Map<string, number[]>();
   for (const [id, type, hasGeometry = false, isType = false] of rows) {
     builder.add(id, type, `guid-${id}`, `${type}-${id}`, '', '', hasGeometry, isType);
-    const upper = type.toUpperCase();
-    const bucket = byType.get(upper) ?? [];
-    bucket.push(id);
-    byType.set(upper, bucket);
   }
   const entities: EntityTable = builder.build();
-  return { entities, entityIndex: { byType } };
+  return { entities };
 }
 
 describe('collectScopeTypes (#1662)', () => {
@@ -96,6 +91,16 @@ describe('collectScopeTypes (#1662)', () => {
     const offered = collectScopeTypes([a, b]);
     const wall = offered.find((o) => o.type === IfcTypeEnum.IfcWall);
     assert.strictEqual(wall?.count, 3);
+  });
+
+  it('offers chips for IFCX-shaped stores whose entityIndex.byType is permanently empty (#1667 regression)', () => {
+    // buildIfcxDataStore creates `entityIndex: { byId: new Map(), byType: new Map() }`
+    // and never fills byType; the chips must come from the entity table itself.
+    const { entities } = makeStore([[1, 'IFCWALL', true], [2, 'IFCSPACE', true]]);
+    const ifcxShaped = { entities, entityIndex: { byId: new Map(), byType: new Map() } };
+    const types = new Set(collectScopeTypes([ifcxShaped]).map((o) => o.type));
+    assert.ok(types.has(IfcTypeEnum.IfcWall), 'IFCX store must still offer Walls');
+    assert.ok(types.has(IfcTypeEnum.IfcSpace), 'IFCX store must still offer Spaces');
   });
 
   it('predicate rejects the non-element categories directly', () => {

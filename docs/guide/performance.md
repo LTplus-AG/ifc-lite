@@ -17,26 +17,20 @@ Two properties of the pipeline dominate throughput:
 - **Entity scanning is SIMD-accelerated** (memchr-based) in Rust, so the STEP walk itself is rarely the bottleneck on geometry-heavy files.
 - **Exact CSG void-cutting is the dominant geometry cost** on models with many openings. IFClite uses one exact cut per opening; per-element budgets and watchdogs keep pathological models from hanging the pipeline.
 
-### Viewer Benchmark Reference (2026-02-21)
+### Viewer Benchmark Reference
 
-Measured locally with the viewer benchmark suite on an Apple Silicon machine (see `tests/benchmark/README.md`; the committed CI baseline uses a slower headless environment and reads differently). The two largest fixtures are optional stress tests and should be fetched on demand:
+These numbers are stamped from the committed benchmark baseline so they cannot drift from what CI actually records. The two largest fixtures are optional stress tests and should be fetched on demand.
 
-| Model | Size | First Geometry | Total Time | Meshes |
-|-------|------|----------------|------------|--------|
-| FZK-Haus | 2.4 MB | ~202 ms | ~0.25 s | 244 |
-| Snowdon Towers | 8.3 MB | ~217 ms | ~0.59 s | 1,556 |
-| BWK-BIM | 326.8 MB | ~5.43 s | ~11.89 s | 39,146 |
-| Holter Tower | 169.2 MB | ~3.05 s | ~11.04 s | 108,551 |
+<!-- BEGIN GENERATED: perf-numbers -->
+| Model | File size | Entities | Meshes | Total load | Recorded |
+|-------|-----------|----------|--------|-----------|----------|
+| AC20-FZK-Haus | 2.4 MB | 44,249 | 317 | 3.3 s | 2026-07-01 |
+| 01_Snowdon_Towers_Sample_Structural(1) | 8.3 MB | 147,142 | 17,380 | 3.7 s | 2026-07-01 |
+| ISSUE_053_20181220Holter_Tower_10 | 169.2 MB | 2,807,815 | 108,551 | 11.0 s | 2026-02-21 |
+| O-S1-BWK-BIM architectural - BIM bouwkundig | 326.8 MB | 4,411,807 | 39,146 | 11.9 s | 2026-02-21 |
 
-### End-to-End Viewer Loading
-
-Full loading times including parsing, geometry processing, and rendering, from the same reference run:
-
-| Model | Size | Entities | Total Load | First Batch | Geometry (WASM) | Data Model Parse |
-|-------|------|----------|------------|-------------|-----------------|------------------|
-| Large architectural | 327 MB | 4.4M | **11.9 s** | 5.43 s | 2.98 s | 3.16 s |
-| Tower complex | 169 MB | 2.8M | **11.0 s** | 3.05 s | 5.60 s | 2.07 s |
-| Small model | 8.3 MB | 147K | **0.59 s** | 217 ms | 292 ms | 110 ms |
+Source: `tests/benchmark/baseline.json`, the committed viewer-benchmark regression baseline. Rows recorded on 2026-07-01 come from the CI runner (GitHub Actions `ubuntu-latest`, headless Chrome + SwiftShader, production build); earlier rows are reference runs on faster local hardware, so the two groups are not directly comparable. Refresh with `pnpm docs:generate` after recording a new baseline.
+<!-- END GENERATED: perf-numbers -->
 
 ## Zero-Copy GPU Pipeline
 

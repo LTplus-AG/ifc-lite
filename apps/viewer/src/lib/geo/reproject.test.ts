@@ -277,6 +277,57 @@ describe('reproject helpers', () => {
   });
 });
 
+describe('computeCesiumModelOrigin geoid correction default (#1355)', () => {
+  // A Dutch RD-New file with NO VerticalDatum declared — the common case the
+  // bug missed. Before the fix the orthometric->ellipsoidal correction was
+  // gated on a declared VerticalDatum, so this model sank ~N (~+43 m in NL)
+  // below the world terrain. The correction is now the DEFAULT.
+  const nlCrs: ProjectedCRS = {
+    id: 1,
+    name: 'EPSG:28992',
+    mapUnit: 'METRE',
+    mapUnitScale: 1,
+    // verticalDatum intentionally omitted.
+  };
+  const nlConversion: MapConversion = {
+    id: 2,
+    sourceCRS: 10,
+    targetCRS: 1,
+    eastings: 121687.331,
+    northings: 487326.994,
+    orthogonalHeight: 0,
+    xAxisAbscissa: 1,
+    xAxisOrdinate: 0,
+    scale: 1,
+  };
+
+  it('adds the geoid undulation N by default even without a VerticalDatum', async () => {
+    const origin = await computeCesiumModelOrigin(nlConversion, nlCrs);
+    assert.ok(origin, 'should resolve EPSG:28992 offline');
+    // Lands in the Netherlands (~52 N, ~5 E) where EGM96 N is ~+43 m.
+    assert.ok(origin!.latitude > 51 && origin!.latitude < 54, `lat = ${origin!.latitude}`);
+    assert.ok(
+      origin!.geoidUndulation > 40 && origin!.geoidUndulation < 48,
+      `geoidUndulation = ${origin!.geoidUndulation} (expected ~+43 m for NL)`,
+    );
+    // Ellipsoidal height fed to Cesium = orthometric authored height + N.
+    assert.strictEqual(origin!.ifcOriginHeight, 0);
+    assert.ok(
+      Math.abs(origin!.height - (origin!.ifcOriginHeight + origin!.geoidUndulation)) < 1e-9,
+      `height ${origin!.height} should equal ifcOriginHeight + N`,
+    );
+  });
+
+  it('skips the correction when heights are flagged ellipsoidal (opt-out)', async () => {
+    const origin = await computeCesiumModelOrigin(
+      nlConversion, nlCrs, undefined, 1, undefined, /* heightsAreEllipsoidal */ true,
+    );
+    assert.ok(origin);
+    assert.strictEqual(origin!.geoidUndulation, 0);
+    assert.strictEqual(origin!.height, origin!.ifcOriginHeight);
+  });
+});
+
 describe('reprojectPointToLatLon (#1657 measure geo lat/lon)', () => {
   // building-architecture.ifc constants (EPSG:32760, UTM zone 60S), offsets in
   // millimetres (mapUnitScale 0.001) — mirrors pick-to-geo.test.ts.

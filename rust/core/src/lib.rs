@@ -62,6 +62,7 @@
 //! - **Entity scanning**: ~650 MB/s with SIMD acceleration
 //! - **Number parsing**: 10x faster than std using [lexical-core](https://docs.rs/lexical-core)
 
+pub mod columnar_index;
 pub mod decoder;
 pub mod error;
 pub mod fast_parse;
@@ -77,6 +78,7 @@ pub mod step_encoding;
 pub mod streaming;
 pub mod units;
 
+pub use columnar_index::ColumnarEntityIndex;
 pub use decoder::{build_entity_index, EntityDecoder, EntityIndex};
 pub use error::{Error, Result};
 pub use fast_parse::{

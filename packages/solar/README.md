@@ -50,8 +50,8 @@ architectural shadow / right-to-light studies require.
 
 ## Docs
 
-See the [ifc-lite docs](https://ltplus-ag.github.io/ifc-lite/) and the
-[API Reference](https://ltplus-ag.github.io/ifc-lite/api/typescript/).
+See the [ifc-lite docs](https://ifclite.dev/docs/) and the
+[API Reference](https://ifclite.dev/docs/api/typescript/).
 
 ## License
 

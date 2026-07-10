@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/collab",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "Real-time collaborative BIM via CRDT on IFCX",
   "type": "module",
   "main": "./dist/index.js",
@@ -59,7 +59,7 @@
     "url": "https://github.com/LTplus-AG/ifc-lite.git",
     "directory": "packages/collab"
   },
-  "homepage": "https://ltplus-ag.github.io/ifc-lite/",
+  "homepage": "https://ifclite.dev/docs/",
   "bugs": "https://github.com/LTplus-AG/ifc-lite/issues",
   "keywords": [
     "ifc",

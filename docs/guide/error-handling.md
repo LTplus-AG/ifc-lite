@@ -43,7 +43,7 @@ Two practices still apply when reusing an instance across loads:
 ```ts
 let api = new IfcAPI();
 try {
-  const result = api.processGeometryBatch(/* ... */);
+  const result = api.processGeometryBatch(...args); // any batch call
   // ... use result ...
 } catch (err) {
   // Optional hard isolation: replace the instance.

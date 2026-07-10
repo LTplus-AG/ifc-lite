@@ -30,7 +30,7 @@ import type { StreamingGeometryEvent } from './index.js';
 import { mergeGeometryDiagnostics, type GeometryDiagnostics } from './diagnostics.js';
 import { computeWorkerCount } from './worker-count.js';
 import type { BatchSizingConfig } from './batch-sizing.js';
-import { notifyIfWasmAssetUnavailable } from './wasm-asset-error.js';
+import { notifyIfWasmAssetUnavailable, notifyIfWorkerScriptUnavailable } from './wasm-asset-error.js';
 
 /**
  * Plan content-affinity routing for one chunk: assign each job (by index) to a
@@ -292,7 +292,11 @@ export async function* processParallel(
   // workerCount at this point). The closure indexes by workerIndex.
   const firstBatchByWorker: number[] = [];
   const installWorkerHandlers = (worker: Worker, workerIndex: number) => {
+    // True once the worker delivers ANY message — distinguishes an in-worker
+    // crash from the worker SCRIPT failing to load (stale-deploy 404, #1251).
+    let workerSpoke = false;
     worker.onmessage = (e: MessageEvent) => {
+      workerSpoke = true;
       const msg = e.data;
       if (msg.type === 'ready') {
         console.log(`[stream] worker[${workerIndex}] WASM ready @ ${elapsed()}ms`);
@@ -444,8 +448,12 @@ export async function* processParallel(
       const detail =
         (err?.message && String(err.message)) ||
         (err?.filename ? `at ${err.filename}:${err.lineno ?? 0}` : '') ||
-        'worker terminated unexpectedly';
-      notifyIfWasmAssetUnavailable(detail);
+        (workerSpoke
+          ? 'worker terminated unexpectedly'
+          : 'worker script failed to load (possibly a stale deployment)');
+      // Covers both the wasm-binary 404 (message present, #1363) and the
+      // worker SCRIPT 404 after a redeploy (empty message, never spoke).
+      notifyIfWorkerScriptUnavailable(err, workerSpoke);
       workerError = new Error(`Geometry worker failed: ${detail}`);
       workersCompleted++;
       worker.terminate();
@@ -715,7 +723,13 @@ export async function* processParallel(
   let chunkArrivals = 0;
   let totalDispatchedJobs = 0;
   let firstChunkAt = -1;
+  // True once the pre-pass worker delivers ANY message — distinguishes an
+  // in-worker failure from the worker SCRIPT failing to load (a stale-deploy
+  // 404 is served as text/plain; the browser blocks the worker and fires
+  // onerror with an EMPTY message, so the wasm matcher alone never fires).
+  let prepassSpoke = false;
   prepassWorker.onmessage = (e: MessageEvent) => {
+    prepassSpoke = true;
     const data = e.data;
     if (data.type === 'prepass-progress') {
       eventQueue.push({ type: 'progress', phase: 'prepass' });
@@ -974,8 +988,16 @@ export async function* processParallel(
     // `buildPrePassStreaming`. We treat unknown messages as no-ops.
   };
   prepassWorker.onerror = (e) => {
-    notifyIfWasmAssetUnavailable(e.message);
-    prepassError = new Error(`Pre-pass worker failed: ${e.message}`);
+    const detail =
+      (e?.message && String(e.message)) ||
+      (prepassSpoke
+        ? 'worker terminated unexpectedly'
+        : 'worker script failed to load (possibly a stale deployment)');
+    // Covers both the wasm-binary 404 (message present, #1363) and the worker
+    // SCRIPT 404 after a redeploy (empty message, never spoke) — either way
+    // the host reloads once onto the current deployment.
+    notifyIfWorkerScriptUnavailable(e, prepassSpoke);
+    prepassError = new Error(`Pre-pass worker failed: ${detail}`);
     prepassDone = true;
     prepassWorker.terminate();
     wake();

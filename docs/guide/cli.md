@@ -1107,32 +1107,34 @@ Run `ifc-lite schema` to see the full API before writing eval expressions.
 
 ## Command Reference
 
+<!-- BEGIN GENERATED: cli-commands -->
 | Command | Description |
 |---------|-------------|
-| `view` | Launch interactive 3D viewer with REST API |
-| `analyze` | Visual analysis overlay on running viewer |
 | `info` | Model summary (schema, entities, storeys) |
-| `stats` | Auto-calculated model KPIs and health check |
-| `query` | Query entities by type/properties with full data access |
+| `query` | Query entities by type/properties/quantities |
 | `props` | All properties for a single entity |
-| `export` | Export to CSV, JSON, IFC STEP, glTF, and more |
-| `diagnose-geometry` | CSG / opening diagnostics report |
-| `extract-entities` | Isolate entities into a small standalone IFC |
-| `lod` | Generate lightweight LOD0/LOD1 artifacts |
+| `export` | Export data / Honeybee energy model |
+| `diagnose-geometry` | CSG / opening diagnostics (failures, classification) |
+| `extract-entities` | Isolate entities into a small, viewable standalone IFC |
 | `ids` | Validate against IDS rules |
-| `bcf` | BCF collaboration (create, list, add-comment) |
-| `clash` | Geometric clash detection (matrix or ad-hoc rules, BCF export) |
-| `create` | Create IFC elements (29 types with properties/materials/colors) |
-| `mutate` | Modify properties/attributes and save |
-| `generate-spaces` | Derive IfcSpace from walls |
+| `bcf` | Work with BCF collaboration files |
+| `clash` | Detect geometric clashes between elements |
+| `create` | Create IFC elements (30+ types) |
+| `eval` | Evaluate SDK expression |
+| `run` | Execute a script against model |
+| `schema` | Dump SDK API schema (for LLM tools) |
 | `merge` | Merge multiple IFC files |
 | `convert` | Convert between IFC schema versions |
 | `diff` | Compare two IFC files |
 | `validate` | Structural validation checks |
 | `bsdd` | buildingSMART Data Dictionary lookup |
-| `eval` | Evaluate SDK expressions |
-| `run` | Execute scripts against model |
+| `stats` | Auto-calculated model KPIs and health check |
+| `mutate` | Modify properties/attributes and save |
+| `generate-spaces` | Derive IfcSpace from walls (slab/roof-aware height) |
 | `ask` | Natural language BIM queries |
-| `schema` | Dump SDK API schema |
+| `view` | Interactive 3D viewer in browser |
+| `analyze` | Query + visualize analysis results |
+| `lod` | Generate lightweight LOD artifacts |
 | `mcp` | Start an MCP server bound to one or more IFC files |
-| `ext` | Author / validate / pack / test / sign IFClite extensions |
+| `ext` | Manage IFClite extensions (Phase 0 — validate, init) |
+<!-- END GENERATED: cli-commands -->

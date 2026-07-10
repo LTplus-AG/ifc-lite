@@ -54,6 +54,7 @@ import { createSplitToolSlice, type SplitToolSlice } from './slices/splitToolSli
 import { createLevelDisplaySlice, type LevelDisplaySlice } from './slices/levelDisplaySlice.js';
 import { createPointCloudSlice, type PointCloudSlice, POINT_CLOUD_DEFAULTS } from './slices/pointCloudSlice.js';
 import { createUnitDisplaySlice, type UnitDisplaySlice } from './slices/unitDisplaySlice.js';
+import { createSpaceMouseSlice, type SpaceMouseSlice } from './slices/spaceMouseSlice.js';
 import { invalidateVisibleBasketCache } from './basketVisibleSet.js';
 
 // Import constants for reset function
@@ -164,6 +165,7 @@ export type ViewerState = LoadingSlice &
   LevelDisplaySlice &
   PointCloudSlice &
   UnitDisplaySlice &
+  SpaceMouseSlice &
   ExtensionsSlice & {
     resetViewerState: () => void;
     /**
@@ -249,6 +251,7 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
   ...createLevelDisplaySlice(...args),
   ...createPointCloudSlice(...args),
   ...createUnitDisplaySlice(...args),
+  ...createSpaceMouseSlice(...args),
   ...createExtensionsSlice(...args),
 
   // Reset all viewer state when loading new file
@@ -368,7 +371,14 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       cesiumAvailable: false,
       cesiumEnabled: false,
       cesiumTerrainHeight: null,
+      // The snap target is model-specific terrain state; drop it with the
+      // sampled height so a new file can't reuse the old target (#1456).
+      cesiumTerrainSaveHeight: null,
       cesiumSourceModelId: null,
+      // A new file is orthometric by default — re-arm the geoid correction
+      // so a previous file's "heights are ellipsoidal" opt-out doesn't carry
+      // over (#1355).
+      cesiumHeightsAreEllipsoidal: false,
       cesiumTerrainClipY: null,
       cesiumGlbLoaded: false,
       cesiumPlacementEditMode: false,

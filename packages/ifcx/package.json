@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/ifcx",
-  "version": "2.2.1",
+  "version": "2.2.2",
   "description": "IFC5 (IFCX) parser for IFC-Lite",
   "type": "module",
   "main": "./dist/index.js",
@@ -33,7 +33,7 @@
     "url": "https://github.com/LTplus-AG/ifc-lite.git",
     "directory": "packages/ifcx"
   },
-  "homepage": "https://ltplus-ag.github.io/ifc-lite/",
+  "homepage": "https://ifclite.dev/docs/",
   "bugs": "https://github.com/LTplus-AG/ifc-lite/issues",
   "keywords": [
     "ifc",

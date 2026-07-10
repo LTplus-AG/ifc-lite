@@ -183,6 +183,49 @@ pub(crate) fn collect_type_geometry_jobs(
         .collect()
 }
 
+/// Span-based twin of [`collect_type_geometry_jobs`]. The streaming pre-pass
+/// stashes both the `IfcMappedItem` spans and the `IfcTypeProduct` candidate
+/// spans (with their resolved `IfcType`, computed from the scanner's `type_name`)
+/// during its single scan, so this reuses them instead of re-walking the whole
+/// file — the #957/#962 second `EntityScanner` pass. Byte-identical: same
+/// referenced set (same mapped-item spans, file order), same candidates (same
+/// type spans in file order, same attr-6 RepresentationMaps decode), same
+/// unreferenced-map filter, same output order.
+pub(crate) fn collect_type_geometry_jobs_from_spans(
+    mapped_item_spans: &[(u32, usize, usize)],
+    type_candidate_spans: &[(u32, usize, usize, ifc_lite_core::IfcType)],
+    decoder: &mut ifc_lite_core::EntityDecoder,
+) -> Vec<(u32, usize, usize, ifc_lite_core::IfcType)> {
+    let mut referenced: rustc_hash::FxHashSet<u32> = rustc_hash::FxHashSet::default();
+    for &(id, start, end) in mapped_item_spans {
+        if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
+            if let Some(source_id) = entity.get_ref(0) {
+                referenced.insert(source_id);
+            }
+        }
+    }
+
+    let mut candidates: Vec<(u32, usize, usize, ifc_lite_core::IfcType, Vec<u32>)> = Vec::new();
+    for &(id, start, end, ifc_type) in type_candidate_spans {
+        if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
+            let rep_maps: Vec<u32> = entity
+                .get(6)
+                .and_then(|a| a.as_list())
+                .map(|list| list.iter().filter_map(|v| v.as_entity_ref()).collect())
+                .unwrap_or_default();
+            if !rep_maps.is_empty() {
+                candidates.push((id, start, end, ifc_type, rep_maps));
+            }
+        }
+    }
+
+    candidates
+        .into_iter()
+        .filter(|(_, _, _, _, maps)| maps.iter().any(|rm| !referenced.contains(rm)))
+        .map(|(id, start, end, ifc_type, _)| (id, start, end, ifc_type))
+        .collect()
+}
+
 /// #957: the set of `RepresentationMap`s instantiated by an `IfcMappedItem`, so
 /// `processGeometryBatch` can tell which of a type's RepresentationMaps are
 /// orphan (rendered directly) vs already drawn through an occurrence.
@@ -300,3 +343,98 @@ pub(crate) fn build_instantiated_type_ids_from_spans(
 // longer drift between them. (It is still derived from the canonical resolved
 // placement matrix `GeometryRouter::resolve_scaled_placement` + the shared
 // `ifc_lite_geometry::rotation_angle_about_z`.)
+
+#[cfg(test)]
+mod orphan_type_from_spans_tests {
+    use super::{collect_type_geometry_jobs, collect_type_geometry_jobs_from_spans};
+    use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner, IfcType};
+
+    /// Build the mapped-item + type-candidate spans exactly as the streaming
+    /// pre-pass scan does, then assert the span-based orphan-type collector
+    /// matches the full-scan one byte-for-byte.
+    fn assert_match(content: &[u8]) -> usize {
+        let index = std::sync::Arc::new(build_entity_index(content));
+        let mut d1 = EntityDecoder::with_arc_index(content, index.clone());
+        let old = collect_type_geometry_jobs(content, &mut d1);
+        let mut mapped: Vec<(u32, usize, usize)> = Vec::new();
+        let mut cands: Vec<(u32, usize, usize, IfcType)> = Vec::new();
+        let mut sc = EntityScanner::new(content);
+        while let Some((id, tn, st, en)) = sc.next_entity() {
+            if tn == "IFCMAPPEDITEM" {
+                mapped.push((id, st, en));
+            } else if tn.ends_with("TYPE") || tn.ends_with("STYLE") {
+                let t = IfcType::from_str(tn);
+                if t.is_subtype_of(IfcType::IfcTypeProduct) {
+                    cands.push((id, st, en, t));
+                }
+            }
+        }
+        let mut d2 = EntityDecoder::with_arc_index(content, index);
+        let new = collect_type_geometry_jobs_from_spans(&mapped, &cands, &mut d2);
+        assert_eq!(old, new, "orphan type jobs diverged");
+        old.len()
+    }
+
+    // An IfcColumnType carrying a RepresentationMap that NO IfcMappedItem
+    // references — the #957 orphan-type-geometry case (renders the type's map
+    // directly). RepresentationMaps is IfcTypeProduct attr 6.
+    const ORPHAN: &str = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('t.ifc','',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0Project0000000000000A',$,'P',$,$,$,$,(#2),#3);
+#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,#5,$);
+#3=IFCUNITASSIGNMENT((#6));
+#4=IFCCARTESIANPOINT((0.,0.,0.));
+#5=IFCAXIS2PLACEMENT3D(#4,$,$);
+#6=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#8=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(1.,0.,0.),(0.,1.,0.),(0.,0.,1.)));
+#10=IFCREPRESENTATIONMAP(#5,#12);
+#12=IFCSHAPEREPRESENTATION(#2,'Body','Tessellation',(#13));
+#13=IFCTRIANGULATEDFACESET(#8,$,.T.,((1,2,3),(1,2,4),(1,4,3),(2,3,4)),$);
+#20=IFCCOLUMNTYPE('0ColType00000000000A',$,'ColType',$,$,$,(#10),$,$,.COLUMN.);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+    // Same, but an IfcMappedItem references the map — the map is drawn through
+    // the occurrence, so the type yields NO orphan job (filtered out).
+    const REFERENCED: &str = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('t.ifc','',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0Project0000000000000A',$,'P',$,$,$,$,(#2),#3);
+#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,#5,$);
+#3=IFCUNITASSIGNMENT((#6));
+#4=IFCCARTESIANPOINT((0.,0.,0.));
+#5=IFCAXIS2PLACEMENT3D(#4,$,$);
+#6=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#8=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(1.,0.,0.),(0.,1.,0.),(0.,0.,1.)));
+#10=IFCREPRESENTATIONMAP(#5,#12);
+#12=IFCSHAPEREPRESENTATION(#2,'Body','Tessellation',(#13));
+#13=IFCTRIANGULATEDFACESET(#8,$,.T.,((1,2,3),(1,2,4),(1,4,3),(2,3,4)),$);
+#20=IFCCOLUMNTYPE('0ColType00000000000A',$,'ColType',$,$,$,(#10),$,$,.COLUMN.);
+#30=IFCMAPPEDITEM(#10,#31);
+#31=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#4,$,$);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+    #[test]
+    fn from_spans_matches_full_scan_orphan_case() {
+        let n = assert_match(ORPHAN.as_bytes());
+        assert_eq!(n, 1, "the orphan IfcColumnType should yield one type job");
+    }
+
+    #[test]
+    fn from_spans_matches_full_scan_referenced_case() {
+        let n = assert_match(REFERENCED.as_bytes());
+        assert_eq!(n, 0, "a referenced RepresentationMap yields no orphan type job");
+    }
+}

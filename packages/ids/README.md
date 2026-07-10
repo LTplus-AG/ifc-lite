@@ -100,7 +100,7 @@ for (const spec of idsSpec.specifications) {
 
 ## API
 
-See the [IDS Guide](https://ltplus-ag.github.io/ifc-lite/guide/ids/) and [API Reference](https://ltplus-ag.github.io/ifc-lite/api/typescript/#ifc-liteids).
+See the [IDS Guide](https://ifclite.dev/docs/guide/ids/) and [API Reference](https://ifclite.dev/docs/api/typescript/#ifc-liteids).
 
 ## License
 

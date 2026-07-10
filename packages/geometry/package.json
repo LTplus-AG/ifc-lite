@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/geometry",
-  "version": "3.1.3",
+  "version": "3.1.4",
   "description": "Geometry processing bridge for IFC-Lite - 1.9x faster than web-ifc",
   "type": "module",
   "main": "./dist/index.js",
@@ -36,7 +36,7 @@
     "url": "https://github.com/LTplus-AG/ifc-lite.git",
     "directory": "packages/geometry"
   },
-  "homepage": "https://ltplus-ag.github.io/ifc-lite/",
+  "homepage": "https://ifclite.dev/docs/",
   "bugs": "https://github.com/LTplus-AG/ifc-lite/issues",
   "keywords": [
     "ifc",

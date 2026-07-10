@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/create",
-  "version": "1.16.3",
+  "version": "1.16.4",
   "description": "IFC creation from scratch — walls, slabs, beams, columns, stairs, roofs with geometry, properties and quantities",
   "type": "module",
   "main": "./dist/index.js",
@@ -33,7 +33,7 @@
     "url": "https://github.com/LTplus-AG/ifc-lite.git",
     "directory": "packages/create"
   },
-  "homepage": "https://ltplus-ag.github.io/ifc-lite/",
+  "homepage": "https://ifclite.dev/docs/",
   "bugs": "https://github.com/LTplus-AG/ifc-lite/issues",
   "keywords": [
     "ifc",

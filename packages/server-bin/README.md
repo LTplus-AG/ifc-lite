@@ -116,7 +116,7 @@ cargo build --release
 
 ## Docs
 
-See the [Server Guide](https://ltplus-ag.github.io/ifc-lite/guide/server/).
+See the [Server Guide](https://ifclite.dev/docs/guide/server/).
 
 ## License
 

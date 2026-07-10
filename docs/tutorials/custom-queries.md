@@ -336,6 +336,7 @@ const allExternal = query
 
 ### 2. Use Count for Checks
 
+<!-- docs-check: skip -->
 ```typescript
 // Good: just check count (count() is async, so await it)
 const hasExternalWalls = (await query

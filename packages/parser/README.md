@@ -121,7 +121,7 @@ if (georef?.hasGeoreference) {
 
 ## API
 
-See the [Parsing Guide](https://ltplus-ag.github.io/ifc-lite/guide/parsing/) and [API Reference](https://ltplus-ag.github.io/ifc-lite/api/typescript/#ifc-liteparser).
+See the [Parsing Guide](https://ifclite.dev/docs/guide/parsing/) and [API Reference](https://ifclite.dev/docs/api/typescript/#ifc-liteparser).
 
 ## License
 

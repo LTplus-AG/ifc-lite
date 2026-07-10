@@ -66,7 +66,7 @@ const meshes = await decodeParquetGeometry(arrayBuffer);
 
 ## API
 
-See the [Server Guide](https://ltplus-ag.github.io/ifc-lite/guide/server/) and [API Reference](https://ltplus-ag.github.io/ifc-lite/api/typescript/#ifc-liteserver-client).
+See the [Server Guide](https://ifclite.dev/docs/guide/server/) and [API Reference](https://ifclite.dev/docs/api/typescript/#ifc-liteserver-client).
 
 ## License
 

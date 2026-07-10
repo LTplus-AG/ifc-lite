@@ -33,7 +33,7 @@ const result = evaluateLens(BUILTIN_LENSES[0], provider);
 
 ## Links
 
-- Docs: https://ltplus-ag.github.io/ifc-lite/
+- Docs: https://ifclite.dev/docs/
 - Source: https://github.com/LTplus-AG/ifc-lite
 
 ## License

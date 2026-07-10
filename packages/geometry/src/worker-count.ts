@@ -120,7 +120,16 @@ export function computeWorkerCount(inputs: WorkerCountInputs): WorkerCountResult
   if (fileSizeMB >= MIN_PARALLEL_MB && fileSizeMB <= SMALL_FILE_MB && cores >= 10) {
     coresCap = Math.min(maxWorkers, cores - 2);
   } else if (cores >= 16 && deviceMemoryGB >= 16) {
-    coresCap = Math.min(maxWorkers, Math.floor(cores / 2));
+    // Same >512 MB bandwidth ceiling as the 12-core tier below. This was the
+    // ONLY tier without the huge-file clamp, so a 16-core desktop spawned
+    // cores/2 = 8 workers on an 883 MB model - each a private MVP-wasm realm
+    // holding a full source copy plus its own entity index (~fileSize x 1.5
+    // ~= 1.3 GB each, ~10.6 GB total), producing the 16 GB peaks reported in
+    // #1682. Geometry wall-time on huge files is memory-bandwidth bound, not
+    // core bound (the 12-core A/B sweep showed a 5th/6th grinder yields no
+    // speedup), so the extra workers bought nothing but memory. Users can
+    // still override per-host via `?geomWorkers=N`.
+    coresCap = fileSizeMB > 512 ? 4 : Math.min(maxWorkers, Math.floor(cores / 2));
   } else if (cores >= 12 && deviceMemoryGB >= 8) {
     // 12+ cores indicates M-series Pro 12-core or M-series Max with active
     // cooling. The >512 MB cap stays 4: a `?geomWorkers` A/B sweep on a large

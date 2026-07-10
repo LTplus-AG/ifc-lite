@@ -454,7 +454,10 @@ pub fn refine_high_aspect_slivers(mesh: &Mesh) -> Mesh {
     let mut canon_of: Vec<usize> = vec![0; vertex_count];
     let mut cpos: Vec<[f64; 3]> = Vec::new();
     {
-        let mut seen: BTreeMap<(i64, i64, i64), usize> = BTreeMap::new();
+        // FxHashMap (canonical ids are insertion-ordered via `cpos.len()`, the
+        // map is only queried by key — output identical, no tree-balance cost).
+        let mut seen: rustc_hash::FxHashMap<(i64, i64, i64), usize> =
+            rustc_hash::FxHashMap::default();
         for i in 0..vertex_count {
             let p = pos(i);
             let key = (dedup_key(p[0]), dedup_key(p[1]), dedup_key(p[2]));
@@ -488,6 +491,17 @@ pub fn refine_high_aspect_slivers(mesh: &Mesh) -> Mesh {
             (v, u)
         }
     };
+
+    // Fast path (common case: a clean cut leaves no slivers). A split only fires
+    // for a triangle whose aspect exceeds SLIVER_ASPECT; if none does, the round
+    // loop would build its edge map, find nothing, and return the mesh unchanged.
+    // One O(T) scan detects that and skips it — byte-identical to that no-op.
+    if !tris
+        .iter()
+        .any(|t| aspect(cpos[t[0]], cpos[t[1]], cpos[t[2]]) > SLIVER_ASPECT)
+    {
+        return mesh.clone();
+    }
 
     let mut changed_any = false;
     for _round in 0..MAX_BISECT_ROUNDS {

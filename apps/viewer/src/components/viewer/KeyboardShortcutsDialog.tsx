@@ -118,7 +118,7 @@ function AboutTab() {
           <ExternalLink className="h-3 w-3" />
         </a>
         <a
-          href="https://ltplus-ag.github.io/ifc-lite/"
+          href="https://ifclite.dev/docs/"
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
@@ -400,7 +400,7 @@ function ShortcutsTab() {
         </a>
         <span className="mx-1.5 opacity-40">·</span>
         <a
-          href="https://ltplus-ag.github.io/ifc-lite/"
+          href="https://ifclite.dev/docs/"
           target="_blank"
           rel="noopener noreferrer"
           className="underline-offset-2 hover:underline hover:text-primary transition-colors"

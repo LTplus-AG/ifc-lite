@@ -73,7 +73,7 @@ The index is generated at build time and committed to the repo, so normal builds
 
 ## API
 
-See the [API Reference](https://ltplus-ag.github.io/ifc-lite/api/typescript/#ifc-litedata).
+See the [API Reference](https://ifclite.dev/docs/api/typescript/#ifc-litedata).
 
 ## License
 

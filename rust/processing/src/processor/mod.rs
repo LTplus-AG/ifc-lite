@@ -890,16 +890,12 @@ pub fn process_geometry_streaming_filtered_with_options(
         opening_filter,
     );
 
-    // Detect schema version
-    if content
-        .windows(b"IFC4X3".len())
-        .any(|window| window == b"IFC4X3")
-    {
+    // Detect schema version. SIMD substring search (memmem) instead of the naive
+    // per-position `windows().any()`, which walked the WHOLE file — twice for an
+    // IFC2X3 file where both matches fail. Same predicate, byte-identical result.
+    if memchr::memmem::find(content, b"IFC4X3").is_some() {
         schema_version = "IFC4X3".into();
-    } else if content
-        .windows(b"IFC4".len())
-        .any(|window| window == b"IFC4")
-    {
+    } else if memchr::memmem::find(content, b"IFC4").is_some() {
         schema_version = "IFC4".into();
     }
 

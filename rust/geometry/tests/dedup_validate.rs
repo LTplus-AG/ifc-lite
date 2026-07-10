@@ -638,3 +638,274 @@ fn dedup_byte_identical_and_faster() {
     assert_eq!(mismatches, 0, "content-dedup produced different geometry");
     println!("✓ dedup is byte-identical to the non-deduped path");
 }
+
+/// Two geometrically-IDENTICAL voided walls (same 2x0.3x3 swept section, same
+/// 0.5x0.5x1 opening at the same wall-relative offset) at DIFFERENT placements,
+/// plus a third wall with a DISTINCT (0.8x0.8) opening. Exercises the VOID path
+/// (`process_element_with_submeshes_and_voids`), which the calibration snapshot
+/// harness (`process_element` only) cannot see — the parity gate for the
+/// element-level void-cut dedup work (#1286).
+fn synthetic_voided_duplicates_ifc() -> String {
+    r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('voided.ifc','2025-01-01T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('proj',$,'P','',$,$,$,(#12),#7);
+#7=IFCUNITASSIGNMENT((#8));
+#8=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#12=IFCGEOMETRICREPRESENTATIONCONTEXT('3D','Model',3,1.E-6,#14,$);
+#14=IFCAXIS2PLACEMENT3D(#15,$,$);
+#15=IFCCARTESIANPOINT((0.,0.,0.));
+#40=IFCLOCALPLACEMENT($,#41);
+#41=IFCAXIS2PLACEMENT3D(#42,$,$);
+#42=IFCCARTESIANPOINT((0.,0.,0.));
+#50=IFCWALL('w1',$,'W1','',$,#40,#51,$,$);
+#51=IFCPRODUCTDEFINITIONSHAPE($,$,(#52));
+#52=IFCSHAPEREPRESENTATION(#12,'Body','SweptSolid',(#53));
+#53=IFCEXTRUDEDAREASOLID(#54,#57,#60,3.);
+#54=IFCRECTANGLEPROFILEDEF(.AREA.,$,#55,2.,0.3);
+#55=IFCAXIS2PLACEMENT2D(#56,$);
+#56=IFCCARTESIANPOINT((0.,0.));
+#57=IFCAXIS2PLACEMENT3D(#58,$,$);
+#58=IFCCARTESIANPOINT((0.,0.,0.));
+#60=IFCDIRECTION((0.,0.,1.));
+#140=IFCLOCALPLACEMENT($,#141);
+#141=IFCAXIS2PLACEMENT3D(#142,$,$);
+#142=IFCCARTESIANPOINT((0.,0.,1.));
+#150=IFCOPENINGELEMENT('o1',$,'O1','',$,#140,#151,$,$);
+#151=IFCPRODUCTDEFINITIONSHAPE($,$,(#152));
+#152=IFCSHAPEREPRESENTATION(#12,'Body','SweptSolid',(#153));
+#153=IFCEXTRUDEDAREASOLID(#154,#157,#160,1.);
+#154=IFCRECTANGLEPROFILEDEF(.AREA.,$,#155,0.5,0.5);
+#155=IFCAXIS2PLACEMENT2D(#156,$);
+#156=IFCCARTESIANPOINT((0.,0.));
+#157=IFCAXIS2PLACEMENT3D(#158,$,$);
+#158=IFCCARTESIANPOINT((0.,0.,0.));
+#160=IFCDIRECTION((0.,0.,1.));
+#201=IFCRELVOIDSELEMENT('rv1',$,$,$,#50,#150);
+#240=IFCLOCALPLACEMENT($,#241);
+#241=IFCAXIS2PLACEMENT3D(#242,$,$);
+#242=IFCCARTESIANPOINT((10.,0.,0.));
+#250=IFCWALL('w2',$,'W2','',$,#240,#251,$,$);
+#251=IFCPRODUCTDEFINITIONSHAPE($,$,(#252));
+#252=IFCSHAPEREPRESENTATION(#12,'Body','SweptSolid',(#253));
+#253=IFCEXTRUDEDAREASOLID(#254,#257,#260,3.);
+#254=IFCRECTANGLEPROFILEDEF(.AREA.,$,#255,2.,0.3);
+#255=IFCAXIS2PLACEMENT2D(#256,$);
+#256=IFCCARTESIANPOINT((0.,0.));
+#257=IFCAXIS2PLACEMENT3D(#258,$,$);
+#258=IFCCARTESIANPOINT((0.,0.,0.));
+#260=IFCDIRECTION((0.,0.,1.));
+#340=IFCLOCALPLACEMENT($,#341);
+#341=IFCAXIS2PLACEMENT3D(#342,$,$);
+#342=IFCCARTESIANPOINT((10.,0.,1.));
+#350=IFCOPENINGELEMENT('o2',$,'O2','',$,#340,#351,$,$);
+#351=IFCPRODUCTDEFINITIONSHAPE($,$,(#352));
+#352=IFCSHAPEREPRESENTATION(#12,'Body','SweptSolid',(#353));
+#353=IFCEXTRUDEDAREASOLID(#354,#357,#360,1.);
+#354=IFCRECTANGLEPROFILEDEF(.AREA.,$,#355,0.5,0.5);
+#355=IFCAXIS2PLACEMENT2D(#356,$);
+#356=IFCCARTESIANPOINT((0.,0.));
+#357=IFCAXIS2PLACEMENT3D(#358,$,$);
+#358=IFCCARTESIANPOINT((0.,0.,0.));
+#360=IFCDIRECTION((0.,0.,1.));
+#202=IFCRELVOIDSELEMENT('rv2',$,$,$,#250,#350);
+#440=IFCLOCALPLACEMENT($,#441);
+#441=IFCAXIS2PLACEMENT3D(#442,$,$);
+#442=IFCCARTESIANPOINT((0.,10.,0.));
+#450=IFCWALL('w3',$,'W3','',$,#440,#451,$,$);
+#451=IFCPRODUCTDEFINITIONSHAPE($,$,(#452));
+#452=IFCSHAPEREPRESENTATION(#12,'Body','SweptSolid',(#453));
+#453=IFCEXTRUDEDAREASOLID(#454,#457,#460,3.);
+#454=IFCRECTANGLEPROFILEDEF(.AREA.,$,#455,2.,0.3);
+#455=IFCAXIS2PLACEMENT2D(#456,$);
+#456=IFCCARTESIANPOINT((0.,0.));
+#457=IFCAXIS2PLACEMENT3D(#458,$,$);
+#458=IFCCARTESIANPOINT((0.,0.,0.));
+#460=IFCDIRECTION((0.,0.,1.));
+#540=IFCLOCALPLACEMENT($,#541);
+#541=IFCAXIS2PLACEMENT3D(#542,$,$);
+#542=IFCCARTESIANPOINT((0.,10.,1.));
+#550=IFCOPENINGELEMENT('o3',$,'O3','',$,#540,#551,$,$);
+#551=IFCPRODUCTDEFINITIONSHAPE($,$,(#552));
+#552=IFCSHAPEREPRESENTATION(#12,'Body','SweptSolid',(#553));
+#553=IFCEXTRUDEDAREASOLID(#554,#557,#560,1.);
+#554=IFCRECTANGLEPROFILEDEF(.AREA.,$,#555,0.8,0.8);
+#555=IFCAXIS2PLACEMENT2D(#556,$);
+#556=IFCCARTESIANPOINT((0.,0.));
+#557=IFCAXIS2PLACEMENT3D(#558,$,$);
+#558=IFCCARTESIANPOINT((0.,0.,0.));
+#560=IFCDIRECTION((0.,0.,1.));
+#203=IFCRELVOIDSELEMENT('rv3',$,$,$,#450,#550);
+ENDSEC;
+END-ISO-10303-21;
+"#
+    .to_string()
+}
+
+/// CI parity gate (#1286): content-dedup must be BYTE-IDENTICAL to the
+/// non-deduped path through the VOID submesh path, keep placement per-instance,
+/// and keep a distinct void distinct. Guards the element-level void-cut dedup.
+#[test]
+fn content_dedup_byte_identical_on_voided_duplicates() {
+    let content = synthetic_voided_duplicates_ifc();
+    let wall_ids = [50u32, 250, 450];
+    let void_idx = build_void_index(&content);
+    // every wall must actually carry a void, else the path under test is skipped.
+    for id in &wall_ids {
+        assert!(
+            void_idx.get(id).map(|v| !v.is_empty()).unwrap_or(false),
+            "wall #{id} has no void in the index"
+        );
+    }
+
+    let run_path = |dedup: bool| -> Vec<u64> {
+        let mut d = EntityDecoder::with_index(&content, build_entity_index(&content));
+        let mut router = GeometryRouter::with_units(&content, &mut d);
+        if !dedup {
+            router.disable_content_dedup();
+        }
+        wall_ids
+            .iter()
+            .map(|&id| {
+                let e = d.decode_by_id(id).expect("decode wall");
+                let sm = router
+                    .process_element_with_submeshes_and_voids(&e, &mut d, &void_idx)
+                    .expect("void mesh");
+                assert!(!sm.sub_meshes.is_empty(), "wall #{id} produced no voided geometry");
+                fingerprint(&sm)
+            })
+            .collect()
+    };
+
+    let on = run_path(true);
+    let off = run_path(false);
+
+    assert_eq!(
+        on, off,
+        "void-path content-dedup geometry differs from the freshly-built path"
+    );
+    // walls 1 and 2 are geometrically identical but at different placements:
+    // their WORLD fingerprints must differ (placement stays per-instance).
+    assert_ne!(on[0], on[1], "per-instance placement was lost on the void path");
+    // wall 3 has a distinct opening: it must not collapse into the duplicates.
+    assert_ne!(on[0], on[2], "a distinct void wrongly matched the duplicates");
+}
+
+/// Two identical IfcTriangulatedFaceSet proxies at different placements + one
+/// distinct, to validate the flagged EXTRA-type dedup (Phase 3 / #1286): with the
+/// flag ON the duplicates must collapse to one cached item and stay byte-identical
+/// to the freshly-built path.
+fn synthetic_faceset_duplicates_ifc() -> String {
+    r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('fs.ifc','2025-01-01T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('proj',$,'P','',$,$,$,(#12),#7);
+#7=IFCUNITASSIGNMENT((#8));
+#8=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#12=IFCGEOMETRICREPRESENTATIONCONTEXT('3D','Model',3,1.E-6,#14,$);
+#14=IFCAXIS2PLACEMENT3D(#15,$,$);
+#15=IFCCARTESIANPOINT((0.,0.,0.));
+#40=IFCLOCALPLACEMENT($,#41);
+#41=IFCAXIS2PLACEMENT3D(#42,$,$);
+#42=IFCCARTESIANPOINT((0.,0.,0.));
+#50=IFCBUILDINGELEMENTPROXY('a1',$,'A1','',$,#40,#51,$,$);
+#51=IFCPRODUCTDEFINITIONSHAPE($,$,(#52));
+#52=IFCSHAPEREPRESENTATION(#12,'Body','Tessellation',(#53));
+#53=IFCTRIANGULATEDFACESET(#54,$,$,((1,2,3),(1,3,4)),$);
+#54=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(1.,0.,0.),(1.,1.,0.),(0.,1.,0.)));
+#70=IFCLOCALPLACEMENT($,#71);
+#71=IFCAXIS2PLACEMENT3D(#72,$,$);
+#72=IFCCARTESIANPOINT((10.,0.,0.));
+#80=IFCBUILDINGELEMENTPROXY('a2',$,'A2','',$,#70,#81,$,$);
+#81=IFCPRODUCTDEFINITIONSHAPE($,$,(#82));
+#82=IFCSHAPEREPRESENTATION(#12,'Body','Tessellation',(#83));
+#83=IFCTRIANGULATEDFACESET(#84,$,$,((1,2,3),(1,3,4)),$);
+#84=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(1.,0.,0.),(1.,1.,0.),(0.,1.,0.)));
+#100=IFCLOCALPLACEMENT($,#101);
+#101=IFCAXIS2PLACEMENT3D(#102,$,$);
+#102=IFCCARTESIANPOINT((0.,10.,0.));
+#110=IFCBUILDINGELEMENTPROXY('b',$,'B','',$,#100,#111,$,$);
+#111=IFCPRODUCTDEFINITIONSHAPE($,$,(#112));
+#112=IFCSHAPEREPRESENTATION(#12,'Body','Tessellation',(#113));
+#113=IFCTRIANGULATEDFACESET(#114,$,$,((1,2,3),(1,3,4)),$);
+#114=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(2.,0.,0.),(2.,2.,0.),(0.,2.,0.)));
+ENDSEC;
+END-ISO-10303-21;
+"#
+    .to_string()
+}
+
+/// RAII scope for the process-global dedup-extra override
+/// (`GeometryRouter::set_build_dedup_extra_override`): serializes every test
+/// that forces the override (a static mutex held for the guard's lifetime, so
+/// two such tests can't interleave under the parallel test runner) and restores
+/// the env-default (`None`) on drop, INCLUDING on a panicking assert, so a
+/// failure can't leak the forced state into later tests. `None` is the correct
+/// restore value (not a saved snapshot): the only writers are guard scopes, so
+/// outside any scope the override is always at its env-default.
+struct DedupExtraOverrideGuard {
+    _lock: std::sync::MutexGuard<'static, ()>,
+}
+
+impl DedupExtraOverrideGuard {
+    fn set(v: bool) -> Self {
+        static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let lock = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        GeometryRouter::set_build_dedup_extra_override(Some(v));
+        Self { _lock: lock }
+    }
+}
+
+impl Drop for DedupExtraOverrideGuard {
+    fn drop(&mut self) {
+        GeometryRouter::set_build_dedup_extra_override(None);
+    }
+}
+
+#[test]
+fn content_dedup_extra_facesets_byte_identical_when_flagged() {
+    let content = synthetic_faceset_duplicates_ifc();
+    let ids = [50u32, 80, 110];
+
+    // Flag ON: faceset items become dedup candidates. Guard restores the
+    // env-default override on every exit path (assert panics included).
+    let _extra_on = DedupExtraOverrideGuard::set(true);
+    let mut d_on = EntityDecoder::with_index(&content, build_entity_index(&content));
+    let on_router = GeometryRouter::with_units(&content, &mut d_on);
+    let mut on = Vec::new();
+    for &id in &ids {
+        let e = d_on.decode_by_id(id).expect("decode element");
+        let sm = on_router
+            .process_element_with_submeshes(&e, &mut d_on)
+            .expect("mesh element");
+        assert!(!sm.sub_meshes.is_empty(), "element #{id} produced no geometry");
+        on.push(fingerprint(&sm));
+    }
+    let unique_on = on_router.dedup_unique_count();
+
+    // Ground truth: dedup fully disabled ⇒ every faceset rebuilt (the override
+    // value is irrelevant on this path, so the guard can stay in scope).
+    let mut d_off = EntityDecoder::with_index(&content, build_entity_index(&content));
+    let mut off_router = GeometryRouter::with_units(&content, &mut d_off);
+    off_router.disable_content_dedup();
+    let mut off = Vec::new();
+    for &id in &ids {
+        let e = d_off.decode_by_id(id).expect("decode element");
+        let sm = off_router
+            .process_element_with_submeshes(&e, &mut d_off)
+            .expect("mesh element");
+        off.push(fingerprint(&sm));
+    }
+
+    assert_eq!(on, off, "extra-type (faceset) dedup is not byte-identical to fresh build");
+    assert_ne!(on[0], on[1], "per-instance placement lost on the extra-type path");
+    assert_eq!(unique_on, 2, "the two identical facesets must collapse to 1 (+1 distinct = 2)");
+}

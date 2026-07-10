@@ -1,5 +1,54 @@
 # @ifc-lite/geometry
 
+## 3.1.4
+
+### Patch Changes
+
+- [#1691](https://github.com/LTplus-AG/ifc-lite/pull/1691) [`26af236`](https://github.com/LTplus-AG/ifc-lite/commit/26af236a9128f5fc97493d75d7c9642958343a7a) Thanks [@louistrue](https://github.com/louistrue)! - Documentation moved to https://ifclite.dev/docs/ - README links and package homepage fields now point at the new home (the GitHub Pages site remains as a mirror whose canonical URLs point there).
+
+- [#1430](https://github.com/LTplus-AG/ifc-lite/pull/1430) [`d0647c9`](https://github.com/LTplus-AG/ifc-lite/commit/d0647c9a1801fc03b7c5d32314e53ef922c56f2f) Thanks [@louistrue](https://github.com/louistrue)! - Make the Google Earth **Pro** (KMZ) export actually load and render correctly, and add
+  it to the export menu ([#1427](https://github.com/LTplus-AG/ifc-lite/issues/1427)).
+
+  > Note: KMZ 3D models (`<Model>`) only render in Google Earth **Pro** (desktop). Google
+  > Earth on the web does not support `<Model>` — for the web, export GLB and use the web
+  > app's "Import 3D model". The dialog and menu say so.
+
+  **It now loads in Pro.** Google Earth's KML `<Model>` only accepts **COLLADA** — a
+  glTF/GLB model fails with "Unsupported element: Model". The KMZ now embeds a COLLADA
+  `.dae` (new `exportKmzFromMeshes` / `export_collada_from_meshes`, schema-validated against
+  the COLLADA 1.4.1 XSD) instead of a GLB. Large models are split into multiple `<geometry>`
+  chunks bounded by 60k vertices / 20k triangles (Google Earth's 64K-vertex / 21,845-triangle
+  per-mesh limits) and vertices are deduplicated, so big structural models render in Pro.
+
+  **It's no longer dark or floating.** COLLADA materials set `<emission>` to the element
+  colour (Google Earth has no ambient/IBL and a single hard sun, so plain diffuse renders
+  near-black) and are flagged `double_sided` for IFC's unreliable winding. By default the
+  model is placed `clampToGround` so it rests on the terrain instead of floating at its MSL
+  `OrthogonalHeight`. Vertices are emitted in the IFC-native Z-up frame so the building
+  stands upright.
+
+  **Placement is now a choice.** The KMZ export dialog adds a "Placement" toggle: "Rest on
+  ground" (default, `clampToGround`) or "True elevation (MSL)" (`absolute`, honouring the
+  model's `OrthogonalHeight`). The choice threads through `exportKmzFromMeshes`
+  (`altitudeMode` argument) and the `exportKmz` / `exportKmzFromMeshes` wasm bindings
+  (optional `altitude_mode`, defaulting to `clampToGround` so existing callers are
+  unchanged). The Location panel's one-click Google Earth button stays ground-clamped.
+
+  **It's in the menu.** A new "Export KMZ (Google Earth Pro)" entry sits alongside Export
+  GLB / IFC / HBJSON, using the same model-name file-stem scheme (`<name>.kmz`); it reports
+  a clear message when a model isn't georeferenced.
+
+  Also adds a general `emissive` option to the GLB exporter (`exportGlb` /
+  `exportGlbFromMeshes`) — `emissiveFactor = base colour` for renderers without ambient/IBL.
+
+- [#1684](https://github.com/LTplus-AG/ifc-lite/pull/1684) [`26de705`](https://github.com/LTplus-AG/ifc-lite/commit/26de705b8608b9cd75e90411288c7ada96b3352b) Thanks [@louistrue](https://github.com/louistrue)! - Clamp the 16-core worker tier for huge files (issue [#1682](https://github.com/LTplus-AG/ifc-lite/issues/1682)). The `cores >= 16` tier was the only one without the `>512MB` file-size clamp, so a 16-core desktop spawned `cores/2 = 8` geometry workers on an 883MB model - each a private wasm realm holding a full source copy plus its own entity index (~1.3GB per worker, ~10.6GB total), producing 16GB memory peaks. Huge-file geometry is memory-bandwidth bound (a 5th/6th worker gives no measured speedup), so the tier now caps at 4 workers above 512MB, matching the 12-core tier. `?geomWorkers=N` still overrides per host.
+
+- [#1680](https://github.com/LTplus-AG/ifc-lite/pull/1680) [`bc1531f`](https://github.com/LTplus-AG/ifc-lite/commit/bc1531f899e5f8d18d1a6ff1ef6d997236a01243) Thanks [@louistrue](https://github.com/louistrue)! - Harden huge-file loads against stale deployments and the wasm32 ceiling. (1) A geometry or pre-pass worker whose SCRIPT fails to load (a redeploy rotated the hashed asset; the 404 is served as text/plain and the browser blocks the worker with an empty-message onerror) now dispatches the existing version-skew recovery event so the viewer reloads once onto the current deployment, instead of dying with "Pre-pass worker failed: undefined". (2) The parser skips the byte-level WASM entity scan for sources over 2.5GB: the buffer copy plus entity index cannot fit in wasm32's 4GB address space, so the scan always trapped with `unreachable executed` before the JS tokeniser fallback ran anyway.
+
+- Updated dependencies [[`41794cd`](https://github.com/LTplus-AG/ifc-lite/commit/41794cde27d31904773bf2042eb0a0331aadf770), [`26af236`](https://github.com/LTplus-AG/ifc-lite/commit/26af236a9128f5fc97493d75d7c9642958343a7a), [`d0647c9`](https://github.com/LTplus-AG/ifc-lite/commit/d0647c9a1801fc03b7c5d32314e53ef922c56f2f), [`633882f`](https://github.com/LTplus-AG/ifc-lite/commit/633882fa15940f5faddb9dcb32031fcf3f38e287), [`40ac0a8`](https://github.com/LTplus-AG/ifc-lite/commit/40ac0a85d5aaac1b6fed9ad96b3e2f9d0378d65b), [`47bf759`](https://github.com/LTplus-AG/ifc-lite/commit/47bf759b1b801d44f6a0ba7408f65d368096cb04)]:
+  - @ifc-lite/wasm@3.0.14
+  - @ifc-lite/data@2.5.2
+
 ## 3.1.3
 
 ### Patch Changes

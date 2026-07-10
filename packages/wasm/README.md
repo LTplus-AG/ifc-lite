@@ -101,7 +101,7 @@ This package ships the bindings only. The Rust source lives in [`rust/wasm-bindi
 
 ## API
 
-See the [WASM API Reference](https://ltplus-ag.github.io/ifc-lite/api/wasm/).
+See the [WASM API Reference](https://ifclite.dev/docs/api/wasm/).
 
 ## License
 

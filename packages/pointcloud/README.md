@@ -60,7 +60,7 @@ Notes:
 
 ## API
 
-See the [docs site](https://ltplus-ag.github.io/ifc-lite/) for guides and the full API reference.
+See the [docs site](https://ifclite.dev/docs/) for guides and the full API reference.
 
 ## License
 

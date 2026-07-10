@@ -47,6 +47,7 @@ import {
   Globe2,
   Sun,
   Move,
+  Move3d,
   PenLine,
   Undo2,
   Redo2,
@@ -146,6 +147,8 @@ function ToolButton({
         <Button
           variant={isActive ? 'default' : 'ghost'}
           size="icon-sm"
+          aria-label={label}
+          aria-pressed={isActive}
           onClick={(e) => {
             // Blur button to close tooltip after click
             (e.currentTarget as HTMLButtonElement).blur();
@@ -278,6 +281,7 @@ function ActionButton({ icon: Icon, label, onClick, shortcut, disabled }: Action
         <Button
           variant="ghost"
           size="icon-sm"
+          aria-label={label}
           onClick={(e) => {
             // Blur button to close tooltip after click
             (e.currentTarget as HTMLButtonElement).blur();
@@ -451,6 +455,10 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   const toggleEnvPanel = useViewerStore((state) => state.toggleEnvPanel);
   const envSkyEnabled = useViewerStore((state) => state.envSkyEnabled);
   const envPreset = useViewerStore((state) => state.envPreset);
+  // SpaceMouse panel state (3D mouse navigation, #1677)
+  const spaceMousePanelOpen = useViewerStore((state) => state.spaceMousePanelOpen);
+  const toggleSpaceMousePanel = useViewerStore((state) => state.toggleSpaceMousePanel);
+  const spaceMouseConnected = useViewerStore((state) => state.spaceMouseConnected);
   const storeModels = useViewerStore((state) => state.models);
   const analysisExtensionState = useSyncExternalStore(
     subscribeAnalysisExtensions,
@@ -957,6 +965,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           <Button
             variant="ghost"
             size="icon-sm"
+            aria-label="Open IFC file"
             onClick={(e) => {
               // Blur button to close tooltip before opening file dialog
               (e.currentTarget as HTMLButtonElement).blur();
@@ -1001,6 +1010,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             <Button
               variant="ghost"
               size="icon-sm"
+              aria-label="Add model to scene"
               onClick={(e) => {
                 (e.currentTarget as HTMLButtonElement).blur();
                 void handleAddModelClick();
@@ -1020,7 +1030,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           {/* Gate on any loaded model, not the legacy single-model geometryResult:
               federated / multi-model sessions populate `models` but leave
               geometryResult null, which would hide the whole export menu (incl. KMZ). */}
-          <Button variant="ghost" size="icon-sm" disabled={!hasModelsLoaded && !ifcDataStore}>
+          <Button variant="ghost" size="icon-sm" aria-label="Export and download" disabled={!hasModelsLoaded && !ifcDataStore}>
             <Download className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>
@@ -1102,7 +1112,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
         <Tooltip>
           <TooltipTrigger asChild>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon-sm" disabled={!ifcDataStore}>
+              <Button variant="ghost" size="icon-sm" aria-label="Edit properties" disabled={!ifcDataStore}>
                 <Pencil className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
@@ -1426,6 +1436,8 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           <Button
             variant={basketPresentationVisible ? 'default' : 'ghost'}
             size="icon-sm"
+            aria-label={basketPresentationVisible ? 'Hide Presentation dock' : 'Show Presentation dock'}
+            aria-pressed={basketPresentationVisible}
             onClick={(e) => {
               (e.currentTarget as HTMLButtonElement).blur();
               toggleBasketPresentationVisible();
@@ -1781,6 +1793,30 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
         <TooltipContent>Sun &amp; sky</TooltipContent>
       </Tooltip>
 
+      {/* SpaceMouse panel — connect a 3Dconnexion 3D mouse over WebHID and
+          tune its sensitivity (#1677). */}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant={spaceMousePanelOpen ? 'default' : 'ghost'}
+            size="icon-sm"
+            aria-label={spaceMousePanelOpen ? 'Close SpaceMouse panel' : 'Open SpaceMouse panel'}
+            aria-pressed={spaceMousePanelOpen}
+            onClick={(e) => {
+              (e.currentTarget as HTMLButtonElement).blur();
+              toggleSpaceMousePanel();
+            }}
+            className={cn(
+              (spaceMousePanelOpen || spaceMouseConnected)
+                && 'bg-teal-600 text-white hover:bg-teal-500',
+            )}
+          >
+            <Move3d className="h-4 w-4" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>SpaceMouse</TooltipContent>
+      </Tooltip>
+
       {/*
         Consolidated View dropdown — holds projection toggle, preset
         views, and hover tooltips. These are "view options" the user
@@ -1905,6 +1941,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
               variant="ghost"
               size="icon"
               className="rounded-full"
+              aria-label="Info and keyboard shortcuts"
               onClick={() => onShowShortcuts?.()}
             >
               <HelpCircle className="!h-[22px] !w-[22px]" />

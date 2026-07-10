@@ -1,5 +1,22 @@
 # @ifc-lite/clash
 
+## 1.6.2
+
+### Patch Changes
+
+- [#1691](https://github.com/LTplus-AG/ifc-lite/pull/1691) [`26af236`](https://github.com/LTplus-AG/ifc-lite/commit/26af236a9128f5fc97493d75d7c9642958343a7a) Thanks [@louistrue](https://github.com/louistrue)! - Documentation moved to https://ifclite.dev/docs/ - README links and package homepage fields now point at the new home (the GitHub Pages site remains as a mirror whose canonical URLs point there).
+
+- [#1683](https://github.com/LTplus-AG/ifc-lite/pull/1683) [`3267aaf`](https://github.com/LTplus-AG/ifc-lite/commit/3267aaf5dfe98f9550695d44c1d12644f2c04b88) Thanks [@louistrue](https://github.com/louistrue)! - Internal replacement of the hand-written clash math (vec3, aabb, triangle-intersect) with Plato-generated single-source code. The generated kernel is post-processed by a deterministic codemod that rewrites scalar dispatch to native operators and lifts the former Number/Boolean prototype helpers into a module-scoped namespace, so there is no prototype pollution. A second codemod phase flattens the pure method bodies into tuple-native kernels (inlining + common-subexpression elimination), removing all per-call object allocation. The public API is identical, results are bit-identical, and the end-to-end TS clash engine benchmarks about 20 percent faster than the previous hand-written math.
+
+- Updated dependencies [[`41794cd`](https://github.com/LTplus-AG/ifc-lite/commit/41794cde27d31904773bf2042eb0a0331aadf770), [`26af236`](https://github.com/LTplus-AG/ifc-lite/commit/26af236a9128f5fc97493d75d7c9642958343a7a), [`d0647c9`](https://github.com/LTplus-AG/ifc-lite/commit/d0647c9a1801fc03b7c5d32314e53ef922c56f2f), [`633882f`](https://github.com/LTplus-AG/ifc-lite/commit/633882fa15940f5faddb9dcb32031fcf3f38e287), [`40ac0a8`](https://github.com/LTplus-AG/ifc-lite/commit/40ac0a85d5aaac1b6fed9ad96b3e2f9d0378d65b), [`47bf759`](https://github.com/LTplus-AG/ifc-lite/commit/47bf759b1b801d44f6a0ba7408f65d368096cb04), [`26de705`](https://github.com/LTplus-AG/ifc-lite/commit/26de705b8608b9cd75e90411288c7ada96b3352b), [`bc1531f`](https://github.com/LTplus-AG/ifc-lite/commit/bc1531f899e5f8d18d1a6ff1ef6d997236a01243)]:
+  - @ifc-lite/wasm@3.0.14
+  - @ifc-lite/bcf@1.16.2
+  - @ifc-lite/geometry@3.1.4
+  - @ifc-lite/ifcx@2.2.2
+  - @ifc-lite/parser@3.8.2
+  - @ifc-lite/query@1.14.13
+  - @ifc-lite/spatial@1.14.12
+
 ## 1.6.1
 
 ### Patch Changes

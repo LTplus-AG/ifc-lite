@@ -196,6 +196,19 @@ export function MeasureOverlay() {
   const panelRef = React.useRef<HTMLDivElement>(null);
   const drag = useDraggablePanel(panelRef);
 
+  // The Presentation dock (BasketPresentationDock) pins a persistent pill at
+  // `bottom-4 z-30 left-1/2` and, when expanded, a tall card at the same
+  // anchor. The measure hint + live readout sit ABOVE that anchor; their
+  // bottom offset steps up while the dock is visible so neither ever overlaps
+  // it. Mirrors the storey-name pill's bottom-4 -> bottom-28 shift in
+  // ViewportOverlays. The Snap / Geo toggles used to live at this same
+  // `bottom-4 left-1/2` anchor and collided with the pill outright (measured:
+  // Presentation x 592-716 over Snap 567-633 + Geo XYZ 641-742); they now live
+  // inside the draggable panel below, well clear of the bottom strip.
+  const basketPresentationVisible = useViewerStore((s) => s.basketPresentationVisible);
+  const hintBottomClass = basketPresentationVisible ? 'bottom-32' : 'bottom-16';
+  const readoutBottomClass = basketPresentationVisible ? 'bottom-44' : 'bottom-28';
+
   return (
     <>
       {/* Hidden ref element for coordinate calculation */}
@@ -237,6 +250,44 @@ export function MeasureOverlay() {
           </div>
         </div>
 
+        {/* Snap + Geo toggles — live INSIDE the panel (top-anchored, draggable)
+            so they clear the persistent Presentation pill at bottom-4. Always
+            rendered, whether the panel is collapsed or expanded, so the
+            controls are never hidden. */}
+        <div className="flex items-center gap-1.5 border-t px-2 py-2">
+          <button
+            onClick={toggleSnap}
+            className={`px-2 py-1 font-mono text-[10px] uppercase tracking-wider border-2 transition-colors ${
+              snapEnabled
+                ? 'bg-primary text-primary-foreground border-primary'
+                : 'bg-zinc-100 dark:bg-zinc-900 text-zinc-500 border-zinc-300 dark:border-zinc-700'
+            }`}
+            title="Toggle snap (S key)"
+          >
+            Snap {snapEnabled ? 'On' : 'Off'}
+          </button>
+          {/* Geo XYZ stays visible even with no usable georef so the feature is
+              discoverable; it disables with an explanatory tooltip instead of
+              vanishing (defect: users could not tell the feature existed). */}
+          <button
+            onClick={toggleGeoReadout}
+            disabled={!anchor}
+            className={`flex items-center gap-1 px-2 py-1 font-mono text-[10px] uppercase tracking-wider border-2 transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+              geoReadoutEnabled && anchor
+                ? 'bg-primary text-primary-foreground border-primary'
+                : 'bg-zinc-100 dark:bg-zinc-900 text-zinc-500 border-zinc-300 dark:border-zinc-700'
+            }`}
+            title={
+              anchor
+                ? 'Toggle real-world XYZ (Eastings / Northings / Height)'
+                : 'Requires map georeferencing (IfcMapConversion) in the model'
+            }
+          >
+            <Globe className="h-3 w-3" />
+            Geo XYZ {geoReadoutEnabled && anchor ? 'On' : 'Off'}
+          </button>
+        </div>
+
         {/* Expandable content */}
         {!isPanelCollapsed && (
           <div className="border-t px-2 pb-2 min-w-56">
@@ -269,7 +320,7 @@ export function MeasureOverlay() {
 
       {/* Instruction hint - brutalist style with snap-colored shadow */}
       <div
-        className="pointer-events-auto absolute bottom-16 left-1/2 -translate-x-1/2 z-30 bg-zinc-900 dark:bg-zinc-100 text-zinc-100 dark:text-zinc-900 px-3 py-1.5 border-2 border-zinc-900 dark:border-zinc-100 transition-shadow duration-150"
+        className={`pointer-events-auto absolute ${hintBottomClass} left-1/2 -translate-x-1/2 z-30 bg-zinc-900 dark:bg-zinc-100 text-zinc-100 dark:text-zinc-900 px-3 py-1.5 border-2 border-zinc-900 dark:border-zinc-100 transition-shadow duration-150`}
         style={{
           boxShadow: snapTarget
             ? `4px 4px 0px 0px ${
@@ -287,7 +338,7 @@ export function MeasureOverlay() {
 
       {/* Live real-world XYZ readout for the active / last point */}
       {liveEnh && anchor && (
-        <div className="pointer-events-none absolute bottom-28 left-1/2 -translate-x-1/2 z-30 bg-background/95 backdrop-blur-sm border-2 border-primary/60 px-3 py-1.5 shadow-lg max-w-[92vw] overflow-x-auto">
+        <div className={`pointer-events-none absolute ${readoutBottomClass} left-1/2 -translate-x-1/2 z-30 bg-background/95 backdrop-blur-sm border-2 border-primary/60 px-3 py-1.5 shadow-lg max-w-[92vw] overflow-x-auto`}>
           <div className="flex items-baseline gap-2">
             <Globe className="h-3 w-3 text-primary shrink-0 self-center" />
             <span className="font-mono text-[10px] uppercase tracking-wider text-primary shrink-0">
@@ -310,35 +361,6 @@ export function MeasureOverlay() {
           )}
         </div>
       )}
-
-      {/* Snap + Geo toggles - brutalist style */}
-      <div className="pointer-events-auto absolute bottom-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2">
-        <button
-          onClick={toggleSnap}
-          className={`px-2 py-1 font-mono text-[10px] uppercase tracking-wider border-2 transition-colors ${
-            snapEnabled
-              ? 'bg-primary text-primary-foreground border-primary'
-              : 'bg-zinc-100 dark:bg-zinc-900 text-zinc-500 border-zinc-300 dark:border-zinc-700'
-          }`}
-          title="Toggle snap (S key)"
-        >
-          Snap {snapEnabled ? 'On' : 'Off'}
-        </button>
-        {anchor && (
-          <button
-            onClick={toggleGeoReadout}
-            className={`flex items-center gap-1 px-2 py-1 font-mono text-[10px] uppercase tracking-wider border-2 transition-colors ${
-              geoReadoutEnabled
-                ? 'bg-primary text-primary-foreground border-primary'
-                : 'bg-zinc-100 dark:bg-zinc-900 text-zinc-500 border-zinc-300 dark:border-zinc-700'
-            }`}
-            title="Toggle real-world XYZ (Eastings / Northings / Height)"
-          >
-            <Globe className="h-3 w-3" />
-            Geo XYZ {geoReadoutEnabled ? 'On' : 'Off'}
-          </button>
-        )}
-      </div>
 
       {/* Render measurement lines, labels, and snap indicators */}
       <MeasurementOverlays

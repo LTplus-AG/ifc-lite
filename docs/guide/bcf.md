@@ -127,7 +127,7 @@ if (isValidIfcGuid(guid)) {
 Failed IDS validation results can be turned into a BCF project, one topic per failure group:
 
 ```typescript
-import { createBCFFromIDSReport } from '@ifc-lite/bcf';
+import { createBCFFromIDSReport, writeBCF } from '@ifc-lite/bcf';
 
 const project = createBCFFromIDSReport(reportInput, options);
 const blob = await writeBCF(project);
@@ -141,8 +141,9 @@ The clash package (`@ifc-lite/clash/bcf`) exports clash detection results as a B
 
 ```typescript
 import { createBCFFromClashResult, mapBcfToClashes } from '@ifc-lite/clash/bcf';
+import { clashReviewKey } from '@ifc-lite/clash';
 
-const project = await createBCFFromClashResult(result, groups, {
+const project = await createBCFFromClashResult(clashResult, groups, {
   author: 'clash@ifc-lite',
   projectName: 'Clash report',
   // Optional: map each clash to its review status ('open' | 'resolved' | 'accepted')

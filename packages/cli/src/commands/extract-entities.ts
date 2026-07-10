@@ -24,6 +24,7 @@
  * heuristics (oversized AABB, needle/burst triangulation) that are frequently
  * legitimate for thin or large elements and must be eyeballed, not trusted.
  */
+import { constants as bufferConstants } from 'node:buffer';
 import { readFile, writeFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 import { fatal, getFlag, getAllFlags, hasFlag } from '../output.js';
@@ -281,8 +282,9 @@ export function buildSubset(seedProducts: Set<number>, parsed: ParsedStep): Set<
         const host = refs[refs.length - 2];
         const opening = refs[refs.length - 1];
         if (host !== undefined && opening !== undefined && keep.has(host)) {
-          keep.add(inst.id);
-          forwardClosure([opening], parsed, keep);
+          // Close over the relation itself, not just the opening: the rel's own
+          // OwnerHistory must be kept too or the subset emits a dangling ref.
+          forwardClosure([inst.id], parsed, keep);
           grew = true;
         }
       } else if (inst.type === 'IFCRELFILLSELEMENT') {
@@ -290,8 +292,7 @@ export function buildSubset(seedProducts: Set<number>, parsed: ParsedStep): Set<
         const opening = refs[refs.length - 2];
         const filler = refs[refs.length - 1];
         if (opening !== undefined && filler !== undefined && keep.has(opening)) {
-          keep.add(inst.id);
-          forwardClosure([filler], parsed, keep);
+          forwardClosure([inst.id], parsed, keep);
           grew = true;
         }
       }
@@ -407,7 +408,18 @@ export async function extractEntitiesCommand(args: string[]): Promise<void> {
   }
 
   const buf = await readFile(filePath);
-  const text = buf.toString('utf8');
+  if (buf.length >= bufferConstants.MAX_STRING_LENGTH) {
+    fatal(
+      `File is too large to extract from (${buf.length} bytes >= V8 string cap); ` +
+        'split it first or file an issue if you hit this on a real model.',
+    );
+    return;
+  }
+  // latin1 is a lossless byte<->char bijection: STEP tokenization is ASCII-only,
+  // and re-emitting `full` through latin1 round-trips raw high bytes (unescaped
+  // umlauts in real-world exports) byte-identically where utf8 would mangle
+  // them to U+FFFD.
+  const text = buf.toString('latin1');
   const parsed = parseStep(text);
   logger.info(`Parsed ${parsed.instances.size} STEP instances from ${basename(filePath)}`);
 
@@ -480,7 +492,7 @@ export async function extractEntitiesCommand(args: string[]): Promise<void> {
 
   const keep = buildSubset(seeds, parsed);
   const out = serializeSubset(keep, parsed);
-  await writeFile(outPath, out);
+  await writeFile(outPath, out, 'latin1');
   process.stdout.write(
     `Extracted ${seeds.size} product(s) → ${keep.size} instances → ${outPath}\n`,
   );

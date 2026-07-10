@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/solar",
-  "version": "1.15.1",
+  "version": "1.15.2",
   "description": "Solar position, sunrise/sunset and 3D sun-path geometry for IFC-Lite",
   "type": "module",
   "main": "./dist/index.js",
@@ -27,7 +27,7 @@
     "url": "https://github.com/LTplus-AG/ifc-lite.git",
     "directory": "packages/solar"
   },
-  "homepage": "https://ltplus-ag.github.io/ifc-lite/",
+  "homepage": "https://ifclite.dev/docs/",
   "bugs": "https://github.com/LTplus-AG/ifc-lite/issues",
   "keywords": [
     "ifc",

@@ -188,7 +188,7 @@ registry listing.
 
 ## Docs
 
-See the [ifc-lite docs](https://ltplus-ag.github.io/ifc-lite/) for the full
+See the [ifc-lite docs](https://ifclite.dev/docs/) for the full
 platform documentation.
 
 Licensed under MPL-2.0.

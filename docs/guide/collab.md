@@ -24,6 +24,10 @@ await session.whenSynced;
 // await fetch('model.ifcx').then(r => r.text())
 session.seed(ifcxContent);
 
+// Capture a baseline state vector now if you later want to extract just
+// this peer's edits as a layer (see extractUserLayer below).
+const baseline = session.captureBaseline();
+
 // Make an edit; all peers see it in real time
 session.transact(() => {
   setAttribute(session.doc, 'wall-uuid', 'bsi::ifc::v5a::Pset_WallCommon::FireRating', 'EI60');
@@ -47,8 +51,8 @@ const off = session.onConflict((conflict) => {
 // Snapshot the whole document back to IFCX
 const file = session.snapshot();
 
-// Or extract just this peer's edits as an IFCX layer.
-// baseline is the parsed IfcxFile the session was seeded from.
+// Or extract just this peer's edits as an IFCX layer. The baseline is the
+// state vector captured with session.captureBaseline() before the edits.
 const myLayer = session.extractUserLayer(baseline);
 
 session.dispose();

@@ -120,8 +120,7 @@ export function isScopeTargetType(type: IfcTypeEnum, name: string): boolean {
 
 /** The narrow store surface `collectScopeTypes` reads (full IfcDataStore assignable). */
 export interface ScopeTypeStore {
-  entities: Pick<EntityTable, 'getByType' | 'getTypeEnum' | 'getTypeName'>;
-  entityIndex: { byType: Map<string, number[]> };
+  entities: Pick<EntityTable, 'getByType' | 'getTypeName' | 'typeEnum'>;
 }
 
 /**
@@ -133,23 +132,25 @@ export function collectScopeTypes(stores: ScopeTypeStore[]): ScopeTypeOption[] {
   const byEnum = new Map<IfcTypeEnum, { label: string; count: number }>();
 
   for (const store of stores) {
-    // Dedupe per store: several STEP names can share one enum (IfcDoor +
-    // IfcDoorStandardCase), and getByType already merges them, so count once.
-    const counted = new Set<IfcTypeEnum>();
-    for (const ids of store.entityIndex.byType.values()) {
+    // Enumerate present classes from the EntityTable's typeEnum column: it is
+    // populated on every store shape, whereas entityIndex.byType stays
+    // permanently empty for IFCX-ingested stores (and typeRanges is deprecated
+    // on server-loaded ones) — driving the chips off byType left IFCX models
+    // with no scope chips at all. The Set also dedupes several STEP names that
+    // share one enum (IfcDoor + IfcDoorStandardCase), which getByType merges.
+    const present = new Set<IfcTypeEnum>();
+    const column = store.entities.typeEnum;
+    for (let i = 0; i < column.length; i++) present.add(column[i] as IfcTypeEnum);
+    for (const type of present) {
+      if (type === IfcTypeEnum.Unknown) continue;
+      const ids = store.entities.getByType(type);
       if (ids.length === 0) continue;
-      const sample = ids[0];
-      const type = store.entities.getTypeEnum(sample);
-      if (type === IfcTypeEnum.Unknown || counted.has(type)) continue;
-      counted.add(type);
-      const name = store.entities.getTypeName(sample);
+      const name = store.entities.getTypeName(ids[0]);
       if (!isScopeTargetType(type, name)) continue;
-      const count = store.entities.getByType(type).length;
-      if (count === 0) continue;
       const label = SCOPE_TYPE_LABELS[type] ?? name;
       const entry = byEnum.get(type);
-      if (entry) entry.count += count;
-      else byEnum.set(type, { label, count });
+      if (entry) entry.count += ids.length;
+      else byEnum.set(type, { label, count: ids.length });
     }
   }
 

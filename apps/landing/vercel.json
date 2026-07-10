@@ -1,5 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "bash build-docs.sh",
+  "outputDirectory": "dist",
+  "ignoreCommand": "bash vercel-ignore.sh",
   "headers": [
     {
       "source": "/(.*)",

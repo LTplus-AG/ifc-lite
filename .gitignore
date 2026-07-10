@@ -107,3 +107,4 @@ tests/benchmark/benchmark-results/viewer-*.console.log
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+.vercel

@@ -412,7 +412,7 @@ npx create-ifc-lite my-app --template server
 
 ## Learn More
 
-- [IFC-Lite Documentation](https://ltplus-ag.github.io/ifc-lite/)
+- [IFC-Lite Documentation](https://ifclite.dev/docs/)
 - [GitHub Repository](https://github.com/LTplus-AG/ifc-lite)
 `);
 

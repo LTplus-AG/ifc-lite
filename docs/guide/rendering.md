@@ -169,7 +169,7 @@ sectionPlane.showOutlines = true;  // polygon outlines on the cut surfaces
 
 // Arbitrary slice plane: providing a world-space unit normal + distance
 // bypasses axis/position/min/max entirely (face-pick section planes)
-sectionPlane.normal = { x: 0.3, y: 0.9, z: 0.1 };
+sectionPlane.normal = [0.3, 0.9, 0.1];
 sectionPlane.distance = 12.5;
 ```
 
@@ -193,9 +193,11 @@ graph TD
 ### Section Plane Example
 
 ```typescript
+import type { SectionPlane } from '@ifc-lite/renderer';
+
 // Interactive section plane control
-let sectionPlane = {
-  axis: 'down' as const,
+let sectionPlane: SectionPlane = {
+  axis: 'down',
   position: 50,
   enabled: true,
   flipped: false
@@ -588,7 +590,7 @@ The `@ifc-lite/spatial` package provides spatial indexing utilities for efficien
 Builds a BVH (Bounding Volume Hierarchy) spatial index from geometry meshes for fast spatial queries.
 
 ```typescript
-import { buildSpatialIndex, type SpatialIndex } from '@ifc-lite/spatial';
+import type { SpatialIndex } from '@ifc-lite/spatial';
 import type { MeshData } from '@ifc-lite/geometry';
 
 /**
@@ -596,7 +598,7 @@ import type { MeshData } from '@ifc-lite/geometry';
  * @param meshes - Array of MeshData objects from GeometryProcessor
  * @returns BVH spatial index that implements SpatialIndex interface
  */
-function buildSpatialIndex(meshes: MeshData[]): SpatialIndex;
+declare function buildSpatialIndex(meshes: MeshData[]): SpatialIndex;
 ```
 
 **Parameters:**
@@ -756,8 +758,16 @@ async function createViewer() {
   const client = new IfcServerClient({ baseUrl: 'http://localhost:3001' });
   const result = await client.parseParquet(file);
 
-  // Add meshes
-  renderer.addMeshes(result.meshes);
+  // Server meshes use snake_case fields (express_id); map them into the
+  // renderer's camelCase MeshData shape before uploading.
+  renderer.addMeshes(result.meshes.map((m) => ({
+    expressId: m.express_id,
+    ifcType: m.ifc_type,
+    positions: m.positions,
+    normals: m.normals,
+    indices: m.indices,
+    color: m.color,
+  })));
   renderer.fitToView();
 
   // Visibility and selection state

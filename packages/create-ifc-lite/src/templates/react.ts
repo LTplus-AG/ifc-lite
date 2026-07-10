@@ -586,8 +586,8 @@ Open the app in your browser and drop an IFC file onto the viewport.
 
 ## Learn More
 
-- [IFC-Lite Documentation](https://ltplus-ag.github.io/ifc-lite/)
-- [Rendering Guide](https://ltplus-ag.github.io/ifc-lite/guide/rendering/)
-- [Geometry Guide](https://ltplus-ag.github.io/ifc-lite/guide/geometry/)
+- [IFC-Lite Documentation](https://ifclite.dev/docs/)
+- [Rendering Guide](https://ifclite.dev/docs/guide/rendering/)
+- [Geometry Guide](https://ifclite.dev/docs/guide/geometry/)
 `);
 }

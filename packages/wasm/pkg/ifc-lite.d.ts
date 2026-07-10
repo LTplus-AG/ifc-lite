@@ -384,13 +384,14 @@ export class IfcAPI {
    * even though the pre-pass worker built the same index minutes
    * earlier.
    *
-   * Building an `FxHashMap` from the three input slices costs ~1 s on
-   * 14 M entries — about 4–5× faster than re-scanning the file. After
-   * this call, the next `processGeometryBatch` skips the lazy build
-   * branch and reuses the populated cache by `Arc::clone()`.
+   * Builds a compact [`ColumnarEntityIndex`] from the three input slices
+   * (sorted `u32` columns + binary search) instead of a per-worker
+   * `FxHashMap` — ~229 MB vs ~436 MB on a 19.1 M-entity model (#1682).
+   * [`ColumnarEntityIndex::from_columns`] verifies the id ordering once
+   * (O(n)) and only argsorts if the producer did not emit sorted columns.
    *
-   * `lengths[i]` is the byte length of entity `ids[i]`, so the cache
-   * stores `(start, start + length)` to match the existing tuple layout.
+   * `lengths[i]` is the byte length of entity `ids[i]`, so lookup returns
+   * `(start, start + length)` to match the existing `(start, end)` layout.
    *
    * Idempotent in the sense that repeated calls REPLACE the cache —
    * supports the parser-worker pattern of reusing one IfcAPI across

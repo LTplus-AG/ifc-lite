@@ -17,6 +17,7 @@ import { McpLanding } from './components/mcp/McpLanding';
 import { McpPlayground } from './components/mcp/McpPlayground';
 import { BimProvider } from './sdk/BimProvider';
 import { ExtensionHostProvider } from './sdk/ExtensionHostProvider';
+import { SourceHostProvider } from './services/sources/SourceHostProvider';
 import { Toaster } from './components/ui/toast';
 import { useEffect, useState } from 'react';
 import { Analytics } from '@vercel/analytics/react';
@@ -64,9 +65,11 @@ export function App() {
   return (
     <BimProvider>
       <ExtensionHostProvider>
-        <ViewerLayout />
-        <Toaster />
-        <Analytics />
+        <SourceHostProvider>
+          <ViewerLayout />
+          <Toaster />
+          <Analytics />
+        </SourceHostProvider>
       </ExtensionHostProvider>
     </BimProvider>
   );

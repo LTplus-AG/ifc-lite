@@ -30,6 +30,7 @@ import {
   Table2,
   ListTree,
   Users,
+  Cloud,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -47,6 +48,7 @@ export type WorkspacePanelId =
   | 'lens'
   | 'clash'
   | 'extensions'
+  | 'sources'
   | 'script'
   | 'gantt'
   | 'lists'
@@ -96,6 +98,9 @@ export const WORKSPACE_PANELS: readonly WorkspacePanelDef[] = [
   // Alt+1..0 mapping stays intact (no Alt shortcut). The activity bar hides it
   // while the collab feature flag is off (see ActivityBar).
   { id: 'collab', title: 'Collaboration room', short: 'Room', Icon: Users, group: 'review', region: 'side' },
+  // Cloud sources (CDE integrations). APPENDED — no Alt shortcut. Hidden while
+  // no source providers are registered (see ActivityBar).
+  { id: 'sources', title: 'Cloud sources', short: 'Sources', Icon: Cloud, group: 'inspect', region: 'side' },
 ];
 
 /** The bottom-strip panel ids, mapped to their store visibility flag + setter

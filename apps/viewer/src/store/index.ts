@@ -30,6 +30,7 @@ import { createSheetSlice, type SheetSlice } from './slices/sheetSlice.js';
 import { createBcfSlice, type BCFSlice } from './slices/bcfSlice.js';
 import { createIdsSlice, type IDSSlice } from './slices/idsSlice.js';
 import { createExtensionsSlice, type ExtensionsSlice } from './slices/extensionsSlice.js';
+import { createSourcesSlice, type SourcesSlice } from './slices/sourcesSlice.js';
 import { createListSlice, type ListSlice } from './slices/listSlice.js';
 import { createPinboardSlice, type PinboardSlice } from './slices/pinboardSlice.js';
 import { createLensSlice, type LensSlice } from './slices/lensSlice.js';
@@ -166,7 +167,8 @@ export type ViewerState = LoadingSlice &
   PointCloudSlice &
   UnitDisplaySlice &
   SpaceMouseSlice &
-  ExtensionsSlice & {
+  ExtensionsSlice &
+  SourcesSlice & {
     resetViewerState: () => void;
     /**
      * Open one right-side analysis panel and close the others, so the chosen
@@ -253,6 +255,7 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
   ...createUnitDisplaySlice(...args),
   ...createSpaceMouseSlice(...args),
   ...createExtensionsSlice(...args),
+  ...createSourcesSlice(...args),
 
   // Reset all viewer state when loading new file
   // Note: Does NOT clear models - use clearAllModels() for that

@@ -61,9 +61,9 @@ impl IfcAPI {
 
         let content = data;
 
-        // Build entity index — wrap in Arc so processGeometryBatch can
-        // share it across many calls without cloning the HashMap.
-        let entity_index = std::sync::Arc::new(ifc_lite_core::build_entity_index(content));
+        // Build entity index — a compact columnar index (sorted u32 columns +
+        // binary search, #1682) wrapped in Arc for cheap reuse.
+        let entity_index = std::sync::Arc::new(ifc_lite_core::ColumnarEntityIndex::from_scan(content));
         // Cache for reuse by processGeometryBatch.
         // Mutex held only briefly to install the Arc; rayon helpers
         // pick up clones below without re-locking. Panic on poison —
@@ -75,7 +75,7 @@ impl IfcAPI {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         *slot = Some(entity_index.clone());
         drop(slot);
-        let mut decoder = EntityDecoder::with_arc_index(content, entity_index);
+        let mut decoder = EntityDecoder::with_arc_columnar_index(content, entity_index);
 
         // Run combined pre-pass
         let pre_pass = combined_pre_pass(content, &mut decoder);
@@ -460,11 +460,13 @@ impl IfcAPI {
             on_event.call1(&JsValue::NULL, &meta.into())?;
         }
 
-        // Cache the entity index for processGeometryBatch reuse — same
-        // contract as buildPrePassOnce. Wrapped in Arc
-        // so process workers reuse the same index by reference instead of
-        // cloning the 14 M-entry HashMap on every batch call.
-        let entity_index_arc = std::sync::Arc::new(entity_index);
+        // Cache for processGeometryBatch reuse. Convert the scan's FxHashMap
+        // into a compact columnar index (sorted u32 columns + binary search):
+        // ~229 MB vs the hashmap's ~436 MB on a 19.1 M-entity model (#1682).
+        // Drop the hashmap right after so this worker's peak isn't both.
+        let entity_index_arc =
+            std::sync::Arc::new(ifc_lite_core::ColumnarEntityIndex::from_hashmap(&entity_index));
+        drop(entity_index);
         // Mutex held only briefly to install the Arc.
         {
             let mut slot = self
@@ -474,8 +476,8 @@ impl IfcAPI {
             *slot = Some(entity_index_arc.clone());
         }
         // Hold a second clone for the post-scan entity-index export below;
-        // `with_arc_index` consumes the Arc so we'd lose the reference
-        // after the decoder is created.
+        // `with_arc_columnar_index` consumes the Arc so we'd lose the
+        // reference after the decoder is created.
         let index_for_export = entity_index_arc.clone();
 
         // ── FAST FIRST GEOMETRY ──
@@ -492,14 +494,12 @@ impl IfcAPI {
         // it must reach them as early as possible. Built from the complete index.
         {
             // Bulk-copy in 3 boundary crossings, not ~8.4M per-entry set_index
-            // calls (workers' critical path). Order-free: they zip the 3 arrays.
-            let (ids, (starts, lengths)): (Vec<u32>, (Vec<u32>, Vec<u32>)) = index_for_export
-                .iter()
-                .map(|(&id, &(s, e))| (id, (s as u32, (e - s) as u32)))
-                .unzip();
-            let ids_arr = js_sys::Uint32Array::from(ids.as_slice());
-            let starts_arr = js_sys::Uint32Array::from(starts.as_slice());
-            let lengths_arr = js_sys::Uint32Array::from(lengths.as_slice());
+            // calls (workers' critical path). Columns are already sorted by id,
+            // so consumers hit ColumnarEntityIndex::from_columns' O(n)
+            // already-sorted fast path (no per-worker argsort).
+            let ids_arr = js_sys::Uint32Array::from(index_for_export.ids());
+            let starts_arr = js_sys::Uint32Array::from(index_for_export.starts());
+            let lengths_arr = js_sys::Uint32Array::from(index_for_export.lengths());
             let index_event = js_sys::Object::new();
             crate::api::set_js_prop(&index_event, "type", &"entity-index".into());
             crate::api::set_js_prop(&index_event, "ids", &ids_arr);
@@ -514,7 +514,7 @@ impl IfcAPI {
         // MaterialLayerIndex::from_content is deliberately skipped (its own full
         // scan); aggregate void propagation IS included via the stashed
         // IfcRelAggregates spans, keeping void-parity with the server.
-        let mut decoder = EntityDecoder::with_arc_index(content, entity_index_arc.clone());
+        let mut decoder = EntityDecoder::with_arc_columnar_index(content, entity_index_arc.clone());
         decoder.seed_unit_scales(1.0, plane_angle_to_radians);
         let resolved = ifc_lite_processing::prepass::resolve_prepass(
             &prepass_spans,
@@ -692,7 +692,7 @@ impl IfcAPI {
         // failure the key falls back to the element id (its own bucket).
         {
             let mut akey_decoder =
-                EntityDecoder::with_arc_index(content, entity_index_arc.clone());
+                EntityDecoder::with_arc_columnar_index(content, entity_index_arc.clone());
             let akey_router = GeometryRouter::new();
             let rest = &buffered_jobs[first_n..];
             let mut affinity: Vec<u32> = Vec::with_capacity(rest.len());

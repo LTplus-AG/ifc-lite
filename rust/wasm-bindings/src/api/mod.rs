@@ -27,7 +27,7 @@ mod symbolic;
 
 use csg_diagnostics::drain_and_log_csg_diagnostics;
 
-use ifc_lite_core::EntityIndex;
+use ifc_lite_core::ColumnarEntityIndex;
 use wasm_bindgen::prelude::*;
 
 /// `TessellationQuality::Medium` as the atomic discriminant stored on
@@ -40,11 +40,11 @@ pub struct IfcAPI {
     initialized: bool,
     /// Cached entity index from buildPrePassOnce, reused by processGeometryBatch.
     ///
-    /// Wrapped in `Arc` so successive `processGeometryBatch` calls reuse it
-    /// without cloning the (~14 M-entry, ~600 MB) FxHashMap on every call.
-    /// The streaming pre-pass calls `processGeometryBatch` dozens of times
-    /// per worker — the previous `RefCell<Option<EntityIndex>>::clone()`
-    /// path made each call effectively a full HashMap copy.
+    /// A compact [`ColumnarEntityIndex`] (three sorted `u32` columns +
+    /// binary-search lookup) not an `FxHashMap`: a 19.1 M-entity hashmap rounds
+    /// up to `2^25` buckets ≈ 436 MB per worker realm; the columns are ~229 MB
+    /// (#1682). Wrapped in `Arc` so successive `processGeometryBatch` calls
+    /// reuse it without cloning the columns on every call.
     ///
     /// Phase 1.1 of the single-controller refactor: switched from
     /// `RefCell` to `Mutex` so the API is `Sync`. Rayon helpers (added
@@ -56,7 +56,7 @@ pub struct IfcAPI {
     /// `RefCell` was unsafe here even on single-threaded WASM workers
     /// because wasm-bindgen's `WasmRefCell` borrow counter underflows
     /// under concurrent `&self` access.
-    cached_entity_index: std::sync::Mutex<Option<std::sync::Arc<EntityIndex>>>,
+    cached_entity_index: std::sync::Mutex<Option<std::sync::Arc<ColumnarEntityIndex>>>,
 
     /// Session source bytes (the whole IFC file) held ONCE per load, so the
     /// streaming batch path stops re-copying the file into the wasm heap on
@@ -399,13 +399,14 @@ impl IfcAPI {
     /// even though the pre-pass worker built the same index minutes
     /// earlier.
     ///
-    /// Building an `FxHashMap` from the three input slices costs ~1 s on
-    /// 14 M entries — about 4–5× faster than re-scanning the file. After
-    /// this call, the next `processGeometryBatch` skips the lazy build
-    /// branch and reuses the populated cache by `Arc::clone()`.
+    /// Builds a compact [`ColumnarEntityIndex`] from the three input slices
+    /// (sorted `u32` columns + binary search) instead of a per-worker
+    /// `FxHashMap` — ~229 MB vs ~436 MB on a 19.1 M-entity model (#1682).
+    /// [`ColumnarEntityIndex::from_columns`] verifies the id ordering once
+    /// (O(n)) and only argsorts if the producer did not emit sorted columns.
     ///
-    /// `lengths[i]` is the byte length of entity `ids[i]`, so the cache
-    /// stores `(start, start + length)` to match the existing tuple layout.
+    /// `lengths[i]` is the byte length of entity `ids[i]`, so lookup returns
+    /// `(start, start + length)` to match the existing `(start, end)` layout.
     ///
     /// Idempotent in the sense that repeated calls REPLACE the cache —
     /// supports the parser-worker pattern of reusing one IfcAPI across
@@ -416,12 +417,7 @@ impl IfcAPI {
         if n == 0 || starts.len() != n || lengths.len() != n {
             return;
         }
-        let mut index = ifc_lite_core::EntityIndex::with_capacity_and_hasher(n, Default::default());
-        for i in 0..n {
-            let start = starts[i] as usize;
-            let length = lengths[i] as usize;
-            index.insert(ids[i], (start, start + length));
-        }
+        let index = ColumnarEntityIndex::from_columns(ids, starts, lengths);
         let mut slot = self
             .cached_entity_index
             .lock()

@@ -6,6 +6,7 @@
 //!
 //! Lazily decode IFC entities from byte offsets without loading entire file into memory.
 
+use crate::columnar_index::EntityIndexStore;
 use crate::error::{Error, Result};
 use crate::parser::{parse_entity, EntityScanner};
 use crate::schema_gen::{AttributeValue, DecodedEntity};
@@ -45,10 +46,9 @@ pub struct EntityDecoder<'a> {
     /// Cache of decoded entities (entity_id -> `Arc<DecodedEntity>`)
     /// Using Arc avoids expensive clones on cache hits
     cache: FxHashMap<u32, Arc<DecodedEntity>>,
-    /// Index of entity offsets (entity_id -> (start, end))
-    /// Can be pre-built or built lazily
-    /// Using Arc to allow sharing across threads without cloning the HashMap
-    entity_index: Option<Arc<EntityIndex>>,
+    /// Entity offsets (entity_id -> (start, end)): legacy `FxHashMap` or compact
+    /// columnar index. `pub(crate)` for `crate::columnar_index`'s constructors.
+    pub(crate) entity_index: Option<EntityIndexStore>,
     /// Cache of cartesian point coordinates for FacetedBrep optimization
     /// Only populated when using get_polyloop_coords_cached
     point_cache: FxHashMap<u32, (f64, f64, f64)>,
@@ -114,7 +114,7 @@ impl<'a> EntityDecoder<'a> {
         Self {
             content,
             cache: FxHashMap::default(),
-            entity_index: Some(Arc::new(index)),
+            entity_index: Some(EntityIndexStore::Hash(Arc::new(index))),
             point_cache: FxHashMap::default(),
             point_cache_hits: 0,
             point_cache_misses: 0,
@@ -133,7 +133,7 @@ impl<'a> EntityDecoder<'a> {
         Self {
             content,
             cache: FxHashMap::default(),
-            entity_index: Some(index),
+            entity_index: Some(EntityIndexStore::Hash(index)),
             point_cache: FxHashMap::default(),
             point_cache_hits: 0,
             point_cache_misses: 0,
@@ -148,7 +148,7 @@ impl<'a> EntityDecoder<'a> {
     /// decoder does not lazily rebuild it via `build_index`. Set it before any
     /// `decode_by_id`/ref-resolving call; afterwards `build_index` no-ops.
     pub fn set_entity_index(&mut self, index: Arc<EntityIndex>) {
-        self.entity_index = Some(index);
+        self.entity_index = Some(EntityIndexStore::Hash(index));
     }
 
     /// Build entity index for O(1) lookups
@@ -157,7 +157,7 @@ impl<'a> EntityDecoder<'a> {
         if self.entity_index.is_some() {
             return; // Already built
         }
-        self.entity_index = Some(Arc::new(build_entity_index(self.content)));
+        self.entity_index = Some(EntityIndexStore::Hash(Arc::new(build_entity_index(self.content))));
     }
 
     /// Decode entity at byte offset
@@ -284,7 +284,7 @@ impl<'a> EntityDecoder<'a> {
         let (start, end) = self
             .entity_index
             .as_ref()
-            .and_then(|idx| idx.get(&entity_id).copied())
+            .and_then(|idx| idx.lookup(entity_id))
             .ok_or_else(|| Error::parse(0, format!("Entity #{} not found", entity_id)))?;
 
         self.decode_at(start, end)
@@ -534,7 +534,7 @@ impl<'a> EntityDecoder<'a> {
     #[inline]
     pub fn get_raw_bytes(&mut self, entity_id: u32) -> Option<&'a [u8]> {
         self.build_index();
-        let (start, end) = self.entity_index.as_ref()?.get(&entity_id).copied()?;
+        let (start, end) = self.entity_index.as_ref()?.lookup(entity_id)?;
         Some(&self.content[start..end])
     }
 
@@ -873,7 +873,7 @@ impl<'a> EntityDecoder<'a> {
         let bytes_full = self.content;
 
         // Get polyloop raw bytes
-        let (start, end) = index.get(&entity_id).copied()?;
+        let (start, end) = index.lookup(entity_id)?;
         let bytes = &bytes_full[start..end];
 
         // IFCPOLYLOOP((#id1,#id2,#id3,...));
@@ -929,7 +929,7 @@ impl<'a> EntityDecoder<'a> {
 
                     // INLINE: Get cartesian point coordinates directly
                     // This avoids the overhead of calling get_cartesian_point_fast for each point
-                    if let Some((pt_start, pt_end)) = index.get(&point_id).copied() {
+                    if let Some((pt_start, pt_end)) = index.lookup(point_id) {
                         if let Some(coord) =
                             parse_cartesian_point_inline(&bytes_full[pt_start..pt_end])
                         {
@@ -960,7 +960,7 @@ impl<'a> EntityDecoder<'a> {
         let bytes_full = self.content;
 
         // Get polyloop raw bytes
-        let (start, end) = index.get(&entity_id).copied()?;
+        let (start, end) = index.lookup(entity_id)?;
         let bytes = &bytes_full[start..end];
 
         // IFCPOLYLOOP((#id1,#id2,#id3,...));
@@ -1024,7 +1024,7 @@ impl<'a> EntityDecoder<'a> {
                         coords.push(coord);
                     } else {
                         // Not in cache - parse and cache
-                        if let Some((pt_start, pt_end)) = index.get(&point_id).copied() {
+                        if let Some((pt_start, pt_end)) = index.lookup(point_id) {
                             if let Some(coord) =
                                 parse_cartesian_point_inline(&bytes_full[pt_start..pt_end])
                             {

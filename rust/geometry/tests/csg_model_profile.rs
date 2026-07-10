@@ -94,9 +94,22 @@ fn profile_model() {
     println!("\n=== #1109 per-element CSG profile (cap={:?}) ===", budget::cap());
     println!("model: {path}  ({} bytes)", content.len());
 
+    // #1682 A/B: IFCLT_COLUMNAR=1 drives the geometry pass through the compact
+    // ColumnarEntityIndex (sorted u32 columns + binary search) instead of the
+    // FxHashMap, so a before/after run on the same model measures the
+    // binary-search hot-path wall-time delta (and proves tri-count parity).
+    let use_columnar = std::env::var("IFCLT_COLUMNAR").is_ok_and(|v| v != "0");
     let t_parse = Instant::now();
-    let entity_index = build_entity_index(&content);
-    let mut decoder = EntityDecoder::with_index(&content, entity_index);
+    let mut decoder = if use_columnar {
+        let idx = std::sync::Arc::new(ifc_lite_core::ColumnarEntityIndex::from_scan(&content));
+        EntityDecoder::with_arc_columnar_index(&content, idx)
+    } else {
+        EntityDecoder::with_index(&content, build_entity_index(&content))
+    };
+    println!(
+        "index backing: {}",
+        if use_columnar { "columnar (binary search)" } else { "FxHashMap" }
+    );
     let router = GeometryRouter::with_units(&content, &mut decoder);
     let void_idx = build_void_index(&content);
     println!("parse+index+voididx: {:.0}ms  (voided hosts: {})",
@@ -151,7 +164,9 @@ fn profile_model() {
     let sum_ms: f64 = recs.iter().map(|r| r.ms).sum();
     let tripped_n = recs.iter().filter(|r| r.tripped).count();
 
+    let total_tris: usize = recs.iter().map(|r| r.tris).sum();
     println!("\nTOTAL serial geometry: {:.0}ms over {} elements", total_ms, recs.len());
+    println!("  total triangles: {total_tris}  (MUST match across index backings)");
     println!("  elements > 1s: {over_1s}");
     println!(
         "  elements that tripped active budgets (per-boolean={cap:?}, per-element={ecap:?}): {tripped_n}"

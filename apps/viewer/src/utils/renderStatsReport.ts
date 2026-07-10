@@ -59,7 +59,7 @@ export async function reportRenderStats(context: {
 
     const deadline = performance.now() + SETTLE_TIMEOUT_MS;
     while (
-      (scene.hasQueuedMeshes() || scene.hasStreamingFragments()) &&
+      (scene.hasQueuedMeshes() || scene.hasStreamingFragments() || scene.isFinalizeInProgress()) &&
       performance.now() < deadline
     ) {
       if (context.isStale?.()) return;

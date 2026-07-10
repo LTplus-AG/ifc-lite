@@ -171,6 +171,11 @@ export class Scene {
   private hostEnforceCountdown = 0;
   // LOD1 builds (issue #1682 phase 5): off unless the app enables them.
   private lodBuildsEnabled = false;
+  // True while a (possibly time-sliced) finalize rebuild is running. The
+  // preamble clears streamingFragments synchronously, so hasStreamingFragments
+  // alone under-reports "still settling" — settle-sensitive consumers
+  // (post-load telemetry) must also check this.
+  private finalizeInProgress = false;
   private nextSplitId: number = 0; // Monotonic counter for sub-bucket keys
   private nextBatchId: number = 0; // Monotonic counter for unique batch identifiers
   // Shared local-frame origin for ALL batches (set from the first batch's world
@@ -1583,6 +1588,13 @@ export class Scene {
     return this.streamingFragments.length > 0;
   }
 
+  /** True while a finalize rebuild (sync or time-sliced) is mid-flight —
+   *  the fragment list is already cleared then, so settle-sensitive callers
+   *  must check BOTH this and hasStreamingFragments(). */
+  isFinalizeInProgress(): boolean {
+    return this.finalizeInProgress;
+  }
+
   /** True when streaming runs in ephemeral mode (huge files) — fragments render
    *  directly from GPU and geometry is NOT retained for re-batch, so callers
    *  must NOT finalize (there's nothing to rebuild the batches from). */
@@ -1774,7 +1786,15 @@ export class Scene {
    */
   finalizeStreaming(device: GPUDevice, pipeline: RenderPipeline): void {
     if (this.streamingFragments.length === 0) return;
+    this.finalizeInProgress = true;
+    try {
+      this.finalizeStreamingInner(device, pipeline);
+    } finally {
+      this.finalizeInProgress = false;
+    }
+  }
 
+  private finalizeStreamingInner(device: GPUDevice, pipeline: RenderPipeline): void {
     // Save references to old fragments/batches — keep them rendering
     // until the new proper batches are fully built (no visual gap).
     const oldFragments = this.streamingFragments;
@@ -1864,6 +1884,10 @@ export class Scene {
       return Promise.resolve();
     }
     if (this.streamingFragments.length === 0) return Promise.resolve();
+    // Mark the rebuild as in-flight: the preamble empties streamingFragments
+    // synchronously, so settle-sensitive consumers need this flag until the
+    // time-sliced rebuild swaps the new batch array in.
+    this.finalizeInProgress = true;
 
     // --- Synchronous preamble (fast O(N) bookkeeping) ---
 
@@ -1959,6 +1983,7 @@ export class Scene {
         for (const batch of oldBatches) {
           if (!fragmentSet.has(batch)) destroyGpuResources(batch);
         }
+        scene.finalizeInProgress = false;
         resolve();
       }
       // Start first chunk immediately (no setTimeout delay)

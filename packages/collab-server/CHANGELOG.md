@@ -1,5 +1,28 @@
 # @ifc-lite/collab-server
 
+## 0.2.6
+
+### Patch Changes
+
+- [#1692](https://github.com/LTplus-AG/ifc-lite/pull/1692) [`4ef69e9`](https://github.com/LTplus-AG/ifc-lite/commit/4ef69e903def842a9d94cd656a5caa176dd344bb) Thanks [@louistrue](https://github.com/louistrue)! - Link-based multiuser collaboration plumbing (ports draft [#937](https://github.com/LTplus-AG/ifc-lite/issues/937)):
+
+  - `@ifc-lite/collab`: STEP → IFCX room seeding (`seedFromStep`), entity placement
+    helpers (`usd::xformop` read/write + baselines), shared annotation pins,
+    multi-mesh geometry refs (`geomIds` with legacy `geomId` read fallback,
+    `addGeometryRef`, `iterGeometries`), presence `role` field, and a browser fix
+    for `HttpBlobStore` (bind global `fetch` to avoid "Illegal invocation").
+  - `@ifc-lite/collab-server`: signed room tokens (HS256 mint / verify / revoke /
+    kick endpoints + `createRoomTokenAuthenticator`), CORS for the HTTP routes,
+    disk-backed `FsBlobStorage`, `Room.kickClient` / `RoomManager.peek`, and a CLI
+    that wires token auth + disk blobs from `COLLAB_TOKEN_SECRET` /
+    `COLLAB_DATA_DIR` (plus a reference Dockerfile + railway.toml).
+  - `@ifc-lite/renderer`: `rotateMeshesForEntity/-Entities` — in-place yaw rotation
+    of an entity's flat meshes about a pivot (local-frame-origin aware), used by
+    live collab placement sync and the viewer's rotate action.
+
+- Updated dependencies [[`4ef69e9`](https://github.com/LTplus-AG/ifc-lite/commit/4ef69e903def842a9d94cd656a5caa176dd344bb)]:
+  - @ifc-lite/collab@0.2.7
+
 ## 0.2.5
 
 ### Patch Changes

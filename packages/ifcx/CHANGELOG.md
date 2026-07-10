@@ -1,5 +1,15 @@
 # @ifc-lite/ifcx
 
+## 2.2.3
+
+### Patch Changes
+
+- [#1699](https://github.com/LTplus-AG/ifc-lite/pull/1699) [`ec53138`](https://github.com/LTplus-AG/ifc-lite/commit/ec53138f252578253b55e1caf28a23dc9cc61de9) Thanks [@louistrue](https://github.com/louistrue)! - IFC5 system membership reaches the viewer's Groups tab: the ifcx composer now
+  emits AssignsToGroup relationship edges from the `bsi::ifc::system::partofsystem`
+  attribute (group -> member, matching STEP direction), and the on-demand group
+  member/relationship extractors fall back to the EntityTable when a store has no
+  STEP byte-span index (IFCX stores ingest with an empty entityIndex.byId).
+
 ## 2.2.2
 
 ### Patch Changes

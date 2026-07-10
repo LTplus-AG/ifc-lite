@@ -15,7 +15,7 @@
  * - Multi-language support (EN/DE/FR)
  */
 
-import React, { useCallback, useState, useMemo, useRef } from 'react';
+import React, { useCallback, useState, useMemo, useRef, useEffect } from 'react';
 import {
   X,
   Upload,
@@ -495,7 +495,25 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
   // Full model list for the target-model picker (federation): lets the user
   // see which model the results reflect and switch to validate another one.
   const idsModels = useViewerStore((s) => s.models);
-  const idsModelList = useMemo(() => Array.from(idsModels.values()), [idsModels]);
+  // Only offer models that actually carry parsed IFC data. Geometry-only,
+  // mid-load or cache-restored models have no `ifcDataStore` and cannot be
+  // validated — listing them would let the user pick a model whose report
+  // would silently reflect a different model's data (#1702 C1).
+  const idsModelList = useMemo(
+    () => Array.from(idsModels.values()).filter((m) => m.ifcDataStore != null),
+    [idsModels],
+  );
+
+  // The controlled picker binds to the landed report's model id, which only
+  // updates once a run completes. Hold the user's in-flight choice locally so
+  // the dropdown keeps showing the model being validated instead of snapping
+  // back to the previous one while `loading` (#1702 C3).
+  const [pendingModelId, setPendingModelId] = useState<string | null>(null);
+  useEffect(() => {
+    // Once a run settles (report landed or errored), fall back to the report's
+    // own model id so the picker reflects reality again.
+    if (!loading) setPendingModelId(null);
+  }, [loading]);
 
   // Handle file selection
   const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -722,8 +740,11 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
                   see which model the results reflect and switch to another.
                   Changing it re-runs validation against the chosen model. */}
               <select
-                value={report.modelInfo.modelId}
-                onChange={(e) => { void runValidation(e.target.value); }}
+                value={pendingModelId ?? report.modelInfo.modelId}
+                onChange={(e) => {
+                  setPendingModelId(e.target.value);
+                  void runValidation(e.target.value);
+                }}
                 disabled={loading}
                 aria-label="Model to validate"
                 className="min-w-0 flex-1 rounded border border-border bg-transparent px-1.5 py-0.5 text-xs text-foreground disabled:opacity-50"

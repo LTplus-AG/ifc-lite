@@ -40,6 +40,7 @@ import { getEntityBounds } from '@/utils/viewportUtils';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 
 import { createDataAccessor } from './ids/idsDataAccessor';
+import { resolveValidationTarget } from './ids/resolveValidationTarget';
 import { runValidationInWorker, idsWorkerSupported } from './ids/idsWorkerClient';
 import {
   DEFAULT_FAILED_COLOR,
@@ -324,24 +325,22 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
       return null;
     }
 
-    // Determine model ID - a caller-supplied target wins (federation picker),
-    // otherwise the active model, otherwise the first loaded, otherwise
-    // '__legacy__' for legacy single-model mode.
-    const modelId =
-      targetModelId
-      || activeModelId
-      || (models.size > 0 ? Array.from(models.keys())[0] : '__legacy__');
-
-    // Resolve the data store for that specific model so the picker actually
-    // switches which model is validated (not just the active one).
-    const dataStore =
-      models.get(modelId)?.ifcDataStore
-      || ifcDataStore
-      || (models.size > 0 ? Array.from(models.values())[0]?.ifcDataStore : null);
-    if (!dataStore) {
-      setIdsError('No IFC model loaded');
+    // Resolve which model + data store to validate. An explicit target from the
+    // federation picker is authoritative: if it names a model with no parsed
+    // data store, we surface an error rather than silently validating the
+    // active model's data under the picked model's label. The no-target path
+    // keeps the existing active/first/legacy fallback chain.
+    const target = resolveValidationTarget({
+      targetModelId,
+      activeModelId,
+      models,
+      legacyDataStore: ifcDataStore,
+    });
+    if ('error' in target) {
+      setIdsError(target.error);
       return null;
     }
+    const { modelId, dataStore } = target;
 
     try {
       setIdsLoading(true);

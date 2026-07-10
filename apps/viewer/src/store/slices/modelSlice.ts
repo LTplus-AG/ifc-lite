@@ -157,9 +157,19 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
       clearMutations?: (id: string) => void;
       clearMutationView?: (id: string) => void;
       clearGeneratedSchedule?: () => number;
+      idsValidationReport?: { modelInfo: { modelId: string } } | null;
+      clearIdsValidationReport?: () => void;
     };
     cross.clearMutations?.(modelId);
     cross.clearMutationView?.(modelId);
+
+    // If the removed model is the one the current IDS report describes, that
+    // report is stale by definition — its results reference a model that no
+    // longer exists, and the panel's controlled model picker would bind to a
+    // now-missing option. Drop it so the panel self-heals (#1702 C2).
+    if (cross.idsValidationReport?.modelInfo.modelId === modelId) {
+      cross.clearIdsValidationReport?.();
+    }
 
     // clearMutations only clears a schedule whose source === modelId. Removing
     // the last model orphans any remaining schedule (e.g. one with a null /

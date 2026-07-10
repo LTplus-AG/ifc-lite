@@ -491,7 +491,7 @@ function ListItem({ definition, isActive, executing, hasData, onExecute, onEdit,
                     if (hasData) onExecute(definition);
                   }}
                   disabled={!hasData}
-                  aria-label="Run"
+                  aria-label={`Run list ${definition.name}`}
                 >
                   <Play className="h-3 w-3" />
                 </Button>
@@ -509,7 +509,7 @@ function ListItem({ definition, isActive, executing, hasData, onExecute, onEdit,
                       e.stopPropagation();
                       onEdit(definition);
                     }}
-                    aria-label="Edit"
+                    aria-label={`Edit list ${definition.name}`}
                   >
                     <Pencil className="h-3 w-3" />
                   </Button>
@@ -528,7 +528,7 @@ function ListItem({ definition, isActive, executing, hasData, onExecute, onEdit,
                       e.stopPropagation();
                       onDuplicate(definition);
                     }}
-                    aria-label={isPreset ? 'Use as Template' : 'Duplicate'}
+                    aria-label={isPreset ? `Use ${definition.name} as template` : `Duplicate list ${definition.name}`}
                   >
                     <Copy className="h-3 w-3" />
                   </Button>
@@ -547,7 +547,7 @@ function ListItem({ definition, isActive, executing, hasData, onExecute, onEdit,
                       e.stopPropagation();
                       onExport(definition);
                     }}
-                    aria-label="Export"
+                    aria-label={`Export list ${definition.name}`}
                   >
                     <Download className="h-3 w-3" />
                   </Button>
@@ -566,7 +566,7 @@ function ListItem({ definition, isActive, executing, hasData, onExecute, onEdit,
                       e.stopPropagation();
                       onDelete(definition.id);
                     }}
-                    aria-label="Delete"
+                    aria-label={`Delete list ${definition.name}`}
                   >
                     <Trash2 className="h-3 w-3" />
                   </Button>

@@ -8,8 +8,8 @@ use crate::{Point3, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 
 use super::curves::{
-    extract_vertex_coords, sample_bspline_edge_curve, sample_circle_edge_curve,
-    sample_ellipse_edge_curve,
+    extract_vertex_coords, read_trim_parameter, sample_bspline_edge_curve,
+    sample_bspline_edge_curve_range, sample_circle_edge_curve, sample_ellipse_edge_curve,
 };
 use super::polyline::sample_curve_polyline;
 
@@ -189,7 +189,24 @@ fn sample_edge_geometry(
                 }
                 "IFCBSPLINECURVEWITHKNOTS" | "IFCRATIONALBSPLINECURVEWITHKNOTS" => {
                     let s = (*walk_start)?;
-                    Some(sample_bspline_edge_curve(&basis, &s, basis_forward, decoder, quality))
+                    // Honour parameter trims so sampling stays on the trimmed
+                    // subspan instead of running the basis curve's full knot
+                    // range (both trims must be present to bound a range).
+                    let trim_range = match (
+                        geom.get(1).and_then(read_trim_parameter),
+                        geom.get(2).and_then(read_trim_parameter),
+                    ) {
+                        (Some(a), Some(b)) => Some((a, b)),
+                        _ => None,
+                    };
+                    Some(sample_bspline_edge_curve_range(
+                        &basis,
+                        &s,
+                        basis_forward,
+                        trim_range,
+                        decoder,
+                        quality,
+                    ))
                 }
                 // Trimmed line: two endpoints are exact; fall back to the
                 // start-vertex default.

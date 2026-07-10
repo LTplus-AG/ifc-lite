@@ -1214,3 +1214,68 @@ fn test_element_with_blank_representation_type_uses_identifier() {
         "blank RepresentationType with 'Axis' identifier must stay skipped"
     );
 }
+
+/// PR #1673 review follow-up: an IfcTrimmedCurve over a B-spline basis whose
+/// trims select only a SUBSPAN must not sample the basis curve's full knot
+/// range - intermediate samples would jump outside the trimmed edge and
+/// corrupt the face loop. Quadratic B-spline through (50,0) (25,40) (-25,40)
+/// (-50,0) with knots [0,0,0,.5,1,1,1]; the edge is trimmed to t in [0,0.5]
+/// (endpoints (50,0,0) -> (0,40,0)). Untrimmed sampling would emit points
+/// approaching (-50,0,0).
+#[test]
+fn test_advanced_face_trimmed_bspline_respects_trim_params() {
+    let content = r#"
+#1=IFCCARTESIANPOINT((50.,0.,0.));
+#2=IFCCARTESIANPOINT((0.,40.,0.));
+#3=IFCCARTESIANPOINT((0.,0.,0.));
+#5=IFCVERTEXPOINT(#1);
+#6=IFCVERTEXPOINT(#2);
+#7=IFCCARTESIANPOINT((25.,40.,0.));
+#8=IFCCARTESIANPOINT((-25.,40.,0.));
+#18=IFCCARTESIANPOINT((-50.,0.,0.));
+#9=IFCDIRECTION((0.,0.,1.));
+#10=IFCDIRECTION((1.,0.,0.));
+#11=IFCAXIS2PLACEMENT3D(#3,#9,#10);
+#12=IFCPLANE(#11);
+#13=IFCBSPLINECURVEWITHKNOTS(2,(#1,#7,#8,#18),.UNSPECIFIED.,.F.,.F.,(3,1,3),(0.,0.5,1.),.UNSPECIFIED.);
+#14=IFCTRIMMEDCURVE(#13,(IFCPARAMETERVALUE(0.)),(IFCPARAMETERVALUE(0.5)),.T.,.PARAMETER.);
+#15=IFCLINE(#2,#20);
+#20=IFCVECTOR(#21,1.);
+#21=IFCDIRECTION((1.,0.,0.));
+#30=IFCEDGECURVE(#5,#6,#14,.T.);
+#31=IFCEDGECURVE(#6,#5,#15,.T.);
+#40=IFCORIENTEDEDGE(*,*,#30,.T.);
+#41=IFCORIENTEDEDGE(*,*,#31,.T.);
+#50=IFCEDGELOOP((#40,#41));
+#51=IFCFACEOUTERBOUND(#50,.T.);
+#52=IFCADVANCEDFACE((#51),#12,.T.);
+#53=IFCOPENSHELL((#52));
+#54=IFCSHELLBASEDSURFACEMODEL((#53));
+"#;
+
+    let mut decoder = EntityDecoder::new(content);
+    let schema = IfcSchema::new();
+    let processor = ShellBasedSurfaceModelProcessor::new();
+
+    let entity = decoder.decode_by_id(54).unwrap();
+    let mesh = processor
+        .process(&entity, &mut decoder, &schema, TessellationQuality::Medium)
+        .expect("trimmed-bspline-bounded face must tessellate");
+
+    assert!(
+        mesh.positions.len() / 3 >= 5,
+        "trimmed B-spline edge must contribute intermediate samples, got {} vertices",
+        mesh.positions.len() / 3
+    );
+    // All samples stay on the trimmed half (x in [0, 50]); full-basis sampling
+    // would emit points with x approaching -50.
+    let min_x = mesh
+        .positions
+        .chunks_exact(3)
+        .map(|p| p[0])
+        .fold(f32::MAX, f32::min);
+    assert!(
+        min_x > -5.0,
+        "samples must stay on the trimmed subspan (t <= 0.5, x >= 0), got min x = {min_x}"
+    );
+}

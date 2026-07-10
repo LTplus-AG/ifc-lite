@@ -48,6 +48,33 @@ pub(super) fn parse_curve_knots(curve: &DecodedEntity) -> Option<(Vec<i64>, Vec<
     None
 }
 
+/// Read a parameter trim from an `IfcTrimmedCurve.Trim1/Trim2` SELECT list:
+/// `IFCPARAMETERVALUE(x)` (stored as `List(["IFCPARAMETERVALUE", x])`) or a
+/// bare numeric. Cartesian trim points are ignored — the edge-loop walk
+/// anchors the endpoints geometrically; the parameter is only needed to bound
+/// the SAMPLING range on the basis curve.
+pub(super) fn read_trim_parameter(attr: &ifc_lite_core::AttributeValue) -> Option<f64> {
+    let list = attr.as_list()?;
+    let mut param: Option<f64> = None;
+    for item in list {
+        if let Some(inner) = item.as_list() {
+            if let Some(type_name) = inner.first().and_then(|v| v.as_string()) {
+                if type_name == "IFCPARAMETERVALUE" {
+                    param = inner.get(1).and_then(|v| v.as_float());
+                    continue;
+                }
+            }
+        }
+        if item.as_entity_ref().is_some() {
+            continue;
+        }
+        if let Some(f) = item.as_float() {
+            param = Some(f);
+        }
+    }
+    param
+}
+
 /// Sample points along a B-spline curve edge.
 /// Returns the start vertex plus intermediate sample points.
 /// The end vertex is omitted (provided by the next edge's start in the loop).
@@ -55,6 +82,22 @@ pub(super) fn sample_bspline_edge_curve(
     curve: &DecodedEntity,
     start: &Point3<f64>,
     curve_forward: bool,
+    decoder: &mut EntityDecoder,
+    quality: TessellationQuality,
+) -> Vec<Point3<f64>> {
+    sample_bspline_edge_curve_range(curve, start, curve_forward, None, decoder, quality)
+}
+
+/// Like [`sample_bspline_edge_curve`], but optionally restricted to a
+/// parameter subrange (an `IfcTrimmedCurve` over a B-spline basis whose trims
+/// select only part of the curve). Without the restriction, intermediate
+/// samples would run over the basis curve's full knot span and jump outside
+/// the trimmed edge, corrupting the face loop.
+pub(super) fn sample_bspline_edge_curve_range(
+    curve: &DecodedEntity,
+    start: &Point3<f64>,
+    curve_forward: bool,
+    trim_range: Option<(f64, f64)>,
     decoder: &mut EntityDecoder,
     quality: TessellationQuality,
 ) -> Vec<Point3<f64>> {
@@ -99,6 +142,17 @@ pub(super) fn sample_bspline_edge_curve(
     let t_min = knots[degree];
     let t_max = knots[knots.len() - degree - 1];
 
+    // Restrict to the trim subrange when one was authored; degenerate or
+    // out-of-span trims fall back to the full valid span.
+    let (t_lo, t_hi) = match trim_range {
+        Some((a, b)) => {
+            let lo = a.min(b).max(t_min);
+            let hi = a.max(b).min(t_max);
+            if hi - lo > 1e-12 { (lo, hi) } else { (t_min, t_max) }
+        }
+        None => (t_min, t_max),
+    };
+
     // Adaptive segment count based on control point density; scaled by quality.
     let n_segments = scale_segments(control_points.len() * 2, 4, 16, quality);
 
@@ -110,11 +164,11 @@ pub(super) fn sample_bspline_edge_curve(
     for i in 1..n_segments {
         let frac = i as f64 / n_segments as f64;
         let t = if curve_forward {
-            t_min + (t_max - t_min) * frac
+            t_lo + (t_hi - t_lo) * frac
         } else {
-            t_max - (t_max - t_min) * frac
+            t_hi - (t_hi - t_lo) * frac
         };
-        let t_clamped = t.min(t_max - 1e-6).max(t_min);
+        let t_clamped = t.min(t_hi - 1e-6).max(t_lo);
         let pt = evaluate_bspline_curve(t_clamped, degree, &control_points, &knots);
         // Skip degenerate points (too close to previous)
         if let Some(prev) = points.last() {

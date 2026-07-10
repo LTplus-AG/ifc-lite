@@ -59,6 +59,8 @@ export { PickingManager } from './picking-manager.js';
 export type { PointPickProvider } from './picking-manager.js';
 export { resolveContributionThresholdPx, projectedAabbRadiusPx } from './contribution-cull.js';
 export type { ContributionCullOptions, CullCameraState } from './contribution-cull.js';
+export { chunkCellKey, bucketBaseKeyFor, DEFAULT_CHUNK_CELL_SIZE } from './chunk-grid.js';
+export type { SpatialChunkingConfig, ChunkAnchorSource } from './chunk-grid.js';
 export { sumResidentGpuBytes } from './render-stats.js';
 export type { FrameStats, ResidentGpuBytes } from './render-stats.js';
 export { RaycastEngine } from './raycast-engine.js';

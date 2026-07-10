@@ -927,6 +927,10 @@ fn view_ok(v: &MeshView) -> bool {
 /// GLB, or chunked external buffers for multi-buffer glTF). Returns the `Gltf` for the
 /// caller to pack (GLB) or serialize (glTF); the binary lives in `ch` afterwards
 /// (`ch.embedded_bin` for the single-buffer case, or already handed to the chunk sink).
+// Cohesive builder: these are the orthogonal knobs of one glTF pass (metadata,
+// model id, lit/emissive material, RTC origin, quantization) and packing them
+// into a struct would not reduce the real coupling. #1427 added `emissive`.
+#[allow(clippy::too_many_arguments)]
 fn build_gltf(
     views: &[MeshView],
     include_metadata: bool,

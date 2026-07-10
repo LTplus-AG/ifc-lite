@@ -104,7 +104,7 @@ npm run parse ./your-model.ifc
 
 ## Learn More
 
-- [IFC-Lite Documentation](https://ltplus-ag.github.io/ifc-lite/)
-- [API Reference](https://ltplus-ag.github.io/ifc-lite/api/)
+- [IFC-Lite Documentation](https://ifclite.dev/docs/)
+- [API Reference](https://ifclite.dev/docs/api/)
 `);
 }

@@ -618,8 +618,8 @@ RUST_LOG=info
 
 ## Learn More
 
-- [IFC-Lite Documentation](https://ltplus-ag.github.io/ifc-lite/)
-- [Server API Reference](https://ltplus-ag.github.io/ifc-lite/api/server/)
+- [IFC-Lite Documentation](https://ifclite.dev/docs/)
+- [Server API Reference](https://ifclite.dev/docs/api/server/)
 - [GitHub Repository](https://github.com/LTplus-AG/ifc-lite)
 `);
 

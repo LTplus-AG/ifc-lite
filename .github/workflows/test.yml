@@ -468,11 +468,20 @@ jobs:
         uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: '9.0.x'
+      # The toolchain checkouts and NuGet packages only change when the pins
+      # in the generator script change, so key the cache on that file.
+      - name: Cache Plato toolchain
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/ifc-lite-plato
+            ~/.nuget/packages
+          key: plato-toolchain-${{ runner.os }}-${{ hashFiles('scripts/generate-plato-clash.mjs') }}
       # Regenerates the Rust + TypeScript outputs from tools/plato/ at the
       # pinned plato + ara3d-sdk SHAs and fails (exit 1) if the committed
       # files drift.
       - name: Check committed Plato outputs are in sync
-        run: node scripts/generate-plato-clash.mjs --check
+        run: PLATO_WORK_DIR=$HOME/.cache/ifc-lite-plato node scripts/generate-plato-clash.mjs --check
 
   # Aggregate gate. Keeps the existing required status check name green
   # for the branch protection rule so we don't have to retouch settings.

@@ -51,7 +51,12 @@ export interface ModelGeorefInput {
   preAlignmentCoordinateInfo?: CoordinateInfo;
 }
 
-function totalYupOffset(info?: CoordinateInfo): { x: number; y: number; z: number } {
+/**
+ * Total viewer Y-up offset applied to a model's geometry (origin shift +
+ * WASM RTC offset, the latter converted from IFC Z-up). The model's IFC
+ * (0,0,0) sits at the NEGATION of this offset in viewer space.
+ */
+export function totalYupOffset(info?: CoordinateInfo): { x: number; y: number; z: number } {
   const shift = info?.originShift ?? { x: 0, y: 0, z: 0 };
   const rtc = info?.wasmRtcOffset;
   const rtcYup = rtc ? { x: rtc.x, y: rtc.z, z: -rtc.y } : { x: 0, y: 0, z: 0 };

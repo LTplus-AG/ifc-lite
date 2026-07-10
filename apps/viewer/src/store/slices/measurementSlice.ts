@@ -29,6 +29,8 @@ export interface MeasurementSlice {
   activeMeasurement: ActiveMeasurement | null;
   snapTarget: SnapTarget | null;
   snapEnabled: boolean;
+  /** Show projected map coordinates (E/N/H) for measure points (issue #1657). */
+  measureGeoEnabled: boolean;
   snapVisualization: SnapVisualization | null;
   edgeLockState: EdgeLockState;
   /** Edge constraint for perpendicular measurements (when shift is held) */
@@ -53,6 +55,7 @@ export interface MeasurementSlice {
   setSnapTarget: (target: SnapTarget | null) => void;
   setSnapVisualization: (viz: SnapVisualization | null) => void;
   toggleSnap: () => void;
+  toggleMeasureGeo: () => void;
 
   // Edge lock actions
   setEdgeLock: (edge: EdgeLockState['edge'], meshExpressId: number | null, edgeT?: number) => void;
@@ -82,6 +85,7 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
   activeMeasurement: null,
   snapTarget: null,
   snapEnabled: true,
+  measureGeoEnabled: false,
   snapVisualization: null,
   edgeLockState: getDefaultEdgeLockState(),
   measurementConstraintEdge: null,
@@ -244,6 +248,7 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
   setSnapTarget: (snapTarget) => set({ snapTarget }),
   setSnapVisualization: (snapVisualization) => set({ snapVisualization }),
   toggleSnap: () => set((state) => ({ snapEnabled: !state.snapEnabled })),
+  toggleMeasureGeo: () => set((state) => ({ measureGeoEnabled: !state.measureGeoEnabled })),
 
   // Edge lock actions
   setEdgeLock: (edge, meshExpressId, edgeT = EDGE_LOCK_DEFAULTS.INITIAL_T) => set({

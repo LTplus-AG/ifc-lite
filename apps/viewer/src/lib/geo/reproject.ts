@@ -456,6 +456,49 @@ export async function reprojectToLatLon(
 }
 
 /**
+ * Reproject an explicit projected point (eastings/northings in the CRS map
+ * unit) to WGS84 lat/lon. Unlike {@link reprojectToLatLon}, which derives the
+ * model centre, this takes coordinates already resolved in the map CRS — e.g.
+ * a picked point's E/N from the measure geo readout (issue #1657).
+ *
+ * @param eastings        Easting in the CRS map unit.
+ * @param northings       Northing in the CRS map unit.
+ * @param crs             IfcProjectedCRS (EPSG code, mapUnitScale).
+ * @param lengthUnitScale IFC project length unit to metres (fallback when
+ *                        crs.mapUnitScale is absent).
+ */
+export async function reprojectPointToLatLon(
+  eastings: number,
+  northings: number,
+  crs: ProjectedCRS,
+  lengthUnitScale = 1,
+): Promise<LatLon | null> {
+  const projDef = await resolveProjection(crs);
+  if (!projDef) return null;
+
+  // Geographic CRS (e.g. EPSG:4326) — eastings/northings are already lon/lat.
+  if (isGeographicProj4(projDef)) {
+    const lon = eastings;
+    const lat = northings;
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+    if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
+    return { lat, lon };
+  }
+
+  const mapScale = resolveMapUnitToMetreScale(crs.mapUnitScale, lengthUnitScale);
+  const eastingM = eastings * mapScale;
+  const northingM = northings * mapScale;
+  try {
+    const [lon, lat] = proj4(projDef, 'WGS84', [eastingM, northingM]);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+    if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
+    return { lat, lon };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Compute the model's center in IFC Z-up metres from coordinate info.
  * This is the geometry center before MapConversion is applied.
  */

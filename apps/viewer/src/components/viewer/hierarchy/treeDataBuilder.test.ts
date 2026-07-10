@@ -779,12 +779,13 @@ describe('storey sort order — IFC4.3 parts and non-level siblings (#1296)', ()
  */
 function createGroupDataStore(): IfcDataStore {
   const names: Record<number, string> = {
-    100: 'HVAC System', 300: '', 400: 'Misc', 500: 'Empty',
+    100: 'HVAC System', 300: '', 400: 'Misc', 500: 'Empty', 600: 'Lighting Circuit',
     201: 'Port A', 202: 'Main Duct', 203: 'Port B',
     301: 'Room 1', 302: 'Room 2', 999: 'Orphan Port',
   };
   const types: Record<number, string> = {
     100: 'IfcDistributionSystem', 300: 'IfcZone', 400: 'IfcGroup', 500: 'IfcSystem',
+    600: 'IfcDistributionCircuit',
     201: 'IfcDistributionPort', 202: 'IfcDuctSegment', 203: 'IfcDistributionPort',
     301: 'IfcSpace', 302: 'IfcSpace', 999: 'IfcDistributionPort',
   };
@@ -792,6 +793,7 @@ function createGroupDataStore(): IfcDataStore {
 
   const byType = new Map<string, number[]>([
     ['IFCDISTRIBUTIONSYSTEM', [100]],
+    ['IFCDISTRIBUTIONCIRCUIT', [600]],
     ['IFCZONE', [300]],
     ['IFCGROUP', [400]],
     ['IFCSYSTEM', [500]],
@@ -804,6 +806,7 @@ function createGroupDataStore(): IfcDataStore {
     300: [301, 302],
     400: [202, 999],
     500: [],
+    600: [202],
   };
   // IfcRelNests: ports #201/#203 nest under duct #202 (inverse → parent host).
   const nestParent: Record<number, number[]> = { 201: [202], 203: [202] };
@@ -855,15 +858,20 @@ describe('resolveMemberGeometry (#1622)', () => {
 });
 
 describe('groupMatchesSubFilter (#1622)', () => {
-  it('buckets the IfcSystem family (incl. IfcStructuralAnalysisModel) as Systems', () => {
+  it('buckets the IfcSystem family (incl. IfcDistributionCircuit, IfcStructuralAnalysisModel) as Systems', () => {
     assert.strictEqual(groupMatchesSubFilter('IfcDistributionSystem', 'systems'), true);
+    assert.strictEqual(groupMatchesSubFilter('IfcDistributionCircuit', 'systems'), true);
     assert.strictEqual(groupMatchesSubFilter('IfcStructuralAnalysisModel', 'systems'), true);
     assert.strictEqual(groupMatchesSubFilter('IfcZone', 'systems'), false);
   });
 
-  it('buckets IfcZone as Zones and IfcGroup as Other', () => {
+  it('buckets IfcZone as Zones and IfcGroup / IfcAsset / IfcInventory as Other', () => {
     assert.strictEqual(groupMatchesSubFilter('IfcZone', 'zones'), true);
     assert.strictEqual(groupMatchesSubFilter('IfcGroup', 'other'), true);
+    assert.strictEqual(groupMatchesSubFilter('IfcAsset', 'other'), true);
+    assert.strictEqual(groupMatchesSubFilter('IfcInventory', 'other'), true);
+    assert.strictEqual(groupMatchesSubFilter('IfcStructuralResultGroup', 'other'), true);
+    assert.strictEqual(groupMatchesSubFilter('IfcDistributionCircuit', 'other'), false);
     assert.strictEqual(groupMatchesSubFilter('IfcDistributionSystem', 'other'), false);
   });
 
@@ -885,6 +893,29 @@ describe('buildGroupTree (#1622)', () => {
     const distSystem = nodes.find((n) => n.type === 'group' && n.ifcType === 'IfcDistributionSystem');
     assert.ok(distSystem, 'the IfcDistributionSystem surfaces despite the exact-match index');
     assert.strictEqual(distSystem.name, 'HVAC System');
+  });
+
+  it('surfaces IfcDistributionCircuit and buckets it under the Systems sub-filter', () => {
+    const ds = createGroupDataStore();
+    // Guard: the circuit is a distinct exact-match bucket, not folded into IfcSystem.
+    assert.strictEqual(ds.entityIndex!.byType!.get('IFCDISTRIBUTIONCIRCUIT')?.[0], 600);
+
+    const all = buildGroupTree(new Map(), ds, new Set(), false, GROUP_GEO_IDS);
+    const circuit = all.find((n) => n.type === 'group' && n.ifcType === 'IfcDistributionCircuit');
+    assert.ok(circuit, 'the IfcDistributionCircuit surfaces despite the exact-match index');
+    assert.strictEqual(circuit.name, 'Lighting Circuit');
+
+    // It is a system, so the Systems sub-filter keeps it and Zones drops it.
+    const systems = buildGroupTree(new Map(), ds, new Set(), false, GROUP_GEO_IDS, 'systems');
+    assert.ok(
+      systems.some((n) => n.type === 'group' && n.ifcType === 'IfcDistributionCircuit'),
+      'IfcDistributionCircuit passes the Systems sub-filter',
+    );
+    const zones = buildGroupTree(new Map(), ds, new Set(), false, GROUP_GEO_IDS, 'zones');
+    assert.ok(
+      !zones.some((n) => n.type === 'group' && n.ifcType === 'IfcDistributionCircuit'),
+      'IfcDistributionCircuit is not a zone',
+    );
   });
 
   it('skips a group with zero members', () => {
@@ -950,6 +981,8 @@ describe('buildGroupTree (#1622)', () => {
     const ds = createGroupDataStore();
     const nodes = buildGroupTree(new Map(), ds, new Set(), false, GROUP_GEO_IDS);
     const order = nodes.filter((n) => n.type === 'group').map((n) => n.ifcType);
-    assert.deepStrictEqual(order, ['IfcDistributionSystem', 'IfcZone', 'IfcGroup']);
+    assert.deepStrictEqual(order, [
+      'IfcDistributionSystem', 'IfcDistributionCircuit', 'IfcZone', 'IfcGroup',
+    ]);
   });
 });

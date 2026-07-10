@@ -992,16 +992,27 @@ export function buildMaterialTree(
  * index (`entityIndex.byType` / `getEntitiesByType`) is exact-match with no
  * subtype closure, so querying 'IfcSystem' alone would silently miss
  * IfcDistributionSystem / IfcBuiltSystem — exactly the classes MEP files use
- * (issue #1622; same defect class as #1662). Order = display order: systems,
- * then zones, then generic groups.
+ * (issue #1622; same defect class as #1662). This must list EVERY concrete
+ * IfcGroup descendant in the supported schemas (IFC4 / IFC4X3) or those classes
+ * never appear in the tab. Order = display order: systems, then zones, then
+ * generic groups.
  */
 export const GROUP_ENTITY_TYPES = [
+  // IfcSystem family (bucketed under Systems).
   'IfcDistributionSystem',
+  'IfcDistributionCircuit',
   'IfcBuiltSystem',
   'IfcBuildingSystem',
-  'IfcSystem',
   'IfcStructuralAnalysisModel',
+  'IfcSystem',
+  // IfcZone (its own bucket, though schema-wise a subtype of IfcSystem).
   'IfcZone',
+  // Remaining concrete IfcGroup descendants (bucketed under Other).
+  'IfcAsset',
+  'IfcInventory',
+  'IfcStructuralLoadGroup',
+  'IfcStructuralLoadCase',
+  'IfcStructuralResultGroup',
   'IfcGroup',
 ] as const;
 
@@ -1010,15 +1021,17 @@ export type GroupSubFilter = 'all' | 'systems' | 'zones' | 'other';
 
 const SYSTEM_GROUP_TYPES: ReadonlySet<string> = new Set([
   'IfcDistributionSystem',
+  'IfcDistributionCircuit',
   'IfcBuiltSystem',
   'IfcBuildingSystem',
-  'IfcSystem',
   'IfcStructuralAnalysisModel',
+  'IfcSystem',
 ]);
 
 /** Whether a group entity class passes the Groups-tab sub-filter.
- *  Systems = the IfcSystem family (incl. IfcStructuralAnalysisModel);
- *  Zones = IfcZone; Other = IfcGroup and any remaining class. */
+ *  Systems = the IfcSystem family (incl. IfcDistributionCircuit and
+ *  IfcStructuralAnalysisModel); Zones = IfcZone; Other = IfcGroup, IfcAsset,
+ *  IfcInventory, the structural load/result groups and any remaining class. */
 export function groupMatchesSubFilter(ifcType: string, filter: GroupSubFilter): boolean {
   switch (filter) {
     case 'all': return true;

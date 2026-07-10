@@ -50,6 +50,10 @@ interface BuildContext {
   bySpace: Map<number, number[]>;
   storeyElevations: Map<number, number>;
   elementToStorey: Map<number, number>;
+  /** elementId -> nearest containing spatial node at ANY level (see the
+   *  SpatialHierarchy field docs). Covers aggregated descendants of a
+   *  directly-contained element, unlike the storey-only `elementToStorey`. */
+  elementToContainer: Map<number, number>;
   visited: Set<number>;
   attrSource?: AttributeSource;
   /** One extractor reused across the recursion when a source is available, so
@@ -103,6 +107,7 @@ export class SpatialHierarchyBuilder {
       bySpace: new Map(),
       storeyElevations: new Map(),
       elementToStorey: new Map(),
+      elementToContainer: new Map(),
       visited: new Set(),
       attrSource,
       attrExtractor: attrSource ? new EntityExtractor(attrSource.source) : undefined,
@@ -126,7 +131,7 @@ export class SpatialHierarchyBuilder {
       console.warn('[SpatialHierarchyBuilder] No buildings found in spatial hierarchy');
     }
 
-    const { byStorey, byBuilding, bySite, bySpace, storeyElevations, elementToStorey } = ctx;
+    const { byStorey, byBuilding, bySite, bySpace, storeyElevations, elementToStorey, elementToContainer } = ctx;
 
     // Pre-build the element -> space lookup for O(1) getContainingSpace.
     const elementToSpace = new Map<number, number>();
@@ -146,6 +151,7 @@ export class SpatialHierarchyBuilder {
       // storeyHeights stays empty: both paths use on-demand property extraction.
       storeyHeights: new Map<number, number>(),
       elementToStorey,
+      elementToContainer,
 
       getStoreyElements(storeyId: number): number[] {
         return byStorey.get(storeyId) ?? [];
@@ -315,6 +321,34 @@ export class SpatialHierarchyBuilder {
       for (const childId of spatialChildIds) {
         if (!ctx.elementToStorey.has(childId)) {
           ctx.elementToStorey.set(childId, expressId);
+        }
+      }
+    }
+
+    // Attribute every directly-contained element AND its aggregated descendants
+    // to THIS spatial container, at ANY level - not just storeys. This is what
+    // lets the "immediate Container" lookup resolve a part nested through an
+    // IfcElementAssembly under an IfcBridgePart / IfcRoadPart / IfcSpatialZone,
+    // instead of leaving it blank. It is intentionally SEPARATE from the
+    // storey-only `elementToStorey` above, whose semantics stay byte-identical.
+    // Recursion visits inner containers before their parent, so the nearest
+    // (innermost) container claims a shared descendant first.
+    if (typeEnum !== IfcTypeEnum.IfcProject) {
+      for (const elementId of containedElements) {
+        ctx.elementToContainer.set(elementId, expressId);
+        const stack: number[] = [elementId];
+        const seen = new Set<number>([elementId]);
+        while (stack.length > 0) {
+          const current = stack.pop() as number;
+          const aggregatedKids = relationships.getRelated(current, RelationshipType.Aggregates, 'forward');
+          for (const kid of aggregatedKids) {
+            if (seen.has(kid)) continue;
+            seen.add(kid);
+            if (!ctx.elementToContainer.has(kid)) {
+              ctx.elementToContainer.set(kid, expressId);
+            }
+            stack.push(kid);
+          }
         }
       }
     }

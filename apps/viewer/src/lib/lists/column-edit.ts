@@ -40,19 +40,51 @@ export function draftFromColumn(col: ColumnDefinition): ColumnDraft {
 }
 
 /**
+ * A content-derived identity for a property / quantity column DEFINITION:
+ * source + set + property, whitespace-collapsed (mirrors the add-path
+ * `customColumnId` slug, minus its `custom-` prefix). Two columns collide when
+ * their definitions resolve the same value, regardless of their `id` — so a
+ * duplicate check can catch an in-place edit that changed a column's definition
+ * while (deliberately) keeping its id stable. Case-preserving: `/A/` and `/a/`
+ * are distinct regex sets and must not fold together.
+ */
+export function columnDefKey(
+  col: Pick<ColumnDefinition, 'source' | 'psetName' | 'propertyName'>,
+): string {
+  return `${col.source}-${(col.psetName ?? '').trim()}-${col.propertyName.trim()}`.replace(/\s+/g, '-');
+}
+
+/** `columnDefKey` for an in-flight editor draft (see `columnDefKey`). */
+export function draftDefKey(draft: ColumnDraft): string {
+  return `${draft.source}-${draft.setName.trim()}-${draft.propName.trim()}`.replace(/\s+/g, '-');
+}
+
+/**
  * Build the edited column from the editor draft, PRESERVING the original id so
  * the results table's width (keyed by id) and sort (by column index) survive.
- * The label tracks the property name, matching how columns are added.
+ *
+ * The label tracks the property name, matching how columns are added — EXCEPT
+ * when `previous` carries a deliberate label override (a label that differs
+ * from the auto-label its own definition would generate, e.g. an imported
+ * `.list.json` display name or a renamed column). That override is kept, so a
+ * definition edit — and in particular a zero-change save — never silently
+ * renames the column.
  */
-export function columnFromDraft(draft: ColumnDraft, id: string): ColumnDefinition {
+export function columnFromDraft(
+  draft: ColumnDraft,
+  id: string,
+  previous?: ColumnDefinition,
+): ColumnDefinition {
   const setName = draft.setName.trim();
   const propName = draft.propName.trim();
+  const hadOverride =
+    previous?.label !== undefined && previous.label !== previous.propertyName;
   return {
     id,
     source: draft.source,
     psetName: setName,
     propertyName: propName,
-    label: propName,
+    label: hadOverride ? previous!.label : propName,
   };
 }
 

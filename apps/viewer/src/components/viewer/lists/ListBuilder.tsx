@@ -42,6 +42,8 @@ import {
   isEditableColumn,
   draftFromColumn,
   columnFromDraft,
+  columnDefKey,
+  draftDefKey,
   updateColumnInPlace,
   type ColumnDraft,
 } from '@/lib/lists/column-edit';
@@ -193,16 +195,24 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
     const building = new Set<string>();
     const site = new Set<string>();
     const project = new Set<string>();
-    // Reuse the shared collector so the site / building-like / project
-    // classification can't drift from the column resolver (#1591 review).
+    const container = new Set<string>();
+    // Reuse the shared collector so the site / building-like / project /
+    // container classification can't drift from the column resolver (#1591 review).
     for (const store of stores) {
       const names = collectSpatialContainerNames(store.spatialHierarchy, (id) => store.entities.getName(id));
       names.sites.forEach((n) => site.add(n));
       names.buildings.forEach((n) => building.add(n));
       names.projects.forEach((n) => project.add(n));
+      names.containers.forEach((n) => container.add(n));
     }
     const sorted = (s: Set<string>) => Array.from(s).sort();
-    return { Storey: storeyNames, Building: sorted(building), Site: sorted(site), Project: sorted(project) };
+    return {
+      Container: sorted(container),
+      Storey: storeyNames,
+      Building: sorted(building),
+      Site: sorted(site),
+      Project: sorted(project),
+    };
   }, [stores, storeyNames]);
 
   // Loaded model / file names — value suggestions for a `Model` filter, and the
@@ -275,6 +285,19 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
   const toggleColumn = useCallback((col: ColumnDefinition) => {
     setColumns(prev => (prev.some(c => c.id === col.id) ? prev.filter(c => c.id !== col.id) : [...prev, col]));
   }, []);
+
+  // Would `draft` duplicate an EXISTING column's definition? Keyed by content
+  // (source + set + property), not by column id, so the guard still fires after
+  // an in-place edit drifted a column's definition away from its (stable) id.
+  // `excludeId` skips the slot being edited, so re-saving a column unchanged
+  // isn't flagged as a self-duplicate.
+  const isDuplicateColumn = useCallback(
+    (draft: ColumnDraft, excludeId?: string): boolean => {
+      const key = draftDefKey(draft);
+      return columns.some((c) => c.id !== excludeId && columnDefKey(c) === key);
+    },
+    [columns],
+  );
 
   const moveColumn = useCallback((idx: number, direction: -1 | 1) => {
     setColumns(prev => {
@@ -429,6 +452,7 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
                 onMove={moveColumn}
                 onRemove={removeColumn}
                 onUpdate={updateColumn}
+                isDuplicate={isDuplicateColumn}
               />
             )}
             <ColumnPicker
@@ -436,6 +460,7 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
               selectedIds={selectedColumnIds}
               onAdd={addColumn}
               onToggle={toggleColumn}
+              isDuplicate={isDuplicateColumn}
             />
           </Section>
 
@@ -541,12 +566,14 @@ function SelectedColumns({
   onMove,
   onRemove,
   onUpdate,
+  isDuplicate,
 }: {
   columns: ColumnDefinition[];
   discovered: DiscoveredColumns;
   onMove: (idx: number, dir: -1 | 1) => void;
   onRemove: (id: string) => void;
   onUpdate: (id: string, next: ColumnDefinition) => void;
+  isDuplicate: (draft: ColumnDraft, excludeId?: string) => boolean;
 }) {
   // Which column's inline editor is open (one at a time). Cleared when the
   // edited column is removed or after a save.
@@ -609,7 +636,8 @@ function SelectedColumns({
                 mode="edit"
                 discovered={discovered}
                 initial={draftFromColumn(col)}
-                onSubmit={(draft) => { onUpdate(col.id, columnFromDraft(draft, col.id)); setEditingId(null); }}
+                isDuplicate={(draft) => isDuplicate(draft, col.id)}
+                onSubmit={(draft) => { onUpdate(col.id, columnFromDraft(draft, col.id, col)); setEditingId(null); }}
                 onClose={() => setEditingId(null)}
               />
             )}
@@ -654,9 +682,10 @@ interface ColumnPickerProps {
   selectedIds: Set<string>;
   onAdd: (col: ColumnDefinition) => void;
   onToggle: (col: ColumnDefinition) => void;
+  isDuplicate: (draft: ColumnDraft, excludeId?: string) => boolean;
 }
 
-function ColumnPicker({ discovered, selectedIds, onAdd, onToggle }: ColumnPickerProps) {
+function ColumnPicker({ discovered, selectedIds, onAdd, onToggle, isDuplicate }: ColumnPickerProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const toggleSection = (id: string) =>
     setExpanded(prev => {
@@ -745,7 +774,7 @@ function ColumnPicker({ discovered, selectedIds, onAdd, onToggle }: ColumnPicker
           `/regex/` support so one column pulls a value across matching sets
           (issue #1591 follow-up). Progressive disclosure keeps the picker
           uncluttered until a power user reaches for it. */}
-      <CustomColumnEntry discovered={discovered} selectedIds={selectedIds} onAdd={onAdd} />
+      <CustomColumnEntry discovered={discovered} onAdd={onAdd} isDuplicate={isDuplicate} />
     </div>
   );
 }
@@ -756,12 +785,12 @@ function ColumnPicker({ discovered, selectedIds, onAdd, onToggle }: ColumnPicker
 
 function CustomColumnEntry({
   discovered,
-  selectedIds,
   onAdd,
+  isDuplicate,
 }: {
   discovered: DiscoveredColumns;
-  selectedIds: Set<string>;
   onAdd: (col: ColumnDefinition) => void;
+  isDuplicate: (draft: ColumnDraft, excludeId?: string) => boolean;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -782,7 +811,7 @@ function CustomColumnEntry({
       mode="add"
       discovered={discovered}
       initial={{ source: 'property', setName: '', propName: '' }}
-      isDuplicate={(draft) => selectedIds.has(customColumnId(draft))}
+      isDuplicate={(draft) => isDuplicate(draft)}
       onSubmit={(draft) =>
         onAdd({
           id: customColumnId(draft),

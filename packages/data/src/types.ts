@@ -243,7 +243,18 @@ export interface SpatialHierarchy {
   storeyElevations: Map<number, number>;  // storeyId -> elevation (z)
   storeyHeights: Map<number, number>;     // storeyId -> floor-to-floor height (calculated from elevation differences)
   elementToStorey: Map<number, number>;  // elementId -> storeyId (reverse lookup)
-  
+  /**
+   * elementId -> the nearest spatial container node that ultimately contains
+   * it, at ANY level (storey, IfcSpace / IfcSpatialZone, or an infrastructure
+   * IfcBridgePart / IfcRoadPart / …). Unlike `elementToStorey` (storey-only),
+   * this also records aggregated descendants of a directly-contained element
+   * (e.g. an IfcBeam aggregated into an IfcElementAssembly that is contained in
+   * an IfcBridgePart), so the "immediate Container" lookup resolves under
+   * non-storey containers too. Optional: legacy / non-parser hierarchies that
+   * predate it fall back to `elementToStorey`.
+   */
+  elementToContainer?: Map<number, number>;
+
   // Helper methods
   getStoreyElements(storeyId: number): number[];
   getStoreyByElevation(z: number): number | null;

@@ -271,27 +271,30 @@ function getConditionValue(
 
 /**
  * Resolve a `spatial` column/condition to a spatial-container name at the
- * requested level. `propertyName` selects the level; an empty or unrecognised
- * level falls back to `Storey`, so lists authored before the level existed
- * keep resolving the storey name. `Container` is the element's IMMEDIATE
- * container (nearest IfcRelContainedInSpatialStructure parent, any level);
- * `Project` is constant per model.
+ * requested level. `propertyName` selects the level, matched
+ * CASE-INSENSITIVELY so a hand-edited / imported list with `container` resolves
+ * the Container level rather than silently falling through. An empty or
+ * genuinely unrecognised level still falls back to `Storey`, so level-less
+ * lists authored before the level existed keep resolving the storey name.
+ * `Container` is the element's IMMEDIATE container (nearest
+ * IfcRelContainedInSpatialStructure parent, any level); `Project` is constant
+ * per model.
  */
 function getSpatialValue(
   entityId: number,
   level: string,
   provider: ListDataProvider,
 ): CellValue {
-  switch (level) {
-    case 'Container':
+  switch (level.toLowerCase()) {
+    case 'container':
       return provider.getContainerName?.(entityId) || null;
-    case 'Building':
+    case 'building':
       return provider.getBuildingName?.(entityId) || null;
-    case 'Site':
+    case 'site':
       return provider.getSiteName?.(entityId) || null;
-    case 'Project':
+    case 'project':
       return provider.getProjectName?.() || null;
-    case 'Storey':
+    case 'storey':
     default:
       return provider.getStoreyName?.(entityId) || null;
   }

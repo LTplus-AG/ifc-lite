@@ -65,16 +65,19 @@ function spatialContainerLevel(node: SpatialNode): 'site' | 'building' | 'projec
  * Collect the distinct REAL IFC names of every IfcSite / building-like /
  * IfcProject container in a hierarchy (unnamed containers contribute nothing,
  * matching the column values). `getName` resolves an entity's real Name.
- * Powers the spatial-filter value suggestions, sharing node classification with
- * `buildSpatialAncestryIndex`.
+ * `containers` gathers the name of every node that DIRECTLY contains elements
+ * at any level — the immediate-Container column's possible values (storeys,
+ * spaces / zones, IfcBridgePart / IfcRoadPart, …). Powers the spatial-filter
+ * value suggestions, sharing node classification with `buildSpatialAncestryIndex`.
  */
 export function collectSpatialContainerNames(
   hierarchy: SpatialHierarchy | undefined | null,
   getName: (expressId: number) => string,
-): { sites: string[]; buildings: string[]; projects: string[] } {
+): { sites: string[]; buildings: string[]; projects: string[]; containers: string[] } {
   const sites = new Set<string>();
   const buildings = new Set<string>();
   const projects = new Set<string>();
+  const containers = new Set<string>();
   const root = hierarchy?.project;
   if (root) {
     const walk = (node: SpatialNode): void => {
@@ -84,13 +87,20 @@ export function collectSpatialContainerNames(
         if (level === 'site') sites.add(name);
         else if (level === 'building') buildings.add(name);
         else if (level === 'project') projects.add(name);
+        // Any node that directly lists elements is an immediate Container.
+        if (node.elements.length > 0) containers.add(name);
       }
       for (const child of node.children) walk(child);
     };
     walk(root);
   }
   const sorted = (s: Set<string>) => Array.from(s).sort();
-  return { sites: sorted(sites), buildings: sorted(buildings), projects: sorted(projects) };
+  return {
+    sites: sorted(sites),
+    buildings: sorted(buildings),
+    projects: sorted(projects),
+    containers: sorted(containers),
+  };
 }
 
 /**
@@ -177,12 +187,19 @@ export function buildSpatialAncestryIndex(
 
   // Immediate container: the node that DIRECTLY lists the element in its
   // `elements` (IfcRelContainedInSpatialStructure), at whatever spatial level.
-  // Unlike `containerFor`, the element itself is never its own container. Spaces
-  // (child nodes) and aggregated parts are not directly contained, so they fall
-  // back to their storey — their nearest containing structure.
+  // Unlike `containerFor`, the element itself is never its own container.
+  // Aggregated parts (e.g. an IfcBeam nested through an IfcElementAssembly) are
+  // not directly contained, so they resolve via the builder's
+  // `elementToContainer` map — their nearest containing spatial node at any
+  // level (a storey, but also an IfcBridgePart / IfcRoadPart / IfcSpatialZone).
+  // Spaces (child nodes) fall back to their storey. `elementToStorey` remains
+  // the final fallback so hierarchies that predate `elementToContainer` still
+  // resolve parts under a storey.
   const immediateContainerFor = (elementId: number): number | undefined => {
     const direct = elementToContainer.get(elementId);
     if (direct !== undefined) return direct;
+    const aggregated = hierarchy?.elementToContainer?.get(elementId);
+    if (aggregated !== undefined) return aggregated;
     return hierarchy?.elementToStorey.get(elementId);
   };
 

@@ -122,6 +122,7 @@ export interface SpatialHierarchyColumns {
   storeyElevations: Array<[number, number]>;
   storeyHeights: Array<[number, number]>;
   elementToStorey: Array<[number, number]>;
+  elementToContainer?: Array<[number, number]>;
 }
 
 function serializeSpatialNode(node: SpatialNode): SerializedSpatialNode {
@@ -158,6 +159,9 @@ export function spatialHierarchyToColumns(hierarchy: SpatialHierarchy): SpatialH
     storeyElevations: [...hierarchy.storeyElevations.entries()],
     storeyHeights: [...hierarchy.storeyHeights.entries()],
     elementToStorey: [...hierarchy.elementToStorey.entries()],
+    elementToContainer: hierarchy.elementToContainer
+      ? [...hierarchy.elementToContainer.entries()]
+      : undefined,
   };
 }
 
@@ -170,6 +174,9 @@ export function spatialHierarchyFromColumns(columns: SpatialHierarchyColumns): S
   const storeyElevations = new Map<number, number>(columns.storeyElevations);
   const storeyHeights = new Map<number, number>(columns.storeyHeights);
   const elementToStorey = new Map<number, number>(columns.elementToStorey);
+  const elementToContainer = columns.elementToContainer
+    ? new Map<number, number>(columns.elementToContainer)
+    : undefined;
 
   // elementToSpace is the inverse of bySpace and is what `getContainingSpace`
   // queries. Only this direction is shipped over the wire because it is
@@ -190,6 +197,7 @@ export function spatialHierarchyFromColumns(columns: SpatialHierarchyColumns): S
     storeyElevations,
     storeyHeights,
     elementToStorey,
+    elementToContainer,
 
     getStoreyElements(storeyId: number): number[] {
       return byStorey.get(storeyId) ?? [];

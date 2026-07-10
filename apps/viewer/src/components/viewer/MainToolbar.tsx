@@ -142,6 +142,8 @@ function ToolButton({
         <Button
           variant={isActive ? 'default' : 'ghost'}
           size="icon-sm"
+          aria-label={label}
+          aria-pressed={isActive}
           onClick={(e) => {
             // Blur button to close tooltip after click
             (e.currentTarget as HTMLButtonElement).blur();
@@ -274,6 +276,7 @@ function ActionButton({ icon: Icon, label, onClick, shortcut, disabled }: Action
         <Button
           variant="ghost"
           size="icon-sm"
+          aria-label={label}
           onClick={(e) => {
             // Blur button to close tooltip after click
             (e.currentTarget as HTMLButtonElement).blur();
@@ -940,6 +943,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           <Button
             variant="ghost"
             size="icon-sm"
+            aria-label="Open IFC file"
             onClick={(e) => {
               // Blur button to close tooltip before opening file dialog
               (e.currentTarget as HTMLButtonElement).blur();
@@ -984,6 +988,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             <Button
               variant="ghost"
               size="icon-sm"
+              aria-label="Add model to scene"
               onClick={(e) => {
                 (e.currentTarget as HTMLButtonElement).blur();
                 void handleAddModelClick();
@@ -1003,7 +1008,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           {/* Gate on any loaded model, not the legacy single-model geometryResult:
               federated / multi-model sessions populate `models` but leave
               geometryResult null, which would hide the whole export menu (incl. KMZ). */}
-          <Button variant="ghost" size="icon-sm" disabled={!hasModelsLoaded && !ifcDataStore}>
+          <Button variant="ghost" size="icon-sm" aria-label="Export and download" disabled={!hasModelsLoaded && !ifcDataStore}>
             <Download className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>
@@ -1085,7 +1090,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
         <Tooltip>
           <TooltipTrigger asChild>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon-sm" disabled={!ifcDataStore}>
+              <Button variant="ghost" size="icon-sm" aria-label="Edit properties" disabled={!ifcDataStore}>
                 <Pencil className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
@@ -1352,6 +1357,8 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           <Button
             variant={basketPresentationVisible ? 'default' : 'ghost'}
             size="icon-sm"
+            aria-label={basketPresentationVisible ? 'Hide Presentation dock' : 'Show Presentation dock'}
+            aria-pressed={basketPresentationVisible}
             onClick={(e) => {
               (e.currentTarget as HTMLButtonElement).blur();
               toggleBasketPresentationVisible();
@@ -1831,6 +1838,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
               variant="ghost"
               size="icon"
               className="rounded-full"
+              aria-label="Info and keyboard shortcuts"
               onClick={() => onShowShortcuts?.()}
             >
               <HelpCircle className="!h-[22px] !w-[22px]" />

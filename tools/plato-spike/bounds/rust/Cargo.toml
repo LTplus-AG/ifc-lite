@@ -1,0 +1,12 @@
+# Standalone spike crate, deliberately detached from the ifc-lite workspace.
+[workspace]
+
+[package]
+name = "plato-spike-parity"
+version = "0.0.1"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "parity"
+path = "src/main.rs"

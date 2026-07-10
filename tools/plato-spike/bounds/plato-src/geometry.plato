@@ -1,0 +1,252 @@
+// The Plato geometry library used by the sample browser.
+// Compiled to TypeScript with:  npm run gen:plato
+// (This file is the source of truth; src/plato/plato.g.ts is generated.)
+
+// ---- Concepts ---------------------------------------------------------------
+
+concept Equatable
+{
+    Equals(a: Self, b: Self): Boolean;
+}
+
+concept Comparable
+{
+    Compare(a: Self, b: Self): Integer;
+}
+
+concept Numerical
+{
+    Add(a: Self, b: Self): Self;
+    Subtract(a: Self, b: Self): Self;
+    Negative(a: Self): Self;
+}
+
+concept Array<T>
+{
+    Count(xs: Self): Integer;
+    At(xs: Self, n: Integer): T;
+}
+
+// ---- Primitive scaffolding (assumed by the compiler) ------------------------
+
+type Number implements Numerical, Comparable { }
+type Integer implements Comparable { }
+type Boolean { }
+type String { }
+type Character { }
+type Dynamic { }
+type Type { }
+type Error { }
+
+type Tuple2<T0, T1> { X0: T0; X1: T1; }
+type Tuple3<T0, T1, T2> { X0: T0; X1: T1; X2: T2; }
+type Tuple4<T0, T1, T2, T3> { X0: T0; X1: T1; X2: T2; X3: T3; }
+
+type Function0<TR> { }
+type Function1<T0, TR> { }
+type Function2<T0, T1, TR> { }
+type Function3<T0, T1, T2, TR> { }
+
+// ---- Geometric types ---------------------------------------------------------
+
+type Angle
+{
+    Radians: Number;
+}
+
+type Vector2D
+    implements Numerical
+{
+    X: Number;
+    Y: Number;
+}
+
+type Vector3D
+    implements Numerical
+{
+    X: Number;
+    Y: Number;
+    Z: Number;
+}
+
+// ---- Intrinsics (implemented natively by each code generator) ---------------
+
+library Intrinsics
+{
+    Add(x: Number, y: Number): Number;
+    Subtract(x: Number, y: Number): Number;
+    Multiply(x: Number, y: Number): Number;
+    Divide(x: Number, y: Number): Number;
+    Modulo(x: Number, y: Number): Number;
+    Negative(x: Number): Number;
+
+    LessThan(x: Number, y: Number): Boolean;
+    GreaterThan(x: Number, y: Number): Boolean;
+    LessThanOrEquals(x: Number, y: Number): Boolean;
+    GreaterThanOrEquals(x: Number, y: Number): Boolean;
+    Compare(x: Number, y: Number): Integer;
+    Compare(x: Integer, y: Integer): Integer;
+
+    Sqrt(x: Number): Number;
+    Abs(x: Number): Number;
+    Floor(x: Number): Number;
+    Pow(x: Number, y: Number): Number;
+
+    And(x: Boolean, y: Boolean): Boolean;
+    Or(x: Boolean, y: Boolean): Boolean;
+    Not(x: Boolean): Boolean;
+
+    Cos(x: Angle): Number;
+    Sin(x: Angle): Number;
+    Tan(x: Angle): Number;
+    Acos(x: Number): Angle;
+    Asin(x: Number): Angle;
+    Atan(x: Number): Angle;
+
+    Reduce(xs: Array<$T>, init: $TAcc, f: Function2<$TAcc, $T, $TAcc>): $TAcc;
+    Map(xs: Array<$T>, f: Function1<$T, $U>): Array<$U>;
+}
+
+// ---- Scalar functions ---------------------------------------------------------
+
+library Numbers
+{
+    Square(x: Number): Number
+        => x * x;
+
+    Min(a: Number, b: Number): Number
+        => a < b ? a : b;
+
+    Max(a: Number, b: Number): Number
+        => a < b ? b : a;
+
+    Clamp(x: Number, low: Number, high: Number): Number
+        => x < low ? low : x > high ? high : x;
+
+    Lerp(a: Number, b: Number, t: Number): Number
+        => a * (1.0 - t) + b * t;
+
+    // Angle constructors, so that "0.25.Turns().Cos()" reads like the C#.
+    Turns(x: Number): Angle
+        => new Angle(x * 6.2831853071795862);
+
+    Degrees(x: Number): Angle
+        => new Angle(x * 0.017453292519943295);
+
+    Pi(): Number
+        => 3.1415926535897931;
+
+    TwoPi(): Number
+        => 6.2831853071795862;
+}
+
+// ---- Vector functions ----------------------------------------------------------
+
+library Vectors2
+{
+    Add(a: Vector2D, b: Vector2D): Vector2D
+        => new Vector2D(a.X + b.X, a.Y + b.Y);
+
+    Subtract(a: Vector2D, b: Vector2D): Vector2D
+        => new Vector2D(a.X - b.X, a.Y - b.Y);
+
+    Negative(v: Vector2D): Vector2D
+        => new Vector2D(-v.X, -v.Y);
+
+    Scale(v: Vector2D, s: Number): Vector2D
+        => new Vector2D(v.X * s, v.Y * s);
+
+    Dot(a: Vector2D, b: Vector2D): Number
+        => a.X * b.X + a.Y * b.Y;
+
+    // The 2D cross product is the z component of the 3D one: a scalar.
+    Cross(a: Vector2D, b: Vector2D): Number
+        => a.X * b.Y - a.Y * b.X;
+
+    LengthSquared(v: Vector2D): Number
+        => v.Dot(v);
+
+    Length(v: Vector2D): Number
+        => v.LengthSquared.Sqrt;
+
+    Normalize(v: Vector2D): Vector2D
+        => v.Scale(1.0 / v.Length);
+
+    Distance(a: Vector2D, b: Vector2D): Number
+        => b.Subtract(a).Length;
+
+    DistanceSquared(a: Vector2D, b: Vector2D): Number
+        => b.Subtract(a).LengthSquared;
+
+    Lerp(a: Vector2D, b: Vector2D, t: Number): Vector2D
+        => a.Scale(1.0 - t).Add(b.Scale(t));
+
+    MidPoint(a: Vector2D, b: Vector2D): Vector2D
+        => a.Add(b).Scale(0.5);
+
+    UnitCircle(theta: Angle): Vector2D
+        => new Vector2D(theta.Cos, theta.Sin);
+}
+
+library Vectors3
+{
+    Add(a: Vector3D, b: Vector3D): Vector3D
+        => new Vector3D(a.X + b.X, a.Y + b.Y, a.Z + b.Z);
+
+    Subtract(a: Vector3D, b: Vector3D): Vector3D
+        => new Vector3D(a.X - b.X, a.Y - b.Y, a.Z - b.Z);
+
+    Negative(v: Vector3D): Vector3D
+        => new Vector3D(-v.X, -v.Y, -v.Z);
+
+    Scale(v: Vector3D, s: Number): Vector3D
+        => new Vector3D(v.X * s, v.Y * s, v.Z * s);
+
+    Dot(a: Vector3D, b: Vector3D): Number
+        => a.X * b.X + a.Y * b.Y + a.Z * b.Z;
+
+    Cross(a: Vector3D, b: Vector3D): Vector3D
+        => new Vector3D(
+            a.Y * b.Z - a.Z * b.Y,
+            a.Z * b.X - a.X * b.Z,
+            a.X * b.Y - a.Y * b.X);
+
+    LengthSquared(v: Vector3D): Number
+        => v.Dot(v);
+
+    Length(v: Vector3D): Number
+        => v.LengthSquared.Sqrt;
+
+    Normalize(v: Vector3D): Vector3D
+        => v.Scale(1.0 / v.Length);
+
+    Distance(a: Vector3D, b: Vector3D): Number
+        => b.Subtract(a).Length;
+
+    DistanceSquared(a: Vector3D, b: Vector3D): Number
+        => b.Subtract(a).LengthSquared;
+
+    Lerp(a: Vector3D, b: Vector3D, t: Number): Vector3D
+        => a.Scale(1.0 - t).Add(b.Scale(t));
+
+    MidPoint(a: Vector3D, b: Vector3D): Vector3D
+        => a.Add(b).Scale(0.5);
+
+    Min(a: Vector3D, b: Vector3D): Vector3D
+        => new Vector3D(a.X.Min(b.X), a.Y.Min(b.Y), a.Z.Min(b.Z));
+
+    Max(a: Vector3D, b: Vector3D): Vector3D
+        => new Vector3D(a.X.Max(b.X), a.Y.Max(b.Y), a.Z.Max(b.Z));
+
+    MaxComponent(v: Vector3D): Number
+        => v.X.Max(v.Y).Max(v.Z);
+
+    // Any unit vector perpendicular to v.
+    Perpendicular(v: Vector3D): Vector3D
+        => (v.X.Abs < 0.9
+            ? v.Cross(new Vector3D(1.0, 0.0, 0.0))
+            : v.Cross(new Vector3D(0.0, 1.0, 0.0))).Normalize;
+
+    Reflect(v: Vector3D, normal: Vector3D): Vector3D
+        => v.Subtract(normal.Scale(2.0 * v.Dot(normal)));
+}

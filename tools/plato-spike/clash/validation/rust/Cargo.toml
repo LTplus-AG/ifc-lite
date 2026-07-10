@@ -1,0 +1,19 @@
+[package]
+name = "clash-validate-rust"
+version = "0.1.0"
+edition = "2021"
+
+# Detach from any parent workspace.
+[workspace]
+
+[lib]
+name = "clash_validate_rust"
+path = "src/lib.rs"
+
+[[bin]]
+name = "bench"
+path = "src/bin/bench.rs"
+
+[profile.release]
+opt-level = 3
+debug = false

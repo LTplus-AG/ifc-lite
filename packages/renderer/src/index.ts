@@ -1731,7 +1731,9 @@ export class Renderer {
                 );
                 // LOD1 selection (issue #1682 phase 5): batches projecting below
                 // this draw their simplified index range. Shares the projection
-                // camera with contribution culling.
+                // camera with contribution culling. Precedence is intentional:
+                // a batch below the CULL threshold is skipped entirely, so a
+                // lod threshold at or below the cull threshold never fires.
                 const lodScreenPx = options.lod && options.lod.screenPx > 0 ? options.lod.screenPx : 0;
                 const lodBatches = new Set<number>();
                 let cullCam: CullCameraState | null = null;

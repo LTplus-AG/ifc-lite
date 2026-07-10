@@ -48,6 +48,8 @@ interface BatchLike {
   vertexBuffer: SizedBuffer;
   indexBuffer: SizedBuffer;
   uniformBuffer?: SizedBuffer;
+  /** LOD1 second index range (issue #1682 phase 5), when built. */
+  lod1IndexBuffer?: SizedBuffer;
 }
 
 interface TexturedLike extends BatchLike {
@@ -74,7 +76,7 @@ export interface ResidentGpuBytes {
 }
 
 const sumBatch = (b: BatchLike): number =>
-  b.vertexBuffer.size + b.indexBuffer.size + (b.uniformBuffer?.size ?? 0);
+  b.vertexBuffer.size + b.indexBuffer.size + (b.uniformBuffer?.size ?? 0) + (b.lod1IndexBuffer?.size ?? 0);
 
 /**
  * Sum the GPU bytes held by the scene's mesh collections.

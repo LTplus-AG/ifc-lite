@@ -597,7 +597,8 @@ export class Scene {
     for (const bucket of this.buckets.values()) {
       const b = bucket.batchedMesh;
       if (!b || b.gpuResident === false) continue;
-      const bytes = b.vertexBuffer.size + b.indexBuffer.size + (b.uniformBuffer?.size ?? 0);
+      const bytes = b.vertexBuffer.size + b.indexBuffer.size + (b.uniformBuffer?.size ?? 0)
+        + (b.lod1IndexBuffer?.size ?? 0);
       residentBytes += bytes;
       const lastDrawn = this.lastDrawnFrame.get(b.id) ?? -1;
       if (lastDrawn === this.residencyFrame) continue;      // drawn this frame: not evictable
@@ -614,7 +615,8 @@ export class Scene {
       if (!bucket || !batch || batch.gpuResident === false) continue;
       destroyGpuResources(batch);
       batch.gpuResident = false;
-      evictedBytes += batch.vertexBuffer.size + batch.indexBuffer.size + (batch.uniformBuffer?.size ?? 0);
+      evictedBytes += batch.vertexBuffer.size + batch.indexBuffer.size + (batch.uniformBuffer?.size ?? 0)
+        + (batch.lod1IndexBuffer?.size ?? 0);
       this.lastDrawnFrame.delete(batch.id);
       this.dropPartialCacheForBatch(batch);
     }

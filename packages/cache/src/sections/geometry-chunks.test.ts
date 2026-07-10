@@ -130,6 +130,8 @@ describe('v13 geometry section round-trip', () => {
         expect(ox + m.positions[0]).toBeGreaterThanOrEqual(aabbMin[0] - 1e-3);
         expect(ox + m.positions[0]).toBeLessThanOrEqual(aabbMax[0] + 1e-3);
         expect(oy + m.positions[1]).toBeGreaterThanOrEqual(aabbMin[1] - 1e-3);
+        expect(oy + m.positions[1]).toBeLessThanOrEqual(aabbMax[1] + 1e-3);
+        expect(oz + m.positions[2]).toBeGreaterThanOrEqual(aabbMin[2] - 1e-3);
         expect(oz + m.positions[2]).toBeLessThanOrEqual(aabbMax[2] + 1e-3);
       }
     }

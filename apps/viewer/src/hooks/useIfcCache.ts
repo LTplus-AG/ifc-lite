@@ -347,6 +347,13 @@ export function useIfcCache() {
             // chunks (paint progresses during the load, like a fresh stream).
             await new Promise<void>((resolve) => setTimeout(resolve, 0));
           }
+        } catch (chunkErr) {
+          // A corrupt/truncated entry can fail AFTER earlier chunks were
+          // already appended. Roll the partial geometry back so the caller's
+          // fallback fresh stream starts from a clean scene instead of
+          // appending onto half a cached model.
+          setGeometryResult(null);
+          throw chunkErr;
         } finally {
           setGeometryStreamingActive(false);
         }

@@ -96,7 +96,11 @@ export function createListDataProvider(store: IfcDataStore, modelName = ''): Lis
   let ancestryCache: SpatialAncestryIndex | null = null;
   function ancestry(): SpatialAncestryIndex {
     if (!ancestryCache) {
-      ancestryCache = buildSpatialAncestryIndex(store.spatialHierarchy, (id) => store.entities.getName(id));
+      ancestryCache = buildSpatialAncestryIndex(
+        store.spatialHierarchy,
+        (id) => store.entities.getName(id),
+        (id) => store.entities.getTypeName(id),
+      );
     }
     return ancestryCache;
   }
@@ -162,6 +166,10 @@ export function createListDataProvider(store: IfcDataStore, modelName = ''): Lis
       const storeyId = hierarchy.elementToStorey.get(entityId);
       if (!storeyId) return '';
       return store.entities.getName(storeyId) || '';
+    },
+
+    getContainerName(entityId: number): string {
+      return ancestry().containerOf(entityId);
     },
 
     getBuildingName(entityId: number): string {

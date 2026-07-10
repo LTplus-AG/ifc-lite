@@ -105,6 +105,14 @@ function createMockProvider(): ListDataProvider {
     [3, 'Main Site'],
   ]);
 
+  // Immediate spatial containers (#1591 follow-up): Wall-01 sits directly in
+  // its storey; Wall-02 in a NON-storey container (an IfcBridgePart-style
+  // part); the slab is uncontained, so its container is '' (a blank cell).
+  const containerNames = new Map<number, string>([
+    [1, 'Level 0'],
+    [2, 'Abutment East'],
+  ]);
+
   const predefinedTypes = new Map<number, string>([
     [1, 'SOLIDWALL'],
     // entity 2 intentionally has no PredefinedType
@@ -125,6 +133,7 @@ function createMockProvider(): ListDataProvider {
     getMaterialNames: (id) => materialNames.get(id) ?? [],
     getClassifications: (id) => classifications.get(id) ?? [],
     getStoreyName: (id) => storeyNames.get(id) ?? '',
+    getContainerName: (id) => containerNames.get(id) ?? '',
     getBuildingName: (id) => buildingNames.get(id) ?? '',
     getSiteName: (id) => siteNames.get(id) ?? '',
     getProjectName: () => 'Sample Project',
@@ -342,6 +351,30 @@ describe('executeList', () => {
     expect(byName.get('Slab-01')).toEqual(['Slab-01', 'model-a.ifc', 'Sample Project', 'Main Site', 'Building B', 'Level 0']);
   });
 
+  // #1591 follow-up: the Container column is the element's IMMEDIATE spatial
+  // container — the storey when directly contained there, a non-storey
+  // container (IfcBridgePart / IfcRoadPart / IfcSpatialZone) for infra, and a
+  // blank cell (null) when the element is uncontained.
+  it('extracts the immediate-container spatial column, blank when uncontained', () => {
+    const provider = createMockProvider();
+    const result = executeList({
+      id: 'container-col',
+      name: 'Test',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [IfcTypeEnum.IfcWall, IfcTypeEnum.IfcSlab],
+      conditions: [],
+      columns: [
+        { id: 'name', source: 'attribute', propertyName: 'Name' },
+        { id: 'container', source: 'spatial', propertyName: 'Container' },
+      ],
+    }, provider);
+    const byName = new Map(result.rows.map((r) => [r.values[0], r.values[1]]));
+    expect(byName.get('Wall-01')).toBe('Level 0'); // contained in its storey
+    expect(byName.get('Wall-02')).toBe('Abutment East'); // non-storey container
+    expect(byName.get('Slab-01')).toBeNull(); // uncontained -> blank
+  });
+
   // A `spatial` column authored before the level existed carries an empty
   // propertyName; it must still resolve the storey name (back-compat with
   // persisted lists / the pre-#1591 Storey chip).
@@ -376,6 +409,8 @@ describe('executeList', () => {
     // #1591: leveled spatial + model filters. Building B holds only the slab;
     // every element shares one site and one source model.
     { source: 'spatial', propertyName: 'Building', operator: 'equals', value: 'Building B', expected: ['Slab-01'] },
+    // Immediate container: only Wall-02 sits in the non-storey container.
+    { source: 'spatial', propertyName: 'Container', operator: 'equals', value: 'Abutment East', expected: ['Wall-02'] },
     { source: 'spatial', propertyName: 'Site', operator: 'equals', value: 'Main Site', expected: ['Slab-01', 'Wall-01', 'Wall-02'] },
     { source: 'model', propertyName: 'Model', operator: 'equals', value: 'model-a.ifc', expected: ['Slab-01', 'Wall-01', 'Wall-02'] },
     { source: 'model', propertyName: 'Model', operator: 'equals', value: 'other.ifc', expected: [] },

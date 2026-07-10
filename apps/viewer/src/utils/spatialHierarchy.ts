@@ -103,6 +103,16 @@ export interface SpatialAncestryIndex {
   projectName: string;
   siteOf(elementId: number): string;
   buildingOf(elementId: number): string;
+  /**
+   * Name of the element's IMMEDIATE spatial container — the direct
+   * IfcRelContainedInSpatialStructure parent (the node that lists it in its
+   * `elements`), which may be a storey OR a non-storey container such as an
+   * IfcBridgePart / IfcRoadPart / IfcSpatialZone / IfcSpace. Falls back to the
+   * container's IFC class when it is unnamed (via `getClass`), and to '' when
+   * the element is uncontained. Spaces and aggregated parts, which are not
+   * directly contained, resolve to their storey (their nearest container).
+   */
+  containerOf(elementId: number): string;
 }
 
 /**
@@ -114,7 +124,9 @@ export interface SpatialAncestryIndex {
  * `getName` resolves an entity's real IFC `Name` — pass the store's
  * `entities.getName` so an UNNAMED container resolves to '' (matching how the
  * storey column behaves), rather than the `SpatialNode.name` placeholder the
- * hierarchy builder synthesizes (`Entity #N`). "Building" spans every
+ * hierarchy builder synthesizes (`Entity #N`). `getClass` (optional) resolves an
+ * entity's IFC class name, used only as the `containerOf` fallback for an
+ * unnamed immediate container. "Building" spans every
  * building-like spatial type (IFC4X3 IfcFacility / IfcBridge / IfcRoad / …), so
  * infrastructure federations resolve too.
  *
@@ -127,6 +139,7 @@ export interface SpatialAncestryIndex {
 export function buildSpatialAncestryIndex(
   hierarchy: SpatialHierarchy | undefined | null,
   getName: (expressId: number) => string,
+  getClass?: (expressId: number) => string,
 ): SpatialAncestryIndex {
   // container node id -> nearest {site, building} name (self-inclusive).
   const ancestry = new Map<number, { site: string; building: string }>();
@@ -162,6 +175,17 @@ export function buildSpatialAncestryIndex(
     return hierarchy?.elementToStorey.get(elementId); // parts/aggregated descendants
   };
 
+  // Immediate container: the node that DIRECTLY lists the element in its
+  // `elements` (IfcRelContainedInSpatialStructure), at whatever spatial level.
+  // Unlike `containerFor`, the element itself is never its own container. Spaces
+  // (child nodes) and aggregated parts are not directly contained, so they fall
+  // back to their storey — their nearest containing structure.
+  const immediateContainerFor = (elementId: number): number | undefined => {
+    const direct = elementToContainer.get(elementId);
+    if (direct !== undefined) return direct;
+    return hierarchy?.elementToStorey.get(elementId);
+  };
+
   return {
     projectName,
     siteOf(elementId: number): string {
@@ -171,6 +195,12 @@ export function buildSpatialAncestryIndex(
     buildingOf(elementId: number): string {
       const c = containerFor(elementId);
       return c === undefined ? '' : (ancestry.get(c)?.building ?? '');
+    },
+    containerOf(elementId: number): string {
+      const c = immediateContainerFor(elementId);
+      if (c === undefined) return '';
+      // Real IFC Name, else the container's IFC class (e.g. "IfcBridgePart").
+      return getName(c) || (getClass ? getClass(c) : '');
     },
   };
 }

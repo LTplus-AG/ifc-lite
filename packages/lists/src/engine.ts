@@ -273,7 +273,9 @@ function getConditionValue(
  * Resolve a `spatial` column/condition to a spatial-container name at the
  * requested level. `propertyName` selects the level; an empty or unrecognised
  * level falls back to `Storey`, so lists authored before the level existed
- * keep resolving the storey name. `Project` is constant per model.
+ * keep resolving the storey name. `Container` is the element's IMMEDIATE
+ * container (nearest IfcRelContainedInSpatialStructure parent, any level);
+ * `Project` is constant per model.
  */
 function getSpatialValue(
   entityId: number,
@@ -281,6 +283,8 @@ function getSpatialValue(
   provider: ListDataProvider,
 ): CellValue {
   switch (level) {
+    case 'Container':
+      return provider.getContainerName?.(entityId) || null;
     case 'Building':
       return provider.getBuildingName?.(entityId) || null;
     case 'Site':

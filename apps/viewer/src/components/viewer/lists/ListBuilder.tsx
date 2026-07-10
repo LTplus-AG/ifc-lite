@@ -13,7 +13,7 @@
  */
 
 import React, { useCallback, useMemo, useState } from 'react';
-import { Play, Plus, Trash2, ChevronDown, ChevronRight, ChevronUp, Save, Check, GripVertical } from 'lucide-react';
+import { Play, Plus, Trash2, ChevronDown, ChevronRight, ChevronUp, Save, Check, GripVertical, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ComboInput } from '@/components/ui/combo-input';
@@ -38,6 +38,13 @@ import type {
 } from '@ifc-lite/lists';
 import { discoverColumns, ENTITY_ATTRIBUTES } from '@ifc-lite/lists';
 import { collectScopeTypes } from '@/lib/lists/scope-types';
+import {
+  isEditableColumn,
+  draftFromColumn,
+  columnFromDraft,
+  updateColumnInPlace,
+  type ColumnDraft,
+} from '@/lib/lists/column-edit';
 import { previewSetPattern, formatMatchHint } from './pattern-preview';
 
 const NO_OPTIONS: readonly string[] = [];
@@ -83,17 +90,22 @@ function discoverConditionValues(stores: IfcDataStore[]): ListConditionValues {
 /** Column descriptor shared by the quick-add grid. */
 interface CommonColumn { id: string; source: ColumnDefinition['source']; propertyName: string; label: string }
 
-/** Spatial-container levels a `spatial` column / filter can target, coarse →
- *  fine written the other way: Storey is the default (back-compat). */
-const SPATIAL_LEVELS = ['Storey', 'Building', 'Site', 'Project'] as const;
+/** Spatial-container levels a `spatial` column / filter can target, fine to
+ *  coarse: Container is the element's IMMEDIATE container (any level); Storey
+ *  is the default (back-compat). */
+const SPATIAL_LEVELS = ['Container', 'Storey', 'Building', 'Site', 'Project'] as const;
 
 /**
  * The first-class columns: built-in attributes plus the spatial / semantic
- * columns. Surfaced as a flat grid so Material / Classification / Storey /
- * Site / Building / Project / Model are as reachable as Name / Class — not
- * buried in a collapsed group. Site / Building / Project / Model identify which
- * federated file (and where in its spatial tree) each row comes from, so a list
- * over several models can be grouped and sorted by source (issue #1591).
+ * columns. Surfaced as a flat grid so Material / Classification / Container /
+ * Storey / Site / Building / Project / Model are as reachable as Name / Class —
+ * not buried in a collapsed group. Container is the element's IMMEDIATE spatial
+ * container (Bonsai's "container"): the direct IfcRelContainedInSpatialStructure
+ * parent, at whatever level — the storey, or for bridges/roads the
+ * IfcBridgePart / IfcRoadPart / IfcSpatialZone it sits in. Site / Building /
+ * Project / Model identify which federated file (and where in its spatial tree)
+ * each row comes from, so a list over several models can be grouped and sorted
+ * by source (issue #1591).
  */
 const COMMON_COLUMNS: CommonColumn[] = [
   ...ENTITY_ATTRIBUTES.map((a): CommonColumn => ({
@@ -104,6 +116,7 @@ const COMMON_COLUMNS: CommonColumn[] = [
   })),
   { id: 'col-material', source: 'material', propertyName: 'Material', label: 'Material' },
   { id: 'col-classification', source: 'classification', propertyName: 'Classification', label: 'Classification' },
+  { id: 'col-container', source: 'spatial', propertyName: 'Container', label: 'Container' },
   { id: 'col-storey', source: 'spatial', propertyName: 'Storey', label: 'Storey' },
   { id: 'col-building', source: 'spatial', propertyName: 'Building', label: 'Building' },
   { id: 'col-site', source: 'spatial', propertyName: 'Site', label: 'Site' },
@@ -250,6 +263,13 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
       next.delete(id);
       return next;
     });
+  }, []);
+
+  // Edit a column's definition IN PLACE — same array position, same id, so the
+  // column order and the results table's per-id width / index-based sort survive
+  // (issue #1591 follow-up). The list is re-run from the existing Run action.
+  const updateColumn = useCallback((id: string, next: ColumnDefinition) => {
+    setColumns(prev => updateColumnInPlace(prev, id, next));
   }, []);
 
   const toggleColumn = useCallback((col: ColumnDefinition) => {
@@ -403,7 +423,13 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
           {/* Columns */}
           <Section label="Columns" hint={columns.length > 0 ? `${columns.length}` : undefined}>
             {columns.length > 0 && (
-              <SelectedColumns columns={columns} onMove={moveColumn} onRemove={removeColumn} />
+              <SelectedColumns
+                columns={columns}
+                discovered={discovered}
+                onMove={moveColumn}
+                onRemove={removeColumn}
+                onUpdate={updateColumn}
+              />
             )}
             <ColumnPicker
               discovered={discovered}
@@ -511,52 +537,85 @@ function Chip({
 
 function SelectedColumns({
   columns,
+  discovered,
   onMove,
   onRemove,
+  onUpdate,
 }: {
   columns: ColumnDefinition[];
+  discovered: DiscoveredColumns;
   onMove: (idx: number, dir: -1 | 1) => void;
   onRemove: (id: string) => void;
+  onUpdate: (id: string, next: ColumnDefinition) => void;
 }) {
+  // Which column's inline editor is open (one at a time). Cleared when the
+  // edited column is removed or after a save.
+  const [editingId, setEditingId] = useState<string | null>(null);
+
   return (
     <div className="mb-3 space-y-1">
-      {columns.map((col, idx) => (
-        <div
-          key={col.id}
-          className="group flex items-center gap-1.5 rounded-md border border-border/60 bg-card px-2 py-1 text-xs"
-        >
-          <GripVertical className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
-          <span className="w-4 shrink-0 text-right tabular-nums text-muted-foreground">{idx + 1}</span>
-          <span className="flex-1 truncate font-medium">
-            {col.label ?? col.propertyName}
-            {col.psetName && <span className="ml-1 font-normal text-muted-foreground">· {col.psetName}</span>}
-          </span>
-          <ColSourceTag col={col} />
-          <button
-            onClick={() => onMove(idx, -1)}
-            disabled={idx === 0}
-            aria-label="Move up"
-            className="shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-25"
-          >
-            <ChevronUp className="h-3.5 w-3.5" />
-          </button>
-          <button
-            onClick={() => onMove(idx, 1)}
-            disabled={idx === columns.length - 1}
-            aria-label="Move down"
-            className="shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-25"
-          >
-            <ChevronDown className="h-3.5 w-3.5" />
-          </button>
-          <button
-            onClick={() => onRemove(col.id)}
-            aria-label="Remove column"
-            className="shrink-0 text-muted-foreground hover:text-destructive"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      ))}
+      {columns.map((col, idx) => {
+        const editing = editingId === col.id;
+        const editable = isEditableColumn(col);
+        return (
+          <div key={col.id} className="space-y-1">
+            <div className="group flex items-center gap-1.5 rounded-md border border-border/60 bg-card px-2 py-1 text-xs">
+              <GripVertical className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
+              <span className="w-4 shrink-0 text-right tabular-nums text-muted-foreground">{idx + 1}</span>
+              <span className="flex-1 truncate font-medium">
+                {col.label ?? col.propertyName}
+                {col.psetName && <span className="ml-1 font-normal text-muted-foreground">· {col.psetName}</span>}
+              </span>
+              <ColSourceTag col={col} />
+              {editable && (
+                <button
+                  onClick={() => setEditingId(editing ? null : col.id)}
+                  aria-label={editing ? 'Close editor' : 'Edit column'}
+                  aria-pressed={editing}
+                  className={cn(
+                    'shrink-0 hover:text-foreground',
+                    editing ? 'text-primary' : 'text-muted-foreground',
+                  )}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </button>
+              )}
+              <button
+                onClick={() => onMove(idx, -1)}
+                disabled={idx === 0}
+                aria-label="Move up"
+                className="shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-25"
+              >
+                <ChevronUp className="h-3.5 w-3.5" />
+              </button>
+              <button
+                onClick={() => onMove(idx, 1)}
+                disabled={idx === columns.length - 1}
+                aria-label="Move down"
+                className="shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-25"
+              >
+                <ChevronDown className="h-3.5 w-3.5" />
+              </button>
+              <button
+                onClick={() => { if (editing) setEditingId(null); onRemove(col.id); }}
+                aria-label="Remove column"
+                className="shrink-0 text-muted-foreground hover:text-destructive"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            {editing && editable && (
+              <ColumnEditorPanel
+                mode="edit"
+                discovered={discovered}
+                initial={draftFromColumn(col)}
+                onSubmit={(draft) => { onUpdate(col.id, columnFromDraft(draft, col.id)); setEditingId(null); }}
+                onClose={() => setEditingId(null)}
+              />
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -705,9 +764,74 @@ function CustomColumnEntry({
   onAdd: (col: ColumnDefinition) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [source, setSource] = useState<'property' | 'quantity'>('property');
-  const [setName, setSetName] = useState('');
-  const [propName, setPropName] = useState('');
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="flex w-full items-center gap-1.5 rounded-md border border-dashed border-border px-2 py-1.5 text-xs text-muted-foreground hover:border-primary/50 hover:text-foreground"
+      >
+        <Plus className="h-3.5 w-3.5" /> Custom column
+        <span className="ml-auto font-mono text-[10px] opacity-70">Pset/Qto or /regex/</span>
+      </button>
+    );
+  }
+
+  return (
+    <ColumnEditorPanel
+      mode="add"
+      discovered={discovered}
+      initial={{ source: 'property', setName: '', propName: '' }}
+      isDuplicate={(draft) => selectedIds.has(customColumnId(draft))}
+      onSubmit={(draft) =>
+        onAdd({
+          id: customColumnId(draft),
+          source: draft.source,
+          psetName: draft.setName,
+          propertyName: draft.propName,
+          label: draft.propName,
+        })
+      }
+      onClose={() => setOpen(false)}
+    />
+  );
+}
+
+/**
+ * Id for a custom / pattern column. Slugified like the discovered-column ids
+ * (collapse whitespace) but case-PRESERVING: regex patterns are case-sensitive,
+ * so `/A/` and `/a/` are distinct sets and must not collapse to one id.
+ */
+function customColumnId(draft: ColumnDraft): string {
+  return `custom-${draft.source}-${draft.setName}-${draft.propName}`.replace(/\s+/g, '-');
+}
+
+/**
+ * The shared property/quantity column editor — the same UI for ADDING a custom
+ * column and for EDITING an existing one in place (issue #1591 follow-up), so
+ * the two never drift. `mode` only changes the primary action (Add keeps the
+ * panel open to add several in a row and clears just the property; Save applies
+ * and lets the parent close). Set + property names accept Bonsai-style
+ * `/regex/`, with the same live match preview and invalid-pattern guard.
+ */
+function ColumnEditorPanel({
+  mode,
+  discovered,
+  initial,
+  onSubmit,
+  onClose,
+  isDuplicate,
+}: {
+  mode: 'add' | 'edit';
+  discovered: DiscoveredColumns;
+  initial: ColumnDraft;
+  onSubmit: (draft: ColumnDraft) => void;
+  onClose: () => void;
+  isDuplicate?: (draft: ColumnDraft) => boolean;
+}) {
+  const [source, setSource] = useState<'property' | 'quantity'>(initial.source);
+  const [setName, setSetName] = useState(initial.setName);
+  const [propName, setPropName] = useState(initial.propName);
 
   const setOptions = useMemo<string[]>(
     () => Array.from((source === 'quantity' ? discovered.quantities : discovered.properties).keys()).sort(),
@@ -723,34 +847,20 @@ function CustomColumnEntry({
   const set = setName.trim();
   const prop = propName.trim();
   // Live preview: which discovered sets a `/regex/` set field matches, so a
-  // power user sees "matches 2 sets: ..." before adding, and a malformed pattern
-  // is flagged rather than silently added as a dead literal (issue #1591).
+  // power user sees "matches 2 sets: ..." before saving, and a malformed pattern
+  // is flagged rather than silently kept as a dead literal (issue #1591).
   const preview = useMemo(() => previewSetPattern(set, setOptions), [set, setOptions]);
-  // Slugify like the discovered-column ids (collapse whitespace) but keep the
-  // original case: regex patterns are case-sensitive, so `/A/` and `/a/` are
-  // distinct sets and must not collapse to one id.
-  const columnId = `custom-${source}-${set}-${prop}`.replace(/\s+/g, '-');
-  const canAdd = set.length > 0 && prop.length > 0 && !selectedIds.has(columnId) && !preview.isInvalid;
+  const draft: ColumnDraft = { source, setName: set, propName: prop };
+  const duplicate = isDuplicate?.(draft) ?? false;
+  const canSubmit = set.length > 0 && prop.length > 0 && !preview.isInvalid && !duplicate;
 
-  const add = () => {
-    if (!canAdd) return;
-    onAdd({ id: columnId, source, psetName: set, propertyName: prop, label: prop });
-    // Keep the set + source so several properties from the same (pattern) set
-    // can be added in a row; clear only the property.
-    setPropName('');
+  const submit = () => {
+    if (!canSubmit) return;
+    onSubmit(draft);
+    // Adding keeps the set + source so several properties from the same
+    // (pattern) set can be added in a row; editing is a one-shot apply.
+    if (mode === 'add') setPropName('');
   };
-
-  if (!open) {
-    return (
-      <button
-        onClick={() => setOpen(true)}
-        className="flex w-full items-center gap-1.5 rounded-md border border-dashed border-border px-2 py-1.5 text-xs text-muted-foreground hover:border-primary/50 hover:text-foreground"
-      >
-        <Plus className="h-3.5 w-3.5" /> Custom column
-        <span className="ml-auto font-mono text-[10px] opacity-70">Pset/Qto or /regex/</span>
-      </button>
-    );
-  }
 
   return (
     <div className="space-y-2 rounded-md border border-border/60 bg-card p-2.5">
@@ -763,8 +873,8 @@ function CustomColumnEntry({
           </span>
         )}
         <button
-          onClick={() => setOpen(false)}
-          aria-label="Close custom column"
+          onClick={onClose}
+          aria-label={mode === 'add' ? 'Close custom column' : 'Close editor'}
           className="ml-auto shrink-0 text-muted-foreground hover:text-foreground"
         >
           <ChevronUp className="h-3.5 w-3.5" />
@@ -787,12 +897,12 @@ function CustomColumnEntry({
         />
         <Button
           size="sm"
-          onClick={add}
-          disabled={!canAdd}
-          aria-label="Add custom column"
+          onClick={submit}
+          disabled={!canSubmit}
+          aria-label={mode === 'add' ? 'Add custom column' : 'Save column'}
           className="h-7 shrink-0 px-2"
         >
-          <Plus className="h-3.5 w-3.5" />
+          {mode === 'add' ? <Plus className="h-3.5 w-3.5" /> : <Check className="h-3.5 w-3.5" />}
         </Button>
       </div>
       {preview.isInvalid ? (

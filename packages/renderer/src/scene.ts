@@ -881,9 +881,9 @@ export class Scene {
     }
     const meshBytes = (meshData.positions.length / 3) * BATCH_CONSTANTS.BYTES_PER_VERTEX;
     bucket.vertexBytes = Math.max(0, bucket.vertexBytes - meshBytes);
-    if (bucket.meshData.length === 0) {
-      this.buckets.delete(bucket.key);
-    }
+    // Deliberately KEEP an emptied bucket in the map: rebuildPendingBatches
+    // destroys its batchedMesh and deletes the shell. Removing it here would
+    // orphan the live GPU buffers (rebuild skips keys it can't find).
 
     // resolveActiveBucket already created the target bucket + tracked bytes
     const newBucket = this.buckets.get(newBucketKey)!;
@@ -1743,9 +1743,12 @@ export class Scene {
               }
               oldBucket.meshData.pop();
             }
-            if (oldBucket.meshData.length === 0) {
-              this.buckets.delete(oldBucketKey);
-            }
+            // Do NOT delete an emptied bucket here: it is queued in
+            // affectedOldKeys, and rebuildPendingBatches both destroys its
+            // batchedMesh GPU buffers and removes the shell. Deleting the
+            // map entry early orphaned those buffers (rebuild skips keys it
+            // can't resolve) — a GPU memory leak on every recolour that
+            // emptied a colour group.
           }
 
           // Decrease old bucket size tracking

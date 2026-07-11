@@ -39,6 +39,9 @@ export interface ViewerBenchmarkMetrics {
   drawCalls: number | null;
   residentGpuMB: number | null;
   batchesContributionCulled: number | null;
+  instancedDrawn: number | null;
+  instancedFrustumCulled: number | null;
+  instancedContributionCulled: number | null;
 }
 
 export class ViewerBenchmarkPage {
@@ -565,6 +568,12 @@ export class ViewerBenchmarkPage {
       this.metrics.drawCalls = parseInt(renderStatsMatch[1], 10);
       this.metrics.residentGpuMB = parseFloat(renderStatsMatch[2]);
       this.metrics.batchesContributionCulled = parseInt(renderStatsMatch[5], 10);
+      // Instanced groups are optional (absent in pre-cull logs).
+      if (renderStatsMatch[6] !== undefined) {
+        this.metrics.instancedDrawn = parseInt(renderStatsMatch[6], 10);
+        this.metrics.instancedFrustumCulled = parseInt(renderStatsMatch[7], 10);
+        this.metrics.instancedContributionCulled = parseInt(renderStatsMatch[8], 10);
+      }
     }
   }
 
@@ -598,6 +607,9 @@ export class ViewerBenchmarkPage {
       drawCalls: this.metrics.drawCalls ?? null,
       residentGpuMB: this.metrics.residentGpuMB ?? null,
       batchesContributionCulled: this.metrics.batchesContributionCulled ?? null,
+      instancedDrawn: this.metrics.instancedDrawn ?? null,
+      instancedFrustumCulled: this.metrics.instancedFrustumCulled ?? null,
+      instancedContributionCulled: this.metrics.instancedContributionCulled ?? null,
     };
   }
 

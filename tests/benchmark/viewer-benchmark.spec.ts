@@ -208,6 +208,9 @@ test.describe('Viewer Performance Benchmarks', () => {
       console.log(`  Draw Calls: ${metrics.drawCalls?.toLocaleString() || 'N/A'}`);
       console.log(`  Resident GPU: ${metrics.residentGpuMB?.toFixed(1) || 'N/A'} MB`);
       console.log(`  Contribution-Culled Batches: ${metrics.batchesContributionCulled?.toLocaleString() || 'N/A'}`);
+      console.log(`  Instanced Drawn: ${metrics.instancedDrawn?.toLocaleString() || 'N/A'}`);
+      console.log(`  Instanced Frustum-Culled: ${metrics.instancedFrustumCulled?.toLocaleString() || 'N/A'}`);
+      console.log(`  Instanced Contribution-Culled: ${metrics.instancedContributionCulled?.toLocaleString() || 'N/A'}`);
 
       if (baselineMetrics) {
         console.log(`\n--- Comparison with Baseline ---`);

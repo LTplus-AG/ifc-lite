@@ -126,8 +126,8 @@ export class BinaryCacheWriter {
 
     if (includeGeometry && geometry) {
       // v13: chunked geometry section (spatially coherent, per-chunk
-      // deflate-raw). The legacy sequential writeGeometry remains only for
-      // format documentation / old-version reads.
+      // deflate-raw). The pre-v13 sequential writer was removed — this is
+      // the only geometry serializer.
       const geometryBuffer = await buildGeometrySectionV13(
         geometry.meshes,
         geometry.coordinateInfo,

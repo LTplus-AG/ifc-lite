@@ -10,55 +10,8 @@ import type { MeshData, CoordinateInfo, Vec3, AABB } from '@ifc-lite/geometry';
 import { BufferWriter, BufferReader } from '../utils/buffer-utils.js';
 
 /**
- * Write geometry data to buffer
- * Format:
- *   - meshCount: uint32
- *   - totalVertices: uint32
- *   - totalTriangles: uint32
- *   - coordinateInfo (see below)
- *   - per mesh:
- *     - expressId: uint32
- *     - vertexCount: uint32
- *     - indexCount: uint32
- *     - color: float32[4]
- *     - ifcType: string            (version >= 2)
- *     - geometryClass: uint8       (version >= 5) — 0 occurrence, 1 orphan
- *                                   type, 2 instanced type (Model/Types switch)
- *     - positions: Float32Array[vertexCount * 3]
- *     - normals: Float32Array[vertexCount * 3]
- *     - indices: Uint32Array[indexCount]
- */
-export function writeGeometry(
-  writer: BufferWriter,
-  meshes: MeshData[],
-  totalVertices: number,
-  totalTriangles: number,
-  coordinateInfo: CoordinateInfo
-): void {
-  const { validMeshes, actualTotalVertices, actualTotalTriangles } = validateMeshes(meshes);
-
-  // Write header with actual counts
-  writer.writeUint32(validMeshes.length);
-  writer.writeUint32(actualTotalVertices);
-  writer.writeUint32(actualTotalTriangles);
-
-  // Write coordinate info
-  writeCoordinateInfo(writer, coordinateInfo);
-
-  // Write each valid mesh
-  for (const mesh of validMeshes) {
-    writeMeshRecord(writer, mesh);
-  }
-
-  if (validMeshes.length < meshes.length) {
-    console.warn(`[writeGeometry] Wrote ${validMeshes.length}/${meshes.length} meshes (${meshes.length - validMeshes.length} skipped due to data issues)`);
-  }
-}
-
-/**
  * Validate + filter meshes (detached buffers / size mismatches / absurd
- * counts) and recompute the real totals. Shared by the legacy sequential
- * writer above and the v13 chunked writer.
+ * counts) and recompute the real totals. Used by the v13 chunked writer.
  */
 export function validateMeshes(meshes: MeshData[]): {
   validMeshes: MeshData[];
@@ -76,14 +29,14 @@ export function validateMeshes(meshes: MeshData[]): {
 
     // Sanity check: vertex/index counts should be reasonable
     if (vertexCount > MAX_VERTEX_COUNT || indexCount > MAX_INDEX_COUNT) {
-      console.warn(`[writeGeometry] Skipping mesh ${i} (expressId=${mesh.expressId}): unreasonable counts`);
+      console.warn(`[cache:geometry] Skipping mesh ${i} (expressId=${mesh.expressId}): unreasonable counts`);
       continue;
     }
 
     // Verify array integrity (check for detached buffers or size mismatches)
     // Note: Some WASM-generated meshes may have mismatched array sizes - skip them
     if (mesh.normals.length !== mesh.positions.length) {
-      console.warn(`[writeGeometry] Skipping mesh ${i} (expressId=${mesh.expressId}): normals/positions size mismatch (${mesh.normals.length} vs ${mesh.positions.length})`);
+      console.warn(`[cache:geometry] Skipping mesh ${i} (expressId=${mesh.expressId}): normals/positions size mismatch (${mesh.normals.length} vs ${mesh.positions.length})`);
       continue;
     }
 
@@ -96,9 +49,8 @@ export function validateMeshes(meshes: MeshData[]): {
 }
 
 /**
- * One per-mesh record — the layout is IDENTICAL in the legacy sequential
- * section and inside v13 chunk records (v13 only changes how records are
- * GROUPED, not what a record is).
+ * One per-mesh record inside a v13 chunk (layout unchanged since the
+ * pre-v13 sequential format — v13 only changed how records are GROUPED).
  */
 export function writeMeshRecord(writer: BufferWriter, mesh: MeshData): void {
   writer.writeUint32(mesh.expressId);
@@ -190,44 +142,9 @@ function writeAABB(writer: BufferWriter, aabb: AABB): void {
   writeVec3(writer, aabb.max);
 }
 
-/**
- * Read geometry data from buffer
- */
 // Maximum reasonable values for sanity checking
-const MAX_MESH_COUNT = 10_000_000; // 10M meshes max
 const MAX_VERTEX_COUNT = 100_000_000; // 100M vertices max per mesh
 const MAX_INDEX_COUNT = 300_000_000; // 300M indices max per mesh
-
-export function readGeometry(reader: BufferReader, version: number = 2): {
-  meshes: MeshData[];
-  totalVertices: number;
-  totalTriangles: number;
-  coordinateInfo: CoordinateInfo;
-} {
-  const meshCount = reader.readUint32();
-  const totalVertices = reader.readUint32();
-  const totalTriangles = reader.readUint32();
-
-  // Sanity check mesh count
-  if (meshCount > MAX_MESH_COUNT) {
-    throw new Error(`Invalid cache: meshCount ${meshCount} exceeds maximum ${MAX_MESH_COUNT}. Cache may be corrupted or from incompatible version.`);
-  }
-
-  const coordinateInfo = readCoordinateInfo(reader, version);
-
-  const meshes: MeshData[] = [];
-
-  for (let i = 0; i < meshCount; i++) {
-    meshes.push(readMeshRecord(reader, version, i));
-  }
-
-  return {
-    meshes,
-    totalVertices,
-    totalTriangles,
-    coordinateInfo,
-  };
-}
 
 /** Read one per-mesh record (see writeMeshRecord for the layout). */
 export function readMeshRecord(reader: BufferReader, version: number, meshIndex: number = 0): MeshData {

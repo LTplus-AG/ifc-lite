@@ -174,8 +174,8 @@ export function useIfcCache() {
   })));
 
   /**
-   * Load from binary cache - INSTANT load for maximum speed
-   * Large cached models load all geometry at once for fastest total time
+   * Load from binary cache: metadata hydrates first, then geometry STREAMS
+   * chunk-by-chunk (v13 format) so first paint lands after the first chunk.
    */
   const loadFromCache = useCallback(async (
     cacheResult: CacheResult,
@@ -210,17 +210,19 @@ export function useIfcCache() {
         ? await rawCacheBuffer.arrayBuffer()
         : rawCacheBuffer;
 
-      // v13+ entries stream their geometry chunk-by-chunk below (first paint
-      // after the FIRST chunk instead of a full deserialize) — read metadata
-      // only here. Older entries keep the legacy one-shot geometry read.
+      // Geometry streams chunk-by-chunk below (first paint after the FIRST
+      // chunk instead of a full deserialize) — the reader here loads
+      // metadata only. Every hit is v13+ by construction: the cache key
+      // embeds FORMAT_VERSION, so older entries can never key a hit (the
+      // pre-v13 one-shot load path was removed with them).
       const headerInfo = reader.readHeader(cacheBuffer);
-      const geometrySection = headerInfo.version >= 13
-        ? headerInfo.sections.find((s) => s.type === SectionType.Geometry)
-        : undefined;
-      const result = await reader.read(
-        cacheBuffer,
-        geometrySection ? { skipGeometry: true } : {}
-      );
+      if (headerInfo.version < 13) {
+        // Impossible via the keyed lookup; fail loudly so the catch below
+        // deletes the entry and the load falls back to a fresh parse.
+        throw new Error(`unexpected pre-v13 cache entry (v${headerInfo.version})`);
+      }
+      const geometrySection = headerInfo.sections.find((s) => s.type === SectionType.Geometry);
+      const result = await reader.read(cacheBuffer, { skipGeometry: true });
       const cacheReadTime = performance.now() - cacheLoadStart;
 
       // Restore the source buffer — required for on-demand property extraction
@@ -397,32 +399,6 @@ export function useIfcCache() {
             version: headerInfo.version,
           }));
         }
-      } else if (result.geometry) {
-        const { meshes, coordinateInfo, totalVertices, totalTriangles } = result.geometry;
-        meshCount = meshes.length;
-        loadedTotalVertices = totalVertices;
-        loadedTotalTriangles = totalTriangles;
-
-        // Legacy (pre-v13) entries: set ALL geometry in ONE call.
-        setGeometryResult({
-          meshes,
-          totalVertices,
-          totalTriangles,
-          coordinateInfo,
-        });
-
-        // Restore the GPU-instancing shards (opaque repeated occurrences that were
-        // partitioned off the flat meshes). useGeometryStreaming drains these →
-        // decodeInstancedShard → scene.addInstancedShard, exactly like a fresh load,
-        // so cached instanced geometry renders + picks + exports correctly.
-        if (result.geometry.instancedShards && result.geometry.instancedShards.length > 0) {
-          appendInstancedShards(result.geometry.instancedShards);
-        }
-
-        // Set data store
-        setIfcDataStore(dataStore);
-
-        buildSpatialIndexGuarded(meshes, dataStore, setIfcDataStore);
       } else {
         setIfcDataStore(dataStore);
       }

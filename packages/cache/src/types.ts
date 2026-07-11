@@ -198,8 +198,6 @@ export interface CacheWriteOptions {
   includeGeometry?: boolean;
   /** Include spatial hierarchy (default: true) */
   includeSpatialHierarchy?: boolean;
-  /** Compress sections (default: false, future feature) */
-  compress?: boolean;
   /**
    * Skip the header's full-file `xxhash64(sourceBuffer)`: store `sourceHash = 0n`
    * and set {@link HeaderFlags.SourceHashUnset}. Use when the caller validates

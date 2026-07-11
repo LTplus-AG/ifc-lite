@@ -212,14 +212,23 @@ describe('three-way decision matrix', () => {
   it('a parent tombstone shadows descendants: editing a child of a deleted parent conflicts', () => {
     // Theirs deletes the storey (whose subtree contains wall-1); ours
     // edits the wall. Composition would remove the wall with its parent,
-    // so this must surface as modify-vs-delete, not merge silently.
+    // so this must surface as modify-vs-delete — on the tombstoned ROOT,
+    // carrying the touched descendant: a per-child decision against a
+    // dead ancestor would be unsatisfiable (subtree shadowing beats a
+    // child resurrect), so the delete decision lives on the storey.
     const plan = planThreeWayMerge({
       ancestor: [base],
       ours: [base, layer([{ path: 'wall-1', attributes: { [FIRE]: 'REI90' } }], 'ours')],
       theirs: [base, layer([{ path: 'storey-eg', attributes: { [IFCLITE_ATTR.DELETED]: true } }], 'theirs')],
     });
-    const wallConflict = plan.conflicts.find((c) => c.path === 'wall-1');
-    expect(wallConflict?.kind).toBe('modify-vs-delete');
+    expect(plan.conflicts).toHaveLength(1);
+    expect(plan.conflicts[0]).toMatchObject({
+      kind: 'modify-vs-delete',
+      path: 'storey-eg',
+      subtree: ['wall-1'],
+    });
+    // The storey's tombstone must not also ride along as an auto op.
+    expect(plan.autoOps).not.toContainEqual({ op: 'tombstone-entity', path: 'storey-eg' });
   });
 
   it('deleting a parent while the other side leaves the subtree alone folds cleanly', () => {

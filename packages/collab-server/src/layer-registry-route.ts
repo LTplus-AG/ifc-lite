@@ -105,6 +105,19 @@ function parseJson(text: string): { value?: unknown; error?: string } {
   }
 }
 
+/**
+ * Map a store-thrown `LayerPushError` onto the HTTP surface: capacity
+ * exhaustion is 507, integrity/conflict gates are 409. Every route that
+ * writes through the store (push, ref PUT, merge, reviews) must route
+ * through this — an unwrapped throw becomes a bare 500.
+ */
+function handlePushError(res: http.ServerResponse, err: unknown): true | undefined {
+  if (err instanceof LayerPushError) {
+    return json(res, err.code === 'registry-full' ? 507 : 409, { error: err.message, code: err.code });
+  }
+  return undefined;
+}
+
 /** Runtime shape validation for ref policies; undefined = invalid. */
 function parseRefPolicy(value: unknown): RefPolicy | undefined {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
@@ -197,12 +210,20 @@ export async function handleLayerRegistryRequest(
       // Bind the manifest author to the push credential: provenance is
       // otherwise self-asserted, and a spoofed author.principal defeats
       // both the no-self-approval guard and requireHumanApproval (the
-      // approver "differs" from a name the real author invented). Only
-      // enforceable when the deployment authenticates real identities —
-      // the anonymous dev sentinel is not a credential to bind against.
+      // approver "differs" from a name the real author invented). A
+      // manifest-less push would dodge the binding entirely — and later
+      // dodge the self-approval separation (no author to compare) — so
+      // authenticated pushes must carry provenance. Only enforceable when
+      // the deployment authenticates real identities; the anonymous dev
+      // sentinel is not a credential to bind against.
       if (principal && principal.userId !== ANONYMOUS_USER_ID) {
         const manifest = getProvenance(file);
-        if (manifest && manifest.author.principal !== principal.userId) {
+        if (!manifest) {
+          return json(res, 400, {
+            error: 'authenticated pushes must carry a provenance manifest (author identity is bound to the credential)',
+          });
+        }
+        if (manifest.author.principal !== principal.userId) {
           return json(res, 403, {
             error: `manifest author.principal "${manifest.author.principal}" must match the authenticated principal "${principal.userId}"`,
           });
@@ -211,9 +232,8 @@ export async function handleLayerRegistryRequest(
       try {
         return json(res, 201, { id: registry.push(file) });
       } catch (err) {
-        if (err instanceof LayerPushError) {
-          return json(res, err.code === 'registry-full' ? 507 : 409, { error: err.message, code: err.code });
-        }
+        const handled = handlePushError(res, err);
+        if (handled) return handled;
         // Content that cannot be canonicalized (non-finite numbers, exotic
         // value types) is a client error, not a server fault.
         if (err instanceof Error && err.message.includes('canonicalizable')) {
@@ -280,7 +300,13 @@ export async function handleLayerRegistryRequest(
         layers,
         ...(policy ? { policy } : existing?.policy ? { policy: existing.policy } : {}),
       };
-      registry.setRef(name, entry);
+      try {
+        registry.setRef(name, entry);
+      } catch (err) {
+        const handled = handlePushError(res, err);
+        if (handled) return handled;
+        throw err;
+      }
       return json(res, existing ? 200 : 201, { ref: name, ...entry });
     }
     if (method === 'GET' && segments.length === 2) {
@@ -345,7 +371,16 @@ export async function handleLayerRegistryRequest(
           });
         }
         const candidateAuthor = getProvenance(registry.loadLayer(body.candidate))?.author.principal;
-        if (candidateAuthor !== undefined && init.approvedBy === candidateAuthor) {
+        if (candidateAuthor === undefined) {
+          // Unknown authorship means approver-vs-author separation cannot
+          // be verified — fail closed rather than let a de-facto author
+          // approve their own manifest-stripped layer.
+          return json(res, 403, {
+            status: 'policy-failure',
+            reason: `candidate ${body.candidate} carries no provenance author; requireHumanApproval refs need attributable candidates`,
+          });
+        }
+        if (init.approvedBy === candidateAuthor) {
           return json(res, 403, {
             status: 'policy-failure',
             reason: `approval by the layer author ${candidateAuthor} does not satisfy requireHumanApproval`,
@@ -353,7 +388,14 @@ export async function handleLayerRegistryRequest(
         }
       }
 
-      const outcome = mergeIntoRef(registry, init);
+      let outcome: ReturnType<typeof mergeIntoRef>;
+      try {
+        outcome = mergeIntoRef(registry, init);
+      } catch (err) {
+        const handled = handlePushError(res, err);
+        if (handled) return handled;
+        throw err;
+      }
       switch (outcome.status) {
         case 'fast-forward':
           return json(res, 200, { status: outcome.status, layers: outcome.refLayers });
@@ -409,7 +451,13 @@ export async function handleLayerRegistryRequest(
       ...(principal ? { openedBy: principal.userId } : {}),
       openedAt: new Date().toISOString(),
     };
-    registry.putReview(review);
+    try {
+      registry.putReview(review);
+    } catch (err) {
+      const handled = handlePushError(res, err);
+      if (handled) return handled;
+      throw err;
+    }
     return json(res, 201, { id: review.id });
   }
   if (method === 'POST' && segments.length === 3 && segments[2] === 'feedback') {

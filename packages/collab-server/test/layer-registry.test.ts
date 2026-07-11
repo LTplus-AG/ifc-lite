@@ -567,6 +567,120 @@ describe('layer registry route', () => {
     }
   });
 
+  it('maps registry-full to 507 on ref PUT and review POST (not a bare 500)', async () => {
+    const store = new MemoryLayerRegistry({ maxRefs: 1, maxReviews: 1 });
+    const server = await startCollabServer({ port: 0, layerRegistry: { store } });
+    try {
+      const port = (server.httpServer.address() as { port: number }).port;
+      const url = `http://127.0.0.1:${port}/api/v1`;
+      const root = publishable(
+        [{ path: 'wall-1', attributes: { [CLASS]: { code: 'IfcWall', uri: 'u' } } }],
+        'Import',
+        null
+      );
+      await fetch(`${url}/layers`, { method: 'POST', body: JSON.stringify(root) });
+      const first = await fetch(`${url}/refs/main`, {
+        method: 'PUT',
+        body: JSON.stringify({ layers: [root.header.id] }),
+      });
+      expect(first.status).toBe(201);
+      const second = await fetch(`${url}/refs/other`, {
+        method: 'PUT',
+        body: JSON.stringify({ layers: [root.header.id] }),
+      });
+      expect(second.status).toBe(507);
+
+      const review = (body: unknown) =>
+        fetch(`${url}/reviews`, { method: 'POST', body: JSON.stringify(body) });
+      expect((await review({ layer_id: root.header.id, into: 'main' })).status).toBe(201);
+      expect((await review({ layer_id: root.header.id, into: 'main' })).status).toBe(507);
+    } finally {
+      await server.stop();
+    }
+  });
+
+  it('requires provenance on authenticated pushes and refuses author-less candidates on protected refs', async () => {
+    // Authenticated: a manifest-less push would dodge author binding and,
+    // later, the self-approval separation.
+    const authed = await startCollabServer({
+      port: 0,
+      layerRegistry: true,
+      authenticate: () => ({ userId: 'mallory', role: 'editor' }),
+    });
+    try {
+      const port = (authed.httpServer.address() as { port: number }).port;
+      const bare: IfcxFile = {
+        header: {
+          id: '',
+          ifcxVersion: 'ifcx_alpha',
+          dataVersion: '1.0.0',
+          author: 'test',
+          timestamp: '2026-06-10T00:00:00.000Z',
+        },
+        imports: [],
+        schemas: {},
+        data: [{ path: 'wall-1', attributes: { [CLASS]: { code: 'IfcWall', uri: 'u' } } }],
+      };
+      const manifestless = { ...bare, header: { ...bare.header, id: computeLayerId(bare) } };
+      const rejected = await fetch(`http://127.0.0.1:${port}/api/v1/layers`, {
+        method: 'POST',
+        body: JSON.stringify(manifestless),
+      });
+      expect(rejected.status).toBe(400);
+    } finally {
+      await authed.stop();
+    }
+
+    // Anonymous registries still accept manifest-less layers, but a
+    // requireHumanApproval ref refuses them at merge time: with no author
+    // to compare, approver-vs-author separation cannot be verified.
+    const anon = await startCollabServer({ port: 0, layerRegistry: true });
+    try {
+      const port = (anon.httpServer.address() as { port: number }).port;
+      const url = `http://127.0.0.1:${port}/api/v1`;
+      const post = (path: string, body: unknown) =>
+        fetch(`${url}${path}`, { method: 'POST', body: JSON.stringify(body) });
+      const root = publishable(
+        [{ path: 'wall-1', attributes: { [CLASS]: { code: 'IfcWall', uri: 'u' }, [FIRE]: 'REI60' } }],
+        'Import',
+        null
+      );
+      await post('/layers', root);
+      await fetch(`${url}/refs/prod`, {
+        method: 'PUT',
+        body: JSON.stringify({ layers: [root.header.id], policy: { requireHumanApproval: true } }),
+      });
+
+      const bare: IfcxFile = {
+        header: {
+          id: '',
+          ifcxVersion: 'ifcx_alpha',
+          dataVersion: '1.0.0',
+          author: 'test',
+          timestamp: '2026-06-10T00:00:00.000Z',
+        },
+        imports: [],
+        schemas: {},
+        data: [{ path: 'wall-1', attributes: { [FIRE]: 'REI90' } }],
+      };
+      const stripped = { ...bare, header: { ...bare.header, id: computeLayerId(bare) } };
+      expect((await post('/layers', stripped)).status).toBe(201);
+
+      const opened = await post('/reviews', { layer_id: stripped.header.id, into: 'prod' });
+      const { id } = (await opened.json()) as { id: string };
+      await post(`/reviews/${id}/feedback`, {
+        decisions: [{ entity: 'wall-1', decision: 'accept' }],
+        status: 'approved',
+      });
+      const merged = await post('/refs/prod/merge', { candidate: stripped.header.id });
+      expect(merged.status).toBe(403);
+      const body = (await merged.json()) as { reason?: string };
+      expect(body.reason).toMatch(/no provenance author/);
+    } finally {
+      await anon.stop();
+    }
+  });
+
   it('binds the manifest author to the push credential', async () => {
     const server = await startCollabServer({
       port: 0,

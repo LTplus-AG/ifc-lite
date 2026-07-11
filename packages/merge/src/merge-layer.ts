@@ -64,6 +64,13 @@ export function applyResolutions(
           `edited resolution for ${conflict.path} requires a componentKey-scoped conflict and replacement attributes`
         );
       }
+      if (conflict.componentKey.startsWith('child:') || conflict.componentKey.startsWith('inherit:')) {
+        // A set-component on a relation pseudo-component would serialize
+        // as a literal attribute instead of a children/inherits edge.
+        throw new Error(
+          `edited resolution cannot target relation component ${conflict.componentKey} on ${conflict.path}; resolve ours/theirs instead`
+        );
+      }
       ops.push({
         op: 'set-component',
         path: conflict.path,
@@ -93,9 +100,31 @@ function opsForTheirs(conflict: MergeConflict): MergeOp[] {
     );
   }
   switch (conflict.kind) {
-    case 'modify-vs-delete':
+    case 'modify-vs-delete': {
+      // A recorded (empty) theirs state means theirs STRIPPED the entity
+      // rather than tombstoning it — resolve with removal opinions so no
+      // subtree-shadowing tombstone is fabricated.
+      if (conflict.theirs !== undefined) {
+        const baseComponents = (conflict.base?.attributes ?? {}) as Record<string, ComponentAttributes>;
+        const oursComponents = (conflict.ours?.attributes ?? {}) as Record<string, ComponentAttributes>;
+        const ops: MergeOp[] = [];
+        const keys = new Set([...Object.keys(baseComponents), ...Object.keys(oursComponents)]);
+        for (const componentKey of keys) {
+          ops.push(
+            ...opsForComponentChange(
+              conflict.path,
+              componentKey,
+              baseComponents[componentKey],
+              undefined,
+              oursComponents[componentKey]
+            )
+          );
+        }
+        return ops;
+      }
       // Theirs tombstoned the entity ours kept editing.
       return [{ op: 'tombstone-entity', path: conflict.path }];
+    }
     case 'delete-vs-modify': {
       // Theirs kept editing what ours tombstoned: resurrect and restore.
       // Ours' pre-tombstone opinions become visible again on resurrect, so

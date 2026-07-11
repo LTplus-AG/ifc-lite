@@ -85,6 +85,14 @@ export interface MergeConflict {
   ours?: ComponentSnapshot;
   /** Candidate-side value (undefined when removed/absent on theirs). */
   theirs?: ComponentSnapshot;
+  /**
+   * For an entity-level delete conflict whose tombstone shadow-kills
+   * descendants the other side touched: their paths. The delete decision
+   * on THIS entity carries the whole subtree - per-descendant choices
+   * against a dead ancestor would be unsatisfiable (subtree shadowing
+   * beats a child resurrect at composition time).
+   */
+  subtree?: string[];
 }
 
 export interface MergePlanStats {

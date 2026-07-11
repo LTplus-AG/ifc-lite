@@ -114,11 +114,152 @@ export function planFromStates(a: StackState, o: StackState, t: StackState): Mer
     touched += result.touched;
   }
 
+  const escalated = escalateShadowedConflicts(a, o, t, autoOps, conflicts);
+
   return {
-    autoOps,
-    conflicts,
-    stats: { touched, autoMerged: autoOps.length, conflicting: conflicts.length },
+    autoOps: escalated.autoOps,
+    conflicts: escalated.conflicts,
+    stats: {
+      touched,
+      autoMerged: escalated.autoOps.length,
+      conflicting: escalated.conflicts.length,
+    },
   };
+}
+
+/**
+ * A conflict on a path that is SHADOW-dead on one side cannot be decided
+ * on its own: subtree shadowing beats a child resurrect at composition
+ * time, so any per-child resolution against a dead ancestor is a silent
+ * no-op. The decision belongs to the tombstoned root:
+ *
+ * - Theirs tombstoned root R, ours edited descendants → R's auto
+ *   tombstone is demoted to a `modify-vs-delete` conflict on R and the
+ *   descendant conflicts fold into it (`subtree`): resolving R = theirs
+ *   deletes the subtree knowingly; R = ours keeps it, edits and all.
+ * - Ours tombstoned root R, theirs edited descendants → R gains a
+ *   `delete-vs-modify` conflict (it had none: theirs never touched R
+ *   itself). The descendant conflicts stay — their theirs-resolutions
+ *   carry the actual edits and become satisfiable once R is resurrected.
+ */
+function escalateShadowedConflicts(
+  a: StackState,
+  o: StackState,
+  t: StackState,
+  autoOps: MergeOp[],
+  conflicts: MergeConflict[]
+): { autoOps: MergeOp[]; conflicts: MergeConflict[] } {
+  const shadowDeadIn = (state: StackState, path: string): boolean => {
+    const entity = state.get(path);
+    return entity !== undefined && entity.deleted && !entity.explicitDeleted;
+  };
+  const needsPass = conflicts.some(
+    (c) => c.componentKey === undefined && (shadowDeadIn(t, c.path) || shadowDeadIn(o, c.path))
+  );
+  if (!needsPass) return { autoOps, conflicts };
+
+  const parentMaps = new Map<StackState, Map<string, string>>();
+  const parentsOf = (state: StackState): Map<string, string> => {
+    let parents = parentMaps.get(state);
+    if (!parents) {
+      parents = new Map<string, string>();
+      for (const entity of state.values()) {
+        for (const child of entity.children.values()) {
+          if (!parents.has(child)) parents.set(child, entity.path);
+        }
+      }
+      parentMaps.set(state, parents);
+    }
+    return parents;
+  };
+  const rootIn = (state: StackState, path: string): string | undefined => {
+    // Nearest ancestor (via the state's children graph) whose death is
+    // explicit on its own path.
+    const parents = parentsOf(state);
+    const seen = new Set<string>([path]);
+    let current = parents.get(path);
+    while (current !== undefined && !seen.has(current)) {
+      const entity = state.get(current);
+      if (entity?.explicitDeleted) return current;
+      seen.add(current);
+      current = parents.get(current);
+    }
+    return undefined;
+  };
+
+  const keptConflicts: MergeConflict[] = [];
+  // Root path → descendant conflict paths folded into its decision.
+  const theirsRoots = new Map<string, string[]>();
+  const oursRoots = new Map<string, string[]>();
+
+  for (const conflict of conflicts) {
+    if (conflict.componentKey === undefined && shadowDeadIn(t, conflict.path)) {
+      const root = rootIn(t, conflict.path);
+      if (root !== undefined) {
+        // Folded into the root's decision; the ours-side edits need no
+        // ops (they are already in the target stack).
+        const list = theirsRoots.get(root) ?? [];
+        list.push(conflict.path);
+        theirsRoots.set(root, list);
+        continue;
+      }
+    }
+    if (conflict.componentKey === undefined && shadowDeadIn(o, conflict.path)) {
+      const root = rootIn(o, conflict.path);
+      if (root !== undefined) {
+        const list = oursRoots.get(root) ?? [];
+        list.push(conflict.path);
+        oursRoots.set(root, list);
+        // Kept: its theirs-resolution carries the descendant's edits.
+        keptConflicts.push(conflict);
+        continue;
+      }
+    }
+    keptConflicts.push(conflict);
+  }
+
+  let ops = autoOps;
+  for (const [root, subtree] of theirsRoots) {
+    ops = ops.filter((op) => !(op.op === 'tombstone-entity' && op.path === root));
+    const existing = keptConflicts.find((c) => c.path === root && c.componentKey === undefined);
+    if (existing) {
+      existing.subtree = [...(existing.subtree ?? []), ...subtree].sort();
+      continue;
+    }
+    const oEntity = o.get(root);
+    const aEntity = a.get(root);
+    keptConflicts.push({
+      kind: 'modify-vs-delete',
+      path: root,
+      ours: snapshotOf(Object.fromEntries(componentsOf(oEntity).entries())),
+      ...(aEntity && !aEntity.deleted
+        ? { base: snapshotOf(Object.fromEntries(componentsOf(aEntity).entries())) }
+        : {}),
+      subtree: subtree.sort(),
+    });
+  }
+  for (const [root, subtree] of oursRoots) {
+    const existing = keptConflicts.find((c) => c.path === root && c.componentKey === undefined);
+    if (existing) {
+      existing.subtree = [...(existing.subtree ?? []), ...subtree].sort();
+      continue;
+    }
+    const tEntity = t.get(root);
+    const oEntity = o.get(root);
+    const aEntity = a.get(root);
+    keptConflicts.push({
+      kind: 'delete-vs-modify',
+      path: root,
+      theirs: snapshotOf(Object.fromEntries(componentsOf(tEntity).entries())),
+      ours: snapshotOf(Object.fromEntries(componentsOf(oEntity).entries())),
+      ...(aEntity && !aEntity.deleted
+        ? { base: snapshotOf(Object.fromEntries(componentsOf(aEntity).entries())) }
+        : {}),
+      subtree: subtree.sort(),
+    });
+  }
+
+  return { autoOps: ops, conflicts: keptConflicts };
 }
 
 type HashOf = (attrs: ComponentAttributes | undefined) => string | undefined;
@@ -185,12 +326,23 @@ function mergeEntity(
   // Ours didn't touch it: take theirs wholesale.
   if (!oChanged) {
     if (oAlive && !tAlive) {
+      // Theirs stripped it to an empty shell (nulled every attribute and
+      // slot; the extraction drops such entities, no tombstone): express
+      // that as removal opinions. A tombstone here would shadow-kill
+      // children theirs kept alive.
+      if (tEntity === undefined) {
+        return {
+          ops: opsForComponentDelta(path, aComponents, new Map(), oComponents, hashOf),
+          conflicts: [],
+          touched: 1,
+        };
+      }
       // Shadow-only deaths (a deleted ancestor node, not a tombstone on
       // this path) emit nothing: the parent's own merge decision carries
       // the subtree at composition time. Emitting here would re-delete a
       // child the target reparented, or pre-empt a parent still in
       // conflict.
-      if (tEntity !== undefined && tEntity.deleted && !tEntity.explicitDeleted) {
+      if (tEntity.deleted && !tEntity.explicitDeleted) {
         return { ops: [], conflicts: [], touched: 1 };
       }
       return { ops: [{ op: 'tombstone-entity', path }], conflicts: [], touched: 1 };
@@ -238,6 +390,10 @@ function mergeEntity(
           path,
           ours: snapshotOf(Object.fromEntries(oComponents.entries())),
           ...(aAlive ? { base: snapshotOf(Object.fromEntries(aComponents.entries())) } : {}),
+          // A shell-strip (no tombstone) records an empty theirs state so
+          // a theirs-resolution emits removal opinions, not a tombstone
+          // that would shadow-kill children theirs kept alive.
+          ...(tEntity === undefined ? { theirs: snapshotOf({}) } : {}),
         },
       ],
       touched: 1,

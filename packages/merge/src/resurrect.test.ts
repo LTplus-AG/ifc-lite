@@ -200,6 +200,106 @@ describe('attribute removals survive per-attribute LWW composition', () => {
   });
 });
 
+describe('shell strips and shadowed subtrees (verification-round fixes)', () => {
+  const CLASS = 'bsi::ifc::class';
+  const treeBase = makeLayer(
+    [
+      {
+        path: 'storey',
+        children: { Wall: 'wall-1' },
+        attributes: { [CLASS]: { code: 'IfcBuildingStorey', uri: 'u' } },
+      },
+      {
+        path: 'wall-1',
+        attributes: { [CLASS]: { code: 'IfcWall', uri: 'u' }, [FIRE]: 'REI60' },
+      },
+    ],
+    'tree-base'
+  );
+
+  it('an entity theirs stripped to an empty shell is removed with nulls, never a tombstone', () => {
+    // A tombstone on the stripped parent would shadow-kill the child that
+    // theirs kept alive.
+    const strip = makeLayer(
+      [{ path: 'storey', children: { Wall: null }, attributes: { [CLASS]: null } }],
+      'strip'
+    );
+    const plan = planThreeWayMerge({
+      ancestor: [treeBase],
+      ours: [treeBase],
+      theirs: [treeBase, strip],
+    });
+    expect(plan.conflicts).toEqual([]);
+    expect(plan.autoOps).not.toContainEqual({ op: 'tombstone-entity', path: 'storey' });
+    const merged = stateAfterMerge([treeBase], plan.autoOps);
+    expect(merged.get('wall-1')?.deleted).toBe(false);
+    expect(merged.get('storey')?.deleted ?? false).toBe(false);
+    expect(merged.get('storey')?.components.size ?? 0).toBe(0);
+  });
+
+  it('theirs deletes a parent whose child ours edited → ONE subtree conflict on the parent', () => {
+    const oursEdit = makeLayer([{ path: 'wall-1', attributes: { [FIRE]: 'REI90' } }], 'ours-edit');
+    const theirsDel = makeLayer(
+      [{ path: 'storey', attributes: { [IFCLITE_ATTR.DELETED]: true } }],
+      'theirs-del'
+    );
+    const plan = planThreeWayMerge({
+      ancestor: [treeBase],
+      ours: [treeBase, oursEdit],
+      theirs: [treeBase, theirsDel],
+    });
+    // No auto tombstone rides along that would pre-empt the decision.
+    expect(plan.autoOps).not.toContainEqual({ op: 'tombstone-entity', path: 'storey' });
+    expect(plan.conflicts).toHaveLength(1);
+    expect(plan.conflicts[0]).toMatchObject({
+      kind: 'modify-vs-delete',
+      path: 'storey',
+      subtree: ['wall-1'],
+    });
+
+    // theirs: the reviewer knowingly deletes the subtree.
+    const theirs = applyResolutions(plan, [{ path: 'storey', choice: 'theirs' }]);
+    const deleted = stateAfterMerge([treeBase, oursEdit], [...plan.autoOps, ...theirs.ops]);
+    expect(deleted.get('storey')?.deleted).toBe(true);
+    expect(deleted.get('wall-1')?.deleted).toBe(true);
+
+    // ours: subtree survives with the edit.
+    const ours = applyResolutions(plan, [{ path: 'storey', choice: 'ours' }]);
+    const kept = stateAfterMerge([treeBase, oursEdit], [...plan.autoOps, ...ours.ops]);
+    expect(kept.get('storey')?.deleted ?? false).toBe(false);
+    expect(kept.get('wall-1')?.components.get('pset:Pset_FireSafety')?.[FIRE]).toBe('REI90');
+  });
+
+  it('ours deleted a parent whose child theirs edited → parent gains a resurrectable conflict', () => {
+    const oursDel = makeLayer(
+      [{ path: 'storey', attributes: { [IFCLITE_ATTR.DELETED]: true } }],
+      'ours-del'
+    );
+    const theirsEdit = makeLayer([{ path: 'wall-1', attributes: { [FIRE]: 'REI120' } }], 'theirs-edit');
+    const plan = planThreeWayMerge({
+      ancestor: [treeBase],
+      ours: [treeBase, oursDel],
+      theirs: [treeBase, theirsEdit],
+    });
+    const parentConflict = plan.conflicts.find((c) => c.path === 'storey');
+    const childConflict = plan.conflicts.find((c) => c.path === 'wall-1');
+    expect(parentConflict).toMatchObject({ kind: 'delete-vs-modify', subtree: ['wall-1'] });
+    expect(childConflict).toMatchObject({ kind: 'delete-vs-modify' });
+
+    // Resolving both as theirs resurrects the parent AND applies the edit
+    // (without the parent conflict, the child resolution was a silent
+    // no-op — subtree shadowing beats a child resurrect).
+    const applied = applyResolutions(plan, [
+      { path: 'storey', choice: 'theirs' },
+      { path: 'wall-1', choice: 'theirs' },
+    ]);
+    const merged = stateAfterMerge([treeBase, oursDel], [...plan.autoOps, ...applied.ops]);
+    expect(merged.get('storey')?.deleted).toBe(false);
+    expect(merged.get('wall-1')?.deleted).toBe(false);
+    expect(merged.get('wall-1')?.components.get('pset:Pset_FireSafety')?.[FIRE]).toBe('REI120');
+  });
+});
+
 describe('revert invariant: [base, L, revert(L)] == base', () => {
   const author = { kind: 'human' as const, principal: 'tester' };
 

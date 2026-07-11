@@ -1016,14 +1016,20 @@ export async function* processParallel(
     };
     const styledCount = counts[4];
     const styledSpans = spanLists.get(4)!.arr;
-    console.log(`[stream][shard] ${styledCount} styled items -> ${workers.length} style slices @ ${elapsed()}ms`);
-    stylesSliceResults.length = workers.length;
-    stylesSlicesRemaining = workers.length;
-    for (let i = 0; i < workers.length; i++) {
-      const from = Math.floor((i * styledCount) / workers.length) * 3;
-      const to = i + 1 === workers.length ? styledCount * 3 : Math.floor(((i + 1) * styledCount) / workers.length) * 3;
+    // 2 slices per worker (round-robin): the tail is set by the SLOWEST
+    // worker, and macOS occasionally schedules one onto a slow core — halving
+    // the slice size halves the damage a slow core can do to the tail.
+    // Slice order stays file order and the merge is by slice INDEX, so
+    // first-wins precedence is unchanged.
+    const sliceCount = workers.length * 2;
+    console.log(`[stream][shard] ${styledCount} styled items -> ${sliceCount} style slices @ ${elapsed()}ms`);
+    stylesSliceResults.length = sliceCount;
+    stylesSlicesRemaining = sliceCount;
+    for (let i = 0; i < sliceCount; i++) {
+      const from = Math.floor((i * styledCount) / sliceCount) * 3;
+      const to = i + 1 === sliceCount ? styledCount * 3 : Math.floor(((i + 1) * styledCount) / sliceCount) * 3;
       const slice = styledSpans.slice(from, to);
-      workers[i].postMessage(
+      workers[i % workers.length].postMessage(
         { type: 'resolve-styles-shard' as const, sharedBuffer, sliceIndex: i, spans: slice },
         [slice.buffer],
       );

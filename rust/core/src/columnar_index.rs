@@ -35,7 +35,7 @@
 //! file order, so a repeated express id resolves to its **last** occurrence in
 //! the file (`HashMap::insert` overwrites). Express ids are unique per the STEP
 //! spec and duplicates essentially never occur, but this type replicates the
-//! last-in-file-order-wins behaviour deliberately (see `sort_columns` and the
+//! last-in-file-order-wins behaviour deliberately (see `from_unsorted` and the
 //! `duplicate_id_last_wins` test) so a malformed file cannot diverge between the
 //! hashmap and columnar paths.
 
@@ -88,12 +88,7 @@ impl ColumnarEntityIndex {
                 lengths: lengths.to_vec(),
             };
         }
-        let (ids, starts, lengths) = crate::columnar_index_merge::sort_columns(
-            ids.to_vec(),
-            starts.to_vec(),
-            lengths.to_vec(),
-        );
-        Self { ids, starts, lengths }
+        Self::from_unsorted(ids.to_vec(), starts.to_vec(), lengths.to_vec())
     }
 
     /// Build from an already-scanned [`EntityIndex`](crate::EntityIndex)
@@ -153,10 +148,9 @@ impl ColumnarEntityIndex {
             starts.push(start as u32);
             lengths.push((end - start) as u32);
         }
-        // Entries are unique; `sort_columns`'s dedup is a no-op but keeps one
+        // Entries are unique; `from_unsorted`'s dedup is a no-op but keeps one
         // sort/build code path.
-        let (ids, starts, lengths) = crate::columnar_index_merge::sort_columns(ids, starts, lengths);
-        Self { ids, starts, lengths }
+        Self::from_unsorted(ids, starts, lengths)
     }
 
     /// Scan `content` and build the columns directly, replicating
@@ -180,8 +174,50 @@ impl ColumnarEntityIndex {
             starts.push(start as u32);
             lengths.push((end - start) as u32);
         }
-        let (ids, starts, lengths) = crate::columnar_index_merge::sort_columns(ids, starts, lengths);
-        Self { ids, starts, lengths }
+        Self::from_unsorted(ids, starts, lengths)
+    }
+
+    /// Sort the (id, start, length) triples by id and collapse duplicate ids
+    /// keeping the one that appeared **last** in the input order (matching
+    /// `FxHashMap::insert`). The input `Vec`s are in original (file / delivery)
+    /// order.
+    fn from_unsorted(ids: Vec<u32>, starts: Vec<u32>, lengths: Vec<u32>) -> Self {
+        let n = ids.len();
+        // Argsort a permutation, ordering by (id, original_index). Ties break by
+        // original index ascending, so within an equal-id run the last element
+        // has the greatest original index == last-in-input-order.
+        let mut perm: Vec<u32> = (0..n as u32).collect();
+        perm.sort_unstable_by(|&a, &b| {
+            let ka = ids[a as usize];
+            let kb = ids[b as usize];
+            ka.cmp(&kb).then_with(|| a.cmp(&b))
+        });
+
+        let mut out_ids: Vec<u32> = Vec::with_capacity(n);
+        let mut out_starts: Vec<u32> = Vec::with_capacity(n);
+        let mut out_lengths: Vec<u32> = Vec::with_capacity(n);
+        for &p in &perm {
+            let p = p as usize;
+            let id = ids[p];
+            if out_ids.last() == Some(&id) {
+                // Duplicate id: overwrite the tail so the LAST occurrence wins.
+                let li = out_ids.len() - 1;
+                out_starts[li] = starts[p];
+                out_lengths[li] = lengths[p];
+            } else {
+                out_ids.push(id);
+                out_starts.push(starts[p]);
+                out_lengths.push(lengths[p]);
+            }
+        }
+        out_ids.shrink_to_fit();
+        out_starts.shrink_to_fit();
+        out_lengths.shrink_to_fit();
+        Self {
+            ids: out_ids,
+            starts: out_starts,
+            lengths: out_lengths,
+        }
     }
 
     /// Binary-search the byte span of `id`. Returns `(start, end)` where
@@ -361,4 +397,3 @@ mod columnar_index_tests {
         assert_eq!(consumed.len(), 4);
     }
 }
-

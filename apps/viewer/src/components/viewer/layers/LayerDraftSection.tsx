@@ -24,20 +24,37 @@ const AUTHOR_STORAGE_KEY = 'ifc-lite:layer-author';
 
 function storedAuthor(): string {
   if (typeof window === 'undefined') return 'viewer-user';
-  return window.localStorage.getItem(AUTHOR_STORAGE_KEY) ?? 'viewer-user';
+  const stored = window.localStorage.getItem(AUTHOR_STORAGE_KEY);
+  if (stored) return stored;
+  // Authenticated registries bind the manifest author to the login
+  // principal — seed from the collab identity so pushes have a chance
+  // of matching it out of the box.
+  const identity = useViewerStore.getState().collabIdentity?.name;
+  return identity && identity.trim().length > 0 ? identity : 'viewer-user';
 }
 
 /**
- * Every pending mutation across the loaded federation. Reads the UNDO
+ * Pending mutations of the FEDERATED composition only. Reads the UNDO
  * stacks, not the view's mutation history: the history is append-only
  * (undo applies inverse ops without removing the record), so publishing
  * from it would resurrect edits the user explicitly undid.
+ *
+ * Models outside the composition (a STEP model added alongside) have
+ * their own overlapping expressId space — resolving those ids through
+ * the composition's path bridge would publish onto unrelated entities,
+ * so only models sharing the composed data store contribute. Georef
+ * pseudo-mutations (entityId 0, georef.* attribute names) carry no
+ * entity identity and are dropped.
  */
 function pendingMutations(): Mutation[] {
   const state = useViewerStore.getState();
   const out: Mutation[] = [];
-  for (const modelId of state.models.keys()) {
-    out.push(...(state.undoStacks.get(modelId) ?? []));
+  for (const [modelId, model] of state.models) {
+    if (model.ifcDataStore !== state.ifcDataStore) continue;
+    for (const mutation of state.undoStacks.get(modelId) ?? []) {
+      if (mutation.attributeName?.startsWith('georef.')) continue;
+      out.push(mutation);
+    }
   }
   return out;
 }
@@ -78,23 +95,26 @@ export function LayerDraftSection() {
         authorPrincipal: trimmedAuthor,
         refName: DEFAULT_LOCAL_REF,
       });
+      if (result.unresolved.length > 0) {
+        // A partial publish must not recompose: the federation reload
+        // resets viewer state, which would erase the very edits we
+        // promise to keep. The layer is on the ref; stack it after the
+        // identities are fixed (re-publishing folds idempotently).
+        toast.info(
+          `Published to '${DEFAULT_LOCAL_REF}', but ${result.unresolved.length} edited ${result.unresolved.length === 1 ? 'entity' : 'entities'} had no stable identity and stayed out. Pending edits were kept; the layer was not stacked.`,
+        );
+        setIntent('');
+        return;
+      }
+      // The edits now live in the published layer; drop them as pending
+      // BEFORE the recompose (the federation reload resets viewer state,
+      // so nothing of value is lost by it).
+      useViewerStore.getState().clearAllMutations();
       // Feed the published layer back into the live composition — the
       // federation reload recaptures the stack, so it shows up on top.
       const json = JSON.stringify(result.file);
       const fileName = `${trimmedIntent.slice(0, 40).replace(/[^\w-]+/g, '-') || 'layer'}.ifcx`;
       await addIfcxOverlays([new File([json], fileName, { type: 'application/json' })]);
-      if (result.unresolved.length > 0) {
-        // A partial publish keeps ALL edits pending rather than deleting
-        // the unresolved ones with them: re-publishing after fixing
-        // identities re-emits the same values, which composition folds
-        // idempotently.
-        toast.info(
-          `${result.unresolved.length} edited ${result.unresolved.length === 1 ? 'entity' : 'entities'} had no stable identity and stayed out of the layer; the pending edits were kept.`,
-        );
-      } else {
-        // The edits now live in the published layer; drop them as pending.
-        useViewerStore.getState().clearAllMutations();
-      }
       setIntent('');
       toast.success(`Published ${result.layerId.slice(0, 15)}… to '${DEFAULT_LOCAL_REF}' (${result.opCount} ops).`);
     } catch (err) {

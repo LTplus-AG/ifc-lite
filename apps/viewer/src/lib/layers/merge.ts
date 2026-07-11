@@ -41,7 +41,11 @@ function fromRegistry(outcome: RegistryMergeOutcome): ViewerMergeResult {
     conflicts: outcome.conflicts ?? outcome.plan?.conflicts ?? [],
     refLayers: outcome.layers,
     mergeLayerId: outcome.merge_layer,
-    reason: outcome.reason,
+    reason:
+      outcome.reason ??
+      (outcome.declared_base
+        ? `declared base ${outcome.declared_base.id} matches nothing on the ref`
+        : undefined),
     ...(outcome.plan
       ? { stats: { autoMerged: outcome.plan.stats.autoMerged, conflicting: outcome.plan.stats.conflicting } }
       : {}),

@@ -24,6 +24,8 @@ export interface RegistryMergeOutcome {
   plan?: MergePlan;
   conflicts?: MergeConflict[];
   reason?: string;
+  /** Sent on unrelated-base outcomes instead of `reason`. */
+  declared_base?: { kind: string; id: string };
 }
 
 export interface RegistryResolutionInput {

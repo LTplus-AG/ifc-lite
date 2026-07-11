@@ -138,6 +138,14 @@ export function LayerMergeSection() {
     void refresh();
   }, [refresh, layerStack]);
 
+  // A previewed plan is only valid for the (candidate, target) it was
+  // computed for — a stale conflicts+choices pair against a new pair
+  // would silently auto-resolve conflicts the user never reviewed.
+  useEffect(() => {
+    setResult(null);
+    setChoices(new Map());
+  }, [candidateId, targetKey]);
+
   const target = useMemo<MergeTarget | null>(() => {
     // Ref names may themselves contain ':' — slice on the FIRST separator
     // only, never split (a ref like 'release:2026' must stay intact).

@@ -159,6 +159,9 @@ pub fn resolve_prepass(
     resolve_prepass_with_style_seeds(spans, decoder, opts, None)
 }
 
+/// Pre-resolved styled maps: `(orphan id -> rgba, geometry id -> style info)`.
+pub type StyleSeeds = (FxHashMap<u32, [f32; 4]>, FxHashMap<u32, GeometryStyleInfo>);
+
 /// [`resolve_prepass`] with PRE-RESOLVED styled-item maps (the sharded
 /// pre-pass resolves styled items on the geometry workers). Seeds MUST be
 /// installed before the colour-map/material/void loops below — the material
@@ -170,7 +173,7 @@ pub fn resolve_prepass_with_style_seeds(
     spans: &PrepassSpans,
     decoder: &mut EntityDecoder,
     opts: ResolveOptions,
-    style_seeds: Option<(FxHashMap<u32, [f32; 4]>, FxHashMap<u32, GeometryStyleInfo>)>,
+    style_seeds: Option<StyleSeeds>,
 ) -> ResolvedPrepass {
     let mut out = ResolvedPrepass::default();
 

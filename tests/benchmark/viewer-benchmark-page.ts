@@ -137,14 +137,20 @@ export class ViewerBenchmarkPage {
       }
     }
 
-    // Sharded entity-index scan A/B knob: shard the scan across the idle
-    // geometry workers + deliver the stitched index early. Set
-    // VIEWER_BENCHMARK_SHARD_SCAN=1 to enable; unset => baseline.
-    if (process.env.VIEWER_BENCHMARK_SHARD_SCAN === '1') {
+    // Sharded pre-pass A/B knob. The app DEFAULT is ON, so a serial baseline
+    // must inject the kill switch: VIEWER_BENCHMARK_SHARD_SCAN=0 (or "off")
+    // => 0; =1 or unset => app default (on).
+    const shardScanEnv = process.env.VIEWER_BENCHMARK_SHARD_SCAN;
+    if (shardScanEnv === '0' || shardScanEnv === 'off') {
+      await this.page.addInitScript(() => {
+        (globalThis as unknown as { __IFC_LITE_SHARD_SCAN?: number }).__IFC_LITE_SHARD_SCAN = 0;
+      });
+      console.log('[Benchmark] sharded pre-pass: OFF (kill switch)');
+    } else if (shardScanEnv === '1') {
       await this.page.addInitScript(() => {
         (globalThis as unknown as { __IFC_LITE_SHARD_SCAN?: number }).__IFC_LITE_SHARD_SCAN = 1;
       });
-      console.log('[Benchmark] sharded entity-index scan: ON');
+      console.log('[Benchmark] sharded pre-pass: ON (explicit)');
     }
 
     // Optional contribution-culling override for A/B runs (issue #1682).

@@ -1250,12 +1250,19 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       const ifcApi = await ensureInit();
       const { sharedBuffer, sliceIndex, spans } = e.data;
       try {
-        const res = (ifcApi as unknown as {
+        const styleApi = (ifcApi as unknown as {
           resolveStyledItemsShard: (data: Uint8Array, spans: Uint32Array) => {
             orphanIds: Uint32Array; orphanColors: Float32Array;
             geomIds: Uint32Array; geomColors: Float32Array;
           };
-        }).resolveStyledItemsShard(viewSharedBytes(sharedBuffer), spans);
+        });
+        let res;
+        try {
+          res = styleApi.resolveStyledItemsShard(viewSharedBytes(sharedBuffer), spans);
+        } catch {
+          // SAB-view rejection fallback (see scan-shard above).
+          res = styleApi.resolveStyledItemsShard(materialiseSharedBytes(sharedBuffer), spans);
+        }
         (self as unknown as Worker).postMessage(
           {
             type: 'styles-shard-result',
@@ -1324,7 +1331,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       // the payload into the normal styles-event path.
       const ifcApi = await ensureInit();
       const m = e.data;
-      const payload = (ifcApi as unknown as {
+      const finalizeApi = (ifcApi as unknown as {
         finalizePrepassStyles: (
           data: Uint8Array,
           orphanIds: Uint32Array, orphanColors: Float32Array,
@@ -1334,11 +1341,19 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
           fillsSpans: Uint32Array, aggregateSpans: Uint32Array,
           planeAngleToRadians: number,
         ) => Record<string, unknown>;
-      }).finalizePrepassStyles(
-        viewSharedBytes(m.sharedBuffer), m.orphanIds, m.orphanColors, m.geomIds, m.geomColors,
+      });
+      const callFinalize = (bytes: Uint8Array) => finalizeApi.finalizePrepassStyles(
+        bytes, m.orphanIds, m.orphanColors, m.geomIds, m.geomColors,
         m.colourMapSpans, m.materialDefSpans, m.relMaterialSpans,
         m.voidSpans, m.fillsSpans, m.aggregateSpans, m.planeAngleToRadians,
       );
+      let payload;
+      try {
+        payload = callFinalize(viewSharedBytes(m.sharedBuffer));
+      } catch {
+        // SAB-view rejection fallback (see scan-shard above).
+        payload = callFinalize(materialiseSharedBytes(m.sharedBuffer));
+      }
       (self as unknown as Worker).postMessage({ type: 'styles-final', payload });
       return;
     }
@@ -1387,13 +1402,21 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       const ifcApi = await ensureInit();
       const { sharedBuffer, shardIndex, rangeStart, rangeEnd } = e.data;
       const view = viewSharedBytes(sharedBuffer);
-      const shard = (ifcApi as unknown as {
+      const scanApi = (ifcApi as unknown as {
         scanEntityIndexShard: (
           data: Uint8Array,
           rangeStart: number,
           rangeEnd: number,
         ) => { ids: Uint32Array; starts: Uint32Array; lengths: Uint32Array; classes: Uint8Array; handoff: number };
-      }).scanEntityIndexShard(view, rangeStart, rangeEnd);
+      });
+      let shard;
+      try {
+        shard = scanApi.scanEntityIndexShard(view, rangeStart, rangeEnd);
+      } catch {
+        // Some runtimes reject SAB-backed views at the wasm boundary (same
+        // fallback the streaming pre-pass ships) — retry with a copy.
+        shard = scanApi.scanEntityIndexShard(materialiseSharedBytes(sharedBuffer), rangeStart, rangeEnd);
+      }
       (self as unknown as Worker).postMessage(
         {
           type: 'shard-result',

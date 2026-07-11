@@ -70,11 +70,14 @@ use ifc_lite_core::{EntityIndex, EntityScanner};
 /// `start < range_end` (strictly increasing in `start`) plus the `handoff`: the
 /// `start` of the first record at/after `range_end` (the next shard's first real
 /// entity), or `None` at EOF.
+/// One shard's records: `(id, start, end)` per entity, strictly increasing in `start`.
+pub type ShardRecords = Vec<(u32, usize, usize)>;
+
 pub fn scan_shard(
     content: &[u8],
     range_start: usize,
     range_end: usize,
-) -> (Vec<(u32, usize, usize)>, Option<usize>) {
+) -> (ShardRecords, Option<usize>) {
     let (records, _classes, handoff) = scan_shard_classified(content, range_start, range_end);
     (records, handoff)
 }
@@ -111,7 +114,7 @@ pub fn scan_shard_classified(
     content: &[u8],
     range_start: usize,
     range_end: usize,
-) -> (Vec<(u32, usize, usize)>, Vec<u8>, Option<usize>) {
+) -> (ShardRecords, Vec<u8>, Option<usize>) {
     let mut scanner = if range_start == 0 {
         EntityScanner::new(content)
     } else {
@@ -253,7 +256,7 @@ mod native {
         }
         let mut expected_start = chunks[0].handoff;
 
-        for i in 1..n_chunks {
+        for (i, chunk) in chunks.iter().enumerate().skip(1) {
             // `expected_start` is the real entity start where chunk `i` begins,
             // validated by chunk `i-1`. `None` => no more real entities.
             let target = match expected_start {
@@ -261,7 +264,7 @@ mod native {
                 None => break,
             };
             let end = range_end(i, n_chunks, len);
-            let recs = &chunks[i].records;
+            let recs = &chunk.records;
             // `records` is strictly increasing in `start`, so a binary search
             // locates the real boundary (or proves the chunk never re-synced).
             match recs.binary_search_by(|&(_, start, _)| start.cmp(&target)) {
@@ -269,7 +272,7 @@ mod native {
                     for &(id, start, e) in &recs[p..] {
                         index.insert(id, (start, e));
                     }
-                    expected_start = chunks[i].handoff;
+                    expected_start = chunk.handoff;
                 }
                 Err(_) => {
                     // Rare: the speculative scan overshot the real boundary, or a

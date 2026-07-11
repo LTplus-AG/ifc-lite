@@ -103,13 +103,18 @@ function groupAttributesByNamespace(
       continue;
     }
 
-    // Use namespace as pset name, format for display
-    const psetName = formatNamespace(namespace);
+    // v5a keys carry the authored set name (`Pset_WallCommon`) — keep it
+    // exact so consumers that match on real IFC pset names (e.g.
+    // whereProperty) find these properties, mirroring the quantity
+    // extractor. Other namespaces keep the display formatting.
+    const v5a = parseV5aKey(key);
+    const psetName = v5a ? v5a.setName : formatNamespace(namespace);
+    const memberName = v5a ? v5a.name : propName;
 
     if (!grouped.has(psetName)) {
       grouped.set(psetName, new Map());
     }
-    grouped.get(psetName)!.set(propName, value);
+    grouped.get(psetName)!.set(memberName, value);
   }
 
   return grouped;

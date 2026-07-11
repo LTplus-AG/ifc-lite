@@ -42,4 +42,37 @@ describe('seedDraftDoc', () => {
     expect(wall && entityToJSON(wall).inherits).toEqual({ Type: 'type-b' });
     expect(door && entityToJSON(door).inherits).toEqual({});
   });
+
+  it('resurrected entities keep their base state (tombstones resolve after all layers)', () => {
+    const doc = createCollabDoc({ gc: false });
+    seedDraftDoc(doc, [
+      layer([
+        {
+          path: 'wall-1',
+          attributes: { 'bsi::ifc::class': { code: 'IfcWall', uri: 'u' }, Name: 'W1' },
+        },
+      ]),
+      layer([{ path: 'wall-1', attributes: { 'ifclite::deleted': true } }]),
+      layer([{ path: 'wall-1', attributes: { 'ifclite::deleted': false } }]),
+    ]);
+
+    const wall = getEntity(doc, 'wall-1');
+    expect(wall).toBeTruthy();
+    const json = wall && entityToJSON(wall);
+    expect(json?.attributes?.['Name']).toBe('W1');
+    expect(json?.attributes?.['bsi::ifc::class']).toEqual({ code: 'IfcWall', uri: 'u' });
+  });
+
+  it('deletes entities whose strongest tombstone opinion is true, even if later layers touch them', () => {
+    const doc = createCollabDoc({ gc: false });
+    seedDraftDoc(doc, [
+      layer([{ path: 'wall-1', attributes: { Name: 'W1' } }]),
+      layer([{ path: 'wall-1', attributes: { 'ifclite::deleted': true } }]),
+      // No resurrect opinion: composition removes the node regardless of
+      // this layer's attribute write.
+      layer([{ path: 'wall-1', attributes: { Name: 'W2' } }]),
+    ]);
+
+    expect(getEntity(doc, 'wall-1')).toBeFalsy();
+  });
 });

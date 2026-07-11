@@ -266,19 +266,25 @@ export function ifcClassOfAttributes(attributes: Record<string, unknown> | undef
  */
 export function seedDraftDoc(doc: Y.Doc, files: readonly IfcxFile[]): void {
   doc.transact(() => {
+    // Composition resolves `ifclite::deleted` like any other attribute —
+    // the strongest (latest) opinion wins after ALL layers merge — so
+    // deletion cannot run per-layer: base → delete → resurrect must seed
+    // the entity with its base state, exactly as composition reveals it.
+    const tombstoned = new Map<string, boolean>();
     for (const file of files) {
       for (const node of file.data) {
+        const opinion = node.attributes?.[IFCLITE_ATTR.DELETED];
+        if (typeof opinion === 'boolean') tombstoned.set(node.path, opinion);
         applyNode(doc, file, node);
       }
+    }
+    for (const [path, deleted] of tombstoned) {
+      if (deleted) deleteEntity(doc, path);
     }
   });
 }
 
 function applyNode(doc: Y.Doc, file: IfcxFile, node: IfcxNodeLike): void {
-  if (node.attributes?.[IFCLITE_ATTR.DELETED] === true) {
-    deleteEntity(doc, node.path);
-    return;
-  }
   if (!hasEntity(doc, node.path)) {
     const ifcClass = ifcClassOfAttributes(node.attributes);
     const inherits: Record<string, string> = {};

@@ -57,6 +57,24 @@ describe('extractProperties — typed records and internal carriers (#1031)', ()
     assert.strictEqual(props[0].value, true);
   });
 
+  it('v5a properties keep the exact authored Pset name, not a display-formatted one', () => {
+    const node = createNode('wall');
+    node.attributes.set('bsi::ifc::v5a::Pset_WallCommon::IsExternal', {
+      type: 'IfcBoolean',
+      value: true,
+    });
+
+    const composed = new Map([[node.path, node]]);
+    const pathToId = new Map([[node.path, 1]]);
+    const table = extractProperties(composed, pathToId, new StringTable());
+    const psets = table.getForEntity(1);
+    assert.strictEqual(psets.length, 1);
+    // Consumers match on the real IFC pset name (whereProperty,
+    // property panels); "IFC - v5a::Pset_WallCommon" would hide it.
+    assert.strictEqual(psets[0].name, 'Pset_WallCommon');
+    assert.strictEqual(table.getPropertyValue(1, 'Pset_WallCommon', 'IsExternal'), true);
+  });
+
   it('leaves raw scalar attributes untouched (legacy migrated values)', () => {
     const node = createNode('wall');
     node.attributes.set('bsi::ifc::v5a::Pset_WallCommon::FireRating', 'F30');

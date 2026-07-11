@@ -1,5 +1,35 @@
 # @ifc-lite/renderer
 
+## 1.36.0
+
+### Minor Changes
+
+- [#1707](https://github.com/LTplus-AG/ifc-lite/pull/1707) [`87516cf`](https://github.com/LTplus-AG/ifc-lite/commit/87516cf5f502b1f770786199b2256c3a215331c3) Thanks [@louistrue](https://github.com/louistrue)! - Opt-in cold (evict-to-disk) residency tier (issue [#1682](https://github.com/LTplus-AG/ifc-lite/issues/1682), phase 3b).
+
+  Three tiers: hot (GPU+CPU) / warm (CPU only, GPU evicted) / cold (metadata shell only, geometry restorable from a `ColdGeometryProvider` — the viewer wires the v13 cache entry with `Blob.slice` partial reads). `Scene.setHostResidencyBudget(bytes)` demotes warm buckets to cold LRU-first; eligibility is strict (pristine only — recoloured/moved/removed buckets are dirty; overflow "#N" sub-buckets excluded; provider present). Cold buckets are sealed (new arrivals route to a fresh sub-bucket), carried through finalize re-grouping as shells, and restored asynchronously on demand. `Scene.getResidentCpuBytes()` reports bucket CPU bytes. Off by default.
+
+- [#1703](https://github.com/LTplus-AG/ifc-lite/pull/1703) [`5f1f8c1`](https://github.com/LTplus-AG/ifc-lite/commit/5f1f8c1a4261e0b8be39f835e88626118a58fef0) Thanks [@louistrue](https://github.com/louistrue)! - Contribution culling + frame/GPU-memory stats (issue [#1682](https://github.com/LTplus-AG/ifc-lite/issues/1682) observability).
+
+  - New opt-in `RenderOptions.contributionCull`: skip colour batches whose world AABB projects below a pixel threshold (raised while the camera moves). Conservative bounding-sphere math; never culls when the camera is inside a batch's bounds. Off by default.
+  - New `Renderer.getFrameStats()`: draw calls issued plus batches drawn / frustum-culled / contribution-culled for the last completed frame.
+  - New `Scene.getResidentGpuBytes()`: byte-accurate sum of GPU buffers held by colour batches, partial sub-batches, hydrated meshes, textured meshes and instanced templates.
+
+- [#1705](https://github.com/LTplus-AG/ifc-lite/pull/1705) [`972341e`](https://github.com/LTplus-AG/ifc-lite/commit/972341e59d89dcf8d66aaebb7ffedc11523b701f) Thanks [@louistrue](https://github.com/louistrue)! - Opt-in GPU residency budget (issue [#1682](https://github.com/LTplus-AG/ifc-lite/issues/1682), phase 3a of the chunked-residency plan).
+
+  `Scene.setGpuResidencyBudget(bytes)` evicts least-recently-drawn bucket batches (GPU buffers destroyed, CPU meshData + metadata shell kept) once their combined bytes exceed the budget, and rebuilds them on demand when the draw loop wants them again (`requestBatchResidency` + time-budgeted `processResidencyRestores`). Never evicts batches drawn this frame or idle fewer than 30 rendered frames; no-ops during streaming, in ephemeral mode, or after geometry release. `FrameStats` gains `batchesNotResident`. Off by default; pairs with spatial chunk bucketing.
+
+- [#1708](https://github.com/LTplus-AG/ifc-lite/pull/1708) [`7a64fa7`](https://github.com/LTplus-AG/ifc-lite/commit/7a64fa75ba7cfcf22687a51a11a3eefe7bba7083) Thanks [@louistrue](https://github.com/louistrue)! - Opt-in LOD1 as a second index range (issue [#1682](https://github.com/LTplus-AG/ifc-lite/issues/1682), phase 5).
+
+  `Scene.setLodBuildsEnabled(true)` builds a vertex-clustering-simplified index buffer over each bucket batch's EXISTING vertex data at batch-build time (>= 500 source triangles, ~2% AABB-diagonal cell, skipped when it does not pay); `RenderOptions.lod.screenPx` draws it for batches projecting below the threshold. LOD costs index bytes only — no second vertex buffer, per-vertex entityId picking lane preserved, LOD0 geometry untouched (no-weld invariant intact). Off by default.
+
+- [#1711](https://github.com/LTplus-AG/ifc-lite/pull/1711) [`22db0d5`](https://github.com/LTplus-AG/ifc-lite/commit/22db0d53d7c42630673ca6bbca7bfcc208838118) Thanks [@louistrue](https://github.com/louistrue)! - Opt-in 12-byte lattice-quantized batch vertices (issue [#1682](https://github.com/LTplus-AG/ifc-lite/issues/1682), phase 6).
+
+  `Renderer.enableQuantizedBatches()` (after a pipeline probe) switches batch builds to a 12-byte layout: uint16x4 position on a global 2^-10 m lattice + packed octahedral normal, plus the u32 entityId lane. The power-of-two lattice with lattice-aligned per-batch origins makes dequantization BIT-EXACT in f32, so cross-batch coincidence and depth-equal overlay matching survive quantization; batches exceeding the u16 range (64 m) fall back to f32 per batch. Measured: batch GPU bytes -37%, identical draw calls, 0.004% pixel delta. Off by default.
+
+- [#1712](https://github.com/LTplus-AG/ifc-lite/pull/1712) [`afd6d1e`](https://github.com/LTplus-AG/ifc-lite/commit/afd6d1ee6fabcd060b4ed0ab5daa9cdd83ea5745) Thanks [@louistrue](https://github.com/louistrue)! - Opt-in spatial chunk bucketing (issue [#1682](https://github.com/LTplus-AG/ifc-lite/issues/1682), phase 2 of the chunked-residency plan).
+
+  `Scene.setSpatialChunking({ cellSize })` partitions colour buckets by world grid cell, so batches become spatially compact and per-batch frustum/contribution culling fires at chunk granularity. Pure reorganization (pixel-identical rendering, same shared frame origin and draw path); a mesh never splits across cells; recolour, move/rotate re-bucketing, streaming fragments, finalize re-grouping and partial-batch piece filtering are all chunk-aware. Off by default.
+
 ## 1.35.2
 
 ### Patch Changes

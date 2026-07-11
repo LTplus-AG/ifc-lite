@@ -749,8 +749,11 @@ export function Viewport({
       // variants exist before the scene starts producing 12B buffers.
       if ((globalThis as { __IFC_LITE_QUANTIZED?: unknown }).__IFC_LITE_QUANTIZED === 1
         || (globalThis as { __IFC_LITE_QUANTIZED?: unknown }).__IFC_LITE_QUANTIZED === true) {
-        const on = renderer.enableQuantizedBatches();
-        console.log(`[Viewport] quantized vertices ${on ? 'on (12B lattice)' : 'UNAVAILABLE (pipeline probe failed)'}`);
+        // Async: WebGPU validates the quantized pipelines before the scene
+        // may produce 12B buffers; batches built in the meantime stay f32.
+        void renderer.enableQuantizedBatches().then((on) => {
+          console.log(`[Viewport] quantized vertices ${on ? 'on (12B lattice)' : 'UNAVAILABLE (pipeline probe failed)'}`);
+        });
       }
       // Read-only debug/e2e hook (same convention as __ifc_lite_viewer_store__):
       // live frame stats + resident GPU/CPU bytes for Playwright assertions

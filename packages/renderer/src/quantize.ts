@@ -101,11 +101,14 @@ export function quantizeInterleaved(
   for (let v = 0; v < vertexCount; v++) {
     const b = v * strideFloats;
     const x = vertexData[b], y = vertexData[b + 1], z = vertexData[b + 2];
+    // A single non-finite vertex disqualifies the batch: NaN would otherwise
+    // slip past the min/max comparisons and quantize to the batch corner (a
+    // spike). Falling back to f32 preserves the current NaN behaviour.
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) return null;
     if (x < minX) minX = x; if (x > maxX) maxX = x;
     if (y < minY) minY = y; if (y > maxY) maxY = y;
     if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
   }
-  if (!Number.isFinite(minX) || !Number.isFinite(maxX)) return null;
 
   // Lattice-align the origin DOWNWARD so every q stays >= 0.
   const qminX = Math.floor(minX / QUANT_STEP) * QUANT_STEP;

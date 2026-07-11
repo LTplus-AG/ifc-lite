@@ -111,4 +111,12 @@ describe('quantizeInterleaved', () => {
     const src = interleave([{ p: [NaN, 0, 0] }]);
     assert.strictEqual(quantizeInterleaved(src, STRIDE), null);
   });
+
+  it('rejects a PARTIALLY poisoned mesh (finite bounds from other vertices)', () => {
+    // The subtle case: healthy vertices give finite bounds, and the NaN
+    // vertex would silently quantize to the batch corner without the
+    // per-vertex check.
+    const src = interleave([{ p: [1, 2, 3] }, { p: [NaN, 0, 0] }, { p: [4, 5, 6] }]);
+    assert.strictEqual(quantizeInterleaved(src, STRIDE), null);
+  });
 });

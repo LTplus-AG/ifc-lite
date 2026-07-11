@@ -224,6 +224,8 @@ export class ViewerBenchmarkPage {
         (globalThis as unknown as { __IFC_LITE_QUANTIZED?: number }).__IFC_LITE_QUANTIZED = 1;
       });
       console.log('[Benchmark] quantized vertices override: on');
+    } else if (quantEnv) {
+      console.warn(`[Benchmark] invalid VIEWER_BENCHMARK_QUANTIZED (expected "1"): ${quantEnv}`);
     }
 
     // Navigate to viewer app

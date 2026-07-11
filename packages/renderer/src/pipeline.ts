@@ -24,7 +24,7 @@ export class RenderPipeline {
     private instancedPipeline!: GPURenderPipeline;  // GPU-instancing: template (slot 0) + per-instance buffer (slot 1)
     private instancedTransparentPipeline: GPURenderPipeline | null = null;  // instanced pipeline with alpha blend (lens/x-ray/compare overlays); lazily built, null if unbuilt/rejected
     private makeInstancedTransparentPipeline: (() => GPURenderPipeline) | null = null;  // deferred factory (see constructor)
-    private makeQuantizedPipeline: ((kind: 'opaque' | 'transparent' | 'overlay') => GPURenderPipeline) | null = null;
+    private makeQuantizedPipelineAsync: ((kind: 'opaque' | 'transparent' | 'overlay') => Promise<GPURenderPipeline>) | null = null;
     private quantizedPipelines: Partial<Record<'opaque' | 'transparent' | 'overlay', GPURenderPipeline>> = {};
     private instancedTransparentPipelineTried = false;  // built-or-failed once; don't retry a rejecting backend every frame
     private selectionPipeline: GPURenderPipeline;  // Pipeline for selected meshes (renders on top)
@@ -438,12 +438,12 @@ export class RenderPipeline {
                 },
             ],
         };
-        this.makeQuantizedPipeline = (kind) => {
+        this.makeQuantizedPipelineAsync = (kind) => {
             const base =
                 kind === 'opaque' ? pipelineDescriptor :
                 kind === 'transparent' ? transparentPipelineDescriptor :
                 overlayPipelineDescriptor;
-            return this.device.createRenderPipeline({ ...base, vertex: quantizedVertex });
+            return this.device.createRenderPipelineAsync({ ...base, vertex: quantizedVertex });
         };
 
         // ── Textured pipeline (#961) ──
@@ -595,23 +595,34 @@ export class RenderPipeline {
      * takes the transform + colour per-occurrence from the instance buffer).
      */
     /**
-     * Get (lazily creating) a quantized-vertex pipeline variant. Returns null
-     * when creation failed — callers must then keep batches on the f32 path
-     * (the renderer probes this BEFORE enabling quantization).
+     * Create-and-VALIDATE the quantized pipeline variants. Uses
+     * createRenderPipelineAsync so WebGPU's asynchronous validation completes
+     * before anything is cached — a sync createRenderPipeline can hand back a
+     * pipeline whose validation later fails on the device, and caching that
+     * would make every quantized draw error. This is the ONLY creator; the
+     * sync getter below reads the cache. Returns whether all variants exist.
      */
-    getQuantizedPipelineVariant(kind: 'opaque' | 'transparent' | 'overlay'): GPURenderPipeline | null {
-        let p = this.quantizedPipelines[kind];
-        if (!p && this.makeQuantizedPipeline) {
-            try {
-                p = this.makeQuantizedPipeline(kind);
-                this.quantizedPipelines[kind] = p;
-            } catch (err) {
-                console.warn('[Pipeline] quantized pipeline creation failed; staying on f32 vertices:', err);
-                this.makeQuantizedPipeline = null;
-                return null;
+    async ensureQuantizedPipelines(): Promise<boolean> {
+        const factory = this.makeQuantizedPipelineAsync;
+        if (!factory) return false;
+        const kinds = ['opaque', 'transparent', 'overlay'] as const;
+        try {
+            for (const kind of kinds) {
+                if (!this.quantizedPipelines[kind]) {
+                    this.quantizedPipelines[kind] = await factory(kind);
+                }
             }
+            return true;
+        } catch (err) {
+            console.warn('[Pipeline] quantized pipeline validation failed; staying on f32 vertices:', err);
+            this.makeQuantizedPipelineAsync = null;
+            return false;
         }
-        return p ?? null;
+    }
+
+    /** Cache-only reader for the quantized variants (see ensureQuantizedPipelines). */
+    getQuantizedPipelineVariant(kind: 'opaque' | 'transparent' | 'overlay'): GPURenderPipeline | null {
+        return this.quantizedPipelines[kind] ?? null;
     }
 
     writeRawUniforms(data: Float32Array, extraFlagsX = 0): void {

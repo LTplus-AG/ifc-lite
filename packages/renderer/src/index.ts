@@ -1059,10 +1059,9 @@ export class Renderer {
      * whether quantization is active — on failure (e.g. a fragile backend
      * rejecting pipeline creation) batches stay on the f32 path.
      */
-    enableQuantizedBatches(): boolean {
+    async enableQuantizedBatches(): Promise<boolean> {
         if (!this.pipeline) return false;
-        const kinds = ['opaque', 'transparent', 'overlay'] as const;
-        const ok = kinds.every((k) => this.pipeline!.getQuantizedPipelineVariant(k) !== null);
+        const ok = await this.pipeline.ensureQuantizedPipelines();
         if (ok) this.scene.setQuantizedBatches(true);
         return ok;
     }

@@ -156,7 +156,28 @@ pub fn resolve_prepass(
     decoder: &mut EntityDecoder,
     opts: ResolveOptions,
 ) -> ResolvedPrepass {
+    resolve_prepass_with_style_seeds(spans, decoder, opts, None)
+}
+
+/// [`resolve_prepass`] with PRE-RESOLVED styled-item maps (the sharded
+/// pre-pass resolves styled items on the geometry workers). Seeds MUST be
+/// installed before the colour-map/material/void loops below — the material
+/// chain consults `orphan_styled_items`, so injecting after the fact loses
+/// material-dependent styles (measured: 1960 -> 1134 styles on a real model).
+/// With seeds present the styled-item loop is skipped (spans.styled_items is
+/// expected to be empty in that mode).
+pub fn resolve_prepass_with_style_seeds(
+    spans: &PrepassSpans,
+    decoder: &mut EntityDecoder,
+    opts: ResolveOptions,
+    style_seeds: Option<(FxHashMap<u32, [f32; 4]>, FxHashMap<u32, GeometryStyleInfo>)>,
+) -> ResolvedPrepass {
     let mut out = ResolvedPrepass::default();
+
+    if let Some((orphan, geom)) = style_seeds {
+        out.orphan_styled_items = orphan;
+        out.geometry_style_index = geom;
+    }
 
     // ── Styled items: orphan (material appearance) vs geometry-attached ──
     resolve_styled_items_into(

@@ -98,7 +98,11 @@ function readVisibilityFilterOverride(): { disabledTypes?: string[]; skipTypeGeo
  */
 function readShardScanFlag(): boolean {
   const g = globalThis as unknown as { __IFC_LITE_SHARD_SCAN?: unknown };
-  return g.__IFC_LITE_SHARD_SCAN === true || g.__IFC_LITE_SHARD_SCAN === 1 || g.__IFC_LITE_SHARD_SCAN === '1';
+  const v = g.__IFC_LITE_SHARD_SCAN;
+  // ON by default; 0/'0'/false is the kill switch (same convention as the
+  // other #1682 load/render knobs).
+  if (v === 0 || v === '0' || v === false) return false;
+  return true;
 }
 
 /** One shard's returned columns + handoff (see `scanEntityIndexShard`). */

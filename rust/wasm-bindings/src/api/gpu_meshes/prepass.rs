@@ -1057,38 +1057,40 @@ impl IfcAPI {
         let mut decoder = EntityDecoder::with_arc_columnar_index(data, index);
         decoder.seed_unit_scales(1.0, plane_angle_to_radians);
 
-        // Support spans (colour maps, materials, voids, aggregates) resolve
-        // here — styled_items is empty, so this adds nothing to the styled maps.
-        let mut resolved = ifc_lite_processing::prepass::resolve_prepass(
+        // Rebuild the shard-merged styled maps and SEED them into the resolver
+        // BEFORE the support-span loops: the material chain consults
+        // orphan_styled_items, so injecting after resolve_prepass loses
+        // material-dependent styles.
+        let mut orphan_seed = rustc_hash::FxHashMap::default();
+        for (i, &id) in orphan_ids.iter().enumerate() {
+            orphan_seed.insert(id, [
+                orphan_colors[i * 4],
+                orphan_colors[i * 4 + 1],
+                orphan_colors[i * 4 + 2],
+                orphan_colors[i * 4 + 3],
+            ]);
+        }
+        let mut geom_seed = rustc_hash::FxHashMap::default();
+        for (i, &id) in geom_ids.iter().enumerate() {
+            geom_seed.insert(
+                id,
+                ifc_lite_processing::style::GeometryStyleInfo::from_color([
+                    geom_colors[i * 4],
+                    geom_colors[i * 4 + 1],
+                    geom_colors[i * 4 + 2],
+                    geom_colors[i * 4 + 3],
+                ]),
+            );
+        }
+        let mut resolved = ifc_lite_processing::prepass::resolve_prepass_with_style_seeds(
             &stashed_support,
             &mut decoder,
             ifc_lite_processing::prepass::ResolveOptions {
                 collect_indexed_colour_full: false,
                 defer_attached_styles: false,
             },
+            Some((orphan_seed, geom_seed)),
         );
-        // Inject the shard-merged styled maps.
-        for (i, &id) in orphan_ids.iter().enumerate() {
-            let c = [
-                orphan_colors[i * 4],
-                orphan_colors[i * 4 + 1],
-                orphan_colors[i * 4 + 2],
-                orphan_colors[i * 4 + 3],
-            ];
-            resolved.orphan_styled_items.insert(id, c);
-        }
-        for (i, &id) in geom_ids.iter().enumerate() {
-            let c = [
-                geom_colors[i * 4],
-                geom_colors[i * 4 + 1],
-                geom_colors[i * 4 + 2],
-                geom_colors[i * 4 + 3],
-            ];
-            resolved.geometry_style_index.insert(
-                id,
-                ifc_lite_processing::style::GeometryStyleInfo::from_color(c),
-            );
-        }
 
         let (style_ids_vec, style_colors_vec) =
             ifc_lite_processing::prepass::flat_styles_rgba8(&resolved, &mut decoder);

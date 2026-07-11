@@ -681,6 +681,68 @@ describe('layer registry route', () => {
     }
   });
 
+  it('merges with per-conflict resolutions from the review UI', async () => {
+    const server = await startCollabServer({ port: 0, layerRegistry: true });
+    try {
+      const port = (server.httpServer.address() as { port: number }).port;
+      const url = `http://127.0.0.1:${port}/api/v1`;
+      const post = (path: string, body: unknown) =>
+        fetch(`${url}${path}`, { method: 'POST', body: JSON.stringify(body) });
+
+      const SOUND = 'bsi::ifc::v5a::Pset_Acoustic::Rw';
+      const root = publishable(
+        [{ path: 'wall-1', attributes: { [CLASS]: { code: 'IfcWall', uri: 'u' }, [FIRE]: 'REI60', [SOUND]: 40 } }],
+        'Import',
+        null
+      );
+      await post('/layers', root);
+      const ours = publishable(
+        [{ path: 'wall-1', attributes: { [FIRE]: 'REI90', [SOUND]: 45 } }],
+        'Ours',
+        { kind: 'stack', id: computeStackHash([root.header.id]) }
+      );
+      await post('/layers', ours);
+      await fetch(`${url}/refs/main`, {
+        method: 'PUT',
+        body: JSON.stringify({ layers: [root.header.id, ours.header.id] }),
+      });
+      const candidate = publishable(
+        [{ path: 'wall-1', attributes: { [FIRE]: 'REI120', [SOUND]: 50 } }],
+        'Theirs',
+        { kind: 'stack', id: computeStackHash([root.header.id]) }
+      );
+      await post('/layers', candidate);
+
+      // Without resolutions the conflicts surface as 409.
+      const conflicted = await post('/refs/main/merge', { candidate: candidate.header.id });
+      expect(conflicted.status).toBe(409);
+      const body409 = (await conflicted.json()) as { conflicts: Array<{ componentKey?: string }> };
+      expect(body409.conflicts).toHaveLength(2);
+
+      // Malformed resolutions are rejected with a clear 400.
+      const malformed = await post('/refs/main/merge', {
+        candidate: candidate.header.id,
+        resolutions: [{ path: 'wall-1', choice: 'nuke' }],
+      });
+      expect(malformed.status).toBe(400);
+
+      // Mixed per-conflict choices complete the merge server-side.
+      const merged = await post('/refs/main/merge', {
+        candidate: candidate.header.id,
+        resolutions: [
+          { path: 'wall-1', component_key: 'pset:Pset_FireSafety', choice: 'theirs' },
+          { path: 'wall-1', component_key: 'pset:Pset_Acoustic', choice: 'ours' },
+        ],
+      });
+      expect(merged.status).toBe(200);
+      const outcome = (await merged.json()) as { status: string; merge_layer?: string };
+      expect(outcome.status).toBe('merged');
+      expect(outcome.merge_layer?.startsWith('blake3:')).toBe(true);
+    } finally {
+      await server.stop();
+    }
+  });
+
   it('binds the manifest author to the push credential', async () => {
     const server = await startCollabServer({
       port: 0,

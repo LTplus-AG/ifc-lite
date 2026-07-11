@@ -123,6 +123,12 @@ export interface MergeInit {
   into: string;
   preview?: boolean;
   resolve?: 'ours' | 'theirs';
+  /**
+   * Per-conflict resolutions (the review-UI flow: preview, decide each
+   * conflict, execute). Takes precedence over the blanket `resolve`;
+   * conflicts left unaddressed surface as a `conflicts` outcome.
+   */
+  resolutions?: ResolutionInput[];
   waivers?: Waiver[];
   approvedBy?: string;
   principal?: string;
@@ -220,15 +226,18 @@ export function mergeIntoRef(store: LayerRefStore, init: MergeInit): MergeOutcom
 
   let resolutionInputs: ResolutionInput[] = [];
   if (plan.conflicts.length > 0) {
-    if (!init.resolve) {
+    if (init.resolutions !== undefined && init.resolutions.length > 0) {
+      resolutionInputs = init.resolutions;
+    } else if (init.resolve) {
+      const choice = init.resolve;
+      resolutionInputs = plan.conflicts.map((conflict) => {
+        const input: ResolutionInput = { path: conflict.path, choice };
+        if (conflict.componentKey !== undefined) input.componentKey = conflict.componentKey;
+        return input;
+      });
+    } else {
       return { status: 'conflicts', conflicts: plan.conflicts, ancestorMatched: ancestor.matched };
     }
-    const choice = init.resolve;
-    resolutionInputs = plan.conflicts.map((conflict) => {
-      const input: ResolutionInput = { path: conflict.path, choice };
-      if (conflict.componentKey !== undefined) input.componentKey = conflict.componentKey;
-      return input;
-    });
   }
   const applied = applyResolutions(plan, resolutionInputs);
   if (applied.unresolved.length > 0) {

@@ -324,6 +324,7 @@ export async function handleLayerRegistryRequest(
             candidate?: string;
             preview?: boolean;
             resolve?: 'ours' | 'theirs';
+            resolutions?: unknown[];
             waivers?: Waiver[];
             allow_unrelated?: boolean;
           }
@@ -335,6 +336,33 @@ export async function handleLayerRegistryRequest(
       const init: MergeInit = { candidateId: body.candidate, into: segments[1] };
       if (body.preview) init.preview = true;
       if (body.resolve === 'ours' || body.resolve === 'theirs') init.resolve = body.resolve;
+      // Per-conflict resolutions from the review UI: strictly-shaped
+      // ours/theirs decisions ('edited' stays a local-flow feature).
+      if (body.resolutions !== undefined) {
+        if (!Array.isArray(body.resolutions)) {
+          return json(res, 400, { error: 'resolutions must be an array of { path, component_key?, choice }' });
+        }
+        const parsedResolutions: NonNullable<MergeInit['resolutions']> = [];
+        for (const item of body.resolutions) {
+          if (typeof item !== 'object' || item === null) {
+            return json(res, 400, { error: 'each resolution must be { path, component_key?, choice: "ours" | "theirs" }' });
+          }
+          const raw = item as Record<string, unknown>;
+          const choice = raw.choice;
+          if (typeof raw.path !== 'string' || (choice !== 'ours' && choice !== 'theirs')) {
+            return json(res, 400, { error: 'each resolution must be { path, component_key?, choice: "ours" | "theirs" }' });
+          }
+          if (raw.component_key !== undefined && typeof raw.component_key !== 'string') {
+            return json(res, 400, { error: 'component_key must be a string when present' });
+          }
+          parsedResolutions.push({
+            path: raw.path,
+            choice,
+            ...(raw.component_key !== undefined ? { componentKey: raw.component_key as string } : {}),
+          });
+        }
+        init.resolutions = parsedResolutions;
+      }
       if (Array.isArray(body.waivers)) init.waivers = body.waivers;
       if (body.allow_unrelated) init.allowUnrelated = true;
       if (principal) init.principal = principal.userId;

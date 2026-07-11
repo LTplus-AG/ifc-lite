@@ -47,10 +47,10 @@ Feature flag: `layers.enabled`. Every phase lands on `main` only with green exit
 
 ## Phase L4: Review UI (5-6 weeks, scheduled post-Grobkonzept)
 
-- ☐ Viewer diff mode promoted from compare example into `packages/viewer` (ghosting, diff-state lens via `@ifc-lite/lens`, author-kind lens)
-- ☐ Conflict queue + per-entity/bulk resolution; component panel on shared diff JSON
+- ◐ Viewer diff mode — SHIPPED in `apps/viewer` (#1717 V1/V4): Layers panel with per-layer contribution diff (shared StackDiff JSON) and "Ghost others" 3D isolation; diff-state + author-kind lenses via `@ifc-lite/lens` pending
+- ◐ Conflict queue — SHIPPED (#1717 V3): per-conflict ours/theirs resolutions through `MergeInit.resolutions` (shared flow, registry passthrough), subtree deletes as one decision, merge gated on an empty queue; bulk resolution + `edited` in the UI pending
 - ☐ Checks panel with IDS deep links; waiver flow
-- ☐ Provenance panel; BCF topics as review comments (`@ifc-lite/bcf`)
+- ◐ Provenance panel — SHIPPED (#1717 V4): full manifest per stratum (author kind, intent, base, scope claims, check evidence, merge record, signatures); BCF topics as review comments pending
 - ☐ BCF Time Machine on the layer DAG (scrub, branch nodes, open-historical-state)
 
 **Exit:** full agent-proposes / human-reviews / merge loop entirely in the browser; usability session with one BFH cohort.
@@ -58,7 +58,7 @@ Feature flag: `layers.enabled`. Every phase lands on `main` only with green exit
 ## Phase L5: Registry (ongoing)
 
 - ◐ Push/pull by id + ref DB + PR objects on `collab-server`/`apps/server`; webhooks — DONE on `collab-server` (`/api/v1/layers|refs|reviews`, server-side blake3 integrity gate on push, in-memory store behind a pluggable `LayerRegistryStore`); webhooks, durable backends, and the `apps/server` surface pending. The merge flow itself moved to `@ifc-lite/merge` (`ref-flow.ts`) so CLI and registry run one decision procedure
-- ◐ Ref policies (required checks, reviewers, author-kind, risk-tier, auto-merge) enforced server-side — required checks + human-approval + protected-move-only-via-merge enforced on the registry route; reviewers/risk-tier/auto-merge pending
+- ◐ Ref policies (required checks, reviewers, author-kind, risk-tier, auto-merge) enforced server-side — required checks + human-approval (every candidate, approver distinct from the credential-bound author) + protected-move-only-via-merge + immutable-policy-via-PUT + per-conflict `resolutions` enforced on the registry route; reviewers/risk-tier/auto-merge pending
 - ☐ Registry attestation; optional ed25519 signing; provenance/audit search
 - ☐ Team tier pricing alongside Tauri track; public reference registry for teaching
 - ☐ Nightly model-gardener agent on auto-merge policy (first fully autonomous loop)
@@ -67,7 +67,7 @@ Feature flag: `layers.enabled`. Every phase lands on `main` only with green exit
 
 ## Cross-cutting
 
-- ◐ One diff/MergePlan JSON schema consumed identically by CLI, MCP, UI (contract tests) — the diff JSON is now ONE implementation (`@ifc-lite/merge` `state-diff.ts`, deterministic ordering) consumed by `ifc layer diff --json` and the MCP `diff_layer` tool, with a byte-exact contract test; MergePlan is emitted from the shared type (CLI full, MCP trimmed conflicts). UI consumption lands with L4
+- ◐ One diff/MergePlan JSON schema consumed identically by CLI, MCP, UI (contract tests) — the diff JSON is now ONE implementation (`@ifc-lite/merge` `state-diff.ts`, deterministic ordering) consumed by `ifc layer diff --json` and the MCP `diff_layer` tool, with a byte-exact contract test; MergePlan is emitted from the shared type (CLI full, MCP trimmed conflicts). UI consumption SHIPPED with the viewer Layers panel (#1717)
 - ☐ Perf budgets in CI (02 §2.5, 05 §5.7)
 - ☐ Spec-set versioning: manifest SemVer; composition behavior behind `layers.enabled`
 - ⚠ Open problems parked deliberately: heuristic identity (04 §4.5), cross-schema identity, deletion-overlay upstream standardization (tracked with panel)

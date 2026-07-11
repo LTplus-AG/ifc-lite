@@ -1244,6 +1244,12 @@ export class Scene {
       this.instancedHidden.add(expressId);
       this.writeInstanceFlags(device, expressId);
     }
+    // Release the contribution-cull exemption BEFORE forgetting the occurrence
+    // locations — deleting the map entry first would leak selectedCount and
+    // leave the templates permanently uncullable.
+    if (this.instancedSelected.has(expressId)) {
+      this.bumpTemplateSelectedCount(expressId, -1);
+    }
     this.instancedEntityMap.delete(expressId);
     this.instancedSelected.delete(expressId);
     this.instancedHidden.delete(expressId);

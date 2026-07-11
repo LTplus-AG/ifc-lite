@@ -45,6 +45,11 @@ describe('isPivotRaycastTooExpensive', () => {
     assert.equal(isPivotRaycastTooExpensive(flatOnly), false);
   });
 
+  it('skips a purely-instanced scene with NO batched meshes (loop never runs)', () => {
+    const instancedOnly = scene({ instanced: PIVOT_RAYCAST_MAX_ENTITIES + 1 });
+    assert.equal(isPivotRaycastTooExpensive(instancedOnly), true);
+  });
+
   it('skips above the triangle threshold even with few entities', () => {
     const dense = scene({ batches: [{ ids: 100, indices: PIVOT_RAYCAST_MAX_INDICES + 3 }] });
     assert.equal(isPivotRaycastTooExpensive(dense), true);

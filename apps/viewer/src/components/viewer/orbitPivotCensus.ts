@@ -32,6 +32,9 @@ export const PIVOT_RAYCAST_MAX_INDICES = 3_000_000;
 /** True when the first-pivot raycast would stall the main thread at gesture start. */
 export function isPivotRaycastTooExpensive(scene: PivotCensusScene): boolean {
   let totalEntities = scene.getMeshes().length + scene.getInstancedEntityCount();
+  // Check before the batch loop too: a purely-instanced scene has no batched
+  // meshes, so a loop-only check would never see the instanced count.
+  if (totalEntities > PIVOT_RAYCAST_MAX_ENTITIES) return true;
   let totalIndices = 0;
   for (const b of scene.getBatchedMeshes()) {
     totalEntities += b.expressIds.length;

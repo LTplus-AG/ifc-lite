@@ -15,7 +15,7 @@
  * composition's `layerStackPathToId` bridge and nothing here persists ids.
  */
 
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { Bot, GitMerge, Layers, User, Users2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -24,6 +24,7 @@ import { useViewerStore } from '@/store';
 import type { LayerAuthorKind, LayerStackEntry } from '@/store/slices/layerStackSlice';
 import { computeLayerContribution, shortContentId } from '@/lib/layers/stack';
 import { LayerDiffView } from './LayerDiffView';
+import { LayerProvenanceDetail } from './LayerProvenanceDetail';
 import { LayerDraftSection } from './LayerDraftSection';
 import { LayerMergeSection } from './LayerMergeSection';
 
@@ -90,15 +91,19 @@ function LayerStratum({
   position,
   total,
   active,
+  expanded,
   busy,
   onInspect,
+  onToggleDetail,
 }: {
   entry: LayerStackEntry;
   position: number;
   total: number;
   active: boolean;
+  expanded: boolean;
   busy: boolean;
   onInspect: () => void;
+  onToggleDetail: () => void;
 }) {
   const created = entry.created ? entry.created.slice(0, 10) : undefined;
   const subParts: string[] = [];
@@ -115,7 +120,13 @@ function LayerStratum({
     >
       {/* Stratum accent: author-kind tinted, the panel's one signature detail. */}
       <span className={`w-[3px] shrink-0 self-stretch rounded-full ${accentClass(entry.authorKind)}`} aria-hidden />
-      <div className="min-w-0 flex-1">
+      <button
+        type="button"
+        className="min-w-0 flex-1 text-left"
+        onClick={onToggleDetail}
+        aria-expanded={expanded}
+        aria-label={`Provenance of ${entry.name}`}
+      >
         <div className="flex items-center gap-1.5">
           <span className="shrink-0 rounded bg-muted px-1 font-mono text-[10px] leading-4 text-muted-foreground">
             {total - position + 1}
@@ -164,7 +175,7 @@ function LayerStratum({
             </Tooltip>
           )}
         </div>
-      </div>
+      </button>
       <Button
         variant="ghost"
         size="sm"
@@ -182,6 +193,7 @@ export function LayersPanel(_props: LayersPanelProps) {
   const layerStack = useViewerStore((s) => s.layerStack);
   const layerStackDiff = useViewerStore((s) => s.layerStackDiff);
   const layerDiffBusy = useViewerStore((s) => s.layerDiffBusy);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const inspect = useCallback(
     async (layerId: string) => {
@@ -233,15 +245,19 @@ export function LayersPanel(_props: LayersPanelProps) {
           <LayerDraftSection />
           <LayerMergeSection />
           {strata.map((entry, i) => (
-            <LayerStratum
-              key={entry.id}
-              entry={entry}
-              position={i + 1}
-              total={strata.length}
-              active={layerStackDiff?.layerId === entry.id}
-              busy={layerDiffBusy}
-              onInspect={() => void inspect(entry.id)}
-            />
+            <div key={entry.id} className="flex flex-col gap-1">
+              <LayerStratum
+                entry={entry}
+                position={i + 1}
+                total={strata.length}
+                active={layerStackDiff?.layerId === entry.id}
+                expanded={expandedId === entry.id}
+                busy={layerDiffBusy}
+                onInspect={() => void inspect(entry.id)}
+                onToggleDetail={() => setExpandedId((prev) => (prev === entry.id ? null : entry.id))}
+              />
+              {expandedId === entry.id && <LayerProvenanceDetail file={entry.file} />}
+            </div>
           ))}
           {layerDiffBusy && (
             <p className="px-1 py-2 text-center text-[11px] text-muted-foreground">Computing changes…</p>

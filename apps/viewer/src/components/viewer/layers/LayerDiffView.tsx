@@ -9,7 +9,7 @@
  * expressId bridge when the path resolves to a meshed entity.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { StackDiff } from '@ifc-lite/merge';
 import { useViewerStore } from '@/store';
 import type { LayerStackEntry } from '@/store/slices/layerStackSlice';
@@ -53,6 +53,9 @@ const ROW_LIMIT = 200;
 export function LayerDiffView({ entry, diff }: { entry: LayerStackEntry; diff: StackDiff }) {
   const [kindFilter, setKindFilter] = useState<ChangeKind | null>(null);
   const [ghosting, setGhosting] = useState(false);
+  // The exact Set THIS view installed — the ghost channel is shared with
+  // other features (clash focus etc.), so cleanup must only remove ours.
+  const ownedGhostSet = useRef<Set<number> | null>(null);
 
   const rows = useMemo<DiffRow[]>(() => {
     const out: DiffRow[] = [];
@@ -73,7 +76,10 @@ export function LayerDiffView({ entry, diff }: { entry: LayerStackEntry; diff: S
     const state = useViewerStore.getState();
     setGhosting((prev) => {
       if (prev) {
-        state.setGhostExceptEntities(null);
+        if (state.ghostExceptEntities === ownedGhostSet.current) {
+          state.setGhostExceptEntities(null);
+        }
+        ownedGhostSet.current = null;
         return false;
       }
       const ids = new Set<number>();
@@ -82,17 +88,21 @@ export function LayerDiffView({ entry, diff }: { entry: LayerStackEntry; diff: S
         if (id !== undefined) ids.add(id);
       }
       if (ids.size === 0) return false;
+      ownedGhostSet.current = ids;
       state.setGhostExceptEntities(ids);
       return true;
     });
   }, [diff]);
 
   useEffect(() => {
-    // Leaving the diff (or swapping layers) drops the isolation.
+    // Leaving the diff (or swapping layers) drops OUR isolation only —
+    // never a ghost set some other panel installed.
     return () => {
-      if (useViewerStore.getState().ghostExceptEntities !== null) {
-        useViewerStore.getState().setGhostExceptEntities(null);
+      const state = useViewerStore.getState();
+      if (ownedGhostSet.current !== null && state.ghostExceptEntities === ownedGhostSet.current) {
+        state.setGhostExceptEntities(null);
       }
+      ownedGhostSet.current = null;
     };
   }, [diff]);
 

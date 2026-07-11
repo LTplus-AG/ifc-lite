@@ -8,7 +8,7 @@
  * record, identity map — rendered from the layer document itself.
  */
 
-import { getProvenance } from '@ifc-lite/ifcx';
+import { getProvenance, validateProvenance } from '@ifc-lite/ifcx';
 import type { IfcxFile, ProvenanceManifest } from '@ifc-lite/ifcx';
 import { CheckCircle2, XCircle } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -57,6 +57,22 @@ export function LayerProvenanceDetail({ file }: { file: IfcxFile }) {
     return (
       <p className="px-1 py-1 text-[11px] text-muted-foreground">
         No provenance manifest — this layer is unsigned raw IFCX (an import or a foreign file).
+      </p>
+    );
+  }
+  // IFCX is foreign JSON: a manifest-shaped value missing mandatory
+  // fields must degrade to a message, not crash the panel on deref.
+  let manifestErrors: string[];
+  try {
+    manifestErrors = validateProvenance(manifest);
+  } catch {
+    manifestErrors = ['unreadable manifest'];
+  }
+  if (manifestErrors.length > 0) {
+    return (
+      <p className="px-1 py-1 text-[11px] text-muted-foreground">
+        Provenance manifest present but malformed ({manifestErrors.length} issue
+        {manifestErrors.length === 1 ? '' : 's'}) — treating this layer as unsigned.
       </p>
     );
   }

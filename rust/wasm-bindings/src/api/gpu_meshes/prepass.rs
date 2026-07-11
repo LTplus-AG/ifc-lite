@@ -186,9 +186,11 @@ impl IfcAPI {
             skip_type_geometry,
             None,
             false,
+            None,
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn pre_pass_streaming_impl(
         &self,
         data: &[u8],
@@ -198,6 +200,7 @@ impl IfcAPI {
         skip_type_geometry: bool,
         prebuilt: Option<ifc_lite_core::ColumnarEntityIndex>,
         external_styles: bool,
+        columns: Option<super::prepass_discovery::IndexColumns<'_>>,
     ) -> Result<JsValue, JsValue> {
         let prebuilt_arc: Option<std::sync::Arc<ifc_lite_core::ColumnarEntityIndex>> =
             prebuilt.map(std::sync::Arc::new);
@@ -312,11 +315,25 @@ impl IfcAPI {
         // resolver the native pipeline and `buildPrePassOnce` run.
         let mut prepass_spans = ifc_lite_processing::prepass::PrepassSpans::default();
 
+        // STAGE 2: fill collectors from the class columns; no byte scan.
+        if let Some((cids, cstarts, clengths, cclasses)) = columns {
+            let d = super::prepass_discovery::discover_from_columns(
+                content, cids, cstarts, clengths, cclasses, &disabled_types,
+            );
+            buffered_jobs = d.buffered_jobs;
+            total_jobs = d.total_jobs;
+            project_id = d.project_id;
+            site_position = d.site_position;
+            prepass_spans = d.prepass_spans;
+            prepass_spans.styled_items = Vec::new(); // shards resolve styles
+            mapped_item_spans = d.mapped_item_spans;
+            rel_defines_by_type_spans = d.rel_defines_by_type_spans;
+            type_candidate_spans = d.type_candidate_spans;
+            has_layer_set = d.has_layer_set;
+        } else {
         while let Some((id, type_name, start, end)) = scanner.next_entity() {
-            // Build entity index inline (prebuilt/sharded mode: map stays
-            // empty; decoders use the prebuilt columnar index instead).
             if prebuilt_arc.is_none() {
-                entity_index.insert(id, (start, end));
+                entity_index.insert(id, (start, end)); // prebuilt mode: map unused
             }
 
             match type_name {
@@ -444,24 +461,23 @@ impl IfcAPI {
                 super::prepass_sharded::set_stream_meta_props(&meta, &meta_res);
                 on_event.call1(&JsValue::NULL, &meta.into())?;
                 meta_emitted = true;
-                // NOTE: jobs are NOT drained here. They are buffered through the
-                // whole scan and emitted post-scan with an exact geometry-hash
-                // affinity key (which needs the COMPLETE entity index). Deferring
-                // is free: workers gate on the styles + entity-index events, both
-                // of which are themselves post-scan.
+                // Jobs stay buffered through the scan; the post-scan pass
+                // emits them with exact geometry-hash affinity keys (workers
+                // gate on post-scan events anyway, so deferring is free).
                 continue;
             }
         }
 
-        // Tail: if we never hit the meta threshold (very small file with
-        // <50 geometry jobs), emit meta now with whatever data we have so
-        // workers can still process the trailing buffer.
+        }
+
+        // Tail meta: small files (scan path) + every columns-path file.
         if !meta_emitted {
             // Build a decoder lazily for unit/RTC/site lookups. With a
             // sub-50-job file the scan is essentially instant anyway, so the
             // full entity index is already complete here — the single-stage
             // `SmallFileSingle` ladder (one detect_rtc_offset_with_fallback) is
             // correct, sharing its resolution with `buildPrePassOnce`.
+            let meta_jobs = &buffered_jobs[..buffered_jobs.len().min(RTC_SAMPLE_THRESHOLD)];
             let meta_res = if let Some(pi) = &prebuilt_arc {
                 let mut decoder = EntityDecoder::with_arc_columnar_index(content, pi.clone());
                 resolve_stream_meta(
@@ -469,7 +485,7 @@ impl IfcAPI {
                     content,
                     project_id,
                     site_position,
-                    &buffered_jobs,
+                    meta_jobs,
                     &mut decoder,
                 )
             } else {

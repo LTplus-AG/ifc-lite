@@ -62,6 +62,7 @@ impl IfcAPI {
         index_ids: &[u32],
         index_starts: &[u32],
         index_lengths: &[u32],
+        index_classes: &[u8],
     ) -> Result<JsValue, JsValue> {
         let prebuilt = ifc_lite_core::ColumnarEntityIndex::from_columns(
             index_ids,
@@ -76,6 +77,7 @@ impl IfcAPI {
             skip_type_geometry,
             Some(prebuilt),
             true,
+            Some((index_ids, index_starts, index_lengths, index_classes)),
         )
     }
 
@@ -265,29 +267,26 @@ impl IfcAPI {
                 orphan_colors[i * 4 + 3],
             ]);
         }
-        let mut geom_seed = rustc_hash::FxHashMap::default();
-        for (i, &id) in geom_ids.iter().enumerate() {
-            geom_seed.insert(
-                id,
-                ifc_lite_processing::style::GeometryStyleInfo::from_color([
-                    geom_colors[i * 4],
-                    geom_colors[i * 4 + 1],
-                    geom_colors[i * 4 + 2],
-                    geom_colors[i * 4 + 3],
-                ]),
-            );
-        }
-        let mut resolved = ifc_lite_processing::prepass::resolve_prepass_with_style_seeds(
+        // Geometry styles stay as COLUMNS (stage 2): the support resolution
+        // only consults the ORPHAN map (material chain), and the column-based
+        // flatten below never builds the 4M-entry geometry hashmap.
+        let resolved = ifc_lite_processing::prepass::resolve_prepass_with_style_seeds(
             &stashed_support,
             &mut decoder,
             ifc_lite_processing::prepass::ResolveOptions {
                 collect_indexed_colour_full: false,
                 defer_attached_styles: false,
             },
-            Some((orphan_seed, geom_seed)),
+            Some((orphan_seed, rustc_hash::FxHashMap::default())),
+        );
+        let flat = ifc_lite_processing::flat_styles_rgba8_from_geometry_columns(
+            geom_ids,
+            geom_colors,
+            &resolved,
+            &mut decoder,
         );
 
-        Ok(styles_payload(&resolved, &mut decoder).into())
+        Ok(styles_payload_with_flat(flat, &resolved).into())
     }
 }
 
@@ -299,8 +298,16 @@ pub(super) fn styles_payload(
     resolved: &ifc_lite_processing::prepass::ResolvedPrepass,
     decoder: &mut ifc_lite_core::EntityDecoder,
 ) -> js_sys::Object {
-    let (style_ids_vec, style_colors_vec) =
-        ifc_lite_processing::prepass::flat_styles_rgba8(resolved, decoder);
+    let flat = ifc_lite_processing::prepass::flat_styles_rgba8(resolved, decoder);
+    styles_payload_with_flat(flat, resolved)
+}
+
+/// [`styles_payload`] with the style columns precomputed (the sharded
+/// finalize computes them via the column-based flatten).
+pub(super) fn styles_payload_with_flat(
+    (style_ids_vec, style_colors_vec): (Vec<u32>, Vec<u8>),
+    resolved: &ifc_lite_processing::prepass::ResolvedPrepass,
+) -> js_sys::Object {
     let (void_keys_vec, void_counts_vec, void_values_vec) =
         ifc_lite_processing::prepass::flat_voids(&resolved.void_index);
     let (mat_ids_vec, mat_counts_vec, mat_colors_vec) =
@@ -316,5 +323,3 @@ pub(super) fn styles_payload(
     crate::api::set_js_prop(&result, "materialColors", &js_sys::Uint8Array::from(mat_colors_vec.as_slice()));
     result
 }
-
-

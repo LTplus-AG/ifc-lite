@@ -12,9 +12,13 @@ pub(crate) mod parallel_scan;
 mod shard_classes;
 pub use parallel_scan::{build_entity_index_parallel, scan_shard, ShardRecords};
 pub use shard_classes::{
-    scan_shard_classified, PREPASS_CLASS_INDEXED_COLOUR_MAP, PREPASS_CLASS_MATERIAL_DEF_REPR,
-    PREPASS_CLASS_NONE, PREPASS_CLASS_REL_AGGREGATES, PREPASS_CLASS_REL_ASSOCIATES_MATERIAL,
-    PREPASS_CLASS_REL_FILLS, PREPASS_CLASS_REL_VOIDS, PREPASS_CLASS_STYLED_ITEM,
+    classify_type_name, scan_shard_classified, PREPASS_CLASS_CODE_MASK,
+    PREPASS_CLASS_FLAG_GEOMETRY_JOB, PREPASS_CLASS_FLAG_TYPE_CANDIDATE,
+    PREPASS_CLASS_INDEXED_COLOUR_MAP, PREPASS_CLASS_MATERIAL_DEF_REPR,
+    PREPASS_CLASS_MAPPED_ITEM, PREPASS_CLASS_MATERIAL_LAYER_SET, PREPASS_CLASS_NONE,
+    PREPASS_CLASS_PROJECT, PREPASS_CLASS_REL_DEFINES_BY_TYPE,
+    PREPASS_CLASS_REL_AGGREGATES, PREPASS_CLASS_REL_ASSOCIATES_MATERIAL, PREPASS_CLASS_REL_FILLS,
+    PREPASS_CLASS_REL_VOIDS, PREPASS_CLASS_SITE, PREPASS_CLASS_STYLED_ITEM,
 };
 // `determinism::diff_report` unit tests (#1549) live in this sibling
 // `_tests.rs` file, declared from here rather than inside `determinism.rs`,
@@ -32,6 +36,7 @@ mod georeferencing;
 pub mod pipeline_diagnostics;
 pub mod prepass;
 mod prepass_styled;
+pub use prepass_styled::flat_styles_rgba8_from_geometry_columns;
 mod processor;
 pub mod stream_meta;
 pub mod style;

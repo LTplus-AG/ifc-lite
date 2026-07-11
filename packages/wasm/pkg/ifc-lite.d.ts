@@ -209,7 +209,7 @@ export class IfcAPI {
    *     styles payload the serial path emits. NO `styles` event is emitted
    *     here.
    */
-  buildPrePassStreamingSharded(data: Uint8Array, on_event: Function, chunk_size: number, disabled_type_names: string[] | null | undefined, skip_type_geometry: boolean, index_ids: Uint32Array, index_starts: Uint32Array, index_lengths: Uint32Array): any;
+  buildPrePassStreamingSharded(data: Uint8Array, on_event: Function, chunk_size: number, disabled_type_names: string[] | null | undefined, skip_type_geometry: boolean, index_ids: Uint32Array, index_starts: Uint32Array, index_lengths: Uint32Array, index_classes: Uint8Array): any;
   /**
    * Store the whole IFC source file ONCE per load so the `*FromSource` batch
    * variants can read it from the wasm heap instead of re-copying it per call.
@@ -1294,7 +1294,7 @@ export interface InitOutput {
   readonly gridaxisjs_tag: (a: number, b: number) => void;
   readonly ifcapi_buildPrePassOnce: (a: number, b: number, c: number) => number;
   readonly ifcapi_buildPrePassStreaming: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
-  readonly ifcapi_buildPrePassStreamingSharded: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number) => void;
+  readonly ifcapi_buildPrePassStreamingSharded: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number) => void;
   readonly ifcapi_clearPrePassCache: (a: number) => void;
   readonly ifcapi_diagnoseGeometry: (a: number, b: number, c: number) => number;
   readonly ifcapi_exportCsv: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;

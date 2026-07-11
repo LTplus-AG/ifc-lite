@@ -54,3 +54,77 @@ pub fn resolve_styled_items_into(
     }
 }
 
+
+/// [`crate::prepass::flat_styles_rgba8`] with the (dominant) geometry-style
+/// source supplied as PRE-MERGED columns instead of a map — the sharded
+/// finalize path. `geom_ids` are unique (the host merged shard results
+/// first-wins) with `geom_colors` as rgba f32 quads; `resolved` carries the
+/// support resolution (indexed colours, materials, element colours) and MUST
+/// have an empty `geometry_style_index`. Output is byte-identical to the
+/// serial flatten: same precedence (geometry > indexed colour > material >
+/// element material), same id-ascending wire order, same rgba8 conversion —
+/// without ever building the 4M-entry geometry hashmap.
+pub fn flat_styles_rgba8_from_geometry_columns(
+    geom_ids: &[u32],
+    geom_colors: &[f32],
+    resolved: &crate::prepass::ResolvedPrepass,
+    decoder: &mut EntityDecoder,
+) -> (Vec<u32>, Vec<u8>) {
+    debug_assert!(resolved.geometry_style_index.is_empty());
+    // Overlay sources in serial precedence order, or_insert among themselves.
+    let mut overlay: FxHashMap<u32, [f32; 4]> = FxHashMap::default();
+    for (&geometry_id, &color) in &resolved.indexed_colour_index {
+        overlay.entry(geometry_id).or_insert(color);
+    }
+    let material_styles = crate::style::build_material_style_index(
+        &resolved.material_def_reprs,
+        &resolved.orphan_styled_items,
+        decoder,
+    );
+    for (&mat_id, &color) in crate::style::flatten_material_color_index(&material_styles).iter() {
+        overlay.entry(mat_id).or_insert(color);
+    }
+    for (&element_id, colors) in &resolved.element_material_colors {
+        if let Some(&color) = colors.first() {
+            overlay.entry(element_id).or_insert(color);
+        }
+    }
+
+    // Sort both sides by id and merge, geometry winning on ties.
+    let mut geom_order: Vec<u32> = (0..geom_ids.len() as u32).collect();
+    geom_order.sort_unstable_by_key(|&i| geom_ids[i as usize]);
+    let mut overlay_sorted: Vec<(u32, [f32; 4])> = overlay.into_iter().collect();
+    overlay_sorted.sort_unstable_by_key(|&(id, _)| id);
+
+    let mut ids: Vec<u32> = Vec::with_capacity(geom_ids.len() + overlay_sorted.len());
+    let mut rgba: Vec<u8> = Vec::with_capacity((geom_ids.len() + overlay_sorted.len()) * 4);
+    let push = |id: u32, color: [f32; 4], ids: &mut Vec<u32>, rgba: &mut Vec<u8>| {
+        ids.push(id);
+        rgba.extend_from_slice(&crate::style::Rgba::from_array(color).to_rgba8());
+    };
+    let mut oi = 0;
+    for &gi in &geom_order {
+        let id = geom_ids[gi as usize];
+        while oi < overlay_sorted.len() && overlay_sorted[oi].0 < id {
+            let (oid, oc) = overlay_sorted[oi];
+            push(oid, oc, &mut ids, &mut rgba);
+            oi += 1;
+        }
+        if oi < overlay_sorted.len() && overlay_sorted[oi].0 == id {
+            oi += 1; // geometry wins the tie, overlay entry dropped
+        }
+        let c = gi as usize * 4;
+        push(
+            id,
+            [geom_colors[c], geom_colors[c + 1], geom_colors[c + 2], geom_colors[c + 3]],
+            &mut ids,
+            &mut rgba,
+        );
+    }
+    while oi < overlay_sorted.len() {
+        let (oid, oc) = overlay_sorted[oi];
+        push(oid, oc, &mut ids, &mut rgba);
+        oi += 1;
+    }
+    (ids, rgba)
+}

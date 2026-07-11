@@ -301,6 +301,8 @@ export interface GeometryWorkerPrePassShardedMessage {
   indexIds: Uint32Array;
   indexStarts: Uint32Array;
   indexLengths: Uint32Array;
+  /** Per-record prepass classes — drives columns discovery (no byte scan). */
+  indexClasses: Uint8Array;
 }
 
 /**
@@ -1292,7 +1294,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       // Sharded pre-pass main call: prebuilt (stitched) index, external styles.
       const ifcApi = await ensureInit();
       (self as unknown as Worker).postMessage({ type: 'prepass-progress', phase: 'parsing' });
-      const { sharedBuffer, indexIds, indexStarts, indexLengths } = e.data;
+      const { sharedBuffer, indexIds, indexStarts, indexLengths, indexClasses } = e.data;
       const chunkSize = e.data.chunkSize ?? 50_000;
       const disabledTypes = e.data.disabledTypes ?? undefined;
       const skipTypeGeometry = e.data.skipTypeGeometry === true;
@@ -1304,11 +1306,11 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
           buildPrePassStreamingSharded: (
             data: Uint8Array, onEvent: (e: unknown) => void, chunkSize: number,
             disabledTypes: string[] | undefined, skipTypeGeometry: boolean,
-            ids: Uint32Array, starts: Uint32Array, lengths: Uint32Array,
+            ids: Uint32Array, starts: Uint32Array, lengths: Uint32Array, classes: Uint8Array,
           ) => unknown;
         }).buildPrePassStreamingSharded(
           bytes, onEvent, chunkSize, disabledTypes, skipTypeGeometry,
-          indexIds, indexStarts, indexLengths,
+          indexIds, indexStarts, indexLengths, indexClasses,
         );
       try {
         run(viewSharedBytes(sharedBuffer));

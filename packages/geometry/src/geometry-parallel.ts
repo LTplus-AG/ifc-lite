@@ -413,7 +413,7 @@ export async function* processParallel(
   // synchronous setup, long before any shard result can arrive).
   let startPrepass: (
     sharded: boolean,
-    indexColumns?: { ids: Uint32Array; starts: Uint32Array; lengths: Uint32Array },
+    indexColumns?: { ids: Uint32Array; starts: Uint32Array; lengths: Uint32Array; classes: Uint8Array },
   ) => void = () => {};
 
   // Content-affinity routing (#1130 follow-up): the pre-pass tags every job with
@@ -1029,8 +1029,10 @@ export async function* processParallel(
       );
     }
 
-    // Start the sharded pre-pass with the stitched index columns.
-    startPrepass(true, { ids, starts, lengths });
+    // Start the sharded pre-pass with the stitched index columns + classes
+    // (stage 2: the pre-pass discovers jobs/spans from the class column and
+    // never byte-scans the file).
+    startPrepass(true, { ids, starts, lengths, classes: classes.slice() });
   };
 
   /**
@@ -1416,7 +1418,7 @@ export async function* processParallel(
   }
   startPrepass = (
     sharded: boolean,
-    indexColumns?: { ids: Uint32Array; starts: Uint32Array; lengths: Uint32Array },
+    indexColumns?: { ids: Uint32Array; starts: Uint32Array; lengths: Uint32Array; classes: Uint8Array },
   ) => {
     if (sharded && indexColumns) {
       prepassWorker.postMessage({
@@ -1428,6 +1430,7 @@ export async function* processParallel(
         indexIds: indexColumns.ids,
         indexStarts: indexColumns.starts,
         indexLengths: indexColumns.lengths,
+        indexClasses: indexColumns.classes,
       }, [
         // TRANSFER the ~230MB of stitched columns (deliverEntityIndex already
         // copied them into SABs for the other consumers) — a structured clone
@@ -1435,6 +1438,7 @@ export async function* processParallel(
         indexColumns.ids.buffer,
         indexColumns.starts.buffer,
         indexColumns.lengths.buffer,
+        indexColumns.classes.buffer,
       ]);
     } else {
       prepassWorker.postMessage({

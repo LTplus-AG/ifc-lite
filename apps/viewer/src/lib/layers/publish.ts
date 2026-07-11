@@ -63,7 +63,10 @@ function wireEntry(
     return { key: `${V5A_PREFIX}${set}::${member}`, value: wire };
   }
   if (componentKey === 'attr:core') {
-    return { key: `${ATTR.PROP_PREFIX}${member}`, value: value === null ? null : typedPropertyRecord(value) };
+    // Core attributes travel RAW: the IFCX entity/hierarchy extractors
+    // only honor e.g. `bsi::ifc::prop::Name` when the composed value is
+    // a plain string — a typed record would compose but never display.
+    return { key: `${ATTR.PROP_PREFIX}${member}`, value };
   }
   return null;
 }

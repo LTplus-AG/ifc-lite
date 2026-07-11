@@ -130,7 +130,9 @@ describe('publishViewerDraft (#1717 V2)', () => {
     });
     const node = result.file.data.find((n) => n.path === 'wall-guid-1');
     assert.strictEqual(node?.attributes?.[FIRE], null);
-    assert.deepStrictEqual(node?.attributes?.['bsi::ifc::prop::Name'], { type: 'IfcLabel', value: 'Wall W1' });
+    // Core attributes stay raw — the entity/hierarchy extractors only
+    // honor a plain string here.
+    assert.strictEqual(node?.attributes?.['bsi::ifc::prop::Name'], 'Wall W1');
     // Composition drops the removed member.
     const state = extractStackState([makeBase(), result.file]);
     assert.strictEqual(state.get('wall-guid-1')?.components.get('pset:Pset_FireSafety'), undefined);

@@ -27,12 +27,17 @@ function storedAuthor(): string {
   return window.localStorage.getItem(AUTHOR_STORAGE_KEY) ?? 'viewer-user';
 }
 
-/** Every pending mutation across the loaded federation. */
+/**
+ * Every pending mutation across the loaded federation. Reads the UNDO
+ * stacks, not the view's mutation history: the history is append-only
+ * (undo applies inverse ops without removing the record), so publishing
+ * from it would resurrect edits the user explicitly undid.
+ */
 function pendingMutations(): Mutation[] {
   const state = useViewerStore.getState();
   const out: Mutation[] = [];
   for (const modelId of state.models.keys()) {
-    out.push(...state.getMutationsForModel(modelId));
+    out.push(...(state.undoStacks.get(modelId) ?? []));
   }
   return out;
 }
@@ -73,18 +78,23 @@ export function LayerDraftSection() {
         authorPrincipal: trimmedAuthor,
         refName: DEFAULT_LOCAL_REF,
       });
-      if (result.unresolved.length > 0) {
-        toast.info(
-          `${result.unresolved.length} edited ${result.unresolved.length === 1 ? 'entity' : 'entities'} had no stable identity and stayed out of the layer.`,
-        );
-      }
       // Feed the published layer back into the live composition — the
       // federation reload recaptures the stack, so it shows up on top.
       const json = JSON.stringify(result.file);
       const fileName = `${trimmedIntent.slice(0, 40).replace(/[^\w-]+/g, '-') || 'layer'}.ifcx`;
       await addIfcxOverlays([new File([json], fileName, { type: 'application/json' })]);
-      // The edits now live in the published layer; drop them as pending.
-      useViewerStore.getState().clearAllMutations();
+      if (result.unresolved.length > 0) {
+        // A partial publish keeps ALL edits pending rather than deleting
+        // the unresolved ones with them: re-publishing after fixing
+        // identities re-emits the same values, which composition folds
+        // idempotently.
+        toast.info(
+          `${result.unresolved.length} edited ${result.unresolved.length === 1 ? 'entity' : 'entities'} had no stable identity and stayed out of the layer; the pending edits were kept.`,
+        );
+      } else {
+        // The edits now live in the published layer; drop them as pending.
+        useViewerStore.getState().clearAllMutations();
+      }
       setIntent('');
       toast.success(`Published ${result.layerId.slice(0, 15)}… to '${DEFAULT_LOCAL_REF}' (${result.opCount} ops).`);
     } catch (err) {

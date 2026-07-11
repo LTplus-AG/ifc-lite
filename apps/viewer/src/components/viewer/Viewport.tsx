@@ -745,9 +745,10 @@ export function Viewport({
         renderer.getScene().setLodBuildsEnabled(true);
         console.log(`[Viewport] LOD1 on (below ${lodPx}px projected)`);
       }
-      // 12-byte quantized batch vertices (issue #1682 phase 6) — session
-      // knob, off by default. The probe verifies the quantized pipeline
-      // variants exist before the scene starts producing 12B buffers.
+      // 12-byte quantized batch vertices (issue #1682 phase 6) — ON by
+      // default since the flip sweep (kill switch __IFC_LITE_QUANTIZED = 0).
+      // The probe verifies the quantized pipeline variants exist before the
+      // scene starts producing 12B buffers.
       if (isQuantizedEnabled()) {
         // Async: WebGPU validates the quantized pipelines before the scene
         // may produce 12B buffers; batches built in the meantime stay f32.

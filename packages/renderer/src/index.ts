@@ -92,7 +92,7 @@ export type {
 import { WebGPUDevice } from './device.js';
 import { RenderPipeline } from './pipeline.js';
 import { Camera } from './camera.js';
-import { Scene } from './scene.js';
+import { Scene, type InstancedTemplateGPU } from './scene.js';
 import { Picker } from './picker.js';
 import { MathUtils } from './math.js';
 import { FrustumUtils } from '@ifc-lite/spatial';
@@ -124,7 +124,7 @@ import { PickingManager } from './picking-manager.js';
 import { RaycastEngine } from './raycast-engine.js';
 import { PostProcessor } from './post-processor.js';
 import { InteractionEffectsGovernor } from './interaction-effects-governor.js';
-import { resolveContributionThresholdPx, projectedAabbRadiusPx, type CullCameraState } from './contribution-cull.js';
+import { resolveContributionThresholdPx, projectedAabbRadiusPx, projectedInstancedRadiusPx, type CullCameraState } from './contribution-cull.js';
 import type { FrameStats } from './render-stats.js';
 import { EdlPass } from './edl-pass.js';
 import { SkyPass } from './sky-pass.js';
@@ -1131,6 +1131,9 @@ export class Renderer {
         let frameBatchesContributionCulled = 0;
         let frameBatchesNotResident = 0;
         let frameBatchesAtLod1 = 0;
+        let frameInstancedDrawn = 0;
+        let frameInstancedFrustumCulled = 0;
+        let frameInstancedContributionCulled = 0;
         // Residency ages are measured in RENDERED frames (idle never ages out).
         this.scene.beginResidencyFrame();
         // Capture renders restore evicted batches SYNCHRONOUSLY so isolation
@@ -2089,7 +2092,43 @@ export class Renderer {
                 // IFC Z-up→WebGL Y-up swap, so the uniform's model is unused here;
                 // we reuse the frame's viewProj + section + flags from `tpl`.
                 const instancedTemplates = this.scene.getInstancedTemplates();
+                // Cull templates ONCE per frame; the transparent instanced
+                // sub-pass below reuses this list. Frustum: the union of the
+                // occurrences' world AABBs off-screen ⇒ every occurrence is.
+                // Contribution: the LARGEST occurrence projected at the union
+                // box's nearest view depth is an upper bound for any single
+                // occurrence — bolts-scattered-everywhere templates cull as
+                // soon as no bolt can exceed the pixel threshold, even though
+                // the union box itself is model-sized. Templates with a
+                // selected occurrence are exempt so the highlight can't vanish.
+                // CATIA-class models put ~97% of draw calls in this pass, so
+                // this is where interactive frame cost lives (issue #1682).
+                let visibleInstanced: InstancedTemplateGPU[] | readonly InstancedTemplateGPU[] =
+                    instancedTemplates;
                 if (instancedTemplates.length > 0) {
+                    const kept: InstancedTemplateGPU[] = [];
+                    for (const it of instancedTemplates) {
+                        if (it.bounds) {
+                            if (!FrustumUtils.isAABBVisible(frustum, it.bounds)) {
+                                frameInstancedFrustumCulled++;
+                                continue;
+                            }
+                            if (
+                                contribThresholdPx > 0 &&
+                                cullCam &&
+                                it.selectedCount === 0 &&
+                                projectedInstancedRadiusPx(it.bounds.min, it.bounds.max, it.maxOccRadius, cullCam) <
+                                    contribThresholdPx
+                            ) {
+                                frameInstancedContributionCulled++;
+                                continue;
+                            }
+                        }
+                        kept.push(it);
+                    }
+                    visibleInstanced = kept;
+                }
+                if (visibleInstanced.length > 0) {
                     // Opaque instanced pass. flags.x bit 2 marks "instanced pass" so the
                     // shader routes per-instance opacity: opaque (or selected) occurrences
                     // draw here; translucent ones (lens/x-ray/compare overrides) are
@@ -2098,12 +2137,13 @@ export class Renderer {
                     pass.setPipeline(this.pipeline.getInstancedPipeline());
                     pass.setBindGroup(0, this.pipeline.getBindGroup());
                     pass.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());
-                    for (const it of instancedTemplates) {
+                    for (const it of visibleInstanced) {
                         pass.setVertexBuffer(0, it.vertexBuffer);
                         pass.setVertexBuffer(1, it.instanceBuffer);
                         pass.setIndexBuffer(it.indexBuffer, 'uint32');
                         pass.drawIndexed(it.indexCount, it.instanceCount);
                         frameDrawCalls++;
+                        frameInstancedDrawn++;
                     }
                     pass.setPipeline(this.pipeline.getPipeline());
                     // The TRANSPARENT instanced sub-pass is drawn later, alongside the
@@ -2290,10 +2330,9 @@ export class Renderer {
                 // a complete depth buffer. Only runs when an override actually made some
                 // occurrence translucent (otherwise zero cost). flags.x bit 3 flips the
                 // shader's opacity routing so only translucent occurrences draw here.
-                const instancedTransparent = this.scene.getInstancedTemplates();
                 const instancedTransparentPipeline = this.pipeline.getInstancedTransparentPipeline();
                 if (
-                    instancedTransparent.length > 0 &&
+                    visibleInstanced.length > 0 &&
                     this.scene.hasTransparentInstances() &&
                     instancedTransparentPipeline !== null
                 ) {
@@ -2301,7 +2340,7 @@ export class Renderer {
                     pass.setPipeline(instancedTransparentPipeline);
                     pass.setBindGroup(0, this.pipeline.getBindGroup());
                     pass.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());
-                    for (const it of instancedTransparent) {
+                    for (const it of visibleInstanced) {
                         pass.setVertexBuffer(0, it.vertexBuffer);
                         pass.setVertexBuffer(1, it.instanceBuffer);
                         pass.setIndexBuffer(it.indexBuffer, 'uint32');
@@ -2650,6 +2689,9 @@ export class Renderer {
                 batchesContributionCulled: frameBatchesContributionCulled,
                 batchesNotResident: frameBatchesNotResident,
                 batchesAtLod1: frameBatchesAtLod1,
+                instancedDrawn: frameInstancedDrawn,
+                instancedFrustumCulled: frameInstancedFrustumCulled,
+                instancedContributionCulled: frameInstancedContributionCulled,
                 timestamp: performance.now(),
             };
 

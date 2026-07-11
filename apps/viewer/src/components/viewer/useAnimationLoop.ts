@@ -125,29 +125,33 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
     let wasAnimating = false;
     let residencyRestoreErrorLogged = false;
 
-    // Adaptive render throttle: large models get fewer FPS during continuous
-    // rendering (interaction + inertia) to prevent the main thread from being
-    // overwhelmed. Model "size" is measured by total triangle count across all
-    // batched geometry — individual mesh count is near 0 for batched models.
-    let continuousThrottleMs = 0; // 0 = no throttle (small models)
+    // Adaptive render throttle: cap the continuous-render cadence (interaction
+    // + inertia) from the MEASURED cost of recent renders, not a triangle-count
+    // guess. The old tiers (25ms above 1M triangles, 33ms above 5M) capped
+    // orbiting at 40/30 fps even when frames were cheap — culling means a 6M-
+    // triangle model can render in a few ms, and the cap itself was the
+    // choppiness on CATIA-class models. renderer.render() wall time covers
+    // encoder work AND swap-chain backpressure (getCurrentTexture blocks when
+    // the GPU falls behind), so genuinely heavy scenes still degrade to the
+    // same 40/30 fps floors within a few frames; a 200K-mesh model that takes
+    // 30ms a frame cannot overwhelm the main thread any more than before.
+    let continuousThrottleMs = 0; // 0 = no throttle
+    let emaRenderMs = 0;          // EMA of render() wall time, rendered frames only
 
-    function updateThrottle() {
-      let totalIndices = 0;
-      for (const batch of scene.getBatchedMeshes()) {
-        totalIndices += batch.indexCount;
-      }
-      // Also account for individual meshes
-      totalIndices += scene.getMeshes().reduce((s, m) => s + (m.indexCount ?? 0), 0);
-      const triangles = totalIndices / 3;
-      if (triangles > 5_000_000) {
-        continuousThrottleMs = 33; // ~30 fps — huge models (>5M triangles)
-      } else if (triangles > 1_000_000) {
-        continuousThrottleMs = 25; // ~40 fps — large models (>1M triangles)
-      } else {
+    function updateThrottle(renderMs: number) {
+      emaRenderMs = emaRenderMs === 0 ? renderMs : renderMs * 0.2 + emaRenderMs * 0.8;
+      // Hysteresis ladder — engage above, release below, hold in between,
+      // so the cadence doesn't flap around a band edge mid-gesture.
+      if (emaRenderMs >= 26) {
+        continuousThrottleMs = 33; // ~30 fps
+      } else if (emaRenderMs >= 14) {
+        if (continuousThrottleMs !== 33 || emaRenderMs < 20) {
+          continuousThrottleMs = 25; // ~40 fps
+        }
+      } else if (emaRenderMs <= 10) {
         continuousThrottleMs = 0;
       }
     }
-    updateThrottle();
 
     const animate = (currentTime: number) => {
       if (aborted) return;
@@ -164,7 +168,6 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
           queueFlushed = scene.flushPending(device, pipeline);
           if (queueFlushed) {
             renderer.clearCaches();
-            updateThrottle();
           }
         }
       }
@@ -228,6 +231,7 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
 
       if (willRender) {
         renderer.consumeRenderRequest();
+        const renderStart = performance.now();
         renderer.render({
           hiddenIds: hiddenEntitiesRef.current,
           isolatedIds: isolatedEntitiesRef.current,
@@ -268,6 +272,7 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
           } : undefined,
           terrainClipY: terrainClipYRef.current ?? undefined,
         });
+        updateThrottle(performance.now() - renderStart);
         lastRenderTime = currentTime;
         // Snapshot the renderer's current model bounds so the section
         // face-pick handler can compute a correct cardinal-fallback

@@ -87,7 +87,9 @@ export async function reportRenderStats(context: {
       `[ifc-lite] render stats: ${stats.drawCalls} draw calls, ` +
       `${gpuMB.toFixed(1)} MB GPU resident ` +
       `(${stats.batchesDrawn} batches drawn, ${stats.batchesFrustumCulled} frustum-culled, ` +
-      `${stats.batchesContributionCulled} contribution-culled)`
+      `${stats.batchesContributionCulled} contribution-culled; ` +
+      `${stats.instancedDrawn} instanced drawn, ${stats.instancedFrustumCulled} frustum-culled, ` +
+      `${stats.instancedContributionCulled} contribution-culled)`
     );
     posthog.capture('viewer_render_stats', {
       file_size_mb: Math.round(context.fileSizeMB * 100) / 100,
@@ -98,6 +100,9 @@ export async function reportRenderStats(context: {
       batches_drawn: stats.batchesDrawn,
       batches_frustum_culled: stats.batchesFrustumCulled,
       batches_contribution_culled: stats.batchesContributionCulled,
+      instanced_drawn: stats.instancedDrawn,
+      instanced_frustum_culled: stats.instancedFrustumCulled,
+      instanced_contribution_culled: stats.instancedContributionCulled,
     });
   } catch (err) {
     // Telemetry must never break a load.

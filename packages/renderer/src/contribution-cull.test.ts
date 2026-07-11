@@ -7,6 +7,7 @@ import assert from 'node:assert';
 
 import {
   projectedAabbRadiusPx,
+  projectedInstancedRadiusPx,
   resolveContributionThresholdPx,
   type CullCameraState,
 } from './contribution-cull.ts';
@@ -130,5 +131,114 @@ describe('projectedAabbRadiusPx (orthographic)', () => {
 
   it('never culls on a degenerate ortho volume', () => {
     assert.strictEqual(projectedAabbRadiusPx([-1, -1, -11], [1, 1, -9], orthoCam(0)), Infinity);
+  });
+});
+
+describe('projectedInstancedRadiusPx (instanced templates)', () => {
+  // tan(fov/2)=1, halfViewport=500 → px = r / minDepth * 500.
+  it('projects the max occurrence radius at the union box NEAREST view depth', () => {
+    // Union box z ∈ [-200, -100] looking down -Z: nearest depth = 100.
+    const px = projectedInstancedRadiusPx([-50, -50, -200], [50, 50, -100], 1, perspectiveCam());
+    assert.ok(Math.abs(px - (1 / 100) * 500) < 1e-9, `got ${px}`);
+  });
+
+  it('is an upper bound for every real occurrence in the box', () => {
+    const cam = perspectiveCam();
+    const unionMin: [number, number, number] = [-40, -40, -300];
+    const unionMax: [number, number, number] = [40, 40, -100];
+    const maxOccRadius = 0.5;
+    const bound = projectedInstancedRadiusPx(unionMin, unionMax, maxOccRadius, cam);
+    // Sample occurrence spheres of radius <= maxOccRadius centred inside the box.
+    for (const [x, y, z, r] of [
+      [0, 0, -100.5, 0.5], // nearest face, max radius — the worst case
+      [39, -39, -150, 0.4],
+      [0, 40, -299, 0.1],
+    ] as const) {
+      const occ = projectedAabbRadiusPx(
+        [x - r, y - r, z - r],
+        [x + r, y + r, z + r],
+        cam,
+      );
+      // The occurrence's own AABB half-diagonal is sqrt(3)*r (> r), so compare
+      // against the sphere projection directly: r / depth * 500.
+      const sphere = (r / -z) * 500;
+      assert.ok(sphere <= bound + 1e-9, `occ at z=${z} r=${r}: sphere ${sphere} > bound ${bound}`);
+      assert.ok(occ >= sphere, 'sanity: AABB projection over-estimates the sphere');
+    }
+  });
+
+  it('picks the nearest corner per viewDir sign (not a fixed corner)', () => {
+    // Looking down +Z from z=0: nearest depth of box z ∈ [100, 200] is 100.
+    const cam = perspectiveCam({ viewDir: { x: 0, y: 0, z: 1 } });
+    const px = projectedInstancedRadiusPx([-10, -10, 100], [10, 10, 200], 2, cam);
+    assert.ok(Math.abs(px - (2 / 100) * 500) < 1e-9, `got ${px}`);
+  });
+
+  it('fails open when an occurrence could reach the camera plane (minDepth <= radius)', () => {
+    const px = projectedInstancedRadiusPx([-10, -10, -10], [10, 10, -1], 5, perspectiveCam());
+    assert.strictEqual(px, Infinity);
+  });
+
+  it('fails open when the union box is behind the camera', () => {
+    const px = projectedInstancedRadiusPx([-1, -1, 50], [1, 1, 100], 0.5, perspectiveCam());
+    assert.strictEqual(px, Infinity);
+  });
+
+  it('fails open on poisoned metadata (maxOccRadius = Infinity) and NaN radius', () => {
+    assert.strictEqual(
+      projectedInstancedRadiusPx([-1, -1, -101], [1, 1, -99], Infinity, perspectiveCam()),
+      Infinity,
+    );
+    assert.strictEqual(
+      projectedInstancedRadiusPx([-1, -1, -101], [1, 1, -99], NaN, perspectiveCam()),
+      Infinity,
+    );
+  });
+
+  it('fails open on degenerate camera (viewport, viewDir, fov)', () => {
+    const args: [readonly [number, number, number], readonly [number, number, number], number] =
+      [[-1, -1, -101], [1, 1, -99], 0.5];
+    assert.strictEqual(
+      projectedInstancedRadiusPx(...args, perspectiveCam({ viewportHeightPx: 0 })),
+      Infinity,
+    );
+    assert.strictEqual(
+      projectedInstancedRadiusPx(...args, perspectiveCam({ viewDir: { x: 0, y: 0, z: 0 } })),
+      Infinity,
+    );
+    assert.strictEqual(
+      projectedInstancedRadiusPx(...args, perspectiveCam({ fovYRadians: 0 })),
+      Infinity,
+    );
+  });
+
+  it('orthographic: depth-independent, scales with zoom', () => {
+    const cam: CullCameraState = {
+      eye: { x: 0, y: 0, z: 0 },
+      mode: 'orthographic',
+      fovYRadians: 0,
+      orthoHalfHeight: 100,
+      viewportHeightPx: 1000,
+    };
+    const px = projectedInstancedRadiusPx([-1, -1, -1e6], [1, 1, -1e6 + 2], 0.5, cam);
+    assert.ok(Math.abs(px - (0.5 / 100) * 500) < 1e-9, `got ${px}`);
+    assert.strictEqual(
+      projectedInstancedRadiusPx([-1, -1, -10], [1, 1, -8], 0.5, { ...cam, orthoHalfHeight: 0 }),
+      Infinity,
+    );
+  });
+
+  it('a bolts-everywhere template culls at threshold even though its union box is model-sized', () => {
+    // 200m union box starting 20m from the camera; each bolt <= 5mm radius.
+    // Upper bound: 0.005 / 20 * 500 = 0.125 px — below any practical threshold,
+    // while the union box itself would project as Infinity (camera inside).
+    const cam = perspectiveCam();
+    const px = projectedInstancedRadiusPx([-100, -100, -220], [100, 100, -20], 0.005, cam);
+    assert.ok(px < 0.2, `got ${px}`);
+    assert.strictEqual(
+      projectedAabbRadiusPx([-100, -100, -220], [100, 100, -20], cam),
+      Infinity,
+      'sanity: the union box itself is useless for culling',
+    );
   });
 });

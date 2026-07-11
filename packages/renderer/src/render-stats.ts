@@ -35,6 +35,16 @@ export interface FrameStats {
   batchesNotResident: number;
   /** Batches drawn at their simplified LOD1 index range this frame. */
   batchesAtLod1: number;
+  /** GPU-instanced templates drawn this frame (one draw call each). */
+  instancedDrawn: number;
+  /** Instanced templates rejected by the frustum test (union world AABB). */
+  instancedFrustumCulled: number;
+  /**
+   * Instanced templates rejected by contribution culling: even the largest
+   * single occurrence, projected at the union box's nearest view depth,
+   * fell below the pixel threshold.
+   */
+  instancedContributionCulled: number;
   /** `performance.now()` timestamp taken at the end of the render call. */
   timestamp: number;
 }

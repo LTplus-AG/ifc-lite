@@ -79,6 +79,59 @@ export function resolveContributionThresholdPx(
  * the camera is the frustum test's job, not this one's. Degenerate/empty
  * bounds project to 0 and are culled at any positive threshold.
  */
+/**
+ * Conservative projected radius (device pixels) of the LARGEST single
+ * occurrence of a GPU-instanced template.
+ *
+ * A template's occurrences are scattered inside `unionMin..unionMax` (the
+ * union of their world AABBs), so the union box itself is useless for
+ * contribution culling — bolts spread across a 100m model union to a
+ * model-sized box that never reads small. What CAN be bounded is any single
+ * occurrence: its projected radius is at most `maxOccRadius` (the largest
+ * occurrence bounding-sphere radius) projected at the SMALLEST view depth any
+ * occurrence can have, which is the union box's nearest point along the view
+ * direction. If even that upper bound is below the pixel threshold, no
+ * occurrence can exceed it and the whole template is safely skippable.
+ *
+ * Fails open (Infinity) whenever a bound cannot be established: degenerate
+ * camera, non-finite radius, or the nearest possible occurrence overlapping
+ * the camera plane (minDepth <= maxOccRadius).
+ */
+export function projectedInstancedRadiusPx(
+  unionMin: readonly [number, number, number],
+  unionMax: readonly [number, number, number],
+  maxOccRadius: number,
+  cam: CullCameraState,
+): number {
+  if (!Number.isFinite(maxOccRadius)) return Infinity;
+  const halfViewportPx = cam.viewportHeightPx * 0.5;
+  if (!(halfViewportPx > 0)) return Infinity;
+
+  if (cam.mode === 'orthographic') {
+    if (!(cam.orthoHalfHeight > 0)) return Infinity;
+    return (maxOccRadius / cam.orthoHalfHeight) * halfViewportPx;
+  }
+
+  const dirLenSq =
+    cam.viewDir.x * cam.viewDir.x + cam.viewDir.y * cam.viewDir.y + cam.viewDir.z * cam.viewDir.z;
+  if (!(dirLenSq > 0.5) || !Number.isFinite(dirLenSq)) return Infinity;
+  // Minimum view depth over the union box: per axis, the corner that
+  // minimizes the dot product with viewDir.
+  const nx = cam.viewDir.x >= 0 ? unionMin[0] : unionMax[0];
+  const ny = cam.viewDir.y >= 0 ? unionMin[1] : unionMax[1];
+  const nz = cam.viewDir.z >= 0 ? unionMin[2] : unionMax[2];
+  const minDepth =
+    (nx - cam.eye.x) * cam.viewDir.x +
+    (ny - cam.eye.y) * cam.viewDir.y +
+    (nz - cam.eye.z) * cam.viewDir.z;
+  // An occurrence could reach the camera plane: no valid upper bound.
+  if (!(minDepth > maxOccRadius)) return Infinity;
+
+  const tanHalfFov = Math.tan(cam.fovYRadians * 0.5);
+  if (!(tanHalfFov > 0)) return Infinity;
+  return (maxOccRadius / (minDepth * tanHalfFov)) * halfViewportPx;
+}
+
 export function projectedAabbRadiusPx(
   min: readonly [number, number, number],
   max: readonly [number, number, number],

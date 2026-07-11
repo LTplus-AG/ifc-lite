@@ -28,6 +28,7 @@ import { OPAQUE_ALPHA_CUTOFF } from './overlay-routing.js';
 import type { DecodedInstancedShard } from '@ifc-lite/geometry';
 import {
   prepareInstancedRender,
+  foldOccurrenceWorldBox,
   INSTANCE_STRIDE_BYTES,
   INSTANCE_COLOR_OFFSET,
   INSTANCE_FLAGS_OFFSET,
@@ -91,6 +92,18 @@ export interface InstancedTemplateGPU {
   indexCount: number;
   instanceBuffer: GPUBuffer;
   instanceCount: number;
+  /** Union of the occurrences' world AABBs (null when no occurrence has a
+   *  finite box — such templates are never culled). Same tuple layout as
+   *  BatchedMesh.bounds so the render loop's frustum test is shared. */
+  bounds: { min: [number, number, number]; max: [number, number, number] } | null;
+  /** Largest single-occurrence bounding-sphere radius (world units). Upper
+   *  bound for the contribution cull: no occurrence can project larger than
+   *  this radius at the union box's nearest view depth. */
+  maxOccRadius: number;
+  /** Occurrences currently selected (highlight flag set). A template with a
+   *  selected occurrence is exempt from contribution culling so the highlight
+   *  can't vanish while the entity is the user's focus. */
+  selectedCount: number;
 }
 
 /** Shared empty result for getInstancedTemplates() when the instanced pass is hidden. */
@@ -1468,11 +1481,18 @@ export class Scene {
       const cpu = this.instancedTemplateCpu[occ.templateIndex];
       if (!cpu) continue;
       const dv = new DataView(cpu.instanceData);
-      this.unionInstancedWorldAabb(
+      const w = this.unionInstancedWorldAabb(
         expressId, dv, occ.byteOffset,
         cpu.localMin[0], cpu.localMin[1], cpu.localMin[2],
         cpu.localMax[0], cpu.localMax[1], cpu.localMax[2],
       );
+      // GROW the template's cull union so a moved occurrence (Exploded mode,
+      // #1289) can't be frustum/contribution-culled by its pre-move bounds.
+      // The pre-move region stays in the union — monotonic growth only ever
+      // culls LESS — and translation never changes an occurrence's size, so
+      // maxOccRadius needs no update.
+      const template = this.instancedTemplates[occ.templateIndex];
+      if (template) foldOccurrenceWorldBox(template, w);
     }
   }
 
@@ -2841,13 +2861,17 @@ export class Scene {
       instanceBuffer.unmap();
 
       const templateIndex = this.instancedTemplates.length;
-      this.instancedTemplates.push({
+      const template: InstancedTemplateGPU = {
         vertexBuffer,
         indexBuffer,
         indexCount: t.indices.length,
         instanceBuffer,
         instanceCount: t.instanceCount,
-      });
+        bounds: null,
+        maxOccRadius: 0,
+        selectedCount: 0,
+      };
+      this.instancedTemplates.push(template);
 
       // Template-local AABB (used to derive per-occurrence world AABBs cheaply).
       let lmnx = Infinity, lmny = Infinity, lmnz = Infinity;
@@ -2895,7 +2919,12 @@ export class Scene {
         arr.push({ templateIndex, byteOffset, originalColor });
 
         if (haveBox) {
-          this.unionInstancedWorldAabb(eid, cdv, byteOffset, lmnx, lmny, lmnz, lmxx, lmxy, lmxz);
+          const w = this.unionInstancedWorldAabb(eid, cdv, byteOffset, lmnx, lmny, lmnz, lmxx, lmxy, lmxz);
+          // Fold the occurrence's world box into the template's cull metadata
+          // (union bounds + largest occurrence bounding-sphere radius) for the
+          // per-frame instanced frustum/contribution culls. Non-finite boxes
+          // poison the template so it fails OPEN (never culled).
+          foldOccurrenceWorldBox(template, w);
         }
       }
     }
@@ -2907,14 +2936,15 @@ export class Scene {
 
   /** Transform a template's local AABB by an occurrence's column-major mat4 (read
    *  from the packed instance record at `matOffset`) and union the world box into
-   *  boundingBoxes[eid]. */
+   *  boundingBoxes[eid]. Returns the occurrence's world box so the caller can also
+   *  fold it into the template's cull metadata. */
   private unionInstancedWorldAabb(
     eid: number,
     dv: DataView,
     matOffset: number,
     lmnx: number, lmny: number, lmnz: number,
     lmxx: number, lmxy: number, lmxz: number,
-  ): void {
+  ): { minX: number; minY: number; minZ: number; maxX: number; maxY: number; maxZ: number } {
     const m0 = dv.getFloat32(matOffset + 0, true), m1 = dv.getFloat32(matOffset + 4, true), m2 = dv.getFloat32(matOffset + 8, true);
     const m4 = dv.getFloat32(matOffset + 16, true), m5 = dv.getFloat32(matOffset + 20, true), m6 = dv.getFloat32(matOffset + 24, true);
     const m8 = dv.getFloat32(matOffset + 32, true), m9 = dv.getFloat32(matOffset + 36, true), m10 = dv.getFloat32(matOffset + 40, true);
@@ -2939,6 +2969,7 @@ export class Scene {
     } else {
       this.boundingBoxes.set(eid, { min: { x: minX, y: minY, z: minZ }, max: { x: maxX, y: maxY, z: maxZ } });
     }
+    return { minX, minY, minZ, maxX, maxY, maxZ };
   }
 
   /** True if `expressId` is a GPU-instanced occurrence (lives only in the instanced
@@ -3051,10 +3082,28 @@ export class Scene {
     const prev = this.instancedSelected;
     this.instancedSelected = new Set(expressIds);
     for (const eid of prev) {
-      if (!expressIds.has(eid)) this.writeInstanceFlags(device, eid);
+      if (!expressIds.has(eid)) {
+        this.writeInstanceFlags(device, eid);
+        this.bumpTemplateSelectedCount(eid, -1);
+      }
     }
     for (const eid of expressIds) {
-      if (!prev.has(eid)) this.writeInstanceFlags(device, eid);
+      if (!prev.has(eid)) {
+        this.writeInstanceFlags(device, eid);
+        this.bumpTemplateSelectedCount(eid, +1);
+      }
+    }
+  }
+
+  /** Keep each template's selectedCount in sync with selection flips so the
+   *  render loop can exempt templates with selected occurrences from
+   *  contribution culling (the highlight must not vanish on the user's focus). */
+  private bumpTemplateSelectedCount(eid: number, delta: number): void {
+    const occurrences = this.instancedEntityMap.get(eid);
+    if (!occurrences) return;
+    for (const occ of occurrences) {
+      const t = this.instancedTemplates[occ.templateIndex];
+      if (t) t.selectedCount = Math.max(0, t.selectedCount + delta);
     }
   }
 

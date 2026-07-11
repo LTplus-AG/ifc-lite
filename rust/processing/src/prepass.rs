@@ -28,8 +28,7 @@ use rustc_hash::FxHashMap;
 /// One stashed entity span: `(express_id, start, end)`.
 pub type Span = (u32, usize, usize);
 
-/// Entity spans a scan collected for post-scan resolution. Both scan loops
-/// fill this; neither decodes these entities mid-scan.
+/// Entity spans a scan collected for post-scan resolution (no mid-scan decode).
 #[derive(Debug, Default, Clone)]
 pub struct PrepassSpans {
     /// `IFCSTYLEDITEM` — geometry-attached AND orphan (material appearance);
@@ -53,8 +52,7 @@ pub struct PrepassSpans {
     pub aggregate_rels: Vec<Span>,
 }
 
-/// Resolution switches. Both pipelines use the same resolver with different
-/// collection needs.
+/// Resolution switches (both pipelines share the resolver).
 #[derive(Debug, Clone, Copy)]
 pub struct ResolveOptions {
     /// Collect the FULL per-triangle palette maps (#858). The native pipeline
@@ -104,53 +102,14 @@ pub struct ResolvedPrepass {
     pub void_index: FxHashMap<u32, Vec<u32>>,
     /// Opening id → filling element id (native opening filter input).
     pub filling_by_opening: FxHashMap<u32, u32>,
-    /// Geometry-attached styled-item spans NOT resolved because
-    /// [`ResolveOptions::defer_attached_styles`] was set; replay them with
-    /// [`resolve_styled_item_spans`].
+    /// Geometry-attached styled spans left unresolved under
+    /// [`ResolveOptions::defer_attached_styles`]; replay via [`resolve_styled_item_spans`].
     pub deferred_attached_styled_spans: Vec<(usize, usize)>,
 }
 
-/// The styled-item classification/resolution loop of [`resolve_prepass`],
-/// exposed so the browser's SHARDED pre-pass can fan slices of the (file-
-/// ordered) styled-item span list across workers: each worker resolves its
-/// contiguous slice with this exact loop, and the host merges shard results in
-/// shard order with first-wins per geometry id — reproducing the serial
-/// resolver's file-order first-wins precedence (`collect_geometry_style_info`
-/// skips ids already present).
-pub fn resolve_styled_items_into(
-    styled_items: &[Span],
-    decoder: &mut EntityDecoder,
-    defer_attached_styles: bool,
-    orphan_styled_items: &mut FxHashMap<u32, [f32; 4]>,
-    geometry_style_index: &mut FxHashMap<u32, GeometryStyleInfo>,
-    deferred_attached_styled_spans: &mut Vec<(usize, usize)>,
-) {
-    for &(id, start, end) in styled_items {
-        let Ok(styled_item) = decoder.decode_at_with_id(id, start, end) else {
-            if defer_attached_styles {
-                // Undecodable now — let the replay try again later, matching
-                // the historic defer behaviour.
-                deferred_attached_styled_spans.push((start, end));
-            }
-            continue;
-        };
-        if styled_item.get_ref(0).is_none() {
-            // Orphan styled item (null Item) = a material appearance (#407).
-            // Always resolved up front — even in defer mode — or
-            // material-only-styled elements render default-gray (#913 §2c).
-            if let Some(info) = extract_style_info_from_styled_item(&styled_item, decoder) {
-                orphan_styled_items.insert(id, info.color);
-            }
-        } else if defer_attached_styles {
-            deferred_attached_styled_spans.push((start, end));
-        } else {
-            collect_geometry_style_info(geometry_style_index, &styled_item, decoder);
-        }
-    }
-}
+pub use crate::prepass_styled::{resolve_styled_items_into, StyleSeeds};
 
-/// THE canonical post-scan resolution. Spans are processed in file order so
-/// first-wins precedence matches what the historic inline scans produced.
+/// THE canonical post-scan resolution (file-order, first-wins precedence).
 pub fn resolve_prepass(
     spans: &PrepassSpans,
     decoder: &mut EntityDecoder,
@@ -159,16 +118,9 @@ pub fn resolve_prepass(
     resolve_prepass_with_style_seeds(spans, decoder, opts, None)
 }
 
-/// Pre-resolved styled maps: `(orphan id -> rgba, geometry id -> style info)`.
-pub type StyleSeeds = (FxHashMap<u32, [f32; 4]>, FxHashMap<u32, GeometryStyleInfo>);
-
-/// [`resolve_prepass`] with PRE-RESOLVED styled-item maps (the sharded
-/// pre-pass resolves styled items on the geometry workers). Seeds MUST be
-/// installed before the colour-map/material/void loops below — the material
-/// chain consults `orphan_styled_items`, so injecting after the fact loses
-/// material-dependent styles (measured: 1960 -> 1134 styles on a real model).
-/// With seeds present the styled-item loop is skipped (spans.styled_items is
-/// expected to be empty in that mode).
+/// [`resolve_prepass`] with PRE-RESOLVED styled maps (sharded pre-pass). Seeds
+/// MUST install before the material/void loops: the material chain consults
+/// `orphan_styled_items` — injecting after loses material-dependent styles.
 pub fn resolve_prepass_with_style_seeds(
     spans: &PrepassSpans,
     decoder: &mut EntityDecoder,
@@ -181,7 +133,6 @@ pub fn resolve_prepass_with_style_seeds(
         out.orphan_styled_items = orphan;
         out.geometry_style_index = geom;
     }
-
     // ── Styled items: orphan (material appearance) vs geometry-attached ──
     resolve_styled_items_into(
         &spans.styled_items,

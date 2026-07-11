@@ -9,11 +9,12 @@
 
 pub mod determinism;
 pub(crate) mod parallel_scan;
-pub use parallel_scan::{
-    build_entity_index_parallel, scan_shard, scan_shard_classified,
-    PREPASS_CLASS_INDEXED_COLOUR_MAP, PREPASS_CLASS_MATERIAL_DEF_REPR, PREPASS_CLASS_NONE,
-    PREPASS_CLASS_REL_AGGREGATES, PREPASS_CLASS_REL_ASSOCIATES_MATERIAL, PREPASS_CLASS_REL_FILLS,
-    PREPASS_CLASS_REL_VOIDS, PREPASS_CLASS_STYLED_ITEM,
+mod shard_classes;
+pub use parallel_scan::{build_entity_index_parallel, scan_shard, ShardRecords};
+pub use shard_classes::{
+    scan_shard_classified, PREPASS_CLASS_INDEXED_COLOUR_MAP, PREPASS_CLASS_MATERIAL_DEF_REPR,
+    PREPASS_CLASS_NONE, PREPASS_CLASS_REL_AGGREGATES, PREPASS_CLASS_REL_ASSOCIATES_MATERIAL,
+    PREPASS_CLASS_REL_FILLS, PREPASS_CLASS_REL_VOIDS, PREPASS_CLASS_STYLED_ITEM,
 };
 // `determinism::diff_report` unit tests (#1549) live in this sibling
 // `_tests.rs` file, declared from here rather than inside `determinism.rs`,
@@ -30,6 +31,7 @@ pub mod geometry_export;
 mod georeferencing;
 pub mod pipeline_diagnostics;
 pub mod prepass;
+mod prepass_styled;
 mod processor;
 pub mod stream_meta;
 pub mod style;

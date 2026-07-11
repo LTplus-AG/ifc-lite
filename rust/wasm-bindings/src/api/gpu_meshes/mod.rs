@@ -11,4 +11,5 @@ mod batch;
 mod batch_from_source;
 mod instancing;
 pub(crate) mod prepass;
+mod prepass_sharded;
 mod void_index;

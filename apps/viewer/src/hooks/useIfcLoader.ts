@@ -265,6 +265,8 @@ export function useIfcLoader() {
       if (target.kind === 'primary') {
         resetViewerState();
         clearAllModels();
+        // A non-federated load has no layer stack behind it (#1717).
+        useViewerStore.getState().clearLayerStack();
       }
 
       // Reset memory accounting so per-load summaries don't accumulate across files.

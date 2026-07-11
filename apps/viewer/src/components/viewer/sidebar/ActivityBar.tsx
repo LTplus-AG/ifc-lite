@@ -58,6 +58,8 @@ export function ActivityBar() {
   const setPanelShownInSidebar = useViewerStore((s) => s.setPanelShownInSidebar);
   const reorder = useViewerStore((s) => s.reorderSidebarPanel);
   const resetLayout = useViewerStore((s) => s.resetSidebarLayout);
+  // Layer-stack panel (#1717) only surfaces while a federated stack is loaded.
+  const hasLayerStack = useViewerStore((s) => s.layerStack.length > 0);
 
   const { isOpen, panelLocation, toggle, openInHome, floatPanel, popOutPanel, activePanel } = usePanelControls();
 
@@ -70,7 +72,10 @@ export function ActivityBar() {
   // dedicated Hidden section, not by an inline greyed icon here. The collab
   // Room panel only surfaces while the collab feature flag is on.
   const visibleIds = order.filter(
-    (id) => (!hidden.has(id) || id === 'properties') && (id !== 'collab' || isCollabEnabled()),
+    (id) =>
+      (!hidden.has(id) || id === 'properties') &&
+      (id !== 'collab' || isCollabEnabled()) &&
+      (id !== 'layers' || hasLayerStack),
   );
 
   const onIconClick = (id: WorkspacePanelId) => {

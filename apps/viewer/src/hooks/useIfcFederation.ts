@@ -13,6 +13,7 @@
 import { useCallback, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore, type FederatedModel, type SchemaVersion } from '../store/index.js';
+import { layerStackEntry } from '../lib/layers/stack.js';
 import {
   detectFormat,
   parseFederatedIfcx,
@@ -444,6 +445,15 @@ export function useIfcFederation(
 
       // Get layer info with mesh counts
       const layers = result.layerStack.getLayers();
+
+      // Layers panel (#1717): expose the stack behind this composition.
+      // getLayers() is strongest-first; the panel slice keeps composition
+      // order (weakest first). The parser retains each parsed IfcxFile, so
+      // entries reference them without re-parsing.
+      useViewerStore.getState().setLayerStack(
+        [...layers].reverse().map((layer) => layerStackEntry(layer)),
+        result.pathToId ?? null,
+      );
 
       // Create data store from federated result
       const dataStore = {

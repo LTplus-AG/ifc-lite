@@ -52,7 +52,7 @@
 //! parallel driver buys nothing and only adds merge overhead — the wasm build
 //! delegates straight to the serial scanner and is unchanged.
 
-use ifc_lite_core::EntityIndex;
+use ifc_lite_core::{EntityIndex, EntityScanner};
 
 /// One shard's speculative scan over `[range_start, range_end)`.
 ///
@@ -78,8 +78,25 @@ pub fn scan_shard(
     range_start: usize,
     range_end: usize,
 ) -> (ShardRecords, Option<usize>) {
-    let (records, _classes, handoff) =
-        crate::shard_classes::scan_shard_classified(content, range_start, range_end);
+    // Deliberately NOT delegating to `scan_shard_classified`: index-only
+    // callers (native exporters / georeferencing via
+    // `build_entity_index_parallel`) would pay a per-entity keyword
+    // classification — string matches + the `has_geometry_by_name` cache —
+    // across every record for a column they never read.
+    let mut scanner = if range_start == 0 {
+        EntityScanner::new(content)
+    } else {
+        EntityScanner::new_at(content, range_start)
+    };
+    let mut records = Vec::new();
+    let mut handoff = None;
+    while let Some((id, _type_name, start, entity_end)) = scanner.next_entity() {
+        if start >= range_end {
+            handoff = Some(start);
+            break;
+        }
+        records.push((id, start, entity_end));
+    }
     (records, handoff)
 }
 

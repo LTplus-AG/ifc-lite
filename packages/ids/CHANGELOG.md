@@ -1,5 +1,12 @@
 # @ifc-lite/ids
 
+## 1.15.30
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @ifc-lite/parser@3.8.5
+
 ## 1.15.29
 
 ### Patch Changes

@@ -104,6 +104,9 @@ function ConflictRow({
 export function LayerMergeSection() {
   const { loadFederatedIfcx } = useIfc();
   const layerStack = useViewerStore((s) => s.layerStack);
+  // Authenticated deployments guard /api/v1 with the same bearer token as
+  // the websocket; an unbound client would 401 on every registry call.
+  const collabToken = useViewerStore((s) => s.collabSelfToken);
 
   const [candidates, setCandidates] = useState<Array<{ id: string; label: string }>>([]);
   const [localRefs, setLocalRefs] = useState<string[]>([]);
@@ -114,7 +117,7 @@ export function LayerMergeSection() {
   const [choices, setChoices] = useState<Map<string, Choice>>(new Map());
   const [busy, setBusy] = useState(false);
 
-  const registryClient = useMemo(() => LayerRegistryClient.fromCollabConfig(), []);
+  const registryClient = useMemo(() => LayerRegistryClient.fromCollabConfig(collabToken ?? undefined), [collabToken]);
 
   const refresh = useCallback(async () => {
     const store = await getBrowserLayerStore();
@@ -136,7 +139,13 @@ export function LayerMergeSection() {
   }, [refresh, layerStack]);
 
   const target = useMemo<MergeTarget | null>(() => {
-    const [kind, refName] = targetKey.split(':', 2);
+    // Ref names may themselves contain ':' — slice on the FIRST separator
+    // only, never split (a ref like 'release:2026' must stay intact).
+    const sep = targetKey.indexOf(':');
+    if (sep < 0) return null;
+    const kind = targetKey.slice(0, sep);
+    const refName = targetKey.slice(sep + 1);
+    if (refName.length === 0) return null;
     if (kind === 'local') return { kind: 'local', refName };
     if (kind === 'registry' && registryClient) return { kind: 'registry', refName, client: registryClient };
     return null;

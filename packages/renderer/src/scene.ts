@@ -398,6 +398,19 @@ export class Scene {
     this.quantizedBatchesEnabled = enabled;
   }
 
+  /**
+   * Whether THIS mesh's source batch renders quantized — drives the
+   * hydrated-mesh lattice snap in createMeshFromData (a mesh whose batch
+   * fell back to f32, e.g. >64m extent, must NOT snap). Falls back to the
+   * global flag when the mesh isn't bucketed (mid-stream hydration).
+   */
+  isMeshQuantized(meshData: MeshData): boolean {
+    if (!this.quantizedBatchesEnabled) return false;
+    const bucket = this.meshDataBucket.get(meshData);
+    if (bucket?.batchedMesh) return bucket.batchedMesh.quantized !== undefined;
+    return true;
+  }
+
   /** Set (or clear) the HOST budget in bytes for bucket CPU geometry. */
   setHostResidencyBudget(bytes: number | null): void {
     if (bytes !== null && !(Number.isFinite(bytes) && bytes > 0)) {

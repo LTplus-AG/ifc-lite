@@ -33,6 +33,7 @@ import { projectToCssScreen } from '../../utils/projectScreen.js';
 import { getSpatialChunkingConfig } from '../../utils/spatialChunkConfig.js';
 import { getGpuResidencyBudgetBytes, getHostResidencyBudgetBytes } from '../../utils/gpuBudgetConfig.js';
 import { getLodScreenPx } from '../../utils/lodConfig.js';
+import { isQuantizedEnabled } from '../../utils/quantizedConfig.js';
 import {
   getEntityBounds,
   getThemeClearColor,
@@ -747,8 +748,7 @@ export function Viewport({
       // 12-byte quantized batch vertices (issue #1682 phase 6) — session
       // knob, off by default. The probe verifies the quantized pipeline
       // variants exist before the scene starts producing 12B buffers.
-      if ((globalThis as { __IFC_LITE_QUANTIZED?: unknown }).__IFC_LITE_QUANTIZED === 1
-        || (globalThis as { __IFC_LITE_QUANTIZED?: unknown }).__IFC_LITE_QUANTIZED === true) {
+      if (isQuantizedEnabled()) {
         // Async: WebGPU validates the quantized pipelines before the scene
         // may produce 12B buffers; batches built in the meantime stay f32.
         void renderer.enableQuantizedBatches().then((on) => {

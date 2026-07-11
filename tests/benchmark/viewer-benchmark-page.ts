@@ -219,13 +219,15 @@ export class ViewerBenchmarkPage {
     // Optional quantized-vertex override (issue #1682 phase 6). "1" enables
     // the 12-byte lattice vertex path (off by default).
     const quantEnv = process.env.VIEWER_BENCHMARK_QUANTIZED;
-    if (quantEnv === '1') {
-      await this.page.addInitScript(() => {
-        (globalThis as unknown as { __IFC_LITE_QUANTIZED?: number }).__IFC_LITE_QUANTIZED = 1;
-      });
-      console.log('[Benchmark] quantized vertices override: on');
+    if (quantEnv === '1' || quantEnv === '0') {
+      // '0' injects the kill switch — the app default is ON since the flip.
+      const v = Number(quantEnv);
+      await this.page.addInitScript((n) => {
+        (globalThis as unknown as { __IFC_LITE_QUANTIZED?: number }).__IFC_LITE_QUANTIZED = n;
+      }, v);
+      console.log(`[Benchmark] quantized vertices override: ${v ? 'on' : 'off'}`);
     } else if (quantEnv) {
-      console.warn(`[Benchmark] invalid VIEWER_BENCHMARK_QUANTIZED (expected "1"): ${quantEnv}`);
+      console.warn(`[Benchmark] invalid VIEWER_BENCHMARK_QUANTIZED (expected "1" or "0"): ${quantEnv}`);
     }
 
     // Navigate to viewer app

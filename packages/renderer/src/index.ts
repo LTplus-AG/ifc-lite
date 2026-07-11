@@ -937,13 +937,24 @@ export class Renderer {
         const fr = Math.fround;
         const sox = so ? fr(so[0]) : null, soy = so ? fr(so[1]) : 0, soz = so ? fr(so[2]) : 0;
         const dx = so ? (ox - so[0]) : ox, dy = so ? (oy - so[1]) : oy, dz = so ? (oz - so[2]) : oz;
+        // Quantized batches (issue #1682 phase 6) render lattice-snapped
+        // positions: the shader's quantMin + q*step is exactly the lattice
+        // node nearest the batch's stored f32 rel coordinate. Reproduce it by
+        // snapping the SAME rel coordinate here (round(s*1024)/1024 in f64
+        // yields the identical exact-f32 lattice value — see quantize.ts), so
+        // the highlight/picker mesh stays BIT-coincident with its quantized
+        // source surface, exactly as the two-step fold above achieves for the
+        // f32 path. Meshes whose batch fell back to f32 must not snap.
+        const snap = this.scene.isMeshQuantized(meshData)
+            ? (v: number) => Math.round(v * 1024) / 1024
+            : (v: number) => v;
         const p = meshData.positions;
         for (let i = 0; i < vertexCount; i++) {
             const base = i * 7;
             const posBase = i * 3;
-            interleaved[base] = so ? fr((sox as number) + fr(p[posBase] + dx)) : (p[posBase] + dx);
-            interleaved[base + 1] = so ? fr(soy + fr(p[posBase + 1] + dy)) : (p[posBase + 1] + dy);
-            interleaved[base + 2] = so ? fr(soz + fr(p[posBase + 2] + dz)) : (p[posBase + 2] + dz);
+            interleaved[base] = so ? fr((sox as number) + snap(fr(p[posBase] + dx))) : snap(p[posBase] + dx);
+            interleaved[base + 1] = so ? fr(soy + snap(fr(p[posBase + 1] + dy))) : snap(p[posBase + 1] + dy);
+            interleaved[base + 2] = so ? fr(soz + snap(fr(p[posBase + 2] + dz))) : snap(p[posBase + 2] + dz);
             const hasNormals = meshData.normals.length > 0;
             interleaved[base + 3] = hasNormals ? meshData.normals[posBase] : 0;
             interleaved[base + 4] = hasNormals ? meshData.normals[posBase + 1] : 0;

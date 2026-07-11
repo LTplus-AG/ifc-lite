@@ -43,8 +43,11 @@ export function layerStackEntry(layer: FederationLayerLike): LayerStackEntry {
   if (typeof headerId === 'string' && headerId.startsWith('blake3:')) {
     entry.contentId = headerId;
   }
+  // The manifest is raw foreign JSON: this runs INSIDE the federated
+  // load, so a malformed value (checks: [null], author: "x") must
+  // degrade to an unsigned-looking entry, never throw the whole load.
   const manifest = getProvenance(layer.file);
-  if (manifest) {
+  if (manifest && typeof manifest === 'object') {
     if (isAuthorKind(manifest.author?.kind)) entry.authorKind = manifest.author.kind;
     if (typeof manifest.author?.principal === 'string') entry.authorPrincipal = manifest.author.principal;
     if (typeof manifest.intent === 'string') entry.intent = manifest.intent;
@@ -53,7 +56,9 @@ export function layerStackEntry(layer: FederationLayerLike): LayerStackEntry {
     const checks = Array.isArray(manifest.checks) ? manifest.checks : [];
     if (checks.length > 0) {
       entry.checksTotal = checks.length;
-      entry.checksPassed = checks.filter((c) => c.result === 'pass').length;
+      entry.checksPassed = checks.filter(
+        (c) => typeof c === 'object' && c !== null && (c as { result?: unknown }).result === 'pass',
+      ).length;
     }
   }
   return entry;

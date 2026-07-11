@@ -137,6 +137,16 @@ export class ViewerBenchmarkPage {
       }
     }
 
+    // Sharded entity-index scan A/B knob: shard the scan across the idle
+    // geometry workers + deliver the stitched index early. Set
+    // VIEWER_BENCHMARK_SHARD_SCAN=1 to enable; unset => baseline.
+    if (process.env.VIEWER_BENCHMARK_SHARD_SCAN === '1') {
+      await this.page.addInitScript(() => {
+        (globalThis as unknown as { __IFC_LITE_SHARD_SCAN?: number }).__IFC_LITE_SHARD_SCAN = 1;
+      });
+      console.log('[Benchmark] sharded entity-index scan: ON');
+    }
+
     // Optional contribution-culling override for A/B runs (issue #1682).
     // Set VIEWER_BENCHMARK_CONTRIB_CULL to "0" (disable), a number (rest px),
     // or JSON like {"pixelRadius":1,"interactingPixelRadius":3}. Unset ⇒ the

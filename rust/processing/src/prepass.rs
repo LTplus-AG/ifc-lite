@@ -30,7 +30,7 @@ pub type Span = (u32, usize, usize);
 
 /// Entity spans a scan collected for post-scan resolution. Both scan loops
 /// fill this; neither decodes these entities mid-scan.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct PrepassSpans {
     /// `IFCSTYLEDITEM` — geometry-attached AND orphan (material appearance);
     /// the resolver classifies them (the classifying decode is the cost of
@@ -110,6 +110,45 @@ pub struct ResolvedPrepass {
     pub deferred_attached_styled_spans: Vec<(usize, usize)>,
 }
 
+/// The styled-item classification/resolution loop of [`resolve_prepass`],
+/// exposed so the browser's SHARDED pre-pass can fan slices of the (file-
+/// ordered) styled-item span list across workers: each worker resolves its
+/// contiguous slice with this exact loop, and the host merges shard results in
+/// shard order with first-wins per geometry id — reproducing the serial
+/// resolver's file-order first-wins precedence (`collect_geometry_style_info`
+/// skips ids already present).
+pub fn resolve_styled_items_into(
+    styled_items: &[Span],
+    decoder: &mut EntityDecoder,
+    defer_attached_styles: bool,
+    orphan_styled_items: &mut FxHashMap<u32, [f32; 4]>,
+    geometry_style_index: &mut FxHashMap<u32, GeometryStyleInfo>,
+    deferred_attached_styled_spans: &mut Vec<(usize, usize)>,
+) {
+    for &(id, start, end) in styled_items {
+        let Ok(styled_item) = decoder.decode_at_with_id(id, start, end) else {
+            if defer_attached_styles {
+                // Undecodable now — let the replay try again later, matching
+                // the historic defer behaviour.
+                deferred_attached_styled_spans.push((start, end));
+            }
+            continue;
+        };
+        if styled_item.get_ref(0).is_none() {
+            // Orphan styled item (null Item) = a material appearance (#407).
+            // Always resolved up front — even in defer mode — or
+            // material-only-styled elements render default-gray (#913 §2c).
+            if let Some(info) = extract_style_info_from_styled_item(&styled_item, decoder) {
+                orphan_styled_items.insert(id, info.color);
+            }
+        } else if defer_attached_styles {
+            deferred_attached_styled_spans.push((start, end));
+        } else {
+            collect_geometry_style_info(geometry_style_index, &styled_item, decoder);
+        }
+    }
+}
+
 /// THE canonical post-scan resolution. Spans are processed in file order so
 /// first-wins precedence matches what the historic inline scans produced.
 pub fn resolve_prepass(
@@ -120,28 +159,14 @@ pub fn resolve_prepass(
     let mut out = ResolvedPrepass::default();
 
     // ── Styled items: orphan (material appearance) vs geometry-attached ──
-    for &(id, start, end) in &spans.styled_items {
-        let Ok(styled_item) = decoder.decode_at_with_id(id, start, end) else {
-            if opts.defer_attached_styles {
-                // Undecodable now — let the replay try again later, matching
-                // the historic defer behaviour.
-                out.deferred_attached_styled_spans.push((start, end));
-            }
-            continue;
-        };
-        if styled_item.get_ref(0).is_none() {
-            // Orphan styled item (null Item) = a material appearance (#407).
-            // Always resolved up front — even in defer mode — or
-            // material-only-styled elements render default-gray (#913 §2c).
-            if let Some(info) = extract_style_info_from_styled_item(&styled_item, decoder) {
-                out.orphan_styled_items.insert(id, info.color);
-            }
-        } else if opts.defer_attached_styles {
-            out.deferred_attached_styled_spans.push((start, end));
-        } else {
-            collect_geometry_style_info(&mut out.geometry_style_index, &styled_item, decoder);
-        }
-    }
+    resolve_styled_items_into(
+        &spans.styled_items,
+        decoder,
+        opts.defer_attached_styles,
+        &mut out.orphan_styled_items,
+        &mut out.geometry_style_index,
+        &mut out.deferred_attached_styled_spans,
+    );
 
     // ── IfcIndexedColourMap (#663/#858) ──
     for &(id, start, end) in &spans.indexed_colour_maps {

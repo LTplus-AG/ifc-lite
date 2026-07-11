@@ -52,7 +52,93 @@
 //! parallel driver buys nothing and only adds merge overhead — the wasm build
 //! delegates straight to the serial scanner and is unchanged.
 
-use ifc_lite_core::EntityIndex;
+use ifc_lite_core::{EntityIndex, EntityScanner};
+
+/// One shard's speculative scan over `[range_start, range_end)`.
+///
+/// This is the exact per-chunk primitive [`build_entity_index_parallel`] fans
+/// across cores, exposed for the wasm **sharded pre-pass**: each browser
+/// geometry worker calls it on a byte range and the main thread stitches the
+/// columns (binary-searching each shard for the previous shard's handoff — see
+/// the [`native::stitch`] doc). Compiled on all targets (the `native` merge is
+/// wasm-gated, but the shard primitive itself is target-independent).
+///
+/// Chunk 0 (`range_start == 0`) uses the header-aware [`EntityScanner::new`];
+/// every other shard starts *speculatively* at `range_start` via
+/// [`EntityScanner::new_at`] (which may land mid-record — the handoff stitch
+/// makes that exact, not heuristic). Returns every record with
+/// `start < range_end` (strictly increasing in `start`) plus the `handoff`: the
+/// `start` of the first record at/after `range_end` (the next shard's first real
+/// entity), or `None` at EOF.
+pub fn scan_shard(
+    content: &[u8],
+    range_start: usize,
+    range_end: usize,
+) -> (Vec<(u32, usize, usize)>, Option<usize>) {
+    let (records, _classes, handoff) = scan_shard_classified(content, range_start, range_end);
+    (records, handoff)
+}
+
+/// Per-record prepass class emitted by [`scan_shard_classified`].
+///
+/// Only the codes a downstream consumer needs are defined; everything else is
+/// [`PREPASS_CLASS_NONE`]. Classification happens AT SCAN TIME from the same
+/// `type_name` string the serial pre-pass matches on, so a consumer that
+/// filters records by class reproduces the serial pre-pass's span collection
+/// byte-for-byte (same keyword compare, same file order).
+pub const PREPASS_CLASS_NONE: u8 = 0;
+/// `IFCSTYLEDITEM` — the styled-item spans the pre-pass resolver classifies
+/// into orphan (material appearance) vs geometry-attached styles.
+pub const PREPASS_CLASS_STYLED_ITEM: u8 = 4;
+/// `IFCINDEXEDCOLOURMAP` (#663/#858).
+pub const PREPASS_CLASS_INDEXED_COLOUR_MAP: u8 = 5;
+/// `IFCMATERIALDEFINITIONREPRESENTATION` (#407).
+pub const PREPASS_CLASS_MATERIAL_DEF_REPR: u8 = 6;
+/// `IFCRELASSOCIATESMATERIAL` (#407).
+pub const PREPASS_CLASS_REL_ASSOCIATES_MATERIAL: u8 = 7;
+/// `IFCRELVOIDSELEMENT`.
+pub const PREPASS_CLASS_REL_VOIDS: u8 = 8;
+/// `IFCRELFILLSELEMENT`.
+pub const PREPASS_CLASS_REL_FILLS: u8 = 9;
+/// `IFCRELAGGREGATES`.
+pub const PREPASS_CLASS_REL_AGGREGATES: u8 = 10;
+
+/// [`scan_shard`] plus a parallel per-record class column (see the
+/// `PREPASS_CLASS_*` codes). Same records, same handoff; the class byte lets
+/// the browser host extract pre-pass span lists (today: styled items) from the
+/// stitched shard columns WITHOUT waiting for the serial pre-pass scan.
+pub fn scan_shard_classified(
+    content: &[u8],
+    range_start: usize,
+    range_end: usize,
+) -> (Vec<(u32, usize, usize)>, Vec<u8>, Option<usize>) {
+    let mut scanner = if range_start == 0 {
+        EntityScanner::new(content)
+    } else {
+        EntityScanner::new_at(content, range_start)
+    };
+    let mut records = Vec::new();
+    let mut classes = Vec::new();
+    let mut handoff = None;
+    while let Some((id, type_name, start, entity_end)) = scanner.next_entity() {
+        if start >= range_end {
+            handoff = Some(start);
+            break;
+        }
+        records.push((id, start, entity_end));
+        classes.push(match type_name {
+            "IFCSTYLEDITEM" => PREPASS_CLASS_STYLED_ITEM,
+            "IFCINDEXEDCOLOURMAP" => PREPASS_CLASS_INDEXED_COLOUR_MAP,
+            "IFCMATERIALDEFINITIONREPRESENTATION" => PREPASS_CLASS_MATERIAL_DEF_REPR,
+            "IFCRELASSOCIATESMATERIAL" => PREPASS_CLASS_REL_ASSOCIATES_MATERIAL,
+            "IFCRELVOIDSELEMENT" => PREPASS_CLASS_REL_VOIDS,
+            "IFCRELFILLSELEMENT" => PREPASS_CLASS_REL_FILLS,
+            "IFCRELAGGREGATES" => PREPASS_CLASS_REL_AGGREGATES,
+            _ => PREPASS_CLASS_NONE,
+        });
+    }
+    (records, classes, handoff)
+}
 
 /// Build the entity index (expressId -> byte span) across all available cores.
 ///
@@ -129,23 +215,13 @@ mod native {
     }
 
     fn scan_chunk(content: &[u8], i: usize, n_chunks: usize) -> ChunkScan {
+        let start = i * content.len() / n_chunks;
         let end = range_end(i, n_chunks, content.len());
-        // Chunk 0 MUST use `new` for the exact header-skip / quoted-`DATA;`
-        // semantics; every other chunk starts speculatively at its byte offset.
-        let mut scanner = if i == 0 {
-            EntityScanner::new(content)
-        } else {
-            EntityScanner::new_at(content, i * content.len() / n_chunks)
-        };
-        let mut records = Vec::new();
-        let mut handoff = None;
-        while let Some((id, _type_name, start, entity_end)) = scanner.next_entity() {
-            if start >= end {
-                handoff = Some(start);
-                break;
-            }
-            records.push((id, start, entity_end));
-        }
+        // Chunk 0 uses `new` for the exact header-skip / quoted-`DATA;`
+        // semantics (`scan_shard` selects it on `range_start == 0`); every other
+        // chunk starts speculatively at its byte offset. Same shard primitive the
+        // wasm sharded pre-pass calls per worker, so the merge cannot drift.
+        let (records, handoff) = super::scan_shard(content, start, end);
         ChunkScan { records, handoff }
     }
 
@@ -177,7 +253,7 @@ mod native {
         }
         let mut expected_start = chunks[0].handoff;
 
-        for (i, chunk) in chunks.iter().enumerate().skip(1) {
+        for i in 1..n_chunks {
             // `expected_start` is the real entity start where chunk `i` begins,
             // validated by chunk `i-1`. `None` => no more real entities.
             let target = match expected_start {
@@ -185,7 +261,7 @@ mod native {
                 None => break,
             };
             let end = range_end(i, n_chunks, len);
-            let recs = &chunk.records;
+            let recs = &chunks[i].records;
             // `records` is strictly increasing in `start`, so a binary search
             // locates the real boundary (or proves the chunk never re-synced).
             match recs.binary_search_by(|&(_, start, _)| start.cmp(&target)) {
@@ -193,7 +269,7 @@ mod native {
                     for &(id, start, e) in &recs[p..] {
                         index.insert(id, (start, e));
                     }
-                    expected_start = chunk.handoff;
+                    expected_start = chunks[i].handoff;
                 }
                 Err(_) => {
                     // Rare: the speculative scan overshot the real boundary, or a

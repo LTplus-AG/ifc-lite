@@ -33,7 +33,29 @@ export class WebGPUDevice {
       throw new Error('Failed to get GPU adapter');
     }
 
-    this.device = await this.adapter.requestDevice();
+    // Request the adapter's maximum buffer limits. The WebGPU default maxBufferSize
+    // is 256 MiB, but a single large mesh (e.g. a multi-GB IFC that meshes to one
+    // dense geometry) can need a vertex or index buffer well beyond that — its upload
+    // then fails with "Buffer size … exceeds the max buffer size limit", the buffer is
+    // invalid, and nothing renders. Adapters commonly advertise up to 2 GiB, so raise
+    // the device limits to whatever this adapter supports. Guarded so a runtime that
+    // doesn't expose `adapter.limits` (or rejects the required limits) still gets a
+    // device with the defaults.
+    const limits = this.adapter.limits;
+    const requiredLimits: Record<string, number> = {};
+    if (limits?.maxBufferSize) {
+      requiredLimits.maxBufferSize = limits.maxBufferSize;
+    }
+    if (limits?.maxStorageBufferBindingSize) {
+      requiredLimits.maxStorageBufferBindingSize = limits.maxStorageBufferBindingSize;
+    }
+    try {
+      this.device = await this.adapter.requestDevice({ requiredLimits });
+    } catch {
+      // Some drivers reject requiredLimits they nominally advertise — fall back to a
+      // default device rather than failing to initialise the renderer entirely.
+      this.device = await this.adapter.requestDevice();
+    }
     this.format = navigator.gpu.getPreferredCanvasFormat();
     this.canvas = canvas;
 

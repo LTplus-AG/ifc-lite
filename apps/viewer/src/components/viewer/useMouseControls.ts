@@ -21,6 +21,7 @@ import type {
 } from '@/store';
 import type { MeasurementConstraintEdge, OrthogonalAxis, Vec3 } from '@/store/types.js';
 import { getEntityCenter } from '../../utils/viewportUtils.js';
+import { isPivotRaycastTooExpensive } from './orbitPivotCensus.js';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { emitCameraInteracted } from '@/lib/tours/events';
 import { useViewerStore } from '@/store';
@@ -495,11 +496,11 @@ export function useMouseControls(params: UseMouseControlsParams): void {
         // For large models, skip the expensive CPU raycast (collectVisibleMeshData +
         // BVH build over 200K+ meshes can block the main thread for seconds).
         // Instead, project the camera target onto the cursor ray for a fast pivot.
+        // The census counts GPU-instanced entities and triangles too — see
+        // orbitPivotCensus.ts for why flat entities alone undercount
+        // CATIA-class models (input-to-first-orbit-frame stall on pointer down).
         const scene = renderer.getScene();
-        const batchedMeshes = scene.getBatchedMeshes();
-        let totalEntities = scene.getMeshes().length;
-        for (const b of batchedMeshes) totalEntities += b.expressIds.length;
-        const isLargeModel = totalEntities > 50_000;
+        const isLargeModel = isPivotRaycastTooExpensive(scene);
         // Outlier/sparse models (issue #1394) already carry a robust orbit
         // anchor that gives an instant, good pivot. Skip the CPU raycast for
         // them too: the first-orbit BVH build can stall the main thread for

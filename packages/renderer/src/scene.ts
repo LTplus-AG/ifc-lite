@@ -3010,6 +3010,13 @@ export class Scene {
     return this.instancedEntityMap.keys();
   }
 
+  /** Number of distinct GPU-instanced entities. O(1) — for size heuristics
+   *  (e.g. the orbit-pivot raycast skip) that must not miss instanced-heavy
+   *  models where the flat mesh/batch census reads deceptively small. */
+  getInstancedEntityCount(): number {
+    return this.instancedEntityMap.size;
+  }
+
   /** Materialize EVERY instanced occurrence as world-space MeshData. Transient + not
    *  retained — for one-shot full-geometry consumers (glTF / IFC5 export) that must
    *  include the instanced occurrences absent from geometryResult.meshes. Returns []

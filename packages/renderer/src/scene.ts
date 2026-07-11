@@ -2810,6 +2810,9 @@ export class Scene {
   addInstancedShard(device: GPUDevice, shard: DecodedInstancedShard): void {
     this.instancedDevice = device; // cached for per-instance selection/overlay writeBuffer
     const prepared = prepareInstancedRender(shard);
+    // Selected ids whose occurrences arrived in THIS shard (selection recorded
+    // before the shard streamed in) — their flags are written after upload.
+    const lateSelectedEids = new Set<number>();
     for (const t of prepared) {
       const vcount = Math.floor(t.positions.length / 3);
       if (vcount === 0 || t.indices.length === 0 || t.instanceCount === 0) continue;
@@ -2918,6 +2921,16 @@ export class Scene {
         }
         arr.push({ templateIndex, byteOffset, originalColor });
 
+        // A shard can stream in AFTER a selection was recorded (its ids may
+        // exist in earlier shards or the flat path). setInstancedSelection
+        // diffs by id and would early-return on the unchanged set, so seed the
+        // late occurrences here: count them for the contribution-cull
+        // exemption and remember the id to write its selected flag below.
+        if (this.instancedSelected.has(eid)) {
+          template.selectedCount++;
+          lateSelectedEids.add(eid);
+        }
+
         if (haveBox) {
           const w = this.unionInstancedWorldAabb(eid, cdv, byteOffset, lmnx, lmny, lmnz, lmxx, lmxy, lmxz);
           // Fold the occurrence's world box into the template's cull metadata
@@ -2927,6 +2940,12 @@ export class Scene {
           foldOccurrenceWorldBox(template, w);
         }
       }
+    }
+    // Write the selected flag for ids whose occurrences arrived after the
+    // selection was recorded (idempotent for their pre-existing occurrences),
+    // so the highlight shows on late-streamed geometry too.
+    for (const eid of lateSelectedEids) {
+      this.writeInstanceFlags(device, eid);
     }
     // New occurrences default to flags=0 (visible). Force the next setInstancedVisibility
     // to recompute so an already-active isolate/hide also applies to geometry that

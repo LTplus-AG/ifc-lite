@@ -64,7 +64,7 @@ describe('octEncode/octDecode', () => {
   });
 });
 
-describe('quantizeInterleaved', () => {
+describe('quantizeInterleaved (#1682 phase 6)', () => {
   it('produces 12-byte records with positions within half a lattice step', () => {
     const src = interleave([
       { p: [0.1234, 5.6789, -3.21], id: 42 },

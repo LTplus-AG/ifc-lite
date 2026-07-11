@@ -720,16 +720,16 @@ export function Viewport({
     renderer.init().then(() => {
       if (aborted) return;
       // Spatial chunk bucketing (issue #1682 phase 2) — must be configured
-      // before any geometry streams into the scene. Session-level A/B knob;
-      // off by default.
+      // before any geometry streams into the scene. ON by default since the
+      // flip sweep; kill switch __IFC_LITE_CHUNKS = 0.
       const chunking = getSpatialChunkingConfig();
       if (chunking) {
         renderer.getScene().setSpatialChunking(chunking);
         console.log(`[Viewport] spatial chunk bucketing on (cellSize=${chunking.cellSize}m)`);
       }
-      // GPU residency budget (issue #1682 phase 3a) — session knob, off by
-      // default. Evicts least-recently-drawn chunk batches over the budget;
-      // the animation loop pumps the on-demand rebuilds.
+      // GPU residency budget (issue #1682 phase 3a) — ON by default (2048MB
+      // target; kill switch = 0). Evicts least-recently-drawn chunk batches
+      // over the budget; the animation loop pumps the on-demand rebuilds.
       const gpuBudget = getGpuResidencyBudgetBytes();
       if (gpuBudget !== null) {
         renderer.getScene().setGpuResidencyBudget(gpuBudget);

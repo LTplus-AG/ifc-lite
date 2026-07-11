@@ -159,14 +159,20 @@ export async function buildGeometrySectionV13(
   const { validMeshes, actualTotalVertices, actualTotalTriangles } = validateMeshes(meshes);
   const groups = groupMeshesIntoChunks(validMeshes);
 
-  // Serialize (and optionally compress) every chunk record.
-  const records: Array<{
+  // Serialize (and optionally compress) every chunk record. Concurrency is
+  // BOUNDED: a large model produces hundreds of chunks, and an unbounded
+  // Promise.all would hold every raw + compressed buffer plus a
+  // CompressionStream alive simultaneously — a needless memory spike during
+  // the (background) cache write.
+  const CHUNK_BUILD_CONCURRENCY = 4;
+  type BuiltRecord = {
     bytes: Uint8Array;
     uncompressedLength: number;
     meshCount: number;
     flags: GeometryChunkFlags;
     aabb: { min: [number, number, number]; max: [number, number, number] };
-  }> = await Promise.all(groups.map(async (group) => {
+  };
+  const buildRecord = async (group: MeshData[]): Promise<BuiltRecord> => {
     const w = new BufferWriter(64 * 1024);
     for (const mesh of group) writeMeshRecord(w, mesh);
     const raw = new Uint8Array(w.build());
@@ -187,7 +193,13 @@ export async function buildGeometrySectionV13(
       flags,
       aabb: chunkAabb(group),
     };
-  }));
+  };
+  const records: BuiltRecord[] = new Array(groups.length);
+  for (let i = 0; i < groups.length; i += CHUNK_BUILD_CONCURRENCY) {
+    const slice = groups.slice(i, i + CHUNK_BUILD_CONCURRENCY);
+    const built = await Promise.all(slice.map(buildRecord));
+    for (let j = 0; j < built.length; j++) records[i + j] = built[j];
+  }
 
   // Head: counts + coordinateInfo + directory. Directory offsets need the
   // head length, which needs the coordinateInfo length — write the variable

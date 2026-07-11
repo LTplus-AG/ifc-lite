@@ -12,7 +12,7 @@ const FRAME = 1000; // current frame, comfortably past the min age
 
 const shell = (key: string, bytes: number, lastDrawnFrame: number) => ({ key, bytes, lastDrawnFrame });
 
-describe('selectEvictions', () => {
+describe('selectEvictions (#1682 phase 3a)', () => {
   it('returns nothing when within budget', () => {
     const shells = [shell('a', 10 * MB, 0)];
     assert.deepStrictEqual(selectEvictions(shells, 10 * MB, 10 * MB, FRAME), []);

@@ -45,17 +45,18 @@ export function getContributionCullConfig(): ContributionCullOptions | undefined
     typeof v === 'number' && Number.isFinite(v) && v > 0;
   if (typeof raw === 'number') {
     if (!finitePositive(raw)) return undefined;
-    return { pixelRadius: raw, interactingPixelRadius: raw * INTERACTING_FACTOR };
+    const interacting = raw * INTERACTING_FACTOR;
+    if (!Number.isFinite(interacting)) return undefined;
+    return { pixelRadius: raw, interactingPixelRadius: interacting };
   }
   if (typeof raw === 'object') {
     const cfg = raw as Partial<ContributionCullOptions>;
     if (finitePositive(cfg.pixelRadius)) {
-      return {
-        pixelRadius: cfg.pixelRadius,
-        interactingPixelRadius: finitePositive(cfg.interactingPixelRadius)
-          ? cfg.interactingPixelRadius
-          : cfg.pixelRadius * INTERACTING_FACTOR,
-      };
+      const interacting = finitePositive(cfg.interactingPixelRadius)
+        ? cfg.interactingPixelRadius
+        : cfg.pixelRadius * INTERACTING_FACTOR;
+      if (!Number.isFinite(interacting)) return undefined;
+      return { pixelRadius: cfg.pixelRadius, interactingPixelRadius: interacting };
     }
     return undefined;
   }

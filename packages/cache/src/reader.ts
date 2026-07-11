@@ -55,7 +55,12 @@ export class BinaryCacheReader {
   }
 
   /**
-   * Read complete cache file
+   * Read complete cache file.
+   *
+   * Geometry requires format v13+ (the chunked section): pre-v13 geometry is
+   * no longer readable and read() THROWS for it — the writer stopped
+   * producing it and version-suffixed cache keys never hit old entries, so
+   * callers should treat the throw as "discard and rebuild the entry".
    */
   async read(
     buffer: ArrayBuffer,

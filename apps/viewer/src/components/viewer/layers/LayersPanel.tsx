@@ -24,6 +24,7 @@ import { useViewerStore } from '@/store';
 import type { LayerAuthorKind, LayerStackEntry } from '@/store/slices/layerStackSlice';
 import { computeLayerContribution, shortContentId } from '@/lib/layers/stack';
 import { LayerDiffView } from './LayerDiffView';
+import { LayerDraftSection } from './LayerDraftSection';
 
 interface LayersPanelProps {
   onClose: () => void;
@@ -228,6 +229,7 @@ export function LayersPanel(_props: LayersPanelProps) {
       </div>
       <ScrollArea className="min-h-0 flex-1">
         <div className="flex flex-col gap-1 px-2 pb-2">
+          <LayerDraftSection />
           {strata.map((entry, i) => (
             <LayerStratum
               key={entry.id}

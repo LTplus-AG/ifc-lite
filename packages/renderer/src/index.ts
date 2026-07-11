@@ -64,6 +64,8 @@ export type { SpatialChunkingConfig, ChunkAnchorSource } from './chunk-grid.js';
 export { selectEvictions, MIN_EVICTION_AGE_FRAMES } from './residency.js';
 export type { ResidencyShell, ColdGeometryProvider } from './residency.js';
 export { simplifyIndicesByClustering, lodCellSizeForBounds, LOD_MIN_TRIANGLES, LOD_CELL_FRACTION } from './lod-simplify.js';
+export { quantizeInterleaved, octEncode, octDecode, QUANT_STEP, MAX_QUANT_EXTENT, QUANT_BYTES_PER_VERTEX } from './quantize.js';
+export type { QuantizedVertexData } from './quantize.js';
 export { sumResidentGpuBytes } from './render-stats.js';
 export type { FrameStats, ResidentGpuBytes } from './render-stats.js';
 export { RaycastEngine } from './raycast-engine.js';
@@ -259,7 +261,9 @@ export class Renderer {
     // Pooled per-frame buffers to avoid GC pressure from per-batch Float32Array allocations
     // A single 224-byte uniform buffer (56 floats) is reused for all batches/meshes within a frame
     // (48 floats viewProj…flags + 8 floats clipBoxMin/clipBoxMax)
-    private readonly uniformScratch = new Float32Array(56);
+    // 60 floats = the WGSL Uniforms struct incl. quantParams (see
+    // pipeline.getUniformBufferSize).
+    private readonly uniformScratch = new Float32Array(60);
     private readonly uniformScratchU32 = new Uint32Array(this.uniformScratch.buffer, 176, 4);
 
     // What the last render() actually clipped, so the GPU picker can mirror it and
@@ -1047,6 +1051,20 @@ export class Renderer {
      */
     getFrameStats(): FrameStats | null {
         return this._lastFrameStats;
+    }
+
+    /**
+     * Probe the quantized pipeline variants and, when all exist, enable
+     * 12-byte quantized batch vertices (issue #1682 phase 6). Returns
+     * whether quantization is active — on failure (e.g. a fragile backend
+     * rejecting pipeline creation) batches stay on the f32 path.
+     */
+    enableQuantizedBatches(): boolean {
+        if (!this.pipeline) return false;
+        const kinds = ['opaque', 'transparent', 'overlay'] as const;
+        const ok = kinds.every((k) => this.pipeline!.getQuantizedPipelineVariant(k) !== null);
+        if (ok) this.scene.setQuantizedBatches(true);
+        return ok;
     }
 
     render(options: RenderOptions = {}): void {
@@ -1992,6 +2010,14 @@ export class Renderer {
                     tpl[29] = o ? o[1] : 0;
                     tpl[30] = o ? o[2] : 0;
 
+                    // Quantized dequantization params (issue #1682 phase 6);
+                    // zeroed for f32 batches (their pipelines ignore them).
+                    const qz = batch.quantized;
+                    tpl[56] = qz ? qz.min[0] : 0;
+                    tpl[57] = qz ? qz.min[1] : 0;
+                    tpl[58] = qz ? qz.min[2] : 0;
+                    tpl[59] = qz ? qz.step : 0;
+
                     device.queue.writeBuffer(batch.uniformBuffer, 0, tpl);
 
                     // Single draw call for entire batch! LOD1-selected batches
@@ -2011,6 +2037,23 @@ export class Renderer {
                     frameBatchesDrawn++;
                 };
 
+                // Quantized batches (issue #1682 phase 6) draw through the
+                // quantized pipeline variants; scene only quantizes after the
+                // probe (enableQuantizedBatches) verified they exist, so the
+                // base fallback here is type-safety, never taken.
+                const pipeFor = (
+                    batch: typeof allBatchedMeshes[0],
+                    kind: 'opaque' | 'transparent' | 'overlay',
+                ): GPURenderPipeline => {
+                    const base = kind === 'opaque'
+                        ? this.pipeline!.getPipeline()
+                        : kind === 'transparent'
+                            ? this.pipeline!.getTransparentPipeline()
+                            : this.pipeline!.getOverlayPipeline();
+                    if (!batch.quantized) return base;
+                    return this.pipeline!.getQuantizedPipelineVariant(kind) ?? base;
+                };
+
                 // Render opaque batches with the opaque (double-sided) pipeline.
                 // Material-layer slices render double-sided like all other IFC
                 // geometry. They USED to be backface-culled to hide the coincident
@@ -2022,8 +2065,10 @@ export class Renderer {
                 // Double-siding draws every face of the watertight skin ⇒ solid.
                 pass.setPipeline(this.pipeline.getPipeline());
                 for (const batch of opaqueBatches) {
+                    pass.setPipeline(pipeFor(batch, 'opaque'));
                     renderBatch(batch);
                 }
+                pass.setPipeline(this.pipeline.getPipeline());
 
                 // GPU-instancing pass — repeated geometry collated by the producer
                 // into one template + a per-occurrence instance buffer (mat4 +
@@ -2135,14 +2180,14 @@ export class Renderer {
                                 colorOverrides,
                             );
                             if (isTransparent) {
-                                pass.setPipeline(this.pipeline.getTransparentPipeline());
+                                pass.setPipeline(pipeFor(subBatch, 'transparent'));
                             } else {
                                 // Opaque (incl. material-layer slices): double-sided.
                                 // Layer slices are NOT culled — since #1311 they are
                                 // open watertight-skin bands with unreliable winding,
                                 // so culling punched holes (wall read hollow). See the
                                 // full-batch path above.
-                                pass.setPipeline(this.pipeline.getPipeline());
+                                pass.setPipeline(pipeFor(subBatch, 'opaque'));
                                 opaqueSubBatches.push(subBatch);
                             }
                             // Render the sub-batch as a single draw call
@@ -2169,6 +2214,7 @@ export class Renderer {
                     // bit 1 = overlay; bit 5 (32) = emphasize (pop) — see shader.
                     tplFlags[0] = options.emphasizeOverrides ? (2 | 32) : 2;
                     for (const batch of overrideBatches) {
+                        pass.setPipeline(pipeFor(batch, 'overlay'));
                         renderBatch(batch);
                     }
                     tplFlags[0] = 0;  // restore for any downstream use of the template
@@ -2259,6 +2305,7 @@ export class Renderer {
                 if (transparentBatches.length > 0) {
                     pass.setPipeline(this.pipeline.getTransparentPipeline());
                     for (const batch of transparentBatches) {
+                        pass.setPipeline(pipeFor(batch, 'transparent'));
                         renderBatch(batch);
                     }
                 }

@@ -24,6 +24,8 @@ export class RenderPipeline {
     private instancedPipeline!: GPURenderPipeline;  // GPU-instancing: template (slot 0) + per-instance buffer (slot 1)
     private instancedTransparentPipeline: GPURenderPipeline | null = null;  // instanced pipeline with alpha blend (lens/x-ray/compare overlays); lazily built, null if unbuilt/rejected
     private makeInstancedTransparentPipeline: (() => GPURenderPipeline) | null = null;  // deferred factory (see constructor)
+    private makeQuantizedPipeline: ((kind: 'opaque' | 'transparent' | 'overlay') => GPURenderPipeline) | null = null;
+    private quantizedPipelines: Partial<Record<'opaque' | 'transparent' | 'overlay', GPURenderPipeline>> = {};
     private instancedTransparentPipelineTried = false;  // built-or-failed once; don't retry a rejecting backend every frame
     private selectionPipeline: GPURenderPipeline;  // Pipeline for selected meshes (renders on top)
     private transparentPipeline: GPURenderPipeline;  // Pipeline for transparent meshes with alpha blending
@@ -110,7 +112,7 @@ export class RenderPipeline {
         //         clipBoxMin (16 bytes) + clipBoxMax (16 bytes) = 224 bytes
         // WebGPU requires uniform buffers to be aligned to 16 bytes
         this.uniformBuffer = this.device.createBuffer({
-            size: 224, // 14 * 16 bytes = properly aligned
+            size: this.getUniformBufferSize(), // keep in lockstep with the WGSL Uniforms struct
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         });
 
@@ -417,6 +419,33 @@ export class RenderPipeline {
 
         this.overlayPipeline = this.device.createRenderPipeline(overlayPipelineDescriptor);
 
+        // ── Quantized-vertex pipeline variants (issue #1682 phase 6) ──
+        // Same fragment/blend/depth state as their f32 bases, but the
+        // 12-byte lattice-quantized vertex layout + vs_main_quantized.
+        // Created LAZILY on first use for the same SwiftShader-init
+        // fragility reason as the instanced-transparent pipeline above —
+        // a knob-off load never builds them.
+        const quantizedVertex: GPUVertexState = {
+            module: shaderModule,
+            entryPoint: 'vs_main_quantized',
+            buffers: [
+                {
+                    arrayStride: 12,
+                    attributes: [
+                        { shaderLocation: 0, offset: 0, format: 'uint16x4' }, // qpos.xyz + packed oct
+                        { shaderLocation: 2, offset: 8, format: 'uint32' },   // entityId lane
+                    ],
+                },
+            ],
+        };
+        this.makeQuantizedPipeline = (kind) => {
+            const base =
+                kind === 'opaque' ? pipelineDescriptor :
+                kind === 'transparent' ? transparentPipelineDescriptor :
+                overlayPipelineDescriptor;
+            return this.device.createRenderPipeline({ ...base, vertex: quantizedVertex });
+        };
+
         // ── Textured pipeline (#961) ──
         // A separate pipeline for meshes carrying an IFC surface texture. It
         // adds a UV vertex lane and an albedo texture+sampler at group(0)
@@ -565,6 +594,26 @@ export class RenderPipeline {
      * renderer's prebuilt template (model + baseColor are unused — vs_instanced
      * takes the transform + colour per-occurrence from the instance buffer).
      */
+    /**
+     * Get (lazily creating) a quantized-vertex pipeline variant. Returns null
+     * when creation failed — callers must then keep batches on the f32 path
+     * (the renderer probes this BEFORE enabling quantization).
+     */
+    getQuantizedPipelineVariant(kind: 'opaque' | 'transparent' | 'overlay'): GPURenderPipeline | null {
+        let p = this.quantizedPipelines[kind];
+        if (!p && this.makeQuantizedPipeline) {
+            try {
+                p = this.makeQuantizedPipeline(kind);
+                this.quantizedPipelines[kind] = p;
+            } catch (err) {
+                console.warn('[Pipeline] quantized pipeline creation failed; staying on f32 vertices:', err);
+                this.makeQuantizedPipeline = null;
+                return null;
+            }
+        }
+        return p ?? null;
+    }
+
     writeRawUniforms(data: Float32Array, extraFlagsX = 0): void {
         this.device.queue.writeBuffer(this.uniformBuffer, 0, data);
         // OR extra bits into flags.x (u32 at byte 176) WITHOUT mutating the caller's
@@ -776,7 +825,10 @@ export class RenderPipeline {
     }
 
     getUniformBufferSize(): number {
-        return 224; // 56 floats * 4 bytes (incl. section plane + clip box)
+        // 60 floats * 4 bytes: section plane + clip box + quantParams
+        // (issue #1682 phase 6). Must match the WGSL Uniforms struct and the
+        // renderer's uniformScratch length.
+        return 240;
     }
 
     private destroyed = false;

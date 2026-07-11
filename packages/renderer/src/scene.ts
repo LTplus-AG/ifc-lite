@@ -21,6 +21,7 @@ import {
 import { mergeGeometry, splitMeshDataForBufferLimit, colorSaltByte, packEntityLane } from './scene-geometry.js';
 import { sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
 import { simplifyIndicesByClustering, lodCellSizeForBounds, LOD_MIN_TRIANGLES } from './lod-simplify.js';
+import { quantizeInterleaved } from './quantize.js';
 import { bucketBaseKeyFor, type SpatialChunkingConfig } from './chunk-grid.js';
 import { selectEvictions, type ResidencyShell, type ColdGeometryProvider } from './residency.js';
 import { OPAQUE_ALPHA_CUTOFF } from './overlay-routing.js';
@@ -171,6 +172,9 @@ export class Scene {
   private hostEnforceCountdown = 0;
   // LOD1 builds (issue #1682 phase 5): off unless the app enables them.
   private lodBuildsEnabled = false;
+  // 12-byte quantized batch vertices (issue #1682 phase 6): off unless the
+  // renderer probed its quantized pipelines and enabled it.
+  private quantizedBatchesEnabled = false;
   // True while a (possibly time-sliced) finalize rebuild is running. The
   // preamble clears streamingFragments synchronously, so hasStreamingFragments
   // alone under-reports "still settling" — settle-sensitive consumers
@@ -378,6 +382,20 @@ export class Scene {
    */
   setLodBuildsEnabled(enabled: boolean): void {
     this.lodBuildsEnabled = enabled;
+  }
+
+  /**
+   * Enable 12-byte lattice-quantized batch vertices (issue #1682 phase 6).
+   * ONLY call after the renderer verified its quantized pipeline variants
+   * exist (see Renderer.enableQuantizedBatches) — quantized buffers are
+   * undrawable without them. Applies to batches built from now on; every
+   * createBatchedMesh output (buckets, fragments, partial + override
+   * batches) quantizes onto the SAME 2^-10 lattice, so depth-equal overlay
+   * matching and cross-batch coincidence are preserved bit-exactly. Batches
+   * whose extent exceeds the u16 lattice range fall back to f32 silently.
+   */
+  setQuantizedBatches(enabled: boolean): void {
+    this.quantizedBatchesEnabled = enabled;
   }
 
   /** Set (or clear) the HOST budget in bytes for bucket CPU geometry. */
@@ -2295,13 +2313,35 @@ export class Scene {
     // Create vertex buffer (interleaved positions + normals)
     // Use mappedAtCreation to avoid a separate writeBuffer IPC round-trip
     // (significant win on Chrome/Dawn where each writeBuffer is a Mojo IPC call)
-    const vertexBuffer = device.createBuffer({
-      size: merged.vertexData.byteLength,
-      usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-      mappedAtCreation: true,
-    });
-    new Float32Array(vertexBuffer.getMappedRange()).set(merged.vertexData);
-    vertexBuffer.unmap();
+    // Quantized path (issue #1682 phase 6): 12-byte lattice records instead
+    // of the 28-byte f32 layout. Falls back to f32 when the batch exceeds
+    // the u16 lattice range. Order note: the LOD build further down reads
+    // merged.vertexData (the CPU f32 copy) and produces INDICES only, which
+    // are valid for either vertex format.
+    let quantized: { min: [number, number, number]; step: number } | undefined;
+    let vertexBuffer: GPUBuffer;
+    const quantizedData = this.quantizedBatchesEnabled
+      ? quantizeInterleaved(merged.vertexData, BATCH_CONSTANTS.BYTES_PER_VERTEX / 4)
+      : null;
+    if (quantizedData) {
+      vertexBuffer = device.createBuffer({
+        size: Math.max(4, quantizedData.vertexData.byteLength),
+        usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+        mappedAtCreation: true,
+      });
+      new Uint8Array(vertexBuffer.getMappedRange())
+        .set(new Uint8Array(quantizedData.vertexData));
+      vertexBuffer.unmap();
+      quantized = { min: quantizedData.quantMin, step: quantizedData.step };
+    } else {
+      vertexBuffer = device.createBuffer({
+        size: merged.vertexData.byteLength,
+        usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+        mappedAtCreation: true,
+      });
+      new Float32Array(vertexBuffer.getMappedRange()).set(merged.vertexData);
+      vertexBuffer.unmap();
+    }
 
     // Create index buffer
     const indexBuffer = device.createBuffer({
@@ -2377,6 +2417,7 @@ export class Scene {
       // loop applies model = translate(origin) so they land in world space.
       origin: merged.origin,
       ...(lod1IndexBuffer ? { lod1IndexBuffer, lod1IndexCount } : {}),
+      ...(quantized ? { quantized } : {}),
     };
   }
 

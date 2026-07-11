@@ -80,6 +80,11 @@ export interface BatchedMesh {
    *  the configured screen size. Absent = no LOD (draw full detail always). */
   lod1IndexBuffer?: GPUBuffer;
   lod1IndexCount?: number;
+  /** 12-byte lattice-quantized vertex buffer (issue #1682 phase 6): when
+   *  present, `vertexBuffer` holds uint16x4+u32 records and the batch must
+   *  draw through the quantized pipeline variants with these dequantization
+   *  params in the uniform. Absent = 28-byte f32 layout (the default). */
+  quantized?: { min: [number, number, number]; step: number };
   /** GPU residency (issue #1682 phase 3a): `false` = evicted metadata shell —
    *  bounds/expressIds/counts remain valid for culling, picking-fallback and
    *  bookkeeping, but the GPU buffers are destroyed and MUST NOT be bound.

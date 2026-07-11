@@ -744,6 +744,14 @@ export function Viewport({
         renderer.getScene().setLodBuildsEnabled(true);
         console.log(`[Viewport] LOD1 on (below ${lodPx}px projected)`);
       }
+      // 12-byte quantized batch vertices (issue #1682 phase 6) — session
+      // knob, off by default. The probe verifies the quantized pipeline
+      // variants exist before the scene starts producing 12B buffers.
+      if ((globalThis as { __IFC_LITE_QUANTIZED?: unknown }).__IFC_LITE_QUANTIZED === 1
+        || (globalThis as { __IFC_LITE_QUANTIZED?: unknown }).__IFC_LITE_QUANTIZED === true) {
+        const on = renderer.enableQuantizedBatches();
+        console.log(`[Viewport] quantized vertices ${on ? 'on (12B lattice)' : 'UNAVAILABLE (pipeline probe failed)'}`);
+      }
       // Read-only debug/e2e hook (same convention as __ifc_lite_viewer_store__):
       // live frame stats + resident GPU/CPU bytes for Playwright assertions
       // and console inspection. Cleared on viewport teardown below.

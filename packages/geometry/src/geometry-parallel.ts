@@ -367,6 +367,9 @@ export async function* processParallel(
    * mesh.expressId; only element-material colours did).
    */
   const queuedChunks: { jobs: Uint32Array; affinity: Uint32Array | null }[] = [];
+  // Sharded pre-pass: prepass `complete` arrived while chunks were still
+  // queued behind the async styles event; stream-end fires on drain instead.
+  let streamEndPendingQueueDrain = false;
   let stylesReceived = false;
   let entityIndexReceived = false;
 
@@ -867,6 +870,15 @@ export async function* processParallel(
     while (queuedChunks.length > 0) {
       const c = queuedChunks.shift()!;
       dispatchJobsChunkInternal(c.jobs, c.affinity);
+    }
+    // Sharded pre-pass: the prepass can COMPLETE while chunks are still queued
+    // behind the (asynchronously finalized) styles event. stream-end was
+    // deferred in onPrepassComplete for that case — release it now that the
+    // queue is empty, or workers would never see these jobs (measured: a run
+    // completed with ZERO meshes).
+    if (streamEndPendingQueueDrain) {
+      streamEndPendingQueueDrain = false;
+      sendStreamEnd();
     }
   };
 
@@ -1372,7 +1384,13 @@ export async function* processParallel(
     // needed. The dedicated zero-jobs branch in the outer loop
     // handles their teardown.
     if (streamStartSentToWorkers) {
-      sendStreamEnd();
+      if (queuedChunks.length > 0 || (shardActive && !stylesReceived)) {
+        // Sharded mode: chunks are (or will be) queued behind the async
+        // styles finalize — ending the workers now would drop those jobs.
+        streamEndPendingQueueDrain = true;
+      } else {
+        sendStreamEnd();
+      }
     }
     prepassWorker.terminate();
     wake();

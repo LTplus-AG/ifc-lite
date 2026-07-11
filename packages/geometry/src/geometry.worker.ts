@@ -1427,7 +1427,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
           classes: shard.classes,
           handoff: shard.handoff,
         } as GeometryWorkerShardResultMessage,
-        [shard.ids.buffer, shard.starts.buffer, shard.lengths.buffer],
+        [shard.ids.buffer, shard.starts.buffer, shard.lengths.buffer, shard.classes.buffer],
       );
       return;
     }

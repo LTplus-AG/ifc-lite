@@ -930,9 +930,11 @@ impl IfcAPI {
         crate::api::set_js_prop(&result, "ids", &ids);
         crate::api::set_js_prop(&result, "starts", &starts);
         crate::api::set_js_prop(&result, "lengths", &lengths);
-        // Per-record prepass class (PREPASS_CLASS_*): today only styled items
-        // are tagged, letting the host extract the styled-item span list from
-        // the stitched columns without waiting for the serial pre-pass scan.
+        // Per-record prepass class (PREPASS_CLASS_*): styled items plus the
+        // colour-map/material/void/fills/aggregate support classes are tagged,
+        // letting the host extract every span list resolveStyledItemsShard +
+        // finalizePrepassStyles need from the stitched columns without waiting
+        // for the serial pre-pass scan.
         crate::api::set_js_prop(&result, "classes", &js_sys::Uint8Array::from(classes.as_slice()));
         let handoff_val: f64 = match handoff {
             Some(h) => h as f64,

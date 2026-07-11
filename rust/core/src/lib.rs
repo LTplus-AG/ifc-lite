@@ -63,6 +63,7 @@
 //! - **Number parsing**: 10x faster than std using [lexical-core](https://docs.rs/lexical-core)
 
 pub mod columnar_index;
+mod columnar_index_merge;
 pub mod decoder;
 pub mod error;
 pub mod fast_parse;

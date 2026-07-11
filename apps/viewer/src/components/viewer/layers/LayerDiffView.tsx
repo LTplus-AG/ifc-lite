@@ -96,13 +96,15 @@ export function LayerDiffView({ entry, diff }: { entry: LayerStackEntry; diff: S
 
   useEffect(() => {
     // Leaving the diff (or swapping layers) drops OUR isolation only —
-    // never a ghost set some other panel installed.
+    // never a ghost set some other panel installed — and resyncs the
+    // toggle so the button never claims ghosting that no longer exists.
     return () => {
       const state = useViewerStore.getState();
       if (ownedGhostSet.current !== null && state.ghostExceptEntities === ownedGhostSet.current) {
         state.setGhostExceptEntities(null);
       }
       ownedGhostSet.current = null;
+      setGhosting(false);
     };
   }, [diff]);
 

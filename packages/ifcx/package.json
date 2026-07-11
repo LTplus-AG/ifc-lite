@@ -20,7 +20,8 @@
   "dependencies": {
     "@ifc-lite/data": "workspace:^",
     "@ifc-lite/mutations": "workspace:^",
-    "@ifc-lite/pointcloud": "workspace:^"
+    "@ifc-lite/pointcloud": "workspace:^",
+    "@noble/hashes": "^2.2.0"
   },
   "devDependencies": {
     "tsx": "^4.23.0",

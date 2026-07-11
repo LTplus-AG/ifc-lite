@@ -130,3 +130,16 @@ export {
   type KickEndpointOptions,
   type MintRequestBody,
 } from './room-token.js';
+export {
+  LayerPushError,
+  MemoryLayerRegistry,
+  type LayerRegistryStore,
+  type RegistryReview,
+  type RegistryReviewDecision,
+  type RegistryReviewStatus,
+} from './layer-registry.js';
+export {
+  handleLayerRegistryRequest,
+  type LayerRegistryRouteOptions,
+  type RegistryAuthorizeFn,
+} from './layer-registry-route.js';

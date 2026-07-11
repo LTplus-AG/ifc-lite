@@ -1,0 +1,53 @@
+{
+  "name": "@ifc-lite/merge",
+  "version": "0.1.0",
+  "description": "Three-way merge engine for IFCX layers \u2014 MergePlan with auto-merged ops and explicit conflict records, merge-layer emission, rebase, and revert.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "pnpm exec tsc",
+    "dev": "pnpm exec tsc --watch",
+    "test": "vitest run",
+    "bench": "node --max-old-space-size=8192 scripts/bench-three-way.mjs"
+  },
+  "dependencies": {
+    "@ifc-lite/diff": "workspace:^",
+    "@ifc-lite/ifcx": "workspace:^"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.0"
+  },
+  "license": "MPL-2.0",
+  "author": "Louis True",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LTplus-AG/ifc-lite.git",
+    "directory": "packages/merge"
+  },
+  "homepage": "https://ltplus-ag.github.io/ifc-lite/",
+  "bugs": "https://github.com/LTplus-AG/ifc-lite/issues",
+  "keywords": [
+    "ifc",
+    "ifcx",
+    "bim",
+    "merge",
+    "three-way",
+    "layers",
+    "aec"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ]
+}

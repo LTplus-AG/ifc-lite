@@ -8,7 +8,7 @@
  */
 
 import type { ComposedNode } from './types.js';
-import { ATTR } from './types.js';
+import { ATTR, isTypedPropertyValue, parseV5aKey } from './types.js';
 import {
   StringTable,
   PropertyTableBuilder,
@@ -84,6 +84,13 @@ function groupAttributesByNamespace(
       continue;
     }
 
+    // `ifclite::*` keys are internal carriers (deletion/derived markers,
+    // collab classifications/materials/geometryRef) — never user
+    // properties (#1031).
+    if (key.startsWith('ifclite::')) {
+      continue;
+    }
+
     // Parse namespace::name pattern
     const lastColon = key.lastIndexOf('::');
     if (lastColon === -1) continue;
@@ -91,8 +98,8 @@ function groupAttributesByNamespace(
     const namespace = key.slice(0, lastColon);
     const propName = key.slice(lastColon + 2);
 
-    // Skip quantity-like properties - they go to QuantityTable
-    if (typeof value === 'number' && isQuantityProperty(propName)) {
+    // Skip quantity-routed attributes — they go to QuantityTable.
+    if (routesToQuantityTable(key, value)) {
       continue;
     }
 
@@ -152,6 +159,11 @@ function convertPropertyValue(value: unknown): {
   propType: PropertyValueType;
   propValue: string | number | boolean;
 } {
+  // Typed records (#1031) expose their actual scalar, not a JSON blob.
+  if (isTypedPropertyValue(value)) {
+    return convertPropertyValue(value.value);
+  }
+
   if (typeof value === 'string') {
     return {
       propType: PropertyValueType.String,
@@ -198,6 +210,29 @@ function convertPropertyValue(value: unknown): {
  * Extract quantity-like properties (Volume, Area, Length, etc.)
  * These are identified by their names matching quantity patterns.
  */
+/**
+ * Single routing rule shared by property extraction (skip) and quantity
+ * building (accept). Inside the `bsi::ifc::v5a::` namespace this mirrors
+ * the collab structured-branch inflation exactly, so a serialized
+ * snapshot parses into the same property/quantity split it was authored
+ * with (#1031): `Pset_*` members are properties no matter what they're
+ * called (IFC psets legitimately hold `Length`/`Area`/… properties),
+ * `Qto_*` members are quantities, and custom sets route typed records to
+ * properties and raw numbers to quantities. Keys outside v5a keep the
+ * legacy quantity-like-name heuristic.
+ */
+export function routesToQuantityTable(key: string, value: unknown): boolean {
+  const effective = isTypedPropertyValue(value) ? value.value : value;
+  if (typeof effective !== 'number') return false;
+  const v5a = parseV5aKey(key);
+  if (v5a) {
+    if (v5a.setName.startsWith('Pset_')) return false;
+    if (v5a.setName.startsWith('Qto_')) return true;
+    return !isTypedPropertyValue(value);
+  }
+  return isQuantityProperty(key.split('::').pop() ?? '');
+}
+
 export function isQuantityProperty(propName: string): boolean {
   // Exact matches for common quantity names
   const exactQuantityNames = new Set([

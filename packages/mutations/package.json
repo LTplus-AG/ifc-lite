@@ -18,7 +18,8 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@ifc-lite/data": "workspace:^"
+    "@ifc-lite/data": "workspace:^",
+    "@noble/hashes": "^2.2.0"
   },
   "devDependencies": {
     "typescript": "^6.0.3",

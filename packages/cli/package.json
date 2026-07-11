@@ -34,6 +34,8 @@
     "@ifc-lite/extensions": "workspace:^",
     "@ifc-lite/geometry": "workspace:^",
     "@ifc-lite/ids": "workspace:^",
+    "@ifc-lite/ifcx": "workspace:^",
+    "@ifc-lite/merge": "workspace:^",
     "@ifc-lite/mcp": "workspace:^",
     "@ifc-lite/mutations": "workspace:^",
     "@ifc-lite/parser": "workspace:^",

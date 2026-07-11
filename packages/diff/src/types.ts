@@ -55,6 +55,13 @@ export interface EntityFingerprint<TRef = unknown> {
   dataHash: string;
   /** Geometry fingerprint, or `undefined` when the entity has no geometry. */
   geometryHash?: GeometryHash;
+  /**
+   * Opt-in per-componentKey sub-hashes (`attr:core`, `pset:<Name>`,
+   * `qset:<Name>`, `type-assignment`). Build with
+   * `buildComponentFingerprints`. When both sides of a diff carry them,
+   * {@link DiffEntry.changedComponents} reports which components differ.
+   */
+  components?: Record<string, string>;
   /** Adapter handle passed through to the diff entry. */
   ref: TRef;
 }
@@ -94,6 +101,12 @@ export interface DiffEntry<TRef = unknown> {
   base?: EntityFingerprint<TRef>;
   /** The entity in the head revision (added / modified / unchanged). */
   head?: EntityFingerprint<TRef>;
+  /**
+   * Component keys whose sub-hash differs between base and head. Present
+   * only when both fingerprints carry `components` (sub-hash mode); a key
+   * present on one side only counts as changed.
+   */
+  changedComponents?: string[];
 }
 
 export interface DiffCounts {

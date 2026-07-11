@@ -36,16 +36,21 @@
   "dependencies": {
     "@ifc-lite/bcf": "workspace:^",
     "@ifc-lite/clash": "workspace:^",
+    "@ifc-lite/collab": "workspace:^",
     "@ifc-lite/create": "workspace:^",
     "@ifc-lite/data": "workspace:^",
     "@ifc-lite/export": "workspace:^",
+    "@ifc-lite/extensions": "workspace:^",
     "@ifc-lite/geometry": "workspace:^",
     "@ifc-lite/ids": "workspace:^",
+    "@ifc-lite/ifcx": "workspace:^",
+    "@ifc-lite/merge": "workspace:^",
     "@ifc-lite/mutations": "workspace:^",
     "@ifc-lite/parser": "workspace:^",
     "@ifc-lite/query": "workspace:^",
     "@ifc-lite/sdk": "workspace:^",
-    "@ifc-lite/viewer-core": "workspace:^"
+    "@ifc-lite/viewer-core": "workspace:^",
+    "yjs": "^13.6.31"
   },
   "devDependencies": {
     "@types/node": "^26.1.0",

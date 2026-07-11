@@ -26,9 +26,12 @@ export type AuthenticateFn = (
   roomId: string,
 ) => Promise<Principal | null> | Principal | null;
 
+/** The sentinel identity minted by `allowAnonymousEditor` — not a real credential. */
+export const ANONYMOUS_USER_ID = 'anonymous';
+
 /** Default: anonymous editor, useful for local dev. */
 export const allowAnonymousEditor: AuthenticateFn = (_token, _room) => ({
-  userId: 'anonymous',
+  userId: ANONYMOUS_USER_ID,
   role: 'editor',
 });
 

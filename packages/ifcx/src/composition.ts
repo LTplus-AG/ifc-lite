@@ -8,6 +8,7 @@
  */
 
 import type { IfcxFile, IfcxNode, ComposedNode } from './types.js';
+import { applyTombstones } from './tombstones.js';
 
 interface PreComposedNode {
   path: string;
@@ -24,6 +25,8 @@ interface PreComposedNode {
  * 2. Merge attributes (later wins - layer semantics)
  * 3. Resolve inherits references (type-level data)
  * 4. Build parent-child tree from children references
+ * 5. Apply tombstones: nodes whose strongest `ifclite::deleted` opinion is
+ *    true are removed together with their subtrees (see tombstones.ts)
  */
 export function composeIfcx(file: IfcxFile): Map<string, ComposedNode> {
   // Phase 1: Group nodes by path
@@ -48,7 +51,8 @@ export function composeIfcx(file: IfcxFile): Map<string, ComposedNode> {
     }
   }
 
-  return composed;
+  // Phase 4: Apply deletion overlays
+  return applyTombstones(composed);
 }
 
 /**
@@ -86,6 +90,10 @@ function flattenNodes(path: string, nodes: IfcxNode[]): PreComposedNode {
       }
     }
     if (node.attributes) {
+      // Later wins, INCLUDING null: a null is a removal opinion and must
+      // survive flattening as a mask — composeNode resolves it after
+      // inheritance so removals also shadow inherited values (#1031). A
+      // later non-null opinion overwrites the mask (resurrect).
       Object.assign(result.attributes, node.attributes);
     }
   }
@@ -144,9 +152,15 @@ function composeNode(
     }
   }
 
-  // Apply own attributes (override inherited)
+  // Apply own attributes (override inherited). Null opinions are removal
+  // masks: they delete the (possibly inherited) attribute and never
+  // appear in composed output.
   for (const [key, value] of Object.entries(pre.attributes)) {
-    node.attributes.set(key, value);
+    if (value === null) {
+      node.attributes.delete(key);
+    } else {
+      node.attributes.set(key, value);
+    }
   }
 
   // Resolve children

@@ -155,6 +155,20 @@ nav:
     - Rendering Pipeline: architecture/rendering-pipeline.md
     - Coordinate Handling: architecture/coordinate-handling.md
     - Federation: architecture/federation.md
+    - Layer PRs:
+        - Overview: architecture/layer-prs/index.md
+        - Concepts: architecture/layer-prs/01-concepts.md
+        - Layer Format: architecture/layer-prs/02-layer-format.md
+        - Provenance: architecture/layer-prs/03-provenance.md
+        - Identity: architecture/layer-prs/04-identity.md
+        - Diff & Merge: architecture/layer-prs/05-merge.md
+        - Agents (MCP): architecture/layer-prs/06-agents.md
+        - Security: architecture/layer-prs/07-security.md
+        - Review Workflow: architecture/layer-prs/08-review.md
+        - CLI & CI: architecture/layer-prs/09-cli.md
+        - Registry: architecture/layer-prs/10-registry.md
+        - Standards & Ecosystem: architecture/layer-prs/11-standards-ecosystem.md
+        - Roadmap: architecture/layer-prs/12-roadmap.md
   - API Reference:
     - TypeScript API: api/typescript.md
     - Rust API: api/rust.md

@@ -27,6 +27,8 @@
   },
   "dependencies": {
     "@ifc-lite/collab": "workspace:^",
+    "@ifc-lite/ifcx": "workspace:^",
+    "@ifc-lite/merge": "workspace:^",
     "lib0": "^0.2.99",
     "ws": "^8.21.0",
     "y-protocols": "^1.0.6",

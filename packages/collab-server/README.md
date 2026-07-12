@@ -27,8 +27,9 @@ Environment variables:
 |---|---|---|
 | `COLLAB_PORT` | `1234` | Listen port |
 | `COLLAB_HOST` | `0.0.0.0` | Listen host |
-| `COLLAB_DATA_DIR` | `./.collab-data` | Persistence root for room logs |
+| `COLLAB_DATA_DIR` | `./.collab-data` | Persistence root for room logs, blobs, and the layer registry |
 | `COLLAB_MAX_ROOMS` | `1024` | Soft cap on simultaneous rooms |
+| `COLLAB_LAYER_REGISTRY` | off | `1`/`true` mounts the layer registry (`/api/v1/layers\|refs\|reviews`), disk-backed under `COLLAB_DATA_DIR/layer-registry` |
 
 ## Programmatic use
 

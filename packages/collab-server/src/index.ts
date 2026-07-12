@@ -131,13 +131,16 @@ export {
   type MintRequestBody,
 } from './room-token.js';
 export {
+  assertPushableLayer,
   LayerPushError,
   MemoryLayerRegistry,
   type LayerRegistryStore,
+  type MemoryLayerRegistryLimits,
   type RegistryReview,
   type RegistryReviewDecision,
   type RegistryReviewStatus,
 } from './layer-registry.js';
+export { FsLayerRegistry } from './layer-registry-fs.js';
 export {
   handleLayerRegistryRequest,
   type LayerRegistryRouteOptions,

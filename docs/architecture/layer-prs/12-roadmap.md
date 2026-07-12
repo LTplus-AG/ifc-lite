@@ -57,7 +57,7 @@ Feature flag: `layers.enabled`. Every phase lands on `main` only with green exit
 
 ## Phase L5: Registry (ongoing)
 
-- ◐ Push/pull by id + ref DB + PR objects on `collab-server`/`apps/server`; webhooks — DONE on `collab-server` (`/api/v1/layers|refs|reviews`, server-side blake3 integrity gate on push, in-memory store behind a pluggable `LayerRegistryStore`); webhooks, durable backends, and the `apps/server` surface pending. The merge flow itself moved to `@ifc-lite/merge` (`ref-flow.ts`) so CLI and registry run one decision procedure
+- ◐ Push/pull by id + ref DB + PR objects on `collab-server`/`apps/server`; webhooks — DONE on `collab-server` (`/api/v1/layers|refs|reviews`, server-side blake3 integrity gate on push, in-memory store behind a pluggable `LayerRegistryStore`); durable backend DONE (`FsLayerRegistry` on the data-dir volume, enabled in the deployed binary via `COLLAB_LAYER_REGISTRY=1`); webhooks and the `apps/server` surface pending. The merge flow itself moved to `@ifc-lite/merge` (`ref-flow.ts`) so CLI and registry run one decision procedure
 - ◐ Ref policies (required checks, reviewers, author-kind, risk-tier, auto-merge) enforced server-side — required checks + human-approval (every candidate, approver distinct from the credential-bound author) + protected-move-only-via-merge + immutable-policy-via-PUT + per-conflict `resolutions` enforced on the registry route; reviewers/risk-tier/auto-merge pending
 - ☐ Registry attestation; optional ed25519 signing; provenance/audit search
 - ☐ Team tier pricing alongside Tauri track; public reference registry for teaching

@@ -8,10 +8,10 @@
  * `LayerRefStore` surface from `@ifc-lite/merge`, so the registry's merge
  * endpoint runs the exact flow the CLI runs locally.
  *
- * v1 ships the in-memory store — the protocol, integrity gate, and
- * server-side policy enforcement are the deliverable; durable backends
- * implement the same interface (the storage trait is deliberately dumb:
- * push/pull by id, smart client).
+ * Two stores implement the interface: `MemoryLayerRegistry` (below;
+ * dev/tests) and `FsLayerRegistry` (`layer-registry-fs.ts`; durable, for
+ * deployments with a mounted volume). The storage trait is deliberately
+ * dumb: push/pull by id, smart client.
  */
 
 import { computeLayerId, validateProvenance, getProvenance } from '@ifc-lite/ifcx';
@@ -77,6 +77,34 @@ export interface MemoryLayerRegistryLimits {
   maxReviews?: number;
 }
 
+/**
+ * Integrity gate shared by every store implementation: verify that the
+ * declared header id matches the canonical content address and, when a
+ * provenance manifest is present, that it validates. Returns the id.
+ * First-write-wins byte-identity is checked per store (each compares
+ * against its own persisted representation).
+ */
+export function assertPushableLayer(file: IfcxFile): string {
+  const computed = computeLayerId(file);
+  if (file.header.id !== computed) {
+    throw new LayerPushError(
+      'id-mismatch',
+      `header.id ${file.header.id} does not match the canonical content address ${computed}`
+    );
+  }
+  const manifest = getProvenance(file);
+  if (manifest !== undefined) {
+    const errors = validateProvenance(manifest);
+    if (errors.length > 0) {
+      throw new LayerPushError(
+        'invalid-provenance',
+        `provenance manifest invalid: ${errors.join('; ')}`
+      );
+    }
+  }
+  return computed;
+}
+
 export class MemoryLayerRegistry implements LayerRegistryStore {
   private readonly layers = new Map<string, IfcxFile>();
   private readonly refs = new Map<string, RefEntry>();
@@ -100,23 +128,7 @@ export class MemoryLayerRegistry implements LayerRegistryStore {
   // gates.
 
   push(file: IfcxFile): string {
-    const computed = computeLayerId(file);
-    if (file.header.id !== computed) {
-      throw new LayerPushError(
-        'id-mismatch',
-        `header.id ${file.header.id} does not match the canonical content address ${computed}`
-      );
-    }
-    const manifest = getProvenance(file);
-    if (manifest !== undefined) {
-      const errors = validateProvenance(manifest);
-      if (errors.length > 0) {
-        throw new LayerPushError(
-          'invalid-provenance',
-          `provenance manifest invalid: ${errors.join('; ')}`
-        );
-      }
-    }
+    const computed = assertPushableLayer(file);
     // Content addresses hash only the canonical bytes — signatures and
     // ifclite::derived content are deliberately excluded. First write wins:
     // a re-push of the same id must be byte-identical, otherwise an

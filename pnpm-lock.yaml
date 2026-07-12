@@ -343,6 +343,9 @@ importers:
       '@ifc-lite/cache':
         specifier: workspace:^
         version: link:../../packages/cache
+      '@ifc-lite/clash':
+        specifier: workspace:^
+        version: link:../../packages/clash
       '@ifc-lite/collab':
         specifier: workspace:^
         version: link:../../packages/collab
@@ -352,6 +355,9 @@ importers:
       '@ifc-lite/data':
         specifier: workspace:^
         version: link:../../packages/data
+      '@ifc-lite/diff':
+        specifier: workspace:^
+        version: link:../../packages/diff
       '@ifc-lite/drawing-2d':
         specifier: workspace:^
         version: link:../../packages/drawing-2d
@@ -364,6 +370,9 @@ importers:
       '@ifc-lite/export':
         specifier: workspace:^
         version: link:../../packages/export
+      '@ifc-lite/extensions':
+        specifier: workspace:^
+        version: link:../../packages/extensions
       '@ifc-lite/geometry':
         specifier: workspace:^
         version: link:../../packages/geometry
@@ -379,12 +388,21 @@ importers:
       '@ifc-lite/lists':
         specifier: workspace:^
         version: link:../../packages/lists
+      '@ifc-lite/mcp':
+        specifier: workspace:^
+        version: link:../../packages/mcp
+      '@ifc-lite/merge':
+        specifier: workspace:^
+        version: link:../../packages/merge
       '@ifc-lite/mutations':
         specifier: workspace:^
         version: link:../../packages/mutations
       '@ifc-lite/parser':
         specifier: workspace:^
         version: link:../../packages/parser
+      '@ifc-lite/pointcloud':
+        specifier: workspace:^
+        version: link:../../packages/pointcloud
       '@ifc-lite/query':
         specifier: workspace:^
         version: link:../../packages/query
@@ -400,6 +418,9 @@ importers:
       '@ifc-lite/server-client':
         specifier: workspace:^
         version: link:../../packages/server-client
+      '@ifc-lite/solar':
+        specifier: workspace:^
+        version: link:../../packages/solar
       '@ifc-lite/spatial':
         specifier: workspace:^
         version: link:../../packages/spatial

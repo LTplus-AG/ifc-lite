@@ -169,10 +169,25 @@ function runAutoMerges(
     return;
   }
   if (!manifest?.base) return;
+  // "All-green" is the whole candidate manifest, not just the ref's
+  // required checks: a failing check the policy forgot to require must
+  // still keep the merge attended.
+  if ((manifest.checks ?? []).some((check) => check.result !== 'pass')) return;
   for (const [name, entry] of Object.entries(registry.listRefs())) {
     const policy = entry.policy;
     if (!policy?.autoMerge || policy.requireHumanApproval) continue;
     if (entry.layers.includes(pushedId)) continue;
+    // Idempotency: a candidate that already landed via a three-way merge
+    // is represented by its MERGE layer, not its own id — re-merging it
+    // would append a duplicate (usually empty) merge layer per re-push.
+    const alreadyMerged = entry.layers.some((layerId) => {
+      try {
+        return getProvenance(registry.loadLayer(layerId))?.merge?.candidate === pushedId;
+      } catch {
+        return false;
+      }
+    });
+    if (alreadyMerged) continue;
     try {
       const outcome = mergeIntoRef(registry, {
         candidateId: pushedId,

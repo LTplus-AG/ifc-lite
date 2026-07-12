@@ -27,7 +27,12 @@ const FIRE = 'bsi::ifc::v5a::Pset_FireSafety::FireRating';
 const CLASS = 'bsi::ifc::class';
 const SECRET = 'hook-secret';
 
-function publishable(nodes: IfcxNode[], intent: string, base: ProvenanceBase | null): IfcxFile {
+function publishable(
+  nodes: IfcxNode[],
+  intent: string,
+  base: ProvenanceBase | null,
+  checks: Array<{ tool: string; spec?: string; result: 'pass' | 'fail' }> = []
+): IfcxFile {
   const bare: IfcxFile = {
     header: {
       id: '',
@@ -45,6 +50,7 @@ function publishable(nodes: IfcxNode[], intent: string, base: ProvenanceBase | n
     intent,
     base,
     created: '2026-06-10T00:00:00.000Z',
+    checks,
   });
   const withManifest = setProvenance(bare, manifest);
   return { ...withManifest, header: { ...withManifest.header, id: computeLayerId(withManifest) } };
@@ -224,5 +230,35 @@ describe('registry webhooks + auto-merge', () => {
     expect((await fetch(`${api}/layers`, { method: 'POST', body: JSON.stringify(green) })).status).toBe(201);
     const guarded = (await (await fetch(`${api}/refs/guarded`)).json()) as { layers: string[] };
     expect(guarded.layers).toEqual(refBefore.layers);
+  });
+
+  it('all-green means the WHOLE manifest: any failing check keeps the merge attended', async () => {
+    const ref = (await (await fetch(`${api}/refs/main`)).json()) as { layers: string[] };
+    const failing = publishable(
+      [{ path: 'wall-1', attributes: { [FIRE]: 'REI240' } }],
+      'Fails a check the policy never required',
+      { kind: 'stack', id: computeStackHash(ref.layers) },
+      [{ tool: '@ifc-lite/ids', spec: 'unrequired.ids', result: 'fail' }]
+    );
+    expect((await fetch(`${api}/layers`, { method: 'POST', body: JSON.stringify(failing) })).status).toBe(201);
+    const after = (await (await fetch(`${api}/refs/main`)).json()) as { layers: string[] };
+    expect(after.layers).toEqual(ref.layers);
+  });
+
+  it('a candidate that landed via a merge layer is not re-merged on identical re-push', async () => {
+    // Seed a divergence so the auto-merge lands via a MERGE layer.
+    const ref = (await (await fetch(`${api}/refs/main`)).json()) as { layers: string[] };
+    const disjoint = publishable(
+      [{ path: 'door-1', attributes: { [CLASS]: { code: 'IfcDoor', uri: 'u' } } }],
+      'Disjoint auto-mergeable',
+      { kind: 'stack', id: computeStackHash(ref.layers.slice(0, 1)) }
+    );
+    expect((await fetch(`${api}/layers`, { method: 'POST', body: JSON.stringify(disjoint) })).status).toBe(201);
+    const merged = (await (await fetch(`${api}/refs/main`)).json()) as { layers: string[] };
+    expect(merged.layers.length).toBe(ref.layers.length + 1); // one merge layer appended
+    // Byte-identical re-push (201, idempotent store) must not re-merge.
+    expect((await fetch(`${api}/layers`, { method: 'POST', body: JSON.stringify(disjoint) })).status).toBe(201);
+    const after = (await (await fetch(`${api}/refs/main`)).json()) as { layers: string[] };
+    expect(after.layers).toEqual(merged.layers);
   });
 });

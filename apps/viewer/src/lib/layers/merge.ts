@@ -139,6 +139,27 @@ export async function executeMergeInto(
   );
 }
 
+/**
+ * Composition is per-attribute LWW: a key the reviewer DELETED from an
+ * edited resolution must become an explicit `null` opinion, or the old
+ * value silently shines through the merge. Fill removals against the
+ * union of both sides' keys.
+ */
+export function editedWithRemovals(
+  conflict: MergeConflict,
+  edited: Record<string, unknown>,
+): Record<string, unknown> {
+  const union = new Set([
+    ...Object.keys((conflict.ours?.attributes as Record<string, unknown> | undefined) ?? {}),
+    ...Object.keys((conflict.theirs?.attributes as Record<string, unknown> | undefined) ?? {}),
+  ]);
+  const out: Record<string, unknown> = { ...edited };
+  for (const key of union) {
+    if (!(key in out)) out[key] = null;
+  }
+  return out;
+}
+
 /** A target ref's required checks scored against the candidate manifest. */
 export interface RequiredCheckStatus {
   spec: string;

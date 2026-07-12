@@ -29,6 +29,7 @@ import { getBrowserLayerStore, DEFAULT_LOCAL_REF } from '@/lib/layers/browser-st
 import { LayerRegistryClient } from '@/lib/layers/registry-client';
 import {
   candidateLabel,
+  editedWithRemovals,
   executeMergeInto,
   previewMergeInto,
   refStackFiles,
@@ -243,7 +244,12 @@ export function LayerMergeSection() {
           ...(conflict.componentKey !== undefined ? { componentKey: conflict.componentKey } : {}),
           choice,
           ...(choice === 'edited'
-            ? { attributes: parseEditedAttributes(editedTexts.get(conflictKey(conflict)) ?? '') }
+            ? {
+                attributes: editedWithRemovals(
+                  conflict,
+                  parseEditedAttributes(editedTexts.get(conflictKey(conflict)) ?? '') ?? {},
+                ),
+              }
             : {}),
         };
       });

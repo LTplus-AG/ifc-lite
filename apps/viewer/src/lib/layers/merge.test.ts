@@ -15,6 +15,7 @@ import type { IfcxFile, IfcxNode, ProvenanceCheck } from '@ifc-lite/ifcx';
 import { extractStackState } from '@ifc-lite/merge';
 import { BrowserLayerStore } from './browser-store.js';
 import {
+  editedWithRemovals,
   executeMergeInto,
   previewMergeInto,
   refStackFiles,
@@ -131,6 +132,41 @@ describe('viewer merge orchestration over the local store (#1717 V3)', () => {
     assert.deepStrictEqual(manifest?.merge?.resolutions, [
       { entity: 'wall-1', choice: 'edited', componentKey: 'pset:Pset_FireSafety' },
     ]);
+  });
+
+  it('an edited resolution tombstones the keys the reviewer removed (LWW would resurrect them)', async () => {
+    const EXIT = 'bsi::ifc::v5a::Pset_FireSafety::FireExit';
+    const store = await BrowserLayerStore.open();
+    const base = publishable([{ path: 'wall-1', attributes: { [FIRE]: 'REI60', [EXIT]: 'EX-1' } }], 'Base', null);
+    store.storeLayer(base);
+    const ours = publishable([{ path: 'wall-1', attributes: { [FIRE]: 'REI90' } }], 'Ours', [base.header.id]);
+    store.storeLayer(ours);
+    store.setRef('main', { layers: [base.header.id, ours.header.id] });
+    const candidate = publishable([{ path: 'wall-1', attributes: { [FIRE]: 'REI120' } }], 'Theirs', [base.header.id]);
+    store.storeLayer(candidate);
+
+    const preview = await previewMergeInto({ kind: 'local', refName: 'main' }, store, candidate.header.id);
+    const conflict = preview.conflicts[0];
+    // The reviewer's edited object keeps FIRE only — the helper must null
+    // every union key they dropped so composition cannot resurrect it.
+    const attributes = editedWithRemovals(conflict, { [FIRE]: 'REI180' });
+    assert.strictEqual(attributes[FIRE], 'REI180');
+    for (const [key, value] of Object.entries(attributes)) {
+      if (key !== FIRE) assert.strictEqual(value, null, `expected null tombstone for ${key}`);
+    }
+
+    const merged = await executeMergeInto(
+      { kind: 'local', refName: 'main' },
+      store,
+      candidate.header.id,
+      [{ path: 'wall-1', componentKey: 'pset:Pset_FireSafety', choice: 'edited', attributes }],
+      'louis',
+    );
+    assert.strictEqual(merged.status, 'merged');
+    const state = extractStackState(refStackFiles(store, 'main'));
+    const component = state.get('wall-1')?.components.get('pset:Pset_FireSafety');
+    assert.strictEqual(component?.[FIRE], 'REI180');
+    assert.ok(!(EXIT in (component ?? {})) || component?.[EXIT] == null, 'removed key must not survive the merge');
   });
 
   it('scores required checks against the candidate and merges past a failure only with a waiver', async () => {

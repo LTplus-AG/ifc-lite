@@ -5,7 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { getProvenance } from '@ifc-lite/ifcx';
-import { createCollabSession, createEntity, setAttribute } from '@ifc-lite/collab';
+import { createCollabSession, createEntity, setAttribute, setEntityPlacement } from '@ifc-lite/collab';
 import { extractStackState } from '@ifc-lite/merge';
 import { BrowserLayerStore } from './browser-store.js';
 import { publishCollabDraft } from './publish.js';
@@ -80,6 +80,26 @@ describe('collab session draft publishing (#1717)', () => {
       assert.deepStrictEqual(store.getRef('local')?.layers, [result.layerId, second.layerId]);
       const composed = extractStackState([result.file, second.file]);
       assert.strictEqual(composed.get('wall-guid-1')?.components.get('pset:Pset_FireSafety')?.[FIRE], 'REI120');
+
+      // Geometry-affecting session edits publish too: a placement move
+      // rides the doc as `usd::xformop` and freezes into the layer delta.
+      const forkForMove = session.captureDocState();
+      setEntityPlacement(session.doc, 'wall-guid-1', { location: [2, 0, 0] });
+      const moved = await publishCollabDraft({
+        store,
+        doc: session.doc,
+        baseline: forkForMove,
+        stackFiles: [result.file, second.file],
+        intent: 'Shift wall 2m east',
+        authorPrincipal: 'alice',
+        hybrid: false,
+        refName: 'local',
+      });
+      const movedNode = moved.file.data.find((n) => n.path === 'wall-guid-1');
+      const xform = movedNode?.attributes?.['usd::xformop'] as { transform?: number[][] } | undefined;
+      assert.ok(xform?.transform, 'placement edit must serialize as usd::xformop');
+      // Row-vector convention: translation is the fourth row.
+      assert.strictEqual(xform.transform?.[3]?.[0], 2);
     } finally {
       session.dispose();
     }

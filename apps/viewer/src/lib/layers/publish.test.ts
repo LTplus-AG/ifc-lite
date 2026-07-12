@@ -139,6 +139,45 @@ describe('publishViewerDraft (#1717 V2)', () => {
   });
 });
 
+describe('publishViewerDraft retype + skipped reporting (#1717 geometry pass)', () => {
+  it('serializes a retype as a class opinion with PredefinedType on the core channel', async () => {
+    const store = await BrowserLayerStore.open();
+    const result = publishViewerDraft({
+      store,
+      stackFiles: [makeBase()],
+      mutations: [
+        mutation({ type: 'UPDATE_ENTITY_TYPE', entityType: 'IfcColumn', predefinedType: 'COLUMN' }),
+      ],
+      pathOf: (id) => (id === 7 ? 'wall-guid-1' : undefined),
+      intent: 'Retype to column',
+      authorPrincipal: 'alice',
+      refName: 'local',
+    });
+    assert.strictEqual(result.skippedCount, 0);
+    const node = result.file.data.find((n) => n.path === 'wall-guid-1');
+    assert.deepStrictEqual(node?.attributes?.['bsi::ifc::class'], { code: 'IfcColumn' });
+    assert.strictEqual(node?.attributes?.['bsi::ifc::prop::PredefinedType'], 'COLUMN');
+  });
+
+  it('reports edits with no layer representation instead of dropping them silently', async () => {
+    const store = await BrowserLayerStore.open();
+    const result = publishViewerDraft({
+      store,
+      stackFiles: [makeBase()],
+      mutations: [
+        mutation({ psetName: 'Pset_FireSafety', propName: 'FireRating', newValue: 'REI90' }),
+        mutation({ id: 'm-future', type: 'SOME_FUTURE_TYPE' as Mutation['type'] }),
+      ],
+      pathOf: (id) => (id === 7 ? 'wall-guid-1' : undefined),
+      intent: 'Mixed edits',
+      authorPrincipal: 'alice',
+      refName: 'local',
+    });
+    assert.strictEqual(result.skippedCount, 1);
+    assert.strictEqual(result.opCount, 1);
+  });
+});
+
 describe('BrowserLayerStore integrity', () => {
   it('refuses a header id that does not match the content address', async () => {
     const store = await BrowserLayerStore.open();

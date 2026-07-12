@@ -68,6 +68,11 @@ function wireEntry(
     // a plain string — a typed record would compose but never display.
     return { key: `${ATTR.PROP_PREFIX}${member}`, value };
   }
+  if (componentKey === 'attr:class' && member === 'code') {
+    // Retype (UPDATE_ENTITY_TYPE): a class opinion, code-only like the
+    // add-entity path.
+    return { key: ATTR.CLASS, value: value === null ? null : { code: value } };
+  }
   return null;
 }
 
@@ -149,6 +154,8 @@ export interface PublishDraftResult {
   opCount: number;
   /** expressIds with no resolvable identity — excluded from the layer. */
   unresolved: number[];
+  /** Mutations with no component representation — excluded, never silent. */
+  skippedCount: number;
 }
 
 /** Freeze pending edits into a published layer on the local store. */
@@ -160,7 +167,7 @@ export function publishViewerDraft(init: PublishDraftInit): PublishDraftResult {
     mutations: [...init.mutations],
     applied: true,
   };
-  const { ops, identityMap, unresolved } = changeSetToOps(changeSet, {
+  const { ops, identityMap, unresolved, skipped } = changeSetToOps(changeSet, {
     globalIdOf: (expressId) => init.pathOf(expressId),
   });
   const data = buildDeltaNodes(ops, init.stackFiles);
@@ -196,7 +203,7 @@ export function publishViewerDraft(init: PublishDraftInit): PublishDraftResult {
   const existing = init.store.getRef(init.refName);
   init.store.setRef(init.refName, { layers: [...(existing?.layers ?? []), layerId] });
 
-  return { layerId, file, opCount: ops.length, unresolved };
+  return { layerId, file, opCount: ops.length, unresolved, skippedCount: skipped.length };
 }
 
 export interface CollabPublishInit {

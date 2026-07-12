@@ -99,6 +99,11 @@ export function LayerDraftSection() {
         authorPrincipal: trimmedAuthor,
         refName: DEFAULT_LOCAL_REF,
       });
+      if (result.skippedCount > 0) {
+        toast.info(
+          `${result.skippedCount} edit${result.skippedCount === 1 ? '' : 's'} had no layer representation and stayed out of the published layer.`,
+        );
+      }
       if (result.unresolved.length > 0) {
         // A partial publish must not recompose: the federation reload
         // resets viewer state, which would erase the very edits we

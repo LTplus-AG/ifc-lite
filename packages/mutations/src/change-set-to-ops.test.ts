@@ -134,4 +134,33 @@ describe('changeSetToOps', () => {
     const add = result.ops.find((op) => op.op === 'add-entity');
     expect(add).toMatchObject({ ifcType: 'IfcWall' });
   });
+
+  it('serializes a retype as a class opinion and rides PredefinedType on the core channel', () => {
+    const result = changeSetToOps(
+      changeSet([
+        mutation('UPDATE_ENTITY_TYPE', 42, { entityType: 'IfcColumn', predefinedType: 'COLUMN' }),
+      ]),
+      resolver
+    );
+    expect(result.skipped).toEqual([]);
+    expect(result.ops).toContainEqual({
+      op: 'set-component',
+      entity: '3fAx$GlobalId42',
+      componentKey: 'attr:class',
+      values: { code: 'IfcColumn' },
+    });
+    expect(result.ops).toContainEqual({
+      op: 'set-component',
+      entity: '3fAx$GlobalId42',
+      componentKey: 'attr:core',
+      values: { PredefinedType: 'COLUMN' },
+    });
+  });
+
+  it('reports unrepresentable mutation types instead of silently dropping them', () => {
+    const foreign = mutation('SOME_FUTURE_TYPE' as MutationType, 42, {});
+    const result = changeSetToOps(changeSet([foreign]), resolver);
+    expect(result.ops).toEqual([]);
+    expect(result.skipped).toEqual([foreign]);
+  });
 });

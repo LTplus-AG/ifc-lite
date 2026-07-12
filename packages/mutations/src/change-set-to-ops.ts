@@ -66,6 +66,11 @@ export interface ChangeSetOpsResult {
   identityMap: DerivedIdentityEntry[];
   /** expressIds for which no identity could be established at all. */
   unresolved: number[];
+  /**
+   * Mutations with no component representation (unknown/future types).
+   * Reported so callers can warn instead of silently under-publishing.
+   */
+  skipped: Mutation[];
 }
 
 const textEncoder = new TextEncoder();
@@ -141,10 +146,11 @@ export function changeSetToOps(
     perEntity.set(componentKey, values);
   };
 
+  const skipped: Mutation[] = [];
   for (const mutation of changeSet.mutations) {
     const entity = identityOf(mutation.entityId);
     if (entity === undefined) continue;
-    applyMutation(mutation, entity, setMember, componentFor, entityOps, resolver);
+    applyMutation(mutation, entity, setMember, componentFor, entityOps, resolver, skipped);
   }
 
   const ops: ChangeSetOp[] = [...entityOps.values()];
@@ -158,7 +164,7 @@ export function changeSetToOps(
     }
   }
 
-  return { ops, identityMap, unresolved };
+  return { ops, identityMap, unresolved, skipped };
 }
 
 function applyMutation(
@@ -167,7 +173,8 @@ function applyMutation(
   setMember: (entity: string, componentKey: string, member: string, value: PropertyValue | null) => void,
   componentFor: (entity: string, componentKey: string) => Map<string, Record<string, PropertyValue | null> | null>,
   entityOps: Map<string, ChangeSetOp>,
-  resolver: EntityIdentityResolver
+  resolver: EntityIdentityResolver,
+  skipped: Mutation[]
 ): void {
   switch (mutation.type) {
     case 'CREATE_PROPERTY':
@@ -218,6 +225,22 @@ function applyMutation(
       break;
     case 'DELETE_ENTITY':
       entityOps.set(entity, { op: 'tombstone-entity', entity });
+      break;
+    case 'UPDATE_ENTITY_TYPE':
+      // Retype = a class-component opinion; the wire layer serializes it
+      // as `bsi::ifc::class` (code only, like add-entity). PredefinedType
+      // rides the core-attribute channel; explicit null clears it.
+      if (mutation.entityType) {
+        setMember(entity, 'attr:class', 'code', mutation.entityType);
+        if (mutation.predefinedType !== undefined) {
+          setMember(entity, 'attr:core', 'PredefinedType', mutation.predefinedType);
+        }
+      }
+      break;
+    default:
+      // Runtime data may carry mutation types this build does not know
+      // (forward compat): report, never silently under-publish.
+      skipped.push(mutation);
       break;
   }
 }

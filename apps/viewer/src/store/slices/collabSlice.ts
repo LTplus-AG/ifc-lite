@@ -138,6 +138,13 @@ export interface CollabSlice {
    * the next layer carries only new edits.
    */
   collabDraftBaseline: Uint8Array | null;
+  /**
+   * True when peers were present at ANY point since the draft baseline —
+   * a peer who edited and left must still stamp the published layer
+   * `author.kind: hybrid`; sampling live presence at publish time would
+   * misattribute their edits.
+   */
+  collabPeersSinceBaseline: boolean;
   /** True while a session is being established. */
   collabConnecting: boolean;
   /** The room token this client joined with (admin for the owner). For minting + revoking links. */
@@ -432,6 +439,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
   collabStatus: 'disconnected',
   collabRoomId: null,
   collabDraftBaseline: null,
+  collabPeersSinceBaseline: false,
   collabRole: null,
   collabIdentity: loadOrCreateIdentity(),
   collabPeers: [],
@@ -538,7 +546,11 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
 
     const selfClientId = session.clientId;
     session.presence.onUpdate((peers) => {
-      set({ collabPeers: remotePeers(peers, selfClientId) });
+      const remote = remotePeers(peers, selfClientId);
+      set((state) => ({
+        collabPeers: remote,
+        collabPeersSinceBaseline: state.collabPeersSinceBaseline || remote.length > 0,
+      }));
     });
     session.onStatus((status) => set({ collabStatus: status }));
     // Broadcast our role so peers can show it in the roster (advisory; the
@@ -866,6 +878,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
       // Fork point for session-draft publishing: the doc is synced (and
       // seeded, for owners) by the time the session is committed.
       collabDraftBaseline: session.captureDocState(),
+      collabPeersSinceBaseline: get().collabPeers.length > 0,
     });
   },
 
@@ -916,6 +929,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
       collabStatus: 'disconnected',
       collabRoomId: null,
       collabDraftBaseline: null,
+      collabPeersSinceBaseline: false,
       collabRole: null,
       collabPeers: [],
       collabConnecting: false,
@@ -927,7 +941,12 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
 
   resetCollabDraftBaseline: () => {
     const session = get().collabSession;
-    if (session) set({ collabDraftBaseline: session.captureDocState() });
+    if (session) {
+      set({
+        collabDraftBaseline: session.captureDocState(),
+        collabPeersSinceBaseline: get().collabPeers.length > 0,
+      });
+    }
   },
 
   setCollabLastShareToken: (token) => set({ collabLastShareToken: token }),

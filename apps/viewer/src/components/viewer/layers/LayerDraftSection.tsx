@@ -146,8 +146,9 @@ export function LayerDraftSection() {
         stackFiles: state.layerStack.map((e) => e.file),
         intent: trimmedIntent,
         authorPrincipal: trimmedAuthor,
-        // Peers in the room means the doc may carry their edits too.
-        hybrid: state.collabPeers.length > 0,
+        // Anyone present since the baseline may have edits in the doc —
+        // including peers who already left.
+        hybrid: state.collabPeers.length > 0 || state.collabPeersSinceBaseline,
         refName: DEFAULT_LOCAL_REF,
       });
       // The published layer absorbed everything since the fork point;

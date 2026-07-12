@@ -271,10 +271,31 @@ describe('review loop', () => {
     });
     expect(feedbackRes.status).toBe('changes-requested');
 
+    // Review comments as BCF-shaped topics (08-review.md §8.6) bound to
+    // (review, entity, componentKey) — agents read them structurally.
+    const topicRes = await call('add_review_topic', {
+      review_id,
+      title: 'Over-spec fire rating',
+      description: 'REI90 exceeds the zone requirement.',
+      entity: WALL,
+      component_key: 'pset:Pset_FireSafety',
+    });
+    expect(topicRes.guid).toBeTypeOf('string');
+    expect(topicRes.topic_count).toBe(1);
+
     const feedback = await call('get_review_feedback', { review_id });
     expect(feedback.status).toBe('changes-requested');
     expect(feedback.decisions).toEqual([
       { entity: WALL, component_key: 'pset:Pset_FireSafety', decision: 'reject', comment: 'REI90 is over-spec; REI60 suffices.' },
+    ]);
+    expect(feedback.topics).toMatchObject([
+      {
+        guid: topicRes.guid,
+        title: 'Over-spec fire rating',
+        description: 'REI90 exceeds the zone requirement.',
+        entity: WALL,
+        component_key: 'pset:Pset_FireSafety',
+      },
     ]);
 
     const response = await call('respond_to_review', { review_id, intent: 'lower rating to REI60' });

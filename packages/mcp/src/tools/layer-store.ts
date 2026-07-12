@@ -59,6 +59,21 @@ export interface ReviewDecision {
 
 export type ReviewStatus = 'open' | 'changes-requested' | 'approved';
 
+/**
+ * A review comment as a BCF-shaped topic bound to (review, entity,
+ * componentKey?) per 08-review.md §8.6 — same shape the registry stores,
+ * so agents read one structure in both places.
+ */
+export interface ReviewTopic {
+  guid: string;
+  title: string;
+  description?: string;
+  entity: string;
+  componentKey?: string;
+  author?: string;
+  createdAt: string;
+}
+
 export interface LayerReview {
   id: string;
   layerId: string;
@@ -66,6 +81,8 @@ export interface LayerReview {
   reviewers: string[];
   status: ReviewStatus;
   feedback: ReviewDecision[];
+  /** BCF-shaped review comments (8.6); empty until someone comments. */
+  topics: ReviewTopic[];
   /** Follow-up draft ids opened via `respond_to_review`. */
   responses: string[];
   /** Requesting principal; undefined = unauthenticated/local → accessible to anyone in the workspace. */

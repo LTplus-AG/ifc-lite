@@ -42,6 +42,7 @@ import {
   LayerPushError,
   type LayerRegistryStore,
   type RegistryReview,
+  type RegistryReviewTopic,
   type RegistryReviewDecision,
 } from './layer-registry.js';
 
@@ -548,6 +549,65 @@ export async function handleLayerRegistryRequest(
       throw err;
     }
     return json(res, 201, { id: review.id });
+  }
+  // Review comments as BCF topics bound to (review, entity, componentKey?)
+  // per 08-review.md §8.6. Reads are open to any authenticated principal
+  // (agents consume them via get_review_feedback); writes follow the same
+  // named-reviewers gate as decisions.
+  if (segments.length === 3 && segments[2] === 'topics') {
+    const review = registry.getReview(segments[1]);
+    if (!review) return json(res, 404, { error: `no review ${segments[1]}` });
+    if (method === 'GET') {
+      return json(res, 200, { topics: review.topics ?? [] });
+    }
+    if (method === 'POST') {
+      const actor = principal?.userId ?? 'anonymous';
+      if (review.reviewers.length > 0 && !review.reviewers.includes(actor)) {
+        return json(res, 403, { error: `only the named reviewers may act on review ${review.id}` });
+      }
+      const text = await readBody(req, maxBytes);
+      if (text === null) return json(res, 413, { error: `body exceeds ${maxBytes} bytes` });
+      const parsed = parseJson(text);
+      if (parsed.error !== undefined) return json(res, 400, { error: `invalid JSON body: ${parsed.error}` });
+      const body = parsed.value as
+        | { title?: unknown; description?: unknown; entity?: unknown; component_key?: unknown; viewpoint?: unknown }
+        | undefined;
+      if (!body || typeof body.title !== 'string' || body.title.trim().length === 0 || typeof body.entity !== 'string') {
+        return json(res, 400, { error: 'body must include { title: string, entity: string }' });
+      }
+      if (body.description !== undefined && typeof body.description !== 'string') {
+        return json(res, 400, { error: 'description must be a string when present' });
+      }
+      if (body.component_key !== undefined && typeof body.component_key !== 'string') {
+        return json(res, 400, { error: 'component_key must be a string when present' });
+      }
+      if (
+        body.viewpoint !== undefined &&
+        (typeof body.viewpoint !== 'object' || body.viewpoint === null || Array.isArray(body.viewpoint))
+      ) {
+        return json(res, 400, { error: 'viewpoint must be an object when present' });
+      }
+      const topic: RegistryReviewTopic = {
+        guid: crypto.randomUUID(),
+        title: body.title.trim(),
+        entity: body.entity,
+        ...(body.description !== undefined ? { description: body.description } : {}),
+        ...(body.component_key !== undefined ? { componentKey: body.component_key } : {}),
+        ...(principal ? { author: principal.userId } : {}),
+        createdAt: new Date().toISOString(),
+        ...(body.viewpoint !== undefined ? { viewpoint: body.viewpoint as Record<string, unknown> } : {}),
+      };
+      review.topics = [...(review.topics ?? []), topic];
+      try {
+        registry.putReview(review);
+      } catch (err) {
+        const handled = handlePushError(res, err);
+        if (handled) return handled;
+        throw err;
+      }
+      return json(res, 201, { guid: topic.guid, topic_count: review.topics.length });
+    }
+    return json(res, 405, { error: `unsupported ${method} on review topics` });
   }
   if (method === 'POST' && segments.length === 3 && segments[2] === 'feedback') {
     const review = registry.getReview(segments[1]);

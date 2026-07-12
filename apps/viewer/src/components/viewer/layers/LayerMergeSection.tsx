@@ -39,6 +39,7 @@ import {
   type ViewerMergeResult,
 } from '@/lib/layers/merge';
 import { pathTail } from '@/lib/layers/stack';
+import { LayerReviewSection } from './LayerReviewSection';
 import { CheckCircle2, XCircle } from 'lucide-react';
 
 type Choice = 'ours' | 'theirs' | 'edited';
@@ -517,6 +518,9 @@ export function LayerMergeSection() {
               </Button>
             )}
           </div>
+        )}
+        {target?.kind === 'registry' && candidateId && (
+          <LayerReviewSection client={target.client} candidateId={candidateId} refName={target.refName} />
         )}
       </div>
     </div>

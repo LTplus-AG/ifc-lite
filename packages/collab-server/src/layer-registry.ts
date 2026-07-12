@@ -27,6 +27,27 @@ export interface RegistryReviewDecision {
 
 export type RegistryReviewStatus = 'open' | 'changes-requested' | 'approved';
 
+/**
+ * A review comment as a standard BCF topic bound to (review, entity,
+ * componentKey?) per 08-review.md §8.6 — exportable as plain BCF for
+ * foreign tools, readable structurally by agents via `get_review_feedback`.
+ * `entity` is the composition path (the IFC GUID); layer data is
+ * path-keyed, never expressId-keyed.
+ */
+export interface RegistryReviewTopic {
+  /** Server-minted BCF topic GUID. */
+  guid: string;
+  title: string;
+  description?: string;
+  entity: string;
+  componentKey?: string;
+  /** Authenticated author — server-derived, never caller-asserted. */
+  author?: string;
+  createdAt: string;
+  /** Optional BCF viewpoint payload (camera, snapshot) captured client-side. */
+  viewpoint?: Record<string, unknown>;
+}
+
 export interface RegistryReview {
   id: string;
   layerId: string;
@@ -34,6 +55,8 @@ export interface RegistryReview {
   reviewers: string[];
   status: RegistryReviewStatus;
   feedback: RegistryReviewDecision[];
+  /** BCF-shaped review comments; absent on records predating topics. */
+  topics?: RegistryReviewTopic[];
   openedBy?: string;
   openedAt: string;
   /**

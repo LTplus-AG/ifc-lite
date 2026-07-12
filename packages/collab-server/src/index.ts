@@ -142,6 +142,7 @@ export {
   type RegistryReview,
   type RegistryReviewDecision,
   type RegistryReviewStatus,
+  type RegistryReviewTopic,
 } from './layer-registry.js';
 export { FsLayerRegistry } from './layer-registry-fs.js';
 export {

@@ -36,6 +36,30 @@ export interface RegistryResolutionInput {
   attributes?: Record<string, unknown>;
 }
 
+/** A review comment as a BCF topic bound to (review, entity, componentKey?). */
+export interface RegistryReviewTopic {
+  guid: string;
+  title: string;
+  description?: string;
+  entity: string;
+  componentKey?: string;
+  author?: string;
+  createdAt: string;
+  viewpoint?: Record<string, unknown>;
+}
+
+export interface RegistryReviewSummary {
+  id: string;
+  layerId: string;
+  into: string;
+  reviewers: string[];
+  status: 'open' | 'changes-requested' | 'approved';
+  topics?: RegistryReviewTopic[];
+  openedBy?: string;
+  openedAt: string;
+  approvedBy?: string;
+}
+
 export class RegistryError extends Error {
   readonly status: number;
   constructor(status: number, message: string) {
@@ -120,6 +144,37 @@ export class LayerRegistryClient {
     },
   ): Promise<RegistryMergeOutcome> {
     return this.request('POST', `/refs/${encodeURIComponent(name)}/merge`, init);
+  }
+
+  // ----- reviews (PR objects) + BCF-bound comments (08-review.md §8.6) -----
+
+  listReviews(): Promise<{ reviews: RegistryReviewSummary[] }> {
+    return this.request('GET', '/reviews');
+  }
+
+  openReview(init: { layer_id: string; into: string; reviewers?: string[] }): Promise<{ id: string }> {
+    return this.request('POST', '/reviews', init);
+  }
+
+  getReview(id: string): Promise<RegistryReviewSummary> {
+    return this.request('GET', `/reviews/${encodeURIComponent(id)}`);
+  }
+
+  listTopics(reviewId: string): Promise<{ topics: RegistryReviewTopic[] }> {
+    return this.request('GET', `/reviews/${encodeURIComponent(reviewId)}/topics`);
+  }
+
+  postTopic(
+    reviewId: string,
+    topic: {
+      title: string;
+      description?: string;
+      entity: string;
+      component_key?: string;
+      viewpoint?: Record<string, unknown>;
+    },
+  ): Promise<{ guid: string }> {
+    return this.request('POST', `/reviews/${encodeURIComponent(reviewId)}/topics`, topic);
   }
 
   /**

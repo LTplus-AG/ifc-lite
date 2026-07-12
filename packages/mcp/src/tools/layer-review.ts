@@ -26,6 +26,7 @@ import {
   refLayerFiles,
   resolveAncestorFiles,
   resolveAncestorFilesAnyRef,
+  type ReviewTopic,
 } from './layer-store.js';
 import { requireOwnedReview, requireReview, visibleDraftIds } from './layer-access.js';
 import type { LayerReview, LayerWorkspace, ReviewDecision, ReviewStatus } from './layer-store.js';
@@ -241,6 +242,7 @@ const requestReview: Tool = {
       reviewers: (input.reviewers as string[] | undefined) ?? [],
       status: 'open',
       feedback: [],
+      topics: [],
       responses: [],
       owner: ctx.session?.principal,
     };
@@ -344,8 +346,61 @@ const getReviewFeedback: Tool = {
           ...(d.comment !== undefined ? { comment: d.comment } : {}),
         })),
         responses: [...review.responses],
+        topics: review.topics.map((t) => ({
+          guid: t.guid,
+          title: t.title,
+          ...(t.description !== undefined ? { description: t.description } : {}),
+          entity: t.entity,
+          ...(t.componentKey !== undefined ? { component_key: t.componentKey } : {}),
+          ...(t.author !== undefined ? { author: t.author } : {}),
+          created_at: t.createdAt,
+        })),
       },
     );
+  },
+};
+
+const addReviewTopic: Tool = {
+  name: 'add_review_topic',
+  description:
+    'Attach a review comment as a BCF-shaped topic bound to (review, entity, componentKey?) — 08-review.md §8.6.',
+  scope: 'mutate',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      review_id: { type: 'string' },
+      title: { type: 'string', minLength: 1 },
+      description: { type: 'string' },
+      entity: { type: 'string' },
+      component_key: { type: 'string' },
+    },
+    required: ['review_id', 'title', 'entity'],
+    additionalProperties: false,
+  },
+  handler(input, ctx) {
+    const ws = getLayerWorkspace(ctx.session?.id);
+    const review = requireOwnedReview(ws, input.review_id as string, ctx.session?.principal, {
+      allowReviewers: true,
+    });
+    const title = (input.title as string).trim();
+    if (title.length === 0) {
+      throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: 'title must be non-empty.' });
+    }
+    const topic: ReviewTopic = {
+      guid: randomUUID(),
+      title,
+      entity: input.entity as string,
+      ...(input.description !== undefined ? { description: input.description as string } : {}),
+      ...(input.component_key !== undefined ? { componentKey: input.component_key as string } : {}),
+      ...(ctx.session?.principal !== undefined ? { author: ctx.session.principal } : {}),
+      createdAt: new Date().toISOString(),
+    };
+    review.topics.push(topic);
+    return okResult(`Attached topic ${topic.guid} to review ${review.id}.`, {
+      review_id: review.id,
+      guid: topic.guid,
+      topic_count: review.topics.length,
+    });
   },
 };
 
@@ -409,6 +464,7 @@ export const layerReviewTools: Tool[] = [
   listConflicts,
   requestReview,
   addReviewFeedback,
+  addReviewTopic,
   getReviewFeedback,
   respondToReview,
 ];

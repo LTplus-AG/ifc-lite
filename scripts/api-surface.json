@@ -582,6 +582,7 @@
     "RegistryReview: interface",
     "RegistryReviewDecision: interface",
     "RegistryReviewStatus: type",
+    "RegistryReviewTopic: interface",
     "ReplayDecision: interface",
     "ReplayProtector: interface",
     "ReplayProtectorOptions: interface",

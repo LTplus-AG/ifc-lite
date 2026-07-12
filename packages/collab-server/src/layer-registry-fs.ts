@@ -120,7 +120,9 @@ export class FsLayerRegistry implements LayerRegistryStore {
     // page cache.
     const fd = fs.openSync(tmp, 'w');
     try {
-      fs.writeSync(fd, data);
+      // writeSync's overloads take a buffer OR a string, never the union —
+      // normalize to a buffer before the call.
+      fs.writeSync(fd, typeof data === 'string' ? Buffer.from(data, 'utf-8') : data);
       fs.fsyncSync(fd);
     } finally {
       fs.closeSync(fd);

@@ -117,6 +117,7 @@ export {
   signRoomToken,
   verifyRoomToken,
   createRoomTokenAuthenticator,
+  createRoomTokenRegistryAuthorizer,
   handleTokenMintRequest,
   handleRevokeRequest,
   handleKickRequest,

@@ -128,6 +128,13 @@ export interface StartCollabServerOptions {
    */
   authorizeBlob?: BlobAuthorizeFn | null;
   /**
+   * Registry authorizer override. The default adapts `authenticate` with a
+   * pseudo-room, which room-BOUND token schemes can never satisfy — those
+   * deployments supply their own (see `createRoomTokenRegistryAuthorizer`).
+   * `null` disables auth (anonymous registry).
+   */
+  authorizeRegistry?: RegistryAuthorizeFn | null;
+  /**
    * Require a bearer token (compared against this shared secret) for the
    * `/metrics` diagnostics endpoint, which labels gauges with raw room
    * IDs. `/healthz` stays open for liveness probes but omits room detail
@@ -227,9 +234,11 @@ export async function startCollabServer(
       ? opts.layerRegistry.store
       : new MemoryLayerRegistry()
     : undefined;
-  const authorizeRegistry: RegistryAuthorizeFn | undefined = layerRegistry
-    ? makeRegistryAuthorizer(authenticate)
-    : undefined;
+  const authorizeRegistry: RegistryAuthorizeFn | undefined = !layerRegistry
+    ? undefined
+    : opts.authorizeRegistry === null
+      ? undefined
+      : opts.authorizeRegistry ?? makeRegistryAuthorizer(authenticate);
   const metricsToken = opts.metricsToken ?? process.env.COLLAB_METRICS_TOKEN;
   const metrics = opts.metrics ?? defaultMetrics;
   const peersGauge = metrics.gauge(

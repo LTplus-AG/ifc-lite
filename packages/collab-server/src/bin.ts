@@ -10,7 +10,7 @@ import * as path from 'node:path';
 import { FilePersistence, startCollabServer, type StartCollabServerOptions } from './server.js';
 import { FsBlobStorage } from './blob-route.js';
 import { FsLayerRegistry } from './layer-registry-fs.js';
-import { createRoomTokenAuthenticator, verifyRoomToken } from './room-token.js';
+import { createRoomTokenAuthenticator, createRoomTokenRegistryAuthorizer, verifyRoomToken } from './room-token.js';
 import { type Role } from './auth.js';
 
 // `PORT` is the convention most hosts inject (Railway, Render, Fly, …).
@@ -74,6 +74,13 @@ function tokenOptions(secret: string, dir: string): Partial<StartCollabServerOpt
     // authorizer reuses the WS `authenticate` with a pseudo-room scope — which
     // a room-bound token can never match. Verify signature/expiry/revocation
     // without the room binding instead; writes additionally need editor/admin.
+    // The registry is project-scoped like blobs: verify the token without
+    // its room binding (see createRoomTokenRegistryAuthorizer) — otherwise
+    // room tokens can never reach /api/v1 and the registry is locked out.
+    authorizeRegistry: createRoomTokenRegistryAuthorizer({
+      secret,
+      isRevoked: (jti) => revoked.has(jti),
+    }),
     authorizeBlob: (token, method) => {
       const claims = verifyRoomToken(token ?? '', { secret });
       if (!claims || revoked.has(claims.jti)) return false;

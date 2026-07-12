@@ -107,7 +107,16 @@ export class FsLayerRegistry implements LayerRegistryStore {
 
   private writeAtomic(target: string, data: string): void {
     const tmp = `${target}.tmp-${crypto.randomUUID()}`;
-    fs.writeFileSync(tmp, data);
+    // fsync before rename: "durable before ack" must hold through power
+    // loss, not just process crash — rename alone leaves the data in the
+    // page cache.
+    const fd = fs.openSync(tmp, 'w');
+    try {
+      fs.writeSync(fd, data);
+      fs.fsyncSync(fd);
+    } finally {
+      fs.closeSync(fd);
+    }
     fs.renameSync(tmp, target);
   }
 

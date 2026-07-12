@@ -213,6 +213,40 @@ export function createRoomTokenAuthenticator(
   };
 }
 
+/**
+ * Registry authorizer for room-token deployments. Room tokens bind to ONE
+ * room, but the registry is project-scoped — the default authorizer asks
+ * `authenticate(token, '__layer_registry__')`, a pseudo-room no real token
+ * can ever match, locking the registry out entirely (same problem the blob
+ * route solves with `authorizeBlob`). Verify signature/expiry/revocation
+ * WITHOUT the room binding instead; writes additionally need editor/admin.
+ * The principal is the token itself (`token:<jti>`): stable per link, so
+ * provenance author-binding stays enforceable and revocation still bites.
+ */
+export function createRoomTokenRegistryAuthorizer(opts: {
+  secret: SecretResolver | string;
+  isRevoked?: (jti: string) => boolean | Promise<boolean>;
+}): (token: string | undefined, method: string) => Promise<Principal | null> {
+  return async (token, method) => {
+    const claims = verifyRoomToken(token ?? '', { secret: opts.secret });
+    if (!claims) return null;
+    if (opts.isRevoked && (await opts.isRevoked(claims.jti))) return null;
+    if (
+      (method === 'POST' || method === 'PUT' || method === 'DELETE') &&
+      claims.role !== 'editor' &&
+      claims.role !== 'admin'
+    ) {
+      return null;
+    }
+    return {
+      userId: `token:${claims.jti}`,
+      role: claims.role,
+      expiresAt: claims.exp * 1000,
+      meta: { jti: claims.jti, room: claims.room },
+    };
+  };
+}
+
 // ── HTTP mint route ─────────────────────────────────────────────────────────
 
 export interface MintRequestBody {

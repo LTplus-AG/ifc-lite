@@ -17,8 +17,9 @@ import { useViewerStore } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
 import { toast } from '@/components/ui/toast';
 import { getBrowserLayerStore, DEFAULT_LOCAL_REF } from '@/lib/layers/browser-store';
-import { publishViewerDraft } from '@/lib/layers/publish';
+import { publishCollabDraft, publishViewerDraft } from '@/lib/layers/publish';
 import type { Mutation } from '@ifc-lite/mutations';
+import { Users } from 'lucide-react';
 
 const AUTHOR_STORAGE_KEY = 'ifc-lite:layer-author';
 
@@ -64,6 +65,9 @@ export function LayerDraftSection() {
   // mutationVersion drives the pending count; layerStack drives eligibility.
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
   const stackSize = useViewerStore((s) => s.layerStack.length);
+  const collabSession = useViewerStore((s) => s.collabSession);
+  const collabDraftBaseline = useViewerStore((s) => s.collabDraftBaseline);
+  const collabPeers = useViewerStore((s) => s.collabPeers);
   const [intent, setIntent] = useState('');
   const [author, setAuthor] = useState(storedAuthor);
   const [busy, setBusy] = useState(false);
@@ -124,7 +128,50 @@ export function LayerDraftSection() {
     }
   }, [intent, author, addIfcxOverlays]);
 
+  const publishSession = useCallback(async () => {
+    const state = useViewerStore.getState();
+    const session = state.collabSession;
+    const baseline = state.collabDraftBaseline;
+    const trimmedIntent = intent.trim();
+    const trimmedAuthor = author.trim() || 'viewer-user';
+    if (!session || !baseline || !trimmedIntent) return;
+    window.localStorage.setItem(AUTHOR_STORAGE_KEY, trimmedAuthor);
+    setBusy(true);
+    try {
+      const store = await getBrowserLayerStore();
+      const result = await publishCollabDraft({
+        store,
+        doc: session.doc,
+        baseline,
+        stackFiles: state.layerStack.map((e) => e.file),
+        intent: trimmedIntent,
+        authorPrincipal: trimmedAuthor,
+        // Peers in the room means the doc may carry their edits too.
+        hybrid: state.collabPeers.length > 0,
+        refName: DEFAULT_LOCAL_REF,
+      });
+      // The published layer absorbed everything since the fork point;
+      // move the fork forward so the next publish is delta-only. Local
+      // pending mutations are part of that layer, so clear them too.
+      useViewerStore.getState().resetCollabDraftBaseline();
+      useViewerStore.getState().clearAllMutations();
+      const json = JSON.stringify(result.file);
+      const fileName = `${trimmedIntent.slice(0, 40).replace(/[^\w-]+/g, '-') || 'session-layer'}.ifcx`;
+      await addIfcxOverlays([new File([json], fileName, { type: 'application/json' })]);
+      setIntent('');
+      toast.success(
+        `Published session draft ${result.layerId.slice(0, 15)}… to '${DEFAULT_LOCAL_REF}' (${result.opCount} ops).`,
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }, [intent, author, addIfcxOverlays]);
+
   if (stackSize === 0) return null;
+
+  const sessionReady = collabSession !== null && collabDraftBaseline !== null;
 
   return (
     <div className="rounded-md border border-dashed bg-card/30 p-2">
@@ -141,7 +188,7 @@ export function LayerDraftSection() {
           {pendingCount} pending {pendingCount === 1 ? 'edit' : 'edits'}
         </span>
       </div>
-      {pendingCount === 0 ? (
+      {pendingCount === 0 && !sessionReady ? (
         <p className="text-[11px] text-muted-foreground">
           Edit properties in the model, then freeze the changes here as a new layer.
         </p>
@@ -162,20 +209,45 @@ export function LayerDraftSection() {
               className="h-7 flex-1 text-xs"
               disabled={busy}
             />
-            <Button
-              size="sm"
-              className="h-7 gap-1 px-2 text-[11px]"
-              disabled={busy || intent.trim().length === 0}
-              onClick={() => void publish()}
-            >
-              <UploadCloud className="size-3" aria-hidden />
-              {busy ? 'Publishing…' : 'Publish'}
-            </Button>
+            {pendingCount > 0 && (
+              <Button
+                size="sm"
+                className="h-7 gap-1 px-2 text-[11px]"
+                disabled={busy || intent.trim().length === 0}
+                onClick={() => void publish()}
+              >
+                <UploadCloud className="size-3" aria-hidden />
+                {busy ? 'Publishing…' : 'Publish'}
+              </Button>
+            )}
           </div>
-          <p className="text-[10px] text-muted-foreground">
-            Freezes the pending edits as a content-addressed layer on the local ref
-            &apos;{DEFAULT_LOCAL_REF}&apos; and stacks it onto the composition.
-          </p>
+          {pendingCount > 0 && (
+            <p className="text-[10px] text-muted-foreground">
+              Freezes the pending edits as a content-addressed layer on the local ref
+              &apos;{DEFAULT_LOCAL_REF}&apos; and stacks it onto the composition.
+            </p>
+          )}
+          {sessionReady && (
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 gap-1 self-start px-2 text-[11px]"
+                disabled={busy || intent.trim().length === 0}
+                onClick={() => void publishSession()}
+              >
+                <Users className="size-3" aria-hidden />
+                {busy ? 'Publishing…' : 'Publish session edits'}
+              </Button>
+              <p className="text-[10px] text-muted-foreground">
+                Freezes the live session&apos;s Y.Doc edits since {collabPeers.length > 0 ? 'joining' : 'the last publish'}
+                {collabPeers.length > 0
+                  ? ` — including ${collabPeers.length} peer${collabPeers.length === 1 ? "'s" : "s'"} edits (author kind: hybrid)`
+                  : ''}
+                .
+              </p>
+            </>
+          )}
         </div>
       )}
     </div>

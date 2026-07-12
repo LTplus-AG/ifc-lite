@@ -198,3 +198,53 @@ export function publishViewerDraft(init: PublishDraftInit): PublishDraftResult {
 
   return { layerId, file, opCount: ops.length, unresolved };
 }
+
+export interface CollabPublishInit {
+  store: BrowserLayerStore;
+  /** The live session's Y.Doc (opaque here; typed by @ifc-lite/collab). */
+  doc: unknown;
+  /** Full-state fork point (`session.captureDocState()` at join/last publish). */
+  baseline: Uint8Array;
+  stackFiles: IfcxFile[];
+  intent: string;
+  authorPrincipal: string;
+  /** True when peers contributed to the doc (author.kind becomes hybrid). */
+  hybrid: boolean;
+  refName: string;
+  created?: string;
+}
+
+export interface CollabPublishResult {
+  layerId: string;
+  file: IfcxFile;
+  opCount: number;
+}
+
+/**
+ * Freeze a live collab session's edits (everyone's, since `baseline`) into
+ * a published layer on the local store — the Y.Doc source counterpart to
+ * `publishViewerDraft`. Identity is shared by construction: collab docs
+ * address entities by GUID path, the same paths the composition uses.
+ * `@ifc-lite/collab` loads dynamically: in a live session it is already
+ * resident, and the Layers panel chunk must not pull in Yjs otherwise.
+ */
+export async function publishCollabDraft(init: CollabPublishInit): Promise<CollabPublishResult> {
+  const collab = await import('@ifc-lite/collab');
+  const published = collab.publishLayer(init.doc as Parameters<typeof collab.publishLayer>[0], {
+    intent: init.intent,
+    author: { kind: init.hybrid ? 'hybrid' : 'human', principal: init.authorPrincipal },
+    baseline: init.baseline,
+    base:
+      init.stackFiles.length > 0
+        ? { kind: 'stack', id: computeStackHash(init.stackFiles.map((f) => f.header.id)) }
+        : null,
+    ...(init.created !== undefined ? { created: init.created } : {}),
+  });
+  if (published.opCount === 0) {
+    throw new Error('No session edits since the last publish.');
+  }
+  init.store.storeLayer(published.file);
+  const existing = init.store.getRef(init.refName);
+  init.store.setRef(init.refName, { layers: [...(existing?.layers ?? []), published.layerId] });
+  return { layerId: published.layerId, file: published.file, opCount: published.opCount };
+}

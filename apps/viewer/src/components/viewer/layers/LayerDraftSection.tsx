@@ -99,18 +99,22 @@ export function LayerDraftSection() {
         authorPrincipal: trimmedAuthor,
         refName: DEFAULT_LOCAL_REF,
       });
-      if (result.skippedCount > 0) {
-        toast.info(
-          `${result.skippedCount} edit${result.skippedCount === 1 ? '' : 's'} had no layer representation and stayed out of the published layer.`,
-        );
-      }
-      if (result.unresolved.length > 0) {
-        // A partial publish must not recompose: the federation reload
-        // resets viewer state, which would erase the very edits we
+      if (result.unresolved.length > 0 || result.skippedCount > 0) {
+        // A partial publish must not recompose OR clear: the federation
+        // reload resets viewer state and clearAllMutations would drop the
+        // very edits (unresolved identity / no layer representation) we
         // promise to keep. The layer is on the ref; stack it after the
-        // identities are fixed (re-publishing folds idempotently).
+        // leftovers are dealt with (re-publishing folds idempotently).
+        const parts = [
+          result.unresolved.length > 0
+            ? `${result.unresolved.length} edited ${result.unresolved.length === 1 ? 'entity' : 'entities'} had no stable identity`
+            : null,
+          result.skippedCount > 0
+            ? `${result.skippedCount} edit${result.skippedCount === 1 ? '' : 's'} had no layer representation`
+            : null,
+        ].filter(Boolean);
         toast.info(
-          `Published to '${DEFAULT_LOCAL_REF}', but ${result.unresolved.length} edited ${result.unresolved.length === 1 ? 'entity' : 'entities'} had no stable identity and stayed out. Pending edits were kept; the layer was not stacked.`,
+          `Published to '${DEFAULT_LOCAL_REF}', but ${parts.join(' and ')} and stayed out. Pending edits were kept; the layer was not stacked.`,
         );
         setIntent('');
         return;

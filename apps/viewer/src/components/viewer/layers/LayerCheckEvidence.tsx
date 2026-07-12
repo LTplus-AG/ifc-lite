@@ -16,6 +16,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Download } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import { LayerRegistryClient } from '@/lib/layers/registry-client';
+import { downloadBlob } from '@/lib/export/download';
 
 interface ReportEntity {
   entityType: string;
@@ -94,12 +95,11 @@ export function LayerCheckEvidence({ digest }: { digest: string }) {
 
   const download = useCallback(() => {
     if (state.kind !== 'loaded') return;
-    const url = URL.createObjectURL(new Blob([state.raw], { type: 'application/json' }));
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${digest.replace(/^blake3:/, '').slice(0, 12)}-report.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    // The shared helper also emits the file-download analytics/tour event.
+    downloadBlob(
+      new Blob([state.raw], { type: 'application/json' }),
+      `${digest.replace(/^blake3:/, '').slice(0, 12)}-report.json`,
+    );
   }, [state, digest]);
 
   if (state.kind === 'loading') return <p className="text-[10px] text-muted-foreground">Fetching evidence…</p>;

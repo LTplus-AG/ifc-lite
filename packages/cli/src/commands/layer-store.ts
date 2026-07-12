@@ -238,7 +238,13 @@ export function storeEvidence(store: LayerStore, content: string): string {
 }
 
 export function loadEvidence(store: LayerStore, digest: string): string | undefined {
-  const file = join(evidenceDir(store), hexOf(digest));
+  // Digests come from provenance manifests, i.e. FOREIGN data: a crafted
+  // check entry like `report: "../../.env"` must not become a path under
+  // the evidence dir (layer push would read and upload the file). Only the
+  // exact content-address shape ever reaches the filesystem.
+  const hex = hexOf(digest);
+  if (!/^[0-9a-f]{64}$/.test(hex)) return undefined;
+  const file = join(evidenceDir(store), hex);
   if (!existsSync(file)) return undefined;
   return readFileSync(file, 'utf-8');
 }

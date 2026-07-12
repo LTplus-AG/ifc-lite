@@ -88,6 +88,10 @@ describe('evidence store', () => {
       summary: { failedSpecifications: 0 },
     });
     expect(loadEvidence(store, `blake3:${'0'.repeat(64)}`)).toBeUndefined();
+    // Digests are foreign manifest data: traversal shapes never reach the fs.
+    writeFileSync(join(store.dir, 'secret.txt'), 'do-not-exfiltrate', 'utf-8');
+    expect(loadEvidence(store, '../secret.txt')).toBeUndefined();
+    expect(loadEvidence(store, 'blake3:../secret.txt')).toBeUndefined();
   });
 });
 

@@ -27,6 +27,8 @@ import {
 } from '@ifc-lite/bcf';
 import { downloadBlob } from '@/lib/export/download';
 import type { LayerRegistryClient, RegistryReviewSummary, RegistryReviewTopic } from '@/lib/layers/registry-client';
+import { ensureCandidateOnRegistry } from '@/lib/layers/merge';
+import { getBrowserLayerStore } from '@/lib/layers/browser-store';
 import { pathTail } from '@/lib/layers/stack';
 
 function TopicRow({ topic, onSelect }: { topic: RegistryReviewTopic; onSelect: (entity: string) => void }) {
@@ -62,6 +64,7 @@ export function LayerReviewSection({
 }) {
   const { createViewpointFromState } = useBCF();
   const selectedEntityIds = useViewerStore((s) => s.selectedEntityIds);
+  const activeEntityId = useViewerStore((s) => s.selectedEntityId);
   const pathToId = useViewerStore((s) => s.layerStackPathToId);
 
   const [review, setReview] = useState<RegistryReviewSummary | null>(null);
@@ -70,16 +73,17 @@ export function LayerReviewSection({
   const [withViewpoint, setWithViewpoint] = useState(true);
   const [busy, setBusy] = useState(false);
 
-  // The commented entity is whatever is selected in 3D, translated back
-  // to its composition path (path == IFC GUID).
+  // The commented entity is the ACTIVE 3D selection (last-selected wins,
+  // matching the selection slice), translated back to its composition
+  // path (path == IFC GUID); fall back to the set for single-select.
   const selectedPath = useMemo(() => {
-    const first = [...(selectedEntityIds ?? [])][0];
-    if (first === undefined || !pathToId) return null;
+    const target = activeEntityId ?? [...(selectedEntityIds ?? [])][0];
+    if (target === undefined || target === null || !pathToId) return null;
     for (const [path, id] of pathToId) {
-      if (id === first) return path;
+      if (id === target) return path;
     }
     return null;
-  }, [selectedEntityIds, pathToId]);
+  }, [activeEntityId, selectedEntityIds, pathToId]);
 
   const refresh = useCallback(async () => {
     try {
@@ -103,6 +107,10 @@ export function LayerReviewSection({
   const openReview = useCallback(async () => {
     setBusy(true);
     try {
+      // A freshly published local candidate is not on the registry yet;
+      // the reviews route 404s unknown layer ids. Same push-first step
+      // the preview/merge paths take (idempotent re-push).
+      await ensureCandidateOnRegistry(client, await getBrowserLayerStore(), candidateId);
       await client.openReview({ layer_id: candidateId, into: refName });
       await refresh();
     } catch (err) {

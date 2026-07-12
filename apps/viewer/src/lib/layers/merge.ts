@@ -73,7 +73,7 @@ function fromLocal(outcome: MergeOutcome): ViewerMergeResult {
   }
 }
 
-async function ensureCandidateOnRegistry(
+export async function ensureCandidateOnRegistry(
   client: LayerRegistryClient,
   store: BrowserLayerStore,
   candidateId: string,

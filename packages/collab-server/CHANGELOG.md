@@ -1,5 +1,25 @@
 # @ifc-lite/collab-server
 
+## 0.4.0
+
+### Minor Changes
+
+- [#1726](https://github.com/LTplus-AG/ifc-lite/pull/1726) [`e092198`](https://github.com/LTplus-AG/ifc-lite/commit/e092198070cd4311cbfe0a85a4dbd88c702d2919) Thanks [@louistrue](https://github.com/louistrue)! - Durable layer registry: `FsLayerRegistry` persists content-addressed layers, refs (with policies), and review objects to disk under the collab data dir, so a registry survives restarts. The deployed binary mounts it with `COLLAB_LAYER_REGISTRY=1`. Shared push-integrity gate extracted as `assertPushableLayer`.
+
+- [#1727](https://github.com/LTplus-AG/ifc-lite/pull/1727) [`7dac702`](https://github.com/LTplus-AG/ifc-lite/commit/7dac702db0092a3a3d6a447b2e49bc9591f5dfc4) Thanks [@louistrue](https://github.com/louistrue)! - Check evidence becomes fetchable (08-review.md §8.4): the registry gains `PUT/GET /api/v1/reports/<digest>` (blake3-verified, content-addressed, durable on the fs store), `ifc-lite layer publish --check` keeps the spec/report bytes in the local store, and the new `ifc-lite layer push` uploads a ref's stack (or one layer) plus its evidence to a registry.
+
+- [#1732](https://github.com/LTplus-AG/ifc-lite/pull/1732) [`5e90494`](https://github.com/LTplus-AG/ifc-lite/commit/5e904942e3fd167d0d0e1a9c37b391d638eb6932) Thanks [@louistrue](https://github.com/louistrue)! - Registry webhooks + auto-merge (08-review.md §8.7, 10-registry.md §10.4): the registry emits HMAC-SHA256-signed events (layer pushed, ref moved/merged, review opened/updated/commented) to configured consumers, and `RefPolicy.autoMerge` merges conflict-free, all-checks-green candidates with a declared base unattended on push — fail-closed with `requireHumanApproval` and for baseless candidates.
+
+- [#1729](https://github.com/LTplus-AG/ifc-lite/pull/1729) [`b54f704`](https://github.com/LTplus-AG/ifc-lite/commit/b54f70478a7b92055750f11267ffe7fa47ed7da1) Thanks [@louistrue](https://github.com/louistrue)! - Review comments as BCF topics (08-review.md §8.6): registry reviews gain `GET/POST /api/v1/reviews/:id/topics` — topics bound to (entity, componentKey?) with server-derived authors, optional viewpoints, and the named-reviewers write gate. The MCP review loop matches: new `add_review_topic` tool, and `get_review_feedback` returns the topics.
+
+### Patch Changes
+
+- [#1728](https://github.com/LTplus-AG/ifc-lite/pull/1728) [`e3b3c53`](https://github.com/LTplus-AG/ifc-lite/commit/e3b3c5316fcd845d531265c11e0fb86cf526e778) Thanks [@louistrue](https://github.com/louistrue)! - The registry merge route accepts edit-in-place resolutions (`{ path, component_key, choice: "edited", attributes }`), strictly validated, with the engine's edited-target rules surfaced as 400s. Completes the conflict-queue spec (08-review.md §8.3) alongside the viewer's new edit choice and bulk actions.
+
+- Updated dependencies [[`c1695d7`](https://github.com/LTplus-AG/ifc-lite/commit/c1695d777263483110460df767ec86ca691048ab), [`5e90494`](https://github.com/LTplus-AG/ifc-lite/commit/5e904942e3fd167d0d0e1a9c37b391d638eb6932)]:
+  - @ifc-lite/collab@0.4.0
+  - @ifc-lite/merge@0.3.0
+
 ## 0.3.0
 
 ### Minor Changes

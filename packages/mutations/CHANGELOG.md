@@ -1,5 +1,11 @@
 # @ifc-lite/mutations
 
+## 1.20.0
+
+### Minor Changes
+
+- [#1731](https://github.com/LTplus-AG/ifc-lite/pull/1731) [`cd6c9bd`](https://github.com/LTplus-AG/ifc-lite/commit/cd6c9bda1066b7c7cda19e164d787d15b57e3483) Thanks [@louistrue](https://github.com/louistrue)! - `changeSetToOps` serializes entity retypes (`UPDATE_ENTITY_TYPE` → a `bsi::ifc::class` opinion, with `PredefinedType` on the core-attribute channel) instead of silently dropping them, and reports unrepresentable mutation types in a new `skipped` result field so callers can warn instead of under-publishing.
+
 ## 1.19.0
 
 ### Minor Changes

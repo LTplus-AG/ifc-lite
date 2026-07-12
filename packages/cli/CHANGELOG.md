@@ -1,5 +1,18 @@
 # @ifc-lite/cli
 
+## 0.19.0
+
+### Minor Changes
+
+- [#1727](https://github.com/LTplus-AG/ifc-lite/pull/1727) [`7dac702`](https://github.com/LTplus-AG/ifc-lite/commit/7dac702db0092a3a3d6a447b2e49bc9591f5dfc4) Thanks [@louistrue](https://github.com/louistrue)! - Check evidence becomes fetchable (08-review.md §8.4): the registry gains `PUT/GET /api/v1/reports/<digest>` (blake3-verified, content-addressed, durable on the fs store), `ifc-lite layer publish --check` keeps the spec/report bytes in the local store, and the new `ifc-lite layer push` uploads a ref's stack (or one layer) plus its evidence to a registry.
+
+### Patch Changes
+
+- Updated dependencies [[`5e90494`](https://github.com/LTplus-AG/ifc-lite/commit/5e904942e3fd167d0d0e1a9c37b391d638eb6932), [`cd6c9bd`](https://github.com/LTplus-AG/ifc-lite/commit/cd6c9bda1066b7c7cda19e164d787d15b57e3483), [`b54f704`](https://github.com/LTplus-AG/ifc-lite/commit/b54f70478a7b92055750f11267ffe7fa47ed7da1)]:
+  - @ifc-lite/merge@0.3.0
+  - @ifc-lite/mutations@1.20.0
+  - @ifc-lite/mcp@0.9.0
+
 ## 0.18.0
 
 ### Minor Changes

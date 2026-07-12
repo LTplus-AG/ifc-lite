@@ -1,5 +1,16 @@
 # @ifc-lite/collab
 
+## 0.4.0
+
+### Minor Changes
+
+- [#1730](https://github.com/LTplus-AG/ifc-lite/pull/1730) [`c1695d7`](https://github.com/LTplus-AG/ifc-lite/commit/c1695d777263483110460df767ec86ca691048ab) Thanks [@louistrue](https://github.com/louistrue)! - `CollabSession.captureDocState()`: full-state fork point (`Y.encodeStateAsUpdate`) for whole-doc layer publishing via `publishLayer`, distinct from `captureBaseline()`'s state vector for the per-user `extractUserLayer` path. Backs the viewer's live-session draft publishing ([#1717](https://github.com/LTplus-AG/ifc-lite/issues/1717)).
+
+### Patch Changes
+
+- Updated dependencies [[`cd6c9bd`](https://github.com/LTplus-AG/ifc-lite/commit/cd6c9bda1066b7c7cda19e164d787d15b57e3483)]:
+  - @ifc-lite/mutations@1.20.0
+
 ## 0.3.0
 
 ### Minor Changes

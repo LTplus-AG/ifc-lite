@@ -48,7 +48,7 @@ Feature flag: `layers.enabled`. Every phase lands on `main` only with green exit
 ## Phase L4: Review UI (5-6 weeks, scheduled post-Grobkonzept)
 
 - ◐ Viewer diff mode — SHIPPED in `apps/viewer` (#1717 V1/V4): Layers panel with per-layer contribution diff (shared StackDiff JSON) and "Ghost others" 3D isolation; diff-state + author-kind lenses via `@ifc-lite/lens` pending
-- ◐ Conflict queue — SHIPPED (#1717 V3): per-conflict ours/theirs resolutions through `MergeInit.resolutions` (shared flow, registry passthrough), subtree deletes as one decision, merge gated on an empty queue; bulk resolution + `edited` in the UI pending
+- ☑ Conflict queue — per-conflict ours/theirs/edited resolutions through `MergeInit.resolutions` (shared flow; the registry route validates and ferries `edited` with replacement attributes), subtree deletes as one decision, merge gated on an empty queue + green-or-waived checks, bulk actions (all-ours/all-theirs and per-componentKey groups), edit-in-place with a JSON attribute editor for componentKey-scoped non-relation conflicts
 - ☑ Checks panel with IDS deep links; waiver flow — check evidence is fetchable from the registry (`/api/v1/reports/<digest>`, blake3-verified; `ifc layer push` uploads it), provenance check rows expand into the report's entity failures with 3D deep links, and merge offers waive-with-reason for failing required checks (recorded in the merge manifest)
 - ◐ Provenance panel — SHIPPED (#1717 V4): full manifest per stratum (author kind, intent, base, scope claims, check evidence, merge record, signatures); BCF topics as review comments pending
 - ☐ BCF Time Machine on the layer DAG (scrub, branch nodes, open-historical-state)

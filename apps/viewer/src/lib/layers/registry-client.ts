@@ -31,7 +31,9 @@ export interface RegistryMergeOutcome {
 export interface RegistryResolutionInput {
   path: string;
   component_key?: string;
-  choice: 'ours' | 'theirs';
+  choice: 'ours' | 'theirs' | 'edited';
+  /** Replacement component attributes; required when `choice === 'edited'`. */
+  attributes?: Record<string, unknown>;
 }
 
 export class RegistryError extends Error {

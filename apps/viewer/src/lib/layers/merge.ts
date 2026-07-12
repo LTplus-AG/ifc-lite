@@ -126,13 +126,12 @@ export async function executeMergeInto(
       candidate: candidateId,
       ...(resolutions.length > 0
         ? {
-            resolutions: resolutions
-              .filter((r): r is ResolutionInput & { choice: 'ours' | 'theirs' } => r.choice !== 'edited')
-              .map((r) => ({
-                path: r.path,
-                choice: r.choice,
-                ...(r.componentKey !== undefined ? { component_key: r.componentKey } : {}),
-              })),
+            resolutions: resolutions.map((r) => ({
+              path: r.path,
+              choice: r.choice,
+              ...(r.componentKey !== undefined ? { component_key: r.componentKey } : {}),
+              ...(r.choice === 'edited' && r.attributes !== undefined ? { attributes: r.attributes } : {}),
+            })),
           }
         : {}),
       ...(waivers.length > 0 ? { waivers } : {}),

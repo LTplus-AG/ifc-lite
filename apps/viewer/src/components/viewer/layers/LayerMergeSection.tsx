@@ -40,10 +40,34 @@ import {
 import { pathTail } from '@/lib/layers/stack';
 import { CheckCircle2, XCircle } from 'lucide-react';
 
-type Choice = 'ours' | 'theirs';
+type Choice = 'ours' | 'theirs' | 'edited';
 
 function conflictKey(c: MergeConflict): string {
   return c.componentKey === undefined ? c.path : `${c.path}::${c.componentKey}`;
+}
+
+/** Edit-in-place applies as a set-component: only componentKey-scoped,
+ *  non-relation conflicts can take one (mirrors `applyResolutions`). */
+function isEditable(c: MergeConflict): boolean {
+  return (
+    c.componentKey !== undefined &&
+    !c.componentKey.startsWith('child:') &&
+    !c.componentKey.startsWith('inherit:')
+  );
+}
+
+/** Parsed replacement attributes for an edited conflict, or undefined
+ *  while the JSON is not (yet) a plain object. */
+function parseEditedAttributes(text: string): Record<string, unknown> | undefined {
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    // fall through
+  }
+  return undefined;
 }
 
 function valueSummary(attrs: Record<string, unknown> | undefined): string {
@@ -56,12 +80,18 @@ function ConflictRow({
   conflict,
   choice,
   onChoose,
+  editedText,
+  onEditText,
 }: {
   conflict: MergeConflict;
   choice: Choice | undefined;
   onChoose: (choice: Choice) => void;
+  editedText: string;
+  onEditText: (text: string) => void;
 }) {
   const isDelete = conflict.kind === 'modify-vs-delete' || conflict.kind === 'delete-vs-modify';
+  const options: Choice[] = isEditable(conflict) ? ['ours', 'theirs', 'edited'] : ['ours', 'theirs'];
+  const editedValid = choice !== 'edited' || parseEditedAttributes(editedText) !== undefined;
   return (
     <div className="rounded border bg-card/40 px-1.5 py-1">
       <div className="flex items-center gap-1.5">
@@ -72,7 +102,7 @@ function ConflictRow({
           {conflict.componentKey ?? conflict.kind}
         </span>
         <span className="ml-auto inline-flex overflow-hidden rounded border">
-          {(['ours', 'theirs'] as const).map((option) => (
+          {options.map((option) => (
             <button
               key={option}
               type="button"
@@ -81,7 +111,7 @@ function ConflictRow({
                 choice === option ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted/60'
               }`}
             >
-              {option}
+              {option === 'edited' ? 'edit' : option}
             </button>
           ))}
         </span>
@@ -94,6 +124,23 @@ function ConflictRow({
           theirs: {valueSummary(conflict.theirs?.attributes as Record<string, unknown>)}
         </span>
       </div>
+      {choice === 'edited' && (
+        <div className="flex flex-col gap-0.5 pt-0.5">
+          <textarea
+            value={editedText}
+            onChange={(e) => onEditText(e.target.value)}
+            rows={2}
+            spellCheck={false}
+            aria-label={`Replacement attributes for ${conflict.path}`}
+            className={`w-full resize-y rounded border bg-background px-1.5 py-1 font-mono text-[10px] ${
+              editedValid ? '' : 'border-red-500'
+            }`}
+          />
+          {!editedValid && (
+            <span className="text-[10px] text-red-500">Replacement must be a JSON object of attributes.</span>
+          )}
+        </div>
+      )}
       {isDelete && conflict.subtree && conflict.subtree.length > 0 && (
         <p className="pt-0.5 text-[10px] text-amber-600 dark:text-amber-300">
           Delete decision carries {conflict.subtree.length} touched descendant
@@ -118,6 +165,7 @@ export function LayerMergeSection() {
   const [targetKey, setTargetKey] = useState<string>(`local:${DEFAULT_LOCAL_REF}`);
   const [result, setResult] = useState<ViewerMergeResult | null>(null);
   const [choices, setChoices] = useState<Map<string, Choice>>(new Map());
+  const [editedTexts, setEditedTexts] = useState<Map<string, string>>(new Map());
   const [requiredChecks, setRequiredChecks] = useState<RequiredCheckStatus[]>([]);
   const [waiverReasons, setWaiverReasons] = useState<Map<string, string>>(new Map());
   const [busy, setBusy] = useState(false);
@@ -149,6 +197,7 @@ export function LayerMergeSection() {
   useEffect(() => {
     setResult(null);
     setChoices(new Map());
+    setEditedTexts(new Map());
     setRequiredChecks([]);
     setWaiverReasons(new Map());
   }, [candidateId, targetKey]);
@@ -170,6 +219,7 @@ export function LayerMergeSection() {
     if (!target || !candidateId) return;
     setBusy(true);
     setChoices(new Map());
+    setEditedTexts(new Map());
     try {
       const store = await getBrowserLayerStore();
       setResult(await previewMergeInto(target, store, candidateId));
@@ -186,11 +236,17 @@ export function LayerMergeSection() {
     setBusy(true);
     try {
       const store = await getBrowserLayerStore();
-      const resolutions: ResolutionInput[] = result.conflicts.map((conflict) => ({
-        path: conflict.path,
-        ...(conflict.componentKey !== undefined ? { componentKey: conflict.componentKey } : {}),
-        choice: choices.get(conflictKey(conflict)) as Choice,
-      }));
+      const resolutions: ResolutionInput[] = result.conflicts.map((conflict) => {
+        const choice = choices.get(conflictKey(conflict)) as Choice;
+        return {
+          path: conflict.path,
+          ...(conflict.componentKey !== undefined ? { componentKey: conflict.componentKey } : {}),
+          choice,
+          ...(choice === 'edited'
+            ? { attributes: parseEditedAttributes(editedTexts.get(conflictKey(conflict)) ?? '') }
+            : {}),
+        };
+      });
       const resolver =
         (typeof window !== 'undefined' && window.localStorage.getItem('ifc-lite:layer-author')) || 'viewer-user';
       // A waiver without a reason is not a waiver (08-review.md §8.4: waiving
@@ -215,7 +271,7 @@ export function LayerMergeSection() {
     } finally {
       setBusy(false);
     }
-  }, [target, candidateId, result, choices, waiverReasons, refresh]);
+  }, [target, candidateId, result, choices, editedTexts, waiverReasons, refresh]);
 
   const loadMergedRef = useCallback(async () => {
     if (!target || target.kind !== 'local') return;
@@ -236,7 +292,53 @@ export function LayerMergeSection() {
 
   if (candidates.length === 0) return null;
 
-  const allResolved = result !== null && result.conflicts.every((c) => choices.has(conflictKey(c)));
+  // Every conflict needs a decision, and an edit-in-place needs valid
+  // replacement attributes before the merge can execute.
+  const allResolved =
+    result !== null &&
+    result.conflicts.every((c) => {
+      const choice = choices.get(conflictKey(c));
+      if (choice === undefined) return false;
+      if (choice !== 'edited') return true;
+      return parseEditedAttributes(editedTexts.get(conflictKey(c)) ?? '') !== undefined;
+    });
+
+  const choose = (conflict: MergeConflict, choice: Choice) => {
+    const key = conflictKey(conflict);
+    setChoices((prev) => new Map(prev).set(key, choice));
+    if (choice === 'edited') {
+      // Seed the editor with the current winner so edits start from a
+      // real value instead of an empty object.
+      setEditedTexts((prev) => {
+        if (prev.has(key)) return prev;
+        const seed = (conflict.ours?.attributes ?? conflict.theirs?.attributes ?? {}) as Record<string, unknown>;
+        return new Map(prev).set(key, JSON.stringify(seed));
+      });
+    }
+  };
+
+  const chooseAll = (choice: 'ours' | 'theirs', filter?: (c: MergeConflict) => boolean) => {
+    if (!result) return;
+    setChoices((prev) => {
+      const next = new Map(prev);
+      for (const conflict of result.conflicts) {
+        if (filter && !filter(conflict)) continue;
+        next.set(conflictKey(conflict), choice);
+      }
+      return next;
+    });
+  };
+
+  // Bulk selectors (08-review.md §8.3, "theirs for all Pset_X"): offer a
+  // per-componentKey group action when several conflicts share a key.
+  const bulkGroups =
+    result === null
+      ? []
+      : [...result.conflicts.reduce((acc, c) => {
+          if (c.componentKey === undefined) return acc;
+          acc.set(c.componentKey, (acc.get(c.componentKey) ?? 0) + 1);
+          return acc;
+        }, new Map<string, number>())].filter(([, count]) => count > 1);
   // Spec 08-review.md §8.3: merge enables on empty queue + green checks;
   // a failing required check needs a waiver reason (§8.4) to proceed.
   const checksSatisfied = requiredChecks.every(
@@ -343,13 +445,46 @@ export function LayerMergeSection() {
                 ))}
               </div>
             )}
+            {!mergeDone && result.conflicts.length > 1 && (
+              <div className="flex flex-wrap items-center gap-1 text-[10px] text-muted-foreground">
+                <span>Bulk:</span>
+                <button type="button" onClick={() => chooseAll('ours')} className="rounded border px-1.5 py-px hover:bg-muted/60">
+                  all ours
+                </button>
+                <button type="button" onClick={() => chooseAll('theirs')} className="rounded border px-1.5 py-px hover:bg-muted/60">
+                  all theirs
+                </button>
+                {bulkGroups.map(([key, count]) => (
+                  <span key={key} className="inline-flex items-center gap-0.5">
+                    <span className="truncate font-mono" title={key}>{key.split(':').pop()}</span>
+                    <span>×{count}:</span>
+                    <button
+                      type="button"
+                      onClick={() => chooseAll('ours', (c) => c.componentKey === key)}
+                      className="rounded border px-1 py-px hover:bg-muted/60"
+                    >
+                      ours
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => chooseAll('theirs', (c) => c.componentKey === key)}
+                      className="rounded border px-1 py-px hover:bg-muted/60"
+                    >
+                      theirs
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
             {result.conflicts.map((conflict) => (
               <ConflictRow
                 key={conflictKey(conflict)}
                 conflict={conflict}
                 choice={choices.get(conflictKey(conflict))}
-                onChoose={(choice) =>
-                  setChoices((prev) => new Map(prev).set(conflictKey(conflict), choice))
+                onChoose={(choice) => choose(conflict, choice)}
+                editedText={editedTexts.get(conflictKey(conflict)) ?? ''}
+                onEditText={(text) =>
+                  setEditedTexts((prev) => new Map(prev).set(conflictKey(conflict), text))
                 }
               />
             ))}

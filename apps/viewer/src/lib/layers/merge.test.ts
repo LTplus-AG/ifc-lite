@@ -100,6 +100,39 @@ describe('viewer merge orchestration over the local store (#1717 V3)', () => {
     assert.strictEqual(outcome.conflicts.length, 1);
   });
 
+  it('an edited resolution replaces the conflicting component with reviewer-typed attributes', async () => {
+    const store = await BrowserLayerStore.open();
+    const base = publishable([{ path: 'wall-1', attributes: { [FIRE]: 'REI60' } }], 'Base', null);
+    store.storeLayer(base);
+    const ours = publishable([{ path: 'wall-1', attributes: { [FIRE]: 'REI90' } }], 'Ours', [base.header.id]);
+    store.storeLayer(ours);
+    store.setRef('main', { layers: [base.header.id, ours.header.id] });
+    const candidate = publishable([{ path: 'wall-1', attributes: { [FIRE]: 'REI120' } }], 'Theirs', [base.header.id]);
+    store.storeLayer(candidate);
+
+    const merged = await executeMergeInto(
+      { kind: 'local', refName: 'main' },
+      store,
+      candidate.header.id,
+      [
+        {
+          path: 'wall-1',
+          componentKey: 'pset:Pset_FireSafety',
+          choice: 'edited',
+          attributes: { [FIRE]: 'REI180' },
+        },
+      ],
+      'louis',
+    );
+    assert.strictEqual(merged.status, 'merged');
+    const state = extractStackState(refStackFiles(store, 'main'));
+    assert.strictEqual(state.get('wall-1')?.components.get('pset:Pset_FireSafety')?.[FIRE], 'REI180');
+    const manifest = getProvenance(store.loadLayer(merged.mergeLayerId ?? ''));
+    assert.deepStrictEqual(manifest?.merge?.resolutions, [
+      { entity: 'wall-1', choice: 'edited', componentKey: 'pset:Pset_FireSafety' },
+    ]);
+  });
+
   it('scores required checks against the candidate and merges past a failure only with a waiver', async () => {
     const store = await BrowserLayerStore.open();
     const base = publishable([{ path: 'wall-1', attributes: { [FIRE]: 'REI60' } }], 'Base', null);

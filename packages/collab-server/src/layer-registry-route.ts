@@ -376,7 +376,9 @@ export async function handleLayerRegistryRequest(
       if (body.preview) init.preview = true;
       if (body.resolve === 'ours' || body.resolve === 'theirs') init.resolve = body.resolve;
       // Per-conflict resolutions from the review UI: strictly-shaped
-      // ours/theirs decisions ('edited' stays a local-flow feature).
+      // ours/theirs decisions, or edit-in-place with the replacement
+      // attributes (08-review.md §8.3). The engine re-validates edited
+      // targets (componentKey-scoped, non-relation) when applying.
       if (body.resolutions !== undefined) {
         if (!Array.isArray(body.resolutions)) {
           return json(res, 400, { error: 'resolutions must be an array of { path, component_key?, choice }' });
@@ -384,20 +386,35 @@ export async function handleLayerRegistryRequest(
         const parsedResolutions: NonNullable<MergeInit['resolutions']> = [];
         for (const item of body.resolutions) {
           if (typeof item !== 'object' || item === null) {
-            return json(res, 400, { error: 'each resolution must be { path, component_key?, choice: "ours" | "theirs" }' });
+            return json(res, 400, { error: 'each resolution must be { path, component_key?, choice: "ours" | "theirs" | "edited" }' });
           }
           const raw = item as Record<string, unknown>;
           const choice = raw.choice;
-          if (typeof raw.path !== 'string' || (choice !== 'ours' && choice !== 'theirs')) {
-            return json(res, 400, { error: 'each resolution must be { path, component_key?, choice: "ours" | "theirs" }' });
+          if (typeof raw.path !== 'string' || (choice !== 'ours' && choice !== 'theirs' && choice !== 'edited')) {
+            return json(res, 400, { error: 'each resolution must be { path, component_key?, choice: "ours" | "theirs" | "edited" }' });
           }
           if (raw.component_key !== undefined && typeof raw.component_key !== 'string') {
             return json(res, 400, { error: 'component_key must be a string when present' });
+          }
+          if (choice === 'edited') {
+            if (
+              typeof raw.component_key !== 'string' ||
+              typeof raw.attributes !== 'object' ||
+              raw.attributes === null ||
+              Array.isArray(raw.attributes)
+            ) {
+              return json(res, 400, {
+                error: 'an edited resolution must be { path, component_key, choice: "edited", attributes: { ... } }',
+              });
+            }
           }
           parsedResolutions.push({
             path: raw.path,
             choice,
             ...(raw.component_key !== undefined ? { componentKey: raw.component_key as string } : {}),
+            ...(choice === 'edited'
+              ? { attributes: raw.attributes as Record<string, unknown> }
+              : {}),
           });
         }
         init.resolutions = parsedResolutions;
@@ -461,6 +478,11 @@ export async function handleLayerRegistryRequest(
       } catch (err) {
         const handled = handlePushError(res, err);
         if (handled) return handled;
+        // The engine refuses malformed edited resolutions (entity-level
+        // conflict, relation pseudo-component): a client error, not 500.
+        if (err instanceof Error && err.message.includes('edited resolution')) {
+          return json(res, 400, { error: err.message });
+        }
         throw err;
       }
       switch (outcome.status) {

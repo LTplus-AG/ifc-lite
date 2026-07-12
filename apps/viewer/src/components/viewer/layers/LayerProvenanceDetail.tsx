@@ -8,11 +8,13 @@
  * record, identity map — rendered from the layer document itself.
  */
 
+import { useState } from 'react';
 import { getProvenance, validateProvenance } from '@ifc-lite/ifcx';
 import type { IfcxFile, ProvenanceManifest } from '@ifc-lite/ifcx';
-import { CheckCircle2, XCircle } from 'lucide-react';
+import { CheckCircle2, ChevronDown, ChevronRight, XCircle } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { shortContentId } from '@/lib/layers/stack';
+import { LayerCheckEvidence } from './LayerCheckEvidence';
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -24,27 +26,43 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 function ChecksList({ manifest }: { manifest: ProvenanceManifest }) {
+  const [openReport, setOpenReport] = useState<string | null>(null);
   if (manifest.checks.length === 0) return <span className="text-muted-foreground">none attached</span>;
   return (
     <span className="flex flex-col gap-0.5">
       {manifest.checks.map((check, i) => (
-        <span key={`${check.spec ?? check.tool}-${i}`} className="flex items-center gap-1">
-          {check.result === 'pass' ? (
-            <CheckCircle2 className="size-3 shrink-0 text-emerald-500" aria-label="pass" />
-          ) : (
-            <XCircle className="size-3 shrink-0 text-red-500" aria-label="fail" />
-          )}
-          <span className="truncate">{check.spec ?? check.tool}</span>
-          {check.report && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="rounded bg-muted px-1 font-mono text-[10px]">{shortContentId(check.report)}</span>
-              </TooltipTrigger>
-              <TooltipContent side="top" className="font-mono text-[10px]">
-                evidence report {check.report}
-              </TooltipContent>
-            </Tooltip>
-          )}
+        <span key={`${check.spec ?? check.tool}-${i}`} className="flex flex-col">
+          <span className="flex items-center gap-1">
+            {check.result === 'pass' ? (
+              <CheckCircle2 className="size-3 shrink-0 text-emerald-500" aria-label="pass" />
+            ) : (
+              <XCircle className="size-3 shrink-0 text-red-500" aria-label="fail" />
+            )}
+            <span className="truncate">{check.spec ?? check.tool}</span>
+            {check.report && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={() => setOpenReport((prev) => (prev === check.report ? null : check.report ?? null))}
+                    className="inline-flex items-center gap-0.5 rounded bg-muted px-1 font-mono text-[10px] hover:bg-muted/60"
+                    aria-expanded={openReport === check.report}
+                  >
+                    {openReport === check.report ? (
+                      <ChevronDown className="size-2.5" aria-hidden />
+                    ) : (
+                      <ChevronRight className="size-2.5" aria-hidden />
+                    )}
+                    {shortContentId(check.report)}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="font-mono text-[10px]">
+                  evidence report {check.report}
+                </TooltipContent>
+              </Tooltip>
+            )}
+          </span>
+          {check.report && openReport === check.report && <LayerCheckEvidence digest={check.report} />}
         </span>
       ))}
     </span>

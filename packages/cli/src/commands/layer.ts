@@ -21,6 +21,7 @@ import {
 } from './layer-publish.js';
 import { layerDiffCommand } from './layer-diff.js';
 import { layerMergeCommand } from './layer-merge.js';
+import { layerPushCommand } from './layer-push.js';
 import {
   layerBakeCommand,
   layerLogCommand,
@@ -50,6 +51,9 @@ export async function layerCommand(args: string[]): Promise<void> {
       return;
     case 'merge':
       await layerMergeCommand(rest);
+      return;
+    case 'push':
+      await layerPushCommand(rest);
       return;
     case 'log':
       await layerLogCommand(rest);
@@ -94,6 +98,11 @@ Commands:
                                   --resolve ours|theirs,
                                   --waive <spec> --reason "<text>",
                                   --approved-by <principal>, --json
+  push <ref|layer-id>      Upload a ref's stack (or one layer) plus its
+                           check evidence to a layer registry.
+                           Flags: --registry <url>, --token <bearer>,
+                                  --set-ref (move the remote ref; exit 3 on
+                                  protected refs), --json
   log <ref>                Provenance log, newest first.       Flags: --json
   bake <ref> -o <out>      Materialize a tombstone-free flat document.
   revert <layer-id>        Publish an inverse layer and append it to a ref.

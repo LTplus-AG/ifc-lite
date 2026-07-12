@@ -168,7 +168,7 @@ export async function handleLayerRegistryRequest(
   if (!url.pathname.startsWith(BASE)) return false;
   const rawSegments = url.pathname.slice(BASE.length).split('/').filter(Boolean);
   const [head] = rawSegments;
-  if (head !== 'layers' && head !== 'refs' && head !== 'reviews') return false;
+  if (head !== 'layers' && head !== 'refs' && head !== 'reviews' && head !== 'reports') return false;
   let segments: string[];
   try {
     segments = rawSegments.map(decodeURIComponent);
@@ -243,6 +243,45 @@ export async function handleLayerRegistryRequest(
       }
     }
     return json(res, 405, { error: `unsupported ${method} on layers` });
+  }
+
+  // ----- reports (check evidence, 08-review.md §8.4) ------------------------
+  // The IDS spec/report files whose digests provenance `checks` entries
+  // carry. Content-addressed under the digest the manifest already names,
+  // digest-verified on write, immutable. Evidence is text (IDS XML, report
+  // JSON), so the utf-8 body path is safe.
+  if (head === 'reports') {
+    if (segments.length !== 2) {
+      return json(res, method === 'GET' || method === 'PUT' ? 404 : 405, {
+        error: `reports are addressed by digest: ${method} /api/v1/reports/<blake3:hex>`,
+      });
+    }
+    const digest = segments[1].startsWith('blake3:') ? segments[1] : `blake3:${segments[1]}`;
+    if (method === 'GET') {
+      if (!registry.getReport) return json(res, 501, { error: 'this registry store does not persist check evidence' });
+      const bytes = registry.getReport(digest);
+      if (bytes === undefined) return json(res, 404, { error: `no report ${digest}` });
+      res.writeHead(200, {
+        'content-type': 'application/octet-stream',
+        'content-length': String(bytes.byteLength),
+        'x-report-digest': digest,
+      });
+      res.end(Buffer.from(bytes));
+      return true;
+    }
+    if (method === 'PUT') {
+      if (!registry.putReport) return json(res, 501, { error: 'this registry store does not persist check evidence' });
+      const text = await readBody(req, maxBytes);
+      if (text === null) return json(res, 413, { error: `body exceeds ${maxBytes} bytes` });
+      try {
+        return json(res, 201, { digest: registry.putReport(digest, Buffer.from(text, 'utf-8')) });
+      } catch (err) {
+        const handled = handlePushError(res, err);
+        if (handled) return handled;
+        throw err;
+      }
+    }
+    return json(res, 405, { error: `unsupported ${method} on reports` });
   }
 
   // ----- refs --------------------------------------------------------------

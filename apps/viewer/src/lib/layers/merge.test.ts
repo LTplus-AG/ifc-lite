@@ -4,15 +4,32 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { computeLayerId, computeStackHash, createProvenanceManifest, setProvenance } from '@ifc-lite/ifcx';
-import type { IfcxFile, IfcxNode } from '@ifc-lite/ifcx';
+import {
+  computeLayerId,
+  computeStackHash,
+  createProvenanceManifest,
+  getProvenance,
+  setProvenance,
+} from '@ifc-lite/ifcx';
+import type { IfcxFile, IfcxNode, ProvenanceCheck } from '@ifc-lite/ifcx';
 import { extractStackState } from '@ifc-lite/merge';
 import { BrowserLayerStore } from './browser-store.js';
-import { executeMergeInto, previewMergeInto, refStackFiles, candidateLabel } from './merge.js';
+import {
+  executeMergeInto,
+  previewMergeInto,
+  refStackFiles,
+  candidateLabel,
+  requiredCheckStatus,
+} from './merge.js';
 
 const FIRE = 'bsi::ifc::v5a::Pset_FireSafety::FireRating';
 
-function publishable(data: IfcxNode[], intent: string, baseIds: string[] | null): IfcxFile {
+function publishable(
+  data: IfcxNode[],
+  intent: string,
+  baseIds: string[] | null,
+  checks: ProvenanceCheck[] = [],
+): IfcxFile {
   const bare: IfcxFile = {
     header: { id: '', ifcxVersion: 'ifcx_alpha', dataVersion: '1.0.0', author: 't', timestamp: '2026-07-11T00:00:00Z' },
     imports: [],
@@ -24,6 +41,7 @@ function publishable(data: IfcxNode[], intent: string, baseIds: string[] | null)
     intent,
     base: baseIds === null ? null : { kind: 'stack', id: computeStackHash(baseIds) },
     created: '2026-07-11T00:00:00Z',
+    checks,
   });
   const withManifest = setProvenance(bare, manifest);
   const id = computeLayerId(withManifest);
@@ -80,6 +98,44 @@ describe('viewer merge orchestration over the local store (#1717 V3)', () => {
     const outcome = await executeMergeInto({ kind: 'local', refName: 'main' }, store, candidate.header.id, [], 'louis');
     assert.strictEqual(outcome.status, 'conflicts');
     assert.strictEqual(outcome.conflicts.length, 1);
+  });
+
+  it('scores required checks against the candidate and merges past a failure only with a waiver', async () => {
+    const store = await BrowserLayerStore.open();
+    const base = publishable([{ path: 'wall-1', attributes: { [FIRE]: 'REI60' } }], 'Base', null);
+    store.storeLayer(base);
+    store.setRef('main', {
+      layers: [base.header.id],
+      policy: { requiredChecks: ['fire.ids', 'geometry.ids'] },
+    });
+    const candidate = publishable(
+      [{ path: 'wall-1', attributes: { [FIRE]: 'REI120' } }],
+      'Raise rating',
+      [base.header.id],
+      [{ tool: '@ifc-lite/ids', spec: 'geometry.ids', result: 'pass' }],
+    );
+    store.storeLayer(candidate);
+    const target = { kind: 'local', refName: 'main' } as const;
+
+    // One required check is satisfied by evidence, one has none.
+    assert.deepStrictEqual(await requiredCheckStatus(target, store, candidate.header.id), [
+      { spec: 'fire.ids', passing: false },
+      { spec: 'geometry.ids', passing: true },
+    ]);
+
+    const refused = await executeMergeInto(target, store, candidate.header.id, [], 'louis');
+    assert.strictEqual(refused.status, 'policy-failure');
+    assert.match(refused.reason ?? '', /fire\.ids/);
+
+    const merged = await executeMergeInto(target, store, candidate.header.id, [], 'louis', [
+      { spec: 'fire.ids', reason: 'panel sign-off 2026-07-12' },
+    ]);
+    assert.strictEqual(merged.status, 'merged');
+    // The waiver is durably recorded on the merge layer, with the resolver.
+    const mergeManifest = getProvenance(store.loadLayer(merged.mergeLayerId ?? ''));
+    assert.deepStrictEqual(mergeManifest?.merge?.waived_checks, [
+      { spec: 'fire.ids', reason: 'panel sign-off 2026-07-12', waivedBy: 'louis' },
+    ]);
   });
 
   it('candidateLabel prefers the manifest intent', async () => {

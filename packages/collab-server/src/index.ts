@@ -133,6 +133,8 @@ export {
 } from './room-token.js';
 export {
   assertPushableLayer,
+  assertReportDigest,
+  CONTENT_DIGEST_REGEX,
   LayerPushError,
   MemoryLayerRegistry,
   type LayerRegistryStore,

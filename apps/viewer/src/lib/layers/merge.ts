@@ -14,7 +14,7 @@
 import type { IfcxFile } from '@ifc-lite/ifcx';
 import { getProvenance } from '@ifc-lite/ifcx';
 import { mergeIntoRef } from '@ifc-lite/merge';
-import type { MergeConflict, MergeOutcome, ResolutionInput } from '@ifc-lite/merge';
+import type { MergeConflict, MergeOutcome, ResolutionInput, Waiver } from '@ifc-lite/merge';
 import type { BrowserLayerStore } from './browser-store';
 import { LayerRegistryClient, RegistryError } from './registry-client';
 import type { RegistryMergeOutcome } from './registry-client';
@@ -107,6 +107,7 @@ export async function executeMergeInto(
   candidateId: string,
   resolutions: ResolutionInput[],
   resolver: string,
+  waivers: Waiver[] = [],
 ): Promise<ViewerMergeResult> {
   if (target.kind === 'local') {
     return fromLocal(
@@ -115,6 +116,7 @@ export async function executeMergeInto(
         into: target.refName,
         principal: resolver,
         ...(resolutions.length > 0 ? { resolutions } : {}),
+        ...(waivers.length > 0 ? { waivers } : {}),
       }),
     );
   }
@@ -133,8 +135,43 @@ export async function executeMergeInto(
               })),
           }
         : {}),
+      ...(waivers.length > 0 ? { waivers } : {}),
     }),
   );
+}
+
+/** A target ref's required checks scored against the candidate manifest. */
+export interface RequiredCheckStatus {
+  spec: string;
+  passing: boolean;
+}
+
+/**
+ * Which of the target ref's required checks (08-review.md §8.4) the
+ * candidate satisfies — the UI offers waive-with-reason for the rest.
+ * The engine/registry re-verify at execute; this only drives display.
+ */
+export async function requiredCheckStatus(
+  target: MergeTarget,
+  store: BrowserLayerStore,
+  candidateId: string,
+): Promise<RequiredCheckStatus[]> {
+  const policy =
+    target.kind === 'local'
+      ? store.getRef(target.refName)?.policy
+      : (await target.client.getRef(target.refName)).policy;
+  const required = policy?.requiredChecks ?? [];
+  if (required.length === 0) return [];
+  let checks: Array<{ spec?: string; result: 'pass' | 'fail' }> = [];
+  try {
+    checks = getProvenance(store.loadLayer(candidateId))?.checks ?? [];
+  } catch {
+    // manifest-less candidate: every required check is failing
+  }
+  return required.map((spec) => ({
+    spec,
+    passing: checks.some((check) => check.spec === spec && check.result === 'pass'),
+  }));
 }
 
 /** Short human label for a candidate layer (intent, else id prefix). */

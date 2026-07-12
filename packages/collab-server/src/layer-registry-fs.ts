@@ -36,6 +36,7 @@ import type { IfcxFile } from '@ifc-lite/ifcx';
 import type { RefEntry } from '@ifc-lite/merge';
 import {
   assertPushableLayer,
+  assertReportDigest,
   LayerPushError,
   type LayerRegistryStore,
   type MemoryLayerRegistryLimits,
@@ -51,25 +52,32 @@ const REVIEW_ID_REGEX = /^[0-9a-fA-F-]{1,64}$/;
 export class FsLayerRegistry implements LayerRegistryStore {
   private readonly layersDir: string;
   private readonly reviewsDir: string;
+  private readonly reportsDir: string;
   private readonly refsFile: string;
   private readonly refs = new Map<string, RefEntry>();
   private readonly reviews = new Map<string, RegistryReview>();
   private layerCount: number;
+  private reportCount: number;
   private readonly maxLayers: number;
   private readonly maxRefs: number;
   private readonly maxReviews: number;
+  private readonly maxReports: number;
 
   constructor(dataDir: string, limits: MemoryLayerRegistryLimits = {}) {
     this.maxLayers = limits.maxLayers ?? 10_000;
     this.maxRefs = limits.maxRefs ?? 1_000;
     this.maxReviews = limits.maxReviews ?? 10_000;
+    this.maxReports = limits.maxReports ?? 10_000;
     const root = path.join(dataDir, 'layer-registry');
     this.layersDir = path.join(root, 'layers');
     this.reviewsDir = path.join(root, 'reviews');
+    this.reportsDir = path.join(root, 'reports');
     this.refsFile = path.join(root, 'refs.json');
     fs.mkdirSync(this.layersDir, { recursive: true });
     fs.mkdirSync(this.reviewsDir, { recursive: true });
+    fs.mkdirSync(this.reportsDir, { recursive: true });
     this.layerCount = this.listLayerFiles().length;
+    this.reportCount = fs.readdirSync(this.reportsDir).filter((n) => /^[0-9a-f]{64}$/.test(n)).length;
     this.hydrateRefs();
     this.hydrateReviews();
   }
@@ -105,7 +113,7 @@ export class FsLayerRegistry implements LayerRegistryStore {
     return m ? path.join(this.layersDir, `${m[1]}.json`) : undefined;
   }
 
-  private writeAtomic(target: string, data: string): void {
+  private writeAtomic(target: string, data: string | Uint8Array): void {
     const tmp = `${target}.tmp-${crypto.randomUUID()}`;
     // fsync before rename: "durable before ack" must hold through power
     // loss, not just process crash — rename alone leaves the data in the
@@ -225,5 +233,30 @@ export class FsLayerRegistry implements LayerRegistryStore {
     const next = structuredClone(review);
     this.writeAtomic(path.join(this.reviewsDir, `${review.id}.json`), JSON.stringify(next));
     this.reviews.set(review.id, next);
+  }
+
+  putReport(digest: string, bytes: Uint8Array): string {
+    assertReportDigest(digest, bytes); // also pins the blake3:<hex> shape (no traversal)
+    const target = path.join(this.reportsDir, digest.slice('blake3:'.length));
+    // Content-addressed and digest-verified, so a re-put is idempotent by
+    // construction; keep the first write.
+    if (fs.existsSync(target)) return digest;
+    if (this.reportCount >= this.maxReports) {
+      throw new LayerPushError('registry-full', `registry holds ${this.reportCount} reports (cap ${this.maxReports})`);
+    }
+    this.writeAtomic(target, bytes);
+    this.reportCount += 1;
+    return digest;
+  }
+
+  getReport(digest: string): Uint8Array | undefined {
+    const m = LAYER_ID_REGEX.exec(digest);
+    if (!m) return undefined;
+    try {
+      return new Uint8Array(fs.readFileSync(path.join(this.reportsDir, m[1])));
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+      throw err;
+    }
   }
 }

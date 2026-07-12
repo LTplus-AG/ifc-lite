@@ -14,7 +14,7 @@
  * dumb: push/pull by id, smart client.
  */
 
-import { computeLayerId, validateProvenance, getProvenance } from '@ifc-lite/ifcx';
+import { blake3Digest, computeLayerId, validateProvenance, getProvenance } from '@ifc-lite/ifcx';
 import type { IfcxFile } from '@ifc-lite/ifcx';
 import type { LayerRefStore, RefEntry } from '@ifc-lite/merge';
 
@@ -66,6 +66,15 @@ export interface LayerRegistryStore extends LayerRefStore {
   getReview(id: string): RegistryReview | undefined;
   listReviews(): RegistryReview[];
   putReview(review: RegistryReview): void;
+  /**
+   * Check-evidence blobs (08-review.md §8.4): the IDS spec + report files
+   * whose blake3 digests a provenance manifest's `checks` entries carry
+   * (`specDigest` / `report`). Content-addressed and verified on write.
+   * Optional so caller-supplied stores predating evidence keep working —
+   * the route answers 501 when the store lacks them.
+   */
+  putReport?(digest: string, bytes: Uint8Array): string;
+  getReport?(digest: string): Uint8Array | undefined;
 }
 
 export interface MemoryLayerRegistryLimits {
@@ -75,6 +84,27 @@ export interface MemoryLayerRegistryLimits {
   maxRefs?: number;
   /** Max review objects (default 10 000). */
   maxReviews?: number;
+  /** Max check-evidence blobs (default 10 000). */
+  maxReports?: number;
+}
+
+/** The only content-address shape `computeLayerId`/`blake3Digest` emit. */
+export const CONTENT_DIGEST_REGEX = /^blake3:[0-9a-f]{64}$/;
+
+/**
+ * Verify evidence bytes against their claimed digest. Evidence is text
+ * (IDS XML, report JSON); `blake3Digest` NFC-normalizes strings, so accept
+ * either the raw-bytes digest or the normalized-text digest — the CLI
+ * hashes the decoded string at publish time.
+ */
+export function assertReportDigest(digest: string, bytes: Uint8Array): void {
+  if (!CONTENT_DIGEST_REGEX.test(digest)) {
+    throw new LayerPushError('id-mismatch', `unsupported content-address shape ${digest}`);
+  }
+  if (blake3Digest(bytes) === digest) return;
+  const text = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+  if (blake3Digest(text) === digest) return;
+  throw new LayerPushError('id-mismatch', `evidence bytes do not hash to the claimed digest ${digest}`);
 }
 
 /**
@@ -109,9 +139,11 @@ export class MemoryLayerRegistry implements LayerRegistryStore {
   private readonly layers = new Map<string, IfcxFile>();
   private readonly refs = new Map<string, RefEntry>();
   private readonly reviews = new Map<string, RegistryReview>();
+  private readonly reports = new Map<string, Uint8Array>();
   private readonly maxLayers: number;
   private readonly maxRefs: number;
   private readonly maxReviews: number;
+  private readonly maxReports: number;
 
   // Immutable layers plus no eviction means an unbounded writer is a
   // memory-exhaustion vector; the caps turn that into a clean 507 at the
@@ -120,6 +152,7 @@ export class MemoryLayerRegistry implements LayerRegistryStore {
     this.maxLayers = limits.maxLayers ?? 10_000;
     this.maxRefs = limits.maxRefs ?? 1_000;
     this.maxReviews = limits.maxReviews ?? 10_000;
+    this.maxReports = limits.maxReports ?? 10_000;
   }
 
   // The registry owns its state: objects are cloned on ingress and egress
@@ -207,5 +240,22 @@ export class MemoryLayerRegistry implements LayerRegistryStore {
       throw new LayerPushError('registry-full', `registry holds ${this.reviews.size} reviews (cap ${this.maxReviews})`);
     }
     this.reviews.set(review.id, structuredClone(review));
+  }
+
+  putReport(digest: string, bytes: Uint8Array): string {
+    assertReportDigest(digest, bytes);
+    // Content-addressed and digest-verified, so a re-put is idempotent by
+    // construction; keep the first write.
+    if (this.reports.has(digest)) return digest;
+    if (this.reports.size >= this.maxReports) {
+      throw new LayerPushError('registry-full', `registry holds ${this.reports.size} reports (cap ${this.maxReports})`);
+    }
+    this.reports.set(digest, new Uint8Array(bytes));
+    return digest;
+  }
+
+  getReport(digest: string): Uint8Array | undefined {
+    const bytes = this.reports.get(digest);
+    return bytes === undefined ? undefined : new Uint8Array(bytes);
   }
 }

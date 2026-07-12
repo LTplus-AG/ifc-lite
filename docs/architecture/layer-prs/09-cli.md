@@ -12,6 +12,9 @@ ifc layer publish  [--check <spec.ids>=<report.json>]... [--sign <key>]
                                                    content-addressed); prints layer id
 ifc layer diff     <L> [--against <ref|L2>] [--components] [--json]
 ifc layer merge    <L> --into <ref> [--preview] [--resolve ours|theirs:<selector>] [--allow-unrelated]
+ifc layer push     <ref|L> --registry <url> [--token <bearer>] [--set-ref]
+                                                   upload a stack (or one layer) plus its
+                                                   check-evidence bytes to a registry
 ifc layer checks   <L|ref> [--ids <spec.ids>] [--required-only]
 ifc layer log      <ref> [--graph] [--author kind=agent]
 ifc layer revert   <L>                             emits inverse-op layer

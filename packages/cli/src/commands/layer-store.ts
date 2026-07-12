@@ -10,6 +10,8 @@
  *   .ifc-lite/layers/<blake3 hex>.ifcx   published layer documents
  *   .ifc-lite/refs.json                  named refs → ordered layer ids
  *   .ifc-lite/draft.json                 draft descriptor (layer create)
+ *   .ifc-lite/evidence/<blake3 hex>      check-evidence bytes (IDS specs +
+ *                                        reports) behind manifest digests
  *
  * Spec: docs/architecture/layer-prs/09-cli.md.
  */
@@ -25,7 +27,7 @@ import {
 } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { IfcxFile } from '@ifc-lite/ifcx';
-import { computeLayerId, computeStackHash } from '@ifc-lite/ifcx';
+import { blake3Digest, computeLayerId, computeStackHash } from '@ifc-lite/ifcx';
 import type { RefEntry } from '@ifc-lite/merge';
 import { getFlag } from '../output.js';
 
@@ -213,6 +215,32 @@ export function loadLayer(store: LayerStore, layerId: string): IfcxFile {
 /** Load a ref's layer documents, ordered weakest first. */
 export function loadRefLayers(store: LayerStore, name: string): IfcxFile[] {
   return requireRef(store, name).layers.map((id) => loadLayer(store, id));
+}
+
+// ---------------------------------------------------------------------------
+// evidence/<hex> — check-evidence bytes (08-review.md §8.4)
+// ---------------------------------------------------------------------------
+
+function evidenceDir(store: LayerStore): string {
+  return join(store.dir, 'evidence');
+}
+
+/**
+ * Content-address check evidence (an IDS spec or report) so `layer push`
+ * can later upload the bytes a manifest's `specDigest`/`report` name.
+ * Returns the `blake3:<hex>` digest — the same value the manifest carries.
+ */
+export function storeEvidence(store: LayerStore, content: string): string {
+  const digest = blake3Digest(content);
+  mkdirSync(evidenceDir(store), { recursive: true });
+  writeFileAtomic(join(evidenceDir(store), hexOf(digest)), content);
+  return digest;
+}
+
+export function loadEvidence(store: LayerStore, digest: string): string | undefined {
+  const file = join(evidenceDir(store), hexOf(digest));
+  if (!existsSync(file)) return undefined;
+  return readFileSync(file, 'utf-8');
 }
 
 // ---------------------------------------------------------------------------

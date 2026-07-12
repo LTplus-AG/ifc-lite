@@ -27,6 +27,7 @@ import {
   deleteDraft,
   defaultPrincipal,
   loadRefLayers,
+  storeEvidence,
   readDraft,
   readIfcxFile,
   refStackHash,
@@ -223,7 +224,7 @@ export function publishLayer(store: LayerStore, init: PublishInit): PublishResul
  * execution over the composed IFCX state is L3 roadmap work; until then
  * this is the one honest producer of `manifest.checks`.
  */
-export function parseCheckEvidence(flags: readonly string[]): ProvenanceCheck[] {
+export function parseCheckEvidence(flags: readonly string[], store?: LayerStore): ProvenanceCheck[] {
   return flags.map((raw) => {
     const eq = raw.indexOf('=');
     if (eq <= 0 || eq === raw.length - 1) {
@@ -233,6 +234,12 @@ export function parseCheckEvidence(flags: readonly string[]): ProvenanceCheck[] 
     const reportPath = raw.slice(eq + 1);
     const specContent = readFileSync(specPath, 'utf-8');
     const reportContent = readFileSync(reportPath, 'utf-8');
+    // Keep the evidence bytes, not just their digests: `layer push` uploads
+    // them so reviewers can fetch the report behind a manifest check.
+    if (store) {
+      storeEvidence(store, specContent);
+      storeEvidence(store, reportContent);
+    }
     return {
       tool: '@ifc-lite/ids',
       spec: basename(specPath),
@@ -304,7 +311,7 @@ export async function layerPublishCommand(args: string[]): Promise<void> {
       principal: getFlag(args, '--principal'),
       kind: parseKind(getFlag(args, '--kind')),
       strictScope: hasFlag(args, '--strict-scope'),
-      checks: parseCheckEvidence(getAllFlags(args, '--check')),
+      checks: parseCheckEvidence(getAllFlags(args, '--check'), store),
     });
   } catch (error) {
     if (error instanceof ScopeViolationError) {

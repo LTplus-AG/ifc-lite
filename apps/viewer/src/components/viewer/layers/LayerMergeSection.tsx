@@ -24,7 +24,7 @@ import {
 import { useViewerStore } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
 import { toast } from '@/components/ui/toast';
-import type { MergeConflict, ResolutionInput } from '@ifc-lite/merge';
+import type { MergeConflict, ResolutionInput, Waiver } from '@ifc-lite/merge';
 import { getBrowserLayerStore, DEFAULT_LOCAL_REF } from '@/lib/layers/browser-store';
 import { LayerRegistryClient } from '@/lib/layers/registry-client';
 import {
@@ -32,10 +32,13 @@ import {
   executeMergeInto,
   previewMergeInto,
   refStackFiles,
+  requiredCheckStatus,
   type MergeTarget,
+  type RequiredCheckStatus,
   type ViewerMergeResult,
 } from '@/lib/layers/merge';
 import { pathTail } from '@/lib/layers/stack';
+import { CheckCircle2, XCircle } from 'lucide-react';
 
 type Choice = 'ours' | 'theirs';
 
@@ -115,6 +118,8 @@ export function LayerMergeSection() {
   const [targetKey, setTargetKey] = useState<string>(`local:${DEFAULT_LOCAL_REF}`);
   const [result, setResult] = useState<ViewerMergeResult | null>(null);
   const [choices, setChoices] = useState<Map<string, Choice>>(new Map());
+  const [requiredChecks, setRequiredChecks] = useState<RequiredCheckStatus[]>([]);
+  const [waiverReasons, setWaiverReasons] = useState<Map<string, string>>(new Map());
   const [busy, setBusy] = useState(false);
 
   const registryClient = useMemo(() => LayerRegistryClient.fromCollabConfig(collabToken ?? undefined), [collabToken]);
@@ -144,6 +149,8 @@ export function LayerMergeSection() {
   useEffect(() => {
     setResult(null);
     setChoices(new Map());
+    setRequiredChecks([]);
+    setWaiverReasons(new Map());
   }, [candidateId, targetKey]);
 
   const target = useMemo<MergeTarget | null>(() => {
@@ -166,6 +173,7 @@ export function LayerMergeSection() {
     try {
       const store = await getBrowserLayerStore();
       setResult(await previewMergeInto(target, store, candidateId));
+      setRequiredChecks(await requiredCheckStatus(target, store, candidateId));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     } finally {
@@ -185,7 +193,12 @@ export function LayerMergeSection() {
       }));
       const resolver =
         (typeof window !== 'undefined' && window.localStorage.getItem('ifc-lite:layer-author')) || 'viewer-user';
-      const outcome = await executeMergeInto(target, store, candidateId, resolutions, resolver);
+      // A waiver without a reason is not a waiver (08-review.md §8.4: waiving
+      // requires a reason, recorded in the merge manifest).
+      const waivers: Waiver[] = [...waiverReasons.entries()]
+        .filter(([, reason]) => reason.trim().length > 0)
+        .map(([spec, reason]) => ({ spec, reason: reason.trim() }));
+      const outcome = await executeMergeInto(target, store, candidateId, resolutions, resolver, waivers);
       setResult(outcome);
       if (outcome.status === 'merged' || outcome.status === 'fast-forward') {
         toast.success(
@@ -202,7 +215,7 @@ export function LayerMergeSection() {
     } finally {
       setBusy(false);
     }
-  }, [target, candidateId, result, choices, refresh]);
+  }, [target, candidateId, result, choices, waiverReasons, refresh]);
 
   const loadMergedRef = useCallback(async () => {
     if (!target || target.kind !== 'local') return;
@@ -224,6 +237,11 @@ export function LayerMergeSection() {
   if (candidates.length === 0) return null;
 
   const allResolved = result !== null && result.conflicts.every((c) => choices.has(conflictKey(c)));
+  // Spec 08-review.md §8.3: merge enables on empty queue + green checks;
+  // a failing required check needs a waiver reason (§8.4) to proceed.
+  const checksSatisfied = requiredChecks.every(
+    (check) => check.passing || (waiverReasons.get(check.spec) ?? '').trim().length > 0,
+  );
   const mergeDone = result?.status === 'merged' || result?.status === 'fast-forward';
 
   return (
@@ -294,6 +312,37 @@ export function LayerMergeSection() {
               {result.status === 'policy-failure' && `Blocked by ref policy: ${result.reason}`}
               {result.status === 'unrelated-base' && `Unrelated base: ${result.reason}`}
             </p>
+            {requiredChecks.length > 0 && !mergeDone && (
+              <div className="flex flex-col gap-0.5 rounded border bg-card/40 px-1.5 py-1">
+                <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                  Required checks
+                </span>
+                {requiredChecks.map((check) => (
+                  <div key={check.spec} className="flex flex-col gap-0.5">
+                    <span className="flex items-center gap-1 text-[11px]">
+                      {check.passing ? (
+                        <CheckCircle2 className="size-3 shrink-0 text-emerald-500" aria-label="pass" />
+                      ) : (
+                        <XCircle className="size-3 shrink-0 text-red-500" aria-label="fail" />
+                      )}
+                      <span className="truncate">{check.spec}</span>
+                    </span>
+                    {!check.passing && (
+                      <input
+                        type="text"
+                        value={waiverReasons.get(check.spec) ?? ''}
+                        onChange={(e) =>
+                          setWaiverReasons((prev) => new Map(prev).set(check.spec, e.target.value))
+                        }
+                        placeholder="Waive with a reason (recorded in the merge manifest)"
+                        aria-label={`Waiver reason for ${check.spec}`}
+                        className="h-6 rounded border bg-background px-1.5 text-[11px] placeholder:text-muted-foreground/60"
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
             {result.conflicts.map((conflict) => (
               <ConflictRow
                 key={conflictKey(conflict)}
@@ -308,7 +357,7 @@ export function LayerMergeSection() {
               <Button
                 size="sm"
                 className="h-7 gap-1 self-end px-2 text-[11px]"
-                disabled={busy || !allResolved}
+                disabled={busy || !allResolved || !checksSatisfied}
                 onClick={() => void execute()}
               >
                 <GitMerge className="size-3" aria-hidden />

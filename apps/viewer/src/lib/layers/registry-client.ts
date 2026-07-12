@@ -110,8 +110,28 @@ export class LayerRegistryClient {
 
   mergeRef(
     name: string,
-    init: { candidate: string; preview?: boolean; resolutions?: RegistryResolutionInput[] },
+    init: {
+      candidate: string;
+      preview?: boolean;
+      resolutions?: RegistryResolutionInput[];
+      waivers?: Array<{ spec: string; reason: string }>;
+    },
   ): Promise<RegistryMergeOutcome> {
     return this.request('POST', `/refs/${encodeURIComponent(name)}/merge`, init);
+  }
+
+  /**
+   * Fetch check-evidence bytes behind a manifest check's `report` /
+   * `specDigest` (08-review.md §8.4). Evidence is raw text (IDS XML or
+   * report JSON), not a JSON envelope — bypasses the JSON request path.
+   * Null when the registry has no such report.
+   */
+  async getReport(digest: string): Promise<string | null> {
+    const res = await fetch(`${this.base}/reports/${encodeURIComponent(digest)}`, {
+      headers: this.token ? { authorization: `Bearer ${this.token}` } : {},
+    });
+    if (res.status === 404) return null;
+    if (!res.ok) throw new RegistryError(res.status, `evidence fetch failed (${res.status})`);
+    return res.text();
   }
 }

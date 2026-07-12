@@ -44,7 +44,7 @@ import { toast } from '@/components/ui/toast';
 import { TourInvite } from '@/components/tours/TourInvite';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
 import { describeUnsupportedFormat } from '@/hooks/ingest/pointCloudIngest';
-import { Upload, MousePointer, Layers, Info, Command, AlertTriangle, ChevronDown, ExternalLink, Plus, Clock3, Sparkles, ArrowUpRight, PackagePlus } from 'lucide-react';
+import { Upload, MousePointer, Layers, Info, Command, AlertTriangle, ChevronDown, ExternalLink, Plus, Clock3, Sparkles, ArrowUpRight, PackagePlus , GitMerge } from 'lucide-react';
 import { createBlankIfcFile } from '@/utils/createBlankIfc';
 import type { MeshData, CoordinateInfo, GeometryResult, PointCloudAsset } from '@ifc-lite/geometry';
 import { type IfcDataStore, type MapConversion } from '@ifc-lite/parser';
@@ -1267,7 +1267,33 @@ export function ViewportContainer() {
             ))}
           </div>
 
-          {/* Footer chips — left: discovery link to the marketing site for first-time
+          {/* Moonshot callout (#1717): Layer PRs are brand new - nobody knows
+              to multi-drop .ifcx files, so the welcome screen sells the demo. */}
+          <button
+            type="button"
+            onClick={() => {
+              void import('@/lib/layers/demo-stack').then((m) => m.loadDemoLayerStack());
+            }}
+            className="group mt-6 hidden md:flex items-center gap-3 max-w-3xl w-full p-4 bg-zinc-100 dark:bg-[#1f2335] border border-primary/40 hover:border-primary transition-colors text-left"
+          >
+            <div className="p-2 bg-white dark:bg-[#16161e] border border-zinc-300 dark:border-[#3b4261] text-primary">
+              <GitMerge className="h-5 w-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="font-bold uppercase text-sm tracking-wide text-zinc-900 dark:text-[#a9b1d6]">
+                <span className="mr-2 rounded-sm bg-primary px-1.5 py-0.5 text-[10px] text-primary-foreground">New</span>
+                Layers
+              </h3>
+              <p className="text-xs font-mono text-zinc-500 dark:text-[#565f89]">
+                Version your model like code: layers, drafts, merges, reviews
+              </p>
+            </div>
+            <span className="text-xs font-mono font-bold text-primary group-hover:translate-x-0.5 transition-transform">
+              Try the demo stack &rarr;
+            </span>
+          </button>
+
+          {/* Footer chips - left: discovery link to the marketing site for first-time
               visitors, right: shortcuts cue for power users. Both desktop-only. */}
           <div className="absolute bottom-8 left-8 hidden md:block">
             <a

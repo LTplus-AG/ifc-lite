@@ -63,6 +63,7 @@ import {
   Pencil,
   PenLine,
   Slice,
+  Layers,
   Layers3,
   SquareStack,
   ChevronsUpDown,
@@ -216,7 +217,7 @@ function recordUsage(id: string) {
  *  analysis extension first preserves the prior "panels win the slot" behavior.
  *  Kept as two thin helpers so every existing command action keeps its call
  *  site (the `'list'` legacy id maps to the registry's `'lists'`). */
-function activateRightPanel(panel: 'bcf' | 'ids' | 'lens' | 'clash' | 'compare' | 'extensions') {
+function activateRightPanel(panel: 'bcf' | 'ids' | 'lens' | 'clash' | 'compare' | 'extensions' | 'layers') {
   closeActiveAnalysisExtension();
   useViewerStore.getState().toggleWorkspacePanel(panel);
 }
@@ -443,6 +444,8 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         action: () => { activateBottomPanel('gantt'); } },
       { id: 'panel:lens', label: 'Lens Rules', keywords: 'color filter highlight', category: 'Panels', icon: Palette,
         action: () => { activateRightPanel('lens'); } },
+      { id: 'panel:layers', label: 'Layer Stack', keywords: 'ifcx layers federation draft publish merge review provenance registry version overlay', category: 'Panels', icon: Layers,
+        action: () => { activateRightPanel('layers'); } },
       { id: 'panel:extensions', label: 'Extensions', keywords: 'extension plugin install manage iflx', category: 'Panels', icon: Puzzle,
         action: () => { activateRightPanel('extensions'); } },
       // ── Customization entry points — first-class discoverability

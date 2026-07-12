@@ -14,7 +14,7 @@
  * gains an eye toggle inline.
  */
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   SlidersHorizontal,
   PanelRightClose,
@@ -38,6 +38,7 @@ import { useViewerStore } from '@/store';
 import { usePanelControls } from '@/hooks/usePanelControls';
 import { WORKSPACE_PANELS, getPanelDef, type WorkspacePanelId } from '@/lib/panels/registry';
 import { isCollabEnabled } from '@/lib/collab/config';
+import { pendingCompositionMutations } from '@/lib/layers/pending';
 import { activityAnchor, tourAnchor } from '@/lib/tours/anchors';
 import { CustomizeSidebar } from './CustomizeSidebar';
 
@@ -58,10 +59,18 @@ export function ActivityBar() {
   const setPanelShownInSidebar = useViewerStore((s) => s.setPanelShownInSidebar);
   const reorder = useViewerStore((s) => s.reorderSidebarPanel);
   const resetLayout = useViewerStore((s) => s.resetSidebarLayout);
-  // Layer-stack panel (#1717) only surfaces while a federated stack is loaded.
-  const hasLayerStack = useViewerStore((s) => s.layerStack.length > 0);
 
   const { isOpen, panelLocation, toggle, openInHome, floatPanel, popOutPanel, activePanel } = usePanelControls();
+
+  // Draft-awareness badge on the Layers icon (#1717 exposure): unpublished
+  // composition edits are the moment the feature becomes relevant — surface
+  // the count where the user already looks, like the Room peers badge.
+  const mutationVersion = useViewerStore((s) => s.mutationVersion);
+  const hasStack = useViewerStore((s) => s.layerStack.length > 0);
+  const pendingLayerEdits = useMemo(() => {
+    void mutationVersion;
+    return hasStack ? pendingCompositionMutations().length : 0;
+  }, [mutationVersion, hasStack]);
 
   const hidden = new Set(hiddenIds);
   const [dragId, setDragId] = useState<WorkspacePanelId | null>(null);
@@ -74,8 +83,7 @@ export function ActivityBar() {
   const visibleIds = order.filter(
     (id) =>
       (!hidden.has(id) || id === 'properties') &&
-      (id !== 'collab' || isCollabEnabled()) &&
-      (id !== 'layers' || hasLayerStack),
+      (id !== 'collab' || isCollabEnabled()),
   );
 
   const onIconClick = (id: WorkspacePanelId) => {
@@ -167,6 +175,15 @@ export function ActivityBar() {
                       <span className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-r bg-primary" aria-hidden />
                     )}
                     <Icon className="h-4 w-4" />
+                    {/* Unpublished-edits badge on the Layers icon. */}
+                    {!customizing && id === 'layers' && pendingLayerEdits > 0 && (
+                      <span
+                        className="absolute -right-1 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-amber-500 px-1 text-[9px] font-medium text-white ring-1 ring-background"
+                        aria-hidden
+                      >
+                        {pendingLayerEdits > 99 ? '99+' : pendingLayerEdits}
+                      </span>
+                    )}
                     {/* Detached indicator dot — floating (primary) vs popped out (emerald). */}
                     {!customizing && open && loc !== 'docked' && (
                       <span

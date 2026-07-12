@@ -455,6 +455,23 @@ export function useIfcFederation(
         [...layers].reverse().map((layer) => layerStackEntry(layer)),
         result.pathToId ?? null,
       );
+      // First composed stack this browser has seen: open the Layers panel
+      // once so the feature introduces itself (#1717 exposure). Never
+      // repeats — after that the rail icon, badge, and menus carry it.
+      if (layers.length >= 2 && typeof window !== 'undefined') {
+        const INTRO_KEY = 'ifc-lite:layers:intro-shown';
+        try {
+          if (!window.localStorage.getItem(INTRO_KEY)) {
+            window.localStorage.setItem(INTRO_KEY, '1');
+            useViewerStore.getState().openWorkspacePanel('layers');
+            toast.info(
+              `Composed ${layers.length} layers - inspect, diff, publish, and merge them in the Layers panel.`,
+            );
+          }
+        } catch {
+          /* private-mode storage failures must never break loading */
+        }
+      }
 
       // Create data store from federated result. Route through the shared
       // IFCX store factory so the lazy accessors (getEntity/getProperties/

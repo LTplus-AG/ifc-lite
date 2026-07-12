@@ -98,6 +98,8 @@ export interface TourPrerequisites {
   modelLoaded?: boolean;
   /** At least two fully loaded models (compare tour). */
   secondModel?: boolean;
+  /** A composed .ifcx layer stack of 2+ layers (layers tour). */
+  layerStack?: boolean;
 }
 
 /** Snapshot fields a tour may keep applied after a successful finish. */

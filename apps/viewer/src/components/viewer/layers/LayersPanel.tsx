@@ -15,8 +15,8 @@
  * composition's `layerStackPathToId` bridge and nothing here persists ids.
  */
 
-import { useCallback, useState } from 'react';
-import { Bot, GitMerge, Layers, User, Users2 } from 'lucide-react';
+import { useCallback, useRef, useState } from 'react';
+import { Bot, FolderOpen, GitMerge, Layers, Sparkles, User, Users2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -27,6 +27,10 @@ import { LayerDiffView } from './LayerDiffView';
 import { LayerProvenanceDetail } from './LayerProvenanceDetail';
 import { LayerDraftSection } from './LayerDraftSection';
 import { LayerMergeSection } from './LayerMergeSection';
+import { useIfc } from '@/hooks/useIfc';
+import { loadDemoLayerStack } from '@/lib/layers/demo-stack';
+import { toast } from '@/components/ui/toast';
+import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 
 interface LayersPanelProps {
   onClose: () => void;
@@ -194,6 +198,20 @@ export function LayersPanel(_props: LayersPanelProps) {
   const layerStackDiff = useViewerStore((s) => s.layerStackDiff);
   const layerDiffBusy = useViewerStore((s) => s.layerDiffBusy);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const { loadFederatedIfcx } = useIfc();
+  const stackInputRef = useRef<HTMLInputElement>(null);
+  const [demoBusy, setDemoBusy] = useState(false);
+
+  const loadDemo = useCallback(async () => {
+    setDemoBusy(true);
+    try {
+      await loadDemoLayerStack();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDemoBusy(false);
+    }
+  }, []);
 
   const inspect = useCallback(
     async (layerId: string) => {
@@ -215,13 +233,58 @@ export function LayersPanel(_props: LayersPanelProps) {
 
   if (layerStack.length === 0) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
-        <Layers className="size-8 text-muted-foreground/50" aria-hidden />
-        <p className="text-xs font-medium">No layer stack loaded</p>
-        <p className="max-w-[26ch] text-[11px] text-muted-foreground">
-          Drop several .ifcx files together to load a model as composed layers.
-        </p>
-      </div>
+      <ScrollArea className="h-full">
+        <div className="flex flex-col items-center gap-2 p-6 pt-10 text-center">
+          <Layers className="size-8 text-muted-foreground/50" aria-hidden />
+          <p className="text-xs font-medium">Layers: version your model like code</p>
+          <p className="max-w-[30ch] text-[11px] text-muted-foreground">
+            An IFC5 model composes from immutable layers. Inspect who changed
+            what, publish your edits as new layers, and merge them with
+            reviews, checks, and conflict resolution.
+          </p>
+          <div className="flex flex-col gap-1.5 pt-2">
+            <Button
+              size="sm"
+              className="h-7 gap-1.5 px-3 text-[11px]"
+              onClick={() => void loadDemo()}
+              disabled={demoBusy}
+              {...tourAnchor(TOUR_ANCHORS.layersDemo)}
+            >
+              <Sparkles className="size-3.5" aria-hidden />
+              {demoBusy ? 'Loading…' : 'Load demo stack'}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 gap-1.5 px-3 text-[11px]"
+              onClick={() => stackInputRef.current?.click()}
+            >
+              <FolderOpen className="size-3.5" aria-hidden />
+              Open .ifcx files
+            </Button>
+            <input
+              ref={stackInputRef}
+              type="file"
+              accept=".ifcx"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                const files = [...(e.target.files ?? [])];
+                e.target.value = '';
+                if (files.length > 0) void loadFederatedIfcx(files);
+              }}
+            />
+          </div>
+          <p className="max-w-[30ch] pt-1 text-[10px] text-muted-foreground/70">
+            You can also drop several .ifcx files anywhere in the viewer.
+          </p>
+          {/* Local candidates from earlier sessions stay actionable even
+              before a stack is loaded (self-hides when the store is empty). */}
+          <div className="w-full pt-2 text-left">
+            <LayerMergeSection />
+          </div>
+        </div>
+      </ScrollArea>
     );
   }
 
@@ -242,8 +305,13 @@ export function LayersPanel(_props: LayersPanelProps) {
       </div>
       <ScrollArea className="min-h-0 flex-1">
         <div className="flex flex-col gap-1 px-2 pb-2">
-          <LayerDraftSection />
-          <LayerMergeSection />
+          <div {...tourAnchor(TOUR_ANCHORS.layersDraft)}>
+            <LayerDraftSection />
+          </div>
+          <div {...tourAnchor(TOUR_ANCHORS.layersMerge)}>
+            <LayerMergeSection />
+          </div>
+          <div className="flex flex-col gap-1" {...tourAnchor(TOUR_ANCHORS.layersStrata)}>
           {strata.map((entry, i) => (
             <div key={entry.id} className="flex flex-col gap-1">
               <LayerStratum
@@ -259,6 +327,7 @@ export function LayersPanel(_props: LayersPanelProps) {
               {expandedId === entry.id && <LayerProvenanceDetail file={entry.file} />}
             </div>
           ))}
+          </div>
           {layerDiffBusy && (
             <p className="px-1 py-2 text-center text-[11px] text-muted-foreground">Computing changes…</p>
           )}

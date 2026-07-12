@@ -41,6 +41,7 @@ import {
   Palette,
   Orbit,
   Layout,
+  Layers,
   LayoutTemplate,
   FileCode2,
   CalendarClock,
@@ -357,13 +358,23 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
       const file = (e as CustomEvent<unknown>).detail;
       if (file instanceof File) void addModel(file);
     };
+    // Layer-stack variant: load a File[] as a composed .ifcx federation
+    // (the Layers panel demo + tour dispatch this, see lib/layers/demo-stack).
+    const stackHandler = (e: Event) => {
+      const files = (e as CustomEvent<unknown>).detail;
+      if (Array.isArray(files) && files.every((f) => f instanceof File) && files.length > 0) {
+        void loadFederatedIfcx(files as File[]);
+      }
+    };
     window.addEventListener('ifc-lite:load-file', handler);
     window.addEventListener('ifc-lite:add-model', addHandler);
+    window.addEventListener('ifc-lite:load-layer-stack', stackHandler);
     return () => {
       window.removeEventListener('ifc-lite:load-file', handler);
       window.removeEventListener('ifc-lite:add-model', addHandler);
+      window.removeEventListener('ifc-lite:load-layer-stack', stackHandler);
     };
-  }, [loadFile, addModel]);
+  }, [loadFile, addModel, loadFederatedIfcx]);
 
   // Check if we have models loaded (for showing add model button)
   const hasModelsLoaded = models.size > 0 || (geometryResult?.meshes && geometryResult.meshes.length > 0);
@@ -738,7 +749,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     setScriptPanelVisible,
   ]);
 
-  const handleToggleRightPanel = useCallback((panel: 'bcf' | 'ids' | 'lens' | 'clash' | 'compare' | 'addElement' | 'extensions') => {
+  const handleToggleRightPanel = useCallback((panel: 'bcf' | 'ids' | 'lens' | 'clash' | 'compare' | 'addElement' | 'extensions' | 'layers') => {
     if (activeAnalysisExtension?.placement !== 'bottom') {
       closeActiveAnalysisExtension();
     }
@@ -1272,6 +1283,13 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           >
             <GitCompareArrows className="h-4 w-4 mr-2" />
             Compare Models
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem
+            checked={activeWorkspacePanels.has('layers')}
+            onCheckedChange={() => handleToggleRightPanel('layers')}
+          >
+            <Layers className="h-4 w-4 mr-2" />
+            Layer Stack
           </DropdownMenuCheckboxItem>
           <DropdownMenuSeparator />
           <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">

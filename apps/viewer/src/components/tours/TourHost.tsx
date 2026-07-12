@@ -24,6 +24,7 @@ import { TourStepCard } from './TourStepCard';
 function PrereqCard({ tour }: { tour: TourDefinition }) {
   const demoLoading = useTourStore((s) => s.demoLoading);
   const needsSecond = Boolean(tour.prerequisites?.secondModel);
+  const needsStack = Boolean(tour.prerequisites?.layerStack);
   return (
     <div
       role="dialog"
@@ -32,9 +33,11 @@ function PrereqCard({ tour }: { tour: TourDefinition }) {
     >
       <div className="text-sm font-semibold">{tour.title}</div>
       <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
-        {needsSecond
-          ? 'This tour needs two loaded revisions of a model. Load the demo project to follow along.'
-          : 'This tour needs a loaded model. Load the demo project to follow along, or open your own IFC file first.'}
+        {needsStack
+          ? 'This tour needs a composed layer stack. Load the demo stack (three tiny layers) to follow along.'
+          : needsSecond
+            ? 'This tour needs two loaded revisions of a model. Load the demo project to follow along.'
+            : 'This tour needs a loaded model. Load the demo project to follow along, or open your own IFC file first.'}
       </p>
       <div className="mt-3 flex items-center justify-end gap-1.5">
         <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={cancelPrereq} disabled={demoLoading}>
@@ -42,7 +45,7 @@ function PrereqCard({ tour }: { tour: TourDefinition }) {
         </Button>
         <Button size="sm" disabled={demoLoading} onClick={() => void confirmPrereqWithDemo()}>
           {demoLoading && <Loader2 className="animate-spin" />}
-          Load demo project
+          {needsStack ? 'Load demo stack' : 'Load demo project'}
         </Button>
       </div>
     </div>

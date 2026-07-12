@@ -18,7 +18,7 @@ import { useIfc } from '@/hooks/useIfc';
 import { toast } from '@/components/ui/toast';
 import { getBrowserLayerStore, DEFAULT_LOCAL_REF } from '@/lib/layers/browser-store';
 import { publishCollabDraft, publishViewerDraft } from '@/lib/layers/publish';
-import type { Mutation } from '@ifc-lite/mutations';
+import { pendingCompositionMutations } from '@/lib/layers/pending';
 import { Users } from 'lucide-react';
 
 const AUTHOR_STORAGE_KEY = 'ifc-lite:layer-author';
@@ -32,32 +32,6 @@ function storedAuthor(): string {
   // of matching it out of the box.
   const identity = useViewerStore.getState().collabIdentity?.name;
   return identity && identity.trim().length > 0 ? identity : 'viewer-user';
-}
-
-/**
- * Pending mutations of the FEDERATED composition only. Reads the UNDO
- * stacks, not the view's mutation history: the history is append-only
- * (undo applies inverse ops without removing the record), so publishing
- * from it would resurrect edits the user explicitly undid.
- *
- * Models outside the composition (a STEP model added alongside) have
- * their own overlapping expressId space — resolving those ids through
- * the composition's path bridge would publish onto unrelated entities,
- * so only models sharing the composed data store contribute. Georef
- * pseudo-mutations (entityId 0, georef.* attribute names) carry no
- * entity identity and are dropped.
- */
-function pendingMutations(): Mutation[] {
-  const state = useViewerStore.getState();
-  const out: Mutation[] = [];
-  for (const [modelId, model] of state.models) {
-    if (model.ifcDataStore !== state.ifcDataStore) continue;
-    for (const mutation of state.undoStacks.get(modelId) ?? []) {
-      if (mutation.attributeName?.startsWith('georef.')) continue;
-      out.push(mutation);
-    }
-  }
-  return out;
 }
 
 export function LayerDraftSection() {
@@ -74,7 +48,7 @@ export function LayerDraftSection() {
 
   const pendingCount = useMemo(() => {
     void mutationVersion;
-    return pendingMutations().length;
+    return pendingCompositionMutations().length;
   }, [mutationVersion]);
 
   const publish = useCallback(async () => {
@@ -93,7 +67,7 @@ export function LayerDraftSection() {
       const result = publishViewerDraft({
         store,
         stackFiles: state.layerStack.map((e) => e.file),
-        mutations: pendingMutations(),
+        mutations: pendingCompositionMutations(),
         pathOf: (expressId) => idToPath.get(expressId),
         intent: trimmedIntent,
         authorPrincipal: trimmedAuthor,

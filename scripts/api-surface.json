@@ -623,6 +623,7 @@
     "createRateLimiter: function",
     "createReplayProtector: function",
     "createRoomTokenAuthenticator: function",
+    "createRoomTokenRegistryAuthorizer: function",
     "createSecureHttpServer: function",
     "decodeSignedFrame: function",
     "defaultMetrics: const",

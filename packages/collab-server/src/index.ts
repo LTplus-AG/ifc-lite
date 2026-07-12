@@ -146,6 +146,13 @@ export {
 } from './layer-registry.js';
 export { FsLayerRegistry } from './layer-registry-fs.js';
 export {
+  emitRegistryEvent,
+  signRegistryEvent,
+  type RegistryWebhook,
+  type RegistryEvent,
+  type RegistryEventType,
+} from './registry-webhooks.js';
+export {
   handleLayerRegistryRequest,
   type LayerRegistryRouteOptions,
   type RegistryAuthorizeFn,

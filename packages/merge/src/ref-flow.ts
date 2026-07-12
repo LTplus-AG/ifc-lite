@@ -22,6 +22,14 @@ import type { MergeConflict, MergePlan, ResolutionInput } from './types.js';
 export interface RefPolicy {
   requireHumanApproval?: boolean;
   requiredChecks?: string[];
+  /**
+   * Merge conflict-free, all-checks-green candidates unattended
+   * (10-registry.md §10.4). Consumed by the registry on push; ignored by
+   * the local CLI flow (the operator IS the merge decision there).
+   * Combined with `requireHumanApproval`, auto-merge never fires — an
+   * unattended merge cannot satisfy an approval requirement (fail closed).
+   */
+  autoMerge?: boolean;
 }
 
 export interface RefEntry {

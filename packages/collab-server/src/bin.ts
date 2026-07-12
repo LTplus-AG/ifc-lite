@@ -26,6 +26,19 @@ const tokenSecret = process.env.COLLAB_TOKEN_SECRET;
 const layerRegistryEnabled = ['1', 'true'].includes(
   (process.env.COLLAB_LAYER_REGISTRY ?? '').toLowerCase(),
 );
+// One notification consumer via env (08-review.md §8.7); programmatic
+// deployments pass a full webhook list through startCollabServer instead.
+const registryWebhookUrl = process.env.COLLAB_REGISTRY_WEBHOOK_URL;
+const registryWebhooks = registryWebhookUrl
+  ? [
+      {
+        url: registryWebhookUrl,
+        ...(process.env.COLLAB_REGISTRY_WEBHOOK_SECRET
+          ? { secret: process.env.COLLAB_REGISTRY_WEBHOOK_SECRET }
+          : {}),
+      },
+    ]
+  : [];
 
 /**
  * Accountless room access control:
@@ -131,7 +144,9 @@ async function main() {
     // them on restart. On a mounted volume this is durable and far cheaper.
     blobStorage: new FsBlobStorage(dataDir),
     maxRooms,
-    ...(layerRegistryEnabled ? { layerRegistry: { store: new FsLayerRegistry(dataDir) } } : {}),
+    ...(layerRegistryEnabled
+      ? { layerRegistry: { store: new FsLayerRegistry(dataDir), webhooks: registryWebhooks } }
+      : {}),
     ...(tokenSecret ? tokenOptions(tokenSecret, dataDir) : {}),
   });
   // eslint-disable-next-line no-console

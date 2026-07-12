@@ -57,11 +57,11 @@ Feature flag: `layers.enabled`. Every phase lands on `main` only with green exit
 
 ## Phase L5: Registry (ongoing)
 
-- ◐ Push/pull by id + ref DB + PR objects on `collab-server`/`apps/server`; webhooks — DONE on `collab-server` (`/api/v1/layers|refs|reviews`, server-side blake3 integrity gate on push, in-memory store behind a pluggable `LayerRegistryStore`); durable backend DONE (`FsLayerRegistry` on the data-dir volume, enabled in the deployed binary via `COLLAB_LAYER_REGISTRY=1`); webhooks and the `apps/server` surface pending. The merge flow itself moved to `@ifc-lite/merge` (`ref-flow.ts`) so CLI and registry run one decision procedure
-- ◐ Ref policies (required checks, reviewers, author-kind, risk-tier, auto-merge) enforced server-side — required checks + human-approval (every candidate, approver distinct from the credential-bound author) + protected-move-only-via-merge + immutable-policy-via-PUT + per-conflict `resolutions` enforced on the registry route; reviewers/risk-tier/auto-merge pending
+- ◐ Push/pull by id + ref DB + PR objects on `collab-server`/`apps/server`; webhooks — DONE on `collab-server` (`/api/v1/layers|refs|reviews`, server-side blake3 integrity gate on push, in-memory store behind a pluggable `LayerRegistryStore`); durable backend DONE (`FsLayerRegistry` on the data-dir volume, enabled in the deployed binary via `COLLAB_LAYER_REGISTRY=1`); webhooks DONE (signed HMAC-SHA256 events for pushes, ref moves/merges, and the review lifecycle; `COLLAB_REGISTRY_WEBHOOK_URL`); the `apps/server` surface pending. The merge flow itself moved to `@ifc-lite/merge` (`ref-flow.ts`) so CLI and registry run one decision procedure
+- ◐ Ref policies (required checks, reviewers, author-kind, risk-tier, auto-merge) enforced server-side — required checks + human-approval (every candidate, approver distinct from the credential-bound author) + protected-move-only-via-merge + immutable-policy-via-PUT + per-conflict `resolutions` enforced on the registry route; auto-merge DONE (`RefPolicy.autoMerge`: conflict-free, all-green candidates with a declared base merge unattended on push; fail-closed with `requireHumanApproval` and for baseless candidates); reviewers/risk-tier pending
 - ☐ Registry attestation; optional ed25519 signing; provenance/audit search
 - ☐ Team tier pricing alongside Tauri track; public reference registry for teaching
-- ☐ Nightly model-gardener agent on auto-merge policy (first fully autonomous loop)
+- ☐ Nightly model-gardener agent on auto-merge policy (first fully autonomous loop) — the policy side is now in place
 
 **Exit:** one external design partner (Motif candidate) running a protected ref with an agent principal in production.
 

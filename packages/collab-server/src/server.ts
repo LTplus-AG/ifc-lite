@@ -30,6 +30,7 @@ import {
   type KickEndpointOptions,
 } from './room-token.js';
 import { MemoryLayerRegistry, type LayerRegistryStore } from './layer-registry.js';
+import type { RegistryWebhook } from './registry-webhooks.js';
 import {
   handleLayerRegistryRequest,
   type RegistryAuthorizeFn,
@@ -192,7 +193,7 @@ export interface StartCollabServerOptions {
    * capability, and the principal's userId becomes the acting resolver
    * for merges and waivers.
    */
-  layerRegistry?: boolean | { store?: LayerRegistryStore; maxBytes?: number };
+  layerRegistry?: boolean | { store?: LayerRegistryStore; maxBytes?: number; webhooks?: RegistryWebhook[] };
 }
 
 export interface CollabServerHandle {
@@ -347,6 +348,9 @@ export async function startCollabServer(
             authorize: authorizeRegistry,
             ...(typeof opts.layerRegistry === 'object' && opts.layerRegistry.maxBytes !== undefined
               ? { maxBytes: opts.layerRegistry.maxBytes }
+              : {}),
+            ...(typeof opts.layerRegistry === 'object' && opts.layerRegistry.webhooks !== undefined
+              ? { webhooks: opts.layerRegistry.webhooks }
               : {}),
           });
           if (handled) return;

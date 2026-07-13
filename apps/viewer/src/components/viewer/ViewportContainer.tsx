@@ -1276,7 +1276,7 @@ export function ViewportContainer() {
                 .then((m) => m.loadDemoLayerStack())
                 .catch((err: unknown) => toast.error(err instanceof Error ? err.message : String(err)));
             }}
-            className="group mt-6 hidden md:flex items-center gap-3 max-w-3xl w-full p-4 bg-zinc-100 dark:bg-[#1f2335] border border-primary/40 hover:border-primary transition-colors text-left"
+            className="group mt-6 hidden md:flex items-center gap-3 max-w-3xl w-full p-3 bg-zinc-100 dark:bg-[#1f2335] border border-primary/40 hover:border-primary transition-colors text-left"
           >
             <div className="p-2 bg-white dark:bg-[#16161e] border border-zinc-300 dark:border-[#3b4261] text-primary">
               <GitMerge className="h-5 w-5" />
@@ -1296,8 +1296,11 @@ export function ViewportContainer() {
           </button>
 
           {/* Footer chips - left: discovery link to the marketing site for first-time
-              visitors, right: shortcuts cue for power users. Both desktop-only. */}
-          <div className="absolute bottom-8 left-8 hidden md:block">
+              visitors, right: shortcuts cue for power users. Both desktop-only.
+              IN FLOW, not absolute: the welcome column scrolls on short
+              viewports, and absolutely-anchored chips ride the scroll and
+              land on top of the content (#1736 follow-up). */}
+          <div className="mt-10 hidden w-full max-w-3xl items-center justify-between gap-4 md:flex">
             <a
               href="https://ifclite.dev"
               target="_blank"
@@ -1307,8 +1310,6 @@ export function ViewportContainer() {
               <span>New here?</span>
               <span className="font-bold text-primary group-hover:translate-x-0.5 transition-transform">ifclite.dev →</span>
             </a>
-          </div>
-          <div className="absolute bottom-8 right-8 hidden md:block">
             <div className="flex items-center gap-2 text-xs font-mono px-3 py-1.5 bg-zinc-100 dark:bg-[#1f2335] border border-zinc-300 dark:border-[#3b4261] text-zinc-500 dark:text-[#565f89]">
               <Command className="h-3 w-3" />
               <span>SHORTCUTS</span>

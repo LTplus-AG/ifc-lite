@@ -24,7 +24,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useViewerStore } from '@/store';
 import type { CollabRole } from '@/store/slices/collabSlice';
-import { buildShareUrl, mintRoomId, mintRoomToken } from '@/lib/collab/share-link';
+import { buildShareUrl, mintRoomId, mintRoomToken, parseRoleFromToken } from '@/lib/collab/share-link';
 import { buildStepSeedSource } from '@/lib/collab/step-seed';
 
 interface ShareDialogProps {
@@ -43,6 +43,7 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
   const activeModelId = useViewerStore((s) => s.activeModelId);
   const ifcDataStore = useViewerStore((s) => s.ifcDataStore);
   const collabRoomId = useViewerStore((s) => s.collabRoomId);
+  const collabRole = useViewerStore((s) => s.collabRole);
   const collabPeers = useViewerStore((s) => s.collabPeers);
   const collabIdentity = useViewerStore((s) => s.collabIdentity);
   const startCollab = useViewerStore((s) => s.startCollab);
@@ -51,6 +52,27 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
   const [link, setLink] = useState<string>('');
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  /**
+   * Non-admins cannot mint role-scoped tokens (no escalation by design),
+   * and even an admin's mint can fail after a reload loses the bearer.
+   * Fall back to a link we already hold: the last one this tab minted,
+   * else the invite THIS tab joined with (its token rides the page URL) —
+   * forwarding it grants exactly the access we received, never more.
+   */
+  const fallbackShareLink = useCallback((roomId: string): { url: string; role: CollabRole | null } | null => {
+    const last = useViewerStore.getState().collabLastShareToken;
+    if (last) return { url: buildShareUrl(roomId, last), role: parseRoleFromToken(last) };
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const urlToken = params.get('t');
+      if (urlToken && params.get('room') === roomId) {
+        return { url: buildShareUrl(roomId, urlToken), role: parseRoleFromToken(urlToken) };
+      }
+    }
+    return null;
+  }, []);
 
   const modelName = useMemo(() => {
     if (activeModelId) {
@@ -70,8 +92,26 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
     let cancelled = false;
     setBusy(true);
     setCopied(false);
+    setNotice(null);
     (async () => {
       const roomId = collabRoomId ?? mintRoomId();
+      // A joined non-admin can't mint: don't fire a doomed request, reuse
+      // the invite we hold and say so.
+      if (collabRoomId && collabRole && collabRole !== 'admin') {
+        const fallback = fallbackShareLink(roomId);
+        if (!cancelled) {
+          if (fallback) {
+            setLink(fallback.url);
+            if (fallback.role) setRole(fallback.role);
+            setNotice('You joined via an invite - sharing it forwards the same access. Only the room admin can mint new links.');
+          } else {
+            setLink('');
+            setNotice('Only the room admin can create invite links for this room.');
+          }
+          setBusy(false);
+        }
+        return;
+      }
       try {
         if (!collabRoomId) {
           // The creator mints an admin token (first-touch) and joins with it,
@@ -109,6 +149,17 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
       } catch (err) {
         // eslint-disable-next-line no-console
         console.error('[collab] share-link minting failed:', err);
+        // Never leave an empty Link box: reuse a link we already hold.
+        const fallback = fallbackShareLink(roomId);
+        if (!cancelled) {
+          if (fallback) {
+            setLink(fallback.url);
+            setNotice('Could not mint a fresh link - reusing your current invite (same access).');
+          } else {
+            setLink('');
+            setNotice('Link creation failed. Check the connection and try again.');
+          }
+        }
       } finally {
         if (!cancelled) setBusy(false);
       }
@@ -116,7 +167,7 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
     return () => {
       cancelled = true;
     };
-  }, [open, hasModel, role, collabRoomId, startCollab, ifcDataStore, modelName]);
+  }, [open, hasModel, role, collabRoomId, collabRole, startCollab, ifcDataStore, modelName, fallbackShareLink]);
 
   const handleCopy = useCallback(async () => {
     if (!link) return;
@@ -159,6 +210,9 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
                     aria-checked={role === opt.role}
                     variant={role === opt.role ? 'default' : 'outline'}
                     size="sm"
+                    // Only the room admin mints role-scoped links; a joiner
+                    // forwards the invite they hold, so the role is fixed.
+                    disabled={Boolean(collabRoomId && collabRole && collabRole !== 'admin')}
                     onClick={() => setRole(opt.role)}
                   >
                     {opt.label}
@@ -185,6 +239,7 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
                 {copied ? 'Copied' : 'Copy'}
               </Button>
             </div>
+            {notice && <p className="text-xs text-muted-foreground">{notice}</p>}
 
             <div className="flex flex-col gap-1.5">
               <Label className="flex items-center gap-1.5">

@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/merge",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Three-way merge engine for IFCX layers — MergePlan with auto-merged ops and explicit conflict records, merge-layer emission, rebase, and revert.",
   "type": "module",
   "main": "./dist/index.js",

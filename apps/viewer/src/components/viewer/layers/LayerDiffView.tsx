@@ -89,8 +89,11 @@ export function LayerDiffView({ entry, diff }: { entry: LayerStackEntry; diff: S
         if (id !== undefined) ids.add(id);
       }
       if (ids.size === 0) return false;
-      ownedGhostSet.current = ids;
       state.setGhostExceptEntities(ids);
+      // The slice stores a defensive COPY of the set — own THAT copy, or
+      // the identity checks below (and the unmount cleanup) never match
+      // and the ghost leaks until "Show All".
+      ownedGhostSet.current = useViewerStore.getState().ghostExceptEntities;
       return true;
     });
   }, [diff]);

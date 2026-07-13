@@ -26,6 +26,8 @@ export interface RegistryMergeOutcome {
   reason?: string;
   /** Sent on unrelated-base outcomes instead of `reason`. */
   declared_base?: { kind: string; id: string };
+  /** On previews/merges: whether the candidate's declared base was found on the ref. */
+  ancestor_matched?: boolean;
 }
 
 export interface RegistryResolutionInput {

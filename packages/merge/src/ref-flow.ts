@@ -192,6 +192,22 @@ export function mergeIntoRef(store: LayerRefStore, init: MergeInit): MergeOutcom
   const waivers = init.waivers ?? [];
   const resolver = init.principal ?? 'unknown';
 
+  // A candidate already ON the ref is a completed merge, not a mismatch:
+  // publishing appends the draft to its home ref, so re-merging that
+  // layer into the same ref must no-op instead of refusing as
+  // unrelated-base (its declared base is the composition it was authored
+  // against, which need not be representable on the ref).
+  if (oursIds.includes(candidateId)) {
+    if (init.preview) {
+      return {
+        status: 'preview',
+        plan: { autoOps: [], conflicts: [], stats: { touched: 0, autoMerged: 0, conflicting: 0 } },
+        ancestorMatched: true,
+      };
+    }
+    return { status: 'fast-forward', refLayers: oursIds, ancestorMatched: true };
+  }
+
   // Fast path: candidate authored against the ref's current stack. A
   // merge that consumes a waiver falls through to the three-way path so
   // the waiver is durably recorded on a merge layer.

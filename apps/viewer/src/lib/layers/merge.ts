@@ -33,6 +33,12 @@ export interface ViewerMergeResult {
   reason?: string;
   /** Plan stats for previews. */
   stats?: { autoMerged: number; conflicting: number };
+  /**
+   * False on previews planned against an empty ancestor because the
+   * candidate's declared base matched nothing on the ref — executing
+   * such a merge will be refused (unrelated-base), so the panel warns.
+   */
+  ancestorMatched?: boolean;
 }
 
 function fromRegistry(outcome: RegistryMergeOutcome): ViewerMergeResult {
@@ -49,6 +55,7 @@ function fromRegistry(outcome: RegistryMergeOutcome): ViewerMergeResult {
     ...(outcome.plan
       ? { stats: { autoMerged: outcome.plan.stats.autoMerged, conflicting: outcome.plan.stats.conflicting } }
       : {}),
+    ...(outcome.ancestor_matched !== undefined ? { ancestorMatched: outcome.ancestor_matched } : {}),
   };
 }
 
@@ -59,6 +66,7 @@ function fromLocal(outcome: MergeOutcome): ViewerMergeResult {
         status: 'preview',
         conflicts: outcome.plan.conflicts,
         stats: { autoMerged: outcome.plan.stats.autoMerged, conflicting: outcome.plan.stats.conflicting },
+        ancestorMatched: outcome.ancestorMatched,
       };
     case 'conflicts':
       return { status: 'conflicts', conflicts: outcome.conflicts };

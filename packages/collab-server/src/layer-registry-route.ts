@@ -589,7 +589,11 @@ export async function handleLayerRegistryRequest(
             ancestor_matched: outcome.ancestorMatched,
           });
         case 'preview':
-          return json(res, 200, { status: outcome.status, plan: outcome.plan });
+          return json(res, 200, {
+            status: outcome.status,
+            plan: outcome.plan,
+            ancestor_matched: outcome.ancestorMatched,
+          });
         case 'conflicts':
           return json(res, 409, { status: outcome.status, conflicts: outcome.conflicts });
         case 'policy-failure':

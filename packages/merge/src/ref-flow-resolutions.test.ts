@@ -133,3 +133,56 @@ describe('MergeInit.resolutions (per-conflict, review-UI flow)', () => {
     expect(state.get('wall-1')?.components.get('pset:Pset_FireSafety')?.[FIRE]).toBe('REI120');
   });
 });
+
+describe('candidate already on the ref (published drafts re-merged into their home ref)', () => {
+  /**
+   * Publishing appends the draft to its home ref, and the draft's declared
+   * base is the COMPOSITION it was authored against — a stack that need
+   * not be representable on the ref (e.g. URI-id base files fail the
+   * content-address gate). Re-merging that layer into the same ref must
+   * no-op, not refuse as unrelated-base.
+   */
+  function publishedOntoRef() {
+    const store = new MemoryStore();
+    // Base declared against a stack hash that matches nothing on the ref.
+    const candidate = publishable(
+      [{ path: 'wall-1', attributes: { [FIRE]: 'REI180' } }],
+      'Draft',
+      ['uri:not-on-any-ref'],
+    );
+    store.storeLayer(candidate);
+    store.setRef('local', { layers: [candidate.header.id] });
+    return { store, candidate };
+  }
+
+  it('previews as an empty plan with a matched ancestor', () => {
+    const { store, candidate } = publishedOntoRef();
+    const outcome = mergeIntoRef(store, { candidateId: candidate.header.id, into: 'local', preview: true });
+    expect(outcome.status).toBe('preview');
+    if (outcome.status !== 'preview') return;
+    expect(outcome.plan.conflicts).toHaveLength(0);
+    expect(outcome.plan.stats.touched).toBe(0);
+    expect(outcome.ancestorMatched).toBe(true);
+  });
+
+  it('executes as a no-op fast-forward with the ref unchanged', () => {
+    const { store, candidate } = publishedOntoRef();
+    const outcome = mergeIntoRef(store, { candidateId: candidate.header.id, into: 'local' });
+    expect(outcome.status).toBe('fast-forward');
+    if (outcome.status !== 'fast-forward') return;
+    expect(outcome.refLayers).toEqual([candidate.header.id]);
+    expect(store.getRef('local')?.layers).toEqual([candidate.header.id]);
+  });
+
+  it('still refuses a genuinely unrelated candidate NOT on the ref', () => {
+    const { store } = publishedOntoRef();
+    const stranger = publishable(
+      [{ path: 'wall-2', attributes: { [FIRE]: 'REI30' } }],
+      'Stranger',
+      ['uri:some-other-history'],
+    );
+    store.storeLayer(stranger);
+    const outcome = mergeIntoRef(store, { candidateId: stranger.header.id, into: 'local' });
+    expect(outcome.status).toBe('unrelated-base');
+  });
+});

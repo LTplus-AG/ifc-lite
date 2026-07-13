@@ -421,6 +421,12 @@ export function LayerMergeSection() {
               {result.status === 'policy-failure' && `Blocked by ref policy: ${result.reason}`}
               {result.status === 'unrelated-base' && `Unrelated base: ${result.reason}`}
             </p>
+            {result.status === 'preview' && result.ancestorMatched === false && (
+              <p className="text-[11px] text-amber-600 dark:text-amber-500">
+                No shared base on this ref: the plan treats every candidate op as new. Candidates
+                that declare a base from another history will be refused at merge.
+              </p>
+            )}
             {requiredChecks.length > 0 && !mergeDone && (
               <div className="flex flex-col gap-0.5 rounded border bg-card/40 px-1.5 py-1">
                 <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">

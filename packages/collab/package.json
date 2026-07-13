@@ -38,7 +38,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@automerge/automerge": "^3.2.6",
+    "@automerge/automerge": "^3.3.0",
     "@ifc-lite/data": "workspace:^",
     "@ifc-lite/ifcx": "workspace:^",
     "@ifc-lite/mutations": "workspace:^",
@@ -50,7 +50,7 @@
   },
   "devDependencies": {
     "typescript": "^6.0.3",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.10"
   },
   "license": "MPL-2.0",
   "author": "Louis True",

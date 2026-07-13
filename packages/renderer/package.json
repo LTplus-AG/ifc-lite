@@ -23,7 +23,7 @@
   },
   "devDependencies": {
     "@webgpu/types": "^0.1.71",
-    "tsx": "^4.23.0",
+    "tsx": "^4.23.1",
     "typescript": "^6.0.3"
   },
   "license": "MPL-2.0",

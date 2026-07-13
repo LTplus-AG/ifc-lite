@@ -65,6 +65,7 @@ import {
   Slice,
   Layers,
   Layers3,
+  Users,
   SquareStack,
   ChevronsUpDown,
   PanelRight,
@@ -72,6 +73,7 @@ import {
   ChevronsRight,
   GraduationCap,
 } from 'lucide-react';
+import { isCollabEnabled } from '@/lib/collab/config';
 import { cn } from '@/lib/utils';
 import { useViewerStore } from '@/store';
 import { applyLevelDisplayMode } from '@/store/levelDisplay';
@@ -217,7 +219,7 @@ function recordUsage(id: string) {
  *  analysis extension first preserves the prior "panels win the slot" behavior.
  *  Kept as two thin helpers so every existing command action keeps its call
  *  site (the `'list'` legacy id maps to the registry's `'lists'`). */
-function activateRightPanel(panel: 'bcf' | 'ids' | 'lens' | 'clash' | 'compare' | 'extensions' | 'layers') {
+function activateRightPanel(panel: 'bcf' | 'ids' | 'lens' | 'clash' | 'compare' | 'extensions' | 'layers' | 'collab') {
   closeActiveAnalysisExtension();
   useViewerStore.getState().toggleWorkspacePanel(panel);
 }
@@ -446,6 +448,10 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         action: () => { activateRightPanel('lens'); } },
       { id: 'panel:layers', label: 'Layer Stack', keywords: 'ifcx layers federation draft publish merge review provenance registry version overlay', category: 'Panels', icon: Layers,
         action: () => { activateRightPanel('layers'); } },
+      ...(isCollabEnabled()
+        ? [{ id: 'panel:collab', label: 'Collaboration Room', keywords: 'share invite live multiplayer presence room realtime sync', category: 'Panels' as const, icon: Users,
+            action: () => { activateRightPanel('collab'); } }]
+        : []),
       { id: 'panel:extensions', label: 'Extensions', keywords: 'extension plugin install manage iflx', category: 'Panels', icon: Puzzle,
         action: () => { activateRightPanel('extensions'); } },
       // ── Customization entry points — first-class discoverability

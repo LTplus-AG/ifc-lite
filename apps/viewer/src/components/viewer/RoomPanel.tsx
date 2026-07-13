@@ -14,7 +14,7 @@
  */
 
 import { useCallback, useMemo, useState } from 'react';
-import { Check, Link2, LocateFixed, LogOut, ShieldOff, UserMinus, Users } from 'lucide-react';
+import { Check, Link2, LocateFixed, LogOut, Share2, ShieldOff, UserMinus, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -243,10 +243,21 @@ export function RoomPanel({ onClose }: RoomPanelProps) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
         <Users className="size-6 text-muted-foreground" aria-hidden />
-        <p className="text-sm font-medium">Not in a shared room</p>
-        <p className="text-xs text-muted-foreground">
-          Use the Share button in the toolbar to create a room and copy an
-          invite link, or open a link someone shared with you.
+        <p className="text-sm font-medium">Work on this model together</p>
+        <p className="max-w-[30ch] text-xs text-muted-foreground">
+          Create a room to edit live with others: shared cursors, presence,
+          and every edit synced. Invites are one link.
+        </p>
+        <Button
+          size="sm"
+          className="mt-1 h-7 gap-1.5 px-3 text-[11px]"
+          onClick={() => window.dispatchEvent(new CustomEvent('ifc-lite:open-share-dialog'))}
+        >
+          <Share2 className="size-3.5" aria-hidden />
+          Create a room
+        </Button>
+        <p className="max-w-[30ch] text-[10px] text-muted-foreground/70">
+          Got an invite? Just open the link - it lands you in the room.
         </p>
       </div>
     );

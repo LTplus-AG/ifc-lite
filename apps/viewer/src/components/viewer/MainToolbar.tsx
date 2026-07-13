@@ -366,13 +366,18 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
         void loadFederatedIfcx(files as File[]);
       }
     };
+    // Panels (RoomPanel empty state) request the Share dialog this way —
+    // its open state is toolbar-local.
+    const shareHandler = () => setShareDialogOpen(true);
     window.addEventListener('ifc-lite:load-file', handler);
     window.addEventListener('ifc-lite:add-model', addHandler);
     window.addEventListener('ifc-lite:load-layer-stack', stackHandler);
+    window.addEventListener('ifc-lite:open-share-dialog', shareHandler);
     return () => {
       window.removeEventListener('ifc-lite:load-file', handler);
       window.removeEventListener('ifc-lite:add-model', addHandler);
       window.removeEventListener('ifc-lite:load-layer-stack', stackHandler);
+      window.removeEventListener('ifc-lite:open-share-dialog', shareHandler);
     };
   }, [loadFile, addModel, loadFederatedIfcx]);
 
@@ -749,7 +754,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     setScriptPanelVisible,
   ]);
 
-  const handleToggleRightPanel = useCallback((panel: 'bcf' | 'ids' | 'lens' | 'clash' | 'compare' | 'addElement' | 'extensions' | 'layers') => {
+  const handleToggleRightPanel = useCallback((panel: 'bcf' | 'ids' | 'lens' | 'clash' | 'compare' | 'addElement' | 'extensions' | 'layers' | 'collab') => {
     if (activeAnalysisExtension?.placement !== 'bottom') {
       closeActiveAnalysisExtension();
     }
@@ -1291,6 +1296,15 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             <Layers className="h-4 w-4 mr-2" />
             Layer Stack
           </DropdownMenuCheckboxItem>
+          {collabEnabled && (
+            <DropdownMenuCheckboxItem
+              checked={activeWorkspacePanels.has('collab')}
+              onCheckedChange={() => handleToggleRightPanel('collab')}
+            >
+              <Users className="h-4 w-4 mr-2" />
+              Collaboration Room
+            </DropdownMenuCheckboxItem>
+          )}
           <DropdownMenuSeparator />
           <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
             Author

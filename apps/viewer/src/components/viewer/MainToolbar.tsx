@@ -327,6 +327,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   const collabPeerCount = useViewerStore((s) => s.collabPeers.length);
   const collabRoomId = useViewerStore((s) => s.collabRoomId);
   const collabPanelVisible = useViewerStore((s) => s.collabPanelVisible);
+  const layersPanelVisible = useViewerStore((s) => s.layersPanelVisible);
   const {
     loadFile,
     loading,
@@ -754,7 +755,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     setScriptPanelVisible,
   ]);
 
-  const handleToggleRightPanel = useCallback((panel: 'bcf' | 'ids' | 'lens' | 'clash' | 'compare' | 'addElement' | 'extensions' | 'layers' | 'collab') => {
+  const handleToggleRightPanel = useCallback((panel: 'bcf' | 'ids' | 'lens' | 'clash' | 'compare' | 'addElement' | 'extensions') => {
     if (activeAnalysisExtension?.placement !== 'bottom') {
       closeActiveAnalysisExtension();
     }
@@ -874,12 +875,16 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     if (comparePanelVisible) panels.add('compare');
     if (extensionsPanelVisible) panels.add('extensions');
     if (activeTool === 'addElement') panels.add('addElement');
+    if (layersPanelVisible) panels.add('layers');
+    if (collabPanelVisible) panels.add('collab');
     if (analysisExtensionState.activeId) panels.add(analysisExtensionState.activeId);
     return panels;
   }, [
     activeTool,
     analysisExtensionState.activeId,
     bcfPanelVisible,
+    collabPanelVisible,
+    layersPanelVisible,
     clashPanelVisible,
     comparePanelVisible,
     extensionsPanelVisible,
@@ -903,6 +908,8 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     if (activeWorkspacePanels.has('compare')) return 'Compare Models';
     if (activeWorkspacePanels.has('extensions')) return 'Extensions';
     if (activeWorkspacePanels.has('addElement')) return 'Add Element';
+    if (activeWorkspacePanels.has('layers')) return 'Layer Stack';
+    if (activeWorkspacePanels.has('collab')) return 'Collaboration Room';
     return activeAnalysisExtension?.label ?? 'Analysis';
   }, [activeAnalysisExtension?.label, activeWorkspacePanels]);
 
@@ -1291,7 +1298,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           </DropdownMenuCheckboxItem>
           <DropdownMenuCheckboxItem
             checked={activeWorkspacePanels.has('layers')}
-            onCheckedChange={() => handleToggleRightPanel('layers')}
+            onCheckedChange={() => useViewerStore.getState().toggleWorkspacePanel('layers')}
           >
             <Layers className="h-4 w-4 mr-2" />
             Layer Stack
@@ -1299,7 +1306,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           {collabEnabled && (
             <DropdownMenuCheckboxItem
               checked={activeWorkspacePanels.has('collab')}
-              onCheckedChange={() => handleToggleRightPanel('collab')}
+              onCheckedChange={() => useViewerStore.getState().toggleWorkspacePanel('collab')}
             >
               <Users className="h-4 w-4 mr-2" />
               Collaboration Room

@@ -1272,7 +1272,9 @@ export function ViewportContainer() {
           <button
             type="button"
             onClick={() => {
-              void import('@/lib/layers/demo-stack').then((m) => m.loadDemoLayerStack());
+              void import('@/lib/layers/demo-stack')
+                .then((m) => m.loadDemoLayerStack())
+                .catch((err: unknown) => toast.error(err instanceof Error ? err.message : String(err)));
             }}
             className="group mt-6 hidden md:flex items-center gap-3 max-w-3xl w-full p-4 bg-zinc-100 dark:bg-[#1f2335] border border-primary/40 hover:border-primary transition-colors text-left"
           >

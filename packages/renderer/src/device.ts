@@ -21,6 +21,19 @@ export class WebGPUDevice {
   _lastUncapturedError: string = '';
 
   /**
+   * Notified when the GPU device is lost for a reason OTHER than intentional
+   * teardown (`reason === 'destroyed'`) — e.g. a driver reset from the OS GPU
+   * watchdog (Windows TDR) or VRAM exhaustion on a weak/integrated GPU. Once a
+   * device is lost every GPU resource created from it is dead, so the renderer
+   * cannot present again until it is fully re-initialised. Consumers subscribe
+   * (see `Renderer.onDeviceLost`) to react — e.g. reload the model — instead of
+   * leaving a permanently blank canvas.
+   */
+  private deviceLostHandler: ((info: { message: string; reason: string }) => void) | null = null;
+  /** Guards against firing the handler more than once for a single device. */
+  private deviceLostFired: boolean = false;
+
+  /**
    * Initialize WebGPU device and canvas context
    */
   async init(canvas: HTMLCanvasElement): Promise<void> {
@@ -73,12 +86,22 @@ export class WebGPUDevice {
     };
 
     // Handle device lost - mark context as needing reconfiguration
-    // Use type assertion as 'lost' may not be in all WebGPU type definitions
-    const deviceWithLost = this.device as GPUDevice & { lost?: Promise<{ message: string }> };
+    // Use type assertion as 'lost'/'reason' may not be in all WebGPU type definitions
+    const deviceWithLost = this.device as GPUDevice & {
+      lost?: Promise<{ message: string; reason?: string }>;
+    };
     if (deviceWithLost.lost) {
       deviceWithLost.lost.then((info) => {
-        console.warn('[WebGPU] Device lost:', info.message);
+        const reason = info.reason ?? 'unknown';
+        console.warn('[WebGPU] Device lost:', info.message, `(reason: ${reason})`);
         this.contextConfigured = false;
+        // `reason === 'destroyed'` is an intentional teardown (a `device.destroy()`
+        // call or the page dropping the device) — not a fault, so don't wake the
+        // recovery path. Any other reason is a real loss the consumer must react to.
+        if (reason !== 'destroyed' && !this.deviceLostFired) {
+          this.deviceLostFired = true;
+          this.deviceLostHandler?.({ message: info.message, reason });
+        }
       });
     }
 
@@ -165,6 +188,16 @@ export class WebGPUDevice {
       throw new Error('Device not initialized');
     }
     return this.device;
+  }
+
+  /**
+   * Register the callback fired when this device is lost for a non-intentional
+   * reason (see `deviceLostHandler`). Only one handler is kept; the renderer
+   * owns it and fans out to its own subscribers. Set before `init()` so a loss
+   * during the very first frames is not missed.
+   */
+  onDeviceLost(handler: (info: { message: string; reason: string }) => void): void {
+    this.deviceLostHandler = handler;
   }
 
   /**

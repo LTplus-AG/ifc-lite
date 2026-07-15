@@ -214,6 +214,16 @@ export class Renderer {
     /** Set true at the end of `init()`; gates `whenReady()`. */
     private ready = false;
     private readyWaiters: Array<() => void> = [];
+
+    /**
+     * Set once the GPU device is lost for a non-intentional reason (driver
+     * reset / VRAM exhaustion — see `WebGPUDevice`). Every GPU resource is then
+     * dead, so `render()` becomes a no-op (it would only spew validation errors)
+     * until the host re-initialises the renderer. Consumers learn of this via
+     * `onDeviceLost` and typically respond by reloading the model.
+     */
+    private deviceLost = false;
+    private deviceLostListeners = new Set<(info: { message: string; reason: string }) => void>();
     private deviationPipeline: DeviationPipeline | null = null;
     /**
      * Cache of which mesh-set the BVH was built from. We rebuild on
@@ -287,6 +297,10 @@ export class Renderer {
      * Initialize renderer
      */
     async init(): Promise<void> {
+        // Subscribe before the device exists so a loss during the first frames
+        // is never missed — the handler is only invoked when `device.lost`
+        // actually resolves (a real fault), long after init in practice.
+        this.device.onDeviceLost((info) => this.handleDeviceLost(info));
         await this.device.init(this.canvas);
 
         // Get canvas dimensions (use pixel dimensions if set, otherwise use CSS dimensions)
@@ -400,6 +414,40 @@ export class Renderer {
         const waiters = this.readyWaiters;
         this.readyWaiters = [];
         for (const w of waiters) w();
+    }
+
+    /**
+     * Subscribe to non-intentional GPU device loss (driver reset / VRAM
+     * exhaustion — NOT an intentional `destroy()`). Fired at most once per
+     * device. After it fires, `render()` is a no-op until the renderer is
+     * re-initialised, so the typical response is to dispose this renderer and
+     * reload the model. Returns an unsubscribe function.
+     *
+     * Camera and model state live on the CPU (JS) and survive device loss, so a
+     * reload restores the model at its current orientation — the loss is a GPU
+     * event, not a data loss.
+     */
+    onDeviceLost(listener: (info: { message: string; reason: string }) => void): () => void {
+        this.deviceLostListeners.add(listener);
+        return () => this.deviceLostListeners.delete(listener);
+    }
+
+    /** True once the GPU device has been lost for a non-intentional reason. */
+    isDeviceLost(): boolean {
+        return this.deviceLost;
+    }
+
+    private handleDeviceLost(info: { message: string; reason: string }): void {
+        if (this.deviceLost) return;
+        this.deviceLost = true;
+        console.warn('[Renderer] GPU device lost — halting rendering until re-init:', info.message);
+        for (const listener of this.deviceLostListeners) {
+            try {
+                listener(info);
+            } catch (e) {
+                console.error('[Renderer] onDeviceLost listener threw:', e);
+            }
+        }
     }
 
     /**
@@ -1079,6 +1127,12 @@ export class Renderer {
 
     render(options: RenderOptions = {}): void {
         this._renderCallCount++;
+        // A lost device leaves every pipeline/buffer dead; rendering would only
+        // emit a stream of validation errors. Stay quiet until re-init.
+        if (this.deviceLost) {
+            this._renderSkipCount++;
+            return;
+        }
         if (!this.device.isInitialized() || !this.pipeline) {
             this._renderSkipCount++;
             return;

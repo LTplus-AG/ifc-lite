@@ -131,22 +131,22 @@ em { font-style: normal; }
   font-size: 11px; letter-spacing: 0.06em;
 }
 .dim-tick {
-  flex: 0 0 auto; width: 1px; height: 11px; background: currentColor;
+  flex: 0 0 auto; width: 1px; height: 11px; background: currentcolor;
   transform: rotate(45deg);
 }
 .dim-arm {
-  flex: 1 1 auto; height: 1px; background: currentColor; min-width: 14px;
+  flex: 1 1 auto; height: 1px; background: currentcolor; min-width: 14px;
   transform: scaleX(0); transform-origin: left;
-  animation: dimDraw 0.55s cubic-bezier(.2,.7,.2,1) forwards;
+  animation: dim-draw 0.55s cubic-bezier(.2,.7,.2,1) forwards;
 }
 .dim-arm.to-right { transform-origin: right; }
 .dim-val {
   flex: 0 0 auto; color: var(--ink); white-space: nowrap;
-  opacity: 0; animation: dimFade 0.4s ease forwards 0.45s;
+  opacity: 0; animation: dim-fade 0.4s ease forwards 0.45s;
 }
 .dim-val .u { color: var(--ink-3); }
-@keyframes dimDraw { to { transform: scaleX(1); } }
-@keyframes dimFade { to { opacity: 1; } }
+@keyframes dim-draw { to { transform: scaleX(1); } }
+@keyframes dim-fade { to { opacity: 1; } }
 
 /* ─────────────────────────── buttons ─────────────────────────── */
 .btn {
@@ -747,11 +747,11 @@ html[data-theme="dusk"] .hero-grid { opacity: 0.35; }
 .demo-step { margin: 0; padding: 14px 16px; font-family: var(--mono); font-size: 11.5px; color: var(--ink-2); line-height: 1.55; white-space: pre; overflow: auto; max-height: 340px; min-height: 280px; }
 .demo-pane-stream { background: var(--bg); }
 .demo-stream { padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; max-height: 340px; min-height: 280px; }
-.demo-chip { display: inline-grid; grid-template-columns: 38px auto 1fr; gap: 10px; align-items: baseline; padding: 6px 10px; border: 1px solid var(--line); background: var(--bg-card); animation: chipIn 200ms ease-out; }
+.demo-chip { display: inline-grid; grid-template-columns: 38px auto 1fr; gap: 10px; align-items: baseline; padding: 6px 10px; border: 1px solid var(--line); background: var(--bg-card); animation: chip-in 200ms ease-out; }
 .demo-chip-id { color: var(--ink-3); font-size: 11px; font-family: var(--mono); }
 .demo-chip-type { color: var(--ink); font-size: 12.5px; font-weight: 500; }
 .demo-chip-name { color: var(--ink-2); font-size: 11.5px; }
-@keyframes chipIn { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: none; } }
+@keyframes chip-in { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: none; } }
 .demo-stream-done { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-top: 1px solid var(--line); background: var(--bg-card); color: var(--red); font-size: 12px; font-family: var(--mono); }
 .demo-stream-time { color: var(--ink-3); }
 @media (prefers-reduced-motion: reduce) { .demo-chip { animation: none; } }
@@ -791,7 +791,7 @@ html[data-theme="dusk"] .hero-grid { opacity: 0.35; }
 .demo-edit-wall { background: color-mix(in srgb, var(--red) 16%, var(--bg-card)); border: 1.5px solid var(--red); display: flex; align-items: center; justify-content: center; transition: width 180ms ease-out, height 180ms ease-out; color: var(--red); font-size: 10px; letter-spacing: 0.06em; font-family: var(--mono); }
 .demo-edit-floor { position: absolute; bottom: 12px; left: 10%; right: 10%; height: 3px; background: var(--ink-3); opacity: 0.4; }
 .demo-diff-list { list-style: none; margin: 0; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto; }
-.demo-diff { display: grid; grid-template-columns: 90px 1fr 14px 1fr; gap: 8px; align-items: baseline; font-size: 12px; padding: 6px 8px; background: var(--bg-card); border: 1px solid var(--line); animation: chipIn 180ms ease-out; font-family: var(--mono); }
+.demo-diff { display: grid; grid-template-columns: 90px 1fr 14px 1fr; gap: 8px; align-items: baseline; font-size: 12px; padding: 6px 8px; background: var(--bg-card); border: 1px solid var(--line); animation: chip-in 180ms ease-out; font-family: var(--mono); }
 .demo-diff-field { color: var(--ink); }
 .demo-diff-from { color: var(--ink-3); text-decoration: line-through; }
 .demo-diff-to { color: var(--red); }
@@ -877,7 +877,7 @@ html[data-theme="dusk"] .hero-grid { opacity: 0.35; }
 .br-test-row[data-state="fail"] .br-test-mark { color: var(--red); }
 .br-test-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .br-test-label { font-size: 12.5px; color: var(--ink); }
-.br-test-note { font-size: 11.5px; color: var(--ink-3); line-height: 1.4; word-break: break-word; font-family: var(--mono); }
+.br-test-note { font-size: 11.5px; color: var(--ink-3); line-height: 1.4; overflow-wrap: anywhere; font-family: var(--mono); }
 
 /* ─────────────────────────── PLANKOPF title block (fixed bottom) ─────────────────────────── */
 .plankopf {

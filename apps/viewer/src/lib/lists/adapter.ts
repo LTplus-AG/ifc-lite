@@ -18,8 +18,11 @@ import {
   extractEntityAttributesOnDemand,
   extractMaterialsOnDemand,
   extractClassificationsOnDemand,
+  extractTypePropertiesOnDemand,
+  extractTypeQuantitiesOnDemand,
 } from '@ifc-lite/parser';
 import type { PropertySet, QuantitySet } from '@ifc-lite/data';
+import { RelationshipType } from '@ifc-lite/data';
 import { ENTITY_ATTRIBUTES } from '@ifc-lite/lists';
 import type { ListDataProvider, ListClassificationRef, DiscoveredColumns } from '@ifc-lite/lists';
 import { resolveEntityPredefinedType } from '../entity-predefined-type.js';
@@ -118,6 +121,44 @@ export function createListDataProvider(store: IfcDataStore, modelName = ''): Lis
     return store.quantities?.getForEntity(entityId) ?? [];
   }
 
+  // ── Type-inherited property/quantity fallback (issue #1745) ──
+  // Resolve the element's IfcTypeProduct once, then cache the extracted type
+  // psets/qtos BY TYPE ID so a schedule over thousands of instances sharing a
+  // type parses that type only once. `entityToTypeId` memoises the (cheap)
+  // relationship lookup; -1 marks "no type" so we don't re-probe.
+  const entityToTypeId = new Map<number, number>();
+  const typePsetCache = new Map<number, PropertySet[]>();
+  const typeQsetCache = new Map<number, QuantitySet[]>();
+
+  function definingTypeId(entityId: number): number {
+    const cached = entityToTypeId.get(entityId);
+    if (cached !== undefined) return cached;
+    const ids = store.relationships?.getRelated(entityId, RelationshipType.DefinesByType, 'inverse') ?? [];
+    const typeId = ids.length > 0 ? ids[0] : -1;
+    entityToTypeId.set(entityId, typeId);
+    return typeId;
+  }
+
+  function getTypePropertySetsFor(entityId: number): PropertySet[] {
+    const typeId = definingTypeId(entityId);
+    if (typeId < 0) return [];
+    const cached = typePsetCache.get(typeId);
+    if (cached) return cached;
+    const psets = (extractTypePropertiesOnDemand(store, entityId)?.properties ?? []) as PropertySet[];
+    typePsetCache.set(typeId, psets);
+    return psets;
+  }
+
+  function getTypeQuantitySetsFor(entityId: number): QuantitySet[] {
+    const typeId = definingTypeId(entityId);
+    if (typeId < 0) return [];
+    const cached = typeQsetCache.get(typeId);
+    if (cached) return cached;
+    const qsets = (extractTypeQuantitiesOnDemand(store, entityId)?.quantities ?? []) as QuantitySet[];
+    typeQsetCache.set(typeId, qsets);
+    return qsets;
+  }
+
   return {
     getEntitiesByType: (type) => store.entities.getByType(type),
 
@@ -131,6 +172,8 @@ export function createListDataProvider(store: IfcDataStore, modelName = ''): Lis
 
     getPropertySets: getPropertySetsFor,
     getQuantitySets: getQuantitySetsFor,
+    getTypePropertySets: getTypePropertySetsFor,
+    getTypeQuantitySets: getTypeQuantitySetsFor,
 
     getAllEntityIds(): number[] {
       if (allIdsCache) return allIdsCache;

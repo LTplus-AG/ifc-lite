@@ -54,6 +54,21 @@ export interface ListDataProvider {
   /** Get all quantity sets for an entity (handles on-demand extraction) */
   getQuantitySets(expressId: number): QuantitySet[];
 
+  /**
+   * Property sets inherited from the element's IfcTypeProduct (via
+   * IfcRelDefinesByType), for the automatic Type-property fallback (issue
+   * #1745): when a `property` column/condition finds nothing on the instance,
+   * the engine consults these so a value defined once on the type (e.g.
+   * Pset_WallCommon.FireRating on IfcWallType) still resolves on every
+   * instance row. Optional — providers built before this existed simply have
+   * no fallback (behaviour unchanged). Returns [] when the element has no type.
+   */
+  getTypePropertySets?(expressId: number): PropertySet[];
+  /** Quantity sets inherited from the element's IfcTypeProduct — the quantity
+   *  counterpart of {@link getTypePropertySets} (e.g. type-level
+   *  Qto_WallBaseQuantities). Same optional Type fallback semantics. */
+  getTypeQuantitySets?(expressId: number): QuantitySet[];
+
   // ── Optional accessors (added for richer list targeting / columns) ──
   // Implementers built before these existed keep working: the engine
   // degrades gracefully when a method is absent (no-class lists resolve

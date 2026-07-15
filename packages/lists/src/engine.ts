@@ -369,6 +369,20 @@ function extractColumnValues(
     qsets = provider.getQuantitySets(entityId);
   }
 
+  // Type-inherited sets are fetched lazily — only when an instance-level lookup
+  // misses — so the common case (property lives on the instance) never pays for
+  // resolving the element's IfcTypeProduct. Cached per entity across columns.
+  let typePsets: PropertySet[] | undefined;
+  let typeQsets: QuantitySet[] | undefined;
+  const getTypePsets = (): PropertySet[] => {
+    if (typePsets === undefined) typePsets = provider.getTypePropertySets?.(entityId) ?? [];
+    return typePsets;
+  };
+  const getTypeQsets = (): QuantitySet[] => {
+    if (typeQsets === undefined) typeQsets = provider.getTypeQuantitySets?.(entityId) ?? [];
+    return typeQsets;
+  };
+
   const values: CellValue[] = new Array(columns.length);
   for (let i = 0; i < columns.length; i++) {
     const col = columns[i];
@@ -377,13 +391,17 @@ function extractColumnValues(
         values[i] = getAttributeValue(entityId, col.propertyName, provider);
         break;
       case 'property': {
-        const prop = findPropertyEntry(psets ?? [], col.psetName ?? '', col.propertyName);
+        // Automatic Type fallback (issue #1745): instance psets win; only when
+        // the instance has no matching property do we consult the type's.
+        let prop = findPropertyEntry(psets ?? [], col.psetName ?? '', col.propertyName);
+        if (!prop) prop = findPropertyEntry(getTypePsets(), col.psetName ?? '', col.propertyName);
         values[i] = prop ? resolvePropertyValue(prop.value) : null;
         if (prop?.dataType && columnMeta[i].dataType === undefined) columnMeta[i].dataType = prop.dataType;
         break;
       }
       case 'quantity': {
-        const quant = findQuantityEntry(qsets ?? [], col.psetName ?? '', col.propertyName);
+        let quant = findQuantityEntry(qsets ?? [], col.psetName ?? '', col.propertyName);
+        if (!quant) quant = findQuantityEntry(getTypeQsets(), col.psetName ?? '', col.propertyName);
         values[i] = quant ? formatQuantityValue(quant.value, quant.type) : null;
         if (quant && columnMeta[i].quantityType === undefined) columnMeta[i].quantityType = quant.type;
         break;
@@ -449,8 +467,10 @@ function getPropertyValue(
   propName: string,
   provider: ListDataProvider,
 ): CellValue {
-  const psets = provider.getPropertySets(entityId);
-  return findPropertyInSets(psets, psetName, propName);
+  const prop = findPropertyEntry(provider.getPropertySets(entityId), psetName, propName)
+    // Type fallback (issue #1745) so conditions filter on type-inherited values too.
+    ?? findPropertyEntry(provider.getTypePropertySets?.(entityId) ?? [], psetName, propName);
+  return prop ? resolvePropertyValue(prop.value) : null;
 }
 
 function getQuantityValue(
@@ -459,8 +479,9 @@ function getQuantityValue(
   quantName: string,
   provider: ListDataProvider,
 ): CellValue {
-  const qsets = provider.getQuantitySets(entityId);
-  return findQuantityInSets(qsets, qsetName, quantName);
+  const quant = findQuantityEntry(provider.getQuantitySets(entityId), qsetName, quantName)
+    ?? findQuantityEntry(provider.getTypeQuantitySets?.(entityId) ?? [], qsetName, quantName);
+  return quant ? formatQuantityValue(quant.value, quant.type) : null;
 }
 
 /** Find the raw matching property entry (name + value + dataType), so
@@ -480,11 +501,6 @@ function findPropertyEntry(psets: PropertySet[], psetName: string, propName: str
     }
   }
   return undefined;
-}
-
-function findPropertyInSets(psets: PropertySet[], psetName: string, propName: string): CellValue {
-  const prop = findPropertyEntry(psets, psetName, propName);
-  return prop ? resolvePropertyValue(prop.value) : null;
 }
 
 /**
@@ -528,11 +544,6 @@ function findQuantityEntry(qsets: QuantitySet[], qsetName: string, quantName: st
     }
   }
   return undefined;
-}
-
-function findQuantityInSets(qsets: QuantitySet[], qsetName: string, quantName: string): CellValue {
-  const quant = findQuantityEntry(qsets, qsetName, quantName);
-  return quant ? formatQuantityValue(quant.value, quant.type) : null;
 }
 
 function formatQuantityValue(value: number, _type: number): CellValue {

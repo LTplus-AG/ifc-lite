@@ -1120,12 +1120,14 @@ export {
     getMaterialDisplay,
     extractTypePropertiesOnDemand,
     extractTypeEntityOwnProperties,
+    extractTypeQuantitiesOnDemand,
     extractDocumentsOnDemand,
     extractRelationshipsOnDemand,
     extractGroupMembersOnDemand,
     extractGeoreferencingOnDemand,
     parsePropertyValue,
     extractPsetsFromIds,
+    extractQsetsFromIds,
 } from './on-demand-extractors.js';
 
 export type {
@@ -1138,6 +1140,7 @@ export type {
     MaterialLeaf,
     MaterialUsage,
     TypePropertyInfo,
+    TypeQuantityInfo,
     DocumentInfo,
     EntityRelationships,
     GroupMember,

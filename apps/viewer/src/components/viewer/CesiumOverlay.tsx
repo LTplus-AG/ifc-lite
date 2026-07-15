@@ -271,8 +271,16 @@ export function CesiumOverlay({
           try {
             // maximumLevel 19 = OSM's deepest tile zoom; conforms to the
             // OpenStreetMap tile usage policy and avoids 404s past z19.
-            // The provider carries OSM's attribution credit automatically.
-            const osm = new Cesium.OpenStreetMapImageryProvider({ maximumLevel: 19 });
+            // Pass an explicit `credit`: Cesium's default OSM credit is the
+            // outdated "MapQuest … CC-BY-SA" string, but the OSMF tile policy
+            // requires a visible "© OpenStreetMap contributors" attribution
+            // linking to the copyright page. Cesium renders credit HTML, so the
+            // anchor is clickable in the on-canvas attribution.
+            const osm = new Cesium.OpenStreetMapImageryProvider({
+              maximumLevel: 19,
+              credit:
+                '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
+            });
             if (!cancelled) viewer.imageryLayers.addImageryProvider(osm);
           } catch (e) { console.warn('[CesiumOverlay] OSM base map unavailable:', e); }
         } else if (dataSource === 'osm-buildings') {

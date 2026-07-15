@@ -144,7 +144,13 @@ export function createListDataProvider(store: IfcDataStore, modelName = ''): Lis
     if (typeId < 0) return [];
     const cached = typePsetCache.get(typeId);
     if (cached) return cached;
-    const psets = (extractTypePropertiesOnDemand(store, entityId)?.properties ?? []) as PropertySet[];
+    // Mirror getPropertySetsFor's path split: the source-backed extractor for
+    // WASM-parsed stores, the prebuilt table (keyed by the type's own id) for
+    // server-parsed stores whose `source` is empty — otherwise server-loaded
+    // schedules would still blank out type-level values.
+    const psets = usesOnDemandProps
+      ? ((extractTypePropertiesOnDemand(store, entityId)?.properties ?? []) as PropertySet[])
+      : (store.properties?.getForEntity(typeId) ?? []);
     typePsetCache.set(typeId, psets);
     return psets;
   }
@@ -154,7 +160,9 @@ export function createListDataProvider(store: IfcDataStore, modelName = ''): Lis
     if (typeId < 0) return [];
     const cached = typeQsetCache.get(typeId);
     if (cached) return cached;
-    const qsets = (extractTypeQuantitiesOnDemand(store, entityId)?.quantities ?? []) as QuantitySet[];
+    const qsets = usesOnDemandQtos
+      ? ((extractTypeQuantitiesOnDemand(store, entityId)?.quantities ?? []) as QuantitySet[])
+      : (store.quantities?.getForEntity(typeId) ?? []);
     typeQsetCache.set(typeId, qsets);
     return qsets;
   }

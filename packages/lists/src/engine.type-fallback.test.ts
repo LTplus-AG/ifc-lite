@@ -21,7 +21,7 @@ import type { ListDataProvider, ListDefinition } from './types.js';
 // also carries a QTO (Qto_WallBaseQuantities.Width) neither instance defines.
 function createProvider(): ListDataProvider {
   const instancePsets = new Map<number, PropertySet[]>([
-    [1, [{ name: 'Pset_WallCommon', properties: [{ name: 'FireRating', value: 'REI 120' }] }]],
+    [1, [{ name: 'Pset_WallCommon', globalId: 'inst-pset-1', properties: [{ name: 'FireRating', type: 0, value: 'REI 120' }] }]],
     [2, []],
   ]);
   const instanceQsets = new Map<number, QuantitySet[]>([
@@ -32,9 +32,9 @@ function createProvider(): ListDataProvider {
   // Shared type-level data (as if from IfcWallType). FireRating REI 60 here is
   // the type default that Wall 1 overrides but Wall 2 inherits.
   const typePsets: PropertySet[] = [
-    { name: 'Pset_WallCommon', properties: [
-      { name: 'FireRating', value: 'REI 60' },
-      { name: 'Manufacturer', value: 'ACME Walls' },
+    { name: 'Pset_WallCommon', globalId: 'type-pset-1', properties: [
+      { name: 'FireRating', type: 0, value: 'REI 60' },
+      { name: 'Manufacturer', type: 0, value: 'ACME Walls' },
     ] },
   ];
   const typeQsets: QuantitySet[] = [

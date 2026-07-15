@@ -558,7 +558,11 @@ export function extractQsetsFromIds(
             }
         }
 
-        if (quantities.length > 0 || qsetName) {
+        // Only surface sets that actually carry quantities. An empty set would
+        // add nothing to a schedule, and (because `extractTypeQuantitiesOnDemand`
+        // dedups by name) an empty set from one source could otherwise suppress a
+        // populated same-named set from another.
+        if (quantities.length > 0) {
             result.push({ name: qsetName, quantities });
         }
     }

@@ -25,7 +25,7 @@
   },
   "devDependencies": {
     "tsx": "^4.23.1",
-    "typescript": "^6.0.3"
+    "typescript": "^7.0.2"
   },
   "license": "MPL-2.0",
   "author": "Louis True",

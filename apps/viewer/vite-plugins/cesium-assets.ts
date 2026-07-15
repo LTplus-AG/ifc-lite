@@ -76,6 +76,17 @@ export function cesiumStaticAssets(): Plugin {
           CESIUM_DEV_MIME[path.extname(filePath).toLowerCase()] ??
             'application/octet-stream',
         );
+        // Mirror the app's cross-origin isolation headers. Vite injects
+        // `server.headers` (COOP/COEP) into its own responses, but this custom
+        // connect middleware writes the response itself and bypasses that, so
+        // /cesium/* would ship without COEP. Under cross-origin isolation a
+        // dedicated worker script (Cesium spawns several from /cesium/Workers/*)
+        // must itself carry COEP or Chrome blocks it with ERR_BLOCKED_BY_RESPONSE
+        // — killing every Cesium worker and leaving the globe (terrain + imagery,
+        // including the OSM base map) black in dev. Prod is unaffected: vercel.json
+        // applies these to `/(.*)`. Keep these in lockstep with server.headers.
+        res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+        res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless');
         if (req.method === 'HEAD') return res.end();
         // Guard the TOCTOU window between existsSync and the stream open: an
         // unhandled 'error' would otherwise crash the dev server.

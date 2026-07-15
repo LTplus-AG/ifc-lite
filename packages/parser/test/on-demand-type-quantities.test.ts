@@ -143,6 +143,28 @@ describe('extractTypeQuantitiesOnDemand', () => {
     expect(result!.quantities[0].name).toBe('Qto_WallBaseQuantities');
   });
 
+  it('an empty same-named set does not suppress a populated one from the other source', () => {
+    const lines = [
+      `#100=IFCWALL('guid1',$,'My Wall',$,$,$,$,$);`,
+      // Source 1 (HasPropertySets): an EMPTY Qto_WallBaseQuantities.
+      `#200=IFCWALLTYPE('guid2',$,'Wall Type E',$,$,(#300),$,'tag',$,.STANDARD.);`,
+      `#300=IFCELEMENTQUANTITY('guid3',$,'Qto_WallBaseQuantities',$,$,());`,
+      // Source 2 (onDemandQuantityMap): a POPULATED set with the same name.
+      `#400=IFCELEMENTQUANTITY('guid4',$,'Qto_WallBaseQuantities',$,$,(#410));`,
+      `#410=IFCQUANTITYLENGTH('Width',$,$,0.3);`,
+    ];
+    const store = buildStoreFromStep(lines, {
+      quantityMap: new Map<number, number[]>([[200, [400]]]),
+      relationships: [{ entityId: 100, relType: RelationshipType.DefinesByType, direction: 'inverse', targetIds: [200] }],
+    });
+
+    const result = extractTypeQuantitiesOnDemand(store, 100);
+    expect(result).not.toBeNull();
+    expect(result!.quantities).toHaveLength(1);
+    expect(result!.quantities[0].name).toBe('Qto_WallBaseQuantities');
+    expect(result!.quantities[0].quantities[0].name).toBe('Width');
+  });
+
   it('returns null when the type carries no quantities', () => {
     const lines = [
       `#100=IFCWALL('guid1',$,'My Wall',$,$,$,$,$);`,

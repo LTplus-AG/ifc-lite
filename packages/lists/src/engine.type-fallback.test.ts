@@ -107,6 +107,27 @@ describe('type-property fallback (#1745)', () => {
     expect(result.totalCount).toBe(2);
   });
 
+  it('does not fall back when the instance declares the property (even null-valued)', () => {
+    // Deliberate precedence choice (#1745): fallback is ENTRY-based, not
+    // value-based — an occurrence that declares the property overrides the
+    // type, matching IFC occurrence-override semantics and the engine's
+    // instance-only behaviour. A present-but-null occurrence property therefore
+    // wins (resolves blank) rather than surfacing the type default.
+    const base = createProvider();
+    const withNull: ListDataProvider = {
+      ...base,
+      getPropertySets: (id) => id === 2
+        ? [{ name: 'Pset_WallCommon', globalId: 'inst-2', properties: [{ name: 'FireRating', type: 0, value: null }] }]
+        : base.getPropertySets(id),
+    };
+    const result = executeList(
+      walls([{ id: 'fr', source: 'property', psetName: 'Pset_WallCommon', propertyName: 'FireRating' }]),
+      withNull,
+    );
+    // Wall 2 declares FireRating locally (null) → stays null, no REI 60 from the type.
+    expect(result.rows.map(r => r.values[0])).toEqual(['REI 120', null]);
+  });
+
   it('degrades gracefully when the provider has no type accessors', () => {
     const base = createProvider();
     const noType: ListDataProvider = { ...base, getTypePropertySets: undefined, getTypeQuantitySets: undefined };

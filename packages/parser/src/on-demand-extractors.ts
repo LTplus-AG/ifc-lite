@@ -375,7 +375,11 @@ export function extractPsetsFromIds(
             }
         }
 
-        if (properties.length > 0 || psetName) {
+        // Only surface sets that actually carry properties. An empty, named set
+        // contributes nothing and — because extractTypePropertiesOnDemand dedups
+        // by name — an empty set from one source could otherwise suppress a
+        // populated same-named set from another (symmetric with extractQsetsFromIds).
+        if (properties.length > 0) {
             result.push({ name: psetName, globalId: psetGlobalId, properties });
         }
     }

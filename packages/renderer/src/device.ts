@@ -37,6 +37,11 @@ export class WebGPUDevice {
    * Initialize WebGPU device and canvas context
    */
   async init(canvas: HTMLCanvasElement): Promise<void> {
+    // Each init() begins a fresh GPUDevice lifetime. Clear the once-per-device
+    // guard so a destroy()+init() re-entry can still report a later loss (the
+    // previous device's `lost` promise already resolved and set this true).
+    this.deviceLostFired = false;
+
     if (!navigator.gpu) {
       throw new Error('WebGPU not available');
     }

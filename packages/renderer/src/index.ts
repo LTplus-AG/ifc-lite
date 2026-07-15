@@ -297,6 +297,9 @@ export class Renderer {
      * Initialize renderer
      */
     async init(): Promise<void> {
+        // Clear the lost flag so a re-init (destroy()+init() on the same instance)
+        // resumes rendering instead of staying a permanent no-op from an earlier loss.
+        this.deviceLost = false;
         // Subscribe before the device exists so a loss during the first frames
         // is never missed — the handler is only invoked when `device.lost`
         // actually resolves (a real fault), long after init in practice.

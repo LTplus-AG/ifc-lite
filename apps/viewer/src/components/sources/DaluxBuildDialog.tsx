@@ -65,11 +65,14 @@ export function DaluxBuildDialog({
       saveDaluxPrefs(values);
       setPrefs(values);
       setShowSettings(false);
-      if (isConfigured) {
+      const nowConfigured = daluxProvider?.manifest.preferences
+        .filter((p) => p.required)
+        .every((p) => !!values[p.name]?.trim());
+      if (nowConfigured) {
         setStep("browser");
       }
     },
-    [isConfigured],
+    [daluxProvider],
   );
 
   const handleTestConnection = useCallback(

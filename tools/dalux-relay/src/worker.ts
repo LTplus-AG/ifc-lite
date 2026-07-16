@@ -19,8 +19,11 @@ const DALUX_HOST = 'field.dalux.com';
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    const origin = request.headers.get('Origin') ?? '*';
-    const corsHeaders = buildCorsHeaders(origin, env.ALLOWED_ORIGINS);
+    const cors = resolveCors(request.headers.get('Origin'), env.ALLOWED_ORIGINS);
+    if ('error' in cors) {
+      return cors.error;
+    }
+    const { corsHeaders } = cors;
 
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: corsHeaders });
@@ -53,6 +56,7 @@ export default {
         'X-API-Key': env.DALUX_API_KEY,
         Accept: 'application/json',
       },
+      body: request.method === 'POST' ? request.body : undefined,
     });
 
     const responseHeaders = new Headers(upstream.headers);
@@ -68,22 +72,44 @@ export default {
   },
 };
 
-function buildCorsHeaders(
-  origin: string,
+function resolveCors(
+  origin: string | null,
   allowedOrigins?: string,
-): Record<string, string> {
-  const allowed = allowedOrigins
-    ? allowedOrigins.split(',').map((s) => s.trim())
-    : ['*'];
+): { corsHeaders: Record<string, string> } | { error: Response } {
+  const allowed = parseAllowedOrigins(allowedOrigins);
+  if (allowed.length === 0) {
+    return {
+      error: jsonError(
+        500,
+        'ALLOWED_ORIGINS is not configured. Configure a comma-separated allowlist before deploying this relay.',
+        {},
+      ),
+    };
+  }
 
-  const effectiveOrigin = allowed.includes('*')
-    ? '*'
-    : allowed.includes(origin)
-      ? origin
-      : allowed[0]!;
+  if (allowed.includes('*')) {
+    return { corsHeaders: buildCorsHeaders('*') };
+  }
 
+  if (!origin || !allowed.includes(origin)) {
+    return {
+      error: jsonError(403, `Origin not allowed: ${origin ?? '(missing origin)'}`, {}),
+    };
+  }
+
+  return { corsHeaders: buildCorsHeaders(origin) };
+}
+
+function parseAllowedOrigins(allowedOrigins?: string): string[] {
+  return (allowedOrigins ?? '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+function buildCorsHeaders(origin: string): Record<string, string> {
   return {
-    'Access-Control-Allow-Origin': effectiveOrigin,
+    'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Accept',
     'Access-Control-Max-Age': '86400',

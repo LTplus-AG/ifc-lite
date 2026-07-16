@@ -13,8 +13,6 @@ import { toast } from '@/components/ui/toast';
 import { Cloud, Settings } from 'lucide-react';
 import { loadSavedSourcePrefs, saveSourcePrefs } from '@/lib/sources/preferences';
 
-const DALUX_ICON_URL = 'https://www.dalux.com/wp-content/uploads/2022/06/Dalux_logo_-5000px_png_HIGH_RES.png';
-
 interface SourcesPanelProps {
   onClose: () => void;
 }
@@ -130,14 +128,13 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
             const configured = p.manifest.preferences
               .filter((pf) => pf.required)
               .every((pf) => !!prefs[pf.name]?.trim());
-            const isDaluxProvider = p.manifest.name === 'dalux-build';
 
             return (
               <li key={p.manifest.name} className="flex items-center gap-2 px-3 py-2">
-                {isDaluxProvider ? (
+                {p.manifest.iconUrl ? (
                   <img
-                    src={DALUX_ICON_URL}
-                    alt="Dalux"
+                    src={p.manifest.iconUrl}
+                    alt={p.manifest.title}
                     className="h-4 w-4 rounded-sm object-contain"
                   />
                 ) : (

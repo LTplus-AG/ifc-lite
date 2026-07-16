@@ -18,6 +18,8 @@ export interface PluginManifest {
   readonly name: string;
   /** Human-readable display title. */
   readonly title: string;
+  /** Optional icon shown by the host when listing providers. */
+  readonly iconUrl?: string;
   /** Semver range the host must satisfy (e.g. `"^1.0.0"`). */
   readonly api: string;
   /** Allowed outbound domains. The host's fetch wrapper enforces this. */

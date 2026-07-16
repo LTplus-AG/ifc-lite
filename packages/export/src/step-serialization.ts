@@ -10,7 +10,7 @@
  */
 
 import { serializeValue, type IfcAttributeValue } from '@ifc-lite/parser';
-import { PropertyValueType, QuantityType } from '@ifc-lite/data';
+import { PropertyValueType, QuantityType, formatStepReal } from '@ifc-lite/data';
 
 /**
  * Escape a string for STEP format (backslash and single-quote escaping).
@@ -29,12 +29,15 @@ export function escapeStepString(str: string): string {
 
 /**
  * Convert a number to a valid STEP REAL literal.
- * Handles NaN/Infinity (-> 0.) and ensures a decimal point is present.
+ *
+ * Handles NaN/Infinity (-> `0.`) and delegates the mantissa/`E` rewrite to the
+ * shared {@link formatStepReal} so exponential magnitudes serialize as valid
+ * STEP (`5e-8` -> `5.E-8`, `1e21` -> `1.E+21`, `1.5e-7` -> `1.5E-7`) rather than
+ * the invalid `5e-8.` / lowercase-`e` forms a bare decimal-point append produced.
  */
 export function toStepReal(v: number): string {
   if (!Number.isFinite(v)) return '0.';
-  const s = v.toString();
-  return s.includes('.') ? s : s + '.';
+  return formatStepReal(v);
 }
 
 /**
@@ -72,7 +75,7 @@ export function serializePropertyValue(value: unknown, type: PropertyValueType):
     case PropertyValueType.Real: {
       const num = Number(value);
       if (!Number.isFinite(num)) return '$';
-      return `IFCREAL(${num.toString().includes('.') ? num : num + '.'})`;
+      return `IFCREAL(${formatStepReal(num)})`;
     }
 
     case PropertyValueType.Integer:
@@ -106,6 +109,16 @@ export function serializePropertyValue(value: unknown, type: PropertyValueType):
 export function serializeAttributeValue(value: string, currentToken: string): string {
   const trimmed = value.trim();
   const current = currentToken.trim();
+
+  // A source attribute already written as a quoted STEP string stays one: user
+  // free-text is emitted as a properly quoted+escaped string and NEVER
+  // reinterpreted as a typed token. Otherwise a Name of `#12` would silently
+  // become an entity reference, `$`/`*` a null/derived marker, `.FOO.` an enum,
+  // and an apostrophe-bearing value would break the record — corrupting the file.
+  if (current.length >= 2 && current.startsWith("'") && current.endsWith("'")) {
+    if (value === '') return '$';
+    return `'${escapeStepString(value)}'`;
+  }
 
   if (value === '') return '$';
   if (trimmed === '$' || trimmed === '*') return trimmed;

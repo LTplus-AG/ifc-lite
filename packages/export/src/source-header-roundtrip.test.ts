@@ -182,6 +182,39 @@ describe('StepExporter header provenance (with mutations)', () => {
   });
 });
 
+describe('StepExporter header round-trip (STEP string escapes)', () => {
+  it('round-trips an ISO-10303-21 \\X2\\ author without doubling backslashes', async () => {
+    const model = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');
+FILE_NAME('sample.ifc','2026-01-01T00:00:00',('Tr\\X2\\00FC\\X0\\mpler'),('Org'),'App','System','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCWALL('3wkd_mjInDCfOthy7w_A6V',$,'Sample Wall',$,$,$,$,$,$);
+ENDSEC;
+END-ISO-10303-21;`;
+    const store = await parse(model);
+    // Read decodes the STEP escape to real Unicode (ü), not literal text.
+    expect(store.sourceHeader!.author).toEqual(['Trümpler']);
+
+    const result = new StepExporter(store).export({ schema: store.schemaVersion });
+    const text = dec(result.content);
+    // The old bug re-encoded the (un-decoded) `\X2\` into doubled backslashes.
+    expect(text).not.toContain('\\\\');
+
+    const out = exportedHeader(result.content);
+    expect(out.author).toEqual(['Trümpler']);
+  });
+
+  it('collapses a newline in a header value to a space (no split record)', () => {
+    const header = generateHeader({ schema: 'IFC4', author: ['A\nB'], timeStamp: 'TS' });
+    const parsed = parseSourceHeader(new TextEncoder().encode(header));
+    expect(parsed).toBeDefined();
+    expect(parsed!.author).toEqual(['A B']);
+  });
+});
+
 describe('generateHeader', () => {
   it('emits a valid default (scratch) header with a parenthesised description list', () => {
     const header = generateHeader({ schema: 'IFC4', timeStamp: 'TS' });

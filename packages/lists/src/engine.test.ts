@@ -713,10 +713,17 @@ describe('listResultToCSV', () => {
   // CWE-1236 formula-injection guard: a cell that starts with a spreadsheet
   // formula trigger char gets a leading apostrophe so Excel/Sheets render it
   // as text instead of evaluating it as a formula when the CSV is opened.
+  // Genuine numeric cells (including a leading `-`/`+` sign) are EXEMPT so
+  // `-0.35` / `+1` stay summable in Excel; only non-numeric trigger cells quote.
   it.each([
     ['=SUM(A1:A10)', "'=SUM(A1:A10)"],
-    ['-2+3', "'-2+3"],
-    ['+1234567890', "'+1234567890"],
+    ['-2+3', "'-2+3"], // starts numeric but is a formula, not a plain number
+    ['-cmd', "'-cmd"],
+    ['@x', "'@x"],
+    // Plain signed numbers are NOT quoted — they carry no formula payload.
+    ['-0.35', '-0.35'],
+    ['+1', '+1'],
+    ['+1234567890', '+1234567890'],
     // Contains a delimiter comma too, so the apostrophe-prefixed value is
     // also quote-wrapped by the general CSV-escaping rule below it.
     ['@SUM(1,2)', '"\'@SUM(1,2)"'],

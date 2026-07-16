@@ -571,4 +571,39 @@ describe('BCF Writer', () => {
     const readProject = await readBCF(await blob.arrayBuffer());
     expect(readProject.topics.get(topicGuid)?.header).toBeUndefined();
   });
+
+  it('sanitizes a path-traversal topic GUID so no zip entry escapes the archive root (zip-slip)', async () => {
+    // A topic GUID parsed from untrusted markup can contain `../`; using it as a
+    // folder name verbatim would let a read-modify-save write outside the archive.
+    const evilGuid = '../../evil';
+    const topic: BCFTopic = {
+      guid: evilGuid,
+      title: 'Malicious Topic',
+      creationDate: new Date().toISOString(),
+      creationAuthor: 'attacker@example.com',
+      viewpoints: [],
+      comments: [],
+    };
+    const project: BCFProject = {
+      version: '2.1',
+      topics: new Map([[evilGuid, topic]]),
+    };
+
+    const blob = await writeBCF(project);
+    const zip = await JSZip.loadAsync(await blobToArrayBuffer(blob));
+
+    const paths: string[] = [];
+    zip.forEach((relativePath) => paths.push(relativePath));
+
+    // No entry may contain a parent-directory traversal segment.
+    for (const p of paths) {
+      expect(p.split('/')).not.toContain('..');
+      expect(p.startsWith('/')).toBe(false);
+    }
+    // The real GUID is still preserved as the markup Topic attribute.
+    const markupPath = paths.find((p) => p.endsWith('markup.bcf'));
+    expect(markupPath).toBeDefined();
+    const markup = await zip.file(markupPath!)?.async('string');
+    expect(markup).toContain(`Guid="${evilGuid}"`);
+  });
 });

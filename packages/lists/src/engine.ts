@@ -581,7 +581,12 @@ export function listResultToCSV(result: ListResult, delimiter = ','): string {
     let str = String(val);
     // CSV/formula-injection guard (CWE-1236): prefix a leading spreadsheet
     // formula trigger so Excel/Sheets treat the cell as text, not a formula.
-    if (/^[=+\-@\t\r]/.test(str)) {
+    // A genuine numeric cell is exempt — the old guard also matched a leading
+    // `-`/`+`, so `-0.35` exported as `'-0.35` and broke Excel SUM(). A cell that
+    // is a plain (optionally signed, decimal/exponent) number carries no formula
+    // payload, so it is left untouched; anything else with a trigger prefix
+    // (including `-cmd` or `-1+cmd`) is still quoted.
+    if (/^[=+\-@\t\r]/.test(str) && !/^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(str)) {
       str = `'${str}`;
     }
     if (str.includes(delimiter) || str.includes('"') || str.includes('\n') || str.includes('\r')) {

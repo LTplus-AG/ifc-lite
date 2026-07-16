@@ -329,4 +329,21 @@ describe('BCF Reader - buildingSMART Test Files', () => {
       expect(topic.comments[0].comment).toBe('vendor-followed comment');
     });
   });
+
+  describe('resource caps (zip-bomb guard)', () => {
+    it('rejects an archive whose declared size exceeds the compressed-input cap', async () => {
+      // Stub a Blob-like object reporting a size past the 250 MB cap; readBCF
+      // throws before ever decompressing, so no large allocation is needed.
+      const oversized = { size: 300 * 1024 * 1024 } as unknown as Blob;
+      await expect(readBCF(oversized)).rejects.toThrow(/exceeds cap/);
+    });
+
+    it('still reads a normal, within-cap archive', async () => {
+      const zip = new JSZip();
+      zip.file('bcf.version', '<?xml version="1.0"?><Version VersionId="2.1"><DetailedVersion>2.1</DetailedVersion></Version>');
+      const buf = await zip.generateAsync({ type: 'arraybuffer' });
+      const project = await readBCF(buf);
+      expect(project.version).toBe('2.1');
+    });
+  });
 });

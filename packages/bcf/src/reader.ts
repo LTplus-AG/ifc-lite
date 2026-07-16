@@ -33,13 +33,55 @@ import type {
 } from './types.js';
 
 /**
+ * Resource caps guarding against a malicious (zip-bomb) .bcfzip: a tiny
+ * compressed archive that expands to gigabytes, or one with a pathological
+ * entry count, would OOM the tab. A real BCF is well under these bounds.
+ */
+const MAX_BCF_ARCHIVE_BYTES = 250 * 1024 * 1024; // 250 MB compressed input
+const MAX_BCF_ENTRIES = 20_000; // total zip entries
+const MAX_BCF_EXPANDED_BYTES = 1024 * 1024 * 1024; // 1 GB total uncompressed
+
+/**
+ * Reject an archive whose entry count or declared expanded size exceeds the
+ * caps, before any entry is decompressed. JSZip records each entry's
+ * uncompressed size from the central directory on load, so the total is known
+ * without expanding anything.
+ */
+function assertArchiveWithinLimits(zip: JSZip): void {
+  let entries = 0;
+  let expanded = 0;
+  zip.forEach((_relativePath, entry) => {
+    entries++;
+    const size = (entry as unknown as { _data?: { uncompressedSize?: number } })
+      ._data?.uncompressedSize ?? 0;
+    expanded += size;
+  });
+  if (entries > MAX_BCF_ENTRIES) {
+    throw new Error(`BCF archive rejected: ${entries} entries exceeds cap ${MAX_BCF_ENTRIES}`);
+  }
+  if (expanded > MAX_BCF_EXPANDED_BYTES) {
+    throw new Error(
+      `BCF archive rejected: expands to ${expanded} bytes, exceeds cap ${MAX_BCF_EXPANDED_BYTES}`,
+    );
+  }
+}
+
+/**
  * Parse a BCF file (.bcfzip) into a BCFProject
  *
  * @param file - BCF file as File, Blob, or ArrayBuffer
  * @returns Parsed BCF project
  */
 export async function readBCF(file: File | Blob | ArrayBuffer): Promise<BCFProject> {
+  const inputBytes = file instanceof ArrayBuffer ? file.byteLength : file.size;
+  if (inputBytes > MAX_BCF_ARCHIVE_BYTES) {
+    throw new Error(
+      `BCF archive rejected: ${inputBytes} bytes exceeds cap ${MAX_BCF_ARCHIVE_BYTES}`,
+    );
+  }
+
   const zip = await JSZip.loadAsync(file);
+  assertArchiveWithinLimits(zip);
 
   // Read version file
   const version = await readVersionFile(zip);

@@ -15,6 +15,7 @@
 
 import { safeUtf8Decode } from '@ifc-lite/data';
 import type { IfcSourceHeader } from '@ifc-lite/data';
+import { decodeIfcString } from '@ifc-lite/encoding';
 
 /** Headers are tiny; cap the decode so a huge file's body is never scanned. */
 const MAX_HEADER_BYTES = 64 * 1024;
@@ -65,9 +66,23 @@ function splitTopLevel(inner: string): string[] {
   return args;
 }
 
-/** Reverse the STEP string escapes this codebase emits (`''` and `\\`). */
+/**
+ * Decode a STEP header string argument's inner text (outer quotes already
+ * stripped) to its Unicode value.
+ *
+ * First collapse the `''` doubled-quote escape, then run the canonical
+ * ISO-10303-21 backslash decoder ({@link decodeIfcString}), which resolves the
+ * `\X2\HHHH\X0\`, `\X\HH`, `\S\` and `\Px\` control directives non-ASCII header
+ * fields (author, description, ...) arrive in.
+ *
+ * The previous `\\`->`\` regex left those directives untouched on read while the
+ * writer's `\`->`\\` escaper doubled every backslash on write, so a round-trip
+ * turned `Tr\X2\00FC\X0\mpler` into the literal `Tr\\X2\\00FC\\X0\\mpler`.
+ * Decoding to real Unicode here means the writer re-emits plain UTF-8 (no
+ * backslashes to double), so the value round-trips intact.
+ */
 function unescapeStepString(str: string): string {
-  return str.replace(/''/g, "'").replace(/\\\\/g, '\\');
+  return decodeIfcString(str.replace(/''/g, "'"));
 }
 
 /**

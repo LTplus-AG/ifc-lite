@@ -68,7 +68,14 @@ export function deterministicGlobalId(seed: string): string {
   for (let i = 0; i < 22; i++) {
     const idx = i & 3;
     const src = pool[idx];
-    out += GLOBAL_ID_CHARS[src & 0x3f];
+    // A valid 22-char IFC GlobalId compresses a 128-bit UUID: its first
+    // character encodes only the top 2 bits (128 = 2 + 21*6), so it MUST be one
+    // of the first four alphabet chars ('0'-'3'). Masking every char with 0x3f
+    // (as the original did) let the first char reach '$'/'_' etc., which decodes
+    // to a >128-bit value and fails `ifcGuidToUuid` round-tripping. Mask the
+    // first character to 2 bits; the remaining 21 keep the full 6-bit range.
+    const mask = i === 0 ? 0x03 : 0x3f;
+    out += GLOBAL_ID_CHARS[src & mask];
     pool[idx] = Math.imul(src ^ ((i + 1) * 0x45d9f3b), 0x01000193) >>> 0;
   }
   return out;

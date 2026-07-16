@@ -92,6 +92,21 @@ function writeProjectFile(zip: JSZip, project: BCFProject): void {
 }
 
 /**
+ * Sanitize a topic GUID for use as a zip folder name (zip-slip guard).
+ *
+ * A topic GUID is parsed unvalidated from untrusted markup XML on read, so it
+ * can carry path separators or `..`. Using it verbatim as a zip path component
+ * on a read-modify-save would let a crafted GUID (`../../evil`) write outside
+ * the archive root. Restrict the name to safe filename characters and collapse
+ * any dot-run so it can never traverse. The real GUID is still written verbatim
+ * as the markup `<Topic Guid>` attribute, which is what readers key off.
+ */
+function sanitizeTopicFolderName(guid: string): string {
+  const cleaned = guid.replace(/[^A-Za-z0-9._-]/g, '_').replace(/\.\.+/g, '_');
+  return cleaned.length > 0 ? cleaned : generateUuid();
+}
+
+/**
  * Write a topic folder with all its contents
  */
 async function writeTopicFolder(
@@ -99,7 +114,7 @@ async function writeTopicFolder(
   topic: BCFTopic,
   version: '2.1' | '3.0',
 ): Promise<void> {
-  const folder = zip.folder(topic.guid);
+  const folder = zip.folder(sanitizeTopicFolderName(topic.guid));
   if (!folder) return;
 
   // Write markup.bcf

@@ -21,6 +21,7 @@ import {
   buildUnifiedStoreys,
   compareStoreyEntries,
   buildGroupTree,
+  buildMaterialTree,
   resolveMemberGeometry,
   groupMatchesSubFilter,
   GROUP_ENTITY_TYPES,
@@ -1088,5 +1089,73 @@ describe('buildGroupTree — IFCX-shaped store (empty entityIndex)', () => {
     const nodes = buildGroupTree(models, null, new Set(), true, new Set([2, 3]));
     const systems = nodes.filter((n) => n.type === 'group' && n.ifcType === 'IfcDistributionSystem');
     assert.strictEqual(systems.length, 1, 'the shared store must not duplicate group rows per layer');
+  });
+});
+
+// ============================================================================
+// Issue #1755 — By Material tab must surface materials associated to TYPE
+// entities (IfcDoorType). Before the fix the usage index keyed those entries
+// to the type entity, which the geometricIds filter silently dropped.
+// ============================================================================
+
+/** STEP-lines store: doors #1/#2 typed by IfcDoorType #5 (constituent set
+ *  wood1/wood2 on the TYPE), wall #3 with occurrence-level 'Unknown'. */
+function createTypedMaterialDataStore(): IfcDataStore {
+  const lines = [
+    `#1=IFCDOOR('d1',$,'Door',$,$,$,$,$,2.,0.9,$,$,$);`,
+    `#2=IFCDOOR('d2',$,'Door',$,$,$,$,$,2.,0.9,$,$,$);`,
+    `#3=IFCWALL('w1',$,'Wall',$,$,$,$,$,$);`,
+    `#5=IFCDOORTYPE('t1',$,'DoorType',$,$,$,$,$,$,.DOOR.,.SINGLE_SWING_LEFT.,$);`,
+    `#10=IFCMATERIAL('wood1',$,$);`,
+    `#11=IFCMATERIAL('wood2',$,$);`,
+    `#12=IFCMATERIAL('Unknown',$,$);`,
+    `#20=IFCMATERIALCONSTITUENT('Lining',$,#10,0.6,$);`,
+    `#21=IFCMATERIALCONSTITUENT('Framing',$,#11,0.4,$);`,
+    `#22=IFCMATERIALCONSTITUENTSET('Unnamed',$,(#20,#21));`,
+  ];
+  const text = lines.join('\n');
+  const byId = new Map<number, { expressId: number; type: string; byteOffset: number; byteLength: number; lineNumber: number }>();
+  let cursor = 0;
+  for (const line of lines) {
+    const start = text.indexOf(line, cursor);
+    const match = line.match(/^#(\d+)\s*=\s*(\w+)\(/)!;
+    byId.set(parseInt(match[1], 10), {
+      expressId: parseInt(match[1], 10),
+      type: match[2],
+      byteOffset: start,
+      byteLength: line.length,
+      lineNumber: 1,
+    });
+    cursor = start + line.length;
+  }
+
+  const relBuilder = new RelationshipGraphBuilder();
+  relBuilder.addEdge(5, 1, RelationshipType.DefinesByType, 100);
+  relBuilder.addEdge(5, 2, RelationshipType.DefinesByType, 100);
+
+  return {
+    source: new TextEncoder().encode(text),
+    entityIndex: { byId, byType: new Map() },
+    onDemandMaterialMap: new Map([[5, 22], [3, 12]]),
+    relationships: relBuilder.build(),
+  } as unknown as IfcDataStore;
+}
+
+describe('buildMaterialTree — type-level material expansion (#1755)', () => {
+  it('surfaces type-associated materials as rows carrying the occurrence ids', () => {
+    const ds = createTypedMaterialDataStore();
+    // Geometry filter ON with only wall+doors rendered — types must survive it.
+    const nodes = buildMaterialTree(new Map(), ds, new Set(), false, new Set([1, 2, 3]));
+
+    const byName = new Map(nodes.map((n) => [n.name, n]));
+    assert.deepStrictEqual(
+      [...byName.keys()].sort(),
+      ['Unknown', 'wood1', 'wood2'],
+      'all three materials must appear (wood1/wood2 hang off the IfcDoorType)',
+    );
+    assert.deepStrictEqual([...byName.get('wood1')!.globalIds].sort(), [1, 2], 'click-to-isolate targets the doors, not the type');
+    assert.deepStrictEqual([...byName.get('wood2')!.globalIds].sort(), [1, 2]);
+    assert.strictEqual(byName.get('wood1')!.elementCount, 2);
+    assert.deepStrictEqual(byName.get('Unknown')!.globalIds, [3], 'occurrence-level association untouched');
   });
 });

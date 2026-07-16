@@ -284,12 +284,31 @@ test('truncated report keeps previous values for unreadable axes', () => {
   assert.equal(state.tz, 300);
 });
 
-test('a report id covered by the descriptor with unsigned logical range reads unsigned', () => {
+test('unsigned logical ranges are centred on their midpoint (0..700 rests at 350)', () => {
   // Some descriptors declare 0..700 with a 350 midpoint instead of -350..350.
+  // Scaling around zero would turn the resting value into constant drift.
   const field: AxisField = { axis: 'tx', bitOffset: 0, bitSize: 16, logicalMinimum: 0, logicalMaximum: 700 };
-  const view = new DataView(new ArrayBuffer(2));
-  view.setUint16(0, 65000, true); // would be negative as int16
-  const raw = readAxisField(view, field);
-  assert.ok(raw !== null && raw > 0, `unsigned read stays positive, got ${raw}`);
-  assert.equal(raw, AXIS_FULL_SCALE); // clamped after rescale
+  const at = (value: number) => {
+    const view = new DataView(new ArrayBuffer(2));
+    view.setUint16(0, value, true);
+    return readAxisField(view, field);
+  };
+  assert.equal(at(350), 0); // resting midpoint is neutral
+  assert.equal(at(0), -AXIS_FULL_SCALE);
+  assert.equal(at(700), AXIS_FULL_SCALE);
+  assert.equal(at(525), AXIS_FULL_SCALE / 2);
+  // Out-of-range garbage (would be negative as int16) clamps, stays positive.
+  assert.equal(at(65000), AXIS_FULL_SCALE);
+});
+
+test('symmetric signed ranges are unaffected by midpoint centring', () => {
+  const field: AxisField = { axis: 'ty', bitOffset: 0, bitSize: 16, logicalMinimum: -350, logicalMaximum: 350 };
+  const at = (value: number) => {
+    const view = new DataView(new ArrayBuffer(2));
+    view.setInt16(0, value, true);
+    return readAxisField(view, field);
+  };
+  assert.equal(at(0), 0);
+  assert.equal(at(175), 175);
+  assert.equal(at(-350), -AXIS_FULL_SCALE);
 });

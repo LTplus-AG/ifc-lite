@@ -182,9 +182,14 @@ export function readAxisField(data: DataView, field: AxisField): number | null {
 
   // Rescale the device's declared range to the legacy AXIS_FULL_SCALE window
   // so dead zone and rates keep meaning the same thing on every device.
-  const fullScale = Math.max(Math.abs(field.logicalMinimum), Math.abs(field.logicalMaximum));
+  // Centre on the logical midpoint first: an unsigned 0..700 axis rests at
+  // 350, and scaling it around zero instead would read as constant drift.
   if (!Number.isFinite(raw)) return 0;
-  if (fullScale > 0) raw = (raw / fullScale) * AXIS_FULL_SCALE;
+  const halfRange = (field.logicalMaximum - field.logicalMinimum) / 2;
+  if (halfRange > 0) {
+    const center = (field.logicalMinimum + field.logicalMaximum) / 2;
+    raw = ((raw - center) / halfRange) * AXIS_FULL_SCALE;
+  }
   return clampAxis(raw);
 }
 

@@ -22,6 +22,8 @@ import {
   HID_USAGE_MULTI_AXIS_CONTROLLER,
   HID_USAGE_PAGE_GENERIC_DESKTOP,
   REPORT_ID_BUTTONS,
+  REPORT_ID_ROTATION,
+  REPORT_ID_TRANSLATION,
   SPACEMOUSE_VENDOR_IDS,
 } from './constants.js';
 import {
@@ -163,10 +165,19 @@ export class SpaceMouseSession {
     }
 
     // 6DoF: descriptor-derived fields when the descriptor covers this report,
-    // legacy fixed offsets otherwise (also the fake-device path in e2e tests).
-    this.state = axisFields
-      ? parseReportWithLayout(axisFields, event.data, this.state)
-      : parseSpaceMouseReport(event.reportId, event.data, this.state);
+    // legacy fixed offsets when there is no usable descriptor (also the
+    // fake-device path in e2e tests). Reports neither path understands are
+    // dropped WITHOUT refreshing lastSampleAt: a periodic status report must
+    // not keep an earlier deflection latched past the staleness watchdog.
+    if (axisFields) {
+      this.state = parseReportWithLayout(axisFields, event.data, this.state);
+    } else if (this.layout) {
+      return; // descriptor is authoritative: unmapped report id, not motion
+    } else if (event.reportId === REPORT_ID_TRANSLATION || event.reportId === REPORT_ID_ROTATION) {
+      this.state = parseSpaceMouseReport(event.reportId, event.data, this.state);
+    } else {
+      return;
+    }
     this.lastSampleAt = performance.now();
     this.options.onSample?.(this.state);
   };

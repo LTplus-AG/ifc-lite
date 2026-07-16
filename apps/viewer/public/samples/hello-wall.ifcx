@@ -1,0 +1,2193 @@
+{
+  "header": {
+    "id": "ifc5.technical.buildingsmart.org/examples/Hello Wall/hello-wall.ifcx",
+    "ifcxVersion": "ifcx_alpha",
+    "dataVersion": "1.0.0",
+    "author": "technical@buildingsmart.org",
+    "timestamp": "time string"
+  },
+  "imports": [
+    { "uri": "https://ifcx.dev/@standards.buildingsmart.org/ifc/core/ifc@v5a.ifcx" },
+    { "uri": "https://ifcx.dev/@standards.buildingsmart.org/ifc/core/prop@v5a.ifcx" },
+    { "uri": "https://ifcx.dev/@standards.buildingsmart.org/ifc/ifc-mat/ifc-mat@v1.0.0.ifcx" },
+    { "uri": "https://ifcx.dev/@openusd.org/usd@v1.ifcx" },
+    { "uri": "https://ifcx.dev/@nlsfb/nlsfb@v1.ifcx" }
+  ],
+  "schemas": {
+    "customdata": {
+      "value": {
+        "dataType": "Object",
+        "objectRestrictions": {
+          "values": {
+            "originalStepInstance": {
+              "dataType": "String"
+            }
+          }
+        }
+      }
+    }
+  },
+  "data": [
+    {
+      "path": "25503984-6605-43a1-8597-eae657ff5bea",
+      "children": {
+        "Void": "8fada721-cff8-590b-8d0b-9300b5fe8e18",
+        "Frame": "08f06095-3f32-55b9-a353-61c9aca5cc4d",
+        "Glazing": "5ad6f475-c04c-5628-8b9d-75d0bab0c0e5"
+      }
+    },
+    {
+      "path": "14adb22b-d474-48a2-8e8f-6d4c067c1953",
+      "children": {
+        "My_Site": "e0834921-e095-40f0-8874-3c6bd1ec699e"
+      }
+    },
+    {
+      "path": "ab143723-f7b1-5368-b106-55896e88d768",
+      "children": {
+        "My_Project": "14adb22b-d474-48a2-8e8f-6d4c067c1953"
+      }
+    },
+    {
+      "path": "e0834921-e095-40f0-8874-3c6bd1ec699e",
+      "children": {
+        "My_Building": "e84dc79e-fe9d-4781-9f4b-54dd435cca91"
+      }
+    },
+    {
+      "path": "e84dc79e-fe9d-4781-9f4b-54dd435cca91",
+      "children": {
+        "My_Storey": "44af358b-3160-4063-8a89-a868335ff3b5"
+      }
+    },
+    {
+      "path": "44af358b-3160-4063-8a89-a868335ff3b5",
+      "children": {
+        "My_Space": "e3035b71-bd9f-4cdc-86fd-b56e2f4605b6",
+        "Wall": "93791d5d-5beb-437b-b8ec-2f1f0ba4bf3b"
+      }
+    },
+    {
+      "path": "e3035b71-bd9f-4cdc-86fd-b56e2f4605b6",
+      "children": {
+        "Body": "15289df1-5ae0-5fc9-8399-19de1fbb87a0",
+        "Boundary_Wall": "c8ecbf4c-e37a-4489-9133-15163b8a904e",
+        "Boundary_Window": "cc40ef6e-950e-4b79-a802-4cc710294e3a",
+        "Boundary_Window_001": "7f2a3284-bf01-4b0a-85e4-e48d92ba56dd"
+      }
+    },
+    {
+      "path": "93791d5d-5beb-437b-b8ec-2f1f0ba4bf3b",
+      "children": {
+        "Body": "634f90c3-831e-5f29-a9b2-fa69b207821e",
+        "Axis": "8407e490-ceaa-56e5-96df-2351d9110668",
+        "Directrix": "9d1fce89-e179-5076-9a3b-1b40eef3524b",
+        "Basis": "367f7f7d-b4c5-50fe-829a-6bbced170dd1",
+        "Window": "2c2d549f-f9fe-4e22-8590-562fda81a690",
+        "Window_001": "592504dc-469a-44d6-9ae8-c801b591679b"
+      }
+    },
+    {
+      "path": "2c2d549f-f9fe-4e22-8590-562fda81a690",
+      "inherits": {
+        "windowType": "25503984-6605-43a1-8597-eae657ff5bea"
+      }
+    },
+    {
+      "path": "592504dc-469a-44d6-9ae8-c801b591679b",
+      "inherits": {
+        "windowType": "25503984-6605-43a1-8597-eae657ff5bea"
+      }
+    },
+    {
+      "path": "c8ecbf4c-e37a-4489-9133-15163b8a904e",
+      "children": {
+        "Body": "911155b7-f688-51ee-8e3e-b97475be2452"
+      }
+    },
+    {
+      "path": "cc40ef6e-950e-4b79-a802-4cc710294e3a",
+      "children": {
+        "Body": "f3aa8991-7481-5d6b-8dae-f98c372f4a98"
+      }
+    },
+    {
+      "path": "7f2a3284-bf01-4b0a-85e4-e48d92ba56dd",
+      "children": {
+        "Body": "126781f3-6465-5c39-9216-81cc636eeb39"
+      }
+    },
+    {
+      "path": "7a187a90-3dcf-58cc-b3a6-51a9a407c55a",
+      "attributes": {
+        "bsi::ifc::presentation::diffuseColor": [
+          0.5,
+          0.5,
+          0.5
+        ],
+        "bsi::ifc::presentation::opacity": 1,
+        "bsi::ifc::material": {
+          "code": "CONCRETE",
+          "uri": "https://identifier.buildingsmart.org/uri/fish/midas-materials/26/class/CONCRETE"
+        }
+      }
+    },
+    {
+      "path": "25503984-6605-43a1-8597-eae657ff5bea",
+      "attributes": {
+        "customdata": {
+          "originalStepInstance": "#459=IfcWindowType('0bK3c4PWL3eOMNwkPN$rlg',$,'WT01',$,$,$,(#436,#458),$,$,.NOTDEFINED.,.NOTDEFINED.,$,$)"
+        }
+      }
+    },
+    {
+      "path": "25503984-6605-43a1-8597-eae657ff5bea",
+      "attributes": {
+        "bsi::ifc::class": {
+          "code": "IfcWindow",
+          "uri": "https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/class/IfcWindow"
+        }
+      }
+    },
+    {
+      "path": "25503984-6605-43a1-8597-eae657ff5bea",
+      "attributes": {
+        "bsi::ifc::prop::TypeName": "WT01"
+      }
+    },
+    {
+      "path": "8fada721-cff8-590b-8d0b-9300b5fe8e18",
+      "attributes": {
+        "usd::usdgeom::mesh": {
+          "faceVertexIndices": [
+            3,
+            0,
+            1,
+            3,
+            1,
+            2,
+            7,
+            4,
+            5,
+            7,
+            5,
+            6,
+            11,
+            8,
+            9,
+            11,
+            9,
+            10,
+            15,
+            12,
+            13,
+            15,
+            13,
+            14,
+            18,
+            16,
+            17,
+            18,
+            19,
+            16,
+            21,
+            20,
+            22,
+            20,
+            23,
+            22
+          ],
+          "points": [
+            [
+              0,
+              -0.6,
+              0
+            ],
+            [
+              0,
+              0.59999996,
+              0
+            ],
+            [
+              0.9,
+              0.59999996,
+              0
+            ],
+            [
+              0.9,
+              -0.6,
+              0
+            ],
+            [
+              0.9,
+              -0.6,
+              0
+            ],
+            [
+              0.9,
+              0.59999996,
+              0
+            ],
+            [
+              0.9,
+              0.59999996,
+              1.2
+            ],
+            [
+              0.9,
+              -0.6,
+              1.2
+            ],
+            [
+              0.9,
+              -0.6,
+              1.2
+            ],
+            [
+              0.9,
+              0.59999996,
+              1.2
+            ],
+            [
+              0,
+              0.59999996,
+              1.2
+            ],
+            [
+              0,
+              -0.6,
+              1.2
+            ],
+            [
+              0,
+              -0.6,
+              1.2
+            ],
+            [
+              0,
+              0.59999996,
+              1.2
+            ],
+            [
+              0,
+              0.59999996,
+              0
+            ],
+            [
+              0,
+              -0.6,
+              0
+            ],
+            [
+              0,
+              -0.6,
+              0
+            ],
+            [
+              0.9,
+              -0.6,
+              0
+            ],
+            [
+              0.9,
+              -0.6,
+              1.2
+            ],
+            [
+              0,
+              -0.6,
+              1.2
+            ],
+            [
+              0,
+              0.59999996,
+              0
+            ],
+            [
+              0.9,
+              0.59999996,
+              0
+            ],
+            [
+              0.9,
+              0.59999996,
+              1.2
+            ],
+            [
+              0,
+              0.59999996,
+              1.2
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "path": "8fada721-cff8-590b-8d0b-9300b5fe8e18",
+      "attributes": {
+        "usd::usdgeom::visibility": {
+          "visibility": "invisible"
+        }
+      }
+    },
+    {
+      "path": "14adb22b-d474-48a2-8e8f-6d4c067c1953",
+      "attributes": {
+        "customdata": {
+          "originalStepInstance": "#1=IfcProject('0KhR8hr7H8eewFRKm6V1bJ',$,'My Project',$,$,$,$,(#14,#26),#9)"
+        }
+      }
+    },
+    {
+      "path": "14adb22b-d474-48a2-8e8f-6d4c067c1953",
+      "attributes": {
+        "bsi::ifc::class": {
+          "code": "IfcProject",
+          "uri": "https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/class/IfcProject"
+        }
+      }
+    },
+    {
+      "path": "e0834921-e095-40f0-8874-3c6bd1ec699e",
+      "attributes": {
+        "customdata": {
+          "originalStepInstance": "#30=IfcSite('3WWqaXu9L0y8XqF6lHx6cU',$,'My Site',$,$,#53,$,$,$,$,$,$,$,$)"
+        }
+      }
+    },
+    {
+      "path": "e0834921-e095-40f0-8874-3c6bd1ec699e",
+      "attributes": {
+        "bsi::ifc::class": {
+          "code": "IfcSite",
+          "uri": "https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/class/IfcSite"
+        }
+      }
+    },
+    {
+      "path": "e84dc79e-fe9d-4781-9f4b-54dd435cca91",
+      "attributes": {
+        "customdata": {
+          "originalStepInstance": "#36=IfcBuilding('3eJSUU$fr7WPzBLDr3NCgH',$,'My Building',$,$,#59,$,$,$,$,$,$)"
+        }
+      }
+    },
+    {
+      "path": "e84dc79e-fe9d-4781-9f4b-54dd435cca91",
+      "attributes": {
+        "bsi::ifc::class": {
+          "code": "IfcBuilding",
+          "uri": "https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/class/IfcBuilding"
+        }
+      }
+    },
+    {
+      "path": "44af358b-3160-4063-8a89-a868335ff3b5",
+      "attributes": {
+        "customdata": {
+          "originalStepInstance": "#42=IfcBuildingStorey('14hpMBCM10Oug9g6WpN$Er',$,'My Storey',$,$,#65,$,$,$,$)"
+        }
+      }
+    },
+    {
+      "path": "44af358b-3160-4063-8a89-a868335ff3b5",
+      "attributes": {
+        "bsi::ifc::class": {
+          "code": "IfcBuildingStorey",
+          "uri": "https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/class/IfcBuildingStorey"
+        }
+      }
+    },
+    {
+      "path": "e3035b71-bd9f-4cdc-86fd-b56e2f4605b6",
+      "attributes": {
+        "customdata": {
+          "originalStepInstance": "#1494=IfcSpace('3Z0rjnlPzCt8RzjMulHWMs',$,'My Space',$,$,#1515,#1509,$,$,.SPACE.,$)"
+        }
+      }
+    },
+    {
+      "path": "e3035b71-bd9f-4cdc-86fd-b56e2f4605b6",
+      "attributes": {
+        "bsi::ifc::class": {
+          "code": "IfcSpace",
+          "uri": "https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/class/IfcSpace"
+        }
+      }
+    },
+    {
+      "path": "e3035b71-bd9f-4cdc-86fd-b56e2f4605b6",
+      "attributes": {
+        "bsi::ifc::presentation::diffuseColor": [
+          0.6,
+          0.7,
+          0.8
+        ],
+        "bsi::ifc::presentation::opacity": 0.3
+      }
+    },
+    {
+      "path": "e3035b71-bd9f-4cdc-86fd-b56e2f4605b6",
+      "attributes": {
+        "usd::xformop": {
+          "transform": [
+            [
+              1,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              1,
+              0
+            ],
+            [
+              0,
+              0.100000023841858,
+              0,
+              1
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "path": "15289df1-5ae0-5fc9-8399-19de1fbb87a0",
+      "attributes": {
+        "usd::usdgeom::mesh": {
+          "faceVertexIndices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            6,
+            5,
+            4,
+            6,
+            7,
+            5,
+            10,
+            9,
+            8,
+            10,
+            11,
+            9,
+            13,
+            12,
+            14,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            16,
+            18,
+            19,
+            21,
+            20,
+            22,
+            21,
+            22,
+            23
+          ],
+          "points": [
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              3
+            ],
+            [
+              0,
+              4,
+              3
+            ],
+            [
+              0,
+              4,
+              0
+            ],
+            [
+              0,
+              4,
+              3
+            ],
+            [
+              0,
+              4,
+              0
+            ],
+            [
+              10,
+              4,
+              3
+            ],
+            [
+              10,
+              4,
+              0
+            ],
+            [
+              10,
+              4,
+              3
+            ],
+            [
+              10,
+              4,
+              0
+            ],
+            [
+              10,
+              0,
+              3
+            ],
+            [
+              10,
+              0,
+              0
+            ],
+            [
+              10,
+              0,
+              3
+            ],
+            [
+              10,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              3
+            ],
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              4,
+              0
+            ],
+            [
+              10,
+              4,
+              0
+            ],
+            [
+              10,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              4,
+              3
+            ],
+            [
+              10,
+              4,
+              3
+            ],
+            [
+              0,
+              0,
+              3
+            ],
+            [
+              10,
+              0,
+              3
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "path": "93791d5d-5beb-437b-b8ec-2f1f0ba4bf3b",
+      "attributes": {
+        "customdata": {
+          "originalStepInstance": "#1222=IfcWall('2JUHrTM_j3UxZiBnyBfByx',$,'Wall',$,$,#1235,#1230,$,$)"
+        }
+      }
+    },
+    {
+      "path": "93791d5d-5beb-437b-b8ec-2f1f0ba4bf3b",
+      "attributes": {
+        "bsi::ifc::class": {
+          "code": "IfcWall",
+          "uri": "https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/class/IfcWall"
+        }
+      }
+    },
+    {
+      "path": "93791d5d-5beb-437b-b8ec-2f1f0ba4bf3b",
+      "attributes": {
+        "bsi::ifc::prop::IsExternal": true
+      }
+    },
+    {
+      "path": "93791d5d-5beb-437b-b8ec-2f1f0ba4bf3b",
+      "inherits": {
+        "material": "7a187a90-3dcf-58cc-b3a6-51a9a407c55a"
+      }
+    },
+    {
+      "path": "93791d5d-5beb-437b-b8ec-2f1f0ba4bf3b",
+      "attributes": {
+        "nlsfb::class": {
+          "code": "21.21",
+          "uri": "https://identifier.buildingsmart.org/uri/nlsfb/nlsfb2005/2.2/class/21.21"
+        }
+      }
+    },
+    {
+      "path": "634f90c3-831e-5f29-a9b2-fa69b207821e",
+      "attributes": {
+        "usd::usdgeom::mesh": {
+          "faceVertexIndices": [
+            3,
+            0,
+            1,
+            3,
+            1,
+            2,
+            5,
+            4,
+            7,
+            6,
+            5,
+            7,
+            9,
+            8,
+            10,
+            10,
+            8,
+            11,
+            14,
+            12,
+            13,
+            15,
+            12,
+            14,
+            17,
+            16,
+            19,
+            18,
+            17,
+            19,
+            21,
+            20,
+            23,
+            22,
+            21,
+            23,
+            25,
+            24,
+            27,
+            26,
+            25,
+            27,
+            29,
+            28,
+            31,
+            30,
+            29,
+            31,
+            33,
+            32,
+            35,
+            34,
+            33,
+            35,
+            37,
+            36,
+            39,
+            38,
+            37,
+            39,
+            41,
+            40,
+            43,
+            42,
+            41,
+            43,
+            45,
+            44,
+            47,
+            46,
+            45,
+            47,
+            54,
+            50,
+            52,
+            53,
+            50,
+            51,
+            53,
+            52,
+            50,
+            55,
+            53,
+            51,
+            57,
+            54,
+            55,
+            57,
+            56,
+            54,
+            57,
+            55,
+            51,
+            49,
+            58,
+            59,
+            48,
+            49,
+            59,
+            49,
+            50,
+            56,
+            56,
+            50,
+            54,
+            49,
+            56,
+            58,
+            51,
+            48,
+            59,
+            51,
+            59,
+            57,
+            64,
+            62,
+            66,
+            63,
+            62,
+            65,
+            62,
+            64,
+            65,
+            63,
+            65,
+            67,
+            67,
+            66,
+            69,
+            66,
+            68,
+            69,
+            63,
+            67,
+            69,
+            71,
+            70,
+            61,
+            71,
+            61,
+            60,
+            68,
+            62,
+            61,
+            66,
+            62,
+            68,
+            70,
+            68,
+            61,
+            71,
+            60,
+            63,
+            69,
+            71,
+            63
+          ],
+          "points": [
+            [
+              10,
+              0,
+              0
+            ],
+            [
+              10,
+              0.1,
+              0
+            ],
+            [
+              10,
+              0.1,
+              3
+            ],
+            [
+              10,
+              0,
+              3
+            ],
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0.1,
+              0
+            ],
+            [
+              0,
+              0.1,
+              3
+            ],
+            [
+              0,
+              0,
+              3
+            ],
+            [
+              10,
+              0,
+              0
+            ],
+            [
+              10,
+              0.1,
+              0
+            ],
+            [
+              0,
+              0.1,
+              0
+            ],
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              10,
+              0,
+              3
+            ],
+            [
+              10,
+              0.1,
+              3
+            ],
+            [
+              0,
+              0.1,
+              3
+            ],
+            [
+              0,
+              0,
+              3
+            ],
+            [
+              1.7676749,
+              0,
+              1
+            ],
+            [
+              1.7676749,
+              0.1,
+              1
+            ],
+            [
+              2.667675,
+              0.1,
+              1
+            ],
+            [
+              2.667675,
+              0,
+              1
+            ],
+            [
+              2.667675,
+              0,
+              1
+            ],
+            [
+              2.667675,
+              0.1,
+              1
+            ],
+            [
+              2.667675,
+              0.1,
+              2.2
+            ],
+            [
+              2.667675,
+              0,
+              2.2
+            ],
+            [
+              2.667675,
+              0,
+              2.2
+            ],
+            [
+              2.667675,
+              0.1,
+              2.2
+            ],
+            [
+              1.7676749,
+              0.1,
+              2.2
+            ],
+            [
+              1.7676749,
+              0,
+              2.2
+            ],
+            [
+              1.7676749,
+              0,
+              2.2
+            ],
+            [
+              1.7676749,
+              0.1,
+              2.2
+            ],
+            [
+              1.7676749,
+              0.1,
+              1
+            ],
+            [
+              1.7676749,
+              0,
+              1
+            ],
+            [
+              4.9466066,
+              0,
+              1
+            ],
+            [
+              4.9466066,
+              0.1,
+              1
+            ],
+            [
+              5.8466067,
+              0.1,
+              1
+            ],
+            [
+              5.8466067,
+              0,
+              1
+            ],
+            [
+              5.8466067,
+              0,
+              1
+            ],
+            [
+              5.8466067,
+              0.1,
+              1
+            ],
+            [
+              5.8466067,
+              0.1,
+              2.2
+            ],
+            [
+              5.8466067,
+              0,
+              2.2
+            ],
+            [
+              5.8466067,
+              0,
+              2.2
+            ],
+            [
+              5.8466067,
+              0.1,
+              2.2
+            ],
+            [
+              4.9466066,
+              0.1,
+              2.2
+            ],
+            [
+              4.9466066,
+              0,
+              2.2
+            ],
+            [
+              4.9466066,
+              0,
+              2.2
+            ],
+            [
+              4.9466066,
+              0.1,
+              2.2
+            ],
+            [
+              4.9466066,
+              0.1,
+              1
+            ],
+            [
+              4.9466066,
+              0,
+              1
+            ],
+            [
+              10,
+              0,
+              0
+            ],
+            [
+              10,
+              0,
+              3
+            ],
+            [
+              0,
+              0,
+              3
+            ],
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              1.7676749,
+              0,
+              2.2
+            ],
+            [
+              1.7676749,
+              0,
+              1
+            ],
+            [
+              2.667675,
+              0,
+              2.2
+            ],
+            [
+              2.667675,
+              0,
+              1
+            ],
+            [
+              4.9466066,
+              0,
+              2.2
+            ],
+            [
+              4.9466066,
+              0,
+              1
+            ],
+            [
+              5.8466067,
+              0,
+              2.2
+            ],
+            [
+              5.8466067,
+              0,
+              1
+            ],
+            [
+              10,
+              0.1,
+              0
+            ],
+            [
+              10,
+              0.1,
+              3
+            ],
+            [
+              0,
+              0.1,
+              3
+            ],
+            [
+              0,
+              0.1,
+              0
+            ],
+            [
+              1.7676749,
+              0.1,
+              2.2
+            ],
+            [
+              1.7676749,
+              0.1,
+              1
+            ],
+            [
+              2.667675,
+              0.1,
+              2.2
+            ],
+            [
+              2.667675,
+              0.1,
+              1
+            ],
+            [
+              4.9466066,
+              0.1,
+              2.2
+            ],
+            [
+              4.9466066,
+              0.1,
+              1
+            ],
+            [
+              5.8466067,
+              0.1,
+              2.2
+            ],
+            [
+              5.8466067,
+              0.1,
+              1
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "path": "8407e490-ceaa-56e5-96df-2351d9110668",
+      "attributes": {
+        "usd::usdgeom::basiscurves": {
+          "points": [
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              10,
+              0,
+              0
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "path": "9d1fce89-e179-5076-9a3b-1b40eef3524b",
+      "attributes": {
+        "usd::usdgeom::basiscurves": {
+          "points": [
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              3
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "path": "367f7f7d-b4c5-50fe-829a-6bbced170dd1",
+      "attributes": {
+        "usd::usdgeom::mesh": {
+          "faceVertexIndices": [
+            0,
+            1,
+            3,
+            2,
+            3,
+            1
+          ],
+          "points": [
+            [
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0.1,
+              0
+            ],
+            [
+              10,
+              0.1,
+              0
+            ],
+            [
+              10,
+              0,
+              0
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "path": "2c2d549f-f9fe-4e22-8590-562fda81a690",
+      "attributes": {
+        "customdata": {
+          "originalStepInstance": "#1262=IfcWindow('0iBLIV_VvE8eMGLY$QWQQG',$,'Window',$,$,#1349,#1291,$,$,$,$,$,$)"
+        }
+      }
+    },
+    {
+      "path": "2c2d549f-f9fe-4e22-8590-562fda81a690",
+      "attributes": {
+        "bsi::ifc::class": {
+          "code": "IfcWindow",
+          "uri": "https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/class/IfcWindow"
+        }
+      }
+    },
+    {
+      "path": "2c2d549f-f9fe-4e22-8590-562fda81a690",
+      "attributes": {
+        "bsi::ifc::prop::IsExternal": true
+      }
+    },
+    {
+      "path": "2c2d549f-f9fe-4e22-8590-562fda81a690",
+      "attributes": {
+        "usd::xformop": {
+          "transform": [
+            [
+              1,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              1,
+              0
+            ],
+            [
+              1.76767492294312,
+              0,
+              1,
+              1
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "path": "592504dc-469a-44d6-9ae8-c801b591679b",
+      "attributes": {
+        "customdata": {
+          "originalStepInstance": "#1407=IfcWindow('1P9GJSHff4rfheo06raMUR',$,'Window',$,$,#1478,#1435,$,$,$,$,$,$)"
+        }
+      }
+    },
+    {
+      "path": "592504dc-469a-44d6-9ae8-c801b591679b",
+      "attributes": {
+        "bsi::ifc::class": {
+          "code": "IfcWindow",
+          "uri": "https://identifier.buildingsmart.org/uri/buildingsmart/ifc/4.3/class/IfcWindow"
+        }
+      }
+    },
+    {
+      "path": "592504dc-469a-44d6-9ae8-c801b591679b",
+      "attributes": {
+        "bsi::ifc::prop::IsExternal": true
+      }
+    },
+    {
+      "path": "592504dc-469a-44d6-9ae8-c801b591679b",
+      "attributes": {
+        "usd::xformop": {
+          "transform": [
+            [
+              1,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              1,
+              0
+            ],
+            [
+              4.94660663604736,
+              0,
+              1,
+              1
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "path": "c8ecbf4c-e37a-4489-9133-15163b8a904e",
+      "attributes": {
+        "bsi::ifc::spaceBoundary": {
+          "relatedelement": {
+            "ref": "93791d5d-5beb-437b-b8ec-2f1f0ba4bf3b"
+          },
+          "relatingspace": {
+            "ref": "e3035b71-bd9f-4cdc-86fd-b56e2f4605b6"
+          }
+        }
+      }
+    },
+    {
+      "path": "911155b7-f688-51ee-8e3e-b97475be2452",
+      "attributes": {
+        "usd::usdgeom::mesh": {
+          "faceVertexIndices": [
+            2,
+            0,
+            1,
+            2,
+            3,
+            0
+          ],
+          "points": [
+            [
+              0,
+              -2.3841858e-08,
+              0
+            ],
+            [
+              0,
+              -2.3841858e-08,
+              3
+            ],
+            [
+              10,
+              -2.3841858e-08,
+              3
+            ],
+            [
+              10,
+              -2.3841858e-08,
+              0
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "path": "cc40ef6e-950e-4b79-a802-4cc710294e3a",
+      "attributes": {
+        "bsi::ifc::spaceBoundary": {
+          "relatedelement": {
+            "ref": "2c2d549f-f9fe-4e22-8590-562fda81a690"
+          },
+          "relatingspace": {
+            "ref": "e3035b71-bd9f-4cdc-86fd-b56e2f4605b6"
+          }
+        }
+      }
+    },
+    {
+      "path": "f3aa8991-7481-5d6b-8dae-f98c372f4a98",
+      "attributes": {
+        "usd::usdgeom::mesh": {
+          "faceVertexIndices": [
+            3,
+            0,
+            1,
+            3,
+            1,
+            2
+          ],
+          "points": [
+            [
+              2.667675,
+              -2.3841858e-08,
+              1
+            ],
+            [
+              1.7676749,
+              -2.3841858e-08,
+              1
+            ],
+            [
+              1.7676749,
+              -2.3841858e-08,
+              2.2
+            ],
+            [
+              2.667675,
+              -2.3841858e-08,
+              2.2
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "path": "7f2a3284-bf01-4b0a-85e4-e48d92ba56dd",
+      "attributes": {
+        "bsi::ifc::spaceBoundary": {
+          "relatedelement": {
+            "ref": "592504dc-469a-44d6-9ae8-c801b591679b"
+          },
+          "relatingspace": {
+            "ref": "e3035b71-bd9f-4cdc-86fd-b56e2f4605b6"
+          }
+        }
+      }
+    },
+    {
+      "path": "126781f3-6465-5c39-9216-81cc636eeb39",
+      "attributes": {
+        "usd::usdgeom::mesh": {
+          "faceVertexIndices": [
+            1,
+            2,
+            3,
+            1,
+            3,
+            0
+          ],
+          "points": [
+            [
+              4.9466066,
+              -2.3841858e-08,
+              2.2
+            ],
+            [
+              5.8466067,
+              -2.3841858e-08,
+              2.2
+            ],
+            [
+              5.8466067,
+              -2.3841858e-08,
+              1
+            ],
+            [
+              4.9466066,
+              -2.3841858e-08,
+              1
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "path": "25503984-6605-43a1-8597-eae657ff5bea",
+      "attributes": {
+        "bsi::ifc::prop::Volume": 0.025999999592,
+        "bsi::ifc::prop::Height": 1.2
+      }
+    },
+    {
+      "path": "e3035b71-bd9f-4cdc-86fd-b56e2f4605b6",
+      "attributes": {
+        "bsi::ifc::prop::Volume": 120.0,
+        "bsi::ifc::prop::Height": 3.0
+      }
+    },
+    {
+      "path": "93791d5d-5beb-437b-b8ec-2f1f0ba4bf3b",
+      "attributes": {
+        "bsi::ifc::prop::Volume": 2.783999976,
+        "bsi::ifc::prop::Height": 3.0
+      }
+    },
+    {
+      "path": "4549bada-a37e-5044-bb70-456516cca5a8",
+      "attributes": {
+        "bsi::ifc::material": {
+          "code": "WOOD",
+          "uri": "https://identifier.buildingsmart.org/uri/fish/midas-materials/26/class/WOOD"
+        },
+        "bsi::ifc::presentation::diffuseColor": [
+          0.8,
+          0.7,
+          0.6
+        ],
+        "bsi::ifc-mat::prop::StrengthClass": "C24",
+        "bsi::ifc-mat::prop::MoistureContent": 0.56,
+        "bsi::ifc-mat::prop::MassDensity": 529.0,
+        "bsi::ifc-mat::prop::GWP": {
+          "A1-A3": -629.4,
+          "A4": 0,
+          "A5": 0,
+          "C2": 1.802,
+          "C3": 863,
+          "D": -274.8
+        }
+      }
+    },
+    {
+      "path": "08f06095-3f32-55b9-a353-61c9aca5cc4d",
+      "attributes": {
+        "usd::usdgeom::mesh": {
+          "faceVertexIndices": [
+            3,
+            0,
+            1,
+            2,
+            3,
+            1,
+            7,
+            4,
+            5,
+            7,
+            5,
+            6,
+            10,
+            11,
+            8,
+            10,
+            8,
+            9,
+            14,
+            15,
+            12,
+            13,
+            14,
+            12,
+            19,
+            17,
+            16,
+            19,
+            16,
+            18,
+            21,
+            22,
+            23,
+            21,
+            23,
+            20,
+            26,
+            25,
+            24,
+            26,
+            27,
+            25,
+            28,
+            30,
+            31,
+            29,
+            28,
+            31,
+            32,
+            34,
+            35,
+            32,
+            35,
+            33,
+            39,
+            36,
+            37,
+            39,
+            37,
+            38,
+            41,
+            42,
+            43,
+            41,
+            43,
+            40,
+            47,
+            44,
+            45,
+            47,
+            45,
+            46,
+            49,
+            50,
+            51,
+            49,
+            51,
+            48,
+            55,
+            53,
+            52,
+            55,
+            52,
+            54,
+            56,
+            58,
+            59,
+            56,
+            59,
+            57,
+            63,
+            61,
+            60,
+            63,
+            60,
+            62
+          ],
+          "points": [
+            [
+              0.099999994,
+              0.05,
+              0.099999994
+            ],
+            [
+              0.0,
+              0.05,
+              0.0
+            ],
+            [
+              0.0,
+              0.05,
+              1.2
+            ],
+            [
+              0.099999994,
+              0.05,
+              1.1
+            ],
+            [
+              0.099999994,
+              0.0,
+              0.099999994
+            ],
+            [
+              0.099999994,
+              0.0,
+              1.1
+            ],
+            [
+              0.0,
+              0.0,
+              1.2
+            ],
+            [
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.8,
+              0.0,
+              1.1
+            ],
+            [
+              0.8,
+              0.0,
+              0.099999994
+            ],
+            [
+              0.9,
+              0.0,
+              0.0
+            ],
+            [
+              0.9,
+              0.0,
+              1.2
+            ],
+            [
+              0.099999994,
+              0.0,
+              1.1
+            ],
+            [
+              0.8,
+              0.0,
+              1.1
+            ],
+            [
+              0.9,
+              0.0,
+              1.2
+            ],
+            [
+              0.0,
+              0.0,
+              1.2
+            ],
+            [
+              0.099999994,
+              0.0,
+              0.099999994
+            ],
+            [
+              0.8,
+              0.0,
+              0.099999994
+            ],
+            [
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.9,
+              0.0,
+              0.0
+            ],
+            [
+              0.8,
+              0.05,
+              1.1
+            ],
+            [
+              0.9,
+              0.05,
+              1.2
+            ],
+            [
+              0.9,
+              0.05,
+              0.0
+            ],
+            [
+              0.8,
+              0.05,
+              0.099999994
+            ],
+            [
+              0.0,
+              0.05,
+              1.2
+            ],
+            [
+              0.099999994,
+              0.05,
+              1.1
+            ],
+            [
+              0.9,
+              0.05,
+              1.2
+            ],
+            [
+              0.8,
+              0.05,
+              1.1
+            ],
+            [
+              0.9,
+              0.05,
+              0.0
+            ],
+            [
+              0.8,
+              0.05,
+              0.099999994
+            ],
+            [
+              0.0,
+              0.05,
+              0.0
+            ],
+            [
+              0.099999994,
+              0.05,
+              0.099999994
+            ],
+            [
+              0.0,
+              0.05,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.9,
+              0.05,
+              0.0
+            ],
+            [
+              0.9,
+              0.0,
+              0.0
+            ],
+            [
+              0.9,
+              0.0,
+              0.0
+            ],
+            [
+              0.9,
+              0.05,
+              0.0
+            ],
+            [
+              0.9,
+              0.05,
+              1.2
+            ],
+            [
+              0.9,
+              0.0,
+              1.2
+            ],
+            [
+              0.8,
+              0.0,
+              0.099999994
+            ],
+            [
+              0.8,
+              0.05,
+              0.099999994
+            ],
+            [
+              0.099999994,
+              0.05,
+              0.099999994
+            ],
+            [
+              0.099999994,
+              0.0,
+              0.099999994
+            ],
+            [
+              0.8,
+              0.0,
+              1.1
+            ],
+            [
+              0.8,
+              0.05,
+              1.1
+            ],
+            [
+              0.8,
+              0.05,
+              0.099999994
+            ],
+            [
+              0.8,
+              0.0,
+              0.099999994
+            ],
+            [
+              0.9,
+              0.0,
+              1.2
+            ],
+            [
+              0.9,
+              0.05,
+              1.2
+            ],
+            [
+              0.0,
+              0.05,
+              1.2
+            ],
+            [
+              0.0,
+              0.0,
+              1.2
+            ],
+            [
+              0.0,
+              0.05,
+              1.2
+            ],
+            [
+              0.0,
+              0.0,
+              1.2
+            ],
+            [
+              0.0,
+              0.05,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.099999994,
+              0.05,
+              1.1
+            ],
+            [
+              0.099999994,
+              0.0,
+              1.1
+            ],
+            [
+              0.8,
+              0.05,
+              1.1
+            ],
+            [
+              0.8,
+              0.0,
+              1.1
+            ],
+            [
+              0.099999994,
+              0.05,
+              0.099999994
+            ],
+            [
+              0.099999994,
+              0.0,
+              0.099999994
+            ],
+            [
+              0.099999994,
+              0.05,
+              1.1
+            ],
+            [
+              0.099999994,
+              0.0,
+              1.1
+            ]
+          ]
+        }
+      },
+      "inherits": {
+        "material": "4549bada-a37e-5044-bb70-456516cca5a8"
+      }
+    },
+    {
+      "path": "d10e4eb4-6a35-5fbe-9491-7a6fb93f1691",
+      "attributes": {
+        "bsi::ifc::material": {
+          "code": "GLASS",
+          "uri": "https://identifier.buildingsmart.org/uri/fish/midas-materials/26/class/GLASS"
+        },
+        "bsi::ifc::presentation::diffuseColor": [
+          0.5,
+          0.8,
+          0.6
+        ],
+        "bsi::ifc::presentation::opacity": 0.3
+      }
+    },
+    {
+      "path": "5ad6f475-c04c-5628-8b9d-75d0bab0c0e5",
+      "attributes": {
+        "usd::usdgeom::mesh": {
+          "faceVertexIndices": [
+            0,
+            1,
+            2,
+            0,
+            2,
+            3,
+            7,
+            4,
+            5,
+            7,
+            5,
+            6,
+            9,
+            10,
+            11,
+            9,
+            11,
+            8,
+            15,
+            12,
+            13,
+            15,
+            13,
+            14,
+            17,
+            18,
+            19,
+            17,
+            19,
+            16,
+            23,
+            20,
+            21,
+            23,
+            21,
+            22
+          ],
+          "points": [
+            [
+              0.8,
+              0.02,
+              0.099999994
+            ],
+            [
+              0.8,
+              0.02,
+              1.1
+            ],
+            [
+              0.099999994,
+              0.02,
+              1.1
+            ],
+            [
+              0.099999994,
+              0.02,
+              0.099999994
+            ],
+            [
+              0.8,
+              0.03,
+              0.099999994
+            ],
+            [
+              0.099999994,
+              0.03,
+              0.099999994
+            ],
+            [
+              0.099999994,
+              0.03,
+              1.1
+            ],
+            [
+              0.8,
+              0.03,
+              1.1
+            ],
+            [
+              0.8,
+              0.02,
+              1.1
+            ],
+            [
+              0.8,
+              0.03,
+              1.1
+            ],
+            [
+              0.099999994,
+              0.03,
+              1.1
+            ],
+            [
+              0.099999994,
+              0.02,
+              1.1
+            ],
+            [
+              0.099999994,
+              0.02,
+              1.1
+            ],
+            [
+              0.099999994,
+              0.03,
+              1.1
+            ],
+            [
+              0.099999994,
+              0.03,
+              0.099999994
+            ],
+            [
+              0.099999994,
+              0.02,
+              0.099999994
+            ],
+            [
+              0.099999994,
+              0.02,
+              0.099999994
+            ],
+            [
+              0.099999994,
+              0.03,
+              0.099999994
+            ],
+            [
+              0.8,
+              0.03,
+              0.099999994
+            ],
+            [
+              0.8,
+              0.02,
+              0.099999994
+            ],
+            [
+              0.8,
+              0.02,
+              0.099999994
+            ],
+            [
+              0.8,
+              0.03,
+              0.099999994
+            ],
+            [
+              0.8,
+              0.03,
+              1.1
+            ],
+            [
+              0.8,
+              0.02,
+              1.1
+            ]
+          ]
+        }
+      },
+      "inherits": {
+        "material": "d10e4eb4-6a35-5fbe-9491-7a6fb93f1691"
+      }
+    }
+  ]
+}

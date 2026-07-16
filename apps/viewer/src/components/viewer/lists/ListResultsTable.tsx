@@ -300,7 +300,7 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
         </span>
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon-sm" className={cn('h-6 w-6 shrink-0', filterByVisibility && 'text-primary')} onClick={() => setFilterByVisibility((p) => !p)}>
+            <Button variant="ghost" size="icon-sm" className={cn('h-6 w-6 shrink-0', filterByVisibility && 'text-primary')} aria-label={filterByVisibility ? 'Showing visible objects only' : 'Showing all objects'} aria-pressed={filterByVisibility} onClick={() => setFilterByVisibility((p) => !p)}>
               {filterByVisibility ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
             </Button>
           </TooltipTrigger>
@@ -310,7 +310,7 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
           <Tooltip>
             <TooltipTrigger asChild>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon-sm" className="h-6 w-6 shrink-0">
+                <Button variant="ghost" size="icon-sm" className="h-6 w-6 shrink-0" aria-label="Export">
                   <Download className="h-3.5 w-3.5" />
                 </Button>
               </DropdownMenuTrigger>

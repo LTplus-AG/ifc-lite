@@ -90,6 +90,103 @@ function readVisibilityFilterOverride(): { disabledTypes?: string[]; skipTypeGeo
   return v && typeof v === 'object' ? v : undefined;
 }
 
+/**
+ * SPIKE flag: shard the entity-index scan across the idle geometry workers and
+ * deliver the stitched index early, instead of waiting for the pre-pass
+ * worker's single-threaded post-scan `entity-index` emission. Read off
+ * `globalThis.__IFC_LITE_SHARD_SCAN` (benchmark A/B knob). Truthy ⇒ on.
+ */
+function readShardScanFlag(): boolean {
+  const g = globalThis as unknown as { __IFC_LITE_SHARD_SCAN?: unknown };
+  const v = g.__IFC_LITE_SHARD_SCAN;
+  // ON by default; 0/'0'/false is the kill switch (same convention as the
+  // other #1682 load/render knobs).
+  if (v === 0 || v === '0' || v === false) return false;
+  return true;
+}
+
+/** One shard's returned columns + handoff (see `scanEntityIndexShard`). */
+interface ShardColumns {
+  ids: Uint32Array;
+  starts: Uint32Array;
+  lengths: Uint32Array;
+  /** Per-record prepass class (PREPASS_CLASS_*; 4 = IfcStyledItem). */
+  classes: Uint8Array;
+  /** Global start of the next shard's first real entity, or -1 at EOF. */
+  handoff: number;
+}
+
+/**
+ * SPIKE: stitch N speculative shard scans into the full entity index —
+ * byte-identical to the single-threaded scan. Port of the native
+ * `parallel_scan::stitch`: shard 0 is authoritative (header-aware start); for
+ * shard i>0 the previous shard's validated `handoff` is a real entity start, so
+ * binary-search shard i's `starts` for it and drop the speculative prefix before
+ * it. Concatenates the validated slices in shard order (= file order), so
+ * last-wins on a duplicate id is preserved when the worker rebuilds its map.
+ *
+ * Returns null on the rare "handoff not found" case (speculative overshoot / a
+ * record spanning a whole shard), which needs the serial-rescan fallback the JS
+ * spike doesn't implement — the caller falls back to the pre-pass's own index.
+ */
+function stitchShards(shards: ShardColumns[]): { ids: Uint32Array; starts: Uint32Array; lengths: Uint32Array; classes: Uint8Array } | null {
+  const n = shards.length;
+  // Total upper bound = sum of shard record counts (validated slices are a subset).
+  let cap = 0;
+  for (const s of shards) cap += s.ids.length;
+  const outIds = new Uint32Array(cap);
+  const outStarts = new Uint32Array(cap);
+  const outLengths = new Uint32Array(cap);
+  const outClasses = new Uint8Array(cap);
+  let w = 0;
+
+  // Shard 0: authoritative, take every record.
+  {
+    const s = shards[0];
+    outIds.set(s.ids, w);
+    outStarts.set(s.starts, w);
+    outLengths.set(s.lengths, w);
+    outClasses.set(s.classes, w);
+    w += s.ids.length;
+  }
+  let expectedStart = shards[0].handoff; // -1 => no more real entities
+
+  for (let i = 1; i < n; i++) {
+    if (expectedStart < 0) break;
+    const s = shards[i];
+    // starts is strictly increasing → binary-search for expectedStart.
+    const starts = s.starts;
+    let lo = 0;
+    let hi = starts.length - 1;
+    let p = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >>> 1;
+      const v = starts[mid];
+      if (v === expectedStart) { p = mid; break; }
+      if (v < expectedStart) lo = mid + 1;
+      else hi = mid - 1;
+    }
+    if (p < 0) {
+      // Handoff not present in this shard — fallback path (not implemented here).
+      return null;
+    }
+    const take = starts.length - p;
+    outIds.set(s.ids.subarray(p), w);
+    outStarts.set(s.starts.subarray(p), w);
+    outLengths.set(s.lengths.subarray(p), w);
+    outClasses.set(s.classes.subarray(p), w);
+    w += take;
+    expectedStart = s.handoff;
+  }
+
+  return {
+    ids: outIds.subarray(0, w),
+    starts: outStarts.subarray(0, w),
+    lengths: outLengths.subarray(0, w),
+    classes: outClasses.subarray(0, w),
+  };
+}
+
 interface PrepassMeta {
   /** Prepass-resolved plane-angle→radians scale; seeds worker batch decoders. */
   planeAngleToRadians?: number;
@@ -274,8 +371,50 @@ export async function* processParallel(
    * mesh.expressId; only element-material colours did).
    */
   const queuedChunks: { jobs: Uint32Array; affinity: Uint32Array | null }[] = [];
+  // Sharded pre-pass: prepass `complete` arrived while chunks were still
+  // queued behind the async styles event; stream-end fires on drain instead.
+  let streamEndPendingQueueDrain = false;
   let stylesReceived = false;
   let entityIndexReceived = false;
+
+  // ── SPIKE: sharded entity-index scan across the idle geometry workers ──
+  // When on, split the file into N byte ranges, have each idle worker scan its
+  // shard (`scanEntityIndexShard`), stitch the columns on THIS thread, and
+  // deliver the entity index early (instead of waiting for the pre-pass
+  // worker's single-threaded post-scan `entity-index` event). Measures the
+  // parser-tail-contention blocker from prior art dd56ea9e.
+  const shardScanEnabled = readShardScanFlag();
+  let entityIndexDeliveredEarly = false;
+  const shardResults: (ShardColumns | null)[] = [];
+  let shardResultsRemaining = 0;
+  let shardScanDispatchedAt = -1;
+  // Shard-resolved styled-item slices (see onAllStyleSlicesReceived).
+  interface StylesSlice {
+    orphanIds: Uint32Array; orphanColors: Float32Array;
+    geomIds: Uint32Array; geomColors: Float32Array; error?: string;
+  }
+  const stylesSliceResults: (StylesSlice | null)[] = [];
+  let stylesSlicesRemaining = 0;
+  // Support spans extracted from the shard classes (sharded mode only).
+  let supportSpans: {
+    colourMapSpans: Uint32Array; materialDefSpans: Uint32Array;
+    relMaterialSpans: Uint32Array; voidSpans: Uint32Array;
+    fillsSpans: Uint32Array; aggregateSpans: Uint32Array;
+  } | null = null;
+  // Deferred finalize: needs BOTH the merged style slices and the meta event's
+  // planeAngleToRadians (finalize seeds its decoder with it, exactly like the
+  // serial styles block).
+  let mergedStylesForFinalize: {
+    orphanIds: Uint32Array; orphanColors: Float32Array;
+    geomIds: Uint32Array; geomColors: Float32Array;
+  } | null = null;
+  let finalizeDispatched = false;
+  // Forward ref: assigned at the pre-pass dispatch site (which executes during
+  // synchronous setup, long before any shard result can arrive).
+  let startPrepass: (
+    sharded: boolean,
+    indexColumns?: { ids: Uint32Array; starts: Uint32Array; lengths: Uint32Array; classes: Uint8Array },
+  ) => void = () => {};
 
   // Content-affinity routing (#1130 follow-up): the pre-pass tags every job with
   // an affinity key (ObjectType hash, see `affinity_key` in Rust). Sending all
@@ -300,6 +439,50 @@ export async function* processParallel(
       const msg = e.data;
       if (msg.type === 'ready') {
         console.log(`[stream] worker[${workerIndex}] WASM ready @ ${elapsed()}ms`);
+        return;
+      }
+      if (msg.type === 'shard-result') {
+        // SPIKE: one worker's entity-index shard. Store it; when all shards are
+        // in, stitch on this thread and deliver the index early.
+        const si = msg.shardIndex as number;
+        shardResults[si] = {
+          ids: msg.ids as Uint32Array,
+          starts: msg.starts as Uint32Array,
+          lengths: msg.lengths as Uint32Array,
+          classes: msg.classes as Uint8Array,
+          handoff: msg.handoff as number,
+        };
+        shardResultsRemaining--;
+        console.log(`[stream][shard] worker[${workerIndex}] shard ${si} done @ ${elapsed()}ms (${(msg.ids as Uint32Array).length} entities, remaining=${shardResultsRemaining})`);
+        if (shardResultsRemaining === 0) {
+          onAllShardsReceived();
+        }
+        return;
+      }
+      if (msg.type === 'styles-final') {
+        // Finalized styles payload from worker 0 — feed it through the SAME
+        // prepass styles-event path (gates, logging, distribution) by
+        // synthesizing a prepass-stream message. The handler is a plain
+        // closure; invoking it directly is safe (no `this`).
+        (prepassWorker.onmessage as (e: MessageEvent) => void)({
+          data: { type: 'prepass-stream', event: { type: 'styles', ...(msg.payload as Record<string, unknown>) } },
+        } as MessageEvent);
+        return;
+      }
+      if (msg.type === 'styles-shard-result') {
+        const si = msg.sliceIndex as number;
+        stylesSliceResults[si] = {
+          orphanIds: msg.orphanIds as Uint32Array,
+          orphanColors: msg.orphanColors as Float32Array,
+          geomIds: msg.geomIds as Uint32Array,
+          geomColors: msg.geomColors as Float32Array,
+          error: msg.error as string | undefined,
+        };
+        stylesSlicesRemaining--;
+        console.log(`[stream][shard] worker[${workerIndex}] style slice ${si} done @ ${elapsed()}ms (${(msg.geomIds as Uint32Array).length} geometry styles, remaining=${stylesSlicesRemaining})`);
+        if (stylesSlicesRemaining === 0) {
+          onAllStyleSlicesReceived();
+        }
         return;
       }
       if (msg.type === 'memory') {
@@ -692,6 +875,15 @@ export async function* processParallel(
       const c = queuedChunks.shift()!;
       dispatchJobsChunkInternal(c.jobs, c.affinity);
     }
+    // Sharded pre-pass: the prepass can COMPLETE while chunks are still queued
+    // behind the (asynchronously finalized) styles event. stream-end was
+    // deferred in onPrepassComplete for that case — release it now that the
+    // queue is empty, or workers would never see these jobs (measured: a run
+    // completed with ZERO meshes).
+    if (streamEndPendingQueueDrain) {
+      streamEndPendingQueueDrain = false;
+      sendStreamEnd();
+    }
   };
 
   // Step-by-step timing so we can tell exactly where time goes.
@@ -701,6 +893,250 @@ export async function* processParallel(
     ? ` (override=${options.workerCountOverride}, bound=${workerCountResult.reason})`
     : ` (cores=${cores}, bound=${workerCountResult.reason})`;
   console.log(`[stream] processParallel start, fileSizeMB=${fileSizeMB.toFixed(1)} workerCount=${workerCount}${overrideNote}`);
+
+  /**
+   * Deliver a built entity index to every geometry worker (via a shared SAB
+   * triple) + the parser worker (`onEntityIndex`), then open the entity-index
+   * gate and drain. Shared by the pre-pass path and the SPIKE sharded-early
+   * path so both distribute the index identically.
+   */
+  const deliverEntityIndex = (
+    ids: Uint32Array,
+    starts: Uint32Array,
+    lengths: Uint32Array,
+    source: 'prepass' | 'sharded',
+  ) => {
+    console.log(`[stream] entity-index (${source}) @ ${elapsed()}ms (${ids.length} entries)`);
+    if (typeof SharedArrayBuffer !== 'undefined') {
+      const sabIds = new SharedArrayBuffer(ids.byteLength);
+      const sabStarts = new SharedArrayBuffer(starts.byteLength);
+      const sabLengths = new SharedArrayBuffer(lengths.byteLength);
+      new Uint32Array(sabIds).set(ids);
+      new Uint32Array(sabStarts).set(starts);
+      new Uint32Array(sabLengths).set(lengths);
+      for (const w of workers) {
+        try {
+          w.postMessage({
+            type: 'set-entity-index' as const,
+            ids: new Uint32Array(sabIds),
+            starts: new Uint32Array(sabStarts),
+            lengths: new Uint32Array(sabLengths),
+          });
+        } catch (err) {
+          console.warn('[stream] set-entity-index dispatch failed:', err);
+        }
+      }
+      if (options?.onEntityIndex) {
+        try {
+          options.onEntityIndex(
+            new Uint32Array(sabIds),
+            new Uint32Array(sabStarts),
+            new Uint32Array(sabLengths),
+          );
+        } catch (err) {
+          console.warn('[stream] onEntityIndex callback failed:', err);
+        }
+      }
+    } else {
+      for (const w of workers) {
+        try {
+          w.postMessage({
+            type: 'set-entity-index' as const,
+            ids: ids.slice(), starts: starts.slice(), lengths: lengths.slice(),
+          });
+        } catch (err) {
+          console.warn('[stream] set-entity-index dispatch failed:', err);
+        }
+      }
+      if (options?.onEntityIndex) {
+        try {
+          options.onEntityIndex(ids.slice(), starts.slice(), lengths.slice());
+        } catch (err) {
+          console.warn('[stream] onEntityIndex callback failed:', err);
+        }
+      }
+    }
+    entityIndexReceived = true;
+    drainQueuedChunksIfReady();
+  };
+
+  /**
+   * All shards are in — stitch, deliver the index early, fan the styled-item
+   * slices out for parallel style resolution, and start the SHARDED pre-pass
+   * (its start was deferred; it receives the stitched index so it skips its
+   * own index build, resolves meta against the full index, and leaves styles
+   * to the shards). On a stitch miss (rare handoff-not-found), fall back to
+   * the serial pre-pass path — identical to flag-off behaviour.
+   */
+  const onAllShardsReceived = () => {
+    const shards = shardResults as ShardColumns[];
+    const stitched = stitchShards(shards);
+    if (!stitched) {
+      console.warn('[stream][shard] stitch fallback triggered (handoff not found) — serial pre-pass');
+      startPrepass(false);
+      return;
+    }
+    console.log(`[stream][shard] stitched ${stitched.ids.length} entities @ ${elapsed()}ms (shard scan started @ ${shardScanDispatchedAt}ms)`);
+    // Copy out of the subarray views so the held columns own contiguous buffers.
+    const ids = stitched.ids.slice();
+    const starts = stitched.starts.slice();
+    const lengths = stitched.lengths.slice();
+    entityIndexDeliveredEarly = true;
+    // set-entity-index reaches every worker FIRST (FIFO), so the style-shard
+    // messages below always find the index installed.
+    deliverEntityIndex(ids, starts, lengths, 'sharded');
+
+    // Extract the styled-item span triples (class 4) in FILE ORDER from the
+    // stitched columns, split into one contiguous slice per worker, and
+    // resolve them in parallel while everyone waits on the pre-pass scan.
+    const classes = stitched.classes;
+    // Class codes (see Rust PREPASS_CLASS_*): 4 styled, 5 colour map,
+    // 6 material def repr, 7 rel-associates-material, 8 voids, 9 fills,
+    // 10 aggregates. Extract each list in FILE ORDER.
+    const counts = new Uint32Array(11);
+    for (let i = 0; i < classes.length; i++) counts[classes[i]]++;
+    const kinds = [4, 5, 6, 7, 8, 9, 10] as const;
+    const spanLists = new Map<number, { arr: Uint32Array; w: number }>();
+    for (const k of kinds) spanLists.set(k, { arr: new Uint32Array(counts[k] * 3), w: 0 });
+    for (let i = 0; i < classes.length; i++) {
+      const slot = spanLists.get(classes[i]);
+      if (!slot) continue;
+      slot.arr[slot.w] = ids[i];
+      slot.arr[slot.w + 1] = starts[i];
+      slot.arr[slot.w + 2] = lengths[i];
+      slot.w += 3;
+    }
+    supportSpans = {
+      colourMapSpans: spanLists.get(5)!.arr,
+      materialDefSpans: spanLists.get(6)!.arr,
+      relMaterialSpans: spanLists.get(7)!.arr,
+      voidSpans: spanLists.get(8)!.arr,
+      fillsSpans: spanLists.get(9)!.arr,
+      aggregateSpans: spanLists.get(10)!.arr,
+    };
+    const styledCount = counts[4];
+    const styledSpans = spanLists.get(4)!.arr;
+    // 2 slices per worker (round-robin): the tail is set by the SLOWEST
+    // worker, and macOS occasionally schedules one onto a slow core — halving
+    // the slice size halves the damage a slow core can do to the tail.
+    // Slice order stays file order and the merge is by slice INDEX, so
+    // first-wins precedence is unchanged.
+    const sliceCount = workers.length * 2;
+    console.log(`[stream][shard] ${styledCount} styled items -> ${sliceCount} style slices @ ${elapsed()}ms`);
+    stylesSliceResults.length = sliceCount;
+    stylesSlicesRemaining = sliceCount;
+    for (let i = 0; i < sliceCount; i++) {
+      const from = Math.floor((i * styledCount) / sliceCount) * 3;
+      const to = i + 1 === sliceCount ? styledCount * 3 : Math.floor(((i + 1) * styledCount) / sliceCount) * 3;
+      const slice = styledSpans.slice(from, to);
+      workers[i % workers.length].postMessage(
+        { type: 'resolve-styles-shard' as const, sharedBuffer, sliceIndex: i, spans: slice },
+        [slice.buffer],
+      );
+    }
+
+    // Start the sharded pre-pass with the stitched index columns + classes
+    // (stage 2: the pre-pass discovers jobs/spans from the class column and
+    // never byte-scans the file).
+    startPrepass(true, { ids, starts, lengths, classes: classes.slice() });
+  };
+
+  /**
+   * Merge the shard-resolved style maps IN SLICE ORDER with first-wins per id
+   * (reproducing the serial resolver's file-order precedence) and queue the
+   * finalize call on the pre-pass worker. FIFO on that worker guarantees the
+   * stash from the sharded pre-pass call is present when finalize runs; the
+   * canonical flatten emits the styles event through the same channel.
+   */
+  const onAllStyleSlicesReceived = () => {
+    const orphan = new Map<number, number>(); // id -> base float index (slice,i)
+    const geom = new Map<number, number>();
+    // First pass: count winners to size the merged columns.
+    const orphanWin: Array<[number, Float32Array, number]> = [];
+    const geomWin: Array<[number, Float32Array, number]> = [];
+    for (const slice of stylesSliceResults) {
+      if (!slice) continue;
+      if (slice.error) console.warn(`[stream][shard] style slice failed (degraded colours possible): ${slice.error}`);
+      for (let i = 0; i < slice.orphanIds.length; i++) {
+        const id = slice.orphanIds[i];
+        if (!orphan.has(id)) { orphan.set(id, 1); orphanWin.push([id, slice.orphanColors, i * 4]); }
+      }
+      for (let i = 0; i < slice.geomIds.length; i++) {
+        const id = slice.geomIds[i];
+        if (!geom.has(id)) { geom.set(id, 1); geomWin.push([id, slice.geomColors, i * 4]); }
+      }
+    }
+    const orphanIds = new Uint32Array(orphanWin.length);
+    const orphanColors = new Float32Array(orphanWin.length * 4);
+    orphanWin.forEach(([id, colors, o], i) => {
+      orphanIds[i] = id;
+      orphanColors.set(colors.subarray(o, o + 4), i * 4);
+    });
+    const geomIds = new Uint32Array(geomWin.length);
+    const geomColors = new Float32Array(geomWin.length * 4);
+    geomWin.forEach(([id, colors, o], i) => {
+      geomIds[i] = id;
+      geomColors.set(colors.subarray(o, o + 4), i * 4);
+    });
+    console.log(`[stream][shard] styles merged: ${geomWin.length} geometry + ${orphanWin.length} orphan @ ${elapsed()}ms`);
+    mergedStylesForFinalize = { orphanIds, orphanColors, geomIds, geomColors };
+    maybeDispatchFinalize();
+  };
+
+  /**
+   * Dispatch the styles finalize to geometry worker 0 once BOTH the merged
+   * style slices and the meta event (for planeAngleToRadians) are in. Worker 0
+   * already holds the entity index (set-entity-index preceded the style
+   * slices, FIFO), and is idle until the first jobs drain — which itself
+   * waits on the styles event this call produces.
+   */
+  const maybeDispatchFinalize = () => {
+    if (finalizeDispatched || !mergedStylesForFinalize || !supportSpans || !prepassMeta) return;
+    finalizeDispatched = true;
+    const m = mergedStylesForFinalize;
+    workers[0].postMessage(
+      {
+        type: 'finalize-styles' as const,
+        sharedBuffer,
+        orphanIds: m.orphanIds,
+        orphanColors: m.orphanColors,
+        geomIds: m.geomIds,
+        geomColors: m.geomColors,
+        ...supportSpans,
+        planeAngleToRadians: prepassMeta.planeAngleToRadians ?? 1,
+      },
+      [m.orphanIds.buffer, m.orphanColors.buffer, m.geomIds.buffer, m.geomColors.buffer],
+    );
+    console.log(`[stream][shard] styles finalize dispatched to worker[0] @ ${elapsed()}ms`);
+  };
+
+  // SPIKE: kick off the shard scans on the idle workers NOW (before the pre-pass
+  // worker's single scan). Gated: flag on, SAB available, file big enough, ≥2
+  // workers. The workers' tail-promise serialiser runs these after their `init`.
+  const SHARD_MIN_BYTES = 8 * 1024 * 1024;
+  const shardActive = shardScanEnabled
+    && typeof SharedArrayBuffer !== 'undefined'
+    && sharedBuffer.byteLength >= SHARD_MIN_BYTES
+    && workers.length >= 2;
+  if (shardActive) {
+    const len = sharedBuffer.byteLength;
+    const n = workers.length;
+    shardResults.length = n;
+    shardResultsRemaining = n;
+    shardScanDispatchedAt = elapsed();
+    console.log(`[stream][shard] dispatching ${n} shard scans over ${(len / (1024 * 1024)).toFixed(1)}MB @ ${shardScanDispatchedAt}ms`);
+    for (let i = 0; i < n; i++) {
+      const rangeStart = Math.floor((i * len) / n);
+      const rangeEnd = i + 1 === n ? len : Math.floor(((i + 1) * len) / n);
+      workers[i].postMessage({
+        type: 'scan-shard' as const,
+        sharedBuffer,
+        shardIndex: i,
+        rangeStart,
+        rangeEnd,
+      });
+    }
+  }
 
   const prepassWorker = makePrepassWorker();
   // Wrap the rest of the pipeline so worker teardown runs not only on
@@ -747,6 +1183,7 @@ export async function* processParallel(
           buildingRotation: (evt.buildingRotation as number | null | undefined) ?? null,
         };
         console.log(`[stream] meta @ ${elapsed()}ms unitScale=${prepassMeta.unitScale} rtc=[${(prepassMeta.rtcOffset[0]).toFixed(0)},${(prepassMeta.rtcOffset[1]).toFixed(0)},${(prepassMeta.rtcOffset[2]).toFixed(0)}]`);
+        maybeDispatchFinalize();
         sendStreamStartIfReady();
         wake();
       } else if (evt.type === 'jobs') {
@@ -821,79 +1258,22 @@ export async function* processParallel(
         // before any subsequent stream-chunk.
         drainQueuedChunksIfReady();
       } else if (evt.type === 'entity-index') {
-        // Pre-pass exported its built entity_index. Forward to every
-        // worker so they skip the ~5 s file re-scan in Rust's lazy
-        // build path. SAB sharing for zero-copy distribution to N
-        // workers — each gets a Uint32Array view over the same buffer.
+        // Pre-pass exported its built entity_index. In the SPIKE sharded path
+        // the stitched index was already delivered early — here we only run the
+        // byte-identical assertion against the pre-pass's single-scan columns
+        // (the hard correctness gate) and skip the redundant re-delivery.
+        // Otherwise (baseline), deliver it to workers + the parser worker so
+        // they skip the ~5 s Rust file re-scan.
         const ids = evt.ids as Uint32Array;
         const starts = evt.starts as Uint32Array;
         const lengths = evt.lengths as Uint32Array;
-        console.log(`[stream] entity-index @ ${elapsed()}ms (${ids.length} entries)`);
-
-        if (typeof SharedArrayBuffer !== 'undefined') {
-          // Allocate one SAB triple, copy data once, share across all
-          // workers without postMessage clone cost.
-          const idsBytes = ids.byteLength;
-          const startsBytes = starts.byteLength;
-          const lengthsBytes = lengths.byteLength;
-          const sabIds = new SharedArrayBuffer(idsBytes);
-          const sabStarts = new SharedArrayBuffer(startsBytes);
-          const sabLengths = new SharedArrayBuffer(lengthsBytes);
-          new Uint32Array(sabIds).set(ids);
-          new Uint32Array(sabStarts).set(starts);
-          new Uint32Array(sabLengths).set(lengths);
-          for (const w of workers) {
-            try {
-              w.postMessage({
-                type: 'set-entity-index' as const,
-                ids: new Uint32Array(sabIds),
-                starts: new Uint32Array(sabStarts),
-                lengths: new Uint32Array(sabLengths),
-              });
-            } catch (err) {
-              console.warn('[stream] set-entity-index dispatch failed:', err);
-            }
-          }
-          // Hand the same SAB triple to the parser worker (or any other
-          // listener) so it can skip its own `scanEntitiesFastBytes` call.
-          // Each consumer gets its own Uint32Array view over the shared
-          // buffers — no extra copy.
-          if (options?.onEntityIndex) {
-            try {
-              options.onEntityIndex(
-                new Uint32Array(sabIds),
-                new Uint32Array(sabStarts),
-                new Uint32Array(sabLengths),
-              );
-            } catch (err) {
-              console.warn('[stream] onEntityIndex callback failed:', err);
-            }
-          }
+        if (entityIndexDeliveredEarly) {
+          // Sharded mode never reaches here (the sharded pre-pass skips the
+          // entity-index event); guard against double delivery regardless.
+          console.log(`[stream] pre-pass entity-index arrived @ ${elapsed()}ms (already delivered via shards; ignoring)`);
         } else {
-          // SAB unavailable — clone per worker via structured clone.
-          for (const w of workers) {
-            try {
-              w.postMessage({
-                type: 'set-entity-index' as const,
-                ids: ids.slice(),
-                starts: starts.slice(),
-                lengths: lengths.slice(),
-              });
-            } catch (err) {
-              console.warn('[stream] set-entity-index dispatch failed:', err);
-            }
-          }
-          if (options?.onEntityIndex) {
-            try {
-              options.onEntityIndex(ids.slice(), starts.slice(), lengths.slice());
-            } catch (err) {
-              console.warn('[stream] onEntityIndex callback failed:', err);
-            }
-          }
+          deliverEntityIndex(ids, starts, lengths, 'prepass');
         }
-
-        entityIndexReceived = true;
-        drainQueuedChunksIfReady();
       } else if (evt.type === 'prepass-columns') {
         // Pre-pass computed the referenced-repmaps + instantiated-type-id sets
         // and the material-layer index ONCE (issue #957 / #563). Forward to
@@ -1016,7 +1396,13 @@ export async function* processParallel(
     // needed. The dedicated zero-jobs branch in the outer loop
     // handles their teardown.
     if (streamStartSentToWorkers) {
-      sendStreamEnd();
+      if (queuedChunks.length > 0 || (shardActive && !stylesReceived)) {
+        // Sharded mode: chunks are (or will be) queued behind the async
+        // styles finalize — ending the workers now would drop those jobs.
+        streamEndPendingQueueDrain = true;
+      } else {
+        sendStreamEnd();
+      }
     }
     prepassWorker.terminate();
     wake();
@@ -1036,13 +1422,47 @@ export async function* processParallel(
   if (visibilityFilter?.disabledTypes?.length || visibilityFilter?.skipTypeGeometry) {
     console.log(`[stream] load-time visibility filter: disabledTypes=[${visibilityFilter.disabledTypes?.join(',') ?? ''}] skipTypeGeometry=${visibilityFilter.skipTypeGeometry === true}`);
   }
-  prepassWorker.postMessage({
-    type: 'prepass-streaming',
-    sharedBuffer,
-    chunkSize: 50_000,
-    ...(visibilityFilter?.disabledTypes ? { disabledTypes: visibilityFilter.disabledTypes } : {}),
-    ...(visibilityFilter?.skipTypeGeometry ? { skipTypeGeometry: true } : {}),
-  });
+  startPrepass = (
+    sharded: boolean,
+    indexColumns?: { ids: Uint32Array; starts: Uint32Array; lengths: Uint32Array; classes: Uint8Array },
+  ) => {
+    if (sharded && indexColumns) {
+      prepassWorker.postMessage({
+        type: 'prepass-streaming-sharded',
+        sharedBuffer,
+        chunkSize: 50_000,
+        ...(visibilityFilter?.disabledTypes ? { disabledTypes: visibilityFilter.disabledTypes } : {}),
+        ...(visibilityFilter?.skipTypeGeometry ? { skipTypeGeometry: true } : {}),
+        indexIds: indexColumns.ids,
+        indexStarts: indexColumns.starts,
+        indexLengths: indexColumns.lengths,
+        indexClasses: indexColumns.classes,
+      }, [
+        // TRANSFER the ~230MB of stitched columns (deliverEntityIndex already
+        // copied them into SABs for the other consumers) — a structured clone
+        // here would double the copy cost and the transient memory.
+        indexColumns.ids.buffer,
+        indexColumns.starts.buffer,
+        indexColumns.lengths.buffer,
+        indexColumns.classes.buffer,
+      ]);
+    } else {
+      prepassWorker.postMessage({
+        type: 'prepass-streaming',
+        sharedBuffer,
+        chunkSize: 50_000,
+        ...(visibilityFilter?.disabledTypes ? { disabledTypes: visibilityFilter.disabledTypes } : {}),
+        ...(visibilityFilter?.skipTypeGeometry ? { skipTypeGeometry: true } : {}),
+      });
+    }
+  };
+  // Sharded mode DEFERS the pre-pass start until the stitched index is ready
+  // (onAllShardsReceived) — racing the serial scan against N shard scans of
+  // the same bytes just contends for memory bandwidth and slows BOTH (measured
+  // +2.7s on meta for an 883MB model).
+  if (!shardActive) {
+    startPrepass(false);
+  }
 
   // Drain the event queue until the pre-pass and all process workers complete.
   // The pre-pass `complete` event is captured inside the message handler

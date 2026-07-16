@@ -75,6 +75,22 @@ export interface BatchedMesh {
    *  space (world = origin + position). Keeps f32 vertex coords element-small at
    *  building/georef scale (no fan collapse). [0,0,0] = absolute (legacy). */
   origin?: [number, number, number];
+  /** LOD1 (issue #1682 phase 5): simplified index range over the SAME vertex
+   *  buffer, drawn instead of the full indices when the batch projects below
+   *  the configured screen size. Absent = no LOD (draw full detail always). */
+  lod1IndexBuffer?: GPUBuffer;
+  lod1IndexCount?: number;
+  /** 12-byte lattice-quantized vertex buffer (issue #1682 phase 6): when
+   *  present, `vertexBuffer` holds uint16x4+u32 records and the batch must
+   *  draw through the quantized pipeline variants with these dequantization
+   *  params in the uniform. Absent = 28-byte f32 layout (the default). */
+  quantized?: { min: [number, number, number]; step: number };
+  /** GPU residency (issue #1682 phase 3a): `false` = evicted metadata shell —
+   *  bounds/expressIds/counts remain valid for culling, picking-fallback and
+   *  bookkeeping, but the GPU buffers are destroyed and MUST NOT be bound.
+   *  The draw loop skips such batches and requests a rebuild via
+   *  `Scene.requestBatchResidency`. `undefined`/`true` = resident. */
+  gpuResident?: boolean;
 }
 
 // Section plane for clipping
@@ -265,6 +281,32 @@ export interface RenderOptions {
   // the display refresh — a deliberately throttled 33ms cadence is not a
   // GPU miss.
   interactionFrameIntervalMs?: number;
+  /**
+   * Contribution culling (issue #1682): skip colour batches whose world AABB
+   * projects below `pixelRadius` device pixels (raised to
+   * `interactingPixelRadius` while the camera moves). Applies to the batched
+   * draw path only — instanced templates, textured meshes and the no-batches
+   * fallback are never contribution-culled. Absent or `pixelRadius <= 0`
+   * disables it (the default), so snapshot/export renders that omit the
+   * option stay exhaustive.
+   */
+  contributionCull?: import('./contribution-cull.js').ContributionCullOptions;
+  /**
+   * One-shot capture renders (IDS/clash/BCF snapshots): synchronously
+   * rebuild every GPU-evicted batch before drawing, so isolation options
+   * that reveal batches aged out under the residency budget still capture a
+   * complete image. Has a frame-time cost proportional to the evicted set —
+   * do NOT pass it on the interactive render loop (evicted batches restore
+   * asynchronously there).
+   */
+  restoreEvictedForCapture?: boolean;
+  /**
+   * LOD selection (issue #1682 phase 5): batches whose world AABB projects
+   * below `screenPx` device pixels draw their simplified LOD1 index range
+   * (when one was built — see Scene.setLodBuildsEnabled) instead of full
+   * detail. Absent or `screenPx <= 0` = always full detail.
+   */
+  lod?: { screenPx: number };
 }
 
 /**

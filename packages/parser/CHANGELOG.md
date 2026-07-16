@@ -1,5 +1,33 @@
 # @ifc-lite/parser
 
+## 3.9.0
+
+### Minor Changes
+
+- [#1748](https://github.com/LTplus-AG/ifc-lite/pull/1748) [`ae6079f`](https://github.com/LTplus-AG/ifc-lite/commit/ae6079f0d2d8a3dbc923dfd468817c7f3e2f9b4a) Thanks [@louistrue](https://github.com/louistrue)! - Lists/Schedules now resolve Type-level properties and quantities on instance rows ([#1745](https://github.com/LTplus-AG/ifc-lite/issues/1745)). A column mapped to a pset/qto that lives on an element's `IfcTypeProduct` (via `IfcRelDefinesByType`) — e.g. `Pset_WallCommon.FireRating` or `Qto_WallBaseQuantities.Width` defined once on `IfcWallType` — now falls back to the type when the instance has no local value, so it no longer renders a blank cell. Instance-level values still take precedence, and the same fallback applies to list filter conditions.
+
+  `@ifc-lite/parser` gains `extractTypeQuantitiesOnDemand` (and the `extractQsetsFromIds` helper) mirroring the existing `extractTypePropertiesOnDemand`. `@ifc-lite/lists` gains optional `getTypePropertySets` / `getTypeQuantitySets` accessors on `ListDataProvider`; providers that don't implement them keep their previous behaviour (no fallback).
+
+## 3.8.5
+
+### Patch Changes
+
+- Updated dependencies [[`6ed4de6`](https://github.com/LTplus-AG/ifc-lite/commit/6ed4de6a46100e097b41137a65e91b581df34486), [`8f3fafd`](https://github.com/LTplus-AG/ifc-lite/commit/8f3fafd7cc777e60cdc006956f8336680723c440), [`a2c31a1`](https://github.com/LTplus-AG/ifc-lite/commit/a2c31a185e868d15183df8360badb001789bd978), [`6ed4de6`](https://github.com/LTplus-AG/ifc-lite/commit/6ed4de6a46100e097b41137a65e91b581df34486)]:
+  - @ifc-lite/ifcx@2.3.0
+  - @ifc-lite/wasm@4.0.0
+
+## 3.8.4
+
+### Patch Changes
+
+- [#1700](https://github.com/LTplus-AG/ifc-lite/pull/1700) [`422d47d`](https://github.com/LTplus-AG/ifc-lite/commit/422d47dde37c7168ce4a547fc0a4f966649c1762) Thanks [@louistrue](https://github.com/louistrue)! - Harden the immediate-Container spatial level ([#1591](https://github.com/LTplus-AG/ifc-lite/issues/1591) follow-up):
+
+  - The spatial hierarchy now records an aggregated-descendant containment walk for ANY spatial container node, not just storeys, via a new optional `SpatialHierarchy.elementToContainer` map (also carried across data-store transport). A part nested through an IfcElementAssembly under an IfcBridgePart / IfcRoadPart / IfcSpatialZone now resolves that container instead of a blank cell. Storey-only `elementToStorey` semantics are unchanged.
+  - The list engine matches the spatial level string case-insensitively, so a hand-edited / imported list carrying `container` resolves the Container level rather than silently falling back to the storey name. An empty or unrecognised level still defaults to Storey.
+
+- Updated dependencies [[`422d47d`](https://github.com/LTplus-AG/ifc-lite/commit/422d47dde37c7168ce4a547fc0a4f966649c1762)]:
+  - @ifc-lite/data@2.5.3
+
 ## 3.8.3
 
 ### Patch Changes

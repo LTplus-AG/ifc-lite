@@ -1137,4 +1137,6 @@ Run `ifc-lite schema` to see the full API before writing eval expressions.
 | `lod` | Generate lightweight LOD artifacts |
 | `mcp` | Start an MCP server bound to one or more IFC files |
 | `ext` | Manage IFClite extensions (Phase 0 — validate, init) |
+| `layer` | Layered change tracking over a local store (.ifc-lite/) |
+| `ref` | Manage named refs in the layer store |
 <!-- END GENERATED: cli-commands -->

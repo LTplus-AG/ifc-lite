@@ -27,6 +27,11 @@ export interface CreateEntityOptions {
   attributes?: Record<string, unknown>;
   children?: Record<string, string>;
   inherits?: Record<string, string>;
+  psets?: Record<string, Record<string, PropertyValue>>;
+  quantities?: Record<string, Record<string, number>>;
+  classifications?: ClassificationRef[];
+  materials?: MaterialAssignment[];
+  geometryRef?: GeometryRefRecord;
   meta?: EntityMeta;
 }
 
@@ -87,11 +92,51 @@ export function createEntity(
   }
   entity.set(ENTITY_KEY.INHERITS, inherits);
 
-  entity.set(ENTITY_KEY.PSETS, new Y.Map<Y.Map<PropertyValue>>());
-  entity.set(ENTITY_KEY.QUANTITIES, new Y.Map<Y.Map<number>>());
-  entity.set(ENTITY_KEY.CLASSIFICATIONS, new Y.Array<ClassificationRef>());
-  entity.set(ENTITY_KEY.MATERIALS, new Y.Array<MaterialAssignment>());
-  entity.set(ENTITY_KEY.GEOMETRY_REF, new Y.Map<unknown>());
+  const psets = new Y.Map<Y.Map<PropertyValue>>();
+  if (options.psets) {
+    for (const [psetName, props] of Object.entries(options.psets)) {
+      assertStructuredName('pset name', psetName);
+      const pset = new Y.Map<PropertyValue>();
+      for (const [propName, value] of Object.entries(props)) {
+        assertStructuredName('property name', propName);
+        pset.set(propName, value);
+      }
+      psets.set(psetName, pset);
+    }
+  }
+  entity.set(ENTITY_KEY.PSETS, psets);
+
+  const quantities = new Y.Map<Y.Map<number>>();
+  if (options.quantities) {
+    for (const [qsetName, qtys] of Object.entries(options.quantities)) {
+      assertStructuredName('quantity set name', qsetName);
+      const qset = new Y.Map<number>();
+      for (const [qtyName, value] of Object.entries(qtys)) {
+        assertStructuredName('quantity name', qtyName);
+        qset.set(qtyName, value);
+      }
+      quantities.set(qsetName, qset);
+    }
+  }
+  entity.set(ENTITY_KEY.QUANTITIES, quantities);
+
+  const classifications = new Y.Array<ClassificationRef>();
+  if (options.classifications && options.classifications.length > 0) {
+    classifications.push([...options.classifications]);
+  }
+  entity.set(ENTITY_KEY.CLASSIFICATIONS, classifications);
+
+  const materials = new Y.Array<MaterialAssignment>();
+  if (options.materials && options.materials.length > 0) {
+    materials.push([...options.materials]);
+  }
+  entity.set(ENTITY_KEY.MATERIALS, materials);
+
+  const geometryRef = new Y.Map<unknown>();
+  if (options.geometryRef && options.geometryRef.geomIds.length > 0) {
+    geometryRef.set('geomIds', [...options.geometryRef.geomIds]);
+  }
+  entity.set(ENTITY_KEY.GEOMETRY_REF, geometryRef);
 
   const meta = new Y.Map<unknown>();
   const stamp = options.meta?.createdAt ?? new Date().toISOString();
@@ -224,6 +269,24 @@ export function removeChild(doc: Y.Doc, path: string, role: string): boolean {
   return true;
 }
 
+/** Set or update a `role → inherited path` entry on an entity. */
+export function setInherit(doc: Y.Doc, path: string, role: string, targetPath: string): void {
+  const entity = getEntity(doc, path);
+  if (!entity) throw new Error(`@ifc-lite/collab: entity "${path}" not found`);
+  const inherits = entity.get(ENTITY_KEY.INHERITS) as Y.Map<string> | undefined;
+  if (!inherits) throw new Error(`@ifc-lite/collab: entity "${path}" missing inherits map`);
+  inherits.set(role, targetPath);
+}
+
+export function removeInherit(doc: Y.Doc, path: string, role: string): boolean {
+  const entity = getEntity(doc, path);
+  if (!entity) return false;
+  const inherits = entity.get(ENTITY_KEY.INHERITS) as Y.Map<string> | undefined;
+  if (!inherits || !inherits.has(role)) return false;
+  inherits.delete(role);
+  return true;
+}
+
 /** Move an entity's containment by updating both endpoints atomically. */
 export function moveEntity(
   doc: Y.Doc,
@@ -242,6 +305,19 @@ export function moveEntity(
 /* Property sets                                                        */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Pset/quantity set and member names ride in `::`-delimited IFCX wire
+ * keys (#1031); a name containing the delimiter would flatten to an
+ * irreversible key and corrupt the structured branch on re-seed.
+ */
+function assertStructuredName(label: string, name: string): void {
+  if (name.includes('::')) {
+    throw new Error(
+      `@ifc-lite/collab: ${label} "${name}" must not contain "::" (IFCX namespace delimiter)`,
+    );
+  }
+}
+
 /** Set a property within a Pset; creates the Pset map if missing. */
 export function setPropertyValue(
   doc: Y.Doc,
@@ -250,6 +326,8 @@ export function setPropertyValue(
   propName: string,
   value: PropertyValue,
 ): void {
+  assertStructuredName('pset name', psetName);
+  assertStructuredName('property name', propName);
   const entity = getEntity(doc, path);
   if (!entity) throw new Error(`@ifc-lite/collab: entity "${path}" not found`);
   const psets = entity.get(ENTITY_KEY.PSETS) as Y.Map<Y.Map<PropertyValue>> | undefined;
@@ -303,6 +381,8 @@ export function setQuantityValue(
   qtyName: string,
   value: number,
 ): void {
+  assertStructuredName('quantity set name', qsetName);
+  assertStructuredName('quantity name', qtyName);
   const entity = getEntity(doc, path);
   if (!entity) throw new Error(`@ifc-lite/collab: entity "${path}" not found`);
   const qsets = entity.get(ENTITY_KEY.QUANTITIES) as Y.Map<Y.Map<number>> | undefined;
@@ -313,6 +393,35 @@ export function setQuantityValue(
     qsets.set(qsetName, qset);
   }
   qset.set(qtyName, value);
+}
+
+export function deleteQuantityValue(
+  doc: Y.Doc,
+  path: string,
+  qsetName: string,
+  qtyName: string,
+): boolean {
+  const qsets = getEntity(doc, path)?.get(ENTITY_KEY.QUANTITIES) as
+    | Y.Map<Y.Map<number>>
+    | undefined;
+  const qset = qsets?.get(qsetName);
+  if (!qset || !qset.has(qtyName)) return false;
+  qset.delete(qtyName);
+  // Clean up empty qsets, mirroring deletePropertyValue.
+  if (qset.size === 0) qsets!.delete(qsetName);
+  return true;
+}
+
+export function getQuantityValue(
+  doc: Y.Doc,
+  path: string,
+  qsetName: string,
+  qtyName: string,
+): number | undefined {
+  const qsets = getEntity(doc, path)?.get(ENTITY_KEY.QUANTITIES) as
+    | Y.Map<Y.Map<number>>
+    | undefined;
+  return qsets?.get(qsetName)?.get(qtyName);
 }
 
 /* ------------------------------------------------------------------ */
@@ -328,6 +437,15 @@ export function addClassification(doc: Y.Doc, path: string, ref: ClassificationR
   return arr.length - 1;
 }
 
+export function removeClassification(doc: Y.Doc, path: string, index: number): boolean {
+  const arr = getEntity(doc, path)?.get(ENTITY_KEY.CLASSIFICATIONS) as
+    | Y.Array<ClassificationRef>
+    | undefined;
+  if (!arr || index < 0 || index >= arr.length) return false;
+  arr.delete(index, 1);
+  return true;
+}
+
 export function addMaterial(doc: Y.Doc, path: string, assignment: MaterialAssignment): number {
   const entity = getEntity(doc, path);
   if (!entity) throw new Error(`@ifc-lite/collab: entity "${path}" not found`);
@@ -335,6 +453,15 @@ export function addMaterial(doc: Y.Doc, path: string, assignment: MaterialAssign
   if (!arr) throw new Error(`@ifc-lite/collab: entity "${path}" missing materials`);
   arr.push([assignment]);
   return arr.length - 1;
+}
+
+export function removeMaterial(doc: Y.Doc, path: string, index: number): boolean {
+  const arr = getEntity(doc, path)?.get(ENTITY_KEY.MATERIALS) as
+    | Y.Array<MaterialAssignment>
+    | undefined;
+  if (!arr || index < 0 || index >= arr.length) return false;
+  arr.delete(index, 1);
+  return true;
 }
 
 /* ------------------------------------------------------------------ */
@@ -370,6 +497,17 @@ export function addGeometryRef(doc: Y.Doc, path: string, geomId: string): void {
   refMap.set('geomIds', [...ids, geomId]);
 }
 
+export function clearGeometryRef(doc: Y.Doc, path: string): boolean {
+  const refMap = getEntity(doc, path)?.get(ENTITY_KEY.GEOMETRY_REF) as
+    | Y.Map<unknown>
+    | undefined;
+  if (!refMap || (!refMap.has('geomIds') && !refMap.has('geomId'))) return false;
+  if (refMap.has('geomIds')) refMap.delete('geomIds');
+  // Legacy single-id docs store `geomId`; clear both spellings.
+  if (refMap.has('geomId')) refMap.delete('geomId');
+  return true;
+}
+
 export function getGeometryRef(doc: Y.Doc, path: string): GeometryRefRecord | undefined {
   const refMap = getEntity(doc, path)?.get(ENTITY_KEY.GEOMETRY_REF) as
     | Y.Map<unknown>
@@ -401,6 +539,7 @@ export function entityToJSON(entity: Y.Map<unknown>): {
   children: Record<string, string>;
   inherits: Record<string, string>;
   psets: Record<string, Record<string, PropertyValue>>;
+  quantities: Record<string, Record<string, number>>;
   classifications: ClassificationRef[];
   materials: MaterialAssignment[];
   geometryRefs: string[];
@@ -410,6 +549,7 @@ export function entityToJSON(entity: Y.Map<unknown>): {
   const children = entity.get(ENTITY_KEY.CHILDREN) as Y.Map<string> | undefined;
   const inherits = entity.get(ENTITY_KEY.INHERITS) as Y.Map<string> | undefined;
   const psets = entity.get(ENTITY_KEY.PSETS) as Y.Map<Y.Map<PropertyValue>> | undefined;
+  const quantities = entity.get(ENTITY_KEY.QUANTITIES) as Y.Map<Y.Map<number>> | undefined;
   const classifications = entity.get(ENTITY_KEY.CLASSIFICATIONS) as
     | Y.Array<ClassificationRef>
     | undefined;
@@ -437,6 +577,17 @@ export function entityToJSON(entity: Y.Map<unknown>): {
     }
   }
 
+  const quantitiesJson: Record<string, Record<string, number>> = {};
+  if (quantities) {
+    for (const [qsetName, qset] of quantities.entries()) {
+      const qtys: Record<string, number> = {};
+      for (const [qtyName, val] of qset.entries()) {
+        qtys[qtyName] = val;
+      }
+      quantitiesJson[qsetName] = qtys;
+    }
+  }
+
   const metaJson: Record<string, unknown> = {};
   if (meta) for (const [k, v] of meta.entries()) metaJson[k] = v;
 
@@ -452,6 +603,7 @@ export function entityToJSON(entity: Y.Map<unknown>): {
     children: childrenJson,
     inherits: inheritsJson,
     psets: psetsJson,
+    quantities: quantitiesJson,
     classifications: classifications ? classifications.toArray() : [],
     materials: materials ? materials.toArray() : [],
     geometryRefs,

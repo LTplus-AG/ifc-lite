@@ -1,5 +1,66 @@
 # @ifc-lite/renderer
 
+## 1.38.0
+
+### Minor Changes
+
+- [#1747](https://github.com/LTplus-AG/ifc-lite/pull/1747) [`01b8b41`](https://github.com/LTplus-AG/ifc-lite/commit/01b8b414bfb72f1893c0c4296153e8f35e44b641) Thanks [@Blogbotana](https://github.com/Blogbotana)! - Add `Renderer.onDeviceLost` so hosts can recover from a lost GPU device instead of a permanently blank canvas.
+
+  When the GPU device is lost for a non-intentional reason — e.g. a Windows TDR driver reset or VRAM exhaustion while rotating/re-opening a large model on a weak or integrated GPU — every pipeline and buffer created from it is dead and the viewport can never present again. Previously the renderer only logged a warning and kept trying to configure the lost device, leaving a permanently blank canvas until a full reload.
+
+  The renderer now:
+
+  - Distinguishes a real loss from an intentional teardown (`GPUDeviceLostInfo.reason === 'destroyed'`) and only reacts to the former.
+  - Exposes `Renderer.onDeviceLost(listener)` (returns an unsubscribe) and `Renderer.isDeviceLost()`. Hosts subscribe and typically respond by disposing the renderer and reloading the model. Camera and model state are CPU-side and survive the loss, so the reload restores the model at its current orientation.
+  - Makes `render()` a no-op after a loss instead of emitting a stream of GPU validation errors.
+
+## 1.37.0
+
+### Minor Changes
+
+- [#1714](https://github.com/LTplus-AG/ifc-lite/pull/1714) [`9689ea5`](https://github.com/LTplus-AG/ifc-lite/commit/9689ea5276cc107895be56aa9267a4b7b778de2d) Thanks [@louistrue](https://github.com/louistrue)! - Cull GPU-instanced template draws (frustum + contribution) and report instanced frame stats.
+
+  The instanced pass previously drew every template unconditionally — on CATIA-class models that is ~97% of all draw calls (e.g. 8,929 of 9,213), which made orbiting choppy. Each template now carries cull metadata built at shard-upload time (union of occurrence world AABBs + largest single-occurrence bounding-sphere radius): templates are frustum-culled against the union box, and contribution-culled when even the largest occurrence projected at the union box's nearest view depth falls below the active pixel threshold — a conservative upper bound that works for bolts-scattered-everywhere templates whose union box is model-sized. Templates with a selected occurrence are exempt from contribution culling; non-finite occurrence matrices poison a template's metadata so it fails open (never culled); Exploded-mode translates grow the union so moved occurrences can't be culled by pre-move bounds. `FrameStats` gains `instancedDrawn` / `instancedFrustumCulled` / `instancedContributionCulled`.
+
+  Measured on an 883 MB CATIA model: draw calls 9,213 → 2,122 and fast-orbit frame rate 25.5 → 58.4 FPS, with unchanged GPU residency.
+
+### Patch Changes
+
+- [#1716](https://github.com/LTplus-AG/ifc-lite/pull/1716) [`62b68c0`](https://github.com/LTplus-AG/ifc-lite/commit/62b68c06347aab661c3d9417bcf016e565e2c4b1) Thanks [@louistrue](https://github.com/louistrue)! - Add `Scene.getInstancedEntityCount()` (O(1)) so size heuristics — like the viewer's orbit-pivot raycast skip — can account for GPU-instanced entities. On instanced-heavy CATIA-class models the flat mesh/batch census reads deceptively small, and the first pointer-down pivot raycast then materializes tens of thousands of occurrences and builds a BVH over millions of triangles, a visible input-to-first-orbit-frame stall.
+
+- Updated dependencies [[`8f3fafd`](https://github.com/LTplus-AG/ifc-lite/commit/8f3fafd7cc777e60cdc006956f8336680723c440), [`a2c31a1`](https://github.com/LTplus-AG/ifc-lite/commit/a2c31a185e868d15183df8360badb001789bd978), [`a1bbd6c`](https://github.com/LTplus-AG/ifc-lite/commit/a1bbd6c209ded2da1405a8d1c816a193601ae625)]:
+  - @ifc-lite/geometry@3.2.0
+
+## 1.36.0
+
+### Minor Changes
+
+- [#1707](https://github.com/LTplus-AG/ifc-lite/pull/1707) [`87516cf`](https://github.com/LTplus-AG/ifc-lite/commit/87516cf5f502b1f770786199b2256c3a215331c3) Thanks [@louistrue](https://github.com/louistrue)! - Opt-in cold (evict-to-disk) residency tier (issue [#1682](https://github.com/LTplus-AG/ifc-lite/issues/1682), phase 3b).
+
+  Three tiers: hot (GPU+CPU) / warm (CPU only, GPU evicted) / cold (metadata shell only, geometry restorable from a `ColdGeometryProvider` — the viewer wires the v13 cache entry with `Blob.slice` partial reads). `Scene.setHostResidencyBudget(bytes)` demotes warm buckets to cold LRU-first; eligibility is strict (pristine only — recoloured/moved/removed buckets are dirty; overflow "#N" sub-buckets excluded; provider present). Cold buckets are sealed (new arrivals route to a fresh sub-bucket), carried through finalize re-grouping as shells, and restored asynchronously on demand. `Scene.getResidentCpuBytes()` reports bucket CPU bytes. Off by default.
+
+- [#1703](https://github.com/LTplus-AG/ifc-lite/pull/1703) [`5f1f8c1`](https://github.com/LTplus-AG/ifc-lite/commit/5f1f8c1a4261e0b8be39f835e88626118a58fef0) Thanks [@louistrue](https://github.com/louistrue)! - Contribution culling + frame/GPU-memory stats (issue [#1682](https://github.com/LTplus-AG/ifc-lite/issues/1682) observability).
+
+  - New opt-in `RenderOptions.contributionCull`: skip colour batches whose world AABB projects below a pixel threshold (raised while the camera moves). Conservative bounding-sphere math; never culls when the camera is inside a batch's bounds. Off by default.
+  - New `Renderer.getFrameStats()`: draw calls issued plus batches drawn / frustum-culled / contribution-culled for the last completed frame.
+  - New `Scene.getResidentGpuBytes()`: byte-accurate sum of GPU buffers held by colour batches, partial sub-batches, hydrated meshes, textured meshes and instanced templates.
+
+- [#1705](https://github.com/LTplus-AG/ifc-lite/pull/1705) [`972341e`](https://github.com/LTplus-AG/ifc-lite/commit/972341e59d89dcf8d66aaebb7ffedc11523b701f) Thanks [@louistrue](https://github.com/louistrue)! - Opt-in GPU residency budget (issue [#1682](https://github.com/LTplus-AG/ifc-lite/issues/1682), phase 3a of the chunked-residency plan).
+
+  `Scene.setGpuResidencyBudget(bytes)` evicts least-recently-drawn bucket batches (GPU buffers destroyed, CPU meshData + metadata shell kept) once their combined bytes exceed the budget, and rebuilds them on demand when the draw loop wants them again (`requestBatchResidency` + time-budgeted `processResidencyRestores`). Never evicts batches drawn this frame or idle fewer than 30 rendered frames; no-ops during streaming, in ephemeral mode, or after geometry release. `FrameStats` gains `batchesNotResident`. Off by default; pairs with spatial chunk bucketing.
+
+- [#1708](https://github.com/LTplus-AG/ifc-lite/pull/1708) [`7a64fa7`](https://github.com/LTplus-AG/ifc-lite/commit/7a64fa75ba7cfcf22687a51a11a3eefe7bba7083) Thanks [@louistrue](https://github.com/louistrue)! - Opt-in LOD1 as a second index range (issue [#1682](https://github.com/LTplus-AG/ifc-lite/issues/1682), phase 5).
+
+  `Scene.setLodBuildsEnabled(true)` builds a vertex-clustering-simplified index buffer over each bucket batch's EXISTING vertex data at batch-build time (>= 500 source triangles, ~2% AABB-diagonal cell, skipped when it does not pay); `RenderOptions.lod.screenPx` draws it for batches projecting below the threshold. LOD costs index bytes only — no second vertex buffer, per-vertex entityId picking lane preserved, LOD0 geometry untouched (no-weld invariant intact). Off by default.
+
+- [#1711](https://github.com/LTplus-AG/ifc-lite/pull/1711) [`22db0d5`](https://github.com/LTplus-AG/ifc-lite/commit/22db0d53d7c42630673ca6bbca7bfcc208838118) Thanks [@louistrue](https://github.com/louistrue)! - Opt-in 12-byte lattice-quantized batch vertices (issue [#1682](https://github.com/LTplus-AG/ifc-lite/issues/1682), phase 6).
+
+  `Renderer.enableQuantizedBatches()` (after a pipeline probe) switches batch builds to a 12-byte layout: uint16x4 position on a global 2^-10 m lattice + packed octahedral normal, plus the u32 entityId lane. The power-of-two lattice with lattice-aligned per-batch origins makes dequantization BIT-EXACT in f32, so cross-batch coincidence and depth-equal overlay matching survive quantization; batches exceeding the u16 range (64 m) fall back to f32 per batch. Measured: batch GPU bytes -37%, identical draw calls, 0.004% pixel delta. Off by default.
+
+- [#1712](https://github.com/LTplus-AG/ifc-lite/pull/1712) [`afd6d1e`](https://github.com/LTplus-AG/ifc-lite/commit/afd6d1ee6fabcd060b4ed0ab5daa9cdd83ea5745) Thanks [@louistrue](https://github.com/louistrue)! - Opt-in spatial chunk bucketing (issue [#1682](https://github.com/LTplus-AG/ifc-lite/issues/1682), phase 2 of the chunked-residency plan).
+
+  `Scene.setSpatialChunking({ cellSize })` partitions colour buckets by world grid cell, so batches become spatially compact and per-batch frustum/contribution culling fires at chunk granularity. Pure reorganization (pixel-identical rendering, same shared frame origin and draw path); a mesh never splits across cells; recolour, move/rotate re-bucketing, streaming fragments, finalize re-grouping and partial-batch piece filtering are all chunk-aware. Off by default.
+
 ## 1.35.2
 
 ### Patch Changes

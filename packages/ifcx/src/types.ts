@@ -131,6 +131,97 @@ export const ATTR = {
 } as const;
 
 // ============================================================================
+// IFClite Layer Extension Namespace (`ifclite::`)
+// ============================================================================
+
+/**
+ * IFClite extension attributes for layered change tracking
+ * (docs/architecture/layer-prs/). Tools unaware of the namespace ignore
+ * these and still get valid IFCX composition (modulo deletion overlays,
+ * which `bakeLayers` can materialize away for foreign tools).
+ */
+export const IFCLITE_ATTR = {
+  /**
+   * Tombstone opinion: `true` deletes the entity (and shadows all weaker
+   * opinions for the path, including child paths); `false` resurrects it.
+   */
+  DELETED: 'ifclite::deleted',
+  /** Marks derived (cache) content excluded from canonical hashing. */
+  DERIVED: 'ifclite::derived',
+  /**
+   * Collab structured-branch carriers (#1031): the collab runtime keeps
+   * classifications / materials / geometry refs as dedicated CRDT
+   * branches; on the IFCX wire they travel as ordinary attributes under
+   * these keys (psets/quantities use the `bsi::ifc::v5a::<Set>::<Name>`
+   * convention instead, so merge component keys stay `pset:`/`qset:`).
+   */
+  CLASSIFICATIONS: 'ifclite::classifications',
+  MATERIALS: 'ifclite::materials',
+  GEOMETRY_REF: 'ifclite::geometryRef',
+} as const;
+
+/** Header key carrying the provenance manifest (see provenance.ts). */
+export const PROVENANCE_KEY = 'ifclite::provenance';
+
+/**
+ * IFC5-alpha namespaced property/quantity prefix (#1031): keys are
+ * `bsi::ifc::v5a::<Set>::<Name>`. Within this namespace the routing
+ * dialect is fixed (see `routesToQuantityTable` and the collab
+ * structured-branch inflation): `Pset_*` members are properties, `Qto_*`
+ * members are quantities, custom sets route typed records to properties
+ * and raw numbers to quantities.
+ */
+export const V5A_ATTR_PREFIX = 'bsi::ifc::v5a::';
+
+/** Split a v5a key into set + member name; null when not a v5a set key. */
+export function parseV5aKey(key: string): { setName: string; name: string } | null {
+  if (!key.startsWith(V5A_ATTR_PREFIX)) return null;
+  const rest = key.slice(V5A_ATTR_PREFIX.length);
+  const sep = rest.indexOf('::');
+  if (sep <= 0 || sep >= rest.length - 2) return null;
+  return { setName: rest.slice(0, sep), name: rest.slice(sep + 2) };
+}
+
+/**
+ * Canonical wire shape for typed property values (#1031): pset
+ * properties under `bsi::ifc::v5a::<Set>::<Prop>` carry this record so
+ * the IFC type, unit, and provenance survive round-trips. Every writer
+ * (collab snapshots, MCP draft ops) and reader (property extraction,
+ * seed inflation) shares this one definition.
+ */
+export interface TypedPropertyValue {
+  type: string;
+  value: string | number | boolean | null;
+  unit?: string;
+  source?: string;
+}
+
+const TYPED_PROPERTY_KEYS = new Set(['type', 'value', 'unit', 'source']);
+
+/**
+ * Strict shape test for TypedPropertyValue. Deliberately rejects any
+ * extra keys: legacy/migrated attributes carry raw scalars or foreign
+ * objects, never this exact record, so the test is what disambiguates
+ * "typed property" from "leave it alone".
+ */
+export function isTypedPropertyValue(value: unknown): value is TypedPropertyValue {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  if (typeof record.type !== 'string') return false;
+  if (!('value' in record)) return false;
+  const v = record.value;
+  if (v !== null && typeof v !== 'string' && typeof v !== 'number' && typeof v !== 'boolean') {
+    return false;
+  }
+  for (const key of Object.keys(record)) {
+    if (!TYPED_PROPERTY_KEYS.has(key)) return false;
+  }
+  if ('unit' in record && record.unit !== undefined && typeof record.unit !== 'string') return false;
+  if ('source' in record && record.source !== undefined && typeof record.source !== 'string') return false;
+  return true;
+}
+
+// ============================================================================
 // USD Geometry Types
 // ============================================================================
 

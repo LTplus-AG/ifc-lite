@@ -41,6 +41,7 @@ import {
   Palette,
   Orbit,
   Layout,
+  Layers,
   LayoutTemplate,
   FileCode2,
   CalendarClock,
@@ -326,6 +327,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   const collabPeerCount = useViewerStore((s) => s.collabPeers.length);
   const collabRoomId = useViewerStore((s) => s.collabRoomId);
   const collabPanelVisible = useViewerStore((s) => s.collabPanelVisible);
+  const layersPanelVisible = useViewerStore((s) => s.layersPanelVisible);
   const {
     loadFile,
     loading,
@@ -357,13 +359,28 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
       const file = (e as CustomEvent<unknown>).detail;
       if (file instanceof File) void addModel(file);
     };
+    // Layer-stack variant: load a File[] as a composed .ifcx federation
+    // (the Layers panel demo + tour dispatch this, see lib/layers/demo-stack).
+    const stackHandler = (e: Event) => {
+      const files = (e as CustomEvent<unknown>).detail;
+      if (Array.isArray(files) && files.every((f) => f instanceof File) && files.length > 0) {
+        void loadFederatedIfcx(files as File[]);
+      }
+    };
+    // Panels (RoomPanel empty state) request the Share dialog this way —
+    // its open state is toolbar-local.
+    const shareHandler = () => setShareDialogOpen(true);
     window.addEventListener('ifc-lite:load-file', handler);
     window.addEventListener('ifc-lite:add-model', addHandler);
+    window.addEventListener('ifc-lite:load-layer-stack', stackHandler);
+    window.addEventListener('ifc-lite:open-share-dialog', shareHandler);
     return () => {
       window.removeEventListener('ifc-lite:load-file', handler);
       window.removeEventListener('ifc-lite:add-model', addHandler);
+      window.removeEventListener('ifc-lite:load-layer-stack', stackHandler);
+      window.removeEventListener('ifc-lite:open-share-dialog', shareHandler);
     };
-  }, [loadFile, addModel]);
+  }, [loadFile, addModel, loadFederatedIfcx]);
 
   // Check if we have models loaded (for showing add model button)
   const hasModelsLoaded = models.size > 0 || (geometryResult?.meshes && geometryResult.meshes.length > 0);
@@ -858,12 +875,16 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     if (comparePanelVisible) panels.add('compare');
     if (extensionsPanelVisible) panels.add('extensions');
     if (activeTool === 'addElement') panels.add('addElement');
+    if (layersPanelVisible) panels.add('layers');
+    if (collabPanelVisible) panels.add('collab');
     if (analysisExtensionState.activeId) panels.add(analysisExtensionState.activeId);
     return panels;
   }, [
     activeTool,
     analysisExtensionState.activeId,
     bcfPanelVisible,
+    collabPanelVisible,
+    layersPanelVisible,
     clashPanelVisible,
     comparePanelVisible,
     extensionsPanelVisible,
@@ -887,6 +908,8 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     if (activeWorkspacePanels.has('compare')) return 'Compare Models';
     if (activeWorkspacePanels.has('extensions')) return 'Extensions';
     if (activeWorkspacePanels.has('addElement')) return 'Add Element';
+    if (activeWorkspacePanels.has('layers')) return 'Layer Stack';
+    if (activeWorkspacePanels.has('collab')) return 'Collaboration Room';
     return activeAnalysisExtension?.label ?? 'Analysis';
   }, [activeAnalysisExtension?.label, activeWorkspacePanels]);
 
@@ -1273,6 +1296,22 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             <GitCompareArrows className="h-4 w-4 mr-2" />
             Compare Models
           </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem
+            checked={activeWorkspacePanels.has('layers')}
+            onCheckedChange={() => useViewerStore.getState().toggleWorkspacePanel('layers')}
+          >
+            <Layers className="h-4 w-4 mr-2" />
+            Layer Stack
+          </DropdownMenuCheckboxItem>
+          {collabEnabled && (
+            <DropdownMenuCheckboxItem
+              checked={activeWorkspacePanels.has('collab')}
+              onCheckedChange={() => useViewerStore.getState().toggleWorkspacePanel('collab')}
+            >
+              <Users className="h-4 w-4 mr-2" />
+              Collaboration Room
+            </DropdownMenuCheckboxItem>
+          )}
           <DropdownMenuSeparator />
           <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
             Author

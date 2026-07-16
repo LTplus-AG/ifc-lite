@@ -38,7 +38,7 @@ pub(super) fn extract_relationships(
 
     tracing::debug!(count = rel_jobs.len(), "Extracting relationships");
 
-    rel_jobs
+    let mut rels: Vec<Relationship> = rel_jobs
         .par_iter()
         .filter_map(|job| {
             let mut local_decoder =
@@ -48,6 +48,65 @@ pub(super) fn extract_relationships(
             extract_relationship(&entity, &job.type_name)
         })
         .flatten()
+        .collect();
+
+    // Attach each type's own property/quantity sets (issue #1751). Type sets in
+    // IFC live on `IfcTypeObject.HasPropertySets` (attr 5), NOT via
+    // IfcRelDefinesByProperties, so they carry no relationship the client can
+    // follow. Emit a synthetic `TYPEHASPROPERTYSETS` edge (set -> type) per
+    // member so the viewer converter can key type-owned sets by the type id and
+    // resolve the WASM path's type fallback — mirroring
+    // `extractTypeEntityOwnProperties`. A distinct rel_type keeps these out of
+    // the DefinesByProperties graph (no phantom edges for inspector/IDS).
+    let type_links = extract_type_property_links(&rels, content, entity_index);
+    rels.extend(type_links);
+    rels
+}
+
+/// For every type referenced by an `IfcRelDefinesByType`, read its
+/// `HasPropertySets` (attr 5) and emit `{rel_type:"TYPEHASPROPERTYSETS",
+/// relating_id: setId, related_id: typeId}` for each member. Types are
+/// discovered from the DefinesByType `relating_id`s (never by name suffix,
+/// which would catch IfcSurfaceStyle / the rel itself).
+fn extract_type_property_links(
+    rels: &[Relationship],
+    content: &Arc<Vec<u8>>,
+    entity_index: &Arc<ifc_lite_core::EntityIndex>,
+) -> Vec<Relationship> {
+    use std::collections::BTreeSet;
+
+    let type_ids: BTreeSet<u32> = rels
+        .iter()
+        .filter(|r| r.rel_type.eq_ignore_ascii_case("IFCRELDEFINESBYTYPE"))
+        .map(|r| r.relating_id)
+        .collect();
+
+    if type_ids.is_empty() {
+        return Vec::new();
+    }
+
+    type_ids
+        .par_iter()
+        .flat_map_iter(|&type_id| {
+            let mut decoder =
+                EntityDecoder::with_arc_index(content.as_slice(), entity_index.clone());
+            let mut out = Vec::new();
+            if let Ok(entity) = decoder.decode_by_id(type_id) {
+                // IfcTypeObject.HasPropertySets is at index 5 across IFC2X3/4/4X3.
+                if let Some(set_list) = entity.get_list(5) {
+                    for set_ref in set_list.iter() {
+                        if let Some(set_id) = set_ref.as_entity_ref() {
+                            out.push(Relationship {
+                                rel_type: "TYPEHASPROPERTYSETS".to_string(),
+                                relating_id: set_id,
+                                related_id: type_id,
+                            });
+                        }
+                    }
+                }
+            }
+            out
+        })
         .collect()
 }
 
@@ -57,6 +116,11 @@ fn extract_relationship(entity: &DecodedEntity, type_name: &str) -> Option<Vec<R
 
     let (relating_idx, related_idx) = match type_upper.as_str() {
         "IFCRELDEFINESBYPROPERTIES" => (5, 4), // RelatingPropertyDefinition at 5, RelatedObjects at 4
+        // RelatingType (single ref) at 5, RelatedObjects (list) at 4 — same
+        // layout as DefinesByProperties. Without this arm it hit the `_`
+        // default `(4,5)`, and `get_ref(4)` on the RelatedObjects LIST returned
+        // None, silently dropping every type relationship (issue #1751).
+        "IFCRELDEFINESBYTYPE" => (5, 4),
         "IFCRELCONTAINEDINSPATIALSTRUCTURE" => (5, 4), // RelatingStructure at 5, RelatedElements at 4
         // IfcRelAssociates* family: RelatingX (Material/Classification/Document)
         // is the single ref at attribute 5; RelatedObjects is the list at 4.

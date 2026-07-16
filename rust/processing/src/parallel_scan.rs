@@ -52,7 +52,54 @@
 //! parallel driver buys nothing and only adds merge overhead — the wasm build
 //! delegates straight to the serial scanner and is unchanged.
 
-use ifc_lite_core::EntityIndex;
+use ifc_lite_core::{EntityIndex, EntityScanner};
+
+/// One shard's speculative scan over `[range_start, range_end)`.
+///
+/// This is the exact per-chunk primitive [`build_entity_index_parallel`] fans
+/// across cores, exposed for the wasm **sharded pre-pass**: each browser
+/// geometry worker calls it on a byte range and the main thread stitches the
+/// columns (binary-searching each shard for the previous shard's handoff — see
+/// the [`native::stitch`] doc). Compiled on all targets (the `native` merge is
+/// wasm-gated, but the shard primitive itself is target-independent).
+///
+/// Chunk 0 (`range_start == 0`) uses the header-aware [`EntityScanner::new`];
+/// every other shard starts *speculatively* at `range_start` via
+/// [`EntityScanner::new_at`] (which may land mid-record — the handoff stitch
+/// makes that exact, not heuristic). Returns every record with
+/// `start < range_end` (strictly increasing in `start`) plus the `handoff`: the
+/// `start` of the first record at/after `range_end` (the next shard's first real
+/// entity), or `None` at EOF.
+/// One shard's records: `(id, start, end)` per entity, strictly increasing in `start`.
+pub type ShardRecords = Vec<(u32, usize, usize)>;
+
+pub fn scan_shard(
+    content: &[u8],
+    range_start: usize,
+    range_end: usize,
+) -> (ShardRecords, Option<usize>) {
+    // Deliberately NOT delegating to `scan_shard_classified`: index-only
+    // callers (native exporters / georeferencing via
+    // `build_entity_index_parallel`) would pay a per-entity keyword
+    // classification — string matches + the `has_geometry_by_name` cache —
+    // across every record for a column they never read.
+    let mut scanner = if range_start == 0 {
+        EntityScanner::new(content)
+    } else {
+        EntityScanner::new_at(content, range_start)
+    };
+    let mut records = Vec::new();
+    let mut handoff = None;
+    while let Some((id, _type_name, start, entity_end)) = scanner.next_entity() {
+        if start >= range_end {
+            handoff = Some(start);
+            break;
+        }
+        records.push((id, start, entity_end));
+    }
+    (records, handoff)
+}
+
 
 /// Build the entity index (expressId -> byte span) across all available cores.
 ///
@@ -129,23 +176,13 @@ mod native {
     }
 
     fn scan_chunk(content: &[u8], i: usize, n_chunks: usize) -> ChunkScan {
+        let start = i * content.len() / n_chunks;
         let end = range_end(i, n_chunks, content.len());
-        // Chunk 0 MUST use `new` for the exact header-skip / quoted-`DATA;`
-        // semantics; every other chunk starts speculatively at its byte offset.
-        let mut scanner = if i == 0 {
-            EntityScanner::new(content)
-        } else {
-            EntityScanner::new_at(content, i * content.len() / n_chunks)
-        };
-        let mut records = Vec::new();
-        let mut handoff = None;
-        while let Some((id, _type_name, start, entity_end)) = scanner.next_entity() {
-            if start >= end {
-                handoff = Some(start);
-                break;
-            }
-            records.push((id, start, entity_end));
-        }
+        // Chunk 0 uses `new` for the exact header-skip / quoted-`DATA;`
+        // semantics (`scan_shard` selects it on `range_start == 0`); every other
+        // chunk starts speculatively at its byte offset. Same shard primitive the
+        // wasm sharded pre-pass calls per worker, so the merge cannot drift.
+        let (records, handoff) = super::scan_shard(content, start, end);
         ChunkScan { records, handoff }
     }
 

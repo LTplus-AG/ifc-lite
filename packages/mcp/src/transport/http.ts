@@ -38,7 +38,15 @@ export interface HttpAuthenticator {
 }
 
 export interface SessionFactory {
-  /** Build a fresh MCPServer for this session. Called on `initialize`. */
+  /**
+   * Build a fresh MCPServer for this session. Called on `initialize`.
+   *
+   * The server MUST be constructed with `sessionId` (i.e.
+   * `createMCPServer({ ..., sessionId })`): it keys per-session state —
+   * the layer workspace in particular (#1030) — and its disposal on
+   * session end. The transport rejects servers built without it rather
+   * than letting every HTTP session silently share the local workspace.
+   */
   build(scope: AuthScope, sessionId: string): Promise<MCPServer> | MCPServer;
 }
 
@@ -118,6 +126,12 @@ export class HttpTransport {
     });
   }
 
+  /** Actual bound port — differs from `opts.port` when listening on 0. */
+  port(): number | undefined {
+    const addr = this.server.address();
+    return typeof addr === 'object' && addr !== null ? addr.port : undefined;
+  }
+
   close(): Promise<void> {
     return new Promise((resolve) => {
       for (const session of this.sessions.values()) {
@@ -157,18 +171,38 @@ export class HttpTransport {
     const sessionId = (req.headers['mcp-session-id'] as string | undefined)?.trim();
 
     if (req.method === 'GET') {
-      // Open an SSE channel for an existing session.
+      // Open an SSE channel for an existing session. Same identity rule as
+      // POST: a leaked Mcp-Session-Id must not let a differently-scoped
+      // token attach to the victim's event stream.
       if (!sessionId || !this.sessions.has(sessionId)) {
         res.statusCode = 404;
         res.end('Unknown session');
         return;
       }
-      this.openSse(this.sessions.get(sessionId) as Session, res);
+      const session = this.sessions.get(sessionId) as Session;
+      if (!sameScope(session.scope, scope)) {
+        res.statusCode = 403;
+        res.end('session scope mismatch');
+        return;
+      }
+      this.openSse(session, res);
       return;
     }
 
     if (req.method === 'DELETE') {
-      if (sessionId) this.endSession(sessionId);
+      // Ending a session disposes its layer drafts — destructive, so the
+      // caller must present the same scope identity the session was bound
+      // to; a leaked session id alone must not destroy another principal's
+      // unpublished work.
+      if (sessionId) {
+        const session = this.sessions.get(sessionId);
+        if (session && !sameScope(session.scope, scope)) {
+          res.statusCode = 403;
+          res.end('session scope mismatch');
+          return;
+        }
+        this.endSession(sessionId);
+      }
       res.statusCode = 204;
       res.end();
       return;
@@ -215,6 +249,17 @@ export class HttpTransport {
       }
       const newId = randomUUID();
       const server = await this.opts.sessionFactory.build(scope, newId);
+      // A factory that drops the session id would put every HTTP session
+      // on the shared local layer workspace (cross-session reads/writes,
+      // no disposal) — refuse the deployment bug instead of running unsafe.
+      if (server.sessionId !== newId) {
+        res.statusCode = 500;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({
+          error: 'sessionFactory must construct the MCPServer with the provided sessionId (createMCPServer({ sessionId }))',
+        }));
+        return;
+      }
       session = { id: newId, server, scope, sseClients: new Set(), createdAt: Date.now() };
       session.server.attach(this.makeSinkFor(session));
       this.sessions.set(newId, session);

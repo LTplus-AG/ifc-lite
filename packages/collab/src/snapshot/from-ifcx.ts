@@ -13,7 +13,9 @@
 import type { IfcxFile } from '@ifc-lite/ifcx';
 import * as Y from 'yjs';
 import { createEntity } from '../doc/entity.js';
+import { createGeometry, type GeometryType } from '../doc/geometry.js';
 import { SEED_ORIGIN, assertSchemaInvariants, metaMap } from '../doc/schema.js';
+import { inflateStructuredAttributes } from './structured-attrs.js';
 
 export interface SeedOptions {
   /** Origin tag for the seeding transaction. Defaults to SEED_ORIGIN. */
@@ -67,7 +69,17 @@ export function seedFromIfcx(doc: Y.Doc, input: IfcxInput, opts: SeedOptions = {
     for (const node of file.data ?? []) {
       const path = node.path;
       if (!path) continue;
-      const attributes: Record<string, unknown> = node.attributes ? { ...node.attributes } : {};
+      // Null attribute values are removal opinions (minimal layers); with
+      // nothing beneath them to remove, they mean "absent" — never store
+      // them as values.
+      const rawAttributes: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(node.attributes ?? {})) {
+        if (value !== null) rawAttributes[key] = value;
+      }
+      // Re-inflate structured branches the snapshot writer folded into
+      // namespaced attributes (#1031); the shape-gated remainder stays
+      // in the flat attributes branch.
+      const inflated = inflateStructuredAttributes(rawAttributes);
       const children: Record<string, string> = {};
       if (node.children) {
         for (const [role, target] of Object.entries(node.children)) {
@@ -83,11 +95,30 @@ export function seedFromIfcx(doc: Y.Doc, input: IfcxInput, opts: SeedOptions = {
 
       const ifcClass = readIfcClass(node.attributes);
 
+      // A carrier with the embedded geometry record recreates the
+      // geometry map entry, so the restored ref is never dangling.
+      // Bare-id carriers keep pointing at out-of-band hydrated geometry.
+      for (const carrier of inflated.geometryCarriers) {
+        if (typeof carrier.type !== 'string' || typeof carrier.source !== 'string') continue;
+        createGeometry(doc, carrier.geomId, {
+          type: carrier.type as GeometryType,
+          source: carrier.source,
+          blobHash: carrier.blobHash,
+          params: carrier.params,
+          bbox: carrier.bbox as [number, number, number, number, number, number] | undefined,
+        });
+      }
+
       createEntity(doc, path, {
         ifcClass,
-        attributes,
+        attributes: inflated.attributes,
         children,
         inherits,
+        psets: inflated.psets,
+        quantities: inflated.quantities,
+        classifications: inflated.classifications,
+        materials: inflated.materials,
+        geometryRef: inflated.geometryRefRecord,
         meta: {
           ifcClass,
           schemaVersion: 'ifc5',

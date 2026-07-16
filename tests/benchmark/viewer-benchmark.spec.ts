@@ -204,6 +204,14 @@ test.describe('Viewer Performance Benchmarks', () => {
       console.log(`  Data Model Parse: ${metrics.dataModelParseMs?.toFixed(0) || 'N/A'} ms`);
       console.log(`  Data Model Entities: ${metrics.dataModelEntityCount?.toLocaleString() || 'N/A'}`);
 
+      console.log(`\n--- Render Stats (steady state, issue #1682) ---`);
+      console.log(`  Draw Calls: ${metrics.drawCalls?.toLocaleString() || 'N/A'}`);
+      console.log(`  Resident GPU: ${metrics.residentGpuMB?.toFixed(1) || 'N/A'} MB`);
+      console.log(`  Contribution-Culled Batches: ${metrics.batchesContributionCulled?.toLocaleString() || 'N/A'}`);
+      console.log(`  Instanced Drawn: ${metrics.instancedDrawn?.toLocaleString() || 'N/A'}`);
+      console.log(`  Instanced Frustum-Culled: ${metrics.instancedFrustumCulled?.toLocaleString() || 'N/A'}`);
+      console.log(`  Instanced Contribution-Culled: ${metrics.instancedContributionCulled?.toLocaleString() || 'N/A'}`);
+
       if (baselineMetrics) {
         console.log(`\n--- Comparison with Baseline ---`);
         const comparisonMetrics: Array<keyof ThresholdConfig> = [

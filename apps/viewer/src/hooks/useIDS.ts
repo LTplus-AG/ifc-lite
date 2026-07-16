@@ -40,6 +40,7 @@ import { getEntityBounds } from '@/utils/viewportUtils';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 
 import { createDataAccessor } from './ids/idsDataAccessor';
+import { resolveValidationTarget } from './ids/resolveValidationTarget';
 import { runValidationInWorker, idsWorkerSupported } from './ids/idsWorkerClient';
 import {
   DEFAULT_FAILED_COLOR,
@@ -118,8 +119,8 @@ export interface UseIDSResult {
   clearIDS: () => void;
 
   // Validation actions
-  /** Run validation against current model(s) */
-  runValidation: () => Promise<IDSValidationReport | null>;
+  /** Run validation. Pass a modelId to target a specific loaded model; defaults to the active model. */
+  runValidation: (targetModelId?: string) => Promise<IDSValidationReport | null>;
   /** Clear validation results */
   clearValidation: () => void;
 
@@ -318,21 +319,28 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
   // Validation Actions
   // ============================================================================
 
-  const runValidation = useCallback(async (): Promise<IDSValidationReport | null> => {
+  const runValidation = useCallback(async (targetModelId?: string): Promise<IDSValidationReport | null> => {
     if (!document) {
       setIdsError('No IDS document loaded');
       return null;
     }
 
-    // Get data store to validate against
-    const dataStore = ifcDataStore || (models.size > 0 ? Array.from(models.values())[0]?.ifcDataStore : null);
-    if (!dataStore) {
-      setIdsError('No IFC model loaded');
+    // Resolve which model + data store to validate. An explicit target from the
+    // federation picker is authoritative: if it names a model with no parsed
+    // data store, we surface an error rather than silently validating the
+    // active model's data under the picked model's label. The no-target path
+    // keeps the existing active/first/legacy fallback chain.
+    const target = resolveValidationTarget({
+      targetModelId,
+      activeModelId,
+      models,
+      legacyDataStore: ifcDataStore,
+    });
+    if ('error' in target) {
+      setIdsError(target.error);
       return null;
     }
-
-    // Determine model ID - use '__legacy__' for legacy single-model mode
-    const modelId = activeModelId || (models.size > 0 ? Array.from(models.keys())[0] : '__legacy__');
+    const { modelId, dataStore } = target;
 
     try {
       setIdsLoading(true);
@@ -981,6 +989,9 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
             isolatedIds: isolationSet,
             selectedId: null,           // No cyan selection highlight
             clearColor: SNAPSHOT_CLEAR_COLOR,
+            // Isolation may reveal batches evicted under the GPU residency
+            // budget — restore them synchronously so the capture is complete.
+            restoreEvictedForCapture: true,
           });
 
           // Wait for GPU commands to complete

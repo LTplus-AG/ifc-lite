@@ -143,4 +143,48 @@ describe('convertServerDataModel', () => {
     assert.deepEqual(dataStore.relationships.getRelated(1, RelationshipType.Aggregates, 'forward'), [2]);
     assert.deepEqual(dataStore.relationships.getRelated(3, RelationshipType.AssociatesDocument, 'forward'), [2]);
   });
+
+  it('materialises native property values and attaches type sets by type id (#1751)', () => {
+    const dataModel: DataModel = {
+      entities: new Map([
+        [10, { entity_id: 10, type_name: 'IFCWALL', global_id: 'w', name: 'W', has_geometry: true }],
+        [20, { entity_id: 20, type_name: 'IFCWALLTYPE', global_id: 't', name: 'WT', has_geometry: false }],
+      ]),
+      propertySets: new Map([
+        [30, { pset_id: 30, pset_name: 'Pset_WallCommon', properties: [
+          { property_name: 'IsExternal', property_value: 'true', property_type: 'boolean', data_type: 'IFCBOOLEAN' },
+          { property_name: 'U', property_value: '0.24', property_type: 'real', data_type: 'IFCTHERMALTRANSMITTANCEMEASURE' },
+          { property_name: 'Manufacturer', property_value: 'ACME', property_type: 'string', data_type: 'IFCLABEL' },
+        ] }],
+      ]),
+      quantitySets: new Map(),
+      relationships: [
+        { rel_type: 'IFCRELDEFINESBYTYPE', relating_id: 20, related_id: 10 },
+        { rel_type: 'TYPEHASPROPERTYSETS', relating_id: 30, related_id: 20 },
+      ],
+      spatialHierarchy: {
+        nodes: [{ entity_id: 1, parent_id: 0, level: 0, path: 'P', type_name: 'IFCPROJECT', name: 'P', children_ids: [], element_ids: [] }],
+        project_id: 1,
+        element_to_storey: new Map(), element_to_building: new Map(), element_to_site: new Map(), element_to_space: new Map(),
+      },
+    } as unknown as DataModel;
+
+    const store = convertServerDataModel(dataModel, parseResult, { size: 1 }, []);
+
+    // Element -> type resolves via the (previously dropped) DefinesByType edge.
+    assert.deepEqual(store.relationships.getRelated(10, RelationshipType.DefinesByType, 'inverse'), [20]);
+
+    // The type's HasPropertySets landed on the TYPE id, with NATIVE values +
+    // the measure tag preserved (not the raw parquet string).
+    const typePsets = store.properties.getForEntity(20);
+    assert.equal(typePsets.length, 1);
+    const props = typePsets[0].properties;
+    const byName = (n: string) => props.find((p) => p.name === n)!;
+    assert.equal(byName('IsExternal').value, true);
+    assert.equal(byName('U').value, 0.24);
+    assert.equal(byName('U').dataType, 'IFCTHERMALTRANSMITTANCEMEASURE');
+    assert.equal(byName('Manufacturer').value, 'ACME');
+    // TYPEHASPROPERTYSETS must NOT become a graph edge.
+    assert.deepEqual(store.relationships.getRelated(20, RelationshipType.DefinesByProperties, 'forward'), []);
+  });
 });

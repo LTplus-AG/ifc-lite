@@ -68,6 +68,7 @@ function prereqsMet(def: TourDefinition, s: ViewerState): boolean {
   if (!p) return true;
   if (p.modelLoaded && !(s.models.size > 0 && !s.loading && !s.geometryStreamingActive)) return false;
   if (p.secondModel && [...s.models.values()].filter((m) => m.ifcDataStore).length < 2) return false;
+  if (p.layerStack && s.layerStack.length < 2) return false;
   return true;
 }
 

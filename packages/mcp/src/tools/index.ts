@@ -14,6 +14,11 @@ import { bsddTools } from './bsdd.js';
 import { diffTools } from './diff.js';
 import { exportTools } from './export.js';
 import { viewerTools } from './viewer.js';
+import { draftLayerTools } from './layer.js';
+import { layerReviewTools } from './layer-review.js';
+
+/** Agent draft-layer family (06-agents.md): draft lifecycle + review loop. */
+export const layerTools = [...draftLayerTools, ...layerReviewTools];
 
 export { ToolRegistry } from './types.js';
 export type { Tool } from './types.js';
@@ -31,6 +36,7 @@ export {
   exportTools,
   viewerTools,
 };
+export { resetLayerWorkspace, getLayerWorkspace, disposeLayerWorkspace } from './layer-store.js';
 
 /**
  * Build a ToolRegistry pre-loaded with every tool ifc-lite-mcp ships in v0.1.
@@ -50,5 +56,6 @@ export function buildDefaultToolRegistry(): ToolRegistry {
   registry.registerAll(diffTools);
   registry.registerAll(exportTools);
   registry.registerAll(viewerTools);
+  registry.registerAll(layerTools);
   return registry;
 }

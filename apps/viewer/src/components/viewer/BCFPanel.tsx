@@ -440,7 +440,7 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
           >
             <User className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}>
+          <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Close" onClick={onClose}>
             <X className="h-4 w-4" />
           </Button>
         </div>

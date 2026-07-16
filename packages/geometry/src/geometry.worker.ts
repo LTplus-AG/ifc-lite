@@ -140,6 +140,21 @@ export interface GeometryWorkerSetPrepassColumnsMessage {
   mliLayerThicknesses: Float64Array;
 }
 
+/**
+ * Sharded pre-pass: scan the entity index over one byte range of the
+ * shared file buffer. Dispatched to each idle geometry worker up front (before
+ * `stream-start`) so the N workers build the index in parallel; the main thread
+ * stitches the returned `shard-result` columns. `shardIndex` echoes back so the
+ * host can slot the result. Byte offsets returned are GLOBAL.
+ */
+export interface GeometryWorkerScanShardMessage {
+  type: 'scan-shard';
+  sharedBuffer: SharedArrayBuffer;
+  shardIndex: number;
+  rangeStart: number;
+  rangeEnd: number;
+}
+
 export interface GeometryWorkerPrePassMessage {
   type: 'prepass-streaming';
   sharedBuffer: SharedArrayBuffer;
@@ -226,7 +241,92 @@ export type GeometryWorkerRequest =
   | GeometryWorkerSetComputeGeometryHashesMessage
   | GeometryWorkerSetTessellationQualityMessage
   | GeometryWorkerSetSkipSmallCutsMessage
+  | GeometryWorkerScanShardMessage
+  | GeometryWorkerResolveStylesShardMessage
+  | GeometryWorkerPrePassShardedMessage
+  | GeometryWorkerFinalizeStylesMessage
   | GeometryWorkerPrePassMessage;
+
+/**
+ * SPIKE response to `scan-shard`: one shard's entity-index columns + the
+ * handoff (global start of the first entity at/after `rangeEnd`, or `-1` at
+ * EOF). Columns are transferred back to the main thread for stitching.
+ */
+export interface GeometryWorkerShardResultMessage {
+  type: 'shard-result';
+  shardIndex: number;
+  ids: Uint32Array;
+  starts: Uint32Array;
+  lengths: Uint32Array;
+  /** Per-record prepass class (PREPASS_CLASS_*; 4 = IfcStyledItem). */
+  classes: Uint8Array;
+  handoff: number;
+}
+
+/**
+ * Sharded pre-pass: resolve one contiguous (file-ordered) slice of the
+ * styled-item span list on this worker (must arrive AFTER set-entity-index —
+ * workers apply messages FIFO). `spans` is [id, start, len] triples.
+ */
+export interface GeometryWorkerResolveStylesShardMessage {
+  type: 'resolve-styles-shard';
+  sharedBuffer: SharedArrayBuffer;
+  sliceIndex: number;
+  spans: Uint32Array;
+}
+
+/** Response to resolve-styles-shard: raw resolved style maps as flat columns. */
+export interface GeometryWorkerStylesShardResultMessage {
+  type: 'styles-shard-result';
+  sliceIndex: number;
+  orphanIds: Uint32Array;
+  orphanColors: Float32Array;
+  geomIds: Uint32Array;
+  geomColors: Float32Array;
+  /** Set when resolution threw; the host falls back / logs. */
+  error?: string;
+}
+
+/**
+ * Sharded pre-pass main call: like prepass-streaming but with the PREBUILT
+ * (stitched) entity index columns, and styles resolution EXTERNAL (no styles
+ * event from this call — the host finalizes via finalize-styles below).
+ */
+export interface GeometryWorkerPrePassShardedMessage {
+  type: 'prepass-streaming-sharded';
+  sharedBuffer: SharedArrayBuffer;
+  chunkSize?: number;
+  disabledTypes?: string[];
+  skipTypeGeometry?: boolean;
+  indexIds: Uint32Array;
+  indexStarts: Uint32Array;
+  indexLengths: Uint32Array;
+  /** Per-record prepass classes — drives columns discovery (no byte scan). */
+  indexClasses: Uint8Array;
+}
+
+/**
+ * Sharded pre-pass: merge the shard-resolved styled maps with the stashed
+ * support spans and emit the canonical `styles` event through the same
+ * prepass-stream channel. Queued behind prepass-streaming-sharded (FIFO), so
+ * the stash is always present when it runs.
+ */
+export interface GeometryWorkerFinalizeStylesMessage {
+  type: 'finalize-styles';
+  sharedBuffer: SharedArrayBuffer;
+  orphanIds: Uint32Array;
+  orphanColors: Float32Array;
+  geomIds: Uint32Array;
+  geomColors: Float32Array;
+  /** Support spans ([id,start,len] triples) extracted from the shard classes. */
+  colourMapSpans: Uint32Array;
+  materialDefSpans: Uint32Array;
+  relMaterialSpans: Uint32Array;
+  voidSpans: Uint32Array;
+  fillsSpans: Uint32Array;
+  aggregateSpans: Uint32Array;
+  planeAngleToRadians: number;
+}
 
 export interface GeometryWorkerBatchMessage {
   type: 'batch';
@@ -1146,6 +1246,120 @@ self.onmessage = (rawEvent: MessageEvent<GeometryWorkerRequest>) => {
 
 async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<void> {
   try {
+    if (e.data.type === 'resolve-styles-shard') {
+      // Sharded pre-pass: resolve this worker's styled-item slice against the
+      // entity index installed by the preceding set-entity-index (FIFO).
+      const ifcApi = await ensureInit();
+      const { sharedBuffer, sliceIndex, spans } = e.data;
+      try {
+        const styleApi = (ifcApi as unknown as {
+          resolveStyledItemsShard: (data: Uint8Array, spans: Uint32Array) => {
+            orphanIds: Uint32Array; orphanColors: Float32Array;
+            geomIds: Uint32Array; geomColors: Float32Array;
+          };
+        });
+        let res;
+        try {
+          res = styleApi.resolveStyledItemsShard(viewSharedBytes(sharedBuffer), spans);
+        } catch {
+          // SAB-view rejection fallback (see scan-shard above).
+          res = styleApi.resolveStyledItemsShard(materialiseSharedBytes(sharedBuffer), spans);
+        }
+        (self as unknown as Worker).postMessage(
+          {
+            type: 'styles-shard-result',
+            sliceIndex,
+            orphanIds: res.orphanIds,
+            orphanColors: res.orphanColors,
+            geomIds: res.geomIds,
+            geomColors: res.geomColors,
+          } as GeometryWorkerStylesShardResultMessage,
+          [res.orphanIds.buffer, res.orphanColors.buffer, res.geomIds.buffer, res.geomColors.buffer],
+        );
+      } catch (err) {
+        (self as unknown as Worker).postMessage({
+          type: 'styles-shard-result',
+          sliceIndex,
+          orphanIds: new Uint32Array(0),
+          orphanColors: new Float32Array(0),
+          geomIds: new Uint32Array(0),
+          geomColors: new Float32Array(0),
+          error: err instanceof Error ? err.message : String(err),
+        } as GeometryWorkerStylesShardResultMessage);
+      }
+      return;
+    }
+
+    if (e.data.type === 'prepass-streaming-sharded') {
+      // Sharded pre-pass main call: prebuilt (stitched) index, external styles.
+      const ifcApi = await ensureInit();
+      (self as unknown as Worker).postMessage({ type: 'prepass-progress', phase: 'parsing' });
+      const { sharedBuffer, indexIds, indexStarts, indexLengths, indexClasses } = e.data;
+      const chunkSize = e.data.chunkSize ?? 50_000;
+      const disabledTypes = e.data.disabledTypes ?? undefined;
+      const skipTypeGeometry = e.data.skipTypeGeometry === true;
+      const onEvent = (event: unknown) => {
+        (self as unknown as Worker).postMessage({ type: 'prepass-stream', event });
+      };
+      const run = (bytes: Uint8Array) =>
+        (ifcApi as unknown as {
+          buildPrePassStreamingSharded: (
+            data: Uint8Array, onEvent: (e: unknown) => void, chunkSize: number,
+            disabledTypes: string[] | undefined, skipTypeGeometry: boolean,
+            ids: Uint32Array, starts: Uint32Array, lengths: Uint32Array, classes: Uint8Array,
+          ) => unknown;
+        }).buildPrePassStreamingSharded(
+          bytes, onEvent, chunkSize, disabledTypes, skipTypeGeometry,
+          indexIds, indexStarts, indexLengths, indexClasses,
+        );
+      try {
+        run(viewSharedBytes(sharedBuffer));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`[Worker] Sharded streaming prepass with SAB view failed (${msg}), retrying with copy`);
+        try {
+          run(materialiseSharedBytes(sharedBuffer));
+        } catch (retryErr) {
+          throw largeFilePrepassError(retryErr, sharedBuffer.byteLength) ?? retryErr;
+        }
+      }
+      return;
+    }
+
+    if (e.data.type === 'finalize-styles') {
+      // Sharded pre-pass epilogue: canonical merge + flatten of the shard-
+      // resolved styled maps against the support spans. Runs on a GEOMETRY
+      // worker (independent of the busy pre-pass worker); the host forwards
+      // the payload into the normal styles-event path.
+      const ifcApi = await ensureInit();
+      const m = e.data;
+      const finalizeApi = (ifcApi as unknown as {
+        finalizePrepassStyles: (
+          data: Uint8Array,
+          orphanIds: Uint32Array, orphanColors: Float32Array,
+          geomIds: Uint32Array, geomColors: Float32Array,
+          colourMapSpans: Uint32Array, materialDefSpans: Uint32Array,
+          relMaterialSpans: Uint32Array, voidSpans: Uint32Array,
+          fillsSpans: Uint32Array, aggregateSpans: Uint32Array,
+          planeAngleToRadians: number,
+        ) => Record<string, unknown>;
+      });
+      const callFinalize = (bytes: Uint8Array) => finalizeApi.finalizePrepassStyles(
+        bytes, m.orphanIds, m.orphanColors, m.geomIds, m.geomColors,
+        m.colourMapSpans, m.materialDefSpans, m.relMaterialSpans,
+        m.voidSpans, m.fillsSpans, m.aggregateSpans, m.planeAngleToRadians,
+      );
+      let payload;
+      try {
+        payload = callFinalize(viewSharedBytes(m.sharedBuffer));
+      } catch {
+        // SAB-view rejection fallback (see scan-shard above).
+        payload = callFinalize(materialiseSharedBytes(m.sharedBuffer));
+      }
+      (self as unknown as Worker).postMessage({ type: 'styles-final', payload });
+      return;
+    }
+
     if (e.data.type === 'prepass-streaming') {
       const ifcApi = await ensureInit();
       // Heartbeat: lets the host watchdog know the worker is alive even
@@ -1180,6 +1394,43 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
           throw largeFilePrepassError(retryErr, sharedBuffer.byteLength) ?? retryErr;
         }
       }
+      return;
+    }
+
+    if (e.data.type === 'scan-shard') {
+      // SPIKE (sharded pre-pass): scan this worker's byte range of the file and
+      // post the entity-index columns + handoff back for main-thread stitching.
+      // Runs while the worker is otherwise idle (before stream-start).
+      const ifcApi = await ensureInit();
+      const { sharedBuffer, shardIndex, rangeStart, rangeEnd } = e.data;
+      const view = viewSharedBytes(sharedBuffer);
+      const scanApi = (ifcApi as unknown as {
+        scanEntityIndexShard: (
+          data: Uint8Array,
+          rangeStart: number,
+          rangeEnd: number,
+        ) => { ids: Uint32Array; starts: Uint32Array; lengths: Uint32Array; classes: Uint8Array; handoff: number };
+      });
+      let shard;
+      try {
+        shard = scanApi.scanEntityIndexShard(view, rangeStart, rangeEnd);
+      } catch {
+        // Some runtimes reject SAB-backed views at the wasm boundary (same
+        // fallback the streaming pre-pass ships) — retry with a copy.
+        shard = scanApi.scanEntityIndexShard(materialiseSharedBytes(sharedBuffer), rangeStart, rangeEnd);
+      }
+      (self as unknown as Worker).postMessage(
+        {
+          type: 'shard-result',
+          shardIndex,
+          ids: shard.ids,
+          starts: shard.starts,
+          lengths: shard.lengths,
+          classes: shard.classes,
+          handoff: shard.handoff,
+        } as GeometryWorkerShardResultMessage,
+        [shard.ids.buffer, shard.starts.buffer, shard.lengths.buffer, shard.classes.buffer],
+      );
       return;
     }
 

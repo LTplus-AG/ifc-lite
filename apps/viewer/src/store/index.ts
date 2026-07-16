@@ -56,6 +56,7 @@ import { createLevelDisplaySlice, type LevelDisplaySlice } from './slices/levelD
 import { createPointCloudSlice, type PointCloudSlice, POINT_CLOUD_DEFAULTS } from './slices/pointCloudSlice.js';
 import { createUnitDisplaySlice, type UnitDisplaySlice } from './slices/unitDisplaySlice.js';
 import { createSpaceMouseSlice, type SpaceMouseSlice } from './slices/spaceMouseSlice.js';
+import { createLayerStackSlice, type LayerStackSlice } from './slices/layerStackSlice.js';
 import { invalidateVisibleBasketCache } from './basketVisibleSet.js';
 
 // Import constants for reset function
@@ -99,6 +100,7 @@ export type { PinboardSlice } from './slices/pinboardSlice.js';
 // Re-export Lens types
 export type { LensSlice, Lens, LensRule, LensCriteria } from './slices/lensSlice.js';
 export type { CompareSlice, CompareResult } from './slices/compareSlice.js';
+export type { LayerStackSlice, LayerStackEntry, LayerStackDiffResult, LayerAuthorKind } from './slices/layerStackSlice.js';
 export type { DockSlice, FloatingPanelState, SnapZone } from './slices/dockSlice.js';
 export type { SidebarSlice, SidebarMode, SidebarLayoutSnapshot } from './slices/sidebarSlice.js';
 
@@ -148,6 +150,7 @@ export type ViewerState = LoadingSlice &
   LensSlice &
   ClashSlice &
   CompareSlice &
+  LayerStackSlice &
   DockSlice &
   SidebarSlice &
   ScriptSlice &
@@ -235,6 +238,7 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
   ...createLensSlice(...args),
   ...createClashSlice(...args),
   ...createCompareSlice(...args),
+  ...createLayerStackSlice(...args),
   ...createDockSlice(...args),
   ...createSidebarSlice(...args),
   ...createScriptSlice(...args),
@@ -562,6 +566,7 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       extensionsPanelVisible: panel === 'extensions',
       sourcesPanelVisible: panel === 'sources',
       collabPanelVisible: panel === 'collab',
+      layersPanelVisible: panel === 'layers',
       rightPanelCollapsed: false,
     });
     if (get().sidebarMode !== 'expanded') get().setSidebarMode('expanded');
@@ -597,6 +602,7 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
         extensionsPanelVisible: false,
         sourcesPanelVisible: false,
         collabPanelVisible: false,
+        layersPanelVisible: false,
         rightPanelCollapsed: false,
       });
       get().setSidebarActivePanel('properties');
@@ -676,6 +682,7 @@ const SIDEBAR_PANEL_FLAGS: ReadonlyArray<readonly [keyof ViewerState, WorkspaceP
   ['extensionsPanelVisible', 'extensions'],
   ['sourcesPanelVisible', 'sources'],
   ['collabPanelVisible', 'collab'],
+  ['layersPanelVisible', 'layers'],
 ];
 
 /**

@@ -67,10 +67,10 @@
     "@changesets/changelog-github": "^0.7.0",
     "@changesets/cli": "^2.31.0",
     "@playwright/test": "^1.61.1",
-    "@types/node": "^26.1.0",
-    "knip": "^6.24.0",
-    "tsx": "^4.23.0",
-    "turbo": "^2.10.3",
+    "@types/node": "^26.1.1",
+    "knip": "^6.26.0",
+    "tsx": "^4.23.1",
+    "turbo": "^2.10.4",
     "typescript": "^6.0.3"
   },
   "engines": {

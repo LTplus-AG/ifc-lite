@@ -56,6 +56,7 @@ import { getGlobalRenderer } from './useBCF.js';
 import { extractModelGeoref, alignGeometryToReference, findReferenceGeorefModel } from './ingest/federationAlign.js';
 import { toast } from '../components/ui/toast.js';
 import { posthog } from '../lib/analytics.js';
+import { reportRenderStats } from '../utils/renderStatsReport.js';
 import { classifyLoadError, formatLoadError } from '../lib/load-errors.js';
 
 /**
@@ -235,6 +236,26 @@ export function useIfcLoader() {
     // Federated adds carry a pre-allocated id; primary loads mint a fresh one.
     const modelId = target.kind === 'federated' ? target.modelId : crypto.randomUUID();
 
+    // Cold-storage residency (issue #1682 phase 3b): any new load invalidates
+    // the previous entry-backed provider — a primary load replaces the model,
+    // and a federated add's geometry is not in the primary's cache entry (a
+    // cold restore could not serve it, so the tier must switch off).
+    // loadFromCache re-wires it for v13 primary hits. A FEDERATED add must
+    // first drain existing cold buckets back to warm while the provider still
+    // exists, or the primary's cold chunks would be stranded shells (their
+    // geometry unreachable). Primary loads skip the drain: the scene is
+    // replaced wholesale anyway.
+    {
+      const scene = getGlobalRenderer()?.getScene();
+      if (scene) {
+        if (target.kind === 'federated') {
+          await scene.drainColdTier().catch((err) =>
+            console.warn('[useIfc] cold-tier drain before federated add failed:', err));
+        }
+        scene.setColdGeometryProvider(null);
+      }
+    }
+
     // Track total elapsed time for complete user experience
     const totalStartTime = performance.now();
 
@@ -244,6 +265,8 @@ export function useIfcLoader() {
       if (target.kind === 'primary') {
         resetViewerState();
         clearAllModels();
+        // A non-federated load has no layer stack behind it (#1717).
+        useViewerStore.getState().clearLayerStack();
       }
 
       // Reset memory accounting so per-load summaries don't accumulate across files.
@@ -731,6 +754,13 @@ export function useIfcLoader() {
               });
               console.log(`[useIfc] TOTAL LOAD TIME (from cache): ${(performance.now() - totalStartTime).toFixed(0)}ms`);
               posthog.capture('ifc_model_loaded', { format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'cache', total_elapsed_ms: Math.round(performance.now() - totalStartTime) });
+              // Steady-state draw-call/GPU telemetry — same reporter as the
+              // fresh path so warm (cache) loads are comparable (issue #1682).
+              void reportRenderStats({
+                fileName: file.name,
+                fileSizeMB,
+                isStale: () => loadSessionRef.current !== currentSession,
+              });
               setLoading(false);
               // Belt-and-suspenders for the source-decoupled tier: revalidate the
               // TRUE full-file hash off the main thread and, if the source changed
@@ -1484,6 +1514,16 @@ export function useIfcLoader() {
         first_geometry_batch_ms: firstAppendGeometryBatchMs != null ? Math.round(firstAppendGeometryBatchMs) : undefined,
         first_visible_geometry_ms: firstVisibleGeometryMs != null ? Math.round(firstVisibleGeometryMs) : undefined,
         stream_complete_ms: streamCompleteMs != null ? Math.round(streamCompleteMs) : undefined,
+      });
+      // Steady-state draw-call/GPU-memory telemetry (issue #1682) — fired
+      // separately from ifc_model_loaded because it must wait for the scene
+      // to settle (queue drain + fragment finalize), which happens after this
+      // summary on large models. Fire-and-forget by design; the stale guard
+      // hands off to the newer load's reporter when a load supersedes this one.
+      void reportRenderStats({
+        fileName: file.name,
+        fileSizeMB,
+        isStale: () => loadSessionRef.current !== currentSession,
       });
       setLoading(false);
       setGeometryStreamingActive(false);

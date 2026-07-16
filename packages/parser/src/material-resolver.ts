@@ -11,6 +11,7 @@
 import { EntityExtractor } from './entity-extractor.js';
 import { RelationshipType } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
+import { isIfcTypeLikeEntity } from './columnar-parser-indexes.js';
 
 export interface MaterialInfo {
     type: 'Material' | 'MaterialLayerSet' | 'MaterialProfileSet' | 'MaterialConstituentSet' | 'MaterialList';
@@ -587,7 +588,33 @@ export function buildMaterialUsageIndex(store: IfcDataStore): Map<number, Materi
     const usage = new Map<number, MaterialUsage>();
     const forward = store.onDemandMaterialMap;
     if (forward && store.source?.length) {
+        // Guards against a malformed model double-typing one occurrence
+        // (two IfcRelDefinesByType rels → duplicate forward edges), which
+        // would otherwise double-count it in the totals panel.
+        const seenPerMaterial = new Map<number, Set<number>>();
         for (const [entityId, defId] of forward) {
+            // IfcRelAssociatesMaterial commonly targets the TYPE entity
+            // (IfcDoorType etc.). The tab/totals need occurrences — a type
+            // has no geometry, so a type-keyed entry is invisible in the
+            // By Material tree (geom filter) and mis-attributes quantities
+            // (#1755). Expand type keys to their instances via forward
+            // DefinesByType edges; occurrences with their OWN association
+            // are skipped (IFC precedence: occurrence overrides type — they
+            // get their entry from their own map iteration). The type keeps
+            // no entry of its own: a zero-instance type would only produce
+            // dead rows. Stores without a relationship graph (minimal test
+            // stores) keep the old verbatim behavior.
+            const ref = getRef(store, entityId);
+            let targets: readonly number[];
+            if (ref && store.relationships && isIfcTypeLikeEntity(ref.type.toUpperCase())) {
+                targets = store.relationships
+                    .getRelated(entityId, RelationshipType.DefinesByType, 'forward')
+                    .filter((occId) => !forward.has(occId));
+            } else {
+                targets = [entityId];
+            }
+            if (targets.length === 0) continue;
+
             const leaves = collectMaterialLeaves(store, defId);
             for (const leaf of leaves) {
                 let entry = usage.get(leaf.id);
@@ -602,7 +629,13 @@ export function buildMaterialUsageIndex(store: IfcDataStore): Map<number, Materi
                     };
                     usage.set(leaf.id, entry);
                 }
-                entry.entries.push({ entityId, weight: leaf.weight });
+                let seen = seenPerMaterial.get(leaf.id);
+                if (!seen) { seen = new Set(); seenPerMaterial.set(leaf.id, seen); }
+                for (const target of targets) {
+                    if (seen.has(target)) continue;
+                    seen.add(target);
+                    entry.entries.push({ entityId: target, weight: leaf.weight });
+                }
             }
         }
     }

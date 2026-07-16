@@ -31,6 +31,7 @@ import {
   ListTree,
   Users,
   Cloud,
+  Layers as LayersIcon,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -52,7 +53,8 @@ export type WorkspacePanelId =
   | 'script'
   | 'gantt'
   | 'lists'
-  | 'collab';
+  | 'collab'
+  | 'layers';
 
 /** Activity-bar clustering — a divider is drawn whenever the group changes. */
 export type PanelGroup = 'navigate' | 'inspect' | 'review' | 'author' | 'work';
@@ -101,6 +103,10 @@ export const WORKSPACE_PANELS: readonly WorkspacePanelDef[] = [
   // Cloud sources (CDE integrations). APPENDED — no Alt shortcut. Hidden while
   // no source providers are registered (see ActivityBar).
   { id: 'sources', title: 'Cloud sources', short: 'Sources', Icon: Cloud, group: 'inspect', region: 'side' },
+  // IFCX layer stack + per-layer diff (#1717). APPENDED so the frozen
+  // Alt+1..0 mapping stays intact (no Alt shortcut). The activity bar only
+  // surfaces it while a federated layer stack is loaded.
+  { id: 'layers', title: 'Layer stack', short: 'Layers', Icon: LayersIcon, group: 'review', region: 'side' },
 ];
 
 /** The bottom-strip panel ids, mapped to their store visibility flag + setter

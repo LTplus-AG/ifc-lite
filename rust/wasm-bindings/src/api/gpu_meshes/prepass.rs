@@ -21,29 +21,6 @@ fn fold_u128_to_u32(h: u128) -> u32 {
 // The per-submesh #858 palette split lives inside the canonical per-element
 // producer (`ifc_lite_processing::element`) — shared with the native pipeline.
 
-/// Serialize the shared [`StreamMeta`] onto a JS object as the wire fields the
-/// host reads: `unitScale`, `planeAngleToRadians`, `rtcOffset` (`[x,y,z]`),
-/// `needsShift`, `buildingRotation` (`null` when absent). Used by both the
-/// `buildPrePassOnce` result object and the streaming `meta` events so all
-/// three emission points serialize identically.
-fn set_stream_meta_props(
-    obj: &js_sys::Object,
-    meta: &ifc_lite_processing::stream_meta::StreamMeta,
-) {
-    crate::api::set_js_prop(obj, "unitScale", &meta.length_unit_scale.into());
-    crate::api::set_js_prop(obj, "planeAngleToRadians", &meta.plane_angle_to_radians.into());
-    let rtc_arr = js_sys::Float64Array::new_with_length(3);
-    rtc_arr.set_index(0, meta.rtc_offset.0);
-    rtc_arr.set_index(1, meta.rtc_offset.1);
-    rtc_arr.set_index(2, meta.rtc_offset.2);
-    crate::api::set_js_prop(obj, "rtcOffset", &rtc_arr);
-    crate::api::set_js_prop(obj, "needsShift", &meta.needs_shift.into());
-    match meta.building_rotation {
-        Some(rot) => crate::api::set_js_prop(obj, "buildingRotation", &rot.into()),
-        None => crate::api::set_js_prop(obj, "buildingRotation", &JsValue::NULL),
-    };
-}
-
 #[wasm_bindgen]
 impl IfcAPI {
     /// Run the pre-pass ONCE and return serialized results for worker distribution.
@@ -146,7 +123,7 @@ impl IfcAPI {
         crate::api::set_js_prop(&result, "totalJobs", &(total_jobs as f64).into());
         // unitScale / planeAngleToRadians / rtcOffset / needsShift / buildingRotation
         // from the shared resolver.
-        set_stream_meta_props(&result, &meta);
+        super::prepass_sharded::set_stream_meta_props(&result, &meta);
 
         crate::api::set_js_prop(&result, "voidKeys", &void_keys);
         crate::api::set_js_prop(&result, "voidCounts", &void_counts);
@@ -201,6 +178,32 @@ impl IfcAPI {
         disabled_type_names: Option<Vec<String>>,
         skip_type_geometry: bool,
     ) -> Result<JsValue, JsValue> {
+        self.pre_pass_streaming_impl(
+            data,
+            on_event,
+            chunk_size,
+            disabled_type_names,
+            skip_type_geometry,
+            None,
+            false,
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn pre_pass_streaming_impl(
+        &self,
+        data: &[u8],
+        on_event: &Function,
+        chunk_size: u32,
+        disabled_type_names: Option<Vec<String>>,
+        skip_type_geometry: bool,
+        prebuilt: Option<ifc_lite_core::ColumnarEntityIndex>,
+        external_styles: bool,
+        columns: Option<super::prepass_discovery::IndexColumns<'_>>,
+    ) -> Result<JsValue, JsValue> {
+        let prebuilt_arc: Option<std::sync::Arc<ifc_lite_core::ColumnarEntityIndex>> =
+            prebuilt.map(std::sync::Arc::new);
         // Load START on the streaming pre-pass path (see build_pre_pass_once).
         self.reset_pipeline_diagnostics();
         use ifc_lite_core::{has_geometry_by_name, EntityDecoder, EntityScanner, IfcType};
@@ -312,9 +315,26 @@ impl IfcAPI {
         // resolver the native pipeline and `buildPrePassOnce` run.
         let mut prepass_spans = ifc_lite_processing::prepass::PrepassSpans::default();
 
+        // STAGE 2: fill collectors from the class columns; no byte scan.
+        if let Some((cids, cstarts, clengths, cclasses)) = columns {
+            let d = super::prepass_discovery::discover_from_columns(
+                content, cids, cstarts, clengths, cclasses, &disabled_types,
+            );
+            buffered_jobs = d.buffered_jobs;
+            total_jobs = d.total_jobs;
+            project_id = d.project_id;
+            site_position = d.site_position;
+            prepass_spans = d.prepass_spans;
+            prepass_spans.styled_items = Vec::new(); // shards resolve styles
+            mapped_item_spans = d.mapped_item_spans;
+            rel_defines_by_type_spans = d.rel_defines_by_type_spans;
+            type_candidate_spans = d.type_candidate_spans;
+            has_layer_set = d.has_layer_set;
+        } else {
         while let Some((id, type_name, start, end)) = scanner.next_entity() {
-            // Build entity index inline (same data we'd otherwise re-scan for).
-            entity_index.insert(id, (start, end));
+            if prebuilt_arc.is_none() {
+                entity_index.insert(id, (start, end)); // prebuilt mode: map unused
+            }
 
             match type_name {
                 "IFCPROJECT" => {
@@ -408,55 +428,82 @@ impl IfcAPI {
                 // are buffered, near the top of the file, so workers spin up
                 // early. Do NOT move this to a post-scan point — that regresses
                 // every large file.
-                let mut decoder = EntityDecoder::with_index(content, entity_index.clone());
-                let meta_res = resolve_stream_meta(
-                    MetaMode::StreamingPartial,
-                    content,
-                    project_id,
-                    site_position,
-                    &buffered_jobs,
-                    &mut decoder,
-                );
+                // PREBUILT index (sharded): full index available, so run the
+                // single-stage full-index ladder (what the partial ladder
+                // escalates to anyway) — no mid-scan full-rescan detour.
+                let meta_res = if let Some(pi) = &prebuilt_arc {
+                    let mut decoder =
+                        EntityDecoder::with_arc_columnar_index(content, pi.clone());
+                    resolve_stream_meta(
+                        MetaMode::SmallFileSingle,
+                        content,
+                        project_id,
+                        site_position,
+                        &buffered_jobs,
+                        &mut decoder,
+                    )
+                } else {
+                    let mut decoder = EntityDecoder::with_index(content, entity_index.clone());
+                    resolve_stream_meta(
+                        MetaMode::StreamingPartial,
+                        content,
+                        project_id,
+                        site_position,
+                        &buffered_jobs,
+                        &mut decoder,
+                    )
+                };
                 plane_angle_to_radians = meta_res.plane_angle_to_radians;
 
                 // Emit meta event.
                 let meta = js_sys::Object::new();
                 crate::api::set_js_prop(&meta, "type", &"meta".into());
-                set_stream_meta_props(&meta, &meta_res);
+                super::prepass_sharded::set_stream_meta_props(&meta, &meta_res);
                 on_event.call1(&JsValue::NULL, &meta.into())?;
                 meta_emitted = true;
-                // NOTE: jobs are NOT drained here. They are buffered through the
-                // whole scan and emitted post-scan with an exact geometry-hash
-                // affinity key (which needs the COMPLETE entity index). Deferring
-                // is free: workers gate on the styles + entity-index events, both
-                // of which are themselves post-scan.
+                // Jobs stay buffered through the scan; the post-scan pass
+                // emits them with exact geometry-hash affinity keys (workers
+                // gate on post-scan events anyway, so deferring is free).
                 continue;
             }
         }
 
-        // Tail: if we never hit the meta threshold (very small file with
-        // <50 geometry jobs), emit meta now with whatever data we have so
-        // workers can still process the trailing buffer.
+        }
+
+        // Tail meta: small files (scan path) + every columns-path file.
         if !meta_emitted {
             // Build a decoder lazily for unit/RTC/site lookups. With a
             // sub-50-job file the scan is essentially instant anyway, so the
             // full entity index is already complete here — the single-stage
             // `SmallFileSingle` ladder (one detect_rtc_offset_with_fallback) is
             // correct, sharing its resolution with `buildPrePassOnce`.
-            let mut decoder = EntityDecoder::with_index(content, entity_index.clone());
-            let meta_res = resolve_stream_meta(
-                MetaMode::SmallFileSingle,
-                content,
-                project_id,
-                site_position,
-                &buffered_jobs,
-                &mut decoder,
-            );
+            let meta_jobs = &buffered_jobs[..buffered_jobs.len().min(RTC_SAMPLE_THRESHOLD)];
+            let meta_res = if let Some(pi) = &prebuilt_arc {
+                let mut decoder = EntityDecoder::with_arc_columnar_index(content, pi.clone());
+                resolve_stream_meta(
+                    MetaMode::SmallFileSingle,
+                    content,
+                    project_id,
+                    site_position,
+                    meta_jobs,
+                    &mut decoder,
+                )
+            } else {
+                let mut decoder = EntityDecoder::with_index(content, entity_index.clone());
+                resolve_stream_meta(
+                    MetaMode::SmallFileSingle,
+                    content,
+                    project_id,
+                    site_position,
+                    &buffered_jobs,
+                    &mut decoder,
+                )
+            };
             plane_angle_to_radians = meta_res.plane_angle_to_radians;
 
             let meta = js_sys::Object::new();
             crate::api::set_js_prop(&meta, "type", &"meta".into());
-            set_stream_meta_props(&meta, &meta_res);
+            super::prepass_sharded::set_stream_meta_props(&meta, &meta_res);
             on_event.call1(&JsValue::NULL, &meta.into())?;
         }
 
@@ -464,9 +511,14 @@ impl IfcAPI {
         // into a compact columnar index (sorted u32 columns + binary search):
         // ~229 MB vs the hashmap's ~436 MB on a 19.1 M-entity model (#1682).
         // Consuming frees the map before sorting: one interleaved transient.
-        let entity_index_arc = std::sync::Arc::new(
-            ifc_lite_core::ColumnarEntityIndex::from_hashmap_consuming(entity_index),
-        );
+        let entity_index_arc = match prebuilt_arc {
+            Some(pi) => pi,
+            None => std::sync::Arc::new(ifc_lite_core::ColumnarEntityIndex::from_hashmap_consuming(
+                entity_index,
+            )),
+        };
+        let have_prebuilt = external_styles; // sharded mode always passes both
+
         // Mutex held only briefly to install the Arc.
         {
             let mut slot = self
@@ -481,18 +533,13 @@ impl IfcAPI {
         let index_for_export = entity_index_arc.clone();
 
         // ── FAST FIRST GEOMETRY ──
-        // Workers gate on three post-scan events: entity-index, styles, and the
-        // first jobs chunk. Previously all three waited behind a whole-model
-        // per-job affinity hash (geometry_routing_key over every job, ~4 s), and
-        // the entity-index event was emitted LAST of all — so workers idled until
-        // ~the end of the pre-pass. Now we ship entity-index + styles + a SMALL
-        // first job wave right here (the index is already complete), then run the
-        // affinity pass only over the REST. Only the first wave routes by id; the
-        // bulk keeps exact geometry-hash affinity, so dedup distribution is intact.
+        // Workers gate on entity-index + styles + the first jobs chunk; all
+        // three ship right here post-scan (a SMALL id-routed first wave, then
+        // the affinity pass over the REST — dedup distribution stays intact).
 
-        // (A) Entity-index — workers re-scan the whole file (~5 s) without it, so
-        // it must reach them as early as possible. Built from the complete index.
-        {
+        // (A) Entity-index — workers re-scan the whole file (~5 s) without it.
+        // Sharded mode skips this: the host delivered the stitched index first.
+        if !have_prebuilt {
             // Bulk-copy in 3 boundary crossings, not ~8.4M per-entry set_index
             // calls (workers' critical path). Columns are already sorted by id,
             // so consumers hit ColumnarEntityIndex::from_columns' O(n)
@@ -508,73 +555,26 @@ impl IfcAPI {
             on_event.call1(&JsValue::NULL, &index_event.into())?;
         }
 
-        // (B) Styles + voids — workers also gate on this. Resolve once (the same
-        // shared resolver the native pipeline and buildPrePassOnce run) and emit.
+        // (B) Styles + voids — workers also gate on this. Serial mode resolves
+        // + emits here (shared resolver; MaterialLayerIndex::from_content is
+        // deliberately skipped, aggregate void propagation included); sharded
+        // (external_styles) mode leaves styles to the worker shards + finalize.
         // `decoder` stays in scope below for the orphan type-geometry pass.
-        // MaterialLayerIndex::from_content is deliberately skipped (its own full
-        // scan); aggregate void propagation IS included via the stashed
-        // IfcRelAggregates spans, keeping void-parity with the server.
         let mut decoder = EntityDecoder::with_arc_columnar_index(content, entity_index_arc.clone());
         decoder.seed_unit_scales(1.0, plane_angle_to_radians);
-        let resolved = ifc_lite_processing::prepass::resolve_prepass(
-            &prepass_spans,
-            &mut decoder,
-            ifc_lite_processing::prepass::ResolveOptions {
-                collect_indexed_colour_full: false,
-                defer_attached_styles: false,
-            },
-        );
-        let (style_ids_vec, style_colors_vec) =
-            ifc_lite_processing::prepass::flat_styles_rgba8(&resolved, &mut decoder);
-        let (void_keys_vec, void_counts_vec, void_values_vec) =
-            ifc_lite_processing::prepass::flat_voids(&resolved.void_index);
-        let (mat_ids_vec, mat_counts_vec, mat_colors_vec) =
-            ifc_lite_processing::prepass::flat_material_colors(
-                &resolved.element_material_colors,
+        if !external_styles {
+            let resolved = ifc_lite_processing::prepass::resolve_prepass(
+                &prepass_spans,
+                &mut decoder,
+                ifc_lite_processing::prepass::ResolveOptions {
+                    collect_indexed_colour_full: false,
+                    defer_attached_styles: false,
+                },
             );
-        let styles_event = js_sys::Object::new();
-        crate::api::set_js_prop(&styles_event, "type", &"styles".into());
-        crate::api::set_js_prop(
-            &styles_event,
-            "styleIds",
-            &js_sys::Uint32Array::from(style_ids_vec.as_slice()),
-        );
-        crate::api::set_js_prop(
-            &styles_event,
-            "styleColors",
-            &js_sys::Uint8Array::from(style_colors_vec.as_slice()),
-        );
-        crate::api::set_js_prop(
-            &styles_event,
-            "voidKeys",
-            &js_sys::Uint32Array::from(void_keys_vec.as_slice()),
-        );
-        crate::api::set_js_prop(
-            &styles_event,
-            "voidCounts",
-            &js_sys::Uint32Array::from(void_counts_vec.as_slice()),
-        );
-        crate::api::set_js_prop(
-            &styles_event,
-            "voidValues",
-            &js_sys::Uint32Array::from(void_values_vec.as_slice()),
-        );
-        crate::api::set_js_prop(
-            &styles_event,
-            "materialElementIds",
-            &js_sys::Uint32Array::from(mat_ids_vec.as_slice()),
-        );
-        crate::api::set_js_prop(
-            &styles_event,
-            "materialColorCounts",
-            &js_sys::Uint32Array::from(mat_counts_vec.as_slice()),
-        );
-        crate::api::set_js_prop(
-            &styles_event,
-            "materialColors",
-            &js_sys::Uint8Array::from(mat_colors_vec.as_slice()),
-        );
-        on_event.call1(&JsValue::NULL, &styles_event.into())?;
+            let styles_event = super::prepass_sharded::styles_payload(&resolved, &mut decoder);
+            crate::api::set_js_prop(&styles_event, "type", &"styles".into());
+            on_event.call1(&JsValue::NULL, &styles_event.into())?;
+        }
 
         // (B2) Pre-pass columns — the three per-content structures each geometry
         // worker would otherwise rebuild with its OWN full-file walk on its first

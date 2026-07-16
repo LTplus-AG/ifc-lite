@@ -1,5 +1,15 @@
 # @ifc-lite/clash
 
+## 1.6.3
+
+### Patch Changes
+
+- Updated dependencies [[`6ed4de6`](https://github.com/LTplus-AG/ifc-lite/commit/6ed4de6a46100e097b41137a65e91b581df34486), [`8f3fafd`](https://github.com/LTplus-AG/ifc-lite/commit/8f3fafd7cc777e60cdc006956f8336680723c440), [`a2c31a1`](https://github.com/LTplus-AG/ifc-lite/commit/a2c31a185e868d15183df8360badb001789bd978), [`6ed4de6`](https://github.com/LTplus-AG/ifc-lite/commit/6ed4de6a46100e097b41137a65e91b581df34486), [`a1bbd6c`](https://github.com/LTplus-AG/ifc-lite/commit/a1bbd6c209ded2da1405a8d1c816a193601ae625)]:
+  - @ifc-lite/ifcx@2.3.0
+  - @ifc-lite/geometry@3.2.0
+  - @ifc-lite/wasm@4.0.0
+  - @ifc-lite/parser@3.8.5
+
 ## 1.6.2
 
 ### Patch Changes

@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/collab-server",
-  "version": "0.2.6",
+  "version": "0.4.1",
   "description": "Reference websocket sync server for @ifc-lite/collab",
   "type": "module",
   "main": "./dist/index.js",
@@ -27,16 +27,18 @@
   },
   "dependencies": {
     "@ifc-lite/collab": "workspace:^",
+    "@ifc-lite/ifcx": "workspace:^",
+    "@ifc-lite/merge": "workspace:^",
     "lib0": "^0.2.99",
     "ws": "^8.21.0",
     "y-protocols": "^1.0.6",
     "yjs": "^13.6.31"
   },
   "devDependencies": {
-    "@types/node": "^26.1.0",
+    "@types/node": "^26.1.1",
     "@types/ws": "^8.5.13",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.9",
+    "vitest": "^4.1.10",
     "y-websocket": "^3.0.0"
   },
   "license": "MPL-2.0",

@@ -14,11 +14,13 @@
 
 export { diffModels } from './diff.js';
 export {
+  buildComponentFingerprints,
   buildDataFingerprint,
   normalizeValue,
   stableHash,
 } from './fingerprint.js';
 export type {
+  ComponentKey,
   DataFingerprintInput,
   PropertyEntryInput,
   PropertySetInput,

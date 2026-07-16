@@ -48,11 +48,33 @@ export interface ListDataProvider {
   getEntityTag(expressId: number): string;
   /** Get IFC type name (e.g., "IfcWall") by express ID */
   getEntityTypeName(expressId: number): string;
+  /** Name of the element's IfcTypeProduct (e.g. "WT-Standard" on an
+   *  IfcWallType), resolved via IfcRelDefinesByType — the `Type` attribute
+   *  column (issue #1754). Distinct from `getEntityTypeName` (the IFC class)
+   *  and `getEntityObjectType` (the instance's own ObjectType attribute).
+   *  Optional: providers built before this return no Type name. '' when the
+   *  element has no type. */
+  getEntityDefiningTypeName?(expressId: number): string;
 
   /** Get all property sets for an entity (handles on-demand extraction) */
   getPropertySets(expressId: number): PropertySet[];
   /** Get all quantity sets for an entity (handles on-demand extraction) */
   getQuantitySets(expressId: number): QuantitySet[];
+
+  /**
+   * Property sets inherited from the element's IfcTypeProduct (via
+   * IfcRelDefinesByType), for the automatic Type-property fallback (issue
+   * #1745): when a `property` column/condition finds nothing on the instance,
+   * the engine consults these so a value defined once on the type (e.g.
+   * Pset_WallCommon.FireRating on IfcWallType) still resolves on every
+   * instance row. Optional — providers built before this existed simply have
+   * no fallback (behaviour unchanged). Returns [] when the element has no type.
+   */
+  getTypePropertySets?(expressId: number): PropertySet[];
+  /** Quantity sets inherited from the element's IfcTypeProduct — the quantity
+   *  counterpart of {@link getTypePropertySets} (e.g. type-level
+   *  Qto_WallBaseQuantities). Same optional Type fallback semantics. */
+  getTypeQuantitySets?(expressId: number): QuantitySet[];
 
   // ── Optional accessors (added for richer list targeting / columns) ──
   // Implementers built before these existed keep working: the engine
@@ -295,6 +317,7 @@ export const ENTITY_ATTRIBUTES = [
   'Name',
   'GlobalId',
   'Class',
+  'Type',
   'Description',
   'ObjectType',
   'PredefinedType',

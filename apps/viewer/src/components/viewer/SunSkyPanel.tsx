@@ -36,6 +36,7 @@ import {
 } from '@/lib/solar-time';
 
 const CONTEXT_SOURCES: Array<{ value: CesiumDataSource; label: string; hint: string }> = [
+  { value: 'osm-map', label: 'OSM Map', hint: 'Plain OpenStreetMap tiles — a simple flat base map' },
   { value: 'osm-buildings', label: 'OSM Buildings', hint: 'Extruded footprints over the satellite base map' },
   { value: 'google-photorealistic', label: 'Photorealistic', hint: 'Google 3D Tiles — textured real-world context' },
 ];
@@ -129,17 +130,37 @@ export function SunSkyPanel() {
               lit by Cesium's sun instead, so the choice becomes a single
               Atmosphere switch. */}
           {cesiumEnabled ? (
-            <div className="flex items-center gap-1">
-              <ToggleChip
-                label="Atmosphere"
-                active={skyEnabled}
-                onClick={() => setSkyEnabled(!skyEnabled)}
-                title="Sky, sun disc and haze in the world context"
-              />
-              <span className="flex-1 px-1 text-[9px] leading-tight text-muted-foreground">
-                Lighting follows the sun &amp; atmosphere
-              </span>
-            </div>
+            <>
+              <div className="flex items-center gap-1">
+                <ToggleChip
+                  label="Atmosphere"
+                  active={skyEnabled}
+                  onClick={() => setSkyEnabled(!skyEnabled)}
+                  title="Sky, sun disc and haze in the world context"
+                />
+                <span className="flex-1 px-1 text-[9px] leading-tight text-muted-foreground">
+                  Lighting follows the sun &amp; atmosphere
+                </span>
+              </div>
+              {/* Base map — pick the real-world backdrop. Photorealistic can
+                  be overwhelming; the plain OSM map is a simple flat
+                  alternative (#1744). Lives here (not just in the sun study)
+                  so the choice is available whenever the world context is on. */}
+              <label className="flex flex-col gap-0.5">
+                <span className="text-[9px] uppercase tracking-wider text-muted-foreground">Base map</span>
+                <select
+                  aria-label="World context base map"
+                  value={dataSource}
+                  onChange={(e) => setDataSource(e.target.value as CesiumDataSource)}
+                  title={CONTEXT_SOURCES.find((s) => s.value === dataSource)?.hint}
+                  className="w-full bg-muted/40 rounded px-1.5 py-1 border text-foreground text-[10px]"
+                >
+                  {CONTEXT_SOURCES.map((src) => (
+                    <option key={src.value} value={src.value}>{src.label}</option>
+                  ))}
+                </select>
+              </label>
+            </>
           ) : (
             <label className="flex flex-col gap-0.5">
               <span className="text-[9px] uppercase tracking-wider text-muted-foreground">Environment</span>
@@ -295,33 +316,14 @@ export function SunSkyPanel() {
                     ))}
                   </div>
 
-                  {/* World-context extras: dome + shadows + context source */}
+                  {/* World-context extras: dome + shadows. The base-map
+                      picker lives above (visible whenever the world context is
+                      on), so the sun study only adds its dome/shadow toggles. */}
                   {cesiumEnabled ? (
-                    <>
-                      <div className="flex gap-1">
-                        <ToggleChip className="flex-1" label="Dome" active={showSunPath} onClick={() => setShowSunPath(!showSunPath)} />
-                        <ToggleChip className="flex-1" label="Shadows" active={showShadows} onClick={() => setShowShadows(!showShadows)} />
-                      </div>
-                      <div className="flex gap-1">
-                        {CONTEXT_SOURCES.map((src) => (
-                          <button
-                            key={src.value}
-                            type="button"
-                            title={src.hint}
-                            aria-pressed={dataSource === src.value}
-                            onClick={() => setDataSource(src.value)}
-                            className={cn(
-                              'flex-1 px-1.5 py-1 rounded text-[10px] transition-colors',
-                              dataSource === src.value
-                                ? 'bg-teal-600 text-white'
-                                : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-                            )}
-                          >
-                            {src.label}
-                          </button>
-                        ))}
-                      </div>
-                    </>
+                    <div className="flex gap-1">
+                      <ToggleChip className="flex-1" label="Dome" active={showSunPath} onClick={() => setShowSunPath(!showSunPath)} />
+                      <ToggleChip className="flex-1" label="Shadows" active={showShadows} onClick={() => setShowShadows(!showShadows)} />
+                    </div>
                   ) : (
                     <button
                       type="button"

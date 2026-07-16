@@ -260,7 +260,7 @@ export function ListPanel({ onClose }: ListPanelProps) {
             <>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon-sm" onClick={handleEditFromResults}>
+                  <Button variant="ghost" size="icon-sm" aria-label="Edit Configuration" onClick={handleEditFromResults}>
                     <Settings2 className="h-3.5 w-3.5" />
                   </Button>
                 </TooltipTrigger>
@@ -268,7 +268,7 @@ export function ListPanel({ onClose }: ListPanelProps) {
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon-sm" onClick={() => setView('library')}>
+                  <Button variant="ghost" size="icon-sm" aria-label="Back to Lists" onClick={() => setView('library')}>
                     <Table2 className="h-3.5 w-3.5" />
                   </Button>
                 </TooltipTrigger>
@@ -282,7 +282,7 @@ export function ListPanel({ onClose }: ListPanelProps) {
             </Button>
           )}
           {onClose && (
-            <Button variant="ghost" size="icon-sm" onClick={onClose}>
+            <Button variant="ghost" size="icon-sm" aria-label="Close" onClick={onClose}>
               <X className="h-3.5 w-3.5" />
             </Button>
           )}
@@ -491,6 +491,7 @@ function ListItem({ definition, isActive, executing, hasData, onExecute, onEdit,
                     if (hasData) onExecute(definition);
                   }}
                   disabled={!hasData}
+                  aria-label={`Run list ${definition.name}`}
                 >
                   <Play className="h-3 w-3" />
                 </Button>
@@ -508,6 +509,7 @@ function ListItem({ definition, isActive, executing, hasData, onExecute, onEdit,
                       e.stopPropagation();
                       onEdit(definition);
                     }}
+                    aria-label={`Edit list ${definition.name}`}
                   >
                     <Pencil className="h-3 w-3" />
                   </Button>
@@ -526,6 +528,7 @@ function ListItem({ definition, isActive, executing, hasData, onExecute, onEdit,
                       e.stopPropagation();
                       onDuplicate(definition);
                     }}
+                    aria-label={isPreset ? `Use ${definition.name} as template` : `Duplicate list ${definition.name}`}
                   >
                     <Copy className="h-3 w-3" />
                   </Button>
@@ -544,6 +547,7 @@ function ListItem({ definition, isActive, executing, hasData, onExecute, onEdit,
                       e.stopPropagation();
                       onExport(definition);
                     }}
+                    aria-label={`Export list ${definition.name}`}
                   >
                     <Download className="h-3 w-3" />
                   </Button>
@@ -562,6 +566,7 @@ function ListItem({ definition, isActive, executing, hasData, onExecute, onEdit,
                       e.stopPropagation();
                       onDelete(definition.id);
                     }}
+                    aria-label={`Delete list ${definition.name}`}
                   >
                     <Trash2 className="h-3 w-3" />
                   </Button>

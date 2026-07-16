@@ -9,7 +9,8 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { FilePersistence, startCollabServer, type StartCollabServerOptions } from './server.js';
 import { FsBlobStorage } from './blob-route.js';
-import { createRoomTokenAuthenticator, verifyRoomToken } from './room-token.js';
+import { FsLayerRegistry } from './layer-registry-fs.js';
+import { createRoomTokenAuthenticator, createRoomTokenRegistryAuthorizer, verifyRoomToken } from './room-token.js';
 import { type Role } from './auth.js';
 
 // `PORT` is the convention most hosts inject (Railway, Render, Fly, …).
@@ -20,6 +21,24 @@ const maxRooms = Number(process.env.COLLAB_MAX_ROOMS ?? 1024);
 // Link-based access control is enabled by setting a signing secret. Without it
 // the server stays open (anonymous editor) — fine for local/dev, see auth.ts.
 const tokenSecret = process.env.COLLAB_TOKEN_SECRET;
+// Layer registry (10-registry.md) is opt-in; when enabled it persists to the
+// same data dir as rooms and blobs, so a mounted volume covers all three.
+const layerRegistryEnabled = ['1', 'true'].includes(
+  (process.env.COLLAB_LAYER_REGISTRY ?? '').toLowerCase(),
+);
+// One notification consumer via env (08-review.md §8.7); programmatic
+// deployments pass a full webhook list through startCollabServer instead.
+const registryWebhookUrl = process.env.COLLAB_REGISTRY_WEBHOOK_URL;
+const registryWebhooks = registryWebhookUrl
+  ? [
+      {
+        url: registryWebhookUrl,
+        ...(process.env.COLLAB_REGISTRY_WEBHOOK_SECRET
+          ? { secret: process.env.COLLAB_REGISTRY_WEBHOOK_SECRET }
+          : {}),
+      },
+    ]
+  : [];
 
 /**
  * Accountless room access control:
@@ -68,6 +87,13 @@ function tokenOptions(secret: string, dir: string): Partial<StartCollabServerOpt
     // authorizer reuses the WS `authenticate` with a pseudo-room scope — which
     // a room-bound token can never match. Verify signature/expiry/revocation
     // without the room binding instead; writes additionally need editor/admin.
+    // The registry is project-scoped like blobs: verify the token without
+    // its room binding (see createRoomTokenRegistryAuthorizer) — otherwise
+    // room tokens can never reach /api/v1 and the registry is locked out.
+    authorizeRegistry: createRoomTokenRegistryAuthorizer({
+      secret,
+      isRevoked: (jti) => revoked.has(jti),
+    }),
     authorizeBlob: (token, method) => {
       const claims = verifyRoomToken(token ?? '', { secret });
       if (!claims || revoked.has(claims.jti)) return false;
@@ -118,11 +144,14 @@ async function main() {
     // them on restart. On a mounted volume this is durable and far cheaper.
     blobStorage: new FsBlobStorage(dataDir),
     maxRooms,
+    ...(layerRegistryEnabled
+      ? { layerRegistry: { store: new FsLayerRegistry(dataDir), webhooks: registryWebhooks } }
+      : {}),
     ...(tokenSecret ? tokenOptions(tokenSecret, dataDir) : {}),
   });
   // eslint-disable-next-line no-console
   console.log(
-    `[collab-server] listening at ${handle.url} (data: ${dataDir}, auth: ${tokenSecret ? 'room-token' : 'anonymous'})`,
+    `[collab-server] listening at ${handle.url} (data: ${dataDir}, auth: ${tokenSecret ? 'room-token' : 'anonymous'}, registry: ${layerRegistryEnabled ? 'fs' : 'off'})`,
   );
 
   const shutdown = async () => {

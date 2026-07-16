@@ -157,9 +157,19 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
       clearMutations?: (id: string) => void;
       clearMutationView?: (id: string) => void;
       clearGeneratedSchedule?: () => number;
+      idsValidationReport?: { modelInfo: { modelId: string } } | null;
+      clearIdsValidationReport?: () => void;
     };
     cross.clearMutations?.(modelId);
     cross.clearMutationView?.(modelId);
+
+    // If the removed model is the one the current IDS report describes, that
+    // report is stale by definition — its results reference a model that no
+    // longer exists, and the panel's controlled model picker would bind to a
+    // now-missing option. Drop it so the panel self-heals (#1702 C2).
+    if (cross.idsValidationReport?.modelInfo.modelId === modelId) {
+      cross.clearIdsValidationReport?.();
+    }
 
     // clearMutations only clears a schedule whose source === modelId. Removing
     // the last model orphans any remaining schedule (e.g. one with a null /
@@ -169,6 +179,11 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
     const models = get().models;
     if (models.size <= 1 && models.has(modelId)) {
       cross.clearGeneratedSchedule?.();
+      // Removing the final model empties the federation. Any surviving report
+      // (e.g. one whose stored target is the '__legacy__' sentinel, which can
+      // never match a real model id above) now references nothing loaded, so
+      // drop it regardless of its stored target id.
+      cross.clearIdsValidationReport?.();
     }
 
     set((state) => {
@@ -197,6 +212,11 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
   },
 
   clearAllModels: () => {
+    // Full federation teardown: any IDS report now references an unloaded
+    // model, so drop it too (removeModel's per-model cleanup never runs here).
+    (get() as unknown as {
+      clearIdsValidationReport?: () => void;
+    }).clearIdsValidationReport?.();
     // Clear the federation registry
     federationRegistry.clear();
     return set({

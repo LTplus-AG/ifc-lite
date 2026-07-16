@@ -201,3 +201,58 @@ export function prepareInstancedRender(shard: DecodedInstancedShard): InstancedR
   }
   return out;
 }
+
+/** Per-template cull metadata (structurally satisfied by InstancedTemplateGPU). */
+export interface InstancedCullMeta {
+  /** Union of the occurrences' world AABBs; null = uncullable. */
+  bounds: { min: [number, number, number]; max: [number, number, number] } | null;
+  /** Largest single-occurrence bounding-sphere radius. Infinity marks a
+   *  POISONED template (a non-finite occurrence box was seen): it is never
+   *  culled and later finite occurrences must not resurrect its bounds. */
+  maxOccRadius: number;
+}
+
+/** One occurrence's world AABB, as produced by the shard-upload transform. */
+export interface OccurrenceWorldBox {
+  minX: number; minY: number; minZ: number;
+  maxX: number; maxY: number; maxZ: number;
+}
+
+/**
+ * Fold one occurrence's world AABB into a template's cull metadata: grow the
+ * union bounds and the max occurrence bounding-sphere radius.
+ *
+ * A non-finite box (NaN/Infinity occurrence matrix) POISONS the template —
+ * bounds are wiped and maxOccRadius pinned to Infinity so the render loop
+ * fails OPEN (culling on poisoned metadata would hide real geometry), and the
+ * poison is sticky against later finite occurrences.
+ */
+export function foldOccurrenceWorldBox(meta: InstancedCullMeta, w: OccurrenceWorldBox): void {
+  if (meta.maxOccRadius === Infinity) return; // sticky poison
+  const dx = w.maxX - w.minX, dy = w.maxY - w.minY, dz = w.maxZ - w.minZ;
+  const occRadius = 0.5 * Math.sqrt(dx * dx + dy * dy + dz * dz);
+  if (
+    !Number.isFinite(occRadius) ||
+    !Number.isFinite(w.minX + w.minY + w.minZ) ||
+    !Number.isFinite(w.maxX + w.maxY + w.maxZ)
+  ) {
+    meta.bounds = null;
+    meta.maxOccRadius = Infinity;
+    return;
+  }
+  if (occRadius > meta.maxOccRadius) meta.maxOccRadius = occRadius;
+  const tb = meta.bounds;
+  if (!tb) {
+    meta.bounds = {
+      min: [w.minX, w.minY, w.minZ],
+      max: [w.maxX, w.maxY, w.maxZ],
+    };
+  } else {
+    if (w.minX < tb.min[0]) tb.min[0] = w.minX;
+    if (w.minY < tb.min[1]) tb.min[1] = w.minY;
+    if (w.minZ < tb.min[2]) tb.min[2] = w.minZ;
+    if (w.maxX > tb.max[0]) tb.max[0] = w.maxX;
+    if (w.maxY > tb.max[1]) tb.max[1] = w.maxY;
+    if (w.maxZ > tb.max[2]) tb.max[2] = w.maxZ;
+  }
+}

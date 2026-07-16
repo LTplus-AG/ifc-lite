@@ -14,9 +14,9 @@
     "yjs": "^13.6.31"
   },
   "devDependencies": {
-    "@types/three": "^0.185.0",
+    "@types/three": "^0.185.1",
     "typescript": "^6.0.3",
-    "vite": "^8.1.3",
+    "vite": "^8.1.4",
     "vite-plugin-top-level-await": "^1.5.0",
     "vite-plugin-wasm": "^3.6.0"
   }

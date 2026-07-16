@@ -1487,6 +1487,7 @@ export function LensPanel({ onClose }: LensPanelProps) {
               variant="ghost"
               size="sm"
               className="h-7 w-7 p-0 rounded-sm"
+              aria-label="Close"
               onClick={onClose}
             >
               <X className="h-4 w-4" />

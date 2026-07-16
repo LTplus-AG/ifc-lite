@@ -12,3 +12,13 @@ export {
 } from './catalogue.js';
 export { computeRisk, computeRisks, overallTier } from './risk.js';
 export { diffCapabilities, requiresReconsent } from './diff.js';
+export {
+  parseScopeClaim,
+  parseScopeClaims,
+  scopeClaimCovers,
+  opMatchesScopeClaim,
+  findCoveringClaim,
+  type EntitySelector,
+  type ScopeClaim,
+  type ScopeOpDescriptor,
+} from './scope-claim.js';

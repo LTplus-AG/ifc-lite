@@ -103,26 +103,9 @@ function sortedEntries(entries: PropertyEntryInput[]): { name: string; value: st
  * ordering never produces a spurious "modified".
  */
 export function buildDataFingerprint(input: DataFingerprintInput): string {
-  const propertySets = (input.propertySets ?? [])
-    .map((set) => ({ name: set.name, properties: sortedEntries(set.properties) }))
-    .sort((a, b) => a.name.localeCompare(b.name));
-
-  const quantitySets = (input.quantitySets ?? [])
-    .map((set) => ({ name: set.name, quantities: sortedEntries(set.quantities) }))
-    .sort((a, b) => a.name.localeCompare(b.name));
-
-  const typeAssignments = (input.typeAssignments ?? [])
-    .map((assignment) => ({
-      globalId: assignment.globalId ?? '',
-      name: assignment.name ?? '',
-      type: assignment.type ?? '',
-    }))
-    .sort(
-      (a, b) =>
-        a.type.localeCompare(b.type) ||
-        a.name.localeCompare(b.name) ||
-        a.globalId.localeCompare(b.globalId),
-    );
+  const propertySets = sortedPropertySets(input);
+  const quantitySets = sortedQuantitySets(input);
+  const typeAssignments = sortedTypeAssignments(input);
 
   return stableHash(
     JSON.stringify({
@@ -136,4 +119,84 @@ export function buildDataFingerprint(input: DataFingerprintInput): string {
       QuantitySets: quantitySets,
     }),
   );
+}
+
+function sortedPropertySets(input: DataFingerprintInput) {
+  return (input.propertySets ?? [])
+    .map((set) => ({ name: set.name, properties: sortedEntries(set.properties) }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function sortedQuantitySets(input: DataFingerprintInput) {
+  return (input.quantitySets ?? [])
+    .map((set) => ({ name: set.name, quantities: sortedEntries(set.quantities) }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function sortedTypeAssignments(input: DataFingerprintInput) {
+  return (input.typeAssignments ?? [])
+    .map((assignment) => ({
+      globalId: assignment.globalId ?? '',
+      name: assignment.name ?? '',
+      type: assignment.type ?? '',
+    }))
+    .sort(
+      (a, b) =>
+        a.type.localeCompare(b.type) ||
+        a.name.localeCompare(b.name) ||
+        a.globalId.localeCompare(b.globalId),
+    );
+}
+
+/**
+ * Per-component fingerprint keys. Aligned with the layer op model
+ * (docs/architecture/layer-prs/02-layer-format.md §2.2) so diff keys and
+ * op keys share one vocabulary:
+ *
+ * - `attr:core`        — direct attributes (Name, Description, ObjectType,
+ *                        PredefinedType) + the IFC type itself
+ * - `pset:<PsetName>`  — one hash per property set
+ * - `qset:<QsetName>`  — one hash per quantity set
+ * - `type-assignment`  — assigned type entities
+ */
+export type ComponentKey = string;
+
+/**
+ * Opt-in per-componentKey sub-hash mode (the whole-blob
+ * {@link buildDataFingerprint} stays the default). Sub-hashes make the
+ * conflict unit (entity, componentKey): an architect editing placement and
+ * an agent editing `Pset_FireSafety` on the same wall is not a conflict.
+ *
+ * Only components the entity actually carries get a key: a missing pset
+ * has no entry rather than an "empty" hash, so add/remove of a component
+ * is visible as key presence.
+ */
+export function buildComponentFingerprints(
+  input: DataFingerprintInput,
+): Record<ComponentKey, string> {
+  const components: Record<ComponentKey, string> = {};
+
+  components['attr:core'] = stableHash(
+    JSON.stringify({
+      Type: input.ifcType,
+      Name: input.name ?? '',
+      Description: input.description ?? '',
+      ObjectType: input.objectType ?? '',
+      PredefinedType: input.predefinedType ?? '',
+    }),
+  );
+
+  for (const set of sortedPropertySets(input)) {
+    components[`pset:${set.name}`] = stableHash(JSON.stringify(set.properties));
+  }
+  for (const set of sortedQuantitySets(input)) {
+    components[`qset:${set.name}`] = stableHash(JSON.stringify(set.quantities));
+  }
+
+  const typeAssignments = sortedTypeAssignments(input);
+  if (typeAssignments.length > 0) {
+    components['type-assignment'] = stableHash(JSON.stringify(typeAssignments));
+  }
+
+  return components;
 }

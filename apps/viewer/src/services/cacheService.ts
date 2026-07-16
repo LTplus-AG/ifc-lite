@@ -26,8 +26,10 @@ export interface CacheEntryMeta {
  * Result from cache lookup
  */
 export interface CacheResult {
-  /** Serialized cache buffer containing data store and geometry */
-  buffer: ArrayBuffer;
+  /** Serialized cache buffer containing data store and geometry. A Blob for
+   *  entries written since the v13 cold tier (disk-backed → `slice()` gives
+   *  partial chunk reads); an ArrayBuffer for older entries. */
+  buffer: Blob | ArrayBuffer;
   /** Original IFC source file for on-demand property extraction */
   sourceBuffer?: ArrayBuffer;
   /** Source File `lastModified` (ms) stored at write; mesh-only mtime guard. */

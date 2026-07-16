@@ -132,6 +132,19 @@ export interface CollabSlice {
   collabIdentity: EphemeralIdentity;
   /** Remote peers currently present (excludes self). */
   collabPeers: PresenceState[];
+  /**
+   * Full-doc fork point for session-draft publishing (#1717): captured
+   * once the session is synced/seeded, re-captured after each publish so
+   * the next layer carries only new edits.
+   */
+  collabDraftBaseline: Uint8Array | null;
+  /**
+   * True when peers were present at ANY point since the draft baseline —
+   * a peer who edited and left must still stamp the published layer
+   * `author.kind: hybrid`; sampling live presence at publish time would
+   * misattribute their edits.
+   */
+  collabPeersSinceBaseline: boolean;
   /** True while a session is being established. */
   collabConnecting: boolean;
   /** The room token this client joined with (admin for the owner). For minting + revoking links. */
@@ -149,6 +162,8 @@ export interface CollabSlice {
   startCollab: (opts: StartCollabOptions) => Promise<void>;
   /** Leave the current room and tear everything down. */
   stopCollab: () => void;
+  /** Re-capture the session-draft fork point (after a publish). */
+  resetCollabDraftBaseline: () => void;
   /** Record the latest minted share link token (for later revocation). */
   setCollabLastShareToken: (token: string | null) => void;
   /** Admin: invalidate the most recently minted share link. Returns success. */
@@ -423,6 +438,8 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
   collabSession: null,
   collabStatus: 'disconnected',
   collabRoomId: null,
+  collabDraftBaseline: null,
+  collabPeersSinceBaseline: false,
   collabRole: null,
   collabIdentity: loadOrCreateIdentity(),
   collabPeers: [],
@@ -529,7 +546,11 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
 
     const selfClientId = session.clientId;
     session.presence.onUpdate((peers) => {
-      set({ collabPeers: remotePeers(peers, selfClientId) });
+      const remote = remotePeers(peers, selfClientId);
+      set((state) => ({
+        collabPeers: remote,
+        collabPeersSinceBaseline: state.collabPeersSinceBaseline || remote.length > 0,
+      }));
     });
     session.onStatus((status) => set({ collabStatus: status }));
     // Broadcast our role so peers can show it in the roster (advisory; the
@@ -854,6 +875,10 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
       collabStatus: session.status(),
       collabConnecting: false,
       collabSelfToken: token ?? null,
+      // Fork point for session-draft publishing: the doc is synced (and
+      // seeded, for owners) by the time the session is committed.
+      collabDraftBaseline: session.captureDocState(),
+      collabPeersSinceBaseline: get().collabPeers.length > 0,
     });
   },
 
@@ -903,6 +928,8 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
       collabSession: null,
       collabStatus: 'disconnected',
       collabRoomId: null,
+      collabDraftBaseline: null,
+      collabPeersSinceBaseline: false,
       collabRole: null,
       collabPeers: [],
       collabConnecting: false,
@@ -910,6 +937,16 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
       collabLastShareToken: null,
       collabPanelVisible: false,
     });
+  },
+
+  resetCollabDraftBaseline: () => {
+    const session = get().collabSession;
+    if (session) {
+      set({
+        collabDraftBaseline: session.captureDocState(),
+        collabPeersSinceBaseline: get().collabPeers.length > 0,
+      });
+    }
   },
 
   setCollabLastShareToken: (token) => set({ collabLastShareToken: token }),

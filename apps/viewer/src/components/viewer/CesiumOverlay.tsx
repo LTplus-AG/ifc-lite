@@ -261,7 +261,29 @@ export function CesiumOverlay({
         scene.globe.showGroundAtmosphere = false;
         scene.backgroundColor = Cesium.Color.TRANSPARENT;
         scene.globe.baseColor = Cesium.Color.TRANSPARENT;
-        if (dataSource === 'osm-buildings') {
+        if (dataSource === 'osm-map') {
+          // Plain OpenStreetMap slippy map: a simple, uncluttered flat base
+          // map (no satellite imagery, no 3D massing) for users who find the
+          // photorealistic globe overwhelming (#1744). The globe drapes the
+          // OSM tiles (over terrain when enabled) and receives cast shadows.
+          scene.globe.show = true;
+          scene.globe.shadows = Cesium.ShadowMode.RECEIVE_ONLY;
+          try {
+            // maximumLevel 19 = OSM's deepest tile zoom; conforms to the
+            // OpenStreetMap tile usage policy and avoids 404s past z19.
+            // Pass an explicit `credit`: Cesium's default OSM credit is the
+            // outdated "MapQuest … CC-BY-SA" string, but the OSMF tile policy
+            // requires a visible "© OpenStreetMap contributors" attribution
+            // linking to the copyright page. Cesium renders credit HTML, so the
+            // anchor is clickable in the on-canvas attribution.
+            const osm = new Cesium.OpenStreetMapImageryProvider({
+              maximumLevel: 19,
+              credit:
+                '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
+            });
+            if (!cancelled) viewer.imageryLayers.addImageryProvider(osm);
+          } catch (e) { console.warn('[CesiumOverlay] OSM base map unavailable:', e); }
+        } else if (dataSource === 'osm-buildings') {
           // OSM massing context: keep the globe with the satellite base map —
           // the extruded buildings sit ON TOP of the imagery, and the globe
           // is what receives their cast shadows during a sun study.
@@ -865,6 +887,12 @@ async function addDataSourceLayer(
 ): Promise<InstanceType<typeof import('cesium').Cesium3DTileset> | null> {
   try {
     switch (dataSource) {
+      case 'osm-map': {
+        // Plain OSM base map: the imagery layer is the whole context (added in
+        // Effect 1). There is no 3D tileset to place — return null so solar
+        // shadows fall on the globe alone.
+        return null;
+      }
       case 'osm-buildings': {
         // OpenStreetMap Buildings — flat-shaded extruded footprints, the grey
         // massing context used for sun-path / overshadowing studies.

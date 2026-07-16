@@ -22,6 +22,9 @@ export interface Property {
   property_name: string;
   property_value: string;
   property_type: string;
+  /** Raw IFC measure/value type tag (e.g. "IFCLENGTHMEASURE"), when present.
+   *  Added with the data-model v3 payload; `undefined` for older servers. */
+  data_type?: string;
 }
 
 export interface PropertySet {
@@ -239,6 +242,8 @@ export async function decodeDataModel(data: ArrayBuffer): Promise<DataModel> {
   const propertyNamesArr = propertiesArrow.getChild('property_name')?.toArray() as string[];
   const propertyValuesArr = propertiesArrow.getChild('property_value')?.toArray() as string[];
   const propertyTypesArr = propertiesArrow.getChild('property_type')?.toArray() as string[];
+  // Additive v3 column — absent (undefined) for older-server payloads.
+  const dataTypesArr = propertiesArrow.getChild('data_type')?.toArray() as (string | null)[] | undefined;
 
   const propertySets = new Map<number, PropertySet>();
   for (let i = 0; i < psetIds.length; i++) {
@@ -255,6 +260,7 @@ export async function decodeDataModel(data: ArrayBuffer): Promise<DataModel> {
       property_name: propertyNamesArr[i] ?? '',
       property_value: propertyValuesArr[i] ?? '',
       property_type: propertyTypesArr[i] ?? '',
+      data_type: dataTypesArr?.[i] ?? undefined,
     });
   }
 

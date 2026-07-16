@@ -1,0 +1,20 @@
+{#
+  This Source Code Form is subject to the terms of the Mozilla Public
+  License, v. 2.0. If a copy of the MPL was not distributed with this
+  file, You can obtain one at https://mozilla.org/MPL/2.0/.
+#}
+{% extends "base.html" %}
+
+{#-
+  PLANKOPF fonts. theme.font is false in mkdocs.yml so Material's `block fonts`
+  emits nothing; we load the variable Archivo (needs 400..900 for the plan
+  lettering) and Fragment Mono ourselves, and set both the font-name vars and
+  the full font-family stacks (with generic fallbacks so text is readable
+  during `display=swap` before the web fonts load).
+-#}
+{% block fonts %}
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Archivo:wdth,wght@75..125,400..900&family=Fragment+Mono:ital@0;1&display=swap" rel="stylesheet">
+  <style>:root{--md-text-font:"Archivo";--md-code-font:"Fragment Mono";--md-text-font-family:"Archivo",-apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif;--md-code-font-family:"Fragment Mono",SFMono-Regular,Consolas,Menlo,monospace}</style>
+{% endblock %}

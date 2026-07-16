@@ -13,6 +13,7 @@
 import { useCallback, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore, type FederatedModel, type SchemaVersion } from '../store/index.js';
+import { layerStackEntry } from '../lib/layers/stack.js';
 import {
   detectFormat,
   parseFederatedIfcx,
@@ -25,6 +26,7 @@ import { buildSpatialIndexGuarded } from '../utils/loadingUtils.js';
 import { getDynamicBatchConfig } from '../utils/ifcConfig.js';
 import { calculateMeshBounds, createCoordinateInfo } from '../utils/localParsingUtils.js';
 import {
+  buildIfcxDataStore,
   convertIfcxMeshes,
 } from './ingest/viewerModelIngest.js';
 import { extractModelGeoref, alignGeometryToReference, findReferenceGeorefModel } from './ingest/federationAlign.js';
@@ -445,23 +447,39 @@ export function useIfcFederation(
       // Get layer info with mesh counts
       const layers = result.layerStack.getLayers();
 
-      // Create data store from federated result
-      const dataStore = {
-        fileSize: result.fileSize,
-        schemaVersion: 'IFC5' as const,
-        entityCount: result.entityCount,
-        parseTime: result.parseTime,
-        source: new Uint8Array(buffers[0].buffer),
-        entityIndex: {
-          byId: new Map(),
-          byType: new Map(),
-        },
-        strings: result.strings,
-        entities: result.entities,
-        properties: result.properties,
-        quantities: result.quantities,
-        relationships: result.relationships,
-        spatialHierarchy: result.spatialHierarchy,
+      // Layers panel (#1717): expose the stack behind this composition.
+      // getLayers() is strongest-first; the panel slice keeps composition
+      // order (weakest first). The parser retains each parsed IfcxFile, so
+      // entries reference them without re-parsing.
+      useViewerStore.getState().setLayerStack(
+        [...layers].reverse().map((layer) => layerStackEntry(layer)),
+        result.pathToId ?? null,
+      );
+      // First composed stack this browser has seen: open the Layers panel
+      // once so the feature introduces itself (#1717 exposure). Never
+      // repeats — after that the rail icon, badge, and menus carry it.
+      if (layers.length >= 2 && typeof window !== 'undefined') {
+        const INTRO_KEY = 'ifc-lite:layers:intro-shown';
+        try {
+          if (!window.localStorage.getItem(INTRO_KEY)) {
+            window.localStorage.setItem(INTRO_KEY, '1');
+            useViewerStore.getState().openWorkspacePanel('layers');
+            toast.info(
+              `Composed ${layers.length} layers - inspect, diff, publish, and merge them in the Layers panel.`,
+            );
+          }
+        } catch {
+          /* private-mode storage failures must never break loading */
+        }
+      }
+
+      // Create data store from federated result. Route through the shared
+      // IFCX store factory so the lazy accessors (getEntity/getProperties/
+      // getQuantities) the query + mutation paths call exist — without
+      // them, selecting or editing an entity in a federated model threw
+      // "this.store.getProperties is not a function" (#1717 V2).
+      const accessorStore = buildIfcxDataStore(result, buffers[0].buffer);
+      const dataStore = Object.assign(accessorStore, {
         // Federated-specific: store layer info and ORIGINAL BUFFERS for re-composition
         _federatedLayers: layers.map((l: { id: string; name: string; enabled: boolean }) => ({
           id: l.id,
@@ -473,7 +491,7 @@ export function useIfcFederation(
           name: b.name,
         })),
         _compositionStats: result.compositionStats,
-      } as unknown as IfcxDataStore;
+      }) as unknown as IfcxDataStore;
 
       // IfcxDataStore extends IfcDataStore (with schemaVersion: 'IFC5'), so this is safe
       setIfcDataStore(dataStore);
@@ -615,8 +633,12 @@ export function useIfcFederation(
       newBuffers.push({ buffer, name: file.name });
     }
 
-    // Combine: existing layers + new overlays (new overlays are strongest = first in array)
-    const allBuffers = [...newBuffers, ...existingBuffers];
+    // Combine: existing layers first, new overlays LAST. parseFederatedIfcx
+    // treats the first file as weakest and the last as strongest, so a new
+    // overlay must trail the existing stack — leading it made every added
+    // overlay the WEAKEST layer, silently shadowed by the model it was
+    // meant to override (#1717 V2).
+    const allBuffers = [...existingBuffers, ...newBuffers];
 
     await loadFederatedIfcxFromBuffers(allBuffers, { resetState: false });
   }, [setError, loadFederatedIfcxFromBuffers]);

@@ -156,6 +156,61 @@ export class IfcAPI {
    */
   exportObj(content: Uint8Array, include_normals: boolean, hidden: Uint32Array, isolated: Uint32Array): Uint8Array;
   /**
+   * Sharded pre-pass: merge the shard-resolved styled-item columns with the
+   * SUPPORT spans (extracted host-side from the shard classes) and run the
+   * CANONICAL styles flatten. Returns the exact `styles` event payload the
+   * serial path emits. Runs on any worker with `setEntityIndex` installed.
+   * Span arguments are `[id, start, len]` triples; `plane_angle_to_radians`
+   * comes from the meta event.
+   */
+  finalizePrepassStyles(data: Uint8Array, orphan_ids: Uint32Array, orphan_colors: Float32Array, geom_ids: Uint32Array, geom_colors: Float32Array, colour_map_spans: Uint32Array, material_def_spans: Uint32Array, rel_material_spans: Uint32Array, void_spans: Uint32Array, fills_spans: Uint32Array, aggregate_spans: Uint32Array, plane_angle_to_radians: number): any;
+  /**
+   * SPIKE (sharded pre-pass): scan the entity index over a single byte range.
+   *
+   * Each idle browser geometry worker calls this on its `[range_start,
+   * range_end)` shard; the main thread stitches the returned columns into the
+   * full entity index (byte-identical to the single-threaded
+   * `build_entity_index`) by binary-searching each shard for the previous
+   * shard's `handoff`. Delegates to `ifc_lite_processing::scan_shard`, the
+   * exact per-chunk primitive the native `build_entity_index_parallel` fans
+   * across cores — so the sharded merge cannot drift from the serial builder.
+   *
+   * Byte offsets returned are GLOBAL (relative to file start), so shards
+   * concatenate without rewriting. Returns a plain object:
+   *   `{ ids: Uint32Array, starts: Uint32Array, lengths: Uint32Array,
+   *      handoff: number }`
+   * where `handoff` is the global start of the first entity at/after
+   * `range_end` (the next shard's first real entity), or `-1` at EOF.
+   */
+  scanEntityIndexShard(data: Uint8Array, range_start: number, range_end: number): any;
+  /**
+   * Sharded pre-pass: resolve ONE contiguous (file-ordered) slice of the
+   * styled-item span list on this worker, against the entity index installed
+   * by `setEntityIndex`. Returns raw resolved maps as flat columns:
+   * `{ orphanIds, orphanColors (f32 rgba per id), geomIds, geomColors }`.
+   * The host merges shard results IN SHARD ORDER with first-wins per
+   * geometry id, reproducing the serial resolver's file-order precedence,
+   * then hands the merged columns to `finalizePrepassStyles`.
+   * `spans` is `[id, start, len]` triples.
+   */
+  resolveStyledItemsShard(data: Uint8Array, spans: Uint32Array): any;
+  /**
+   * Sharded pre-pass variant: same scan/discovery/jobs/columns pipeline as
+   * `buildPrePassStreaming`, but
+   *  1. the entity index is PREBUILT from the host's stitched shard columns
+   *     (file order; see `scanEntityIndexShard`) — the scan skips its inline
+   *     index build, the meta RTC ladder resolves against the FULL index
+   *     (no partial-ladder full-rescan detour), and the post-scan
+   *     `entity-index` event is skipped (the host already delivered it), and
+   *  2. styles resolution is EXTERNAL: the styled-item spans are resolved as
+   *     shard slices on the geometry workers (`resolveStyledItemsShard`);
+   *     this call stashes the SUPPORT spans + plane-angle scale, and the
+   *     follow-up `finalizePrepassStyles` merges + flattens into the exact
+   *     styles payload the serial path emits. NO `styles` event is emitted
+   *     here.
+   */
+  buildPrePassStreamingSharded(data: Uint8Array, on_event: Function, chunk_size: number, disabled_type_names: string[] | null | undefined, skip_type_geometry: boolean, index_ids: Uint32Array, index_starts: Uint32Array, index_lengths: Uint32Array, index_classes: Uint8Array): any;
+  /**
    * Store the whole IFC source file ONCE per load so the `*FromSource` batch
    * variants can read it from the wasm heap instead of re-copying it per call.
    *
@@ -1239,6 +1294,7 @@ export interface InitOutput {
   readonly gridaxisjs_tag: (a: number, b: number) => void;
   readonly ifcapi_buildPrePassOnce: (a: number, b: number, c: number) => number;
   readonly ifcapi_buildPrePassStreaming: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
+  readonly ifcapi_buildPrePassStreamingSharded: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number) => void;
   readonly ifcapi_clearPrePassCache: (a: number) => void;
   readonly ifcapi_diagnoseGeometry: (a: number, b: number, c: number) => number;
   readonly ifcapi_exportCsv: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
@@ -1254,6 +1310,7 @@ export interface InitOutput {
   readonly ifcapi_exportObj: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
   readonly ifcapi_exportStep: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => void;
   readonly ifcapi_extractProfiles: (a: number, b: number, c: number, d: number) => number;
+  readonly ifcapi_finalizePrepassStyles: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number) => void;
   readonly ifcapi_getMemory: (a: number) => number;
   readonly ifcapi_getPipelineDiagnostics: (a: number) => number;
   readonly ifcapi_is_ready: (a: number) => number;
@@ -1267,8 +1324,10 @@ export interface InitOutput {
   readonly ifcapi_processGeometryBatchInstanced: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number, b1: number, c1: number) => void;
   readonly ifcapi_processGeometryBatchPartitioned: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number, b1: number) => number;
   readonly ifcapi_processGeometryBatchPartitionedFromSource: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number) => number;
+  readonly ifcapi_resolveStyledItemsShard: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
   readonly ifcapi_scanEntitiesFast: (a: number, b: number, c: number) => number;
   readonly ifcapi_scanEntitiesFastBytes: (a: number, b: number, c: number) => number;
+  readonly ifcapi_scanEntityIndexShard: (a: number, b: number, c: number, d: number, e: number) => number;
   readonly ifcapi_scanGeometryEntitiesFast: (a: number, b: number, c: number) => number;
   readonly ifcapi_setComputeGeometryHashes: (a: number, b: number, c: number) => void;
   readonly ifcapi_setEntityIndex: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;

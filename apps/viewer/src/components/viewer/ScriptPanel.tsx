@@ -280,7 +280,7 @@ export function ScriptPanel({ onClose }: ScriptPanelProps) {
           {savedScripts.length > 0 && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon-xs">
+                <Button variant="ghost" size="icon-xs" aria-label="Select saved script">
                   <ChevronDown className="h-3.5 w-3.5" />
                 </Button>
               </DropdownMenuTrigger>
@@ -317,6 +317,7 @@ export function ScriptPanel({ onClose }: ScriptPanelProps) {
                 size="icon-xs"
                 onClick={toggleChat}
                 className={cn(chatPanelVisible && 'bg-blue-500 hover:bg-blue-600 text-white')}
+                aria-label={chatPanelVisible ? 'Hide AI Chat' : 'Show AI Chat'}
                 {...tourAnchor(TOUR_ANCHORS.scriptChatToggle)}
               >
                 <Bot className="h-3.5 w-3.5" />
@@ -326,7 +327,7 @@ export function ScriptPanel({ onClose }: ScriptPanelProps) {
           </Tooltip>
 
           {onClose && (
-            <Button variant="ghost" size="icon-xs" onClick={onClose}>
+            <Button variant="ghost" size="icon-xs" aria-label="Close" onClick={onClose}>
               <X className="h-3.5 w-3.5" />
             </Button>
           )}
@@ -394,7 +395,7 @@ export function ScriptPanel({ onClose }: ScriptPanelProps) {
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon-xs" onClick={handleSave}>
+              <Button variant="ghost" size="icon-xs" aria-label="Save script" onClick={handleSave}>
                 <Save className="h-3.5 w-3.5" />
               </Button>
             </TooltipTrigger>
@@ -431,6 +432,7 @@ export function ScriptPanel({ onClose }: ScriptPanelProps) {
                 size="icon-xs"
                 onClick={undoScriptEditor}
                 disabled={!scriptCanUndo}
+                aria-label="Undo"
               >
                 <Undo2 className="h-3.5 w-3.5" />
               </Button>
@@ -445,6 +447,7 @@ export function ScriptPanel({ onClose }: ScriptPanelProps) {
                 size="icon-xs"
                 onClick={redoScriptEditor}
                 disabled={!scriptCanRedo}
+                aria-label="Redo"
               >
                 <Redo2 className="h-3.5 w-3.5" />
               </Button>
@@ -457,7 +460,7 @@ export function ScriptPanel({ onClose }: ScriptPanelProps) {
             <Tooltip>
               <TooltipTrigger asChild>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon-xs" {...tourAnchor(TOUR_ANCHORS.scriptNew)}>
+                  <Button variant="ghost" size="icon-xs" aria-label="New script" {...tourAnchor(TOUR_ANCHORS.scriptNew)}>
                     <Plus className="h-3.5 w-3.5" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -481,7 +484,7 @@ export function ScriptPanel({ onClose }: ScriptPanelProps) {
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon-xs" onClick={reset}>
+              <Button variant="ghost" size="icon-xs" aria-label="Reset sandbox" onClick={reset}>
                 <RotateCcw className="h-3.5 w-3.5" />
               </Button>
             </TooltipTrigger>

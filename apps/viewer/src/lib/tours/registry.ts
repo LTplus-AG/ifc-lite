@@ -13,6 +13,7 @@ import { BCF_TOUR } from './tours/bcf';
 import { CLASH_TOUR } from './tours/clash';
 import { COMPARE_TOUR } from './tours/compare';
 import { IDS_TOUR } from './tours/ids';
+import { LAYERS_TOUR } from './tours/layers';
 import { LENS_TOUR } from './tours/lens';
 import { MEASURE_SECTION_TOUR } from './tours/measure-section';
 import { SCRIPTING_TOUR } from './tours/scripting';
@@ -25,6 +26,7 @@ export const TOUR_REGISTRY: readonly TourDefinition[] = [
   IDS_TOUR,
   CLASH_TOUR,
   COMPARE_TOUR,
+  LAYERS_TOUR,
   LENS_TOUR,
   SCRIPTING_TOUR,
   BCF_TOUR,

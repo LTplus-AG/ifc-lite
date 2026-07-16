@@ -19,9 +19,16 @@ import {
 } from '../src/columnar-parser.js';
 import type { IfcDataStore } from '../src/columnar-parser.js';
 import type { EntityRef } from '../src/types.js';
+import { RelationshipGraphBuilder, RelationshipType } from '@ifc-lite/data';
 
-/** Build a minimal IfcDataStore from STEP lines + an element→material map. */
-function buildStore(lines: string[], materialMap?: Map<number, number>): IfcDataStore {
+/** Build a minimal IfcDataStore from STEP lines + an element→material map.
+ *  `definesByType` adds forward IfcRelDefinesByType edges (type → occurrences)
+ *  so the type-level material expansion in buildMaterialUsageIndex is testable. */
+function buildStore(
+  lines: string[],
+  materialMap?: Map<number, number>,
+  definesByType?: Array<[number, number[]]>,
+): IfcDataStore {
   const text = lines.join('\n');
   const source = new TextEncoder().encode(text);
 
@@ -51,10 +58,23 @@ function buildStore(lines: string[], materialMap?: Map<number, number>): IfcData
     cursor = start + line.length;
   }
 
+  let relationships: unknown;
+  if (definesByType) {
+    const builder = new RelationshipGraphBuilder();
+    let relId = 90000;
+    for (const [typeId, occIds] of definesByType) {
+      for (const occId of occIds) {
+        builder.addEdge(typeId, occId, RelationshipType.DefinesByType, relId++);
+      }
+    }
+    relationships = builder.build();
+  }
+
   return {
     source,
     entityIndex: { byId, byType },
     onDemandMaterialMap: materialMap,
+    relationships,
   } as unknown as IfcDataStore;
 }
 
@@ -196,5 +216,110 @@ describe('buildMaterialUsageIndex', () => {
     expect(insulation.entries).toHaveLength(1);
     expect(insulation.entries[0]).toMatchObject({ entityId: 2 });
     expect(insulation.entries[0].weight).toBeCloseTo(0.2, 6);
+  });
+});
+
+// Issue #1755 — IfcRelAssociatesMaterial commonly targets the TYPE entity
+// (IfcDoorType). The usage index must attribute those materials to the
+// occurrences (types have no geometry, so the By Material tab filtered them
+// out and the totals panel mis-attributed quantities).
+describe('buildMaterialUsageIndex — type-level material expansion (#1755)', () => {
+  // Doors #1/#2 typed by IfcDoorType #5; wall #3 with its own material.
+  // Type #5 carries a two-constituent set (wood1/wood2).
+  const TYPED = [
+    `#1=IFCDOOR('d1',$,'Door',$,$,$,$,$,2.,0.9,$,$,$);`,
+    `#2=IFCDOOR('d2',$,'Door',$,$,$,$,$,2.,0.9,$,$,$);`,
+    `#3=IFCWALL('w1',$,'Wall',$,$,$,$,$,$);`,
+    `#5=IFCDOORTYPE('t1',$,'DoorType',$,$,$,$,$,$,.DOOR.,.SINGLE_SWING_LEFT.,$);`,
+    `#10=IFCMATERIAL('wood1',$,$);`,
+    `#11=IFCMATERIAL('wood2',$,$);`,
+    `#12=IFCMATERIAL('Unknown',$,$);`,
+    `#20=IFCMATERIALCONSTITUENT('Lining',$,#10,0.6,$);`,
+    `#21=IFCMATERIALCONSTITUENT('Framing',$,#11,0.4,$);`,
+    `#22=IFCMATERIALCONSTITUENTSET('Unnamed',$,(#20,#21));`,
+  ];
+
+  it('attributes a type-associated material to the occurrences, not the type', () => {
+    const store = buildStore(
+      TYPED,
+      new Map([[5, 22], [3, 12]]),
+      [[5, [1, 2]]],
+    );
+    const usage = buildMaterialUsageIndex(store);
+
+    const wood1 = usage.get(10)!;
+    expect(wood1.entries.map((e) => e.entityId).sort()).toEqual([1, 2]);
+    for (const e of wood1.entries) expect(e.weight).toBeCloseTo(0.6, 6);
+
+    const wood2 = usage.get(11)!;
+    expect(wood2.entries.map((e) => e.entityId).sort()).toEqual([1, 2]);
+    for (const e of wood2.entries) expect(e.weight).toBeCloseTo(0.4, 6);
+
+    // The type entity itself must NOT appear (dead row in the tab, phantom
+    // element in the totals panel).
+    for (const u of usage.values()) {
+      expect(u.entries.some((e) => e.entityId === 5)).toBe(false);
+    }
+
+    // Occurrence-level association untouched.
+    expect(usage.get(12)!.entries).toEqual([{ entityId: 3, weight: 1 }]);
+  });
+
+  it('occurrence-level association overrides the type-level one (no double count)', () => {
+    // Door #1 has its OWN material (wood2 direct); #2 inherits from the type.
+    const store = buildStore(
+      TYPED,
+      new Map([[5, 22], [1, 11]]),
+      [[5, [1, 2]]],
+    );
+    const usage = buildMaterialUsageIndex(store);
+
+    // #1 appears exactly once across all usages — under its own wood2.
+    const appearances: number[] = [];
+    for (const u of usage.values()) {
+      for (const e of u.entries) if (e.entityId === 1) appearances.push(u.id);
+    }
+    expect(appearances).toEqual([11]);
+    expect(usage.get(11)!.entries.find((e) => e.entityId === 1)!.weight).toBeCloseTo(1, 6);
+
+    // #2 still inherits both constituents from the type.
+    expect(usage.get(10)!.entries.map((e) => e.entityId)).toEqual([2]);
+  });
+
+  it('per-occurrence weights across usages sum to ~1', () => {
+    const store = buildStore(TYPED, new Map([[5, 22]]), [[5, [1, 2]]]);
+    const usage = buildMaterialUsageIndex(store);
+    for (const occId of [1, 2]) {
+      let sum = 0;
+      for (const u of usage.values()) {
+        for (const e of u.entries) if (e.entityId === occId) sum += e.weight;
+      }
+      expect(sum).toBeCloseTo(1, 6);
+    }
+  });
+
+  it('a type with zero occurrences yields no entries (no dead rows)', () => {
+    const store = buildStore(TYPED, new Map([[5, 22]]), [[5, []]]);
+    const usage = buildMaterialUsageIndex(store);
+    expect(usage.size).toBe(0);
+  });
+
+  it('keeps the verbatim type-keyed entry when the store has no relationship graph', () => {
+    // Minimal stores (this harness without definesByType) have no graph —
+    // fall back to the old behavior rather than dropping data.
+    const store = buildStore(TYPED, new Map([[5, 22]]));
+    const usage = buildMaterialUsageIndex(store);
+    expect(usage.get(10)!.entries.map((e) => e.entityId)).toEqual([5]);
+  });
+
+  it('dedupes a double-typed occurrence (malformed duplicate DefinesByType edges)', () => {
+    const store = buildStore(
+      TYPED,
+      new Map([[5, 22]]),
+      [[5, [1, 1, 2]]],
+    );
+    const usage = buildMaterialUsageIndex(store);
+    const wood1Ids = usage.get(10)!.entries.map((e) => e.entityId).sort();
+    expect(wood1Ids).toEqual([1, 2]);
   });
 });

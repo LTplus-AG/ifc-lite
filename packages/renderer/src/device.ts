@@ -21,9 +21,27 @@ export class WebGPUDevice {
   _lastUncapturedError: string = '';
 
   /**
+   * Notified when the GPU device is lost for a reason OTHER than intentional
+   * teardown (`reason === 'destroyed'`) — e.g. a driver reset from the OS GPU
+   * watchdog (Windows TDR) or VRAM exhaustion on a weak/integrated GPU. Once a
+   * device is lost every GPU resource created from it is dead, so the renderer
+   * cannot present again until it is fully re-initialised. Consumers subscribe
+   * (see `Renderer.onDeviceLost`) to react — e.g. reload the model — instead of
+   * leaving a permanently blank canvas.
+   */
+  private deviceLostHandler: ((info: { message: string; reason: string }) => void) | null = null;
+  /** Guards against firing the handler more than once for a single device. */
+  private deviceLostFired: boolean = false;
+
+  /**
    * Initialize WebGPU device and canvas context
    */
   async init(canvas: HTMLCanvasElement): Promise<void> {
+    // Each init() begins a fresh GPUDevice lifetime. Clear the once-per-device
+    // guard so a destroy()+init() re-entry can still report a later loss (the
+    // previous device's `lost` promise already resolved and set this true).
+    this.deviceLostFired = false;
+
     if (!navigator.gpu) {
       throw new Error('WebGPU not available');
     }
@@ -33,7 +51,29 @@ export class WebGPUDevice {
       throw new Error('Failed to get GPU adapter');
     }
 
-    this.device = await this.adapter.requestDevice();
+    // Request the adapter's maximum buffer limits. The WebGPU default maxBufferSize
+    // is 256 MiB, but a single large mesh (e.g. a multi-GB IFC that meshes to one
+    // dense geometry) can need a vertex or index buffer well beyond that — its upload
+    // then fails with "Buffer size … exceeds the max buffer size limit", the buffer is
+    // invalid, and nothing renders. Adapters commonly advertise up to 2 GiB, so raise
+    // the device limits to whatever this adapter supports. Guarded so a runtime that
+    // doesn't expose `adapter.limits` (or rejects the required limits) still gets a
+    // device with the defaults.
+    const limits = this.adapter.limits;
+    const requiredLimits: Record<string, number> = {};
+    if (limits?.maxBufferSize) {
+      requiredLimits.maxBufferSize = limits.maxBufferSize;
+    }
+    if (limits?.maxStorageBufferBindingSize) {
+      requiredLimits.maxStorageBufferBindingSize = limits.maxStorageBufferBindingSize;
+    }
+    try {
+      this.device = await this.adapter.requestDevice({ requiredLimits });
+    } catch {
+      // Some drivers reject requiredLimits they nominally advertise — fall back to a
+      // default device rather than failing to initialise the renderer entirely.
+      this.device = await this.adapter.requestDevice();
+    }
     this.format = navigator.gpu.getPreferredCanvasFormat();
     this.canvas = canvas;
 
@@ -51,12 +91,22 @@ export class WebGPUDevice {
     };
 
     // Handle device lost - mark context as needing reconfiguration
-    // Use type assertion as 'lost' may not be in all WebGPU type definitions
-    const deviceWithLost = this.device as GPUDevice & { lost?: Promise<{ message: string }> };
+    // Use type assertion as 'lost'/'reason' may not be in all WebGPU type definitions
+    const deviceWithLost = this.device as GPUDevice & {
+      lost?: Promise<{ message: string; reason?: string }>;
+    };
     if (deviceWithLost.lost) {
       deviceWithLost.lost.then((info) => {
-        console.warn('[WebGPU] Device lost:', info.message);
+        const reason = info.reason ?? 'unknown';
+        console.warn('[WebGPU] Device lost:', info.message, `(reason: ${reason})`);
         this.contextConfigured = false;
+        // `reason === 'destroyed'` is an intentional teardown (a `device.destroy()`
+        // call or the page dropping the device) — not a fault, so don't wake the
+        // recovery path. Any other reason is a real loss the consumer must react to.
+        if (reason !== 'destroyed' && !this.deviceLostFired) {
+          this.deviceLostFired = true;
+          this.deviceLostHandler?.({ message: info.message, reason });
+        }
       });
     }
 
@@ -143,6 +193,16 @@ export class WebGPUDevice {
       throw new Error('Device not initialized');
     }
     return this.device;
+  }
+
+  /**
+   * Register the callback fired when this device is lost for a non-intentional
+   * reason (see `deviceLostHandler`). Only one handler is kept; the renderer
+   * owns it and fans out to its own subscribers. Set before `init()` so a loss
+   * during the very first frames is not missed.
+   */
+  onDeviceLost(handler: (info: { message: string; reason: string }) => void): void {
+    this.deviceLostHandler = handler;
   }
 
   /**

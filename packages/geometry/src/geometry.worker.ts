@@ -1301,7 +1301,10 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       const onEvent = (event: unknown) => {
         (self as unknown as Worker).postMessage({ type: 'prepass-stream', event });
       };
-      const run = (bytes: Uint8Array) =>
+      const run = (
+        bytes: Uint8Array,
+        ids: Uint32Array, starts: Uint32Array, lengths: Uint32Array, classes: Uint8Array,
+      ) =>
         (ifcApi as unknown as {
           buildPrePassStreamingSharded: (
             data: Uint8Array, onEvent: (e: unknown) => void, chunkSize: number,
@@ -1310,15 +1313,21 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
           ) => unknown;
         }).buildPrePassStreamingSharded(
           bytes, onEvent, chunkSize, disabledTypes, skipTypeGeometry,
-          indexIds, indexStarts, indexLengths, indexClasses,
+          ids, starts, lengths, classes,
         );
       try {
-        run(viewSharedBytes(sharedBuffer));
+        run(viewSharedBytes(sharedBuffer), indexIds, indexStarts, indexLengths, indexClasses);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         console.warn(`[Worker] Sharded streaming prepass with SAB view failed (${msg}), retrying with copy`);
         try {
-          run(materialiseSharedBytes(sharedBuffer));
+          // The id/start/length columns are SAB-backed too (zero-copy stitch
+          // delivery), so a SAB-view rejection needs them materialised along
+          // with the file bytes — `.slice()` of a SAB view yields a plain copy.
+          run(
+            materialiseSharedBytes(sharedBuffer),
+            indexIds.slice(), indexStarts.slice(), indexLengths.slice(), indexClasses.slice(),
+          );
         } catch (retryErr) {
           throw largeFilePrepassError(retryErr, sharedBuffer.byteLength) ?? retryErr;
         }

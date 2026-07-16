@@ -370,6 +370,96 @@ END-ISO-10303-21;
         assert_eq!(beam_mats[0].set_name.as_deref(), Some("BeamSet"));
     }
 
+    /// IFC4 model exercising TYPE-level parity (issue #1751): an IfcWallType
+    /// whose HasPropertySets carries a pset (string / boolean / real / integer)
+    /// and a Qto, two walls bound via IfcRelDefinesByType, and one instance pset.
+    const TYPE_PARITY_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'P',$,$,$,$,$,$);
+#100=IFCWALL('Wall00000000000000001A',$,'W-A',$,$,$,$,$,$);
+#110=IFCWALL('Wall00000000000000001B',$,'W-B',$,$,$,$,$,$);
+#200=IFCWALLTYPE('Type00000000000000001A',$,'WT-Std',$,$,(#210,#220),$,$,$,.STANDARD.);
+#210=IFCPROPERTYSET('Pset00000000000000001A',$,'Pset_WallCommon',$,(#211,#212,#213,#214));
+#211=IFCPROPERTYSINGLEVALUE('Manufacturer',$,IFCLABEL('ACME'),$);
+#212=IFCPROPERTYSINGLEVALUE('IsExternal',$,IFCBOOLEAN(.T.),$);
+#213=IFCPROPERTYSINGLEVALUE('ThermalTransmittance',$,IFCREAL(0.24),$);
+#214=IFCPROPERTYSINGLEVALUE('Layers',$,IFCINTEGER(3),$);
+#220=IFCELEMENTQUANTITY('Qset00000000000000001A',$,'Qto_WallBaseQuantities',$,$,(#221));
+#221=IFCQUANTITYLENGTH('Width',$,$,200.);
+#230=IFCRELDEFINESBYTYPE('Rdbt00000000000000001A',$,$,$,(#100,#110),#200);
+#250=IFCPROPERTYSET('Pset00000000000000002A',$,'Pset_WallCommon',$,(#251));
+#251=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('REI 120'),$);
+#260=IFCRELDEFINESBYPROPERTIES('Rdbp00000000000000001A',$,$,$,(#100),#250);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+    #[test]
+    fn extracts_type_relationship_and_resolves_typed_property_values() {
+        let dm = extract_data_model(TYPE_PARITY_IFC);
+
+        // IfcRelDefinesByType survives (was dropped by the `_ => (4,5)` default):
+        // relating = type #200, related = each wall.
+        let dbt = |related: u32| {
+            dm.relationships.iter().any(|r| {
+                r.rel_type.eq_ignore_ascii_case("IFCRELDEFINESBYTYPE")
+                    && r.relating_id == 200
+                    && r.related_id == related
+            })
+        };
+        assert!(dbt(100), "DefinesByType #200->#100 missing");
+        assert!(dbt(110), "DefinesByType #200->#110 missing");
+
+        // Type HasPropertySets are attached to the type via synthetic edges
+        // (relating = set, related = type).
+        let type_link = |set: u32| {
+            dm.relationships.iter().any(|r| {
+                r.rel_type == "TYPEHASPROPERTYSETS" && r.relating_id == set && r.related_id == 200
+            })
+        };
+        assert!(type_link(210), "TYPEHASPROPERTYSETS #210->#200 missing");
+        assert!(type_link(220), "TYPEHASPROPERTYSETS #220->#200 missing (qset)");
+
+        // Typed property values resolve to canonical strings + kinds + data_type
+        // (no more Debug garbage / "unknown").
+        let pset = dm
+            .property_sets
+            .iter()
+            .find(|p| p.pset_id == 210)
+            .expect("type pset #210 extracted");
+        let prop = |name: &str| pset.properties.iter().find(|p| p.property_name == name).unwrap();
+
+        let m = prop("Manufacturer");
+        assert_eq!(m.property_value, "ACME");
+        assert_eq!(m.property_type, "string");
+        assert_eq!(m.data_type.as_deref(), Some("IFCLABEL"));
+
+        let ext = prop("IsExternal");
+        assert_eq!(ext.property_value, "true");
+        assert_eq!(ext.property_type, "boolean");
+        assert_eq!(ext.data_type.as_deref(), Some("IFCBOOLEAN"));
+
+        let u = prop("ThermalTransmittance");
+        assert_eq!(u.property_value, "0.24");
+        assert_eq!(u.property_type, "real");
+        assert_eq!(u.data_type.as_deref(), Some("IFCREAL"));
+
+        let c = prop("Layers");
+        assert_eq!(c.property_value, "3");
+        assert_eq!(c.property_type, "integer");
+        assert_eq!(c.data_type.as_deref(), Some("IFCINTEGER"));
+
+        // Instance pset value also resolves (same code path).
+        let inst = dm.property_sets.iter().find(|p| p.pset_id == 250).unwrap();
+        let fr = &inst.properties[0];
+        assert_eq!(fr.property_name, "FireRating");
+        assert_eq!(fr.property_value, "REI 120");
+        assert_eq!(fr.property_type, "string");
+    }
+
     #[test]
     fn associations_empty_without_relationships() {
         let plain = r#"ISO-10303-21;

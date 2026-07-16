@@ -60,10 +60,20 @@ pub struct PropertySet {
 pub struct Property {
     /// Property name.
     pub property_name: String,
-    /// Property value (JSON-encoded).
+    /// Resolved property value in its canonical string form (a decoded string,
+    /// `"true"`/`"false"`, or a number rendered as text — NOT JSON-quoted). The
+    /// client re-materialises the native value using `property_type`.
     pub property_value: String,
-    /// Property value type.
+    /// Value KIND: `"string"` | `"boolean"` | `"logical"` | `"integer"` |
+    /// `"real"` | `"null"`. Mirrors the WASM path's `parsePropertyValue` so the
+    /// client can reconstruct the same `PropertyValueType` and JS value.
     pub property_type: String,
+    /// Raw IFC measure/value type tag (e.g. `"IFCLENGTHMEASURE"`, `"IFCLABEL"`),
+    /// when the STEP value was a typed wrapper. Drives display-unit conversion
+    /// (issue #1573) — the client maps it onto the property entry's `dataType`.
+    /// `None` for untyped values.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data_type: Option<String>,
 }
 
 /// Quantity set (IfcElementQuantity).

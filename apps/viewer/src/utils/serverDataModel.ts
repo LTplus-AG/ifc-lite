@@ -414,6 +414,13 @@ function buildRelationships(
   const inverseEdges = new Map<number, Array<{ target: number; type: RelationshipType; relationshipId: number }>>();
   const entityToPsets = new Map<number, Array<any>>();
   const entityToQsets = new Map<number, Array<ServerQuantitySet>>();
+  // Type-owned sets (issue #1751): the server emits synthetic TYPEHASPROPERTYSETS
+  // rows (set -> type) for a type's IfcTypeObject.HasPropertySets. These are
+  // "Source 1" (the type's own declaration); IfcRelDefinesByProperties targeting
+  // the type is "Source 2". Collect Source 1 separately, then merge it FIRST and
+  // dedup by set name — matching the WASM path's extractTypeEntityOwnProperties.
+  const typeOwnPsets = new Map<number, Array<any>>();
+  const typeOwnQsets = new Map<number, Array<ServerQuantitySet>>();
   const unmappedRelTypes = new Set<string>();
 
   // Combined loop - process relationships once for both graph building AND property mapping
@@ -422,21 +429,21 @@ function buildRelationships(
     const relType = CANONICAL_REL_TYPE_MAP[upperType];
 
     // Build property set and quantity set mappings (regardless of relType mapping)
-    if (upperType === 'IFCRELDEFINESBYPROPERTIES') {
+    if (upperType === 'IFCRELDEFINESBYPROPERTIES' || upperType === 'TYPEHASPROPERTYSETS') {
+      const psetTarget = upperType === 'TYPEHASPROPERTYSETS' ? typeOwnPsets : entityToPsets;
+      const qsetTarget = upperType === 'TYPEHASPROPERTYSETS' ? typeOwnQsets : entityToQsets;
       const pset = dataModel.propertySets.get(rel.relating_id);
       if (pset) {
-        if (!entityToPsets.has(rel.related_id)) {
-          entityToPsets.set(rel.related_id, []);
-        }
-        entityToPsets.get(rel.related_id)!.push(pset);
+        if (!psetTarget.has(rel.related_id)) psetTarget.set(rel.related_id, []);
+        psetTarget.get(rel.related_id)!.push(pset);
       }
       const qset = (dataModel as { quantitySets?: Map<number, ServerQuantitySet> }).quantitySets?.get(rel.relating_id);
       if (qset) {
-        if (!entityToQsets.has(rel.related_id)) {
-          entityToQsets.set(rel.related_id, []);
-        }
-        entityToQsets.get(rel.related_id)!.push(qset);
+        if (!qsetTarget.has(rel.related_id)) qsetTarget.set(rel.related_id, []);
+        qsetTarget.get(rel.related_id)!.push(qset);
       }
+      // TYPEHASPROPERTYSETS is a synthetic, non-IFC edge — never a graph edge.
+      if (upperType === 'TYPEHASPROPERTYSETS') continue;
     }
 
     // Only add relationship edges for known/mapped relationship types
@@ -465,6 +472,24 @@ function buildRelationships(
   if (unmappedRelTypes.size > 0) {
     console.warn(`[serverDataModel] Found ${unmappedRelTypes.size} unmapped relationship types: ${Array.from(unmappedRelTypes).join(', ')}`);
   }
+
+  // Merge each type's own (HasPropertySets) sets into its entry, FIRST and
+  // name-deduped over any IfcRelDefinesByProperties-attached sets already there,
+  // so `getForEntity(typeId)` matches the WASM path's type resolution and the
+  // Lists adapter's server-path type fallback (issue #1751).
+  const mergeOwnFirst = <T extends { pset_name?: string; qset_name?: string }>(
+    own: Map<number, T[]>,
+    target: Map<number, T[]>,
+    nameOf: (set: T) => string,
+  ) => {
+    for (const [typeId, ownSets] of own) {
+      const seen = new Set(ownSets.map(nameOf));
+      const rest = (target.get(typeId) ?? []).filter((s) => !seen.has(nameOf(s)));
+      target.set(typeId, [...ownSets, ...rest]);
+    }
+  };
+  mergeOwnFirst(typeOwnPsets, entityToPsets, (s) => s.pset_name ?? '');
+  mergeOwnFirst(typeOwnQsets, entityToQsets, (s) => s.qset_name ?? '');
 
   const createEdgeAccessor = (edges: Map<number, Array<{ target: number; type: RelationshipType; relationshipId: number }>>) => ({
     offsets: new Map<number, number>(),
@@ -550,6 +575,31 @@ export function convertServerDataModel(
   // Build spatial hierarchy (needs entityToPsets for storey heights)
   const spatialHierarchy = buildSpatialHierarchy(dataModel, entityToPsets);
 
+  // Re-materialise a server property's native value + kind + measure tag from
+  // the v3 wire fields (issue #1751). The server emits `property_value` as a
+  // canonical STRING plus a `property_type` kind tag and optional `data_type`
+  // measure tag, mirroring the WASM path's `parsePropertyValue`. Without this
+  // every server property would stay a String (the raw parquet string), so
+  // numeric cells wouldn't sum/sort and unit conversion (#1573) wouldn't fire.
+  type ServerProp = { property_name: string; property_value: string; property_type?: string; data_type?: string };
+  const materializeProp = (p: ServerProp): { name: string; type: PropertyValueType; value: PropertyValue; dataType?: string } => {
+    const raw = p.property_value;
+    let type: PropertyValueType;
+    let value: PropertyValue;
+    switch (p.property_type) {
+      case 'boolean': type = PropertyValueType.Boolean; value = raw === 'true'; break;
+      case 'logical': type = PropertyValueType.Logical; value = raw === 'true' ? true : raw === 'false' ? false : null; break;
+      case 'integer': type = PropertyValueType.Integer; value = raw === '' ? null : Number(raw); break;
+      case 'real':
+      case 'number': type = PropertyValueType.Real; value = raw === '' ? null : Number(raw); break;
+      case 'null': type = PropertyValueType.String; value = null; break;
+      case 'string':
+      default: type = PropertyValueType.String; value = raw; break;
+    }
+    return { name: p.property_name, type, value, ...(p.data_type ? { dataType: p.data_type } : {}) };
+  };
+  const materializeValue = (p: ServerProp): PropertyValue => materializeProp(p).value;
+
   // Build property and quantity tables conforming to IfcDataStore's interfaces
   const properties: PropertyTable = {
     count: 0,
@@ -571,14 +621,7 @@ export function convertServerDataModel(
       return psets.map((pset) => ({
         name: pset.pset_name,
         globalId: '',
-        properties: pset.properties.map((p: { property_name: string; property_value: string | number | boolean | null }) => ({
-          name: p.property_name,
-          type: typeof p.property_value === 'number'
-            ? (Number.isInteger(p.property_value) ? PropertyValueType.Integer : PropertyValueType.Real)
-            : typeof p.property_value === 'boolean' ? PropertyValueType.Boolean
-            : PropertyValueType.String,
-          value: p.property_value as PropertyValue,
-        })),
+        properties: pset.properties.map((p: ServerProp) => materializeProp(p)),
       }));
     },
     getPropertyValue: (expressId: number, psetName: string, propName: string): PropertyValue | null => {
@@ -590,7 +633,7 @@ export function convertServerDataModel(
         if (pset.pset_name === psetName) {
           for (const prop of pset.properties) {
             if (prop.property_name === propName) {
-              return prop.property_value as PropertyValue;
+              return materializeValue(prop);
             }
           }
         }
@@ -612,7 +655,7 @@ export function convertServerDataModel(
         for (const pset of psets) {
           if (psetName !== undefined && pset.pset_name !== psetName) continue;
           for (const prop of pset.properties) {
-            if (prop.property_name === propName && prop.property_value === value) {
+            if (prop.property_name === propName && materializeValue(prop) === value) {
               matchingEntityIds.push(entityId);
               found = true;
               break;

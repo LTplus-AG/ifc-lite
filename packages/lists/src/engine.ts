@@ -448,6 +448,9 @@ function getAttributeValue(entityId: number, attrName: string, provider: ListDat
       return provider.getEntityGlobalId(entityId) || null;
     case 'Class':
       return provider.getEntityTypeName(entityId) || null;
+    case 'Type':
+      // The element's IfcTypeProduct name (issue #1754).
+      return provider.getEntityDefiningTypeName?.(entityId) || null;
     case 'Description':
       return provider.getEntityDescription(entityId) || null;
     case 'ObjectType':

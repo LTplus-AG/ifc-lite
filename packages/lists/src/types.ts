@@ -48,6 +48,13 @@ export interface ListDataProvider {
   getEntityTag(expressId: number): string;
   /** Get IFC type name (e.g., "IfcWall") by express ID */
   getEntityTypeName(expressId: number): string;
+  /** Name of the element's IfcTypeProduct (e.g. "WT-Standard" on an
+   *  IfcWallType), resolved via IfcRelDefinesByType — the `Type` attribute
+   *  column (issue #1754). Distinct from `getEntityTypeName` (the IFC class)
+   *  and `getEntityObjectType` (the instance's own ObjectType attribute).
+   *  Optional: providers built before this return no Type name. '' when the
+   *  element has no type. */
+  getEntityDefiningTypeName?(expressId: number): string;
 
   /** Get all property sets for an entity (handles on-demand extraction) */
   getPropertySets(expressId: number): PropertySet[];
@@ -310,6 +317,7 @@ export const ENTITY_ATTRIBUTES = [
   'Name',
   'GlobalId',
   'Class',
+  'Type',
   'Description',
   'ObjectType',
   'PredefinedType',

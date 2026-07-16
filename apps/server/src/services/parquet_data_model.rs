@@ -301,7 +301,7 @@ fn serialize_properties_table(
     property_sets: &[PropertySet],
 ) -> Result<Vec<u8>, DataModelParquetError> {
     // Flatten property sets into rows using parallel iteration
-    let rows: Vec<(u32, String, String, String, String)> = property_sets
+    let rows: Vec<(u32, String, String, String, String, Option<String>)> = property_sets
         .par_iter()
         .flat_map_iter(|pset| {
             pset.properties.iter().map(move |prop| {
@@ -311,6 +311,7 @@ fn serialize_properties_table(
                     prop.property_name.clone(),
                     prop.property_value.clone(),
                     prop.property_type.clone(),
+                    prop.data_type.clone(),
                 )
             })
         })
@@ -322,13 +323,15 @@ fn serialize_properties_table(
     let mut property_names = Vec::with_capacity(rows.len());
     let mut property_values = Vec::with_capacity(rows.len());
     let mut property_types = Vec::with_capacity(rows.len());
+    let mut data_types = Vec::with_capacity(rows.len());
 
-    for (pset_id, pset_name, prop_name, prop_value, prop_type) in rows {
+    for (pset_id, pset_name, prop_name, prop_value, prop_type, data_type) in rows {
         pset_ids.push(pset_id);
         pset_names.push(pset_name);
         property_names.push(prop_name);
         property_values.push(prop_value);
         property_types.push(prop_type);
+        data_types.push(data_type);
     }
 
     let schema = Schema::new(vec![
@@ -337,6 +340,9 @@ fn serialize_properties_table(
         Field::new("property_name", DataType::Utf8, false),
         Field::new("property_value", DataType::Utf8, false),
         Field::new("property_type", DataType::Utf8, false),
+        // Additive nullable column (data-model cache bumped to v3). Old decoders
+        // that don't request it simply ignore the extra column.
+        Field::new("data_type", DataType::Utf8, true),
     ]);
 
     let batch = RecordBatch::try_new(
@@ -347,6 +353,7 @@ fn serialize_properties_table(
             Arc::new(StringArray::from(property_names)),
             Arc::new(StringArray::from(property_values)),
             Arc::new(StringArray::from(property_types)),
+            Arc::new(StringArray::from(data_types)),
         ],
     )?;
 

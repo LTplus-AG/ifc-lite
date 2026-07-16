@@ -49,6 +49,7 @@ function createProvider(): ListDataProvider {
     getEntityObjectType: () => '',
     getEntityTag: () => '',
     getEntityTypeName: () => 'IfcWall',
+    getEntityDefiningTypeName: () => 'WT-Standard',
     getPropertySets: (id) => instancePsets.get(id) ?? [],
     getQuantitySets: (id) => instanceQsets.get(id) ?? [],
     getTypePropertySets: () => typePsets,
@@ -126,6 +127,24 @@ describe('type-property fallback (#1745)', () => {
     );
     // Wall 2 declares FireRating locally (null) → stays null, no REI 60 from the type.
     expect(result.rows.map(r => r.values[0])).toEqual(['REI 120', null]);
+  });
+
+  it('resolves the Type attribute column to the IfcTypeProduct name (#1754)', () => {
+    const result = executeList(
+      walls([{ id: 'ty', source: 'attribute', propertyName: 'Type' }]),
+      createProvider(),
+    );
+    expect(result.rows.map(r => r.values[0])).toEqual(['WT-Standard', 'WT-Standard']);
+  });
+
+  it('Type attribute is null when the provider cannot resolve a type name', () => {
+    const base = createProvider();
+    const noType: ListDataProvider = { ...base, getEntityDefiningTypeName: undefined };
+    const result = executeList(
+      walls([{ id: 'ty', source: 'attribute', propertyName: 'Type' }]),
+      noType,
+    );
+    expect(result.rows.map(r => r.values[0])).toEqual([null, null]);
   });
 
   it('degrades gracefully when the provider has no type accessors', () => {

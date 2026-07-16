@@ -155,20 +155,20 @@ export function createListDataProvider(store: IfcDataStore, modelName = ''): Lis
     return typeId;
   }
 
-  // NOTE: type fallback covers the CLIENT (WASM) parse path — the store that
-  // backs the in-browser viewer, which is the #1745 scenario. The server-parse
-  // path (convertServerDataModel) does not surface the element→type relationship
-  // at all (it drops IfcRelDefinesByType and leaves `definedByType` unset), so
-  // `definingTypeId` returns -1 there and these accessors correctly no-op.
-  // Wiring server-parsed stores is tracked as a follow-up (needs the Rust
-  // relationship + type-pset emission), so we deliberately do NOT add a table
-  // fallback here that could never fire.
+  // Type fallback works on BOTH parse paths (issue #1751 gives the server path
+  // the element→type relationship + type-owned sets). Mirror getPropertySetsFor's
+  // split: the source-backed extractor for WASM-parsed stores; the prebuilt
+  // table (keyed by the type's own id) for server-parsed stores whose `source`
+  // is empty. `definingTypeId` resolves the type via the relationship graph on
+  // both paths.
   function getTypePropertySetsFor(entityId: number): PropertySet[] {
     const typeId = definingTypeId(entityId);
     if (typeId < 0) return [];
     const cached = typePsetCache.get(typeId);
     if (cached) return cached;
-    const psets = (extractTypePropertiesOnDemand(store, entityId)?.properties ?? []) as PropertySet[];
+    const psets = usesOnDemandProps
+      ? ((extractTypePropertiesOnDemand(store, entityId)?.properties ?? []) as PropertySet[])
+      : (store.properties?.getForEntity(typeId) ?? []);
     typePsetCache.set(typeId, psets);
     return psets;
   }
@@ -178,9 +178,20 @@ export function createListDataProvider(store: IfcDataStore, modelName = ''): Lis
     if (typeId < 0) return [];
     const cached = typeQsetCache.get(typeId);
     if (cached) return cached;
-    const qsets = (extractTypeQuantitiesOnDemand(store, entityId)?.quantities ?? []) as QuantitySet[];
+    const qsets = usesOnDemandQtos
+      ? ((extractTypeQuantitiesOnDemand(store, entityId)?.quantities ?? []) as QuantitySet[])
+      : (store.quantities?.getForEntity(typeId) ?? []);
     typeQsetCache.set(typeId, qsets);
     return qsets;
+  }
+
+  // The element's IfcTypeProduct name (issue #1754) — e.g. "WT-Standard" on an
+  // IfcWallType. Distinct from the `Class` attribute (the IFC class, IfcWall)
+  // and `ObjectType` (the instance's own attribute). Resolves via the same
+  // relationship on both parse paths, so it's identical server vs client.
+  function getEntityDefiningTypeNameFor(entityId: number): string {
+    const typeId = definingTypeId(entityId);
+    return typeId >= 0 ? store.entities.getName(typeId) || '' : '';
   }
 
   return {
@@ -198,6 +209,7 @@ export function createListDataProvider(store: IfcDataStore, modelName = ''): Lis
     getQuantitySets: getQuantitySetsFor,
     getTypePropertySets: getTypePropertySetsFor,
     getTypeQuantitySets: getTypeQuantitySetsFor,
+    getEntityDefiningTypeName: getEntityDefiningTypeNameFor,
 
     getAllEntityIds(): number[] {
       return selectableIds();

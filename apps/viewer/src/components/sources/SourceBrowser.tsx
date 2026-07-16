@@ -11,6 +11,8 @@ import type {
   SourceFile,
 } from '@ifc-lite/plugin-api';
 import { Button } from '@/components/ui/button';
+import { useIfc } from '@/hooks/useIfc';
+import { syncSourceModel } from '@/lib/sources/syncSourceModel';
 import { SourceFolderTree } from './SourceFolderTree';
 import { toast } from '@/components/ui/toast';
 import {
@@ -20,6 +22,8 @@ import {
   loadSourceCatalogCache,
   saveSourceCatalogCache,
 } from '@/lib/sources/persistence';
+import { useSourceHost } from '@/services/sources/SourceHostProvider';
+import { useViewerStore } from '@/store';
 import {
   ChevronLeft,
   Folder,
@@ -45,6 +49,10 @@ type Step = 'projects' | 'file-areas' | 'folders';
 const IFC_NAME_PATTERNS = ['*.ifc', '*.ifcx', '*.ifc5'];
 
 export function SourceBrowser({ provider, ctx, onDownload, onBack, busy = false }: SourceBrowserProps) {
+  const sourceHost = useSourceHost();
+  const { models, activeModelId, addModel, removeModel, setActiveModel, setModelCollapsed } = useIfc();
+  const sourceTags = useViewerStore((s) => s.sourceTags);
+  const setSourceTag = useViewerStore((s) => s.setSourceTag);
   const [step, setStep] = useState<Step>('projects');
   const [projects, setProjects] = useState<SourceProject[]>([]);
   const [selectedProject, setSelectedProject] = useState<SourceProject | null>(null);
@@ -64,6 +72,7 @@ export function SourceBrowser({ provider, ctx, onDownload, onBack, busy = false 
   const [loadingFolders, setLoadingFolders] = useState(false);
   const [loadingFiles, setLoadingFiles] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [syncingFileIds, setSyncingFileIds] = useState<Set<string>>(new Set());
   const [catalogUpdatedAt, setCatalogUpdatedAt] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -133,6 +142,24 @@ export function SourceBrowser({ provider, ctx, onDownload, onBack, busy = false 
     if (!selectedContainer) return [];
     return sortedFolders.filter((folder) => folder.parentId === selectedContainer.id);
   }, [selectedContainer, sortedFolders]);
+  const loadedModelIdsByFileId = useMemo(() => {
+    const next = new Map<string, string[]>();
+    if (!selectedProject) return next;
+
+    for (const [modelId, tag] of sourceTags) {
+      if (tag.provider !== provider.manifest.name || tag.projectId !== selectedProject.id) {
+        continue;
+      }
+      const current = next.get(tag.fileId);
+      if (current) {
+        current.push(modelId);
+      } else {
+        next.set(tag.fileId, [modelId]);
+      }
+    }
+
+    return next;
+  }, [provider.manifest.name, selectedProject, sourceTags]);
 
   const load = useCallback(
     async (setLoading: (v: boolean) => void, fn: () => Promise<void>) => {
@@ -306,6 +333,53 @@ export function SourceBrowser({ provider, ctx, onDownload, onBack, busy = false 
     if (!selectedProject || !selectedFileArea || syncing) return;
     void syncFileArea(selectedProject.id, selectedFileArea.id, { announce: true });
   }, [selectedFileArea, selectedProject, syncFileArea, syncing]);
+
+  const handleSyncLoadedFile = useCallback(async (file: SourceFile) => {
+    const loadedModelIds = loadedModelIdsByFileId.get(file.id);
+    const modelId = loadedModelIds?.[0];
+    const model = modelId ? models.get(modelId) : undefined;
+    const tag = modelId ? sourceTags.get(modelId) : undefined;
+    if (!modelId || !model || !tag) return;
+
+    setSyncingFileIds((previous) => new Set(previous).add(file.id));
+    try {
+      const { latestFile } = await syncSourceModel({
+        modelId,
+        model,
+        tag,
+        models,
+        activeModelId,
+        sourceHost,
+        addModel,
+        removeModel,
+        setModelCollapsed,
+        setActiveModel,
+        setSourceTag,
+      });
+      refreshDownloadedRecords();
+      toast.success(`Synced ${latestFile.name} from ${tag.provider}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to sync source model');
+    } finally {
+      setSyncingFileIds((previous) => {
+        const next = new Set(previous);
+        next.delete(file.id);
+        return next;
+      });
+    }
+  }, [
+    activeModelId,
+    addModel,
+    loadedModelIdsByFileId,
+    models,
+    refreshDownloadedRecords,
+    removeModel,
+    setActiveModel,
+    setModelCollapsed,
+    setSourceTag,
+    sourceHost,
+    sourceTags,
+  ]);
 
   const goBack = useCallback(() => {
     if (step === 'folders') {
@@ -542,6 +616,12 @@ export function SourceBrowser({ provider, ctx, onDownload, onBack, busy = false 
                 <>
                   <ul className="divide-y">
                     {sortedFiles.map((f) => {
+                      const loadedModelIds = loadedModelIdsByFileId.get(f.id) ?? [];
+                      const isLoadedInHierarchy = loadedModelIds.length > 0;
+                      const loadedModelNames = loadedModelIds
+                        .map((modelId) => models.get(modelId)?.name)
+                        .filter((name): name is string => Boolean(name));
+                      const syncingFile = syncingFileIds.has(f.id);
                       const downloadedRecord = selectedProject
                         ? getDownloadedSourceFileRecord(
                           downloadedRecords,
@@ -579,8 +659,38 @@ export function SourceBrowser({ provider, ctx, onDownload, onBack, busy = false 
                               }`}
                             />
                             <span className="min-w-0 flex-1">
-                              <span className="block truncate">
-                                {f.name}
+                              <span className="flex items-start gap-2">
+                                <span className="block min-w-0 flex-1 truncate">
+                                  {f.name}
+                                </span>
+                                {isLoadedInHierarchy && (
+                                  <span className="flex shrink-0 items-center gap-1">
+                                    <span
+                                      className="rounded border border-emerald-300 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-700 dark:border-emerald-800 dark:text-emerald-300"
+                                      title={
+                                        loadedModelNames.length > 0
+                                          ? `Loaded in hierarchy: ${loadedModelNames.join(', ')}`
+                                          : 'Loaded in hierarchy'
+                                      }
+                                    >
+                                      {loadedModelIds.length > 1 ? `${loadedModelIds.length} loaded` : 'Loaded'}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+                                      aria-label={`Sync ${f.name} from source`}
+                                      disabled={syncingFile}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        void handleSyncLoadedFile(f);
+                                      }}
+                                    >
+                                      <RefreshCw
+                                        className={`h-3.5 w-3.5 ${syncingFile ? 'animate-spin' : ''}`}
+                                      />
+                                    </button>
+                                  </span>
+                                )}
                               </span>
                               <span
                                 className={`mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs ${

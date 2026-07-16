@@ -25,8 +25,7 @@ import { useEntityListMultiSelect, type MultiSelectItem } from '@/hooks/useEntit
 import { Rule, type FilterRule } from '@/lib/search/filter-rules';
 import { toast } from '@/components/ui/toast';
 import { useSourceHost } from '@/services/sources/SourceHostProvider';
-import { loadSavedSourcePrefs } from '@/lib/sources/preferences';
-import { recordDownloadedSourceFile } from '@/lib/sources/persistence';
+import { syncSourceModel } from '@/lib/sources/syncSourceModel';
 
 import type { TreeNode } from './hierarchy/types';
 import { isSpatialContainer } from './hierarchy/types';
@@ -299,71 +298,21 @@ export function HierarchyPanel() {
     const tag = sourceTags.get(modelId);
     if (!model || !tag) return;
 
-    if (!tag.projectId.trim()) {
-      toast.error('This source model predates project tracking. Reload it from Cloud Sources once to enable sync.');
-      return;
-    }
-
-    const provider = sourceHost.get(tag.provider);
-    if (!provider) {
-      toast.error(`Source provider "${tag.provider}" is not available.`);
-      return;
-    }
-
     setSyncingSourceModelIds((previous) => new Set(previous).add(modelId));
     try {
-      const ctx = sourceHost.createContext(
-        provider.manifest,
-        loadSavedSourcePrefs(tag.provider),
-      );
-      const latestFiles = await provider.listFiles(ctx, tag.containerId, {
-        namePatterns: ['*.ifc', '*.ifcx', '*.ifc5'],
-      });
-      const latestFile = latestFiles.find((file) => file.id === tag.fileId);
-      if (!latestFile) {
-        throw new Error('Source file is no longer available in its original folder.');
-      }
-
-      const buffer = await provider.download(
-        ctx,
-        latestFile.id,
-        latestFile.currentRevisionId,
-      );
-      const replacement = new File([buffer], latestFile.name);
-
-      const otherCollapseStates = Array.from(models.entries())
-        .filter(([id]) => id !== modelId)
-        .map(([id, current]) => ({ id, collapsed: current.collapsed }));
-      const wasActive = activeModelId === modelId;
-
-      removeModel(modelId);
-      const reloadedModelId = await addModel(replacement, {
+      const { latestFile } = await syncSourceModel({
         modelId,
-        name: latestFile.name,
-        loadedAt: model.loadedAt,
-        visible: model.visible,
-        collapsed: model.collapsed,
+        model,
+        tag,
+        models,
+        activeModelId,
+        sourceHost,
+        addModel,
+        removeModel,
+        setModelCollapsed,
+        setActiveModel,
+        setSourceTag,
       });
-      if (!reloadedModelId) {
-        throw new Error(`Failed to reload ${latestFile.name}`);
-      }
-
-      for (const state of otherCollapseStates) {
-        setModelCollapsed(state.id, state.collapsed);
-      }
-      if (wasActive) {
-        setActiveModel(reloadedModelId);
-      }
-
-      const nextTag = sourceHost.createSourceTag(
-        tag.provider,
-        tag.projectId,
-        latestFile.containerId,
-        latestFile.id,
-        latestFile.currentRevisionId,
-      );
-      setSourceTag(reloadedModelId, nextTag);
-      recordDownloadedSourceFile(nextTag, latestFile);
       toast.success(`Synced ${latestFile.name} from ${tag.provider}`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to sync source model');

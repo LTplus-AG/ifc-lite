@@ -1135,6 +1135,7 @@ Run `ifc-lite schema` to see the full API before writing eval expressions.
 | `view` | Interactive 3D viewer in browser |
 | `analyze` | Query + visualize analysis results |
 | `lod` | Generate lightweight LOD artifacts |
+| `simplify` | Demesher: simplify meshes, write lighter IFC |
 | `mcp` | Start an MCP server bound to one or more IFC files |
 | `ext` | Manage IFClite extensions (Phase 0 — validate, init) |
 | `layer` | Layered change tracking over a local store (.ifc-lite/) |

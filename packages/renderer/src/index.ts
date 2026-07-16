@@ -104,6 +104,7 @@ import type {
     PickClipState,
     ClipBox,
     Mesh,
+    BatchedMesh,
     VisualEnhancementOptions,
     ContactShadingQuality,
     SeparationLinesQuality,
@@ -263,6 +264,33 @@ export class Renderer {
     // Dirty flag: set by requestRender(), consumed by the animation loop.
     // Centralises all render scheduling — callers never call render() directly.
     private _renderRequested: boolean = false;
+
+    // ─── Visibility-change bookkeeping (per-frame perf + leak fixes) ─────────
+    // The viewer passes STABLE hiddenIds/isolatedIds Set refs that only change
+    // when visibility changes, so reference comparison detects a real change
+    // cheaply. `_visibilityVersion` drives the per-batch visibility cache;
+    // `_partialBatchEpoch` additionally folds colour-override changes so the
+    // partial sub-batch cache fast path stays correct. `undefined` sentinels
+    // force a bump on the first frame.
+    private _lastHiddenIdsRef: ReadonlySet<number> | null | undefined = undefined;
+    private _lastIsolatedIdsRef: ReadonlySet<number> | null | undefined = undefined;
+    private _visibilityVersion: number = 0;
+    private _partialBatchEpoch: number = 0;
+    private _lastColorOverrideGen: number = -1;
+    private _lastHadVisibilityFiltering: boolean = false;
+    // Cached per-batch visibility, valid only while `_batchVisibilityEpoch`
+    // matches `_visibilityVersion`. Avoids the O(total element count) recompute
+    // (+ per-batch visible-id Set allocation) every frame while hide/isolate
+    // holds. Keyed by batch object (immutable expressIds per instance); a
+    // rebuilt batch is a new object → recomputed lazily.
+    private _batchVisibilityEpoch: number = -1;
+    private _batchVisibilityCache = new Map<
+        BatchedMesh,
+        { visible: boolean; fullyVisible: boolean; visibleIds?: Set<number> }
+    >();
+    // Selection snapshot from the previous frame — a change triggers disposal of
+    // now-unselected hydrated meshes (leak + double-draw fix).
+    private _prevHydratedSelection: Set<number> = new Set();
 
     // One-shot log guard — prints Y-up clip bounds on first section-enable so
     // users can confirm the slider is operating on the intended range.
@@ -1038,7 +1066,10 @@ export class Renderer {
         });
         device.queue.writeBuffer(indexBuffer, 0, meshData.indices);
 
-        // Add to scene with identity transform (positions already in world space)
+        // Add to scene with identity transform (positions already in world space).
+        // Flagged `hydrated` so it can be freed when its entity leaves the
+        // selection — these duplicate geometry already drawn by a batch and would
+        // otherwise accumulate + double-draw (see Scene.disposeHydratedMeshesExcept).
         this.scene.addMesh({
             expressId: meshData.expressId,
             modelIndex: meshData.modelIndex,  // Preserve modelIndex for multi-model selection
@@ -1047,7 +1078,31 @@ export class Renderer {
             indexCount: meshData.indices.length,
             transform: MathUtils.identity(),
             color: meshData.color,
+            hydrated: true,
         });
+    }
+
+    /**
+     * On a selection change, free the hydrated (pick/selection-highlight)
+     * individual meshes whose entity is no longer selected. These duplicate
+     * geometry already drawn by a batch; without this they accumulate in
+     * scene.meshes (VRAM grows with selection history) and — for transparent
+     * entities — re-draw every frame on top of their still-drawn batch copy
+     * (double alpha-blend darkens glass). Currently-selected entities keep their
+     * hydrated meshes so the highlight pass doesn't rebuild them each change.
+     * No-op when the selection set is unchanged to avoid per-frame buffer churn.
+     */
+    private syncHydratedSelectionMeshes(selected: ReadonlySet<number>): void {
+        const prev = this._prevHydratedSelection;
+        let changed = selected.size !== prev.size;
+        if (!changed) {
+            for (const id of selected) {
+                if (!prev.has(id)) { changed = true; break; }
+            }
+        }
+        if (!changed) return;
+        this._prevHydratedSelection = new Set(selected);
+        this.scene.disposeHydratedMeshesExcept(selected);
     }
 
     private resolveVisualEnhancement(options?: VisualEnhancementOptions): ResolvedVisualEnhancement {
@@ -1230,12 +1285,42 @@ export class Renderer {
             && visualEnhancement.separationLines.quality !== 'off';
         const needsObjectIdPass = contactEnabled || separationEnabled;
 
-        let meshes = this.scene.getMeshes();
-
         // Check if visibility filtering is active
         const hasHiddenFilter = options.hiddenIds && options.hiddenIds.size > 0;
         const hasIsolatedFilter = options.isolatedIds !== null && options.isolatedIds !== undefined;
         const hasVisibilityFiltering = hasHiddenFilter || hasIsolatedFilter;
+
+        // ─── Visibility / override epoch bookkeeping ────────────────────────
+        // The viewer hands us stable Set references that only change identity on
+        // a real visibility change, so a reference compare detects it cheaply.
+        // Bumping `_visibilityVersion` invalidates the per-batch visibility cache;
+        // the partial sub-batch cache additionally depends on colour-override
+        // promotion, so its epoch bumps on either.
+        const hiddenRef = options.hiddenIds ?? null;
+        const isolatedRef = options.isolatedIds ?? null;
+        const visibilityChanged =
+            hiddenRef !== this._lastHiddenIdsRef || isolatedRef !== this._lastIsolatedIdsRef;
+        if (visibilityChanged) {
+            this._visibilityVersion++;
+            this._lastHiddenIdsRef = hiddenRef;
+            this._lastIsolatedIdsRef = isolatedRef;
+        }
+        const colorOverrideGen = this.scene.getColorOverrideGeneration();
+        if (visibilityChanged || colorOverrideGen !== this._lastColorOverrideGen) {
+            this._lastColorOverrideGen = colorOverrideGen;
+            this._partialBatchEpoch++;
+        }
+
+        // When hide/isolate turns fully OFF (back to all-visible), release the
+        // partial sub-batch clones built while filtering. They are excluded from
+        // the GPU residency budget and are otherwise only freed on clear()/
+        // finalize/evict — never here — so ~model-sized clone VRAM would stay
+        // pinned until the next model reload. Any override-promotion sub-batches
+        // dropped alongside are rebuilt on demand next frame (cache miss).
+        if (this._lastHadVisibilityFiltering && !hasVisibilityFiltering) {
+            this.scene.dropAllPartialCaches();
+        }
+        this._lastHadVisibilityFiltering = hasVisibilityFiltering;
 
         // Build the selected-id set once per frame so the X-Ray override paths
         // can keep highlighted entities at full alpha without per-site checks.
@@ -1252,6 +1337,15 @@ export class Renderer {
             }
         }
         const hasSelected = selectedExpressIds.size > 0;
+
+        // Free hydrated (pick/selection) individual meshes whose entity is no
+        // longer selected BEFORE we snapshot the mesh list, so stale glass
+        // doesn't double-draw over its batch copy or accumulate until clear().
+        // Only acts on a selection change (avoids per-frame buffer churn) and
+        // never touches authored (non-hydrated) or batch geometry.
+        this.syncHydratedSelectionMeshes(selectedExpressIds);
+
+        let meshes = this.scene.getMeshes();
 
         // Keep the GPU-instanced occurrences' per-instance selected flag in sync.
         // The Scene diff makes this a no-op (no writeBuffer) when the set is
@@ -1368,15 +1462,26 @@ export class Renderer {
         }
 
         // Push a validation error scope to capture the EXACT error (for mobile debugging)
-        // Only do this for the first few renders to avoid performance overhead
+        // Only do this for the first few renders to avoid performance overhead.
+        // Tracked with a flag (not just captureGpuError) so EVERY exit path below
+        // pops it exactly once — an unpopped scope silently swallows all later
+        // validation errors and blinds getDiagnostics().gpuErrors.
         const captureGpuError = this._renderCallCount <= 5;
+        let errorScopePushed = false;
         if (captureGpuError) {
             device.pushErrorScope('validation');
+            errorScopePushed = true;
         }
 
         // Get current texture safely - may return null if context needs reconfiguration
         const currentTexture = this.device.getCurrentTexture();
         if (!currentTexture) {
+            // Balance the pushed scope before bailing so it doesn't leak into the
+            // next frame. We don't care about the result on a skipped frame.
+            if (errorScopePushed) {
+                errorScopePushed = false;
+                device.popErrorScope().catch(() => { /* device may be lost */ });
+            }
             return; // Skip this frame, context will be reconfigured next frame
         }
 
@@ -1842,30 +1947,41 @@ export class Renderer {
                     };
                 }
 
-                // Pre-compute visibility for each batch (only when filtering is active)
-                // A batch is visible if ANY of its elements are visible
-                // A batch is fully visible if ALL of its elements are visible
-                const batchVisibility = new Map<typeof allBatchedMeshes[number], { visible: boolean; fullyVisible: boolean }>();
-
-                if (hasVisibilityFiltering) {
-                    for (const batch of allBatchedMeshes) {
-                        let visibleCount = 0;
-                        const total = batch.expressIds.length;
-
-                        for (const expressId of batch.expressIds) {
-                            const isHidden = options.hiddenIds?.has(expressId) ?? false;
-                            const isIsolated = !hasIsolatedFilter || options.isolatedIds!.has(expressId);
-                            if (!isHidden && isIsolated) {
-                                visibleCount++;
-                            }
-                        }
-
-                        batchVisibility.set(batch, {
-                            visible: visibleCount > 0,
-                            fullyVisible: visibleCount === total,
-                        });
-                    }
+                // Per-batch visibility (only meaningful while filtering is active).
+                // A batch is visible if ANY of its elements are visible, fully
+                // visible if ALL are. Cached across frames keyed by the visibility
+                // version so the O(total element count) scan + per-batch visible-id
+                // Set allocation happens once per visibility change, not per frame.
+                // The cache map is keyed by batch object (immutable expressIds per
+                // instance); a rebuilt batch is a new object → recomputed lazily.
+                if (this._batchVisibilityEpoch !== this._visibilityVersion) {
+                    this._batchVisibilityCache = new Map();
+                    this._batchVisibilityEpoch = this._visibilityVersion;
                 }
+                const batchVisibilityCache = this._batchVisibilityCache;
+                const getBatchVisibility = (
+                    batch: typeof allBatchedMeshes[number],
+                ): { visible: boolean; fullyVisible: boolean; visibleIds?: Set<number> } => {
+                    let vis = batchVisibilityCache.get(batch);
+                    if (vis) return vis;
+                    const total = batch.expressIds.length;
+                    // Build the visible-id set in one pass; drop it for fully-visible
+                    // batches (they draw from their own buffers, no subset needed).
+                    const visibleIds = new Set<number>();
+                    for (const expressId of batch.expressIds) {
+                        const isHidden = options.hiddenIds?.has(expressId) ?? false;
+                        const isIsolated = !hasIsolatedFilter || options.isolatedIds!.has(expressId);
+                        if (!isHidden && isIsolated) visibleIds.add(expressId);
+                    }
+                    const fullyVisible = visibleIds.size === total;
+                    vis = {
+                        visible: visibleIds.size > 0,
+                        fullyVisible,
+                        visibleIds: fullyVisible ? undefined : visibleIds,
+                    };
+                    batchVisibilityCache.set(batch, vis);
+                    return vis;
+                };
 
                 // Separate batches into opaque and transparent, filtering by visibility
                 // IMPORTANT: Only render FULLY visible batches - partially visible batches
@@ -1962,18 +2078,15 @@ export class Renderer {
 
                     // Check visibility
                     if (hasVisibilityFiltering) {
-                        const vis = batchVisibility.get(batch);
-                        if (!vis || !vis.visible) continue; // Skip completely hidden batches
+                        const vis = getBatchVisibility(batch);
+                        if (!vis.visible) continue; // Skip completely hidden batches
 
                         // Handle partially visible batches - create sub-batches instead of individual meshes
                         if (!vis.fullyVisible) {
-                            const visibleIds = new Set<number>();
-                            for (const expressId of batch.expressIds) {
-                                const isHidden = options.hiddenIds?.has(expressId) ?? false;
-                                const isIsolated = !hasIsolatedFilter || options.isolatedIds!.has(expressId);
-                                if (!isHidden && isIsolated) visibleIds.add(expressId);
-                            }
-                            if (visibleIds.size > 0) {
+                            // The visible subset was computed once for this
+                            // visibility epoch (cached) — reuse it, don't rebuild.
+                            const visibleIds = vis.visibleIds;
+                            if (visibleIds && visibleIds.size > 0) {
                                 pushVisibleAsPartial(batch, visibleIds, nativelyTransparent);
                             }
                             // A COLD parent has no CPU meshData, so the partial
@@ -2273,7 +2386,8 @@ export class Renderer {
                             colorKey,
                             visibleIds,
                             device,
-                            this.pipeline
+                            this.pipeline,
+                            this._partialBatchEpoch
                         );
 
                         if (subBatch) {
@@ -2758,7 +2872,8 @@ export class Renderer {
             this.scene.enforceGpuBudget();
 
             // Pop validation error scope and capture the exact error
-            if (captureGpuError) {
+            if (errorScopePushed) {
+                errorScopePushed = false;
                 device.popErrorScope().then((error) => {
                     if (error) {
                         const msg = error.message || String(error);
@@ -2781,6 +2896,12 @@ export class Renderer {
                 });
             }
         } catch (error) {
+            // Balance the validation scope if we threw before popping it above —
+            // an unpopped scope would capture every later frame's errors silently.
+            if (errorScopePushed) {
+                errorScopePushed = false;
+                device.popErrorScope().catch(() => { /* device may be lost */ });
+            }
             this._renderErrorCount++;
             this._lastRenderError = error instanceof Error ? error.message : String(error);
             // Handle WebGPU errors (e.g., device lost, invalid state)
@@ -3355,6 +3476,14 @@ export class Renderer {
 
         // Snap detector geometry cache
         this.raycastEngine.clearCaches();
+
+        // Finally, release the GPU device itself. Every buffer/pipeline/texture
+        // above was created from it and has already been destroyed, so nothing
+        // will touch the device after this. Without it, an app that spins up a
+        // renderer per model keeps N live devices (and their VRAM) alive. The
+        // lost-handler special-cases reason 'destroyed' so this is not reported
+        // as a fault. render() early-returns while the device is uninitialised.
+        this.device.destroy();
     }
 
     /**

@@ -47,6 +47,12 @@ export interface Mesh {
   bindGroup?: GPUBindGroup;
   // Bounding box for frustum culling (optional)
   bounds?: { min: [number, number, number]; max: [number, number, number] };
+  /** True when this mesh was lazily hydrated for picking / selection highlight
+   *  (createMeshFromData) rather than added as authored geometry via addMesh().
+   *  Such meshes duplicate geometry already drawn by a batch, so they are freed
+   *  when their entity leaves the selection (see Scene.disposeHydratedMeshesExcept)
+   *  to stop unbounded accumulation + transparent double-draw on deselect. */
+  hydrated?: boolean;
 }
 
 /**

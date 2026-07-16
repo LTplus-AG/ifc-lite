@@ -228,4 +228,31 @@ export class WebGPUDevice {
   isInitialized(): boolean {
     return this.device !== null && this.context !== null;
   }
+
+  /**
+   * Intentionally tear down the GPU device, freeing the device, its queue, and
+   * the canvas-context configuration. An app that recreates a renderer per model
+   * otherwise leaks one live GPUDevice (and its VRAM) per reload. The device's
+   * `lost` promise resolves with reason `'destroyed'`, which the loss handler
+   * above deliberately ignores (intentional teardown, not a fault). After this
+   * `isInitialized()` reports false, so the renderer's per-frame guard skips
+   * rendering until a fresh `init()`. Idempotent — safe to call more than once.
+   */
+  destroy(): void {
+    if (this.device) {
+      try {
+        this.device.destroy();
+      } catch (e) {
+        // A backend can throw if the device is already lost — the goal (freeing
+        // the device) is met either way, so swallow it rather than break teardown.
+        console.warn('[WebGPU] device.destroy() threw during teardown:', e);
+      }
+    }
+    // Drop our references so nothing re-binds a dead device. The canvas context
+    // stays on the element; a later init() reconfigures it against a new device.
+    this.device = null;
+    this.context = null;
+    this.adapter = null;
+    this.contextConfigured = false;
+  }
 }

@@ -334,7 +334,10 @@ function getInitialToolbarStyle(): ToolbarStyle {
   if (typeof window === 'undefined') return 'classic';
   try {
     return localStorage.getItem(TOOLBAR_STYLE_STORAGE_KEY) === 'ribbon' ? 'ribbon' : 'classic';
-  } catch {
+  } catch (err) {
+    // Blocked storage (Safari private mode): fall back to the default so the
+    // toolbar still renders, but say why the preference didn't stick.
+    console.warn('[toolbar-style] storage unavailable; using classic', err);
     return 'classic';
   }
 }
@@ -347,7 +350,8 @@ function getInitialRibbonCollapsed(): boolean {
   if (typeof window === 'undefined') return false;
   try {
     return localStorage.getItem(RIBBON_COLLAPSED_STORAGE_KEY) === 'true';
-  } catch {
+  } catch (err) {
+    console.warn('[ribbon-collapsed] storage unavailable; using expanded', err);
     return false;
   }
 }

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import React, { useCallback, useEffect, useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import {
   FolderOpen,
   Download,
@@ -81,7 +81,6 @@ import { HbjsonExportDialog } from './HbjsonExportDialog';
 import { BulkPropertyEditor } from './BulkPropertyEditor';
 import { DataConnector } from './DataConnector';
 import { ExportChangesButton } from './ExportChangesButton';
-import { ShareDialog } from './ShareDialog';
 import { isCollabEnabled } from '@/lib/collab/config';
 import { SearchInline } from './SearchInline';
 import { ThemeSwitch } from './ThemeSwitch';
@@ -165,9 +164,13 @@ function UndoRedoButtons() {
   const redoStacks = useViewerStore((s) => s.redoStacks);
   const undo = useViewerStore((s) => s.undo);
   const redo = useViewerStore((s) => s.redo);
+  // Undo/redo replay authoring mutations, so they honour the same collab
+  // role gate as edit mode (null role = single-user, always editable).
+  const collabRole = useViewerStore((s) => s.collabRole);
+  const canEditInSession = collabRole === null || collabRole === 'editor' || collabRole === 'admin';
 
-  const canUndo = activeModelId !== null && (undoStacks.get(activeModelId)?.length ?? 0) > 0;
-  const canRedo = activeModelId !== null && (redoStacks.get(activeModelId)?.length ?? 0) > 0;
+  const canUndo = canEditInSession && activeModelId !== null && (undoStacks.get(activeModelId)?.length ?? 0) > 0;
+  const canRedo = canEditInSession && activeModelId !== null && (redoStacks.get(activeModelId)?.length ?? 0) > 0;
 
   return (
     <>
@@ -254,8 +257,9 @@ interface MainToolbarProps {
 
 export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainToolbarProps) {
   // Collaboration: the Share button is gated behind the collab feature flag.
+  // The ShareDialog + its `ifc-lite:open-share-dialog` listener live in
+  // useFileCommands (always mounted for the active toolbar style).
   const collabEnabled = useMemo(() => isCollabEnabled(), []);
-  const [shareDialogOpen, setShareDialogOpen] = React.useState(false);
   const collabPeerCount = useViewerStore((s) => s.collabPeers.length);
   const collabRoomId = useViewerStore((s) => s.collabRoomId);
   const collabPanelVisible = useViewerStore((s) => s.collabPanelVisible);
@@ -274,6 +278,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
   // hidden inputs, data exports, and the workspace-panel dock rules.
   const {
     fileInputs,
+    openShareDialog,
     handleOpenClick,
     handleAddModelClick,
     handleRefresh,
@@ -290,14 +295,6 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
     rightAnalysisExtensions,
     bottomAnalysisExtensions,
   } = useWorkspacePanelControls();
-
-  // Panels (RoomPanel empty state) request the Share dialog this way —
-  // its open state is toolbar-local.
-  useEffect(() => {
-    const shareHandler = () => setShareDialogOpen(true);
-    window.addEventListener('ifc-lite:open-share-dialog', shareHandler);
-    return () => window.removeEventListener('ifc-lite:open-share-dialog', shareHandler);
-  }, []);
 
   const activeTool = useViewerStore((state) => state.activeTool);
   const setActiveTool = useViewerStore((state) => state.setActiveTool);
@@ -576,8 +573,8 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
               <Button
                 variant="ghost"
                 size="icon-sm"
-                disabled={!geometryResult}
-                onClick={() => setShareDialogOpen(true)}
+                disabled={!hasModelsLoaded}
+                onClick={openShareDialog}
                 className="relative"
                 aria-label="Share"
               >
@@ -591,7 +588,6 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             </TooltipTrigger>
             <TooltipContent>Share</TooltipContent>
           </Tooltip>
-          <ShareDialog open={shareDialogOpen} onOpenChange={setShareDialogOpen} />
           {/* Room panel toggle — live presence + management, only while in a room. */}
           {collabRoomId && (
             <Tooltip>

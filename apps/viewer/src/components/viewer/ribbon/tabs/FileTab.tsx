@@ -7,7 +7,7 @@
  * open / add / refresh, the exporter fleet, and link-based sharing.
  */
 
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import {
   Camera,
   Download,
@@ -36,7 +36,6 @@ import { ExportDialog } from '../../ExportDialog';
 import { GLBExportDialog } from '../../GLBExportDialog';
 import { KmzExportDialog } from '../../KmzExportDialog';
 import { HbjsonExportDialog } from '../../HbjsonExportDialog';
-import { ShareDialog } from '../../ShareDialog';
 import type { FileCommands } from '../../toolbar/useFileCommands';
 import { useExportCommands } from '../../toolbar/useExportCommands';
 import {
@@ -48,24 +47,18 @@ import {
 } from '../primitives';
 
 export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
-  const { handleOpenClick, handleAddModelClick, handleRefresh, canRefresh, hasModelsLoaded } = fileCommands;
-  const { loading, geometryResult, models, ifcDataStore } = useIfc();
+  const { handleOpenClick, handleAddModelClick, handleRefresh, canRefresh, hasModelsLoaded, openShareDialog } = fileCommands;
+  const { loading, models, ifcDataStore } = useIfc();
   const { handleExportCSV, handleExportJSON, handleScreenshot } = useExportCommands();
 
   // Collaboration: the Share cluster is gated behind the collab feature flag.
+  // The ShareDialog itself (and its `ifc-lite:open-share-dialog` listener)
+  // lives in useFileCommands so it stays mounted on every tab and while the
+  // ribbon is collapsed — this panel only holds the buttons.
   const collabEnabled = React.useMemo(() => isCollabEnabled(), []);
-  const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const collabPeerCount = useViewerStore((s) => s.collabPeers.length);
   const collabRoomId = useViewerStore((s) => s.collabRoomId);
   const collabPanelVisible = useViewerStore((s) => s.collabPanelVisible);
-
-  // Panels (RoomPanel empty state) request the Share dialog this way —
-  // its open state is toolbar-local.
-  useEffect(() => {
-    const shareHandler = () => setShareDialogOpen(true);
-    window.addEventListener('ifc-lite:open-share-dialog', shareHandler);
-    return () => window.removeEventListener('ifc-lite:open-share-dialog', shareHandler);
-  }, []);
 
   const canExport = hasModelsLoaded || Boolean(ifcDataStore);
 
@@ -164,8 +157,8 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
               icon={Share2}
               label="Share"
               tooltip="Share: link-based multiuser collaboration"
-              disabled={!geometryResult}
-              onClick={() => setShareDialogOpen(true)}
+              disabled={!hasModelsLoaded}
+              onClick={openShareDialog}
               badge={collabPeerCount > 0 ? (
                 <span className="absolute right-1 top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-medium text-primary-foreground">
                   {collabPeerCount + 1}
@@ -188,7 +181,6 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
               />
             )}
           </RibbonGroup>
-          <ShareDialog open={shareDialogOpen} onOpenChange={setShareDialogOpen} />
         </>
       )}
     </>

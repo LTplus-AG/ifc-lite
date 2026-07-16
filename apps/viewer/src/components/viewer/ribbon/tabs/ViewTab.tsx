@@ -42,7 +42,7 @@ export function ViewTab() {
   const hoverTooltipsEnabled = useViewerStore((state) => state.hoverTooltipsEnabled);
   const toggleHoverTooltips = useViewerStore((state) => state.toggleHoverTooltips);
   const mergeLayers = useViewerStore((state) => state.mergeLayers);
-  const visibleClassCount = useVisibleClassCount();
+  const { visible: visibleClassCount } = useVisibleClassCount();
   const setToolbarStyle = useViewerStore((state) => state.setToolbarStyle);
 
   // Cesium 3D overlay state

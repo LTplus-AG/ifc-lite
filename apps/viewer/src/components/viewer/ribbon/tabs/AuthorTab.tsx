@@ -55,8 +55,10 @@ export function AuthorTab() {
   const redoStacks = useViewerStore((s) => s.redoStacks);
   const undo = useViewerStore((s) => s.undo);
   const redo = useViewerStore((s) => s.redo);
-  const canUndo = activeModelId !== null && (undoStacks.get(activeModelId)?.length ?? 0) > 0;
-  const canRedo = activeModelId !== null && (redoStacks.get(activeModelId)?.length ?? 0) > 0;
+  // Undo/redo replay authoring mutations, so they honour the same collab
+  // role gate as edit mode.
+  const canUndo = canEditInSession && activeModelId !== null && (undoStacks.get(activeModelId)?.length ?? 0) > 0;
+  const canRedo = canEditInSession && activeModelId !== null && (redoStacks.get(activeModelId)?.length ?? 0) > 0;
 
   const { activeWorkspacePanels, handleToggleRightPanel } = useWorkspacePanelControls();
 

@@ -11,7 +11,7 @@
  * window listeners registered here never double-fire.
  */
 
-import React, { useRef, useCallback, useEffect, useMemo } from 'react';
+import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import { useViewerStore, isIfcxDataStore, type FederatedModel } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
 import { recordRecentFiles, cacheFileBlobs } from '@/lib/recent-files';
@@ -21,6 +21,8 @@ import {
   readFreshFile,
 } from '@/services/file-system-access';
 import { toast } from '@/components/ui/toast';
+import { isCollabEnabled } from '@/lib/collab/config';
+import { ShareDialog } from '../ShareDialog';
 
 /** Extensions the viewer can ingest (IFC / IFCX / GLB / point clouds). */
 export function isSupportedModelFile(f: File): boolean {
@@ -38,8 +40,16 @@ function isIfcxModelFile(f: File): boolean {
 const FILE_ACCEPT = '.ifc,.ifcx,.ifczip,.glb,.las,.laz,.ply,.pcd,.e57,.pts,.xyz';
 
 export interface FileCommands {
-  /** Render once inside the toolbar: the two hidden `<input type="file">` fallbacks. */
+  /**
+   * Render once inside the toolbar: the two hidden `<input type="file">`
+   * fallbacks plus the Share dialog (when collab is enabled). The dialog
+   * lives here — not in a tab panel — so `ifc-lite:open-share-dialog`
+   * always has a mounted receiver regardless of the active ribbon tab or
+   * collapse state.
+   */
   fileInputs: React.ReactNode;
+  /** Open the Share dialog (same path the `ifc-lite:open-share-dialog` event takes). */
+  openShareDialog: () => void;
   /** Open file(s), replacing the current session (FS Access picker when available). */
   handleOpenClick: () => Promise<void>;
   /** Add model(s) to the current federation (FS Access picker when available). */
@@ -68,6 +78,21 @@ export function useFileCommands(): FileCommands {
     addModel,
   } = useIfc();
   const resetViewerState = useViewerStore((state) => state.resetViewerState);
+
+  // Share dialog host. Owned here (not by a toolbar or tab panel) because
+  // this hook is mounted by whichever toolbar style is active for the whole
+  // session, while ribbon tab panels unmount on tab switch/collapse — the
+  // `ifc-lite:open-share-dialog` event (RoomPanel's "Create a room") must
+  // always find a live listener.
+  const collabEnabled = useMemo(() => isCollabEnabled(), []);
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const openShareDialog = useCallback(() => setShareDialogOpen(true), []);
+  useEffect(() => {
+    if (!collabEnabled) return;
+    const shareHandler = () => setShareDialogOpen(true);
+    window.addEventListener('ifc-lite:open-share-dialog', shareHandler);
+    return () => window.removeEventListener('ifc-lite:open-share-dialog', shareHandler);
+  }, [collabEnabled]);
 
   // Listen for programmatic file-load requests (from command palette recent files)
   useEffect(() => {
@@ -122,7 +147,7 @@ export function useFileCommands(): FileCommands {
       loadFile(supportedFiles[0]);
     } else {
       // Multiple files - check if ALL are IFCX (use federated loading for layer composition)
-      const allIfcx = supportedFiles.every(f => f.name.endsWith('.ifcx'));
+      const allIfcx = supportedFiles.every(isIfcxModelFile);
 
       resetViewerState();
       clearAllModels();
@@ -258,6 +283,14 @@ export function useFileCommands(): FileCommands {
       return;
     }
 
+    // A federation rebuild starts with clearAllModels(), so a partial read
+    // would silently drop every failed model from the scene. Refuse instead:
+    // the user keeps the loaded (stale) federation and gets told why.
+    if (targets.length > 1 && failedNames.length > 0) {
+      toast.error(`Refresh cancelled: couldn't re-read ${failedNames.join(', ')}. Keeping the loaded models.`);
+      return;
+    }
+
     recordRecentFiles(ok.map((r) => ({ name: r.fresh.name, size: r.fresh.size })));
     void cacheFileBlobs(ok.map((r) => r.fresh));
 
@@ -282,11 +315,9 @@ export function useFileCommands(): FileCommands {
       }
     }
 
-    if (failedNames.length > 0) {
-      toast.error(`Refreshed ${ok.length}; couldn't re-read ${failedNames.join(', ')}.`);
-    } else {
-      toast.success(ok.length === 1 ? `Refreshed "${ok[0].fresh.name}"` : `Refreshed ${ok.length} models`);
-    }
+    // Any failed read returned early above, so reaching here means every
+    // targeted model was re-read and reloaded.
+    toast.success(ok.length === 1 ? `Refreshed "${ok[0].fresh.name}"` : `Refreshed ${ok.length} models`);
   }, [loadFile, addModel, clearAllModels]);
 
   // The command palette dispatches this (synchronously, inside the click) so the
@@ -317,11 +348,13 @@ export function useFileCommands(): FileCommands {
         onChange={handleAddModelSelect}
         className="hidden"
       />
+      {collabEnabled && <ShareDialog open={shareDialogOpen} onOpenChange={setShareDialogOpen} />}
     </>
   );
 
   return {
     fileInputs,
+    openShareDialog,
     handleOpenClick,
     handleAddModelClick,
     handleRefresh,

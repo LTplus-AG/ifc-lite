@@ -72,9 +72,9 @@ function ClassVisibilityRow({ icon, label, description, checked, onChange }: Cla
  * (and on ribbon trigger tooltips) so the user sees scene state at a
  * glance.
  */
-export function useVisibleClassCount(): number {
+export function useVisibleClassCount(): { visible: number; total: number } {
   const typeVisibility = useViewerStore((state) => state.typeVisibility);
-  return [
+  const toggles = [
     typeVisibility.spaces,
     typeVisibility.spatialZones,
     typeVisibility.openings,
@@ -82,7 +82,8 @@ export function useVisibleClassCount(): number {
     typeVisibility.site,
     typeVisibility.ifcAnnotations,
     typeVisibility.ifcGrid,
-  ].filter(Boolean).length;
+  ];
+  return { visible: toggles.filter(Boolean).length, total: toggles.length };
 }
 
 export function ClassVisibilityMenuContent({ align = 'start' }: { align?: 'start' | 'end' }) {
@@ -101,7 +102,7 @@ export function ClassVisibilityMenuContent({ align = 'start' }: { align?: 'start
   const setMergeLayers = useViewerStore((state) => state.setMergeLayers);
   const geometryMode = useViewerStore((state) => state.geometryMode);
   const setGeometryMode = useViewerStore((state) => state.setGeometryMode);
-  const visibleClassCount = useVisibleClassCount();
+  const { visible: visibleClassCount, total: classToggleCount } = useVisibleClassCount();
 
   return (
     <DropdownMenuContent align={align} className="w-[300px] p-1.5">
@@ -162,7 +163,7 @@ export function ClassVisibilityMenuContent({ align = 'start' }: { align?: 'start
         </span>
         <div className="flex items-center gap-1">
           <span className="text-[11px] tabular-nums text-muted-foreground/80">
-            {visibleClassCount}/5
+            {visibleClassCount}/{classToggleCount}
           </span>
           <Button
             variant="ghost"

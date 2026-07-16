@@ -176,6 +176,7 @@ export function useWorkspacePanelControls() {
     setIdsPanelVisible(false);
     setLensPanelVisible(false);
     setClashPanelVisible(false);
+    setComparePanelVisible(false);
     setExtensionsPanelVisible(false);
     // The right slot is single-tenant: when an analysis extension takes
     // it over, the AddElement tool must release it too, otherwise its 3D
@@ -191,6 +192,7 @@ export function useWorkspacePanelControls() {
     setActiveTool,
     setBcfPanelVisible,
     setClashPanelVisible,
+    setComparePanelVisible,
     setExtensionsPanelVisible,
     setGanttPanelVisible,
     setIdsPanelVisible,

@@ -99,6 +99,15 @@ export function useFileCommands(): FileCommands {
     const handler = (e: Event) => {
       const file = (e as CustomEvent<File>).detail;
       if (file) {
+        // Belt-and-suspenders: don't kick off a second primary load while one
+        // is in flight. The definitive fix lives in useIfcLoader's
+        // stale-session guard, but starting a superseded load at all is
+        // wasteful, so skip it here. Read live from the store (not the effect
+        // closure) to avoid a stale `loading` value.
+        if (useViewerStore.getState().loading) {
+          console.warn('[useFileCommands] ifc-lite:load-file ignored - a load is already in progress');
+          return;
+        }
         recordRecentFiles([{ name: file.name, size: file.size }]);
         void loadFile(file);
       }

@@ -14,8 +14,11 @@
 
 const KEY = 'ifc-lite:recent-files';
 const DB_NAME = 'ifc-lite-file-cache';
-const DB_VERSION = 1;
+// v2 adds a `timestamp` index so eviction can order records newest-first via a
+// key cursor — without deserializing every blob ArrayBuffer (see cacheFileBlobs).
+const DB_VERSION = 2;
 const STORE_NAME = 'files';
+const TIMESTAMP_INDEX = 'timestamp';
 const MAX_CACHED_FILES = 5;
 /** Max file size to cache (150 MB) — avoids filling IndexedDB quota */
 const MAX_CACHE_SIZE = 150 * 1024 * 1024;
@@ -74,8 +77,16 @@ function openDB(): Promise<IDBDatabase> {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME, { keyPath: 'name' });
+      // The versionchange transaction — needed to reach an existing store when
+      // upgrading v1 → v2 (createObjectStore only runs on a fresh create).
+      const tx = req.transaction;
+      const store = db.objectStoreNames.contains(STORE_NAME)
+        ? tx!.objectStore(STORE_NAME)
+        : db.createObjectStore(STORE_NAME, { keyPath: 'name' });
+      // Records have always carried a `timestamp`; the index just lets eviction
+      // walk them ordered without reading the blobs.
+      if (!store.indexNames.contains(TIMESTAMP_INDEX)) {
+        store.createIndex(TIMESTAMP_INDEX, 'timestamp', { unique: false });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -118,16 +129,20 @@ export async function cacheFileBlobs(files: File[]): Promise<void> {
       store.put(record);
     }
 
-    // Evict old entries beyond MAX_CACHED_FILES
-    const allReq = store.getAll();
-    allReq.onsuccess = () => {
-      const all = allReq.result as { name: string; timestamp: number }[];
-      if (all.length > MAX_CACHED_FILES) {
-        all.sort((a, b) => b.timestamp - a.timestamp);
-        for (let i = MAX_CACHED_FILES; i < all.length; i++) {
-          store.delete(all[i].name);
-        }
+    // Evict old entries beyond MAX_CACHED_FILES. Walk the `timestamp` index
+    // newest-first with a KEY cursor — it yields only the index key + primary
+    // key, never the record value, so the ~1.5 GB of cached blob ArrayBuffers
+    // are never deserialized just to sort by timestamp (the old getAll() did).
+    const cursorReq = store.index(TIMESTAMP_INDEX).openKeyCursor(null, 'prev');
+    let kept = 0;
+    cursorReq.onsuccess = () => {
+      const cursor = cursorReq.result;
+      if (!cursor) return;
+      kept++;
+      if (kept > MAX_CACHED_FILES) {
+        store.delete(cursor.primaryKey);
       }
+      cursor.continue();
     };
 
     await new Promise<void>((resolve, reject) => {

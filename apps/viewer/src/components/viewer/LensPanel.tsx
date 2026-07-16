@@ -1263,7 +1263,9 @@ export function LensPanel({ onClose }: LensPanelProps) {
   const importLenses = useViewerStore((s) => s.importLenses);
   const exportLenses = useViewerStore((s) => s.exportLenses);
   const hideEntities = useViewerStore((s) => s.hideEntities);
-  const showAll = useViewerStore((s) => s.showAll);
+  // Un-hide only the lens-owned ids (delta) instead of showAll(), which would
+  // also wipe the user's manual hides / isolation / class filter / ghost.
+  const showEntities = useViewerStore((s) => s.showEntities);
   const isolateEntities = useViewerStore((s) => s.isolateEntities);
   const clearIsolation = useViewerStore((s) => s.clearIsolation);
   // For footer stats — cheap primitive subscriptions
@@ -1326,16 +1328,23 @@ export function LensPanel({ onClose }: LensPanelProps) {
   const [creatingAutoColor, setCreatingAutoColor] = useState(false);
   const [isolatedRuleId, setIsolatedRuleId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // The exact ids this panel last pushed into the GLOBAL hiddenEntities channel
+  // on behalf of the active lens. Tracked so switching lenses / deactivating a
+  // lens un-hides ONLY the lens's own entities — never the user's manual hides.
+  const appliedLensHiddenRef = useRef<number[]>([]);
 
   const handleToggle = useCallback((id: string) => {
+    // Clear any rule-isolation this lens applied (both when turning it off and
+    // when switching to another lens). The effect above restores the lens-owned
+    // hidden ids — so no showAll(), which would nuke the user's own visibility.
+    if (isolatedRuleId !== null) clearIsolation();
     setIsolatedRuleId(null);
     if (activeLensId === id) {
       setActiveLens(null);
-      showAll();
     } else {
       setActiveLens(id);
     }
-  }, [activeLensId, setActiveLens, showAll]);
+  }, [activeLensId, setActiveLens, isolatedRuleId, clearIsolation]);
 
   /** Click a rule/value row in the active lens to isolate matching entities */
   const handleIsolateRule = useCallback((ruleId: string) => {
@@ -1393,19 +1402,34 @@ export function LensPanel({ onClose }: LensPanelProps) {
 
   const handleDeleteLens = useCallback((id: string) => {
     if (activeLensId === id) {
+      // Deactivate first — the effect above un-hides the lens-owned hidden ids.
+      // Clear only the lens's own rule-isolation, never a global showAll().
+      if (isolatedRuleId !== null) clearIsolation();
+      setIsolatedRuleId(null);
       setActiveLens(null);
-      showAll();
     }
     deleteLens(id);
-  }, [activeLensId, setActiveLens, showAll, deleteLens]);
+  }, [activeLensId, setActiveLens, deleteLens, isolatedRuleId, clearIsolation]);
 
-  // Apply hidden entities when lens hidden IDs change
+  // Sync the active lens's hidden ids into the GLOBAL hiddenEntities channel.
+  // Un-hide the previously-applied lens ids BEFORE applying the new set, so:
+  //  - switching lens A→B un-hides A's entities (they no longer stay invisible
+  //    under B),
+  //  - deactivating a lens (activeLensId→null, always a dep) restores exactly
+  //    the lens's own hides and nothing else.
+  // Only lens-owned ids are removed — the user's manual hides are untouched.
   useEffect(() => {
-    if (lensHiddenIdsSize > 0 && activeLensId) {
-      const ids = useViewerStore.getState().lensHiddenIds;
-      hideEntities(Array.from(ids));
+    const applied = appliedLensHiddenRef.current;
+    if (applied.length > 0) {
+      showEntities(applied);
+      appliedLensHiddenRef.current = [];
     }
-  }, [activeLensId, lensHiddenIdsSize, hideEntities]);
+    if (lensHiddenIdsSize > 0 && activeLensId) {
+      const ids = Array.from(useViewerStore.getState().lensHiddenIds);
+      hideEntities(ids);
+      appliedLensHiddenRef.current = ids;
+    }
+  }, [activeLensId, lensHiddenIdsSize, hideEntities, showEntities]);
 
   const handleExport = useCallback(() => {
     const data = exportLenses();
@@ -1475,7 +1499,13 @@ export function LensPanel({ onClose }: LensPanelProps) {
               variant="ghost"
               size="sm"
               className="h-7 text-[10px] uppercase tracking-wider rounded-sm"
-              onClick={() => { setActiveLens(null); showAll(); }}
+              onClick={() => {
+                // Clear the lens's own rule-isolation; the effect restores the
+                // lens-owned hidden ids. No showAll() — keep the user's hides.
+                if (isolatedRuleId !== null) clearIsolation();
+                setIsolatedRuleId(null);
+                setActiveLens(null);
+              }}
               {...tourAnchor(TOUR_ANCHORS.lensClear)}
             >
               <EyeOff className="h-3 w-3 mr-1" />

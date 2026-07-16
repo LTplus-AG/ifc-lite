@@ -255,10 +255,29 @@ export async function hydrateGeometryFromRoom(
 
 /**
  * Wrap hydrated meshes into a `GeometryResult` the renderer accepts. Meshes
- * arrive already in the owner's shifted coordinate space, so we report a zero
- * origin shift and just compute bounds + totals for camera framing. Vertices
- * may be in a per-element local frame (`MeshData.origin`, world = origin +
- * position, #1114), so the origin is folded into the bounds.
+ * arrive already in the owner's shifted coordinate space; we compute bounds +
+ * totals for camera framing. Vertices may be in a per-element local frame
+ * (`MeshData.origin`, world = origin + position, #1114), so the origin is
+ * folded into the bounds.
+ *
+ * KNOWN FRAME MISMATCH — georeferenced collab (needs follow-up):
+ *   For a georeferenced model the owner's world coordinates are reconstructed as
+ *   `world = shifted + originShift (+ wasmRtcOffset)` (see coordinate-handler
+ *   `toWorld`). The blob meshes are in the owner's SHIFTED frame, but the owner's
+ *   `originShift` / `wasmRtcOffset` are NOT transmitted in the room:
+ *     - the mesh-codec (mesh-codec.ts) only carries the per-element local
+ *       `origin`, never the global shift/rtc;
+ *     - `seedGeometryToRoom` seeds mesh blobs only;
+ *     - the joiner's IFCX re-parse (viewerModelIngest.ts) hardcodes
+ *       `createCoordinateInfo(bounds)` with a zero shift too.
+ *   So we can only report zeros here. For a georeferenced model this leaves the
+ *   joiner's reconstructed world frame off from the owner's by shift+rtc (up to
+ *   ~1e6 m) — wrong georef overlay alignment and wrong coordinate readouts. The
+ *   model still renders self-consistently (all meshes share the shift), so 3D
+ *   editing/selection is unaffected; only absolute world positioning is wrong.
+ *   Proper fix (larger, touches the published @ifc-lite/collab room schema):
+ *   have the owner encode its coordinateInfo (originShift + wasmRtcOffset) into
+ *   the room at seed time and consume it here instead of the zeros below.
  */
 export function buildGeometryResultFromMeshes(meshes: MeshData[]): GeometryResult {
   let totalTriangles = 0;

@@ -649,9 +649,18 @@ function useDrawingExport({
       return;
     }
 
-    const title = (sheetEnabled && activeSheet)
+    const rawTitle = (sheetEnabled && activeSheet)
       ? `${activeSheet.name} - ${sectionPlane.axis} at ${sectionPlane.position}%`
       : `Section Drawing - ${sectionPlane.axis} at ${sectionPlane.position}%`;
+    // The sheet name is user-controlled and interpolated into the <title> of a
+    // same-origin window. Without escaping, a sheet named `</title><script>…`
+    // would break out of the title and execute script. Escape it (the SVG body
+    // is already escaped via escapeXml; the title was the one unescaped sink).
+    const title = rawTitle
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
 
     // Write print-friendly HTML with the SVG
     printWindow.document.write(`

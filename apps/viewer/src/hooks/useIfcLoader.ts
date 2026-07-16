@@ -1143,6 +1143,23 @@ export function useIfcLoader() {
           const event = nextResult.value;
           const eventReceived = performance.now();
 
+          // Stale-session guard for the PRIMARY streaming path. A second primary
+          // load (e.g. the `ifc-lite:load-file` event) bumps loadSessionRef and
+          // resets the active model; without this, the superseded load's stream
+          // keeps mutating the NEW active model — appendGeometryBatch (batch +
+          // complete), updateMeshColors, updateCoordinateInfo and the loop's
+          // setProgress calls — producing mixed meshes and a wrong RTC/coordinate
+          // frame. Every other deferred write in this file already guards on the
+          // session (see finalize/post-stream below). Stop the loop and clean up
+          // the reader (the post-loop closeGeometryIterator releases WASM) so no
+          // more active-model writes happen. Federated adds keep a stable session
+          // and never touch the active slot during streaming, so they are exempt.
+          if (target.kind === 'primary' && loadSessionRef.current !== currentSession) {
+            console.warn(`[useIfc] stream ABORTED: stale session (mine=${currentSession}, current=${loadSessionRef.current}) — superseded by a newer load`);
+            await closeGeometryIterator();
+            break;
+          }
+
           switch (event.type) {
             case 'start':
               estimatedTotal = event.totalEstimate;

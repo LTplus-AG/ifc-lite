@@ -128,13 +128,28 @@ pub fn parse_indices_direct(bytes: &[u8]) -> Vec<u32> {
             break;
         }
 
-        // Parse integer inline (avoiding any allocation)
+        // Parse integer inline (avoiding any allocation). Use CHECKED
+        // arithmetic so a pathologically large index in malformed input
+        // SATURATES to u32::MAX — an obviously out-of-range vertex the
+        // downstream bounds checks drop — instead of WRAPPING modulo 2^32 to an
+        // arbitrary, valid-looking (wrong) vertex. Digits keep being consumed
+        // after overflow so `pos` still advances past the whole number.
         let mut value: u32 = 0;
+        let mut overflowed = false;
         while pos < len && bytes[pos].is_ascii_digit() {
-            value = value
-                .wrapping_mul(10)
-                .wrapping_add((bytes[pos] - b'0') as u32);
+            if !overflowed {
+                match value
+                    .checked_mul(10)
+                    .and_then(|v| v.checked_add((bytes[pos] - b'0') as u32))
+                {
+                    Some(v) => value = v,
+                    None => overflowed = true,
+                }
+            }
             pos += 1;
+        }
+        if overflowed {
+            value = u32::MAX;
         }
 
         // Convert from 1-based to 0-based
@@ -383,6 +398,25 @@ mod tests {
         assert_eq!(indices[3], 1); // 2 -> 1
         assert_eq!(indices[4], 0); // 1 -> 0
         assert_eq!(indices[5], 3); // 4 -> 3
+    }
+
+    #[test]
+    fn test_parse_indices_direct_rejects_out_of_range() {
+        // 4294967297 = 2^32 + 1. Wrapping arithmetic would map it to 1 (→ 0
+        // after the 1-based fixup), silently aliasing a valid-looking vertex.
+        // Checked+saturate turns it into an obviously out-of-range sentinel
+        // (u32::MAX - 1) the downstream bounds checks drop.
+        let bytes = b"((4294967297,1,2))";
+        let indices = parse_indices_direct(bytes);
+
+        assert_eq!(indices.len(), 3);
+        assert_eq!(
+            indices[0],
+            u32::MAX - 1,
+            "overflowing index must saturate, not wrap to a valid vertex"
+        );
+        assert_eq!(indices[1], 0); // 1 -> 0
+        assert_eq!(indices[2], 1); // 2 -> 1
     }
 
     #[test]

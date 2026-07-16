@@ -292,7 +292,19 @@ impl BooleanClippingProcessor {
     ) -> Result<(DecodedEntity, Vec<DecodedEntity>)> {
         let mut chain: Vec<DecodedEntity> = Vec::new();
         let mut current = entity;
+        // Guard against self-referential / cyclic FirstOperand chains in
+        // malformed input (e.g. `#10=IFCBOOLEANCLIPPINGRESULT(.DIFFERENCE.,#10,
+        // #20)`), which would otherwise walk `current = first` forever and grow
+        // `chain` without bound (hang + OOM in the wasm geometry worker, where
+        // panic=abort takes down the whole instance). A visited-id set breaks on
+        // the first repeat WITHOUT capping legitimate deep-but-finite chains —
+        // this walk was made iterative in #960 precisely to bypass
+        // MAX_BOOLEAN_DEPTH for those, so a low depth cap would regress them.
+        let mut visited: std::collections::HashSet<u32> = std::collections::HashSet::new();
         loop {
+            if !visited.insert(current.id) {
+                break;
+            }
             if !matches!(
                 current.ifc_type,
                 IfcType::IfcBooleanResult | IfcType::IfcBooleanClippingResult
@@ -917,3 +929,57 @@ impl Default for BooleanClippingProcessor {
 
 #[cfg(test)]
 mod halfspace_cap_tests;
+
+#[cfg(test)]
+mod chain_cycle_tests {
+    use super::*;
+
+    /// A self-referential clipping result: `#10`'s FirstOperand is `#10` again,
+    /// with `#20` an `IfcPolygonalBoundedHalfSpace` cutter. Before the visited-id
+    /// guard, `collect_polygonal_chain` walked `current = first` forever.
+    const CYCLIC_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('t.ifc','2024-01-01T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#10=IFCBOOLEANCLIPPINGRESULT(.DIFFERENCE.,#10,#20);
+#20=IFCPOLYGONALBOUNDEDHALFSPACE($,$,$,$);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+    #[test]
+    fn collect_polygonal_chain_terminates_on_cyclic_first_operand() {
+        // Run in a worker thread so a regression (infinite loop + unbounded
+        // `chain.push`) is observed as a timeout instead of hanging the suite.
+        let (tx, rx) = std::sync::mpsc::channel();
+        let handle = std::thread::spawn(move || {
+            let content = CYCLIC_IFC.to_string();
+            let mut decoder = EntityDecoder::new(&content);
+            let entity = decoder.decode_by_id(10).expect("decode #10");
+            let processor = BooleanClippingProcessor::new();
+            let result = processor.collect_polygonal_chain(entity, &mut decoder);
+            let _ = tx.send(result.map(|(base, cutters)| (base.id, cutters.len())));
+        });
+
+        let outcome = rx.recv_timeout(std::time::Duration::from_secs(5));
+        assert!(
+            outcome.is_ok(),
+            "collect_polygonal_chain hung on a cyclic FirstOperand chain"
+        );
+        let _ = handle.join();
+
+        let (base_id, cutter_count) = outcome
+            .unwrap()
+            .expect("collect_polygonal_chain returned Err");
+        // The walk bottoms out on the repeated entity and collects the single
+        // PBHS cutter it saw before detecting the cycle.
+        assert_eq!(base_id, 10, "cycle should bottom out on the repeated entity");
+        assert_eq!(
+            cutter_count, 1,
+            "exactly one PBHS cutter collected before the cycle breaks"
+        );
+    }
+}

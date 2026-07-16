@@ -211,12 +211,23 @@ impl AttributeValue {
     pub fn parse_index_list(face_list: &[AttributeValue]) -> Vec<u32> {
         let mut result = Vec::with_capacity(face_list.len() * 3);
 
+        // Convert a 1-based i64 IFC index to a 0-based u32. Anything outside the
+        // valid u32 vertex range — non-positive, or beyond u32::MAX — maps to
+        // u32::MAX, an out-of-range sentinel the downstream bounds check drops,
+        // instead of an `(i64 - 1) as u32` truncation/wrap to a valid-looking
+        // (wrong) vertex.
+        let to_zero_based = |i: i64| -> u32 {
+            i.checked_sub(1)
+                .and_then(|z| u32::try_from(z).ok())
+                .unwrap_or(u32::MAX)
+        };
+
         for face_attr in face_list {
             if let Some(face) = face_attr.as_list() {
                 // Use as_int for faster parsing, convert from 1-based to 0-based
-                let i0 = (face.first().and_then(|v| v.as_int()).unwrap_or(1) - 1) as u32;
-                let i1 = (face.get(1).and_then(|v| v.as_int()).unwrap_or(1) - 1) as u32;
-                let i2 = (face.get(2).and_then(|v| v.as_int()).unwrap_or(1) - 1) as u32;
+                let i0 = to_zero_based(face.first().and_then(|v| v.as_int()).unwrap_or(1));
+                let i1 = to_zero_based(face.get(1).and_then(|v| v.as_int()).unwrap_or(1));
+                let i2 = to_zero_based(face.get(2).and_then(|v| v.as_int()).unwrap_or(1));
 
                 result.push(i0);
                 result.push(i1);
@@ -486,6 +497,29 @@ mod tests {
             schema.profile_category(&IfcType::IfcRoundedRectangleProfileDef),
             Some(ProfileCategory::Parametric)
         );
+    }
+
+    #[test]
+    fn test_parse_index_list_rejects_out_of_range() {
+        // A face whose indices are out of the valid u32 vertex range: too large
+        // (> u32::MAX), zero, and negative. Each must map to the u32::MAX
+        // sentinel (dropped downstream) instead of an `(i64 - 1) as u32`
+        // truncation/wrap to a valid-looking vertex.
+        let face = AttributeValue::List(vec![
+            AttributeValue::Integer(5_000_000_000), // > u32::MAX
+            AttributeValue::Integer(0),             // non-positive
+            AttributeValue::Integer(-4),            // negative
+        ]);
+        let out = AttributeValue::parse_index_list(&[face]);
+        assert_eq!(out, vec![u32::MAX, u32::MAX, u32::MAX]);
+
+        // A well-formed face is still converted 1-based → 0-based.
+        let ok = AttributeValue::List(vec![
+            AttributeValue::Integer(1),
+            AttributeValue::Integer(2),
+            AttributeValue::Integer(3),
+        ]);
+        assert_eq!(AttributeValue::parse_index_list(&[ok]), vec![0, 1, 2]);
     }
 
     #[test]

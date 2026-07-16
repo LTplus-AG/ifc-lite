@@ -24,8 +24,13 @@ impl PolygonalFaceSetProcessor {
             if idx == 0 {
                 return None;
             }
-            let base = ((idx - 1) * 3) as usize;
-            if base + 2 < positions.len() {
+            // Checked so a huge 1-based index in malformed input drops the vertex
+            // (returns None) instead of overflowing the `(idx - 1) * 3` u32
+            // multiply and panicking in debug builds (idx > ~1.43e9). The
+            // `checked_add` keeps the bound test safe on wasm32, where usize is
+            // 32-bit and `base + 2` could itself overflow.
+            let base = (idx - 1).checked_mul(3)? as usize;
+            if base.checked_add(2).is_some_and(|b2| b2 < positions.len()) {
                 Some((positions[base], positions[base + 1], positions[base + 2]))
             } else {
                 None
@@ -221,5 +226,25 @@ impl PolygonalFaceSetProcessor {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A huge 1-based index (idx > ~1.43e9) makes the old `(idx - 1) * 3` u32
+    /// multiply overflow and panic in debug builds. The checked multiply must
+    /// instead drop the vertex, leaving the polygon untriangulated.
+    #[test]
+    fn triangulate_polygon_drops_overflowing_index_without_panic() {
+        let positions = [0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0];
+        let outer = [u32::MAX, u32::MAX, u32::MAX];
+        let mut output: Vec<u32> = Vec::new();
+        PolygonalFaceSetProcessor::triangulate_polygon(&outer, &[], &positions, &mut output);
+        assert!(
+            output.is_empty(),
+            "polygon with unresolvable (overflowing) indices must be dropped"
+        );
     }
 }

@@ -662,7 +662,11 @@ impl GeometryRouter {
                 }
             }
             let ext = [hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]];
-            let la = (0..3).max_by(|&i, &j| ext[i].partial_cmp(&ext[j]).unwrap()).unwrap();
+            // Use a total order: non-finite file coords (e.g. `1.E999` → +inf,
+            // whose `inf - inf` extent is NaN) would make `partial_cmp` return
+            // `None` and panic the `.unwrap()`. `f64::total_cmp` (the idiom used
+            // for the sorts in voids/mod.rs) is NaN-safe and deterministic.
+            let la = (0..3).max_by(|&i, &j| ext[i].total_cmp(&ext[j])).unwrap();
             d = Vector3::new(
                 if la == 0 { 1.0 } else { 0.0 },
                 if la == 1 { 1.0 } else { 0.0 },
@@ -961,5 +965,35 @@ impl GeometryRouter {
             }
         }
         out
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Non-finite file coords (e.g. `1.E999` → +inf) make the bbox-fallback's
+    /// axis extents `inf - inf = NaN`; the old `partial_cmp().unwrap()` panicked
+    /// on that NaN. A zero `axis_dir` forces that fallback branch.
+    #[test]
+    fn remove_internal_membrane_no_panic_on_non_finite_coords() {
+        let mut m = Mesh::new();
+        // 4 triangles (the minimum the membrane pass processes), all x = +inf so
+        // the fallback's ext[0] = inf - inf = NaN reaches the axis-length sort.
+        for t in 0..4u32 {
+            let base = t * 3;
+            for k in 0..3u32 {
+                m.positions
+                    .extend_from_slice(&[f32::INFINITY, t as f32 + k as f32, k as f32]);
+                m.normals.extend_from_slice(&[0.0, 0.0, 1.0]);
+            }
+            m.indices.extend_from_slice(&[base, base + 1, base + 2]);
+        }
+
+        // Zero axis_dir → bbox fallback that sorts the NaN-bearing extents.
+        let out =
+            GeometryRouter::remove_internal_membrane(&m, Vector3::new(0.0, 0.0, 0.0));
+        // Reaching here at all means no panic; sanity-check a well-formed result.
+        assert_eq!(out.indices.len() % 3, 0);
     }
 }

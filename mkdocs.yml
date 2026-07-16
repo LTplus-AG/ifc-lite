@@ -11,18 +11,24 @@ theme:
   name: material
   custom_dir: docs/overrides
   logo: assets/logo.png
+  # PLANKOPF: Swiss engineering plan-sheet identity, matching ifclite.dev.
+  # font:false so Material skips its legacy Fonts API (no variable weights) —
+  # docs/overrides/main.html loads variable Archivo + Fragment Mono instead.
+  # primary/accent:custom so Material emits no colour rules; the carbon header
+  # + Swiss-red accents are fully owned by docs/stylesheets/extra.css.
+  font: false
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: indigo
-      accent: blue
+      primary: custom
+      accent: custom
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: indigo
-      accent: blue
+      primary: custom
+      accent: custom
       toggle:
         icon: material/brightness-4
         name: Switch to light mode

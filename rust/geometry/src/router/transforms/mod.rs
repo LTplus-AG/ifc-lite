@@ -113,12 +113,20 @@ impl GeometryRouter {
     ) -> Result<()> {
         let placement_attr = match element.get(5) {
             Some(attr) if !attr.is_null() => attr,
-            _ => return Ok(()),
+            _ => {
+                // No ObjectPlacement: positions stay as-is, but the #1474
+                // frame capture must still happen (identity placement).
+                Self::capture_unplaced_frame(mesh);
+                return Ok(());
+            }
         };
 
         let placement = match decoder.resolve_ref(placement_attr)? {
             Some(p) => p,
-            None => return Ok(()),
+            None => {
+                Self::capture_unplaced_frame(mesh);
+                return Ok(());
+            }
         };
 
         let mut transform = self.get_placement_transform(&placement, decoder)?;

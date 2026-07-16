@@ -328,8 +328,15 @@ impl GeometryRouter {
                     for sub in &mut sub_meshes.sub_meshes {
                         self.transform_mesh_world(&mut sub.mesh, &transform);
                     }
+                    return Ok(());
                 }
             }
+        }
+        // No resolvable ObjectPlacement: positions stay as-is, but the #1474
+        // frame capture must still happen (identity placement) — mirrors the
+        // same branch in `apply_placement` (single-mesh path).
+        for sub in &mut sub_meshes.sub_meshes {
+            Self::capture_unplaced_frame(&mut sub.mesh);
         }
         Ok(())
     }

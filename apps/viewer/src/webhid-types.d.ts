@@ -22,9 +22,31 @@ interface HIDDeviceRequestOptions {
   filters: HIDDeviceFilter[];
 }
 
+interface HIDReportItem {
+  readonly isAbsolute?: boolean;
+  readonly isArray?: boolean;
+  readonly isConstant?: boolean;
+  readonly isRange?: boolean;
+  /** Extended usages: (usagePage << 16) | usageId, one per report element. */
+  readonly usages?: readonly number[];
+  readonly usageMinimum?: number;
+  readonly usageMaximum?: number;
+  readonly reportSize?: number;
+  readonly reportCount?: number;
+  readonly logicalMinimum?: number;
+  readonly logicalMaximum?: number;
+}
+
+interface HIDReportInfo {
+  readonly reportId?: number;
+  readonly items?: readonly HIDReportItem[];
+}
+
 interface HIDCollectionInfo {
   readonly usagePage: number;
   readonly usage: number;
+  readonly children?: readonly HIDCollectionInfo[];
+  readonly inputReports?: readonly HIDReportInfo[];
 }
 
 interface HIDInputReportEvent extends Event {

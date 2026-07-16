@@ -27,7 +27,7 @@ export async function simplifyCommand(args: string[]): Promise<void> {
   const idsStr = getFlag(args, '--ids');
   const jsonOutput = hasFlag(args, '--json');
 
-  const level = parseInt(levelStr ?? '1', 10);
+  const level = Number(levelStr ?? '1');
   if (!Number.isInteger(level) || level < 1 || level > 5) {
     fatal('--level must be an integer 1..5 (1-4 = decimation tiers, 5 = bounding box)');
   }

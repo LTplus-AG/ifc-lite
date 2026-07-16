@@ -59,8 +59,8 @@ fn identity_placement_round_trips_local_positions() {
             lmax[k] = lmax[k].max(c[k]);
         }
     }
-    for k in 0..3 {
-        assert!((lmin[k] - 0.0).abs() < 1e-6, "min axis {k}: {}", lmin[k]);
+    for (k, v) in lmin.iter().enumerate() {
+        assert!(v.abs() < 1e-6, "min axis {k}: {v}");
     }
     assert!((lmax[0] - 2.0).abs() < 1e-6);
     assert!((lmax[1] - 3.0).abs() < 1e-6);

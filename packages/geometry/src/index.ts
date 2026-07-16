@@ -1350,57 +1350,63 @@ export class GeometryProcessor {
       if (!firstRecord.has(m.expressId)) firstRecord.set(m.expressId, m);
     }
 
-    const outIds: Uint32Array = out.elementIds;
-    const outLevels: Uint8Array = out.levels;
-    const outVertexCounts: Uint32Array = out.vertexCounts;
-    const outIndexCounts: Uint32Array = out.indexCounts;
-    const renderPositions: Float32Array = out.renderPositions;
-    const renderNormals: Float32Array = out.renderNormals;
-    const renderIndices: Uint32Array = out.renderIndices;
-    const renderOrigins: Float64Array = out.renderOrigins;
-    const localPositions: Float64Array = out.localPositions;
-    const localIndices: Uint32Array = out.localIndices;
-    const trisBefore: Uint32Array = out.trisBefore;
-    const trisAfter: Uint32Array = out.trisAfter;
-    const cavitiesDropped: Uint32Array = out.cavitiesDropped;
+    // Getters copy into fresh JS-owned arrays; read inside the try so
+    // `out.free()` in the finally still runs if extraction throws.
+    try {
+      const outIds: Uint32Array = out.elementIds;
+      const outLevels: Uint8Array = out.levels;
+      const outVertexCounts: Uint32Array = out.vertexCounts;
+      const outIndexCounts: Uint32Array = out.indexCounts;
+      const renderPositions: Float32Array = out.renderPositions;
+      const renderNormals: Float32Array = out.renderNormals;
+      const renderIndices: Uint32Array = out.renderIndices;
+      const renderOrigins: Float64Array = out.renderOrigins;
+      const localPositions: Float64Array = out.localPositions;
+      const localIndices: Uint32Array = out.localIndices;
+      const trisBefore: Uint32Array = out.trisBefore;
+      const trisAfter: Uint32Array = out.trisAfter;
+      const cavitiesDropped: Uint32Array = out.cavitiesDropped;
 
-    let rvo = 0;
-    let rio = 0;
-    for (let i = 0; i < outIds.length; i++) {
-      const vCount = outVertexCounts[i] * 3;
-      const iCount = outIndexCounts[i];
-      const src = firstRecord.get(outIds[i]);
-      const render: MeshData = {
-        expressId: outIds[i],
-        ifcType: src?.ifcType ?? 'IfcBuildingElementProxy',
-        positions: renderPositions.slice(rvo, rvo + vCount),
-        normals: renderNormals.slice(rvo, rvo + vCount),
-        indices: renderIndices.slice(rio, rio + iCount),
-        color: src?.color ?? [0.8, 0.8, 0.8, 1],
-        origin: [renderOrigins[i * 3], renderOrigins[i * 3 + 1], renderOrigins[i * 3 + 2]],
-        geometryClass: 0,
-        ...(src?.localToWorld ? { localToWorld: src.localToWorld } : {}),
-      };
-      result.elements.push({
-        expressId: outIds[i],
-        level: outLevels[i],
-        render,
-        localPositions: localPositions.slice(rvo, rvo + vCount),
-        localIndices: localIndices.slice(rio, rio + iCount),
-        trisBefore: trisBefore[i],
-        trisAfter: trisAfter[i],
-        cavitiesDropped: cavitiesDropped[i],
-      });
-      rvo += vCount;
-      rio += iCount;
-    }
+      let rvo = 0;
+      let rio = 0;
+      for (let i = 0; i < outIds.length; i++) {
+        const vCount = outVertexCounts[i] * 3;
+        const iCount = outIndexCounts[i];
+        const src = firstRecord.get(outIds[i]);
+        const render: MeshData = {
+          expressId: outIds[i],
+          ifcType: src?.ifcType ?? 'IfcBuildingElementProxy',
+          positions: renderPositions.slice(rvo, rvo + vCount),
+          normals: renderNormals.slice(rvo, rvo + vCount),
+          indices: renderIndices.slice(rio, rio + iCount),
+          color: src?.color ?? [0.8, 0.8, 0.8, 1],
+          origin: [renderOrigins[i * 3], renderOrigins[i * 3 + 1], renderOrigins[i * 3 + 2]],
+          geometryClass: 0,
+          ...(src?.localToWorld ? { localToWorld: src.localToWorld } : {}),
+        };
+        result.elements.push({
+          expressId: outIds[i],
+          level: outLevels[i],
+          render,
+          localPositions: localPositions.slice(rvo, rvo + vCount),
+          localIndices: localIndices.slice(rio, rio + iCount),
+          trisBefore: trisBefore[i],
+          trisAfter: trisAfter[i],
+          cavitiesDropped: cavitiesDropped[i],
+        });
+        rvo += vCount;
+        rio += iCount;
+      }
 
-    const skippedIds: Uint32Array = out.skippedIds;
-    const skippedReasons: string[] = out.skippedReasons;
-    for (let i = 0; i < skippedIds.length; i++) {
-      result.skipped.push({ expressId: skippedIds[i], reason: String(skippedReasons[i] ?? 'unknown') });
+      const skippedIds: Uint32Array = out.skippedIds;
+      const skippedReasons: string[] = out.skippedReasons;
+      for (let i = 0; i < skippedIds.length; i++) {
+        result.skipped.push({ expressId: skippedIds[i], reason: String(skippedReasons[i] ?? 'unknown') });
+      }
+      return result;
+    } finally {
+      out.free();
     }
-    return result;
   }
 
   /**

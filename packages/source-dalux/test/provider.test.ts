@@ -45,6 +45,18 @@ function createMockCtx(
   };
 }
 
+function mockResponse(overrides: Record<string, unknown> = {}) {
+  return {
+    ok: true,
+    status: 200,
+    statusText: 'OK',
+    headers: { get: () => null },
+    json: () => Promise.resolve(undefined),
+    text: () => Promise.resolve(''),
+    ...overrides,
+  };
+}
+
 describe('DaluxBuildProvider', () => {
   let provider: DaluxBuildProvider;
 
@@ -67,8 +79,7 @@ describe('DaluxBuildProvider', () => {
 
   describe('listProjects', () => {
     it('maps Dalux projects to SourceProject[]', async () => {
-      const mockFetch = vi.fn().mockResolvedValue({
-        ok: true,
+      const mockFetch = vi.fn().mockResolvedValue(mockResponse({
         json: () =>
           Promise.resolve({
             items: [
@@ -76,7 +87,7 @@ describe('DaluxBuildProvider', () => {
               { data: { projectId: 'p2', projectName: 'Project Beta' } },
             ],
           }),
-      });
+      }));
 
       const ctx = createMockCtx(mockFetch as unknown as typeof fetch);
       const projects = await provider.listProjects(ctx);
@@ -91,10 +102,9 @@ describe('DaluxBuildProvider', () => {
     });
 
     it('sends X-API-Key header', async () => {
-      const mockFetch = vi.fn().mockResolvedValue({
-        ok: true,
+      const mockFetch = vi.fn().mockResolvedValue(mockResponse({
         json: () => Promise.resolve([]),
-      });
+      }));
 
       const ctx = createMockCtx(mockFetch as unknown as typeof fetch);
       await provider.listProjects(ctx);
@@ -122,15 +132,14 @@ describe('DaluxBuildProvider', () => {
     it('returns only file areas at the top level, without walking folders', async () => {
       const mockFetch = vi.fn().mockImplementation((url: string) => {
         if (url.endsWith('/5.1/projects/proj1/file_areas')) {
-          return Promise.resolve({
-            ok: true,
+          return Promise.resolve(mockResponse({
             json: () =>
               Promise.resolve({
                 items: [{ data: { fileAreaId: 'fa1', fileAreaName: 'Area', fileAreaType: 'Files' } }],
               }),
-          });
+          }));
         }
-        return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+        return Promise.resolve(mockResponse({ json: () => Promise.resolve([]) }));
       });
 
       const ctx = createMockCtx(mockFetch as unknown as typeof fetch);
@@ -146,8 +155,7 @@ describe('DaluxBuildProvider', () => {
     it('rebuilds the folder hierarchy from the custom pager when scoped to a file area', async () => {
       const mockFetch = vi.fn().mockImplementation((url: string) => {
         if (url.endsWith('/5.1/projects/proj1/file_areas/fa1/folders')) {
-          return Promise.resolve({
-            ok: true,
+          return Promise.resolve(mockResponse({
             json: () =>
               Promise.resolve({
                 items: [
@@ -161,9 +169,9 @@ describe('DaluxBuildProvider', () => {
                   },
                 ],
               }),
-          });
+          }));
         }
-        return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+        return Promise.resolve(mockResponse({ json: () => Promise.resolve([]) }));
       });
 
       const ctx = createMockCtx(mockFetch as unknown as typeof fetch);
@@ -182,15 +190,14 @@ describe('DaluxBuildProvider', () => {
     it('still finds folders when the endpoint responds with a bare array instead of { items }', async () => {
       const mockFetch = vi.fn().mockImplementation((url: string) => {
         if (url.endsWith('/5.1/projects/proj1/file_areas/fa1/folders')) {
-          return Promise.resolve({
-            ok: true,
+          return Promise.resolve(mockResponse({
             json: () =>
               Promise.resolve([
                 { data: { folderId: 'root-folder', folderName: 'Root Folder' } },
               ]),
-          });
+          }));
         }
-        return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+        return Promise.resolve(mockResponse({ json: () => Promise.resolve([]) }));
       });
 
       const ctx = createMockCtx(mockFetch as unknown as typeof fetch);
@@ -207,8 +214,7 @@ describe('DaluxBuildProvider', () => {
     it('treats blank parentFolderId values as file-area-root folders', async () => {
       const mockFetch = vi.fn().mockImplementation((url: string) => {
         if (url.endsWith('/5.1/projects/proj1/file_areas/fa1/folders')) {
-          return Promise.resolve({
-            ok: true,
+          return Promise.resolve(mockResponse({
             json: () =>
               Promise.resolve({
                 items: [
@@ -221,9 +227,9 @@ describe('DaluxBuildProvider', () => {
                   },
                 ],
               }),
-          });
+          }));
         }
-        return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+        return Promise.resolve(mockResponse({ json: () => Promise.resolve([]) }));
       });
 
       const ctx = createMockCtx(mockFetch as unknown as typeof fetch);
@@ -247,8 +253,7 @@ describe('DaluxBuildProvider', () => {
     it('reattaches folders whose parent points at an unseen Dalux root folder', async () => {
       const mockFetch = vi.fn().mockImplementation((url: string) => {
         if (url.endsWith('/5.1/projects/proj1/file_areas/fa1/folders')) {
-          return Promise.resolve({
-            ok: true,
+          return Promise.resolve(mockResponse({
             json: () =>
               Promise.resolve({
                 items: [
@@ -268,9 +273,9 @@ describe('DaluxBuildProvider', () => {
                   },
                 ],
               }),
-          });
+          }));
         }
-        return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+        return Promise.resolve(mockResponse({ json: () => Promise.resolve([]) }));
       });
 
       const ctx = createMockCtx(mockFetch as unknown as typeof fetch);
@@ -302,8 +307,7 @@ describe('DaluxBuildProvider', () => {
     it("keeps folder selection scoped but lets a file area surface descendant files", async () => {
       const mockFetch = vi.fn().mockImplementation((url: string) => {
         if (url.includes('/6.1/projects/proj1/file_areas/fa1/files')) {
-          return Promise.resolve({
-            ok: true,
+          return Promise.resolve(mockResponse({
             json: () =>
               Promise.resolve({
                 items: [
@@ -318,9 +322,9 @@ describe('DaluxBuildProvider', () => {
                   },
                 ],
               }),
-          });
+          }));
         }
-        return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+        return Promise.resolve(mockResponse({ json: () => Promise.resolve([]) }));
       });
 
       const ctx = createMockCtx(mockFetch as unknown as typeof fetch);
@@ -343,8 +347,7 @@ describe('DaluxBuildProvider', () => {
 
   describe('testConnection', () => {
     it('returns ok with project count on success', async () => {
-      const mockFetch = vi.fn().mockResolvedValue({
-        ok: true,
+      const mockFetch = vi.fn().mockResolvedValue(mockResponse({
         json: () =>
           Promise.resolve({
             items: [
@@ -352,7 +355,7 @@ describe('DaluxBuildProvider', () => {
               { data: { projectId: 'p2', projectName: 'B' } },
             ],
           }),
-      });
+      }));
 
       const ctx = createMockCtx(mockFetch as unknown as typeof fetch);
       const result = await provider.testConnection(ctx);
@@ -363,12 +366,12 @@ describe('DaluxBuildProvider', () => {
     });
 
     it('returns a helpful message on 403', async () => {
-      const mockFetch = vi.fn().mockResolvedValue({
+      const mockFetch = vi.fn().mockResolvedValue(mockResponse({
         ok: false,
         status: 403,
         statusText: 'Forbidden',
         text: () => Promise.resolve('Access denied'),
-      });
+      }));
 
       const ctx = createMockCtx(mockFetch as unknown as typeof fetch);
       const result = await provider.testConnection(ctx);
@@ -382,32 +385,28 @@ describe('DaluxBuildProvider', () => {
     it('detects a new revision and caches the latest', async () => {
       const mockFetch = vi.fn().mockImplementation((url: string) => {
         if (url.endsWith('/5.1/projects')) {
-          return Promise.resolve({
-            ok: true,
+          return Promise.resolve(mockResponse({
             json: () =>
               Promise.resolve({
                 items: [{ data: { projectId: 'proj1', projectName: 'P' } }],
               }),
-          });
+          }));
         }
         if (url.endsWith('/5.1/projects/proj1/file_areas')) {
-          return Promise.resolve({
-            ok: true,
+          return Promise.resolve(mockResponse({
             json: () =>
               Promise.resolve({
                 items: [{ data: { fileAreaId: 'fa1', fileAreaName: 'Area', fileAreaType: 'Files' } }],
               }),
-          });
+          }));
         }
         if (url.endsWith('/5.1/projects/proj1/file_areas/fa1/folders')) {
-          return Promise.resolve({
-            ok: true,
+          return Promise.resolve(mockResponse({
             json: () => Promise.resolve({ items: [] }),
-          });
+          }));
         }
         if (url.includes('/6.1/projects/proj1/file_areas/fa1/files')) {
-          return Promise.resolve({
-            ok: true,
+          return Promise.resolve(mockResponse({
             json: () =>
               Promise.resolve({
                 items: [
@@ -421,9 +420,9 @@ describe('DaluxBuildProvider', () => {
                   },
                 ],
               }),
-          });
+          }));
         }
-        return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+        return Promise.resolve(mockResponse({ json: () => Promise.resolve([]) }));
       });
 
       const ctx = createMockCtx(mockFetch as unknown as typeof fetch);

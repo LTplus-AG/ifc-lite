@@ -3439,6 +3439,26 @@
     "WorkerParser: class",
     "WorkerParserOptions: interface"
   ],
+  "@ifc-lite/plugin-api": [
+    "ConnectionTestResult: interface",
+    "DropdownOption: interface",
+    "FileFilter: interface",
+    "FileSourceProvider: interface",
+    "KeyValueStore: interface",
+    "Logger: interface",
+    "PluginContext: interface",
+    "PluginContributions: interface",
+    "PluginManifest: interface",
+    "PluginPermissions: interface",
+    "PluginPreference: interface",
+    "PluginPreferenceType: type",
+    "RevisionEvent: interface",
+    "SourceContainer: interface",
+    "SourceFile: interface",
+    "SourceProject: interface",
+    "SourceRevision: interface",
+    "SourceTag: interface"
+  ],
   "@ifc-lite/pointcloud": [
     "AsciiPointsFormat: type",
     "AsciiPointsLayout: interface",
@@ -3951,6 +3971,10 @@
     "sunPositionFromGeometry: function",
     "sunTimes: function",
     "toJulianDay: function"
+  ],
+  "@ifc-lite/source-dalux": [
+    "DALUX_MANIFEST: const",
+    "DaluxBuildProvider: class"
   ],
   "@ifc-lite/spatial": [
     "AABB: interface",

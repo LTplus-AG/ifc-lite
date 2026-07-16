@@ -89,8 +89,18 @@ pub(super) fn mul_low_u32<const K: usize>(a: &[u64; K], b: &[u64; K]) -> [u64; K
 
 /// Full 2K-limb unsigned magnitude product into `full[..2K]` (same digit-width
 /// dispatch rationale as [`mul_low`]).
+///
+/// PRECONDITION: `full[..2K]` must be zero on entry (debug-asserted). The u64
+/// path folds `full[idx]` into its partial products (schoolbook accumulate)
+/// while the u32 path computes into local scratch and writes back, so on a
+/// dirty buffer the two digit widths would silently diverge — exactly the
+/// bit-identity this module promises. The sole caller passes a fresh array.
 #[inline]
 pub(super) fn mul_full<const K: usize>(ma: &[u64; K], mb: &[u64; K], full: &mut [u64; 64]) {
+    debug_assert!(
+        full[..2 * K].iter().all(|&limb| limb == 0),
+        "mul_full requires a zeroed output buffer (digit paths diverge on dirty input)"
+    );
     #[cfg(target_arch = "wasm32")]
     {
         mul_full_u32(ma, mb, full)
@@ -117,7 +127,8 @@ pub(super) fn mul_full_u64<const K: usize>(ma: &[u64; K], mb: &[u64; K], full: &
     }
 }
 
-/// u32-digit schoolbook full product (wasm32; see [`mul_low_u32`]).
+/// u32-digit schoolbook full product (wasm32; see [`mul_low_u32`]). Requires
+/// the zeroed buffer [`mul_full`] asserts.
 #[inline]
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 pub(super) fn mul_full_u32<const K: usize>(ma: &[u64; K], mb: &[u64; K], full: &mut [u64; 64]) {

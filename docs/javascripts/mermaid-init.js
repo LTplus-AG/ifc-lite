@@ -56,8 +56,11 @@
       securityLevel: 'loose'
     });
     document.querySelectorAll('.mermaid[data-processed]').forEach(function(el) {
-      if (el.getAttribute('data-mermaid-source')) {
-        el.innerHTML = el.getAttribute('data-mermaid-source');
+      var src = el.getAttribute('data-mermaid-source');
+      if (src) {
+        // Restore as TEXT, not markup — the source must never be reparsed as
+        // DOM (it would let diagram content execute before mermaid rerenders).
+        el.textContent = src;
       }
       el.removeAttribute('data-processed');
     });

@@ -16,7 +16,7 @@ import {
   extractPropertiesOnDemand,
   extractQuantitiesOnDemand,
   extractEntityAttributesOnDemand,
-  extractMaterialsOnDemand,
+  extractAllMaterialsOnDemand,
   extractClassificationsOnDemand,
   extractTypePropertiesOnDemand,
   extractTypeQuantitiesOnDemand,
@@ -204,7 +204,12 @@ export function createListDataProvider(store: IfcDataStore, modelName = ''): Lis
     },
 
     getMaterialNames(entityId: number): string[] {
-      return materialNamesOf(extractMaterialsOnDemand(store, entityId));
+      // Union across ALL associations (elements may carry several).
+      const seen = new Set<string>();
+      for (const info of extractAllMaterialsOnDemand(store, entityId)) {
+        for (const n of materialNamesOf(info)) seen.add(n);
+      }
+      return [...seen];
     },
 
     getClassifications(entityId: number): ListClassificationRef[] {

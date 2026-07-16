@@ -167,6 +167,45 @@ describe('collectMaterialLeaves', () => {
     expect(byId.get(10)!.weight).toBeCloseTo(0.8, 6);
     expect(byId.get(11)!.weight).toBeCloseTo(0.2, 6);
   });
+
+  // IFC allows Fraction on only SOME constituents (sum ≤ 1, remainder
+  // unallocated). Fraction-less siblings previously got weight 0 and vanished
+  // from per-material totals (#1755 follow-up sweep).
+  describe('constituent fractions', () => {
+    const CONSTITUENTS = [
+      `#12=IFCMATERIAL('Steel',$,$);`,
+      `#50=IFCMATERIALCONSTITUENT('A',$,#10,0.6,$);`,
+      `#51=IFCMATERIALCONSTITUENT('B',$,#11,$,$);`,
+      `#52=IFCMATERIALCONSTITUENT('C',$,#12,$,$);`,
+      `#55=IFCMATERIALCONSTITUENTSET('Partial',$,(#50,#51,#52));`,
+      `#56=IFCMATERIALCONSTITUENT('D',$,#10,0.7,$);`,
+      `#57=IFCMATERIALCONSTITUENT('E',$,#11,0.3,$);`,
+      `#58=IFCMATERIALCONSTITUENTSET('Full',$,(#56,#57));`,
+    ];
+
+    it('fraction-less constituents share the remainder equally', () => {
+      const store = buildStore([...FIXTURE, ...CONSTITUENTS], new Map());
+      const byId = new Map(collectMaterialLeaves(store, 55).map((l) => [l.id, l]));
+      expect(byId.get(10)!.weight).toBeCloseTo(0.6, 6);
+      expect(byId.get(11)!.weight).toBeCloseTo(0.2, 6); // (1 - 0.6) / 2
+      expect(byId.get(12)!.weight).toBeCloseTo(0.2, 6);
+    });
+
+    it('fully-fractioned sets keep their authored split', () => {
+      const store = buildStore([...FIXTURE, ...CONSTITUENTS], new Map());
+      const byId = new Map(collectMaterialLeaves(store, 58).map((l) => [l.id, l]));
+      expect(byId.get(10)!.weight).toBeCloseTo(0.7, 6);
+      expect(byId.get(11)!.weight).toBeCloseTo(0.3, 6);
+    });
+
+    it('weights always sum to ~1', () => {
+      const store = buildStore([...FIXTURE, ...CONSTITUENTS], new Map());
+      for (const setId of [55, 58]) {
+        const sum = collectMaterialLeaves(store, setId).reduce((s, l) => s + l.weight, 0);
+        expect(sum).toBeCloseTo(1, 6);
+      }
+    });
+  });
 });
 
 describe('IFC2x3 material properties', () => {

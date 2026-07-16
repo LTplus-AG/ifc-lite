@@ -5,7 +5,7 @@
 import {
   type IfcDataStore,
   extractAllEntityAttributes,
-  extractMaterialsOnDemand,
+  extractAllMaterialsOnDemand,
 } from '@ifc-lite/parser';
 import { RelationshipType, getAttributeXsdTypes } from '@ifc-lite/data';
 
@@ -215,7 +215,9 @@ export function createDataAccessor(store: IfcDataStore): IFCDataAccessor {
     },
 
     getMaterials(expressId: number): MaterialInfo[] {
-      return flattenMaterials(extractMaterialsOnDemand(store, expressId));
+      // ALL associations — an IDS material requirement satisfied only by the
+      // element's second IfcRelAssociatesMaterial must still pass.
+      return extractAllMaterialsOnDemand(store, expressId).flatMap((info) => flattenMaterials(info));
     },
 
     getParent(

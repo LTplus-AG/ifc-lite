@@ -35,7 +35,7 @@ import { useIfc } from '@/hooks/useIfc';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { IfcQuery } from '@ifc-lite/query';
 import { MutablePropertyView } from '@ifc-lite/mutations';
-import { extractClassificationsOnDemand, extractMaterialsOnDemand, extractMaterialPropertiesOnDemand, extractTypePropertiesOnDemand, extractTypeEntityOwnProperties, extractDocumentsOnDemand, extractRelationshipsOnDemand, extractGroupMembersOnDemand, extractGeoreferencingOnDemand, extractLengthUnitScale, extractProjectUnits, ProjectUnits, getAttributeNames, type IfcDataStore, type MaterialPsetGroup } from '@ifc-lite/parser';
+import { extractClassificationsOnDemand, extractAllMaterialsOnDemand, extractMaterialPropertiesOnDemand, extractTypePropertiesOnDemand, extractTypeEntityOwnProperties, extractDocumentsOnDemand, extractRelationshipsOnDemand, extractGroupMembersOnDemand, extractGeoreferencingOnDemand, extractLengthUnitScale, extractProjectUnits, ProjectUnits, getAttributeNames, type IfcDataStore, type MaterialPsetGroup } from '@ifc-lite/parser';
 import type { NewEntity } from '@ifc-lite/mutations';
 import { EntityFlags, RelationshipType, isSpatialStructureTypeName, isStoreyLikeSpatialTypeName } from '@ifc-lite/data';
 import type { EntityRef, FederatedModel } from '@/store/types';
@@ -698,12 +698,14 @@ export function PropertiesPanel() {
     return extractClassificationsOnDemand(dataStore as IfcDataStore, lookupExpressId);
   }, [selectedEntity, lookupExpressId, model, ifcDataStore]);
 
-  // Extract materials for the selected entity from the IFC data store
-  const materialInfo = useMemo(() => {
-    if (!selectedEntity || lookupExpressId === null) return null;
+  // Extract materials for the selected entity from the IFC data store —
+  // ALL associations, so an element carrying e.g. a layer set AND a fallback
+  // IfcMaterial renders one card per association instead of hiding the rest.
+  const materialInfos = useMemo(() => {
+    if (!selectedEntity || lookupExpressId === null) return [];
     const dataStore = model?.ifcDataStore ?? ifcDataStore;
-    if (!dataStore) return null;
-    return extractMaterialsOnDemand(dataStore as IfcDataStore, lookupExpressId);
+    if (!dataStore) return [];
+    return extractAllMaterialsOnDemand(dataStore as IfcDataStore, lookupExpressId);
   }, [selectedEntity, lookupExpressId, model, ifcDataStore]);
 
   // Property sets attached to the selected entity's material(s) via
@@ -1083,7 +1085,7 @@ export function PropertiesPanel() {
   const renderedQuantities = quantities;
   const renderedAttributes = attributes;
   const renderedClassifications = classifications;
-  const renderedMaterialInfo = materialInfo;
+  const renderedMaterialInfos = materialInfos;
   const renderedMaterialProperties = materialProperties;
   const renderedDocuments = documents;
   const renderedEntityRelationships = entityRelationships;
@@ -1567,7 +1569,7 @@ export function PropertiesPanel() {
             )}
             {renderedMergedProperties.length === 0
               && renderedClassifications.length === 0
-              && !renderedMaterialInfo
+              && renderedMaterialInfos.length === 0
               && renderedMaterialProperties.length === 0
               && renderedDocuments.length === 0
               && !renderedEntityRelationships
@@ -1644,13 +1646,15 @@ export function PropertiesPanel() {
                   </>
                 )}
 
-                {/* Materials */}
-                {renderedMaterialInfo && (
+                {/* Materials — one card per IfcRelAssociatesMaterial */}
+                {renderedMaterialInfos.length > 0 && (
                   <>
                     {(renderedMergedProperties.length > 0 || renderedClassifications.length > 0) && (
                       <div className="border-t border-zinc-200 dark:border-zinc-800 pt-2 mt-2" />
                     )}
-                    <MaterialCard material={renderedMaterialInfo} />
+                    {renderedMaterialInfos.map((info, i) => (
+                      <MaterialCard key={i} material={info} />
+                    ))}
                   </>
                 )}
 
@@ -1659,7 +1663,7 @@ export function PropertiesPanel() {
                     mirroring the Type Properties block. */}
                 {renderedMaterialProperties.length > 0 && (
                   <>
-                    {(renderedMergedProperties.length > 0 || renderedClassifications.length > 0 || renderedMaterialInfo) && (
+                    {(renderedMergedProperties.length > 0 || renderedClassifications.length > 0 || renderedMaterialInfos.length > 0) && (
                       <div className="border-t border-amber-200 dark:border-amber-800/50 pt-2 mt-2" />
                     )}
                     {renderedMaterialProperties.map((group) => (
@@ -1687,7 +1691,7 @@ export function PropertiesPanel() {
                 {/* Documents */}
                 {renderedDocuments.length > 0 && (
                   <>
-                    {(renderedMergedProperties.length > 0 || renderedClassifications.length > 0 || renderedMaterialInfo || renderedMaterialProperties.length > 0) && (
+                    {(renderedMergedProperties.length > 0 || renderedClassifications.length > 0 || renderedMaterialInfos.length > 0 || renderedMaterialProperties.length > 0) && (
                       <div className="border-t border-zinc-200 dark:border-zinc-800 pt-2 mt-2" />
                     )}
                     {renderedDocuments.map((doc, i) => (

@@ -526,4 +526,29 @@ describe('rebuildOnDemandMaps', () => {
     const { onDemandMaterialMap } = rebuildOnDemandMaps(entities.build(), builder.build(), entityIndex);
     assert.equal(onDemandMaterialMap.get(5), 40);
   });
+
+  it('picks the LOWEST rel express id when an element has multiple associations (parse parity)', () => {
+    // The columnar parser's winner rule is "lowest IfcRelAssociatesMaterial
+    // express id". The rebuild iterates byType buckets — a DIFFERENT order —
+    // so it must decide by edge relationshipId, not encounter order. Bucket
+    // order here is adversarial: the losing material (#41, via later rel #200)
+    // is enumerated FIRST.
+    const strings = new StringTable();
+    const entities = new EntityTableBuilder(3, strings);
+    entities.add(5, 'IFCWALL', 'w0', 'Wall', '', '', true);
+    entities.add(40, 'IFCMATERIALLAYERSET', 'ls0', 'Buildup', '', '');
+    entities.add(41, 'IFCMATERIAL', 'm0', 'Fallback', '', '');
+
+    const builder = new RelationshipGraphBuilder();
+    builder.addEdge(41, 5, RelationshipType.AssociatesMaterial, 200); // later rel
+    builder.addEdge(40, 5, RelationshipType.AssociatesMaterial, 100); // earlier rel → winner
+
+    const entityIndex = makeEntityIndex(new Map<string, number[]>([
+      ['IFCMATERIAL', [41]],          // losing def enumerated first
+      ['IFCMATERIALLAYERSET', [40]],
+    ]));
+
+    const { onDemandMaterialMap } = rebuildOnDemandMaps(entities.build(), builder.build(), entityIndex);
+    assert.equal(onDemandMaterialMap.get(5), 40, 'winner = RelatingMaterial of the lowest rel express id');
+  });
 });

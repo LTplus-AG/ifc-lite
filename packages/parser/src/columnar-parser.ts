@@ -642,6 +642,14 @@ export class ColumnarParser {
         const onDemandClassificationMap = new Map<number, number[]>();
         const onDemandMaterialMap = new Map<number, number>();
         const onDemandDocumentMap = new Map<number, number[]>();
+        // Determinism rule for elements with MULTIPLE IfcRelAssociatesMaterial:
+        // the rel with the LOWEST express id wins the single-entry map (its
+        // RelatingMaterial becomes the element's "primary" material). The cache
+        // rebuild (viewer spatialHierarchy rebuildOnDemandMaps) applies the same
+        // rule via edge relationshipIds, so fresh-parse and cache-load agree.
+        // ALL associations remain reachable via the relationship graph
+        // (resolveAllMaterialDefIds).
+        const materialWinningRelId = new Map<number, number>();
 
         for (let i = 0; i < associationRelRefs.length; i++) {
             if ((i & 0x3FF) === 0) await yieldIfNeeded();
@@ -660,7 +668,11 @@ export class ColumnarParser {
                     }
                 } else if (typeUpper === 'IFCRELASSOCIATESMATERIAL') {
                     for (const objId of relatedObjects) {
-                        onDemandMaterialMap.set(objId, relatingRef);
+                        const winner = materialWinningRelId.get(objId);
+                        if (winner === undefined || ref.expressId < winner) {
+                            materialWinningRelId.set(objId, ref.expressId);
+                            onDemandMaterialMap.set(objId, relatingRef);
+                        }
                         relationshipGraphBuilder.addEdge(relatingRef, objId, RelationshipType.AssociatesMaterial, ref.expressId);
                     }
                 } else if (typeUpper === 'IFCRELASSOCIATESDOCUMENT') {
@@ -1112,9 +1124,11 @@ export function pickLongName(entity: IfcEntity): string {
 export {
     extractClassificationsOnDemand,
     extractMaterialsOnDemand,
+    extractAllMaterialsOnDemand,
     extractMaterialPropertiesOnDemand,
     extractMaterialPropertiesForMaterialId,
     resolveMaterialDefId,
+    resolveAllMaterialDefIds,
     collectMaterialLeaves,
     buildMaterialUsageIndex,
     getMaterialDisplay,

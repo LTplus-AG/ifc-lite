@@ -299,6 +299,12 @@ const MATERIAL_DEF_TYPES = new Set([
   'IFCMATERIALPROFILESETUSAGE',
   'IFCMATERIALCONSTITUENTSET',
   'IFCMATERIALLIST',
+  // Bare IfcMaterialSelect members — legal (if unusual) RelatingMaterial
+  // targets. Without these a fresh parse maps the association but a cache
+  // rebuild silently drops it (parse/cache divergence).
+  'IFCMATERIALLAYER',
+  'IFCMATERIALPROFILE',
+  'IFCMATERIALCONSTITUENT',
 ]);
 
 /**
@@ -388,18 +394,27 @@ export function rebuildOnDemandMaps(
   // definitions — the cached graph preserves AssociatesMaterial edges.
   let materialDefCount = 0;
   if (entityIndex?.byType) {
+    // Determinism parity with the columnar parser: when an element carries
+    // MULTIPLE IfcRelAssociatesMaterial, the rel with the LOWEST express id
+    // wins the single-entry map. The enumeration order here (byType buckets)
+    // differs from the parser's file-order scan, so the winner must be decided
+    // by edge relationshipId — which the cached CSR columns preserve — or a
+    // cache load could disagree with a fresh parse of the same file.
+    const winningRelId = new Map<number, number>();
     for (const [typeKey, ids] of entityIndex.byType) {
       if (!MATERIAL_DEF_TYPES.has(typeKey.toUpperCase())) continue;
       for (const materialId of ids) {
         materialDefCount += 1;
-        const associated = relationships.getRelated(
+        const edges = relationships.forward.getEdges(
           materialId,
-          RelationshipType.AssociatesMaterial,
-          'forward'
+          RelationshipType.AssociatesMaterial
         );
-        for (const entityId of associated) {
-          // Last association wins, matching the columnar parser's `.set` build.
-          onDemandMaterialMap.set(entityId, materialId);
+        for (const edge of edges) {
+          const winner = winningRelId.get(edge.target);
+          if (winner === undefined || edge.relationshipId < winner) {
+            winningRelId.set(edge.target, edge.relationshipId);
+            onDemandMaterialMap.set(edge.target, materialId);
+          }
         }
       }
     }

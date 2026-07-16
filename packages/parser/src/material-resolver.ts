@@ -74,8 +74,12 @@ export function extractMaterialsOnDemand(
 ): MaterialInfo | null {
     let materialId: number | undefined;
 
+    // The map value is a list of associations (multiple IfcRelAssociatesMaterial
+    // on one element are valid in the wild); this single-material API resolves
+    // the primary (first) one. buildMaterialUsageIndex is where all associations
+    // are honoured.
     if (store.onDemandMaterialMap) {
-        materialId = store.onDemandMaterialMap.get(entityId);
+        materialId = store.onDemandMaterialMap.get(entityId)?.[0];
     } else if (store.relationships) {
         // Fallback: use relationship graph (server-loaded models)
         const related = store.relationships.getRelated(entityId, RelationshipType.AssociatesMaterial, 'inverse');
@@ -87,7 +91,7 @@ export function extractMaterialsOnDemand(
         const typeIds = store.relationships.getRelated(entityId, RelationshipType.DefinesByType, 'inverse');
         for (const typeId of typeIds) {
             if (store.onDemandMaterialMap) {
-                materialId = store.onDemandMaterialMap.get(typeId);
+                materialId = store.onDemandMaterialMap.get(typeId)?.[0];
             } else {
                 const related = store.relationships.getRelated(typeId, RelationshipType.AssociatesMaterial, 'inverse');
                 if (related.length > 0) materialId = related[0];
@@ -392,7 +396,7 @@ export function resolveMaterialDefId(store: IfcDataStore, entityId: number): num
     let materialId: number | undefined;
 
     if (store.onDemandMaterialMap) {
-        materialId = store.onDemandMaterialMap.get(entityId);
+        materialId = store.onDemandMaterialMap.get(entityId)?.[0];
     } else if (store.relationships) {
         const related = store.relationships.getRelated(entityId, RelationshipType.AssociatesMaterial, 'inverse');
         if (related.length > 0) materialId = related[0];
@@ -402,7 +406,7 @@ export function resolveMaterialDefId(store: IfcDataStore, entityId: number): num
         const typeIds = store.relationships.getRelated(entityId, RelationshipType.DefinesByType, 'inverse');
         for (const typeId of typeIds) {
             if (store.onDemandMaterialMap) {
-                materialId = store.onDemandMaterialMap.get(typeId);
+                materialId = store.onDemandMaterialMap.get(typeId)?.[0];
             } else {
                 const related = store.relationships.getRelated(typeId, RelationshipType.AssociatesMaterial, 'inverse');
                 if (related.length > 0) materialId = related[0];
@@ -534,12 +538,29 @@ function resolveLeaves(
                     fraction: typeof ca[3] === 'number' && ca[3] > 0 ? ca[3] : undefined,
                 });
             }
-            const totalFraction = constituents.reduce((s, c) => s + (c.fraction ?? 0), 0);
-            for (const c of constituents) {
-                const weight = totalFraction > 0
-                    ? (c.fraction ?? 0) / totalFraction
-                    : (constituents.length > 0 ? 1 / constituents.length : 0);
-                addMaterialLeaf(c.matId, weight);
+            // Constituent Fraction is optional per-constituent. When SOME
+            // constituents carry a fraction and others don't, the un-fractioned
+            // siblings must not collapse to weight 0 (the old `(f ?? 0)/total`
+            // did exactly that, dropping them from the totals). Instead the
+            // constituents WITHOUT an explicit fraction share whatever remains
+            // of the whole (1 − sum of explicit) evenly; when every constituent
+            // carries a fraction we normalise by their sum; with none we split
+            // equally.
+            const explicitTotal = constituents.reduce((s, c) => s + (c.fraction ?? 0), 0);
+            const implicitCount = constituents.reduce((n, c) => n + (c.fraction === undefined ? 1 : 0), 0);
+            if (explicitTotal <= 0) {
+                const n = constituents.length;
+                for (const c of constituents) addMaterialLeaf(c.matId, n > 0 ? 1 / n : 0);
+            } else if (implicitCount === 0) {
+                for (const c of constituents) addMaterialLeaf(c.matId, (c.fraction ?? 0) / explicitTotal);
+            } else {
+                // Mixed: explicit fractions kept as-is; implicit ones split the
+                // remainder. If explicit fractions already fill (or overflow)
+                // the whole, fall back to an even share so implicit siblings
+                // still register rather than vanishing.
+                const remaining = 1 - explicitTotal;
+                const perImplicit = remaining > 0 ? remaining / implicitCount : 1 / constituents.length;
+                for (const c of constituents) addMaterialLeaf(c.matId, c.fraction ?? perImplicit);
             }
             return [...merged.values()];
         }
@@ -586,13 +607,28 @@ export function buildMaterialUsageIndex(store: IfcDataStore): Map<number, Materi
     if (cached) return cached;
 
     const usage = new Map<number, MaterialUsage>();
-    const forward = store.onDemandMaterialMap;
-    if (forward && store.source?.length) {
+
+    // Element → material-definition list. Prefer the parser's forward
+    // `onDemandMaterialMap`; when it's absent (server-loaded models) fall back
+    // to the relationship graph's AssociatesMaterial edges — the same fallback
+    // extractMaterialsOnDemand uses — so the model-wide index still populates
+    // instead of silently caching an empty map forever.
+    let forward = store.onDemandMaterialMap;
+    if (!forward && store.relationships) {
+        const rebuilt = new Map<number, number[]>();
+        for (const entityId of store.relationships.inverse.offsets.keys()) {
+            const defs = store.relationships.getRelated(entityId, RelationshipType.AssociatesMaterial, 'inverse');
+            if (defs.length > 0) rebuilt.set(entityId, defs);
+        }
+        forward = rebuilt;
+    }
+
+    if (forward && forward.size > 0 && store.source?.length) {
         // Guards against a malformed model double-typing one occurrence
         // (two IfcRelDefinesByType rels → duplicate forward edges), which
         // would otherwise double-count it in the totals panel.
         const seenPerMaterial = new Map<number, Set<number>>();
-        for (const [entityId, defId] of forward) {
+        for (const [entityId, defIds] of forward) {
             // IfcRelAssociatesMaterial commonly targets the TYPE entity
             // (IfcDoorType etc.). The tab/totals need occurrences — a type
             // has no geometry, so a type-keyed entry is invisible in the
@@ -609,38 +645,52 @@ export function buildMaterialUsageIndex(store: IfcDataStore): Map<number, Materi
             if (ref && store.relationships && isIfcTypeLikeEntity(ref.type.toUpperCase())) {
                 targets = store.relationships
                     .getRelated(entityId, RelationshipType.DefinesByType, 'forward')
-                    .filter((occId) => !forward.has(occId));
+                    .filter((occId) => !forward!.has(occId));
             } else {
                 targets = [entityId];
             }
             if (targets.length === 0) continue;
 
-            const leaves = collectMaterialLeaves(store, defId);
-            for (const leaf of leaves) {
-                let entry = usage.get(leaf.id);
-                if (!entry) {
-                    const ref = getRef(store, leaf.id);
-                    entry = {
-                        id: leaf.id,
-                        name: leaf.name || `Material #${leaf.id}`,
-                        category: leaf.category,
-                        ifcClass: ref?.type || 'IfcMaterial',
-                        entries: [],
-                    };
-                    usage.set(leaf.id, entry);
-                }
-                let seen = seenPerMaterial.get(leaf.id);
-                if (!seen) { seen = new Set(); seenPerMaterial.set(leaf.id, seen); }
-                for (const target of targets) {
-                    if (seen.has(target)) continue;
-                    seen.add(target);
-                    entry.entries.push({ entityId: target, weight: leaf.weight });
+            // An element can carry more than one material association (valid in
+            // the wild); every definition contributes its leaves.
+            for (const defId of defIds) {
+                const leaves = collectMaterialLeaves(store, defId);
+                for (const leaf of leaves) {
+                    let entry = usage.get(leaf.id);
+                    if (!entry) {
+                        const ref = getRef(store, leaf.id);
+                        entry = {
+                            id: leaf.id,
+                            name: leaf.name || `Material #${leaf.id}`,
+                            category: leaf.category,
+                            ifcClass: ref?.type || 'IfcMaterial',
+                            entries: [],
+                        };
+                        usage.set(leaf.id, entry);
+                    }
+                    let seen = seenPerMaterial.get(leaf.id);
+                    if (!seen) { seen = new Set(); seenPerMaterial.set(leaf.id, seen); }
+                    for (const target of targets) {
+                        if (seen.has(target)) continue;
+                        seen.add(target);
+                        entry.entries.push({ entityId: target, weight: leaf.weight });
+                    }
                 }
             }
         }
     }
 
-    usageIndexCache.set(store, usage);
+    // Don't memoise an empty index built from a store that had NEITHER a
+    // material map NOR a source: such a store may be populated later (a server
+    // load that wires onDemandMaterialMap / source after first render), and a
+    // cached empty result would mask it forever. Non-empty results, or empty
+    // ones from a store that did have inputs (a genuinely material-free model),
+    // are safe to cache.
+    const hadMap = (store.onDemandMaterialMap?.size ?? 0) > 0;
+    const hadSource = !!store.source?.length;
+    if (usage.size > 0 || hadMap || hadSource) {
+        usageIndexCache.set(store, usage);
+    }
     return usage;
 }
 

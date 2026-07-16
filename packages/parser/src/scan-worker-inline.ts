@@ -23,7 +23,9 @@ export interface EntityRefWorkerResult {
  * This is the same algorithm as StepTokenizer.scanEntitiesFast() but
  * written as a standalone function for worker embedding.
  */
-const WORKER_CODE = `
+/** Exported for direct testing (run inside a mock `self`); the runtime path
+ *  wraps it in a Blob worker via {@link getWorkerBlobUrl}. */
+export const WORKER_CODE = `
 'use strict';
 self.onmessage = function(e) {
   var buf = new Uint8Array(e.data);
@@ -120,8 +122,10 @@ self.onmessage = function(e) {
       }
       if (pos === typeStart) continue;
 
-      // Cache type name — use length + hash compound key and verify on hit
-      // to avoid silent collisions from 32-bit hash alone.
+      // Cache type name — use length + hash compound key and verify the actual
+      // bytes on a hit. Length alone can't disambiguate a 32-bit hash collision
+      // (e.g. "Aa"/"BB"), so without the byte compare a crafted/unlucky file
+      // could have one type silently misread as another. Mirrors tokenizer.ts.
       var typeLen = pos - typeStart;
       var typeHash = typeLen;
       for (var i = typeStart; i < pos; i++) {
@@ -129,7 +133,17 @@ self.onmessage = function(e) {
       }
       var cacheKey = typeLen + ':' + typeHash;
       var typeName = typeCache.get(cacheKey);
-      if (typeName === undefined || typeName.length !== typeLen) {
+      var cacheHitMatches = false;
+      if (typeName !== undefined && typeName.length === typeLen) {
+        cacheHitMatches = true;
+        for (var v = 0; v < typeLen; v++) {
+          if (typeName.charCodeAt(v) !== buf[typeStart + v]) {
+            cacheHitMatches = false;
+            break;
+          }
+        }
+      }
+      if (typeName === undefined || !cacheHitMatches) {
         typeName = String.fromCharCode.apply(null, buf.subarray(typeStart, pos));
         typeCache.set(cacheKey, typeName);
       }

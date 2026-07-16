@@ -85,11 +85,15 @@ export interface IfcDataStore extends IfcStoreBase {
     onDemandClassificationMap?: Map<number, number[]>;
 
     /**
-     * On-demand material lookup: entityId -> relatingMaterial expressId
+     * On-demand material lookup: entityId -> associated material definition expressIds.
      * Built from IfcRelAssociatesMaterial relationships during parsing.
-     * Value is the expressId of IfcMaterial, IfcMaterialLayerSet, IfcMaterialProfileSet, or IfcMaterialConstituentSet.
+     * Each value is the expressId of IfcMaterial, IfcMaterialLayerSet,
+     * IfcMaterialProfileSet, IfcMaterialConstituentSet, IfcMaterialList, or a
+     * *Usage. The value is a LIST so a second IfcRelAssociatesMaterial targeting
+     * the same element (valid in the wild) is preserved rather than last-wins
+     * overwritten — the model-wide usage index depends on seeing every one.
      */
-    onDemandMaterialMap?: Map<number, number>;
+    onDemandMaterialMap?: Map<number, number[]>;
 
     /**
      * On-demand document lookup: entityId -> array of IfcDocumentReference/IfcDocumentInformation expressIds
@@ -640,7 +644,7 @@ export class ColumnarParser {
         options.onProgress?.({ phase: 'parsing associations', percent: 95 });
 
         const onDemandClassificationMap = new Map<number, number[]>();
-        const onDemandMaterialMap = new Map<number, number>();
+        const onDemandMaterialMap = new Map<number, number[]>();
         const onDemandDocumentMap = new Map<number, number[]>();
 
         for (let i = 0; i < associationRelRefs.length; i++) {
@@ -660,7 +664,9 @@ export class ColumnarParser {
                     }
                 } else if (typeUpper === 'IFCRELASSOCIATESMATERIAL') {
                     for (const objId of relatedObjects) {
-                        onDemandMaterialMap.set(objId, relatingRef);
+                        let list = onDemandMaterialMap.get(objId);
+                        if (!list) { list = []; onDemandMaterialMap.set(objId, list); }
+                        list.push(relatingRef);
                         relationshipGraphBuilder.addEdge(relatingRef, objId, RelationshipType.AssociatesMaterial, ref.expressId);
                     }
                 } else if (typeUpper === 'IFCRELASSOCIATESDOCUMENT') {

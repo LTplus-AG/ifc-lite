@@ -25,6 +25,20 @@ describe('decodeIfcString', () => {
     expect(decodeIfcString('\\X4\\0001D11E\\X0\\')).toBe('𝄞');
   });
 
+  it('emits U+FFFD (no throw) for an \\X4\\ value above the Unicode max', () => {
+    // 0x00110000 is one past the highest valid scalar (0x10FFFF). Previously
+    // String.fromCodePoint threw a RangeError here, aborting the whole model
+    // load on the columnar batch-name path.
+    let out!: string;
+    expect(() => { out = decodeIfcString('\\X4\\00110000\\X0\\'); }).not.toThrow();
+    expect(out).toBe('�');
+  });
+
+  it('replaces only the offending scalar within a mixed \\X4\\ run', () => {
+    // Valid 𝄞 (0x1D11E) followed by an out-of-range scalar -> valid char + FFFD.
+    expect(decodeIfcString('\\X4\\0001D11EFFFFFFFF\\X0\\')).toBe('𝄞�');
+  });
+
   it('decodes \\X\\ ISO-8859-1 single byte', () => {
     expect(decodeIfcString('\\X\\F1')).toBe('ñ');
   });

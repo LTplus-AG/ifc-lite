@@ -285,8 +285,10 @@ export interface EntityIndex {
 export interface OnDemandMaps {
   onDemandPropertyMap: Map<number, number[]>;
   onDemandQuantityMap: Map<number, number[]>;
-  /** element/type expressId -> associated material definition expressId. */
-  onDemandMaterialMap: Map<number, number>;
+  /** element/type expressId -> associated material definition expressIds.
+   *  A list so multiple IfcRelAssociatesMaterial on one element are preserved,
+   *  matching the columnar parser's map shape. */
+  onDemandMaterialMap: Map<number, number[]>;
 }
 
 /** IFC material *definition* classes that can be the RelatingMaterial of an
@@ -319,7 +321,7 @@ export function rebuildOnDemandMaps(
 ): OnDemandMaps {
   const onDemandPropertyMap = new Map<number, number[]>();
   const onDemandQuantityMap = new Map<number, number[]>();
-  const onDemandMaterialMap = new Map<number, number>();
+  const onDemandMaterialMap = new Map<number, number[]>();
 
   // Use entityIndex.byType if available (needed for cache loads where entity table
   // doesn't include IfcPropertySet/IfcElementQuantity entities)
@@ -398,8 +400,11 @@ export function rebuildOnDemandMaps(
           'forward'
         );
         for (const entityId of associated) {
-          // Last association wins, matching the columnar parser's `.set` build.
-          onDemandMaterialMap.set(entityId, materialId);
+          // Preserve every association (multiple IfcRelAssociatesMaterial on one
+          // element are valid), matching the columnar parser's list-valued map.
+          let list = onDemandMaterialMap.get(entityId);
+          if (!list) { list = []; onDemandMaterialMap.set(entityId, list); }
+          list.push(materialId);
         }
       }
     }

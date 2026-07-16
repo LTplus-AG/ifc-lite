@@ -77,7 +77,16 @@ export function decodeIfcString(str: string): string {
         const hex = str.slice(i + 4, end);
         if (hex.length % 8 === 0 && /^[0-9A-Fa-f]+$/.test(hex)) {
           for (let j = 0; j < hex.length; j += 8) {
-            result += String.fromCodePoint(parseInt(hex.slice(j, j + 8), 16));
+            const cp = parseInt(hex.slice(j, j + 8), 16);
+            // Guard the scalar: an 8-hex value above the Unicode maximum
+            // (0x10FFFF) — or an otherwise invalid code point — makes
+            // String.fromCodePoint throw a RangeError. On the columnar
+            // batch-name path that throw propagates uncaught and aborts the
+            // whole model load, so emit U+FFFD (replacement char) instead of
+            // letting one malformed escape fail the file.
+            result += Number.isInteger(cp) && cp >= 0 && cp <= 0x10FFFF
+              ? String.fromCodePoint(cp)
+              : '�';
           }
           i = end + 4;
           continue;

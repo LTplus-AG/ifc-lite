@@ -21,6 +21,7 @@ import {
   getMaterialDisplay,
   extractMaterialPropertiesForMaterialId,
   extractQuantitiesOnDemand,
+  extractTypeQuantitiesOnDemand,
   extractProjectUnits,
   ProjectUnits,
   type IfcDataStore,
@@ -159,8 +160,18 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
           const ifcClass = store.entityIndex.byId.get(entityId)?.type || usage.ifcClass;
           classCounts.set(ifcClass, (classCounts.get(ifcClass) ?? 0) + 1);
 
-          if (qMap && !qMap.get(entityId)?.length) continue; // no quantities — skip extraction
-          const qsets = extractQuantitiesOnDemand(store, entityId);
+          // Occurrence quantities first (skip the extractor allocation when the
+          // forward map shows the element carries none), then fall back to the
+          // element's TYPE quantities. Type-expanded entries (from a type-level
+          // IfcRelAssociatesMaterial, #1755) have no own Qto, so without the
+          // type fallback their volume/area/weight never reached the totals.
+          let qsets = (qMap && !qMap.get(entityId)?.length)
+            ? []
+            : extractQuantitiesOnDemand(store, entityId);
+          if (qsets.length === 0) {
+            const typeQ = extractTypeQuantitiesOnDemand(store, entityId);
+            if (typeQ) qsets = typeQ.quantities;
+          }
           if (qsets.length === 0) continue;
           const volByName = new Map<string, number>();
           const areaByName = new Map<string, number>();

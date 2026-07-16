@@ -66,8 +66,9 @@ describe('buildMaterialUsageIndex end-to-end type expansion (#1755)', () => {
         const store = await parser.parseLite(source.buffer.slice(0) as ArrayBuffer, entityRefs, {});
 
         // Sanity: the parser keyed the associations to the TYPE entities.
-        expect(store.onDemandMaterialMap?.get(200)).toBe(312);
-        expect(store.onDemandMaterialMap?.get(201)).toBe(322);
+        // The map is list-valued (multiple associations per element preserved).
+        expect(store.onDemandMaterialMap?.get(200)).toEqual([312]);
+        expect(store.onDemandMaterialMap?.get(201)).toEqual([322]);
 
         const usage = buildMaterialUsageIndex(store);
         const byName = new Map([...usage.values()].map((u) => [u.name, u]));

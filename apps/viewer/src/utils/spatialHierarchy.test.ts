@@ -506,7 +506,7 @@ describe('rebuildOnDemandMaps', () => {
     );
 
     assert.equal(onDemandMaterialMap.size, 1);
-    assert.equal(onDemandMaterialMap.get(5), 10);
+    assert.deepEqual(onDemandMaterialMap.get(5), [10]);
     assert.deepEqual(onDemandPropertyMap.get(5), [20]);
   });
 
@@ -524,6 +524,6 @@ describe('rebuildOnDemandMaps', () => {
     ]));
 
     const { onDemandMaterialMap } = rebuildOnDemandMaps(entities.build(), builder.build(), entityIndex);
-    assert.equal(onDemandMaterialMap.get(5), 40);
+    assert.deepEqual(onDemandMaterialMap.get(5), [40]);
   });
 });

@@ -7,9 +7,9 @@ import type { PluginManifest } from '@ifc-lite/plugin-api';
 export const DALUX_MANIFEST: PluginManifest = {
   name: 'dalux-build',
   title: 'Dalux Box',
-  api: '^1.0.0',
+  api: '^2.0.0',
   permissions: {
-    network: ['field.dalux.com'],
+    network: ['*.dalux.com', 'dalux.com'],
   },
   preferences: [
     {
@@ -18,15 +18,6 @@ export const DALUX_MANIFEST: PluginManifest = {
       description: 'Dalux API Identity key (created by a company admin).',
       type: 'password',
       required: true,
-    },
-    {
-      name: 'proxyUrl',
-      title: 'CORS relay URL',
-      description:
-        'Optional URL of a CORS relay that forwards requests to field.dalux.com. ' +
-        'Required for browser use; leave blank when running server-side or in a desktop shell.',
-      type: 'textfield',
-      required: false,
     },
   ],
   contributes: {

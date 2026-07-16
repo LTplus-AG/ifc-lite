@@ -560,6 +560,7 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       clashPanelVisible: panel === 'clash',
       comparePanelVisible: panel === 'compare',
       extensionsPanelVisible: panel === 'extensions',
+      sourcesPanelVisible: panel === 'sources',
       collabPanelVisible: panel === 'collab',
       rightPanelCollapsed: false,
     });
@@ -594,6 +595,7 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
         clashPanelVisible: false,
         comparePanelVisible: false,
         extensionsPanelVisible: false,
+        sourcesPanelVisible: false,
         collabPanelVisible: false,
         rightPanelCollapsed: false,
       });
@@ -672,6 +674,7 @@ const SIDEBAR_PANEL_FLAGS: ReadonlyArray<readonly [keyof ViewerState, WorkspaceP
   ['clashPanelVisible', 'clash'],
   ['comparePanelVisible', 'compare'],
   ['extensionsPanelVisible', 'extensions'],
+  ['sourcesPanelVisible', 'sources'],
   ['collabPanelVisible', 'collab'],
 ];
 

@@ -4,30 +4,22 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import type { ConnectionTestResult, SourceFile as PluginSourceFile } from '@ifc-lite/plugin-api';
-import { useViewerStore } from '@/store';
 import { useSourceHost } from '@/services/sources/SourceHostProvider';
+import { dispatchSourceDownload } from '@/services/sources/source-host';
 import { SourceSettingsDialog } from './SourceSettingsDialog';
 import { SourceBrowser } from './SourceBrowser';
 import { Button } from '@/components/ui/button';
+import { toast } from '@/components/ui/toast';
 import { Cloud, Settings } from 'lucide-react';
+import { loadSavedSourcePrefs, saveSourcePrefs } from '@/lib/sources/preferences';
 
 interface SourcesPanelProps {
   onClose: () => void;
 }
 
-const PREFS_KEY_PREFIX = 'ifc-lite-source-prefs:';
-
-function loadSavedPrefs(providerId: string): Record<string, string> {
-  try {
-    const raw = localStorage.getItem(PREFS_KEY_PREFIX + providerId);
-    return raw ? (JSON.parse(raw) as Record<string, string>) : {};
-  } catch {
-    return {};
-  }
-}
-
-function savePrefs(providerId: string, values: Record<string, string>): void {
-  localStorage.setItem(PREFS_KEY_PREFIX + providerId, JSON.stringify(values));
+interface SourceDownloadSelection {
+  readonly projectId: string;
+  readonly files: readonly PluginSourceFile[];
 }
 
 export function SourcesPanel({ onClose }: SourcesPanelProps) {
@@ -35,14 +27,14 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
   const providers = useMemo(() => sourceHost.list(), [sourceHost]);
   const [browsing, setBrowsing] = useState<string | null>(null);
   const [settingsFor, setSettingsFor] = useState<string | null>(null);
-  const setSourceTag = useViewerStore((s) => s.setSourceTag);
+  const [downloading, setDownloading] = useState(false);
 
   const activeProvider = browsing ? sourceHost.get(browsing) : undefined;
   const settingsProvider = settingsFor ? sourceHost.get(settingsFor) : undefined;
 
   const handleSavePrefs = useCallback(
     (values: Record<string, string>) => {
-      if (settingsFor) savePrefs(settingsFor, values);
+      if (settingsFor) saveSourcePrefs(settingsFor, values);
     },
     [settingsFor],
   );
@@ -60,42 +52,58 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
   );
 
   const handleDownload = useCallback(
-    async (files: PluginSourceFile[]) => {
+    async ({ projectId, files }: SourceDownloadSelection) => {
       if (!activeProvider || !browsing) return;
-      const prefs = loadSavedPrefs(browsing);
+      const prefs = loadSavedSourcePrefs(browsing);
       const ctx = sourceHost.createContext(activeProvider.manifest, prefs);
+      const providerId = browsing;
 
-      for (const f of files) {
-        const buffer = await activeProvider.download(ctx, f.id);
-        const tag = sourceHost.createSourceTag(
-          browsing,
-          '', // projectId tracked in browser state
-          f.containerId,
-          f.id,
-          f.currentRevisionId,
+      setDownloading(true);
+      try {
+        const items = [];
+        for (const f of files) {
+          items.push({
+            name: f.name,
+            buffer: await activeProvider.download(ctx, f.id),
+            sourceFile: f,
+            tag: sourceHost.createSourceTag(
+              providerId,
+              projectId,
+              f.containerId,
+              f.id,
+              f.currentRevisionId,
+            ),
+          });
+        }
+        dispatchSourceDownload(items);
+        setBrowsing(null);
+      } catch (err) {
+        toast.error(
+          err instanceof Error ? err.message : 'Failed to download files',
         );
-        // Store a pending download event for the load hook to pick up.
-        // The actual load goes through the canonical useIfcLoader.loadFile path.
-        window.dispatchEvent(
-          new CustomEvent('ifc-lite:source-download', {
-            detail: { name: f.name, buffer, tag },
-          }),
-        );
+      } finally {
+        setDownloading(false);
       }
     },
     [activeProvider, browsing, sourceHost],
   );
 
-  if (activeProvider && browsing) {
-    const prefs = loadSavedPrefs(browsing);
-    const ctx = sourceHost.createContext(activeProvider.manifest, prefs);
+  const browsingCtx = useMemo(() => {
+    if (!activeProvider || !browsing) return null;
+    return sourceHost.createContext(
+      activeProvider.manifest,
+      loadSavedSourcePrefs(browsing),
+    );
+  }, [activeProvider, browsing, sourceHost]);
 
+  if (activeProvider && browsingCtx) {
     return (
       <SourceBrowser
         provider={activeProvider}
-        ctx={ctx}
-        onDownload={(files) => void handleDownload(files)}
+        ctx={browsingCtx}
+        onDownload={(selection) => void handleDownload(selection)}
         onBack={() => setBrowsing(null)}
+        busy={downloading}
       />
     );
   }
@@ -116,7 +124,7 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
 
         <ul className="divide-y">
           {providers.map((p) => {
-            const prefs = loadSavedPrefs(p.manifest.name);
+            const prefs = loadSavedSourcePrefs(p.manifest.name);
             const configured = p.manifest.preferences
               .filter((pf) => pf.required)
               .every((pf) => !!prefs[pf.name]?.trim());
@@ -157,7 +165,7 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
           onTestConnection={
             settingsProvider.testConnection ? handleTestConnection : undefined
           }
-          initialValues={loadSavedPrefs(settingsFor!)}
+          initialValues={loadSavedSourcePrefs(settingsFor!)}
         />
       )}
     </div>

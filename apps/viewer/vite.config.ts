@@ -256,6 +256,7 @@ export default defineConfig({
       '@ifc-lite/encoding': path.resolve(__dirname, '../../packages/encoding/src'),
       '@ifc-lite/ids': path.resolve(__dirname, '../../packages/ids/src'),
       '@ifc-lite/lists': path.resolve(__dirname, '../../packages/lists/src'),
+      '@ifc-lite/source-dalux': path.resolve(__dirname, '../../packages/source-dalux/src'),
     },
   },
   server: {
@@ -280,6 +281,13 @@ export default defineConfig({
         target: 'https://api.bsdd.buildingsmart.org',
         changeOrigin: true,
         rewrite: (p) => p.replace(/^\/api\/bsdd/, ''),
+      },
+      '/api/dalux': {
+        // Dalux Build's API sends no CORS headers, so browser requests must
+        // go through this same-origin relay (mirrors /api/bsdd above).
+        target: 'https://node1.field.dalux.com',
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/api\/dalux/, '/service/api'),
       },
     },
   },

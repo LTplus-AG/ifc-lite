@@ -40,11 +40,16 @@ import {
   openIfcFilesWithHandles,
   handlesFromDataTransfer,
 } from '@/services/file-system-access';
+import {
+  SOURCE_DOWNLOAD_EVENT,
+  type SourceDownloadEvent,
+} from '@/services/sources/source-host';
+import { recordDownloadedSourceFile } from '@/lib/sources/persistence';
 import { toast } from '@/components/ui/toast';
 import { TourInvite } from '@/components/tours/TourInvite';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
 import { describeUnsupportedFormat } from '@/hooks/ingest/pointCloudIngest';
-import { Upload, MousePointer, Layers, Info, Command, AlertTriangle, ChevronDown, ExternalLink, Plus, Clock3, Sparkles, ArrowUpRight, PackagePlus } from 'lucide-react';
+import { Upload, MousePointer, Layers, Info, Command, AlertTriangle, ChevronDown, ExternalLink, Plus, Clock3, Sparkles, ArrowUpRight, PackagePlus, Cloud } from 'lucide-react';
 import { createBlankIfcFile } from '@/utils/createBlankIfc';
 import type { MeshData, CoordinateInfo, GeometryResult, PointCloudAsset } from '@ifc-lite/geometry';
 import { type IfcDataStore, type MapConversion } from '@ifc-lite/parser';
@@ -84,7 +89,7 @@ export function ViewportContainer() {
   // Mount-once hook — it self-gates on mode + gap + model changes.
   useLevelDisplayEffect();
 
-  const { loadFile, loading, clearAllModels, loadFilesSequentially } = useIfc();
+  const { loadFile, loading, clearAllModels, loadFilesSequentially, addModel } = useIfc();
   const setActiveTool = useViewerStore((s) => s.setActiveTool);
   const releaseGeometryMemory = useViewerStore((s) => s.releaseGeometryMemory);
   const selectedStoreys = useViewerStore((s) => s.selectedStoreys);
@@ -500,6 +505,48 @@ export function ViewportContainer() {
       void loadFilesSequentially(files, handles);
     }
   }, [loadFile, loadFilesSequentially, resetViewerState, clearAllModels, hasModelsLoaded]);
+
+  // Cloud source providers (Dalux Build, etc.) download bytes outside the
+  // viewer and hand them off via this event rather than calling addModel()
+  // directly — keeps the sources UI decoupled from viewer internals. Every
+  // file in the batch is awaited in sequence (the WASM parser isn't
+  // thread-safe), then tagged with its provenance for later re-sync/refresh.
+  useEffect(() => {
+    const handleSourceDownload = (event: Event) => {
+      const { items } = (event as SourceDownloadEvent).detail;
+      if (items.length === 0) return;
+
+      void (async () => {
+        if (!hasModelsLoaded) {
+          resetViewerState();
+          clearAllModels();
+        }
+
+        let loaded = 0;
+        for (const item of items) {
+          const file = new File([item.buffer], item.name);
+          const modelId = await addModel(file, { name: item.name });
+          if (modelId) {
+            useViewerStore.getState().setSourceTag(modelId, item.tag);
+            recordDownloadedSourceFile(item.tag, item.sourceFile);
+            loaded++;
+          } else {
+            toast.error(`Failed to load ${item.name}`);
+          }
+        }
+
+        if (loaded > 0) {
+          toast.success(
+            `Loaded ${loaded} file${loaded > 1 ? 's' : ''} from ${items[0].tag.provider}`,
+          );
+        }
+      })();
+    };
+
+    window.addEventListener(SOURCE_DOWNLOAD_EVENT, handleSourceDownload);
+    return () =>
+      window.removeEventListener(SOURCE_DOWNLOAD_EVENT, handleSourceDownload);
+  }, [addModel, hasModelsLoaded, resetViewerState, clearAllModels]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -1194,6 +1241,19 @@ export function ViewportContainer() {
               >
                 <PackagePlus className="h-3 w-3 transition-transform group-enabled:group-hover:-translate-y-0.5" />
                 <span>Start blank</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => useViewerStore.getState().openPanelInHome('sources')}
+                disabled={!webgpu.supported || webgpu.checking}
+                className={`group inline-flex items-center gap-1.5 px-3 py-1.5 font-mono text-[11px] border border-dashed transition-all ${
+                  !webgpu.supported || webgpu.checking
+                    ? 'border-zinc-200 dark:border-[#3b4261]/50 text-zinc-300 dark:text-[#565f89]/50 cursor-not-allowed'
+                    : 'border-zinc-300 dark:border-[#3b4261] text-zinc-500 dark:text-[#7a82a5] hover:border-primary hover:text-primary cursor-pointer'
+                }`}
+              >
+                <Cloud className="h-3 w-3 transition-transform group-enabled:group-hover:-translate-y-0.5" />
+                <span>Open from Dalux Build</span>
               </button>
               <a
                 href="/mcp"

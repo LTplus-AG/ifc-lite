@@ -24,6 +24,9 @@ import { useIfc } from '@/hooks/useIfc';
 import { useEntityListMultiSelect, type MultiSelectItem } from '@/hooks/useEntityListMultiSelect';
 import { Rule, type FilterRule } from '@/lib/search/filter-rules';
 import { toast } from '@/components/ui/toast';
+import { useSourceHost } from '@/services/sources/SourceHostProvider';
+import { loadSavedSourcePrefs } from '@/lib/sources/preferences';
+import { recordDownloadedSourceFile } from '@/lib/sources/persistence';
 
 import type { TreeNode } from './hierarchy/types';
 import { isSpatialContainer } from './hierarchy/types';
@@ -43,7 +46,9 @@ export function HierarchyPanel() {
     setModelVisibility,
     setModelCollapsed,
     removeModel,
+    addModel,
   } = useIfc();
+  const sourceHost = useSourceHost();
   const selectedEntityId = useViewerStore((s) => s.selectedEntityId);
   const selectedEntityIds = useViewerStore((s) => s.selectedEntityIds);
   const setSelectedEntityId = useViewerStore((s) => s.setSelectedEntityId);
@@ -70,6 +75,8 @@ export function HierarchyPanel() {
   const clearClassFilter = useViewerStore((s) => s.clearClassFilter);
   const clearAllFilters = useViewerStore((s) => s.clearAllFilters);
   const setHierarchyBasketSelection = useViewerStore((s) => s.setHierarchyBasketSelection);
+  const sourceTags = useViewerStore((s) => s.sourceTags);
+  const setSourceTag = useViewerStore((s) => s.setSourceTag);
 
   // Group-isolation needs the camera + the hidden-by-default class toggles
   // (spaces / spatial zones), mirroring the properties panel's Groups & Zones
@@ -108,6 +115,7 @@ export function HierarchyPanel() {
   // Resizable panel split (percentage for storeys section, 0.5 = 50%)
   const [splitRatio, setSplitRatio] = useState(0.5);
   const [isDragging, setIsDragging] = useState(false);
+  const [syncingSourceModelIds, setSyncingSourceModelIds] = useState<Set<string>>(new Set());
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Check if we have multiple models loaded
@@ -283,6 +291,100 @@ export function HierarchyPanel() {
     e.stopPropagation();
     removeModel(modelId);
   }, [removeModel]);
+
+  const handleSyncSourceModel = useCallback(async (modelId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+
+    const model = models.get(modelId);
+    const tag = sourceTags.get(modelId);
+    if (!model || !tag) return;
+
+    if (!tag.projectId.trim()) {
+      toast.error('This source model predates project tracking. Reload it from Cloud Sources once to enable sync.');
+      return;
+    }
+
+    const provider = sourceHost.get(tag.provider);
+    if (!provider) {
+      toast.error(`Source provider "${tag.provider}" is not available.`);
+      return;
+    }
+
+    setSyncingSourceModelIds((previous) => new Set(previous).add(modelId));
+    try {
+      const ctx = sourceHost.createContext(
+        provider.manifest,
+        loadSavedSourcePrefs(tag.provider),
+      );
+      const latestFiles = await provider.listFiles(ctx, tag.containerId, {
+        namePatterns: ['*.ifc', '*.ifcx', '*.ifc5'],
+      });
+      const latestFile = latestFiles.find((file) => file.id === tag.fileId);
+      if (!latestFile) {
+        throw new Error('Source file is no longer available in its original folder.');
+      }
+
+      const buffer = await provider.download(
+        ctx,
+        latestFile.id,
+        latestFile.currentRevisionId,
+      );
+      const replacement = new File([buffer], latestFile.name);
+
+      const otherCollapseStates = Array.from(models.entries())
+        .filter(([id]) => id !== modelId)
+        .map(([id, current]) => ({ id, collapsed: current.collapsed }));
+      const wasActive = activeModelId === modelId;
+
+      removeModel(modelId);
+      const reloadedModelId = await addModel(replacement, {
+        modelId,
+        name: latestFile.name,
+        loadedAt: model.loadedAt,
+        visible: model.visible,
+        collapsed: model.collapsed,
+      });
+      if (!reloadedModelId) {
+        throw new Error(`Failed to reload ${latestFile.name}`);
+      }
+
+      for (const state of otherCollapseStates) {
+        setModelCollapsed(state.id, state.collapsed);
+      }
+      if (wasActive) {
+        setActiveModel(reloadedModelId);
+      }
+
+      const nextTag = sourceHost.createSourceTag(
+        tag.provider,
+        tag.projectId,
+        latestFile.containerId,
+        latestFile.id,
+        latestFile.currentRevisionId,
+      );
+      setSourceTag(reloadedModelId, nextTag);
+      recordDownloadedSourceFile(nextTag, latestFile);
+      toast.success(`Synced ${latestFile.name} from ${tag.provider}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to sync source model');
+    } finally {
+      setSyncingSourceModelIds((previous) => {
+        const next = new Set(previous);
+        next.delete(modelId);
+        return next;
+      });
+    }
+  }, [
+    activeModelId,
+    addModel,
+    models,
+    removeModel,
+    setActiveModel,
+    setModelCollapsed,
+    setSourceTag,
+    sourceHost,
+    sourceTags,
+  ]);
 
   // Handle model header click (select model + toggle expand)
   const handleModelHeaderClick = useCallback((modelId: string, nodeId: string, hasChildren: boolean) => {
@@ -780,6 +882,9 @@ export function HierarchyPanel() {
   // Helper to render a node via the extracted HierarchyNode component
   const renderNode = (node: TreeNode, virtualRow: { index: number; size: number; start: number }) => {
     const { isSelected, nodeHidden, modelVisible } = computeNodeState(node);
+    const modelId = node.type === 'model-header' && node.id.startsWith('model-')
+      ? node.modelIds[0]
+      : undefined;
 
     return (
       <HierarchyNode
@@ -796,7 +901,10 @@ export function HierarchyPanel() {
         onVisibilityToggle={handleVisibilityToggle}
         onModelVisibilityToggle={handleModelVisibilityToggle}
         onRemoveModel={handleRemoveModel}
+        onSyncSourceModel={handleSyncSourceModel}
         onModelHeaderClick={handleModelHeaderClick}
+        sourceBacked={modelId ? sourceTags.has(modelId) : false}
+        sourceSyncing={modelId ? syncingSourceModelIds.has(modelId) : false}
       />
     );
   };

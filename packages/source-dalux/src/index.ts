@@ -4,4 +4,3 @@
 
 export { DaluxBuildProvider } from './provider.js';
 export { DALUX_MANIFEST } from './manifest.js';
-export { ENDPOINTS } from './endpoints.js';

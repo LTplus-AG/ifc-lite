@@ -162,8 +162,14 @@ export interface FileSourceProvider {
   /** List projects visible to the authenticated identity. */
   listProjects(ctx: PluginContext): Promise<SourceProject[]>;
 
-  /** List containers (file areas, folders) within a project. */
-  listContainers(ctx: PluginContext, projectId: string): Promise<SourceContainer[]>;
+  /**
+   * List containers (file areas, folders) within a project.
+   * @param parentId - Optional. When provided, scope results to the direct
+   * descendants of this container (e.g. pass a file area's id to fetch just
+   * its folders). When omitted, return only the top-level containers (e.g.
+   * file areas) — cheap, so hosts can show that list before walking deeper.
+   */
+  listContainers(ctx: PluginContext, projectId: string, parentId?: string): Promise<SourceContainer[]>;
 
   /** List files in a container, optionally filtered. */
   listFiles(ctx: PluginContext, containerId: string, filter?: FileFilter): Promise<SourceFile[]>;

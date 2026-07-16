@@ -66,7 +66,7 @@ import { BufferBuilder } from './buffer-builder.js';
 import { CoordinateHandler } from './coordinate-handler.js';
 import { GeometryQuality } from './progressive-loader.js';
 import { createPlatformBridge, isTauri, type GeometryStats as PlatformGeometryStats, type IPlatformBridge } from './platform-bridge.js';
-import type { GeometryResult, MeshData, CoordinateInfo, GridAxis, TessellationQuality, KmzAltitudeMode } from './types.js';
+import type { GeometryResult, MeshData, CoordinateInfo, GridAxis, TessellationQuality, KmzAltitudeMode, SimplifyMeshesResult } from './types.js';
 
 // Extracted sub-modules
 import { getStreamingBatchSize, convertMeshCollectionToBatch, withBuildingRotation } from './geometry-coordinate.js';
@@ -1267,6 +1267,140 @@ export class GeometryProcessor {
     return this.bridge.exportGlbFromMeshes(
       positions, normals, indices, vertexCounts, indexCounts, colors, origins, expressIds, includeMetadata, lit, emissive,
     );
+  }
+
+  /**
+   * Demesher: simplify already-produced element meshes at per-element levels
+   * (1-4 = cavity removal + clustering at 0.5/0.25/0.10/0.03 triangle ratio,
+   * 5 = bounding box). Pass ALL of the target elements' MeshData records
+   * (per-material submeshes included); records with `geometryClass !== 0`
+   * (type-library shapes) are ignored. Returns render-ready replacement
+   * meshes (swap into the scene via `removeMeshesForEntities` + `addMeshes`)
+   * plus each element's geometry in its IFC object-placement frame in file
+   * units, for the tessellated IFC re-export (`applySimplifiedGeometry`).
+   *
+   * `originShift` is `coordinateInfo.originShift` (IFC Z-up metres);
+   * `unitScale` is metres per project length unit (defaults to 1 = metres).
+   * Returns null if the wasm bridge is not initialized.
+   */
+  simplifyMeshes(
+    meshes: MeshData[],
+    levels: ReadonlyMap<number, number>,
+    options: { originShift?: { x: number; y: number; z: number }; unitScale?: number } = {},
+  ): SimplifyMeshesResult | null {
+    if (!this.bridge?.isInitialized()) return null;
+    const records = meshes.filter(
+      (m) => (m.geometryClass ?? 0) === 0 && levels.has(m.expressId) && m.indices.length >= 3,
+    );
+    const requested = new Set([...levels.keys()]);
+    const covered = new Set(records.map((m) => m.expressId));
+    const result: SimplifyMeshesResult = { elements: [], skipped: [] };
+    for (const id of requested) {
+      if (!covered.has(id)) result.skipped.push({ expressId: id, reason: 'no-records' });
+    }
+    if (records.length === 0) return result;
+
+    let totalV = 0;
+    let totalI = 0;
+    for (const m of records) {
+      totalV += m.positions.length;
+      totalI += m.indices.length;
+    }
+    const positions = new Float32Array(totalV);
+    const normals = new Float32Array(totalV);
+    const indices = new Uint32Array(totalI);
+    const vertexCounts = new Uint32Array(records.length);
+    const indexCounts = new Uint32Array(records.length);
+    const origins = new Float64Array(records.length * 3);
+    const l2w = new Float64Array(records.length * 16);
+    const l2wPresent = new Uint8Array(records.length);
+    const expressIds = new Uint32Array(records.length);
+    const recordLevels = new Uint8Array(records.length);
+    let vo = 0;
+    let io = 0;
+    for (let i = 0; i < records.length; i++) {
+      const m = records[i];
+      positions.set(m.positions, vo);
+      if (m.normals && m.normals.length === m.positions.length) normals.set(m.normals, vo);
+      indices.set(m.indices, io);
+      vertexCounts[i] = m.positions.length / 3;
+      indexCounts[i] = m.indices.length;
+      const o = m.origin ?? [0, 0, 0];
+      origins[i * 3] = o[0]; origins[i * 3 + 1] = o[1]; origins[i * 3 + 2] = o[2];
+      if (m.localToWorld && m.localToWorld.length === 16) {
+        l2w.set(m.localToWorld, i * 16);
+        l2wPresent[i] = 1;
+      }
+      expressIds[i] = m.expressId;
+      recordLevels[i] = Math.min(5, Math.max(1, Math.round(levels.get(m.expressId) ?? 1)));
+      vo += m.positions.length;
+      io += m.indices.length;
+    }
+
+    const shift = options.originShift ?? { x: 0, y: 0, z: 0 };
+    const out = this.bridge.simplifyMeshes(
+      expressIds, recordLevels, positions, normals, indices, vertexCounts, indexCounts,
+      origins, l2w, l2wPresent, shift.x, shift.y, shift.z, options.unitScale ?? 1, true,
+    );
+
+    // Element metadata (type/color/placement) carried from the first source
+    // record of each element.
+    const firstRecord = new Map<number, MeshData>();
+    for (const m of records) {
+      if (!firstRecord.has(m.expressId)) firstRecord.set(m.expressId, m);
+    }
+
+    const outIds: Uint32Array = out.elementIds;
+    const outLevels: Uint8Array = out.levels;
+    const outVertexCounts: Uint32Array = out.vertexCounts;
+    const outIndexCounts: Uint32Array = out.indexCounts;
+    const renderPositions: Float32Array = out.renderPositions;
+    const renderNormals: Float32Array = out.renderNormals;
+    const renderIndices: Uint32Array = out.renderIndices;
+    const renderOrigins: Float64Array = out.renderOrigins;
+    const localPositions: Float64Array = out.localPositions;
+    const localIndices: Uint32Array = out.localIndices;
+    const trisBefore: Uint32Array = out.trisBefore;
+    const trisAfter: Uint32Array = out.trisAfter;
+    const cavitiesDropped: Uint32Array = out.cavitiesDropped;
+
+    let rvo = 0;
+    let rio = 0;
+    for (let i = 0; i < outIds.length; i++) {
+      const vCount = outVertexCounts[i] * 3;
+      const iCount = outIndexCounts[i];
+      const src = firstRecord.get(outIds[i]);
+      const render: MeshData = {
+        expressId: outIds[i],
+        ifcType: src?.ifcType ?? 'IfcBuildingElementProxy',
+        positions: renderPositions.slice(rvo, rvo + vCount),
+        normals: renderNormals.slice(rvo, rvo + vCount),
+        indices: renderIndices.slice(rio, rio + iCount),
+        color: src?.color ?? [0.8, 0.8, 0.8, 1],
+        origin: [renderOrigins[i * 3], renderOrigins[i * 3 + 1], renderOrigins[i * 3 + 2]],
+        geometryClass: 0,
+        ...(src?.localToWorld ? { localToWorld: src.localToWorld } : {}),
+      };
+      result.elements.push({
+        expressId: outIds[i],
+        level: outLevels[i],
+        render,
+        localPositions: localPositions.slice(rvo, rvo + vCount),
+        localIndices: localIndices.slice(rio, rio + iCount),
+        trisBefore: trisBefore[i],
+        trisAfter: trisAfter[i],
+        cavitiesDropped: cavitiesDropped[i],
+      });
+      rvo += vCount;
+      rio += iCount;
+    }
+
+    const skippedIds: Uint32Array = out.skippedIds;
+    const skippedReasons: string[] = out.skippedReasons;
+    for (let i = 0; i < skippedIds.length; i++) {
+      result.skipped.push({ expressId: skippedIds[i], reason: String(skippedReasons[i] ?? 'unknown') });
+    }
+    return result;
   }
 
   /**

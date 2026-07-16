@@ -154,6 +154,11 @@ export function serializeStepValue(value: IfcAttributeValue): string {
   if (Array.isArray(value)) {
     return `(${value.map(serializeStepValue).join(',')})`;
   }
+  if (typeof value === 'object' && 'real' in value) {
+    // Write-only typed-real marker (see `IfcAttributeValue`): always a REAL
+    // literal with a decimal point, even for whole numbers.
+    return toStepReal(value.real);
+  }
   const trimmed = String(value).trim();
   if (trimmed === '$' || trimmed === '*') return trimmed;
   if (/^#\d+$/.test(trimmed)) return trimmed;
@@ -172,6 +177,16 @@ export function serializeStepArgs(values: IfcAttributeValue[]): string {
 /** Tag a number as a STEP entity reference (`#N`) for `serializeStepValue`. */
 export function entityRef(expressId: number): string {
   return `#${expressId}`;
+}
+
+/**
+ * Tag a number as a STEP REAL for `serializeStepValue`, forcing a decimal
+ * point even for whole numbers (`5.` not `5`). Required for typed measures
+ * (`IfcLengthMeasure` coordinates and friends) where an integer literal is a
+ * STEP type violation.
+ */
+export function stepReal(value: number): { real: number } {
+  return { real: value };
 }
 
 /**

@@ -21,6 +21,19 @@ export { Ifc5Exporter, IFC5_KNOWN_PROP_NAMES, type Ifc5ExportOptions, type Ifc5E
 
 // LOD geometry generators (contributed by madsik)
 export type { Vec3, LodInput, Lod0Element, Lod0Json, Lod1MetaJson, GenerateLod1Result } from './lod-geometry-types.js';
+export {
+  DemeshSession,
+  type DemeshSessionOptions,
+  type DemeshSimplifyResult,
+  type DemeshExportResult,
+} from './demesh-session.js';
+export {
+  applySimplifiedGeometry,
+  type ApplySimplifiedGeometryOptions,
+  type DemeshApplyReport,
+  type DemeshEditorLike,
+  type SimplifiedElementGeometry,
+} from './demesh-writer.js';
 export { generateLod0 } from './lod0-generator.js';
 export { generateLod1, type GenerateLod1Options } from './lod1-generator.js';
 export { parseGLB, extractGlbMapping, parseGLBToMeshData, countGlbMeshes } from './glb.js';

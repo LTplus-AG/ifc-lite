@@ -611,6 +611,24 @@ export class IfcAPI {
    */
   diagnoseGeometry(content: Uint8Array): any;
   /**
+   * Simplify already-produced element meshes at per-element demesher
+   * levels (1-4 = cavity removal + clustering at 0.5/0.25/0.10/0.03
+   * triangle ratio, 5 = bounding box).
+   *
+   * One RECORD per input `MeshData` entry (an element may span several
+   * records — per-material submeshes; pass all of them, grouped or not).
+   * Per record `i`: `vertexCounts[i]` vertices from `positions` (and
+   * `normals` when non-empty), `indexCounts[i]` indices from `indices`
+   * (per-record local), `origins[i*3..]`, `localToWorld[i*16..]` valid
+   * only when `localToWorldPresent[i] != 0`, level `levels[i]` (records
+   * of one element must agree). Arrays are the boundary Y-up convention
+   * when `yUp` is true (the browser/SDK case).
+   *
+   * `rtcX/Y/Z` = `coordinateInfo.originShift` (IFC Z-up metres);
+   * `unitScale` = metres per project length unit.
+   */
+  simplifyMeshes(express_ids: Uint32Array, levels: Uint8Array, positions: Float32Array, normals: Float32Array, indices: Uint32Array, vertex_counts: Uint32Array, index_counts: Uint32Array, origins: Float64Array, local_to_world: Float64Array, local_to_world_present: Uint8Array, rtc_x: number, rtc_y: number, rtc_z: number, unit_scale: number, y_up: boolean): SimplifiedMeshes;
+  /**
    * Parse IFC file and extract symbolic representations (Plan,
    * Annotation, FootPrint, Axis). These are 2D curves used for
    * architectural drawings instead of sectioning 3D geometry.
@@ -906,6 +924,35 @@ export class ProfileEntryJs {
    * `M * [x, y, 0, 1]ᵀ` gives the world position.
    */
   readonly transform: Float32Array;
+}
+
+export class SimplifiedMeshes {
+  private constructor();
+  free(): void;
+  [Symbol.dispose](): void;
+  readonly trisAfter: Uint32Array;
+  readonly elementIds: Uint32Array;
+  readonly skippedIds: Uint32Array;
+  readonly trisBefore: Uint32Array;
+  readonly indexCounts: Uint32Array;
+  readonly localIndices: Uint32Array;
+  readonly vertexCounts: Uint32Array;
+  readonly renderIndices: Uint32Array;
+  readonly renderNormals: Float32Array;
+  /**
+   * xyz per element (frame matches the render positions' convention).
+   */
+  readonly renderOrigins: Float64Array;
+  readonly localPositions: Float64Array;
+  /**
+   * Skip reason per `skippedIds` entry (stable slugs:
+   * `no-geometry` / `missing-placement` / `singular-placement` /
+   * `empty-result`).
+   */
+  readonly skippedReasons: any[];
+  readonly cavitiesDropped: Uint32Array;
+  readonly renderPositions: Float32Array;
+  readonly levels: Uint8Array;
 }
 
 export class SpacePlateHandle {
@@ -1269,6 +1316,7 @@ export interface InitOutput {
   readonly __wbg_partitionedbatch_free: (a: number, b: number) => void;
   readonly __wbg_profilecollection_free: (a: number, b: number) => void;
   readonly __wbg_profileentryjs_free: (a: number, b: number) => void;
+  readonly __wbg_simplifiedmeshes_free: (a: number, b: number) => void;
   readonly __wbg_spaceplatehandle_free: (a: number, b: number) => void;
   readonly __wbg_symboliccircle_free: (a: number, b: number) => void;
   readonly __wbg_symbolicfillarea_free: (a: number, b: number) => void;
@@ -1340,6 +1388,7 @@ export interface InitOutput {
   readonly ifcapi_setSkipSmallCuts: (a: number, b: number) => void;
   readonly ifcapi_setSourceBytes: (a: number, b: number, c: number) => void;
   readonly ifcapi_setTessellationQuality: (a: number, b: number, c: number, d: number) => void;
+  readonly ifcapi_simplifyMeshes: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number) => void;
   readonly ifcapi_version: (a: number, b: number) => void;
   readonly meshOutline2d: (a: number, b: number, c: number, d: number, e: number, f: number) => number;
   readonly meshcollection_buildingRotation: (a: number, b: number) => void;
@@ -1394,6 +1443,21 @@ export interface InitOutput {
   readonly profileentryjs_modelIndex: (a: number) => number;
   readonly profileentryjs_outerPoints: (a: number) => number;
   readonly profileentryjs_transform: (a: number) => number;
+  readonly simplifiedmeshes_cavitiesDropped: (a: number, b: number) => void;
+  readonly simplifiedmeshes_elementIds: (a: number, b: number) => void;
+  readonly simplifiedmeshes_indexCounts: (a: number, b: number) => void;
+  readonly simplifiedmeshes_levels: (a: number, b: number) => void;
+  readonly simplifiedmeshes_localIndices: (a: number, b: number) => void;
+  readonly simplifiedmeshes_localPositions: (a: number, b: number) => void;
+  readonly simplifiedmeshes_renderIndices: (a: number, b: number) => void;
+  readonly simplifiedmeshes_renderNormals: (a: number, b: number) => void;
+  readonly simplifiedmeshes_renderOrigins: (a: number, b: number) => void;
+  readonly simplifiedmeshes_renderPositions: (a: number, b: number) => void;
+  readonly simplifiedmeshes_skippedIds: (a: number, b: number) => void;
+  readonly simplifiedmeshes_skippedReasons: (a: number, b: number) => void;
+  readonly simplifiedmeshes_trisAfter: (a: number, b: number) => void;
+  readonly simplifiedmeshes_trisBefore: (a: number, b: number) => void;
+  readonly simplifiedmeshes_vertexCounts: (a: number, b: number) => void;
   readonly spaceplatehandle_addFace: (a: number, b: number, c: number, d: number, e: number) => void;
   readonly spaceplatehandle_boundingElements: (a: number, b: number, c: number) => void;
   readonly spaceplatehandle_dissolveVertex: (a: number, b: number, c: number) => void;

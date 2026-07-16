@@ -96,6 +96,36 @@ export interface MeshData {
 }
 
 /**
+ * One element simplified by the demesher (`GeometryProcessor.simplifyMeshes`).
+ */
+export interface SimplifiedElementMesh {
+  expressId: number;
+  /** Demesher level this result was produced at (1-5). */
+  level: number;
+  /** Replacement render mesh (WebGL Y-up, same conventions as pipeline
+   *  MeshData) — feed to `Scene.addMeshes` after removing the element's old
+   *  meshes. */
+  render: MeshData;
+  /** The same vertices in the element's IFC object-placement frame, FILE
+   *  units, IFC Z-up (xyz triplets) — the tessellated-IFC export payload. */
+  localPositions: Float64Array;
+  /** Triangle indices over `localPositions`, 0-based, IFC winding. */
+  localIndices: Uint32Array;
+  trisBefore: number;
+  trisAfter: number;
+  cavitiesDropped: number;
+}
+
+/** Result of `GeometryProcessor.simplifyMeshes`. */
+export interface SimplifyMeshesResult {
+  elements: SimplifiedElementMesh[];
+  /** Elements left untouched (keep their original meshes), with reason slugs
+   *  (`no-geometry` / `missing-placement` / `singular-placement` /
+   *  `empty-result` / `no-records`). */
+  skipped: Array<{ expressId: number; reason: string }>;
+}
+
+/**
  * KML `<altitudeMode>` for KMZ (Google Earth) export — how Google Earth places
  * the model vertically (#1427):
  *  - `'clampToGround'` (default): rest the origin on the terrain, ignoring the

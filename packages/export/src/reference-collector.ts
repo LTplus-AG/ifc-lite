@@ -230,6 +230,21 @@ function extractRefsFromBytes(
   }
 }
 
+/**
+ * Collect the `#ID` references inside one entity's byte range (fresh array
+ * per call). Exported for consumers that need per-entity edges — e.g. the
+ * demesher's reverse-reference prune — rather than a transitive closure.
+ */
+export function collectRefsInByteRange(
+  source: Uint8Array,
+  byteOffset: number,
+  byteLength: number,
+): number[] {
+  const out: number[] = [];
+  extractRefsFromBytes(source, byteOffset, byteLength, out);
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // Core closure walk
 // ---------------------------------------------------------------------------

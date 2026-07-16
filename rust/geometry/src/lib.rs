@@ -117,6 +117,9 @@ pub mod projection_outline;
 pub mod rect_fast;
 pub use rect_fast::RectFastStats;
 pub(crate) mod router;
+/// Per-element mesh simplification for the demesher (cavity removal, grid
+/// vertex-clustering decimation, bounding-box collapse).
+pub mod simplify;
 pub(crate) mod tessellation;
 pub mod space_dcel;
 pub(crate) mod transform;
@@ -174,6 +177,7 @@ pub use router::{
 /// decision. (Other 10 km checks carry their own local constant of the same
 /// value.)
 pub const LARGE_COORD_THRESHOLD_METERS: f64 = 10000.0;
+pub use simplify::{simplify_mesh, SimplifyOptions, SimplifyStats};
 pub use tessellation::{scale_segments, TessellationQuality};
 pub use transform::{
     parse_axis2_placement_3d, parse_axis2_placement_3d_from_id, parse_cartesian_point,

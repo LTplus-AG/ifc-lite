@@ -8,6 +8,7 @@ import type { PanelImperativeHandle } from 'react-resizable-panels';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { MainToolbar } from './MainToolbar';
 import { MobileToolbar } from './MobileToolbar';
+import { RibbonToolbar } from './ribbon/RibbonToolbar';
 import { HierarchyPanel } from './HierarchyPanel';
 import { PropertiesPanel } from './PropertiesPanel';
 import { AddElementPanel } from './AddElementPanel';
@@ -168,6 +169,8 @@ export function ViewerLayout() {
 
   // Initialize theme on mount
   const theme = useViewerStore((s) => s.theme);
+  // Desktop toolbar style (issue #1686): classic strip or tabbed ribbon.
+  const toolbarStyle = useViewerStore((s) => s.toolbarStyle);
   const isMobile = useViewerStore((s) => s.isMobile);
   const setIsMobile = useViewerStore((s) => s.setIsMobile);
   const leftPanelCollapsed = useViewerStore((s) => s.leftPanelCollapsed);
@@ -344,8 +347,13 @@ export function ViewerLayout() {
         <SearchModal />
         <TourHost />
 
-        {/* Main Toolbar — use compact MobileToolbar on mobile */}
-        {isMobile ? <MobileToolbar /> : <MainToolbar onShowShortcuts={shortcutsDialog.toggle} />}
+        {/* Main Toolbar — compact MobileToolbar on mobile; on desktop the
+            user picks classic strip vs tabbed ribbon (issue #1686). */}
+        {isMobile
+          ? <MobileToolbar />
+          : toolbarStyle === 'ribbon'
+            ? <RibbonToolbar onShowShortcuts={shortcutsDialog.toggle} />
+            : <MainToolbar onShowShortcuts={shortcutsDialog.toggle} />}
 
         {/* Main Content Area - Desktop Layout */}
         {!isMobile && (

@@ -115,4 +115,28 @@ describe('decodePly', () => {
     const short = truncated.slice(0, truncated.length - 4);
     expect(() => decodePly(short)).toThrow();
   });
+
+  it('rejects a huge declared vertex count backed by a tiny body (no OOM alloc)', () => {
+    // Header claims 1e9 vertices but the body is a handful of bytes: without
+    // the pre-allocation guard this would attempt a ~12GB Float32Array.
+    const header =
+      'ply\n' +
+      'format binary_little_endian 1.0\n' +
+      'element vertex 1000000000\n' +
+      'property float x\nproperty float y\nproperty float z\n' +
+      'end_header\n';
+    const buf = enc.encode(header + 'tiny');
+    expect(() => decodePly(buf)).toThrow(/body bytes|available/i);
+  });
+
+  it('rejects a huge count in an ascii file with a tiny body', () => {
+    const header =
+      'ply\n' +
+      'format ascii 1.0\n' +
+      'element vertex 1000000000\n' +
+      'property float x\nproperty float y\nproperty float z\n' +
+      'end_header\n';
+    const buf = enc.encode(header + '1 2 3\n');
+    expect(() => decodePly(buf)).toThrow(/body bytes|available/i);
+  });
 });

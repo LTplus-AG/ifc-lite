@@ -160,6 +160,26 @@ export function decodePly(buffer: Uint8Array): DecodedPointChunk {
   );
 
   const count = vertex.count;
+  if (!Number.isFinite(count) || count < 0) {
+    throw new Error(`PLY: invalid vertex count ${count}`);
+  }
+  // Guard against a header that declares a huge vertex count backed by a tiny
+  // body. Allocating `count*3` floats BEFORE reading would let a small hostile
+  // file trigger a multi-GB allocation (OOM). Each record needs at least
+  // `minBytesPerRecord` body bytes — exact for binary (recordSize), a
+  // conservative floor for ascii (≥1 digit + 1 delimiter per column) — so
+  // reject any count the remaining body cannot possibly back.
+  const availableBytes = buffer.length - header.bodyOffset;
+  const minBytesPerRecord =
+    header.format === 'ascii'
+      ? Math.max(1, vertex.properties.length * 2)
+      : vertex.recordSize;
+  if (minBytesPerRecord > 0 && count > Math.floor(availableBytes / minBytesPerRecord)) {
+    throw new Error(
+      `PLY: declared ${count} vertices need at least ${count * minBytesPerRecord} body bytes ` +
+        `but only ${availableBytes} are available`,
+    );
+  }
   const positions = new Float32Array(count * 3);
   const colors = hasRgb ? new Float32Array(count * 3) : undefined;
   const intensities = intensityProp ? new Uint16Array(count) : undefined;

@@ -55,6 +55,18 @@ pub enum ParquetStreamEvent {
     Error { message: String },
 }
 
+/// Return the geometry slice from a cached combined-Parquet blob, framed as
+/// `[geometry_len: u32-LE][geometry_data][data_model_len: u32]...`. Returns
+/// `None` (rather than panicking) when the blob is too short to hold the length
+/// header or declares a geometry length that runs past the buffer — the caller
+/// treats that as a cache miss and re-parses.
+fn cached_geometry_slice(cached: &[u8]) -> Option<&[u8]> {
+    let header = cached.get(0..4)?;
+    let geometry_len = u32::from_le_bytes(header.try_into().ok()?) as usize;
+    let end = 4usize.checked_add(geometry_len)?;
+    cached.get(4..end)
+}
+
 /// POST /api/v1/parse/parquet-stream - Streaming parse with Parquet batches.
 ///
 /// Returns SSE events with Parquet-encoded geometry batches for progressive rendering.
@@ -118,53 +130,83 @@ pub async fn parse_parquet_stream(
         // even on the cache fast-path (issue #900).
         let symbolic_data = load_cached_symbolic(&state.cache, &cache_key).await;
 
-        // Extract geometry length from combined parquet (first 4 bytes)
-        let geometry_len = u32::from_le_bytes(cached_parquet[0..4].try_into().unwrap()) as usize;
-        let geometry_data = cached_parquet[4..4 + geometry_len].to_vec();
+        // Extract + base64-encode the geometry blob from the cached buffer.
+        // The blob is framed `[geometry_len: u32-LE][geometry_data]...`. Slice
+        // WITHOUT `.unwrap()` panicking on a short/corrupt cached blob, and run
+        // the copy/encode off the async worker via `block_in_place` (matching
+        // the live path below) so a large replay doesn't stall other polls.
+        // (Guarded by runtime flavor: `block_in_place` panics on current_thread,
+        // which the `#[tokio::test]` harness uses.)
+        let encode_geometry = || -> Option<String> {
+            let geometry = cached_geometry_slice(&cached_parquet)?;
+            Some(base64::engine::general_purpose::STANDARD.encode(geometry))
+        };
+        let base64_data = if tokio::runtime::Handle::current().runtime_flavor()
+            == tokio::runtime::RuntimeFlavor::MultiThread
+        {
+            tokio::task::block_in_place(encode_geometry)
+        } else {
+            encode_geometry()
+        };
 
-        // Create fast stream with cached data
-        let cache_key_for_stream = cache_key.clone();
-        let fast_stream: std::pin::Pin<
-            Box<dyn futures::Stream<Item = Result<Event, Infallible>> + Send>,
-        > = Box::pin(futures::stream::iter(vec![
-            // Start event
-            Ok::<_, Infallible>(
-                Event::default().data(
-                    serde_json::to_string(&ParquetStreamEvent::Start {
-                        total_estimate: metadata_header.stats.total_meshes,
-                        cache_key: cache_key_for_stream.clone(),
-                    })
-                    .unwrap(),
-                ),
-            ),
-            // Single batch with all cached geometry
-            Ok(Event::default().data(
-                serde_json::to_string(&ParquetStreamEvent::Batch {
-                    data: base64::engine::general_purpose::STANDARD.encode(&geometry_data),
-                    mesh_count: metadata_header.stats.total_meshes,
-                    batch_number: 1,
-                })
-                .unwrap(),
-            )),
-            // Complete event
-            Ok(Event::default().data(
-                serde_json::to_string(&ParquetStreamEvent::Complete {
-                    stats: metadata_header.stats,
-                    metadata: metadata_header.metadata,
-                    symbolic_data,
-                })
-                .unwrap(),
-            )),
-        ]));
+        match base64_data {
+            Some(base64_data) => {
+                // Create fast stream with cached data
+                let cache_key_for_stream = cache_key.clone();
+                let fast_stream: std::pin::Pin<
+                    Box<dyn futures::Stream<Item = Result<Event, Infallible>> + Send>,
+                > = Box::pin(futures::stream::iter(vec![
+                    // Start event
+                    Ok::<_, Infallible>(
+                        Event::default().data(
+                            serde_json::to_string(&ParquetStreamEvent::Start {
+                                total_estimate: metadata_header.stats.total_meshes,
+                                cache_key: cache_key_for_stream.clone(),
+                            })
+                            .unwrap(),
+                        ),
+                    ),
+                    // Single batch with all cached geometry
+                    Ok(Event::default().data(
+                        serde_json::to_string(&ParquetStreamEvent::Batch {
+                            data: base64_data,
+                            mesh_count: metadata_header.stats.total_meshes,
+                            batch_number: 1,
+                        })
+                        .unwrap(),
+                    )),
+                    // Complete event
+                    Ok(Event::default().data(
+                        serde_json::to_string(&ParquetStreamEvent::Complete {
+                            stats: metadata_header.stats,
+                            metadata: metadata_header.metadata,
+                            symbolic_data,
+                        })
+                        .unwrap(),
+                    )),
+                ]));
 
-        // Cached replay: no parse work runs, so holding the admission guard
-        // (and its CPU slot) while a slow client drains the SSE would starve
-        // real parses for nothing. The replay blob is already materialized
-        // and is bounded by cache content, far below a parse working set.
-        drop(admission_guard);
-        return Ok(Sse::new(fast_stream)
-            .keep_alive(KeepAlive::default())
-            .into_response());
+                // Cached replay: no parse work runs, so holding the admission
+                // guard (and its CPU slot) while a slow client drains the SSE
+                // would starve real parses for nothing. The replay blob is
+                // already materialized and bounded by cache content, far below
+                // a parse working set.
+                drop(admission_guard);
+                return Ok(Sse::new(fast_stream)
+                    .keep_alive(KeepAlive::default())
+                    .into_response());
+            }
+            None => {
+                // Short/corrupt cached blob: don't panic, don't serve garbage.
+                // Fall through to the normal parse path (treat as a cache miss);
+                // the re-parse below overwrites the bad cache entry.
+                tracing::warn!(
+                    cache_key = %cache_key,
+                    parquet_size = cached_parquet.len(),
+                    "Cached parquet blob is short/corrupt; ignoring cache and re-parsing"
+                );
+            }
+        }
     }
 
     tracing::info!(
@@ -415,4 +457,37 @@ pub async fn parse_parquet_stream(
     Ok(Sse::new(boxed_stream)
         .keep_alive(KeepAlive::default())
         .into_response())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::cached_geometry_slice;
+
+    #[test]
+    fn decodes_a_well_framed_geometry_blob() {
+        // [len=3][A B C][trailing data-model framing]
+        let mut blob = 3u32.to_le_bytes().to_vec();
+        blob.extend_from_slice(&[0xAA, 0xBB, 0xCC]);
+        blob.extend_from_slice(&[0, 0, 0, 0]); // data_model_len = 0
+        assert_eq!(cached_geometry_slice(&blob), Some(&[0xAA, 0xBB, 0xCC][..]));
+    }
+
+    #[test]
+    fn returns_none_for_a_blob_too_short_for_the_length_header() {
+        // Fewer than 4 bytes: previously `cached_parquet[0..4]` panicked here.
+        assert_eq!(cached_geometry_slice(&[]), None);
+        assert_eq!(cached_geometry_slice(&[1, 2, 3]), None);
+    }
+
+    #[test]
+    fn returns_none_when_declared_length_exceeds_the_buffer() {
+        // Declares 1e9 geometry bytes but only 4 header bytes are present:
+        // must not panic slicing `[4..4 + geometry_len]`.
+        let blob = 1_000_000_000u32.to_le_bytes().to_vec();
+        assert_eq!(cached_geometry_slice(&blob), None);
+        // Off-by-a-little: length one past the available body.
+        let mut blob = 3u32.to_le_bytes().to_vec();
+        blob.extend_from_slice(&[0xAA, 0xBB]); // only 2 body bytes, need 3
+        assert_eq!(cached_geometry_slice(&blob), None);
+    }
 }

@@ -151,6 +151,26 @@ describe('resolveSafePath', () => {
       ).rejects.toThrow(/sensitive home entry/i);
     });
 
+    it('refuses ~/.zshrc (shell startup / write-to-execute)', async () => {
+      const home = homedir();
+      await expect(
+        resolveSafePath(join(home, '.zshrc'), makeCtx([home]), 'write'),
+      ).rejects.toThrow(/sensitive home entry/i);
+    });
+
+    it('refuses other shell startup files and ~/.config', async () => {
+      const home = homedir();
+      for (const entry of ['.bashrc', '.profile', '.bash_profile', '.zprofile', '.zshenv', '.gitconfig']) {
+        await expect(
+          resolveSafePath(join(home, entry), makeCtx([home]), 'write'),
+        ).rejects.toThrow(/sensitive home entry/i);
+      }
+      // `.config` is a directory: entries beneath it are refused too.
+      await expect(
+        resolveSafePath(join(home, '.config', 'app', 'secrets.json'), makeCtx([home]), 'write'),
+      ).rejects.toThrow(/sensitive home entry/i);
+    });
+
     it('allows ordinary $HOME paths', async () => {
       const home = homedir();
       const file = join(home, 'a-non-sensitive-file.ifc');

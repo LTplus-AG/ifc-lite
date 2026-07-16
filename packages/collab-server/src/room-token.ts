@@ -268,7 +268,16 @@ export interface TokenEndpointOptions {
    */
   authorize: (
     request: MintRequestBody,
-    context: { bearerClaims: RoomTokenClaims | null },
+    context: {
+      bearerClaims: RoomTokenClaims | null;
+      /**
+       * Best-effort client IP of the mint request — the first
+       * `X-Forwarded-For` hop when present (deployments sit behind a proxy),
+       * else the socket's remote address. `undefined` if neither is available.
+       * Consumers use it to rate-limit the unauthenticated mint path.
+       */
+      clientIp: string | undefined;
+    },
   ) => Promise<Role | null> | Role | null;
   /** Secret(s) used to verify the caller's bearer token (default: `secret`). */
   verifySecret?: SecretResolver;
@@ -321,6 +330,22 @@ function bearerToken(req: http.IncomingMessage): string | undefined {
   if (typeof header !== 'string') return undefined;
   const m = header.match(/^Bearer\s+(.+)$/i);
   return m ? m[1] : undefined;
+}
+
+/**
+ * Best-effort client IP for rate-limiting. Prefers the first `X-Forwarded-For`
+ * hop (production sits behind a proxy that terminates TLS), falling back to the
+ * socket's remote address. A spoofed header only lets an attacker pick which
+ * bucket they land in, not escape rate-limiting entirely.
+ */
+function clientIpOf(req: http.IncomingMessage): string | undefined {
+  const fwd = req.headers['x-forwarded-for'];
+  const raw = Array.isArray(fwd) ? fwd[0] : fwd;
+  if (typeof raw === 'string' && raw.length > 0) {
+    const first = raw.split(',')[0]?.trim();
+    if (first) return first;
+  }
+  return req.socket?.remoteAddress ?? undefined;
 }
 
 /**
@@ -396,7 +421,7 @@ export async function handleTokenMintRequest(
 
   let grantedRole: Role | null;
   try {
-    grantedRole = await opts.authorize(mintReq, { bearerClaims });
+    grantedRole = await opts.authorize(mintReq, { bearerClaims, clientIp: clientIpOf(req) });
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('[collab-server] token authorize threw:', err);

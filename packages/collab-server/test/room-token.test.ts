@@ -154,6 +154,48 @@ describe('POST /collab/token mint route', () => {
     }
   });
 
+  it('passes the client IP to authorize for rate-limiting', async () => {
+    const seen: Array<string | undefined> = [];
+    const handle = await startCollabServer({
+      port: 0,
+      persistence: new MemoryPersistence(),
+      authenticate: createRoomTokenAuthenticator({ secret: SECRET }),
+      tokenEndpoint: {
+        secret: SECRET,
+        authorize: (req, { clientIp }) => {
+          seen.push(clientIp);
+          return req.role;
+        },
+      },
+    });
+    const address = handle.httpServer.address();
+    const port = typeof address === 'object' && address ? address.port : 0;
+    try {
+      // No proxy header: falls back to the socket's remote address (loopback).
+      const direct = await fetch(`http://127.0.0.1:${port}/collab/token`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ roomId: 'm/a', role: 'editor' }),
+      });
+      expect(direct.status).toBe(200);
+      // X-Forwarded-For present: first hop wins over the socket address.
+      const proxied = await fetch(`http://127.0.0.1:${port}/collab/token`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-forwarded-for': '203.0.113.7, 10.0.0.1',
+        },
+        body: JSON.stringify({ roomId: 'm/b', role: 'editor' }),
+      });
+      expect(proxied.status).toBe(200);
+      expect(seen.length).toBe(2);
+      expect(typeof seen[0]).toBe('string'); // loopback address, e.g. ::1 / 127.0.0.1
+      expect(seen[1]).toBe('203.0.113.7');
+    } finally {
+      await handle.stop();
+    }
+  });
+
   it('returns 404 for the token route when the endpoint is disabled', async () => {
     const handle = await startCollabServer({ port: 0, persistence: new MemoryPersistence() });
     const address = handle.httpServer.address();

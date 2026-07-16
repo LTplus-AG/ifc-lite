@@ -257,6 +257,24 @@ describe('decodeE57Scan (uncompressed Float64)', () => {
     expect(chunk.positions[5]).toBeCloseTo(1.55, 5);
   });
 
+  it('rejects a recordCount the binary section cannot hold (no OOM alloc)', () => {
+    // A hostile header declares 1e9 records but the binary section is a few
+    // bytes. Without the pre-allocation guard this would allocate a ~12GB
+    // Float32Array before the packet walk ever notices the body is short.
+    const logical = new Uint8Array(64);
+    const entry: Data3DEntry = {
+      guid: 'test',
+      recordCount: 1_000_000_000,
+      binaryFileOffset: 0,
+      prototype: [
+        { name: 'cartesianX', kind: 'Float', precision: 'double' },
+        { name: 'cartesianY', kind: 'Float', precision: 'double' },
+        { name: 'cartesianZ', kind: 'Float', precision: 'double' },
+      ],
+    };
+    expect(() => decodeE57Scan(logical, entry)).toThrow(/recordCount|binary section/i);
+  });
+
   it('decodes ScaledInteger streams with bitsPerRecord that crosses byte boundaries', () => {
     // bitsPerRecord = 12 for X (min=0, max=4095). Two 12-bit values
     // pack into 3 bytes LSB-first: [0xABC, 0xDEF] → [0xBC, 0xFA, 0xDE]

@@ -293,4 +293,44 @@ fn extracts_root_attributes_at_schema_positions() {
     assert_eq!(site.description.as_deref(), Some("site desc"));
     assert_eq!(site.tag, None);
     assert_eq!(site.predefined_type, None);
+
+/// IfcRelVoidsElement / IfcRelFillsElement both carry a SINGLE related ref
+/// (not a list) at attribute 5, so the generic list-based path dropped them.
+/// A wall (#10) is voided by an opening (#20), which is filled by a door (#30).
+const VOID_FILL_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#10=IFCWALL('Wall00000000000000001',$,'W1',$,$,$,$,$,$);
+#20=IFCOPENINGELEMENT('Open00000000000000001',$,'O1',$,$,$,$,$,$);
+#30=IFCDOOR('Door00000000000000001',$,'D1',$,$,$,$,$,$,$,$,$);
+#40=IFCRELVOIDSELEMENT('Voi0000000000000000001',$,$,$,#10,#20);
+#50=IFCRELFILLSELEMENT('Fil0000000000000000001',$,$,$,#20,#30);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn extracts_voids_and_fills_single_ref_relationships() {
+    let dm = extract_data_model(VOID_FILL_IFC);
+    let has_rel = |ty: &str, relating: u32, related: u32| {
+        dm.relationships.iter().any(|r| {
+            r.rel_type.eq_ignore_ascii_case(ty)
+                && r.relating_id == relating
+                && r.related_id == related
+        })
+    };
+    // RelVoidsElement: RelatingBuildingElement=#10 (wall), RelatedOpeningElement=#20.
+    assert!(
+        has_rel("IFCRELVOIDSELEMENT", 10, 20),
+        "voids relationship (wall -> opening) missing: {:?}",
+        dm.relationships
+    );
+    // RelFillsElement: RelatingOpeningElement=#20, RelatedBuildingElement=#30 (door).
+    assert!(
+        has_rel("IFCRELFILLSELEMENT", 20, 30),
+        "fills relationship (opening -> door) missing: {:?}",
+        dm.relationships
+    );
 }

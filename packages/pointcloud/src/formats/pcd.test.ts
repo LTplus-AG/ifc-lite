@@ -104,6 +104,67 @@ describe('decodePcd binary', () => {
   });
 });
 
+describe('decodePcd pre-allocation guard', () => {
+  const hugeHeader = (dataKind: string) =>
+    new TextEncoder().encode(
+      [
+        `VERSION 0.7`,
+        `FIELDS x y z`,
+        `SIZE 4 4 4`,
+        `TYPE F F F`,
+        `COUNT 1 1 1`,
+        `WIDTH 1000000000`,
+        `HEIGHT 1`,
+        `POINTS 1000000000`,
+        `DATA ${dataKind}`,
+        '',
+      ].join('\n'),
+    );
+
+  it('rejects a huge POINTS count with a tiny binary body (no OOM alloc)', () => {
+    const header = hugeHeader('binary');
+    const buf = new Uint8Array(header.length + 12); // room for one point only
+    buf.set(header, 0);
+    expect(() => decodePcd(buf)).toThrow(/body bytes|available/i);
+  });
+
+  it('rejects a huge POINTS count in an ascii body', () => {
+    const header = hugeHeader('ascii');
+    const buf = new Uint8Array(header.length + 8);
+    buf.set(header, 0);
+    buf.set(new TextEncoder().encode('1 2 3\n'), header.length);
+    expect(() => decodePcd(buf)).toThrow(/body bytes|available/i);
+  });
+
+  it('rejects binary_compressed declaring a huge uncompressed size from a tiny blob', () => {
+    // POINTS * stride(12) == declared uncompressedSize so the existing equality
+    // check passes and we reach the MAX_LZF_RATIO guard: 1.2e9 uncompressed
+    // bytes claimed from a 4-byte compressed body.
+    const header = new TextEncoder().encode(
+      [
+        `VERSION 0.7`,
+        `FIELDS x y z`,
+        `SIZE 4 4 4`,
+        `TYPE F F F`,
+        `COUNT 1 1 1`,
+        `WIDTH 100000000`,
+        `HEIGHT 1`,
+        `POINTS 100000000`,
+        `DATA binary_compressed`,
+        '',
+      ].join('\n'),
+    );
+    const sizeAndPayload = new Uint8Array(8 + 4);
+    const dv = new DataView(sizeAndPayload.buffer);
+    dv.setUint32(0, 4, true); // compressedSize = 4 bytes
+    dv.setUint32(4, 100000000 * 12, true); // uncompressedSize = 1.2e9 (fits u32)
+    const buf = new Uint8Array(header.length + sizeAndPayload.length);
+    buf.set(header, 0);
+    buf.set(sizeAndPayload, header.length);
+    expect(() => decodePcd(buf)).toThrow(/exceeds .* compressed body/i);
+  });
+});
+
 describe.skipIf(!FIXTURES_AVAILABLE)('decodePcd against IFCx fixtures', () => {
   it('decodes the small Point_Cloud sample (ascii subnode 213 points)', () => {
     const fixturePath = path.join(REPO_ROOT, 'tests/models/ifc5/Point_Cloud_point-cloud.ifcx');

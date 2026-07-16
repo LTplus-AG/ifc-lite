@@ -566,17 +566,19 @@ function resolveLeaves(
                 if (!constRef) continue;
                 const ca = extractor.extractEntity(constRef)?.attributes ?? [];
                 // IfcMaterialConstituent: [Name, Description, Material, Fraction, Category]
+                // An authored Fraction of 0 is preserved as 0 (an explicit
+                // "contributes nothing"), distinct from an ABSENT fraction.
                 constituents.push({
                     matId: typeof ca[2] === 'number' ? ca[2] : undefined,
-                    fraction: typeof ca[3] === 'number' && ca[3] > 0 ? ca[3] : undefined,
+                    fraction: typeof ca[3] === 'number' && ca[3] >= 0 ? ca[3] : undefined,
                 });
             }
             // IFC allows Fraction on only SOME constituents (sum ≤ 1, the
-            // remainder unallocated). Fraction-less constituents get an equal
-            // share of that remainder instead of weight 0, so they still
-            // contribute to per-material totals; the final normalisation keeps
-            // each element's weights summing to 1 even when authored fractions
-            // are inconsistent.
+            // remainder unallocated). Constituents with an ABSENT fraction get
+            // an equal share of that remainder instead of weight 0, so they
+            // still contribute to per-material totals; the final normalisation
+            // keeps each element's weights summing to 1 even when authored
+            // fractions are inconsistent.
             const assigned = constituents.reduce((s, c) => s + (c.fraction ?? 0), 0);
             const noFraction = constituents.filter((c) => c.fraction === undefined).length;
             const remainderShare = noFraction > 0 ? Math.max(0, 1 - assigned) / noFraction : 0;
@@ -638,10 +640,14 @@ export function buildMaterialUsageIndex(store: IfcDataStore): Map<number, Materi
     const usage = new Map<number, MaterialUsage>();
     const forward = store.onDemandMaterialMap;
     if (forward && store.source?.length) {
-        // Guards against a malformed model double-typing one occurrence
-        // (two IfcRelDefinesByType rels → duplicate forward edges), which
-        // would otherwise double-count it in the totals panel.
-        const seenPerMaterial = new Map<number, Set<number>>();
+        // One entries-row per (material, element): the totals panel counts
+        // rows, so an element must never appear twice under one material —
+        // but when SEVERAL of its associations resolve to the same base
+        // material (e.g. a layer set containing A plus a plain association
+        // to A) their weights ACCUMULATE on that single row instead of the
+        // later association being dropped (which would make the total depend
+        // on rel order).
+        const rowPerMaterial = new Map<number, Map<number, { entityId: number; weight: number }>>();
         for (const [entityId, primaryDefId] of forward) {
             // IfcRelAssociatesMaterial commonly targets the TYPE entity
             // (IfcDoorType etc.). The tab/totals need occurrences — a type
@@ -664,6 +670,9 @@ export function buildMaterialUsageIndex(store: IfcDataStore): Map<number, Materi
                 targets = [entityId];
             }
             if (targets.length === 0) continue;
+            // Duplicate forward edges (malformed double-typing) must not
+            // double a target's contribution within this map key.
+            const uniqueTargets = targets.length > 1 ? [...new Set(targets)] : targets;
 
             // Every association of this map key, not just the primary — an
             // element carrying e.g. a layer set AND a fallback IfcMaterial
@@ -685,12 +694,17 @@ export function buildMaterialUsageIndex(store: IfcDataStore): Map<number, Materi
                         };
                         usage.set(leaf.id, entry);
                     }
-                    let seen = seenPerMaterial.get(leaf.id);
-                    if (!seen) { seen = new Set(); seenPerMaterial.set(leaf.id, seen); }
-                    for (const target of targets) {
-                        if (seen.has(target)) continue;
-                        seen.add(target);
-                        entry.entries.push({ entityId: target, weight: leaf.weight });
+                    let rows = rowPerMaterial.get(leaf.id);
+                    if (!rows) { rows = new Map(); rowPerMaterial.set(leaf.id, rows); }
+                    for (const target of uniqueTargets) {
+                        const row = rows.get(target);
+                        if (row) {
+                            row.weight += leaf.weight;
+                        } else {
+                            const fresh = { entityId: target, weight: leaf.weight };
+                            rows.set(target, fresh);
+                            entry.entries.push(fresh);
+                        }
                     }
                 }
             }

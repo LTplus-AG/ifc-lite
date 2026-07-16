@@ -135,6 +135,21 @@ describe('multiple IfcRelAssociatesMaterial per element', () => {
         }
     });
 
+    it('accumulates weights when two associations resolve to the SAME base material', async () => {
+        // Wall #100: layer set whose only layer is Brick (#300, weight 1)
+        // PLUS a direct association to Brick itself. The wall must appear
+        // ONCE under Brick with the weights combined (1 + 1 = 2), not with
+        // whichever association happened to come first (rel-order dependence).
+        const REL_SAME = `#335=IFCRELASSOCIATESMATERIAL('0RelMat000000000000006',$,$,$,(#100),#300);`;
+        const store = await parse([BASE, REL_A, REL_SAME].join('\n'));
+        const usage = buildMaterialUsageIndex(store);
+        const brick = [...usage.values()].find((u) => u.name === 'Brick')!;
+
+        const rows = brick.entries.filter((e) => e.entityId === 100);
+        expect(rows).toHaveLength(1); // one row → element counted once
+        expect(rows[0].weight).toBeCloseTo(2, 6); // both contributions kept
+    });
+
     it('transport round-trips the deterministic map verbatim', async () => {
         const store = await parse([BASE, REL_B, REL_A].join('\n'));
         const envelope = toTransport(store);

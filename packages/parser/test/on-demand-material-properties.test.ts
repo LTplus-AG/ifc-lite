@@ -191,6 +191,22 @@ describe('collectMaterialLeaves', () => {
       expect(byId.get(12)!.weight).toBeCloseTo(0.2, 6);
     });
 
+    it('an EXPLICIT zero fraction stays zero; only absent fractions share the remainder', () => {
+      // [0.6, 0.0, absent] → [0.6, 0, 0.4]: the authored zero is a
+      // deliberate "contributes nothing", not an omission.
+      const ZERO = [
+        `#61=IFCMATERIALCONSTITUENT('H',$,#10,0.6,$);`,
+        `#62=IFCMATERIALCONSTITUENT('I',$,#11,0.0,$);`,
+        `#63=IFCMATERIALCONSTITUENT('J',$,#12,$,$);`,
+        `#64=IFCMATERIALCONSTITUENTSET('ZeroSet',$,(#61,#62,#63));`,
+      ];
+      const store = buildStore([...FIXTURE, ...CONSTITUENTS, ...ZERO], new Map());
+      const byId = new Map(collectMaterialLeaves(store, 64).map((l) => [l.id, l]));
+      expect(byId.get(10)!.weight).toBeCloseTo(0.6, 6);
+      expect(byId.get(11)!.weight).toBeCloseTo(0, 6);
+      expect(byId.get(12)!.weight).toBeCloseTo(0.4, 6);
+    });
+
     it('fully-fractioned sets keep their authored split', () => {
       const store = buildStore([...FIXTURE, ...CONSTITUENTS], new Map());
       const byId = new Map(collectMaterialLeaves(store, 58).map((l) => [l.id, l]));

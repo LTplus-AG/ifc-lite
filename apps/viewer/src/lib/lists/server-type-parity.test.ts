@@ -40,11 +40,12 @@ DATA;
 #100=IFCWALL('Wall00000000000000001A',$,'W-A',$,$,$,$,$,$);
 #110=IFCWALL('Wall00000000000000001B',$,'W-B',$,$,$,$,$,$);
 #200=IFCWALLTYPE('Type00000000000000001A',$,'WT-Std',$,$,(#210,#220),$,$,$,.STANDARD.);
-#210=IFCPROPERTYSET('Pset00000000000000001A',$,'Pset_WallCommon',$,(#211,#212,#213,#214));
+#210=IFCPROPERTYSET('Pset00000000000000001A',$,'Pset_WallCommon',$,(#211,#212,#213,#214,#215));
 #211=IFCPROPERTYSINGLEVALUE('Manufacturer',$,IFCLABEL('ACME'),$);
 #212=IFCPROPERTYSINGLEVALUE('IsExternal',$,IFCBOOLEAN(.T.),$);
 #213=IFCPROPERTYSINGLEVALUE('ThermalTransmittance',$,IFCREAL(0.24),$);
 #214=IFCPROPERTYSINGLEVALUE('Layers',$,IFCINTEGER(3),$);
+#215=IFCPROPERTYENUMERATEDVALUE('AcousticRating',$,(IFCLABEL('R1'),IFCLABEL('R2')),$);
 #220=IFCELEMENTQUANTITY('Qset00000000000000001A',$,'Qto_WallBaseQuantities',$,$,(#221));
 #221=IFCQUANTITYLENGTH('Width',$,$,200.);
 #230=IFCRELDEFINESBYTYPE('Rdbt00000000000000001A',$,$,$,(#100,#110),#200);
@@ -71,6 +72,7 @@ function serverDataModelForFixture(): DataModel {
         { property_name: 'IsExternal', property_value: 'true', property_type: 'boolean', data_type: 'IFCBOOLEAN' },
         { property_name: 'ThermalTransmittance', property_value: '0.24', property_type: 'real', data_type: 'IFCREAL' },
         { property_name: 'Layers', property_value: '3', property_type: 'integer', data_type: 'IFCINTEGER' },
+        { property_name: 'AcousticRating', property_value: 'R1, R2', property_type: 'string' },
       ] }],
       [250, { pset_id: 250, pset_name: 'Pset_WallCommon', properties: [
         { property_name: 'FireRating', property_value: 'REI 120', property_type: 'string', data_type: 'IFCLABEL' },
@@ -112,6 +114,7 @@ const DEFINITION: ListDefinition = {
     { id: 'ext', source: 'property', psetName: 'Pset_WallCommon', propertyName: 'IsExternal' },
     { id: 'u', source: 'property', psetName: 'Pset_WallCommon', propertyName: 'ThermalTransmittance' },
     { id: 'layers', source: 'property', psetName: 'Pset_WallCommon', propertyName: 'Layers' },
+    { id: 'ar', source: 'property', psetName: 'Pset_WallCommon', propertyName: 'AcousticRating' },
     { id: 'fr', source: 'property', psetName: 'Pset_WallCommon', propertyName: 'FireRating' },
     { id: 'w', source: 'quantity', psetName: 'Qto_WallBaseQuantities', propertyName: 'Width' },
   ],
@@ -141,8 +144,8 @@ describe('server↔client Type parity (#1751/#1754)', () => {
 
     // Sanity: the type-inherited + override values actually resolved (not blank).
     const rowsByName = new Map(clientResult.rows.map((r) => [String(r.values[0]), r.values]));
-    assert.deepEqual(rowsByName.get('W-A'), ['W-A', 'WT-Std', 'ACME', 'True', 0.24, 3, 'REI 120', 200]);
-    assert.deepEqual(rowsByName.get('W-B'), ['W-B', 'WT-Std', 'ACME', 'True', 0.24, 3, null, 200]);
+    assert.deepEqual(rowsByName.get('W-A'), ['W-A', 'WT-Std', 'ACME', 'True', 0.24, 3, 'R1, R2', 'REI 120', 200]);
+    assert.deepEqual(rowsByName.get('W-B'), ['W-B', 'WT-Std', 'ACME', 'True', 0.24, 3, 'R1, R2', null, 200]);
 
     // Column meta (quantityType / dataType) identical — drives unit conversion.
     assert.deepEqual(

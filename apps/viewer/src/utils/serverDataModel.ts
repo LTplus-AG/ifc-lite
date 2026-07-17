@@ -594,8 +594,8 @@ export function convertServerDataModel(
   // measure tag, mirroring the WASM path's `parsePropertyValue`. Without this
   // every server property would stay a String (the raw parquet string), so
   // numeric cells wouldn't sum/sort and unit conversion (#1573) wouldn't fire.
-  type ServerProp = { property_name: string; property_value: string; property_type?: string; data_type?: string };
-  const materializeProp = (p: ServerProp): { name: string; type: PropertyValueType; value: PropertyValue; dataType?: string } => {
+  type ServerProp = { property_name: string; property_value: string; property_type?: string; data_type?: string; values?: string[] };
+  const materializeProp = (p: ServerProp): { name: string; type: PropertyValueType; value: PropertyValue; dataType?: string; values?: string[] } => {
     const raw = p.property_value;
     let type: PropertyValueType;
     let value: PropertyValue;
@@ -609,7 +609,15 @@ export function convertServerDataModel(
       case 'string':
       default: type = PropertyValueType.String; value = raw; break;
     }
-    return { name: p.property_name, type, value, ...(p.data_type ? { dataType: p.data_type } : {}) };
+    return {
+      name: p.property_name,
+      type,
+      value,
+      ...(p.data_type ? { dataType: p.data_type } : {}),
+      // Candidate arrays for IDS any-match checks (issue #1766) — flow through
+      // the bridge's projectProperty untouched.
+      ...(p.values && p.values.length > 0 ? { values: p.values } : {}),
+    };
   };
   const materializeValue = (p: ServerProp): PropertyValue => materializeProp(p).value;
 

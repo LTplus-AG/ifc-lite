@@ -335,7 +335,16 @@ fn serialize_properties_table(
     property_sets: &[PropertySet],
 ) -> Result<Vec<u8>, DataModelParquetError> {
     // Flatten property sets into rows using parallel iteration
-    let rows: Vec<(u32, String, String, String, String, Option<String>)> = property_sets
+    type Row = (
+        u32,
+        String,
+        String,
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+    );
+    let rows: Vec<Row> = property_sets
         .par_iter()
         .flat_map_iter(|pset| {
             pset.properties.iter().map(move |prop| {
@@ -346,6 +355,12 @@ fn serialize_properties_table(
                     prop.property_value.clone(),
                     prop.property_type.clone(),
                     prop.data_type.clone(),
+                    // Candidate arrays ride as a JSON string in a nullable Utf8
+                    // column (issue #1766): the decoder keeps its bulk column
+                    // reads and JSON-parses only the sparse multi-value rows.
+                    prop.values
+                        .as_ref()
+                        .and_then(|v| serde_json::to_string(v).ok()),
                 )
             })
         })
@@ -358,14 +373,16 @@ fn serialize_properties_table(
     let mut property_values = Vec::with_capacity(rows.len());
     let mut property_types = Vec::with_capacity(rows.len());
     let mut data_types = Vec::with_capacity(rows.len());
+    let mut values_jsons = Vec::with_capacity(rows.len());
 
-    for (pset_id, pset_name, prop_name, prop_value, prop_type, data_type) in rows {
+    for (pset_id, pset_name, prop_name, prop_value, prop_type, data_type, values_json) in rows {
         pset_ids.push(pset_id);
         pset_names.push(pset_name);
         property_names.push(prop_name);
         property_values.push(prop_value);
         property_types.push(prop_type);
         data_types.push(data_type);
+        values_jsons.push(values_json);
     }
 
     let schema = Schema::new(vec![
@@ -377,6 +394,8 @@ fn serialize_properties_table(
         // Additive nullable column (data-model cache bumped to v3). Old decoders
         // that don't request it simply ignore the extra column.
         Field::new("data_type", DataType::Utf8, true),
+        // JSON-encoded candidate array (data-model cache bumped to v5).
+        Field::new("values_json", DataType::Utf8, true),
     ]);
 
     let batch = RecordBatch::try_new(
@@ -388,6 +407,7 @@ fn serialize_properties_table(
             Arc::new(StringArray::from(property_values)),
             Arc::new(StringArray::from(property_types)),
             Arc::new(StringArray::from(data_types)),
+            Arc::new(StringArray::from(values_jsons)),
         ],
     )?;
 

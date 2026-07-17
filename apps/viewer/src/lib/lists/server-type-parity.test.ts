@@ -50,8 +50,10 @@ DATA;
 #220=IFCELEMENTQUANTITY('Qset00000000000000001A',$,'Qto_WallBaseQuantities',$,$,(#221));
 #221=IFCQUANTITYLENGTH('Width',$,$,200.);
 #230=IFCRELDEFINESBYTYPE('Rdbt00000000000000001A',$,$,$,(#100,#110),#200);
-#250=IFCPROPERTYSET('Pset00000000000000002A',$,'Pset_WallCommon',$,(#251));
+#250=IFCPROPERTYSET('Pset00000000000000002A',$,'Pset_WallCommon',$,(#251,#252,#253));
 #251=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('REI 120'),$);
+#252=IFCPROPERTYBOUNDEDVALUE('LoadCapacity',$,IFCFORCEMEASURE(8.),IFCFORCEMEASURE(2.),$,IFCFORCEMEASURE(5.));
+#253=IFCPROPERTYTABLEVALUE('Deflection',$,(IFCREAL(1.),IFCREAL(2.)),(IFCREAL(10.),IFCREAL(20.)),$,$,$,$);
 #260=IFCRELDEFINESBYPROPERTIES('Rdbp00000000000000001A',$,$,$,(#100),#250);
 ENDSEC;
 END-ISO-10303-21;
@@ -74,10 +76,12 @@ function serverDataModelForFixture(): DataModel {
         { property_name: 'IsExternal', property_value: 'true', property_type: 'boolean', data_type: 'IFCBOOLEAN' },
         { property_name: 'ThermalTransmittance', property_value: '0.24', property_type: 'real', data_type: 'IFCREAL' },
         { property_name: 'Layers', property_value: '3', property_type: 'integer', data_type: 'IFCINTEGER' },
-        { property_name: 'AcousticRating', property_value: 'R1, R2', property_type: 'string' },
+        { property_name: 'AcousticRating', property_value: 'R1, R2', property_type: 'string', values: ['R1', 'R2'] },
       ] }],
       [250, { pset_id: 250, pset_name: 'Pset_WallCommon', properties: [
         { property_name: 'FireRating', property_value: 'REI 120', property_type: 'string', data_type: 'IFCLABEL' },
+        { property_name: 'LoadCapacity', property_value: '5 [2 \u2013 8]', property_type: 'string', data_type: 'IFCFORCEMEASURE', values: ['2', '8', '5'] },
+        { property_name: 'Deflection', property_value: 'Table (2 rows)', property_type: 'string', values: ['1', '2', '10', '20'] },
       ] }],
     ]),
     quantitySets: new Map([
@@ -162,6 +166,26 @@ describe('server↔client Type parity (#1751/#1754)', () => {
 
     // Group sums identical (proves server numeric props are real numbers).
     assert.deepEqual(serverResult.summary?.sums, clientResult.summary?.sums, 'group sums diverge');
+
+    // IDS candidate arrays (issue #1766): the property entries surfaced by the
+    // provider carry identical `values[]` on both parse paths, so IDS
+    // any-match checks behave the same server-side and in-browser.
+    const clientProv = createListDataProvider(clientStore);
+    const serverProv = createListDataProvider(serverStore);
+    const valuesOf = (prov: ReturnType<typeof createListDataProvider>, id: number) => {
+      const out: Record<string, string[] | undefined> = {};
+      for (const set of [...prov.getPropertySets(id), ...prov.getTypePropertySets!(id)]) {
+        for (const p of set.properties as Array<{ name: string; values?: string[] }>) {
+          out[`${set.name}.${p.name}`] = p.values;
+        }
+      }
+      return out;
+    };
+    assert.deepEqual(valuesOf(serverProv, 100), valuesOf(clientProv, 100), 'candidate values[] diverge');
+    // Concrete pins: enumerated (type), bounded + table (instance).
+    assert.deepEqual(valuesOf(clientProv, 100)['Pset_WallCommon.AcousticRating'], ['R1', 'R2']);
+    assert.deepEqual(valuesOf(clientProv, 100)['Pset_WallCommon.LoadCapacity'], ['2', '8', '5']);
+    assert.deepEqual(valuesOf(clientProv, 100)['Pset_WallCommon.Deflection'], ['1', '2', '10', '20']);
     assert.equal(serverResult.summary?.sums['w'], 400); // 200 + 200
     assert.ok(Math.abs((serverResult.summary?.sums['u'] ?? 0) - 0.48) < 1e-9); // 0.24 + 0.24
   });

@@ -28,7 +28,7 @@ pub async fn get_data_model(
     State(state): State<AppState>,
     axum::extract::Path(cache_key): axum::extract::Path<String>,
 ) -> Result<Response, ApiError> {
-    let data_model_cache_key = format!("{}-datamodel-v4", cache_key);
+    let data_model_cache_key = format!("{}-datamodel-v5", cache_key);
 
     match state.cache.get_bytes(&data_model_cache_key).await? {
         Some(data_model_parquet) => {

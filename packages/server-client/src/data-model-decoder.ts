@@ -29,6 +29,9 @@ export interface Property {
   /** Raw IFC measure/value type tag (e.g. "IFCLENGTHMEASURE"), when present.
    *  Added with the data-model v3 payload; `undefined` for older servers. */
   data_type?: string;
+  /** Candidate value array for multi-valued properties (enumerated / bounded /
+   *  list / table), for IDS any-match checks. v5 payload; absent otherwise. */
+  values?: string[];
 }
 
 export interface PropertySet {
@@ -253,6 +256,8 @@ export async function decodeDataModel(data: ArrayBuffer): Promise<DataModel> {
   const propertyTypesArr = propertiesArrow.getChild('property_type')?.toArray() as string[];
   // Additive v3 column — absent (undefined) for older-server payloads.
   const dataTypesArr = propertiesArrow.getChild('data_type')?.toArray() as (string | null)[] | undefined;
+  // Additive v5 column: JSON-encoded candidate arrays, sparse (issue #1766).
+  const valuesJsonArr = propertiesArrow.getChild('values_json')?.toArray() as (string | null)[] | undefined;
 
   const propertySets = new Map<number, PropertySet>();
   for (let i = 0; i < psetIds.length; i++) {
@@ -270,6 +275,7 @@ export async function decodeDataModel(data: ArrayBuffer): Promise<DataModel> {
       property_value: propertyValuesArr[i] ?? '',
       property_type: propertyTypesArr[i] ?? '',
       data_type: dataTypesArr?.[i] ?? undefined,
+      values: parseValuesJson(valuesJsonArr?.[i]),
     });
   }
 
@@ -509,4 +515,16 @@ export async function decodeDataModel(data: ArrayBuffer): Promise<DataModel> {
       element_to_space: elementToSpace,
     },
   };
+}
+
+/** Parse a v5 `values_json` cell into the candidate array; undefined for
+ *  null/absent/malformed cells (treated as no candidates). */
+function parseValuesJson(cell: string | null | undefined): string[] | undefined {
+  if (!cell) return undefined;
+  try {
+    const parsed = JSON.parse(cell);
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed.map(String) : undefined;
+  } catch {
+    return undefined;
+  }
 }

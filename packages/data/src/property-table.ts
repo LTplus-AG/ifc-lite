@@ -21,6 +21,10 @@ export interface Property {
   name: string;
   type: PropertyValueType;
   value: PropertyValue;
+  /** Candidate values for multi-valued properties (enumerated / bounded /
+   *  list / table) — IDS facet checks pass when ANY candidate matches
+   *  (issue #1766). Absent for single values. */
+  values?: string[];
   unit?: string;
   /** Raw IFC measure value type of this property (e.g. "IFCVOLUMETRICFLOWRATEMEASURE"),
    *  used to resolve the file's declared display unit (issue #1573). Absent for

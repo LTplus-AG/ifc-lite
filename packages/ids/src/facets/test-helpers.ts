@@ -105,7 +105,7 @@ export function createMockAccessor(entities: MockEntity[]): IFCDataAccessor {
           name: prop.propName,
           value: prop.value,
           dataType: prop.dataType || 'IFCLABEL',
-          ...(prop.values ? { values: prop.values } : {}),
+          ...(prop.values?.length ? { values: prop.values } : {}),
         });
       }
       return Array.from(psetMap.values());

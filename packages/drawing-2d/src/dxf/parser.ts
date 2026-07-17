@@ -43,21 +43,27 @@ const MAX_ENTITIES = 500_000;
 // GROUP-CODE READER
 // ═══════════════════════════════════════════════════════════════════════════
 
+const GROUP_CODE_RE = /^-?\d+$/;
+
 /** Split an ASCII DXF file into (code, value) pairs. */
 export function readDxfPairs(text: string): DxfPair[] {
   if (text.startsWith(BINARY_DXF_SENTINEL)) {
     throw new Error('Binary DXF files are not supported; re-save as ASCII DXF.');
   }
   const lines = text.split(/\r\n|\r|\n/);
+  // Trailing newlines produce empty final lines; tolerate them.
+  let end = lines.length;
+  while (end > 0 && lines[end - 1].trim() === '') end--;
   const pairs: DxfPair[] = [];
-  for (let i = 0; i + 1 < lines.length; i += 2) {
+  for (let i = 0; i < end; i += 2) {
     const codeStr = lines[i].trim();
-    if (codeStr === '' && i + 1 === lines.length - 1) break; // trailing blank
-    const code = Number.parseInt(codeStr, 10);
-    if (!Number.isFinite(code)) {
+    if (!GROUP_CODE_RE.test(codeStr)) {
       throw new Error(`Malformed DXF: expected a group code at line ${i + 1}, got "${codeStr.slice(0, 32)}"`);
     }
-    pairs.push({ code, value: lines[i + 1] });
+    if (i + 1 >= end) {
+      throw new Error(`Malformed DXF: group code ${codeStr} at line ${i + 1} has no value line`);
+    }
+    pairs.push({ code: Number.parseInt(codeStr, 10), value: lines[i + 1] });
   }
   return pairs;
 }
@@ -288,7 +294,7 @@ function parseEntityList(pairs: DxfPair[], start: number, end: number, doc: DxfD
         entities.push(parseMtext(body));
         break;
       case 'SPLINE':
-        entities.push(parseSpline(body));
+        entities.push(parseSpline(body, doc));
         break;
       case 'SOLID':
       case 'TRACE':
@@ -543,7 +549,7 @@ function parseText(body: DxfPair[]): DxfTextEntity {
   return e;
 }
 
-function parseSpline(body: DxfPair[]): import('./types.js').DxfSplineEntity {
+function parseSpline(body: DxfPair[], doc: DxfDocument): import('./types.js').DxfSplineEntity {
   const e: import('./types.js').DxfSplineEntity = {
     ...parseCommon(body),
     kind: 'spline',
@@ -553,18 +559,24 @@ function parseSpline(body: DxfPair[]): import('./types.js').DxfSplineEntity {
     controlPoints: [],
     fitPoints: [],
   };
+  const weights: number[] = [];
+  let flags = 0;
   let currentCtrl: { x: number; y: number } | null = null;
   let currentFit: { x: number; y: number } | null = null;
   for (const { code, value } of body) {
     switch (code) {
       case 70:
-        e.closed = (int(value) & 1) !== 0;
+        flags = int(value);
+        e.closed = (flags & 1) !== 0;
         break;
       case 71:
         e.degree = Math.max(1, int(value));
         break;
       case 40:
         e.knots.push(num(value));
+        break;
+      case 41:
+        weights.push(num(value));
         break;
       case 10:
         currentCtrl = { x: num(value), y: 0 };
@@ -580,6 +592,20 @@ function parseSpline(body: DxfPair[]): import('./types.js').DxfSplineEntity {
       case 21:
         if (currentFit) currentFit.y = num(value);
         break;
+    }
+  }
+  // The tessellator evaluates a non-rational clamped B-spline. Rational
+  // splines with non-uniform weights and periodic splines deviate from
+  // that; surface a warning instead of failing (periodic knot vectors
+  // also fail the clamped-knot check and fall back to the control
+  // polygon). Fit points, when present, are exact either way.
+  if (e.fitPoints.length < 2) {
+    const nonUniform = weights.length > 0 && weights.some((w) => Math.abs(w - weights[0]) > 1e-9);
+    if (nonUniform) {
+      doc.warnings.push('Rational SPLINE with non-uniform weights approximated as non-rational.');
+    }
+    if ((flags & 2) !== 0) {
+      doc.warnings.push('Periodic SPLINE approximated by its control polygon.');
     }
   }
   return e;
@@ -800,6 +826,8 @@ function parseHatch(body: DxfPair[], doc: DxfDocument): DxfHatchEntity {
           let end = takeIf(51) ?? 360;
           const ccw = (takeIf(73) ?? 1) !== 0;
           if (!ccw) {
+            // Clockwise edges store angles measured clockwise; negate and
+            // swap to recover the true geometry (ezdxf's convention).
             const s = start;
             start = -end;
             end = -s;

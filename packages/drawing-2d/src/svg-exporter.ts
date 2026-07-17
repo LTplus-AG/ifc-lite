@@ -486,8 +486,9 @@ export class SVGExporter {
         const pts = path.points.map(mapPoint);
         const pointsAttr = pts.map((p) => `${p.x.toFixed(3)},${p.y.toFixed(3)}`).join(' ');
         const tag = path.closed ? 'polygon' : 'polyline';
-        const dash = path.dashed ? ' stroke-dasharray="1.2 0.8"' : '';
-        layer += `      <${tag} points="${pointsAttr}" fill="none" stroke="${path.color ?? dxfLayer.color}" stroke-width="0.18" stroke-linecap="round"${dash}/>\n`;
+        const strokeWidth = path.widthMm ?? 0.18;
+        const dash = path.dashed ? ` stroke-dasharray="${(strokeWidth * 6).toFixed(3)} ${(strokeWidth * 4).toFixed(3)}"` : '';
+        layer += `      <${tag} points="${pointsAttr}" fill="none" stroke="${path.color ?? dxfLayer.color}" stroke-width="${strokeWidth}" stroke-linecap="round"${dash}/>\n`;
       }
 
       for (const text of dxfLayer.texts) {
@@ -499,8 +500,17 @@ export class SVGExporter {
         // follow or labels detach from their linework.
         const heightMm = text.height * placement.scale * transform.scale;
         const anchorAttr = text.align === 'center' ? 'middle' : text.align === 'right' ? 'end' : 'start';
-        const content = this.escapeXml(text.text).replace(/\n/g, ' ');
-        layer += `      <text x="${anchor.x.toFixed(3)}" y="${anchor.y.toFixed(3)}" font-family="Arial, sans-serif" font-size="${heightMm.toFixed(3)}" fill="${text.color ?? dxfLayer.color}" text-anchor="${anchorAttr}" transform="rotate(${angle.toFixed(2)} ${anchor.x.toFixed(3)} ${anchor.y.toFixed(3)})">${content}</text>\n`;
+        const baseline =
+          text.valign === 'bottom' ? 'text-after-edge'
+            : text.valign === 'middle' ? 'central'
+              : text.valign === 'top' ? 'text-before-edge'
+                : 'alphabetic';
+        // Multiline MTEXT stacks with tspans, matching the canvas layout.
+        const lines = text.text.split('\n');
+        const content = lines
+          .map((line, i) => `<tspan x="${anchor.x.toFixed(3)}" dy="${i === 0 ? 0 : (heightMm * 1.3).toFixed(3)}">${this.escapeXml(line)}</tspan>`)
+          .join('');
+        layer += `      <text x="${anchor.x.toFixed(3)}" y="${anchor.y.toFixed(3)}" font-family="Arial, sans-serif" font-size="${heightMm.toFixed(3)}" fill="${text.color ?? dxfLayer.color}" text-anchor="${anchorAttr}" dominant-baseline="${baseline}" transform="rotate(${angle.toFixed(2)} ${anchor.x.toFixed(3)} ${anchor.y.toFixed(3)})">${content}</text>\n`;
       }
 
       layer += '    </g>\n';

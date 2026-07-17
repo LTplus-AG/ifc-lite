@@ -66,9 +66,11 @@ function PlacementField({
 function UnderlayCard({
   state,
   onCenterOnModel,
+  planViewActive,
 }: {
   state: DxfUnderlayState;
   onCenterOnModel: (id: string) => void;
+  planViewActive: boolean;
 }): React.ReactElement {
   const removeDxfUnderlay = useViewerStore((s) => s.removeDxfUnderlay);
   const setDxfUnderlayVisible = useViewerStore((s) => s.setDxfUnderlayVisible);
@@ -99,7 +101,8 @@ function UnderlayCard({
           variant="ghost"
           size="icon-sm"
           onClick={() => onCenterOnModel(state.id)}
-          title="Center on model"
+          disabled={!planViewActive}
+          title={planViewActive ? 'Center on model' : 'Center on model (switch to a plan view first)'}
         >
           <Crosshair className="h-3.5 w-3.5" />
         </Button>
@@ -301,7 +304,7 @@ export function DxfUnderlayPanel({ onClose, onCenterOnModel, planViewActive }: D
         )}
 
         {dxfUnderlays.map((state) => (
-          <UnderlayCard key={state.id} state={state} onCenterOnModel={onCenterOnModel} />
+          <UnderlayCard key={state.id} state={state} onCenterOnModel={onCenterOnModel} planViewActive={planViewActive} />
         ))}
       </div>
     </div>

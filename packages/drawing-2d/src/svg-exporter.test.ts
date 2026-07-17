@@ -21,7 +21,9 @@ const emptyDrawing = (): Drawing2D => ({
     cutLineCount: 0,
     projectionLineCount: 0,
     hiddenLineCount: 0,
-    entityCount: 0,
+    silhouetteLineCount: 0,
+    polygonCount: 0,
+    totalTriangles: 0,
     processingTimeMs: 0,
   },
 });

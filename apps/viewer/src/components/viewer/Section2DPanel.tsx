@@ -722,7 +722,13 @@ export function Section2DPanel({
               <Button
                 variant={settingsPanelOpen || activePresetId ? 'default' : 'ghost'}
                 size="icon-sm"
-                onClick={() => setSettingsPanelOpen((prev) => !prev)}
+                onClick={() => {
+                  // The right-side slide-in panels share one slot.
+                  setSettingsPanelOpen((prev) => {
+                    if (!prev) setDxfPanelOpen(false);
+                    return !prev;
+                  });
+                }}
                 title="Drawing settings"
                 className="relative"
               >
@@ -736,7 +742,11 @@ export function Section2DPanel({
               <Button
                 variant={sheetPanelVisible || sheetEnabled ? 'default' : 'ghost'}
                 size="icon-sm"
-                onClick={() => setSheetPanelVisible(!sheetPanelVisible)}
+                onClick={() => {
+                  // The right-side slide-in panels share one slot.
+                  if (!sheetPanelVisible) setDxfPanelOpen(false);
+                  setSheetPanelVisible(!sheetPanelVisible);
+                }}
                 title="Drawing sheet setup"
                 className="relative"
               >
@@ -750,7 +760,16 @@ export function Section2DPanel({
               <Button
                 variant={dxfPanelOpen ? 'default' : 'ghost'}
                 size="icon-sm"
-                onClick={() => setDxfPanelOpen((prev) => !prev)}
+                onClick={() => {
+                  // The right-side slide-in panels share one slot.
+                  setDxfPanelOpen((prev) => {
+                    if (!prev) {
+                      setSheetPanelVisible(false);
+                      setSettingsPanelOpen(false);
+                    }
+                    return !prev;
+                  });
+                }}
                 title="DXF underlays"
                 className="relative"
               >
@@ -887,15 +906,15 @@ export function Section2DPanel({
                     </DropdownMenuItem>
                   )}
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => setSettingsPanelOpen(true)}>
+                  <DropdownMenuItem onClick={() => { setDxfPanelOpen(false); setSettingsPanelOpen(true); }}>
                     <Palette className="h-4 w-4 mr-2" />
                     Drawing Settings...
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setSheetPanelVisible(true)}>
+                  <DropdownMenuItem onClick={() => { setDxfPanelOpen(false); setSheetPanelVisible(true); }}>
                     <FileText className="h-4 w-4 mr-2" />
                     Sheet Setup {sheetEnabled ? '(On)' : ''}
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setDxfPanelOpen(true)}>
+                  <DropdownMenuItem onClick={() => { setSettingsPanelOpen(false); setSheetPanelVisible(false); setDxfPanelOpen(true); }}>
                     <Layers className="h-4 w-4 mr-2" />
                     DXF Underlays {dxfUnderlays.length > 0 ? `(${dxfUnderlays.length})` : ''}
                   </DropdownMenuItem>
@@ -981,7 +1000,7 @@ export function Section2DPanel({
           </div>
         )}
 
-        {status === 'ready' && drawing && (drawing.cutPolygons.length > 0 || drawing.lines?.length > 0) && (
+        {status === 'ready' && drawing && (drawing.cutPolygons.length > 0 || drawing.lines?.length > 0 || dxfUnderlayData.length > 0) && (
           <>
             <Drawing2DCanvas
               drawing={drawing}
@@ -1092,7 +1111,7 @@ export function Section2DPanel({
           </div>
         )}
 
-        {status === 'ready' && drawing && drawing.cutPolygons.length === 0 && (!drawing.lines || drawing.lines.length === 0) && (
+        {status === 'ready' && drawing && drawing.cutPolygons.length === 0 && (!drawing.lines || drawing.lines.length === 0) && dxfUnderlayData.length === 0 && (
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="text-center text-muted-foreground">
               <p className="font-medium">No geometry at this level</p>

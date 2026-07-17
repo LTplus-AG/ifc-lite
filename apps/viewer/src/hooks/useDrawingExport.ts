@@ -87,7 +87,11 @@ function buildDxfUnderlaySvg(
       const fontSize = text.height * fontScale;
       if (fontSize <= 0) continue;
       const anchorAttr = text.align === 'center' ? 'middle' : text.align === 'right' ? 'end' : 'start';
-      const content = escapeXml(text.text).replace(/\n/g, ' ');
+      // Multiline MTEXT stacks with tspans, matching the canvas layout.
+      const content = text.text
+        .split('\n')
+        .map((line, i) => `<tspan x="${anchor.x.toFixed(4)}" dy="${i === 0 ? 0 : (fontSize * 1.3).toFixed(4)}">${escapeXml(line)}</tspan>`)
+        .join('');
       svg += `      <text x="${anchor.x.toFixed(4)}" y="${anchor.y.toFixed(4)}" font-family="Arial, sans-serif" font-size="${fontSize.toFixed(4)}" fill="${text.color}" text-anchor="${anchorAttr}" dominant-baseline="${dxfValignToBaseline(text.valign)}" transform="rotate(${angle.toFixed(2)} ${anchor.x.toFixed(4)} ${anchor.y.toFixed(4)})">${content}</text>\n`;
     }
 

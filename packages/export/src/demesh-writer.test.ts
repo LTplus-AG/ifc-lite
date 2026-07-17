@@ -198,6 +198,20 @@ describe('applySimplifiedGeometry', () => {
     expect(out).not.toMatch(/IFCTRIANGULATEDFACESET/);
   });
 
+  it('replaces a repeated express id once and skips the duplicates (no orphaned overlay chain)', async () => {
+    const { store, view, editor } = await loadStore(FIXTURE_SINGLE);
+    const report = applySimplifiedGeometry(store, editor, [
+      { expressId: 10, ...TETRA },
+      { expressId: 10, ...TETRA },
+    ]);
+    expect(report.replaced).toEqual([10]);
+    expect(report.skipped).toEqual([{ expressId: 10, reason: 'duplicate-id' }]);
+    // Exactly ONE authored faceset chain in the output.
+    const out = exportText(store, view);
+    expect(out.match(/IFCTRIANGULATEDFACESET/g)).toHaveLength(1);
+    expect(out.match(/IFCCARTESIANPOINTLIST3D/g)).toHaveLength(1);
+  });
+
   it('rejects malformed geometry (non-finite coords, trailing values) instead of rewriting it', async () => {
     const { store, view, editor } = await loadStore(FIXTURE_SINGLE);
     const report = applySimplifiedGeometry(store, editor, [

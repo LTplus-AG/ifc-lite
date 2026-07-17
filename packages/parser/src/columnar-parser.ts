@@ -1064,11 +1064,6 @@ interface RootAttrIndices {
 // entities, keeping the on-demand path cheap even when called per entity.
 const rootAttrIndexCache = new Map<string, RootAttrIndices>();
 
-/** A STEP bare-enumeration token as the extractor stores it — dotted, uppercase
- *  (`.USERDEFINED.`, `.FLAT_ROOF.`). Quoted strings arrive with quotes stripped,
- *  so a genuine text value never has the surrounding dots. */
-const STEP_ENUM_TOKEN = /^\.[A-Z][A-Z0-9_]*\.$/;
-
 function getRootAttrIndices(type: string): RootAttrIndices {
     let idx = rootAttrIndexCache.get(type);
     if (!idx) {
@@ -1106,18 +1101,21 @@ export function extractRootAttributesFromEntity(
     entity: IfcEntity
 ): { globalId: string; name: string; description: string; objectType: string; tag: string } {
     const attrs = entity.attributes || [];
+    const enumIdx = entity.enumAttrIndices;
     const idx = getRootAttrIndices(entity.type);
     const pick = (schemaIndex: number, fallbackIndex: number): string => {
         const i = idx.known ? schemaIndex : fallbackIndex;
         const raw = i >= 0 ? attrs[i] : undefined;
         if (typeof raw !== 'string') return '';
         // Unknown-type fallback only: a fixed index can land on a STEP bare-enum
-        // token — the extractor stores it as a dotted string (`.USERDEFINED.`),
-        // e.g. a PredefinedType at attr 7 for a non-IfcElement layout — which
-        // must not leak into a Tag/Description cell. Mirror the Rust server path
-        // (string_at rejects enums), which renders these blank (#1779). Skipped
-        // for known types, whose schema indices point at genuine string slots.
-        if (!idx.known && STEP_ENUM_TOKEN.test(raw)) return '';
+        // token — e.g. a PredefinedType at attr 7 for a non-IfcElement layout —
+        // which must not leak into a Tag/Description cell. Reject by token KIND
+        // via the extractor's side channel (#1799), not by dotted-string shape:
+        // a quoted string that merely looks like an enum ('.USERDEFINED.')
+        // survives, exactly matching the Rust server path (string_at accepts
+        // AttributeValue::String and rejects ::Enum, #1779). Skipped for known
+        // types, whose schema indices point at genuine string slots.
+        if (!idx.known && enumIdx !== undefined && enumIdx.includes(i)) return '';
         return raw;
     };
     return {

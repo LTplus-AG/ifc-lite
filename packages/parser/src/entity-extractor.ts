@@ -18,6 +18,31 @@ const log = createLogger('EntityExtractor');
 /** Maximum recursion depth for parsing nested structures (prevents DoS via deeply nested data) */
 const MAX_PARSE_DEPTH = 100;
 
+/**
+ * Is this raw source token a bare STEP enumeration token (`.USERDEFINED.`,
+ * `.T.`, `.FLAT_ROOF.`)? Mirrors the Rust tokenizer's `enum_value` rule —
+ * `'.' [A-Za-z0-9_]+ '.'` — so client and server classify the token KIND
+ * identically (#1799). Must be called on the token as it appears in the
+ * source (before quote-stripping): a quoted string `'.USERDEFINED.'` starts
+ * with a quote and is never flagged. Char-code loop, no per-call allocation.
+ */
+function isBareEnumToken(token: string): boolean {
+  const n = token.length;
+  if (n < 3 || token.charCodeAt(0) !== 0x2e /* . */ || token.charCodeAt(n - 1) !== 0x2e) {
+    return false;
+  }
+  for (let i = 1; i < n - 1; i++) {
+    const c = token.charCodeAt(i);
+    const alnum =
+      (c >= 0x30 && c <= 0x39) || // 0-9
+      (c >= 0x41 && c <= 0x5a) || // A-Z
+      (c >= 0x61 && c <= 0x7a) || // a-z
+      c === 0x5f; // _
+    if (!alnum) return false;
+  }
+  return true;
+}
+
 export class EntityExtractor {
   private buffer: Uint8Array;
 
@@ -49,13 +74,18 @@ export class EntityExtractor {
       const paramsText = match[3];
 
       // Parse attributes (simplified - handles basic types)
-      const attributes = this.parseAttributes(paramsText);
+      const { attributes, enumAttrIndices } = this.parseAttributes(paramsText);
 
-      return {
+      const entity: IfcEntity = {
         expressId,
         type,
         attributes,
       };
+      // Token-kind side channel (#1799): only attached when at least one
+      // top-level attribute was a bare enum, so the common case allocates
+      // nothing extra and the object shape stays stable for most entities.
+      if (enumAttrIndices) entity.enumAttrIndices = enumAttrIndices;
+      return entity;
     } catch (error) {
       log.error('Failed to extract entity', error, {
         operation: 'extractEntity',
@@ -66,10 +96,18 @@ export class EntityExtractor {
     }
   }
 
-  private parseAttributes(paramsText: string): any[] {
-    if (!paramsText.trim()) return [];
+  private parseAttributes(paramsText: string): {
+    attributes: any[];
+    enumAttrIndices?: number[];
+  } {
+    if (!paramsText.trim()) return { attributes: [] };
 
     const attributes: any[] = [];
+    // Indices of top-level attributes whose source token was a bare enum
+    // (`.USERDEFINED.`). Lazily allocated — undefined when the entity has none.
+    // Kind is decided on the RAW token, before parseAttributeValue strips
+    // quotes, so `'.USERDEFINED.'` (a genuine string) is never flagged (#1799).
+    let enumAttrIndices: number[] | undefined;
     let depth = 0;
     let current = '';
     let inString = false;
@@ -100,7 +138,9 @@ export class EntityExtractor {
         current += char;
       } else if (char === ',' && depth === 0) {
         // End of attribute
-        attributes.push(this.parseAttributeValue(current.trim()));
+        const token = current.trim();
+        if (isBareEnumToken(token)) (enumAttrIndices ??= []).push(attributes.length);
+        attributes.push(this.parseAttributeValue(token));
         current = '';
       } else {
         current += char;
@@ -108,11 +148,13 @@ export class EntityExtractor {
     }
 
     // Add last attribute
-    if (current.trim()) {
-      attributes.push(this.parseAttributeValue(current.trim()));
+    const lastToken = current.trim();
+    if (lastToken) {
+      if (isBareEnumToken(lastToken)) (enumAttrIndices ??= []).push(attributes.length);
+      attributes.push(this.parseAttributeValue(lastToken));
     }
 
-    return attributes;
+    return { attributes, enumAttrIndices };
   }
 
   private parseAttributeValue(value: string, depth: number = 0): any {

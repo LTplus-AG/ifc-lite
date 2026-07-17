@@ -100,10 +100,18 @@ if (CHECK) {
     console.error(`✗ ${outPath} is missing — run: node scripts/generate-server-attr-indices.mjs`);
     process.exit(1);
   }
+  // A commented-out arm is dead to Rust (it falls back to the unknown-type
+  // indices), but the arm regex would still match it and report "in sync" —
+  // recreating the very drift this guards against. Strip Rust block and line
+  // comments first. (attr_indices.rs holds no string literals containing `//`
+  // or `/*` — type-name keys are `[A-Z0-9_]+` — so this can't eat a real arm.)
+  const stripRustComments = (text) =>
+    text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
   // Rust `match` is FIRST-arm-wins; a Map is last-wins. Track duplicates so a
   // hand-added second arm can't slip a wrong value past this guard by matching
   // the registry on its (dead) last copy while Rust dispatches the first.
-  const parseArms = (text) => {
+  const parseArms = (rawText) => {
+    const text = stripRustComments(rawText);
     const map = new Map();
     const dups = new Set();
     const re = /"([A-Z0-9_]+)"\s*=>\s*Some\(RootAttrIndices\s*\{\s*description:\s*(-?\d+)\s*,\s*object_type:\s*(-?\d+)\s*,\s*tag:\s*(-?\d+)\s*,\s*predefined_type:\s*(-?\d+)\s*,?\s*\}\)/g;

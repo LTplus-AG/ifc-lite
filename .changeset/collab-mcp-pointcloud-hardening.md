@@ -1,5 +1,5 @@
 ---
-'@ifc-lite/collab-server': patch
+'@ifc-lite/collab-server': minor
 '@ifc-lite/mcp': patch
 '@ifc-lite/pointcloud': patch
 ---

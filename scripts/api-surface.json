@@ -540,6 +540,8 @@
     "updateAnnotation: function"
   ],
   "@ifc-lite/collab-server": [
+    "AccessControl: interface",
+    "AccessControlOptions: interface",
     "AuditEntry: interface",
     "AuditOpType: type",
     "AuditSink: interface",
@@ -625,6 +627,7 @@
     "assertReportDigest: function",
     "canWrite: function",
     "computeHmac: function",
+    "createAccessControl: function",
     "createPathLockRegistry: function",
     "createRateLimiter: function",
     "createReplayProtector: function",

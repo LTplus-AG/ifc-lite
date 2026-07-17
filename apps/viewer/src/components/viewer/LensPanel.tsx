@@ -28,10 +28,14 @@ import { useViewerStore } from '@/store';
 import { useLens } from '@/hooks/useLens';
 import { createLensDataProvider } from '@/lib/lens';
 import { buildAutoColorLensToSave, moveItem } from './lens-editor-utils';
+import { planLensHiddenSync, ruleIsolationOwnsChannel } from './lens-visibility-ownership';
 import type { Lens, LensRule, LensCriteria, AutoColorSpec, AutoColorLegendEntry, DiscoveredLensData } from '@/store/slices/lensSlice';
 import {
   LENS_PALETTE, ENTITY_ATTRIBUTE_NAMES, AUTO_COLOR_SOURCES,
 } from '@/store/slices/lensSlice';
+
+/** Stable empty set for the hidden-sync effect when no lens is active. */
+const EMPTY_LENS_HIDDEN: ReadonlySet<number> = new Set<number>();
 
 /** Format large counts compactly: 1234 → "1.2k" */
 function formatCount(n: number): string {
@@ -1268,6 +1272,12 @@ export function LensPanel({ onClose }: LensPanelProps) {
   const showEntities = useViewerStore((s) => s.showEntities);
   const isolateEntities = useViewerStore((s) => s.isolateEntities);
   const clearIsolation = useViewerStore((s) => s.clearIsolation);
+  // Ownership bookkeeping lives in the STORE (not component state/refs) so a
+  // panel unmount/remount neither loses which hidden ids the lens owns nor
+  // strands a rule isolation it can no longer release.
+  const setLensAppliedHiddenIds = useViewerStore((s) => s.setLensAppliedHiddenIds);
+  const lensRuleIsolation = useViewerStore((s) => s.lensRuleIsolation);
+  const setLensRuleIsolation = useViewerStore((s) => s.setLensRuleIsolation);
   // For footer stats — cheap primitive subscriptions
   const lensColorMapSize = useViewerStore((s) => s.lensColorMap.size);
   const lensHiddenIdsSize = useViewerStore((s) => s.lensHiddenIds.size);
@@ -1326,32 +1336,45 @@ export function LensPanel({ onClose }: LensPanelProps) {
   // Editor state: null = not editing, Lens object = editing/creating
   const [editingLens, setEditingLens] = useState<Lens | null>(null);
   const [creatingAutoColor, setCreatingAutoColor] = useState(false);
-  const [isolatedRuleId, setIsolatedRuleId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  // The exact ids this panel last pushed into the GLOBAL hiddenEntities channel
-  // on behalf of the active lens. Tracked so switching lenses / deactivating a
-  // lens un-hides ONLY the lens's own entities — never the user's manual hides.
-  const appliedLensHiddenRef = useRef<number[]>([]);
+  // Rule isolation applied by the lens (persisted in the store so it survives
+  // panel remounts). Only the ruleId is needed for the card highlight.
+  const isolatedRuleId = lensRuleIsolation?.ruleId ?? null;
+
+  /**
+   * Release the lens's rule isolation. Clears the shared isolation channel
+   * ONLY if the lens still owns it (the channel still holds exactly the ids
+   * the rule click applied) — if the user or the basket has isolated something
+   * else since, their isolation is left alone and only the stale claim drops.
+   */
+  const releaseRuleIsolation = useCallback(() => {
+    const state = useViewerStore.getState();
+    const isolation = state.lensRuleIsolation;
+    if (!isolation) return;
+    if (ruleIsolationOwnsChannel(state.isolatedEntities, isolation.entityIds)) {
+      clearIsolation();
+    }
+    setLensRuleIsolation(null);
+  }, [clearIsolation, setLensRuleIsolation]);
 
   const handleToggle = useCallback((id: string) => {
-    // Clear any rule-isolation this lens applied (both when turning it off and
-    // when switching to another lens). The effect above restores the lens-owned
-    // hidden ids — so no showAll(), which would nuke the user's own visibility.
-    if (isolatedRuleId !== null) clearIsolation();
-    setIsolatedRuleId(null);
+    // Release any rule-isolation this lens applied (both when turning it off
+    // and when switching to another lens). The sync effect below restores the
+    // lens-owned hidden ids — so no showAll(), which would nuke the user's
+    // own visibility.
+    releaseRuleIsolation();
     if (activeLensId === id) {
       setActiveLens(null);
     } else {
       setActiveLens(id);
     }
-  }, [activeLensId, setActiveLens, isolatedRuleId, clearIsolation]);
+  }, [activeLensId, setActiveLens, releaseRuleIsolation]);
 
   /** Click a rule/value row in the active lens to isolate matching entities */
   const handleIsolateRule = useCallback((ruleId: string) => {
     // Toggle off if clicking the already-isolated rule
-    if (isolatedRuleId === ruleId) {
-      setIsolatedRuleId(null);
-      clearIsolation();
+    if (useViewerStore.getState().lensRuleIsolation?.ruleId === ruleId) {
+      releaseRuleIsolation();
       return;
     }
 
@@ -1359,9 +1382,18 @@ export function LensPanel({ onClose }: LensPanelProps) {
     const matchingIds = useViewerStore.getState().lensRuleEntityIds.get(ruleId);
     if (!matchingIds || matchingIds.length === 0) return;
 
-    setIsolatedRuleId(ruleId);
     isolateEntities(matchingIds);
-  }, [isolatedRuleId, isolateEntities, clearIsolation]);
+    // Record ownership: rule id + the exact ids pushed into the channel, so a
+    // later release can verify the channel still holds what the lens applied.
+    setLensRuleIsolation({ ruleId, entityIds: [...matchingIds] });
+  }, [isolateEntities, releaseRuleIsolation, setLensRuleIsolation]);
+
+  // Safety net: if the lens got deactivated while the panel was unmounted
+  // (e.g. a flavor switch cleared activeLensId), a recorded rule isolation
+  // has no owner anymore — release it so the model isn't stuck isolated.
+  useEffect(() => {
+    if (activeLensId === null) releaseRuleIsolation();
+  }, [activeLensId, releaseRuleIsolation]);
 
   const handleNewLens = useCallback(() => {
     setCreatingAutoColor(false);
@@ -1402,34 +1434,34 @@ export function LensPanel({ onClose }: LensPanelProps) {
 
   const handleDeleteLens = useCallback((id: string) => {
     if (activeLensId === id) {
-      // Deactivate first — the effect above un-hides the lens-owned hidden ids.
-      // Clear only the lens's own rule-isolation, never a global showAll().
-      if (isolatedRuleId !== null) clearIsolation();
-      setIsolatedRuleId(null);
+      // Deactivate first — the sync effect below un-hides the lens-owned
+      // hidden ids. Release only the lens's own rule-isolation, never a
+      // global showAll().
+      releaseRuleIsolation();
       setActiveLens(null);
     }
     deleteLens(id);
-  }, [activeLensId, setActiveLens, deleteLens, isolatedRuleId, clearIsolation]);
+  }, [activeLensId, setActiveLens, deleteLens, releaseRuleIsolation]);
 
   // Sync the active lens's hidden ids into the GLOBAL hiddenEntities channel.
-  // Un-hide the previously-applied lens ids BEFORE applying the new set, so:
-  //  - switching lens A→B un-hides A's entities (they no longer stay invisible
-  //    under B),
-  //  - deactivating a lens (activeLensId→null, always a dep) restores exactly
-  //    the lens's own hides and nothing else.
-  // Only lens-owned ids are removed — the user's manual hides are untouched.
+  // planLensHiddenSync computes minimal show/hide deltas plus the ids the lens
+  // OWNS afterwards (only ids it newly hid — an id the user manually hid
+  // before or during the lens stays hidden after teardown). Ownership is
+  // persisted in the store so a panel remount re-runs this as a no-op instead
+  // of losing track of (or double-claiming) the lens's hides.
   useEffect(() => {
-    const applied = appliedLensHiddenRef.current;
-    if (applied.length > 0) {
-      showEntities(applied);
-      appliedLensHiddenRef.current = [];
+    const state = useViewerStore.getState();
+    const plan = planLensHiddenSync({
+      applied: state.lensAppliedHiddenIds,
+      hiddenEntities: state.hiddenEntities,
+      lensHiddenIds: activeLensId ? state.lensHiddenIds : EMPTY_LENS_HIDDEN,
+    });
+    if (plan.show.length > 0) showEntities(plan.show);
+    if (plan.hide.length > 0) hideEntities(plan.hide);
+    if (plan.nextApplied.length > 0 || state.lensAppliedHiddenIds.length > 0) {
+      setLensAppliedHiddenIds(plan.nextApplied);
     }
-    if (lensHiddenIdsSize > 0 && activeLensId) {
-      const ids = Array.from(useViewerStore.getState().lensHiddenIds);
-      hideEntities(ids);
-      appliedLensHiddenRef.current = ids;
-    }
-  }, [activeLensId, lensHiddenIdsSize, hideEntities, showEntities]);
+  }, [activeLensId, lensHiddenIdsSize, hideEntities, showEntities, setLensAppliedHiddenIds]);
 
   const handleExport = useCallback(() => {
     const data = exportLenses();
@@ -1500,10 +1532,10 @@ export function LensPanel({ onClose }: LensPanelProps) {
               size="sm"
               className="h-7 text-[10px] uppercase tracking-wider rounded-sm"
               onClick={() => {
-                // Clear the lens's own rule-isolation; the effect restores the
-                // lens-owned hidden ids. No showAll() — keep the user's hides.
-                if (isolatedRuleId !== null) clearIsolation();
-                setIsolatedRuleId(null);
+                // Release the lens's own rule-isolation; the sync effect
+                // restores the lens-owned hidden ids. No showAll() — keep
+                // the user's hides.
+                releaseRuleIsolation();
                 setActiveLens(null);
               }}
               {...tourAnchor(TOUR_ANCHORS.lensClear)}

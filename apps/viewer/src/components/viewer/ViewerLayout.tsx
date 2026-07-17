@@ -106,12 +106,12 @@ export function ViewerLayout() {
     try {
       resolvedUrl = new URL(modelUrl, window.location.href);
     } catch {
-      console.error('[viewer] autoload from ?model=… refused: malformed URL');
+      console.error('[viewer] autoload from ?model= refused: malformed URL');
       return;
     }
     if (resolvedUrl.origin !== window.location.origin) {
       console.error(
-        `[viewer] autoload from ?model=… refused: cross-origin URL (${resolvedUrl.origin}) — only same-origin models are auto-loaded`,
+        `[viewer] autoload from ?model= refused: cross-origin URL (${resolvedUrl.origin}) - only same-origin models are auto-loaded`,
       );
       return;
     }

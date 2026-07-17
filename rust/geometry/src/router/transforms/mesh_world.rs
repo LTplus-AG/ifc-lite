@@ -173,40 +173,6 @@ impl GeometryRouter {
         self.transform_normals(mesh, transform);
     }
 
-    /// Issue #1474 capture for elements WITHOUT a resolvable ObjectPlacement:
-    /// `apply_placement` never reaches `transform_mesh_world_framed` for them,
-    /// but "no placement" means the world frame IS the object frame, so record
-    /// the identity placement and the current extent as the local bounds.
-    /// Without this, every placement-less element (e.g. mapped-item-only
-    /// exports where the whole transform lives in each
-    /// `IfcCartesianTransformationOperator`) is invisible to consumers that
-    /// invert the placement, like the demesher session.
-    pub(crate) fn capture_unplaced_frame(mesh: &mut Mesh) {
-        mesh.local_bounds = if mesh.positions.is_empty() {
-            None
-        } else {
-            let mut min = [f32::INFINITY; 3];
-            let mut max = [f32::NEG_INFINITY; 3];
-            for chunk in mesh.positions.chunks_exact(3) {
-                for k in 0..3 {
-                    if chunk[k] < min[k] {
-                        min[k] = chunk[k];
-                    }
-                    if chunk[k] > max[k] {
-                        max[k] = chunk[k];
-                    }
-                }
-            }
-            Some([min[0], min[1], min[2], max[0], max[1], max[2]])
-        };
-        mesh.local_to_world = Some([
-            1.0, 0.0, 0.0, 0.0, //
-            0.0, 1.0, 0.0, 0.0, //
-            0.0, 0.0, 1.0, 0.0, //
-            0.0, 0.0, 0.0, 1.0,
-        ]);
-    }
-
     #[inline]
     fn transform_normals(&self, mesh: &mut Mesh, transform: &Matrix4<f64>) {
         // Normals transform by the inverse-transpose, not the raw linear block:

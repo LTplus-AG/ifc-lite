@@ -114,9 +114,14 @@ impl GeometryRouter {
         let placement_attr = match element.get(5) {
             Some(attr) if !attr.is_null() => attr,
             _ => {
-                // No ObjectPlacement: positions stay as-is, but the #1474
-                // frame capture must still happen (identity placement).
-                Self::capture_unplaced_frame(mesh);
+                // No ObjectPlacement: the world frame IS the object frame, so
+                // run the ordinary world step with an identity placement. This
+                // both records the #1474 frame capture AND applies the model
+                // RTC shift / local-frame relativization exactly like every
+                // placed mesh — consumers (renderer, demesher session)
+                // reconstruct `true_world = origin + position + rtc` uniformly
+                // and must not special-case placement-less geometry.
+                self.transform_mesh_world(mesh, &Matrix4::identity());
                 return Ok(());
             }
         };
@@ -124,7 +129,7 @@ impl GeometryRouter {
         let placement = match decoder.resolve_ref(placement_attr)? {
             Some(p) => p,
             None => {
-                Self::capture_unplaced_frame(mesh);
+                self.transform_mesh_world(mesh, &Matrix4::identity());
                 return Ok(());
             }
         };
@@ -184,11 +189,12 @@ impl GeometryRouter {
                 }
             }
         }
-        // No resolvable ObjectPlacement: positions stay as-is, but the #1474
-        // frame capture must still happen (identity placement) — mirrors the
-        // same branch in `apply_placement` (single-mesh path).
+        // No resolvable ObjectPlacement: run the ordinary world step with an
+        // identity placement — records the #1474 frame capture AND applies
+        // the model RTC shift / relativization, mirroring the same branch in
+        // `apply_placement` (single-mesh path).
         for sub in &mut sub_meshes.sub_meshes {
-            Self::capture_unplaced_frame(&mut sub.mesh);
+            self.transform_mesh_world(&mut sub.mesh, &Matrix4::identity());
         }
         Ok(())
     }

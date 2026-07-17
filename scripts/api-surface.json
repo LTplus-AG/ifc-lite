@@ -964,6 +964,7 @@
     "findDataType: function",
     "findEntity: function",
     "findPropertySet: function",
+    "formatStepReal: function",
     "generateHeader: function",
     "generateStepFileWithRegistry: function",
     "getAttributeXsdTypes: function",

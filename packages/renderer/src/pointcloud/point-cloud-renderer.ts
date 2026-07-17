@@ -183,7 +183,10 @@ export class PointCloudRenderer {
   }
 
   getOptions(): Readonly<ResolvedPointCloudRenderOptions> {
-    return this.options;
+    // Snapshot the mask — handing out the live Uint32Array would let
+    // callers mutate renderer visibility without going through
+    // setOptions.
+    return { ...this.options, classMask: this.options.classMask.slice() };
   }
 
   // ─── one-shot API (IFCx) ──────────────────────────────────────────────────

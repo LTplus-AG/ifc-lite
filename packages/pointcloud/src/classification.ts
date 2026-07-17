@@ -24,8 +24,8 @@ export const LAS_CLASS_COUNT = 256;
  * since 1.4, and R13+ added 19..22; we follow the current spec.
  */
 const ASPRS_STANDARD_NAMES: ReadonlyArray<string> = [
-  'Never classified',
-  'Unassigned',
+  'Created, never classified',
+  'Unclassified',
   'Ground',
   'Low vegetation',
   'Medium vegetation',

@@ -13,8 +13,8 @@ import {
 
 describe('lasClassificationName', () => {
   it('maps the ASPRS standard codes to their spec names', () => {
-    expect(lasClassificationName(0)).toBe('Never classified');
-    expect(lasClassificationName(1)).toBe('Unassigned');
+    expect(lasClassificationName(0)).toBe('Created, never classified');
+    expect(lasClassificationName(1)).toBe('Unclassified');
     expect(lasClassificationName(2)).toBe('Ground');
     expect(lasClassificationName(6)).toBe('Building');
     expect(lasClassificationName(9)).toBe('Water');

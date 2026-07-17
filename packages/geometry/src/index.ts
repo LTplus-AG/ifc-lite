@@ -437,7 +437,12 @@ export class GeometryProcessor {
           prePass.materialColorCounts,
           prePass.materialColors,
         );
-        meshes.push(...convertMeshCollectionToBatch(collection));
+        // Loop, not `push(...batch)`: spreading passes one ARGUMENT per mesh,
+        // and past V8's ~65k argument ceiling that throws RangeError "Maximum
+        // call stack size exceeded" — real models (Holter: ~110k meshes) hit
+        // it, killing the whole sync process() call.
+        const batch = convertMeshCollectionToBatch(collection);
+        for (let i = 0; i < batch.length; i++) meshes.push(batch[i]);
       }
 
       return { meshes, buildingRotation: prePass.buildingRotation ?? undefined };

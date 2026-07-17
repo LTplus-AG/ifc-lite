@@ -738,7 +738,11 @@ export function useIfcLoader() {
 
       // Cache + server are PRIMARY-ONLY: a federated add is WASM-only with no
       // cache/server round-trip (matches the former parseStepBufferViewerModel).
-      if (target.kind === 'primary' && cachePlan.shouldCache) {
+      // Texture-carrying .ifcZIPs also bypass the cache READ (#1781): the format
+      // cannot persist UVs/textures, so any existing entry — including one
+      // written before texture support shipped — would serve the model
+      // permanently untextured. Mirrors the cache-write skip below.
+      if (target.kind === 'primary' && cachePlan.shouldCache && !textureBitmaps) {
         setProgress({ phase: 'Checking cache', percent: 5 });
         const cacheResult = await getCached(cacheKey);
         if (cacheResult) {

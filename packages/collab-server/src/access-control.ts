@@ -16,7 +16,14 @@
  * persist). Writes are debounced (a burst of claims collapses to one write)
  * and atomic (temp file + rename, so a crash mid-write never leaves a torn
  * state file); `flush()` awaits any pending/in-flight write for the shutdown
- * path.
+ * path and REJECTS when the final state never reached disk.
+ *
+ * Load is fail-closed: a state file that exists but cannot be read or parsed
+ * throws at startup instead of silently running open. A MISSING state file
+ * with rooms already persisted in the data dir (upgrade from a pre-state
+ * version, or a lost/unmounted volume) marks those rooms claimed so a
+ * squatter cannot first-claim them; their admins keep minting with their
+ * still-valid admin bearers.
  */
 
 import * as fs from 'node:fs';
@@ -54,9 +61,108 @@ export interface AccessControl {
   /**
    * Await any pending/in-flight state write. Call before `process.exit` in
    * shutdown handlers — a SIGTERM during the persist debounce (or mid-write)
-   * would otherwise lose claims/revocations.
+   * would otherwise lose claims/revocations. Rejects when the state could
+   * not be written (the caller must NOT report a durable shutdown).
    */
   flush(): Promise<void>;
+}
+
+/**
+ * Legacy revocations (the pre exp-tracking `revoked: string[]` shape) and
+ * kick-path revocations carry no token expiry. Retain them for the maximum
+ * mintable token lifetime (`maxTtlSeconds` default 30 days) plus a day of
+ * slack — after that the tokens they revoked have expired on their own, so
+ * pruning can never resurrect a live token.
+ */
+const FALLBACK_REVOCATION_RETENTION_SEC = 31 * 24 * 60 * 60;
+/** Covers the verifier's clock tolerance so pruning never races a live token. */
+const REVOCATION_PRUNE_SLACK_SEC = 60;
+
+/**
+ * Enumerate room ids already persisted by `FilePersistence` in `dir`: rooms
+ * live as top-level `<encodeURIComponent(roomId)>.log` files (blobs and the
+ * layer registry live in subdirectories, which are skipped). Pre-encoding
+ * legacy logs used a lossy sanitizer; for those the decoded name IS the
+ * sanitized id (best effort — claiming under it still blocks first-touch
+ * mints for the ids the server would map to that log).
+ */
+function listPersistedRoomIds(dir: string): string[] {
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return []; // no data dir yet: genuinely fresh
+    // Cannot tell "fresh install" from "existing rooms": fail closed rather
+    // than run a server whose rooms are silently up for first-claim grabs.
+    throw new Error(
+      `[collab-server] access-control state is missing and the data dir cannot be enumerated (${String(err)}); refusing to start open`,
+    );
+  }
+  const ids: string[] = [];
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith('.log')) continue;
+    const base = entry.name.slice(0, -'.log'.length);
+    try {
+      ids.push(decodeURIComponent(base));
+    } catch {
+      ids.push(base); // malformed escape: legacy/foreign name, claim it verbatim
+    }
+  }
+  return ids;
+}
+
+/** Parsed persistent state; throws on any malformed shape (fail closed). */
+function parseStateFile(raw: string, statePath: string): {
+  revoked: Map<string, number>;
+  claimedRooms: string[];
+} {
+  const fail = (why: string): never => {
+    throw new Error(
+      `[collab-server] access-control state at ${statePath} is ${why}; refusing to start open. ` +
+        'Restore the file from backup or delete it deliberately (deleting forgets revocations).',
+    );
+  };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return fail('not valid JSON');
+  }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return fail('not a JSON object');
+  }
+  const rec = parsed as { revoked?: unknown; claimedRooms?: unknown };
+  const claimedRooms: string[] = [];
+  if (rec.claimedRooms !== undefined) {
+    if (!Array.isArray(rec.claimedRooms) || rec.claimedRooms.some((r) => typeof r !== 'string')) {
+      return fail('malformed (claimedRooms must be an array of strings)');
+    }
+    claimedRooms.push(...(rec.claimedRooms as string[]));
+  }
+  const revoked = new Map<string, number>();
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (Array.isArray(rec.revoked)) {
+    // Legacy shape: `revoked: ["jti", ...]` (no expiries). Assign the
+    // fallback retention horizon so the entries stay prunable.
+    if (rec.revoked.some((j) => typeof j !== 'string')) {
+      return fail('malformed (legacy revoked entries must be strings)');
+    }
+    for (const jti of rec.revoked as string[]) {
+      revoked.set(jti, nowSec + FALLBACK_REVOCATION_RETENTION_SEC);
+    }
+  } else if (rec.revoked !== undefined) {
+    // Current shape: `revoked: { jti: expSeconds, ... }`.
+    if (typeof rec.revoked !== 'object' || rec.revoked === null) {
+      return fail('malformed (revoked must be an array or an object of jti -> exp)');
+    }
+    for (const [jti, exp] of Object.entries(rec.revoked as Record<string, unknown>)) {
+      if (typeof exp !== 'number' || !Number.isFinite(exp)) {
+        return fail(`malformed (revoked["${jti}"] must be a finite expiry in seconds)`);
+      }
+      revoked.set(jti, exp);
+    }
+  }
+  return { revoked, claimedRooms };
 }
 
 export function createAccessControl(opts: AccessControlOptions): AccessControl {
@@ -66,21 +172,48 @@ export function createAccessControl(opts: AccessControlOptions): AccessControl {
   // first POST /collab/token for an already-claimed persisted room take it over
   // with a fresh admin token.
   const statePath = path.join(dir, 'access-control.json');
-  const revoked = new Set<string>();
+  /** jti -> token expiry (seconds since epoch); expired entries are pruned. */
+  const revoked = new Map<string, number>();
   const claimedRooms = new Set<string>();
+  let stateRaw: string | null = null;
   try {
-    const parsed = JSON.parse(fs.readFileSync(statePath, 'utf8')) as {
-      revoked?: string[];
-      claimedRooms?: string[];
-    };
-    for (const j of parsed.revoked ?? []) revoked.add(j);
-    for (const r of parsed.claimedRooms ?? []) claimedRooms.add(r);
+    stateRaw = fs.readFileSync(statePath, 'utf8');
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+      // Unreadable-but-present state (permissions, I/O error): fail CLOSED.
+      // Proceeding as "fresh" would forget every revocation and re-open every
+      // claimed room for first-touch takeover.
+      throw new Error(
+        `[collab-server] could not read access-control state at ${statePath} (${String(err)}); refusing to start open`,
+      );
+    }
+    // ENOENT: either a genuinely fresh install, or an upgrade / lost state
+    // file on a deployment that already has rooms. Mark any persisted rooms
+    // claimed so a squatter cannot first-claim them; their admins keep
+    // minting via their still-valid admin bearer tokens.
+    const existing = listPersistedRoomIds(dir);
+    if (existing.length > 0) {
+      for (const roomId of existing) claimedRooms.add(roomId);
       // eslint-disable-next-line no-console
-      console.warn('[collab-server] could not read access-control state:', err);
+      console.warn(
+        `[collab-server] access-control state missing but ${existing.length} persisted room(s) found; ` +
+          'marking them claimed (their admins re-mint links with existing admin bearers)',
+      );
     }
   }
+  if (stateRaw !== null) {
+    const loaded = parseStateFile(stateRaw, statePath);
+    for (const [jti, exp] of loaded.revoked) revoked.set(jti, exp);
+    for (const r of loaded.claimedRooms) claimedRooms.add(r);
+  }
+  /** Drop revocations whose tokens have expired on their own (bounded set). */
+  const pruneRevoked = () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    for (const [jti, exp] of revoked) {
+      if (exp + REVOCATION_PRUNE_SLACK_SEC < nowSec) revoked.delete(jti);
+    }
+  };
+  pruneRevoked();
   // Persistence used to be a synchronous full-file `writeFileSync` on *every*
   // claim/revocation — a cheap way for an attacker looping mint calls to pin
   // the event loop on disk I/O. Coalesce writes behind a short debounce and a
@@ -92,26 +225,40 @@ export function createAccessControl(opts: AccessControlOptions): AccessControl {
   let writeTimer: ReturnType<typeof setTimeout> | null = null;
   let writing: Promise<void> | null = null;
   let dirty = false;
+  /** Last write failure — `flush()` must not resolve as if state landed. */
+  let lastWriteError: unknown = null;
   const writeOnce = async () => {
     try {
+      pruneRevoked(); // periodic pruning: every persisted snapshot is bounded
       await fs.promises.mkdir(dir, { recursive: true });
       await fs.promises.writeFile(
         tmpPath,
-        JSON.stringify({ revoked: [...revoked], claimedRooms: [...claimedRooms] }),
+        JSON.stringify({
+          revoked: Object.fromEntries(revoked),
+          claimedRooms: [...claimedRooms],
+        }),
       );
       await fs.promises.rename(tmpPath, statePath);
+      lastWriteError = null;
     } catch (err) {
+      lastWriteError = err;
       // eslint-disable-next-line no-console
       console.warn('[collab-server] could not persist access-control state:', err);
     }
   };
   // Serialized drain: one writer at a time; a claim/revocation landing while a
   // write is in flight re-marks `dirty`, and the loop runs one more pass so the
-  // snapshot on disk is never stale.
+  // snapshot on disk is never stale. On failure the state is still dirty (disk
+  // is stale) but the loop stops instead of spinning; the next persist()/
+  // flush() retries.
   const drain = async () => {
     while (dirty) {
       dirty = false;
       await writeOnce();
+      if (lastWriteError !== null) {
+        dirty = true;
+        break;
+      }
     }
   };
   const kick = () => {
@@ -139,8 +286,19 @@ export function createAccessControl(opts: AccessControlOptions): AccessControl {
     while (dirty || writing) {
       kick();
       await writing;
+      // One retry per flush call: a persistent failure (unwritable volume)
+      // must reject, not loop forever.
+      if (lastWriteError !== null) break;
+    }
+    if (lastWriteError !== null) {
+      throw new Error(
+        `[collab-server] access-control state could not be persisted to ${statePath}: ${String(lastWriteError)}`,
+      );
     }
   };
+  // Rooms adopted from a missing-state migration (see above) must reach disk
+  // without waiting for the next claim to trigger a write.
+  if (stateRaw === null && claimedRooms.size > 0) persist();
 
   // Bound `claimedRooms` growth. Each fresh-room first-claim adds an entry that
   // persists forever; without a ceiling an attacker (or a very long-lived
@@ -246,8 +404,19 @@ export function createAccessControl(opts: AccessControlOptions): AccessControl {
     revokeEndpoint: {
       secret,
       isRevoked: (jti) => revoked.has(jti),
-      recordRevocation: (jti) => {
-        revoked.add(jti);
+      recordRevocation: (jti, _room, expSec) => {
+        // Retain each revocation until the token it kills has expired anyway
+        // (plus slack), so the deny-list stays bounded WITHOUT ever evicting a
+        // live revocation. The revoke route passes the verified token's `exp`;
+        // the kick path has no expiry in hand and gets the fallback horizon
+        // (the max mintable TTL), which can only over-retain, never under.
+        const nowSec = Math.floor(Date.now() / 1000);
+        revoked.set(
+          jti,
+          typeof expSec === 'number' && Number.isFinite(expSec)
+            ? expSec
+            : nowSec + FALLBACK_REVOCATION_RETENTION_SEC,
+        );
         persist();
       },
     },

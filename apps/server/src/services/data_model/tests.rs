@@ -293,6 +293,8 @@ fn extracts_root_attributes_at_schema_positions() {
     assert_eq!(site.description.as_deref(), Some("site desc"));
     assert_eq!(site.tag, None);
     assert_eq!(site.predefined_type, None);
+}
+
 
 /// IfcRelVoidsElement / IfcRelFillsElement both carry a SINGLE related ref
 /// (not a list) at attribute 5, so the generic list-based path dropped them.

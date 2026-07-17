@@ -100,8 +100,21 @@ async function main() {
     console.log('[collab-server] shutting down…');
     await handle.stop();
     // A SIGTERM during the persist debounce (or mid-write) must not lose
-    // claims/revocations: await the pending/in-flight state write.
-    if (accessControl) await accessControl.flush();
+    // claims/revocations: await the pending/in-flight state write. flush()
+    // rejects when the state never reached disk — exit non-zero and say so
+    // loudly rather than pretend the shutdown was durable.
+    if (accessControl) {
+      try {
+        await accessControl.flush();
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error(
+          '[collab-server] FAILED to persist access-control state on shutdown; claims/revocations since the last successful write are LOST:',
+          err,
+        );
+        process.exit(1);
+      }
+    }
     process.exit(0);
   };
   process.once('SIGINT', shutdown);

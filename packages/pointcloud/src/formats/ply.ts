@@ -41,6 +41,13 @@ interface ElementDecl {
   properties: PropertyDecl[];
   /** Bytes per record (binary mode); unused for ascii. */
   recordSize: number;
+  /**
+   * The element declares at least one `property list`. Lists are variable
+   * length, so `recordSize`/`properties` no longer describe the full record —
+   * fine for skipped elements (faces), fatal for the vertex element the
+   * decoders walk with a fixed stride.
+   */
+  hasListProperty: boolean;
 }
 
 export interface PlyHeader {
@@ -97,11 +104,17 @@ export function parsePlyHeader(buffer: Uint8Array): PlyHeader {
     }
     if (line.startsWith('element ')) {
       const parts = line.split(/\s+/);
+      // Strict integer parse: `parseInt` would silently truncate "1.5" or
+      // "12abc" — a count is a contract the decoders allocate against.
+      if (!/^\d+$/.test(parts[2] ?? '')) {
+        throw new Error(`PLY: invalid element count "${parts[2]}" for element "${parts[1]}"`);
+      }
       current = {
         name: parts[1],
         count: parseInt(parts[2], 10),
         properties: [],
         recordSize: 0,
+        hasListProperty: false,
       };
       elements.push(current);
       continue;
@@ -111,8 +124,13 @@ export function parsePlyHeader(buffer: Uint8Array): PlyHeader {
         throw new Error(`PLY: property declared before any element: "${line}"`);
       }
       const parts = line.split(/\s+/);
-      // Skip list properties (face indices etc.) — we don't render meshes.
-      if (parts[1] === 'list') continue;
+      // List properties (face indices etc.) are variable length; record the
+      // fact and skip them — harmless on elements we never decode, rejected
+      // for the vertex element in decodePly.
+      if (parts[1] === 'list') {
+        current.hasListProperty = true;
+        continue;
+      }
       const type = parts[1];
       const name = parts[2];
       const size = TYPE_SIZES[type];
@@ -145,6 +163,16 @@ export function decodePly(buffer: Uint8Array): DecodedPointChunk {
     );
   }
 
+  // A list property on the vertex element makes its records variable length:
+  // `recordSize` (binary stride) and the ascii column map would both drift and
+  // silently read garbage. Reject up front; list properties on OTHER elements
+  // (face indices) stay fine because those elements are never decoded.
+  if (vertex.hasListProperty) {
+    throw new Error(
+      'PLY: list-valued properties on the vertex element are not supported (variable-length records)',
+    );
+  }
+
   const xProp = vertex.properties.find((p) => p.name === 'x');
   const yProp = vertex.properties.find((p) => p.name === 'y');
   const zProp = vertex.properties.find((p) => p.name === 'z');
@@ -174,9 +202,15 @@ export function decodePly(buffer: Uint8Array): DecodedPointChunk {
     header.format === 'ascii'
       ? Math.max(1, vertex.properties.length * 2)
       : vertex.recordSize;
-  if (minBytesPerRecord > 0 && count > Math.floor(availableBytes / minBytesPerRecord)) {
+  // ascii: the LAST record needs no trailing separator (EOF terminates it),
+  // so the floor is one byte less than count * minBytesPerRecord.
+  const minBodyBytes =
+    header.format === 'ascii' && count > 0
+      ? count * minBytesPerRecord - 1
+      : count * minBytesPerRecord;
+  if (minBytesPerRecord > 0 && minBodyBytes > availableBytes) {
     throw new Error(
-      `PLY: declared ${count} vertices need at least ${count * minBytesPerRecord} body bytes ` +
+      `PLY: declared ${count} vertices need at least ${minBodyBytes} body bytes ` +
         `but only ${availableBytes} are available`,
     );
   }

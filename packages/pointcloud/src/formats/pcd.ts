@@ -52,10 +52,16 @@ export function decodePcd(buffer: Uint8Array): DecodedPointChunk {
     const availableBytes = buffer.length - header.bodyOffset;
     const columns = header.fields.reduce((n, f) => n + Math.max(1, f.count), 0);
     const minBytesPerPoint = header.data === 'ascii' ? Math.max(1, columns * 2) : header.pointStride;
-    if (minBytesPerPoint > 0 && header.pointCount > Math.floor(availableBytes / minBytesPerPoint)) {
+    // ascii: the LAST record needs no trailing separator (EOF terminates it),
+    // so the floor is one byte less than pointCount * minBytesPerPoint.
+    const minBodyBytes =
+      header.data === 'ascii' && header.pointCount > 0
+        ? header.pointCount * minBytesPerPoint - 1
+        : header.pointCount * minBytesPerPoint;
+    if (minBytesPerPoint > 0 && minBodyBytes > availableBytes) {
       throw new Error(
         `PCD: declared ${header.pointCount} points need at least ` +
-          `${header.pointCount * minBytesPerPoint} body bytes but only ${availableBytes} are available`,
+          `${minBodyBytes} body bytes but only ${availableBytes} are available`,
       );
     }
   }
@@ -135,8 +141,21 @@ function parseHeader(buffer: Uint8Array): PcdHeader {
     if (type !== 'F' && type !== 'I' && type !== 'U') {
       throw new Error(`PCD: unsupported field TYPE "${type}"`);
     }
+    // SIZE/COUNT feed offset and stride arithmetic that every subsequent read
+    // trusts: fractional, zero, negative, or absurd values must be rejected
+    // here rather than surface as NaN offsets or a poisoned stride.
+    if (
+      !Number.isSafeInteger(size) || size <= 0 ||
+      !Number.isSafeInteger(count) || count <= 0 ||
+      !Number.isSafeInteger(size * count)
+    ) {
+      throw new Error(`PCD: invalid field SIZE or COUNT (size=${size}, count=${count})`);
+    }
     fields.push({ name: fieldNames[i], size, type, count, offset: stride });
     stride += size * count;
+    if (!Number.isSafeInteger(stride)) {
+      throw new Error('PCD: field stride overflow');
+    }
   }
 
   const width = widthRaw !== undefined ? parseInt(widthRaw, 10) : 0;

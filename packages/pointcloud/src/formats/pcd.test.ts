@@ -195,7 +195,7 @@ describe('decodePcd pre-allocation guard', () => {
     expect(chunk.positions.every((v) => v === 0)).toBe(true);
   });
 
-  it('ascii body exactly at the minimum byte floor passes; one byte short fails', () => {
+  it('ascii body at the minimum byte floor passes (EOF-terminated); truncated fails', () => {
     const header = (points: number) =>
       [
         `VERSION 0.7`,
@@ -210,14 +210,53 @@ describe('decodePcd pre-allocation guard', () => {
         '',
       ].join('\n');
     const enc = new TextEncoder();
-    // 2 points x 3 columns x 2 bytes ("digit + delimiter") = 12 body bytes.
-    const exact = enc.encode(header(2) + '1 2 3\n4 5 6\n'); // exactly 12
-    const chunk = decodePcd(exact);
-    expect(chunk.pointCount).toBe(2);
-    expect(Array.from(chunk.positions)).toEqual([1, 2, 3, 4, 5, 6]);
-    // 11 body bytes: one short of the floor -> rejected before allocation.
-    const short = enc.encode(header(2) + '1 2 3\n4 5 6'); // 11 bytes
+    // 2 points x 3 columns x 2 bytes ("digit + delimiter") = 12 body bytes
+    // with a trailing newline.
+    const trailing = decodePcd(enc.encode(header(2) + '1 2 3\n4 5 6\n'));
+    expect(trailing.pointCount).toBe(2);
+    expect(Array.from(trailing.positions)).toEqual([1, 2, 3, 4, 5, 6]);
+    // A VALID file whose last record is EOF-terminated (no final newline) is
+    // one byte under points*minBytes and must still decode — the floor is
+    // points*minBytes - 1.
+    const exactEof = decodePcd(enc.encode(header(2) + '1 2 3\n4 5 6')); // 11 bytes
+    expect(exactEof.pointCount).toBe(2);
+    expect(Array.from(exactEof.positions)).toEqual([1, 2, 3, 4, 5, 6]);
+    // One byte truncated below the floor: rejected before allocation.
+    const short = enc.encode(header(2) + '1 2 3\n4 5 '); // 10 bytes
     expect(() => decodePcd(short)).toThrow(/body bytes|available/i);
+  });
+
+  it('rejects fractional, non-positive, or overflowing SIZE/COUNT fields', () => {
+    const enc = new TextEncoder();
+    const pcd = (size: string, count: string) =>
+      enc.encode(
+        [
+          `VERSION 0.7`,
+          `FIELDS x y z`,
+          `SIZE ${size}`,
+          `TYPE F F F`,
+          `COUNT ${count}`,
+          `WIDTH 1`,
+          `HEIGHT 1`,
+          `POINTS 1`,
+          `DATA binary`,
+          '',
+        ].join('\n') + ' '.repeat(64),
+      );
+    // Fractional SIZE would poison every offset downstream.
+    expect(() => decodePcd(pcd('4 4.5 4', '1 1 1'))).toThrow(/invalid field SIZE or COUNT/);
+    // Zero / negative are not representable field widths.
+    expect(() => decodePcd(pcd('4 0 4', '1 1 1'))).toThrow(/invalid field SIZE or COUNT/);
+    expect(() => decodePcd(pcd('4 4 4', '1 -1 1'))).toThrow(/invalid field SIZE or COUNT/);
+    // A single unsafe size*count product is rejected...
+    expect(() => decodePcd(pcd('8 8 8', '1 9007199254740991 1'))).toThrow(
+      /invalid field SIZE or COUNT/,
+    );
+    // ...and safe per-field products that accumulate past 2^53 trip the
+    // stride-overflow check.
+    expect(() => decodePcd(pcd('8 8 8', '900719925474099 900719925474099 1'))).toThrow(
+      /field stride overflow/,
+    );
   });
 });
 

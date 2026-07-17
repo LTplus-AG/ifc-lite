@@ -487,8 +487,11 @@ export interface RevokeEndpointOptions {
   /** Secret used to verify the target + bearer tokens. */
   secret: SecretResolver;
   /** Add a `jti` to the server's deny-list. The authenticator's `isRevoked`
-   *  should consult the same store so future joins with this token are rejected. */
-  recordRevocation: (jti: string, room: string) => void | Promise<void>;
+   *  should consult the same store so future joins with this token are rejected.
+   *  `exp` is the revoked token's expiry (seconds since epoch) when known —
+   *  stores use it to prune deny-list entries once the token would have
+   *  expired on its own. */
+  recordRevocation: (jti: string, room: string, exp?: number) => void | Promise<void>;
   /** Deny-list check — a bearer whose own `jti` was revoked (e.g. a kicked
    *  admin) must not be able to keep revoking other people's links. */
   isRevoked?: (jti: string) => boolean | Promise<boolean>;
@@ -563,7 +566,7 @@ export async function handleRevokeRequest(
     return true;
   }
 
-  await opts.recordRevocation(target.jti, target.room);
+  await opts.recordRevocation(target.jti, target.room, target.exp);
   res.writeHead(200, { ...cors, 'content-type': 'application/json' });
   res.end(JSON.stringify({ revoked: true, jti: target.jti }));
   return true;

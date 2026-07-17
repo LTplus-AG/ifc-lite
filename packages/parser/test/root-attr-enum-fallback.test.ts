@@ -13,9 +13,16 @@
 
 import { describe, it, expect } from 'vitest';
 import { extractRootAttributesFromEntity } from '../src/columnar-parser.js';
+import { getAttributeNames } from '../src/ifc-schema.js';
 import type { IfcEntity } from '@ifc-lite/data';
 
 describe('extractRootAttributesFromEntity — enum fallback (#1779)', () => {
+  it('IfcAlignment is unknown to the pinned registry (premise of the fallback tests)', () => {
+    // If a future registry pin adds IfcAlignment, the fallback tests below would
+    // silently stop exercising the unknown-type path — pin the premise here.
+    expect(getAttributeNames('IfcAlignment')).toHaveLength(0);
+  });
+
   it('drops a dotted enum token at a fallback index instead of leaking it as Tag', () => {
     // IfcAlignment is unknown to the IFC4 registry → fixed-index fallback.
     // attrs: [GlobalId, OwnerHistory, Name, Description, ObjectType, ..., PredefinedType@7]
@@ -49,5 +56,18 @@ describe('extractRootAttributesFromEntity — enum fallback (#1779)', () => {
       attributes: ['0GUID', null, 'W-1', null, null, null, null, 'wall-tag'],
     };
     expect(extractRootAttributesFromEntity(entity).tag).toBe('wall-tag');
+  });
+
+  it('does not blank a dotted token on a KNOWN type (filter is unknown-only)', () => {
+    // Scoping proof: even a value shaped like an enum survives on a known type,
+    // because the schema index resolves the real slot and the filter is gated
+    // on !idx.known. (A genuine IfcWall Tag would never be an enum, but this
+    // pins that the filter can't reach the known-type path.)
+    const entity: IfcEntity = {
+      expressId: 4,
+      type: 'IfcWall',
+      attributes: ['0GUID', null, 'W-2', null, null, null, null, '.USERDEFINED.'],
+    };
+    expect(extractRootAttributesFromEntity(entity).tag).toBe('.USERDEFINED.');
   });
 });

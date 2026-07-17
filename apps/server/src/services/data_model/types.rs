@@ -40,6 +40,20 @@ pub struct EntityMetadata {
     pub global_id: Option<String>,
     /// Name attribute (if present).
     pub name: Option<String>,
+    /// Description attribute at the schema-registry position (issue #1765).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// ObjectType attribute (IfcObject subtypes only; None for IfcTypeObject,
+    /// whose attr 4 is ApplicableOccurrence).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub object_type: Option<String>,
+    /// Tag attribute (IfcElement / IfcTypeProduct layouts; None for spatial
+    /// elements, whose attr 7 is LongName).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tag: Option<String>,
+    /// PredefinedType enum token, dots stripped (e.g. "SOLIDWALL").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub predefined_type: Option<String>,
     /// Whether entity has geometry.
     pub has_geometry: bool,
 }

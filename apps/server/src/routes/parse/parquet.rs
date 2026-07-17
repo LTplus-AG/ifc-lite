@@ -182,7 +182,7 @@ pub async fn parse_parquet(
     );
 
     // Cache data model IMMEDIATELY (not in background) so it's ready when client polls
-    let data_model_cache_key = format!("{}-datamodel-v3", cache_key);
+    let data_model_cache_key = format!("{}-datamodel-v4", cache_key);
     if let Err(e) = state
         .cache
         .set_bytes(&data_model_cache_key, &data_model_parquet)

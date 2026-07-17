@@ -5,6 +5,7 @@
 //! Data model extraction service - extracts properties, relationships, and spatial hierarchy.
 
 mod classifications;
+mod generated;
 mod documents;
 mod materials;
 mod metadata;

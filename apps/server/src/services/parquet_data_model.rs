@@ -246,7 +246,18 @@ fn serialize_entities_table(entities: &[EntityMetadata]) -> Result<Vec<u8>, Data
     let count = entities.len();
 
     // Build arrays in parallel using rayon
-    let results: Vec<(u32, String, String, String, bool)> = entities
+    type Row = (
+        u32,
+        String,
+        String,
+        String,
+        bool,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    );
+    let results: Vec<Row> = entities
         .par_iter()
         .map(|entity| {
             (
@@ -255,6 +266,10 @@ fn serialize_entities_table(entities: &[EntityMetadata]) -> Result<Vec<u8>, Data
                 entity.global_id.clone().unwrap_or_default(),
                 entity.name.clone().unwrap_or_default(),
                 entity.has_geometry,
+                entity.description.clone(),
+                entity.object_type.clone(),
+                entity.tag.clone(),
+                entity.predefined_type.clone(),
             )
         })
         .collect();
@@ -265,13 +280,21 @@ fn serialize_entities_table(entities: &[EntityMetadata]) -> Result<Vec<u8>, Data
     let mut global_ids = Vec::with_capacity(count);
     let mut names = Vec::with_capacity(count);
     let mut has_geometry = Vec::with_capacity(count);
+    let mut descriptions = Vec::with_capacity(count);
+    let mut object_types = Vec::with_capacity(count);
+    let mut tags = Vec::with_capacity(count);
+    let mut predefined_types = Vec::with_capacity(count);
 
-    for (id, type_name, global_id, name, has_geom) in results {
+    for (id, type_name, global_id, name, has_geom, desc, obj, tag, predef) in results {
         entity_ids.push(id);
         type_names.push(type_name);
         global_ids.push(global_id);
         names.push(name);
         has_geometry.push(has_geom);
+        descriptions.push(desc);
+        object_types.push(obj);
+        tags.push(tag);
+        predefined_types.push(predef);
     }
 
     let schema = Schema::new(vec![
@@ -280,6 +303,13 @@ fn serialize_entities_table(entities: &[EntityMetadata]) -> Result<Vec<u8>, Data
         Field::new("global_id", DataType::Utf8, true),
         Field::new("name", DataType::Utf8, true),
         Field::new("has_geometry", DataType::Boolean, false),
+        // Additive nullable columns (issue #1765; data-model cache bumped to
+        // v4). `description`/`object_type` were already read by the decoder
+        // by name; `tag`/`predefined_type` are new end-to-end.
+        Field::new("description", DataType::Utf8, true),
+        Field::new("object_type", DataType::Utf8, true),
+        Field::new("tag", DataType::Utf8, true),
+        Field::new("predefined_type", DataType::Utf8, true),
     ]);
 
     let batch = RecordBatch::try_new(
@@ -290,6 +320,10 @@ fn serialize_entities_table(entities: &[EntityMetadata]) -> Result<Vec<u8>, Data
             Arc::new(StringArray::from(global_ids)),
             Arc::new(StringArray::from(names)),
             Arc::new(BooleanArray::from(has_geometry)),
+            Arc::new(StringArray::from(descriptions)),
+            Arc::new(StringArray::from(object_types)),
+            Arc::new(StringArray::from(tags)),
+            Arc::new(StringArray::from(predefined_types)),
         ],
     )?;
 
@@ -653,7 +687,6 @@ fn write_parquet_batch(batch: RecordBatch) -> Result<Vec<u8>, DataModelParquetEr
 
     Ok(buffer)
 }
-
 
 #[cfg(test)]
 #[path = "parquet_data_model_tests.rs"]

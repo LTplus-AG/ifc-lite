@@ -37,9 +37,10 @@ FILE_SCHEMA(('IFC4'));
 ENDSEC;
 DATA;
 #1=IFCPROJECT('Proj0000000000000000001',$,'P',$,$,$,$,$,$);
-#100=IFCWALL('Wall00000000000000001A',$,'W-A',$,$,$,$,$,$);
-#110=IFCWALL('Wall00000000000000001B',$,'W-B',$,$,$,$,$,$);
-#200=IFCWALLTYPE('Type00000000000000001A',$,'WT-Std',$,$,(#210,#220),$,$,$,.STANDARD.);
+#100=IFCWALL('Wall00000000000000001A',$,'W-A','South wall','Basic Wall',$,$,'T-100',.SOLIDWALL.);
+#110=IFCWALL('Wall00000000000000001B',$,'W-B',$,$,$,$,$,.PARTITIONING.);
+#200=IFCWALLTYPE('Type00000000000000001A',$,'WT-Std',$,'NotObjectType',(#210,#220),$,$,$,.STANDARD.);
+#300=IFCSITE('Site000000000000000001A',$,'S','site desc',$,$,$,'LONG-NAME',.ELEMENT.,$,$,$,$,$);
 #210=IFCPROPERTYSET('Pset00000000000000001A',$,'Pset_WallCommon',$,(#211,#212,#213,#214,#215));
 #211=IFCPROPERTYSINGLEVALUE('Manufacturer',$,IFCLABEL('ACME'),$);
 #212=IFCPROPERTYSINGLEVALUE('IsExternal',$,IFCBOOLEAN(.T.),$);
@@ -62,9 +63,10 @@ function serverDataModelForFixture(): DataModel {
   return {
     entities: new Map([
       [1, { entity_id: 1, type_name: 'IFCPROJECT', global_id: 'Proj0000000000000000001', name: 'P', has_geometry: false }],
-      [100, { entity_id: 100, type_name: 'IFCWALL', global_id: 'Wall00000000000000001A', name: 'W-A', has_geometry: false }],
-      [110, { entity_id: 110, type_name: 'IFCWALL', global_id: 'Wall00000000000000001B', name: 'W-B', has_geometry: false }],
-      [200, { entity_id: 200, type_name: 'IFCWALLTYPE', global_id: 'Type00000000000000001A', name: 'WT-Std', has_geometry: false }],
+      [100, { entity_id: 100, type_name: 'IFCWALL', global_id: 'Wall00000000000000001A', name: 'W-A', description: 'South wall', object_type: 'Basic Wall', tag: 'T-100', predefined_type: 'SOLIDWALL', has_geometry: false }],
+      [110, { entity_id: 110, type_name: 'IFCWALL', global_id: 'Wall00000000000000001B', name: 'W-B', predefined_type: 'PARTITIONING', has_geometry: false }],
+      [200, { entity_id: 200, type_name: 'IFCWALLTYPE', global_id: 'Type00000000000000001A', name: 'WT-Std', predefined_type: 'STANDARD', has_geometry: false }],
+      [300, { entity_id: 300, type_name: 'IFCSITE', global_id: 'Site000000000000000001A', name: 'S', description: 'site desc', has_geometry: false }],
     ]),
     propertySets: new Map([
       [210, { pset_id: 210, pset_name: 'Pset_WallCommon', properties: [
@@ -117,6 +119,10 @@ const DEFINITION: ListDefinition = {
     { id: 'ar', source: 'property', psetName: 'Pset_WallCommon', propertyName: 'AcousticRating' },
     { id: 'fr', source: 'property', psetName: 'Pset_WallCommon', propertyName: 'FireRating' },
     { id: 'w', source: 'quantity', psetName: 'Qto_WallBaseQuantities', propertyName: 'Width' },
+    { id: 'desc', source: 'attribute', propertyName: 'Description' },
+    { id: 'objt', source: 'attribute', propertyName: 'ObjectType' },
+    { id: 'pdt', source: 'attribute', propertyName: 'PredefinedType' },
+    { id: 'tag', source: 'attribute', propertyName: 'Tag' },
   ],
   grouping: { columnId: 'type', sumColumnIds: ['u', 'w'] },
 };
@@ -144,8 +150,8 @@ describe('server↔client Type parity (#1751/#1754)', () => {
 
     // Sanity: the type-inherited + override values actually resolved (not blank).
     const rowsByName = new Map(clientResult.rows.map((r) => [String(r.values[0]), r.values]));
-    assert.deepEqual(rowsByName.get('W-A'), ['W-A', 'WT-Std', 'ACME', 'True', 0.24, 3, 'R1, R2', 'REI 120', 200]);
-    assert.deepEqual(rowsByName.get('W-B'), ['W-B', 'WT-Std', 'ACME', 'True', 0.24, 3, 'R1, R2', null, 200]);
+    assert.deepEqual(rowsByName.get('W-A'), ['W-A', 'WT-Std', 'ACME', 'True', 0.24, 3, 'R1, R2', 'REI 120', 200, 'South wall', 'Basic Wall', 'SOLIDWALL', 'T-100']);
+    assert.deepEqual(rowsByName.get('W-B'), ['W-B', 'WT-Std', 'ACME', 'True', 0.24, 3, 'R1, R2', null, 200, null, null, 'PARTITIONING', null]);
 
     // Column meta (quantityType / dataType) identical — drives unit conversion.
     assert.deepEqual(

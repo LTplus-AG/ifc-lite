@@ -83,7 +83,9 @@ export function createListDataProvider(store: IfcDataStore, modelName = ''): Lis
   function getPredefinedTypeFor(id: number): string {
     const cached = predefCache.get(id);
     if (cached !== undefined) return cached;
-    const value = resolveEntityPredefinedType(store, id) ?? '';
+    // Table first (server-parsed stores carry PredefinedType since the v4
+    // payload, issue #1765); the source-gated resolver covers the WASM path.
+    const value = store.entities.getPredefinedType?.(id) || resolveEntityPredefinedType(store, id) || '';
     predefCache.set(id, value);
     return value;
   }
@@ -202,7 +204,7 @@ export function createListDataProvider(store: IfcDataStore, modelName = ''): Lis
     getEntityDescription: (id) => store.entities.getDescription(id) || getOnDemandAttrs(id).description,
     getEntityObjectType: (id) => store.entities.getObjectType(id) || getOnDemandAttrs(id).objectType,
     getEntityPredefinedType: (id) => getPredefinedTypeFor(id),
-    getEntityTag: (id) => getOnDemandAttrs(id).tag,
+    getEntityTag: (id) => store.entities.getTag?.(id) || getOnDemandAttrs(id).tag,
     getEntityTypeName: (id) => store.entities.getTypeName(id),
 
     getPropertySets: getPropertySetsFor,

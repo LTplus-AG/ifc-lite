@@ -282,6 +282,9 @@ function buildEntityTable(
   const nameArr = new Uint32Array(entityCount);
   const descriptionArr = new Uint32Array(entityCount);
   const objectTypeArr = new Uint32Array(entityCount);
+  // Tag / PredefinedType from the v4 data-model payload (issue #1765).
+  const tagArr = new Uint32Array(entityCount);
+  const predefinedTypeArr = new Uint32Array(entityCount);
   const flagsArr = new Uint8Array(entityCount);
   const containedInStoreyArr = new Int32Array(entityCount).fill(-1);
   const definedByTypeArr = new Int32Array(entityCount).fill(-1);
@@ -308,6 +311,8 @@ function buildEntityTable(
     nameArr[idx] = strings.intern(entity.name || '');
     descriptionArr[idx] = strings.intern((entity as { description?: string }).description || '');
     objectTypeArr[idx] = strings.intern((entity as { object_type?: string }).object_type || '');
+    tagArr[idx] = strings.intern((entity as { tag?: string }).tag || '');
+    predefinedTypeArr[idx] = strings.intern((entity as { predefined_type?: string }).predefined_type || '');
     flagsArr[idx] = entity.has_geometry ? EntityFlags.HAS_GEOMETRY : 0;
 
     entityByIdMap.set(id, {
@@ -358,6 +363,14 @@ function buildEntityTable(
     getObjectType: (id) => {
       const i = indexOfId(id);
       return i >= 0 ? strings.get(objectTypeArr[i]) : '';
+    },
+    getTag: (id) => {
+      const i = indexOfId(id);
+      return i >= 0 ? strings.get(tagArr[i]) : '';
+    },
+    getPredefinedType: (id) => {
+      const i = indexOfId(id);
+      return i >= 0 ? strings.get(predefinedTypeArr[i]) : '';
     },
     getTypeName: (id) => {
       const override = typeOverrides.get(id);

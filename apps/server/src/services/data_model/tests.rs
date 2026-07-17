@@ -144,9 +144,10 @@ FILE_SCHEMA(('IFC4'));
 ENDSEC;
 DATA;
 #1=IFCPROJECT('Proj0000000000000000001',$,'P',$,$,$,$,$,$);
-#100=IFCWALL('Wall00000000000000001A',$,'W-A',$,$,$,$,$,$);
-#110=IFCWALL('Wall00000000000000001B',$,'W-B',$,$,$,$,$,$);
-#200=IFCWALLTYPE('Type00000000000000001A',$,'WT-Std',$,$,(#210,#220),$,$,$,.STANDARD.);
+#100=IFCWALL('Wall00000000000000001A',$,'W-A','South wall','Basic Wall',$,$,'T-100',.SOLIDWALL.);
+#110=IFCWALL('Wall00000000000000001B',$,'W-B',$,$,$,$,$,.PARTITIONING.);
+#200=IFCWALLTYPE('Type00000000000000001A',$,'WT-Std',$,'NotObjectType',(#210,#220),$,$,$,.STANDARD.);
+#300=IFCSITE('Site000000000000000001A',$,'S','site desc',$,$,$,'LONG-NAME',.ELEMENT.,$,$,$,$,$);
 #210=IFCPROPERTYSET('Pset00000000000000001A',$,'Pset_WallCommon',$,(#211,#212,#213,#214,#215));
 #211=IFCPROPERTYSINGLEVALUE('Manufacturer',$,IFCLABEL('ACME'),$);
 #212=IFCPROPERTYSINGLEVALUE('IsExternal',$,IFCBOOLEAN(.T.),$);
@@ -255,4 +256,41 @@ END-ISO-10303-21;
     assert!(dm.classifications.is_empty());
     assert!(dm.materials.is_empty());
     assert!(dm.documents.is_empty());
+}
+
+/// Root attributes are extracted at the SCHEMA-REGISTRY positions the WASM
+/// path resolves them (issue #1765) — including the traps: IfcSite attr 7 is
+/// LongName (never Tag), IfcWallType attr 4 is ApplicableOccurrence (never
+/// ObjectType), and CompositionType enums must not leak into PredefinedType.
+#[test]
+fn extracts_root_attributes_at_schema_positions() {
+    let dm = extract_data_model(TYPE_PARITY_IFC);
+    let e = |id: u32| dm.entities.iter().find(|e| e.entity_id == id).unwrap();
+
+    let wall_a = e(100);
+    assert_eq!(wall_a.description.as_deref(), Some("South wall"));
+    assert_eq!(wall_a.object_type.as_deref(), Some("Basic Wall"));
+    assert_eq!(wall_a.tag.as_deref(), Some("T-100"));
+    assert_eq!(wall_a.predefined_type.as_deref(), Some("SOLIDWALL"));
+
+    // Unset slots stay None; the enum still resolves.
+    let wall_b = e(110);
+    assert_eq!(wall_b.description, None);
+    assert_eq!(wall_b.object_type, None);
+    assert_eq!(wall_b.tag, None);
+    assert_eq!(wall_b.predefined_type.as_deref(), Some("PARTITIONING"));
+
+    // IfcWallType: attr 4 is ApplicableOccurrence — must NOT surface as
+    // ObjectType; Tag slot is $; PredefinedType is at index 9.
+    let wall_type = e(200);
+    assert_eq!(wall_type.object_type, None);
+    assert_eq!(wall_type.tag, None);
+    assert_eq!(wall_type.predefined_type.as_deref(), Some("STANDARD"));
+
+    // IfcSite: Description resolves, attr 7 (LongName) must NOT surface as
+    // Tag, and CompositionType (.ELEMENT.) must NOT surface as PredefinedType.
+    let site = e(300);
+    assert_eq!(site.description.as_deref(), Some("site desc"));
+    assert_eq!(site.tag, None);
+    assert_eq!(site.predefined_type, None);
 }

@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { deterministicGlobalId } from '../src/deterministic-global-id.js';
-import { ifcGuidToUuid, isValidIfcGuid, isValidUuid } from '@ifc-lite/encoding';
+import { ifcGuidToUuid, uuidToIfcGuid, isValidIfcGuid, isValidUuid } from '@ifc-lite/encoding';
 
 /** The first GlobalId character encodes only 2 bits, so it must be one of the
  *  first four alphabet chars. */
@@ -51,5 +51,23 @@ describe('deterministicGlobalId', () => {
 
   it('is deterministic across calls for the same seed', () => {
     expect(deterministicGlobalId('task-0')).toBe(deterministicGlobalId('task-0'));
+  });
+
+  it('decode/re-encode round-trips bit-exactly for 10,000 seeds (full 128-bit fidelity)', () => {
+    // A GUID whose first char used the full 6-bit alphabet decodes to >128 bits
+    // and cannot survive uuid -> guid re-encoding. Round-tripping through the
+    // canonical compressor proves every emitted char carries only valid bits.
+    for (let i = 0; i < 10_000; i++) {
+      const id = deterministicGlobalId(`seed-${i}`);
+      expect(uuidToIfcGuid(ifcGuidToUuid(id))).toBe(id);
+    }
+  });
+
+  it('produces no collisions across 10,000 sequential seeds', () => {
+    const seen = new Set<string>();
+    for (let i = 0; i < 10_000; i++) {
+      seen.add(deterministicGlobalId(`entity/${i}`));
+    }
+    expect(seen.size).toBe(10_000);
   });
 });

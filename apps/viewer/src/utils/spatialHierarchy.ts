@@ -305,6 +305,11 @@ const MATERIAL_DEF_TYPES = new Set([
   'IFCMATERIALLAYER',
   'IFCMATERIALPROFILE',
   'IFCMATERIALCONSTITUENT',
+  // IFC4 subtypes — also legal RelatingMaterial targets; completes the
+  // IfcMaterialSelect membership so cache rebuilds match fresh parses.
+  'IFCMATERIALLAYERWITHOFFSETS',
+  'IFCMATERIALPROFILEWITHOFFSETS',
+  'IFCMATERIALPROFILESETUSAGETAPERING',
 ]);
 
 /**

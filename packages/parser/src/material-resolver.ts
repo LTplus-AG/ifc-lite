@@ -585,9 +585,10 @@ function resolveLeaves(
             const provisional = constituents.map((c) => c.fraction ?? remainderShare);
             const totalWeight = provisional.reduce((s, w) => s + w, 0);
             for (let i = 0; i < constituents.length; i++) {
-                const weight = totalWeight > 0
-                    ? provisional[i] / totalWeight
-                    : (constituents.length > 0 ? 1 / constituents.length : 0);
+                // totalWeight can only be 0 when EVERY fraction is an authored
+                // 0.0 (absent fractions receive a remainder share) — keep those
+                // explicit zeros instead of inventing equal weights.
+                const weight = totalWeight > 0 ? provisional[i] / totalWeight : 0;
                 addMaterialLeaf(constituents[i].matId, weight);
             }
             return [...merged.values()];

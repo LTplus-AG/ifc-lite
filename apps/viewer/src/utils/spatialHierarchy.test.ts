@@ -551,4 +551,34 @@ describe('rebuildOnDemandMaps', () => {
     const { onDemandMaterialMap } = rebuildOnDemandMaps(entities.build(), builder.build(), entityIndex);
     assert.equal(onDemandMaterialMap.get(5), 40, 'winner = RelatingMaterial of the lowest rel express id');
   });
+
+  it('recognises IFC4 material subtypes as RelatingMaterial (cache parity)', () => {
+    // IfcMaterialLayerWithOffsets / IfcMaterialProfileWithOffsets /
+    // IfcMaterialProfileSetUsageTapering are legal IfcMaterialSelect members;
+    // a fresh parse maps them, so the cache rebuild must too.
+    const strings = new StringTable();
+    const entities = new EntityTableBuilder(6, strings);
+    entities.add(5, 'IFCWALL', 'w0', 'Wall', '', '', true);
+    entities.add(6, 'IFCCOLUMN', 'c0', 'Column', '', '', true);
+    entities.add(7, 'IFCBEAM', 'b0', 'Beam', '', '', true);
+    entities.add(60, 'IFCMATERIALLAYERWITHOFFSETS', 'lo0', 'Layer', '', '');
+    entities.add(61, 'IFCMATERIALPROFILEWITHOFFSETS', 'po0', 'Profile', '', '');
+    entities.add(62, 'IFCMATERIALPROFILESETUSAGETAPERING', 'pt0', 'Taper', '', '');
+
+    const builder = new RelationshipGraphBuilder();
+    builder.addEdge(60, 5, RelationshipType.AssociatesMaterial, 100);
+    builder.addEdge(61, 6, RelationshipType.AssociatesMaterial, 101);
+    builder.addEdge(62, 7, RelationshipType.AssociatesMaterial, 102);
+
+    const entityIndex = makeEntityIndex(new Map<string, number[]>([
+      ['IFCMATERIALLAYERWITHOFFSETS', [60]],
+      ['IFCMATERIALPROFILEWITHOFFSETS', [61]],
+      ['IFCMATERIALPROFILESETUSAGETAPERING', [62]],
+    ]));
+
+    const { onDemandMaterialMap } = rebuildOnDemandMaps(entities.build(), builder.build(), entityIndex);
+    assert.equal(onDemandMaterialMap.get(5), 60);
+    assert.equal(onDemandMaterialMap.get(6), 61);
+    assert.equal(onDemandMaterialMap.get(7), 62);
+  });
 });

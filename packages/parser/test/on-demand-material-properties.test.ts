@@ -207,6 +207,20 @@ describe('collectMaterialLeaves', () => {
       expect(byId.get(12)!.weight).toBeCloseTo(0.4, 6);
     });
 
+    it('ALL-explicit-zero fractions stay zero instead of falling back to equal weights', () => {
+      // Every constituent authored 0.0: the set deliberately attributes the
+      // element's quantities to no material, so no equal-weight fallback.
+      const ALL_ZERO = [
+        `#66=IFCMATERIALCONSTITUENT('K',$,#10,0.0,$);`,
+        `#67=IFCMATERIALCONSTITUENT('L',$,#11,0.0,$);`,
+        `#68=IFCMATERIALCONSTITUENTSET('AllZero',$,(#66,#67));`,
+      ];
+      const store = buildStore([...FIXTURE, ...CONSTITUENTS, ...ALL_ZERO], new Map());
+      const byId = new Map(collectMaterialLeaves(store, 68).map((l) => [l.id, l]));
+      expect(byId.get(10)!.weight).toBeCloseTo(0, 6);
+      expect(byId.get(11)!.weight).toBeCloseTo(0, 6);
+    });
+
     it('fully-fractioned sets keep their authored split', () => {
       const store = buildStore([...FIXTURE, ...CONSTITUENTS], new Map());
       const byId = new Map(collectMaterialLeaves(store, 58).map((l) => [l.id, l]));

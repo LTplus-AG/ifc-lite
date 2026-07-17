@@ -17,5 +17,17 @@ Targets the Dalux **API Identities** auth model (legacy API keys expired
 ## CORS
 
 The Dalux API does not send CORS headers, so direct browser fetches to it
-will fail. Run ifc-lite in a context without CORS restrictions (e.g. a Tauri
-desktop shell, or server-side) — there's no in-app CORS relay option.
+will fail. The viewer routes Dalux requests through a fixed same-origin path
+(`/api/dalux/*`) that the app's own server forwards upstream — a plain
+reverse-proxy rewrite (see `vercel.json` in production, and the Vite dev
+proxy in `apps/viewer/vite.config.ts`), the same pattern already used for
+bSDD/EPSG. The user's own API key is attached client-side and never leaves
+the browser except as part of the proxied request; there is no shared
+server-side secret and no separate relay service to deploy.
+
+## API key storage
+
+The API key is stored in the browser's `localStorage`, unencrypted, with no
+expiry. Anything that can execute script in the page (e.g. the viewer's own
+script panel) can read it. Users who want to revoke access should rotate the
+key in Dalux and use the "forget key" action in Source Settings.

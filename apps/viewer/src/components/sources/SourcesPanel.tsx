@@ -11,7 +11,7 @@ import { SourceBrowser } from './SourceBrowser';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
 import { Cloud, Settings } from 'lucide-react';
-import { loadSavedSourcePrefs, saveSourcePrefs } from '@/lib/sources/preferences';
+import { loadSavedSourcePrefs, saveSourcePrefs, clearSourcePrefs } from '@/lib/sources/preferences';
 
 interface SourcesPanelProps {
   onClose: () => void;
@@ -38,6 +38,10 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
     },
     [settingsFor],
   );
+
+  const handleForgetPrefs = useCallback(() => {
+    if (settingsFor) clearSourcePrefs(settingsFor);
+  }, [settingsFor]);
 
   const handleTestConnection = useCallback(
     async (values: Record<string, string>): Promise<ConnectionTestResult> => {
@@ -170,6 +174,7 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
           open={!!settingsFor}
           onOpenChange={(open) => { if (!open) setSettingsFor(null); }}
           onSave={handleSavePrefs}
+          onForget={handleForgetPrefs}
           onTestConnection={
             settingsProvider.testConnection ? handleTestConnection : undefined
           }

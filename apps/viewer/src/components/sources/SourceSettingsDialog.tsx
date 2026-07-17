@@ -14,7 +14,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { CheckCircle2, XCircle, Loader2 } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2, Trash2 } from 'lucide-react';
 
 interface SourceSettingsDialogProps {
   manifest: PluginManifest;
@@ -22,6 +22,7 @@ interface SourceSettingsDialogProps {
   onOpenChange: (open: boolean) => void;
   onSave: (values: Record<string, string>) => void;
   onTestConnection?: (values: Record<string, string>) => Promise<ConnectionTestResult>;
+  onForget?: () => void;
   initialValues?: Record<string, string>;
 }
 
@@ -31,6 +32,7 @@ export function SourceSettingsDialog({
   onOpenChange,
   onSave,
   onTestConnection,
+  onForget,
   initialValues = {},
 }: SourceSettingsDialogProps) {
   const [values, setValues] = useState<Record<string, string>>(initialValues);
@@ -70,6 +72,13 @@ export function SourceSettingsDialog({
     onOpenChange(false);
   }, [onSave, onOpenChange, values]);
 
+  const handleForget = useCallback(() => {
+    onForget?.();
+    setValues({});
+    setTestResult(null);
+    onOpenChange(false);
+  }, [onForget, onOpenChange]);
+
   const requiredMissing = manifest.preferences
     .filter((p) => p.required)
     .some((p) => !values[p.name]?.trim());
@@ -91,6 +100,11 @@ export function SourceSettingsDialog({
             />
           ))}
 
+          <p className="text-xs text-muted-foreground">
+            Saved values are stored in this browser's local storage,
+            unencrypted. Treat them as revocable, not secret.
+          </p>
+
           {testResult && (
             <div
               className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm ${
@@ -110,6 +124,16 @@ export function SourceSettingsDialog({
         </div>
 
         <DialogFooter className="gap-2 sm:gap-0">
+          {onForget && (
+            <Button
+              variant="ghost"
+              className="mr-auto text-destructive hover:text-destructive"
+              onClick={handleForget}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Forget saved values
+            </Button>
+          )}
           {onTestConnection && (
             <Button
               variant="outline"

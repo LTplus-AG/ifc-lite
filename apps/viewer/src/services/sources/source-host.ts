@@ -17,6 +17,9 @@ import type {
 // sandboxed PluginContext instances for each one.
 // ---------------------------------------------------------------------------
 
+/** Version of the `PluginContext`/`FileSourceProvider` contract this host implements. */
+export const HOST_API_VERSION = '2.0.0';
+
 export interface SourceHostOptions {
   onProviderError?: (provider: string, error: unknown) => void;
 }
@@ -33,6 +36,12 @@ export class SourceHost {
     const name = provider.manifest.name;
     if (this.providers.has(name)) {
       throw new Error(`Source provider "${name}" is already registered`);
+    }
+    if (!satisfiesCaretRange(HOST_API_VERSION, provider.manifest.api)) {
+      throw new Error(
+        `Source provider "${name}" requires host api "${provider.manifest.api}", ` +
+        `but this host implements "${HOST_API_VERSION}"`,
+      );
     }
     this.providers.set(name, provider);
   }
@@ -67,7 +76,7 @@ export class SourceHost {
       }
 
       const finalUrl = applyCorsRelay(url);
-      if (finalUrl !== url) {
+      if (finalUrl !== url && sourcesDebugEnabled()) {
         console.debug(`[source:${manifest.name}]`, 'Relay fetch', {
           upstreamUrl: url,
           relayUrl: finalUrl,
@@ -145,6 +154,21 @@ function applyCorsRelay(url: string): string {
   return url;
 }
 
+/**
+ * Minimal `^x.y.z` caret-range check (host >= required, same major) — the
+ * only range shape manifests use. Not a general semver implementation.
+ */
+function satisfiesCaretRange(hostVersion: string, requiredRange: string): boolean {
+  const match = /^\^?(\d+)\.(\d+)\.(\d+)$/.exec(requiredRange);
+  if (!match) return false;
+  const [, reqMajor, reqMinor, reqPatch] = match.map(Number);
+  const [hostMajor, hostMinor, hostPatch] = hostVersion.split('.').map(Number);
+
+  if (hostMajor !== reqMajor) return false;
+  if (hostMinor !== reqMinor) return hostMinor > reqMinor;
+  return hostPatch >= reqPatch;
+}
+
 function isAllowedHost(
   allowedDomains: readonly string[],
   hostname: string,
@@ -195,11 +219,21 @@ function createNamespacedStorage(namespace: string): KeyValueStore {
 // Prefixed logger
 // ---------------------------------------------------------------------------
 
+/** Set `localStorage.IFC_SOURCES_DEBUG = '1'` in the browser to log verbose
+ *  source-provider activity (request URLs, project/folder listings) to the
+ *  console. Off by default — providers can log per-row details on every
+ *  list call, which is too chatty to leave on unconditionally. */
+export const sourcesDebugEnabled = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  try { return window.localStorage?.getItem('IFC_SOURCES_DEBUG') === '1'; }
+  catch { return false; }
+};
+
 function createPrefixedLogger(name: string): Logger {
   const tag = `[source:${name}]`;
   return {
-    debug: (...args: unknown[]) => console.debug(tag, ...args),
-    info: (...args: unknown[]) => console.info(tag, ...args),
+    debug: (...args: unknown[]) => { if (sourcesDebugEnabled()) console.debug(tag, ...args); },
+    info: (...args: unknown[]) => { if (sourcesDebugEnabled()) console.info(tag, ...args); },
     warn: (...args: unknown[]) => console.warn(tag, ...args),
     error: (...args: unknown[]) => console.error(tag, ...args),
   };

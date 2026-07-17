@@ -66,7 +66,8 @@ export function loadSourceCatalogCache(
       folders: parsed.folders,
       files: parsed.files,
     };
-  } catch {
+  } catch (err) {
+    console.warn(`Failed to parse source catalog cache for "${providerId}"`, err);
     return null;
   }
 }
@@ -142,7 +143,8 @@ export function loadDownloadedSourceFileRecords(): Map<string, DownloadedSourceF
       ] as const];
     });
     return new Map(entries);
-  } catch {
+  } catch (err) {
+    console.warn('Failed to parse downloaded source file records', err);
     return new Map();
   }
 }

@@ -72,14 +72,16 @@ export interface DropdownOption {
 
 export interface PluginContext {
   /**
-   * Host-injected fetch. May route through a CORS relay or add auth headers
-   * depending on the provider's manifest and user configuration. Plugins
-   * must use this instead of global `fetch`.
+   * Host-injected fetch. For hosts whose API lacks CORS headers, the host may
+   * rewrite the request to a same-origin path that its own server forwards
+   * upstream (see the app's proxy config), and may add auth headers depending
+   * on the provider's manifest and user configuration. Plugins must use this
+   * instead of global `fetch`.
    */
   readonly fetch: typeof fetch;
   /** Retrieve a preference value (secret or plain). */
   getPreference(name: string): Promise<string | undefined>;
-  /** Namespaced key-value store (IndexedDB under the hood). */
+  /** Namespaced key-value store (backed by localStorage in the reference host; treat values as user-revocable, not securely encrypted). */
   readonly storage: KeyValueStore;
   readonly log: Logger;
 }

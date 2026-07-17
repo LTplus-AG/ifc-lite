@@ -104,6 +104,27 @@ export class DemeshSession {
     return this.applied.get(expressId)?.level ?? 0;
   }
 
+  /**
+   * The coordinate-frame shift of the meshes this session works with (the
+   * supplied `originShift`, or the session's own load's after self-meshing).
+   * A viewer whose scene uses a different anchor (multi-model federation
+   * with a shared RTC) translates render-mesh origins by the difference.
+   */
+  getOriginShift(): { x: number; y: number; z: number } {
+    return { ...this.originShift };
+  }
+
+  /**
+   * The ORIGINAL mesh records of `expressIds` (session frame, untouched by
+   * any simplification) — lets a viewer restore an element's real geometry
+   * in the scene after `reset()`. Meshes the source on first use.
+   */
+  async originalMeshesFor(expressIds: number[]): Promise<MeshData[]> {
+    const meshes = await this.ensureMeshes();
+    const wanted = new Set(expressIds);
+    return meshes.filter((m) => wanted.has(m.expressId));
+  }
+
   /** Express ids currently carrying simplified geometry. */
   simplifiedIds(): number[] {
     return [...this.applied.keys()];

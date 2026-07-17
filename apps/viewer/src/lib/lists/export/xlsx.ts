@@ -62,14 +62,16 @@ export async function toXlsx(model: ExportModel): Promise<Blob> {
   if (model.groups) {
     // Nested (multi-criteria) grouping: sub-group headers indent one step per
     // level and carry their own count; member rows sit on leaf groups only.
+    // Outline levels are clamped to Excel's maximum of 8.
+    const MAX_OUTLINE = 8;
     for (const g of model.groups) {
       const gr = ws.addRow(cols.map((c, i) => (i === 0 ? `${'  '.repeat(g.level)}${g.label} (${g.count})` : (c.summed ? g.sums[c.id] : null))));
       gr.font = { bold: true };
       gr.eachCell((cell) => { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } }; });
-      if (g.level > 0) gr.outlineLevel = g.level;
-      for (const row of g.rows) addDataRow(row, g.level + 1);
+      if (g.level > 0) gr.outlineLevel = Math.min(g.level, MAX_OUTLINE);
+      for (const row of g.rows) addDataRow(row, Math.min(g.level + 1, MAX_OUTLINE));
     }
-    ws.properties.outlineLevelRow = model.groups.reduce((m, g) => Math.max(m, g.level + 1), 1);
+    ws.properties.outlineLevelRow = Math.min(model.groups.reduce((m, g) => Math.max(m, g.level + 1), 1), MAX_OUTLINE);
   } else {
     for (const row of model.rows) addDataRow(row);
   }

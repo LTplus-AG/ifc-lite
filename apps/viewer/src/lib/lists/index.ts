@@ -21,7 +21,7 @@ export {
   executeList,
   summariseListRows,
   groupingColumnIds,
-  GROUP_KEY_SEPARATOR,
+  groupPathKey,
   listResultToCSV,
   discoverColumns,
   LIST_PRESETS,

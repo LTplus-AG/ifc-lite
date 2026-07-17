@@ -281,8 +281,9 @@ export interface ListResult {
  *  #1790) groups are emitted as a FLAT pre-order list: each parent group is
  *  immediately followed by its subgroups (`level` gives the nesting depth). */
 export interface ListGroup {
-  /** Unique group key — the `path` labels joined with `'\u001f'` (equals the
-   *  label for a top-level group). */
+  /** Opaque unique group key - the JSON encoding of `path` (see
+   *  `groupPathKey`), collision-free even when a model-derived label contains
+   *  separator-like characters. */
   key: string;
   /** Display label for the group header (this level's value only). */
   label: string;

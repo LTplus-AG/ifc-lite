@@ -94,8 +94,6 @@ interface ColumnMeta {
 // Grouping & Aggregation
 // ============================================================================
 
-/** Separator used to build unique composite group keys from group paths. */
-export const GROUP_KEY_SEPARATOR = '\u001f';
 
 /**
  * Effective ordered group-by column ids for a grouping config — `columnIds`
@@ -129,9 +127,12 @@ export function summariseListRows(
   if (!grouping) return {};
 
   const columns = definition.columns;
-  const groupIds = groupingColumnIds(grouping);
-  // No group column configured (sums only) keeps the legacy single-bucket
-  // behaviour: every row lands in one "(none)" group.
+  // Drop group ids that no longer resolve to a column (e.g. the column was
+  // removed after the grouping was persisted) so the hierarchy matches the
+  // viewer/export exactly instead of inserting synthetic "(none)" levels.
+  const groupIds = groupingColumnIds(grouping).filter(id => columns.some(c => c.id === id));
+  // No resolvable group column (sums only, or every group column gone) keeps
+  // the legacy single-bucket behaviour: every row lands in one "(none)" group.
   const levelIndices = groupIds.length > 0
     ? groupIds.map(id => columns.findIndex(c => c.id === id))
     : [-1];
@@ -157,7 +158,7 @@ export function summariseListRows(
   // Recursive per-level bucketing, preserving first-seen order within a level,
   // then ordered largest-group-first (stable default) before flattening.
   const groups: ListGroup[] = [];
-  const walk = (subRows: ListRow[], level: number, parentKey: string, parentPath: string[]) => {
+  const walk = (subRows: ListRow[], level: number, parentPath: string[]) => {
     const colIdx = levelIndices[level];
     const byKey = new Map<string, { group: ListGroup; rows: ListRow[] }>();
     for (const row of subRows) {
@@ -167,8 +168,7 @@ export function summariseListRows(
       let bucket = byKey.get(label);
       if (!bucket) {
         const path = [...parentPath, label];
-        const key = parentKey === '' ? label : `${parentKey}${GROUP_KEY_SEPARATOR}${label}`;
-        bucket = { group: { key, label, count: 0, sums: zeroSums(), level, path }, rows: [] };
+        bucket = { group: { key: groupPathKey(path), label, count: 0, sums: zeroSums(), level, path }, rows: [] };
         byKey.set(label, bucket);
       }
       bucket.group.count++;
@@ -185,13 +185,23 @@ export function summariseListRows(
     for (const bucket of ordered) {
       groups.push(bucket.group);
       if (level + 1 < levelIndices.length) {
-        walk(bucket.rows, level + 1, bucket.group.key, bucket.group.path!);
+        walk(bucket.rows, level + 1, bucket.group.path!);
       }
     }
   };
-  walk(rows, 0, '', []);
+  walk(rows, 0, []);
 
   return { groups, summary };
+}
+
+/**
+ * Collision-free unique key for a group path: the JSON encoding of the label
+ * array. A plain label join would be ambiguous whenever a model-derived label
+ * contains the join separator, silently merging distinct groups' expansion /
+ * render identity downstream.
+ */
+export function groupPathKey(path: string[]): string {
+  return JSON.stringify(path);
 }
 
 // ============================================================================

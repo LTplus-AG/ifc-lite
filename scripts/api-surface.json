@@ -2032,6 +2032,8 @@
     "compileNameMatcher: function",
     "discoverColumns: function",
     "executeList: function",
+    "groupPathKey: function",
+    "groupingColumnIds: function",
     "isNamePattern: function",
     "listResultToCSV: function",
     "summariseListRows: function"

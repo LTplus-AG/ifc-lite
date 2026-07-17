@@ -10,8 +10,10 @@ function esc(s: string, delim: string): string {
   // TAB or CR makes a cell execute as a formula in Excel/LibreOffice/Sheets.
   // List cells derive from attacker-controllable IFC values, so prefix such
   // cells with an apostrophe. A leading UTF-8 BOM is treated as file metadata
-  // by spreadsheet importers, so a marker hidden behind one still executes.
-  if (/^\uFEFF?[=+\-@\t\r]/.test(s)) s = `'${s}`;
+  // by spreadsheet importers, so a marker hidden behind one still executes;
+  // strip the BOM first so the apostrophe guard actually lands in front.
+  s = s.replace(/^\uFEFF/, '');
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return /["\r\n]/.test(s) || s.includes(delim) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 

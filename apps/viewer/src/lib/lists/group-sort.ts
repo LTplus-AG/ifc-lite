@@ -9,7 +9,7 @@
  * in agreement) without a component → lib layer inversion.
  */
 
-import { GROUP_KEY_SEPARATOR, type CellValue } from '@ifc-lite/lists';
+import { groupPathKey, type CellValue } from '@ifc-lite/lists';
 
 /** Null-first, numbers-numeric, everything-else locale-compared. */
 export function compareCells(a: CellValue, b: CellValue): number {
@@ -71,7 +71,9 @@ export function buildGroupBuckets<R>(
 export type NestedGroupBucket<R> = GroupBucket<R> & {
   /** 0-based nesting depth (0 = outermost grouping column). */
   level: number;
-  /** Group labels from the outermost level down to this group. */
+  /** Group labels from the outermost level down to this group. The bucket's
+   *  `key` is `groupPathKey(path)` — a collision-free JSON encoding, matching
+   *  the engine's `ListGroup.key`. */
   path: string[];
 };
 
@@ -93,7 +95,7 @@ export function buildNestedGroupBuckets<R>(
   sort: GroupSort,
 ): NestedGroupBucket<R>[] {
   const out: NestedGroupBucket<R>[] = [];
-  const walk = (subRows: R[], level: number, parentKey: string, parentPath: string[]) => {
+  const walk = (subRows: R[], level: number, parentPath: string[]) => {
     const colIdx = levelIndices[level];
     const byKey = buildGroupBuckets(
       subRows,
@@ -104,13 +106,12 @@ export function buildNestedGroupBuckets<R>(
     );
     const ordered = orderGroups(Array.from(byKey.values()), sort, colIdx, sums);
     for (const g of ordered) {
-      const key = parentKey === '' ? g.label : `${parentKey}${GROUP_KEY_SEPARATOR}${g.label}`;
       const path = [...parentPath, g.label];
-      out.push({ ...g, key, level, path });
-      if (level + 1 < levelIndices.length) walk(g.rows, level + 1, key, path);
+      out.push({ ...g, key: groupPathKey(path), level, path });
+      if (level + 1 < levelIndices.length) walk(g.rows, level + 1, path);
     }
   };
-  if (levelIndices.length > 0) walk(rows, 0, '', []);
+  if (levelIndices.length > 0) walk(rows, 0, []);
   return out;
 }
 

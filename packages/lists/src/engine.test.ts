@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { IfcTypeEnum } from '@ifc-lite/data';
-import { executeList, listResultToCSV, summariseListRows, GROUP_KEY_SEPARATOR } from './engine.js';
+import { executeList, listResultToCSV, summariseListRows, groupPathKey } from './engine.js';
 import { discoverColumns } from './discovery.js';
 import { LIST_PRESETS } from './presets.js';
 import type { ListDataProvider, ListDefinition } from './types.js';
@@ -655,7 +655,7 @@ describe('grouping & summary', () => {
       grouping: { columnId: 'fire', sumColumnIds: [] },
     };
     const result = executeList(def, provider);
-    expect(result.groups).toEqual([{ key: '(none)', label: '(none)', count: 2, sums: {}, level: 0, path: ['(none)'] }]);
+    expect(result.groups).toEqual([{ key: groupPathKey(['(none)']), label: '(none)', count: 2, sums: {}, level: 0, path: ['(none)'] }]);
   });
 
   // Multi-criteria grouping + per-group Count (issue #1790).
@@ -689,7 +689,7 @@ describe('grouping & summary', () => {
     // Composite keys are unique and carry the full path.
     const sub = result.groups?.find(g => g.level === 1 && g.label === 'Wall-01');
     expect(sub?.path).toEqual(['IfcWall', 'Wall-01']);
-    expect(sub?.key).toBe(`IfcWall${GROUP_KEY_SEPARATOR}Wall-01`);
+    expect(sub?.key).toBe(groupPathKey(['IfcWall', 'Wall-01']));
     // Sums subtotal at every level.
     expect(result.groups?.find(g => g.level === 0 && g.label === 'IfcWall')?.sums.len).toBeCloseTo(8.5);
     expect(sub?.sums.len).toBeCloseTo(5.0);
@@ -746,6 +746,58 @@ describe('grouping & summary', () => {
       [1, 'T1', 1],
     ]);
     expect(summary?.count).toBe(3);
+  });
+
+  it('keeps a repeated child label under different parents as two distinct groups', () => {
+    const def: ListDefinition = {
+      id: 'grp-shared-child',
+      name: 'Test',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [],
+      conditions: [],
+      columns: [
+        { id: 'a', source: 'attribute', propertyName: 'Class' },
+        { id: 'b', source: 'attribute', propertyName: 'Name' },
+      ],
+      grouping: { columnId: 'a', columnIds: ['a', 'b'], sumColumnIds: [] },
+    };
+    const { groups } = summariseListRows(def, [
+      { entityId: 10, modelId: 'm', values: ['IfcWall', 'Shared'] },
+      { entityId: 11, modelId: 'm', values: ['IfcSlab', 'Shared'] },
+    ]);
+    const children = groups?.filter(g => g.level === 1) ?? [];
+    expect(new Set(children.map(g => g.key))).toEqual(new Set([
+      groupPathKey(['IfcWall', 'Shared']),
+      groupPathKey(['IfcSlab', 'Shared']),
+    ]));
+    expect(children.map(g => g.path)).toEqual(expect.arrayContaining([
+      ['IfcWall', 'Shared'],
+      ['IfcSlab', 'Shared'],
+    ]));
+  });
+
+  it('composite keys stay collision-free when a label contains separator-like characters', () => {
+    const def: ListDefinition = {
+      id: 'grp-key-collision',
+      name: 'Test',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [],
+      conditions: [],
+      columns: [
+        { id: 'a', source: 'attribute', propertyName: 'Class' },
+        { id: 'b', source: 'attribute', propertyName: 'Name' },
+      ],
+      grouping: { columnId: 'a', columnIds: ['a', 'b'], sumColumnIds: [] },
+    };
+    // Labels crafted so a naive join would collide: "A|B"+"C" vs "A"+"B|C".
+    const { groups } = summariseListRows(def, [
+      { entityId: 1, modelId: 'm', values: ['A|B', 'C'] },
+      { entityId: 2, modelId: 'm', values: ['A', 'B|C'] },
+    ]);
+    const keys = (groups ?? []).map(g => g.key);
+    expect(new Set(keys).size).toBe(keys.length);
   });
 
   it('returns empty groups and a zero-count summary for an empty row set', () => {

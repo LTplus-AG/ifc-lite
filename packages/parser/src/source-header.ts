@@ -80,9 +80,16 @@ function splitTopLevel(inner: string): string[] {
  * turned `Tr\X2\00FC\X0\mpler` into the literal `Tr\\X2\\00FC\\X0\\mpler`.
  * Decoding to real Unicode here means the writer re-emits plain UTF-8 (no
  * backslashes to double), so the value round-trips intact.
+ *
+ * `\\` (one literal backslash) is handled by splitting at doubled pairs BEFORE
+ * directive decoding: {@link decodeIfcString} deliberately preserves unknown
+ * escapes, so feeding it `C:\\temp` whole would keep both backslashes and the
+ * writer's `\`->`\\` escaper would double them again on every round trip.
+ * Splitting first also keeps escaped literal text (`\\X2\\...` means the
+ * characters `\X2\...`) from being mis-decoded as a real `\X2\` directive.
  */
 function unescapeStepString(str: string): string {
-  return decodeIfcString(str.replace(/''/g, "'"));
+  return str.replace(/''/g, "'").split('\\\\').map(decodeIfcString).join('\\');
 }
 
 /**

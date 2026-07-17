@@ -213,6 +213,47 @@ END-ISO-10303-21;`;
     expect(parsed).toBeDefined();
     expect(parsed!.author).toEqual(['A B']);
   });
+
+  it('round-trips a literal backslash (C:\\temp) byte-stably across two write/read cycles', () => {
+    // Regression (PR #1772 review): the writer doubles `\` to `\\` but the read
+    // path preserved unknown doubled sequences, so `C:\temp` grew a backslash
+    // on every round trip (`C:\\temp`, `C:\\\\temp`, ...).
+    const opts = { schema: 'IFC4', timeStamp: 'TS', filename: 'f.ifc' } as const;
+    const h1 = generateHeader({ ...opts, author: ['C:\\temp'] });
+    expect(h1).toContain("'C:\\\\temp'"); // stored escaped, exactly one doubling
+
+    const p1 = parseSourceHeader(new TextEncoder().encode(h1));
+    expect(p1!.author).toEqual(['C:\\temp']);
+
+    const h2 = generateHeader({ ...opts, author: p1!.author });
+    expect(h2).toBe(h1);
+
+    const p2 = parseSourceHeader(new TextEncoder().encode(h2));
+    expect(p2!.author).toEqual(['C:\\temp']);
+    expect(generateHeader({ ...opts, author: p2!.author })).toBe(h1);
+  });
+
+  it('does not mis-decode escaped literal directive text as a real \\X2\\ directive', () => {
+    // `a\X2\0041\X0\b` as LITERAL text is stored `a\\X2\\0041\\X0\\b`; reading
+    // it back must yield the literal text, not decode the payload to 'A'.
+    const literal = 'a\\X2\\0041\\X0\\b';
+    const header = generateHeader({ schema: 'IFC4', author: [literal], timeStamp: 'TS' });
+    const parsed = parseSourceHeader(new TextEncoder().encode(header));
+    expect(parsed!.author).toEqual([literal]);
+  });
+
+  it('decodes a literal backslash adjacent to a real directive', () => {
+    // Raw STEP `\\\X2\00E4\X0\` = one literal backslash then a real directive.
+    const header = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('f.ifc','TS',('\\\\\\X2\\00E4\\X0\\'),(''),'p','o','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+`;
+    const parsed = parseSourceHeader(new TextEncoder().encode(header));
+    expect(parsed!.author).toEqual(['\\ä']);
+  });
 });
 
 describe('generateHeader', () => {

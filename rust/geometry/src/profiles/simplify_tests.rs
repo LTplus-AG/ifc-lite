@@ -341,6 +341,12 @@ fn ellipse_simplification_is_unit_invariant() {
         out_m.len(),
         out_mm.len()
     );
+    for (a, b) in out_m.iter().zip(out_mm.iter()) {
+        assert!(
+            (a.x * 1000.0 - b.x).abs() < 1e-6 && (a.y * 1000.0 - b.y).abs() < 1e-6,
+            "mm ellipse output must be the metre output scaled x1000, not merely equal in count"
+        );
+    }
 }
 
 /// #1802 review: the thin doubling-back gate (#820) must keep firing when the
@@ -355,4 +361,9 @@ fn thin_profile_gate_holds_under_mm_units() {
         loop_mm.len(),
         "thin mm-unit annular sector must be gated (kept verbatim)"
     );
+    // Gated profiles are returned untouched — assert point-for-point identity,
+    // not just an equal vertex count (which a re-simplified loop could match).
+    for (a, b) in out.iter().zip(loop_mm.iter()) {
+        assert_eq!((a.x, a.y), (b.x, b.y), "gated profile must be kept verbatim");
+    }
 }

@@ -5,9 +5,9 @@
 /**
  * ASPRS LAS point classification helpers (#1783).
  *
- * The LAS specification (ASPRS LAS 1.1 through 1.4) defines classes
- * 0..18, reserves 19..63 for future ASPRS use, and leaves 64..255 to
- * the producer. Decoders emit the raw per-point byte in
+ * The LAS specification (ASPRS LAS 1.1 through 1.4 R15) defines
+ * classes 0..22, reserves 23..63 for future ASPRS use, and leaves
+ * 64..255 to the producer. Decoders emit the raw per-point byte in
  * `DecodedPointChunk.classifications`; these helpers aggregate that
  * into a per-class histogram and map codes to their standard names so
  * UIs never have to show a bare integer.

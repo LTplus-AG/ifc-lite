@@ -309,7 +309,14 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
   let chunksSinceCountsPush = 0;
   const CHUNKS_PER_COUNTS_PUSH = 8;
   const pushClassCounts = () => {
-    if (!opts.onClassCounts || !sawClassifications) return;
+    if (!opts.onClassCounts) return;
+    // A classification-free stream reports null, as documented on the
+    // option — the store treats that as "drop this asset's histogram",
+    // which is a no-op when nothing was ever recorded.
+    if (!sawClassifications) {
+      opts.onClassCounts(handle.id, null);
+      return;
+    }
     const counts: Record<number, number> = {};
     for (const { classId, count } of classificationCountEntries(classCounts)) {
       counts[classId] = count;

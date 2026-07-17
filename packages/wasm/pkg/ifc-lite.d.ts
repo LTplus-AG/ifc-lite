@@ -947,7 +947,7 @@ export class SimplifiedMeshes {
   /**
    * Skip reason per `skippedIds` entry (stable slugs:
    * `no-geometry` / `missing-placement` / `singular-placement` /
-   * `empty-result`).
+   * `empty-result` / `invalid-unit-scale`).
    */
   readonly skippedReasons: any[];
   readonly cavitiesDropped: Uint32Array;

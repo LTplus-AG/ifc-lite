@@ -157,6 +157,25 @@ fn yup_frame_round_trips_and_restores_winding() {
 }
 
 #[test]
+fn invalid_unit_scale_is_skipped() {
+    let (positions, normals, indices) = box_soup([0.0; 3], [1.0; 3]);
+    for bad_scale in [0.0, -0.001, f64::NAN, f64::INFINITY] {
+        let rec = SimplifyRecordInput {
+            positions: &positions,
+            normals: &normals,
+            indices: &indices,
+            origin: [0.0; 3],
+            local_to_world: Some(IDENTITY),
+        };
+        assert_eq!(
+            simplify_element(&[rec], 5, [0.0; 3], bad_scale, false).unwrap_err(),
+            SimplifySkip::InvalidUnitScale,
+            "unit_scale {bad_scale} must skip, not silently become metres"
+        );
+    }
+}
+
+#[test]
 fn missing_placement_is_skipped() {
     let (positions, normals, indices) = box_soup([0.0; 3], [1.0; 3]);
     let rec = SimplifyRecordInput {

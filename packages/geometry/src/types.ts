@@ -121,7 +121,7 @@ export interface SimplifyMeshesResult {
   elements: SimplifiedElementMesh[];
   /** Elements left untouched (keep their original meshes), with reason slugs
    *  (`no-geometry` / `missing-placement` / `singular-placement` /
-   *  `empty-result` / `no-records`). */
+   *  `empty-result` / `invalid-unit-scale` / `no-records`). */
   skipped: Array<{ expressId: number; reason: string }>;
 }
 

@@ -61,6 +61,10 @@ pub enum SimplifySkip {
     /// Simplification emptied the mesh (should not happen; guarded anyway —
     /// an element must never disappear).
     EmptyResult,
+    /// `unit_scale` is zero, negative or non-finite. Silently assuming
+    /// metres would export tessellation at the wrong size while reporting
+    /// success, so the element is skipped instead.
+    InvalidUnitScale,
 }
 
 impl SimplifySkip {
@@ -70,6 +74,7 @@ impl SimplifySkip {
             SimplifySkip::MissingPlacement => "missing-placement",
             SimplifySkip::SingularPlacement => "singular-placement",
             SimplifySkip::EmptyResult => "empty-result",
+            SimplifySkip::InvalidUnitScale => "invalid-unit-scale",
         }
     }
 }
@@ -120,11 +125,9 @@ pub fn simplify_element(
         l2w_raw
     };
     let inv_l2w = invert_affine_row_major(&l2w).ok_or(SimplifySkip::SingularPlacement)?;
-    let unit_scale = if unit_scale.is_finite() && unit_scale > 0.0 {
-        unit_scale
-    } else {
-        1.0
-    };
+    if !(unit_scale.is_finite() && unit_scale > 0.0) {
+        return Err(SimplifySkip::InvalidUnitScale);
+    }
 
     // -- Merge records into one IFC Z-up soup in the RTC-shifted world frame
     // (f64), restoring the IFC winding when the input is the Y-up boundary

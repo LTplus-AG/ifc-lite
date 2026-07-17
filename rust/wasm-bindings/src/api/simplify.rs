@@ -118,7 +118,7 @@ impl SimplifiedMeshes {
 
     /// Skip reason per `skippedIds` entry (stable slugs:
     /// `no-geometry` / `missing-placement` / `singular-placement` /
-    /// `empty-result`).
+    /// `empty-result` / `invalid-unit-scale`).
     #[wasm_bindgen(getter, js_name = skippedReasons)]
     pub fn skipped_reasons(&self) -> Vec<JsValue> {
         self.skipped_reasons.clone()
@@ -184,22 +184,25 @@ impl IfcAPI {
 
         // Slice the concatenated arrays into per-record views, grouped by
         // element in first-seen order.
+        // Accumulate offsets in u64: on wasm32 `usize` is 32-bit, so a hostile
+        // `vertexCounts` entry near u32::MAX would overflow `count * 3` /
+        // the running sum and could slip past the bounds check below.
         let mut order: Vec<u32> = Vec::new();
         let mut groups: rustc_hash::FxHashMap<u32, Vec<usize>> = rustc_hash::FxHashMap::default();
-        let mut pos_offsets = Vec::with_capacity(n);
-        let mut idx_offsets = Vec::with_capacity(n);
-        let (mut pos_off, mut idx_off) = (0usize, 0usize);
+        let mut pos_offsets: Vec<u64> = Vec::with_capacity(n);
+        let mut idx_offsets: Vec<u64> = Vec::with_capacity(n);
+        let (mut pos_off, mut idx_off) = (0u64, 0u64);
         for i in 0..n {
             pos_offsets.push(pos_off);
             idx_offsets.push(idx_off);
-            pos_off += vertex_counts[i] as usize * 3;
-            idx_off += index_counts[i] as usize;
+            pos_off += vertex_counts[i] as u64 * 3;
+            idx_off += index_counts[i] as u64;
             if !groups.contains_key(&express_ids[i]) {
                 order.push(express_ids[i]);
             }
             groups.entry(express_ids[i]).or_default().push(i);
         }
-        if pos_off > positions.len() || idx_off > indices.len() {
+        if pos_off > positions.len() as u64 || idx_off > indices.len() as u64 {
             return Err(js_sys::Error::new(
                 "simplifyMeshes: counts exceed concatenated array lengths",
             )
@@ -230,14 +233,20 @@ impl IfcAPI {
             let records: Vec<SimplifyRecordInput<'_>> = record_indices
                 .iter()
                 .map(|&i| {
-                    let pos =
-                        &positions[pos_offsets[i]..pos_offsets[i] + vertex_counts[i] as usize * 3];
+                    // In-bounds by the total check above, so the u64->usize
+                    // casts cannot truncate.
+                    let (po, pn) = (
+                        pos_offsets[i] as usize,
+                        (vertex_counts[i] as u64 * 3) as usize,
+                    );
+                    let io = idx_offsets[i] as usize;
+                    let pos = &positions[po..po + pn];
                     let nrm = if has_normals {
-                        &normals[pos_offsets[i]..pos_offsets[i] + vertex_counts[i] as usize * 3]
+                        &normals[po..po + pn]
                     } else {
                         &[][..]
                     };
-                    let idx = &indices[idx_offsets[i]..idx_offsets[i] + index_counts[i] as usize];
+                    let idx = &indices[io..io + index_counts[i] as usize];
                     let l2w = if local_to_world_present[i] != 0 {
                         let mut m = [0.0f64; 16];
                         m.copy_from_slice(&local_to_world[i * 16..i * 16 + 16]);

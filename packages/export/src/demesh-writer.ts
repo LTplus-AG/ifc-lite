@@ -176,9 +176,19 @@ export function applySimplifiedGeometry(
       report.skipped.push({ expressId: el.expressId, reason: 'no-representation-attribute' });
       continue;
     }
+    // Malformed geometry is rejected, never repaired: a trailing coordinate
+    // silently dropped by flooring, or a NaN/Infinity coerced to 0 by
+    // `round()`, would author a subtly wrong tessellation into the file.
     const vertexCount = Math.floor(el.positions.length / 3);
     const triCount = Math.floor(el.indices.length / 3);
-    if (vertexCount < 3 || triCount < 1 || !indicesInRange(el.indices, vertexCount)) {
+    if (
+      el.positions.length % 3 !== 0 ||
+      el.indices.length % 3 !== 0 ||
+      vertexCount < 3 ||
+      triCount < 1 ||
+      !valuesAreFinite(el.positions) ||
+      !indicesInRange(el.indices, vertexCount)
+    ) {
       report.skipped.push({ expressId: el.expressId, reason: 'invalid-geometry' });
       continue;
     }
@@ -424,6 +434,13 @@ function findAttrIndex(typeName: string, attrName: string): number | null {
   if (!attrs || attrs.length === 0) return null;
   const idx = attrs.findIndex((a) => a?.name === attrName);
   return idx >= 0 ? idx : null;
+}
+
+function valuesAreFinite(values: ArrayLike<number>): boolean {
+  for (let i = 0; i < values.length; i++) {
+    if (!Number.isFinite(values[i])) return false;
+  }
+  return true;
 }
 
 function indicesInRange(indices: ArrayLike<number>, vertexCount: number): boolean {

@@ -197,4 +197,55 @@ describe('applySimplifiedGeometry', () => {
     expect(out).toMatch(/#100=IFCPRODUCTDEFINITIONSHAPE/);
     expect(out).not.toMatch(/IFCTRIANGULATEDFACESET/);
   });
+
+  it('rejects malformed geometry (non-finite coords, trailing values) instead of rewriting it', async () => {
+    const { store, view, editor } = await loadStore(FIXTURE_SINGLE);
+    const report = applySimplifiedGeometry(store, editor, [
+      // NaN coordinate must not become 0. via round().
+      { expressId: 10, positions: [0, 0, NaN, 1, 0, 0, 0, 1, 0, 0, 0, 1], indices: TETRA.indices },
+    ]);
+    expect(report.replaced).toEqual([]);
+    expect(report.skipped).toEqual([{ expressId: 10, reason: 'invalid-geometry' }]);
+
+    // Trailing coordinate / dangling index must not be floored away.
+    const report2 = applySimplifiedGeometry(store, editor, [
+      { expressId: 10, positions: [...TETRA.positions, 5], indices: TETRA.indices },
+    ]);
+    expect(report2.skipped).toEqual([{ expressId: 10, reason: 'invalid-geometry' }]);
+    const report3 = applySimplifiedGeometry(store, editor, [
+      { expressId: 10, positions: TETRA.positions, indices: [...TETRA.indices, 0] },
+    ]);
+    expect(report3.skipped).toEqual([{ expressId: 10, reason: 'invalid-geometry' }]);
+
+    const out = exportText(store, view);
+    expect(out).toMatch(/#100=IFCPRODUCTDEFINITIONSHAPE/);
+    expect(out).not.toMatch(/IFCTRIANGULATEDFACESET/);
+  });
+
+  it('does not tombstone entities that are only MENTIONED inside STEP strings', async () => {
+    // #100's Name says "legacy shape #300 (see #301)". #300 is a
+    // referrer-less relationship: a lexical scanner that reads string
+    // contents as references would pull it (and its property set #301) into
+    // the prune closure and silently delete the property data.
+    const fixture = `${HEADER}
+#10=IFCWALL('0wall10000000000000000',$,'A',$,$,$,#100,$,$);
+#100=IFCPRODUCTDEFINITIONSHAPE('legacy shape #300 (see #301)',$,(#110));
+#110=IFCSHAPEREPRESENTATION(#8,'Body','SweptSolid',(#120));
+#120=IFCEXTRUDEDAREASOLID(#130,#131,#132,2.);
+#130=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,1.,1.);
+#131=IFCAXIS2PLACEMENT3D(#5,$,$);
+#132=IFCDIRECTION((0.,0.,1.));
+#300=IFCRELDEFINESBYPROPERTIES('0rdefp0000000000000000',$,$,$,(#10),#301);
+#301=IFCPROPERTYSET('0pset00000000000000000',$,'Pset_X',$,());
+${FOOTER}`;
+    const { store, view, editor } = await loadStore(fixture);
+    const report = applySimplifiedGeometry(store, editor, [{ expressId: 10, ...TETRA }]);
+    expect(report.replaced).toEqual([10]);
+
+    const out = exportText(store, view);
+    expect(out).not.toMatch(/#100=IFCPRODUCTDEFINITIONSHAPE/);
+    expect(out).toMatch(/#300=IFCRELDEFINESBYPROPERTIES/);
+    expect(out).toMatch(/#301=IFCPROPERTYSET/);
+    expect(danglingRefs(out)).toEqual([]);
+  });
 });

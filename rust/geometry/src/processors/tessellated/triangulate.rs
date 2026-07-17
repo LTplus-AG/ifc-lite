@@ -247,4 +247,67 @@ mod tests {
             "polygon with unresolvable (overflowing) indices must be dropped"
         );
     }
+
+    /// Indices straddling the u32 multiply-overflow threshold (idx - 1 >
+    /// u32::MAX / 3 ≈ 1431655765): just below overflows nothing (merely out of
+    /// bounds), just above trips `checked_mul`. Both must drop the polygon.
+    #[test]
+    fn triangulate_polygon_drops_indices_around_multiply_threshold() {
+        let positions = [0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0];
+        for idx in [1_431_655_766u32, 1_431_655_767, u32::MAX - 1] {
+            let outer = [1, 2, idx];
+            let mut output: Vec<u32> = Vec::new();
+            PolygonalFaceSetProcessor::triangulate_polygon(&outer, &[], &positions, &mut output);
+            assert!(output.is_empty(), "idx {idx} must drop the whole polygon");
+        }
+    }
+
+    /// One bad index out of three drops the WHOLE triangle (the code's stated
+    /// intent: never fan-triangulate with unresolvable vertices) — no partial
+    /// output, no garbage position read. First out-of-range value is
+    /// vertex_count + 1 (1-based).
+    #[test]
+    fn triangulate_polygon_drops_whole_polygon_on_single_bad_index() {
+        let positions = [0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0]; // 3 vertices
+        for bad in [0u32, 4, 5, 1_000_000] {
+            // 4 = vertex_count + 1, the first out-of-range 1-based index.
+            let outer = [1, 2, bad];
+            let mut output: Vec<u32> = Vec::new();
+            PolygonalFaceSetProcessor::triangulate_polygon(&outer, &[], &positions, &mut output);
+            assert!(
+                output.is_empty(),
+                "triangle with one bad index ({bad}) must be dropped whole"
+            );
+        }
+        // A bad HOLE index must also drop the polygon (5-vertex ear-clip path).
+        let positions5 = [
+            0.0f32, 0.0, 0.0, 4.0, 0.0, 0.0, 4.0, 4.0, 0.0, 0.0, 4.0, 0.0, 2.0, 2.0, 0.0,
+        ];
+        let outer = [1u32, 2, 3, 4];
+        let holes = vec![vec![5u32, 6, 7]]; // 6, 7 out of range
+        let mut output: Vec<u32> = Vec::new();
+        PolygonalFaceSetProcessor::triangulate_polygon(&outer, &holes, &positions5, &mut output);
+        assert!(output.is_empty(), "polygon with a bad hole index must be dropped");
+    }
+
+    /// Valid in-range indices still triangulate exactly as before: the last
+    /// valid index (== vertex_count, 1-based) works, and a plain CCW triangle
+    /// comes out as [0, 1, 2] with no winding swap.
+    #[test]
+    fn triangulate_polygon_valid_indices_unchanged() {
+        let positions = [0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0]; // 3 vertices
+        let outer = [1u32, 2, 3]; // 3 == vertex_count: last valid 1-based index
+        let mut output: Vec<u32> = Vec::new();
+        PolygonalFaceSetProcessor::triangulate_polygon(&outer, &[], &positions, &mut output);
+        assert_eq!(output, vec![0, 1, 2]);
+
+        // Quad fan path.
+        let positions4 = [
+            0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0,
+        ];
+        let outer4 = [1u32, 2, 3, 4];
+        let mut output4: Vec<u32> = Vec::new();
+        PolygonalFaceSetProcessor::triangulate_polygon(&outer4, &[], &positions4, &mut output4);
+        assert_eq!(output4, vec![0, 1, 2, 0, 2, 3]);
+    }
 }

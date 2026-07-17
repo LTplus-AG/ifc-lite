@@ -13,7 +13,6 @@
 # +8: add set_entity_index setter so the processor can install its inline-built index (perf/single-scan).
 # +50: add the per-worker placement-transform memo (field + take/set/get/cache methods), mirroring point_cache (perf/placement-cache).
     1145 rust/core/src/decoder.rs
-     429 rust/core/src/fast_parse.rs
      793 rust/core/src/georef.rs
      445 rust/core/src/model_bounds.rs
      601 rust/core/src/parser/scanner.rs

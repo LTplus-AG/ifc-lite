@@ -37,7 +37,7 @@ ifc-lite-core = { version = "4.1.0", path = "../core" }
 # see docs/architecture/geometry-pipeline.md).
 ifc-lite-geometry = { version = "4.1.0", path = "../geometry", default-features = false }
 rayon = "1.10"
-serde = { version = "1.0", features = ["derive"] }
+serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
 memchr = "2.8"
 rustc-hash = "2.1"

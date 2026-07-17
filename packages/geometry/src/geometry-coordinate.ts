@@ -124,6 +124,17 @@ export function convertMeshCollectionToBatch(
             repeatS: mesh.textureRepeatS,
             repeatT: mesh.textureRepeatT,
           };
+        } else if ((mesh as { textureUrl?: string }).textureUrl) {
+          // #1781: external image reference (`IfcImageTexture`) — carry the
+          // lightweight ref; the viewer resolves it against the `.ifcZIP`
+          // sibling images and decodes once per textureId.
+          meshData.uvs = mesh.uvs;
+          meshData.textureRef = {
+            textureId: (mesh as unknown as { textureId: number }).textureId,
+            url: (mesh as unknown as { textureUrl: string }).textureUrl,
+            repeatS: mesh.textureRepeatS,
+            repeatT: mesh.textureRepeatT,
+          };
         }
 
         // #924: attach the per-entity geometry fingerprint (empty Map → no-op

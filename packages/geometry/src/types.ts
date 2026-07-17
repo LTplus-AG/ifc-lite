@@ -47,6 +47,18 @@ export interface MeshData {
    *  for textured meshes (#961). Decoded to RGBA8 entirely in Rust; the
    *  renderer uploads `rgba` verbatim to a GPU texture. */
   texture?: MeshTexture;
+  /** External image texture reference (`IfcImageTexture`, #1781): the image
+   *  ships OUTSIDE the model (a sibling file inside the `.ifcZIP`), so the
+   *  pipeline carries the reference and the viewer resolves + decodes it once
+   *  per `textureId`, sharing the GPU texture across every mesh that samples
+   *  it. Mutually exclusive with `texture`. `uvs` are present alongside. */
+  textureRef?: MeshTextureRef;
+  /** The decoded image for `textureRef`, attached on the MAIN thread by the
+   *  viewer after resolving `textureRef.url` against the `.ifcZIP` sibling
+   *  images (#1781). One ImageBitmap instance is shared by every mesh with the
+   *  same `textureRef.textureId`; the renderer uploads it to ONE GPU texture
+   *  per id. Never set by the worker. */
+  textureBitmap?: ImageBitmap;
   /** RTC-invariant per-entity geometry fingerprint from the WASM mesh pass,
    *  populated only when geometry hashing is enabled
    *  (`GeometryProcessor.enableGeometryHashes()`). All submeshes of one entity
@@ -114,6 +126,21 @@ export interface MeshTexture {
   rgba: Uint8Array;
   width: number;
   height: number;
+  /** Sampler wrap from `IfcSurfaceTexture.RepeatS/RepeatT` (true = repeat). */
+  repeatS: boolean;
+  repeatT: boolean;
+}
+
+/**
+ * An external image texture reference (`IfcImageTexture`, #1781). The viewer
+ * resolves `url` against the `.ifcZIP` sibling images (basename match) and
+ * decodes it ONCE per `textureId` — meshes only carry this lightweight ref.
+ */
+export interface MeshTextureRef {
+  /** Stable dedup key: the `IfcSurfaceTexture` express id. */
+  textureId: number;
+  /** `IfcImageTexture.URLReference` verbatim (usually a relative filename). */
+  url: string;
   /** Sampler wrap from `IfcSurfaceTexture.RepeatS/RepeatT` (true = repeat). */
   repeatS: boolean;
   repeatT: boolean;

@@ -242,3 +242,94 @@ describe('Scene.getColorOverrideGeneration', () => {
     assert.ok(after > before, 'generation should advance on clearColorOverrides');
   });
 });
+
+/** #1781: shared image textures are refcounted in `sharedTextures` — the GPU
+ *  texture dies with its LAST referencing mesh, never before, and clear()
+ *  empties the registry. */
+function fakeTexture(): GPUTexture & { destroyed: number } {
+  const tex = {
+    destroyed: 0,
+    destroy() {
+      this.destroyed++;
+    },
+  };
+  return tex as unknown as GPUTexture & { destroyed: number };
+}
+
+/** Minimal meshDataMap entry: removeMeshesForEntity early-returns for
+ *  entities it has no mesh data for, so seed one like addMeshData would. */
+function fakeMeshDataEntry(expressId: number) {
+  return {
+    expressId,
+    positions: new Float32Array(9),
+    normals: new Float32Array(9),
+    indices: new Uint32Array(3),
+    color: [1, 1, 1, 1] as [number, number, number, number],
+  };
+}
+
+function fakeTexturedMesh(
+  expressId: number,
+  texture: GPUTexture,
+  sharedTextureKey?: number,
+) {
+  return {
+    expressId,
+    vertexBuffer: fakeBuffer(),
+    indexBuffer: fakeBuffer(),
+    indexCount: 3,
+    uniformBuffer: fakeBuffer(),
+    texture,
+    sampler: {} as GPUSampler,
+    bindGroup: {} as GPUBindGroup,
+    color: [1, 1, 1, 1] as [number, number, number, number],
+    ...(sharedTextureKey !== undefined ? { sharedTextureKey } : {}),
+  };
+}
+
+describe('Scene shared image textures (#1781)', () => {
+  it('destroys a shared texture only with its last referencing mesh', () => {
+    const scene = new Scene();
+    const shared = fakeTexture();
+    scene['sharedTextures'].set(20, { texture: shared, refs: 2 });
+    scene['texturedMeshes'] = [
+      fakeTexturedMesh(10, shared, 20),
+      fakeTexturedMesh(30, shared, 20),
+    ] as never;
+    scene['meshDataMap'].set(10, [fakeMeshDataEntry(10)] as never);
+    scene['meshDataMap'].set(30, [fakeMeshDataEntry(30)] as never);
+
+    scene.removeMeshesForEntity(10);
+    assert.strictEqual(shared.destroyed, 0, 'texture must survive the first mesh');
+    assert.strictEqual(scene['sharedTextures'].get(20)?.refs, 1);
+
+    scene.removeMeshesForEntity(30);
+    assert.strictEqual(shared.destroyed, 1, 'texture dies with its last mesh');
+    assert.strictEqual(scene['sharedTextures'].size, 0);
+  });
+
+  it('per-mesh (#961) textures are still destroyed outright', () => {
+    const scene = new Scene();
+    const owned = fakeTexture();
+    scene['texturedMeshes'] = [fakeTexturedMesh(10, owned)] as never;
+    scene['meshDataMap'].set(10, [fakeMeshDataEntry(10)] as never);
+
+    scene.removeMeshesForEntity(10);
+    assert.strictEqual(owned.destroyed, 1);
+  });
+
+  it('clear() empties the registry and destroys every shared texture once', () => {
+    const scene = new Scene();
+    const shared = fakeTexture();
+    scene['sharedTextures'].set(20, { texture: shared, refs: 2 });
+    scene['texturedMeshes'] = [
+      fakeTexturedMesh(10, shared, 20),
+      fakeTexturedMesh(30, shared, 20),
+    ] as never;
+
+    scene.clear();
+    assert.strictEqual(shared.destroyed, 1, 'destroyed exactly once');
+    assert.strictEqual(scene['sharedTextures'].size, 0);
+    assert.strictEqual(scene.getTexturedMeshes().length, 0);
+  });
+});

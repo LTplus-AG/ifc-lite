@@ -724,9 +724,20 @@ export class MeshDataJs {
    */
   readonly expressId: number;
   /**
+   * Stable texture dedup key (`IfcSurfaceTexture` express id, #1781).
+   * 0 when the mesh is untextured.
+   */
+  readonly textureId: number;
+  /**
    * True when this mesh carries a surface texture (#961).
    */
   readonly hasTexture: boolean;
+  /**
+   * External image reference (`IfcImageTexture.URLReference`, #1781) for the
+   * host to resolve — e.g. a sibling image inside the `.ifcZIP`. `undefined`
+   * for untextured meshes and Rust-decoded blob/pixel textures.
+   */
+  readonly textureUrl: string | undefined;
   /**
    * Local (pre-placement, object-space) AABB (issue #1474), WebGL Y-up,
    * `[minX,minY,minZ,maxX,maxY,maxZ]`. `undefined` when not captured
@@ -1369,9 +1380,11 @@ export interface InitOutput {
   readonly meshdatajs_positions: (a: number) => number;
   readonly meshdatajs_shadingColor: (a: number, b: number) => void;
   readonly meshdatajs_textureHeight: (a: number) => number;
+  readonly meshdatajs_textureId: (a: number) => number;
   readonly meshdatajs_textureRepeatS: (a: number) => number;
   readonly meshdatajs_textureRepeatT: (a: number) => number;
   readonly meshdatajs_textureRgba: (a: number) => number;
+  readonly meshdatajs_textureUrl: (a: number, b: number) => void;
   readonly meshdatajs_textureWidth: (a: number) => number;
   readonly meshdatajs_triangleCount: (a: number) => number;
   readonly meshdatajs_uvs: (a: number) => number;

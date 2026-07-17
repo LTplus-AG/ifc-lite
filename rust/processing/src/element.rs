@@ -323,7 +323,9 @@ fn produce_inner(
         // one unsupported representation item no longer blanks the whole
         // element (`process_element` aborts with `?`). #858 palette split
         // happens per item inside `emit_sub_meshes`.
-        if let Ok(sub_meshes) = router.process_element_with_submeshes(job.entity, decoder) {
+        if let Ok(sub_meshes) =
+            router.process_element_with_submeshes_textured(job.entity, decoder, ctx.texture_index)
+        {
             if !sub_meshes.is_empty() {
                 let (out, occ) =
                     emit_sub_meshes(job, sub_meshes, element_color, ctx, decoder, hasher, layer_class);
@@ -512,6 +514,29 @@ fn emit_sub_meshes(
             h.add_mesh_with_origin(&sub_mesh.positions, &sub_mesh.indices, sub_mesh.origin);
         }
 
+        // Textured face set (#1781): thread the per-vertex UVs through the
+        // weld (kept 1:1 with positions, seams stay split) and attach the
+        // texture, mirroring the type-geometry path (#961). The length guard
+        // drops the texture instead of sampling garbage if any upstream step
+        // rebuilt vertices without maintaining the UV channel.
+        if let (Some(uvs), Some(texture)) = (sub.uvs, sub.texture.as_ref()) {
+            if uvs.len() / 2 == sub_mesh.positions.len() / 3 {
+                let mut mesh_data = build_mesh_data(
+                    job,
+                    sub_mesh,
+                    color,
+                    material_name,
+                    Some(sub.geometry_id),
+                    slice_class,
+                    ctx,
+                    Some(uvs),
+                );
+                mesh_data.texture = Some(MeshTextureData::from_attachment(texture));
+                out.push(mesh_data);
+                continue;
+            }
+        }
+
         // #858: a face set with a per-triangle colour map splits into one
         // mesh per palette group (guards inside the splitter: triangle count
         // must still match, ≥2 distinct colours). Palette colours supersede
@@ -605,14 +630,8 @@ fn produce_type_geometry(
                 build_mesh_data(job, mesh, color, None, None, geometry_class, ctx, part_uvs);
             if let Some(tex) = texture {
                 // UVs were already welded onto `mesh_data`; attach only the
-                // decoded texture image here.
-                mesh_data.texture = Some(MeshTextureData {
-                    rgba: tex.rgba,
-                    width: tex.width,
-                    height: tex.height,
-                    repeat_s: tex.repeat_s,
-                    repeat_t: tex.repeat_t,
-                });
+                // texture (decoded image or #1781 external reference) here.
+                mesh_data.texture = Some(MeshTextureData::from_attachment(&tex));
             }
             out.push(mesh_data);
         }

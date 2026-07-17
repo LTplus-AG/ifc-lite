@@ -75,12 +75,39 @@ pub struct SubMesh {
     pub geometry_id: u32,
     /// The triangulated mesh data
     pub mesh: Mesh,
+    /// Per-vertex texture coordinates (u, v pairs, 1:1 with `mesh.positions`),
+    /// present only for textured face sets (#1781). Downstream index-only edits
+    /// (winding orientation, degenerate-triangle drops) and rigid transforms
+    /// keep them aligned; anything that rebuilds vertices must drop them.
+    pub uvs: Option<Vec<f32>>,
+    /// The surface texture sampled by `uvs` (#1781).
+    pub texture: Option<crate::processors::texture::TextureAttachment>,
 }
 
 impl SubMesh {
     /// Create a new sub-mesh
     pub fn new(geometry_id: u32, mesh: Mesh) -> Self {
-        Self { geometry_id, mesh }
+        Self {
+            geometry_id,
+            mesh,
+            uvs: None,
+            texture: None,
+        }
+    }
+
+    /// Create a textured sub-mesh (#1781): `uvs` are 1:1 with `mesh.positions`.
+    pub fn textured(
+        geometry_id: u32,
+        mesh: Mesh,
+        uvs: Vec<f32>,
+        texture: crate::processors::texture::TextureAttachment,
+    ) -> Self {
+        Self {
+            geometry_id,
+            mesh,
+            uvs: Some(uvs),
+            texture: Some(texture),
+        }
     }
 }
 
@@ -102,6 +129,20 @@ impl SubMeshCollection {
     pub fn add(&mut self, geometry_id: u32, mesh: Mesh) {
         if !mesh.is_empty() {
             self.sub_meshes.push(SubMesh::new(geometry_id, mesh));
+        }
+    }
+
+    /// Add a textured sub-mesh (#1781).
+    pub fn add_textured(
+        &mut self,
+        geometry_id: u32,
+        mesh: Mesh,
+        uvs: Vec<f32>,
+        texture: crate::processors::texture::TextureAttachment,
+    ) {
+        if !mesh.is_empty() {
+            self.sub_meshes
+                .push(SubMesh::textured(geometry_id, mesh, uvs, texture));
         }
     }
 

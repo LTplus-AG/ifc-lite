@@ -13,7 +13,8 @@ import { unwrapIfcZip } from './ifczip.js';
 // magic-byte predicate `isZipBuffer` stays internal to `./ifczip.js` — no
 // external consumer needs to know WHETHER a buffer was a zip, only to get the
 // unwrapped bytes back.
-export { unwrapIfcZip, unwrapIfcZipView } from './ifczip.js';
+export { unwrapIfcZip, unwrapIfcZipView, unwrapIfcZipWithResources } from './ifczip.js';
+export type { IfcZipContents } from './ifczip.js';
 export { StepTokenizer } from './tokenizer.js';
 export { EntityIndexBuilder } from './entity-index.js';
 export { EntityExtractor } from './entity-extractor.js';

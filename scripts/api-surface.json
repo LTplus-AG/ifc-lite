@@ -1752,6 +1752,7 @@
     "KmzAltitudeMode: type",
     "MeshData: interface",
     "MeshTexture: interface",
+    "MeshTextureRef: interface",
     "MetadataBootstrapEntitySummary: interface",
     "MetadataBootstrapPayload: interface",
     "MetadataBootstrapSpatialNode: interface",
@@ -3306,6 +3307,7 @@
     "IfcWorkScheduleTypeEnum: enum",
     "IfcWorkTime: interface",
     "IfcZShapeProfileDef: interface",
+    "IfcZipContents: interface",
     "IfcZone: interface",
     "IfcxFile: interface",
     "IfcxLayer: interface",
@@ -3437,7 +3439,8 @@
     "transformToLocal: function",
     "transformToWorld: function",
     "unwrapIfcZip: function",
-    "unwrapIfcZipView: function"
+    "unwrapIfcZipView: function",
+    "unwrapIfcZipWithResources: function"
   ],
   "@ifc-lite/parser/browser": [
     "WorkerParser: class",

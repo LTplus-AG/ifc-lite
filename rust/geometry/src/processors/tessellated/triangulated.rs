@@ -130,12 +130,25 @@ impl TriangulatedFaceSetProcessor {
         map: &crate::processors::texture::ResolvedTextureMap,
     ) -> Result<(Mesh, Vec<f32>)> {
         let (positions, indices, flipped) = Self::parse_positions_and_orient(entity, decoder)?;
-        let mut tex_coord_index = map.tex_coord_index.clone();
-        if flipped {
-            for tri in tex_coord_index.iter_mut() {
-                tri.swap(1, 2);
+        let tex_coord_index = match &map.tex_coord_index {
+            Some(authored) => {
+                let mut idx = authored.clone();
+                if flipped {
+                    for tri in idx.iter_mut() {
+                        tri.swap(1, 2);
+                    }
+                }
+                idx
             }
-        }
+            // TexCoordIndex omitted (`$`): texture vertices pair 1:1 with the
+            // face set's Coordinates, so the CoordIndex IS the UV index (#1781).
+            // Derived from the POST-orientation `indices` (0-based → 1-based),
+            // so the whole-shell winding flip is already reflected — no swap.
+            None => indices
+                .chunks_exact(3)
+                .map(|t| [t[0] + 1, t[1] + 1, t[2] + 1])
+                .collect(),
+        };
         let (mut mesh, uvs) = PolygonalFaceSetProcessor::build_flat_shaded_mesh_with_uvs(
             &positions,
             &indices,

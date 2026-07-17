@@ -70,6 +70,10 @@ export interface TexturedMesh {
   bindGroup: GPUBindGroup;
   /** Authored tint (multiplies the sampled texel); white = texture passthrough. */
   color: [number, number, number, number];
+  /** Set when `texture` lives in the shared registry (#1781: one GPU texture
+   *  per `IfcImageTexture`, sampled by many meshes) — released by refcount,
+   *  never destroyed per-mesh. Undefined for per-mesh #961 blob/pixel uploads. */
+  sharedTextureKey?: number;
 }
 
 function destroyGpuResources(
@@ -141,6 +145,10 @@ export class Scene {
   private meshDataMap: Map<number, MeshData[]> = new Map();         // Map expressId -> MeshData[] (for lazy buffer creation, accumulates multiple pieces)
   private boundingBoxes: Map<number, BoundingBox> = new Map();      // Map expressId -> bounding box (computed lazily)
   private texturedMeshes: TexturedMesh[] = [];                      // #961: IFC surface-textured meshes (own buffers/texture/bindGroup)
+  /** #1781: GPU textures shared across meshes, keyed by `MeshTextureRef.textureId`
+   *  (one `IfcImageTexture` → one upload, sampled by every face set mapping it).
+   *  Refcounted: entries die when the last referencing mesh is removed / on clear(). */
+  private sharedTextures = new Map<number, { texture: GPUTexture; refs: number }>();
   private texturedDevice?: GPUDevice;                               // #961: cached for textured-mesh re-upload on translate
   private instancedTemplates: InstancedTemplateGPU[] = [];          // GPU-instancing: unique templates + per-occurrence buffers (fed by addInstancedShard)
   private instancedVisible = true;                                  // GPU-instancing: hidden in Types view mode (instanced geometry is class-0 occurrences)
@@ -1083,10 +1091,10 @@ export class Scene {
     // otherwise a flat-colour copy would be drawn over the texture. Still
     // register them in meshDataMap (addMeshData) so CPU picking/bbox/frame work.
     let renderable = meshDataArray;
-    if (meshDataArray.some((m) => m.texture && m.uvs)) {
+    if (meshDataArray.some((m) => Scene.hasRenderableTexture(m))) {
       renderable = [];
       for (const meshData of meshDataArray) {
-        if (meshData.texture && meshData.uvs) {
+        if (Scene.hasRenderableTexture(meshData)) {
           this.createTexturedMesh(meshData, device, pipeline);
           this.addMeshData(meshData);
         } else {
@@ -1272,7 +1280,7 @@ export class Scene {
       tm.vertexBuffer.destroy();
       tm.indexBuffer.destroy();
       tm.uniformBuffer.destroy();
-      tm.texture.destroy();
+      this.releaseTexturedMeshTexture(tm);
       this.texturedMeshes.splice(i, 1);
       removedDedicated = true;
     }
@@ -1456,7 +1464,7 @@ export class Scene {
     // re-interleave + re-upload the moved textured parts (paired by expressId,
     // in creation order). Without this a moved textured entity renders stale.
     if (this.texturedDevice && this.texturedMeshes.length > 0) {
-      const texturedData = meshDataList.filter((md) => md.texture && md.uvs);
+      const texturedData = meshDataList.filter((md) => Scene.hasRenderableTexture(md));
       if (texturedData.length > 0) {
         const entries = this.texturedMeshes.filter((tm) => tm.expressId === expressId);
         for (let i = 0; i < entries.length && i < texturedData.length; i++) {
@@ -1649,7 +1657,7 @@ export class Scene {
     // #961: textured meshes render from their own GPU vertex buffer — re-upload
     // the rotated parts so they don't render stale (mirrors the translate path).
     if (this.texturedDevice && this.texturedMeshes.length > 0) {
-      const texturedData = meshDataList.filter((md) => md.texture && md.uvs);
+      const texturedData = meshDataList.filter((md) => Scene.hasRenderableTexture(md));
       if (texturedData.length > 0) {
         const entries = this.texturedMeshes.filter((tm) => tm.expressId === expressId);
         for (let i = 0; i < entries.length && i < texturedData.length; i++) {
@@ -3370,6 +3378,16 @@ export class Scene {
    * The per-frame uniform (viewProj/section/flags + colour tint) is written by
    * the renderer each frame, mirroring how colour batches are driven.
    */
+  /** True when the mesh can render through the textured pipeline: UVs plus
+   *  either a Rust-decoded image (#961) or a viewer-resolved ImageBitmap for
+   *  an external `IfcImageTexture` reference (#1781). A `textureRef` whose
+   *  image was NOT resolved (missing zip sibling) renders as ordinary
+   *  flat-colour geometry instead. */
+  private static hasRenderableTexture(meshData: MeshData): boolean {
+    return Boolean(meshData.uvs) &&
+      Boolean(meshData.texture || (meshData.textureRef && meshData.textureBitmap));
+  }
+
   /**
    * Interleave a textured mesh's vertices into the stride-36 layout
    * `[px,py,pz, nx,ny,nz, entityId(u32), u,v]`. Shared by initial upload and
@@ -3378,7 +3396,7 @@ export class Scene {
    */
   private interleaveTexturedVertices(meshData: MeshData): ArrayBuffer | null {
     const uvs = meshData.uvs;
-    if (!meshData.texture || !uvs) return null;
+    if (!Scene.hasRenderableTexture(meshData) || !uvs) return null;
     const positions = meshData.positions;
     const normals = meshData.normals;
     const vertexCount = positions.length / 3;
@@ -3409,8 +3427,10 @@ export class Scene {
 
   private createTexturedMesh(meshData: MeshData, device: GPUDevice, pipeline: RenderPipeline): void {
     const tex = meshData.texture;
+    const ref = meshData.textureRef;
+    const bitmap = meshData.textureBitmap;
     const interleaved = this.interleaveTexturedVertices(meshData);
-    if (!tex || !interleaved) return;
+    if (!interleaved || !(tex || (ref && bitmap))) return;
     this.texturedDevice = device; // reused by translateMeshesForEntity re-upload
 
     const vertexBuffer = device.createBuffer({
@@ -3425,23 +3445,58 @@ export class Scene {
     });
     device.queue.writeBuffer(indexBuffer, 0, meshData.indices);
 
-    // Upload the Rust-decoded RGBA8 verbatim — no image decoding in JS.
-    const texture = device.createTexture({
-      size: { width: tex.width, height: tex.height },
-      format: 'rgba8unorm',
-      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
-    });
-    device.queue.writeTexture(
-      { texture },
-      tex.rgba,
-      { bytesPerRow: tex.width * 4, rowsPerImage: tex.height },
-      { width: tex.width, height: tex.height },
-    );
+    let texture: GPUTexture;
+    let sharedTextureKey: number | undefined;
+    if (tex) {
+      // #961: upload the Rust-decoded RGBA8 verbatim — no image decoding in JS.
+      texture = device.createTexture({
+        size: { width: tex.width, height: tex.height },
+        format: 'rgba8unorm',
+        usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+      });
+      device.queue.writeTexture(
+        { texture },
+        tex.rgba,
+        { bytesPerRow: tex.width * 4, rowsPerImage: tex.height },
+        { width: tex.width, height: tex.height },
+      );
+    } else {
+      // #1781: external image texture — the viewer decoded the `.ifcZIP`
+      // sibling to an ImageBitmap once per textureId; upload it ONCE and share
+      // the GPU texture across every mesh sampling it (real files map one
+      // 4096² image from dozens of face sets — per-mesh copies would be GBs).
+      const refKey = ref!.textureId;
+      const bmp = bitmap!;
+      let entry = this.sharedTextures.get(refKey);
+      if (!entry) {
+        const gpuTex = device.createTexture({
+          size: { width: bmp.width, height: bmp.height },
+          format: 'rgba8unorm',
+          // RENDER_ATTACHMENT is required by copyExternalImageToTexture.
+          usage:
+            GPUTextureUsage.TEXTURE_BINDING |
+            GPUTextureUsage.COPY_DST |
+            GPUTextureUsage.RENDER_ATTACHMENT,
+        });
+        device.queue.copyExternalImageToTexture(
+          { source: bmp },
+          { texture: gpuTex },
+          { width: bmp.width, height: bmp.height },
+        );
+        entry = { texture: gpuTex, refs: 0 };
+        this.sharedTextures.set(refKey, entry);
+      }
+      entry.refs++;
+      texture = entry.texture;
+      sharedTextureKey = refKey;
+    }
 
+    const repeatS = tex ? tex.repeatS : ref!.repeatS;
+    const repeatT = tex ? tex.repeatT : ref!.repeatT;
     const wrap = (repeat: boolean): GPUAddressMode => (repeat ? 'repeat' : 'clamp-to-edge');
     const sampler = device.createSampler({
-      addressModeU: wrap(tex.repeatS),
-      addressModeV: wrap(tex.repeatT),
+      addressModeU: wrap(repeatS),
+      addressModeV: wrap(repeatT),
       magFilter: 'linear',
       minFilter: 'linear',
       mipmapFilter: 'linear',
@@ -3463,7 +3518,25 @@ export class Scene {
       sampler,
       bindGroup,
       color: meshData.color,
+      ...(sharedTextureKey !== undefined ? { sharedTextureKey } : {}),
     });
+  }
+
+  /** Release a textured mesh's GPU texture: shared (#1781) entries decrement
+   *  the registry refcount and die with their LAST reference; per-mesh (#961)
+   *  uploads are destroyed outright. */
+  private releaseTexturedMeshTexture(tm: TexturedMesh): void {
+    if (tm.sharedTextureKey === undefined) {
+      tm.texture.destroy();
+      return;
+    }
+    const entry = this.sharedTextures.get(tm.sharedTextureKey);
+    if (!entry) return;
+    entry.refs--;
+    if (entry.refs <= 0) {
+      entry.texture.destroy();
+      this.sharedTextures.delete(tm.sharedTextureKey);
+    }
   }
 
   clear(): void {
@@ -3473,9 +3546,13 @@ export class Scene {
       tm.vertexBuffer.destroy();
       tm.indexBuffer.destroy();
       tm.uniformBuffer.destroy();
-      tm.texture.destroy();
+      this.releaseTexturedMeshTexture(tm);
     }
     this.texturedMeshes = [];
+    // Belt-and-braces: refcounting above should have emptied the registry;
+    // destroy any straggler so clear() can never leak a shared GPU texture.
+    for (const entry of this.sharedTextures.values()) entry.texture.destroy();
+    this.sharedTextures.clear();
     // GPU-instancing templates own their vertex/index/instance buffers.
     for (const it of this.instancedTemplates) {
       it.vertexBuffer.destroy();

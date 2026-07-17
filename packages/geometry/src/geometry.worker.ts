@@ -341,6 +341,9 @@ export interface GeometryWorkerBatchMessage {
     // #961: optional surface texture + per-vertex UVs (transferables).
     uvs?: MeshData['uvs'];
     texture?: MeshData['texture'];
+    // #1781: external image texture reference (`IfcImageTexture`) — the main
+    // thread resolves it against the `.ifcZIP` sibling images by `textureId`.
+    textureRef?: MeshData['textureRef'];
     /** RTC-invariant per-entity geometry fingerprint, present only when
      *  geometry hashing was enabled via `set-compute-geometry-hashes`.
      *  A `bigint` survives the structured-clone `postMessage`. */
@@ -932,6 +935,21 @@ function collectMeshes(
           };
           session.pendingTransfers.push(uvs.buffer, rgba.buffer);
           session.cumulativeMeshBytes += uvs.byteLength + rgba.byteLength;
+        } else if (mesh.textureUrl) {
+          // #1781: external image reference (`IfcImageTexture`) — UVs travel as
+          // a transferable like #961, but the texture itself is only a URL +
+          // repeat flags; the main thread resolves it against the `.ifcZIP`
+          // sibling images and decodes ONCE per `textureId`.
+          const uvs = new Float32Array(mesh.uvs);
+          meshData.uvs = uvs;
+          meshData.textureRef = {
+            textureId: mesh.textureId,
+            url: mesh.textureUrl,
+            repeatS: mesh.textureRepeatS,
+            repeatT: mesh.textureRepeatT,
+          };
+          session.pendingTransfers.push(uvs.buffer);
+          session.cumulativeMeshBytes += uvs.byteLength;
         }
         // #924: attach the per-entity geometry fingerprint (empty Map → no-op
         // unless geometry hashing was enabled).

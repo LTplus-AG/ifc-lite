@@ -28,7 +28,9 @@ const META_FILES = new Set(['manifest.json', 'README.md']);
 // private fixtures that contributors keep on their own machine.
 const SKIP_DIRS = new Set(['local']);
 // Recognised fixture extensions. Add new types here when needed.
-const FIXTURE_EXT = /\.(ifc|IFC|ifcx)$/;
+// .ifczip: zip container fixtures (textured models ship images as siblings
+// of the .ifc inside the archive, #1781).
+const FIXTURE_EXT = /\.(ifc|IFC|ifcx|ifczip)$/;
 
 const LFS_RE = /^version https:\/\/git-lfs\.github\.com\/spec\/v1\noid sha256:([a-f0-9]{64})\nsize (\d+)\n?$/;
 

@@ -51,7 +51,10 @@ pub use swept::{
     RevolvedAreaSolidProcessor, SurfaceCurveSweptAreaSolidProcessor, SweptDiskSolidProcessor,
 };
 pub use tessellated::{PolygonalFaceSetProcessor, TriangulatedFaceSetProcessor};
-pub use texture::{build_texture_index, MeshTexture, ResolvedTextureMap};
+pub use texture::{
+    build_texture_index, ImageTextureRef, MeshTexture, ResolvedTextureMap, TextureAttachment,
+    TextureSource,
+};
 
 /// Extract CoordIndex bytes from IfcTriangulatedFaceSet raw entity
 ///

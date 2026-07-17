@@ -33,6 +33,13 @@ const CRATES = [
   'ifc-lite-geometry',
   'ifc-lite-clash',
   'ifc-lite-processing',
+  // ifc-lite-export must precede ffi/wasm: wasm-bindings pins it by version
+  // (HBJSON/KMZ exporters, #1235) and cargo resolves that against crates.io
+  // at publish time. NOTE: the crate's FIRST publish cannot go through
+  // trusted publishing (new crates need a personal token) - bootstrap it
+  // manually once, then configure its trusted publisher, like every other
+  // crate in this list was bootstrapped.
+  'ifc-lite-export',
   'ifc-lite-ffi',
   'ifc-lite-wasm',
 ];

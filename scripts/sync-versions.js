@@ -82,7 +82,7 @@ function syncVersions() {
   );
 
   cargoToml = cargoToml.replace(
-    /(ifc-lite-(?:core|geometry|processing|clash|wasm)\s*=\s*\{\s*version\s*=\s*")[^"]+(")/g,
+    /(ifc-lite-(?:core|geometry|processing|clash|export|wasm)\s*=\s*\{\s*version\s*=\s*")[^"]+(")/g,
     `$1${version}$2`
   );
 
@@ -94,7 +94,7 @@ function syncVersions() {
   // path and keeps the version requirement on publish). Those literals
   // must track the workspace version or every workspace build breaks with
   // a version/path mismatch after a bump.
-  for (const member of ['core', 'geometry', 'processing', 'clash', 'ffi', 'wasm-bindings']) {
+  for (const member of ['core', 'geometry', 'processing', 'clash', 'export', 'ffi', 'wasm-bindings']) {
     const memberTomlPath = join(rootDir, 'rust', member, 'Cargo.toml');
     let memberToml;
     try {
@@ -103,7 +103,7 @@ function syncVersions() {
       continue;
     }
     const updated = memberToml.replace(
-      /(ifc-lite-(?:core|geometry|processing|clash|wasm)\s*=\s*\{\s*version\s*=\s*")[^"]+(")/g,
+      /(ifc-lite-(?:core|geometry|processing|clash|export|wasm)\s*=\s*\{\s*version\s*=\s*")[^"]+(")/g,
       `$1${version}$2`
     );
     if (updated !== memberToml) {

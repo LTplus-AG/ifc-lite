@@ -49,7 +49,7 @@ ifc-lite-processing = { version = "4.1.1", path = "../processing" }
 # Pure-geometry clash kernel (BVH broad phase + exact triangle narrow phase).
 ifc-lite-clash = { version = "4.1.1", path = "../clash" }
 # Domain-format exporters (HBJSON, OBJ, glTF/GLB, CSV, JSON, JSON-LD, STEP, IFC5, Merged).
-ifc-lite-export = { version = "4.1.0", path = "../export" }
+ifc-lite-export = { version = "4.1.1", path = "../export" }
 js-sys = "=0.3.83"
 rayon = "1.10"
 # `ifc-lite-geometry` uses rayon `par_iter` (e.g. FacetedBrep

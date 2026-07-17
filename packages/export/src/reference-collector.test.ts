@@ -140,6 +140,38 @@ describe('collectReferencedEntityIds', () => {
     expect(closure.size).toBe(0);
   });
 
+  it('should not treat #N inside STEP string literals as references', () => {
+    const { source, entityIndex } = buildTestData([
+      [1, 'IFCWALL', "#1=IFCWALL('guid',$,'see detail #2 and #3',$,#4,$,$,$);"],
+      [2, 'IFCRELDEFINESBYPROPERTIES', "#2=IFCRELDEFINESBYPROPERTIES('g2',$,$,$,(#5),#6);"],
+      [3, 'IFCWALL', "#3=IFCWALL('g3',$,'B',$,$,$,$,$);"],
+      [4, 'IFCLOCALPLACEMENT', '#4=IFCLOCALPLACEMENT($,$);'],
+      [5, 'IFCWALL', "#5=IFCWALL('g5',$,'C',$,$,$,$,$);"],
+      [6, 'IFCPROPERTYSET', "#6=IFCPROPERTYSET('g6',$,'P',$,());"],
+    ]);
+
+    const closure = collectReferencedEntityIds(new Set([1]), source, entityIndex);
+
+    expect(closure.has(1)).toBe(true);
+    expect(closure.has(4)).toBe(true);  // real reference
+    expect(closure.has(2)).toBe(false); // '#2' only mentioned in a string
+    expect(closure.has(3)).toBe(false); // '#3' only mentioned in a string
+    expect(closure.has(6)).toBe(false); // reachable only through the phantom #2
+  });
+
+  it("should keep scanning correctly across the STEP '' quote escape", () => {
+    const { source, entityIndex } = buildTestData([
+      [1, 'IFCWALL', "#1=IFCWALL('guid',$,'it''s #2, isn''t it',$,#3,$,$,$);"],
+      [2, 'IFCWALL', "#2=IFCWALL('g2',$,'A',$,$,$,$,$);"],
+      [3, 'IFCLOCALPLACEMENT', '#3=IFCLOCALPLACEMENT($,$);'],
+    ]);
+
+    const closure = collectReferencedEntityIds(new Set([1]), source, entityIndex);
+
+    expect(closure.has(2)).toBe(false); // '#2' stays inside the escaped string
+    expect(closure.has(3)).toBe(true);  // the real reference after it is still seen
+  });
+
   it('should skip references to non-existent entities', () => {
     const { source, entityIndex } = buildTestData([
       [1, 'IFCWALL', "#1=IFCWALL('g',#999,'W',$,$,$,$,$);"],

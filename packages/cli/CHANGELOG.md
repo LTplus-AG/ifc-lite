@@ -1,5 +1,25 @@
 # @ifc-lite/cli
 
+## 0.20.0
+
+### Minor Changes
+
+- [#1769](https://github.com/LTplus-AG/ifc-lite/pull/1769) [`2a7c7ff`](https://github.com/LTplus-AG/ifc-lite/commit/2a7c7ffe0ac27a8cc315e5d4a633c56469646cf0) Thanks [@Blogbotana](https://github.com/Blogbotana)! - Demesher: selective per-element mesh simplification with lightweight IFC re-export ([#1767](https://github.com/LTplus-AG/ifc-lite/issues/1767)). `@ifc-lite/export` gains `DemeshSession` — pick elements (usually the heaviest, see `heaviest(n)`), escalate simplification one level per `simplify()` call (levels 1-4 = internal-cavity removal + vertex-clustering decimation at target ratios 0.5/0.25/0.10/0.03, level 5 = bounding-box collapse) with render-ready replacement meshes for live scene updates, then export a lighter IFC separately via `exportIfc()`, which authors `IfcTriangulatedFaceSet` geometry and prunes the replaced representation subgraphs (IFC2X3 input auto-upconverts to IFC4). Also exported: `applySimplifiedGeometry` and the supporting types.
+
+  `@ifc-lite/geometry` gains `GeometryProcessor.simplifyMeshes()` backed by the new wasm `simplifyMeshes` API (`SimplifiedMeshes`). `@ifc-lite/cli` gains `ifc-lite simplify <file.ifc> --level 1..5 [--ids ...] --out light.ifc [--json]` for dev/testing. `@ifc-lite/data` / `@ifc-lite/mutations` widen `IfcAttributeValue` with a write-only `{ real: number }` marker (serialized by `stepReal()` in `@ifc-lite/export`) so tessellation coordinates always carry a decimal point.
+
+### Patch Changes
+
+- Updated dependencies [[`37224e8`](https://github.com/LTplus-AG/ifc-lite/commit/37224e8cd852d246cf463622cd612a38e0cf6e27), [`2a7c7ff`](https://github.com/LTplus-AG/ifc-lite/commit/2a7c7ffe0ac27a8cc315e5d4a633c56469646cf0), [`90522d2`](https://github.com/LTplus-AG/ifc-lite/commit/90522d218d5a9c4df0760349b5bfc60916a23f8f), [`613a1bf`](https://github.com/LTplus-AG/ifc-lite/commit/613a1bf6e8f6b3678ce6bd214e746e82dd11f73d), [`502c61b`](https://github.com/LTplus-AG/ifc-lite/commit/502c61bc7c0ae1ac313ed93ab335fdd942471c72), [`05c8bdf`](https://github.com/LTplus-AG/ifc-lite/commit/05c8bdf348c5afae8978293cd324d45104e24940), [`7194c95`](https://github.com/LTplus-AG/ifc-lite/commit/7194c95002f2c84cd3c9444d710a50190a976a90), [`502bdbf`](https://github.com/LTplus-AG/ifc-lite/commit/502bdbf5c4c4c86999f4e662b71ee5b0b16307ae), [`6102a22`](https://github.com/LTplus-AG/ifc-lite/commit/6102a222a6a71afcdab89855f1dcfa9437d3994f)]:
+  - @ifc-lite/export@2.6.0
+  - @ifc-lite/geometry@3.3.0
+  - @ifc-lite/wasm@4.1.0
+  - @ifc-lite/data@2.7.0
+  - @ifc-lite/mutations@1.21.0
+  - @ifc-lite/ids@1.15.33
+  - @ifc-lite/parser@3.10.0
+  - @ifc-lite/ifcx@2.3.1
+
 ## 0.19.0
 
 ### Minor Changes

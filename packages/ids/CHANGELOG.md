@@ -1,5 +1,25 @@
 # @ifc-lite/ids
 
+## 1.15.33
+
+### Patch Changes
+
+- [#1795](https://github.com/LTplus-AG/ifc-lite/pull/1795) [`613a1bf`](https://github.com/LTplus-AG/ifc-lite/commit/613a1bf6e8f6b3678ce6bd214e746e82dd11f73d) Thanks [@louistrue](https://github.com/louistrue)! - IDS validation on server-parsed models now sees type-inherited property sets ([#1787](https://github.com/LTplus-AG/ifc-lite/issues/1787)). The bridge's `appendInheritedPropertySets` resolved type psets only via `extractTypePropertiesOnDemand`, which bails on the empty `source` buffer of a server-parsed store — so a facet checking a property that lives on the element's `IfcTypeProduct` (rather than the instance) passed on the in-browser path but was invisible on the server path. It now falls back to the prebuilt property table keyed by the type id (resolved through `IfcRelDefinesByType`), mirroring the Lists server-path type fallback. No wire or cache change; the WASM path is unaffected (guarded on empty `source`).
+
+- [#1762](https://github.com/LTplus-AG/ifc-lite/pull/1762) [`05c8bdf`](https://github.com/LTplus-AG/ifc-lite/commit/05c8bdf348c5afae8978293cd324d45104e24940) Thanks [@louistrue](https://github.com/louistrue)! - Material association hardening (follow-up to [#1755](https://github.com/LTplus-AG/ifc-lite/issues/1755)):
+
+  - **Multiple `IfcRelAssociatesMaterial` per element** are no longer lost. New `resolveAllMaterialDefIds` / `extractAllMaterialsOnDemand` surface every association (relationship-graph backed, ordered by rel express id). The single-entry `onDemandMaterialMap` "primary" is now deterministic — the association with the LOWEST rel express id wins — and the viewer cache rebuild applies the same rule, so a cache load can no longer disagree with a fresh parse. Models where the old last-wins rule picked a later association may report a different primary material in single-value surfaces (MCP/CLI/SDK).
+  - `buildMaterialUsageIndex` lists elements under EVERY associated material, so the By Material tab and per-material totals include secondary associations.
+  - `extractMaterialPropertiesOnDemand` aggregates `Pset_Material*` across all associations instead of only the primary.
+  - **IDS**: material facets now check every association — a requirement satisfied only by an element's second association no longer false-fails.
+  - **Constituent-set fractions**: constituents without an authored `Fraction` receive an equal share of the unallocated remainder instead of weight 0, so they contribute to per-material quantity totals.
+
+- [#1785](https://github.com/LTplus-AG/ifc-lite/pull/1785) [`7194c95`](https://github.com/LTplus-AG/ifc-lite/commit/7194c95002f2c84cd3c9444d710a50190a976a90) Thanks [@louistrue](https://github.com/louistrue)! - IDS validation on server-parsed models now matches candidate values for multi-valued properties (enumerated / bounded / list / table), for INSTANCE-attached properties, identically to the in-browser path ([#1766](https://github.com/LTplus-AG/ifc-lite/issues/1766)). The server emits the same `values[]` candidate array `parsePropertyValue` produces — enumerated/list members, bounded lower/upper/setPoint (deduped), table defining-then-defined values — as a JSON-encoded nullable `values_json` column (data-model cache v4 → v5, sparse: only multi-value rows). The decoder parses it, `convertServerDataModel`'s `materializeProp` attaches it to the property entry, and the existing IDS bridge (`projectProperty` → facet `candidateValues`) consumes it unchanged, so a facet passes when the constraint matches ANY candidate (not just the joined display value). `@ifc-lite/data`'s `Property` gains an optional `values?: string[]`.
+
+- Updated dependencies [[`2a7c7ff`](https://github.com/LTplus-AG/ifc-lite/commit/2a7c7ffe0ac27a8cc315e5d4a633c56469646cf0), [`502c61b`](https://github.com/LTplus-AG/ifc-lite/commit/502c61bc7c0ae1ac313ed93ab335fdd942471c72), [`05c8bdf`](https://github.com/LTplus-AG/ifc-lite/commit/05c8bdf348c5afae8978293cd324d45104e24940), [`7194c95`](https://github.com/LTplus-AG/ifc-lite/commit/7194c95002f2c84cd3c9444d710a50190a976a90), [`6102a22`](https://github.com/LTplus-AG/ifc-lite/commit/6102a222a6a71afcdab89855f1dcfa9437d3994f)]:
+  - @ifc-lite/data@2.7.0
+  - @ifc-lite/parser@3.10.0
+
 ## 1.15.32
 
 ### Patch Changes

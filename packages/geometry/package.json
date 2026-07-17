@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/geometry",
-  "version": "3.2.1",
+  "version": "3.3.0",
   "description": "Geometry processing bridge for IFC-Lite - exact-arithmetic CSG, streamed across workers",
   "type": "module",
   "main": "./dist/index.js",

@@ -1,5 +1,20 @@
 # @ifc-lite/wasm
 
+## 4.1.0
+
+### Minor Changes
+
+- [#1769](https://github.com/LTplus-AG/ifc-lite/pull/1769) [`2a7c7ff`](https://github.com/LTplus-AG/ifc-lite/commit/2a7c7ffe0ac27a8cc315e5d4a633c56469646cf0) Thanks [@Blogbotana](https://github.com/Blogbotana)! - Demesher: selective per-element mesh simplification with lightweight IFC re-export ([#1767](https://github.com/LTplus-AG/ifc-lite/issues/1767)). `@ifc-lite/export` gains `DemeshSession` — pick elements (usually the heaviest, see `heaviest(n)`), escalate simplification one level per `simplify()` call (levels 1-4 = internal-cavity removal + vertex-clustering decimation at target ratios 0.5/0.25/0.10/0.03, level 5 = bounding-box collapse) with render-ready replacement meshes for live scene updates, then export a lighter IFC separately via `exportIfc()`, which authors `IfcTriangulatedFaceSet` geometry and prunes the replaced representation subgraphs (IFC2X3 input auto-upconverts to IFC4). Also exported: `applySimplifiedGeometry` and the supporting types.
+
+  `@ifc-lite/geometry` gains `GeometryProcessor.simplifyMeshes()` backed by the new wasm `simplifyMeshes` API (`SimplifiedMeshes`). `@ifc-lite/cli` gains `ifc-lite simplify <file.ifc> --level 1..5 [--ids ...] --out light.ifc [--json]` for dev/testing. `@ifc-lite/data` / `@ifc-lite/mutations` widen `IfcAttributeValue` with a write-only `{ real: number }` marker (serialized by `stepReal()` in `@ifc-lite/export`) so tessellation coordinates always carry a decimal point.
+
+- [#1793](https://github.com/LTplus-AG/ifc-lite/pull/1793) [`502c61b`](https://github.com/LTplus-AG/ifc-lite/commit/502c61bc7c0ae1ac313ed93ab335fdd942471c72) Thanks [@louistrue](https://github.com/louistrue)! - Render IFC4 `IfcImageTexture` surface textures from `.ifcZIP` containers ([#1781](https://github.com/LTplus-AG/ifc-lite/issues/1781)).
+
+  - parser: new `unwrapIfcZipWithResources` surfaces sibling raster images (the files `IfcImageTexture.URLReference` points at) alongside the model entry, keyed by lowercased basename; `unwrapIfcZip` is unchanged.
+  - geometry/wasm: `IfcImageTexture` now resolves to a lightweight reference (`textureId` = the `IfcSurfaceTexture` express id, URL, repeat flags) instead of being dropped — the host decodes the image once per id, so a 4096² JPEG shared by dozens of face sets is decoded and uploaded exactly once. `IfcIndexedTriangleTextureMap` with a null `TexCoordIndex` (the SketchUp IFC Manager export shape) now maps UVs 1:1 with the face set's coordinates per spec. Textured face sets on ORDINARY occurrences (direct `Body` items, not just type-product representation maps) now carry UVs + texture through the sub-mesh path, and blob/pixel texture decodes are Arc-shared instead of cloned per face set.
+  - renderer: textured meshes with an external image reference render through the existing WebGPU textured pipeline via a refcounted shared-texture registry (one GPU texture per `textureId`, uploaded from the viewer-decoded `ImageBitmap`); per-mesh [#961](https://github.com/LTplus-AG/ifc-lite/issues/961) blob/pixel uploads are unchanged.
+  - viewer: `.ifcZIP` loads decode sibling images with `createImageBitmap` and attach them to arriving meshes; textured models skip the binary geometry cache (which cannot persist textures yet) instead of silently losing textures on the second open.
+
 ## 4.0.1
 
 ### Patch Changes

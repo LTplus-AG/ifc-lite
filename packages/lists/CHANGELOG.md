@@ -1,5 +1,12 @@
 # @ifc-lite/lists
 
+## 1.20.1
+
+### Patch Changes
+
+- Updated dependencies [[`2a7c7ff`](https://github.com/LTplus-AG/ifc-lite/commit/2a7c7ffe0ac27a8cc315e5d4a633c56469646cf0), [`7194c95`](https://github.com/LTplus-AG/ifc-lite/commit/7194c95002f2c84cd3c9444d710a50190a976a90)]:
+  - @ifc-lite/data@2.7.0
+
 ## 1.20.0
 
 ### Minor Changes

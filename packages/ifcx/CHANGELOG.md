@@ -1,5 +1,14 @@
 # @ifc-lite/ifcx
 
+## 2.3.1
+
+### Patch Changes
+
+- Updated dependencies [[`2a7c7ff`](https://github.com/LTplus-AG/ifc-lite/commit/2a7c7ffe0ac27a8cc315e5d4a633c56469646cf0), [`7dcf3e1`](https://github.com/LTplus-AG/ifc-lite/commit/7dcf3e1e33101c694f0acc74aa77cf07770c63c5), [`7194c95`](https://github.com/LTplus-AG/ifc-lite/commit/7194c95002f2c84cd3c9444d710a50190a976a90)]:
+  - @ifc-lite/data@2.7.0
+  - @ifc-lite/mutations@1.21.0
+  - @ifc-lite/pointcloud@0.4.0
+
 ## 2.3.0
 
 ### Minor Changes

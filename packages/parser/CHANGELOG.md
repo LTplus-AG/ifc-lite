@@ -1,5 +1,33 @@
 # @ifc-lite/parser
 
+## 3.10.0
+
+### Minor Changes
+
+- [#1793](https://github.com/LTplus-AG/ifc-lite/pull/1793) [`502c61b`](https://github.com/LTplus-AG/ifc-lite/commit/502c61bc7c0ae1ac313ed93ab335fdd942471c72) Thanks [@louistrue](https://github.com/louistrue)! - Render IFC4 `IfcImageTexture` surface textures from `.ifcZIP` containers ([#1781](https://github.com/LTplus-AG/ifc-lite/issues/1781)).
+
+  - parser: new `unwrapIfcZipWithResources` surfaces sibling raster images (the files `IfcImageTexture.URLReference` points at) alongside the model entry, keyed by lowercased basename; `unwrapIfcZip` is unchanged.
+  - geometry/wasm: `IfcImageTexture` now resolves to a lightweight reference (`textureId` = the `IfcSurfaceTexture` express id, URL, repeat flags) instead of being dropped — the host decodes the image once per id, so a 4096² JPEG shared by dozens of face sets is decoded and uploaded exactly once. `IfcIndexedTriangleTextureMap` with a null `TexCoordIndex` (the SketchUp IFC Manager export shape) now maps UVs 1:1 with the face set's coordinates per spec. Textured face sets on ORDINARY occurrences (direct `Body` items, not just type-product representation maps) now carry UVs + texture through the sub-mesh path, and blob/pixel texture decodes are Arc-shared instead of cloned per face set.
+  - renderer: textured meshes with an external image reference render through the existing WebGPU textured pipeline via a refcounted shared-texture registry (one GPU texture per `textureId`, uploaded from the viewer-decoded `ImageBitmap`); per-mesh [#961](https://github.com/LTplus-AG/ifc-lite/issues/961) blob/pixel uploads are unchanged.
+  - viewer: `.ifcZIP` loads decode sibling images with `createImageBitmap` and attach them to arriving meshes; textured models skip the binary geometry cache (which cannot persist textures yet) instead of silently losing textures on the second open.
+
+- [#1762](https://github.com/LTplus-AG/ifc-lite/pull/1762) [`05c8bdf`](https://github.com/LTplus-AG/ifc-lite/commit/05c8bdf348c5afae8978293cd324d45104e24940) Thanks [@louistrue](https://github.com/louistrue)! - Material association hardening (follow-up to [#1755](https://github.com/LTplus-AG/ifc-lite/issues/1755)):
+
+  - **Multiple `IfcRelAssociatesMaterial` per element** are no longer lost. New `resolveAllMaterialDefIds` / `extractAllMaterialsOnDemand` surface every association (relationship-graph backed, ordered by rel express id). The single-entry `onDemandMaterialMap` "primary" is now deterministic — the association with the LOWEST rel express id wins — and the viewer cache rebuild applies the same rule, so a cache load can no longer disagree with a fresh parse. Models where the old last-wins rule picked a later association may report a different primary material in single-value surfaces (MCP/CLI/SDK).
+  - `buildMaterialUsageIndex` lists elements under EVERY associated material, so the By Material tab and per-material totals include secondary associations.
+  - `extractMaterialPropertiesOnDemand` aggregates `Pset_Material*` across all associations instead of only the primary.
+  - **IDS**: material facets now check every association — a requirement satisfied only by an element's second association no longer false-fails.
+  - **Constituent-set fractions**: constituents without an authored `Fraction` receive an equal share of the unallocated remainder instead of weight 0, so they contribute to per-material quantity totals.
+
+### Patch Changes
+
+- [#1797](https://github.com/LTplus-AG/ifc-lite/pull/1797) [`6102a22`](https://github.com/LTplus-AG/ifc-lite/commit/6102a222a6a71afcdab89855f1dcfa9437d3994f) Thanks [@louistrue](https://github.com/louistrue)! - Fix `extractRootAttributesFromEntity` leaking STEP bare-enum tokens into string display attributes for types the schema registry doesn't recognise ([#1779](https://github.com/LTplus-AG/ifc-lite/issues/1779)). On the unknown-type fixed-index fallback, a PredefinedType enum landing on attribute 7 (e.g. IFC4X3 `IfcAlignment`) is stored by the extractor as a dotted string (`.USERDEFINED.`) and used to surface as the element's `Tag`. It's now rejected (rendered blank), mirroring the Rust server path — so the `Tag`, `Description`, and `ObjectType` list columns match across parse paths. Known types are unaffected (their schema indices point at genuine string slots).
+
+- Updated dependencies [[`2a7c7ff`](https://github.com/LTplus-AG/ifc-lite/commit/2a7c7ffe0ac27a8cc315e5d4a633c56469646cf0), [`502c61b`](https://github.com/LTplus-AG/ifc-lite/commit/502c61bc7c0ae1ac313ed93ab335fdd942471c72), [`7194c95`](https://github.com/LTplus-AG/ifc-lite/commit/7194c95002f2c84cd3c9444d710a50190a976a90)]:
+  - @ifc-lite/wasm@4.1.0
+  - @ifc-lite/data@2.7.0
+  - @ifc-lite/ifcx@2.3.1
+
 ## 3.9.1
 
 ### Patch Changes

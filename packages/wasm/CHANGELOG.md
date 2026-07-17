@@ -1,5 +1,17 @@
 # @ifc-lite/wasm
 
+## 4.0.1
+
+### Patch Changes
+
+- [#1776](https://github.com/LTplus-AG/ifc-lite/pull/1776) [`2d2a2fb`](https://github.com/LTplus-AG/ifc-lite/commit/2d2a2fb672bba182bc57e3f59c2da4909583fa49) Thanks [@louistrue](https://github.com/louistrue)! - Harden wasm geometry against malformed input (panic=abort there takes down the whole worker instance):
+
+  - A cyclic `FirstOperand` chain in a boolean clipping result (an entity referencing itself) no longer loops forever with unbounded memory growth; the chain walk tracks visited ids and breaks on a repeat.
+  - `remove_internal_membrane` no longer panics on NaN axis extents produced by non-finite file coordinates (uses NaN-safe `total_cmp`).
+  - Out-of-range `CoordIndex` values no longer wrap/truncate to arbitrary valid-looking vertices; index parsing saturates to an out-of-range sentinel and triangulation drops the affected vertex via a checked multiply.
+
+- [#1770](https://github.com/LTplus-AG/ifc-lite/pull/1770) [`2cd5f43`](https://github.com/LTplus-AG/ifc-lite/commit/2cd5f439d202894fde34961cc4b3bfbe9ad2d140) Thanks [@louistrue](https://github.com/louistrue)! - Cut wasm exact-CSG geometry time 20-31% (measured on five CSG-heavy models, byte-identical output). wasm32 has no native 128-bit multiply, so the FixedInt exact-predicate tier's u64-limb schoolbook multiplies lowered every partial product to a `__multi3` libcall; the kernel now dispatches to a u32-digit schoolbook on wasm32 (`u32*u32->u64` = one `i64.mul`). Native builds keep the u64/u128 path verbatim. Both digit widths are pinned bit-identical by a new differential fuzz across all supported widths.
+
 ## 4.0.0
 
 ### Major Changes

@@ -1,5 +1,15 @@
 # @ifc-lite/geometry
 
+## 3.2.1
+
+### Patch Changes
+
+- [#1771](https://github.com/LTplus-AG/ifc-lite/pull/1771) [`a42b8a9`](https://github.com/LTplus-AG/ifc-lite/commit/a42b8a9cfc559781575dde893b2116a5dc493732) Thanks [@louistrue](https://github.com/louistrue)! - Cold-load main-thread work reduction in the parallel geometry stream: the sharded pre-pass now stitches the entity-index columns directly into exact-size SharedArrayBuffer-backed storage (two-phase stitch), so index delivery to the geometry workers, the parser worker, and the sharded pre-pass is zero-copy instead of three full-column copies on the critical path that gates job dispatch. The worker batch handler also stops re-allocating a wrapper object per mesh (~110k per large load) and passes the structured-clone mesh objects straight through. Render parity is exact (verified mesh-count identical on 177MB and 883MB models).
+
+- Updated dependencies [[`cc92f17`](https://github.com/LTplus-AG/ifc-lite/commit/cc92f171661eb8e27170bcc0360336df819f9ab7), [`2d2a2fb`](https://github.com/LTplus-AG/ifc-lite/commit/2d2a2fb672bba182bc57e3f59c2da4909583fa49), [`564a800`](https://github.com/LTplus-AG/ifc-lite/commit/564a800e997322d863aac84127497ef4f8310ac3), [`cc92f17`](https://github.com/LTplus-AG/ifc-lite/commit/cc92f171661eb8e27170bcc0360336df819f9ab7), [`2cd5f43`](https://github.com/LTplus-AG/ifc-lite/commit/2cd5f439d202894fde34961cc4b3bfbe9ad2d140)]:
+  - @ifc-lite/data@2.6.0
+  - @ifc-lite/wasm@4.0.1
+
 ## 3.2.0
 
 ### Minor Changes

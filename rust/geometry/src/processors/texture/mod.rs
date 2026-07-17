@@ -151,6 +151,12 @@ fn decode_pixel_texture(entity: &DecodedEntity) -> Option<MeshTexture> {
     let components = components as usize;
     let pixels = entity.get(8).and_then(|a| a.as_list())?;
     let expected = (width as usize) * (height as usize);
+    // Reject a cardinality mismatch BEFORE decoding: a hostile file declaring
+    // tiny dimensions but carrying a huge Pixel list would otherwise decode
+    // (and allocate) the whole list just to fail the length check at the end.
+    if pixels.len() != expected {
+        return None;
+    }
     let mut rgba = Vec::with_capacity(expected * 4);
     for px in pixels.iter() {
         let s = px.as_string()?;

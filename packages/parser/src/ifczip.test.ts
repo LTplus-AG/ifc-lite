@@ -178,3 +178,13 @@ describe('unwrapIfcZipWithResources (#1781)', () => {
     expect(new TextDecoder().decode(resources.get('wood.jpg'))).toBe('first');
   });
 });
+
+describe('unwrapIfcZipWithResources aggregate budgets (#1781)', () => {
+  it('caps the number of retained images', async () => {
+    const entries: Record<string, string> = { 'model.ifc': STEP_HEADER };
+    for (let i = 0; i < 300; i++) entries[`img_${String(i).padStart(3, '0')}.png`] = 'x';
+    const zip = await makeZip(entries);
+    const { resources } = await unwrapIfcZipWithResources(zip);
+    expect(resources.size).toBe(256);
+  });
+});

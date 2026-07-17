@@ -375,7 +375,16 @@ export function useIfcLoader() {
           const maxExpressId = getMaxExpressId(dataStore, geometryResult.meshes);
           const idOffset = registerModelOffset(modelId, maxExpressId);
           if (idOffset > 0) {
-            for (const mesh of geometryResult.meshes) mesh.expressId = mesh.expressId + idOffset;
+            for (const mesh of geometryResult.meshes) {
+              mesh.expressId = mesh.expressId + idOffset;
+              // #1781: textureId is an express id too — offset it with the same
+              // shift so two federated models can't collide in the renderer's
+              // shared-texture registry (model B's texture #34 must never sample
+              // model A's image).
+              if (mesh.textureRef) {
+                mesh.textureRef = { ...mesh.textureRef, textureId: mesh.textureRef.textureId + idOffset };
+              }
+            }
             for (const asset of geometryResult.pointClouds ?? []) asset.expressId = asset.expressId + idOffset;
           }
           if (idOffset > 0 && patch?.pointCloudHandleId !== undefined) {
@@ -813,7 +822,10 @@ export function useIfcLoader() {
       // A .ifcZIP source is fine on the server path: loadFromServer uploads the
       // original `file` object (still zipped) and the server unwraps the
       // container itself (apps/server extract_file, issue #1494) before parsing.
-      if (target.kind === 'primary' && format === 'ifc' && !mergeLayersAtLoad && USE_SERVER && SERVER_URL && SERVER_URL !== '') {
+      // EXCEPT texture-carrying containers (#1781): the server mesh wire format
+      // doesn't transport UVs/texture refs yet, so the server fast-path would
+      // silently render the model untextured — route those through local WASM.
+      if (target.kind === 'primary' && format === 'ifc' && !mergeLayersAtLoad && !textureBitmaps && USE_SERVER && SERVER_URL && SERVER_URL !== '') {
         // Pass buffer directly - server uses File object for parsing, buffer is only for size checks
         const serverSuccess = await loadFromServer(file, buffer, () => loadSessionRef.current !== currentSession);
         if (serverSuccess) {

@@ -99,6 +99,16 @@ const IMAGE_ENTRY_RE = /\.(png|jpe?g)$/i;
  */
 const MAX_IMAGE_BYTES = 256 * 1024 * 1024;
 
+/**
+ * Aggregate ceilings across ALL retained sibling images (512 MiB / 256
+ * entries): a hostile archive stuffed with thousands of per-entry-legal
+ * images must not exhaust memory through sheer count. Once either budget is
+ * spent, further images are skipped (model load unaffected). Real textured
+ * exports ship a handful of images.
+ */
+const MAX_TOTAL_IMAGE_BYTES = 512 * 1024 * 1024;
+const MAX_IMAGE_ENTRIES = 256;
+
 /** Result of `unwrapIfcZipWithResources`. */
 export interface IfcZipContents {
   /** The single model entry's bytes (or the input unchanged for non-zip). */
@@ -125,8 +135,10 @@ export async function unwrapIfcZipWithResources(
   const { zip, entry } = await openZipModelEntry(buffer, MAX_UNCOMPRESSED_BYTES);
 
   const resources = new Map<string, Uint8Array>();
+  let totalImageBytes = 0;
   for (const res of Object.values(zip.files)) {
     if (res.dir || !IMAGE_ENTRY_RE.test(res.name)) continue;
+    if (resources.size >= MAX_IMAGE_ENTRIES) break;
     const size = declaredUncompressedSize(res);
     if (typeof size === 'number' && size > MAX_IMAGE_BYTES) continue;
     const basename = res.name.split('/').pop()?.toLowerCase();
@@ -134,7 +146,13 @@ export async function unwrapIfcZipWithResources(
     // First entry wins on a (pathological) basename collision — matching the
     // deterministic first-wins convention used across the style indexes.
     if (resources.has(basename)) continue;
-    resources.set(basename, await res.async('uint8array'));
+    const bytes = await res.async('uint8array');
+    // Enforce the aggregate budget on REAL decompressed sizes (the central-
+    // directory declaration is advisory and absent on some writers).
+    if (bytes.byteLength > MAX_IMAGE_BYTES) continue;
+    if (totalImageBytes + bytes.byteLength > MAX_TOTAL_IMAGE_BYTES) break;
+    totalImageBytes += bytes.byteLength;
+    resources.set(basename, bytes);
   }
 
   return { model: await entry.async('arraybuffer'), resources };

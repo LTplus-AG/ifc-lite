@@ -136,14 +136,17 @@ describe('@ifc-lite/wasm external image texture refs (#1781)', () => {
     initSync(readFileSync(wasmPath));
     const api = new IfcAPI();
     try {
-      const bytes = new TextEncoder().encode(IMAGE_TEXTURE_IFC);
-      const pre = api.buildPrePassOnce(bytes);
-      const col = api.processGeometryBatch(
-        bytes, pre.jobs, pre.unitScale,
-        pre.rtcOffset[0], pre.rtcOffset[1], pre.rtcOffset[2], pre.needsShift,
-        pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors,
-      );
+      // `col` stays nullable and is freed in finally, so a mid-call throw
+      // still releases the wasm handles.
+      let col = null;
       try {
+        const bytes = new TextEncoder().encode(IMAGE_TEXTURE_IFC);
+        const pre = api.buildPrePassOnce(bytes);
+        col = api.processGeometryBatch(
+          bytes, pre.jobs, pre.unitScale,
+          pre.rtcOffset[0], pre.rtcOffset[1], pre.rtcOffset[2], pre.needsShift,
+          pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors,
+        );
         let found = null;
         for (let i = 0; i < col.length; i++) {
           const m = col.get(i);
@@ -171,7 +174,7 @@ describe('@ifc-lite/wasm external image texture refs (#1781)', () => {
         assert.equal(found.hasTexture, false, 'image refs ship NO decoded pixels');
         assert.equal(found.uvsLen, found.verts * 2, 'UVs are 1:1 with vertices');
       } finally {
-        col.free();
+        col?.free();
         if (api.clearPrePassCache) api.clearPrePassCache();
       }
     } finally {

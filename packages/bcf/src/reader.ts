@@ -56,14 +56,16 @@ class BCFResourceLimitError extends Error {}
 
 /** The subset of JSZip's (untyped) internal stream API the budget reader uses. */
 interface EntryStream {
-  on(event: 'data', cb: (chunk: string | Uint8Array) => void): this;
+  on(event: 'data', cb: (chunk: Uint8Array) => void): this;
   on(event: 'error', cb: (error: Error) => void): this;
   on(event: 'end', cb: () => void): this;
   resume(): this;
   pause(): this;
 }
 interface StreamableEntry {
-  internalStream(type: 'string' | 'uint8array'): EntryStream;
+  // Only 'uint8array' is ever requested: byte chunks keep the expansion
+  // budget exact (string chunks are UTF-16 code units, not bytes).
+  internalStream(type: 'uint8array'): EntryStream;
 }
 
 /**

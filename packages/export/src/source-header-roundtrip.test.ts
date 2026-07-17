@@ -254,6 +254,30 @@ ENDSEC;
     const parsed = parseSourceHeader(new TextEncoder().encode(header));
     expect(parsed!.author).toEqual(['\\ä']);
   });
+
+  it('decodes a directive immediately FOLLOWED by an escaped backslash', () => {
+    // Raw STEP `Tr\X2\00FC\X0\\\docs` = directive then one literal backslash
+    // (three raw backslashes in a row: the directive terminator's, then the
+    // `\\` pair). A split at every doubled backslash consumed the terminator,
+    // leaving an unterminated `\X2\` that never decoded (logical value is
+    // `Trü\docs`, e.g. a Windows path from another authoring tool).
+    const header = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('f.ifc','TS',('Tr\\X2\\00FC\\X0\\\\\\docs'),(''),'p','o','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+`;
+    const parsed = parseSourceHeader(new TextEncoder().encode(header));
+    expect(parsed!.author).toEqual(['Trü\\docs']);
+
+    // And it round-trips byte-stably through the writer.
+    const opts = { schema: 'IFC4', timeStamp: 'TS', filename: 'f.ifc' } as const;
+    const h1 = generateHeader({ ...opts, author: parsed!.author });
+    const p1 = parseSourceHeader(new TextEncoder().encode(h1));
+    expect(p1!.author).toEqual(['Trü\\docs']);
+    expect(generateHeader({ ...opts, author: p1!.author })).toBe(h1);
+  });
 });
 
 describe('generateHeader', () => {

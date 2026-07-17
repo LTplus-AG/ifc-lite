@@ -83,10 +83,14 @@ function readEntryCapped(
 ): Promise<string | Uint8Array> {
   const streamable = entry as unknown as StreamableEntry;
   return new Promise((resolve, reject) => {
-    const chunks: (string | Uint8Array)[] = [];
-    const stream = streamable.internalStream(type);
+    const chunks: Uint8Array[] = [];
+    // Always stream raw bytes, even for string reads: JSZip's 'string' chunks
+    // are UTF-16 code units, which under-charge the budget by up to 3x for
+    // multi-byte UTF-8 (a text bomb would get that much headroom past the
+    // cap). Byte chunks make the accounting exact; decode to UTF-8 at the end.
+    const stream = streamable.internalStream('uint8array');
     stream
-      .on('data', (chunk: string | Uint8Array) => {
+      .on('data', (chunk: Uint8Array) => {
         budget.used += chunk.length;
         if (budget.used > budget.limit) {
           stream.pause();
@@ -99,18 +103,14 @@ function readEntryCapped(
       })
       .on('error', reject)
       .on('end', () => {
-        if (type === 'string') {
-          resolve(chunks.join(''));
-        } else {
-          const total = chunks.reduce((n, c) => n + c.length, 0);
-          const out = new Uint8Array(total);
-          let offset = 0;
-          for (const c of chunks as Uint8Array[]) {
-            out.set(c, offset);
-            offset += c.length;
-          }
-          resolve(out);
+        const total = chunks.reduce((n, c) => n + c.length, 0);
+        const out = new Uint8Array(total);
+        let offset = 0;
+        for (const c of chunks) {
+          out.set(c, offset);
+          offset += c.length;
         }
+        resolve(type === 'string' ? new TextDecoder().decode(out) : out);
       })
       .resume();
   });

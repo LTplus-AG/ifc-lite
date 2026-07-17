@@ -30,6 +30,8 @@ pub enum DataModelParquetError {
     Parquet(#[from] parquet::errors::ParquetError),
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
+    #[error("JSON error: {0}")]
+    Json(#[from] serde_json::Error),
 }
 
 /// Serialize data model to Parquet format.
@@ -347,24 +349,31 @@ fn serialize_properties_table(
     let rows: Vec<Row> = property_sets
         .par_iter()
         .flat_map_iter(|pset| {
-            pset.properties.iter().map(move |prop| {
-                (
-                    pset.pset_id,
-                    pset.pset_name.clone(),
-                    prop.property_name.clone(),
-                    prop.property_value.clone(),
-                    prop.property_type.clone(),
-                    prop.data_type.clone(),
+            pset.properties
+                .iter()
+                .map(move |prop| -> Result<Row, DataModelParquetError> {
                     // Candidate arrays ride as a JSON string in a nullable Utf8
                     // column (issue #1766): the decoder keeps its bulk column
-                    // reads and JSON-parses only the sparse multi-value rows.
-                    prop.values
-                        .as_ref()
-                        .and_then(|v| serde_json::to_string(v).ok()),
-                )
-            })
+                    // reads and JSON-parses only the sparse multi-value rows. A
+                    // serialization failure is propagated, not conflated with
+                    // "no candidates" (which would silently drop them from the
+                    // cached payload) — though a Vec<String> never fails to encode.
+                    let values_json = match &prop.values {
+                        Some(v) => Some(serde_json::to_string(v)?),
+                        None => None,
+                    };
+                    Ok((
+                        pset.pset_id,
+                        pset.pset_name.clone(),
+                        prop.property_name.clone(),
+                        prop.property_value.clone(),
+                        prop.property_type.clone(),
+                        prop.data_type.clone(),
+                        values_json,
+                    ))
+                })
         })
-        .collect();
+        .collect::<Result<Vec<Row>, _>>()?;
 
     // Split into separate vectors
     let mut pset_ids = Vec::with_capacity(rows.len());

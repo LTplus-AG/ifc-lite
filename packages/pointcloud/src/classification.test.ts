@@ -26,8 +26,11 @@ describe('lasClassificationName', () => {
     // 8 and 12 are Reserved since LAS 1.4 (were Model Key-point / Overlap).
     expect(lasClassificationName(8)).toBe('Reserved');
     expect(lasClassificationName(12)).toBe('Reserved');
-    // 19..63 reserved for ASPRS definition.
-    expect(lasClassificationName(19)).toBe('Reserved');
+    // 19..22 were added by LAS 1.4 R13.
+    expect(lasClassificationName(19)).toBe('Overhead structure');
+    expect(lasClassificationName(22)).toBe('Temporal exclusion');
+    // 23..63 reserved for ASPRS definition.
+    expect(lasClassificationName(23)).toBe('Reserved');
     expect(lasClassificationName(63)).toBe('Reserved');
     // 64..255 user definable.
     expect(lasClassificationName(64)).toBe('User defined');

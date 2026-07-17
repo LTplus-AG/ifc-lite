@@ -21,7 +21,7 @@ export const LAS_CLASS_COUNT = 256;
 /**
  * Standard ASPRS class names (LAS 1.4 R15 table 17). Codes 8 and 12
  * were "Model Key-point" / "Overlap" in LAS 1.1–1.3 but are Reserved
- * since 1.4; we follow the current spec.
+ * since 1.4, and R13+ added 19..22; we follow the current spec.
  */
 const ASPRS_STANDARD_NAMES: ReadonlyArray<string> = [
   'Never classified',
@@ -43,11 +43,15 @@ const ASPRS_STANDARD_NAMES: ReadonlyArray<string> = [
   'Wire-structure connector',
   'Bridge deck',
   'High noise',
+  'Overhead structure',
+  'Ignored ground',
+  'Snow',
+  'Temporal exclusion',
 ];
 
 /**
  * Human-readable name for a LAS classification code.
- * 0..18 use the ASPRS standard names, 19..63 are "Reserved" and
+ * 0..22 use the ASPRS standard names, 23..63 are "Reserved" and
  * 64..255 "User defined" per the spec. Out-of-range codes (the byte
  * field can't actually produce them) return "Unknown".
  */

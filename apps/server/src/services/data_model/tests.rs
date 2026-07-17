@@ -334,3 +334,34 @@ fn extracts_voids_and_fills_single_ref_relationships() {
         dm.relationships
     );
 }
+
+/// Malformed voids/fills rows must be DROPPED, not panic and not emit garbage:
+/// `$` in place of either ref (missing attr) and a LIST where a single ref
+/// belongs (`get_ref` returns `None` for both, so `?` bails).
+const MALFORMED_VOID_FILL_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#10=IFCWALL('Wall00000000000000001',$,'W1',$,$,$,$,$,$);
+#20=IFCOPENINGELEMENT('Open00000000000000001',$,'O1',$,$,$,$,$,$);
+#40=IFCRELVOIDSELEMENT('Voi0000000000000000001',$,$,$,$,#20);
+#41=IFCRELVOIDSELEMENT('Voi0000000000000000002',$,$,$,#10,$);
+#42=IFCRELVOIDSELEMENT('Voi0000000000000000003',$,$,$,#10,(#20));
+#50=IFCRELFILLSELEMENT('Fil0000000000000000001',$,$,$,(#20),#10);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn drops_voids_and_fills_rows_with_missing_or_list_refs() {
+    let dm = extract_data_model(MALFORMED_VOID_FILL_IFC);
+    assert!(
+        !dm.relationships.iter().any(|r| {
+            r.rel_type.eq_ignore_ascii_case("IFCRELVOIDSELEMENT")
+                || r.rel_type.eq_ignore_ascii_case("IFCRELFILLSELEMENT")
+        }),
+        "malformed voids/fills rows must be dropped, got: {:?}",
+        dm.relationships
+    );
+}

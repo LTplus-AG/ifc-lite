@@ -5,6 +5,7 @@
 //! Parse endpoints for IFC file processing.
 
 mod cache_keys;
+mod cached_replay;
 mod fetch;
 mod json;
 mod parquet;

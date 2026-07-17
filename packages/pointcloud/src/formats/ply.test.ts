@@ -139,4 +139,19 @@ describe('decodePly', () => {
     const buf = enc.encode(header + '1 2 3\n');
     expect(() => decodePly(buf)).toThrow(/body bytes|available/i);
   });
+
+  it('ascii body exactly at the minimum byte floor passes; one byte short fails', () => {
+    const header =
+      'ply\n' +
+      'format ascii 1.0\n' +
+      'element vertex 2\n' +
+      'property float x\nproperty float y\nproperty float z\n' +
+      'end_header\n';
+    // 2 vertices x 3 properties x 2 bytes ("digit + delimiter") = 12 body bytes.
+    const exact = decodePly(enc.encode(header + '1 2 3\n4 5 6\n')); // exactly 12
+    expect(exact.pointCount).toBe(2);
+    expect(Array.from(exact.positions)).toEqual([1, 2, 3, 4, 5, 6]);
+    // 11 body bytes: one short of the floor -> rejected before allocation.
+    expect(() => decodePly(enc.encode(header + '1 2 3\n4 5 6'))).toThrow(/body bytes|available/i);
+  });
 });

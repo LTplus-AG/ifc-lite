@@ -132,6 +132,11 @@ export {
   type MintRequestBody,
 } from './room-token.js';
 export {
+  createAccessControl,
+  type AccessControl,
+  type AccessControlOptions,
+} from './access-control.js';
+export {
   assertPushableLayer,
   assertReportDigest,
   CONTENT_DIGEST_REGEX,

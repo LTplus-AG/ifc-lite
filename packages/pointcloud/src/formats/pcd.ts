@@ -269,12 +269,25 @@ function decodeBinaryCompressed(buffer: Uint8Array, header: PcdHeader): { positi
       `does not match fields*points=${expectedUncompressed}`);
   }
   const compressed = buffer.subarray(header.bodyOffset + 8, header.bodyOffset + 8 + compressedSize);
-  // Bound the decompression target relative to the bytes actually present.
-  // `decompressLZF` allocates `uncompressedSize` up front, so a tiny compressed
-  // blob declaring a giant uncompressed size would OOM. LZF cannot expand data
-  // by more than a bounded ratio; MAX_LZF_RATIO is generous enough never to
-  // reject a real file while blocking the small-input / huge-output attack.
-  const MAX_LZF_RATIO = 64;
+  // Bound the decompression target. `decompressLZF` allocates
+  // `uncompressedSize` up front, so a tiny compressed blob declaring a giant
+  // uncompressed size would OOM before the first decode step fails. Two guards:
+  //  1. An absolute ceiling: no real PCD needs a multi-GB SoA body, and the
+  //     decoder's own Float32Arrays would multiply it further.
+  //  2. A format-derived expansion ratio: LZF's densest opcode is the extended
+  //     back-reference — 3 input bytes (ctrl 0xE0..0xFF, extended length,
+  //     offset) emitting up to 7+255+2 = 264 output bytes, i.e. 88x. Genuinely
+  //     repetitive real-world clouds can approach that, so the bound must sit
+  //     at/above 88 (the previous 64x rejected valid files); 90 adds slack for
+  //     the leading literal without weakening the tiny-input/huge-output block.
+  const MAX_UNCOMPRESSED_BYTES = 1 << 30; // 1 GiB
+  const MAX_LZF_RATIO = 90;
+  if (uncompressedSize > MAX_UNCOMPRESSED_BYTES) {
+    throw new Error(
+      `PCD binary_compressed: declared uncompressed=${uncompressedSize} exceeds ` +
+        `the ${MAX_UNCOMPRESSED_BYTES}-byte decode ceiling`,
+    );
+  }
   if (uncompressedSize > compressed.length * MAX_LZF_RATIO) {
     throw new Error(
       `PCD binary_compressed: declared uncompressed=${uncompressedSize} exceeds ` +

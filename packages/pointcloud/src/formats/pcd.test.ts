@@ -136,10 +136,7 @@ describe('decodePcd pre-allocation guard', () => {
     expect(() => decodePcd(buf)).toThrow(/body bytes|available/i);
   });
 
-  it('rejects binary_compressed declaring a huge uncompressed size from a tiny blob', () => {
-    // POINTS * stride(12) == declared uncompressedSize so the existing equality
-    // check passes and we reach the MAX_LZF_RATIO guard: 1.2e9 uncompressed
-    // bytes claimed from a 4-byte compressed body.
+  const compressedPcd = (points: number, compressedBody: Uint8Array): Uint8Array => {
     const header = new TextEncoder().encode(
       [
         `VERSION 0.7`,
@@ -147,21 +144,80 @@ describe('decodePcd pre-allocation guard', () => {
         `SIZE 4 4 4`,
         `TYPE F F F`,
         `COUNT 1 1 1`,
-        `WIDTH 100000000`,
+        `WIDTH ${points}`,
         `HEIGHT 1`,
-        `POINTS 100000000`,
+        `POINTS ${points}`,
         `DATA binary_compressed`,
         '',
       ].join('\n'),
     );
-    const sizeAndPayload = new Uint8Array(8 + 4);
-    const dv = new DataView(sizeAndPayload.buffer);
-    dv.setUint32(0, 4, true); // compressedSize = 4 bytes
-    dv.setUint32(4, 100000000 * 12, true); // uncompressedSize = 1.2e9 (fits u32)
-    const buf = new Uint8Array(header.length + sizeAndPayload.length);
+    const sizes = new Uint8Array(8);
+    const dv = new DataView(sizes.buffer);
+    dv.setUint32(0, compressedBody.length, true);
+    dv.setUint32(4, points * 12, true); // uncompressedSize = points * stride
+    const buf = new Uint8Array(header.length + 8 + compressedBody.length);
     buf.set(header, 0);
-    buf.set(sizeAndPayload, header.length);
+    buf.set(sizes, header.length);
+    buf.set(compressedBody, header.length + 8);
+    return buf;
+  };
+
+  it('rejects binary_compressed declaring a huge uncompressed size from a tiny blob', () => {
+    // POINTS * stride(12) == declared uncompressedSize so the existing equality
+    // check passes and we reach the MAX_LZF_RATIO guard: 960MB uncompressed
+    // bytes (under the absolute ceiling) claimed from a 4-byte compressed body.
+    const buf = compressedPcd(80_000_000, new Uint8Array(4));
     expect(() => decodePcd(buf)).toThrow(/exceeds .* compressed body/i);
+  });
+
+  it('rejects binary_compressed over the absolute uncompressed ceiling', () => {
+    // 1.2e9 declared bytes trip the 1 GiB ceiling regardless of how large the
+    // compressed body claims to be.
+    const buf = compressedPcd(100_000_000, new Uint8Array(4));
+    expect(() => decodePcd(buf)).toThrow(/decode ceiling/i);
+  });
+
+  it('accepts genuinely repetitive LZF between 64x and 88x expansion', () => {
+    // LZF's extended back-reference emits up to 264 output bytes per 3 input
+    // bytes (~88x), so highly repetitive but VALID streams can exceed the old
+    // 64x bound. Hand-built stream (no encoder in this repo — lzf.ts is
+    // decode-only): 8 input bytes -> 528 zero bytes = 44 points * stride 12.
+    //   [0x00 0x00]      literal run of 1 zero byte
+    //   [0xE0 0xFF 0x00] back-ref len 7+255+2 = 264 at offset 1 (overlapping)
+    //   [0xE0 0xFE 0x00] back-ref len 7+254+2 = 263
+    const stream = new Uint8Array([0x00, 0x00, 0xe0, 0xff, 0x00, 0xe0, 0xfe, 0x00]);
+    const buf = compressedPcd(44, stream);
+    // 528 > 8 * 64: the previous MAX_LZF_RATIO=64 rejected this valid file.
+    expect(528).toBeGreaterThan(stream.length * 64);
+    const chunk = decodePcd(buf);
+    expect(chunk.pointCount).toBe(44);
+    expect(chunk.positions.length).toBe(44 * 3);
+    expect(chunk.positions.every((v) => v === 0)).toBe(true);
+  });
+
+  it('ascii body exactly at the minimum byte floor passes; one byte short fails', () => {
+    const header = (points: number) =>
+      [
+        `VERSION 0.7`,
+        `FIELDS x y z`,
+        `SIZE 4 4 4`,
+        `TYPE F F F`,
+        `COUNT 1 1 1`,
+        `WIDTH ${points}`,
+        `HEIGHT 1`,
+        `POINTS ${points}`,
+        `DATA ascii`,
+        '',
+      ].join('\n');
+    const enc = new TextEncoder();
+    // 2 points x 3 columns x 2 bytes ("digit + delimiter") = 12 body bytes.
+    const exact = enc.encode(header(2) + '1 2 3\n4 5 6\n'); // exactly 12
+    const chunk = decodePcd(exact);
+    expect(chunk.pointCount).toBe(2);
+    expect(Array.from(chunk.positions)).toEqual([1, 2, 3, 4, 5, 6]);
+    // 11 body bytes: one short of the floor -> rejected before allocation.
+    const short = enc.encode(header(2) + '1 2 3\n4 5 6'); // 11 bytes
+    expect(() => decodePcd(short)).toThrow(/body bytes|available/i);
   });
 });
 

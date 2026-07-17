@@ -6,7 +6,6 @@
 # The rule: shrink or split. When you split a file below 400, delete its row
 # (the total must trend DOWN). Only ADD a row with a written justification.
 # Regenerated against the branch's merge base; refresh on rebase if a listed
-     420 apps/server/src/routes/parse/parquet_stream.rs
      756 apps/server/src/services/parquet_data_model.rs
      581 apps/server/src/services/parquet_optimized.rs
      522 apps/server/src/services/parquet.rs

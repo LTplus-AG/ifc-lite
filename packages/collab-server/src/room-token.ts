@@ -271,10 +271,11 @@ export interface TokenEndpointOptions {
     context: {
       bearerClaims: RoomTokenClaims | null;
       /**
-       * Best-effort client IP of the mint request — the first
-       * `X-Forwarded-For` hop when present (deployments sit behind a proxy),
-       * else the socket's remote address. `undefined` if neither is available.
-       * Consumers use it to rate-limit the unauthenticated mint path.
+       * Best-effort client IP of the mint request — the socket's remote
+       * address by default; the last `X-Forwarded-For` entry instead when
+       * `trustForwardedFor` is set (deployment sits behind a trusted proxy).
+       * `undefined` if neither is available. Consumers use it to rate-limit
+       * the unauthenticated mint path.
        */
       clientIp: string | undefined;
     },
@@ -298,6 +299,14 @@ export interface TokenEndpointOptions {
   allowOrigin?: string;
   /** Reject bodies larger than this (default 4 KB). */
   maxBodyBytes?: number;
+  /**
+   * Honor `X-Forwarded-For` when deriving `clientIp` (default OFF). Only set
+   * this when the server is reachable exclusively through a trusted reverse
+   * proxy; a directly reachable server that trusts the header lets every
+   * caller pick a fresh spoofed IP per request, giving each request its own
+   * rate-limit bucket and making the per-IP mint throttle useless.
+   */
+  trustForwardedFor?: boolean;
   now?: () => number;
 }
 
@@ -333,17 +342,28 @@ function bearerToken(req: http.IncomingMessage): string | undefined {
 }
 
 /**
- * Best-effort client IP for rate-limiting. Prefers the first `X-Forwarded-For`
- * hop (production sits behind a proxy that terminates TLS), falling back to the
- * socket's remote address. A spoofed header only lets an attacker pick which
- * bucket they land in, not escape rate-limiting entirely.
+ * Best-effort client IP for rate-limiting. Uses the socket's remote address
+ * unless `trustForwardedFor` is set: honoring `X-Forwarded-For` from a
+ * directly reachable server would let every caller mint under a fresh spoofed
+ * IP per request (its own rate-limit bucket), defeating the throttle.
+ *
+ * When a trusted proxy is in front, that proxy APPENDS the address it saw to
+ * any header the client sent — so the LAST entry is the only hop our own
+ * infrastructure vouches for, while the first entry is client-controlled.
+ * With chained trusted proxies the last entry is the outermost proxy's peer,
+ * i.e. the nearest hop we can attribute the request to; picking it means a
+ * spoofer can at worst share a bucket with others behind the same proxy, but
+ * can never fabricate an unlimited supply of fresh buckets.
  */
-function clientIpOf(req: http.IncomingMessage): string | undefined {
-  const fwd = req.headers['x-forwarded-for'];
-  const raw = Array.isArray(fwd) ? fwd[0] : fwd;
-  if (typeof raw === 'string' && raw.length > 0) {
-    const first = raw.split(',')[0]?.trim();
-    if (first) return first;
+function clientIpOf(req: http.IncomingMessage, trustForwardedFor: boolean): string | undefined {
+  if (trustForwardedFor) {
+    const fwd = req.headers['x-forwarded-for'];
+    const raw = Array.isArray(fwd) ? fwd[fwd.length - 1] : fwd;
+    if (typeof raw === 'string' && raw.length > 0) {
+      const entries = raw.split(',');
+      const last = entries[entries.length - 1]?.trim();
+      if (last) return last;
+    }
   }
   return req.socket?.remoteAddress ?? undefined;
 }
@@ -421,7 +441,10 @@ export async function handleTokenMintRequest(
 
   let grantedRole: Role | null;
   try {
-    grantedRole = await opts.authorize(mintReq, { bearerClaims, clientIp: clientIpOf(req) });
+    grantedRole = await opts.authorize(mintReq, {
+      bearerClaims,
+      clientIp: clientIpOf(req, opts.trustForwardedFor === true),
+    });
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('[collab-server] token authorize threw:', err);

@@ -48,4 +48,33 @@ describe('batchExtractGlobalIdAndName — STEP quote un-doubling', () => {
         const result = await batchExtractGlobalIdAndName(buffer, refs);
         expect(result.get(1)?.name).toBe('Brücke');
     });
+
+    it('handles doubled quotes at the start and end of a name', async () => {
+        const { buffer, refs } = scan(
+            "#1=IFCWALL('0GlobalId00000000000003',$,'''s Wall',$,$,$,$,$,$);\n" +
+            "#2=IFCWALL('0GlobalId00000000000004',$,'Wall''',$,$,$,$,$,$);\n",
+        );
+        const result = await batchExtractGlobalIdAndName(buffer, refs);
+        expect(result.get(1)?.name).toBe("'s Wall");
+        expect(result.get(2)?.name).toBe("Wall'");
+    });
+
+    it("handles a name that is a single apostrophe ('''' in STEP)", async () => {
+        const { buffer, refs } = scan(
+            "#1=IFCWALL('0GlobalId00000000000005',$,'''',$,$,$,$,$,$);\n",
+        );
+        const result = await batchExtractGlobalIdAndName(buffer, refs);
+        expect(result.get(1)?.name).toBe("'");
+    });
+
+    it('does not let a quoted attribute confuse later attribute scanning', async () => {
+        // The GlobalId contains characters that look like structure; the Name
+        // after it must still resolve to attr index 2.
+        const { buffer, refs } = scan(
+            "#1=IFCWALL('0(,)''X00000000000006',$,'Plain',$,$,$,$,$,$);\n",
+        );
+        const result = await batchExtractGlobalIdAndName(buffer, refs);
+        expect(result.get(1)?.globalId).toBe("0(,)''X00000000000006");
+        expect(result.get(1)?.name).toBe('Plain');
+    });
 });

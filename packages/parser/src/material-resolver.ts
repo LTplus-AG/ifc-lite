@@ -434,7 +434,24 @@ export function collectMaterialLeaves(store: IfcDataStore, defId: number): Mater
     if (cached) return cached;
 
     const extractor = store.source?.length ? new EntityExtractor(store.source) : null;
-    const result = extractor ? resolveLeaves(store, extractor, defId, new Set()) : [];
+    let result: MaterialLeaf[];
+    if (extractor) {
+        result = resolveLeaves(store, extractor, defId, new Set());
+    } else {
+        // Source-less store (server-loaded models keep `source` as an EMPTY
+        // Uint8Array): a definition's internal structure (layers/profiles/
+        // constituents -> base materials) lives in attribute references that
+        // the server does not emit as relationship rows, so it cannot be
+        // fanned out here. Surface the definition itself as one opaque leaf
+        // carrying the element's full weight - the usage index then still
+        // groups elements by their material association instead of staying
+        // empty. Dangling definition refs resolve to nothing, mirroring
+        // resolveLeaves.
+        const ref = getRef(store, defId);
+        result = ref
+            ? [{ id: defId, name: store.entities?.getName(defId) || undefined, weight: 1 }]
+            : [];
+    }
     cache.set(defId, result);
     return result;
 }
@@ -497,7 +514,9 @@ function resolveLeaves(
                 // IfcMaterialLayer: [Material, LayerThickness, IsVentilated, Name, Description, Category, Priority]
                 layers.push({
                     matId: typeof la[0] === 'number' ? la[0] : undefined,
-                    thickness: typeof la[1] === 'number' && la[1] > 0 ? la[1] : 0,
+                    // Non-finite thickness would turn every weight into NaN
+                    // (Infinity/Infinity) - treat it as absent like <= 0.
+                    thickness: typeof la[1] === 'number' && Number.isFinite(la[1]) && la[1] > 0 ? la[1] : 0,
                 });
             }
             const totalThickness = layers.reduce((s, l) => s + l.thickness, 0);
@@ -535,7 +554,10 @@ function resolveLeaves(
                 // IfcMaterialConstituent: [Name, Description, Material, Fraction, Category]
                 constituents.push({
                     matId: typeof ca[2] === 'number' ? ca[2] : undefined,
-                    fraction: typeof ca[3] === 'number' && ca[3] > 0 ? ca[3] : undefined,
+                    // Non-finite (NaN/Infinity), zero, and negative fractions are
+                    // all malformed for an IfcNormalisedRatioMeasure - treat them
+                    // as unset so they can't poison the weight arithmetic below.
+                    fraction: typeof ca[3] === 'number' && Number.isFinite(ca[3]) && ca[3] > 0 ? ca[3] : undefined,
                 });
             }
             // Constituent Fraction is optional per-constituent. When SOME
@@ -543,9 +565,10 @@ function resolveLeaves(
             // siblings must not collapse to weight 0 (the old `(f ?? 0)/total`
             // did exactly that, dropping them from the totals). Instead the
             // constituents WITHOUT an explicit fraction share whatever remains
-            // of the whole (1 − sum of explicit) evenly; when every constituent
+            // of the whole (1 - sum of explicit) evenly; when every constituent
             // carries a fraction we normalise by their sum; with none we split
-            // equally.
+            // equally. In every branch the weights sum to exactly 1, so the
+            // totals panel can never over-report an element's quantities.
             const explicitTotal = constituents.reduce((s, c) => s + (c.fraction ?? 0), 0);
             const implicitCount = constituents.reduce((n, c) => n + (c.fraction === undefined ? 1 : 0), 0);
             if (explicitTotal <= 0) {
@@ -554,13 +577,15 @@ function resolveLeaves(
             } else if (implicitCount === 0) {
                 for (const c of constituents) addMaterialLeaf(c.matId, (c.fraction ?? 0) / explicitTotal);
             } else {
-                // Mixed: explicit fractions kept as-is; implicit ones split the
-                // remainder. If explicit fractions already fill (or overflow)
-                // the whole, fall back to an even share so implicit siblings
-                // still register rather than vanishing.
+                // Mixed: implicit siblings share the remainder of the whole.
+                // When the explicit fractions already fill (or overflow) the
+                // whole, give each implicit sibling an even 1/n share instead
+                // so it still registers - then renormalise the set to sum to 1
+                // (e.g. {1.0, unset} would otherwise weigh 1.5x the element).
                 const remaining = 1 - explicitTotal;
                 const perImplicit = remaining > 0 ? remaining / implicitCount : 1 / constituents.length;
-                for (const c of constituents) addMaterialLeaf(c.matId, c.fraction ?? perImplicit);
+                const total = explicitTotal + perImplicit * implicitCount;
+                for (const c of constituents) addMaterialLeaf(c.matId, (c.fraction ?? perImplicit) / total);
             }
             return [...merged.values()];
         }
@@ -598,9 +623,10 @@ const usageIndexCache = new WeakMap<IfcDataStore, Map<number, MaterialUsage>>();
 
 /**
  * Build (and memoise) the model-wide index of base material → using elements,
- * with per-element volume weights. Derived entirely from the forward
- * `onDemandMaterialMap` (element → definition) that the parser already builds,
- * so no extra parse work is required. Keyed by base IfcMaterial express id.
+ * with per-element volume weights. Derived from the forward
+ * `onDemandMaterialMap` (element → definition) that the parser already builds
+ * when present, falling back to the relationship graph's AssociatesMaterial
+ * edges (server-loaded models). Keyed by base IfcMaterial express id.
  */
 export function buildMaterialUsageIndex(store: IfcDataStore): Map<number, MaterialUsage> {
     const cached = usageIndexCache.get(store);
@@ -608,22 +634,30 @@ export function buildMaterialUsageIndex(store: IfcDataStore): Map<number, Materi
 
     const usage = new Map<number, MaterialUsage>();
 
-    // Element → material-definition list. Prefer the parser's forward
+    // Element -> material-definition list. Prefer the parser's forward
     // `onDemandMaterialMap`; when it's absent (server-loaded models) fall back
-    // to the relationship graph's AssociatesMaterial edges — the same fallback
-    // extractMaterialsOnDemand uses — so the model-wide index still populates
-    // instead of silently caching an empty map forever.
+    // to the relationship graph's AssociatesMaterial edges - the same fallback
+    // extractMaterialsOnDemand uses - so the model-wide index still populates
+    // instead of silently caching an empty map forever. Candidates are
+    // enumerated via entityIndex.byId (every server entity is indexed there):
+    // the server's facade graph exposes only getRelated/getEdges closures over
+    // private maps and keeps `inverse.offsets` as an EMPTY Map, so iterating
+    // the CSR columns is not an option for the exact store this fallback
+    // serves.
     let forward = store.onDemandMaterialMap;
     if (!forward && store.relationships) {
         const rebuilt = new Map<number, number[]>();
-        for (const entityId of store.relationships.inverse.offsets.keys()) {
+        for (const entityId of store.entityIndex.byId.keys()) {
             const defs = store.relationships.getRelated(entityId, RelationshipType.AssociatesMaterial, 'inverse');
             if (defs.length > 0) rebuilt.set(entityId, defs);
         }
         forward = rebuilt;
     }
 
-    if (forward && forward.size > 0 && store.source?.length) {
+    // No source requirement: server-loaded stores carry an EMPTY source buffer,
+    // and collectMaterialLeaves has a source-less path (the definition becomes
+    // one opaque full-weight leaf) precisely so this index works for them.
+    if (forward && forward.size > 0) {
         // Guards against a malformed model double-typing one occurrence
         // (two IfcRelDefinesByType rels → duplicate forward edges), which
         // would otherwise double-count it in the totals panel.
@@ -680,15 +714,16 @@ export function buildMaterialUsageIndex(store: IfcDataStore): Map<number, Materi
         }
     }
 
-    // Don't memoise an empty index built from a store that had NEITHER a
-    // material map NOR a source: such a store may be populated later (a server
-    // load that wires onDemandMaterialMap / source after first render), and a
-    // cached empty result would mask it forever. Non-empty results, or empty
-    // ones from a store that did have inputs (a genuinely material-free model),
-    // are safe to cache.
-    const hadMap = (store.onDemandMaterialMap?.size ?? 0) > 0;
-    const hadSource = !!store.source?.length;
-    if (usage.size > 0 || hadMap || hadSource) {
+    // Don't memoise an empty index built from a store that had NO material
+    // inputs at all (no forward map, no relationship graph, no source): such a
+    // store may be populated later (a load that wires onDemandMaterialMap /
+    // relationships after first render), and a cached empty result would mask
+    // it forever. Non-empty results, or empty ones from a store that did have
+    // inputs (a genuinely material-free model), are safe to cache.
+    const hadInputs = (store.onDemandMaterialMap?.size ?? 0) > 0
+        || !!store.relationships
+        || !!store.source?.length;
+    if (usage.size > 0 || hadInputs) {
         usageIndexCache.set(store, usage);
     }
     return usage;

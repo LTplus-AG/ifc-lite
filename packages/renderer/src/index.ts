@@ -125,6 +125,7 @@ import { PickingManager } from './picking-manager.js';
 import { RaycastEngine } from './raycast-engine.js';
 import { PostProcessor } from './post-processor.js';
 import { InteractionEffectsGovernor } from './interaction-effects-governor.js';
+import { VisibilityEpochTracker } from './visibility-epoch.js';
 import { resolveContributionThresholdPx, projectedAabbRadiusPx, projectedInstancedRadiusPx, type CullCameraState } from './contribution-cull.js';
 import type { FrameStats } from './render-stats.js';
 import { EdlPass } from './edl-pass.js';
@@ -248,8 +249,11 @@ export class Renderer {
     private pickingManager: PickingManager;
     private raycastEngine: RaycastEngine;
 
-    // Error rate limiting (log at most once per second)
-    private lastRenderErrorTime: number = 0;
+    // Error rate limiting (log at most once per second). -Infinity, not 0:
+    // performance.now() is below 1000 during the first second of page life, so
+    // a 0 start would silently suppress the FIRST render/device-loss error —
+    // exactly the evidence worth keeping.
+    private lastRenderErrorTime: number = -Infinity;
     private readonly RENDER_ERROR_THROTTLE_MS = 1000;
 
     // Diagnostic counters for mobile debugging
@@ -266,14 +270,13 @@ export class Renderer {
     private _renderRequested: boolean = false;
 
     // ─── Visibility-change bookkeeping (per-frame perf + leak fixes) ─────────
-    // The viewer passes STABLE hiddenIds/isolatedIds Set refs that only change
-    // when visibility changes, so reference comparison detects a real change
-    // cheaply. `_visibilityVersion` drives the per-batch visibility cache;
+    // Hide/isolate changes are detected by CONTENT (snapshot compare in the
+    // tracker), so callers may either mutate the same Set in place or pass a
+    // fresh Set per frame — see the RenderOptions.hiddenIds contract.
+    // `_visibilityVersion` drives the per-batch visibility cache;
     // `_partialBatchEpoch` additionally folds colour-override changes so the
-    // partial sub-batch cache fast path stays correct. `undefined` sentinels
-    // force a bump on the first frame.
-    private _lastHiddenIdsRef: ReadonlySet<number> | null | undefined = undefined;
-    private _lastIsolatedIdsRef: ReadonlySet<number> | null | undefined = undefined;
+    // partial sub-batch cache fast path stays correct.
+    private readonly _visibilityEpochs = new VisibilityEpochTracker();
     private _visibilityVersion: number = 0;
     private _partialBatchEpoch: number = 0;
     private _lastColorOverrideGen: number = -1;
@@ -282,15 +285,22 @@ export class Renderer {
     // matches `_visibilityVersion`. Avoids the O(total element count) recompute
     // (+ per-batch visible-id Set allocation) every frame while hide/isolate
     // holds. Keyed by batch object (immutable expressIds per instance); a
-    // rebuilt batch is a new object → recomputed lazily.
+    // rebuilt batch is a new object → recomputed lazily. WeakMap, not Map:
+    // residency eviction/restore churn while ONE filter epoch holds (e.g. a
+    // schedule animation) would otherwise pin every dead batch object until
+    // the next visibility change.
     private _batchVisibilityEpoch: number = -1;
-    private _batchVisibilityCache = new Map<
+    private _batchVisibilityCache = new WeakMap<
         BatchedMesh,
         { visible: boolean; fullyVisible: boolean; visibleIds?: Set<number> }
     >();
     // Selection snapshot from the previous frame — a change triggers disposal of
-    // now-unselected hydrated meshes (leak + double-draw fix).
+    // now-unselected hydrated meshes (leak + double-draw fix). The model index
+    // is part of the snapshot: federated models can share express ids, so a
+    // same-id selection in ANOTHER model is still a change that must free the
+    // old model's hydrated mesh.
     private _prevHydratedSelection: Set<number> = new Set();
+    private _prevHydratedSelectionModelIndex: number | undefined = undefined;
 
     // One-shot log guard — prints Y-up clip bounds on first section-enable so
     // users can confirm the slider is operating on the intended range.
@@ -1091,10 +1101,18 @@ export class Renderer {
      * (double alpha-blend darkens glass). Currently-selected entities keep their
      * hydrated meshes so the highlight pass doesn't rebuild them each change.
      * No-op when the selection set is unchanged to avoid per-frame buffer churn.
+     * Selection identity is the (modelIndex, expressId) PAIR: federated models
+     * can share express ids, so re-selecting the same id in a different model
+     * must still free the previous model's hydrated mesh (it would otherwise
+     * stay resident and keep drawing unhighlighted).
      */
-    private syncHydratedSelectionMeshes(selected: ReadonlySet<number>): void {
+    private syncHydratedSelectionMeshes(
+        selected: ReadonlySet<number>,
+        selectedModelIndex: number | undefined,
+    ): void {
         const prev = this._prevHydratedSelection;
-        let changed = selected.size !== prev.size;
+        let changed = selected.size !== prev.size
+            || selectedModelIndex !== this._prevHydratedSelectionModelIndex;
         if (!changed) {
             for (const id of selected) {
                 if (!prev.has(id)) { changed = true; break; }
@@ -1102,7 +1120,40 @@ export class Renderer {
         }
         if (!changed) return;
         this._prevHydratedSelection = new Set(selected);
-        this.scene.disposeHydratedMeshesExcept(selected);
+        this._prevHydratedSelectionModelIndex = selectedModelIndex;
+        this.scene.disposeHydratedMeshesExcept(selected, selectedModelIndex);
+    }
+
+    /**
+     * Pop the frame's validation error scope, recording any captured validation
+     * error into the device diagnostics (getDiagnostics().gpuErrors). The pop
+     * itself REJECTS when the GPU device is lost while the scope is pending —
+     * often the only evidence of the loss — so the rejection is logged
+     * (throttled) and the context invalidated, never swallowed silently. Used
+     * by every render() exit path that pushed a scope, so push/pop stay
+     * balanced even on skipped or throwing frames.
+     */
+    private drainErrorScope(device: GPUDevice): void {
+        device.popErrorScope().then((error) => {
+            if (error) {
+                const msg = error.message || String(error);
+                console.error('[WebGPU] Validation error in render pass:', msg);
+                this.device._lastUncapturedError = `VALIDATION: ${msg}`;
+                this.device._uncapturedErrorCount++;
+            }
+        }).catch((error: unknown) => {
+            // popErrorScope() rejects (e.g. "Instance dropped in popErrorScope")
+            // when the GPU device is lost while the scope is still pending. This
+            // escapes the surrounding synchronous try/catch and would otherwise
+            // surface as an unhandled rejection. Treat it like any other device
+            // loss: invalidate the context so it reconfigures next frame.
+            this.device.invalidateContext();
+            const now = performance.now();
+            if (now - this.lastRenderErrorTime > this.RENDER_ERROR_THROTTLE_MS) {
+                this.lastRenderErrorTime = now;
+                console.warn('[WebGPU] popErrorScope rejected (device likely lost):', error);
+            }
+        });
     }
 
     private resolveVisualEnhancement(options?: VisualEnhancementOptions): ResolvedVisualEnhancement {
@@ -1291,20 +1342,15 @@ export class Renderer {
         const hasVisibilityFiltering = hasHiddenFilter || hasIsolatedFilter;
 
         // ─── Visibility / override epoch bookkeeping ────────────────────────
-        // The viewer hands us stable Set references that only change identity on
-        // a real visibility change, so a reference compare detects it cheaply.
-        // Bumping `_visibilityVersion` invalidates the per-batch visibility cache;
-        // the partial sub-batch cache additionally depends on colour-override
+        // The tracker compares hide/isolate CONTENT against a snapshot, so both
+        // in-place mutation of the caller's Set and a fresh identical Set per
+        // frame behave correctly (see RenderOptions.hiddenIds). Bumping
+        // `_visibilityVersion` invalidates the per-batch visibility cache; the
+        // partial sub-batch cache additionally depends on colour-override
         // promotion, so its epoch bumps on either.
-        const hiddenRef = options.hiddenIds ?? null;
-        const isolatedRef = options.isolatedIds ?? null;
-        const visibilityChanged =
-            hiddenRef !== this._lastHiddenIdsRef || isolatedRef !== this._lastIsolatedIdsRef;
-        if (visibilityChanged) {
-            this._visibilityVersion++;
-            this._lastHiddenIdsRef = hiddenRef;
-            this._lastIsolatedIdsRef = isolatedRef;
-        }
+        const newVisibilityVersion = this._visibilityEpochs.update(options.hiddenIds, options.isolatedIds);
+        const visibilityChanged = newVisibilityVersion !== this._visibilityVersion;
+        this._visibilityVersion = newVisibilityVersion;
         const colorOverrideGen = this.scene.getColorOverrideGeneration();
         if (visibilityChanged || colorOverrideGen !== this._lastColorOverrideGen) {
             this._lastColorOverrideGen = colorOverrideGen;
@@ -1343,7 +1389,7 @@ export class Renderer {
         // doesn't double-draw over its batch copy or accumulate until clear().
         // Only acts on a selection change (avoids per-frame buffer churn) and
         // never touches authored (non-hydrated) or batch geometry.
-        this.syncHydratedSelectionMeshes(selectedExpressIds);
+        this.syncHydratedSelectionMeshes(selectedExpressIds, selectedModelIndex);
 
         let meshes = this.scene.getMeshes();
 
@@ -1476,11 +1522,12 @@ export class Renderer {
         // Get current texture safely - may return null if context needs reconfiguration
         const currentTexture = this.device.getCurrentTexture();
         if (!currentTexture) {
-            // Balance the pushed scope before bailing so it doesn't leak into the
-            // next frame. We don't care about the result on a skipped frame.
+            // Balance the pushed scope before bailing so it doesn't leak into
+            // the next frame; drainErrorScope logs a rejection (device loss)
+            // instead of swallowing the evidence.
             if (errorScopePushed) {
                 errorScopePushed = false;
-                device.popErrorScope().catch(() => { /* device may be lost */ });
+                this.drainErrorScope(device);
             }
             return; // Skip this frame, context will be reconfigured next frame
         }
@@ -1955,7 +2002,7 @@ export class Renderer {
                 // The cache map is keyed by batch object (immutable expressIds per
                 // instance); a rebuilt batch is a new object → recomputed lazily.
                 if (this._batchVisibilityEpoch !== this._visibilityVersion) {
-                    this._batchVisibilityCache = new Map();
+                    this._batchVisibilityCache = new WeakMap();
                     this._batchVisibilityEpoch = this._visibilityVersion;
                 }
                 const batchVisibilityCache = this._batchVisibilityCache;
@@ -2874,33 +2921,16 @@ export class Renderer {
             // Pop validation error scope and capture the exact error
             if (errorScopePushed) {
                 errorScopePushed = false;
-                device.popErrorScope().then((error) => {
-                    if (error) {
-                        const msg = error.message || String(error);
-                        console.error('[WebGPU] Validation error in render pass:', msg);
-                        this.device._lastUncapturedError = `VALIDATION: ${msg}`;
-                        this.device._uncapturedErrorCount++;
-                    }
-                }).catch((error: unknown) => {
-                    // popErrorScope() rejects (e.g. "Instance dropped in popErrorScope")
-                    // when the GPU device is lost while the scope is still pending. This
-                    // escapes the surrounding synchronous try/catch and would otherwise
-                    // surface as an unhandled rejection. Treat it like any other device
-                    // loss: invalidate the context so it reconfigures next frame.
-                    this.device.invalidateContext();
-                    const now = performance.now();
-                    if (now - this.lastRenderErrorTime > this.RENDER_ERROR_THROTTLE_MS) {
-                        this.lastRenderErrorTime = now;
-                        console.warn('[WebGPU] popErrorScope rejected (device likely lost):', error);
-                    }
-                });
+                this.drainErrorScope(device);
             }
         } catch (error) {
             // Balance the validation scope if we threw before popping it above —
             // an unpopped scope would capture every later frame's errors silently.
+            // drainErrorScope logs a pop rejection (device loss) rather than
+            // swallowing it.
             if (errorScopePushed) {
                 errorScopePushed = false;
-                device.popErrorScope().catch(() => { /* device may be lost */ });
+                this.drainErrorScope(device);
             }
             this._renderErrorCount++;
             this._lastRenderError = error instanceof Error ? error.message : String(error);

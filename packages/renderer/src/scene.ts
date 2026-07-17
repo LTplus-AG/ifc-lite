@@ -23,6 +23,7 @@ import { sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
 import { simplifyIndicesByClustering, lodCellSizeForBounds, LOD_MIN_TRIANGLES } from './lod-simplify.js';
 import { quantizeInterleaved } from './quantize.js';
 import { bucketBaseKeyFor, type SpatialChunkingConfig } from './chunk-grid.js';
+import { VisibilityEpochTracker } from './visibility-epoch.js';
 import { selectEvictions, type ResidencyShell, type ColdGeometryProvider } from './residency.js';
 import { OPAQUE_ALPHA_CUTOFF } from './overlay-routing.js';
 import type { DecodedInstancedShard } from '@ifc-lite/geometry';
@@ -150,8 +151,11 @@ export class Scene {
   private instancedHidden: Set<number> = new Set();               // currently hidden instanced express_ids (hide/isolate)
   private instancedOverridden: Set<number> = new Set();            // currently colour-overridden instanced express_ids
   private instancedHasTransparent = false;                         // an override made some instanced occurrence translucent
-  private lastInstancedHiddenIds: ReadonlySet<number> | null = null;   // ref-equality guard for setInstancedVisibility
-  private lastInstancedIsolatedIds: ReadonlySet<number> | null = null;
+  // Content-based change guard for setInstancedVisibility — same contract as
+  // RenderOptions.hiddenIds (in-place mutation and fresh identical Sets both
+  // behave), keeping the instanced path in lockstep with the batched path.
+  private readonly instancedVisibilityEpochs = new VisibilityEpochTracker();
+  private lastInstancedVisibilityVersion = -1;
   private instancedVisibilityDirty = false;                       // set when a new shard adds occurrences → re-apply visibility
 
   // Buffer-size-aware bucket splitting: when a single color group's geometry
@@ -722,18 +726,24 @@ export class Scene {
     this.partialBatchCacheVersions.clear();
   }
 
-  /** Free the hydrated (pick / selection-highlight) individual meshes whose
-   *  expressId is NOT in `keep`, destroying their GPU buffers and dropping them
-   *  from `this.meshes`. Only meshes flagged `hydrated` are touched — authored
-   *  geometry added via addMesh() and batch geometry are left untouched. Returns
-   *  how many were freed. Called when the selection changes so stale hydrated
-   *  meshes don't accumulate (VRAM leak) or double-draw over their batch copy. */
-  disposeHydratedMeshesExcept(keep: ReadonlySet<number>): number {
+  /** Free the hydrated (pick / selection-highlight) individual meshes that are
+   *  no longer selected, destroying their GPU buffers and dropping them from
+   *  `this.meshes`. A mesh is kept iff its expressId is in `keep` AND it
+   *  matches `keepModelIndex` (undefined = any model) — the same predicate the
+   *  render loop uses to draw selection highlights, so disposal is its exact
+   *  complement. The model scoping matters for federation: models can share
+   *  express ids, and an id-only check would strand the OTHER model's hydrated
+   *  mesh resident and drawing when selection moves across models. Only meshes
+   *  flagged `hydrated` are touched — authored geometry added via addMesh()
+   *  and batch geometry are left untouched. Returns how many were freed. */
+  disposeHydratedMeshesExcept(keep: ReadonlySet<number>, keepModelIndex?: number): number {
     if (this.meshes.length === 0) return 0;
     const kept: Mesh[] = [];
     let disposed = 0;
     for (const mesh of this.meshes) {
-      if (mesh.hydrated && !keep.has(mesh.expressId)) {
+      const keepMesh = keep.has(mesh.expressId)
+        && (keepModelIndex === undefined || mesh.modelIndex === keepModelIndex);
+      if (mesh.hydrated && !keepMesh) {
         destroyGpuResources(mesh);
         disposed++;
       } else {
@@ -3236,21 +3246,22 @@ export class Scene {
   ): void {
     const device = this.instancedDevice;
     if (!device || this.instancedTemplates.length === 0) return;
-    // Called every render frame. The viewer passes stable Set references that only
-    // change when visibility changes, so a reference-equality guard skips the O(N)
-    // set rebuild + allocation during orbit (the common, unchanged case). The dirty
-    // flag forces a recompute after a new shard adds occurrences mid-stream, so an
+    // Called every render frame. Change detection is by CONTENT (the tracker
+    // snapshot-compares), matching the RenderOptions.hiddenIds contract: an
+    // in-place mutation of the caller's Set is seen, a fresh identical Set is
+    // not treated as a change, and the O(occurrences) rebuild below still only
+    // runs on a real visibility change (orbit stays cheap). The dirty flag
+    // forces a recompute after a new shard adds occurrences mid-stream, so an
     // active isolate/hide also applies to geometry that streams in afterwards.
+    const visibilityVersion = this.instancedVisibilityEpochs.update(hiddenIds, isolatedIds);
     if (
       !this.instancedVisibilityDirty &&
-      hiddenIds === this.lastInstancedHiddenIds &&
-      isolatedIds === this.lastInstancedIsolatedIds
+      visibilityVersion === this.lastInstancedVisibilityVersion
     ) {
       return;
     }
     this.instancedVisibilityDirty = false;
-    this.lastInstancedHiddenIds = hiddenIds ?? null;
-    this.lastInstancedIsolatedIds = isolatedIds ?? null;
+    this.lastInstancedVisibilityVersion = visibilityVersion;
     const isHidden = (eid: number): boolean =>
       (hiddenIds != null && hiddenIds.has(eid)) ||
       (isolatedIds != null && !isolatedIds.has(eid));
@@ -3478,8 +3489,8 @@ export class Scene {
     this.instancedHidden.clear();
     this.instancedOverridden.clear();
     this.instancedHasTransparent = false;
-    this.lastInstancedHiddenIds = null;
-    this.lastInstancedIsolatedIds = null;
+    // Force the next setInstancedVisibility to recompute against fresh state.
+    this.lastInstancedVisibilityVersion = -1;
     this.instancedVisibilityDirty = false;
     this.instancedDevice = undefined;
     // Clear partial batch cache (destroys buffers + drops all cache maps)

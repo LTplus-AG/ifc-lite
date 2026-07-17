@@ -721,9 +721,32 @@ describe('listResultToCSV', () => {
     ['-cmd', "'-cmd"],
     ['@x', "'@x"],
     // Plain signed numbers are NOT quoted — they carry no formula payload.
+    // "Genuine numeric" = optionally signed decimal literal with optional
+    // exponent. Hex (0x10), Infinity and NaN are NOT exempt numerics, but the
+    // last three never start with a trigger char so the guard ignores them
+    // anyway; '-Infinity' DOES start with '-' and is quoted (Excel would not
+    // sum it either, so nothing summable is lost).
     ['-0.35', '-0.35'],
     ['+1', '+1'],
+    ['+41', '+41'],
     ['+1234567890', '+1234567890'],
+    ['-0', '-0'],
+    ['-1e5', '-1e5'],
+    ['+1.5E-7', '+1.5E-7'],
+    ['-.5', '-.5'],
+    // Non-numeric trigger-prefixed cells still quote.
+    ['=1+1', "'=1+1"],
+    ['-cmd|foo', "'-cmd|foo"],
+    ['\t=cmd', "'\t=cmd"],
+    ['-Infinity', "'-Infinity"],
+    ['-1.', '-1.'], // trailing-dot literal is a plain number
+    ['- 1', "'- 1"], // interior whitespace disqualifies the exemption
+    ['+1e', "'+1e"], // dangling exponent is not a number
+    // No leading trigger char: guard does not touch these at all.
+    ['0x10', '0x10'],
+    ['1e5', '1e5'],
+    ['Infinity', 'Infinity'],
+    ['NaN', 'NaN'],
     // Contains a delimiter comma too, so the apostrophe-prefixed value is
     // also quote-wrapped by the general CSV-escaping rule below it.
     ['@SUM(1,2)', '"\'@SUM(1,2)"'],

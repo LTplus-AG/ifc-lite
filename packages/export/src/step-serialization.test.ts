@@ -52,6 +52,13 @@ describe('serializePropertyValue (Real)', () => {
     expect(serializePropertyValue(100, PropertyValueType.Real)).toBe('IFCREAL(100.)');
     expect(serializePropertyValue(-0.35, PropertyValueType.Real)).toBe('IFCREAL(-0.35)');
   });
+
+  it('maps non-finite Real input to $', () => {
+    expect(serializePropertyValue(NaN, PropertyValueType.Real)).toBe('$');
+    expect(serializePropertyValue(Infinity, PropertyValueType.Real)).toBe('$');
+    expect(serializePropertyValue(-Infinity, PropertyValueType.Real)).toBe('$');
+    expect(serializePropertyValue('not a number', PropertyValueType.Real)).toBe('$');
+  });
 });
 
 describe('serializeAttributeValue (string attributes)', () => {
@@ -79,6 +86,48 @@ describe('serializeAttributeValue (string attributes)', () => {
     expect(serializeAttributeValue('bar', '.FOO.')).toBe('.BAR.');
     expect(serializeAttributeValue('5', '3')).toBe('5');
     expect(serializeAttributeValue('#7', '$')).toBe('#7');
+  });
+
+  it('escapes quotes and backslashes together', () => {
+    expect(serializeAttributeValue("a'b\\c", stringToken)).toBe("'a''b\\\\c'");
+    expect(serializeAttributeValue("\\'", stringToken)).toBe("'\\\\'''");
+  });
+
+  it("treats a value of two literal quote chars ('') as content, not empty", () => {
+    expect(serializeAttributeValue("''", stringToken)).toBe("''''''");
+  });
+
+  it('preserves leading/trailing whitespace of a string value verbatim', () => {
+    expect(serializeAttributeValue('  padded  ', stringToken)).toBe("'  padded  '");
+    // Whitespace-wrapped token-lookalikes stay strings too.
+    expect(serializeAttributeValue(' $ ', stringToken)).toBe("' $ '");
+    expect(serializeAttributeValue(' #12 ', stringToken)).toBe("' #12 '");
+  });
+
+  it('recognizes a quoted source token with surrounding whitespace', () => {
+    expect(serializeAttributeValue('#12', "  'Old'  ")).toBe("'#12'");
+  });
+
+  it("does not mistake a lone quote char token (') for a quoted string", () => {
+    // Malformed 1-char token: falls through to inference, quoting the value.
+    expect(serializeAttributeValue('free text', "'")).toBe("'free text'");
+  });
+});
+
+describe('toStepRealScaled', () => {
+  it('formats scaled values through the shared STEP REAL rewrite', async () => {
+    const { toStepRealScaled } = await import('./unit-normalize.js');
+    expect(toStepRealScaled(5e-8)).toBe('5.E-8');
+    expect(toStepRealScaled(1e21)).toBe('1.E+21');
+    expect(toStepRealScaled(-0)).toBe('0.');
+    expect(toStepRealScaled(NaN)).toBe('0.');
+    expect(toStepRealScaled(Infinity)).toBe('0.');
+    expect(toStepRealScaled(-Infinity)).toBe('0.');
+    // 12-sig-digit rounding erases FP noise from unit multiplies.
+    expect(toStepRealScaled(0.1 + 0.2)).toBe('0.3');
+    for (const v of [Number.MAX_VALUE, Number.MIN_VALUE, -1.5e-300, 1e-7, 123.456]) {
+      expect(toStepRealScaled(v)).toMatch(STEP_REAL_RE);
+    }
   });
 });
 

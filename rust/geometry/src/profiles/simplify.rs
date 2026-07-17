@@ -422,10 +422,12 @@ pub(super) fn simplify_smooth_curve_polyline(
 
     // Diagonal-relative epsilon, floored (tiny profiles) and capped at the
     // ABSOLUTE `RDP_EPSILON_MAX_M` budget in profile units, so a large
-    // profile's chord error can't grow with its size (#1788). The cap never
-    // undercuts the floor; degenerate unit scales keep the legacy behaviour.
+    // profile's chord error can't grow with its size (#1788). The cap is NOT
+    // raised to the (unit-dependent) `RDP_EPSILON_MIN` floor — it is the
+    // physical 10 mm bound and must win even where the floor exceeds it
+    // (e.g. coarse length units); degenerate scales keep legacy behaviour.
     let eps_cap_units = if length_unit_scale.is_finite() && length_unit_scale > 0.0 {
-        (RDP_EPSILON_MAX_M / length_unit_scale).max(RDP_EPSILON_MIN)
+        RDP_EPSILON_MAX_M / length_unit_scale
     } else {
         f64::INFINITY
     };

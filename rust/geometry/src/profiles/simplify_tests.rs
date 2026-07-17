@@ -261,3 +261,98 @@ fn doubles_back_independent_of_per_boundary_sampling_density() {
         "skewed-sampling thin sector must be gated"
     );
 }
+
+/// #1802 review: the absolute 10 mm cap must be unit-invariant — a physically
+/// identical profile authored in millimetres (coords ×1000, scale 0.001) must
+/// simplify to the same polygon as its metre twin. Both sit in the cap-bound
+/// regime (diagonal-relative epsilon above 10 mm), where the (unit-dependent)
+/// `RDP_EPSILON_MIN` floor plays no role.
+#[test]
+fn cap_is_unit_invariant_for_round_profile() {
+    let seg = 127;
+    let m: Vec<Point2<f64>> = (0..seg)
+        .map(|i| {
+            let a = std::f64::consts::TAU * (i as f64 / seg as f64);
+            Point2::new(a.cos(), a.sin()) // radius 1 m
+        })
+        .collect();
+    let mm: Vec<Point2<f64>> = m.iter().map(|p| Point2::new(p.x * 1000.0, p.y * 1000.0)).collect();
+    let out_m = simplify_smooth_curve_polyline(&m, 1.0);
+    let out_mm = simplify_smooth_curve_polyline(&mm, 0.001);
+    assert!(
+        out_m.len() < m.len(),
+        "metre-unit 2 m disk must simplify ({} -> {})",
+        m.len(),
+        out_m.len()
+    );
+    assert_eq!(
+        out_m.len(),
+        out_mm.len(),
+        "physically identical mm profile must simplify identically (m: {}, mm: {})",
+        out_m.len(),
+        out_mm.len()
+    );
+    for (a, b) in out_m.iter().zip(out_mm.iter()) {
+        assert!(
+            (a.x * 1000.0 - b.x).abs() < 1e-6 && (a.y * 1000.0 - b.y).abs() < 1e-6,
+            "mm output must be the metre output scaled x1000"
+        );
+    }
+}
+
+/// #1802 review: a round opening profile authored in millimetre units must
+/// still simplify (the #635 target), with the cap converted through the unit
+/// scale rather than swamped by it.
+#[test]
+fn round_profile_still_simplifies_under_mm_units() {
+    let seg = 127;
+    let disk_mm: Vec<Point2<f64>> = (0..seg)
+        .map(|i| {
+            let a = std::f64::consts::TAU * (i as f64 / seg as f64);
+            Point2::new(500.0 * a.cos(), 500.0 * a.sin()) // radius 500 mm
+        })
+        .collect();
+    let out = simplify_smooth_curve_polyline(&disk_mm, 0.001);
+    assert!(
+        out.len() < disk_mm.len() && out.len() >= SIMPLIFIED_MIN_VERTICES,
+        "mm-unit round disk should simplify from {} to [{SIMPLIFIED_MIN_VERTICES}, {}), got {}",
+        disk_mm.len(),
+        disk_mm.len(),
+        out.len(),
+    );
+    assert!(!closed_loop_self_intersects(&out));
+}
+
+/// #1802 review: ellipse simplification must be unit-invariant in the
+/// cap-bound regime (8 m x 1 m ellipse; diagonal-relative epsilon far above
+/// the 10 mm cap in both unit systems).
+#[test]
+fn ellipse_simplification_is_unit_invariant() {
+    let ellipse_m = ellipse_loop(8.0, 128);
+    let ellipse_mm: Vec<Point2<f64>> =
+        ellipse_m.iter().map(|p| Point2::new(p.x * 1000.0, p.y * 1000.0)).collect();
+    let out_m = simplify_smooth_curve_polyline(&ellipse_m, 1.0);
+    let out_mm = simplify_smooth_curve_polyline(&ellipse_mm, 0.001);
+    assert!(out_m.len() < ellipse_m.len(), "metre ellipse must simplify");
+    assert_eq!(
+        out_m.len(),
+        out_mm.len(),
+        "mm-authored ellipse must simplify identically (m: {}, mm: {})",
+        out_m.len(),
+        out_mm.len()
+    );
+}
+
+/// #1802 review: the thin doubling-back gate (#820) must keep firing when the
+/// profile is authored in millimetres and the metres-per-unit scale is passed
+/// correctly — the 12.5 m-radius, 100 mm-thick curved wall stays untouched.
+#[test]
+fn thin_profile_gate_holds_under_mm_units() {
+    let loop_mm = annular_sector_loop(12_500.0, 100.0, 0.3, 64);
+    let out = simplify_smooth_curve_polyline(&loop_mm, 0.001);
+    assert_eq!(
+        out.len(),
+        loop_mm.len(),
+        "thin mm-unit annular sector must be gated (kept verbatim)"
+    );
+}

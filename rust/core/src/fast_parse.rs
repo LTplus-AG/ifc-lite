@@ -152,7 +152,10 @@ pub fn parse_indices_direct(bytes: &[u8]) -> Vec<u32> {
             value = u32::MAX;
         }
 
-        // Convert from 1-based to 0-based
+        // Convert from 1-based to 0-based. NOTE: after saturation this yields
+        // u32::MAX - 1, while schema_gen's to_zero_based yields u32::MAX —
+        // consumers must bounds-check (i >= vertex_count), never compare
+        // against a single sentinel value.
         result.push(value.saturating_sub(1));
     }
 

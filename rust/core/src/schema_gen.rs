@@ -215,7 +215,9 @@ impl AttributeValue {
         // valid u32 vertex range — non-positive, or beyond u32::MAX — maps to
         // u32::MAX, an out-of-range sentinel the downstream bounds check drops,
         // instead of an `(i64 - 1) as u32` truncation/wrap to a valid-looking
-        // (wrong) vertex.
+        // (wrong) vertex. NOTE: this sentinel is u32::MAX while fast_parse's
+        // saturating path yields u32::MAX - 1 — consumers must bounds-check
+        // (i >= vertex_count), never compare against a single sentinel value.
         let to_zero_based = |i: i64| -> u32 {
             i.checked_sub(1)
                 .and_then(|z| u32::try_from(z).ok())

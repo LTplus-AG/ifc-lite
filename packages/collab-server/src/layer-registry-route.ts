@@ -740,6 +740,25 @@ export async function handleLayerRegistryRequest(
       return json(res, 400, { error: 'status must be "approved" or "changes-requested"' });
     }
     if (body.status === 'approved') {
+      // For a ref that requires human approval, an EMPTY reviewer set means
+      // there is no allowlist to attest the approver against — any principal
+      // (including a second token an attacker mints for a distinct identity)
+      // could self-approve past the merge gate, since the only other check is
+      // approver != layer author. Require an explicit reviewer allowlist before
+      // an approval can satisfy a protected ref.
+      //
+      // DESIGN GAP (partially addressed): this closes the "no reviewers named
+      // -> anyone approves" hole, but does NOT fully close self-approval. A
+      // reviewer named in the allowlist could still be a second identity the
+      // same operator controls; the registry cannot attest that two principals
+      // are genuinely different humans. Closing that needs an identity provider
+      // that binds principals to verified, distinct humans (out of scope here).
+      const protectedRef = registry.getRef(review.into)?.policy?.requireHumanApproval === true;
+      if (protectedRef && review.reviewers.length === 0) {
+        return json(res, 403, {
+          error: `review ${review.id} targets a ref that requires human approval but names no reviewers; add an explicit reviewer allowlist before approving`,
+        });
+      }
       // No self-approval: the layer's manifest author cannot satisfy the
       // approval its own merge needs. (Human-vs-agent identity of the
       // approver is the auth provider's responsibility — the registry

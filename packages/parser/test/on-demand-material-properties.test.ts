@@ -73,7 +73,11 @@ function buildStore(
   return {
     source,
     entityIndex: { byId, byType },
-    onDemandMaterialMap: materialMap,
+    // onDemandMaterialMap is list-valued (entity -> material def ids); wrap the
+    // single-value test fixtures so they match the store's real shape.
+    onDemandMaterialMap: materialMap
+      ? new Map([...materialMap].map(([k, v]) => [k, [v]]))
+      : undefined,
     relationships,
   } as unknown as IfcDataStore;
 }

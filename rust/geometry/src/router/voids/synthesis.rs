@@ -662,7 +662,11 @@ impl GeometryRouter {
                 }
             }
             let ext = [hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]];
-            let la = (0..3).max_by(|&i, &j| ext[i].partial_cmp(&ext[j]).unwrap()).unwrap();
+            // Use a total order: non-finite file coords (e.g. `1.E999` → +inf,
+            // whose `inf - inf` extent is NaN) would make `partial_cmp` return
+            // `None` and panic the `.unwrap()`. `f64::total_cmp` (the idiom used
+            // for the sorts in voids/mod.rs) is NaN-safe and deterministic.
+            let la = (0..3).max_by(|&i, &j| ext[i].total_cmp(&ext[j])).unwrap();
             d = Vector3::new(
                 if la == 0 { 1.0 } else { 0.0 },
                 if la == 1 { 1.0 } else { 0.0 },
@@ -963,3 +967,7 @@ impl GeometryRouter {
         out
     }
 }
+
+#[cfg(test)]
+#[path = "synthesis_tests.rs"]
+mod tests;

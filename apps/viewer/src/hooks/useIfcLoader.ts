@@ -1143,6 +1143,35 @@ export function useIfcLoader() {
           const event = nextResult.value;
           const eventReceived = performance.now();
 
+          // Stale-session guard for the streaming loop. A new PRIMARY load
+          // (e.g. the `ifc-lite:load-file` event) bumps loadSessionRef and
+          // resets the active model; without this, a superseded PRIMARY load's
+          // stream keeps mutating the NEW active model — appendGeometryBatch
+          // (batch + complete), updateMeshColors, updateCoordinateInfo and the
+          // loop's setProgress calls — producing mixed meshes and a wrong
+          // RTC/coordinate frame. A superseded FEDERATED add never touches the
+          // active slot, but its streaming branch still writes the shared
+          // progress UI (clobbering the new load's progress) and burns the
+          // geometry workers the new load needs, so it stops too — matching
+          // the documented intent that a primary bump "aborts any in-flight
+          // federated adds". A federated add during a primary load does NOT
+          // abort anything: federated loads never bump the session, so both
+          // sessions stay current. Every other deferred write in this file
+          // already guards on the session (see finalize/post-stream below).
+          // Stop the loop and clean up the reader (closeGeometryIterator
+          // releases WASM; it is idempotent via geometryIteratorClosed, so the
+          // post-loop call is a no-op) so no more shared-state writes happen.
+          if (loadSessionRef.current !== currentSession) {
+            console.warn(`[useIfc] ${target.kind} stream ABORTED: stale session (mine=${currentSession}, current=${loadSessionRef.current}) - superseded by a newer load`);
+            await closeGeometryIterator();
+            // 'complete' never ran, so nothing is chained on dataStorePromise.
+            // The orphaned parser worker self-terminates on its own watchdog
+            // and may reject it — swallow that so the abort doesn't surface as
+            // an unhandled rejection (mirrors the catch path below).
+            void dataStorePromise.catch(() => {});
+            break;
+          }
+
           switch (event.type) {
             case 'start':
               estimatedTotal = event.totalEstimate;
@@ -1414,6 +1443,14 @@ export function useIfcLoader() {
                   cumulativeColorUpdates.clear();
                 }, 5000);
               }).catch(err => {
+                // A superseded load's finalize failure is not this user's
+                // problem anymore: the old primary model record was cleared by
+                // the new load (updateModel would no-op) and a stale federated
+                // toast would misattribute an error to the CURRENT load.
+                if (loadSessionRef.current !== currentSession) {
+                  console.warn('[useIfc] finalize error ignored - superseded load (stale session):', err);
+                  return;
+                }
                 // Data model parsing failed - spatial index and caching skipped
                 console.warn('[useIfc] Skipping spatial index/cache - data model unavailable:', err);
                 if (target.kind === 'federated') {

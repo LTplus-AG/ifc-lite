@@ -5,19 +5,22 @@
 
 /** CLI entry point: `ifc-lite-collab-server`. */
 
-import * as fs from 'node:fs';
-import * as path from 'node:path';
-import { FilePersistence, startCollabServer, type StartCollabServerOptions } from './server.js';
+import { FilePersistence, startCollabServer } from './server.js';
 import { FsBlobStorage } from './blob-route.js';
 import { FsLayerRegistry } from './layer-registry-fs.js';
-import { createRoomTokenAuthenticator, createRoomTokenRegistryAuthorizer, verifyRoomToken } from './room-token.js';
-import { type Role } from './auth.js';
+import { createAccessControl } from './access-control.js';
 
 // `PORT` is the convention most hosts inject (Railway, Render, Fly, …).
 const port = Number(process.env.COLLAB_PORT ?? process.env.PORT ?? 1234);
 const host = process.env.COLLAB_HOST ?? '0.0.0.0';
 const dataDir = process.env.COLLAB_DATA_DIR ?? './.collab-data';
 const maxRooms = Number(process.env.COLLAB_MAX_ROOMS ?? 1024);
+// Idle rooms are loaded on connect and otherwise never evicted until the
+// `maxRooms` ceiling is hit — after which *every* new connection fails. Unload
+// rooms that have had zero peers for this long so long-lived deployments don't
+// silently wedge. The persistence layer keeps the durable copy, so an unloaded
+// room reloads transparently on the next connect. Default: 5 minutes.
+const idleUnloadMs = Number(process.env.COLLAB_IDLE_UNLOAD_MS ?? 5 * 60 * 1000);
 // Link-based access control is enabled by setting a signing secret. Without it
 // the server stays open (anonymous editor) — fine for local/dev, see auth.ts.
 const tokenSecret = process.env.COLLAB_TOKEN_SECRET;
@@ -40,101 +43,36 @@ const registryWebhooks = registryWebhookUrl
     ]
   : [];
 
-/**
- * Accountless room access control:
- *   - Joins require a valid signed room token (role is tamper-proof + revocable).
- *   - The *first* token minted for a brand-new room makes its requester admin
- *     (room creation / first-touch). Afterwards only an admin token for that
- *     room may mint further links — so a link's holder can't escalate.
- *   - Admins can revoke a link by `jti` (deny-list).
- */
-function tokenOptions(secret: string, dir: string): Partial<StartCollabServerOptions> {
-  // Persist the revocation deny-list + claimed-room set to disk so they survive
-  // restarts. Without this, a restart (a) forgets revocations and (b) lets the
-  // first POST /collab/token for an already-claimed persisted room take it over
-  // with a fresh admin token. (Needs a durable volume to actually persist.)
-  const statePath = path.join(dir, 'access-control.json');
-  const revoked = new Set<string>();
-  const claimedRooms = new Set<string>();
-  try {
-    const parsed = JSON.parse(fs.readFileSync(statePath, 'utf8')) as {
-      revoked?: string[];
-      claimedRooms?: string[];
-    };
-    for (const j of parsed.revoked ?? []) revoked.add(j);
-    for (const r of parsed.claimedRooms ?? []) claimedRooms.add(r);
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
-      // eslint-disable-next-line no-console
-      console.warn('[collab-server] could not read access-control state:', err);
-    }
-  }
-  const persist = () => {
-    try {
-      fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(
-        statePath,
-        JSON.stringify({ revoked: [...revoked], claimedRooms: [...claimedRooms] }),
-      );
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn('[collab-server] could not persist access-control state:', err);
-    }
-  };
-  return {
-    authenticate: createRoomTokenAuthenticator({ secret, isRevoked: (jti) => revoked.has(jti) }),
-    // Blobs are content-addressed and NOT room-scoped, but the default blob
-    // authorizer reuses the WS `authenticate` with a pseudo-room scope — which
-    // a room-bound token can never match. Verify signature/expiry/revocation
-    // without the room binding instead; writes additionally need editor/admin.
-    // The registry is project-scoped like blobs: verify the token without
-    // its room binding (see createRoomTokenRegistryAuthorizer) — otherwise
-    // room tokens can never reach /api/v1 and the registry is locked out.
-    authorizeRegistry: createRoomTokenRegistryAuthorizer({
-      secret,
-      isRevoked: (jti) => revoked.has(jti),
-    }),
-    authorizeBlob: (token, method) => {
-      const claims = verifyRoomToken(token ?? '', { secret });
-      if (!claims || revoked.has(claims.jti)) return false;
-      if (method === 'PUT' || method === 'DELETE') {
-        return claims.role === 'editor' || claims.role === 'admin';
-      }
-      return true;
-    },
-    tokenEndpoint: {
-      secret,
-      // A revoked bearer (e.g. a kicked admin) is treated as absent before the
-      // authorize policy even runs; the policy's own check below is defense in
-      // depth for custom deployments that omit `isRevoked`.
-      isRevoked: (jti) => revoked.has(jti),
-      authorize: (request, { bearerClaims }): Role | null => {
-        const room = request.roomId;
-        // A revoked bearer must not be able to keep minting links, even though
-        // its signature + expiry still verify.
-        if (bearerClaims?.jti && revoked.has(bearerClaims.jti)) return null;
-        if (bearerClaims?.room === room && bearerClaims.role === 'admin') return request.role;
-        if (!claimedRooms.has(room)) {
-          claimedRooms.add(room);
-          persist();
-          return 'admin'; // creator of a fresh room
-        }
-        return null; // claimed room + non-admin caller → denied
-      },
-    },
-    revokeEndpoint: {
-      secret,
-      isRevoked: (jti) => revoked.has(jti),
-      recordRevocation: (jti) => {
-        revoked.add(jti);
-        persist();
-      },
-    },
-    kickEndpoint: { secret, isRevoked: (jti) => revoked.has(jti) },
-  };
-}
-
 async function main() {
+  if (!tokenSecret) {
+    const loopback = host === '127.0.0.1' || host === '::1' || host === 'localhost';
+    // Without a signing secret the server runs fully open (anonymous editor):
+    // anyone who can reach it can read and edit every room. Fine bound to
+    // loopback for local/dev, dangerous on a public interface — make the latter
+    // impossible to miss in logs.
+    // eslint-disable-next-line no-console
+    console.warn(
+      loopback
+        ? '[collab-server] WARNING: no COLLAB_TOKEN_SECRET set — running OPEN (anonymous editor, no access control). OK for local/dev only.'
+        : `[collab-server] WARNING: no COLLAB_TOKEN_SECRET set and bound to a non-loopback host (${host}) — the server is OPEN to anyone who can reach it. Set COLLAB_TOKEN_SECRET before exposing it.`,
+    );
+  }
+  // Accountless room access control (see access-control.ts): joins require a
+  // signed room token; a fresh room's first mint makes its requester admin;
+  // admins can revoke links by `jti`.
+  const accessControl = tokenSecret
+    ? createAccessControl({
+        secret: tokenSecret,
+        dir: dataDir,
+        maxClaimedRooms: Number(process.env.COLLAB_MAX_CLAIMED_ROOMS ?? 100_000),
+        // Only honor X-Forwarded-For behind a trusted reverse proxy; a directly
+        // reachable server that trusts the header lets every mint request pick
+        // a fresh spoofed IP (its own rate-limit bucket). Default OFF.
+        trustForwardedFor: ['1', 'true'].includes(
+          (process.env.COLLAB_TRUST_PROXY ?? '').toLowerCase(),
+        ),
+      })
+    : null;
   const handle = await startCollabServer({
     port,
     host,
@@ -144,10 +82,13 @@ async function main() {
     // them on restart. On a mounted volume this is durable and far cheaper.
     blobStorage: new FsBlobStorage(dataDir),
     maxRooms,
+    // Evict idle rooms so a long-lived server doesn't accumulate loaded rooms
+    // up to `maxRooms` and then reject all new connections (see const above).
+    ...(idleUnloadMs > 0 ? { idleUnloadMs } : {}),
     ...(layerRegistryEnabled
       ? { layerRegistry: { store: new FsLayerRegistry(dataDir), webhooks: registryWebhooks } }
       : {}),
-    ...(tokenSecret ? tokenOptions(tokenSecret, dataDir) : {}),
+    ...(accessControl ? accessControl.serverOptions : {}),
   });
   // eslint-disable-next-line no-console
   console.log(
@@ -158,6 +99,22 @@ async function main() {
     // eslint-disable-next-line no-console
     console.log('[collab-server] shutting down…');
     await handle.stop();
+    // A SIGTERM during the persist debounce (or mid-write) must not lose
+    // claims/revocations: await the pending/in-flight state write. flush()
+    // rejects when the state never reached disk — exit non-zero and say so
+    // loudly rather than pretend the shutdown was durable.
+    if (accessControl) {
+      try {
+        await accessControl.flush();
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error(
+          '[collab-server] FAILED to persist access-control state on shutdown; claims/revocations since the last successful write are LOST:',
+          err,
+        );
+        process.exit(1);
+      }
+    }
     process.exit(0);
   };
   process.once('SIGINT', shutdown);

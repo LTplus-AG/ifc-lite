@@ -55,6 +55,7 @@
  */
 
 import { getAllAttributesForEntity } from '@ifc-lite/parser';
+import { formatStepReal } from '@ifc-lite/data';
 import { splitTopLevelStepArguments } from './step-serialization.js';
 
 /** IFC defined types whose values are lengths (STEP writes them as bare reals). */
@@ -187,15 +188,9 @@ function buildEntityLengthPlan(typeUpper: string): EntityLengthPlan {
 export function toStepRealScaled(v: number): string {
   if (!Number.isFinite(v)) return '0.';
   if (v === 0) return '0.'; // also normalizes -0
-  const s = parseFloat(v.toPrecision(12)).toString();
-  const e = s.indexOf('e');
-  if (e !== -1) {
-    let mantissa = s.slice(0, e);
-    const exp = s.slice(e + 1);
-    if (!mantissa.includes('.')) mantissa += '.';
-    return `${mantissa}E${exp}`;
-  }
-  return s.includes('.') ? s : s + '.';
+  // Round to 12 significant digits to erase the multiply's FP noise, then reuse
+  // the shared mantissa/`E` rewrite so scaled and unscaled reals format alike.
+  return formatStepReal(parseFloat(v.toPrecision(12)));
 }
 
 /**

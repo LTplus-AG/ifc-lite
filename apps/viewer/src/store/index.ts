@@ -482,6 +482,10 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       lensPanelVisible: false,
       lensColorMap: new Map<number, string>(),
       lensHiddenIds: new Set<number>(),
+      // Ownership bookkeeping for the shared hidden/isolation channels — those
+      // channels are wiped above, so stale claims must not survive the reset.
+      lensAppliedHiddenIds: [] as number[],
+      lensRuleIsolation: null,
       lensRuleCounts: new Map<string, number>(),
       lensRuleEntityIds: new Map<string, number[]>(),
 

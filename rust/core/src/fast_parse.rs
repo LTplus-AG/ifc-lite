@@ -128,16 +128,34 @@ pub fn parse_indices_direct(bytes: &[u8]) -> Vec<u32> {
             break;
         }
 
-        // Parse integer inline (avoiding any allocation)
+        // Parse integer inline (avoiding any allocation). Use CHECKED
+        // arithmetic so a pathologically large index in malformed input
+        // SATURATES to u32::MAX — an obviously out-of-range vertex the
+        // downstream bounds checks drop — instead of WRAPPING modulo 2^32 to an
+        // arbitrary, valid-looking (wrong) vertex. Digits keep being consumed
+        // after overflow so `pos` still advances past the whole number.
         let mut value: u32 = 0;
+        let mut overflowed = false;
         while pos < len && bytes[pos].is_ascii_digit() {
-            value = value
-                .wrapping_mul(10)
-                .wrapping_add((bytes[pos] - b'0') as u32);
+            if !overflowed {
+                match value
+                    .checked_mul(10)
+                    .and_then(|v| v.checked_add((bytes[pos] - b'0') as u32))
+                {
+                    Some(v) => value = v,
+                    None => overflowed = true,
+                }
+            }
             pos += 1;
         }
+        if overflowed {
+            value = u32::MAX;
+        }
 
-        // Convert from 1-based to 0-based
+        // Convert from 1-based to 0-based. NOTE: after saturation this yields
+        // u32::MAX - 1, while schema_gen's to_zero_based yields u32::MAX —
+        // consumers must bounds-check (i >= vertex_count), never compare
+        // against a single sentinel value.
         result.push(value.saturating_sub(1));
     }
 
@@ -353,77 +371,5 @@ pub fn extract_entity_refs_from_list(bytes: &[u8]) -> Vec<u32> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_parse_coordinates_direct() {
-        let bytes = b"((0.,0.,150.),(0.,40.,140.),(100.,0.,0.))";
-        let coords = parse_coordinates_direct(bytes);
-
-        assert_eq!(coords.len(), 9);
-        assert!((coords[0] - 0.0).abs() < 0.001);
-        assert!((coords[1] - 0.0).abs() < 0.001);
-        assert!((coords[2] - 150.0).abs() < 0.001);
-        assert!((coords[3] - 0.0).abs() < 0.001);
-        assert!((coords[4] - 40.0).abs() < 0.001);
-        assert!((coords[5] - 140.0).abs() < 0.001);
-    }
-
-    #[test]
-    fn test_parse_indices_direct() {
-        let bytes = b"((1,2,3),(2,1,4),(5,6,7))";
-        let indices = parse_indices_direct(bytes);
-
-        assert_eq!(indices.len(), 9);
-        // Should be 0-based (1-based converted)
-        assert_eq!(indices[0], 0); // 1 -> 0
-        assert_eq!(indices[1], 1); // 2 -> 1
-        assert_eq!(indices[2], 2); // 3 -> 2
-        assert_eq!(indices[3], 1); // 2 -> 1
-        assert_eq!(indices[4], 0); // 1 -> 0
-        assert_eq!(indices[5], 3); // 4 -> 3
-    }
-
-    #[test]
-    fn test_parse_scientific_notation() {
-        let bytes = b"((1.5E-10,2.0e+5,-3.14))";
-        let coords = parse_coordinates_direct(bytes);
-
-        assert_eq!(coords.len(), 3);
-        assert!((coords[0] - 1.5e-10).abs() < 1e-15);
-        assert!((coords[1] - 2.0e5).abs() < 1.0);
-        assert!((coords[2] - (-std::f32::consts::PI)).abs() < 0.01);
-    }
-
-    #[test]
-    fn test_parse_negative_numbers() {
-        let bytes = b"((-1.0,-2.5,3.0))";
-        let coords = parse_coordinates_direct(bytes);
-
-        assert_eq!(coords.len(), 3);
-        assert!((coords[0] - (-1.0)).abs() < 0.001);
-        assert!((coords[1] - (-2.5)).abs() < 0.001);
-        assert!((coords[2] - 3.0).abs() < 0.001);
-    }
-
-    #[test]
-    fn test_extract_coordinate_list() {
-        let entity = b"#78=IFCCARTESIANPOINTLIST3D(((0.,0.,150.),(100.,0.,0.)));";
-        let coords = extract_coordinate_list_from_entity(entity).unwrap();
-
-        assert_eq!(coords.len(), 6);
-        assert!((coords[0] - 0.0).abs() < 0.001);
-        assert!((coords[2] - 150.0).abs() < 0.001);
-        assert!((coords[3] - 100.0).abs() < 0.001);
-    }
-
-    #[test]
-    fn test_should_use_fast_path() {
-        assert!(should_use_fast_path("IFCCARTESIANPOINTLIST3D"));
-        assert!(should_use_fast_path("IFCTRIANGULATEDFACESET"));
-        assert!(should_use_fast_path("IfcTriangulatedFaceSet"));
-        assert!(!should_use_fast_path("IFCWALL"));
-        assert!(!should_use_fast_path("IFCEXTRUDEDAREASOLID"));
-    }
-}
+#[path = "fast_parse_tests.rs"]
+mod tests;

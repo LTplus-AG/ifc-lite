@@ -84,9 +84,10 @@ describe('multiple IfcRelAssociatesMaterial per element', () => {
         const inOrder = await parse([BASE, REL_A, REL_B, REL_TYPE, REL_OWN].join('\n'));
         const reversed = await parse([BASE, REL_OWN, REL_TYPE, REL_B, REL_A].join('\n'));
 
-        // Rel #330 (layer set #312) has the lowest express id → primary.
-        expect(inOrder.onDemandMaterialMap?.get(100)).toBe(312);
-        expect(reversed.onDemandMaterialMap?.get(100)).toBe(312);
+        // Rel #330 (layer set #312) has the lowest express id → primary at
+        // list index 0; the map keeps EVERY association in rel-id order.
+        expect(inOrder.onDemandMaterialMap?.get(100)).toEqual([312, 302]);
+        expect(reversed.onDemandMaterialMap?.get(100)).toEqual([312, 302]);
         expect(resolveMaterialDefId(inOrder, 100)).toBe(312);
         expect(extractMaterialsOnDemand(reversed, 100)?.type).toBe('MaterialLayerSet');
     });
@@ -156,6 +157,6 @@ describe('multiple IfcRelAssociatesMaterial per element', () => {
         const restored = fromTransport(envelope.payload, store.source);
         expect([...restored.onDemandMaterialMap!.entries()].sort())
             .toEqual([...store.onDemandMaterialMap!.entries()].sort());
-        expect(restored.onDemandMaterialMap!.get(100)).toBe(312);
+        expect(restored.onDemandMaterialMap!.get(100)).toEqual([312, 302]);
     });
 });

@@ -16,6 +16,7 @@
 
 import type { StateCreator } from 'zustand';
 import { SENSITIVITY } from '@/lib/spacemouse/constants';
+import type { SpaceMouseDiagnostics } from '@/lib/spacemouse/device';
 
 export interface SpaceMouseSlice {
   /** True when navigator.hid exists (Chromium-based browsers). */
@@ -38,6 +39,12 @@ export interface SpaceMouseSlice {
   spaceMouseConnect: (() => void) | null;
   /** Disconnect action registered by `useSpaceMouseControls` while connected. */
   spaceMouseDisconnect: (() => void) | null;
+  /**
+   * Diagnostics snapshot getter registered while connected. The panel polls it
+   * at UI rate (device reports stream at ~125Hz; routing every sample through
+   * the store would be waste).
+   */
+  spaceMouseGetDiagnostics: (() => SpaceMouseDiagnostics) | null;
 
   setSpaceMouseSupported: (supported: boolean) => void;
   setSpaceMouseConnected: (connected: boolean, deviceName?: string | null) => void;
@@ -47,6 +54,7 @@ export interface SpaceMouseSlice {
   toggleSpaceMousePanel: () => void;
   setSpaceMouseConnect: (connect: (() => void) | null) => void;
   setSpaceMouseDisconnect: (disconnect: (() => void) | null) => void;
+  setSpaceMouseGetDiagnostics: (getDiagnostics: (() => SpaceMouseDiagnostics) | null) => void;
 }
 
 const STORAGE_KEY = 'ifc-lite:spacemouse';
@@ -85,6 +93,7 @@ export const createSpaceMouseSlice: StateCreator<SpaceMouseSlice, [], [], SpaceM
   spaceMousePanelOpen: false,
   spaceMouseConnect: null,
   spaceMouseDisconnect: null,
+  spaceMouseGetDiagnostics: null,
 
   setSpaceMouseSupported: (spaceMouseSupported) => set({ spaceMouseSupported }),
   setSpaceMouseConnected: (spaceMouseConnected, deviceName = null) =>
@@ -104,4 +113,5 @@ export const createSpaceMouseSlice: StateCreator<SpaceMouseSlice, [], [], SpaceM
   toggleSpaceMousePanel: () => set((s) => ({ spaceMousePanelOpen: !s.spaceMousePanelOpen })),
   setSpaceMouseConnect: (spaceMouseConnect) => set({ spaceMouseConnect }),
   setSpaceMouseDisconnect: (spaceMouseDisconnect) => set({ spaceMouseDisconnect }),
+  setSpaceMouseGetDiagnostics: (spaceMouseGetDiagnostics) => set({ spaceMouseGetDiagnostics }),
 });

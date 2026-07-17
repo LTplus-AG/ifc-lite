@@ -15,6 +15,10 @@ export interface EntityMetadata {
   name?: string;
   description?: string;
   object_type?: string;
+  /** Element Tag — data-model v4 (issue #1765); absent on older servers. */
+  tag?: string;
+  /** PredefinedType enum token, dots stripped — data-model v4. */
+  predefined_type?: string;
   has_geometry: boolean;
 }
 
@@ -22,6 +26,9 @@ export interface Property {
   property_name: string;
   property_value: string;
   property_type: string;
+  /** Raw IFC measure/value type tag (e.g. "IFCLENGTHMEASURE"), when present.
+   *  Added with the data-model v3 payload; `undefined` for older servers. */
+  data_type?: string;
 }
 
 export interface PropertySet {
@@ -217,6 +224,9 @@ export async function decodeDataModel(data: ArrayBuffer): Promise<DataModel> {
   // Description and object_type may not be present in older server versions
   const descriptions = entitiesArrow.getChild('description')?.toArray() as (string | null)[] | undefined;
   const objectTypes = entitiesArrow.getChild('object_type')?.toArray() as (string | null)[] | undefined;
+  // tag / predefined_type arrive with the v4 payload (issue #1765).
+  const tags = entitiesArrow.getChild('tag')?.toArray() as (string | null)[] | undefined;
+  const predefinedTypes = entitiesArrow.getChild('predefined_type')?.toArray() as (string | null)[] | undefined;
   const entityCount = entityIds.length;
 
   // Build entity map with pre-extracted arrays (no per-element .get() calls)
@@ -229,6 +239,8 @@ export async function decodeDataModel(data: ArrayBuffer): Promise<DataModel> {
       name: names[i] || undefined,
       description: descriptions?.[i] || undefined,
       object_type: objectTypes?.[i] || undefined,
+      tag: tags?.[i] || undefined,
+      predefined_type: predefinedTypes?.[i] || undefined,
       has_geometry: hasGeometry[i] !== 0,
     });
   }
@@ -239,6 +251,8 @@ export async function decodeDataModel(data: ArrayBuffer): Promise<DataModel> {
   const propertyNamesArr = propertiesArrow.getChild('property_name')?.toArray() as string[];
   const propertyValuesArr = propertiesArrow.getChild('property_value')?.toArray() as string[];
   const propertyTypesArr = propertiesArrow.getChild('property_type')?.toArray() as string[];
+  // Additive v3 column — absent (undefined) for older-server payloads.
+  const dataTypesArr = propertiesArrow.getChild('data_type')?.toArray() as (string | null)[] | undefined;
 
   const propertySets = new Map<number, PropertySet>();
   for (let i = 0; i < psetIds.length; i++) {
@@ -255,6 +269,7 @@ export async function decodeDataModel(data: ArrayBuffer): Promise<DataModel> {
       property_name: propertyNamesArr[i] ?? '',
       property_value: propertyValuesArr[i] ?? '',
       property_type: propertyTypesArr[i] ?? '',
+      data_type: dataTypesArr?.[i] ?? undefined,
     });
   }
 

@@ -25,6 +25,59 @@ describe('decodeIfcString', () => {
     expect(decodeIfcString('\\X4\\0001D11E\\X0\\')).toBe('𝄞');
   });
 
+  it('emits U+FFFD (no throw) for an \\X4\\ value above the Unicode max', () => {
+    // 0x00110000 is one past the highest valid scalar (0x10FFFF). Previously
+    // String.fromCodePoint threw a RangeError here, aborting the whole model
+    // load on the columnar batch-name path.
+    let out!: string;
+    expect(() => { out = decodeIfcString('\\X4\\00110000\\X0\\'); }).not.toThrow();
+    expect(out).toBe('�');
+  });
+
+  it('replaces only the offending scalar within a mixed \\X4\\ run', () => {
+    // Valid 𝄞 (0x1D11E) followed by an out-of-range scalar -> valid char + FFFD.
+    expect(decodeIfcString('\\X4\\0001D11EFFFFFFFF\\X0\\')).toBe('𝄞�');
+  });
+
+  it('accepts exactly 0x10FFFF (the highest valid scalar) in \\X4\\', () => {
+    expect(decodeIfcString('\\X4\\0010FFFF\\X0\\')).toBe('\u{10FFFF}');
+  });
+
+  it('replaces surrogate values in \\X4\\ with U+FFFD (Rust char::from_u32 parity)', () => {
+    // 0xD800 / 0xDFFF are surrogates, not Unicode scalar values; fromCodePoint
+    // would happily produce an unpaired surrogate, but the Rust decoder emits
+    // U+FFFD, and the two parse paths must agree byte-for-byte.
+    expect(decodeIfcString('\\X4\\0000D800\\X0\\')).toBe('�');
+    expect(decodeIfcString('\\X4\\0000DFFF\\X0\\')).toBe('�');
+  });
+
+  it('combines a surrogate pair split across \\X2\\ groups', () => {
+    // D834 DD1E is the UTF-16 encoding of 𝄞 (0x1D11E).
+    expect(decodeIfcString('\\X2\\D834DD1E\\X0\\')).toBe('𝄞');
+  });
+
+  it('replaces a lone surrogate in \\X2\\ with U+FFFD (from_utf16_lossy parity)', () => {
+    expect(decodeIfcString('\\X2\\D800\\X0\\')).toBe('�');
+    // High surrogate NOT followed by a low one, then a normal unit.
+    expect(decodeIfcString('\\X2\\D8000041\\X0\\')).toBe('�A');
+    // Low surrogate first (can never pair backwards).
+    expect(decodeIfcString('\\X2\\DD1E0041\\X0\\')).toBe('�A');
+  });
+
+  it('passes malformed \\X2\\/\\X4\\ payloads through literally without throwing', () => {
+    // Empty payload: the hex regex requires at least one digit.
+    expect(decodeIfcString('\\X4\\\\X0\\')).toBe('\\X4\\\\X0\\');
+    expect(decodeIfcString('\\X2\\\\X0\\')).toBe('\\X2\\\\X0\\');
+    // Odd-length payloads (not a multiple of 8 / 4 hex digits).
+    expect(decodeIfcString('\\X4\\0001D11\\X0\\')).toBe('\\X4\\0001D11\\X0\\');
+    expect(decodeIfcString('\\X2\\00E\\X0\\')).toBe('\\X2\\00E\\X0\\');
+    // Non-hex characters in the payload.
+    expect(decodeIfcString('\\X4\\0001D11G\\X0\\')).toBe('\\X4\\0001D11G\\X0\\');
+    // Unterminated directive (no \X0\ closer) stays literal.
+    expect(decodeIfcString('\\X2\\00E4')).toBe('\\X2\\00E4');
+    expect(decodeIfcString('\\X4\\0001D11E')).toBe('\\X4\\0001D11E');
+  });
+
   it('decodes \\X\\ ISO-8859-1 single byte', () => {
     expect(decodeIfcString('\\X\\F1')).toBe('ñ');
   });

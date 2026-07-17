@@ -1136,7 +1136,7 @@ function createTypedMaterialDataStore(): IfcDataStore {
   return {
     source: new TextEncoder().encode(text),
     entityIndex: { byId, byType: new Map() },
-    onDemandMaterialMap: new Map([[5, 22], [3, 12]]),
+    onDemandMaterialMap: new Map([[5, [22]], [3, [12]]]),
     relationships: relBuilder.build(),
   } as unknown as IfcDataStore;
 }

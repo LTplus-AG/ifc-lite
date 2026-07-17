@@ -154,6 +154,97 @@ describe('POST /collab/token mint route', () => {
     }
   });
 
+  it('ignores X-Forwarded-For by default: clientIp is the socket address', async () => {
+    const seen: Array<string | undefined> = [];
+    const handle = await startCollabServer({
+      port: 0,
+      persistence: new MemoryPersistence(),
+      authenticate: createRoomTokenAuthenticator({ secret: SECRET }),
+      tokenEndpoint: {
+        secret: SECRET,
+        authorize: (req, { clientIp }) => {
+          seen.push(clientIp);
+          return req.role;
+        },
+      },
+    });
+    const address = handle.httpServer.address();
+    const port = typeof address === 'object' && address ? address.port : 0;
+    try {
+      // No proxy header: the socket's remote address (loopback).
+      const direct = await fetch(`http://127.0.0.1:${port}/collab/token`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ roomId: 'm/a', role: 'editor' }),
+      });
+      expect(direct.status).toBe(200);
+      // Spoofed X-Forwarded-For from a direct caller: IGNORED. Honoring it
+      // would hand every request its own rate-limit bucket (a fresh fake IP
+      // per mint), so buckets must stay keyed by the socket address.
+      const spoofed = await fetch(`http://127.0.0.1:${port}/collab/token`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-forwarded-for': '203.0.113.7, 10.0.0.1',
+        },
+        body: JSON.stringify({ roomId: 'm/b', role: 'editor' }),
+      });
+      expect(spoofed.status).toBe(200);
+      expect(seen.length).toBe(2);
+      expect(typeof seen[0]).toBe('string'); // loopback address, e.g. ::1 / 127.0.0.1
+      expect(seen[1]).toBe(seen[0]); // same socket => same bucket key, spoof ignored
+      expect(seen[1]).not.toBe('203.0.113.7');
+    } finally {
+      await handle.stop();
+    }
+  });
+
+  it('honors X-Forwarded-For when trustForwardedFor is set, using the LAST hop', async () => {
+    const seen: Array<string | undefined> = [];
+    const handle = await startCollabServer({
+      port: 0,
+      persistence: new MemoryPersistence(),
+      authenticate: createRoomTokenAuthenticator({ secret: SECRET }),
+      tokenEndpoint: {
+        secret: SECRET,
+        trustForwardedFor: true,
+        authorize: (req, { clientIp }) => {
+          seen.push(clientIp);
+          return req.role;
+        },
+      },
+    });
+    const address = handle.httpServer.address();
+    const port = typeof address === 'object' && address ? address.port : 0;
+    try {
+      // A trusted proxy APPENDS the peer it saw, so the LAST entry is the only
+      // hop our infrastructure vouches for; the first entry ('203.0.113.7')
+      // could be client-supplied and must not be believed.
+      const proxied = await fetch(`http://127.0.0.1:${port}/collab/token`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-forwarded-for': '203.0.113.7, 10.0.0.1',
+        },
+        body: JSON.stringify({ roomId: 'm/c', role: 'editor' }),
+      });
+      expect(proxied.status).toBe(200);
+      // Header absent: still falls back to the socket address.
+      const direct = await fetch(`http://127.0.0.1:${port}/collab/token`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ roomId: 'm/d', role: 'editor' }),
+      });
+      expect(direct.status).toBe(200);
+      expect(seen.length).toBe(2);
+      expect(seen[0]).toBe('10.0.0.1');
+      expect(typeof seen[1]).toBe('string'); // loopback socket address
+      expect(seen[1]).not.toBe('10.0.0.1');
+    } finally {
+      await handle.stop();
+    }
+  });
+
   it('returns 404 for the token route when the endpoint is disabled', async () => {
     const handle = await startCollabServer({ port: 0, persistence: new MemoryPersistence() });
     const address = handle.httpServer.address();

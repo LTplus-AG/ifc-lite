@@ -85,11 +85,15 @@ export interface IfcDataStore extends IfcStoreBase {
     onDemandClassificationMap?: Map<number, number[]>;
 
     /**
-     * On-demand material lookup: entityId -> relatingMaterial expressId
+     * On-demand material lookup: entityId -> associated material definition expressIds.
      * Built from IfcRelAssociatesMaterial relationships during parsing.
-     * Value is the expressId of IfcMaterial, IfcMaterialLayerSet, IfcMaterialProfileSet, or IfcMaterialConstituentSet.
+     * Each value is the expressId of IfcMaterial, IfcMaterialLayerSet,
+     * IfcMaterialProfileSet, IfcMaterialConstituentSet, IfcMaterialList, or a
+     * *Usage. The value is a LIST so a second IfcRelAssociatesMaterial targeting
+     * the same element (valid in the wild) is preserved rather than last-wins
+     * overwritten — the model-wide usage index depends on seeing every one.
      */
-    onDemandMaterialMap?: Map<number, number>;
+    onDemandMaterialMap?: Map<number, number[]>;
 
     /**
      * On-demand document lookup: entityId -> array of IfcDocumentReference/IfcDocumentInformation expressIds
@@ -640,16 +644,15 @@ export class ColumnarParser {
         options.onProgress?.({ phase: 'parsing associations', percent: 95 });
 
         const onDemandClassificationMap = new Map<number, number[]>();
-        const onDemandMaterialMap = new Map<number, number>();
+        const onDemandMaterialMap = new Map<number, number[]>();
         const onDemandDocumentMap = new Map<number, number[]>();
         // Determinism rule for elements with MULTIPLE IfcRelAssociatesMaterial:
-        // the rel with the LOWEST express id wins the single-entry map (its
-        // RelatingMaterial becomes the element's "primary" material). The cache
-        // rebuild (viewer spatialHierarchy rebuildOnDemandMaps) applies the same
-        // rule via edge relationshipIds, so fresh-parse and cache-load agree.
-        // ALL associations remain reachable via the relationship graph
-        // (resolveAllMaterialDefIds).
-        const materialWinningRelId = new Map<number, number>();
+        // the map keeps EVERY association (list-valued), ordered by rel express
+        // id, so list[0] — the "primary" — is the RelatingMaterial of the
+        // LOWEST rel express id regardless of file order. The cache rebuild
+        // (viewer spatialHierarchy rebuildOnDemandMaps) applies the same rule
+        // via edge relationshipIds, so fresh-parse and cache-load agree.
+        const materialRelIds = new Map<number, number[]>();
 
         for (let i = 0; i < associationRelRefs.length; i++) {
             if ((i & 0x3FF) === 0) await yieldIfNeeded();
@@ -668,11 +671,18 @@ export class ColumnarParser {
                     }
                 } else if (typeUpper === 'IFCRELASSOCIATESMATERIAL') {
                     for (const objId of relatedObjects) {
-                        const winner = materialWinningRelId.get(objId);
-                        if (winner === undefined || ref.expressId < winner) {
-                            materialWinningRelId.set(objId, ref.expressId);
-                            onDemandMaterialMap.set(objId, relatingRef);
+                        let list = onDemandMaterialMap.get(objId);
+                        let relIds = materialRelIds.get(objId);
+                        if (!list || !relIds) {
+                            list = []; onDemandMaterialMap.set(objId, list);
+                            relIds = []; materialRelIds.set(objId, relIds);
                         }
+                        // Insert in rel-express-id order (lists are tiny) so
+                        // list[0] is the deterministic primary.
+                        let at = relIds.length;
+                        while (at > 0 && relIds[at - 1] > ref.expressId) at--;
+                        relIds.splice(at, 0, ref.expressId);
+                        list.splice(at, 0, relatingRef);
                         relationshipGraphBuilder.addEdge(relatingRef, objId, RelationshipType.AssociatesMaterial, ref.expressId);
                     }
                 } else if (typeUpper === 'IFCRELASSOCIATESDOCUMENT') {

@@ -131,31 +131,20 @@ interface ShardColumns {
  */
 function stitchShards(shards: ShardColumns[]): { ids: Uint32Array; starts: Uint32Array; lengths: Uint32Array; classes: Uint8Array } | null {
   const n = shards.length;
-  // Total upper bound = sum of shard record counts (validated slices are a subset).
-  let cap = 0;
-  for (const s of shards) cap += s.ids.length;
-  const outIds = new Uint32Array(cap);
-  const outStarts = new Uint32Array(cap);
-  const outLengths = new Uint32Array(cap);
-  const outClasses = new Uint8Array(cap);
-  let w = 0;
 
-  // Shard 0: authoritative, take every record.
-  {
-    const s = shards[0];
-    outIds.set(s.ids, w);
-    outStarts.set(s.starts, w);
-    outLengths.set(s.lengths, w);
-    outClasses.set(s.classes, w);
-    w += s.ids.length;
-  }
+  // Phase 1 — locate each shard's validated slice (binary-search the previous
+  // shard's handoff) WITHOUT copying, so the output size is exact before any
+  // allocation. Exactness matters: the id/start/length columns are allocated
+  // SAB-backed below and handed to every worker as full-buffer views, so a
+  // cap-sized buffer would let consumers read past the last real record.
+  const sliceFrom = new Array<number>(n).fill(0);
+  let used = 1;
+  let w = shards[0].ids.length; // shard 0 is authoritative, take every record
   let expectedStart = shards[0].handoff; // -1 => no more real entities
-
   for (let i = 1; i < n; i++) {
     if (expectedStart < 0) break;
-    const s = shards[i];
     // starts is strictly increasing → binary-search for expectedStart.
-    const starts = s.starts;
+    const starts = shards[i].starts;
     let lo = 0;
     let hi = starts.length - 1;
     let p = -1;
@@ -170,21 +159,38 @@ function stitchShards(shards: ShardColumns[]): { ids: Uint32Array; starts: Uint3
       // Handoff not present in this shard — fallback path (not implemented here).
       return null;
     }
-    const take = starts.length - p;
-    outIds.set(s.ids.subarray(p), w);
-    outStarts.set(s.starts.subarray(p), w);
-    outLengths.set(s.lengths.subarray(p), w);
-    outClasses.set(s.classes.subarray(p), w);
-    w += take;
-    expectedStart = s.handoff;
+    sliceFrom[i] = p;
+    w += starts.length - p;
+    expectedStart = shards[i].handoff;
+    used = i + 1;
   }
 
-  return {
-    ids: outIds.subarray(0, w),
-    starts: outStarts.subarray(0, w),
-    lengths: outLengths.subarray(0, w),
-    classes: outClasses.subarray(0, w),
-  };
+  // Phase 2 — single concatenation copy, straight into SharedArrayBuffer-backed
+  // columns. The stitched index used to be copied THREE times per column on the
+  // main thread (cap-array stitch → `.slice()` to contiguous → `.set()` into
+  // fresh SABs in deliverEntityIndex); writing the stitch output into SABs
+  // directly makes index delivery zero-copy (~450 MB of critical-path memcpy
+  // saved on a 19M-entity file). `classes` stays plain: its only consumer past
+  // the span-extraction loop is the pre-pass worker, which takes it by transfer.
+  const sabAvailable = typeof SharedArrayBuffer !== 'undefined';
+  const u32Column = (len: number) =>
+    new Uint32Array(sabAvailable ? new SharedArrayBuffer(len * 4) : new ArrayBuffer(len * 4));
+  const outIds = u32Column(w);
+  const outStarts = u32Column(w);
+  const outLengths = u32Column(w);
+  const outClasses = new Uint8Array(w);
+  let o = 0;
+  for (let i = 0; i < used; i++) {
+    const s = shards[i];
+    const p = sliceFrom[i];
+    outIds.set(p === 0 ? s.ids : s.ids.subarray(p), o);
+    outStarts.set(p === 0 ? s.starts : s.starts.subarray(p), o);
+    outLengths.set(p === 0 ? s.lengths : s.lengths.subarray(p), o);
+    outClasses.set(p === 0 ? s.classes : s.classes.subarray(p), o);
+    o += s.ids.length - p;
+  }
+
+  return { ids: outIds, starts: outStarts, lengths: outLengths, classes: outClasses };
 }
 
 interface PrepassMeta {
@@ -509,49 +515,13 @@ export async function* processParallel(
           firstBatchByWorker[workerIndex] = elapsed();
           console.log(`[stream] worker[${workerIndex}] first batch @ ${elapsed()}ms (${msg.meshes?.length ?? 0} meshes)`);
         }
-        const meshes: MeshData[] = msg.meshes.map((m: {
-          expressId: number;
-          ifcType?: string;
-          positions: Float32Array;
-          normals: Float32Array;
-          indices: Uint32Array;
-          color: [number, number, number, number];
-          shadingColor?: [number, number, number, number];
-          // #961: optional per-vertex UVs + decoded surface texture.
-          uvs?: MeshData['uvs'];
-          texture?: MeshData['texture'];
-          geometryHash?: bigint;
-          geometryClass?: number;
-          origin?: [number, number, number];
-          localBounds?: MeshData['localBounds'];
-          localToWorld?: MeshData['localToWorld'];
-        }) => ({
-          expressId: m.expressId,
-          ifcType: m.ifcType,
-          positions: m.positions instanceof Float32Array ? m.positions : new Float32Array(m.positions),
-          normals: m.normals instanceof Float32Array ? m.normals : new Float32Array(m.normals),
-          indices: m.indices instanceof Uint32Array ? m.indices : new Uint32Array(m.indices),
-          color: m.color,
-          // SurfaceColour for GLB "Shading" export (worker parity fix).
-          ...(m.shadingColor ? { shadingColor: m.shadingColor } : {}),
-          // #961: carry per-vertex UVs + decoded surface texture through to the
-          // renderer (transferables; already typed arrays from the worker).
-          ...(m.uvs ? { uvs: m.uvs } : {}),
-          ...(m.texture ? { texture: m.texture } : {}),
-          // Carry the model-diff fingerprint through the worker boundary
-          // (issue #924); undefined when hashing is off.
-          ...(m.geometryHash !== undefined ? { geometryHash: m.geometryHash } : {}),
-          // #957 follow-up: carry the Model/Types geometry class through the
-          // worker→main re-map (else the viewer's view-mode filter sees only
-          // class 0 and the Types view renders nothing).
-          ...(m.geometryClass !== undefined ? { geometryClass: m.geometryClass } : {}),
-          // Per-element local-frame origin (world = origin + position); the
-          // renderer reconstructs world via a per-batch model-matrix translate.
-          ...(m.origin ? { origin: m.origin } : {}),
-          // Local (pre-placement) AABB + placement transform (issue #1474).
-          ...(m.localBounds ? { localBounds: m.localBounds } : {}),
-          ...(m.localToWorld ? { localToWorld: m.localToWorld } : {}),
-        }));
+        // The worker already emits `MeshData`-shaped objects (see the worker's
+        // `meshData` construction: typed arrays ride the transfer list, optional
+        // fields are conditionally spread there). Structured clone preserves
+        // typed-array types, so re-mapping every mesh here only re-allocated
+        // ~one wrapper object per mesh (~110k per large load) on the main
+        // thread. Pass the transferred objects straight through.
+        const meshes: MeshData[] = msg.meshes as MeshData[];
         // GPU-instancing: per-batch IFNS shards ride alongside the flat meshes.
         // Opaque repeated occurrences render ONLY via these shards (taken off the
         // flat `meshes` array), so their count must be folded into the running
@@ -908,12 +878,29 @@ export async function* processParallel(
   ) => {
     console.log(`[stream] entity-index (${source}) @ ${elapsed()}ms (${ids.length} entries)`);
     if (typeof SharedArrayBuffer !== 'undefined') {
-      const sabIds = new SharedArrayBuffer(ids.byteLength);
-      const sabStarts = new SharedArrayBuffer(starts.byteLength);
-      const sabLengths = new SharedArrayBuffer(lengths.byteLength);
-      new Uint32Array(sabIds).set(ids);
-      new Uint32Array(sabStarts).set(starts);
-      new Uint32Array(sabLengths).set(lengths);
+      // Sharded-stitch columns arrive already SAB-backed (stitchShards writes
+      // its exact-size output into SABs) — share them as-is. The serial
+      // pre-pass path still hands over plain transferred buffers, which need
+      // the one copy into SABs to be shareable with every worker.
+      let sabIds: SharedArrayBuffer;
+      let sabStarts: SharedArrayBuffer;
+      let sabLengths: SharedArrayBuffer;
+      if (
+        ids.buffer instanceof SharedArrayBuffer &&
+        starts.buffer instanceof SharedArrayBuffer &&
+        lengths.buffer instanceof SharedArrayBuffer
+      ) {
+        sabIds = ids.buffer;
+        sabStarts = starts.buffer;
+        sabLengths = lengths.buffer;
+      } else {
+        sabIds = new SharedArrayBuffer(ids.byteLength);
+        sabStarts = new SharedArrayBuffer(starts.byteLength);
+        sabLengths = new SharedArrayBuffer(lengths.byteLength);
+        new Uint32Array(sabIds).set(ids);
+        new Uint32Array(sabStarts).set(starts);
+        new Uint32Array(sabLengths).set(lengths);
+      }
       for (const w of workers) {
         try {
           w.postMessage({
@@ -977,10 +964,11 @@ export async function* processParallel(
       return;
     }
     console.log(`[stream][shard] stitched ${stitched.ids.length} entities @ ${elapsed()}ms (shard scan started @ ${shardScanDispatchedAt}ms)`);
-    // Copy out of the subarray views so the held columns own contiguous buffers.
-    const ids = stitched.ids.slice();
-    const starts = stitched.starts.slice();
-    const lengths = stitched.lengths.slice();
+    // Exact-size SAB-backed columns straight from the stitch — no contiguity
+    // copy needed, and deliverEntityIndex shares them zero-copy.
+    const ids = stitched.ids;
+    const starts = stitched.starts;
+    const lengths = stitched.lengths;
     entityIndexDeliveredEarly = true;
     // set-entity-index reaches every worker FIRST (FIFO), so the style-shard
     // messages below always find the index installed.
@@ -1038,7 +1026,9 @@ export async function* processParallel(
     // Start the sharded pre-pass with the stitched index columns + classes
     // (stage 2: the pre-pass discovers jobs/spans from the class column and
     // never byte-scans the file).
-    startPrepass(true, { ids, starts, lengths, classes: classes.slice() });
+    // `classes` is exact-size (two-phase stitch) so it transfers as-is; the
+    // span-extraction loop above already read everything main needs from it.
+    startPrepass(true, { ids, starts, lengths, classes });
   };
 
   /**
@@ -1427,6 +1417,23 @@ export async function* processParallel(
     indexColumns?: { ids: Uint32Array; starts: Uint32Array; lengths: Uint32Array; classes: Uint8Array },
   ) => {
     if (sharded && indexColumns) {
+      // The id/start/length columns are SharedArrayBuffer-backed (two-phase
+      // stitch): they CANNOT go on the transfer list (transferring a SAB
+      // throws) and don't need to — postMessage shares the SAB for free.
+      // `classes` is a plain exact-size buffer and is the pre-pass worker's
+      // alone from here, so it still transfers (a structured clone would
+      // double its transient memory).
+      const transfers: ArrayBuffer[] = [];
+      for (const column of [
+        indexColumns.ids.buffer,
+        indexColumns.starts.buffer,
+        indexColumns.lengths.buffer,
+        indexColumns.classes.buffer,
+      ]) {
+        if (typeof SharedArrayBuffer === 'undefined' || !(column instanceof SharedArrayBuffer)) {
+          transfers.push(column as ArrayBuffer);
+        }
+      }
       prepassWorker.postMessage({
         type: 'prepass-streaming-sharded',
         sharedBuffer,
@@ -1437,15 +1444,7 @@ export async function* processParallel(
         indexStarts: indexColumns.starts,
         indexLengths: indexColumns.lengths,
         indexClasses: indexColumns.classes,
-      }, [
-        // TRANSFER the ~230MB of stitched columns (deliverEntityIndex already
-        // copied them into SABs for the other consumers) — a structured clone
-        // here would double the copy cost and the transient memory.
-        indexColumns.ids.buffer,
-        indexColumns.starts.buffer,
-        indexColumns.lengths.buffer,
-        indexColumns.classes.buffer,
-      ]);
+      }, transfers);
     } else {
       prepassWorker.postMessage({
         type: 'prepass-streaming',

@@ -22,8 +22,16 @@ import {
   HID_USAGE_MULTI_AXIS_CONTROLLER,
   HID_USAGE_PAGE_GENERIC_DESKTOP,
   REPORT_ID_BUTTONS,
+  REPORT_ID_ROTATION,
+  REPORT_ID_TRANSLATION,
   SPACEMOUSE_VENDOR_IDS,
 } from './constants.js';
+import {
+  buildDeviceLayout,
+  layoutAxisCount,
+  parseReportWithLayout,
+  type DeviceLayout,
+} from './descriptor.js';
 import { parseButtonsReport, parseSpaceMouseReport, zeroSixDof, type SixDof } from './parser.js';
 
 /** True when the browser exposes WebHID (Chromium-based browsers). */
@@ -57,9 +65,47 @@ function isSpaceMouseCandidate(device: HIDDevice): boolean {
  */
 function multiAxisScore(device: HIDDevice): number {
   const collections = device.collections ?? [];
+  // Descriptor-named 6DoF axes outrank the bare Multi-axis Controller usage:
+  // the interface that actually carries X..RZ is the one we want to open.
+  const layout = buildDeviceLayout(collections);
+  if (layout) return 1 + layoutAxisCount(layout);
   return collections.some(
     (c) => c.usagePage === HID_USAGE_PAGE_GENERIC_DESKTOP && c.usage === HID_USAGE_MULTI_AXIS_CONTROLLER,
   ) ? 1 : 0;
+}
+
+/** 0x-prefixed hex string for ids/usages in the diagnostics dump. */
+function hex(value: number, width = 4): string {
+  return `0x${(value >>> 0).toString(16).padStart(width, '0')}`;
+}
+
+/** Per-report tally + last payload, for the diagnostics view. */
+export interface ReportTrace {
+  reportId: number;
+  count: number;
+  byteLength: number;
+  /** Last payload as space-separated hex bytes (report-id byte stripped). */
+  lastBytesHex: string;
+}
+
+/** Snapshot of everything the panel diagnostics section renders. */
+export interface SpaceMouseDiagnostics {
+  productName: string;
+  vendorId: number;
+  productId: number;
+  /** 'descriptor' when the HID report descriptor drives parsing, else 'legacy'. */
+  layoutSource: 'descriptor' | 'legacy';
+  /** Number of 6DoF axes the descriptor names (0 on the legacy path). */
+  layoutAxes: number;
+  /** Latest decoded sample, device counts rescaled to [-350, 350]. */
+  axes: SixDof;
+  /** performance.now() of the last decoded 6DoF report, -Infinity before one. */
+  lastSampleAt: number;
+  buttonsDown: number[];
+  /** Per-report-id traces, ascending by report id. */
+  reports: ReportTrace[];
+  /** Full JSON dump (device + descriptor + recent reports) for bug reports. */
+  buildDump: () => string;
 }
 
 export interface SpaceMouseSessionOptions {
@@ -80,9 +126,33 @@ export class SpaceMouseSession {
   private lastSampleAt = Number.NEGATIVE_INFINITY;
   private buttonsDown = new Set<number>();
   private closed = false;
+  /** Descriptor-derived axis layout, or null to use the legacy fixed layout. */
+  private readonly layout: DeviceLayout | null;
+  private readonly reportTraces = new Map<number, ReportTrace>();
+
+  private trace(reportId: number, data: DataView): void {
+    let entry = this.reportTraces.get(reportId);
+    if (!entry) {
+      entry = { reportId, count: 0, byteLength: 0, lastBytesHex: '' };
+      this.reportTraces.set(reportId, entry);
+    }
+    entry.count++;
+    entry.byteLength = data.byteLength;
+    const bytes: string[] = [];
+    for (let i = 0; i < data.byteLength; i++) {
+      bytes.push(data.getUint8(i).toString(16).padStart(2, '0'));
+    }
+    entry.lastBytesHex = bytes.join(' ');
+  }
 
   private readonly handleInputReport = (event: HIDInputReportEvent): void => {
-    if (event.reportId === REPORT_ID_BUTTONS) {
+    this.trace(event.reportId, event.data);
+
+    // Buttons: the report id the descriptor names, or the classic 3 when the
+    // descriptor is silent. A report that carries axes is never buttons.
+    const axisFields = this.layout?.reports.get(event.reportId);
+    const buttonsId = this.layout?.buttonsReportId ?? REPORT_ID_BUTTONS;
+    if (!axisFields && event.reportId === buttonsId) {
       const pressed = parseButtonsReport(event.data);
       const now = new Set(pressed);
       for (const index of pressed) {
@@ -93,7 +163,21 @@ export class SpaceMouseSession {
       this.buttonsDown = now;
       return;
     }
-    this.state = parseSpaceMouseReport(event.reportId, event.data, this.state);
+
+    // 6DoF: descriptor-derived fields when the descriptor covers this report,
+    // legacy fixed offsets when there is no usable descriptor (also the
+    // fake-device path in e2e tests). Reports neither path understands are
+    // dropped WITHOUT refreshing lastSampleAt: a periodic status report must
+    // not keep an earlier deflection latched past the staleness watchdog.
+    if (axisFields) {
+      this.state = parseReportWithLayout(axisFields, event.data, this.state);
+    } else if (this.layout) {
+      return; // descriptor is authoritative: unmapped report id, not motion
+    } else if (event.reportId === REPORT_ID_TRANSLATION || event.reportId === REPORT_ID_ROTATION) {
+      this.state = parseSpaceMouseReport(event.reportId, event.data, this.state);
+    } else {
+      return;
+    }
     this.lastSampleAt = performance.now();
     this.options.onSample?.(this.state);
   };
@@ -108,6 +192,7 @@ export class SpaceMouseSession {
     readonly device: HIDDevice,
     private readonly options: SpaceMouseSessionOptions,
   ) {
+    this.layout = buildDeviceLayout(device.collections);
     device.addEventListener('inputreport', this.handleInputReport);
     navigator.hid?.addEventListener('disconnect', this.handleGlobalDisconnect);
   }
@@ -128,6 +213,78 @@ export class SpaceMouseSession {
 
   get productName(): string {
     return this.device.productName || 'SpaceMouse';
+  }
+
+  /** Snapshot for the panel diagnostics section (cheap; poll at UI rate). */
+  getDiagnostics(): SpaceMouseDiagnostics {
+    return {
+      productName: this.productName,
+      vendorId: this.device.vendorId,
+      productId: this.device.productId,
+      layoutSource: this.layout ? 'descriptor' : 'legacy',
+      layoutAxes: this.layout ? layoutAxisCount(this.layout) : 0,
+      axes: { ...this.state },
+      lastSampleAt: this.lastSampleAt,
+      buttonsDown: [...this.buttonsDown].sort((a, b) => a - b),
+      reports: [...this.reportTraces.values()].sort((a, b) => a.reportId - b.reportId),
+      buildDump: () => this.buildDump(),
+    };
+  }
+
+  /**
+   * Human-postable JSON describing the device: ids, the HID report descriptor
+   * as the browser sees it, the derived layout and the recent report traffic.
+   * This is what we ask users to paste into an issue when motion is wrong on
+   * hardware we cannot test against.
+   */
+  private buildDump(): string {
+    const describeCollection = (c: HIDCollectionInfo): unknown => ({
+      usagePage: hex(c.usagePage),
+      usage: hex(c.usage),
+      inputReports: (c.inputReports ?? []).map((r) => ({
+        reportId: r.reportId ?? 0,
+        items: (r.items ?? []).map((item) => ({
+          usages: item.isRange
+            ? `range ${hex(item.usageMinimum ?? 0, 8)}..${hex(item.usageMaximum ?? 0, 8)}`
+            : (item.usages ?? []).map((u) => hex(u, 8)),
+          reportSize: item.reportSize,
+          reportCount: item.reportCount,
+          logicalMin: item.logicalMinimum,
+          logicalMax: item.logicalMaximum,
+          ...(item.isConstant ? { isConstant: true } : {}),
+        })),
+      })),
+      ...(c.children && c.children.length > 0
+        ? { children: c.children.map(describeCollection) }
+        : {}),
+    });
+
+    return JSON.stringify(
+      {
+        product: this.productName,
+        vendorId: hex(this.device.vendorId),
+        productId: hex(this.device.productId),
+        layoutSource: this.layout ? 'descriptor' : 'legacy',
+        derivedLayout: this.layout
+          ? [...this.layout.reports.entries()].map(([reportId, fields]) => ({
+              reportId,
+              axes: fields.map((f) => ({
+                axis: f.axis,
+                bitOffset: f.bitOffset,
+                bitSize: f.bitSize,
+                logicalMin: f.logicalMinimum,
+                logicalMax: f.logicalMaximum,
+              })),
+            }))
+          : null,
+        buttonsReportId: this.layout?.buttonsReportId ?? null,
+        reportsSeen: [...this.reportTraces.values()].sort((a, b) => a.reportId - b.reportId),
+        lastAxes: this.state,
+        collections: (this.device.collections ?? []).map(describeCollection),
+      },
+      null,
+      2,
+    );
   }
 
   /**

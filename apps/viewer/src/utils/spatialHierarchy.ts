@@ -285,8 +285,10 @@ export interface EntityIndex {
 export interface OnDemandMaps {
   onDemandPropertyMap: Map<number, number[]>;
   onDemandQuantityMap: Map<number, number[]>;
-  /** element/type expressId -> associated material definition expressId. */
-  onDemandMaterialMap: Map<number, number>;
+  /** element/type expressId -> associated material definition expressIds.
+   *  A list so multiple IfcRelAssociatesMaterial on one element are preserved,
+   *  matching the columnar parser's map shape. */
+  onDemandMaterialMap: Map<number, number[]>;
 }
 
 /** IFC material *definition* classes that can be the RelatingMaterial of an
@@ -330,7 +332,7 @@ export function rebuildOnDemandMaps(
 ): OnDemandMaps {
   const onDemandPropertyMap = new Map<number, number[]>();
   const onDemandQuantityMap = new Map<number, number[]>();
-  const onDemandMaterialMap = new Map<number, number>();
+  const onDemandMaterialMap = new Map<number, number[]>();
 
   // Use entityIndex.byType if available (needed for cache loads where entity table
   // doesn't include IfcPropertySet/IfcElementQuantity entities)
@@ -399,13 +401,14 @@ export function rebuildOnDemandMaps(
   // definitions — the cached graph preserves AssociatesMaterial edges.
   let materialDefCount = 0;
   if (entityIndex?.byType) {
-    // Determinism parity with the columnar parser: when an element carries
-    // MULTIPLE IfcRelAssociatesMaterial, the rel with the LOWEST express id
-    // wins the single-entry map. The enumeration order here (byType buckets)
-    // differs from the parser's file-order scan, so the winner must be decided
-    // by edge relationshipId — which the cached CSR columns preserve — or a
+    // Determinism parity with the columnar parser: the map preserves EVERY
+    // association (multiple IfcRelAssociatesMaterial on one element are
+    // valid), list-valued and ordered by rel express id so list[0] is the
+    // deterministic primary. The enumeration order here (byType buckets)
+    // differs from the parser's file-order scan, so ordering must come from
+    // edge relationshipId — which the cached CSR columns preserve — or a
     // cache load could disagree with a fresh parse of the same file.
-    const winningRelId = new Map<number, number>();
+    const materialRelIds = new Map<number, number[]>();
     for (const [typeKey, ids] of entityIndex.byType) {
       if (!MATERIAL_DEF_TYPES.has(typeKey.toUpperCase())) continue;
       for (const materialId of ids) {
@@ -415,11 +418,17 @@ export function rebuildOnDemandMaps(
           RelationshipType.AssociatesMaterial
         );
         for (const edge of edges) {
-          const winner = winningRelId.get(edge.target);
-          if (winner === undefined || edge.relationshipId < winner) {
-            winningRelId.set(edge.target, edge.relationshipId);
-            onDemandMaterialMap.set(edge.target, materialId);
+          let list = onDemandMaterialMap.get(edge.target);
+          let relIds = materialRelIds.get(edge.target);
+          if (!list || !relIds) {
+            list = []; onDemandMaterialMap.set(edge.target, list);
+            relIds = []; materialRelIds.set(edge.target, relIds);
           }
+          // Insert in rel-express-id order (lists are tiny).
+          let at = relIds.length;
+          while (at > 0 && relIds[at - 1] > edge.relationshipId) at--;
+          relIds.splice(at, 0, edge.relationshipId);
+          list.splice(at, 0, materialId);
         }
       }
     }

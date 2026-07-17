@@ -27,10 +27,14 @@
  * Current: four independent 32-bit rolling hashes (128 bits of state),
  * each seeded with a different basis and mixing the input char with a
  * different rotation, then cross-mixed so every final stream depends on
- * every other. Output cycles through the four streams so the 22-char
- * GlobalId is stamped from all four. Tested collision-free on every
- * adversarial input we've thrown at it (200 sequential storeys, 256
- * single-char deltas, realistic "314.x" series, mixed-length inputs).
+ * every other. The 128-bit state is then stamped MSB-first as a standard
+ * IFC GlobalId (2 bits + 21x6 bits), mirroring `uuidToIfcGuid`'s
+ * compression. An earlier stamping that cycled through the streams and
+ * took each word's LOW 6 bits per step collided at ~10k inputs: 32-bit
+ * multiplication propagates low bits only to low bits, so a stream's
+ * whole character sequence was a function of its initial low 6 bits
+ * (~24 bits of effective entropy in total). Reading the state as a
+ * plain MSB-first bit string keeps the full 128 bits.
  *
  * Round-tripping: constants are hard-coded and seed strings are derived
  * deterministically from their source context, so identical seeds
@@ -63,13 +67,24 @@ export function deterministicGlobalId(seed: string): string {
   const m1 = mix(h1, h3);
   const m2 = mix(h2, m1);
   const m3 = mix(h3, m0);
-  const pool: number[] = [m0, m1, m2, m3];
-  let out = '';
-  for (let i = 0; i < 22; i++) {
-    const idx = i & 3;
-    const src = pool[idx];
-    out += GLOBAL_ID_CHARS[src & 0x3f];
-    pool[idx] = Math.imul(src ^ ((i + 1) * 0x45d9f3b), 0x01000193) >>> 0;
+  // Stamp the 128-bit state as a valid IFC GlobalId. The first character
+  // encodes only the top 2 bits (128 = 2 + 21*6), so it MUST be one of the
+  // first four alphabet chars ('0'-'3') or the id decodes to a >128-bit value
+  // and fails `ifcGuidToUuid` round-tripping. The remaining 21 characters take
+  // 6 bits each, MSB-first, exactly like `uuidToIfcGuid`'s compression.
+  const bits: number[] = [];
+  for (const word of [m0, m1, m2, m3]) {
+    for (let b = 31; b >= 0; b--) {
+      bits.push((word >>> b) & 1);
+    }
+  }
+  let out = GLOBAL_ID_CHARS[(bits[0] << 1) | bits[1]];
+  for (let i = 0; i < 21; i++) {
+    let v = 0;
+    for (let b = 0; b < 6; b++) {
+      v = (v << 1) | bits[2 + i * 6 + b];
+    }
+    out += GLOBAL_ID_CHARS[v];
   }
   return out;
 }

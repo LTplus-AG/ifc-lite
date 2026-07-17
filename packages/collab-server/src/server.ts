@@ -7,7 +7,7 @@
  */
 
 import * as http from 'node:http';
-import { timingSafeEqual } from 'node:crypto';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { RoomManager, type PeerConnection } from './room-manager.js';
 import { FilePersistence, MemoryPersistence, type Persistence } from './persistence.js';
@@ -588,10 +588,12 @@ function isMetricsAuthorized(
 ): boolean {
   const presented = extractDiagToken(req);
   if (typeof presented !== 'string') return false;
-  const a = Buffer.from(presented);
-  const b = Buffer.from(metricsToken);
-  // timingSafeEqual throws on length mismatch; guard first.
-  if (a.length !== b.length) return false;
+  // Compare in constant time WITHOUT branching on length first: returning early
+  // on a length mismatch is a timing/length oracle. Hash both sides to a fixed
+  // 32-byte digest so `timingSafeEqual` always runs on equal-length buffers and
+  // the comparison time is independent of the presented token's length/content.
+  const a = createHash('sha256').update(presented).digest();
+  const b = createHash('sha256').update(metricsToken).digest();
   return timingSafeEqual(a, b);
 }
 

@@ -320,6 +320,42 @@ export function resolveLoadTessellationTier(
   return undefined;
 }
 
+/**
+ * localStorage key for the desktop toolbar style (issue #1686). `classic`
+ * is the original single-strip toolbar; `ribbon` is the tabbed,
+ * IFCFlux-style ribbon. Same sticky-preference pattern as the theme.
+ */
+export const TOOLBAR_STYLE_STORAGE_KEY = 'ifc-lite-toolbar-style';
+
+export type ToolbarStyle = 'classic' | 'ribbon';
+
+/** Resolve the initial toolbar style from localStorage; default `classic`. */
+function getInitialToolbarStyle(): ToolbarStyle {
+  if (typeof window === 'undefined') return 'classic';
+  try {
+    return localStorage.getItem(TOOLBAR_STYLE_STORAGE_KEY) === 'ribbon' ? 'ribbon' : 'classic';
+  } catch (err) {
+    // Blocked storage (Safari private mode): fall back to the default so the
+    // toolbar still renders, but say why the preference didn't stick.
+    console.warn('[toolbar-style] storage unavailable; using classic', err);
+    return 'classic';
+  }
+}
+
+/** localStorage key for the ribbon's collapsed state (tab strip only). */
+export const RIBBON_COLLAPSED_STORAGE_KEY = 'ifc-lite-ribbon-collapsed';
+
+/** Resolve the initial ribbon collapsed state from localStorage; default expanded. */
+function getInitialRibbonCollapsed(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return localStorage.getItem(RIBBON_COLLAPSED_STORAGE_KEY) === 'true';
+  } catch (err) {
+    console.warn('[ribbon-collapsed] storage unavailable; using expanded', err);
+    return false;
+  }
+}
+
 export const UI_DEFAULTS = {
   /** Default active tool */
   ACTIVE_TOOL: 'select',
@@ -361,6 +397,14 @@ export const UI_DEFAULTS = {
    * `exact` for full display/measure/export fidelity.
    */
   GEOMETRY_MODE: getInitialGeometryMode(),
+  /**
+   * Desktop toolbar style (issue #1686): `classic` single strip or the
+   * tabbed `ribbon`. Read from localStorage on boot so the choice
+   * survives reloads.
+   */
+  TOOLBAR_STYLE: getInitialToolbarStyle(),
+  /** Ribbon band collapsed to the tab strip only. */
+  RIBBON_COLLAPSED: getInitialRibbonCollapsed(),
 } as const;
 
 // ============================================================================

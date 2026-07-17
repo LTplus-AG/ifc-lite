@@ -40,6 +40,20 @@ pub struct EntityMetadata {
     pub global_id: Option<String>,
     /// Name attribute (if present).
     pub name: Option<String>,
+    /// Description attribute at the schema-registry position (issue #1765).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// ObjectType attribute (IfcObject subtypes only; None for IfcTypeObject,
+    /// whose attr 4 is ApplicableOccurrence).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub object_type: Option<String>,
+    /// Tag attribute (IfcElement / IfcTypeProduct layouts; None for spatial
+    /// elements, whose attr 7 is LongName).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tag: Option<String>,
+    /// PredefinedType enum token, dots stripped (e.g. "SOLIDWALL").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub predefined_type: Option<String>,
     /// Whether entity has geometry.
     pub has_geometry: bool,
 }
@@ -60,10 +74,20 @@ pub struct PropertySet {
 pub struct Property {
     /// Property name.
     pub property_name: String,
-    /// Property value (JSON-encoded).
+    /// Resolved property value in its canonical string form (a decoded string,
+    /// `"true"`/`"false"`, or a number rendered as text — NOT JSON-quoted). The
+    /// client re-materialises the native value using `property_type`.
     pub property_value: String,
-    /// Property value type.
+    /// Value KIND: `"string"` | `"boolean"` | `"logical"` | `"integer"` |
+    /// `"real"` | `"null"`. Mirrors the WASM path's `parsePropertyValue` so the
+    /// client can reconstruct the same `PropertyValueType` and JS value.
     pub property_type: String,
+    /// Raw IFC measure/value type tag (e.g. `"IFCLENGTHMEASURE"`, `"IFCLABEL"`),
+    /// when the STEP value was a typed wrapper. Drives display-unit conversion
+    /// (issue #1573) — the client maps it onto the property entry's `dataType`.
+    /// `None` for untyped values.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data_type: Option<String>,
 }
 
 /// Quantity set (IfcElementQuantity).

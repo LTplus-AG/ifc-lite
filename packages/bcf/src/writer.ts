@@ -49,8 +49,9 @@ export async function writeBCF(project: BCFProject): Promise<Blob> {
   }
 
   // Write topics
-  for (const [guid, topic] of project.topics) {
-    await writeTopicFolder(zip, topic, project.version);
+  const usedFolderNames = new Set<string>();
+  for (const topic of project.topics.values()) {
+    await writeTopicFolder(zip, topic, project.version, usedFolderNames);
   }
 
   // Generate zip file
@@ -91,6 +92,44 @@ function writeProjectFile(zip: JSZip, project: BCFProject): void {
   zip.file('project.bcfp', content);
 }
 
+/** FNV-1a 32-bit hash, hex-encoded; disambiguates sanitized folder names. */
+function shortGuidHash(guid: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < guid.length; i++) {
+    h ^= guid.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(16).padStart(8, '0');
+}
+
+/**
+ * Sanitize a topic GUID for use as a zip folder name (zip-slip guard).
+ *
+ * A topic GUID is parsed unvalidated from untrusted markup XML on read, so it
+ * can carry path separators or `..`. Using it verbatim as a zip path component
+ * on a read-modify-save would let a crafted GUID (`../../evil`) write outside
+ * the archive root. Restrict the name to safe filename characters and collapse
+ * any dot-run so it can never traverse. The real GUID is still written verbatim
+ * as the markup `<Topic Guid>` attribute, which is what readers key off.
+ *
+ * Sanitization is lossy, so two distinct GUIDs can map to one name (`a?b` and
+ * `a:b` both give `a_b`), which would silently overwrite a topic folder. Any
+ * name that sanitization changed gets a hash of the original GUID appended,
+ * and `usedNames` catches the remaining collisions with a counter suffix.
+ */
+function sanitizeTopicFolderName(guid: string, usedNames: Set<string>): string {
+  const cleaned = guid.replace(/[^A-Za-z0-9._-]/g, '_').replace(/\.\.+/g, '_');
+  const base = cleaned === guid && cleaned.length > 0
+    ? cleaned
+    : `${cleaned.length > 0 ? cleaned : 'topic'}-${shortGuidHash(guid)}`;
+  let candidate = base;
+  for (let n = 2; usedNames.has(candidate); n++) {
+    candidate = `${base}-${n}`;
+  }
+  usedNames.add(candidate);
+  return candidate;
+}
+
 /**
  * Write a topic folder with all its contents
  */
@@ -98,8 +137,9 @@ async function writeTopicFolder(
   zip: JSZip,
   topic: BCFTopic,
   version: '2.1' | '3.0',
+  usedFolderNames: Set<string>,
 ): Promise<void> {
-  const folder = zip.folder(topic.guid);
+  const folder = zip.folder(sanitizeTopicFolderName(topic.guid, usedFolderNames));
   if (!folder) return;
 
   // Write markup.bcf

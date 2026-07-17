@@ -43,6 +43,9 @@ use num_traits::{
     CheckedAdd, CheckedMul, CheckedSub, FromPrimitive, Num, One, Signed, ToPrimitive, Zero,
 };
 
+mod mul;
+use mul::{mul_full, mul_low};
+
 /// Little-endian, two's-complement fixed-width signed integer with `K` u64
 /// limbs (`self.0[0]` is the least-significant limb; the sign bit is bit 63 of
 /// `self.0[K-1]`). Instantiated at K ∈ {4, 8, 16, 32} = I256/I512/I1024/I2048.
@@ -129,26 +132,6 @@ fn magnitude<const K: usize>(a: &FixedInt<K>) -> ([u64; K], bool) {
     }
 }
 
-/// Low `K` limbs of the unsigned product `a * b` (mod 2^(K*64)). Exact for the
-/// low limbs because a partial product `a[i]*b[j]` with `i+j >= K` is a multiple
-/// of `2^(K*64)` and any carry off limb `K-1` lands at bit `>= K*64`, so both
-/// are `0 mod 2^(K*64)` and may be dropped.
-#[inline]
-fn mul_low<const K: usize>(a: &[u64; K], b: &[u64; K]) -> [u64; K] {
-    let mut out = [0u64; K];
-    for i in 0..K {
-        let mut carry: u128 = 0;
-        let mut j = 0;
-        while i + j < K {
-            let idx = i + j;
-            let t = (a[i] as u128) * (b[j] as u128) + (out[idx] as u128) + carry;
-            out[idx] = t as u64;
-            carry = t >> 64;
-            j += 1;
-        }
-    }
-    out
-}
 
 /// Wrapping two's-complement limb addition (drops the final carry). Kept a free
 /// function so the carry-combine `|` stays out of the `Add` trait impl, where
@@ -250,16 +233,7 @@ fn checked_mul_limbs<const K: usize>(a: &FixedInt<K>, b: &FixedInt<K>) -> Option
     debug_assert!(K <= 32, "FixedInt checked_mul scratch supports only K <= 32");
     let n2 = 2 * K;
     let mut full = [0u64; 64];
-    for i in 0..K {
-        let mut carry: u128 = 0;
-        for j in 0..K {
-            let idx = i + j;
-            let t = (ma[i] as u128) * (mb[j] as u128) + (full[idx] as u128) + carry;
-            full[idx] = t as u64;
-            carry = t >> 64;
-        }
-        full[i + K] = carry as u64;
-    }
+    mul_full(&ma, &mb, &mut full);
     if neg {
         // Two's-complement negate over the low n2 limbs in place.
         let mut c = 1u64;

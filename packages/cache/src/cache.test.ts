@@ -548,6 +548,20 @@ describe('BinaryCacheWriter and BinaryCacheReader', () => {
     expect(result.geometry!.meshes[1].ifcType).toBe('IfcSlab');
   });
 
+  it('never sets HasSpatial: no Spatial section is written or read', async () => {
+    // The writer used to flag HasSpatial whenever dataStore.spatialHierarchy was
+    // present, but no Spatial section is ever serialized (or read), so the flag
+    // only misled header consumers. It must stay unset even with a hierarchy on
+    // the store; the viewer rebuilds spatialHierarchy from relationships on load.
+    dataStore.spatialHierarchy = {} as NonNullable<CacheDataStore['spatialHierarchy']>;
+    const writer = new BinaryCacheWriter();
+    const cacheBuffer = await writer.write(dataStore, undefined, sourceBuffer, {
+      includeGeometry: false,
+    });
+    const header = new BinaryCacheReader().readHeader(cacheBuffer);
+    expect(header.hasSpatialHierarchy).toBe(false);
+  });
+
   it('should skip geometry when requested', async () => {
     const meshes: MeshData[] = [
       {

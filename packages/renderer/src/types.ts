@@ -47,6 +47,12 @@ export interface Mesh {
   bindGroup?: GPUBindGroup;
   // Bounding box for frustum culling (optional)
   bounds?: { min: [number, number, number]; max: [number, number, number] };
+  /** True when this mesh was lazily hydrated for picking / selection highlight
+   *  (createMeshFromData) rather than added as authored geometry via addMesh().
+   *  Such meshes duplicate geometry already drawn by a batch, so they are freed
+   *  when their entity leaves the selection (see Scene.disposeHydratedMeshesExcept)
+   *  to stop unbounded accumulation + transparent double-draw on deselect. */
+  hydrated?: boolean;
 }
 
 /**
@@ -201,9 +207,21 @@ export interface RenderOptions {
   enableDepthTest?: boolean;
   enableFrustumCulling?: boolean;
   spatialIndex?: import('@ifc-lite/spatial').SpatialIndex;
-  // Visibility filtering
-  hiddenIds?: Set<number>;        // Meshes to hide
-  isolatedIds?: Set<number> | null; // Only show these meshes (null = show all)
+  /**
+   * Entities to hide. Change detection is by CONTENT, not reference: the
+   * renderer snapshots the set and compares element-wise each frame, so
+   * mutating the same Set in place and passing a fresh Set per frame are both
+   * correct — and a fresh Set with unchanged content does not invalidate the
+   * per-batch visibility caches. An empty set is equivalent to omitting the
+   * option. The per-frame compare costs O(set size) membership checks.
+   */
+  hiddenIds?: Set<number>;
+  /**
+   * Only show these entities (`null`/absent = no isolation). Unlike
+   * {@link hiddenIds}, an EMPTY set is meaningful: it isolates nothing, hiding
+   * everything. Same content-based change-detection contract as `hiddenIds`.
+   */
+  isolatedIds?: Set<number> | null;
   selectedId?: number | null;     // Currently selected mesh (for highlighting)
   selectedIds?: Set<number>;      // Multi-selection support
   /**

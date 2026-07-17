@@ -44,7 +44,7 @@ import { toast } from '@/components/ui/toast';
 import { TourInvite } from '@/components/tours/TourInvite';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
 import { describeUnsupportedFormat } from '@/hooks/ingest/pointCloudIngest';
-import { Upload, MousePointer, Layers, Info, Command, AlertTriangle, ChevronDown, ExternalLink, Plus, Clock3, Sparkles, ArrowUpRight, PackagePlus , GitMerge } from 'lucide-react';
+import { Upload, Command, AlertTriangle, ChevronDown, ExternalLink, Plus, Clock3, Sparkles, ArrowUpRight, PackagePlus, GitMerge } from 'lucide-react';
 import { createBlankIfcFile } from '@/utils/createBlankIfc';
 import type { MeshData, CoordinateInfo, GeometryResult, PointCloudAsset } from '@ifc-lite/geometry';
 import { type IfcDataStore, type MapConversion } from '@ifc-lite/parser';
@@ -1102,8 +1102,14 @@ export function ViewportContainer() {
           </div>
         )}
 
-        {/* Empty state content — mobile-optimized padding and scrollable */}
-        <div className="absolute inset-0 flex flex-col items-center justify-center p-4 md:p-8 z-10 overflow-auto">
+        {/* Empty state content — mobile-optimized padding and scrollable.
+            The scroll container must NOT center via justify-center: a flex
+            child taller than an overflow-auto parent gets its top clipped
+            beyond scroll reach (the logo used to vanish under the toolbar
+            on short viewports). Instead an inner min-h-full column centers
+            when there is room and grows scrollably from the top when not. */}
+        <div className="absolute inset-0 z-10 overflow-auto p-4 md:p-8">
+          <div className="min-h-full w-full flex flex-col items-center justify-center">
 
           {/* Main Card */}
           <div {...tourAnchor(TOUR_ANCHORS.emptyStateCard)} className="max-w-md w-full bg-white dark:bg-[#16161e] border border-zinc-300 dark:border-[#3b4261] p-8 flex flex-col items-center transition-transform hover:-translate-y-1 duration-200 shadow-lg">
@@ -1245,27 +1251,9 @@ export function ViewportContainer() {
             )}
           </div>
 
-          {/* Feature Grid — hidden on mobile to save viewport space */}
-          <div className="mt-16 hidden md:grid grid-cols-1 md:grid-cols-3 gap-6 max-w-3xl w-full">
-            {[
-              { icon: MousePointer, label: "Select", desc: "Inspect elements", accentClass: 'text-blue-500 dark:text-[#7aa2f7]' },
-              { icon: Layers, label: "Filter", desc: "Isolate storeys", accentClass: 'text-purple-500 dark:text-[#bb9af7]' },
-              { icon: Info, label: "Analyze", desc: "View properties", accentClass: 'text-cyan-500 dark:text-[#7dcfff]' }
-            ].map((feature, i) => (
-              <div 
-                key={i} 
-                className="p-4 flex items-center gap-4 bg-zinc-100 dark:bg-[#1f2335] border border-zinc-300 dark:border-[#3b4261]"
-              >
-                <div className={`p-2 bg-white dark:bg-[#16161e] border border-zinc-300 dark:border-[#3b4261] ${feature.accentClass}`}>
-                  <feature.icon className="h-5 w-5" />
-                </div>
-                <div>
-                  <h3 className="font-bold uppercase text-sm tracking-wide text-zinc-900 dark:text-[#a9b1d6]">{feature.label}</h3>
-                  <p className="text-xs font-mono text-zinc-500 dark:text-[#565f89]">{feature.desc}</p>
-                </div>
-              </div>
-            ))}
-          </div>
+          {/* The old Select / Filter / Analyze feature-card grid was
+              dropped: it repeated toolbar affordances without offering an
+              action, and its height pushed the welcome card off-screen. */}
 
           {/* Moonshot callout (#1717): Layer PRs are brand new - nobody knows
               to multi-drop .ifcx files, so the welcome screen sells the demo. */}
@@ -1317,6 +1305,7 @@ export function ViewportContainer() {
             </div>
           </div>
 
+          </div>
         </div>
       </div>
     );

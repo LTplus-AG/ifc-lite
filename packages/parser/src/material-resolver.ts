@@ -89,8 +89,9 @@ function resolveOwnMaterialDefIds(store: IfcDataStore, entityId: number): number
             if (related.length > 0) return [...new Set(related)];
         }
     }
+    // Map values are LISTS (all associations, file order) since #1773.
     const mapped = store.onDemandMaterialMap?.get(entityId);
-    return mapped !== undefined ? [mapped] : [];
+    return mapped !== undefined ? [...mapped] : [];
 }
 
 /**
@@ -467,7 +468,24 @@ export function collectMaterialLeaves(store: IfcDataStore, defId: number): Mater
     if (cached) return cached;
 
     const extractor = store.source?.length ? new EntityExtractor(store.source) : null;
-    const result = extractor ? resolveLeaves(store, extractor, defId, new Set()) : [];
+    let result: MaterialLeaf[];
+    if (extractor) {
+        result = resolveLeaves(store, extractor, defId, new Set());
+    } else {
+        // Source-less store (server-loaded models keep `source` as an EMPTY
+        // Uint8Array): a definition's internal structure (layers/profiles/
+        // constituents -> base materials) lives in attribute references that
+        // the server does not emit as relationship rows, so it cannot be
+        // fanned out here. Surface the definition itself as one opaque leaf
+        // carrying the element's full weight - the usage index then still
+        // groups elements by their material association instead of staying
+        // empty. Dangling definition refs resolve to nothing, mirroring
+        // resolveLeaves.
+        const ref = getRef(store, defId);
+        result = ref
+            ? [{ id: defId, name: store.entities?.getName(defId) || undefined, weight: 1 }]
+            : [];
+    }
     cache.set(defId, result);
     return result;
 }
@@ -530,7 +548,9 @@ function resolveLeaves(
                 // IfcMaterialLayer: [Material, LayerThickness, IsVentilated, Name, Description, Category, Priority]
                 layers.push({
                     matId: typeof la[0] === 'number' ? la[0] : undefined,
-                    thickness: typeof la[1] === 'number' && la[1] > 0 ? la[1] : 0,
+                    // Non-finite thickness would turn every weight into NaN
+                    // (Infinity/Infinity) - treat it as absent like <= 0.
+                    thickness: typeof la[1] === 'number' && Number.isFinite(la[1]) && la[1] > 0 ? la[1] : 0,
                 });
             }
             const totalThickness = layers.reduce((s, l) => s + l.thickness, 0);
@@ -570,23 +590,36 @@ function resolveLeaves(
                 // "contributes nothing"), distinct from an ABSENT fraction.
                 constituents.push({
                     matId: typeof ca[2] === 'number' ? ca[2] : undefined,
-                    fraction: typeof ca[3] === 'number' && ca[3] >= 0 ? ca[3] : undefined,
+                    // Non-finite (NaN/Infinity) and negative fractions are
+                    // malformed for an IfcNormalisedRatioMeasure — treat them
+                    // as unset so they can't poison the weight arithmetic
+                    // below. An authored 0.0 is legal and PRESERVED: it is an
+                    // explicit "contributes nothing", distinct from absent.
+                    fraction: typeof ca[3] === 'number' && Number.isFinite(ca[3]) && ca[3] >= 0 ? ca[3] : undefined,
                 });
             }
-            // IFC allows Fraction on only SOME constituents (sum ≤ 1, the
-            // remainder unallocated). Constituents with an ABSENT fraction get
-            // an equal share of that remainder instead of weight 0, so they
-            // still contribute to per-material totals; the final normalisation
-            // keeps each element's weights summing to 1 even when authored
-            // fractions are inconsistent.
-            const assigned = constituents.reduce((s, c) => s + (c.fraction ?? 0), 0);
-            const noFraction = constituents.filter((c) => c.fraction === undefined).length;
-            const remainderShare = noFraction > 0 ? Math.max(0, 1 - assigned) / noFraction : 0;
-            const provisional = constituents.map((c) => c.fraction ?? remainderShare);
+            // Constituent Fraction is optional per-constituent. Constituents
+            // WITHOUT an explicit fraction share whatever remains of the whole
+            // (1 - sum of explicit) evenly, so they must not collapse to
+            // weight 0 and vanish from the totals. When the explicit fractions
+            // already fill (or overflow) the whole, each implicit sibling gets
+            // an even 1/n share instead so it still registers. The set is then
+            // renormalised to sum to exactly 1 (e.g. {1.0, unset} would
+            // otherwise weigh 1.5x the element), so the totals panel can never
+            // over-report an element's quantities. Explicit zeros survive all
+            // branches: an all-explicit-zero set keeps every weight at 0
+            // rather than inventing equal shares.
+            const explicitTotal = constituents.reduce((s, c) => s + (c.fraction ?? 0), 0);
+            const implicitCount = constituents.reduce((n, c) => n + (c.fraction === undefined ? 1 : 0), 0);
+            const remaining = 1 - explicitTotal;
+            const perImplicit = implicitCount > 0
+                ? (remaining > 0 ? remaining / implicitCount : 1 / constituents.length)
+                : 0;
+            const provisional = constituents.map((c) => c.fraction ?? perImplicit);
             const totalWeight = provisional.reduce((s, w) => s + w, 0);
             for (let i = 0; i < constituents.length; i++) {
                 // totalWeight can only be 0 when EVERY fraction is an authored
-                // 0.0 (absent fractions receive a remainder share) — keep those
+                // 0.0 (absent fractions receive a positive share) — keep those
                 // explicit zeros instead of inventing equal weights.
                 const weight = totalWeight > 0 ? provisional[i] / totalWeight : 0;
                 addMaterialLeaf(constituents[i].matId, weight);
@@ -628,28 +661,53 @@ const usageIndexCache = new WeakMap<IfcDataStore, Map<number, MaterialUsage>>();
 /**
  * Build (and memoise) the model-wide index of base material → using elements,
  * with per-element volume weights. Element enumeration comes from the forward
- * `onDemandMaterialMap` (element → primary definition) that the parser already
- * builds; each element's FULL definition list is then resolved from the
- * relationship graph so multiple IfcRelAssociatesMaterial per element all
- * surface (the map alone keeps only the primary). Keyed by base IfcMaterial
- * express id.
+ * `onDemandMaterialMap` (element → definition list) that the parser already
+ * builds, falling back to the relationship graph's AssociatesMaterial edges
+ * (server-loaded models). Each element's definition list is preferentially
+ * resolved from the graph (rel-express-id order, deduped) so multiple
+ * IfcRelAssociatesMaterial per element all surface deterministically. Keyed
+ * by base IfcMaterial express id.
  */
 export function buildMaterialUsageIndex(store: IfcDataStore): Map<number, MaterialUsage> {
     const cached = usageIndexCache.get(store);
     if (cached) return cached;
 
     const usage = new Map<number, MaterialUsage>();
-    const forward = store.onDemandMaterialMap;
-    if (forward && store.source?.length) {
+
+    // Element -> material-definition list. Prefer the parser's forward
+    // `onDemandMaterialMap`; when it's absent (server-loaded models) fall back
+    // to the relationship graph's AssociatesMaterial edges - the same fallback
+    // extractMaterialsOnDemand uses - so the model-wide index still populates
+    // instead of silently caching an empty map forever. Candidates are
+    // enumerated via entityIndex.byId (every server entity is indexed there):
+    // the server's facade graph exposes only getRelated/getEdges closures over
+    // private maps and keeps `inverse.offsets` as an EMPTY Map, so iterating
+    // the CSR columns is not an option for the exact store this fallback
+    // serves.
+    let forward = store.onDemandMaterialMap;
+    if (!forward && store.relationships) {
+        const rebuilt = new Map<number, number[]>();
+        for (const entityId of store.entityIndex.byId.keys()) {
+            const defs = store.relationships.getRelated(entityId, RelationshipType.AssociatesMaterial, 'inverse');
+            if (defs.length > 0) rebuilt.set(entityId, defs);
+        }
+        forward = rebuilt;
+    }
+
+    // No source requirement: server-loaded stores carry an EMPTY source buffer,
+    // and collectMaterialLeaves has a source-less path (the definition becomes
+    // one opaque full-weight leaf) precisely so this index works for them.
+    if (forward && forward.size > 0) {
         // One entries-row per (material, element): the totals panel counts
         // rows, so an element must never appear twice under one material —
-        // but when SEVERAL of its associations resolve to the same base
-        // material (e.g. a layer set containing A plus a plain association
-        // to A) their weights ACCUMULATE on that single row instead of the
-        // later association being dropped (which would make the total depend
-        // on rel order).
+        // duplicate DefinesByType edges (malformed double-typing) and repeated
+        // leaves must not add rows. But when SEVERAL of an element's
+        // associations resolve to the same base material (e.g. a layer set
+        // containing A plus a plain association to A) their weights ACCUMULATE
+        // on that single row instead of the later association being dropped
+        // (which would make the total depend on rel order).
         const rowPerMaterial = new Map<number, Map<number, { entityId: number; weight: number }>>();
-        for (const [entityId, primaryDefId] of forward) {
+        for (const [entityId, mappedDefIds] of forward) {
             // IfcRelAssociatesMaterial commonly targets the TYPE entity
             // (IfcDoorType etc.). The tab/totals need occurrences — a type
             // has no geometry, so a type-keyed entry is invisible in the
@@ -666,7 +724,7 @@ export function buildMaterialUsageIndex(store: IfcDataStore): Map<number, Materi
             if (ref && store.relationships && isIfcTypeLikeEntity(ref.type.toUpperCase())) {
                 targets = store.relationships
                     .getRelated(entityId, RelationshipType.DefinesByType, 'forward')
-                    .filter((occId) => !forward.has(occId));
+                    .filter((occId) => !forward!.has(occId));
             } else {
                 targets = [entityId];
             }
@@ -675,12 +733,13 @@ export function buildMaterialUsageIndex(store: IfcDataStore): Map<number, Materi
             // double a target's contribution within this map key.
             const uniqueTargets = targets.length > 1 ? [...new Set(targets)] : targets;
 
-            // Every association of this map key, not just the primary — an
-            // element carrying e.g. a layer set AND a fallback IfcMaterial
-            // must appear under both. Falls back to the map entry when the
-            // store has no graph.
-            const defIds = store.relationships ? resolveOwnMaterialDefIds(store, entityId) : [primaryDefId];
-            for (const defId of defIds.length > 0 ? defIds : [primaryDefId]) {
+            // Every association of this map key — an element carrying e.g. a
+            // layer set AND a fallback IfcMaterial must appear under both.
+            // Prefer the graph (rel-id-ordered, deduped); fall back to the
+            // map's own list when the store has no graph.
+            const graphDefIds = store.relationships ? resolveOwnMaterialDefIds(store, entityId) : [];
+            const defIds = graphDefIds.length > 0 ? graphDefIds : [...new Set(mappedDefIds)];
+            for (const defId of defIds) {
                 const leaves = collectMaterialLeaves(store, defId);
                 for (const leaf of leaves) {
                     let entry = usage.get(leaf.id);
@@ -712,7 +771,18 @@ export function buildMaterialUsageIndex(store: IfcDataStore): Map<number, Materi
         }
     }
 
-    usageIndexCache.set(store, usage);
+    // Don't memoise an empty index built from a store that had NO material
+    // inputs at all (no forward map, no relationship graph, no source): such a
+    // store may be populated later (a load that wires onDemandMaterialMap /
+    // relationships after first render), and a cached empty result would mask
+    // it forever. Non-empty results, or empty ones from a store that did have
+    // inputs (a genuinely material-free model), are safe to cache.
+    const hadInputs = (store.onDemandMaterialMap?.size ?? 0) > 0
+        || !!store.relationships
+        || !!store.source?.length;
+    if (usage.size > 0 || hadInputs) {
+        usageIndexCache.set(store, usage);
+    }
     return usage;
 }
 

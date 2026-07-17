@@ -58,16 +58,17 @@ export function readStrings(reader: BufferReader): StringTable {
   const totalBytes = offsets[count];
   const data = reader.readBytes(totalBytes);
 
-  // Decode strings
+  // Decode strings positionally. The writer serialized `getAll()` by index, so
+  // the read MUST preserve those indices. The old `intern()` path deduped, so a
+  // table that legitimately held a duplicate string (possible via transport's
+  // `fromArray`) would collapse the duplicate and shift EVERY later index on
+  // reload — silently corrupting all StringTable-indexed lookups. `fromArray`
+  // keeps every slot (positions intact); the on-disk shape is unchanged.
   const decoder = new TextDecoder();
-  const strings = new StringTable();
-
+  const all: string[] = new Array(count);
   for (let i = 0; i < count; i++) {
-    const start = offsets[i];
-    const end = offsets[i + 1];
-    const str = decoder.decode(data.subarray(start, end));
-    strings.intern(str);
+    all[i] = decoder.decode(data.subarray(offsets[i], offsets[i + 1]));
   }
 
-  return strings;
+  return StringTable.fromArray(all);
 }

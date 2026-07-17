@@ -506,7 +506,7 @@ describe('rebuildOnDemandMaps', () => {
     );
 
     assert.equal(onDemandMaterialMap.size, 1);
-    assert.equal(onDemandMaterialMap.get(5), 10);
+    assert.deepEqual(onDemandMaterialMap.get(5), [10]);
     assert.deepEqual(onDemandPropertyMap.get(5), [20]);
   });
 
@@ -524,7 +524,7 @@ describe('rebuildOnDemandMaps', () => {
     ]));
 
     const { onDemandMaterialMap } = rebuildOnDemandMaps(entities.build(), builder.build(), entityIndex);
-    assert.equal(onDemandMaterialMap.get(5), 40);
+    assert.deepEqual(onDemandMaterialMap.get(5), [40]);
   });
 
   it('picks the LOWEST rel express id when an element has multiple associations (parse parity)', () => {
@@ -549,7 +549,7 @@ describe('rebuildOnDemandMaps', () => {
     ]));
 
     const { onDemandMaterialMap } = rebuildOnDemandMaps(entities.build(), builder.build(), entityIndex);
-    assert.equal(onDemandMaterialMap.get(5), 40, 'winner = RelatingMaterial of the lowest rel express id');
+    assert.deepEqual(onDemandMaterialMap.get(5), [40, 41], 'list[0] = RelatingMaterial of the lowest rel express id');
   });
 
   it('recognises IFC4 material subtypes as RelatingMaterial (cache parity)', () => {
@@ -577,8 +577,8 @@ describe('rebuildOnDemandMaps', () => {
     ]));
 
     const { onDemandMaterialMap } = rebuildOnDemandMaps(entities.build(), builder.build(), entityIndex);
-    assert.equal(onDemandMaterialMap.get(5), 60);
-    assert.equal(onDemandMaterialMap.get(6), 61);
-    assert.equal(onDemandMaterialMap.get(7), 62);
+    assert.deepEqual(onDemandMaterialMap.get(5), [60]);
+    assert.deepEqual(onDemandMaterialMap.get(6), [61]);
+    assert.deepEqual(onDemandMaterialMap.get(7), [62]);
   });
 });

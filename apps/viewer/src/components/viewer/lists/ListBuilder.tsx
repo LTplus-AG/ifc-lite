@@ -286,8 +286,12 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
   }, []);
 
   const toggleColumn = useCallback((col: ColumnDefinition) => {
-    setColumns(prev => (prev.some(c => c.id === col.id) ? prev.filter(c => c.id !== col.id) : [...prev, col]));
-  }, []);
+    // Delegate to add/removeColumn so the removal path shares removeColumn's
+    // grouping + sum cleanup — otherwise toggling off a grouped/summed column
+    // would strand a stale level in the config until buildDefinition prunes it.
+    if (columns.some(c => c.id === col.id)) removeColumn(col.id);
+    else addColumn(col);
+  }, [columns, addColumn, removeColumn]);
 
   // Would `draft` duplicate an EXISTING column's definition? Keyed by content
   // (source + set + property), not by column id, so the guard still fires after

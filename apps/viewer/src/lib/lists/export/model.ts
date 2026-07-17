@@ -101,6 +101,21 @@ export function displayCell(value: CellValue): string {
   return String(value);
 }
 
+/**
+ * Neutralize spreadsheet formula injection (CWE-1236): a leading =, +, -, @,
+ * TAB or CR makes a cell execute as a formula in Excel/LibreOffice/Sheets.
+ * List-export cells (values, group labels, custom column headers) derive from
+ * attacker-controllable IFC values, so any such cell is prefixed with an
+ * apostrophe. A leading UTF-8 BOM is treated as file metadata by spreadsheet
+ * importers, so a marker hidden behind one still executes; strip the BOM first
+ * so the apostrophe guard actually lands in front. Shared by the CSV and XLSX
+ * writers so both honour the guideline identically.
+ */
+export function neutralizeSpreadsheetFormula(s: string): string {
+  s = s.replace(/^\uFEFF/, '');
+  return /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
+}
+
 export function buildExportModel(input: BuildModelInput): ExportModel {
   const { columns, rows, grouping, sort, numericCols, columnWidths, title, generatedAt, modelUnits, unitDisplayOverrides } = input;
   const sumColumnIds = grouping?.sumColumnIds ?? [];

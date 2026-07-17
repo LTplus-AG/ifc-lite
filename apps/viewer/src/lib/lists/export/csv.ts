@@ -3,17 +3,12 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { CellValue } from '@ifc-lite/lists';
-import { displayCell, type ExportModel } from './model';
+import { displayCell, neutralizeSpreadsheetFormula, type ExportModel } from './model';
 
 function esc(s: string, delim: string): string {
-  // Neutralize spreadsheet formula injection (CWE-1236): a leading =, +, -, @,
-  // TAB or CR makes a cell execute as a formula in Excel/LibreOffice/Sheets.
-  // List cells derive from attacker-controllable IFC values, so prefix such
-  // cells with an apostrophe. A leading UTF-8 BOM is treated as file metadata
-  // by spreadsheet importers, so a marker hidden behind one still executes;
-  // strip the BOM first so the apostrophe guard actually lands in front.
-  s = s.replace(/^\uFEFF/, '');
-  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+  // Neutralize spreadsheet formula injection (CWE-1236) via the shared guard,
+  // then apply CSV quoting for the delimiter/quote/newline cases.
+  s = neutralizeSpreadsheetFormula(s);
   return /["\r\n]/.test(s) || s.includes(delim) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 

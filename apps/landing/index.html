@@ -132,7 +132,8 @@
       <div class="dim hero-dim" aria-hidden="true">
         <span class="dim-tick"></span>
         <span class="dim-arm"></span>
-        <span class="dim-val">2.72<span class="u"> s</span> · 68&nbsp;MB · 11,123 products</span>
+        <!-- ISSUE_053 Holter row of apps/landing/bench-data.json (WASM, 1 thread, 2026-07-17) — keep in sync -->
+        <span class="dim-val">4.2<span class="u"> s</span> · 169&nbsp;MB · 60,284 products</span>
         <span class="dim-arm to-right"></span>
         <span class="dim-tick"></span>
       </div>
@@ -188,9 +189,10 @@
 <!-- ─────────────────────────── STATS ─────────────────────────── -->
 <section class="stats" data-screen-label="02 Stats">
   <div class="stats-grid">
+    <!-- ISSUE_053 Holter row of apps/landing/bench-data.json (WASM, 1 thread, 2026-07-17) — keep in sync -->
     <div class="stat">
-      <div class="v">2.72<span class="u">seconds</span></div>
-      <div class="k">Parse + geometry, 68&nbsp;MB office model, 11,123 products</div>
+      <div class="v">4.2<span class="u">seconds</span></div>
+      <div class="k">Parse + exact geometry, 169&nbsp;MB tower, 60,284 products</div>
     </div>
     <div class="stat">
       <div class="v">260<span class="u">KB gzipped</span></div>

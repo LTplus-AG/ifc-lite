@@ -1,0 +1,37 @@
+{
+  "meta": {
+    "recorded": "2026-07-17",
+    "hardware": "Apple M4, 10 cores, 16 GB",
+    "engines": {
+      "ifclite_wasm": "@ifc-lite/wasm 4.0.1 (single thread)",
+      "ifclite_native": "ifc-lite-processing 4.1.0 via rayon, 10 threads",
+      "webifc": "web-ifc 0.0.77 (single thread)",
+      "ifcopenshell": "IfcOpenShell datamodel branch, Moult's published Manifold-augmented numbers (his hardware)"
+    },
+    "methodology": "louistrue/profiling@apples-to-apples-with-native (commit 3468366): single cold run per file, identical exclude sets, both WASM rows timed through per-element JS-accessible vertex extraction (ifc-lite: buildPrePassOnce + one processGeometryBatch; web-ifc: StreamAllMeshes + GetVertexArray/GetIndexArray). ifc-lite cuts openings with exact arithmetic; web-ifc uses approximate fuzzy booleans.",
+    "units": "seconds, parse + geometry total"
+  },
+  "models": [
+    { "id": "duplex",   "name": "duplex.ifc",                           "size": 2.3,   "products": 215,   "ifclite_n": 0.05, "ifclite_w": 0.17,  "webifc": 0.04, "iosmax": 0.12,  "ios1c": 0.19 },
+    { "id": "ac20",     "name": "AC20-FZK-Haus.ifc",                    "size": 2.4,   "products": 95,    "ifclite_n": 0.02, "ifclite_w": 0.12,  "webifc": 0.08, "iosmax": 0.15,  "ios1c": 0.22 },
+    { "id": "i005",     "name": "ISSUE_005_haus.ifc",                   "size": 2.4,   "products": 95,    "ifclite_n": 0.03, "ifclite_w": 0.12,  "webifc": 0.08, "iosmax": 0.13,  "ios1c": 0.21 },
+    { "id": "i021",     "name": "ISSUE_021_Mini Project.ifc",           "size": 3.2,   "products": 2636,  "ifclite_n": 0.28, "ifclite_w": 1.66,  "webifc": 0.29, "iosmax": 0.29,  "ios1c": 0.53 },
+    { "id": "officeA",  "name": "Office_A_20110811.ifc",                "size": 3.8,   "products": 803,   "ifclite_n": 0.05, "ifclite_w": 0.13,  "webifc": 0.10, "iosmax": 0.25,  "ios1c": 0.29 },
+    { "id": "i126",     "name": "ISSUE_126_model.ifc",                  "size": 4.2,   "products": 257,   "ifclite_n": 0.04, "ifclite_w": 0.18,  "webifc": 0.07, "iosmax": 0.32,  "ios1c": 0.46 },
+    { "id": "i034",     "name": "ISSUE_034_HouseZ.ifc",                 "size": 4.8,   "products": 228,   "ifclite_n": 0.03, "ifclite_w": 0.10,  "webifc": 0.11, "iosmax": 0.38,  "ios1c": 0.71 },
+    { "id": "i102",     "name": "ISSUE_102_M3D-CON.ifc",                "size": 6.0,   "products": 138,   "ifclite_n": 0.03, "ifclite_w": 0.12,  "webifc": 0.12, "iosmax": 0.49,  "ios1c": 0.62 },
+    { "id": "i159",     "name": "ISSUE_159_kleine_Wohnung_R22.ifc",     "size": 9.5,   "products": 425,   "ifclite_n": 0.33, "ifclite_w": 1.25,  "webifc": 0.31, "iosmax": 0.91,  "ios1c": 1.65 },
+    { "id": "c20",      "name": "C20-Institute-Var-2.ifc",              "size": 10.3,  "products": 712,   "ifclite_n": 0.31, "ifclite_w": 1.05,  "webifc": 0.30, "iosmax": 0.67,  "ios1c": 0.71 },
+    { "id": "i129",     "name": "ISSUE_129_N1540_17_EXE.ifc",           "size": 11.5,  "products": 959,   "ifclite_n": 2.19, "ifclite_w": 5.79,  "webifc": 0.31, "iosmax": 0.89,  "ios1c": 1.52 },
+    { "id": "dental",   "name": "dental_clinic.ifc",                    "size": 12.4,  "products": 2586,  "ifclite_n": 0.18, "ifclite_w": 0.64,  "webifc": 0.26, "iosmax": 0.99,  "ios1c": 1.25 },
+    { "id": "fmarc",    "name": "FM_ARC_DigitalHub.ifc",                "size": 13.4,  "products": 705,   "ifclite_n": 0.28, "ifclite_w": 1.19,  "webifc": 0.43, "iosmax": 1.54,  "ios1c": 2.43 },
+    { "id": "bridge",   "name": "ifcbridge-model01.ifc",                "size": 14.5,  "products": 165,   "ifclite_n": 0.08, "ifclite_w": 0.31,  "webifc": 0.20, "iosmax": 1.32,  "ios1c": 2.05 },
+    { "id": "i102cd",   "name": "ISSUE_102_M3D-CON-CD.ifc",             "size": 25.6,  "products": 1616,  "ifclite_n": 0.40, "ifclite_w": 0.82,  "webifc": 1.08, "iosmax": 2.66,  "ios1c": 4.02 },
+    { "id": "soffice",  "name": "S_Office_Integrated Design Archi.ifc", "size": 29.6,  "products": 3396,  "ifclite_n": 0.98, "ifclite_w": 2.86,  "webifc": 2.14, "iosmax": 2.94,  "ios1c": 4.04 },
+    { "id": "advanced", "name": "advanced_model.ifc",                   "size": 33.7,  "products": 6401,  "ifclite_n": 1.14, "ifclite_w": 3.37,  "webifc": 0.93, "iosmax": 3.00,  "ios1c": 3.92 },
+    { "id": "schep",    "name": "schependomlaan.ifc",                   "size": 47.0,  "products": 3504,  "ifclite_n": 0.25, "ifclite_w": 0.73,  "webifc": 0.51, "iosmax": 2.85,  "ios1c": 3.35 },
+    { "id": "i068",     "name": "ISSUE_068_ARK_NUS_skolebygg.ifc",      "size": 53.7,  "products": 4459,  "ifclite_n": 0.69, "ifclite_w": 2.77,  "webifc": 1.23, "iosmax": 4.11,  "ios1c": 5.72 },
+    { "id": "i098",     "name": "ISSUE_098_R8_F1_MAB_AR_M3_XX_XXX.ifc", "size": 68.4,  "products": 11124, "ifclite_n": 9.70, "ifclite_w": 55.71, "webifc": 2.65, "iosmax": 5.82,  "ios1c": 8.42 },
+    { "id": "i053",     "name": "ISSUE_053_Holter_Tower_10.ifc",        "size": 169.2, "products": 60284, "ifclite_n": 1.50, "ifclite_w": 4.21,  "webifc": 3.07, "iosmax": 13.70, "ios1c": 19.53 }
+  ]
+}

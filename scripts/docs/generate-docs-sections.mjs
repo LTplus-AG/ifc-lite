@@ -19,6 +19,9 @@
  *                                             the CLI HELP text
  *   perf-numbers  (docs/guide/performance.md) — benchmark numbers stamped
  *                                             from the committed baseline
+ *   landing-bench (apps/landing/app.jsx)    — cross-engine benchmark rows
+ *                                             stamped from the committed
+ *                                             apps/landing/bench-data.json
  *
  * Modes (mirrors scripts/check-api-surface.mjs UX):
  *   node scripts/docs/generate-docs-sections.mjs           # rewrite (pnpm docs:generate)
@@ -222,6 +225,47 @@ function genPerfNumbers() {
 /* Region wiring                                                         */
 /* --------------------------------------------------------------------- */
 
+/**
+ * Cross-engine benchmark rows for the landing page's interactive chart,
+ * stamped from the committed apps/landing/bench-data.json (which carries
+ * engine versions + methodology; raw runs live in the profiling repo).
+ * The region markers sit inside block comments so the .jsx stays valid;
+ * the body therefore CLOSES the begin-marker comment first and re-OPENS
+ * one for the end marker.
+ */
+function genLandingBench() {
+  const dataPath = join(ROOT, 'apps', 'landing', 'bench-data.json');
+  const data = JSON.parse(readFileSync(dataPath, 'utf-8'));
+  const pad = (str, n) => String(str).padEnd(n);
+  const rows = data.models.map((m) => {
+    const cells = [
+      `id: ${pad(`${JSON.stringify(m.id)},`, 11)}`,
+      `name: ${pad(`${JSON.stringify(m.name)},`, 41)}`,
+      `size: ${pad(`${m.size.toFixed(1)},`, 7)}`,
+      `products: ${pad(`${m.products},`, 7)}`,
+      `ifclite_n: ${m.ifclite_n.toFixed(2)},`,
+      `ifclite_w: ${m.ifclite_w.toFixed(2)},`,
+      `webifc: ${m.webifc.toFixed(2)},`,
+      `iosmax: ${m.iosmax.toFixed(2)},`,
+      `ios1c: ${m.ios1c.toFixed(2)}`,
+    ];
+    return `  { ${cells.join(' ')} },`;
+  });
+  return [
+    ' */',
+    `// Recorded ${data.meta.recorded} on ${data.meta.hardware}: ${data.meta.units}.`,
+    `// Engines: ${data.meta.engines.ifclite_wasm} / ${data.meta.engines.ifclite_native} /`,
+    `// ${data.meta.engines.webifc}; IOS rows: ${data.meta.engines.ifcopenshell}.`,
+    '// Source of truth: apps/landing/bench-data.json (methodology + raw runs:',
+    '// louistrue/profiling@apples-to-apples-with-native). Regenerate with',
+    '// `pnpm docs:generate` — do not edit the rows by hand.',
+    'const BENCH_MODELS = [',
+    ...rows,
+    '];',
+    '/*',
+  ].join('\n');
+}
+
 const REGIONS = [
   {
     name: 'package-index',
@@ -237,6 +281,11 @@ const REGIONS = [
     name: 'perf-numbers',
     file: 'docs/guide/performance.md',
     generate: () => genPerfNumbers(),
+  },
+  {
+    name: 'landing-bench',
+    file: 'apps/landing/app.jsx',
+    generate: () => genLandingBench(),
   },
 ];
 

@@ -76,20 +76,28 @@ fn extract_property(entity: &DecodedEntity, _decoder: &mut EntityDecoder) -> Opt
     let property_name = entity.get_string(0)?.to_string();
     let ty = entity.ifc_type.as_str().to_uppercase();
 
-    let (property_value, property_type, data_type) = match ty.as_str() {
+    // `values` mirrors the WASM `parsePropertyValue().values` candidate array
+    // (issue #1766): IDS facet checks pass when ANY candidate matches. Emitted
+    // only when non-empty — the client treats an empty array as absent.
+    let (property_value, property_type, data_type, values) = match ty.as_str() {
         // [Name, Description, NominalValue, Unit]
-        "IFCPROPERTYSINGLEVALUE" => resolve_single_value(entity.get(2)?),
+        "IFCPROPERTYSINGLEVALUE" => {
+            let (v, k, d) = resolve_single_value(entity.get(2)?);
+            (v, k, d, None)
+        }
 
         // [Name, Description, EnumerationValues (list), EnumerationReference]
         "IFCPROPERTYENUMERATEDVALUE" => {
-            let joined = join_member_list(entity.get(2));
-            (joined.unwrap_or_default(), "string".into(), None)
+            let members = member_list(entity.get(2));
+            let joined = members.as_ref().map(|m| m.join(", ")).unwrap_or_default();
+            (joined, "string".into(), None, members)
         }
 
         // [Name, Description, ListValues (list), Unit]
         "IFCPROPERTYLISTVALUE" => {
-            let joined = join_member_list(entity.get(2));
-            (joined.unwrap_or_default(), "string".into(), None)
+            let members = member_list(entity.get(2));
+            let joined = members.as_ref().map(|m| m.join(", ")).unwrap_or_default();
+            (joined, "string".into(), None, members)
         }
 
         // [Name, Description, UpperBoundValue, LowerBoundValue, Unit, SetPointValue]
@@ -99,7 +107,7 @@ fn extract_property(entity: &DecodedEntity, _decoder: &mut EntityDecoder) -> Opt
             let set_point = entity.get(5).and_then(|v| v.as_float());
             let display_value = set_point.or(upper).or(lower);
             match display_value {
-                None => (String::new(), "null".into(), None),
+                None => (String::new(), "null".into(), None, None),
                 Some(dv) => {
                     let mut display = fmt_number(dv);
                     if let (Some(lo), Some(hi)) = (lower, upper) {
@@ -113,32 +121,73 @@ fn extract_property(entity: &DecodedEntity, _decoder: &mut EntityDecoder) -> Opt
                     let data_type = infer_data_type(entity.get(5))
                         .or_else(|| infer_data_type(entity.get(2)))
                         .or_else(|| infer_data_type(entity.get(3)));
+                    // Every defined bound is a candidate, deduped exactly like
+                    // the WASM side: lower always; upper unless == lower;
+                    // setPoint unless it equals either bound.
+                    let mut candidates: Vec<String> = Vec::new();
+                    if let Some(lo) = lower {
+                        candidates.push(fmt_number(lo));
+                    }
+                    if let Some(hi) = upper {
+                        if Some(hi) != lower {
+                            candidates.push(fmt_number(hi));
+                        }
+                    }
+                    if let Some(sp) = set_point {
+                        if Some(sp) != lower && Some(sp) != upper {
+                            candidates.push(fmt_number(sp));
+                        }
+                    }
+                    let values = if candidates.is_empty() {
+                        None
+                    } else {
+                        Some(candidates)
+                    };
                     // The value is a display STRING ("5 [2 – 8]"), so keep kind
                     // `string` — a `real` kind would make the client `Number()`
                     // it to NaN. The Lists cell derives from the value, and the
                     // measure tag still rides on `data_type`.
-                    (display, "string".into(), data_type)
+                    (display, "string".into(), data_type, values)
                 }
             }
         }
 
         // [Name, Description, DefiningValues (list), DefinedValues (list), ...]
         "IFCPROPERTYTABLEVALUE" => {
+            // Mirror the WASM gate exactly: BOTH DefiningValues and DefinedValues
+            // must be lists (else the whole property resolves to null) — a
+            // malformed table with `$` DefinedValues must not fabricate a
+            // display/candidates that only the server would match.
             let rows = match entity.get(2) {
                 Some(AttributeValue::List(items)) => items.len(),
                 _ => 0,
             };
-            if rows > 0 {
-                (format!("Table ({} rows)", rows), "string".into(), None)
+            let defined_is_list = matches!(entity.get(3), Some(AttributeValue::List(_)));
+            if rows > 0 && defined_is_list {
+                // Candidates are defining THEN defined values, both filtered —
+                // matching the WASM table branch's ordering.
+                let mut members = member_list(entity.get(2)).unwrap_or_default();
+                members.extend(member_list(entity.get(3)).unwrap_or_default());
+                let values = if members.is_empty() {
+                    None
+                } else {
+                    Some(members)
+                };
+                (
+                    format!("Table ({} rows)", rows),
+                    "string".into(),
+                    None,
+                    values,
+                )
             } else {
-                (String::new(), "null".into(), None)
+                (String::new(), "null".into(), None, None)
             }
         }
 
         // [Name, Description, PropertyReference]
         "IFCPROPERTYREFERENCEVALUE" => match entity.get(2).and_then(|v| v.as_entity_ref()) {
-            Some(id) => (format!("#{}", id), "string".into(), None),
-            None => (String::new(), "null".into(), None),
+            Some(id) => (format!("#{}", id), "string".into(), None, None),
+            None => (String::new(), "null".into(), None, None),
         },
 
         _ => return None,
@@ -149,6 +198,7 @@ fn extract_property(entity: &DecodedEntity, _decoder: &mut EntityDecoder) -> Opt
         property_value,
         property_type,
         data_type,
+        values,
     })
 }
 
@@ -175,9 +225,11 @@ fn stringify_scalar(v: &ifc_lite_core::AttributeValue) -> Option<String> {
     }
 }
 
-/// Join a `List(...)` attribute's members with ", " (WASM `values.join(', ')`),
-/// or `None` when the attribute is not a non-empty list.
-fn join_member_list(attr: Option<&ifc_lite_core::AttributeValue>) -> Option<String> {
+/// Stringified members of a `List(...)` attribute (the WASM candidate array
+/// before joining), or `None` when the attribute is not a list or every
+/// member filters out — the display and the `values` wire field both derive
+/// from this, so they can never disagree.
+fn member_list(attr: Option<&ifc_lite_core::AttributeValue>) -> Option<Vec<String>> {
     use ifc_lite_core::AttributeValue;
     match attr {
         Some(AttributeValue::List(items)) => {
@@ -185,7 +237,7 @@ fn join_member_list(attr: Option<&ifc_lite_core::AttributeValue>) -> Option<Stri
             if parts.is_empty() {
                 None
             } else {
-                Some(parts.join(", "))
+                Some(parts)
             }
         }
         _ => None,

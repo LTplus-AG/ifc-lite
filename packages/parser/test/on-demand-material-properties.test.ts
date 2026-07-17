@@ -73,7 +73,11 @@ function buildStore(
   return {
     source,
     entityIndex: { byId, byType },
-    onDemandMaterialMap: materialMap,
+    // onDemandMaterialMap is list-valued (entity -> material def ids); wrap the
+    // single-value test fixtures so they match the store's real shape.
+    onDemandMaterialMap: materialMap
+      ? new Map([...materialMap].map(([k, v]) => [k, [v]]))
+      : undefined,
     relationships,
   } as unknown as IfcDataStore;
 }
@@ -166,6 +170,75 @@ describe('collectMaterialLeaves', () => {
     // 0.2 / 0.25 = 0.8 concrete, 0.05 / 0.25 = 0.2 insulation
     expect(byId.get(10)!.weight).toBeCloseTo(0.8, 6);
     expect(byId.get(11)!.weight).toBeCloseTo(0.2, 6);
+  });
+
+  // IFC allows Fraction on only SOME constituents (sum ≤ 1, remainder
+  // unallocated). Fraction-less siblings previously got weight 0 and vanished
+  // from per-material totals (#1755 follow-up sweep).
+  describe('constituent fractions', () => {
+    const CONSTITUENTS = [
+      `#12=IFCMATERIAL('Steel',$,$);`,
+      `#50=IFCMATERIALCONSTITUENT('A',$,#10,0.6,$);`,
+      `#51=IFCMATERIALCONSTITUENT('B',$,#11,$,$);`,
+      `#52=IFCMATERIALCONSTITUENT('C',$,#12,$,$);`,
+      `#55=IFCMATERIALCONSTITUENTSET('Partial',$,(#50,#51,#52));`,
+      `#56=IFCMATERIALCONSTITUENT('D',$,#10,0.7,$);`,
+      `#57=IFCMATERIALCONSTITUENT('E',$,#11,0.3,$);`,
+      `#58=IFCMATERIALCONSTITUENTSET('Full',$,(#56,#57));`,
+    ];
+
+    it('fraction-less constituents share the remainder equally', () => {
+      const store = buildStore([...FIXTURE, ...CONSTITUENTS], new Map());
+      const byId = new Map(collectMaterialLeaves(store, 55).map((l) => [l.id, l]));
+      expect(byId.get(10)!.weight).toBeCloseTo(0.6, 6);
+      expect(byId.get(11)!.weight).toBeCloseTo(0.2, 6); // (1 - 0.6) / 2
+      expect(byId.get(12)!.weight).toBeCloseTo(0.2, 6);
+    });
+
+    it('an EXPLICIT zero fraction stays zero; only absent fractions share the remainder', () => {
+      // [0.6, 0.0, absent] → [0.6, 0, 0.4]: the authored zero is a
+      // deliberate "contributes nothing", not an omission.
+      const ZERO = [
+        `#61=IFCMATERIALCONSTITUENT('H',$,#10,0.6,$);`,
+        `#62=IFCMATERIALCONSTITUENT('I',$,#11,0.0,$);`,
+        `#63=IFCMATERIALCONSTITUENT('J',$,#12,$,$);`,
+        `#64=IFCMATERIALCONSTITUENTSET('ZeroSet',$,(#61,#62,#63));`,
+      ];
+      const store = buildStore([...FIXTURE, ...CONSTITUENTS, ...ZERO], new Map());
+      const byId = new Map(collectMaterialLeaves(store, 64).map((l) => [l.id, l]));
+      expect(byId.get(10)!.weight).toBeCloseTo(0.6, 6);
+      expect(byId.get(11)!.weight).toBeCloseTo(0, 6);
+      expect(byId.get(12)!.weight).toBeCloseTo(0.4, 6);
+    });
+
+    it('ALL-explicit-zero fractions stay zero instead of falling back to equal weights', () => {
+      // Every constituent authored 0.0: the set deliberately attributes the
+      // element's quantities to no material, so no equal-weight fallback.
+      const ALL_ZERO = [
+        `#66=IFCMATERIALCONSTITUENT('K',$,#10,0.0,$);`,
+        `#67=IFCMATERIALCONSTITUENT('L',$,#11,0.0,$);`,
+        `#68=IFCMATERIALCONSTITUENTSET('AllZero',$,(#66,#67));`,
+      ];
+      const store = buildStore([...FIXTURE, ...CONSTITUENTS, ...ALL_ZERO], new Map());
+      const byId = new Map(collectMaterialLeaves(store, 68).map((l) => [l.id, l]));
+      expect(byId.get(10)!.weight).toBeCloseTo(0, 6);
+      expect(byId.get(11)!.weight).toBeCloseTo(0, 6);
+    });
+
+    it('fully-fractioned sets keep their authored split', () => {
+      const store = buildStore([...FIXTURE, ...CONSTITUENTS], new Map());
+      const byId = new Map(collectMaterialLeaves(store, 58).map((l) => [l.id, l]));
+      expect(byId.get(10)!.weight).toBeCloseTo(0.7, 6);
+      expect(byId.get(11)!.weight).toBeCloseTo(0.3, 6);
+    });
+
+    it('weights always sum to ~1', () => {
+      const store = buildStore([...FIXTURE, ...CONSTITUENTS], new Map());
+      for (const setId of [55, 58]) {
+        const sum = collectMaterialLeaves(store, setId).reduce((s, l) => s + l.weight, 0);
+        expect(sum).toBeCloseTo(1, 6);
+      }
+    });
   });
 });
 

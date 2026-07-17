@@ -231,9 +231,13 @@ export async function batchExtractGlobalIdAndName(
         }
         const ref = refs[validIndices[i]];
         const rawName = names[i] || '';
+        // Collapse STEP doubled single-quotes ('' -> ') BEFORE decoding, exactly
+        // as EntityExtractor does. The raw byte slice preserves the doubling, and
+        // decodeIfcString deliberately never touches quotes, so without this a
+        // name like `John''s Wall` would render with the literal doubled quote.
         result.set(ref.expressId, {
             globalId: gids[i] || '',
-            name: rawName ? decodeIfcString(rawName) : '',
+            name: rawName ? decodeIfcString(rawName.replace(/''/g, "'")) : '',
         });
     }
 

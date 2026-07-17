@@ -59,7 +59,6 @@ export class BinaryCacheWriter {
   ): Promise<ArrayBuffer> {
     const {
       includeGeometry = true,
-      includeSpatialHierarchy = true,
       omitSourceHash = false,
     } = options;
 
@@ -170,9 +169,12 @@ export class BinaryCacheWriter {
     if (includeGeometry && geometry) {
       headerFlags |= HeaderFlags.HasGeometry;
     }
-    if (includeSpatialHierarchy && dataStore.spatialHierarchy) {
-      headerFlags |= HeaderFlags.HasSpatial;
-    }
+    // NOTE: HeaderFlags.HasSpatial is intentionally NOT set. No Spatial section
+    // is ever written (or read — the reader has no SectionType.Spatial handler),
+    // so setting the flag only misleads consumers of CacheHeaderInfo into
+    // believing a hierarchy is present. The viewer rebuilds spatialHierarchy
+    // from relationships on load regardless. Re-introduce the flag only if a
+    // Spatial section writer+reader is actually added.
     if (omitSourceHash) {
       headerFlags |= HeaderFlags.SourceHashUnset;
     }

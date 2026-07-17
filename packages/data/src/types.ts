@@ -562,11 +562,21 @@ export function IfcTypeEnumToString(type: IfcTypeEnum): string {
   return TYPE_ENUM_TO_STRING.get(type) ?? 'Unknown';
 }
 
+/**
+ * IFC STEP attribute value as extracted from a STEP argument list.
+ *
+ * The `{ real: number }` variant is a WRITE-ONLY marker (never produced by
+ * extraction): entity-authoring code wraps a coordinate in it to force STEP
+ * REAL serialization with a decimal point for whole numbers (`5.` not `5`),
+ * which typed measures like `IfcLengthMeasure` require. Plain `number` keeps
+ * the historical integer-when-whole behavior.
+ */
 export type IfcAttributeValue =
   | string
   | number
   | boolean
   | null
+  | { real: number }
   | IfcAttributeValue[];
 
 export interface IfcEntity {

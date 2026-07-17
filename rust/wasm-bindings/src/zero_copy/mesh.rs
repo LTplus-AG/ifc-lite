@@ -31,6 +31,14 @@ pub struct MeshDataJs {
     texture_height: u32,
     texture_repeat_s: bool,
     texture_repeat_t: bool,
+    /// Stable texture dedup key: the `IfcSurfaceTexture` express id (#1781).
+    /// Every mesh sampling the same image carries the same id, so the consumer
+    /// creates ONE GPU texture per id. 0 when the mesh is untextured.
+    texture_id: u32,
+    /// `IfcImageTexture.URLReference` (#1781): an external image reference the
+    /// host resolves (typically a sibling file inside the `.ifcZIP`). `None`
+    /// for untextured meshes and for Rust-decoded blob/pixel textures.
+    texture_url: Option<String>,
     /// Geometry provenance for the viewer's Model/Types view switch:
     /// 0 = occurrence (a placed IfcProduct), 1 = orphan type geometry (an
     /// IfcTypeProduct RepresentationMap with NO occurrence — buildingSMART
@@ -151,6 +159,21 @@ impl MeshDataJs {
     #[wasm_bindgen(getter, js_name = textureRepeatT)]
     pub fn texture_repeat_t(&self) -> bool {
         self.texture_repeat_t
+    }
+
+    /// Stable texture dedup key (`IfcSurfaceTexture` express id, #1781).
+    /// 0 when the mesh is untextured.
+    #[wasm_bindgen(getter, js_name = textureId)]
+    pub fn texture_id(&self) -> u32 {
+        self.texture_id
+    }
+
+    /// External image reference (`IfcImageTexture.URLReference`, #1781) for the
+    /// host to resolve — e.g. a sibling image inside the `.ifcZIP`. `undefined`
+    /// for untextured meshes and Rust-decoded blob/pixel textures.
+    #[wasm_bindgen(getter, js_name = textureUrl)]
+    pub fn texture_url(&self) -> Option<String> {
+        self.texture_url.clone()
     }
 
     /// Geometry provenance for the viewer's Model/Types switch (#957 follow-up):
@@ -290,6 +313,8 @@ impl MeshDataJs {
             texture_height: 0,
             texture_repeat_s: true,
             texture_repeat_t: true,
+            texture_id: 0,
+            texture_url: None,
             geometry_class: 0,
             origin,
             local_bounds,
@@ -322,6 +347,7 @@ impl MeshDataJs {
         height: u32,
         repeat_s: bool,
         repeat_t: bool,
+        texture_id: u32,
     ) {
         self.uvs = uvs;
         self.texture_rgba = rgba;
@@ -329,6 +355,25 @@ impl MeshDataJs {
         self.texture_height = height;
         self.texture_repeat_s = repeat_s;
         self.texture_repeat_t = repeat_t;
+        self.texture_id = texture_id;
+    }
+
+    /// Attach per-vertex UVs + an EXTERNAL image reference (#1781): the host
+    /// resolves `url` (e.g. against the `.ifcZIP` siblings), decodes it once
+    /// per `texture_id`, and shares the GPU texture. Call after `new`.
+    pub fn set_texture_ref(
+        &mut self,
+        uvs: Vec<f32>,
+        url: String,
+        repeat_s: bool,
+        repeat_t: bool,
+        texture_id: u32,
+    ) {
+        self.uvs = uvs;
+        self.texture_url = Some(url);
+        self.texture_repeat_s = repeat_s;
+        self.texture_repeat_t = repeat_t;
+        self.texture_id = texture_id;
     }
 
     /// Build from the canonical per-element producer's [`MeshData`]
@@ -358,14 +403,24 @@ impl MeshDataJs {
         let mut js = Self::new(m.express_id, m.ifc_type, mesh, m.color);
         js.set_geometry_class(m.geometry_class);
         if let (Some(uvs), Some(tex)) = (m.uvs, m.texture) {
-            js.set_texture(
-                uvs,
-                tex.rgba,
-                tex.width,
-                tex.height,
-                tex.repeat_s,
-                tex.repeat_t,
-            );
+            if let Some(rgba) = tex.rgba {
+                // Rust-decoded blob/pixel texture (#961): the Arc is shared
+                // across meshes in Rust; this boundary copy is per-mesh but
+                // blob/pixel images are small by construction.
+                js.set_texture(
+                    uvs,
+                    rgba.as_ref().clone(),
+                    tex.width,
+                    tex.height,
+                    tex.repeat_s,
+                    tex.repeat_t,
+                    tex.texture_id,
+                );
+            } else if let Some(url) = tex.url {
+                // External image reference (#1781): ship the URL + repeat
+                // flags only; the host decodes once per texture_id.
+                js.set_texture_ref(uvs, url, tex.repeat_s, tex.repeat_t, tex.texture_id);
+            }
         }
         js
     }
@@ -423,6 +478,8 @@ impl MeshCollection {
             texture_height: m.texture_height,
             texture_repeat_s: m.texture_repeat_s,
             texture_repeat_t: m.texture_repeat_t,
+            texture_id: m.texture_id,
+            texture_url: m.texture_url.clone(),
             geometry_class: m.geometry_class,
             origin: m.origin,
             local_bounds: m.local_bounds,
@@ -452,6 +509,8 @@ impl MeshCollection {
             texture_height: m.texture_height,
             texture_repeat_s: m.texture_repeat_s,
             texture_repeat_t: m.texture_repeat_t,
+            texture_id: m.texture_id,
+            texture_url: m.texture_url.take(),
             geometry_class: m.geometry_class,
             origin: m.origin,
             local_bounds: m.local_bounds,
@@ -668,6 +727,8 @@ impl Clone for MeshCollection {
                     texture_height: m.texture_height,
                     texture_repeat_s: m.texture_repeat_s,
                     texture_repeat_t: m.texture_repeat_t,
+                    texture_id: m.texture_id,
+                    texture_url: m.texture_url.clone(),
                     geometry_class: m.geometry_class,
                     origin: m.origin,
                     local_bounds: m.local_bounds,

@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! IFC surface-texture resolution (issue #961).
+//! IFC surface-texture resolution (issues #961, #1781).
 //!
 //! Decodes `IfcBlobTexture` (embedded PNG) and `IfcPixelTexture` (raw pixels)
 //! to RGBA8, and resolves `IfcIndexedTriangleTextureMap` per-triangle texture
@@ -11,18 +11,31 @@
 //! implementation — no Rust/TS drift. The browser layer only uploads the
 //! decoded RGBA to a GPU texture; it performs no IFC or image decoding.
 //!
-//! `IfcImageTexture` (external URL) is intentionally out of scope here — it
-//! needs an async fetch resolver outside the geometry pipeline; tracked as a
-//! follow-up.
+//! `IfcImageTexture` (#1781) resolves to an [`ImageTextureRef`] — the
+//! `URLReference` plus repeat flags — NOT decoded pixels: the image bytes live
+//! outside the model (typically a sibling file inside the `.ifcZIP` container),
+//! and the real-world files reference multi-megapixel JPEGs shared by dozens of
+//! face sets, so shipping decoded RGBA through every worker/mesh would multiply
+//! hundreds of MB. The host layer (browser: `createImageBitmap` on the zip
+//! sibling; native consumers: the file next to the .ifc) resolves the reference
+//! ONCE per `texture_id` and shares the GPU upload.
 
 use ifc_lite_core::{DecodedEntity, EntityDecoder, EntityScanner, IfcType};
+
+mod raster;
+pub use raster::decode_step_binary;
+use raster::{decode_raster_image, MAX_TEX_DIM};
 use rustc_hash::FxHashMap;
+use std::sync::Arc;
 
 /// A decoded RGBA8 image ready for GPU upload.
 #[derive(Debug, Clone)]
 pub struct MeshTexture {
     /// `width * height * 4` bytes, row-major, top-down, straight alpha.
-    pub rgba: Vec<u8>,
+    /// `Arc`-shared so every mesh/attachment referencing this texture reuses
+    /// ONE pixel allocation (#1781 — real files share a multi-megapixel image
+    /// across dozens of face sets).
+    pub rgba: std::sync::Arc<Vec<u8>>,
     pub width: u32,
     pub height: u32,
     /// `IfcSurfaceTexture.RepeatS/RepeatT` → sampler wrap (repeat vs clamp).
@@ -30,15 +43,60 @@ pub struct MeshTexture {
     pub repeat_t: bool,
 }
 
+/// Where a resolved surface texture's pixels come from.
+#[derive(Debug, Clone)]
+pub enum TextureSource {
+    /// Decoded RGBA8 (`IfcBlobTexture` / `IfcPixelTexture`), shared via `Arc`
+    /// across every face set that maps the same texture entity.
+    Decoded(Arc<MeshTexture>),
+    /// `IfcImageTexture` (#1781): an external image reference the host layer
+    /// resolves (e.g. a sibling file inside the `.ifcZIP` container).
+    Image(ImageTextureRef),
+}
+
+/// An unresolved `IfcImageTexture` reference (#1781).
+#[derive(Debug, Clone)]
+pub struct ImageTextureRef {
+    /// `IfcImageTexture.URLReference` verbatim (usually a relative filename).
+    pub url: String,
+    pub repeat_s: bool,
+    pub repeat_t: bool,
+}
+
+/// A surface texture attached to an output mesh: the stable dedup key plus the
+/// pixel source. `texture_id` is the `IfcSurfaceTexture` express id — every
+/// mesh sampling the same image carries the same id, so consumers create one
+/// GPU texture per id instead of one per mesh.
+#[derive(Debug, Clone)]
+pub struct TextureAttachment {
+    pub texture_id: u32,
+    pub source: TextureSource,
+}
+
 /// A fully resolved `IfcIndexedTriangleTextureMap` for one face set.
 #[derive(Debug, Clone)]
 pub struct ResolvedTextureMap {
-    pub texture: MeshTexture,
+    /// Express id of the source `IfcSurfaceTexture` (dedup key).
+    pub texture_id: u32,
+    pub texture: TextureSource,
     /// `IfcTextureVertexList.TexCoordsList` as `[u, v]` (0-based storage).
     pub tex_coords: Vec<[f32; 2]>,
     /// `TexCoordIndex`: per-triangle 1-based indices into `tex_coords`,
-    /// parallel to the face set's `CoordIndex`.
-    pub tex_coord_index: Vec<[u32; 3]>,
+    /// parallel to the face set's `CoordIndex`. `None` when the attribute is
+    /// `$` — the spec default, meaning texture vertices pair 1:1 with the face
+    /// set's `Coordinates`, so its `CoordIndex` doubles as the UV index (the
+    /// SketchUp IFC Manager export path authors exactly this shape, #1781).
+    pub tex_coord_index: Option<Vec<[u32; 3]>>,
+}
+
+impl ResolvedTextureMap {
+    /// The attachment consumers stamp on meshes produced from this map.
+    pub fn attachment(&self) -> TextureAttachment {
+        TextureAttachment {
+            texture_id: self.texture_id,
+            source: self.texture.clone(),
+        }
+    }
 }
 
 // NOTE: `IfcSurfaceTexture.TextureTransform` (IfcCartesianTransformationOperator2D)
@@ -47,150 +105,6 @@ pub struct ResolvedTextureMap {
 // them ~1:1); applying the operator's Scale (e.g. 48 in the blob fixture)
 // over-tiles the texture into noise. If a future file genuinely needs a UV
 // rotation/offset we can revisit, but no test fixture requires it.
-
-/// Decode a STEP binary literal as surfaced by the decoder (the parser strips
-/// the surrounding double quotes; the first hex character is the count of
-/// unused leading bits — `0` for the byte-aligned data every IFC texture
-/// fixture uses). Strips that leading character and hex-decodes the remainder
-/// pairwise. Returns the raw bytes (e.g. a complete PNG file for a blob, or one
-/// pixel's colour components for a pixel literal).
-pub fn decode_step_binary(s: &str) -> Vec<u8> {
-    let s = s.trim().trim_matches('"');
-    if s.len() < 3 {
-        return Vec::new();
-    }
-    let hex = s.as_bytes();
-    let mut out = Vec::with_capacity(hex.len() / 2);
-    // Skip index 0 (the unused-bits indicator); decode the rest in pairs.
-    let mut i = 1;
-    while i + 1 < hex.len() {
-        match (hex_val(hex[i]), hex_val(hex[i + 1])) {
-            (Some(h), Some(l)) => out.push((h << 4) | l),
-            _ => break,
-        }
-        i += 2;
-    }
-    out
-}
-
-#[inline]
-fn hex_val(b: u8) -> Option<u8> {
-    match b {
-        b'0'..=b'9' => Some(b - b'0'),
-        b'a'..=b'f' => Some(b - b'a' + 10),
-        b'A'..=b'F' => Some(b - b'A' + 10),
-        _ => None,
-    }
-}
-
-/// Upper bound on a decoded texture's width/height. 16384² RGBA ≈ 1 GiB — a
-/// hostile/garbage image header claiming larger dimensions is rejected BEFORE
-/// any pixel buffer is allocated, so a crafted file can't drive an OOM. Matches
-/// the `IfcPixelTexture` bound.
-const MAX_TEX_DIM: u32 = 16384;
-
-/// Decode a PNG byte buffer to RGBA8. Returns `(rgba, width, height)`.
-fn decode_png(bytes: &[u8]) -> Option<(Vec<u8>, u32, u32)> {
-    // png 0.18 requires the reader to be `BufRead + Seek`. `&[u8]` is `BufRead`
-    // but not `Seek`, so wrap it in a `Cursor`, which satisfies both.
-    let mut decoder = png::Decoder::new(std::io::Cursor::new(bytes));
-    // EXPAND: palette → RGB, sub-8-bit grayscale → 8-bit, tRNS → alpha.
-    // STRIP_16: 16-bit channels → 8-bit. Leaves Rgb/Rgba/Grayscale/GA at 8-bit.
-    decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
-    let mut reader = decoder.read_info().ok()?;
-    // Reject an oversized header before `output_buffer_size()` allocates.
-    let png_info = reader.info();
-    if png_info.width == 0
-        || png_info.height == 0
-        || png_info.width > MAX_TEX_DIM
-        || png_info.height > MAX_TEX_DIM
-    {
-        return None;
-    }
-    // png 0.18 returns Option here (None on size overflow); propagate as a decode failure.
-    let mut buf = vec![0u8; reader.output_buffer_size()?];
-    let info = reader.next_frame(&mut buf).ok()?;
-    let (w, h) = (info.width, info.height);
-    let px = (w as usize) * (h as usize);
-    let src = &buf[..info.buffer_size()];
-    let mut rgba = Vec::with_capacity(px * 4);
-    match info.color_type {
-        png::ColorType::Rgba => rgba.extend_from_slice(&src[..px * 4]),
-        png::ColorType::Rgb => {
-            for c in src.chunks_exact(3) {
-                rgba.extend_from_slice(&[c[0], c[1], c[2], 255]);
-            }
-        }
-        png::ColorType::Grayscale => {
-            for &g in src.iter() {
-                rgba.extend_from_slice(&[g, g, g, 255]);
-            }
-        }
-        png::ColorType::GrayscaleAlpha => {
-            for c in src.chunks_exact(2) {
-                rgba.extend_from_slice(&[c[0], c[0], c[0], c[1]]);
-            }
-        }
-        // EXPAND should have removed Indexed; bail if a decoder ever leaves it.
-        png::ColorType::Indexed => return None,
-    }
-    if rgba.len() != px * 4 {
-        return None;
-    }
-    Some((rgba, w, h))
-}
-
-/// Decode a JPEG byte buffer to RGBA8. Returns `(rgba, width, height)`.
-fn decode_jpeg(bytes: &[u8]) -> Option<(Vec<u8>, u32, u32)> {
-    let mut decoder = jpeg_decoder::Decoder::new(bytes);
-    // Read just the headers first so an oversized image is rejected before the
-    // full `decode()` allocates its pixel buffer.
-    decoder.read_info().ok()?;
-    let info = decoder.info()?;
-    if info.width == 0
-        || info.height == 0
-        || info.width as u32 > MAX_TEX_DIM
-        || info.height as u32 > MAX_TEX_DIM
-    {
-        return None;
-    }
-    let pixels = decoder.decode().ok()?;
-    let (w, h) = (info.width as usize, info.height as usize);
-    let px = w * h;
-    let mut rgba = Vec::with_capacity(px * 4);
-    match info.pixel_format {
-        jpeg_decoder::PixelFormat::RGB24 => {
-            for c in pixels.chunks_exact(3) {
-                rgba.extend_from_slice(&[c[0], c[1], c[2], 255]);
-            }
-        }
-        jpeg_decoder::PixelFormat::L8 => {
-            for &g in pixels.iter() {
-                rgba.extend_from_slice(&[g, g, g, 255]);
-            }
-        }
-        // L16 / CMYK32 are rare for IFC textures; bail to the white fallback.
-        _ => return None,
-    }
-    if rgba.len() != px * 4 {
-        return None;
-    }
-    Some((rgba, w as u32, h as u32))
-}
-
-/// Decode raster image bytes to RGBA8 by sniffing the magic bytes (PNG or
-/// JPEG), so any `RasterFormat` string spelling resolves correctly.
-fn decode_raster_image(bytes: &[u8]) -> Option<(Vec<u8>, u32, u32)> {
-    const PNG_MAGIC: [u8; 8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
-    if bytes.len() >= 8 && bytes[..8] == PNG_MAGIC {
-        return decode_png(bytes);
-    }
-    // JPEG: starts with FF D8 FF.
-    if bytes.len() >= 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF {
-        return decode_jpeg(bytes);
-    }
-    None
-}
 
 /// Decode `IfcBlobTexture` → RGBA8. Attributes (IFC4):
 /// RepeatS(0), RepeatT(1), Mode(2), TextureTransform(3), Parameter(4),
@@ -205,7 +119,7 @@ fn decode_blob_texture(entity: &DecodedEntity) -> Option<MeshTexture> {
     // RasterFormat string spelling ('PNG' / 'JPG' / 'JPEG' all occur).
     let (rgba, width, height) = decode_raster_image(&bytes)?;
     Some(MeshTexture {
-        rgba,
+        rgba: Arc::new(rgba),
         width,
         height,
         repeat_s: read_bool(entity, 0).unwrap_or(true),
@@ -237,6 +151,12 @@ fn decode_pixel_texture(entity: &DecodedEntity) -> Option<MeshTexture> {
     let components = components as usize;
     let pixels = entity.get(8).and_then(|a| a.as_list())?;
     let expected = (width as usize) * (height as usize);
+    // Reject a cardinality mismatch BEFORE decoding: a hostile file declaring
+    // tiny dimensions but carrying a huge Pixel list would otherwise decode
+    // (and allocate) the whole list just to fail the length check at the end.
+    if pixels.len() != expected {
+        return None;
+    }
     let mut rgba = Vec::with_capacity(expected * 4);
     for px in pixels.iter() {
         let s = px.as_string()?;
@@ -257,7 +177,7 @@ fn decode_pixel_texture(entity: &DecodedEntity) -> Option<MeshTexture> {
         return None;
     }
     Some(MeshTexture {
-        rgba,
+        rgba: Arc::new(rgba),
         width,
         height,
         repeat_s: read_bool(entity, 0).unwrap_or(true),
@@ -269,15 +189,47 @@ fn read_bool(entity: &DecodedEntity, idx: usize) -> Option<bool> {
     entity.get(idx).and_then(|a| a.as_enum()).map(|v| v == "T")
 }
 
-/// Resolve an `IfcSurfaceTexture` subtype reference to a decoded image.
-fn resolve_surface_texture(texture_id: u32, decoder: &mut EntityDecoder) -> Option<MeshTexture> {
-    let entity = decoder.decode_by_id(texture_id).ok()?;
-    match entity.ifc_type {
-        IfcType::IfcBlobTexture => decode_blob_texture(&entity),
-        IfcType::IfcPixelTexture => decode_pixel_texture(&entity),
-        // IfcImageTexture (URL) deferred — needs async fetch outside the kernel.
-        _ => None,
+/// Read `IfcImageTexture` → an [`ImageTextureRef`] (#1781). Attributes (IFC4):
+/// RepeatS(0), RepeatT(1), Mode(2), TextureTransform(3), Parameter(4),
+/// URLReference(5). The URL is carried verbatim for the host layer to resolve;
+/// `TextureTransform` is intentionally ignored like the other subtypes (see the
+/// NOTE above `decode_step_binary`).
+fn read_image_texture(entity: &DecodedEntity) -> Option<ImageTextureRef> {
+    let url = entity.get(5).and_then(|a| a.as_string())?.trim().to_string();
+    if url.is_empty() {
+        return None;
     }
+    Some(ImageTextureRef {
+        url,
+        repeat_s: read_bool(entity, 0).unwrap_or(true),
+        repeat_t: read_bool(entity, 1).unwrap_or(true),
+    })
+}
+
+/// Resolve an `IfcSurfaceTexture` subtype reference to a pixel source. Decoded
+/// results are cached per `build_texture_index` run: real files map ONE texture
+/// entity from dozens of `IfcIndexedTriangleTextureMap`s (one per face set), so
+/// without the cache the same image would decode once per face set.
+fn resolve_surface_texture(
+    texture_id: u32,
+    decoder: &mut EntityDecoder,
+    cache: &mut FxHashMap<u32, Option<TextureSource>>,
+) -> Option<TextureSource> {
+    if let Some(cached) = cache.get(&texture_id) {
+        return cached.clone();
+    }
+    let resolved = decoder.decode_by_id(texture_id).ok().and_then(|entity| {
+        match entity.ifc_type {
+            IfcType::IfcBlobTexture => decode_blob_texture(&entity)
+                .map(|t| TextureSource::Decoded(Arc::new(t))),
+            IfcType::IfcPixelTexture => decode_pixel_texture(&entity)
+                .map(|t| TextureSource::Decoded(Arc::new(t))),
+            IfcType::IfcImageTexture => read_image_texture(&entity).map(TextureSource::Image),
+            _ => None,
+        }
+    });
+    cache.insert(texture_id, resolved.clone());
+    resolved
 }
 
 /// Resolve a single `IfcIndexedTriangleTextureMap` entity into a
@@ -287,13 +239,14 @@ fn resolve_surface_texture(texture_id: u32, decoder: &mut EntityDecoder) -> Opti
 fn resolve_triangle_texture_map(
     entity: &DecodedEntity,
     decoder: &mut EntityDecoder,
+    texture_cache: &mut FxHashMap<u32, Option<TextureSource>>,
 ) -> Option<(u32, ResolvedTextureMap)> {
     let face_set_id = entity.get_ref(1)?;
 
     // Maps[0] → surface texture.
     let maps = entity.get(0)?.as_list()?;
     let texture_id = maps.iter().find_map(|m| m.as_entity_ref())?;
-    let texture = resolve_surface_texture(texture_id, decoder)?;
+    let texture = resolve_surface_texture(texture_id, decoder, texture_cache)?;
 
     // TexCoords → IfcTextureVertexList.TexCoordsList (attr 0). Use `map` +
     // `collect::<Option<_>>` (NOT filter_map): a malformed entry must reject the
@@ -317,25 +270,35 @@ fn resolve_triangle_texture_map(
     }
 
     // TexCoordIndex (attr 3) → per-triangle [i, j, k]. Same all-or-nothing rule
-    // so the index stays 1:1 with the triangle list.
-    let index_attr = entity.get(3)?.as_list()?;
-    let tex_coord_index: Vec<[u32; 3]> = index_attr
-        .iter()
-        .map(|tri| {
-            let t = tri.as_list()?;
-            let a = t.first().and_then(|v| v.as_int())? as u32;
-            let b = t.get(1).and_then(|v| v.as_int())? as u32;
-            let c = t.get(2).and_then(|v| v.as_int())? as u32;
-            Some([a, b, c])
-        })
-        .collect::<Option<Vec<_>>>()?;
-    if tex_coord_index.is_empty() {
-        return None;
-    }
+    // so the index stays 1:1 with the triangle list. `$` (null) is VALID per
+    // spec — texture vertices then pair 1:1 with the face set's Coordinates and
+    // its CoordIndex doubles as the UV index (`None` here; the mesher derives
+    // the per-triangle index from the face set itself, #1781).
+    let tex_coord_index: Option<Vec<[u32; 3]>> = match entity.get(3) {
+        Some(attr) if !attr.is_null() => {
+            let index_attr = attr.as_list()?;
+            let idx: Vec<[u32; 3]> = index_attr
+                .iter()
+                .map(|tri| {
+                    let t = tri.as_list()?;
+                    let a = t.first().and_then(|v| v.as_int())? as u32;
+                    let b = t.get(1).and_then(|v| v.as_int())? as u32;
+                    let c = t.get(2).and_then(|v| v.as_int())? as u32;
+                    Some([a, b, c])
+                })
+                .collect::<Option<Vec<_>>>()?;
+            if idx.is_empty() {
+                return None;
+            }
+            Some(idx)
+        }
+        _ => None,
+    };
 
     Some((
         face_set_id,
         ResolvedTextureMap {
+            texture_id,
             texture,
             tex_coords,
             tex_coord_index,
@@ -354,13 +317,16 @@ pub fn build_texture_index(
     if memchr::memmem::find(content, b"IFCINDEXEDTRIANGLETEXTUREMAP").is_none() {
         return index;
     }
+    let mut texture_cache: FxHashMap<u32, Option<TextureSource>> = FxHashMap::default();
     let mut scanner = EntityScanner::new(content);
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
         if type_name != "IFCINDEXEDTRIANGLETEXTUREMAP" {
             continue;
         }
         if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
-            if let Some((face_set_id, resolved)) = resolve_triangle_texture_map(&entity, decoder) {
+            if let Some((face_set_id, resolved)) =
+                resolve_triangle_texture_map(&entity, decoder, &mut texture_cache)
+            {
                 index.entry(face_set_id).or_insert(resolved);
             }
         }

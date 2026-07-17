@@ -45,6 +45,13 @@ export interface EntityTable {
   getDescription(expressId: number): string;
   getObjectType(expressId: number): string;
   getTypeName(expressId: number): string;
+  /** Element Tag (IfcElement/IfcTypeProduct layouts), '' when absent. Optional:
+   *  populated by server-parsed stores (issue #1765); the WASM path resolves
+   *  Tag on demand from source instead. */
+  getTag?(expressId: number): string;
+  /** PredefinedType enum token (dots stripped), '' when absent. Optional —
+   *  same server-path provenance as {@link getTag}. */
+  getPredefinedType?(expressId: number): string;
   hasGeometry(expressId: number): boolean;
   getByType(type: IfcTypeEnum): number[];
 

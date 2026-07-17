@@ -133,6 +133,7 @@ export function useSpaceMouseControls(params: UseSpaceMouseControlsParams): void
           const s = useViewerStore.getState();
           s.setSpaceMouseConnected(false);
           s.setSpaceMouseDisconnect(null);
+          s.setSpaceMouseGetDiagnostics(null);
         }
       },
     };
@@ -156,6 +157,7 @@ export function useSpaceMouseControls(params: UseSpaceMouseControlsParams): void
       const s = useViewerStore.getState();
       s.setSpaceMouseConnected(true, next.productName);
       s.setSpaceMouseDisconnect(() => { void next.close(); });
+      s.setSpaceMouseGetDiagnostics(() => next.getDiagnostics());
       startLoop();
     };
 
@@ -206,6 +208,7 @@ export function useSpaceMouseControls(params: UseSpaceMouseControlsParams): void
       const s = useViewerStore.getState();
       s.setSpaceMouseConnect(null);
       s.setSpaceMouseDisconnect(null);
+      s.setSpaceMouseGetDiagnostics(null);
       s.setSpaceMouseConnected(false);
       void session?.close();
       session = null;

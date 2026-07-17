@@ -38,6 +38,14 @@ pub mod prepass;
 mod prepass_styled;
 pub use prepass_styled::flat_styles_rgba8_from_geometry_columns;
 mod processor;
+pub(crate) mod simplify_math;
+pub mod simplify_session;
+// `simplify_session` unit tests live in a sibling `_tests.rs` file so the
+// module itself stays inside its `module_size_ratchet` budget (same pattern
+// as `determinism_tests.rs`; `_tests.rs` files are ratchet-exempt).
+#[cfg(test)]
+#[path = "simplify_session_tests.rs"]
+mod simplify_session_tests;
 pub mod stream_meta;
 pub mod style;
 mod symbolic;
@@ -59,6 +67,7 @@ pub use processor::{
     process_geometry_streaming_with_options_and_bootstrap,
     OpeningFilterMode, ProcessingResult, StreamingOptions,
 };
+pub use simplify_session::{simplify_element, SimplifiedElement, SimplifyRecordInput, SimplifySkip};
 pub use style::{default_color_for_type, Rgba, TRANSPARENCY_ALPHA_THRESHOLD};
 pub use symbolic::{
     extract_symbolic_data, SymbolicCircle, SymbolicData, SymbolicFillArea, SymbolicGridAxis,

@@ -70,6 +70,16 @@ Shipping it to browser users is blocked on TWO upstream items, both confirmed he
    module (`WebAssembly.validate()` -> false, "invalid numeric opcode 0xfc13");
    stable Chrome/Safari are not expected to differ today.
 
+**Status re-check (2026-07-16):** blocker 1 is CLEARED upstream — `walrus`
+merged wide-arith parsing (wasm-bindgen/walrus#306, released in walrus 0.26.0,
+2026-03-25) and current `wasm-bindgen` 0.2.126 depends on walrus 0.26.1, so
+bumping our pinned `=0.2.106` would let `pkg-wide` build. Blocker 2 still
+stands: V8 has the implementation but behind
+`--experimental-wasm-wide-arithmetic` (default **off**, pre-staged tier in
+`wasm-feature-flags.h`); no stable browser ships it. Verdict unchanged:
+track-and-adopt — do NOT pay a wasm-bindgen major-pin bump for a bundle no
+browser can run; re-check when V8 stages/ships the flag on by default.
+
 Net: the lever is proven and worth tracking, but **not shippable now**. The plan
 below is the design to wire once BOTH clear. The runtime feature-detect makes it
 a safe, zero-cost no-op for every user until then — the wide `.wasm` is never

@@ -9,6 +9,10 @@
  * uses the material. Volumes/areas are apportioned by each element's material
  * share (layer thickness / constituent fraction), so a layered wall's volume is
  * split between its concrete and insulation rather than double-counted.
+ * NOTE: apportioning is per ASSOCIATION — an element carrying several
+ * IfcRelAssociatesMaterial (e.g. a layer set plus a fallback material)
+ * contributes its full volume under EACH association, so summing every
+ * material's total can exceed the model volume for such elements.
  */
 
 import { useMemo } from 'react';
@@ -21,11 +25,12 @@ import {
   getMaterialDisplay,
   extractMaterialPropertiesForMaterialId,
   extractQuantitiesOnDemand,
+  extractTypeQuantitiesOnDemand,
   extractProjectUnits,
   ProjectUnits,
   type IfcDataStore,
 } from '@ifc-lite/parser';
-import { QuantityType } from '@ifc-lite/data';
+import { QuantityType, RelationshipType } from '@ifc-lite/data';
 import { resolveQuantityDisplay } from '@/lib/units/display';
 import { PropertySetCard } from './PropertySetCard';
 import type { PropertySet } from './encodingUtils';
@@ -151,6 +156,23 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
       // material used by thousands of elements only pays the parse cost for the
       // subset that actually has Qto data.
       const qMap = store.onDemandQuantityMap;
+      // Type-level Qto fallback cache (#1745 pattern): when an occurrence has
+      // no quantity sets of its own, its type may carry them (HasPropertySets
+      // or IFC4 rel-defined). Resolved once per TYPE, not per occurrence, so a
+      // 500-door type pays a single extraction.
+      const typeQsetCache = new Map<number, ReadonlyArray<{ name: string; quantities: ReadonlyArray<{ name: string; type: number; value: number }> }>>();
+      const typeQsetsFor = (entityId: number) => {
+        if (!store.relationships) return [];
+        const typeIds = store.relationships.getRelated(entityId, RelationshipType.DefinesByType, 'inverse');
+        if (typeIds.length === 0) return [];
+        const typeId = typeIds[0];
+        let qsets = typeQsetCache.get(typeId);
+        if (!qsets) {
+          qsets = extractTypeQuantitiesOnDemand(store, entityId)?.quantities ?? [];
+          typeQsetCache.set(typeId, qsets);
+        }
+        return qsets;
+      };
       for (const usage of usageIndex.values()) {
         if (usage.name !== targetName) continue;
         for (const { entityId, weight } of usage.entries) {
@@ -159,8 +181,15 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
           const ifcClass = store.entityIndex.byId.get(entityId)?.type || usage.ifcClass;
           classCounts.set(ifcClass, (classCounts.get(ifcClass) ?? 0) + 1);
 
-          if (qMap && !qMap.get(entityId)?.length) continue; // no quantities — skip extraction
-          const qsets = extractQuantitiesOnDemand(store, entityId);
+          // Occurrence quantities win; fall back to the type's (#1755 sweep).
+          // "Win" requires at least one actual quantity — a named-but-empty
+          // occurrence qset must not mask populated type-level quantities.
+          const qsets = (qMap && !qMap.get(entityId)?.length)
+            ? typeQsetsFor(entityId)
+            : (() => {
+                const own = extractQuantitiesOnDemand(store, entityId);
+                return own.some((qset) => qset.quantities.length > 0) ? own : typeQsetsFor(entityId);
+              })();
           if (qsets.length === 0) continue;
           const volByName = new Map<string, number>();
           const areaByName = new Map<string, number>();

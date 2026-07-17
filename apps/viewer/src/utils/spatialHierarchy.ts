@@ -285,8 +285,10 @@ export interface EntityIndex {
 export interface OnDemandMaps {
   onDemandPropertyMap: Map<number, number[]>;
   onDemandQuantityMap: Map<number, number[]>;
-  /** element/type expressId -> associated material definition expressId. */
-  onDemandMaterialMap: Map<number, number>;
+  /** element/type expressId -> associated material definition expressIds.
+   *  A list so multiple IfcRelAssociatesMaterial on one element are preserved,
+   *  matching the columnar parser's map shape. */
+  onDemandMaterialMap: Map<number, number[]>;
 }
 
 /** IFC material *definition* classes that can be the RelatingMaterial of an
@@ -299,6 +301,17 @@ const MATERIAL_DEF_TYPES = new Set([
   'IFCMATERIALPROFILESETUSAGE',
   'IFCMATERIALCONSTITUENTSET',
   'IFCMATERIALLIST',
+  // Bare IfcMaterialSelect members — legal (if unusual) RelatingMaterial
+  // targets. Without these a fresh parse maps the association but a cache
+  // rebuild silently drops it (parse/cache divergence).
+  'IFCMATERIALLAYER',
+  'IFCMATERIALPROFILE',
+  'IFCMATERIALCONSTITUENT',
+  // IFC4 subtypes — also legal RelatingMaterial targets; completes the
+  // IfcMaterialSelect membership so cache rebuilds match fresh parses.
+  'IFCMATERIALLAYERWITHOFFSETS',
+  'IFCMATERIALPROFILEWITHOFFSETS',
+  'IFCMATERIALPROFILESETUSAGETAPERING',
 ]);
 
 /**
@@ -319,7 +332,7 @@ export function rebuildOnDemandMaps(
 ): OnDemandMaps {
   const onDemandPropertyMap = new Map<number, number[]>();
   const onDemandQuantityMap = new Map<number, number[]>();
-  const onDemandMaterialMap = new Map<number, number>();
+  const onDemandMaterialMap = new Map<number, number[]>();
 
   // Use entityIndex.byType if available (needed for cache loads where entity table
   // doesn't include IfcPropertySet/IfcElementQuantity entities)
@@ -388,18 +401,34 @@ export function rebuildOnDemandMaps(
   // definitions — the cached graph preserves AssociatesMaterial edges.
   let materialDefCount = 0;
   if (entityIndex?.byType) {
+    // Determinism parity with the columnar parser: the map preserves EVERY
+    // association (multiple IfcRelAssociatesMaterial on one element are
+    // valid), list-valued and ordered by rel express id so list[0] is the
+    // deterministic primary. The enumeration order here (byType buckets)
+    // differs from the parser's file-order scan, so ordering must come from
+    // edge relationshipId — which the cached CSR columns preserve — or a
+    // cache load could disagree with a fresh parse of the same file.
+    const materialRelIds = new Map<number, number[]>();
     for (const [typeKey, ids] of entityIndex.byType) {
       if (!MATERIAL_DEF_TYPES.has(typeKey.toUpperCase())) continue;
       for (const materialId of ids) {
         materialDefCount += 1;
-        const associated = relationships.getRelated(
+        const edges = relationships.forward.getEdges(
           materialId,
-          RelationshipType.AssociatesMaterial,
-          'forward'
+          RelationshipType.AssociatesMaterial
         );
-        for (const entityId of associated) {
-          // Last association wins, matching the columnar parser's `.set` build.
-          onDemandMaterialMap.set(entityId, materialId);
+        for (const edge of edges) {
+          let list = onDemandMaterialMap.get(edge.target);
+          let relIds = materialRelIds.get(edge.target);
+          if (!list || !relIds) {
+            list = []; onDemandMaterialMap.set(edge.target, list);
+            relIds = []; materialRelIds.set(edge.target, relIds);
+          }
+          // Insert in rel-express-id order (lists are tiny).
+          let at = relIds.length;
+          while (at > 0 && relIds[at - 1] > edge.relationshipId) at--;
+          relIds.splice(at, 0, edge.relationshipId);
+          list.splice(at, 0, materialId);
         }
       }
     }

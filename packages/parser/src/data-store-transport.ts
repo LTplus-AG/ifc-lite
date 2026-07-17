@@ -280,7 +280,7 @@ export interface DataStoreTransport {
   onDemandPropertyMap: Array<[number, number[]]>;
   onDemandQuantityMap: Array<[number, number[]]>;
   onDemandClassificationMap: Array<[number, number[]]>;
-  onDemandMaterialMap: Array<[number, number]>;
+  onDemandMaterialMap: Array<[number, number[]]>;
   onDemandDocumentMap: Array<[number, number[]]>;
 
   memory?: ParserMemorySnapshot;

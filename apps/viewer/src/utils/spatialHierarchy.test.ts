@@ -506,7 +506,7 @@ describe('rebuildOnDemandMaps', () => {
     );
 
     assert.equal(onDemandMaterialMap.size, 1);
-    assert.equal(onDemandMaterialMap.get(5), 10);
+    assert.deepEqual(onDemandMaterialMap.get(5), [10]);
     assert.deepEqual(onDemandPropertyMap.get(5), [20]);
   });
 
@@ -524,6 +524,61 @@ describe('rebuildOnDemandMaps', () => {
     ]));
 
     const { onDemandMaterialMap } = rebuildOnDemandMaps(entities.build(), builder.build(), entityIndex);
-    assert.equal(onDemandMaterialMap.get(5), 40);
+    assert.deepEqual(onDemandMaterialMap.get(5), [40]);
+  });
+
+  it('picks the LOWEST rel express id when an element has multiple associations (parse parity)', () => {
+    // The columnar parser's winner rule is "lowest IfcRelAssociatesMaterial
+    // express id". The rebuild iterates byType buckets — a DIFFERENT order —
+    // so it must decide by edge relationshipId, not encounter order. Bucket
+    // order here is adversarial: the losing material (#41, via later rel #200)
+    // is enumerated FIRST.
+    const strings = new StringTable();
+    const entities = new EntityTableBuilder(3, strings);
+    entities.add(5, 'IFCWALL', 'w0', 'Wall', '', '', true);
+    entities.add(40, 'IFCMATERIALLAYERSET', 'ls0', 'Buildup', '', '');
+    entities.add(41, 'IFCMATERIAL', 'm0', 'Fallback', '', '');
+
+    const builder = new RelationshipGraphBuilder();
+    builder.addEdge(41, 5, RelationshipType.AssociatesMaterial, 200); // later rel
+    builder.addEdge(40, 5, RelationshipType.AssociatesMaterial, 100); // earlier rel → winner
+
+    const entityIndex = makeEntityIndex(new Map<string, number[]>([
+      ['IFCMATERIAL', [41]],          // losing def enumerated first
+      ['IFCMATERIALLAYERSET', [40]],
+    ]));
+
+    const { onDemandMaterialMap } = rebuildOnDemandMaps(entities.build(), builder.build(), entityIndex);
+    assert.deepEqual(onDemandMaterialMap.get(5), [40, 41], 'list[0] = RelatingMaterial of the lowest rel express id');
+  });
+
+  it('recognises IFC4 material subtypes as RelatingMaterial (cache parity)', () => {
+    // IfcMaterialLayerWithOffsets / IfcMaterialProfileWithOffsets /
+    // IfcMaterialProfileSetUsageTapering are legal IfcMaterialSelect members;
+    // a fresh parse maps them, so the cache rebuild must too.
+    const strings = new StringTable();
+    const entities = new EntityTableBuilder(6, strings);
+    entities.add(5, 'IFCWALL', 'w0', 'Wall', '', '', true);
+    entities.add(6, 'IFCCOLUMN', 'c0', 'Column', '', '', true);
+    entities.add(7, 'IFCBEAM', 'b0', 'Beam', '', '', true);
+    entities.add(60, 'IFCMATERIALLAYERWITHOFFSETS', 'lo0', 'Layer', '', '');
+    entities.add(61, 'IFCMATERIALPROFILEWITHOFFSETS', 'po0', 'Profile', '', '');
+    entities.add(62, 'IFCMATERIALPROFILESETUSAGETAPERING', 'pt0', 'Taper', '', '');
+
+    const builder = new RelationshipGraphBuilder();
+    builder.addEdge(60, 5, RelationshipType.AssociatesMaterial, 100);
+    builder.addEdge(61, 6, RelationshipType.AssociatesMaterial, 101);
+    builder.addEdge(62, 7, RelationshipType.AssociatesMaterial, 102);
+
+    const entityIndex = makeEntityIndex(new Map<string, number[]>([
+      ['IFCMATERIALLAYERWITHOFFSETS', [60]],
+      ['IFCMATERIALPROFILEWITHOFFSETS', [61]],
+      ['IFCMATERIALPROFILESETUSAGETAPERING', [62]],
+    ]));
+
+    const { onDemandMaterialMap } = rebuildOnDemandMaps(entities.build(), builder.build(), entityIndex);
+    assert.deepEqual(onDemandMaterialMap.get(5), [60]);
+    assert.deepEqual(onDemandMaterialMap.get(6), [61]);
+    assert.deepEqual(onDemandMaterialMap.get(7), [62]);
   });
 });

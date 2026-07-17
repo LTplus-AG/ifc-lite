@@ -40,6 +40,20 @@ pub struct EntityMetadata {
     pub global_id: Option<String>,
     /// Name attribute (if present).
     pub name: Option<String>,
+    /// Description attribute at the schema-registry position (issue #1765).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// ObjectType attribute (IfcObject subtypes only; None for IfcTypeObject,
+    /// whose attr 4 is ApplicableOccurrence).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub object_type: Option<String>,
+    /// Tag attribute (IfcElement / IfcTypeProduct layouts; None for spatial
+    /// elements, whose attr 7 is LongName).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tag: Option<String>,
+    /// PredefinedType enum token, dots stripped (e.g. "SOLIDWALL").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub predefined_type: Option<String>,
     /// Whether entity has geometry.
     pub has_geometry: bool,
 }
@@ -74,6 +88,13 @@ pub struct Property {
     /// `None` for untyped values.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub data_type: Option<String>,
+    /// Candidate value list for multi-valued properties (enumerated / bounded /
+    /// list / table), mirroring the WASM `parsePropertyValue().values` — IDS
+    /// facet checks pass when ANY candidate matches (issue #1766). `None` for
+    /// single/reference values and when the list filters down to empty (the
+    /// client treats empty as absent).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub values: Option<Vec<String>>,
 }
 
 /// Quantity set (IfcElementQuantity).

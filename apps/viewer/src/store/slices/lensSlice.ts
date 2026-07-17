@@ -111,6 +111,18 @@ export interface LensSlice {
   lensAppliedColors: Map<number, [number, number, number, number]> | null;
   /** Computed: globalIds to hide via lens rules */
   lensHiddenIds: Set<number>;
+  /** The ids the lens panel pushed into the shared `hiddenEntities` channel on
+   *  behalf of the active lens — ONLY ids the lens NEWLY hid (ids the user had
+   *  already hidden manually are never claimed). Store-level rather than
+   *  component state so a panel unmount/remount keeps ownership and teardown
+   *  restores exactly these ids (see lens-visibility-ownership.ts). */
+  lensAppliedHiddenIds: number[];
+  /** Rule isolation the lens panel applied: the rule id plus the exact ids it
+   *  pushed into the shared `isolatedEntities` channel. Store-level so Clear /
+   *  toggle / delete can still release the isolation channel after the panel
+   *  unmounted and remounted (component-local state would reset to null and
+   *  leave the model stuck isolated). */
+  lensRuleIsolation: { ruleId: string; entityIds: number[] } | null;
   /** Computed: ruleId → matched entity count for the active lens */
   lensRuleCounts: Map<string, number>;
   /** Computed: ruleId → matched entity global IDs for the active lens */
@@ -136,6 +148,8 @@ export interface LensSlice {
   setLensColorMap: (map: Map<number, string>) => void;
   setLensAppliedColors: (map: Map<number, [number, number, number, number]> | null) => void;
   setLensHiddenIds: (ids: Set<number>) => void;
+  setLensAppliedHiddenIds: (ids: number[]) => void;
+  setLensRuleIsolation: (isolation: { ruleId: string; entityIds: number[] } | null) => void;
   setLensRuleCounts: (counts: Map<string, number>) => void;
   setLensRuleEntityIds: (ids: Map<string, number[]>) => void;
   setLensAutoColorLegend: (legend: AutoColorLegendEntry[]) => void;
@@ -171,6 +185,8 @@ export const createLensSlice: StateCreator<LensSlice, [], [], LensSlice> = (set,
   lensColorMap: new Map(),
   lensAppliedColors: null,
   lensHiddenIds: new Set(),
+  lensAppliedHiddenIds: [],
+  lensRuleIsolation: null,
   lensRuleCounts: new Map(),
   lensRuleEntityIds: new Map(),
   lensAutoColorLegend: [],
@@ -221,6 +237,8 @@ export const createLensSlice: StateCreator<LensSlice, [], [], LensSlice> = (set,
   setLensColorMap: (lensColorMap) => set({ lensColorMap }),
   setLensAppliedColors: (lensAppliedColors) => set({ lensAppliedColors }),
   setLensHiddenIds: (lensHiddenIds) => set({ lensHiddenIds }),
+  setLensAppliedHiddenIds: (lensAppliedHiddenIds) => set({ lensAppliedHiddenIds }),
+  setLensRuleIsolation: (lensRuleIsolation) => set({ lensRuleIsolation }),
   setLensRuleCounts: (lensRuleCounts) => set({ lensRuleCounts }),
   setLensRuleEntityIds: (lensRuleEntityIds) => set({ lensRuleEntityIds }),
   setLensAutoColorLegend: (lensAutoColorLegend) => set({ lensAutoColorLegend }),

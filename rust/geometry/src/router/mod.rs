@@ -14,6 +14,7 @@ mod instancing;
 mod layers;
 mod processing;
 mod rtc_offset;
+mod textured;
 mod transforms;
 mod voids;
 

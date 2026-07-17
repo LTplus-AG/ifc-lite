@@ -115,4 +115,90 @@ describe('decodePly', () => {
     const short = truncated.slice(0, truncated.length - 4);
     expect(() => decodePly(short)).toThrow();
   });
+
+  it('rejects a huge declared vertex count backed by a tiny body (no OOM alloc)', () => {
+    // Header claims 1e9 vertices but the body is a handful of bytes: without
+    // the pre-allocation guard this would attempt a ~12GB Float32Array.
+    const header =
+      'ply\n' +
+      'format binary_little_endian 1.0\n' +
+      'element vertex 1000000000\n' +
+      'property float x\nproperty float y\nproperty float z\n' +
+      'end_header\n';
+    const buf = enc.encode(header + 'tiny');
+    expect(() => decodePly(buf)).toThrow(/body bytes|available/i);
+  });
+
+  it('rejects a huge count in an ascii file with a tiny body', () => {
+    const header =
+      'ply\n' +
+      'format ascii 1.0\n' +
+      'element vertex 1000000000\n' +
+      'property float x\nproperty float y\nproperty float z\n' +
+      'end_header\n';
+    const buf = enc.encode(header + '1 2 3\n');
+    expect(() => decodePly(buf)).toThrow(/body bytes|available/i);
+  });
+
+  it('ascii body at the minimum byte floor passes (EOF-terminated); truncated fails', () => {
+    const header =
+      'ply\n' +
+      'format ascii 1.0\n' +
+      'element vertex 2\n' +
+      'property float x\nproperty float y\nproperty float z\n' +
+      'end_header\n';
+    // 2 vertices x 3 properties x 2 bytes ("digit + delimiter") = 12 body
+    // bytes with a trailing newline.
+    const trailing = decodePly(enc.encode(header + '1 2 3\n4 5 6\n'));
+    expect(trailing.pointCount).toBe(2);
+    expect(Array.from(trailing.positions)).toEqual([1, 2, 3, 4, 5, 6]);
+    // A VALID file whose last record is EOF-terminated (no final newline) is
+    // one byte under count*minBytes and must still decode — the floor is
+    // count*minBytes - 1.
+    const exactEof = decodePly(enc.encode(header + '1 2 3\n4 5 6')); // 11 bytes
+    expect(exactEof.pointCount).toBe(2);
+    expect(Array.from(exactEof.positions)).toEqual([1, 2, 3, 4, 5, 6]);
+    // One byte truncated below the floor: rejected before allocation.
+    expect(() => decodePly(enc.encode(header + '1 2 3\n4 5 '))).toThrow(/body bytes|available/i);
+  });
+
+  it('rejects a non-integer element count', () => {
+    // parseInt would silently truncate "1.5" to 1 and decode garbage.
+    const header =
+      'ply\n' +
+      'format ascii 1.0\n' +
+      'element vertex 1.5\n' +
+      'property float x\nproperty float y\nproperty float z\n' +
+      'end_header\n';
+    expect(() => decodePly(enc.encode(header + '1 2 3\n'))).toThrow(/invalid element count/);
+  });
+
+  it('rejects list-valued properties on the vertex element, allows them on faces', () => {
+    // A list on the vertex element makes records variable length: the fixed
+    // binary stride / ascii column map would silently drift into garbage.
+    const badVertex =
+      'ply\n' +
+      'format binary_little_endian 1.0\n' +
+      'element vertex 1\n' +
+      'property float x\nproperty float y\nproperty float z\n' +
+      'property list uchar int vertex_indices\n' +
+      'end_header\n';
+    const body = new Uint8Array(32);
+    const buf = new Uint8Array(enc.encode(badVertex).length + body.length);
+    buf.set(enc.encode(badVertex), 0);
+    expect(() => decodePly(buf)).toThrow(/list-valued properties on the vertex element/);
+
+    // Face lists (skipped elements) stay supported.
+    const withFaces =
+      'ply\n' +
+      'format ascii 1.0\n' +
+      'element vertex 2\n' +
+      'property float x\nproperty float y\nproperty float z\n' +
+      'element face 1\n' +
+      'property list uchar int vertex_indices\n' +
+      'end_header\n';
+    const chunk = decodePly(enc.encode(withFaces + '1 2 3\n4 5 6\n2 0 1\n'));
+    expect(chunk.pointCount).toBe(2);
+    expect(Array.from(chunk.positions)).toEqual([1, 2, 3, 4, 5, 6]);
+  });
 });

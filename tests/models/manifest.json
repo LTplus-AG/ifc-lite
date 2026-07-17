@@ -654,6 +654,11 @@
       "size": 14951
     },
     {
+      "path": "issues/1007_roof_brep_opening_winding.ifc",
+      "sha256": "1740106fe498b12e36b09a4d752d4de538559fbbfadb5aa339e3150ffaf19592",
+      "size": 129717
+    },
+    {
       "path": "issues/218_IFC-test-lite.ifc",
       "sha256": "b0930f29bb27ecbee346d47b5cd6dae227735de452a49aab277696b1e4792964",
       "size": 257513
@@ -734,14 +739,14 @@
       "size": 18659
     },
     {
-      "path": "issues/859_linear_placement_of_signal.ifc",
-      "sha256": "5f2f1b1bf14ddef048a49f4136189e83469a9b15db43b1708bb4c42d0494de13",
-      "size": 228220
-    },
-    {
       "path": "issues/858_indexed_colour_map.ifc",
       "sha256": "2b48006569d06b9d8f77535cc72ee6c21cbe93cfe87704319a7b1934263d81ba",
       "size": 2629
+    },
+    {
+      "path": "issues/859_linear_placement_of_signal.ifc",
+      "sha256": "5f2f1b1bf14ddef048a49f4136189e83469a9b15db43b1708bb4c42d0494de13",
+      "size": 228220
     },
     {
       "path": "issues/953_trimmed_curve_cartesian_arc.ifc",
@@ -759,9 +764,9 @@
       "size": 682646
     },
     {
-      "path": "issues/1007_roof_brep_opening_winding.ifc",
-      "sha256": "1740106fe498b12e36b09a4d752d4de538559fbbfadb5aa339e3150ffaf19592",
-      "size": 129717
+      "path": "textures/ifc-hbim-convento-textures.ifczip",
+      "sha256": "ad03679f51e28162790cecc83ad89be77cbe568249a161570802dee0a7bbff80",
+      "size": 36711602
     },
     {
       "path": "various/01_BIMcollab_Example_ARC.ifc",

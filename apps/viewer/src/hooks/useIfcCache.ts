@@ -94,7 +94,7 @@ function hydrateCacheStore(
     entityIndex: IfcDataStore['entityIndex'];
     onDemandPropertyMap?: Map<number, number[]>;
     onDemandQuantityMap?: Map<number, number[]>;
-    onDemandMaterialMap?: Map<number, number>;
+    onDemandMaterialMap?: Map<number, number[]>;
   },
 ): IfcDataStore {
   const storeData: IfcStoreData = {
@@ -236,7 +236,7 @@ export function useIfcCache() {
       let entityIndex: IfcDataStore['entityIndex'] = { byId: new Map(), byType: new Map() };
       let onDemandPropertyMap: Map<number, number[]> | undefined;
       let onDemandQuantityMap: Map<number, number[]> | undefined;
-      let onDemandMaterialMap: Map<number, number> | undefined;
+      let onDemandMaterialMap: Map<number, number[]> | undefined;
 
       if (sourceBuffer) {
         source = new Uint8Array(sourceBuffer);

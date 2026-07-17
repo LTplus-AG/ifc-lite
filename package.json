@@ -1,6 +1,6 @@
 {
   "name": "ifc-lite",
-  "version": "4.1.0",
+  "version": "4.1.1",
   "description": "High-performance browser IFC parser & renderer",
   "private": true,
   "type": "module",
@@ -32,6 +32,8 @@
     "check:test-wiring": "node scripts/check-test-wiring.mjs",
     "check:api-surface": "node scripts/check-api-surface.mjs",
     "api-surface:update": "node scripts/check-api-surface.mjs --update",
+    "generate:server-attr-indices": "pnpm turbo build --filter=@ifc-lite/parser && node scripts/generate-server-attr-indices.mjs",
+    "check:server-attr-indices": "pnpm turbo build --filter=@ifc-lite/parser && node scripts/generate-server-attr-indices.mjs --check",
     "test:regression": "node scripts/test-geometry-regression.mjs",
     "test:esm": "node scripts/verify-esm-entrypoints.mjs",
     "test:ids-corpus": "node scripts/test-ids-corpus.mjs",

@@ -41,6 +41,31 @@ const TEXT_DECODER = new TextDecoder();
 export function decodePcd(buffer: Uint8Array): DecodedPointChunk {
   const header = parseHeader(buffer);
 
+  // Guard against a header that declares a huge point count backed by a tiny
+  // body: the decoders allocate `pointCount*3` floats up front, so an
+  // attacker-declared count would OOM before any read fails. Each point needs
+  // at least `minBytesPerPoint` body bytes — exact for `binary` (pointStride),
+  // a conservative floor for `ascii` (≥1 digit + 1 delimiter per column). The
+  // `binary_compressed` path is bounded separately in its decoder (the body is
+  // LZF-compressed, so per-point byte math does not apply pre-decompression).
+  if (header.data !== 'binary_compressed') {
+    const availableBytes = buffer.length - header.bodyOffset;
+    const columns = header.fields.reduce((n, f) => n + Math.max(1, f.count), 0);
+    const minBytesPerPoint = header.data === 'ascii' ? Math.max(1, columns * 2) : header.pointStride;
+    // ascii: the LAST record needs no trailing separator (EOF terminates it),
+    // so the floor is one byte less than pointCount * minBytesPerPoint.
+    const minBodyBytes =
+      header.data === 'ascii' && header.pointCount > 0
+        ? header.pointCount * minBytesPerPoint - 1
+        : header.pointCount * minBytesPerPoint;
+    if (minBytesPerPoint > 0 && minBodyBytes > availableBytes) {
+      throw new Error(
+        `PCD: declared ${header.pointCount} points need at least ` +
+          `${minBodyBytes} body bytes but only ${availableBytes} are available`,
+      );
+    }
+  }
+
   let positions: Float32Array;
   let colors: Float32Array | undefined;
 
@@ -116,8 +141,21 @@ function parseHeader(buffer: Uint8Array): PcdHeader {
     if (type !== 'F' && type !== 'I' && type !== 'U') {
       throw new Error(`PCD: unsupported field TYPE "${type}"`);
     }
+    // SIZE/COUNT feed offset and stride arithmetic that every subsequent read
+    // trusts: fractional, zero, negative, or absurd values must be rejected
+    // here rather than surface as NaN offsets or a poisoned stride.
+    if (
+      !Number.isSafeInteger(size) || size <= 0 ||
+      !Number.isSafeInteger(count) || count <= 0 ||
+      !Number.isSafeInteger(size * count)
+    ) {
+      throw new Error(`PCD: invalid field SIZE or COUNT (size=${size}, count=${count})`);
+    }
     fields.push({ name: fieldNames[i], size, type, count, offset: stride });
     stride += size * count;
+    if (!Number.isSafeInteger(stride)) {
+      throw new Error('PCD: field stride overflow');
+    }
   }
 
   const width = widthRaw !== undefined ? parseInt(widthRaw, 10) : 0;
@@ -250,6 +288,31 @@ function decodeBinaryCompressed(buffer: Uint8Array, header: PcdHeader): { positi
       `does not match fields*points=${expectedUncompressed}`);
   }
   const compressed = buffer.subarray(header.bodyOffset + 8, header.bodyOffset + 8 + compressedSize);
+  // Bound the decompression target. `decompressLZF` allocates
+  // `uncompressedSize` up front, so a tiny compressed blob declaring a giant
+  // uncompressed size would OOM before the first decode step fails. Two guards:
+  //  1. An absolute ceiling: no real PCD needs a multi-GB SoA body, and the
+  //     decoder's own Float32Arrays would multiply it further.
+  //  2. A format-derived expansion ratio: LZF's densest opcode is the extended
+  //     back-reference — 3 input bytes (ctrl 0xE0..0xFF, extended length,
+  //     offset) emitting up to 7+255+2 = 264 output bytes, i.e. 88x. Genuinely
+  //     repetitive real-world clouds can approach that, so the bound must sit
+  //     at/above 88 (the previous 64x rejected valid files); 90 adds slack for
+  //     the leading literal without weakening the tiny-input/huge-output block.
+  const MAX_UNCOMPRESSED_BYTES = 1 << 30; // 1 GiB
+  const MAX_LZF_RATIO = 90;
+  if (uncompressedSize > MAX_UNCOMPRESSED_BYTES) {
+    throw new Error(
+      `PCD binary_compressed: declared uncompressed=${uncompressedSize} exceeds ` +
+        `the ${MAX_UNCOMPRESSED_BYTES}-byte decode ceiling`,
+    );
+  }
+  if (uncompressedSize > compressed.length * MAX_LZF_RATIO) {
+    throw new Error(
+      `PCD binary_compressed: declared uncompressed=${uncompressedSize} exceeds ` +
+        `${MAX_LZF_RATIO}x the ${compressed.length}-byte compressed body`,
+    );
+  }
   const raw = decompressLZF(compressed, uncompressedSize);
 
   // SoA layout: contiguous block per field. Compute each field's start.

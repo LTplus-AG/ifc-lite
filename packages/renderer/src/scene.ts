@@ -23,6 +23,7 @@ import { sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
 import { simplifyIndicesByClustering, lodCellSizeForBounds, LOD_MIN_TRIANGLES } from './lod-simplify.js';
 import { quantizeInterleaved } from './quantize.js';
 import { bucketBaseKeyFor, type SpatialChunkingConfig } from './chunk-grid.js';
+import { VisibilityEpochTracker } from './visibility-epoch.js';
 import { selectEvictions, type ResidencyShell, type ColdGeometryProvider } from './residency.js';
 import { OPAQUE_ALPHA_CUTOFF } from './overlay-routing.js';
 import type { DecodedInstancedShard } from '@ifc-lite/geometry';
@@ -69,6 +70,10 @@ export interface TexturedMesh {
   bindGroup: GPUBindGroup;
   /** Authored tint (multiplies the sampled texel); white = texture passthrough. */
   color: [number, number, number, number];
+  /** Set when `texture` lives in the shared registry (#1781: one GPU texture
+   *  per `IfcImageTexture`, sampled by many meshes) — released by refcount,
+   *  never destroyed per-mesh. Undefined for per-mesh #961 blob/pixel uploads. */
+  sharedTextureKey?: number;
 }
 
 function destroyGpuResources(
@@ -140,6 +145,10 @@ export class Scene {
   private meshDataMap: Map<number, MeshData[]> = new Map();         // Map expressId -> MeshData[] (for lazy buffer creation, accumulates multiple pieces)
   private boundingBoxes: Map<number, BoundingBox> = new Map();      // Map expressId -> bounding box (computed lazily)
   private texturedMeshes: TexturedMesh[] = [];                      // #961: IFC surface-textured meshes (own buffers/texture/bindGroup)
+  /** #1781: GPU textures shared across meshes, keyed by `MeshTextureRef.textureId`
+   *  (one `IfcImageTexture` → one upload, sampled by every face set mapping it).
+   *  Refcounted: entries die when the last referencing mesh is removed / on clear(). */
+  private sharedTextures = new Map<number, { texture: GPUTexture; refs: number }>();
   private texturedDevice?: GPUDevice;                               // #961: cached for textured-mesh re-upload on translate
   private instancedTemplates: InstancedTemplateGPU[] = [];          // GPU-instancing: unique templates + per-occurrence buffers (fed by addInstancedShard)
   private instancedVisible = true;                                  // GPU-instancing: hidden in Types view mode (instanced geometry is class-0 occurrences)
@@ -150,8 +159,11 @@ export class Scene {
   private instancedHidden: Set<number> = new Set();               // currently hidden instanced express_ids (hide/isolate)
   private instancedOverridden: Set<number> = new Set();            // currently colour-overridden instanced express_ids
   private instancedHasTransparent = false;                         // an override made some instanced occurrence translucent
-  private lastInstancedHiddenIds: ReadonlySet<number> | null = null;   // ref-equality guard for setInstancedVisibility
-  private lastInstancedIsolatedIds: ReadonlySet<number> | null = null;
+  // Content-based change guard for setInstancedVisibility — same contract as
+  // RenderOptions.hiddenIds (in-place mutation and fresh identical Sets both
+  // behave), keeping the instanced path in lockstep with the batched path.
+  private readonly instancedVisibilityEpochs = new VisibilityEpochTracker();
+  private lastInstancedVisibilityVersion = -1;
   private instancedVisibilityDirty = false;                       // set when a new shard adds occurrences → re-apply visibility
 
   // Buffer-size-aware bucket splitting: when a single color group's geometry
@@ -209,6 +221,11 @@ export class Scene {
   // This allows rendering partially visible batches as single draw calls instead of 10,000+ individual draws
   private partialBatchCache: Map<string, BatchedMesh> = new Map();
   private partialBatchCacheKeys: Map<string, string> = new Map(); // sourceBatchKey -> current cache key (for invalidation)
+  // sourceBatchKey -> visibility/override epoch its cached partial batch was
+  // built for. Lets getOrCreatePartialBatch return the cached clone WITHOUT
+  // re-sorting + re-hashing every visible id each frame while the epoch holds
+  // (issue: O(elements) per-frame work under hide/isolate). See render loop.
+  private partialBatchCacheVersions: Map<string, number> = new Map();
 
   // Color overlay system for lens coloring — NEVER modifies original batches.
   // Overlay batches render on top using depthCompare 'equal', so they only
@@ -217,6 +234,11 @@ export class Scene {
   // Defensively-typed: the renderer is the sole writer (via setColorOverrides),
   // external readers go through getColorOverrides() and get a ReadonlyMap.
   private colorOverrides: ReadonlyMap<number, readonly [number, number, number, number]> | null = null;
+  // Bumped whenever the colour-override set changes. The partial sub-batch's
+  // visible subset depends on override promotion (splitVisibleIdsByPromotion),
+  // so the render loop folds this into the partial-batch cache epoch to keep the
+  // per-frame fast path correct when overrides change with no visibility change.
+  private colorOverrideGeneration = 0;
 
   // Streaming optimization: track pending batch rebuilds
   private pendingBatchKeys: Set<string> = new Set();
@@ -688,7 +710,56 @@ export class Scene {
         this.partialBatchCache.delete(cacheKey);
       }
       this.partialBatchCacheKeys.delete(sourceBatchKey);
+      this.partialBatchCacheVersions.delete(sourceBatchKey);
     }
+  }
+
+  /** Destroy + drop EVERY cached partial sub-batch. The clones built during
+   *  hide/isolate are deliberately excluded from the GPU residency budget and
+   *  are otherwise only freed on clear()/finalize/evict — never when filtering
+   *  ends. The render loop calls this on the transition back to fully-visible so
+   *  the ~model-sized clone VRAM is not pinned until the next model reload. Uses
+   *  the same destroy-then-clear idiom as clear(); safe to call between frames
+   *  because the previous frame is already submitted (WebGPU defers the free
+   *  past in-flight work). */
+  dropAllPartialCaches(): void {
+    if (this.partialBatchCache.size === 0
+        && this.partialBatchCacheKeys.size === 0
+        && this.partialBatchCacheVersions.size === 0) {
+      return;
+    }
+    for (const batch of this.partialBatchCache.values()) destroyGpuResources(batch);
+    this.partialBatchCache.clear();
+    this.partialBatchCacheKeys.clear();
+    this.partialBatchCacheVersions.clear();
+  }
+
+  /** Free the hydrated (pick / selection-highlight) individual meshes that are
+   *  no longer selected, destroying their GPU buffers and dropping them from
+   *  `this.meshes`. A mesh is kept iff its expressId is in `keep` AND it
+   *  matches `keepModelIndex` (undefined = any model) — the same predicate the
+   *  render loop uses to draw selection highlights, so disposal is its exact
+   *  complement. The model scoping matters for federation: models can share
+   *  express ids, and an id-only check would strand the OTHER model's hydrated
+   *  mesh resident and drawing when selection moves across models. Only meshes
+   *  flagged `hydrated` are touched — authored geometry added via addMesh()
+   *  and batch geometry are left untouched. Returns how many were freed. */
+  disposeHydratedMeshesExcept(keep: ReadonlySet<number>, keepModelIndex?: number): number {
+    if (this.meshes.length === 0) return 0;
+    const kept: Mesh[] = [];
+    let disposed = 0;
+    for (const mesh of this.meshes) {
+      const keepMesh = keep.has(mesh.expressId)
+        && (keepModelIndex === undefined || mesh.modelIndex === keepModelIndex);
+      if (mesh.hydrated && !keepMesh) {
+        destroyGpuResources(mesh);
+        disposed++;
+      } else {
+        kept.push(mesh);
+      }
+    }
+    if (disposed > 0) this.meshes = kept;
+    return disposed;
   }
 
   /**
@@ -1020,10 +1091,10 @@ export class Scene {
     // otherwise a flat-colour copy would be drawn over the texture. Still
     // register them in meshDataMap (addMeshData) so CPU picking/bbox/frame work.
     let renderable = meshDataArray;
-    if (meshDataArray.some((m) => m.texture && m.uvs)) {
+    if (meshDataArray.some((m) => Scene.hasRenderableTexture(m))) {
       renderable = [];
       for (const meshData of meshDataArray) {
-        if (meshData.texture && meshData.uvs) {
+        if (Scene.hasRenderableTexture(meshData)) {
           this.createTexturedMesh(meshData, device, pipeline);
           this.addMeshData(meshData);
         } else {
@@ -1209,7 +1280,7 @@ export class Scene {
       tm.vertexBuffer.destroy();
       tm.indexBuffer.destroy();
       tm.uniformBuffer.destroy();
-      tm.texture.destroy();
+      this.releaseTexturedMeshTexture(tm);
       this.texturedMeshes.splice(i, 1);
       removedDedicated = true;
     }
@@ -1393,7 +1464,7 @@ export class Scene {
     // re-interleave + re-upload the moved textured parts (paired by expressId,
     // in creation order). Without this a moved textured entity renders stale.
     if (this.texturedDevice && this.texturedMeshes.length > 0) {
-      const texturedData = meshDataList.filter((md) => md.texture && md.uvs);
+      const texturedData = meshDataList.filter((md) => Scene.hasRenderableTexture(md));
       if (texturedData.length > 0) {
         const entries = this.texturedMeshes.filter((tm) => tm.expressId === expressId);
         for (let i = 0; i < entries.length && i < texturedData.length; i++) {
@@ -1586,7 +1657,7 @@ export class Scene {
     // #961: textured meshes render from their own GPU vertex buffer — re-upload
     // the rotated parts so they don't render stale (mirrors the translate path).
     if (this.texturedDevice && this.texturedMeshes.length > 0) {
-      const texturedData = meshDataList.filter((md) => md.texture && md.uvs);
+      const texturedData = meshDataList.filter((md) => Scene.hasRenderableTexture(md));
       if (texturedData.length > 0) {
         const entries = this.texturedMeshes.filter((tm) => tm.expressId === expressId);
         for (let i = 0; i < entries.length && i < texturedData.length; i++) {
@@ -1886,9 +1957,7 @@ export class Scene {
     this.residencyRestoreQueue.clear();
     this.pendingBatchKeys.clear();
     // Destroy cached partial batches — their colorKeys are now stale
-    for (const batch of this.partialBatchCache.values()) destroyGpuResources(batch);
-    this.partialBatchCache.clear();
-    this.partialBatchCacheKeys.clear();
+    this.dropAllPartialCaches();
 
     // Re-seat the carried cold shells in the fresh bucket map (their GPU
     // shells re-enter the flat array via rebuildPendingBatches below).
@@ -1974,9 +2043,7 @@ export class Scene {
     this.lastDrawnFrame.clear();
     this.residencyRestoreQueue.clear();
     this.pendingBatchKeys.clear();
-    for (const batch of this.partialBatchCache.values()) destroyGpuResources(batch);
-    this.partialBatchCache.clear();
-    this.partialBatchCacheKeys.clear();
+    this.dropAllPartialCaches();
 
     // Re-seat the carried cold shells in the fresh bucket map.
     for (const [key, bucket] of carriedCold) this.buckets.set(key, bucket);
@@ -2102,9 +2169,7 @@ export class Scene {
     this.coldBuckets.clear();
     this.dirtyBuckets.clear();
     this.pendingBatchKeys.clear();
-    for (const batch of this.partialBatchCache.values()) destroyGpuResources(batch);
-    this.partialBatchCache.clear();
-    this.partialBatchCacheKeys.clear();
+    this.dropAllPartialCaches();
     this.geometryReleased = true;
     this.ephemeralStreamingMode = false;
   }
@@ -2191,9 +2256,7 @@ export class Scene {
     this.dirtyBuckets.clear();
 
     // 3. Clear partial batch cache (would need mesh data to rebuild)
-    for (const batch of this.partialBatchCache.values()) destroyGpuResources(batch);
-    this.partialBatchCache.clear();
-    this.partialBatchCacheKeys.clear();
+    this.dropAllPartialCaches();
 
     this.geometryReleased = true;
 
@@ -2560,10 +2623,28 @@ export class Scene {
     colorKey: string,
     visibleIds: Set<number>,
     device: GPUDevice,
-    pipeline: RenderPipeline
+    pipeline: RenderPipeline,
+    visibilityEpoch?: number
   ): BatchedMesh | undefined {
     // Cannot create partial batches after geometry data has been released
     if (this.geometryReleased) return undefined;
+
+    // Fast path (PERF): while the visibility + colour-override epoch is
+    // unchanged, the visible subset for this sourceBatch is provably identical
+    // to what we cached (the source batch is immutable per id and both hide/
+    // isolate and override promotion are folded into the epoch). Return the
+    // cached clone WITHOUT the O(n) sort + FNV hash below. A rebuilt/evicted
+    // source batch gets a new id → new sourceBatchKey → cache miss here.
+    if (
+      visibilityEpoch !== undefined &&
+      this.partialBatchCacheVersions.get(sourceBatchKey) === visibilityEpoch
+    ) {
+      const key = this.partialBatchCacheKeys.get(sourceBatchKey);
+      if (key !== undefined) {
+        const cached = this.partialBatchCache.get(key);
+        if (cached) return cached;
+      }
+    }
 
     // Create cache key from colorKey + deterministic hash of all visible IDs
     // Using a proper hash over all IDs to avoid collisions when middle IDs differ
@@ -2583,7 +2664,13 @@ export class Scene {
     const currentCacheKey = this.partialBatchCacheKeys.get(sourceBatchKey);
     if (currentCacheKey === cacheKey) {
       const cached = this.partialBatchCache.get(cacheKey);
-      if (cached) return cached;
+      if (cached) {
+        // Record the epoch so subsequent frames take the sort-free fast path.
+        if (visibilityEpoch !== undefined) {
+          this.partialBatchCacheVersions.set(sourceBatchKey, visibilityEpoch);
+        }
+        return cached;
+      }
     }
 
     // Invalidate old cache for this colorKey if visibility changed
@@ -2627,6 +2714,9 @@ export class Scene {
     // Cache it
     this.partialBatchCache.set(cacheKey, partialBatch);
     this.partialBatchCacheKeys.set(sourceBatchKey, cacheKey);
+    if (visibilityEpoch !== undefined) {
+      this.partialBatchCacheVersions.set(sourceBatchKey, visibilityEpoch);
+    }
 
     return partialBatch;
   }
@@ -2652,6 +2742,9 @@ export class Scene {
   ): void {
     // Destroy previous overlay batches
     this.destroyOverrideBatches();
+    // The override set is changing — invalidate the partial-batch cache epoch so
+    // the render loop rebuilds any promotion-split sub-batches (see render loop).
+    this.colorOverrideGeneration++;
 
     if (this.geometryReleased) {
       console.warn('[Scene] setColorOverrides called after geometry data was released — skipping.');
@@ -2712,8 +2805,16 @@ export class Scene {
    */
   clearColorOverrides(): void {
     this.destroyOverrideBatches();
+    this.colorOverrideGeneration++;
     this.colorOverrides = null;
     this.setInstancedColorOverrides(null);
+  }
+
+  /** Monotonic counter that changes whenever the colour-override set changes.
+   *  The render loop folds it into the partial sub-batch cache epoch so the
+   *  per-frame fast path stays correct across override changes. */
+  getColorOverrideGeneration(): number {
+    return this.colorOverrideGeneration;
   }
 
   /** Get overlay batches for rendering */
@@ -3153,21 +3254,22 @@ export class Scene {
   ): void {
     const device = this.instancedDevice;
     if (!device || this.instancedTemplates.length === 0) return;
-    // Called every render frame. The viewer passes stable Set references that only
-    // change when visibility changes, so a reference-equality guard skips the O(N)
-    // set rebuild + allocation during orbit (the common, unchanged case). The dirty
-    // flag forces a recompute after a new shard adds occurrences mid-stream, so an
+    // Called every render frame. Change detection is by CONTENT (the tracker
+    // snapshot-compares), matching the RenderOptions.hiddenIds contract: an
+    // in-place mutation of the caller's Set is seen, a fresh identical Set is
+    // not treated as a change, and the O(occurrences) rebuild below still only
+    // runs on a real visibility change (orbit stays cheap). The dirty flag
+    // forces a recompute after a new shard adds occurrences mid-stream, so an
     // active isolate/hide also applies to geometry that streams in afterwards.
+    const visibilityVersion = this.instancedVisibilityEpochs.update(hiddenIds, isolatedIds);
     if (
       !this.instancedVisibilityDirty &&
-      hiddenIds === this.lastInstancedHiddenIds &&
-      isolatedIds === this.lastInstancedIsolatedIds
+      visibilityVersion === this.lastInstancedVisibilityVersion
     ) {
       return;
     }
     this.instancedVisibilityDirty = false;
-    this.lastInstancedHiddenIds = hiddenIds ?? null;
-    this.lastInstancedIsolatedIds = isolatedIds ?? null;
+    this.lastInstancedVisibilityVersion = visibilityVersion;
     const isHidden = (eid: number): boolean =>
       (hiddenIds != null && hiddenIds.has(eid)) ||
       (isolatedIds != null && !isolatedIds.has(eid));
@@ -3276,6 +3378,16 @@ export class Scene {
    * The per-frame uniform (viewProj/section/flags + colour tint) is written by
    * the renderer each frame, mirroring how colour batches are driven.
    */
+  /** True when the mesh can render through the textured pipeline: UVs plus
+   *  either a Rust-decoded image (#961) or a viewer-resolved ImageBitmap for
+   *  an external `IfcImageTexture` reference (#1781). A `textureRef` whose
+   *  image was NOT resolved (missing zip sibling) renders as ordinary
+   *  flat-colour geometry instead. */
+  private static hasRenderableTexture(meshData: MeshData): boolean {
+    return Boolean(meshData.uvs) &&
+      Boolean(meshData.texture || (meshData.textureRef && meshData.textureBitmap));
+  }
+
   /**
    * Interleave a textured mesh's vertices into the stride-36 layout
    * `[px,py,pz, nx,ny,nz, entityId(u32), u,v]`. Shared by initial upload and
@@ -3284,7 +3396,7 @@ export class Scene {
    */
   private interleaveTexturedVertices(meshData: MeshData): ArrayBuffer | null {
     const uvs = meshData.uvs;
-    if (!meshData.texture || !uvs) return null;
+    if (!Scene.hasRenderableTexture(meshData) || !uvs) return null;
     const positions = meshData.positions;
     const normals = meshData.normals;
     const vertexCount = positions.length / 3;
@@ -3315,8 +3427,10 @@ export class Scene {
 
   private createTexturedMesh(meshData: MeshData, device: GPUDevice, pipeline: RenderPipeline): void {
     const tex = meshData.texture;
+    const ref = meshData.textureRef;
+    const bitmap = meshData.textureBitmap;
     const interleaved = this.interleaveTexturedVertices(meshData);
-    if (!tex || !interleaved) return;
+    if (!interleaved || !(tex || (ref && bitmap))) return;
     this.texturedDevice = device; // reused by translateMeshesForEntity re-upload
 
     const vertexBuffer = device.createBuffer({
@@ -3331,23 +3445,58 @@ export class Scene {
     });
     device.queue.writeBuffer(indexBuffer, 0, meshData.indices);
 
-    // Upload the Rust-decoded RGBA8 verbatim — no image decoding in JS.
-    const texture = device.createTexture({
-      size: { width: tex.width, height: tex.height },
-      format: 'rgba8unorm',
-      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
-    });
-    device.queue.writeTexture(
-      { texture },
-      tex.rgba,
-      { bytesPerRow: tex.width * 4, rowsPerImage: tex.height },
-      { width: tex.width, height: tex.height },
-    );
+    let texture: GPUTexture;
+    let sharedTextureKey: number | undefined;
+    if (tex) {
+      // #961: upload the Rust-decoded RGBA8 verbatim — no image decoding in JS.
+      texture = device.createTexture({
+        size: { width: tex.width, height: tex.height },
+        format: 'rgba8unorm',
+        usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+      });
+      device.queue.writeTexture(
+        { texture },
+        tex.rgba,
+        { bytesPerRow: tex.width * 4, rowsPerImage: tex.height },
+        { width: tex.width, height: tex.height },
+      );
+    } else {
+      // #1781: external image texture — the viewer decoded the `.ifcZIP`
+      // sibling to an ImageBitmap once per textureId; upload it ONCE and share
+      // the GPU texture across every mesh sampling it (real files map one
+      // 4096² image from dozens of face sets — per-mesh copies would be GBs).
+      const refKey = ref!.textureId;
+      const bmp = bitmap!;
+      let entry = this.sharedTextures.get(refKey);
+      if (!entry) {
+        const gpuTex = device.createTexture({
+          size: { width: bmp.width, height: bmp.height },
+          format: 'rgba8unorm',
+          // RENDER_ATTACHMENT is required by copyExternalImageToTexture.
+          usage:
+            GPUTextureUsage.TEXTURE_BINDING |
+            GPUTextureUsage.COPY_DST |
+            GPUTextureUsage.RENDER_ATTACHMENT,
+        });
+        device.queue.copyExternalImageToTexture(
+          { source: bmp },
+          { texture: gpuTex },
+          { width: bmp.width, height: bmp.height },
+        );
+        entry = { texture: gpuTex, refs: 0 };
+        this.sharedTextures.set(refKey, entry);
+      }
+      entry.refs++;
+      texture = entry.texture;
+      sharedTextureKey = refKey;
+    }
 
+    const repeatS = tex ? tex.repeatS : ref!.repeatS;
+    const repeatT = tex ? tex.repeatT : ref!.repeatT;
     const wrap = (repeat: boolean): GPUAddressMode => (repeat ? 'repeat' : 'clamp-to-edge');
     const sampler = device.createSampler({
-      addressModeU: wrap(tex.repeatS),
-      addressModeV: wrap(tex.repeatT),
+      addressModeU: wrap(repeatS),
+      addressModeV: wrap(repeatT),
       magFilter: 'linear',
       minFilter: 'linear',
       mipmapFilter: 'linear',
@@ -3369,7 +3518,25 @@ export class Scene {
       sampler,
       bindGroup,
       color: meshData.color,
+      ...(sharedTextureKey !== undefined ? { sharedTextureKey } : {}),
     });
+  }
+
+  /** Release a textured mesh's GPU texture: shared (#1781) entries decrement
+   *  the registry refcount and die with their LAST reference; per-mesh (#961)
+   *  uploads are destroyed outright. */
+  private releaseTexturedMeshTexture(tm: TexturedMesh): void {
+    if (tm.sharedTextureKey === undefined) {
+      tm.texture.destroy();
+      return;
+    }
+    const entry = this.sharedTextures.get(tm.sharedTextureKey);
+    if (!entry) return;
+    entry.refs--;
+    if (entry.refs <= 0) {
+      entry.texture.destroy();
+      this.sharedTextures.delete(tm.sharedTextureKey);
+    }
   }
 
   clear(): void {
@@ -3379,9 +3546,13 @@ export class Scene {
       tm.vertexBuffer.destroy();
       tm.indexBuffer.destroy();
       tm.uniformBuffer.destroy();
-      tm.texture.destroy();
+      this.releaseTexturedMeshTexture(tm);
     }
     this.texturedMeshes = [];
+    // Belt-and-braces: refcounting above should have emptied the registry;
+    // destroy any straggler so clear() can never leak a shared GPU texture.
+    for (const entry of this.sharedTextures.values()) entry.texture.destroy();
+    this.sharedTextures.clear();
     // GPU-instancing templates own their vertex/index/instance buffers.
     for (const it of this.instancedTemplates) {
       it.vertexBuffer.destroy();
@@ -3395,12 +3566,13 @@ export class Scene {
     this.instancedHidden.clear();
     this.instancedOverridden.clear();
     this.instancedHasTransparent = false;
-    this.lastInstancedHiddenIds = null;
-    this.lastInstancedIsolatedIds = null;
+    // Force the next setInstancedVisibility to recompute against fresh state.
+    this.lastInstancedVisibilityVersion = -1;
     this.instancedVisibilityDirty = false;
     this.instancedDevice = undefined;
-    // Clear partial batch cache
-    for (const batch of this.partialBatchCache.values()) destroyGpuResources(batch);
+    // Clear partial batch cache (destroys buffers + drops all cache maps)
+    this.dropAllPartialCaches();
+    this.colorOverrideGeneration++;
     // Destroy streaming fragments (already included in batchedMeshes, but tracked separately)
     this.streamingFragments = [];
     this.destroyOverrideBatches();
@@ -3420,8 +3592,6 @@ export class Scene {
     this.dirtyBuckets.clear();
     this.cachedMaxBufferSize = 0;
     this.pendingBatchKeys.clear();
-    this.partialBatchCache.clear();
-    this.partialBatchCacheKeys.clear();
     this.meshQueue = [];
     this.meshQueueReadIndex = 0;
     this.geometryReleased = false;

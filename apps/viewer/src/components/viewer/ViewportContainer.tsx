@@ -4,6 +4,7 @@
 
 import { useMemo, useRef, useState, useCallback, useEffect, useSyncExternalStore } from 'react';
 import { useLevelDisplayEffect } from '@/hooks/useLevelDisplayEffect';
+import { ingestDxfFiles, splitDxfFiles } from '@/hooks/ingest/dxfIngest';
 import { Viewport } from './Viewport';
 import {
   initialDragOverlayState,
@@ -49,7 +50,7 @@ import { toast } from '@/components/ui/toast';
 import { TourInvite } from '@/components/tours/TourInvite';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
 import { describeUnsupportedFormat } from '@/hooks/ingest/pointCloudIngest';
-import { Upload, MousePointer, Layers, Info, Command, AlertTriangle, ChevronDown, ExternalLink, Plus, Clock3, Sparkles, ArrowUpRight, PackagePlus, Cloud , GitMerge } from 'lucide-react';
+import { Upload, Command, AlertTriangle, ChevronDown, ExternalLink, Plus, Clock3, Sparkles, ArrowUpRight, PackagePlus, Cloud, GitMerge } from 'lucide-react';
 import { createBlankIfcFile } from '@/utils/createBlankIfc';
 import type { MeshData, CoordinateInfo, GeometryResult, PointCloudAsset } from '@ifc-lite/geometry';
 import { type IfcDataStore, type MapConversion } from '@ifc-lite/parser';
@@ -562,8 +563,14 @@ export function ViewportContainer() {
     // once this handler returns, so this must run before any await.
     const handlesPromise = handlesFromDataTransfer(e.dataTransfer);
 
+    // DXF reference underlays split off before model routing (issue #1782):
+    // a dropped site plan must never replace or federate with the model.
+    const allDropped0 = Array.from(e.dataTransfer.files);
+    const { dxfFiles, modelFiles: allDropped } = splitDxfFiles(allDropped0);
+    if (dxfFiles.length > 0) void ingestDxfFiles(dxfFiles);
+    if (allDropped.length === 0) return;
+
     // Filter to supported files (IFC, IFCX, GLB, point clouds)
-    const allDropped = Array.from(e.dataTransfer.files);
     const supportedFiles = allDropped.filter(isSupportedFile);
 
     if (supportedFiles.length === 0) {
@@ -602,11 +609,18 @@ export function ViewportContainer() {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
+    // DXF reference underlays split off before model routing (issue #1782).
+    const { dxfFiles, modelFiles } = splitDxfFiles(Array.from(files));
+    if (dxfFiles.length > 0) void ingestDxfFiles(dxfFiles);
+
     // Filter to supported files (IFC, IFCX, GLB). The <input> path yields no
     // live handle, so these models are not refreshable.
-    const supportedFiles = Array.from(files).filter(isSupportedFile);
+    const supportedFiles = modelFiles.filter(isSupportedFile);
 
-    if (supportedFiles.length === 0) return;
+    if (supportedFiles.length === 0) {
+      e.target.value = '';
+      return;
+    }
 
     recordRecentFiles(supportedFiles.map((file) => ({ name: file.name, size: file.size })));
     void cacheFileBlobs(supportedFiles);
@@ -629,6 +643,9 @@ export function ViewportContainer() {
     }
     const opened = await openIfcFilesWithHandles();
     if (!opened) return;
+    // DXF reference underlays split off before model routing (issue #1782).
+    const dxfPicked = opened.filter((o) => o.file.name.toLowerCase().endsWith('.dxf'));
+    if (dxfPicked.length > 0) void ingestDxfFiles(dxfPicked.map((o) => o.file));
     const supported = opened.filter((o) => isSupportedFile(o.file));
     if (supported.length === 0) return;
 
@@ -1018,7 +1035,7 @@ export function ViewportContainer() {
         <input
           ref={fileInputRef}
           type="file"
-          accept=".ifc,.ifcx,.ifczip,.glb,.las,.laz,.ply,.pcd,.e57,.pts,.xyz"
+          accept=".ifc,.ifcx,.ifczip,.glb,.las,.laz,.ply,.pcd,.e57,.pts,.xyz,.dxf"
           multiple
           onChange={handleFileSelect}
           className="hidden"
@@ -1149,8 +1166,14 @@ export function ViewportContainer() {
           </div>
         )}
 
-        {/* Empty state content — mobile-optimized padding and scrollable */}
-        <div className="absolute inset-0 flex flex-col items-center justify-center p-4 md:p-8 z-10 overflow-auto">
+        {/* Empty state content — mobile-optimized padding and scrollable.
+            The scroll container must NOT center via justify-center: a flex
+            child taller than an overflow-auto parent gets its top clipped
+            beyond scroll reach (the logo used to vanish under the toolbar
+            on short viewports). Instead an inner min-h-full column centers
+            when there is room and grows scrollably from the top when not. */}
+        <div className="absolute inset-0 z-10 overflow-auto p-4 md:p-8">
+          <div className="min-h-full w-full flex flex-col items-center justify-center">
 
           {/* Main Card */}
           <div {...tourAnchor(TOUR_ANCHORS.emptyStateCard)} className="max-w-md w-full bg-white dark:bg-[#16161e] border border-zinc-300 dark:border-[#3b4261] p-8 flex flex-col items-center transition-transform hover:-translate-y-1 duration-200 shadow-lg">
@@ -1305,27 +1328,9 @@ export function ViewportContainer() {
             )}
           </div>
 
-          {/* Feature Grid — hidden on mobile to save viewport space */}
-          <div className="mt-16 hidden md:grid grid-cols-1 md:grid-cols-3 gap-6 max-w-3xl w-full">
-            {[
-              { icon: MousePointer, label: "Select", desc: "Inspect elements", accentClass: 'text-blue-500 dark:text-[#7aa2f7]' },
-              { icon: Layers, label: "Filter", desc: "Isolate storeys", accentClass: 'text-purple-500 dark:text-[#bb9af7]' },
-              { icon: Info, label: "Analyze", desc: "View properties", accentClass: 'text-cyan-500 dark:text-[#7dcfff]' }
-            ].map((feature, i) => (
-              <div 
-                key={i} 
-                className="p-4 flex items-center gap-4 bg-zinc-100 dark:bg-[#1f2335] border border-zinc-300 dark:border-[#3b4261]"
-              >
-                <div className={`p-2 bg-white dark:bg-[#16161e] border border-zinc-300 dark:border-[#3b4261] ${feature.accentClass}`}>
-                  <feature.icon className="h-5 w-5" />
-                </div>
-                <div>
-                  <h3 className="font-bold uppercase text-sm tracking-wide text-zinc-900 dark:text-[#a9b1d6]">{feature.label}</h3>
-                  <p className="text-xs font-mono text-zinc-500 dark:text-[#565f89]">{feature.desc}</p>
-                </div>
-              </div>
-            ))}
-          </div>
+          {/* The old Select / Filter / Analyze feature-card grid was
+              dropped: it repeated toolbar affordances without offering an
+              action, and its height pushed the welcome card off-screen. */}
 
           {/* Moonshot callout (#1717): Layer PRs are brand new - nobody knows
               to multi-drop .ifcx files, so the welcome screen sells the demo. */}
@@ -1377,6 +1382,7 @@ export function ViewportContainer() {
             </div>
           </div>
 
+          </div>
         </div>
       </div>
     );

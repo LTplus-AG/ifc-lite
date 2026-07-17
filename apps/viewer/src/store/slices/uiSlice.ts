@@ -7,7 +7,15 @@
  */
 
 import type { StateCreator } from 'zustand';
-import { MERGE_LAYERS_STORAGE_KEY, GEOMETRY_MODE_STORAGE_KEY, UI_DEFAULTS, type GeometryMode } from '../constants.js';
+import {
+  MERGE_LAYERS_STORAGE_KEY,
+  GEOMETRY_MODE_STORAGE_KEY,
+  TOOLBAR_STYLE_STORAGE_KEY,
+  RIBBON_COLLAPSED_STORAGE_KEY,
+  UI_DEFAULTS,
+  type GeometryMode,
+  type ToolbarStyle,
+} from '../constants.js';
 import type { ContactShadingQuality, SeparationLinesQuality } from '@ifc-lite/renderer';
 import type { FederatedModel } from '../types.js';
 import type { GeometryResult } from '@ifc-lite/geometry';
@@ -116,6 +124,14 @@ export interface UISlice {
   geometryMode: GeometryMode;
   /** True after the user flipped `geometryMode` while a model was loaded. */
   geometryModePendingReload: boolean;
+  /**
+   * Desktop toolbar style (issue #1686): the original `classic` strip
+   * or the tabbed, IFCFlux-style `ribbon`. Persisted preference — the
+   * mobile toolbar is orthogonal (`isMobile` wins on small screens).
+   */
+  toolbarStyle: ToolbarStyle;
+  /** Ribbon collapsed to its tab strip (Office-style double-click). */
+  ribbonCollapsed: boolean;
 
   // Actions
   setLeftPanelCollapsed: (collapsed: boolean) => void;
@@ -150,6 +166,10 @@ export interface UISlice {
   setGeometryMode: (v: GeometryMode) => void;
   /** Acknowledge the geometry-mode reload banner without performing a reload. */
   clearGeometryModePendingReload: () => void;
+  /** Switch the desktop toolbar style and persist the choice. */
+  setToolbarStyle: (style: ToolbarStyle) => void;
+  /** Collapse/expand the ribbon band and persist the choice. */
+  setRibbonCollapsed: (collapsed: boolean) => void;
 }
 
 /** Apply the correct CSS classes on <html> for the given theme */
@@ -195,6 +215,8 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   mergeLayersPendingReload: false,
   geometryMode: UI_DEFAULTS.GEOMETRY_MODE,
   geometryModePendingReload: false,
+  toolbarStyle: UI_DEFAULTS.TOOLBAR_STYLE,
+  ribbonCollapsed: UI_DEFAULTS.RIBBON_COLLAPSED,
 
   // Actions
   setLeftPanelCollapsed: (leftPanelCollapsed) => set({ leftPanelCollapsed }),
@@ -340,4 +362,25 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   },
 
   clearGeometryModePendingReload: () => set({ geometryModePendingReload: false }),
+
+  setToolbarStyle: (toolbarStyle) => {
+    // Persist eagerly so the next page-load boots straight into the chosen
+    // style (constants.ts `getInitialToolbarStyle`). Wrap in try/catch —
+    // Safari private mode / locked storage throws.
+    try {
+      localStorage.setItem(TOOLBAR_STYLE_STORAGE_KEY, toolbarStyle);
+    } catch (err) {
+      console.warn('[toolbar-style] persist failed; in-memory only', err);
+    }
+    set({ toolbarStyle });
+  },
+
+  setRibbonCollapsed: (ribbonCollapsed) => {
+    try {
+      localStorage.setItem(RIBBON_COLLAPSED_STORAGE_KEY, String(ribbonCollapsed));
+    } catch (err) {
+      console.warn('[ribbon-collapsed] persist failed; in-memory only', err);
+    }
+    set({ ribbonCollapsed });
+  },
 });

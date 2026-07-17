@@ -61,8 +61,27 @@ export function decodeIfcString(str: string): string {
       if (end !== -1) {
         const hex = str.slice(i + 4, end);
         if (hex.length % 4 === 0 && /^[0-9A-Fa-f]+$/.test(hex)) {
+          // Decode the payload as UTF-16 code units WITH pair awareness: a
+          // surrogate pair split across two 4-hex groups combines into one
+          // code point, while a LONE surrogate becomes U+FFFD - matching the
+          // Rust decoder's String::from_utf16_lossy so both parse paths yield
+          // identical strings (an unpaired surrogate would silently turn into
+          // U+FFFD at the first re-encode anyway).
+          const units: number[] = [];
           for (let j = 0; j < hex.length; j += 4) {
-            result += String.fromCharCode(parseInt(hex.slice(j, j + 4), 16));
+            units.push(parseInt(hex.slice(j, j + 4), 16));
+          }
+          for (let k = 0; k < units.length; k++) {
+            const u = units[k];
+            if (u >= 0xD800 && u <= 0xDBFF && k + 1 < units.length
+              && units[k + 1] >= 0xDC00 && units[k + 1] <= 0xDFFF) {
+              result += String.fromCharCode(u, units[k + 1]);
+              k += 1;
+            } else if (u >= 0xD800 && u <= 0xDFFF) {
+              result += '�';
+            } else {
+              result += String.fromCharCode(u);
+            }
           }
           i = end + 4;
           continue;
@@ -77,7 +96,17 @@ export function decodeIfcString(str: string): string {
         const hex = str.slice(i + 4, end);
         if (hex.length % 8 === 0 && /^[0-9A-Fa-f]+$/.test(hex)) {
           for (let j = 0; j < hex.length; j += 8) {
-            result += String.fromCodePoint(parseInt(hex.slice(j, j + 8), 16));
+            const cp = parseInt(hex.slice(j, j + 8), 16);
+            // Guard the scalar: an 8-hex value above the Unicode maximum
+            // (0x10FFFF) makes String.fromCodePoint throw a RangeError - on
+            // the columnar batch-name path that throw propagated uncaught and
+            // aborted the whole model load. Surrogate values (0xD800-0xDFFF)
+            // are not scalar values either (fromCodePoint would produce an
+            // unpaired surrogate); the Rust decoder's char::from_u32 rejects
+            // both cases, so emit U+FFFD for both to keep the paths in parity.
+            const isScalar = Number.isInteger(cp) && cp >= 0 && cp <= 0x10FFFF
+              && !(cp >= 0xD800 && cp <= 0xDFFF);
+            result += isScalar ? String.fromCodePoint(cp) : '�';
           }
           i = end + 4;
           continue;

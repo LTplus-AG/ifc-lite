@@ -4,7 +4,13 @@
 
 import { describe, it, expect } from 'vitest';
 import JSZip from 'jszip';
-import { isZipBuffer, unwrapIfcZip, unwrapIfcZipWithLimit, unwrapIfcZipView } from './ifczip.js';
+import {
+  isZipBuffer,
+  unwrapIfcZip,
+  unwrapIfcZipWithLimit,
+  unwrapIfcZipView,
+  unwrapIfcZipWithResources,
+} from './ifczip.js';
 
 const STEP_HEADER = "ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;";
 
@@ -127,5 +133,58 @@ describe('unwrapIfcZipView', () => {
     expect(new TextDecoder().decode(result)).toBe(STEP_HEADER);
     expect(result.byteLength).toBe(inner.length);
     expect(result).not.toBe(padded.buffer);
+  });
+});
+
+describe('unwrapIfcZipWithResources (#1781)', () => {
+  it('returns non-zip buffers unchanged with an empty resource map', async () => {
+    const buffer = toArrayBuffer(STEP_HEADER);
+    const { model, resources } = await unwrapIfcZipWithResources(buffer);
+    expect(new TextDecoder().decode(model)).toBe(STEP_HEADER);
+    expect(resources.size).toBe(0);
+  });
+
+  it('extracts sibling raster images keyed by lowercased basename', async () => {
+    const zip = await makeZip({
+      'model.ifc': STEP_HEADER,
+      'Textures/Wood_Grain.JPG': 'jpg-bytes',
+      'brick.jpeg': 'jpeg-bytes',
+      'logo.png': 'png-bytes',
+      'readme.txt': 'not an image',
+    });
+    const { model, resources } = await unwrapIfcZipWithResources(zip);
+    expect(new TextDecoder().decode(model)).toBe(STEP_HEADER);
+    expect([...resources.keys()].sort()).toEqual(['brick.jpeg', 'logo.png', 'wood_grain.jpg']);
+    expect(new TextDecoder().decode(resources.get('wood_grain.jpg'))).toBe('jpg-bytes');
+  });
+
+  it('still enforces the single-model-entry rule', async () => {
+    const zip = await makeZip({
+      'a.ifc': STEP_HEADER,
+      'b.ifc': STEP_HEADER,
+      'wood.jpg': 'jpg-bytes',
+    });
+    await expect(unwrapIfcZipWithResources(zip)).rejects.toThrow(/2 model files/);
+  });
+
+  it('first entry wins on a basename collision', async () => {
+    const zip = await makeZip({
+      'model.ifc': STEP_HEADER,
+      'a/wood.jpg': 'first',
+      'b/wood.jpg': 'second',
+    });
+    const { resources } = await unwrapIfcZipWithResources(zip);
+    expect(resources.size).toBe(1);
+    expect(new TextDecoder().decode(resources.get('wood.jpg'))).toBe('first');
+  });
+});
+
+describe('unwrapIfcZipWithResources aggregate budgets (#1781)', () => {
+  it('caps the number of retained images', async () => {
+    const entries: Record<string, string> = { 'model.ifc': STEP_HEADER };
+    for (let i = 0; i < 300; i++) entries[`img_${String(i).padStart(3, '0')}.png`] = 'x';
+    const zip = await makeZip(entries);
+    const { resources } = await unwrapIfcZipWithResources(zip);
+    expect(resources.size).toBe(256);
   });
 });

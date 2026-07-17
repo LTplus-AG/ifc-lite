@@ -1903,9 +1903,9 @@ impl GeometryRouter {
             _ => return Ok(SubMeshCollection::new()),
         };
 
-        // Voided occurrences materialize their cut geometry, never instance an un-cut
-        // shared template (#1623 Phase 2 don't-bake off here).
-        let sub_meshes = self.process_element_with_submeshes_impl(element, decoder, false)?;
+        // Voided occurrences materialize cut geometry (#1623 don't-bake off) with no
+        // texture index (#1781: CSG rebuilds vertices, orphaning UVs — colour wins).
+        let sub_meshes = self.process_element_with_submeshes_impl(element, decoder, false, None)?;
         if sub_meshes.is_empty() {
             return Ok(SubMeshCollection::new());
         }

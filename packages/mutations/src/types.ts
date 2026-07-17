@@ -13,12 +13,18 @@ import type { PropertyValueType } from '@ifc-lite/data';
  *
  * Mirrors the parser's `IfcAttributeValue` to keep `@ifc-lite/mutations` free
  * of a `@ifc-lite/parser` dependency (parser → ifcx → mutations would cycle).
+ *
+ * The extra `{ real: number }` variant is a WRITE-ONLY marker (never produced
+ * by extraction): it forces STEP REAL serialization with a decimal point for
+ * whole numbers (`5.` not `5`), which typed measures like `IfcLengthMeasure`
+ * require. Plain `number` keeps the historical integer-when-whole behavior.
  */
 export type IfcAttributeValue =
   | string
   | number
   | boolean
   | null
+  | { real: number }
   | IfcAttributeValue[];
 
 /**

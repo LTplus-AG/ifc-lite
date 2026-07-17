@@ -114,6 +114,22 @@ fn extract_type_property_links(
 fn extract_relationship(entity: &DecodedEntity, type_name: &str) -> Option<Vec<Relationship>> {
     let type_upper = type_name.to_uppercase();
 
+    // IfcRelVoidsElement / IfcRelFillsElement carry a SINGLE related ref, not a
+    // list, so the list-based path below would call `get_list(5)` on a single
+    // entity ref, get None, and silently drop the relationship. Read both refs
+    // directly. Attribute layout (IFC2X3/4/4X3, both extend IfcRelConnects):
+    //   IfcRelVoidsElement(RelatingBuildingElement=4, RelatedOpeningElement=5)
+    //   IfcRelFillsElement(RelatingOpeningElement=4, RelatedBuildingElement=5)
+    if type_upper == "IFCRELVOIDSELEMENT" || type_upper == "IFCRELFILLSELEMENT" {
+        let relating_id = entity.get_ref(4)?;
+        let related_id = entity.get_ref(5)?;
+        return Some(vec![Relationship {
+            rel_type: type_name.to_string(),
+            relating_id,
+            related_id,
+        }]);
+    }
+
     let (relating_idx, related_idx) = match type_upper.as_str() {
         "IFCRELDEFINESBYPROPERTIES" => (5, 4), // RelatingPropertyDefinition at 5, RelatedObjects at 4
         // RelatingType (single ref) at 5, RelatedObjects (list) at 4 — same

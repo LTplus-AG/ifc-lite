@@ -36,6 +36,7 @@ import { askCommand } from './commands/ask.js';
 import { viewCommand } from './commands/view.js';
 import { analyzeCommand } from './commands/analyze.js';
 import { lodCommand } from './commands/lod.js';
+import { simplifyCommand } from './commands/simplify.js';
 import { mcpCommand } from './commands/mcp.js';
 import { extCommand } from './commands/ext.js';
 import { layerCommand } from './commands/layer.js';
@@ -93,6 +94,7 @@ const HELP = `
     view      <file.ifc> [--port N]              Interactive 3D viewer in browser
     analyze   <file.ifc> --viewer <port>        Query + visualize analysis results
     lod       <file.ifc> --level 0|1            Generate lightweight LOD artifacts
+    simplify  <file.ifc> --out F [--level 1..5] [--ids 1,2,...] [--json]  Demesher: simplify meshes, write lighter IFC
     mcp       <file.ifc> [--transport stdio|http] Start an MCP server bound to one or more IFC files
     ext       validate <path>|init <dir>          Manage IFClite extensions (Phase 0 — validate, init)
     layer     <publish|diff|merge|log|bake|...>    Layered change tracking over a local store (.ifc-lite/)
@@ -290,6 +292,9 @@ async function main(): Promise<void> {
       break;
     case 'lod':
       await lodCommand(commandArgs);
+      break;
+    case 'simplify':
+      await simplifyCommand(commandArgs);
       break;
     case 'mcp':
       await mcpCommand(commandArgs);

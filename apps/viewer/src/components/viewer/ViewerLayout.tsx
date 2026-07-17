@@ -8,6 +8,7 @@ import type { PanelImperativeHandle } from 'react-resizable-panels';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { MainToolbar } from './MainToolbar';
 import { MobileToolbar } from './MobileToolbar';
+import { RibbonToolbar } from './ribbon/RibbonToolbar';
 import { HierarchyPanel } from './HierarchyPanel';
 import { PropertiesPanel } from './PropertiesPanel';
 import { AddElementPanel } from './AddElementPanel';
@@ -84,7 +85,14 @@ export function ViewerLayout() {
   const shortcutsDialog = useKeyboardShortcutsDialog();
 
   // Auto-load a model from ?model=<URL>. Used by the landing-page iframe to drop a
-  // sample IFC into the viewer on first mount. Same-origin or CORS-friendly URLs only.
+  // sample IFC into the viewer on first mount.
+  //
+  // SECURITY: only SAME-ORIGIN model URLs are fetched. `?model=` is fully
+  // attacker-controllable (any link can set it), so honouring an arbitrary
+  // cross-origin URL is a drive-by model-injection vector — a crafted link
+  // would silently pull an attacker's file into the victim's viewer. We resolve
+  // the param against the current document and require its origin to match
+  // window.location.origin; a cross-origin URL is refused, never fetched.
   const { addModel: autoloadAddModel } = useIfc();
   const autoloadDoneRef = useRef(false);
   useEffect(() => {
@@ -93,15 +101,26 @@ export function ViewerLayout() {
     const modelUrl = params.get('model');
     if (!modelUrl) return;
     autoloadDoneRef.current = true;
+    // Resolve (supports relative paths) and enforce same-origin before fetching.
+    let resolvedUrl: URL;
+    try {
+      resolvedUrl = new URL(modelUrl, window.location.href);
+    } catch {
+      console.error('[viewer] autoload from ?model= refused: malformed URL');
+      return;
+    }
+    if (resolvedUrl.origin !== window.location.origin) {
+      console.error(
+        `[viewer] autoload from ?model= refused: cross-origin URL (${resolvedUrl.origin}) - only same-origin models are auto-loaded`,
+      );
+      return;
+    }
     (async () => {
       try {
-        const res = await fetch(modelUrl);
+        const res = await fetch(resolvedUrl.href);
         if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
         const blob = await res.blob();
-        const filename = (() => {
-          try { return new URL(modelUrl, window.location.href).pathname.split('/').pop() || 'model.ifc'; }
-          catch { return 'model.ifc'; }
-        })();
+        const filename = resolvedUrl.pathname.split('/').pop() || 'model.ifc';
         const file = new File([blob], filename, { type: blob.type || 'application/x-step' });
         await autoloadAddModel(file);
       } catch (err) {
@@ -168,6 +187,8 @@ export function ViewerLayout() {
 
   // Initialize theme on mount
   const theme = useViewerStore((s) => s.theme);
+  // Desktop toolbar style (issue #1686): classic strip or tabbed ribbon.
+  const toolbarStyle = useViewerStore((s) => s.toolbarStyle);
   const isMobile = useViewerStore((s) => s.isMobile);
   const setIsMobile = useViewerStore((s) => s.setIsMobile);
   const leftPanelCollapsed = useViewerStore((s) => s.leftPanelCollapsed);
@@ -344,8 +365,13 @@ export function ViewerLayout() {
         <SearchModal />
         <TourHost />
 
-        {/* Main Toolbar — use compact MobileToolbar on mobile */}
-        {isMobile ? <MobileToolbar /> : <MainToolbar onShowShortcuts={shortcutsDialog.toggle} />}
+        {/* Main Toolbar — compact MobileToolbar on mobile; on desktop the
+            user picks classic strip vs tabbed ribbon (issue #1686). */}
+        {isMobile
+          ? <MobileToolbar />
+          : toolbarStyle === 'ribbon'
+            ? <RibbonToolbar onShowShortcuts={shortcutsDialog.toggle} />
+            : <MainToolbar onShowShortcuts={shortcutsDialog.toggle} />}
 
         {/* Main Content Area - Desktop Layout */}
         {!isMobile && (

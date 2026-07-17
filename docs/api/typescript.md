@@ -10,7 +10,7 @@ ifc-lite ships 36 public npm packages: 35 scoped `@ifc-lite/*` packages plus the
 | Package | Description |
 |---------|-------------|
 | [`@ifc-lite/parser`](#ifc-liteparser) | IFC/STEP parser for IFC-Lite |
-| [`@ifc-lite/geometry`](#ifc-litegeometry) | Geometry processing bridge for IFC-Lite - 1.9x faster than web-ifc |
+| [`@ifc-lite/geometry`](#ifc-litegeometry) | Geometry processing bridge for IFC-Lite - exact-arithmetic CSG, streamed across workers |
 | [`@ifc-lite/data`](#ifc-litedata) | Columnar data structures for IFC-Lite |
 | [`@ifc-lite/query`](#ifc-litequery) | Query system for IFC-Lite |
 | [`@ifc-lite/spatial`](#ifc-litespatial) | Spatial indexing for IFC-Lite |

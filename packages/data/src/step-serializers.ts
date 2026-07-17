@@ -91,6 +91,32 @@ export function enumVal(value: string): EnumValue {
 }
 
 /**
+ * Format a finite number as a valid ISO-10303-21 STEP REAL literal.
+ *
+ * A conforming REAL always carries a decimal point in its mantissa and an
+ * uppercase `E` for the exponent. JavaScript's `Number.prototype.toString`
+ * emits neither reliably: an integer-valued exponential prints as `5e-8`
+ * (lowercase `e`, no mantissa dot) and would become an invalid token if a bare
+ * `.` were appended (`5e-8.`). This rewrites the mantissa/exponent into the
+ * STEP form (`5.E-8`, `1.5E-7`, `1.E+21`).
+ *
+ * This is the SINGLE source of the mantissa/`E` rewrite; the export package's
+ * `toStepReal` / `toStepRealScaled` reuse it so the rule lives in one place.
+ * Callers guard non-finite input (`serializeValue` maps it to `$`).
+ */
+export function formatStepReal(value: number): string {
+  const s = value.toString();
+  const e = s.indexOf('e');
+  if (e !== -1) {
+    let mantissa = s.slice(0, e);
+    const exp = s.slice(e + 1);
+    if (!mantissa.includes('.')) mantissa += '.';
+    return `${mantissa}E${exp}`;
+  }
+  return s.includes('.') ? s : `${s}.`;
+}
+
+/**
  * Serialize a single value to STEP format
  */
 export function serializeValue(value: StepValue): string {
@@ -114,14 +140,7 @@ export function serializeValue(value: StepValue): string {
     if (!Number.isFinite(value)) {
       return '$';
     }
-    // Use exponential notation for large/small numbers
-    if (Math.abs(value) > 1e10 || (Math.abs(value) < 1e-10 && value !== 0)) {
-      return value.toExponential(10).toUpperCase().replace('E+', 'E');
-    }
-    // Otherwise use fixed notation
-    const str = value.toString();
-    // Ensure there's a decimal point for REAL values
-    return str.includes('.') ? str : str + '.';
+    return formatStepReal(value);
   }
 
   // String
@@ -152,12 +171,20 @@ export function serializeValue(value: StepValue): string {
 }
 
 /**
- * Escape a string for STEP format
+ * Escape a string for STEP format.
+ *
+ * Backslash and single-quote are doubled per ISO-10303-21. Control characters
+ * (CR/LF and other C0 codes plus DEL) are collapsed to a single space so a
+ * value can never inject a physical line break into the line-oriented STEP
+ * output (matching the export package's escaper) — a raw newline in a header
+ * or attribute value would otherwise split one record across two lines.
  */
 function escapeStepString(str: string): string {
   return str
     .replace(/\\/g, '\\\\')  // Backslash
-    .replace(/'/g, "''");           // Single quote
+    .replace(/'/g, "''")     // Single quote
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\x00-\x1F\x7F]+/g, ' '); // Collapse control chars
 }
 
 /**

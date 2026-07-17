@@ -14,6 +14,9 @@
 
 import type { Renderer } from '@ifc-lite/renderer';
 import {
+  accumulateClassificationCounts,
+  classificationCountEntries,
+  createClassificationCounts,
   streamPointCloud,
   type DecodedPointChunk,
   type StreamHandle,
@@ -91,6 +94,15 @@ export interface PointCloudIngestOptions {
   onProgress?: (progress: { phase: string; percent: number }) => void;
   /** Notified with +1 when streaming starts and -1 if it errors. */
   onAssetCountDelta?: (delta: number) => void;
+  /**
+   * Classification histogram for the streamed scan (#1783). Called
+   * with the renderer handle id and the running classId → point-count
+   * record — periodically during streaming so the classes checklist
+   * fills in progressively, and once more on completion. Called with
+   * `null` when the stream errors (asset removed) or when no chunk
+   * carried classifications.
+   */
+  onClassCounts?: (handleId: number, counts: Record<number, number> | null) => void;
   /** Abort signal to cancel ingest. */
   signal?: AbortSignal;
 }
@@ -287,6 +299,31 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
   const onCountChange = opts.onAssetCountDelta ?? (() => {});
   onCountChange(+1);
 
+  // Running per-class histogram, pushed to the caller periodically so
+  // the classes checklist populates while a large scan is still
+  // streaming (#1783). Every 8 chunks ≈ every 1.6M points at the
+  // default 200k chunk size — frequent enough to feel live, rare
+  // enough not to spam store updates.
+  const classCounts = createClassificationCounts();
+  let sawClassifications = false;
+  let chunksSinceCountsPush = 0;
+  const CHUNKS_PER_COUNTS_PUSH = 8;
+  const pushClassCounts = () => {
+    if (!opts.onClassCounts) return;
+    // A classification-free stream reports null, as documented on the
+    // option — the store treats that as "drop this asset's histogram",
+    // which is a no-op when nothing was ever recorded.
+    if (!sawClassifications) {
+      opts.onClassCounts(handle.id, null);
+      return;
+    }
+    const counts: Record<number, number> = {};
+    for (const { classId, count } of classificationCountEntries(classCounts)) {
+      counts[classId] = count;
+    }
+    opts.onClassCounts(handle.id, counts);
+  };
+
   // `streamPointCloud()` can throw synchronously during validation /
   // worker setup (e.g. invalid `chunkSize`, oversized blob). The
   // renderer asset + counter increment have already happened above, so
@@ -330,6 +367,13 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
         const yUp = swapZupChunkToYup(chunk);
         opts.renderer.appendPointCloudChunk(handle, yUp);
         opts.renderer.requestRender();
+        // Classification histogram — the axis swap doesn't touch the
+        // classifications buffer, so accumulate from the source chunk.
+        sawClassifications = accumulateClassificationCounts(classCounts, chunk) || sawClassifications;
+        if (++chunksSinceCountsPush >= CHUNKS_PER_COUNTS_PUSH) {
+          chunksSinceCountsPush = 0;
+          pushClassCounts();
+        }
       },
       onProgress: (loaded, total) => {
         const pct = total > 0 ? Math.min(99, 10 + Math.floor((loaded / total) * 89)) : 50;
@@ -340,15 +384,18 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
       },
       onComplete: () => {
         opts.renderer.endPointCloudStream(handle);
+        pushClassCounts();
         opts.onProgress?.({ phase: 'Streaming complete', percent: 100 });
       },
       onError: () => {
         opts.renderer.removePointCloudAsset(handle);
+        opts.onClassCounts?.(handle.id, null);
         onCountChange(-1);
       },
     });
   } catch (err) {
     opts.renderer.removePointCloudAsset(handle);
+    opts.onClassCounts?.(handle.id, null);
     onCountChange(-1);
     throw err;
   }

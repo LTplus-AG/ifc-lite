@@ -362,13 +362,23 @@ describe('layer registry route', () => {
       // An approved review object — server-recorded approval — does, but
       // only while it is the LATEST review for the (candidate, ref) pair:
       // a newer review with changes requested supersedes a stale approval.
-      const opened = await post('/reviews', { layer_id: agentLayer.header.id, into: 'agents' });
+      // Protected refs need an explicit reviewer allowlist before an approval
+      // counts — an empty reviewer set would let any principal self-approve.
+      const opened = await post('/reviews', {
+        layer_id: agentLayer.header.id,
+        into: 'agents',
+        reviewers: ['anonymous'],
+      });
       const { id } = (await opened.json()) as { id: string };
       await post(`/reviews/${id}/feedback`, {
         decisions: [{ entity: 'wall-1', decision: 'accept' }],
         status: 'approved',
       });
-      const reopened = await post('/reviews', { layer_id: agentLayer.header.id, into: 'agents' });
+      const reopened = await post('/reviews', {
+        layer_id: agentLayer.header.id,
+        into: 'agents',
+        reviewers: ['anonymous'],
+      });
       const reopenedId = ((await reopened.json()) as { id: string }).id;
       await post(`/reviews/${reopenedId}/feedback`, {
         decisions: [{ entity: 'wall-1', decision: 'reject', comment: 'needs rework' }],
@@ -554,7 +564,12 @@ describe('layer registry route', () => {
       });
       expect(preview.status).toBe(200);
 
-      const opened = await post('/reviews', { layer_id: claimedHuman.header.id, into: 'prod' });
+      // Protected ref: an explicit reviewer allowlist is required for approval.
+      const opened = await post('/reviews', {
+        layer_id: claimedHuman.header.id,
+        into: 'prod',
+        reviewers: ['anonymous'],
+      });
       const { id } = (await opened.json()) as { id: string };
       await post(`/reviews/${id}/feedback`, {
         decisions: [{ entity: 'wall-1', decision: 'accept' }],
@@ -562,6 +577,142 @@ describe('layer registry route', () => {
       });
       const merged = await post('/refs/prod/merge', { candidate: claimedHuman.header.id });
       expect(merged.status).toBe(200);
+    } finally {
+      await server.stop();
+    }
+  });
+
+  it('refuses to approve a protected-ref review that names no reviewers', async () => {
+    // Without an explicit reviewer allowlist there is nothing to attest the
+    // approver against, so an unnamed review must not be approvable on a
+    // requireHumanApproval ref (a second minted token would otherwise
+    // self-approve past the merge gate).
+    const server = await startCollabServer({ port: 0, layerRegistry: true });
+    try {
+      const port = (server.httpServer.address() as { port: number }).port;
+      const url = `http://127.0.0.1:${port}/api/v1`;
+      const post = (path: string, body: unknown) =>
+        fetch(`${url}${path}`, { method: 'POST', body: JSON.stringify(body) });
+
+      const root = publishable(
+        [{ path: 'wall-1', attributes: { [CLASS]: { code: 'IfcWall', uri: 'u' }, [FIRE]: 'REI60' } }],
+        'Import',
+        null
+      );
+      await post('/layers', root);
+      await fetch(`${url}/refs/prod`, {
+        method: 'PUT',
+        body: JSON.stringify({ layers: [root.header.id], policy: { requireHumanApproval: true } }),
+      });
+      const candidate = publishable(
+        [{ path: 'wall-1', attributes: { [FIRE]: 'REI90' } }],
+        'Edit',
+        { kind: 'stack', id: computeStackHash([root.header.id]) },
+        'agent'
+      );
+      await post('/layers', candidate);
+
+      // No reviewers → approval is rejected on the protected ref.
+      const opened = await post('/reviews', { layer_id: candidate.header.id, into: 'prod' });
+      const { id } = (await opened.json()) as { id: string };
+      const approve = await post(`/reviews/${id}/feedback`, {
+        decisions: [{ entity: 'wall-1', decision: 'accept' }],
+        status: 'approved',
+      });
+      expect(approve.status).toBe(403);
+      expect(((await approve.json()) as { error: string }).error).toContain('names no reviewers');
+
+      // And the merge still fails because no approval was recorded.
+      const merged = await post('/refs/prod/merge', { candidate: candidate.header.id });
+      expect(merged.status).toBe(403);
+    } finally {
+      await server.stop();
+    }
+  });
+
+  it('empty-reviewer gate only bites protected refs and never exempts the author', async () => {
+    const server = await startCollabServer({ port: 0, layerRegistry: true });
+    try {
+      const port = (server.httpServer.address() as { port: number }).port;
+      const url = `http://127.0.0.1:${port}/api/v1`;
+      const post = (path: string, body: unknown) =>
+        fetch(`${url}${path}`, { method: 'POST', body: JSON.stringify(body) });
+
+      const root = publishable(
+        [{ path: 'wall-1', attributes: { [CLASS]: { code: 'IfcWall', uri: 'u' }, [FIRE]: 'REI60' } }],
+        'Import',
+        null
+      );
+      await post('/layers', root);
+      // Unprotected ref: no requireHumanApproval policy.
+      await fetch(`${url}/refs/scratch`, {
+        method: 'PUT',
+        body: JSON.stringify({ layers: [root.header.id] }),
+      });
+      // Protected ref over the same base.
+      await fetch(`${url}/refs/prod`, {
+        method: 'PUT',
+        body: JSON.stringify({ layers: [root.header.id], policy: { requireHumanApproval: true } }),
+      });
+      const base = { kind: 'stack' as const, id: computeStackHash([root.header.id]) };
+      const candidate = publishable(
+        [{ path: 'wall-1', attributes: { [FIRE]: 'REI90' } }],
+        'Edit',
+        base,
+        'agent'
+      );
+      await post('/layers', candidate);
+
+      // Unprotected ref: a review with NO reviewers can still be approved —
+      // the gate must not regress the unprotected flow.
+      const scratchReview = await post('/reviews', { layer_id: candidate.header.id, into: 'scratch' });
+      const scratchId = ((await scratchReview.json()) as { id: string }).id;
+      const scratchApprove = await post(`/reviews/${scratchId}/feedback`, {
+        decisions: [{ entity: 'wall-1', decision: 'accept' }],
+        status: 'approved',
+      });
+      expect(scratchApprove.status).toBe(200);
+
+      // Protected ref + reviewer allowlist naming the (non-author) actor:
+      // approval is accepted and satisfies the merge gate.
+      const opened = await post('/reviews', {
+        layer_id: candidate.header.id,
+        into: 'prod',
+        reviewers: ['anonymous'],
+      });
+      const { id } = (await opened.json()) as { id: string };
+      const approve = await post(`/reviews/${id}/feedback`, {
+        decisions: [{ entity: 'wall-1', decision: 'accept' }],
+        status: 'approved',
+      });
+      expect(approve.status).toBe(200);
+      const merged = await post('/refs/prod/merge', { candidate: candidate.header.id });
+      expect(merged.status).toBe(200);
+
+      // Protected ref + reviewer allowlist naming the AUTHOR: being listed is
+      // not an exemption from the self-approval separation.
+      const selfCandidate = publishable(
+        [{ path: 'wall-1', attributes: { [FIRE]: 'REI120' } }],
+        'Self edit',
+        base,
+        'human',
+        'anonymous' // same principal the unauthenticated actor resolves to
+      );
+      await post('/layers', selfCandidate);
+      const selfReview = await post('/reviews', {
+        layer_id: selfCandidate.header.id,
+        into: 'prod',
+        reviewers: ['anonymous'],
+      });
+      const selfId = ((await selfReview.json()) as { id: string }).id;
+      const selfApprove = await post(`/reviews/${selfId}/feedback`, {
+        decisions: [{ entity: 'wall-1', decision: 'accept' }],
+        status: 'approved',
+      });
+      expect(selfApprove.status).toBe(403);
+      expect(((await selfApprove.json()) as { error: string }).error).toContain(
+        'cannot approve their own review'
+      );
     } finally {
       await server.stop();
     }
@@ -666,7 +817,14 @@ describe('layer registry route', () => {
       const stripped = { ...bare, header: { ...bare.header, id: computeLayerId(bare) } };
       expect((await post('/layers', stripped)).status).toBe(201);
 
-      const opened = await post('/reviews', { layer_id: stripped.header.id, into: 'prod' });
+      // Protected ref: an explicit reviewer allowlist is required for approval,
+      // so the approval is recorded — the merge still fails later because the
+      // candidate carries no provenance author to compare the approver against.
+      const opened = await post('/reviews', {
+        layer_id: stripped.header.id,
+        into: 'prod',
+        reviewers: ['anonymous'],
+      });
       const { id } = (await opened.json()) as { id: string };
       await post(`/reviews/${id}/feedback`, {
         decisions: [{ entity: 'wall-1', decision: 'accept' }],

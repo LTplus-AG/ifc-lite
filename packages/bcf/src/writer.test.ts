@@ -571,4 +571,97 @@ describe('BCF Writer', () => {
     const readProject = await readBCF(await blob.arrayBuffer());
     expect(readProject.topics.get(topicGuid)?.header).toBeUndefined();
   });
+
+  it('sanitizes a path-traversal topic GUID so no zip entry escapes the archive root (zip-slip)', async () => {
+    // A topic GUID parsed from untrusted markup can contain `../`; using it as a
+    // folder name verbatim would let a read-modify-save write outside the archive.
+    const evilGuid = '../../evil';
+    const topic: BCFTopic = {
+      guid: evilGuid,
+      title: 'Malicious Topic',
+      creationDate: new Date().toISOString(),
+      creationAuthor: 'attacker@example.com',
+      viewpoints: [],
+      comments: [],
+    };
+    const project: BCFProject = {
+      version: '2.1',
+      topics: new Map([[evilGuid, topic]]),
+    };
+
+    const blob = await writeBCF(project);
+    const zip = await JSZip.loadAsync(await blobToArrayBuffer(blob));
+
+    const paths: string[] = [];
+    zip.forEach((relativePath) => paths.push(relativePath));
+
+    // No entry may contain a parent-directory traversal segment.
+    for (const p of paths) {
+      expect(p.split('/')).not.toContain('..');
+      expect(p.startsWith('/')).toBe(false);
+    }
+    // The real GUID is still preserved as the markup Topic attribute.
+    const markupPath = paths.find((p) => p.endsWith('markup.bcf'));
+    expect(markupPath).toBeDefined();
+    const markup = await zip.file(markupPath!)?.async('string');
+    expect(markup).toContain(`Guid="${evilGuid}"`);
+  });
+
+  it('keeps distinct GUIDs that sanitize identically in distinct folders (no silent overwrite)', async () => {
+    // 'a?b' and 'a:b' both sanitize to 'a_b'; without disambiguation the
+    // second topic folder would overwrite the first inside the archive.
+    const makeTopic = (guid: string, title: string): BCFTopic => ({
+      guid,
+      title,
+      creationDate: new Date().toISOString(),
+      creationAuthor: 'author@example.com',
+      viewpoints: [],
+      comments: [],
+    });
+    const guids = ['a?b', 'a:b', 'a_b', '../../evil', '..\\..\\evil'];
+    const project: BCFProject = {
+      version: '2.1',
+      topics: new Map(guids.map((g, i) => [g, makeTopic(g, `Topic ${i}`)])),
+    };
+
+    const blob = await writeBCF(project);
+    const zip = await JSZip.loadAsync(await blobToArrayBuffer(blob));
+
+    const markupPaths: string[] = [];
+    zip.forEach((relativePath) => {
+      if (relativePath.endsWith('markup.bcf')) markupPaths.push(relativePath);
+      expect(relativePath.split('/')).not.toContain('..');
+    });
+    // One folder per topic: no collision collapsed two topics into one.
+    expect(markupPaths).toHaveLength(guids.length);
+
+    // Round-trip: every original GUID survives as its own topic.
+    const readProject = await readBCF(await blob.arrayBuffer());
+    expect([...readProject.topics.keys()].sort()).toEqual([...guids].sort());
+    for (const g of guids) {
+      expect(readProject.topics.get(g)?.guid).toBe(g);
+    }
+  });
+
+  it('folder disambiguation is deterministic across writes of the same project', async () => {
+    const makeTopic = (guid: string): BCFTopic => ({
+      guid,
+      title: 'T',
+      creationDate: '2026-01-01T00:00:00Z',
+      creationAuthor: 'a@example.com',
+      viewpoints: [],
+      comments: [],
+    });
+    const project: BCFProject = {
+      version: '2.1',
+      topics: new Map([['x?y', makeTopic('x?y')], ['x:y', makeTopic('x:y')]]),
+    };
+    const paths = async (): Promise<string[]> => {
+      const zip = await JSZip.loadAsync(await blobToArrayBuffer(await writeBCF(project)));
+      const out: string[] = [];
+      zip.forEach((p) => out.push(p));
+      return out.sort();
+    };
+    expect(await paths()).toEqual(await paths());
+  });
 });

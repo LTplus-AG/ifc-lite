@@ -42,6 +42,7 @@ export function usePointCloudSync(params: UsePointCloudSyncParams): void {
   const deviationCenter = useViewerStore((s) => s.pointCloudDeviationCenterOffset);
   const deviationHalf = useViewerStore((s) => s.pointCloudDeviationHalfRange);
   const setAssetCount = useViewerStore((s) => s.setPointCloudAssetCount);
+  const setClassCounts = useViewerStore((s) => s.setPointCloudClassCounts);
   const fittedRef = useRef(false);
 
   // Reset the one-shot fit flag whenever the asset list identity changes.
@@ -59,6 +60,24 @@ export function usePointCloudSync(params: UsePointCloudSyncParams): void {
     const count = renderer.getPointCloudAssetCount();
     setAssetCount(count);
 
+    // Classification histogram for the inline IFCx assets, so the
+    // classes checklist covers them too (streamed LAS/LAZ scans report
+    // their own counts from the ingest path, #1783). The chunks are
+    // in-memory here (unlike streamed scans) so aggregating is cheap
+    // and only re-runs when the asset list identity changes.
+    const counts: Record<number, number> = {};
+    let sawClassifications = false;
+    for (const asset of assets) {
+      const classes = asset.chunk.classifications;
+      if (!classes) continue;
+      sawClassifications = true;
+      const n = Math.min(classes.length, asset.chunk.pointCount);
+      for (let i = 0; i < n; i++) {
+        counts[classes[i]] = (counts[classes[i]] ?? 0) + 1;
+      }
+    }
+    setClassCounts('ifcx', sawClassifications ? counts : null);
+
     // Camera fit for points-only scenes — useGeometryStreaming skips its
     // own fit branch when meshes is empty, so points stay off-screen
     // unless we step in. Run once per fresh asset list.
@@ -71,7 +90,7 @@ export function usePointCloudSync(params: UsePointCloudSyncParams): void {
     }
 
     renderer.requestRender();
-  }, [pointClouds, isInitialized, rendererRef, setAssetCount, hasMeshes]);
+  }, [pointClouds, isInitialized, rendererRef, setAssetCount, setClassCounts, hasMeshes]);
 
   // Push color + sizing + shape preferences to the renderer whenever the
   // user changes them. The slice already clamps numeric ranges so the

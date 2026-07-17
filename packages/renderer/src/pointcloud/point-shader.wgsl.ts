@@ -33,7 +33,8 @@ export const pointShaderSource = `
       sizing: vec4<f32>,
       sectionPlane: vec4<f32>,
       // x = assetExpressId (federation-aware globalId), y = sectionEnabled,
-      // z = roundShape, w = ASPRS class-visibility bitmask (bit i → class i)
+      // z = roundShape, w = reserved (was the 32-bit class mask before
+      // classMask below took over the full 0..255 LAS range, #1783)
       flags: vec4<u32>,
       // x = previewStride (1 = render every point, N = render every
       // Nth instance — used by the section-plane drag preview path).
@@ -42,6 +43,9 @@ export const pointShaderSource = `
       // x = deviation centerOffset (m), y = deviation halfRange (m).
       // Used by colorMode 5 (BIM↔scan deviation heatmap).
       deviationRange: vec4<f32>,
+      // 256-bit LAS class-visibility bitmask packed as 8 u32 words
+      // (two vec4s). Bit (i % 32) of word (i / 32) set → class i shown.
+      classMask: array<vec4<u32>, 2>,
     }
     @binding(0) @group(0) var<uniform> uniforms: PointUniforms;
 
@@ -198,22 +202,21 @@ export const pointShaderSource = `
       let intensity01 = f32(input.intensityPacked & 0xffffu) / 65535.0;
       let classId = u32(round(input.rgbAndClass.a * 255.0));
 
-      // Per-class visibility — flags.w is a 32-bit mask. Class ids
-      // outside 0..31 always show (the mask only covers ASPRS LAS 1.4
-      // standard classes). Hidden classes get pushed behind the near
-      // plane via a degenerate clipPos so they're culled before
-      // rasterisation; cheaper than fragment-stage discard.
-      if (classId < 32u) {
-        let bit = (uniforms.flags.w >> classId) & 1u;
-        if (bit == 0u) {
-          var output: VertexOutput;
-          output.position = vec4<f32>(0.0, 0.0, -2.0, 1.0);  // outside [0,1] reverse-Z → culled
-          output.color = vec4<f32>(0.0);
-          output.worldPos = vec3<f32>(0.0);
-          output.entityId = 0u;
-          output.quadUv = vec2<f32>(0.0);
-          return output;
-        }
+      // Per-class visibility — classMask is a 256-bit mask covering
+      // every LAS classification code, including user-defined 64..255
+      // (#1783). Hidden classes get pushed behind the near plane via a
+      // degenerate clipPos so they're culled before rasterisation;
+      // cheaper than fragment-stage discard.
+      let maskWordIdx = classId >> 5u;  // classId is 0..255 → word 0..7
+      let maskWord = uniforms.classMask[maskWordIdx >> 2u][maskWordIdx & 3u];
+      if (((maskWord >> (classId & 31u)) & 1u) == 0u) {
+        var output: VertexOutput;
+        output.position = vec4<f32>(0.0, 0.0, -2.0, 1.0);  // outside [0,1] reverse-Z → culled
+        output.color = vec4<f32>(0.0);
+        output.worldPos = vec3<f32>(0.0);
+        output.entityId = 0u;
+        output.quadUv = vec2<f32>(0.0);
+        return output;
       }
       let heightT =
         (worldPos4.y - uniforms.colorModeAndExtras.z) /

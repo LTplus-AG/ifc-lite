@@ -30,6 +30,8 @@ pub enum DataModelParquetError {
     Parquet(#[from] parquet::errors::ParquetError),
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
+    #[error("JSON error: {0}")]
+    Json(#[from] serde_json::Error),
 }
 
 /// Serialize data model to Parquet format.
@@ -246,7 +248,18 @@ fn serialize_entities_table(entities: &[EntityMetadata]) -> Result<Vec<u8>, Data
     let count = entities.len();
 
     // Build arrays in parallel using rayon
-    let results: Vec<(u32, String, String, String, bool)> = entities
+    type Row = (
+        u32,
+        String,
+        String,
+        String,
+        bool,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    );
+    let results: Vec<Row> = entities
         .par_iter()
         .map(|entity| {
             (
@@ -255,6 +268,10 @@ fn serialize_entities_table(entities: &[EntityMetadata]) -> Result<Vec<u8>, Data
                 entity.global_id.clone().unwrap_or_default(),
                 entity.name.clone().unwrap_or_default(),
                 entity.has_geometry,
+                entity.description.clone(),
+                entity.object_type.clone(),
+                entity.tag.clone(),
+                entity.predefined_type.clone(),
             )
         })
         .collect();
@@ -265,13 +282,21 @@ fn serialize_entities_table(entities: &[EntityMetadata]) -> Result<Vec<u8>, Data
     let mut global_ids = Vec::with_capacity(count);
     let mut names = Vec::with_capacity(count);
     let mut has_geometry = Vec::with_capacity(count);
+    let mut descriptions = Vec::with_capacity(count);
+    let mut object_types = Vec::with_capacity(count);
+    let mut tags = Vec::with_capacity(count);
+    let mut predefined_types = Vec::with_capacity(count);
 
-    for (id, type_name, global_id, name, has_geom) in results {
+    for (id, type_name, global_id, name, has_geom, desc, obj, tag, predef) in results {
         entity_ids.push(id);
         type_names.push(type_name);
         global_ids.push(global_id);
         names.push(name);
         has_geometry.push(has_geom);
+        descriptions.push(desc);
+        object_types.push(obj);
+        tags.push(tag);
+        predefined_types.push(predef);
     }
 
     let schema = Schema::new(vec![
@@ -280,6 +305,13 @@ fn serialize_entities_table(entities: &[EntityMetadata]) -> Result<Vec<u8>, Data
         Field::new("global_id", DataType::Utf8, true),
         Field::new("name", DataType::Utf8, true),
         Field::new("has_geometry", DataType::Boolean, false),
+        // Additive nullable columns (issue #1765; data-model cache bumped to
+        // v4). `description`/`object_type` were already read by the decoder
+        // by name; `tag`/`predefined_type` are new end-to-end.
+        Field::new("description", DataType::Utf8, true),
+        Field::new("object_type", DataType::Utf8, true),
+        Field::new("tag", DataType::Utf8, true),
+        Field::new("predefined_type", DataType::Utf8, true),
     ]);
 
     let batch = RecordBatch::try_new(
@@ -290,6 +322,10 @@ fn serialize_entities_table(entities: &[EntityMetadata]) -> Result<Vec<u8>, Data
             Arc::new(StringArray::from(global_ids)),
             Arc::new(StringArray::from(names)),
             Arc::new(BooleanArray::from(has_geometry)),
+            Arc::new(StringArray::from(descriptions)),
+            Arc::new(StringArray::from(object_types)),
+            Arc::new(StringArray::from(tags)),
+            Arc::new(StringArray::from(predefined_types)),
         ],
     )?;
 
@@ -301,21 +337,43 @@ fn serialize_properties_table(
     property_sets: &[PropertySet],
 ) -> Result<Vec<u8>, DataModelParquetError> {
     // Flatten property sets into rows using parallel iteration
-    let rows: Vec<(u32, String, String, String, String, Option<String>)> = property_sets
+    type Row = (
+        u32,
+        String,
+        String,
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+    );
+    let rows: Vec<Row> = property_sets
         .par_iter()
         .flat_map_iter(|pset| {
-            pset.properties.iter().map(move |prop| {
-                (
-                    pset.pset_id,
-                    pset.pset_name.clone(),
-                    prop.property_name.clone(),
-                    prop.property_value.clone(),
-                    prop.property_type.clone(),
-                    prop.data_type.clone(),
-                )
-            })
+            pset.properties
+                .iter()
+                .map(move |prop| -> Result<Row, DataModelParquetError> {
+                    // Candidate arrays ride as a JSON string in a nullable Utf8
+                    // column (issue #1766): the decoder keeps its bulk column
+                    // reads and JSON-parses only the sparse multi-value rows. A
+                    // serialization failure is propagated, not conflated with
+                    // "no candidates" (which would silently drop them from the
+                    // cached payload) — though a Vec<String> never fails to encode.
+                    let values_json = match &prop.values {
+                        Some(v) => Some(serde_json::to_string(v)?),
+                        None => None,
+                    };
+                    Ok((
+                        pset.pset_id,
+                        pset.pset_name.clone(),
+                        prop.property_name.clone(),
+                        prop.property_value.clone(),
+                        prop.property_type.clone(),
+                        prop.data_type.clone(),
+                        values_json,
+                    ))
+                })
         })
-        .collect();
+        .collect::<Result<Vec<Row>, _>>()?;
 
     // Split into separate vectors
     let mut pset_ids = Vec::with_capacity(rows.len());
@@ -324,14 +382,16 @@ fn serialize_properties_table(
     let mut property_values = Vec::with_capacity(rows.len());
     let mut property_types = Vec::with_capacity(rows.len());
     let mut data_types = Vec::with_capacity(rows.len());
+    let mut values_jsons = Vec::with_capacity(rows.len());
 
-    for (pset_id, pset_name, prop_name, prop_value, prop_type, data_type) in rows {
+    for (pset_id, pset_name, prop_name, prop_value, prop_type, data_type, values_json) in rows {
         pset_ids.push(pset_id);
         pset_names.push(pset_name);
         property_names.push(prop_name);
         property_values.push(prop_value);
         property_types.push(prop_type);
         data_types.push(data_type);
+        values_jsons.push(values_json);
     }
 
     let schema = Schema::new(vec![
@@ -343,6 +403,8 @@ fn serialize_properties_table(
         // Additive nullable column (data-model cache bumped to v3). Old decoders
         // that don't request it simply ignore the extra column.
         Field::new("data_type", DataType::Utf8, true),
+        // JSON-encoded candidate array (data-model cache bumped to v5).
+        Field::new("values_json", DataType::Utf8, true),
     ]);
 
     let batch = RecordBatch::try_new(
@@ -354,6 +416,7 @@ fn serialize_properties_table(
             Arc::new(StringArray::from(property_values)),
             Arc::new(StringArray::from(property_types)),
             Arc::new(StringArray::from(data_types)),
+            Arc::new(StringArray::from(values_jsons)),
         ],
     )?;
 
@@ -653,7 +716,6 @@ fn write_parquet_batch(batch: RecordBatch) -> Result<Vec<u8>, DataModelParquetEr
 
     Ok(buffer)
 }
-
 
 #[cfg(test)]
 #[path = "parquet_data_model_tests.rs"]

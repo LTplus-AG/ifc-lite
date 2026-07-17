@@ -1465,35 +1465,44 @@ function BundleComposition({ items, total }) {
 // ─────────────────────────── bench explorer ───────────────────────────
 // Canonical from louistrue/profiling@apples-to-apples-with-native, results/RESULTS.md
 // Corpus: 21 public IFCs. Times are total parse + geometry, seconds.
-// IOS rows reproduced from Moult's hardware; web-ifc + ifc-lite from M4 (10-core).
+/* <!-- BEGIN GENERATED: landing-bench -->
+ */
+// Recorded 2026-07-17 on Apple M4, 10 cores, 16 GB: seconds, parse + geometry total.
+// Engines: @ifc-lite/wasm 4.0.1 (single thread) / ifc-lite-processing 4.1.0 via rayon, 10 threads /
+// web-ifc 0.0.77 (single thread); IOS rows: IfcOpenShell datamodel branch, Moult's published Manifold-augmented numbers (his hardware).
+// Source of truth: apps/landing/bench-data.json (methodology + raw runs:
+// louistrue/profiling@apples-to-apples-with-native). Regenerate with
+// `pnpm docs:generate` — do not edit the rows by hand.
 const BENCH_MODELS = [
-  { id: "duplex",   name: "duplex.ifc",                              size: 2.3,   products: 215,   ifclite_n: 0.02, ifclite_w: 0.11, webifc: 0.16, iosmax: 0.12, ios1c: 0.19 },
-  { id: "ac20",     name: "AC20-FZK-Haus.ifc",                       size: 2.4,   products: 83,    ifclite_n: 0.02, ifclite_w: 0.09, webifc: 0.13, iosmax: 0.15, ios1c: 0.22 },
-  { id: "i005",     name: "ISSUE_005_haus.ifc",                      size: 2.4,   products: 83,    ifclite_n: 0.02, ifclite_w: 0.08, webifc: 0.10, iosmax: 0.13, ios1c: 0.21 },
-  { id: "i021",     name: "ISSUE_021_Mini Project.ifc",              size: 3.2,   products: 2636,  ifclite_n: 0.04, ifclite_w: 0.15, webifc: 0.29, iosmax: 0.29, ios1c: 0.53 },
-  { id: "officeA",  name: "Office_A_20110811.ifc",                   size: 3.8,   products: 803,   ifclite_n: 0.03, ifclite_w: 0.14, webifc: 0.11, iosmax: 0.25, ios1c: 0.29 },
-  { id: "i126",     name: "ISSUE_126_model.ifc",                     size: 4.2,   products: 257,   ifclite_n: 0.02, ifclite_w: 0.14, webifc: 0.07, iosmax: 0.32, ios1c: 0.46 },
-  { id: "i034",     name: "ISSUE_034_HouseZ.ifc",                    size: 4.8,   products: 228,   ifclite_n: 0.04, ifclite_w: 0.16, webifc: 0.09, iosmax: 0.38, ios1c: 0.71 },
-  { id: "i102",     name: "ISSUE_102_M3D-CON.ifc",                   size: 6.0,   products: 138,   ifclite_n: 0.04, ifclite_w: 0.22, webifc: 0.14, iosmax: 0.49, ios1c: 0.62 },
-  { id: "i159",     name: "ISSUE_159_kleine_Wohnung_R22.ifc",        size: 9.5,   products: 425,   ifclite_n: 0.08, ifclite_w: 0.46, webifc: 0.33, iosmax: 0.91, ios1c: 1.65 },
-  { id: "c20",      name: "C20-Institute-Var-2.ifc",                 size: 10.3,  products: 702,   ifclite_n: 0.09, ifclite_w: 0.31, webifc: 0.30, iosmax: 0.67, ios1c: 0.71 },
-  { id: "i129",     name: "ISSUE_129_N1540_17_EXE.ifc",              size: 11.5,  products: 947,   ifclite_n: 0.09, ifclite_w: 0.37, webifc: 0.33, iosmax: 0.89, ios1c: 1.52 },
-  { id: "dental",   name: "dental_clinic.ifc",                       size: 12.4,  products: 2583,  ifclite_n: 0.10, ifclite_w: 0.49, webifc: 0.42, iosmax: 0.99, ios1c: 1.25 },
-  { id: "fmarc",    name: "FM_ARC_DigitalHub.ifc",                   size: 13.4,  products: 703,   ifclite_n: 0.09, ifclite_w: 0.71, webifc: 0.53, iosmax: 1.54, ios1c: 2.43 },
-  { id: "bridge",   name: "ifcbridge-model01.ifc",                   size: 14.5,  products: 165,   ifclite_n: 0.12, ifclite_w: 0.54, webifc: 0.20, iosmax: 1.32, ios1c: 2.05 },
-  { id: "i102cd",   name: "ISSUE_102_M3D-CON-CD.ifc",                size: 25.6,  products: 1616,  ifclite_n: 0.25, ifclite_w: 1.57, webifc: 1.89, iosmax: 2.66, ios1c: 4.02 },
-  { id: "soffice",  name: "S_Office_Integrated Design Archi.ifc",    size: 29.6,  products: 3396,  ifclite_n: 0.25, ifclite_w: 1.17, webifc: 2.62, iosmax: 2.94, ios1c: 4.04 },
-  { id: "advanced", name: "advanced_model.ifc",                      size: 33.7,  products: 6401,  ifclite_n: 0.29, ifclite_w: 1.46, webifc: 1.36, iosmax: 3.00, ios1c: 3.92 },
-  { id: "schep",    name: "schependomlaan.ifc",                      size: 47.0,  products: 3569,  ifclite_n: 0.41, ifclite_w: 1.70, webifc: 0.59, iosmax: 2.85, ios1c: 3.35 },
-  { id: "i068",     name: "ISSUE_068_ARK_NUS_skolebygg.ifc",         size: 53.7,  products: 4459,  ifclite_n: 0.52, ifclite_w: 2.37, webifc: 3.32, iosmax: 4.11, ios1c: 5.72 },
-  { id: "i098",     name: "ISSUE_098_R8_F1_MAB_AR_M3_XX_XXX.ifc",    size: 68.4,  products: 11123, ifclite_n: 0.59, ifclite_w: 2.72, webifc: 13.05, iosmax: 5.82, ios1c: 8.42 },
-  { id: "i053",     name: "ISSUE_053_Holter_Tower_10.ifc",           size: 169.2, products: 60285, ifclite_n: 1.70, ifclite_w: 8.23, webifc: 6.06, iosmax: 13.70, ios1c: 19.53 },
+  { id: "duplex",   name: "duplex.ifc",                             size: 2.3,    products: 215,    ifclite_n: 0.05, ifclite_w: 0.17, webifc: 0.04, iosmax: 0.12, ios1c: 0.19 },
+  { id: "ac20",     name: "AC20-FZK-Haus.ifc",                      size: 2.4,    products: 95,     ifclite_n: 0.02, ifclite_w: 0.12, webifc: 0.08, iosmax: 0.15, ios1c: 0.22 },
+  { id: "i005",     name: "ISSUE_005_haus.ifc",                     size: 2.4,    products: 95,     ifclite_n: 0.03, ifclite_w: 0.12, webifc: 0.08, iosmax: 0.13, ios1c: 0.21 },
+  { id: "i021",     name: "ISSUE_021_Mini Project.ifc",             size: 3.2,    products: 2636,   ifclite_n: 0.28, ifclite_w: 1.66, webifc: 0.29, iosmax: 0.29, ios1c: 0.53 },
+  { id: "officeA",  name: "Office_A_20110811.ifc",                  size: 3.8,    products: 803,    ifclite_n: 0.05, ifclite_w: 0.13, webifc: 0.10, iosmax: 0.25, ios1c: 0.29 },
+  { id: "i126",     name: "ISSUE_126_model.ifc",                    size: 4.2,    products: 257,    ifclite_n: 0.04, ifclite_w: 0.18, webifc: 0.07, iosmax: 0.32, ios1c: 0.46 },
+  { id: "i034",     name: "ISSUE_034_HouseZ.ifc",                   size: 4.8,    products: 228,    ifclite_n: 0.03, ifclite_w: 0.10, webifc: 0.11, iosmax: 0.38, ios1c: 0.71 },
+  { id: "i102",     name: "ISSUE_102_M3D-CON.ifc",                  size: 6.0,    products: 138,    ifclite_n: 0.03, ifclite_w: 0.12, webifc: 0.12, iosmax: 0.49, ios1c: 0.62 },
+  { id: "i159",     name: "ISSUE_159_kleine_Wohnung_R22.ifc",       size: 9.5,    products: 425,    ifclite_n: 0.33, ifclite_w: 1.25, webifc: 0.31, iosmax: 0.91, ios1c: 1.65 },
+  { id: "c20",      name: "C20-Institute-Var-2.ifc",                size: 10.3,   products: 712,    ifclite_n: 0.31, ifclite_w: 1.05, webifc: 0.30, iosmax: 0.67, ios1c: 0.71 },
+  { id: "i129",     name: "ISSUE_129_N1540_17_EXE.ifc",             size: 11.5,   products: 959,    ifclite_n: 2.19, ifclite_w: 5.79, webifc: 0.31, iosmax: 0.89, ios1c: 1.52 },
+  { id: "dental",   name: "dental_clinic.ifc",                      size: 12.4,   products: 2586,   ifclite_n: 0.18, ifclite_w: 0.64, webifc: 0.26, iosmax: 0.99, ios1c: 1.25 },
+  { id: "fmarc",    name: "FM_ARC_DigitalHub.ifc",                  size: 13.4,   products: 705,    ifclite_n: 0.28, ifclite_w: 1.19, webifc: 0.43, iosmax: 1.54, ios1c: 2.43 },
+  { id: "bridge",   name: "ifcbridge-model01.ifc",                  size: 14.5,   products: 165,    ifclite_n: 0.08, ifclite_w: 0.31, webifc: 0.20, iosmax: 1.32, ios1c: 2.05 },
+  { id: "i102cd",   name: "ISSUE_102_M3D-CON-CD.ifc",               size: 25.6,   products: 1616,   ifclite_n: 0.40, ifclite_w: 0.82, webifc: 1.08, iosmax: 2.66, ios1c: 4.02 },
+  { id: "soffice",  name: "S_Office_Integrated Design Archi.ifc",   size: 29.6,   products: 3396,   ifclite_n: 0.98, ifclite_w: 2.86, webifc: 2.14, iosmax: 2.94, ios1c: 4.04 },
+  { id: "advanced", name: "advanced_model.ifc",                     size: 33.7,   products: 6401,   ifclite_n: 1.14, ifclite_w: 3.37, webifc: 0.93, iosmax: 3.00, ios1c: 3.92 },
+  { id: "schep",    name: "schependomlaan.ifc",                     size: 47.0,   products: 3504,   ifclite_n: 0.25, ifclite_w: 0.73, webifc: 0.51, iosmax: 2.85, ios1c: 3.35 },
+  { id: "i068",     name: "ISSUE_068_ARK_NUS_skolebygg.ifc",        size: 53.7,   products: 4459,   ifclite_n: 0.69, ifclite_w: 2.77, webifc: 1.23, iosmax: 4.11, ios1c: 5.72 },
+  { id: "i098",     name: "ISSUE_098_R8_F1_MAB_AR_M3_XX_XXX.ifc",   size: 68.4,   products: 11124,  ifclite_n: 9.70, ifclite_w: 55.71, webifc: 2.65, iosmax: 5.82, ios1c: 8.42 },
+  { id: "i053",     name: "ISSUE_053_Holter_Tower_10.ifc",          size: 169.2,  products: 60284,  ifclite_n: 1.50, ifclite_w: 4.21, webifc: 3.07, iosmax: 13.70, ios1c: 19.53 },
 ];
+/*
+<!-- END GENERATED: landing-bench --> */
 
 const BENCH_ENGINES = [
   { key: "ifclite_n", name: "ifc-lite", sub: "native, 10 threads", primary: true, shade: "deep" },
   { key: "ifclite_w", name: "ifc-lite", sub: "WASM, 1 thread",     primary: true, shade: "light" },
-  { key: "webifc",    name: "web-ifc",  sub: "WASM, 1 thread" },
+  { key: "webifc",    name: "web-ifc 0.0.77",  sub: "WASM, 1 thread" },
   { key: "iosmax",    name: "IfcOpenShell", sub: "native, multi-thread" },
 ];
 
@@ -1707,7 +1716,7 @@ function BenchExplorer() {
       )}
 
       <div className="be-foot">
-        <span><strong>{BENCH_MODELS.length}</strong> models <span style={{ color: "var(--ink-3)" }}>· parse + geometry, lower is better</span></span>
+        <span><strong>{BENCH_MODELS.length}</strong> models <span style={{ color: "var(--ink-3)" }}>· parse + geometry, lower is better · ifc-lite 4.0.1 vs web-ifc 0.0.77, 2026-07 · ifc-lite cuts openings with exact arithmetic, web-ifc approximates</span></span>
         <a href="https://github.com/louistrue/profiling/tree/apples-to-apples-with-native" target="_blank" rel="noopener" className="mono">full methodology →</a>
       </div>
     </div>

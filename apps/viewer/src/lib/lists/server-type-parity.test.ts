@@ -37,9 +37,10 @@ FILE_SCHEMA(('IFC4'));
 ENDSEC;
 DATA;
 #1=IFCPROJECT('Proj0000000000000000001',$,'P',$,$,$,$,$,$);
-#100=IFCWALL('Wall00000000000000001A',$,'W-A',$,$,$,$,$,$);
-#110=IFCWALL('Wall00000000000000001B',$,'W-B',$,$,$,$,$,$);
-#200=IFCWALLTYPE('Type00000000000000001A',$,'WT-Std',$,$,(#210,#220),$,$,$,.STANDARD.);
+#100=IFCWALL('Wall00000000000000001A',$,'W-A','South wall','Basic Wall',$,$,'T-100',.SOLIDWALL.);
+#110=IFCWALL('Wall00000000000000001B',$,'W-B',$,$,$,$,$,.PARTITIONING.);
+#200=IFCWALLTYPE('Type00000000000000001A',$,'WT-Std',$,'NotObjectType',(#210,#220),$,$,$,.STANDARD.);
+#300=IFCSITE('Site000000000000000001A',$,'S','site desc',$,$,$,'LONG-NAME',.ELEMENT.,$,$,$,$,$);
 #210=IFCPROPERTYSET('Pset00000000000000001A',$,'Pset_WallCommon',$,(#211,#212,#213,#214,#215));
 #211=IFCPROPERTYSINGLEVALUE('Manufacturer',$,IFCLABEL('ACME'),$);
 #212=IFCPROPERTYSINGLEVALUE('IsExternal',$,IFCBOOLEAN(.T.),$);
@@ -49,8 +50,10 @@ DATA;
 #220=IFCELEMENTQUANTITY('Qset00000000000000001A',$,'Qto_WallBaseQuantities',$,$,(#221));
 #221=IFCQUANTITYLENGTH('Width',$,$,200.);
 #230=IFCRELDEFINESBYTYPE('Rdbt00000000000000001A',$,$,$,(#100,#110),#200);
-#250=IFCPROPERTYSET('Pset00000000000000002A',$,'Pset_WallCommon',$,(#251));
+#250=IFCPROPERTYSET('Pset00000000000000002A',$,'Pset_WallCommon',$,(#251,#252,#253));
 #251=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('REI 120'),$);
+#252=IFCPROPERTYBOUNDEDVALUE('LoadCapacity',$,IFCFORCEMEASURE(8.),IFCFORCEMEASURE(2.),$,IFCFORCEMEASURE(5.));
+#253=IFCPROPERTYTABLEVALUE('Deflection',$,(IFCREAL(1.),IFCREAL(2.)),(IFCREAL(10.),IFCREAL(20.)),$,$,$,$);
 #260=IFCRELDEFINESBYPROPERTIES('Rdbp00000000000000001A',$,$,$,(#100),#250);
 ENDSEC;
 END-ISO-10303-21;
@@ -62,9 +65,10 @@ function serverDataModelForFixture(): DataModel {
   return {
     entities: new Map([
       [1, { entity_id: 1, type_name: 'IFCPROJECT', global_id: 'Proj0000000000000000001', name: 'P', has_geometry: false }],
-      [100, { entity_id: 100, type_name: 'IFCWALL', global_id: 'Wall00000000000000001A', name: 'W-A', has_geometry: false }],
-      [110, { entity_id: 110, type_name: 'IFCWALL', global_id: 'Wall00000000000000001B', name: 'W-B', has_geometry: false }],
-      [200, { entity_id: 200, type_name: 'IFCWALLTYPE', global_id: 'Type00000000000000001A', name: 'WT-Std', has_geometry: false }],
+      [100, { entity_id: 100, type_name: 'IFCWALL', global_id: 'Wall00000000000000001A', name: 'W-A', description: 'South wall', object_type: 'Basic Wall', tag: 'T-100', predefined_type: 'SOLIDWALL', has_geometry: false }],
+      [110, { entity_id: 110, type_name: 'IFCWALL', global_id: 'Wall00000000000000001B', name: 'W-B', predefined_type: 'PARTITIONING', has_geometry: false }],
+      [200, { entity_id: 200, type_name: 'IFCWALLTYPE', global_id: 'Type00000000000000001A', name: 'WT-Std', predefined_type: 'STANDARD', has_geometry: false }],
+      [300, { entity_id: 300, type_name: 'IFCSITE', global_id: 'Site000000000000000001A', name: 'S', description: 'site desc', has_geometry: false }],
     ]),
     propertySets: new Map([
       [210, { pset_id: 210, pset_name: 'Pset_WallCommon', properties: [
@@ -72,10 +76,12 @@ function serverDataModelForFixture(): DataModel {
         { property_name: 'IsExternal', property_value: 'true', property_type: 'boolean', data_type: 'IFCBOOLEAN' },
         { property_name: 'ThermalTransmittance', property_value: '0.24', property_type: 'real', data_type: 'IFCREAL' },
         { property_name: 'Layers', property_value: '3', property_type: 'integer', data_type: 'IFCINTEGER' },
-        { property_name: 'AcousticRating', property_value: 'R1, R2', property_type: 'string' },
+        { property_name: 'AcousticRating', property_value: 'R1, R2', property_type: 'string', values: ['R1', 'R2'] },
       ] }],
       [250, { pset_id: 250, pset_name: 'Pset_WallCommon', properties: [
         { property_name: 'FireRating', property_value: 'REI 120', property_type: 'string', data_type: 'IFCLABEL' },
+        { property_name: 'LoadCapacity', property_value: '5 [2 \u2013 8]', property_type: 'string', data_type: 'IFCFORCEMEASURE', values: ['2', '8', '5'] },
+        { property_name: 'Deflection', property_value: 'Table (2 rows)', property_type: 'string', values: ['1', '2', '10', '20'] },
       ] }],
     ]),
     quantitySets: new Map([
@@ -117,6 +123,10 @@ const DEFINITION: ListDefinition = {
     { id: 'ar', source: 'property', psetName: 'Pset_WallCommon', propertyName: 'AcousticRating' },
     { id: 'fr', source: 'property', psetName: 'Pset_WallCommon', propertyName: 'FireRating' },
     { id: 'w', source: 'quantity', psetName: 'Qto_WallBaseQuantities', propertyName: 'Width' },
+    { id: 'desc', source: 'attribute', propertyName: 'Description' },
+    { id: 'objt', source: 'attribute', propertyName: 'ObjectType' },
+    { id: 'pdt', source: 'attribute', propertyName: 'PredefinedType' },
+    { id: 'tag', source: 'attribute', propertyName: 'Tag' },
   ],
   grouping: { columnId: 'type', sumColumnIds: ['u', 'w'] },
 };
@@ -144,8 +154,8 @@ describe('server↔client Type parity (#1751/#1754)', () => {
 
     // Sanity: the type-inherited + override values actually resolved (not blank).
     const rowsByName = new Map(clientResult.rows.map((r) => [String(r.values[0]), r.values]));
-    assert.deepEqual(rowsByName.get('W-A'), ['W-A', 'WT-Std', 'ACME', 'True', 0.24, 3, 'R1, R2', 'REI 120', 200]);
-    assert.deepEqual(rowsByName.get('W-B'), ['W-B', 'WT-Std', 'ACME', 'True', 0.24, 3, 'R1, R2', null, 200]);
+    assert.deepEqual(rowsByName.get('W-A'), ['W-A', 'WT-Std', 'ACME', 'True', 0.24, 3, 'R1, R2', 'REI 120', 200, 'South wall', 'Basic Wall', 'SOLIDWALL', 'T-100']);
+    assert.deepEqual(rowsByName.get('W-B'), ['W-B', 'WT-Std', 'ACME', 'True', 0.24, 3, 'R1, R2', null, 200, null, null, 'PARTITIONING', null]);
 
     // Column meta (quantityType / dataType) identical — drives unit conversion.
     assert.deepEqual(
@@ -156,6 +166,26 @@ describe('server↔client Type parity (#1751/#1754)', () => {
 
     // Group sums identical (proves server numeric props are real numbers).
     assert.deepEqual(serverResult.summary?.sums, clientResult.summary?.sums, 'group sums diverge');
+
+    // IDS candidate arrays (issue #1766): the property entries surfaced by the
+    // provider carry identical `values[]` on both parse paths, so IDS
+    // any-match checks behave the same server-side and in-browser.
+    const clientProv = createListDataProvider(clientStore);
+    const serverProv = createListDataProvider(serverStore);
+    const valuesOf = (prov: ReturnType<typeof createListDataProvider>, id: number) => {
+      const out: Record<string, string[] | undefined> = {};
+      for (const set of [...prov.getPropertySets(id), ...prov.getTypePropertySets!(id)]) {
+        for (const p of set.properties as Array<{ name: string; values?: string[] }>) {
+          out[`${set.name}.${p.name}`] = p.values;
+        }
+      }
+      return out;
+    };
+    assert.deepEqual(valuesOf(serverProv, 100), valuesOf(clientProv, 100), 'candidate values[] diverge');
+    // Concrete pins: enumerated (type), bounded + table (instance).
+    assert.deepEqual(valuesOf(clientProv, 100)['Pset_WallCommon.AcousticRating'], ['R1', 'R2']);
+    assert.deepEqual(valuesOf(clientProv, 100)['Pset_WallCommon.LoadCapacity'], ['2', '8', '5']);
+    assert.deepEqual(valuesOf(clientProv, 100)['Pset_WallCommon.Deflection'], ['1', '2', '10', '20']);
     assert.equal(serverResult.summary?.sums['w'], 400); // 200 + 200
     assert.ok(Math.abs((serverResult.summary?.sums['u'] ?? 0) - 0.48) < 1e-9); // 0.24 + 0.24
   });

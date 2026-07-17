@@ -510,6 +510,46 @@ export class IfcLiteBridge {
   }
 
   /**
+   * Demesher: simplify already-produced element meshes (flattened parallel
+   * arrays, one record per MeshData entry) at per-element levels 1-5. Returns
+   * the wasm `SimplifiedMeshes` result object (render meshes in the boundary
+   * Y-up convention + IFC-local file-unit geometry per element).
+   */
+  simplifyMeshes(
+    expressIds: Uint32Array,
+    levels: Uint8Array,
+    positions: Float32Array,
+    normals: Float32Array,
+    indices: Uint32Array,
+    vertexCounts: Uint32Array,
+    indexCounts: Uint32Array,
+    origins: Float64Array,
+    localToWorld: Float64Array,
+    localToWorldPresent: Uint8Array,
+    rtcX: number,
+    rtcY: number,
+    rtcZ: number,
+    unitScale: number,
+    yUp: boolean,
+  ) {
+    if (!this.ifcApi) {
+      throw new Error('IFC-Lite not initialized. Call init() first.');
+    }
+    try {
+      return this.ifcApi.simplifyMeshes(
+        expressIds, levels, positions, normals, indices, vertexCounts, indexCounts,
+        origins, localToWorld, localToWorldPresent, rtcX, rtcY, rtcZ, unitScale, yUp,
+      );
+    } catch (error) {
+      log.error('Failed to simplifyMeshes', error, { operation: 'simplifyMeshes' });
+      if (this.isWasmRuntimeError(error)) {
+        this.markFatalWasmRuntimeError();
+      }
+      throw error;
+    }
+  }
+
+  /**
    * Package an already-produced GLB + georeference into a KMZ (`doc.kml` + `model.glb`
    * zip) for Google Earth. `xAxisAbscissa`/`xAxisOrdinate` are the `IfcMapConversion`
    * grid-north components (pass `undefined` for heading 0).

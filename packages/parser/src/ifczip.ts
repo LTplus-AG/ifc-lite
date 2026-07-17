@@ -3,14 +3,16 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * `.ifcZIP` container support (issue #1494).
+ * `.ifcZIP` container support (issues #1494, #1781).
  *
  * The buildingSMART IFC container format is a plain zip archive wrapping a
- * single `.ifc`/`.ifcxml` model file (optionally alongside referenced
- * resources like textures — those are ignored here, not extracted). This
- * module unwraps that container so the rest of the pipeline (parseAuto,
- * detectFormat, the various loaders) sees ordinary model bytes and never
- * has to know zip existed.
+ * single `.ifc`/`.ifcxml` model file, optionally alongside referenced
+ * resources. `unwrapIfcZip` unwraps just the model so the rest of the
+ * pipeline (parseAuto, detectFormat, the various loaders) sees ordinary
+ * model bytes and never has to know zip existed;
+ * `unwrapIfcZipWithResources` additionally surfaces sibling raster images —
+ * the files `IfcImageTexture.URLReference` points at (#1781) — so the viewer
+ * can resolve textures without re-opening the archive.
  */
 
 import JSZip from 'jszip';
@@ -82,7 +84,93 @@ export async function unwrapIfcZipWithLimit(
   maxUncompressedBytes: number,
 ): Promise<ArrayBuffer> {
   if (!isZipBuffer(buffer)) return buffer;
+  const { entry } = await openZipModelEntry(buffer, maxUncompressedBytes);
+  return entry.async('arraybuffer');
+}
 
+/** Sibling raster-image entries `IfcImageTexture.URLReference` can point at. */
+const IMAGE_ENTRY_RE = /\.(png|jpe?g)$/i;
+
+/**
+ * Ceiling on ONE decompressed sibling image (256 MiB — a 16384² RGBA PNG is
+ * ~1 GiB decoded but well under this encoded; real texture JPEGs are a few
+ * MB). An oversized entry is SKIPPED, not fatal: the model must still load,
+ * it just renders that texture with its style colour.
+ */
+const MAX_IMAGE_BYTES = 256 * 1024 * 1024;
+
+/**
+ * Aggregate ceilings across ALL retained sibling images (512 MiB / 256
+ * entries): a hostile archive stuffed with thousands of per-entry-legal
+ * images must not exhaust memory through sheer count. Once either budget is
+ * spent, further images are skipped (model load unaffected). Real textured
+ * exports ship a handful of images.
+ */
+const MAX_TOTAL_IMAGE_BYTES = 512 * 1024 * 1024;
+const MAX_IMAGE_ENTRIES = 256;
+
+/** Result of `unwrapIfcZipWithResources`. */
+export interface IfcZipContents {
+  /** The single model entry's bytes (or the input unchanged for non-zip). */
+  model: ArrayBuffer;
+  /**
+   * Sibling raster images keyed by LOWERCASED basename (path and case are
+   * stripped so `Textures/Wood.JPG` resolves a `wood.jpg` reference and vice
+   * versa). Empty for non-zip input and archives without images.
+   */
+  resources: Map<string, Uint8Array>;
+}
+
+/**
+ * `unwrapIfcZip` variant that ALSO extracts sibling raster images (#1781) —
+ * the packaging convention for textured IFC (`IfcImageTexture.URLReference`
+ * is a relative filename, the image ships next to the `.ifc` inside the
+ * `.ifcZIP`). Non-zip input returns unchanged bytes and an empty map, so
+ * callers can invoke this unconditionally like `unwrapIfcZip`.
+ */
+export async function unwrapIfcZipWithResources(
+  buffer: ArrayBuffer,
+): Promise<IfcZipContents> {
+  if (!isZipBuffer(buffer)) return { model: buffer, resources: new Map() };
+  const { zip, entry } = await openZipModelEntry(buffer, MAX_UNCOMPRESSED_BYTES);
+
+  const resources = new Map<string, Uint8Array>();
+  let totalImageBytes = 0;
+  for (const res of Object.values(zip.files)) {
+    if (res.dir || !IMAGE_ENTRY_RE.test(res.name)) continue;
+    if (resources.size >= MAX_IMAGE_ENTRIES) break;
+    const size = declaredUncompressedSize(res);
+    if (typeof size === 'number' && size > MAX_IMAGE_BYTES) continue;
+    const basename = res.name.split('/').pop()?.toLowerCase();
+    if (!basename) continue;
+    // First entry wins on a (pathological) basename collision — matching the
+    // deterministic first-wins convention used across the style indexes.
+    if (resources.has(basename)) continue;
+    const bytes = await res.async('uint8array');
+    // Enforce the aggregate budget on REAL decompressed sizes (the central-
+    // directory declaration is advisory and absent on some writers).
+    if (bytes.byteLength > MAX_IMAGE_BYTES) continue;
+    if (totalImageBytes + bytes.byteLength > MAX_TOTAL_IMAGE_BYTES) break;
+    totalImageBytes += bytes.byteLength;
+    resources.set(basename, bytes);
+  }
+
+  return { model: await entry.async('arraybuffer'), resources };
+}
+
+/** JSZip's central-directory uncompressed size — internal field, so read
+ *  defensively: a future JSZip dropping it just skips the size guard. */
+function declaredUncompressedSize(entry: JSZip.JSZipObject): number | undefined {
+  return (entry as unknown as { _data?: { uncompressedSize?: number } })._data
+    ?.uncompressedSize;
+}
+
+/** Open the archive, locate the SINGLE model entry, and run the zip-bomb
+ *  guard. Shared by `unwrapIfcZipWithLimit` / `unwrapIfcZipWithResources`. */
+async function openZipModelEntry(
+  buffer: ArrayBuffer,
+  maxUncompressedBytes: number,
+): Promise<{ zip: JSZip; entry: JSZip.JSZipObject }> {
   // Wrap in a Uint8Array rather than passing `buffer` directly: some callers
   // (the browser streaming path) hand us a SharedArrayBuffer-backed view for
   // large files, which JSZip doesn't declare support for but a Uint8Array
@@ -105,13 +193,8 @@ export async function unwrapIfcZipWithLimit(
   }
 
   const entry = candidates[0];
-  // `_data.uncompressedSize` is populated from the zip central directory at
-  // `loadAsync` time — reading it costs nothing extra and needs no
-  // decompression. Undocumented/internal JSZip field (no public API exposes
-  // it), so accessed defensively: a future JSZip release dropping it just
-  // skips the guard rather than throwing.
-  const uncompressedSize = (entry as unknown as { _data?: { uncompressedSize?: number } })._data
-    ?.uncompressedSize;
+  // Zip-bomb guard from the central-directory metadata, before decompressing.
+  const uncompressedSize = declaredUncompressedSize(entry);
   if (typeof uncompressedSize === 'number' && uncompressedSize > maxUncompressedBytes) {
     throw new Error(
       `This .ifcZIP archive's model entry "${entry.name}" declares an uncompressed ` +
@@ -120,7 +203,7 @@ export async function unwrapIfcZipWithLimit(
     );
   }
 
-  return entry.async('arraybuffer');
+  return { zip, entry };
 }
 
 /**

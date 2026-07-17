@@ -182,6 +182,104 @@ describe('StepExporter header provenance (with mutations)', () => {
   });
 });
 
+describe('StepExporter header round-trip (STEP string escapes)', () => {
+  it('round-trips an ISO-10303-21 \\X2\\ author without doubling backslashes', async () => {
+    const model = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');
+FILE_NAME('sample.ifc','2026-01-01T00:00:00',('Tr\\X2\\00FC\\X0\\mpler'),('Org'),'App','System','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCWALL('3wkd_mjInDCfOthy7w_A6V',$,'Sample Wall',$,$,$,$,$,$);
+ENDSEC;
+END-ISO-10303-21;`;
+    const store = await parse(model);
+    // Read decodes the STEP escape to real Unicode (ü), not literal text.
+    expect(store.sourceHeader!.author).toEqual(['Trümpler']);
+
+    const result = new StepExporter(store).export({ schema: store.schemaVersion });
+    const text = dec(result.content);
+    // The old bug re-encoded the (un-decoded) `\X2\` into doubled backslashes.
+    expect(text).not.toContain('\\\\');
+
+    const out = exportedHeader(result.content);
+    expect(out.author).toEqual(['Trümpler']);
+  });
+
+  it('collapses a newline in a header value to a space (no split record)', () => {
+    const header = generateHeader({ schema: 'IFC4', author: ['A\nB'], timeStamp: 'TS' });
+    const parsed = parseSourceHeader(new TextEncoder().encode(header));
+    expect(parsed).toBeDefined();
+    expect(parsed!.author).toEqual(['A B']);
+  });
+
+  it('round-trips a literal backslash (C:\\temp) byte-stably across two write/read cycles', () => {
+    // Regression (PR #1772 review): the writer doubles `\` to `\\` but the read
+    // path preserved unknown doubled sequences, so `C:\temp` grew a backslash
+    // on every round trip (`C:\\temp`, `C:\\\\temp`, ...).
+    const opts = { schema: 'IFC4', timeStamp: 'TS', filename: 'f.ifc' } as const;
+    const h1 = generateHeader({ ...opts, author: ['C:\\temp'] });
+    expect(h1).toContain("'C:\\\\temp'"); // stored escaped, exactly one doubling
+
+    const p1 = parseSourceHeader(new TextEncoder().encode(h1));
+    expect(p1!.author).toEqual(['C:\\temp']);
+
+    const h2 = generateHeader({ ...opts, author: p1!.author });
+    expect(h2).toBe(h1);
+
+    const p2 = parseSourceHeader(new TextEncoder().encode(h2));
+    expect(p2!.author).toEqual(['C:\\temp']);
+    expect(generateHeader({ ...opts, author: p2!.author })).toBe(h1);
+  });
+
+  it('does not mis-decode escaped literal directive text as a real \\X2\\ directive', () => {
+    // `a\X2\0041\X0\b` as LITERAL text is stored `a\\X2\\0041\\X0\\b`; reading
+    // it back must yield the literal text, not decode the payload to 'A'.
+    const literal = 'a\\X2\\0041\\X0\\b';
+    const header = generateHeader({ schema: 'IFC4', author: [literal], timeStamp: 'TS' });
+    const parsed = parseSourceHeader(new TextEncoder().encode(header));
+    expect(parsed!.author).toEqual([literal]);
+  });
+
+  it('decodes a literal backslash adjacent to a real directive', () => {
+    // Raw STEP `\\\X2\00E4\X0\` = one literal backslash then a real directive.
+    const header = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('f.ifc','TS',('\\\\\\X2\\00E4\\X0\\'),(''),'p','o','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+`;
+    const parsed = parseSourceHeader(new TextEncoder().encode(header));
+    expect(parsed!.author).toEqual(['\\ä']);
+  });
+
+  it('decodes a directive immediately FOLLOWED by an escaped backslash', () => {
+    // Raw STEP `Tr\X2\00FC\X0\\\docs` = directive then one literal backslash
+    // (three raw backslashes in a row: the directive terminator's, then the
+    // `\\` pair). A split at every doubled backslash consumed the terminator,
+    // leaving an unterminated `\X2\` that never decoded (logical value is
+    // `Trü\docs`, e.g. a Windows path from another authoring tool).
+    const header = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('f.ifc','TS',('Tr\\X2\\00FC\\X0\\\\\\docs'),(''),'p','o','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+`;
+    const parsed = parseSourceHeader(new TextEncoder().encode(header));
+    expect(parsed!.author).toEqual(['Trü\\docs']);
+
+    // And it round-trips byte-stably through the writer.
+    const opts = { schema: 'IFC4', timeStamp: 'TS', filename: 'f.ifc' } as const;
+    const h1 = generateHeader({ ...opts, author: parsed!.author });
+    const p1 = parseSourceHeader(new TextEncoder().encode(h1));
+    expect(p1!.author).toEqual(['Trü\\docs']);
+    expect(generateHeader({ ...opts, author: p1!.author })).toBe(h1);
+  });
+});
+
 describe('generateHeader', () => {
   it('emits a valid default (scratch) header with a parenthesised description list', () => {
     const header = generateHeader({ schema: 'IFC4', timeStamp: 'TS' });

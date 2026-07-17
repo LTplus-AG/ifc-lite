@@ -144,9 +144,10 @@ FILE_SCHEMA(('IFC4'));
 ENDSEC;
 DATA;
 #1=IFCPROJECT('Proj0000000000000000001',$,'P',$,$,$,$,$,$);
-#100=IFCWALL('Wall00000000000000001A',$,'W-A',$,$,$,$,$,$);
-#110=IFCWALL('Wall00000000000000001B',$,'W-B',$,$,$,$,$,$);
-#200=IFCWALLTYPE('Type00000000000000001A',$,'WT-Std',$,$,(#210,#220),$,$,$,.STANDARD.);
+#100=IFCWALL('Wall00000000000000001A',$,'W-A','South wall','Basic Wall',$,$,'T-100',.SOLIDWALL.);
+#110=IFCWALL('Wall00000000000000001B',$,'W-B',$,$,$,$,$,.PARTITIONING.);
+#200=IFCWALLTYPE('Type00000000000000001A',$,'WT-Std',$,'NotObjectType',(#210,#220),$,$,$,.STANDARD.);
+#300=IFCSITE('Site000000000000000001A',$,'S','site desc',$,$,$,'LONG-NAME',.ELEMENT.,$,$,$,$,$);
 #210=IFCPROPERTYSET('Pset00000000000000001A',$,'Pset_WallCommon',$,(#211,#212,#213,#214,#215));
 #211=IFCPROPERTYSINGLEVALUE('Manufacturer',$,IFCLABEL('ACME'),$);
 #212=IFCPROPERTYSINGLEVALUE('IsExternal',$,IFCBOOLEAN(.T.),$);
@@ -156,8 +157,10 @@ DATA;
 #220=IFCELEMENTQUANTITY('Qset00000000000000001A',$,'Qto_WallBaseQuantities',$,$,(#221));
 #221=IFCQUANTITYLENGTH('Width',$,$,200.);
 #230=IFCRELDEFINESBYTYPE('Rdbt00000000000000001A',$,$,$,(#100,#110),#200);
-#250=IFCPROPERTYSET('Pset00000000000000002A',$,'Pset_WallCommon',$,(#251));
+#250=IFCPROPERTYSET('Pset00000000000000002A',$,'Pset_WallCommon',$,(#251,#252,#253));
 #251=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('REI 120'),$);
+#252=IFCPROPERTYBOUNDEDVALUE('LoadCapacity',$,IFCFORCEMEASURE(8.),IFCFORCEMEASURE(2.),$,IFCFORCEMEASURE(5.));
+#253=IFCPROPERTYTABLEVALUE('Deflection',$,(IFCREAL(1.),IFCREAL(2.)),(IFCREAL(10.),IFCREAL(20.)),$,$,$,$);
 #260=IFCRELDEFINESBYPROPERTIES('Rdbp00000000000000001A',$,$,$,(#100),#250);
 ENDSEC;
 END-ISO-10303-21;
@@ -221,22 +224,59 @@ fn extracts_type_relationship_and_resolves_typed_property_values() {
     assert_eq!(u.property_type, "real");
     assert_eq!(u.data_type.as_deref(), Some("IFCREAL"));
 
-    // Enumerated value → joined display string (mirrors WASM `values.join(', ')`).
+    // Enumerated value → joined display string (mirrors WASM `values.join(', ')`)
+    // + the candidate array for IDS any-match checks (issue #1766).
     let ar = prop("AcousticRating");
     assert_eq!(ar.property_value, "R1, R2");
     assert_eq!(ar.property_type, "string");
+    assert_eq!(
+        ar.values.as_deref(),
+        Some(&["R1".to_string(), "R2".to_string()][..])
+    );
 
     let c = prop("Layers");
     assert_eq!(c.property_value, "3");
     assert_eq!(c.property_type, "integer");
     assert_eq!(c.data_type.as_deref(), Some("IFCINTEGER"));
 
-    // Instance pset value also resolves (same code path).
+    // Instance pset value also resolves (same code path); single values carry
+    // no candidate array.
     let inst = dm.property_sets.iter().find(|p| p.pset_id == 250).unwrap();
-    let fr = &inst.properties[0];
-    assert_eq!(fr.property_name, "FireRating");
+    let iprop = |name: &str| {
+        inst.properties
+            .iter()
+            .find(|p| p.property_name == name)
+            .unwrap()
+    };
+    let fr = iprop("FireRating");
     assert_eq!(fr.property_value, "REI 120");
     assert_eq!(fr.property_type, "string");
+    assert_eq!(fr.values, None);
+
+    // Bounded: display "setPoint [lower – upper]", candidates deduped
+    // lower/upper/setPoint, measure tag from the typed wrappers (#1766).
+    let lc = iprop("LoadCapacity");
+    assert_eq!(lc.property_value, "5 [2 \u{2013} 8]");
+    assert_eq!(lc.data_type.as_deref(), Some("IFCFORCEMEASURE"));
+    assert_eq!(
+        lc.values.as_deref(),
+        Some(&["2".to_string(), "8".to_string(), "5".to_string()][..])
+    );
+
+    // Table: defining-then-defined candidates, display "Table (N rows)".
+    let df = iprop("Deflection");
+    assert_eq!(df.property_value, "Table (2 rows)");
+    assert_eq!(
+        df.values.as_deref(),
+        Some(
+            &[
+                "1".to_string(),
+                "2".to_string(),
+                "10".to_string(),
+                "20".to_string()
+            ][..]
+        )
+    );
 }
 
 #[test]
@@ -255,4 +295,113 @@ END-ISO-10303-21;
     assert!(dm.classifications.is_empty());
     assert!(dm.materials.is_empty());
     assert!(dm.documents.is_empty());
+}
+
+/// Root attributes are extracted at the SCHEMA-REGISTRY positions the WASM
+/// path resolves them (issue #1765) — including the traps: IfcSite attr 7 is
+/// LongName (never Tag), IfcWallType attr 4 is ApplicableOccurrence (never
+/// ObjectType), and CompositionType enums must not leak into PredefinedType.
+#[test]
+fn extracts_root_attributes_at_schema_positions() {
+    let dm = extract_data_model(TYPE_PARITY_IFC);
+    let e = |id: u32| dm.entities.iter().find(|e| e.entity_id == id).unwrap();
+
+    let wall_a = e(100);
+    assert_eq!(wall_a.description.as_deref(), Some("South wall"));
+    assert_eq!(wall_a.object_type.as_deref(), Some("Basic Wall"));
+    assert_eq!(wall_a.tag.as_deref(), Some("T-100"));
+    assert_eq!(wall_a.predefined_type.as_deref(), Some("SOLIDWALL"));
+
+    // Unset slots stay None; the enum still resolves.
+    let wall_b = e(110);
+    assert_eq!(wall_b.description, None);
+    assert_eq!(wall_b.object_type, None);
+    assert_eq!(wall_b.tag, None);
+    assert_eq!(wall_b.predefined_type.as_deref(), Some("PARTITIONING"));
+
+    // IfcWallType: attr 4 is ApplicableOccurrence — must NOT surface as
+    // ObjectType; Tag slot is $; PredefinedType is at index 9.
+    let wall_type = e(200);
+    assert_eq!(wall_type.object_type, None);
+    assert_eq!(wall_type.tag, None);
+    assert_eq!(wall_type.predefined_type.as_deref(), Some("STANDARD"));
+
+    // IfcSite: Description resolves, attr 7 (LongName) must NOT surface as
+    // Tag, and CompositionType (.ELEMENT.) must NOT surface as PredefinedType.
+    let site = e(300);
+    assert_eq!(site.description.as_deref(), Some("site desc"));
+    assert_eq!(site.tag, None);
+    assert_eq!(site.predefined_type, None);
+}
+
+/// IfcRelVoidsElement / IfcRelFillsElement both carry a SINGLE related ref
+/// (not a list) at attribute 5, so the generic list-based path dropped them.
+/// A wall (#10) is voided by an opening (#20), which is filled by a door (#30).
+const VOID_FILL_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#10=IFCWALL('Wall00000000000000001',$,'W1',$,$,$,$,$,$);
+#20=IFCOPENINGELEMENT('Open00000000000000001',$,'O1',$,$,$,$,$,$);
+#30=IFCDOOR('Door00000000000000001',$,'D1',$,$,$,$,$,$,$,$,$);
+#40=IFCRELVOIDSELEMENT('Voi0000000000000000001',$,$,$,#10,#20);
+#50=IFCRELFILLSELEMENT('Fil0000000000000000001',$,$,$,#20,#30);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn extracts_voids_and_fills_single_ref_relationships() {
+    let dm = extract_data_model(VOID_FILL_IFC);
+    let has_rel = |ty: &str, relating: u32, related: u32| {
+        dm.relationships.iter().any(|r| {
+            r.rel_type.eq_ignore_ascii_case(ty)
+                && r.relating_id == relating
+                && r.related_id == related
+        })
+    };
+    // RelVoidsElement: RelatingBuildingElement=#10 (wall), RelatedOpeningElement=#20.
+    assert!(
+        has_rel("IFCRELVOIDSELEMENT", 10, 20),
+        "voids relationship (wall -> opening) missing: {:?}",
+        dm.relationships
+    );
+    // RelFillsElement: RelatingOpeningElement=#20, RelatedBuildingElement=#30 (door).
+    assert!(
+        has_rel("IFCRELFILLSELEMENT", 20, 30),
+        "fills relationship (opening -> door) missing: {:?}",
+        dm.relationships
+    );
+}
+
+/// Malformed voids/fills rows must be DROPPED, not panic and not emit garbage:
+/// `$` in place of either ref (missing attr) and a LIST where a single ref
+/// belongs (`get_ref` returns `None` for both, so `?` bails).
+const MALFORMED_VOID_FILL_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#10=IFCWALL('Wall00000000000000001',$,'W1',$,$,$,$,$,$);
+#20=IFCOPENINGELEMENT('Open00000000000000001',$,'O1',$,$,$,$,$,$);
+#40=IFCRELVOIDSELEMENT('Voi0000000000000000001',$,$,$,$,#20);
+#41=IFCRELVOIDSELEMENT('Voi0000000000000000002',$,$,$,#10,$);
+#42=IFCRELVOIDSELEMENT('Voi0000000000000000003',$,$,$,#10,(#20));
+#50=IFCRELFILLSELEMENT('Fil0000000000000000001',$,$,$,(#20),#10);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn drops_voids_and_fills_rows_with_missing_or_list_refs() {
+    let dm = extract_data_model(MALFORMED_VOID_FILL_IFC);
+    assert!(
+        !dm.relationships.iter().any(|r| {
+            r.rel_type.eq_ignore_ascii_case("IFCRELVOIDSELEMENT")
+                || r.rel_type.eq_ignore_ascii_case("IFCRELFILLSELEMENT")
+        }),
+        "malformed voids/fills rows must be dropped, got: {:?}",
+        dm.relationships
+    );
 }

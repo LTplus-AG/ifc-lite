@@ -32,15 +32,18 @@ import { pointShaderSource } from './point-shader.wgsl.js';
  *   [36..39] colorModeAndExtras (mode, pointSizePx, heightMin, heightMax)
  *   [40..43] sizing (sizeMode, worldRadius, viewportW, viewportH)
  *   [44..47] sectionPlane (nx, ny, nz, distance)
- *   [48..51] flags (u32 view: x=expressId, y=sectionEnabled, z=roundShape, w=classMask)
+ *   [48..51] flags (u32 view: x=expressId, y=sectionEnabled, z=roundShape, w=reserved)
  *   [52..55] extras (u32 view: x=previewStride, yzw=unused)
  *   [56..59] deviationRange (centerOffset, halfRange, _, _)
+ *   [60..67] classMask (u32 view: 256-bit LAS class-visibility mask, 8 words)
  */
-// 15 vec4 slots × 16 bytes = 240. Was 208 before extras (PR-G's
+// 17 vec4 slots × 16 bytes = 272. Was 208 before extras (PR-G's
 // stride cull) and deviationRange (PR-H's BIM↔scan heatmap) both
-// claimed their own slots — keeping them separate avoids overloading
-// the flags / colourOverride slots and stays std140-friendly.
-export const POINT_UNIFORM_SIZE = 240;
+// claimed their own slots, and 240 before the class mask grew from
+// 32 bits in flags.w to the full 256-bit LAS range (#1783) — keeping
+// them separate avoids overloading the flags / colourOverride slots
+// and stays std140-friendly.
+export const POINT_UNIFORM_SIZE = 272;
 export const POINT_VERTEX_BYTES = 24;
 /** Number of vertices emitted per splat (two triangles forming a quad). */
 export const POINT_QUAD_VERTS = 6;

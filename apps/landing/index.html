@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>IFClite. Open, view, and work with IFC files. Right in the browser.</title>
-<meta name="description" content="Parse, view, query, edit, and export IFC files in the browser. Rust + WASM core, WebGPU rendering, ~260 KB gzipped, 5× faster geometry than the next best option." />
+<meta name="description" content="Parse, view, query, edit, and export IFC files in the browser. Rust + WASM core, WebGPU rendering, ~260 KB gzipped, exact-arithmetic geometry verified against IfcOpenShell." />
 <meta name="keywords" content="IFC viewer, IFC file, BIM, openBIM, buildingSMART, IFC parser, web IFC, WebGPU, WASM, IFC.js alternative, BIM in browser" />
 <meta name="author" content="LTplus AG" />
 <meta name="robots" content="index, follow, max-image-preview:large" />
@@ -15,7 +15,7 @@
 <meta property="og:type" content="website" />
 <meta property="og:site_name" content="IFClite" />
 <meta property="og:title" content="IFClite. Open, view, and work with IFC files in the browser" />
-<meta property="og:description" content="Parse, view, query, edit, and export IFC files in the browser. Rust + WASM core, WebGPU rendering, ~260 KB gzipped, 5× faster geometry than the next best option." />
+<meta property="og:description" content="Parse, view, query, edit, and export IFC files in the browser. Rust + WASM core, WebGPU rendering, ~260 KB gzipped, exact-arithmetic geometry verified against IfcOpenShell." />
 <meta property="og:url" content="https://ifclite.dev/" />
 <meta property="og:image" content="https://ifclite.dev/assets/logo.png" />
 <meta property="og:image:alt" content="IFClite logo" />
@@ -24,7 +24,7 @@
 <!-- Twitter Card -->
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="IFClite. Open, view, and work with IFC files in the browser" />
-<meta name="twitter:description" content="Parse, view, query, edit, and export IFC files in the browser. Rust + WASM core, WebGPU rendering, ~260 KB gzipped, 5× faster geometry." />
+<meta name="twitter:description" content="Parse, view, query, edit, and export IFC files in the browser. Rust + WASM core, WebGPU rendering, ~260 KB gzipped, exact-arithmetic geometry." />
 <meta name="twitter:image" content="https://ifclite.dev/assets/logo.png" />
 
 <!-- Structured data. `url` points at this marketing site (ifclite.dev); the
@@ -35,7 +35,7 @@
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
   "name": "IFClite",
-  "description": "Parse, view, query, edit, and export IFC files in the browser. Rust + WASM core, WebGPU rendering, ~260 KB gzipped, 5× faster geometry than the next best option.",
+  "description": "Parse, view, query, edit, and export IFC files in the browser. Rust + WASM core, WebGPU rendering, ~260 KB gzipped, exact-arithmetic geometry verified against IfcOpenShell.",
   "url": "https://ifclite.dev/",
   "sameAs": [
     "https://www.ifclite.com/",
@@ -132,11 +132,12 @@
       <div class="dim hero-dim" aria-hidden="true">
         <span class="dim-tick"></span>
         <span class="dim-arm"></span>
-        <span class="dim-val">2.72<span class="u"> s</span> · 68&nbsp;MB · 11,123 products</span>
+        <!-- ISSUE_053 Holter row of apps/landing/bench-data.json (WASM, 1 thread, 2026-07-17) — keep in sync -->
+        <span class="dim-val">4.2<span class="u"> s</span> · 169&nbsp;MB · 60,284 products</span>
         <span class="dim-arm to-right"></span>
         <span class="dim-tick"></span>
       </div>
-      <p class="lede">Open-source toolkit for the IFC file format. WebGPU rendering, columnar in-memory store, faster than the alternatives on most models. Runs from a CDN.</p>
+      <p class="lede">Open-source toolkit for the IFC file format. WebGPU rendering, columnar in-memory store, exact-arithmetic geometry kernel verified against IfcOpenShell. Runs from a CDN.</p>
 
       <div class="hero-cta">
         <a class="btn btn-primary" href="#code">
@@ -188,9 +189,10 @@
 <!-- ─────────────────────────── STATS ─────────────────────────── -->
 <section class="stats" data-screen-label="02 Stats">
   <div class="stats-grid">
+    <!-- ISSUE_053 Holter row of apps/landing/bench-data.json (WASM, 1 thread, 2026-07-17) — keep in sync -->
     <div class="stat">
-      <div class="v">2.72<span class="u">seconds</span></div>
-      <div class="k">Parse + geometry, 68&nbsp;MB office model, 11,123 products</div>
+      <div class="v">4.2<span class="u">seconds</span></div>
+      <div class="k">Parse + exact geometry, 169&nbsp;MB tower, 60,284 products</div>
     </div>
     <div class="stat">
       <div class="v">260<span class="u">KB gzipped</span></div>

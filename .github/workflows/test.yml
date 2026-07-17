@@ -337,6 +337,14 @@ jobs:
       # can't ship silently.
       - name: Check API surface
         run: node scripts/check-api-surface.mjs
+      # The server-parse root-attribute table (attr_indices.rs) is generated
+      # from @ifc-lite/parser's SCHEMA_REGISTRY — the SAME table the in-browser
+      # parse resolves names against. Guard that the committed file is in sync
+      # so a registry change can't silently break server↔client parity. Uses
+      # the parser dist from the build artifact above; format-agnostic, no Rust
+      # toolchain needed (issue #1780).
+      - name: Check server attr-indices freshness
+        run: node scripts/generate-server-attr-indices.mjs --check
       # Docs upkeep guards (cheap, no build/fixtures needed — the doc-sample
       # typecheck resolves @ifc-lite/* to each package's src via tsconfig
       # paths). Keep the docs in lockstep with the code they describe.

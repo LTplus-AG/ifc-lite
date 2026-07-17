@@ -7,6 +7,7 @@
 //! `Some`/`None` overflow verdict across all four widths, boundary values, and
 //! a deterministic LCG stream. See the module doc in `mod.rs` for why.
 
+use super::mul::{mul_full_u32, mul_full_u64, mul_low_u32, mul_low_u64};
 use super::*;
 use num_traits::{CheckedAdd, CheckedMul, CheckedSub, FromPrimitive, One, ToPrimitive};
 
@@ -278,3 +279,81 @@ fn checked_mul_min_boundary() {
     // Positive 2^255 must overflow.
     assert_eq!(CheckedMul::checked_mul(&two128, &two127), None);
 }
+
+/// The wasm32 build multiplies with u32 digits (`mul_low_u32` / `mul_full_u32`,
+/// avoiding `__multi3` libcalls); native uses u64 limbs. Cargo tests run on the
+/// host, so the wasm digit path would otherwise be unexercised — pin both digit
+/// widths to bit-identical outputs on boundary and random limb patterns for
+/// every supported width. Raw (not magnitude) patterns are included because the
+/// wrapping `Mul` impl feeds two's-complement limbs to `mul_low` directly.
+macro_rules! digit_width_fuzz {
+    ($name:ident, $K:literal) => {
+        #[test]
+        fn $name() {
+            let mut patterns: Vec<[u64; $K]> = vec![[0u64; $K], [u64::MAX; $K]];
+            // Single-bit walk (stride 7 hits every limb + misaligned bits).
+            for bit in (0..$K * 64).step_by(7) {
+                let mut l = [0u64; $K];
+                l[bit / 64] = 1u64 << (bit % 64);
+                patterns.push(l);
+            }
+            // Dense all-ones prefixes/suffixes (worst-case carry chains).
+            for k in 0..$K {
+                let mut lo = [0u64; $K];
+                for slot in lo.iter_mut().take(k + 1) {
+                    *slot = u64::MAX;
+                }
+                patterns.push(lo);
+                let mut hi = [0u64; $K];
+                for slot in hi.iter_mut().skip($K - 1 - k) {
+                    *slot = u64::MAX;
+                }
+                patterns.push(hi);
+            }
+            // Random limbs at random bit-lengths (varied zero-digit skips).
+            let mut rng = Lcg(0xabcd_ef01_2345_6789 ^ ($K as u64));
+            for _ in 0..1_500 {
+                let mut l = [0u64; $K];
+                for slot in l.iter_mut() {
+                    *slot = rng.u();
+                }
+                let cut = (rng.u() as usize) % ($K * 64 + 1);
+                for i in 0..$K {
+                    let lo = i * 64;
+                    if lo >= cut {
+                        l[i] = 0;
+                    } else if lo + 64 > cut {
+                        l[i] &= (1u64 << (cut - lo)) - 1;
+                    }
+                }
+                patterns.push(l);
+            }
+
+            for a in &patterns {
+                for b in patterns.iter().take(48) {
+                    assert_eq!(
+                        mul_low_u32(a, b),
+                        mul_low_u64(a, b),
+                        "mul_low digit-width mismatch a={:?} b={:?}",
+                        a,
+                        b
+                    );
+                    let mut full32 = [0u64; 64];
+                    let mut full64 = [0u64; 64];
+                    mul_full_u32(a, b, &mut full32);
+                    mul_full_u64(a, b, &mut full64);
+                    assert_eq!(
+                        full32, full64,
+                        "mul_full digit-width mismatch a={:?} b={:?}",
+                        a, b
+                    );
+                }
+            }
+        }
+    };
+}
+
+digit_width_fuzz!(digit_width_i256, 4);
+digit_width_fuzz!(digit_width_i512, 8);
+digit_width_fuzz!(digit_width_i1024, 16);
+digit_width_fuzz!(digit_width_i2048, 32);

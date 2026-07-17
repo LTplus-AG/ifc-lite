@@ -91,6 +91,7 @@ tests/models/various
 tests/models/**/*.ifc
 tests/models/**/*.IFC
 tests/models/**/*.ifcx
+tests/models/**/*.ifczip
 # Partial downloads from the fetcher.
 tests/models/**/*.part
 

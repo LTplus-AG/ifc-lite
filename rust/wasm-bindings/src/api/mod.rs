@@ -21,6 +21,7 @@ mod grid_lines;
 mod mesh_outline;
 mod parsing;
 mod pipeline_diagnostics;
+mod simplify;
 mod space_plate;
 pub(crate) mod styling;
 mod symbolic;

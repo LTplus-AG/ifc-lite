@@ -4,7 +4,7 @@
 
 //! SSE Parquet-batch streaming parse endpoint.
 
-use super::cache_keys::{cache_symbolic_data, load_cached_symbolic, request_cache_key};
+use super::cache_keys::{cache_symbolic_data, request_cache_key};
 use super::parquet::ParquetMetadataHeader;
 use super::{extract_file, ParseQuery};
 use crate::error::ApiError;
@@ -96,75 +96,16 @@ pub async fn parse_parquet_stream(
     let cache_key_clone = cache_key.clone();
 
     // OPTIMIZATION: Check cache first and fast-path return if available
-    // This avoids re-processing files that are already cached
-    let parquet_cache_key = format!("{}-parquet-v4", cache_key);
-    let metadata_cache_key = format!("{}-parquet-metadata-v4", cache_key);
-
-    if let (Some(cached_parquet), Some(cached_metadata_json)) = (
-        state.cache.get_bytes(&parquet_cache_key).await?,
-        state.cache.get_bytes(&metadata_cache_key).await?,
-    ) {
-        tracing::info!(
-            cache_key = %cache_key,
-            parquet_size = cached_parquet.len(),
-            "Streaming cache HIT - returning cached data as fast stream"
-        );
-
-        // Parse cached metadata
-        let metadata_header: ParquetMetadataHeader = serde_json::from_slice(&cached_metadata_json)
-            .map_err(|e| ApiError::Internal(format!("Failed to parse cached metadata: {}", e)))?;
-
-        // Load the cached symbolic stream so the Complete event reaches parity
-        // even on the cache fast-path (issue #900).
-        let symbolic_data = load_cached_symbolic(&state.cache, &cache_key).await;
-
-        // Extract geometry length from combined parquet (first 4 bytes)
-        let geometry_len = u32::from_le_bytes(cached_parquet[0..4].try_into().unwrap()) as usize;
-        let geometry_data = cached_parquet[4..4 + geometry_len].to_vec();
-
-        // Create fast stream with cached data
-        let cache_key_for_stream = cache_key.clone();
-        let fast_stream: std::pin::Pin<
-            Box<dyn futures::Stream<Item = Result<Event, Infallible>> + Send>,
-        > = Box::pin(futures::stream::iter(vec![
-            // Start event
-            Ok::<_, Infallible>(
-                Event::default().data(
-                    serde_json::to_string(&ParquetStreamEvent::Start {
-                        total_estimate: metadata_header.stats.total_meshes,
-                        cache_key: cache_key_for_stream.clone(),
-                    })
-                    .unwrap(),
-                ),
-            ),
-            // Single batch with all cached geometry
-            Ok(Event::default().data(
-                serde_json::to_string(&ParquetStreamEvent::Batch {
-                    data: base64::engine::general_purpose::STANDARD.encode(&geometry_data),
-                    mesh_count: metadata_header.stats.total_meshes,
-                    batch_number: 1,
-                })
-                .unwrap(),
-            )),
-            // Complete event
-            Ok(Event::default().data(
-                serde_json::to_string(&ParquetStreamEvent::Complete {
-                    stats: metadata_header.stats,
-                    metadata: metadata_header.metadata,
-                    symbolic_data,
-                })
-                .unwrap(),
-            )),
-        ]));
-
-        // Cached replay: no parse work runs, so holding the admission guard
-        // (and its CPU slot) while a slow client drains the SSE would starve
-        // real parses for nothing. The replay blob is already materialized
-        // and is bounded by cache content, far below a parse working set.
+    // This avoids re-processing files that are already cached (see
+    // `cached_replay.rs`; a short/corrupt blob falls through as a miss).
+    if let Some(response) = super::cached_replay::try_cached_replay(&state, &cache_key).await? {
+        // Cached replay: no parse work runs, so holding the admission
+        // guard (and its CPU slot) while a slow client drains the SSE
+        // would starve real parses for nothing. The replay blob is
+        // already materialized and bounded by cache content, far below
+        // a parse working set.
         drop(admission_guard);
-        return Ok(Sse::new(fast_stream)
-            .keep_alive(KeepAlive::default())
-            .into_response());
+        return Ok(response);
     }
 
     tracing::info!(
@@ -399,7 +340,7 @@ pub async fn parse_parquet_stream(
                     .await;
 
             if let Ok(Ok(parquet_data)) = serialize_result {
-                let dm_key = format!("{}-datamodel-v3", cache_key_for_dm);
+                let dm_key = format!("{}-datamodel-v5", cache_key_for_dm);
                 if let Err(e) = cache_for_dm.set_bytes(&dm_key, &parquet_data).await {
                     tracing::error!(error = %e, "Failed to cache data model from stream");
                 } else {

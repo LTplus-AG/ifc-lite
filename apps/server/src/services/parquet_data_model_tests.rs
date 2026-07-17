@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::*;
-use crate::services::data_model::DataModel;
+use crate::services::data_model::{DataModel, Property, PropertySet};
 use arrow::array::Array;
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 
@@ -105,4 +105,72 @@ fn serializes_and_reads_back_association_tables() {
 
     let documents = read_section(&sections[7]);
     assert_eq!(documents.num_rows(), 1);
+}
+
+/// The properties table's `values_json` column round-trips (issue #1766): a
+/// multi-valued property's candidate array serializes to a JSON string and a
+/// single-valued property leaves the column null. Guards the untested
+/// serialize→parquet→(client-decodes) seam against a column-name/encoding typo.
+#[test]
+fn serializes_and_reads_back_property_values_json() {
+    let dm = DataModel {
+        entities: vec![],
+        property_sets: vec![PropertySet {
+            pset_id: 42,
+            pset_name: "Pset_WallCommon".into(),
+            properties: vec![
+                Property {
+                    property_name: "AcousticRating".into(),
+                    property_value: "R1, R2".into(),
+                    property_type: "string".into(),
+                    data_type: None,
+                    values: Some(vec!["R1".into(), "R2".into()]),
+                },
+                Property {
+                    property_name: "FireRating".into(),
+                    property_value: "REI 120".into(),
+                    property_type: "string".into(),
+                    data_type: Some("IFCLABEL".into()),
+                    values: None,
+                },
+            ],
+        }],
+        quantity_sets: vec![],
+        relationships: vec![],
+        classifications: vec![],
+        materials: vec![],
+        documents: vec![],
+        spatial_hierarchy: SpatialHierarchyData {
+            nodes: vec![],
+            project_id: 0,
+            element_to_storey: vec![],
+            element_to_building: vec![],
+            element_to_site: vec![],
+            element_to_space: vec![],
+        },
+    };
+
+    let payload = serialize_data_model_to_parquet(&dm).expect("serialize");
+    let properties = read_section(&split_sections(&payload)[1]); // section 1 = properties
+
+    let names = properties
+        .column_by_name("property_name")
+        .unwrap()
+        .as_any()
+        .downcast_ref::<arrow::array::StringArray>()
+        .unwrap();
+    let values_json = properties
+        .column_by_name("values_json")
+        .expect("values_json column present")
+        .as_any()
+        .downcast_ref::<arrow::array::StringArray>()
+        .unwrap();
+
+    for i in 0..properties.num_rows() {
+        match names.value(i) {
+            "AcousticRating" => assert_eq!(values_json.value(i), r#"["R1","R2"]"#),
+            "FireRating" => assert!(values_json.is_null(i), "single value → null candidates"),
+            other => panic!("unexpected property {other}"),
+        }
+    }
 }

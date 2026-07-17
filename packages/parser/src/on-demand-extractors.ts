@@ -26,11 +26,12 @@ import { extractGeoreferencing as extractGeorefFromEntities, type GeoreferenceIn
 export { extractClassificationsOnDemand } from './classification-resolver.js';
 export type { ClassificationInfo } from './classification-resolver.js';
 
-export { extractMaterialsOnDemand } from './material-resolver.js';
+export { extractMaterialsOnDemand, extractAllMaterialsOnDemand } from './material-resolver.js';
 export type { MaterialInfo, MaterialLayerInfo, MaterialProfileInfo, MaterialConstituentInfo } from './material-resolver.js';
 
 export {
     resolveMaterialDefId,
+    resolveAllMaterialDefIds,
     collectMaterialLeaves,
     buildMaterialUsageIndex,
     getMaterialDisplay,
@@ -38,7 +39,7 @@ export {
 export type { MaterialLeaf, MaterialUsage } from './material-resolver.js';
 
 import {
-    resolveMaterialDefId as resolveMaterialDefIdImpl,
+    resolveAllMaterialDefIds as resolveAllMaterialDefIdsImpl,
     collectMaterialLeaves as collectMaterialLeavesImpl,
     getMaterialDisplay as getMaterialDisplayImpl,
 } from './material-resolver.js';
@@ -1144,10 +1145,15 @@ function buildMaterialPsetGroups(store: IfcDataStore, materialIds: number[]): Ma
  * the set definition itself. Returns one group per material that has psets.
  */
 export function extractMaterialPropertiesOnDemand(store: IfcDataStore, entityId: number): MaterialPsetGroup[] {
-    const defId = resolveMaterialDefIdImpl(store, entityId);
-    if (defId === undefined) return [];
-    const leafIds = collectMaterialLeavesImpl(store, defId).map((l) => l.id);
-    return buildMaterialPsetGroups(store, [defId, ...leafIds]);
+    // Every association, not just the primary — psets on a second
+    // IfcRelAssociatesMaterial's definition were previously invisible.
+    const defIds = resolveAllMaterialDefIdsImpl(store, entityId);
+    if (defIds.length === 0) return [];
+    const ids: number[] = [];
+    for (const defId of defIds) {
+        ids.push(defId, ...collectMaterialLeavesImpl(store, defId).map((l) => l.id));
+    }
+    return buildMaterialPsetGroups(store, ids);
 }
 
 /**

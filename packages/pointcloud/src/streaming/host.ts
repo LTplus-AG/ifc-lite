@@ -14,6 +14,10 @@
 
 import type { DecodedPointChunk, PointCloudBBox } from '../types.js';
 import {
+  accumulateClassificationCounts,
+  createClassificationCounts,
+} from '../classification.js';
+import {
   createDecodeWorkerSource,
   type CreateDecodeWorkerSourceOptions,
   type DecodeWorkerFormat,
@@ -45,8 +49,13 @@ export interface StreamPointCloudOptions {
   onChunk: (chunk: DecodedPointChunk) => void;
   /** Periodic progress signal in 0..1. */
   onProgress?: (loaded: number, total: number) => void;
-  /** Called once with the aggregated bbox once the stream finishes. */
-  onComplete?: (bbox: PointCloudBBox, totalEmitted: number) => void;
+  /**
+   * Called once with the aggregated bbox once the stream finishes.
+   * `classCounts` is the per-class point histogram (256 slots, one per
+   * LAS classification code) aggregated across every emitted chunk, or
+   * `null` when no chunk carried a classifications buffer (#1783).
+   */
+  onComplete?: (bbox: PointCloudBBox, totalEmitted: number, classCounts: Uint32Array | null) => void;
   /** Called if the source errors mid-stream. */
   onError?: (err: Error) => void;
 
@@ -95,6 +104,8 @@ export function streamPointCloud(opts: StreamPointCloudOptions): StreamHandle {
     let bboxMin: [number, number, number] = [Infinity, Infinity, Infinity];
     let bboxMax: [number, number, number] = [-Infinity, -Infinity, -Infinity];
     let info: PointSourceInfo | null = null;
+    const classCounts = createClassificationCounts();
+    let sawClassifications = false;
 
     try {
       // First open with stride=1 to learn the true point count, then
@@ -127,6 +138,7 @@ export function streamPointCloud(opts: StreamPointCloudOptions): StreamHandle {
         const chunk = await source.next(chunkSize, composed);
         if (!chunk) break;
         opts.onChunk(chunk);
+        sawClassifications = accumulateClassificationCounts(classCounts, chunk) || sawClassifications;
         totalEmitted += chunk.pointCount;
         if (chunk.bbox.min[0] < bboxMin[0]) bboxMin[0] = chunk.bbox.min[0];
         if (chunk.bbox.min[1] < bboxMin[1]) bboxMin[1] = chunk.bbox.min[1];
@@ -146,7 +158,7 @@ export function streamPointCloud(opts: StreamPointCloudOptions): StreamHandle {
       const bbox: PointCloudBBox = Number.isFinite(bboxMin[0])
         ? { min: bboxMin, max: bboxMax }
         : info.bbox;
-      opts.onComplete?.(bbox, totalEmitted);
+      opts.onComplete?.(bbox, totalEmitted, sawClassifications ? classCounts : null);
     }
   })().catch((err) => {
     if (composed.aborted) return; // expected on cancel

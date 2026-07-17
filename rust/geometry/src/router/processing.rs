@@ -181,7 +181,7 @@ impl GeometryRouter {
         // (`process_element_with_submeshes_and_voids`) calls the impl below with
         // `allow_instancing = false` — a voided occurrence must materialize its cut
         // geometry, never instance an un-cut shared template.
-        self.process_element_with_submeshes_impl(element, decoder, true)
+        self.process_element_with_submeshes_impl(element, decoder, true, None)
     }
 
     /// [`Self::process_element_with_submeshes`] with an explicit don't-bake gate.
@@ -189,11 +189,15 @@ impl GeometryRouter {
     /// path passes `false` so its occurrences always materialize. The don't-bake
     /// additionally requires an armed [`GeometryRouter::enable_output_instancing`]
     /// plan, so with no plan this is byte-identical to the historical flat path.
+    /// `texture_index` is `Some` only on the textured non-void path (#1781).
     pub(super) fn process_element_with_submeshes_impl(
         &self,
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
         allow_instancing: bool,
+        texture_index: Option<
+            &rustc_hash::FxHashMap<u32, crate::processors::texture::ResolvedTextureMap>,
+        >,
     ) -> Result<SubMeshCollection> {
         // If a material-layer buildup is attached, try slicing single-solid
         // elements (walls / slabs with IfcMaterialLayerSetUsage) first so each
@@ -275,6 +279,7 @@ impl GeometryRouter {
                     decoder,
                     &mut sub_meshes,
                     allow_instancing,
+                    texture_index,
                 )?;
             }
         }
@@ -292,48 +297,6 @@ impl GeometryRouter {
         Ok(sub_meshes)
     }
 
-    /// Apply the element's `ObjectPlacement` (scaled to metres) to every sub-mesh.
-    /// Placement is a rigid per-instance transform, kept OUT of the dedup cache so
-    /// instances of one shared geometry land at their own positions.
-    fn apply_submesh_placement(
-        &self,
-        sub_meshes: &mut SubMeshCollection,
-        element: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-    ) -> Result<()> {
-        // ObjectPlacement translation is in file units (e.g. mm) but geometry is
-        // scaled to metres, so the transform MUST be scaled to match.
-        if let Some(placement_attr) = element.get(5) {
-            if !placement_attr.is_null() {
-                if let Some(placement) = decoder.resolve_ref(placement_attr)? {
-                    let mut transform = self.get_placement_transform(&placement, decoder)?;
-                    self.scale_transform(&mut transform);
-                    // Instancing: record the per-element world placement on EACH sub-mesh's
-                    // instance metadata BEFORE it is baked into the vertices, mirroring
-                    // `apply_placement` for the single-mesh path. Without this, the sub-mesh
-                    // path (every multi-item element — all the Tekla steel: beams, plates,
-                    // assemblies) leaves `instance_meta.transform` at the IDENTITY placeholder,
-                    // so `collate_refs` computes rel_k = m_k · m_ref⁻¹ = identity for every
-                    // occurrence and they all stack on the first one. The flat path was
-                    // always correct (placement IS baked into the vertices below), so the
-                    // dedup made it look like repeated geometry was "missing".
-                    if instancing_enabled() {
-                        let row_major = mat4_to_row_major(&transform);
-                        for sub in &mut sub_meshes.sub_meshes {
-                            if let Some(im) = sub.mesh.instance_meta.as_mut() {
-                                im.transform = row_major;
-                            }
-                        }
-                    }
-                    for sub in &mut sub_meshes.sub_meshes {
-                        self.transform_mesh_world(&mut sub.mesh, &transform);
-                    }
-                }
-            }
-        }
-        Ok(())
-    }
-
     /// Collect sub-meshes from a representation item, following MappedItem references.
     /// `allow_instancing` enables the #1623 Phase 2 don't-bake path at the top-level
     /// mapped item (see [`Self::collect_submeshes_from_item_inner`]).
@@ -343,11 +306,23 @@ impl GeometryRouter {
         decoder: &mut EntityDecoder,
         sub_meshes: &mut SubMeshCollection,
         allow_instancing: bool,
+        texture_index: Option<
+            &rustc_hash::FxHashMap<u32, crate::processors::texture::ResolvedTextureMap>,
+        >,
     ) -> Result<()> {
         let mut visited = FxHashSet::default();
-        self.collect_submeshes_from_item_inner(item, decoder, sub_meshes, 0, &mut visited, allow_instancing)
+        self.collect_submeshes_from_item_inner(
+            item,
+            decoder,
+            sub_meshes,
+            0,
+            &mut visited,
+            allow_instancing,
+            texture_index,
+        )
     }
 
+    #[allow(clippy::too_many_arguments)] // internal recursion carries per-walk state
     fn collect_submeshes_from_item_inner(
         &self,
         item: &DecodedEntity,
@@ -356,6 +331,9 @@ impl GeometryRouter {
         depth: usize,
         visited: &mut FxHashSet<u32>,
         allow_instancing: bool,
+        texture_index: Option<
+            &rustc_hash::FxHashMap<u32, crate::processors::texture::ResolvedTextureMap>,
+        >,
     ) -> Result<()> {
         if depth >= MAX_MAPPED_ITEM_DEPTH {
             return Err(Error::geometry(format!(
@@ -435,6 +413,12 @@ impl GeometryRouter {
                             // collapsing the palette (WRONG vs the flat path); route
                             // to flat instead (byte-identical to instancing-off).
                             .filter(|&item_id| !self.is_indexed_colour_split_source(item_id))
+                            // #1781: same rule for a TEXTURED single solid — an
+                            // instance placeholder carries no UVs/texture, so the
+                            // occurrence would render untextured. Materialize flat.
+                            .filter(|&item_id| {
+                                texture_index.is_none_or(|ti| !ti.contains_key(&item_id))
+                            })
                     })
             } else {
                 None
@@ -511,6 +495,7 @@ impl GeometryRouter {
                         depth + 1,
                         visited,
                         false,
+                        texture_index,
                     ) {
                         crate::diag::diag_debug!(
                             { item_id = nested_item.id, ifc_type = ?nested_item.ifc_type,
@@ -584,6 +569,23 @@ impl GeometryRouter {
 
             visited.remove(&item.id);
         } else {
+            // Textured tessellated face set (#1781): mesh with per-vertex UVs so
+            // the occurrence path renders its image like the type-geometry path
+            // (#961) always did. Bypasses the content-dedup cache — the cached
+            // mesh has no UV channel, and UVs are per-face-set anyway. Falls
+            // through to the plain path if the textured build fails.
+            if item.ifc_type == IfcType::IfcTriangulatedFaceSet {
+                if let Some(map) = texture_index.and_then(|ti| ti.get(&item.id)) {
+                    let proc = crate::processors::TriangulatedFaceSetProcessor::new();
+                    if let Ok((mut mesh, uvs)) = proc.process_with_texture(item, decoder, map) {
+                        if !mesh.is_empty() {
+                            self.scale_mesh(&mut mesh); // UVs are unaffected by scale
+                            sub_meshes.add_textured(item.id, mesh, uvs, map.attachment());
+                            return Ok(());
+                        }
+                    }
+                }
+            }
             // Regular geometry item - process and record with its ID
             // Skip unsupported geometry types (e.g. IfcGeometricSet) instead of failing
             match self.process_representation_item(item, decoder) {
@@ -853,7 +855,7 @@ impl GeometryRouter {
 
     /// Process MappedItem with caching for repeated geometry
     #[inline]
-    fn process_mapped_item_cached(
+    pub(super) fn process_mapped_item_cached(
         &self,
         item: &DecodedEntity,
         decoder: &mut EntityDecoder,
@@ -1017,139 +1019,6 @@ impl GeometryRouter {
         }
 
         Ok(mesh)
-    }
-
-    /// Tessellate an `IfcRepresentationMap`'s `MappedRepresentation` and bake
-    /// its `MappingOrigin` placement (issue #957).
-    ///
-    /// Used to render geometry that hangs off an `IfcTypeProduct` (e.g.
-    /// `IfcBoilerType`) through its `RepresentationMaps` when no occurrence
-    /// instantiates it — the buildingSMART annex-E "tessellated shape with
-    /// style" samples ship exactly this shape (geometry on the type, declared
-    /// via `IfcRelDeclares`, with no product instance).
-    ///
-    /// Unlike [`Self::process_mapped_item_cached`], this applies `MappingOrigin`
-    /// (`IfcRepresentationMap` attr 0) rather than a `MappingTarget`: there is
-    /// no occurrence placement and no `IfcMappedItem` to carry one, so the
-    /// MappingOrigin axis placement is the only transform. It is the caller's
-    /// responsibility to only invoke this for orphan representation maps so
-    /// normally-instanced typed products aren't double-rendered.
-    pub fn process_representation_map(
-        &self,
-        rep_map: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-    ) -> Result<Mesh> {
-        let empty = rustc_hash::FxHashMap::default();
-        let parts = self.process_representation_map_with_texture(rep_map, decoder, &empty)?;
-        let mut mesh = Mesh::new();
-        for (part, _uvs, _texture) in parts {
-            mesh.merge(&part);
-        }
-        Ok(mesh)
-    }
-
-    /// Texture-aware variant of [`Self::process_representation_map`] (issue
-    /// #961). Returns one render part per output mesh: each textured
-    /// `IfcTriangulatedFaceSet` item becomes its OWN part carrying its UVs +
-    /// decoded image (so a representation with several differently-textured
-    /// items renders each with the correct image), and all untextured items are
-    /// merged into a single part with empty UVs / no texture. The MappingOrigin
-    /// placement is baked into every part.
-    pub fn process_representation_map_with_texture(
-        &self,
-        rep_map: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-        texture_index: &rustc_hash::FxHashMap<u32, crate::processors::texture::ResolvedTextureMap>,
-    ) -> Result<Vec<(Mesh, Vec<f32>, Option<crate::processors::MeshTexture>)>> {
-        // attr 1: MappedRepresentation (IfcShapeRepresentation)
-        let mapped_rep_attr = rep_map.get(1).ok_or_else(|| {
-            Error::geometry("RepresentationMap missing MappedRepresentation".to_string())
-        })?;
-        let mapped_rep = decoder
-            .resolve_ref(mapped_rep_attr)?
-            .ok_or_else(|| Error::geometry("Failed to resolve MappedRepresentation".to_string()))?;
-
-        // attr 3: Items
-        let items_attr = mapped_rep
-            .get(3)
-            .ok_or_else(|| Error::geometry("Representation missing Items".to_string()))?;
-        let items = decoder.resolve_ref_list(items_attr)?;
-
-        let mut untextured = Mesh::new();
-        // One entry per textured item — keeps each item with its own image.
-        let mut textured: Vec<(Mesh, Vec<f32>, crate::processors::MeshTexture)> = Vec::new();
-        for item in items {
-            // A nested IfcMappedItem inside a type's own representation: process
-            // it (applies its MappingTarget) rather than dropping its geometry.
-            if item.ifc_type == IfcType::IfcMappedItem {
-                if let Ok(sub_mesh) = self.process_mapped_item_cached(&item, decoder) {
-                    untextured.merge(&sub_mesh); // already scaled inside the cached path
-                }
-                continue;
-            }
-
-            // Textured tessellated face set → its own part with per-vertex UVs (#961).
-            if item.ifc_type == IfcType::IfcTriangulatedFaceSet {
-                if let Some(map) = texture_index.get(&item.id) {
-                    let proc = crate::processors::TriangulatedFaceSetProcessor::new();
-                    if let Ok((mut sub_mesh, sub_uvs)) =
-                        proc.process_with_texture(&item, decoder, map)
-                    {
-                        self.scale_mesh(&mut sub_mesh); // UVs are unaffected by scale
-                        textured.push((sub_mesh, sub_uvs, map.texture.clone()));
-                        continue;
-                    }
-                }
-            }
-
-            if let Some(processor) = self.processors.get(&item.ifc_type) {
-                if let Ok(mut sub_mesh) =
-                    processor.process(&item, decoder, &self.schema, self.tessellation_quality)
-                {
-                    sub_mesh.validate_indices();
-                    self.scale_mesh(&mut sub_mesh);
-                    untextured.merge(&sub_mesh);
-                }
-            }
-        }
-
-        // attr 0: MappingOrigin (IfcAxis2Placement3D) — the only 3D transform;
-        // UVs are 2D and unaffected. Parse once, bake into every part.
-        let origin_transform: Option<nalgebra::Matrix4<f64>> = match rep_map.get(0) {
-            Some(origin_attr) if !origin_attr.is_null() => {
-                match decoder.resolve_ref(origin_attr)? {
-                Some(origin) if origin.ifc_type == IfcType::IfcAxis2Placement3D => {
-                    let mut t = self.parse_axis2_placement_3d(&origin, decoder)?;
-                    self.scale_transform(&mut t);
-                    Some(t)
-                }
-                _ => None,
-                }
-            }
-            _ => None,
-        };
-
-        let mut out: Vec<(Mesh, Vec<f32>, Option<crate::processors::MeshTexture>)> = Vec::new();
-        for (mut mesh, uvs, texture) in textured {
-            if let Some(t) = &origin_transform {
-                self.transform_mesh_local(&mut mesh, t);
-            }
-            // Same sliver hygiene as the other mesh-output chokepoints. This is
-            // the type-geometry (RepresentationMap) channel and the only one
-            // carrying a parallel per-vertex UV array; clean_degenerate edits
-            // only indices (vertices/UVs untouched), so the UVs stay in sync.
-            mesh.clean_degenerate();
-            out.push((mesh, uvs, Some(texture)));
-        }
-        if !untextured.is_empty() {
-            if let Some(t) = &origin_transform {
-                self.transform_mesh_local(&mut untextured, t);
-            }
-            untextured.clean_degenerate();
-            out.push((untextured, Vec::new(), None));
-        }
-
-        Ok(out)
     }
 
     /// Run an `IfcAlignment` through the dedicated alignment processor, then

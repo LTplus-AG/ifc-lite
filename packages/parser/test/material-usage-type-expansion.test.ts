@@ -106,15 +106,14 @@ describe('buildMaterialUsageIndex end-to-end type expansion (#1755)', () => {
         const usage = buildMaterialUsageIndex(store);
         const byName = new Map([...usage.values()].map((u) => [u.name, u]));
 
-        // #110's winning type matches the per-element precedence...
+        // #110's winning type is DETERMINISTIC: rel #210 (→ type #200/wood1)
+        // has the lower express id, so the per-element precedence picks wood1…
         const winningInfo = extractMaterialsOnDemand(store, 110);
-        const winningWood = winningInfo?.constituents?.[0]?.materialName;
-        expect(winningWood === 'wood1' || winningWood === 'wood2').toBe(true);
-        // ...and the index attributes #110 ONLY under that wood; under the
-        // other wood it must not appear at all.
-        const otherWood = winningWood === 'wood1' ? 'wood2' : 'wood1';
-        expect(byName.get(winningWood!)!.entries.filter((e) => e.entityId === 110)).toHaveLength(1);
-        expect((byName.get(otherWood)?.entries ?? []).filter((e) => e.entityId === 110)).toHaveLength(0);
+        expect(winningInfo?.constituents?.[0]?.materialName).toBe('wood1');
+        // …and the index attributes #110 ONLY under wood1; under wood2 it
+        // must not appear at all.
+        expect(byName.get('wood1')!.entries.filter((e) => e.entityId === 110)).toHaveLength(1);
+        expect((byName.get('wood2')?.entries ?? []).filter((e) => e.entityId === 110)).toHaveLength(0);
         // #120 (single-typed) is untouched by the gate.
         expect(byName.get('wood2')!.entries.map((e) => e.entityId)).toContain(120);
     });

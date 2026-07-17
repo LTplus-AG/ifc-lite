@@ -707,6 +707,21 @@ export function buildMaterialUsageIndex(store: IfcDataStore): Map<number, Materi
         // on that single row instead of the later association being dropped
         // (which would make the total depend on rel order).
         const rowPerMaterial = new Map<number, Map<number, { entityId: number; weight: number }>>();
+        // A (malformed) multi-typed occurrence must aggregate only its WINNING
+        // type — the first material-bearing one in DefinesByType order, the
+        // same precedence resolveAllMaterialDefIds applies — or two type keys
+        // would each expand to it and double-count its quantities.
+        const winningTypeCache = new Map<number, number | undefined>();
+        const winningTypeFor = (occId: number): number | undefined => {
+            if (winningTypeCache.has(occId)) return winningTypeCache.get(occId);
+            let winner: number | undefined;
+            const typeIds = store.relationships!.getRelated(occId, RelationshipType.DefinesByType, 'inverse');
+            for (const typeId of typeIds) {
+                if (resolveOwnMaterialDefIds(store, typeId).length > 0) { winner = typeId; break; }
+            }
+            winningTypeCache.set(occId, winner);
+            return winner;
+        };
         for (const [entityId, mappedDefIds] of forward) {
             // IfcRelAssociatesMaterial commonly targets the TYPE entity
             // (IfcDoorType etc.). The tab/totals need occurrences — a type
@@ -724,7 +739,7 @@ export function buildMaterialUsageIndex(store: IfcDataStore): Map<number, Materi
             if (ref && store.relationships && isIfcTypeLikeEntity(ref.type.toUpperCase())) {
                 targets = store.relationships
                     .getRelated(entityId, RelationshipType.DefinesByType, 'forward')
-                    .filter((occId) => !forward!.has(occId));
+                    .filter((occId) => !forward!.has(occId) && winningTypeFor(occId) === entityId);
             } else {
                 targets = [entityId];
             }

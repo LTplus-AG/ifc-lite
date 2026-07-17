@@ -15,6 +15,37 @@ import type { StateCreator } from 'zustand';
 export type PointColorModeUi = 'rgb' | 'classification' | 'intensity' | 'height' | 'fixed' | 'deviation';
 export type PointSizeModeUi = 'fixed-px' | 'adaptive-world' | 'attenuated';
 
+/** Number of u32 words in the 256-bit LAS class-visibility mask. */
+export const POINT_CLOUD_CLASS_MASK_WORDS = 8;
+
+/** All 256 LAS classes visible — the mask's default state. */
+export const ALL_POINT_CLOUD_CLASSES_VISIBLE: readonly number[] =
+  Object.freeze(new Array<number>(POINT_CLOUD_CLASS_MASK_WORDS).fill(0xFFFFFFFF));
+
+/** Per-class point counts for one point cloud asset (classId → count). */
+export type PointCloudClassCounts = Readonly<Record<number, number>>;
+
+/** True when `classId`'s bit is set in the 8-word visibility mask. */
+export function isPointCloudClassVisible(mask: readonly number[], classId: number): boolean {
+  if (!Number.isInteger(classId) || classId < 0 || classId > 255) return true;
+  const word = mask[classId >> 5];
+  // Words beyond the stored array default to visible.
+  if (!Number.isFinite(word)) return true;
+  return ((word >>> (classId & 31)) & 1) !== 0;
+}
+
+/** Coerce arbitrary input into a well-formed 8-word unsigned mask. */
+function sanitizeClassMaskWords(words: readonly number[]): number[] {
+  const out = new Array<number>(POINT_CLOUD_CLASS_MASK_WORDS).fill(0xFFFFFFFF);
+  for (let i = 0; i < POINT_CLOUD_CLASS_MASK_WORDS && i < words.length; i++) {
+    const w = words[i];
+    // Non-finite words reset to "all on" — same policy as the old
+    // 32-bit setter; invalid input must never reach GPU uniforms.
+    if (Number.isFinite(w)) out[i] = w >>> 0;
+  }
+  return out;
+}
+
 export interface PointCloudSlice {
   pointCloudColorMode: PointColorModeUi;
   pointCloudFixedColor: [number, number, number, number];
@@ -32,12 +63,21 @@ export interface PointCloudSlice {
   /** EDL strength multiplier. 0..3, default 1. */
   pointCloudEdlStrength: number;
   /**
-   * Per-ASPRS-class visibility bitmask (32 bits = covers classes
-   * 0..31, the LAS 1.4 standard range). Bit `i` set → class `i`
-   * visible. Default `0xFFFFFFFF` (all visible). Only point clouds
-   * carry classifications; meshes ignore this.
+   * Per-LAS-class visibility bitmask covering the full 0..255 code
+   * range, packed as 8 unsigned 32-bit words LSB-first (#1783). Bit
+   * `i % 32` of word `i / 32` set → class `i` visible. Defaults to
+   * everything visible. Only point clouds carry classifications;
+   * meshes ignore this.
    */
-  pointCloudClassMask: number;
+  pointCloudClassMask: readonly number[];
+  /**
+   * Per-asset classification histograms, keyed by the renderer's
+   * streamed-asset handle id (stringified) or `'ifcx'` for the merged
+   * inline IFCx assets. Aggregated across assets by the classes UI so
+   * the checklist only lists codes actually present in loaded scans,
+   * with point counts (#1783).
+   */
+  pointCloudClassCounts: Readonly<Record<string, PointCloudClassCounts>>;
   /**
    * Stride-cull factor for the splat shader. 1 = render every point,
    * N>1 = render every Nth point. Used by the section-plane slider's
@@ -74,9 +114,15 @@ export interface PointCloudSlice {
   setPointCloudRoundShape: (enabled: boolean) => void;
   setPointCloudEdlEnabled: (enabled: boolean) => void;
   setPointCloudEdlStrength: (strength: number) => void;
-  setPointCloudClassMask: (mask: number) => void;
-  /** Toggle a single ASPRS class. `classId` is clamped to 0..31. */
+  setPointCloudClassMask: (mask: readonly number[]) => void;
+  /** Toggle a single LAS class. `classId` is clamped to 0..255. */
   togglePointCloudClass: (classId: number) => void;
+  /**
+   * Record (or with `null`, drop) the classification histogram for one
+   * asset. `key` is the renderer handle id for streamed scans or
+   * `'ifcx'` for the merged inline assets.
+   */
+  setPointCloudClassCounts: (key: string | number, counts: Record<number, number> | null) => void;
   /** Set the stride-cull factor (1 = full density). */
   setPointCloudPreviewStride: (stride: number) => void;
   setPointCloudDeviationCenterOffset: (m: number) => void;
@@ -104,10 +150,8 @@ export const POINT_CLOUD_DEFAULTS = {
   pointCloudRoundShape: true,
   pointCloudEdlEnabled: true,
   pointCloudEdlStrength: 1,
-  // 0xFFFFFFFF — all 32 classes visible. Stored as `-1 >>> 0` to
-  // keep the value as an unsigned 32-bit integer; JS doesn't have
-  // a u32 literal type so we round-trip through `>>> 0`.
-  pointCloudClassMask: 0xFFFFFFFF,
+  pointCloudClassMask: ALL_POINT_CLOUD_CLASSES_VISIBLE,
+  pointCloudClassCounts: {} as Readonly<Record<string, PointCloudClassCounts>>,
   pointCloudPreviewStride: 1,
   pointCloudDeviationCenterOffset: 0,
   pointCloudDeviationHalfRange: 0.05,
@@ -137,16 +181,25 @@ export const createPointCloudSlice: StateCreator<PointCloudSlice, [], [], PointC
     pointCloudEdlStrength: Number.isFinite(strength) ? Math.max(0, Math.min(3, strength)) : 1,
   }),
   setPointCloudClassMask: (mask) => set({
-    // Coerce through `>>> 0` to keep the stored value as an unsigned
-    // 32-bit integer; non-finite / negative inputs reset to "all on".
-    pointCloudClassMask: Number.isFinite(mask) ? (mask >>> 0) : 0xFFFFFFFF,
+    pointCloudClassMask: sanitizeClassMaskWords(mask),
   }),
   togglePointCloudClass: (classId) => set((s) => {
-    const c = Math.max(0, Math.min(31, classId | 0));
-    const bit = 1 << c;
-    // XOR flips the bit; coerce through `>>> 0` so the stored value
+    const c = Math.max(0, Math.min(255, classId | 0));
+    const words = sanitizeClassMaskWords(s.pointCloudClassMask);
+    // XOR flips the bit; coerce through `>>> 0` so the stored word
     // stays in the unsigned 32-bit range.
-    return { pointCloudClassMask: (s.pointCloudClassMask ^ bit) >>> 0 };
+    words[c >> 5] = (words[c >> 5] ^ (1 << (c & 31))) >>> 0;
+    return { pointCloudClassMask: words };
+  }),
+  setPointCloudClassCounts: (key, counts) => set((s) => {
+    const k = String(key);
+    if (counts === null) {
+      if (!(k in s.pointCloudClassCounts)) return {};
+      const next = { ...s.pointCloudClassCounts };
+      delete next[k];
+      return { pointCloudClassCounts: next };
+    }
+    return { pointCloudClassCounts: { ...s.pointCloudClassCounts, [k]: counts } };
   }),
   setPointCloudPreviewStride: (stride) => set({
     pointCloudPreviewStride: Number.isFinite(stride)

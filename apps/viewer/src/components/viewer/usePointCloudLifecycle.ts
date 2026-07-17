@@ -29,6 +29,7 @@ export function usePointCloudLifecycle(params: UsePointCloudLifecycleParams): vo
   const { rendererRef, isInitialized } = params;
   const models = useViewerStore((s) => s.models);
   const decCount = useViewerStore((s) => s.incrementPointCloudAssetCount);
+  const setClassCounts = useViewerStore((s) => s.setPointCloudClassCounts);
   const previousRef = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
@@ -52,13 +53,16 @@ export function usePointCloudLifecycle(params: UsePointCloudLifecycleParams): vo
       const nextHandle = current.get(modelId);
       if (nextHandle !== handleId) {
         renderer.removePointCloudAsset({ id: handleId });
+        // Drop the asset's classification histogram so the classes
+        // checklist stops listing points that are no longer loaded.
+        setClassCounts(handleId, null);
         decCount(-1);
       }
     }
 
     previousRef.current = current;
     renderer.requestRender();
-  }, [models, isInitialized, rendererRef, decCount]);
+  }, [models, isInitialized, rendererRef, decCount, setClassCounts]);
 }
 
 export default usePointCloudLifecycle;

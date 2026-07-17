@@ -23,6 +23,34 @@ export type PointColorMode =
 
 export type PointSizeMode = 'fixed-px' | 'adaptive-world' | 'attenuated';
 
+/** Number of u32 words in the 256-bit LAS class-visibility mask. */
+export const CLASS_MASK_WORDS = 8;
+
+/**
+ * Normalize the public `classMask` option into the 8-word (256-bit)
+ * uniform layout. Accepts:
+ *   - `undefined`          → all classes visible
+ *   - `number` (legacy)    → bits 0..31 as given; classes 32..255 stay
+ *                            visible, matching the old 32-bit semantics
+ *   - `ArrayLike<number>`  → up to 8 words, LSB-first; missing or
+ *                            non-finite words default to all-visible
+ */
+export function normalizeClassMask(
+  mask: number | ArrayLike<number> | undefined,
+): Uint32Array {
+  const out = new Uint32Array(CLASS_MASK_WORDS).fill(0xFFFFFFFF);
+  if (mask === undefined) return out;
+  if (typeof mask === 'number') {
+    out[0] = Number.isFinite(mask) ? mask >>> 0 : 0xFFFFFFFF;
+    return out;
+  }
+  for (let i = 0; i < CLASS_MASK_WORDS && i < mask.length; i++) {
+    const word = mask[i];
+    if (Number.isFinite(word)) out[i] = word >>> 0;
+  }
+  return out;
+}
+
 export const COLOR_MODE_INDEX: Record<PointColorMode, number> = {
   rgb: 0,
   classification: 1,
@@ -53,8 +81,8 @@ export interface PointUniformInputs {
   heightMax: number;
   viewportW: number;
   viewportH: number;
-  /** Per-ASPRS-class visibility bitmask (32 bits = LAS 1.4 classes). */
-  classMask: number;
+  /** 256-bit LAS class-visibility mask, 8 u32 words LSB-first (#1783). */
+  classMask: Uint32Array;
   /** Preview stride — 1 = full density, N = render every Nth point. */
   previewStride: number;
   /** BIM ↔ scan deviation heatmap range (metres). */
@@ -108,11 +136,13 @@ export function writePointCloudUniforms(
   // when non-zero so the federation registry can relabel a streamed
   // asset post-upload (its per-vertex entityId attribute is baked
   // at upload and would otherwise stay at the synthetic local ID).
-  // flags.w (u32 slot 51) = ASPRS class-visibility mask. Bit i set → class i shown.
+  // flags.w (u32 slot 51) is reserved — the class-visibility mask
+  // moved to its own 8-word block below when it grew to cover the
+  // full 0..255 LAS class range (#1783).
   uU32[48] = node.meta.expressId >>> 0;
   uU32[49] = inputs.sectionEnabled ? 1 : 0;
   uU32[50] = inputs.roundShape ? 1 : 0;
-  uU32[51] = inputs.classMask >>> 0;
+  uU32[51] = 0;
   // extras (u32 slots 52..55) — extras.x = previewStride, yzw reserved.
   uU32[52] = inputs.previewStride >>> 0;
   uU32[53] = 0;
@@ -123,6 +153,11 @@ export function writePointCloudUniforms(
   u[57] = inputs.deviationHalfRange;
   u[58] = 0;
   u[59] = 0;
+  // classMask (u32 slots 60..67) — 256-bit LAS class-visibility mask,
+  // bit (i % 32) of word (i / 32) set → class i shown.
+  for (let w = 0; w < CLASS_MASK_WORDS; w++) {
+    uU32[60 + w] = inputs.classMask[w] ?? 0xFFFFFFFF;
+  }
 
   // Pass the typed array directly — TypeScript widens `.buffer` to
   // `ArrayBufferLike` here (vs. `ArrayBuffer` on a class field), which

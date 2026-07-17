@@ -508,6 +508,7 @@ export function useIfcLoader() {
         setGeometryStreamingActive(false);
         const blob = file;
         const incCount = useViewerStore.getState().incrementPointCloudAssetCount;
+        const setClassCounts = useViewerStore.getState().setPointCloudClassCounts;
         const ingest = ingestPointCloud({
           format,
           blob,
@@ -516,6 +517,7 @@ export function useIfcLoader() {
           renderer,
           onProgress: setProgress,
           onAssetCountDelta: incCount,
+          onClassCounts: setClassCounts,
         });
         // Expose cancellation to the UI (StatusBar shows a Cancel
         // button while this is non-null). Cleared via the

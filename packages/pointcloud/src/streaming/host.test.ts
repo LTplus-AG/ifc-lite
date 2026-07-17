@@ -7,7 +7,7 @@ import { streamPointCloud } from './host.js';
 import { LasStreamingSource } from './las-source.js';
 import type { StreamingPointSource } from './types.js';
 
-function buildLasFile(rows: Array<{ x: number; y: number; z: number }>): Blob {
+function buildLasFile(rows: Array<{ x: number; y: number; z: number; cls?: number }>): Blob {
   const headerSize = 227;
   const recordLen = 20;
   const total = headerSize + rows.length * recordLen;
@@ -46,6 +46,8 @@ function buildLasFile(rows: Array<{ x: number; y: number; z: number }>): Blob {
     view.setInt32(off, rows[i].x, true);
     view.setInt32(off + 4, rows[i].y, true);
     view.setInt32(off + 8, rows[i].z, true);
+    // Format-0 classification byte (low 5 bits; high 3 are flag bits).
+    view.setUint8(off + 15, (rows[i].cls ?? 0) & 0x1f);
   }
   return new Blob([buf], { type: 'application/octet-stream' });
 }
@@ -120,6 +122,35 @@ describe('streamPointCloud (in-process source)', () => {
     expect(open.stride).toBe(10);
     expect(open.totalPointCount).toBe(10);
     expect(collected).toEqual([0, 10, 20, 30, 40, 50, 60, 70, 80, 90]);
+  });
+
+  it('aggregates a per-class histogram across chunks into onComplete (#1783)', async () => {
+    const rows: Array<{ x: number; y: number; z: number; cls: number }> = [];
+    // 7 ground + 4 building + 1 unassigned, spread across 3 chunks of 5.
+    for (let i = 0; i < 7; i++) rows.push({ x: i, y: 0, z: 0, cls: 2 });
+    for (let i = 0; i < 4; i++) rows.push({ x: i, y: 1, z: 0, cls: 6 });
+    rows.push({ x: 0, y: 2, z: 0, cls: 1 });
+
+    let classCounts: Uint32Array | null = null;
+    const handle = streamPointCloud({
+      format: 'las',
+      blob: buildLasFile(rows),
+      chunkSize: 5,
+      onChunk: () => {},
+      onComplete: (_bbox, _total, counts) => { classCounts = counts; },
+      createSource: ({ blob, stride }) => new LasStreamingSource(blob, {
+        downsample: { stride },
+      }),
+    });
+
+    await handle.done;
+    expect(classCounts).not.toBeNull();
+    const counts = classCounts as unknown as Uint32Array;
+    expect(counts.length).toBe(256);
+    expect(counts[1]).toBe(1);
+    expect(counts[2]).toBe(7);
+    expect(counts[6]).toBe(4);
+    expect(counts.reduce((a, b) => a + b, 0)).toBe(12);
   });
 
   it('rejects files larger than maxFileSize', async () => {

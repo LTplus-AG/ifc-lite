@@ -4,7 +4,7 @@
 
 /**
  * @ifc-lite/geometry - Geometry processing bridge
- * Now powered by IFC-Lite native Rust WASM (1.9x faster than web-ifc)
+ * Now powered by IFC-Lite native Rust WASM (exact-arithmetic CSG kernel)
  */
 
 // IFC-Lite components (recommended - faster)

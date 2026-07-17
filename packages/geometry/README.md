@@ -113,7 +113,7 @@ works.
 ## Performance
 
 - **First triangles:** 300–500ms (streaming path)
-- **Throughput:** ~1.9x faster than `web-ifc` (928-column.ifc; see `tests/benchmark/benchmark-results.json`)
+- **Correctness:** exact-arithmetic boolean kernel - openings are cut exactly, verified element-by-element against IfcOpenShell on the public benchmark corpus
 - **Worker support:** files > 50 MB process off-main-thread automatically
 - **Native (Tauri):** `preferNative: true` enables the native Rust pipeline when running under a Tauri host — an extension point for third parties building their own desktop app (`@tauri-apps/api` is an optional dep; web builds never load it). See the [Building for Desktop](https://ifclite.dev/docs/guide/desktop/) guide.
 

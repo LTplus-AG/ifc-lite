@@ -88,6 +88,13 @@ export class DemeshSession {
   private meshes: MeshData[] | null = null;
   private originShift: { x: number; y: number; z: number };
   private unitScale: number | null;
+  // Single-flight guards: concurrent calls (rapid button presses) must share
+  // ONE processor init / meshing pass / unit-scale scan. The promises are
+  // sticky on rejection too — a fatal wasm init failure stays terminal for
+  // the session instead of spawning a second doomed processor.
+  private gpPromise: Promise<GeometryProcessor> | null = null;
+  private meshesPromise: Promise<MeshData[]> | null = null;
+  private unitScalePromise: Promise<number> | null = null;
   /** expressId -> state of the CURRENT simplification (from-original). */
   private readonly applied = new Map<number, SimplifiedElementMesh>();
 
@@ -258,53 +265,66 @@ export class DemeshSession {
       this.gp.dispose();
     }
     this.gp = null;
+    this.gpPromise = null;
     this.meshes = null;
+    this.meshesPromise = null;
+    this.unitScalePromise = null;
     this.applied.clear();
   }
 
-  private async ensureProcessor(): Promise<GeometryProcessor> {
-    if (this.gp) return this.gp;
-    if (this.options.geometryProcessor) {
-      this.gp = this.options.geometryProcessor;
-      return this.gp;
-    }
-    this.gp = new GeometryProcessor();
-    this.ownsGp = true;
-    await this.gp.init();
-    return this.gp;
-  }
-
-  private async ensureMeshes(): Promise<MeshData[]> {
-    if (this.meshes) return this.meshes;
-    const gp = await this.ensureProcessor();
-    const meshes: MeshData[] = [];
-    for await (const event of gp.processAdaptive(this.source, { sizeThreshold: 0 })) {
-      if (event.type === 'batch') {
-        meshes.push(...event.meshes);
-        if (event.coordinateInfo) this.originShift = event.coordinateInfo.originShift;
-      } else if (event.type === 'complete' && event.coordinateInfo) {
-        this.originShift = event.coordinateInfo.originShift;
+  private ensureProcessor(): Promise<GeometryProcessor> {
+    this.gpPromise ??= (async () => {
+      if (this.options.geometryProcessor) {
+        this.gp = this.options.geometryProcessor;
+        return this.gp;
       }
-    }
-    this.meshes = meshes;
-    return meshes;
+      const gp = new GeometryProcessor();
+      // Track before init so destroy() during a pending init still disposes.
+      this.gp = gp;
+      this.ownsGp = true;
+      await gp.init();
+      return gp;
+    })();
+    return this.gpPromise;
   }
 
-  private async ensureUnitScale(): Promise<number> {
-    if (this.unitScale !== null) return this.unitScale;
-    const { scanIfcEntities, extractLengthUnitScale } = await import('@ifc-lite/parser');
-    const { entityRefs } = await scanIfcEntities(toArrayBuffer(this.source));
-    const byId = new Map<number, (typeof entityRefs)[number]>();
-    const byType = new Map<string, number[]>();
-    for (const ref of entityRefs) {
-      byId.set(ref.expressId, ref);
-      const type = String(ref.type || '').toUpperCase();
-      const list = byType.get(type);
-      if (list) list.push(ref.expressId);
-      else byType.set(type, [ref.expressId]);
-    }
-    this.unitScale = extractLengthUnitScale(this.source, { byId, byType });
-    return this.unitScale;
+  private ensureMeshes(): Promise<MeshData[]> {
+    this.meshesPromise ??= (async () => {
+      if (this.meshes) return this.meshes;
+      const gp = await this.ensureProcessor();
+      const meshes: MeshData[] = [];
+      for await (const event of gp.processAdaptive(this.source, { sizeThreshold: 0 })) {
+        if (event.type === 'batch') {
+          meshes.push(...event.meshes);
+          if (event.coordinateInfo) this.originShift = event.coordinateInfo.originShift;
+        } else if (event.type === 'complete' && event.coordinateInfo) {
+          this.originShift = event.coordinateInfo.originShift;
+        }
+      }
+      this.meshes = meshes;
+      return meshes;
+    })();
+    return this.meshesPromise;
+  }
+
+  private ensureUnitScale(): Promise<number> {
+    this.unitScalePromise ??= (async () => {
+      if (this.unitScale !== null) return this.unitScale;
+      const { scanIfcEntities, extractLengthUnitScale } = await import('@ifc-lite/parser');
+      const { entityRefs } = await scanIfcEntities(toArrayBuffer(this.source));
+      const byId = new Map<number, (typeof entityRefs)[number]>();
+      const byType = new Map<string, number[]>();
+      for (const ref of entityRefs) {
+        byId.set(ref.expressId, ref);
+        const type = String(ref.type || '').toUpperCase();
+        const list = byType.get(type);
+        if (list) list.push(ref.expressId);
+        else byType.set(type, [ref.expressId]);
+      }
+      this.unitScale = extractLengthUnitScale(this.source, { byId, byType });
+      return this.unitScale;
+    })();
+    return this.unitScalePromise;
   }
 }
 

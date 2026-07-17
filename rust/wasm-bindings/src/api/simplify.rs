@@ -202,9 +202,11 @@ impl IfcAPI {
             }
             groups.entry(express_ids[i]).or_default().push(i);
         }
-        if pos_off > positions.len() as u64 || idx_off > indices.len() as u64 {
+        // Exact totals: trailing unaccounted positions/indices are a malformed
+        // wire payload, not slack to ignore.
+        if pos_off != positions.len() as u64 || idx_off != indices.len() as u64 {
             return Err(js_sys::Error::new(
-                "simplifyMeshes: counts exceed concatenated array lengths",
+                "simplifyMeshes: counts do not match concatenated array lengths",
             )
             .into());
         }
@@ -230,6 +232,12 @@ impl IfcAPI {
         for id in order {
             let record_indices = &groups[&id];
             let level = levels[record_indices[0]];
+            if record_indices.iter().any(|&i| levels[i] != level) {
+                return Err(js_sys::Error::new(&format!(
+                    "simplifyMeshes: records for element {id} have conflicting levels"
+                ))
+                .into());
+            }
             let records: Vec<SimplifyRecordInput<'_>> = record_indices
                 .iter()
                 .map(|&i| {

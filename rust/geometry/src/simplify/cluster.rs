@@ -137,8 +137,9 @@ pub(crate) fn cluster_to_ratio(mesh: &Mesh, target_ratio: f32, min_floor: u32) -
         let candidate = cluster_decimate(mesh, cell);
         let count = candidate.indices.len() / 3;
         if count == 0 {
-            // Over-collapsed: keep the finest useful result found so far.
-            break;
+            // Over-collapsed: keep the finest useful result found so far,
+            // reporting the iteration that actually produced it.
+            return (best.unwrap_or_else(|| mesh.clone()), iteration.saturating_sub(1));
         }
         let improves = best
             .as_ref()

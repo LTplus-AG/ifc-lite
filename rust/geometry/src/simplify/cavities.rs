@@ -18,6 +18,7 @@
 //! visible geometry. Only `indices` shrink; the vertex buffer is untouched
 //! (same contract as `Mesh::drop_thin_triangles`).
 
+use super::ray_parity::point_enclosed;
 use crate::mesh::Mesh;
 use rustc_hash::FxHashMap;
 
@@ -37,6 +38,14 @@ const AREA_RATIO_MAX: f64 = 0.25;
 /// input; O(candidates x outer_tris) would blow up, and a mesh shattered
 /// into that many shells is not one this heuristic understands).
 const MAX_CANDIDATES: usize = 10_000;
+
+/// Hard budget on the parity workload in ray-triangle tests
+/// (sample points x 3 axis rays x outer-shell triangles). MAX_CANDIDATES
+/// alone does not bound the work — a dense outer shell multiplies every ray
+/// by its triangle count, and this pass runs synchronously on the wasm/UI
+/// thread. Above the budget the whole pass is a conservative no-op
+/// (~tens of ns per test, so this caps the pass at well under a second).
+const MAX_PARITY_RAY_TRIS: u64 = 30_000_000;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct CavityStats {
@@ -105,6 +114,13 @@ pub(crate) fn drop_enclosed_cavities(mesh: &mut Mesh, weld_eps: f32) -> CavitySt
         tris: u32,
         edges: u64,
         open_edges: u64,
+        /// The surface vertex realizing each AABB extreme (min x/y/z, then
+        /// max x/y/z) — enclosure sample points. The AABB CENTRE alone is not
+        /// enough: a component whose centre sits inside the outer solid can
+        /// still protrude through it (non-convex outers), and dropping it
+        /// would punch visible geometry away. Extremes are where a
+        /// protrusion pokes out.
+        ext: [[f64; 3]; 6],
     }
     let mut comp_of_root: FxHashMap<u32, usize> = FxHashMap::default();
     let mut comps: Vec<Comp> = Vec::new();
@@ -137,6 +153,7 @@ pub(crate) fn drop_enclosed_cavities(mesh: &mut Mesh, weld_eps: f32) -> CavitySt
                 tris: 0,
                 edges: 0,
                 open_edges: 0,
+                ext: [[0.0; 3]; 6],
             });
         }
         let (a, b, c) = (p(tri[0]), p(tri[1]), p(tri[2]));
@@ -152,8 +169,14 @@ pub(crate) fn drop_enclosed_cavities(mesh: &mut Mesh, weld_eps: f32) -> CavitySt
         comp.tris += 1;
         for vert in [a, b, c] {
             for k in 0..3 {
-                comp.min[k] = comp.min[k].min(vert[k]);
-                comp.max[k] = comp.max[k].max(vert[k]);
+                if vert[k] < comp.min[k] {
+                    comp.min[k] = vert[k];
+                    comp.ext[k] = vert;
+                }
+                if vert[k] > comp.max[k] {
+                    comp.max[k] = vert[k];
+                    comp.ext[3 + k] = vert;
+                }
             }
         }
         comp_of_tri.push(ci);
@@ -223,10 +246,11 @@ pub(crate) fn drop_enclosed_cavities(mesh: &mut Mesh, weld_eps: f32) -> CavitySt
         .map(|(tri, _)| [p(tri[0]), p(tri[1]), p(tri[2])])
         .collect();
 
-    // -- Classify candidates.
+    // -- Classify candidates. Phase 1: cheap AABB/area filters, collecting
+    // the enclosure sample points (AABB centre + the six extreme surface
+    // vertices) per surviving candidate.
     let aabb_pad = 1e-9 * diag; // noise-only: outside the outer AABB => not enclosed
-    let mut drop: Vec<bool> = vec![false; comps.len()];
-    let mut components_dropped = 0u32;
+    let mut candidates: Vec<(usize, Vec<[f64; 3]>)> = Vec::new();
     for (ci, comp) in comps.iter().enumerate() {
         if ci == outer || comp.tris == 0 {
             continue;
@@ -246,7 +270,37 @@ pub(crate) fn drop_enclosed_cavities(mesh: &mut Mesh, weld_eps: f32) -> CavitySt
             0.5 * (comp.min[1] + comp.max[1]),
             0.5 * (comp.min[2] + comp.max[2]),
         ];
-        if point_enclosed(center, diag, &outer_tris) {
+        let mut points: Vec<[f64; 3]> = Vec::with_capacity(7);
+        points.push(center);
+        for e in comp.ext {
+            if !points.contains(&e) {
+                points.push(e);
+            }
+        }
+        candidates.push((ci, points));
+    }
+
+    // Workload budget: sample points x 3 rays x outer triangles. Over budget
+    // the pass is a conservative no-op (never a stalled UI thread).
+    let total_points: u64 = candidates.iter().map(|(_, pts)| pts.len() as u64).sum();
+    if total_points
+        .saturating_mul(3)
+        .saturating_mul(outer_tris.len() as u64)
+        > MAX_PARITY_RAY_TRIS
+    {
+        return CavityStats::default();
+    }
+
+    // Phase 2: parity vote. Drop a component only when EVERY sample point is
+    // enclosed — one point outside the outer solid means the component
+    // protrudes (or grazes), and visible geometry must never be dropped.
+    let mut drop: Vec<bool> = vec![false; comps.len()];
+    let mut components_dropped = 0u32;
+    for (ci, points) in candidates {
+        if points
+            .iter()
+            .all(|&pt| point_enclosed(pt, diag, &outer_tris))
+        {
             drop[ci] = true;
             components_dropped += 1;
         }
@@ -270,86 +324,6 @@ pub(crate) fn drop_enclosed_cavities(mesh: &mut Mesh, weld_eps: f32) -> CavitySt
         components_dropped,
         triangles_dropped,
     }
-}
-
-/// Parity vote: cast the three axis-aligned rays from `point` (each with its
-/// own sub-epsilon jitter to dodge edge/vertex grazing) against `tris` and
-/// call the point enclosed when at least two rays report an odd crossing
-/// count. A ray with any grazing hit is discarded; fewer than two clean rays
-/// means "keep" (conservative).
-fn point_enclosed(point: [f64; 3], scale: f64, tris: &[[[f64; 3]; 3]]) -> bool {
-    let dirs = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
-    let mut valid = 0u32;
-    let mut inside = 0u32;
-    for (k, dir) in dirs.iter().enumerate() {
-        // Distinct jitter per ray, orders of magnitude below feature size.
-        let j = (k as f64 + 1.0) * 1e-7 * scale;
-        let origin = [point[0] + j, point[1] + 1.3 * j, point[2] + 1.7 * j];
-        match count_crossings(origin, *dir, scale, tris) {
-            Some(n) => {
-                valid += 1;
-                if n % 2 == 1 {
-                    inside += 1;
-                }
-            }
-            None => continue, // grazing hit: discard this ray
-        }
-    }
-    valid >= 2 && inside >= 2
-}
-
-/// Moller-Trumbore crossing count for one ray; `None` when any hit is too
-/// close to a triangle edge/vertex or to the ray origin to trust.
-fn count_crossings(
-    origin: [f64; 3],
-    dir: [f64; 3],
-    scale: f64,
-    tris: &[[[f64; 3]; 3]],
-) -> Option<u32> {
-    const BARY_EPS: f64 = 1e-9;
-    let t_eps = 1e-9 * scale;
-    let mut crossings = 0u32;
-    for tri in tris {
-        let (a, b, c) = (tri[0], tri[1], tri[2]);
-        let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-        let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-        let pv = [
-            dir[1] * e2[2] - dir[2] * e2[1],
-            dir[2] * e2[0] - dir[0] * e2[2],
-            dir[0] * e2[1] - dir[1] * e2[0],
-        ];
-        let det = e1[0] * pv[0] + e1[1] * pv[1] + e1[2] * pv[2];
-        if det.abs() < 1e-16 {
-            continue; // parallel: jittered siblings resolve true grazings
-        }
-        let inv = 1.0 / det;
-        let tv = [origin[0] - a[0], origin[1] - a[1], origin[2] - a[2]];
-        let u = (tv[0] * pv[0] + tv[1] * pv[1] + tv[2] * pv[2]) * inv;
-        if u < -BARY_EPS || u > 1.0 + BARY_EPS {
-            continue;
-        }
-        let qv = [
-            tv[1] * e1[2] - tv[2] * e1[1],
-            tv[2] * e1[0] - tv[0] * e1[2],
-            tv[0] * e1[1] - tv[1] * e1[0],
-        ];
-        let v = (dir[0] * qv[0] + dir[1] * qv[1] + dir[2] * qv[2]) * inv;
-        if v < -BARY_EPS || u + v > 1.0 + BARY_EPS {
-            continue;
-        }
-        let t = (e2[0] * qv[0] + e2[1] * qv[1] + e2[2] * qv[2]) * inv;
-        if t <= -t_eps {
-            continue; // behind the origin
-        }
-        if t < t_eps {
-            return None; // origin on / grazing the surface
-        }
-        if u < BARY_EPS || v < BARY_EPS || u + v > 1.0 - BARY_EPS {
-            return None; // edge/vertex hit: parity untrustworthy
-        }
-        crossings += 1;
-    }
-    Some(crossings)
 }
 
 /// Minimal union-find with path halving.

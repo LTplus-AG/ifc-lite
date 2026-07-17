@@ -16,6 +16,7 @@
 mod boxify;
 mod cavities;
 mod cluster;
+mod ray_parity;
 
 use crate::mesh::Mesh;
 
@@ -78,6 +79,10 @@ pub struct SimplifyStats {
 /// placement/frame metadata (`origin`, `rtc_applied`, `local_bounds`,
 /// `local_to_world`) so world reconstruction (`world = origin + position
 /// (+ rtc)`) and the inverse-placement export path keep working.
+///
+/// A clustered result comes back with an EMPTY normal buffer (the pass
+/// changes topology, so the input's per-face normals no longer apply);
+/// consumers rebuild normals when `normals.len() != positions.len()`.
 pub fn simplify_mesh(mesh: &Mesh, opts: &SimplifyOptions) -> (Mesh, SimplifyStats) {
     let mut stats = SimplifyStats {
         tris_before: (mesh.indices.len() / 3) as u32,
@@ -228,6 +233,96 @@ mod tests {
             stats.cavity_components_dropped, 0,
             "open outer shell must disable cavity removal (conservative-keep)"
         );
+    }
+
+    /// Closed L-shaped prism (non-convex): footprint = [0,10]x[0,4] plus
+    /// [6,10]x[4,10], extruded z 0..10, as quad soup with exactly matching
+    /// corner coordinates (welds into one watertight component, no
+    /// T-junctions). The notch [0,6)x(4,10] is inside the outer AABB but
+    /// OUTSIDE the solid.
+    fn soup_l_prism() -> Mesh {
+        let mut mesh = Mesh::new();
+        let mut quad = |a: [f32; 3], b: [f32; 3], c: [f32; 3], d: [f32; 3]| {
+            let base = (mesh.positions.len() / 3) as u32;
+            for v in [a, b, c, d] {
+                mesh.positions.extend_from_slice(&v);
+                mesh.normals.extend_from_slice(&[0.0, 0.0, 1.0]);
+            }
+            mesh.indices
+                .extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
+        };
+        // Caps: three rects per z, split so shared edges match exactly.
+        let rects: [[f32; 4]; 3] = [
+            [0.0, 0.0, 6.0, 4.0],
+            [6.0, 0.0, 10.0, 4.0],
+            [6.0, 4.0, 10.0, 10.0],
+        ];
+        for z in [0.0f32, 10.0f32] {
+            for [x0, y0, x1, y1] in rects {
+                quad([x0, y0, z], [x1, y0, z], [x1, y1, z], [x0, y1, z]);
+            }
+        }
+        // Walls along the boundary polygon, split at cap-rect corners.
+        let ring: [[f32; 2]; 9] = [
+            [0.0, 0.0],
+            [6.0, 0.0],
+            [10.0, 0.0],
+            [10.0, 4.0],
+            [10.0, 10.0],
+            [6.0, 10.0],
+            [6.0, 4.0],
+            [0.0, 4.0],
+            [0.0, 0.0],
+        ];
+        for w in ring.windows(2) {
+            let ([ax, ay], [bx, by]) = (w[0], w[1]);
+            quad([ax, ay, 0.0], [bx, by, 0.0], [bx, by, 10.0], [ax, ay, 10.0]);
+        }
+        mesh
+    }
+
+    #[test]
+    fn partially_protruding_component_is_kept_in_nonconvex_outer() {
+        // Candidate whose AABB centre (3, 2.75, 5) is INSIDE the L's solid
+        // arm but whose +y end reaches into the notch void — the centre-only
+        // classification would drop it and punch away visible geometry.
+        let outer = soup_l_prism();
+        let outer_tris = outer.indices.len() / 3;
+        let protruding = soup_box([2.0, 0.5, 4.0], [4.0, 5.0, 6.0]);
+        let combined = merged(&outer, &protruding);
+
+        let opts = SimplifyOptions {
+            target_ratio: None,
+            drop_cavities: true,
+            boxify: false,
+            min_triangles: 1,
+            weld_eps: 1e-6,
+        };
+        let (out, stats) = simplify_mesh(&combined, &opts);
+        assert_eq!(
+            stats.cavity_components_dropped, 0,
+            "a component protruding out of the outer solid must never be dropped"
+        );
+        assert_eq!(out.indices.len() / 3, outer_tris + 12);
+    }
+
+    #[test]
+    fn fully_enclosed_component_in_nonconvex_outer_is_dropped() {
+        let outer = soup_l_prism();
+        let outer_tris = outer.indices.len() / 3;
+        let cavity = soup_box([1.0, 1.0, 4.0], [2.0, 2.0, 5.0]);
+        let combined = merged(&outer, &cavity);
+
+        let opts = SimplifyOptions {
+            target_ratio: None,
+            drop_cavities: true,
+            boxify: false,
+            min_triangles: 1,
+            weld_eps: 1e-6,
+        };
+        let (out, stats) = simplify_mesh(&combined, &opts);
+        assert_eq!(stats.cavity_components_dropped, 1);
+        assert_eq!(out.indices.len() / 3, outer_tris);
     }
 
     #[test]

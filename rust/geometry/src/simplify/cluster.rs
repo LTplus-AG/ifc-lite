@@ -78,11 +78,14 @@ pub(crate) fn cluster_decimate(mesh: &Mesh, cell_size: f32) -> Mesh {
     }
 
     // Compact: remap referenced vertices, drop orphans (same pattern as
-    // `Mesh::clip_triangles_to_aabb`).
-    let has_normals = mesh.normals.len() == mesh.positions.len();
+    // `Mesh::clip_triangles_to_aabb`). Normals are intentionally DROPPED:
+    // the surviving triangles reconnect representatives of different original
+    // faces, so a representative's copied face normal no longer matches its
+    // new topology. Returning an empty normal buffer makes the consumer
+    // rebuild them (the demesher session's `averaged_vertex_normals`
+    // fallback) instead of shading with stale ones.
     let mut remap: Vec<i32> = vec![-1; n_verts];
     let mut new_pos: Vec<f32> = Vec::with_capacity(kept.len() * 3);
-    let mut new_nrm: Vec<f32> = Vec::with_capacity(if has_normals { kept.len() * 3 } else { 0 });
     let mut new_idx: Vec<u32> = Vec::with_capacity(kept.len());
     for &i in &kept {
         let old = i as usize;
@@ -90,9 +93,6 @@ pub(crate) fn cluster_decimate(mesh: &Mesh, cell_size: f32) -> Mesh {
             let n = (new_pos.len() / 3) as u32;
             remap[old] = n as i32;
             new_pos.extend_from_slice(&mesh.positions[old * 3..old * 3 + 3]);
-            if has_normals {
-                new_nrm.extend_from_slice(&mesh.normals[old * 3..old * 3 + 3]);
-            }
             n
         } else {
             remap[old] as u32
@@ -100,7 +100,7 @@ pub(crate) fn cluster_decimate(mesh: &Mesh, cell_size: f32) -> Mesh {
         new_idx.push(slot);
     }
 
-    mesh.rebuilt_like(new_pos, new_nrm, new_idx)
+    mesh.rebuilt_like(new_pos, Vec::new(), new_idx)
 }
 
 /// Decimate toward `target_ratio` of the input triangle count by growing the

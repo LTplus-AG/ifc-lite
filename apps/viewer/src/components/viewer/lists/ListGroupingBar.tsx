@@ -23,7 +23,7 @@ interface ListGroupingBarProps {
   onToggleExpandAll: () => void;
 }
 
-function Chip({ icon, children, onRemove }: { icon: React.ReactNode; children: React.ReactNode; onRemove: () => void }) {
+function Chip({ icon, children, onRemove, removeLabel = 'Remove' }: { icon: React.ReactNode; children: React.ReactNode; onRemove: () => void; removeLabel?: string }) {
   return (
     <span className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 py-0.5 pl-2 pr-1 text-[11px] font-medium text-foreground">
       {icon}
@@ -31,7 +31,7 @@ function Chip({ icon, children, onRemove }: { icon: React.ReactNode; children: R
       <button
         onClick={onRemove}
         className="ml-0.5 rounded-full p-0.5 text-muted-foreground hover:bg-primary/20 hover:text-foreground"
-        aria-label="Remove"
+        aria-label={removeLabel}
       >
         <X className="h-3 w-3" />
       </button>
@@ -58,14 +58,14 @@ export function ListGroupingBar({
 
       {grouped
         ? groups.map((g, i) => (
-            <Chip key={g.id} icon={<Group className="h-3 w-3 text-primary" />} onRemove={() => onRemoveGroup(g.id)}>
+            <Chip key={g.id} icon={<Group className="h-3 w-3 text-primary" />} onRemove={() => onRemoveGroup(g.id)} removeLabel={`Remove grouping by ${g.label}`}>
               {i === 0 ? `Grouped by ${g.label}` : `then ${g.label}`}
             </Chip>
           ))
         : <span className="text-muted-foreground">No grouping — use a column&apos;s <span className="font-medium text-foreground">⋮</span> menu to group or sum</span>}
 
       {sums.map((s) => (
-        <Chip key={s.id} icon={<Sigma className="h-3 w-3 text-primary" />} onRemove={() => onRemoveSum(s.id)}>{s.label}</Chip>
+        <Chip key={s.id} icon={<Sigma className="h-3 w-3 text-primary" />} onRemove={() => onRemoveSum(s.id)} removeLabel={`Remove sum of ${s.label}`}>{s.label}</Chip>
       ))}
 
       <span className={cn('ml-auto whitespace-nowrap font-medium text-muted-foreground')}>

@@ -154,11 +154,16 @@ fn extract_property(entity: &DecodedEntity, _decoder: &mut EntityDecoder) -> Opt
 
         // [Name, Description, DefiningValues (list), DefinedValues (list), ...]
         "IFCPROPERTYTABLEVALUE" => {
+            // Mirror the WASM gate exactly: BOTH DefiningValues and DefinedValues
+            // must be lists (else the whole property resolves to null) — a
+            // malformed table with `$` DefinedValues must not fabricate a
+            // display/candidates that only the server would match.
             let rows = match entity.get(2) {
                 Some(AttributeValue::List(items)) => items.len(),
                 _ => 0,
             };
-            if rows > 0 {
+            let defined_is_list = matches!(entity.get(3), Some(AttributeValue::List(_)));
+            if rows > 0 && defined_is_list {
                 // Candidates are defining THEN defined values, both filtered —
                 // matching the WASM table branch's ordering.
                 let mut members = member_list(entity.get(2)).unwrap_or_default();

@@ -518,13 +518,19 @@ export async function decodeDataModel(data: ArrayBuffer): Promise<DataModel> {
 }
 
 /** Parse a v5 `values_json` cell into the candidate array; undefined for
- *  null/absent/malformed cells (treated as no candidates). */
+ *  null/absent cells. A malformed cell is logged (never silently swallowed —
+ *  it would make IDS fall back to the display value and risk a false result)
+ *  and treated as no candidates so the rest of the payload still decodes. */
 function parseValuesJson(cell: string | null | undefined): string[] | undefined {
   if (!cell) return undefined;
   try {
     const parsed = JSON.parse(cell);
     return Array.isArray(parsed) && parsed.length > 0 ? parsed.map(String) : undefined;
-  } catch {
+  } catch (err) {
+    console.warn(
+      `[data-model-decoder] malformed values_json, dropping property candidates: ${String(cell).slice(0, 120)}`,
+      err,
+    );
     return undefined;
   }
 }

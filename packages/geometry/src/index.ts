@@ -1332,7 +1332,10 @@ export class GeometryProcessor {
         l2wPresent[i] = 1;
       }
       expressIds[i] = m.expressId;
-      recordLevels[i] = Math.min(5, Math.max(1, Math.round(levels.get(m.expressId) ?? 1)));
+      const level = levels.get(m.expressId) ?? 1;
+      // Non-finite levels clamp to 1 (NaN would silently become 0 in the
+      // Uint8Array and select an undefined wasm-side level).
+      recordLevels[i] = Number.isFinite(level) ? Math.min(5, Math.max(1, Math.round(level))) : 1;
       vo += m.positions.length;
       io += m.indices.length;
     }
@@ -1343,16 +1346,20 @@ export class GeometryProcessor {
       origins, l2w, l2wPresent, shift.x, shift.y, shift.z, options.unitScale ?? 1, true,
     );
 
-    // Element metadata (type/color/placement) carried from the first source
-    // record of each element.
-    const firstRecord = new Map<number, MeshData>();
-    for (const m of records) {
-      if (!firstRecord.has(m.expressId)) firstRecord.set(m.expressId, m);
-    }
-
-    // Getters copy into fresh JS-owned arrays; read inside the try so
-    // `out.free()` in the finally still runs if extraction throws.
+    // EVERYTHING after the wasm call runs inside the try so `out.free()` in
+    // the finally covers every exception path (WASM handles must be freed
+    // deterministically). Getters copy into fresh JS-owned arrays.
     try {
+      // Element metadata (type/color) carried from the element's DOMINANT
+      // source record — the per-material submesh with the most triangles
+      // (deterministic: ties keep the first-seen record). The first record
+      // is arbitrary submesh order; a small trim strip must not color the
+      // whole simplified element.
+      const metaRecord = new Map<number, MeshData>();
+      for (const m of records) {
+        const cur = metaRecord.get(m.expressId);
+        if (!cur || m.indices.length > cur.indices.length) metaRecord.set(m.expressId, m);
+      }
       const outIds: Uint32Array = out.elementIds;
       const outLevels: Uint8Array = out.levels;
       const outVertexCounts: Uint32Array = out.vertexCounts;
@@ -1372,7 +1379,7 @@ export class GeometryProcessor {
       for (let i = 0; i < outIds.length; i++) {
         const vCount = outVertexCounts[i] * 3;
         const iCount = outIndexCounts[i];
-        const src = firstRecord.get(outIds[i]);
+        const src = metaRecord.get(outIds[i]);
         const render: MeshData = {
           expressId: outIds[i],
           ifcType: src?.ifcType ?? 'IfcBuildingElementProxy',

@@ -517,7 +517,15 @@ export function useIfcLoader() {
           renderer,
           onProgress: setProgress,
           onAssetCountDelta: incCount,
-          onClassCounts: setClassCounts,
+          // Session-guard the histogram writes: a superseded stream
+          // keeps publishing periodic counts until `done` settles, and
+          // an unguarded write would repopulate phantom classes after
+          // a newer load reset the store.
+          onClassCounts: (handleId, counts) => {
+            if (loadSessionRef.current === currentSession) {
+              setClassCounts(handleId, counts);
+            }
+          },
         });
         // Expose cancellation to the UI (StatusBar shows a Cancel
         // button while this is non-null). Cleared via the

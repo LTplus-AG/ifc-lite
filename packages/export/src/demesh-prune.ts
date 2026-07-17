@@ -111,6 +111,12 @@ export function pruneReplacedSubgraphs(
   // -- Reverse-reference index, restricted to edges INTO the closure.
   const referrers = new Map<number, Set<number>>();
   for (const [id, ref] of byId) {
+    // Presentation layers ANNOTATE geometry, they don't own it: counting
+    // their edges as referrers would keep replaced geometry alive forever
+    // (the layer itself is outside the closure and never falls), defeating
+    // the AssignedItems filtering below. Skip them so layer-only-referenced
+    // geometry prunes and the filter then cleans the surviving layer's list.
+    if (ref.type.toUpperCase() === 'IFCPRESENTATIONLAYERASSIGNMENT') continue;
     const refs = collectRefsInByteRange(source, ref.byteOffset, ref.byteLength);
     for (const target of refs) {
       if (target === id || !closure.has(target)) continue;

@@ -54,6 +54,25 @@ const FIXTURE_SINGLE = `${HEADER}
 #220=IFCRELVOIDSELEMENT('0rvoid0000000000000000',$,$,$,#10,#200);
 ${FOOTER}`;
 
+// FIXTURE_SINGLE plus a second (unreplaced) wall and two presentation
+// layers: #400 assigns the replaced wall's solid AND the kept wall's solid,
+// #401 assigns ONLY the replaced solid.
+const FIXTURE_LAYERS = `${HEADER}
+#10=IFCWALL('0wall10000000000000000',$,'A',$,$,$,#100,$,$);
+#100=IFCPRODUCTDEFINITIONSHAPE($,$,(#110));
+#110=IFCSHAPEREPRESENTATION(#8,'Body','SweptSolid',(#120));
+#120=IFCEXTRUDEDAREASOLID(#130,#131,#132,2.);
+#130=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,1.,1.);
+#131=IFCAXIS2PLACEMENT3D(#5,$,$);
+#132=IFCDIRECTION((0.,0.,1.));
+#20=IFCWALL('0wall20000000000000000',$,'B',$,$,$,#300,$,$);
+#300=IFCPRODUCTDEFINITIONSHAPE($,$,(#310));
+#310=IFCSHAPEREPRESENTATION(#8,'Body','SweptSolid',(#320));
+#320=IFCEXTRUDEDAREASOLID(#130,#131,#132,3.);
+#400=IFCPRESENTATIONLAYERASSIGNMENT('Layer-mixed',$,(#120,#320),$);
+#401=IFCPRESENTATIONLAYERASSIGNMENT('Layer-only-old',$,(#120),$);
+${FOOTER}`;
+
 // Two walls SHARING one IfcProductDefinitionShape.
 const FIXTURE_SHARED = `${HEADER}
 #10=IFCWALL('0wall10000000000000000',$,'A',$,$,$,#100,$,$);
@@ -196,6 +215,24 @@ describe('applySimplifiedGeometry', () => {
     const out = exportText(store, view);
     expect(out).toMatch(/#100=IFCPRODUCTDEFINITIONSHAPE/);
     expect(out).not.toMatch(/IFCTRIANGULATEDFACESET/);
+  });
+
+  it('prunes geometry whose only surviving referrer is a presentation layer, and filters the layer', async () => {
+    const { store, view, editor } = await loadStore(FIXTURE_LAYERS);
+    const report = applySimplifiedGeometry(store, editor, [{ expressId: 10, ...TETRA }]);
+    expect(report.replaced).toEqual([10]);
+
+    const out = exportText(store, view);
+    // The replaced solid must fall even though layers #400/#401 reference it:
+    // a presentation layer annotates geometry, it does not own it.
+    expect(out).not.toMatch(/#120=/);
+    // The mixed layer survives with ONLY the kept wall's solid...
+    expect(out).toMatch(/IFCPRESENTATIONLAYERASSIGNMENT\('Layer-mixed',\$,\(#320\),\$\)/);
+    // ...the old-geometry-only layer is tombstoned (empty list is invalid).
+    expect(out).not.toMatch(/Layer-only-old/);
+    // Shared profile/placement survive via the kept wall's solid.
+    expect(out).toMatch(/#130=/);
+    expect(out).toMatch(/#320=/);
   });
 
   it('replaces a repeated express id once and skips the duplicates (no orphaned overlay chain)', async () => {

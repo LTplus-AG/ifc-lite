@@ -100,18 +100,25 @@ if (CHECK) {
     console.error(`✗ ${outPath} is missing — run: node scripts/generate-server-attr-indices.mjs`);
     process.exit(1);
   }
+  // Rust `match` is FIRST-arm-wins; a Map is last-wins. Track duplicates so a
+  // hand-added second arm can't slip a wrong value past this guard by matching
+  // the registry on its (dead) last copy while Rust dispatches the first.
   const parseArms = (text) => {
     const map = new Map();
+    const dups = new Set();
     const re = /"([A-Z0-9_]+)"\s*=>\s*Some\(RootAttrIndices\s*\{\s*description:\s*(-?\d+)\s*,\s*object_type:\s*(-?\d+)\s*,\s*tag:\s*(-?\d+)\s*,\s*predefined_type:\s*(-?\d+)\s*,?\s*\}\)/g;
     for (const m of text.matchAll(re)) {
-      map.set(m[1], [Number(m[2]), Number(m[3]), Number(m[4]), Number(m[5])].join(','));
+      // Keep the FIRST arm's value (mirrors Rust dispatch); flag the rest.
+      if (map.has(m[1])) dups.add(m[1]);
+      else map.set(m[1], [Number(m[2]), Number(m[3]), Number(m[4]), Number(m[5])].join(','));
     }
-    return map;
+    return { map, dups };
   };
   const expected = new Map(rows.map((r) => [r.upper, r.idx.join(',')]));
-  const actual = parseArms(committed);
+  const { map: actual, dups } = parseArms(committed);
 
   const drift = [];
+  for (const k of dups) drift.push(`  duplicate arm (Rust uses the first, unreachable rest): ${k}`);
   for (const [k, v] of expected) {
     if (!actual.has(k)) drift.push(`  missing row: ${k}`);
     else if (actual.get(k) !== v) drift.push(`  ${k}: committed [${actual.get(k)}] != registry [${v}]`);

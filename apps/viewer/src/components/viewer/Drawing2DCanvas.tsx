@@ -14,6 +14,7 @@ import { formatDistance } from './tools/formatDistance';
 import { formatArea, computePolygonCentroid } from './tools/computePolygonArea';
 import { drawCloudOnCanvas } from './tools/cloudPathGenerator';
 import type { PolygonArea2DResult, TextAnnotation2D, CloudAnnotation2D, Annotation2DTool, Point2D, SelectedAnnotation2D } from '@/store/slices/drawing2DSlice';
+import type { DxfUnderlayRenderData } from '@/hooks/useDxfUnderlay';
 import type { AnnotationFill2D, AnnotationText2D } from '@/hooks/useSymbolicAnnotations';
 
 // Fill colors for IFC types (architectural convention)
@@ -191,6 +192,103 @@ function drawIfcAnnotationsScreenSpace(
   }
 }
 
+// ─── DXF reference underlays (issue #1782) ───────────────────────────────────
+
+/** Map a DXF vertical justification onto a canvas text baseline. */
+function dxfValignToBaseline(valign: 'baseline' | 'bottom' | 'middle' | 'top'): CanvasTextBaseline {
+  switch (valign) {
+    case 'bottom': return 'bottom';
+    case 'middle': return 'middle';
+    case 'top': return 'top';
+    default: return 'alphabetic';
+  }
+}
+
+/**
+ * Render imported DXF underlays beneath the generated drawing, in screen
+ * pixels. Geometry arrives pre-mapped to drawing space (render-frame
+ * shift, flipped-section mirror, and user placement already applied by
+ * useDxfUnderlaysForDrawing — plan sections only), so the caller supplies
+ * the plain drawing→screen transform. Text is drawn in screen space (like
+ * the IFC annotation overlay) so canvas scaling never mirrors glyphs.
+ */
+function drawDxfUnderlaysScreenSpace(
+  ctx: CanvasRenderingContext2D,
+  underlays: readonly DxfUnderlayRenderData[] | undefined,
+  modelToScreen: (x: number, y: number) => { x: number; y: number },
+  mmLineToScreen: (mmWeight: number) => number,
+  worldHeightToScreenPx: (worldHeight: number) => number,
+): void {
+  if (!underlays || underlays.length === 0) return;
+
+  for (const data of underlays) {
+    if (data.opacity <= 0) continue;
+    ctx.save();
+    ctx.globalAlpha = data.opacity;
+
+    // Fills first so linework composites on top.
+    for (const fill of data.fills) {
+      ctx.fillStyle = fill.color;
+      ctx.globalAlpha = data.opacity * (fill.pattern ? 0.25 : 1);
+      ctx.beginPath();
+      for (const ring of fill.loops) {
+        if (ring.length < 3) continue;
+        const first = modelToScreen(ring[0].x, ring[0].y);
+        ctx.moveTo(first.x, first.y);
+        for (let i = 1; i < ring.length; i++) {
+          const p = modelToScreen(ring[i].x, ring[i].y);
+          ctx.lineTo(p.x, p.y);
+        }
+        ctx.closePath();
+      }
+      ctx.fill('evenodd');
+      ctx.globalAlpha = data.opacity;
+    }
+
+    for (const line of data.lines) {
+      if (line.points.length < 2) continue;
+      ctx.strokeStyle = line.color;
+      ctx.lineWidth = mmLineToScreen(line.widthMm ?? 0.18);
+      ctx.setLineDash(line.dashed ? [5, 4] : []);
+      ctx.beginPath();
+      const first = modelToScreen(line.points[0].x, line.points[0].y);
+      ctx.moveTo(first.x, first.y);
+      for (let i = 1; i < line.points.length; i++) {
+        const p = modelToScreen(line.points[i].x, line.points[i].y);
+        ctx.lineTo(p.x, p.y);
+      }
+      if (line.closed) ctx.closePath();
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+
+    for (const text of data.texts) {
+      const fontPx = worldHeightToScreenPx(text.height);
+      if (fontPx < 4) continue; // declutter when zoomed far out
+      const anchor = modelToScreen(text.x, text.y);
+      const tip = modelToScreen(text.x + text.dirX, text.y + text.dirY);
+      const sx = tip.x - anchor.x;
+      const sy = tip.y - anchor.y;
+      const angle = Math.abs(sx) + Math.abs(sy) > 1e-6 ? Math.atan2(sy, sx) : 0;
+
+      ctx.save();
+      ctx.fillStyle = text.color;
+      ctx.font = `${fontPx}px system-ui, sans-serif`;
+      ctx.textAlign = text.align;
+      ctx.textBaseline = dxfValignToBaseline(text.valign);
+      ctx.translate(anchor.x, anchor.y);
+      ctx.rotate(angle);
+      const lines = text.text.split('\n');
+      for (let i = 0; i < lines.length; i++) {
+        ctx.fillText(lines[i], 0, i * fontPx * 1.3);
+      }
+      ctx.restore();
+    }
+
+    ctx.restore();
+  }
+}
+
 // Static constants to avoid creating new objects/arrays on every render
 const CANVAS_STYLE = { imageRendering: 'crisp-edges' as const };
 const EMPTY_MEASURE_RESULTS: Measure2DResultData[] = [];
@@ -239,6 +337,8 @@ interface Drawing2DCanvasProps {
   ifcAnnotationLines?: readonly DrawingLine2D[];
   ifcAnnotationTexts?: readonly AnnotationText2D[];
   ifcAnnotationFills?: readonly AnnotationFill2D[];
+  // DXF reference underlays, pre-mapped to drawing space (issue #1782)
+  dxfUnderlays?: readonly DxfUnderlayRenderData[];
 }
 
 export function Drawing2DCanvas({
@@ -271,6 +371,7 @@ export function Drawing2DCanvas({
   ifcAnnotationLines,
   ifcAnnotationTexts,
   ifcAnnotationFills,
+  dxfUnderlays,
 }: Drawing2DCanvasProps): React.ReactElement {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
@@ -630,6 +731,22 @@ export function Drawing2DCanvas({
         // Line width in screen pixels (convert mm to screen)
         const mmLineToScreen = (mmWeight: number) => Math.max(0.5, mmToScreen(mmWeight / drawingTransform.scaleFactor * 0.001));
 
+        // DXF reference underlays render first, beneath the cut geometry
+        // (issue #1782). Data is pre-mapped drawing space and exists only
+        // for plan ('down') sections, where the sheet mapping has no
+        // axis flips — so the plain drawing→paper transform applies.
+        drawDxfUnderlaysScreenSpace(
+          ctx,
+          dxfUnderlays,
+          (x, y) => {
+            const sheetX = x * drawingTransform.scaleFactor + drawingTransform.translateX;
+            const sheetY = y * drawingTransform.scaleFactor + drawingTransform.translateY;
+            return { x: mmToScreenX(sheetX), y: mmToScreenY(sheetY) };
+          },
+          (mm) => Math.max(0.5, mmToScreen(mm) * 0.3),
+          (worldHeight) => worldHeight * drawingTransform.scaleFactor * transform.scale,
+        );
+
         // Fill cut polygons
         for (const polygon of drawing.cutPolygons) {
           let fillColor = getFillColorForType(polygon.ifcType);
@@ -922,6 +1039,20 @@ export function Drawing2DCanvas({
       // - 'side': also flip X to look from conventional direction
       const scaleX = sectionAxis === 'side' ? -transform.scale : transform.scale;
       const scaleY = sectionAxis === 'down' ? transform.scale : -transform.scale;
+
+      // DXF reference underlays render first, beneath the cut geometry
+      // (issue #1782). Data is pre-mapped drawing space and exists only
+      // for plan ('down') sections, where the direct mapping has no axis
+      // flips — so the plain drawing→screen transform applies. Drawn in
+      // screen space (like the IFC annotation overlay) so stroke widths
+      // and text stay in pixels.
+      drawDxfUnderlaysScreenSpace(
+        ctx,
+        dxfUnderlays,
+        (x, y) => ({ x: x * transform.scale + transform.x, y: y * transform.scale + transform.y }),
+        (mm) => Math.max(0.5, mm * transform.scale * 0.3),
+        (worldHeight) => worldHeight * transform.scale,
+      );
 
       ctx.save();
       ctx.translate(transform.x, transform.y);
@@ -1584,7 +1715,7 @@ export function Drawing2DCanvas({
         }
       }
     }
-  }, [drawing, transform, showHiddenLines, canvasSize, overrideEngine, overridesEnabled, entityColorMap, useIfcMaterials, measureMode, measureStart, measureCurrent, measureResults, measureSnapPoint, sheetEnabled, activeSheet, sectionAxis, isPinned, annotation2DActiveTool, annotation2DCursorPos, polygonAreaPoints, polygonAreaResults, textAnnotations, textAnnotationEditing, cloudAnnotationPoints, cloudAnnotations, selectedAnnotation, ifcAnnotationLines, ifcAnnotationTexts, ifcAnnotationFills]);
+  }, [drawing, transform, showHiddenLines, canvasSize, overrideEngine, overridesEnabled, entityColorMap, useIfcMaterials, measureMode, measureStart, measureCurrent, measureResults, measureSnapPoint, sheetEnabled, activeSheet, sectionAxis, isPinned, annotation2DActiveTool, annotation2DCursorPos, polygonAreaPoints, polygonAreaResults, textAnnotations, textAnnotationEditing, cloudAnnotationPoints, cloudAnnotations, selectedAnnotation, ifcAnnotationLines, ifcAnnotationTexts, ifcAnnotationFills, dxfUnderlays]);
 
   return (
     <canvas

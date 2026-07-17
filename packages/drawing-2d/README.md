@@ -126,6 +126,29 @@ import {
 
 Each renderer returns SVG fragments that you wrap in your own `<svg>` document — see the [2D Drawings Guide](https://ifclite.dev/docs/guide/drawing-2d/) for a worked sheet-composition example.
 
+## DXF reference underlays
+
+Import an existing DXF drawing (site plan, survey, coordination set) as a reference layer beneath a generated floor plan. `importDxf` parses ASCII DXF — `LINE`, `LWPOLYLINE`/`POLYLINE` (with bulge arcs), `CIRCLE`, `ARC`, `ELLIPSE`, `SPLINE`, `SOLID`/`TRACE`, `HATCH`, `TEXT`/`MTEXT`, `DIMENSION` blocks, and `INSERT`/`BLOCK` references — into world-plan geometry (metres, +Y = north; DXF and IFC are both Z-up) with per-layer visibility and resolved ACI/true colours and lineweights. `$INSUNITS` drives the unit conversion; unitless files with large extents are assumed to be millimetres (with a warning).
+
+```typescript
+import { importDxf, exportToSVG } from '@ifc-lite/drawing-2d';
+
+const underlay = importDxf(dxfFileText, 'site-plan.dxf');
+// underlay.layers[n].paths / .fills / .texts, underlay.bounds, underlay.warnings
+
+// Composite beneath an exported floor plan:
+const svg = exportToSVG(drawing, {
+  underlays: [{
+    underlay,
+    placement: { offsetX: 0, offsetY: 0, rotationDeg: 0, scale: 1 },
+    layerVisibility: { 'A-SITE': true },
+    opacity: 0.8,
+  }],
+});
+```
+
+Unsupported entity types are counted in `underlay.skipped` rather than failing the import; parse problems (missing blocks, spline approximations, unknown units) surface in `underlay.warnings`.
+
 ## API
 
 See the [2D Drawings Guide](https://ifclite.dev/docs/guide/drawing-2d/) and [API Reference](https://ifclite.dev/docs/api/typescript/#ifc-litedrawing-2d).

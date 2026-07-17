@@ -22,6 +22,7 @@ import {
 } from '@/services/file-system-access';
 import { toast } from '@/components/ui/toast';
 import { isCollabEnabled } from '@/lib/collab/config';
+import { ingestDxfFiles, splitDxfFiles } from '@/hooks/ingest/dxfIngest';
 import { ShareDialog } from '../ShareDialog';
 
 /** Extensions the viewer can ingest (IFC / IFCX / GLB / point clouds). */
@@ -37,7 +38,9 @@ function isIfcxModelFile(f: File): boolean {
   return f.name.toLowerCase().endsWith('.ifcx');
 }
 
-const FILE_ACCEPT = '.ifc,.ifcx,.ifczip,.glb,.las,.laz,.ply,.pcd,.e57,.pts,.xyz';
+// `.dxf` files are 2D reference underlays, not models: they split off to
+// the DXF ingest path (issue #1782) before model routing.
+const FILE_ACCEPT = '.ifc,.ifcx,.ifczip,.glb,.las,.laz,.ply,.pcd,.e57,.pts,.xyz,.dxf';
 
 export interface FileCommands {
   /**
@@ -142,10 +145,17 @@ export function useFileCommands(): FileCommands {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    // Filter to supported files (IFC, IFCX, GLB, point clouds)
-    const supportedFiles = Array.from(files).filter(isSupportedModelFile);
+    // DXF reference underlays split off before model routing (issue #1782).
+    const { dxfFiles, modelFiles } = splitDxfFiles(Array.from(files));
+    if (dxfFiles.length > 0) void ingestDxfFiles(dxfFiles);
 
-    if (supportedFiles.length === 0) return;
+    // Filter to supported files (IFC, IFCX, GLB, point clouds)
+    const supportedFiles = modelFiles.filter(isSupportedModelFile);
+
+    if (supportedFiles.length === 0) {
+      e.target.value = '';
+      return;
+    }
 
     // Track recently opened files (metadata + blob cache for instant reload)
     recordRecentFiles(supportedFiles.map(f => ({ name: f.name, size: f.size })));
@@ -204,8 +214,11 @@ export function useFileCommands(): FileCommands {
   const handleAddModelSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
+    // DXF reference underlays split off before model routing (issue #1782).
+    const { dxfFiles, modelFiles } = splitDxfFiles(Array.from(files));
+    if (dxfFiles.length > 0) void ingestDxfFiles(dxfFiles);
     // <input> yields no live handle, so models added this way aren't refreshable.
-    const supportedFiles = Array.from(files).filter(isSupportedModelFile);
+    const supportedFiles = modelFiles.filter(isSupportedModelFile);
     addSupportedFiles(supportedFiles);
     // Reset input so same files can be selected again
     e.target.value = '';
@@ -220,6 +233,9 @@ export function useFileCommands(): FileCommands {
     }
     const opened = await openIfcFilesWithHandles();
     if (!opened) return;
+    // DXF reference underlays split off before model routing (issue #1782).
+    const dxfPicked = opened.filter(o => o.file.name.toLowerCase().endsWith('.dxf'));
+    if (dxfPicked.length > 0) void ingestDxfFiles(dxfPicked.map(o => o.file));
     const supported = opened.filter(o => isSupportedModelFile(o.file));
     addSupportedFiles(supported.map(o => o.file), supported.map(o => o.handle));
   }, [addSupportedFiles]);
@@ -235,6 +251,9 @@ export function useFileCommands(): FileCommands {
     }
     const picked = await openIfcFilesWithHandles();
     if (!picked) return; // cancelled, unavailable, or picker failed
+    // DXF reference underlays split off before model routing (issue #1782).
+    const dxfPicked = picked.filter(o => o.file.name.toLowerCase().endsWith('.dxf'));
+    if (dxfPicked.length > 0) void ingestDxfFiles(dxfPicked.map(o => o.file));
     // The picker keeps an "all files" option, so drop anything unsupported
     // before it reaches the load pipeline (matches the <input> + Add Model paths).
     const opened = picked.filter(o => isSupportedModelFile(o.file));

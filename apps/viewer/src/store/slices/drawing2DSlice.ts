@@ -10,8 +10,8 @@
  */
 
 import type { StateCreator } from 'zustand';
-import type { Drawing2D, GraphicOverrideRule, GraphicOverridePreset } from '@ifc-lite/drawing-2d';
-import { BUILT_IN_PRESETS } from '@ifc-lite/drawing-2d';
+import type { Drawing2D, DxfPlacement, DxfUnderlay, GraphicOverrideRule, GraphicOverridePreset } from '@ifc-lite/drawing-2d';
+import { BUILT_IN_PRESETS, DEFAULT_DXF_PLACEMENT } from '@ifc-lite/drawing-2d';
 
 export type Drawing2DStatus = 'idle' | 'generating' | 'ready' | 'error';
 
@@ -63,6 +63,23 @@ export interface CloudAnnotation2D {
 export interface SelectedAnnotation2D {
   type: 'measure' | 'polygon' | 'text' | 'cloud';
   id: string;
+}
+
+/** An imported DXF reference underlay with its viewer state (issue #1782) */
+export interface DxfUnderlayState {
+  id: string;
+  /** Display name (file name) */
+  name: string;
+  /** Parsed + converted geometry in drawing space */
+  underlay: DxfUnderlay;
+  /** Master visibility toggle */
+  visible: boolean;
+  /** Render opacity (0-1) */
+  opacity: number;
+  /** Per-DXF-layer visibility, seeded from the DXF layer table */
+  layerVisibility: Record<string, boolean>;
+  /** User placement (offset/rotation/scale) in drawing space */
+  placement: DxfPlacement;
 }
 
 export interface Drawing2DState {
@@ -160,6 +177,10 @@ export interface Drawing2DState {
   // Selection
   /** Currently selected annotation (null = none) */
   selectedAnnotation2D: SelectedAnnotation2D | null;
+
+  // DXF Reference Underlays (issue #1782)
+  /** Imported DXF underlays rendered beneath the generated drawing */
+  dxfUnderlays: DxfUnderlayState[];
 }
 
 export interface Drawing2DSlice extends Drawing2DState {
@@ -241,6 +262,17 @@ export interface Drawing2DSlice extends Drawing2DState {
   // Bulk Actions
   /** Clear all annotations (measurements, polygons, text, clouds) */
   clearAllAnnotations2D: () => void;
+
+  // DXF Underlay Actions (issue #1782)
+  /** Register an imported DXF underlay; returns its id */
+  addDxfUnderlay: (underlay: DxfUnderlay) => string;
+  removeDxfUnderlay: (id: string) => void;
+  setDxfUnderlayVisible: (id: string, visible: boolean) => void;
+  setDxfUnderlayOpacity: (id: string, opacity: number) => void;
+  /** Toggle one DXF layer within an underlay */
+  toggleDxfUnderlayLayer: (id: string, layerName: string) => void;
+  updateDxfUnderlayPlacement: (id: string, placement: Partial<DxfPlacement>) => void;
+  clearDxfUnderlays: () => void;
 }
 
 const getDefaultDisplayOptions = (): Drawing2DState['drawing2DDisplayOptions'] => ({
@@ -289,6 +321,8 @@ const getDefaultState = (): Drawing2DState => ({
   cloudAnnotations2D: [],
   // Selection
   selectedAnnotation2D: null,
+  // DXF underlays
+  dxfUnderlays: [],
 });
 
 export const createDrawing2DSlice: StateCreator<Drawing2DSlice, [], [], Drawing2DSlice> = (set, get) => ({
@@ -661,6 +695,56 @@ export const createDrawing2DSlice: StateCreator<Drawing2DSlice, [], [], Drawing2
       }
     }
   },
+
+  // DXF Underlay Actions (issue #1782)
+  addDxfUnderlay: (underlay) => {
+    const id = `dxf-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+    const layerVisibility: Record<string, boolean> = {};
+    for (const layer of underlay.layers) layerVisibility[layer.name] = layer.visible;
+    const entry: DxfUnderlayState = {
+      id,
+      name: underlay.name,
+      underlay,
+      visible: true,
+      opacity: 1,
+      layerVisibility,
+      placement: { ...DEFAULT_DXF_PLACEMENT },
+    };
+    set((state) => ({ dxfUnderlays: [...state.dxfUnderlays, entry] }));
+    return id;
+  },
+
+  removeDxfUnderlay: (id) => set((state) => ({
+    dxfUnderlays: state.dxfUnderlays.filter((u) => u.id !== id),
+  })),
+
+  setDxfUnderlayVisible: (id, visible) => set((state) => ({
+    dxfUnderlays: state.dxfUnderlays.map((u) => (u.id === id ? { ...u, visible } : u)),
+  })),
+
+  setDxfUnderlayOpacity: (id, opacity) => set((state) => ({
+    dxfUnderlays: state.dxfUnderlays.map((u) =>
+      u.id === id ? { ...u, opacity: Math.max(0, Math.min(1, opacity)) } : u
+    ),
+  })),
+
+  toggleDxfUnderlayLayer: (id, layerName) => set((state) => ({
+    dxfUnderlays: state.dxfUnderlays.map((u) => {
+      if (u.id !== id) return u;
+      const current = u.layerVisibility[layerName]
+        ?? u.underlay.layers.find((l) => l.name === layerName)?.visible
+        ?? true;
+      return { ...u, layerVisibility: { ...u.layerVisibility, [layerName]: !current } };
+    }),
+  })),
+
+  updateDxfUnderlayPlacement: (id, placement) => set((state) => ({
+    dxfUnderlays: state.dxfUnderlays.map((u) =>
+      u.id === id ? { ...u, placement: { ...u.placement, ...placement } } : u
+    ),
+  })),
+
+  clearDxfUnderlays: () => set({ dxfUnderlays: [] }),
 
   // Bulk Actions
   clearAllAnnotations2D: () => set({

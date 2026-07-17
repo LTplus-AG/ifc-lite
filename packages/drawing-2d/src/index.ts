@@ -401,6 +401,31 @@ export type {
 } from './graphic-overrides/index.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
+// DXF IMPORT (reference underlays, issue #1782)
+// ═══════════════════════════════════════════════════════════════════════════
+
+export {
+  importDxf,
+  parseDxf,
+  convertDxfToUnderlay,
+  applyDxfPlacement,
+  aciToCss,
+  DEFAULT_DXF_PLACEMENT,
+} from './dxf/index.js';
+
+export type {
+  DxfDocument,
+  DxfEntity,
+  DxfLayerInfo,
+  DxfUnderlay,
+  DxfUnderlayLayer,
+  DxfUnderlayPath,
+  DxfUnderlayFill,
+  DxfUnderlayText,
+  DxfPlacement,
+} from './dxf/index.js';
+
+// ═══════════════════════════════════════════════════════════════════════════
 // DRAWING SHEETS (Paper, Frames, Title Blocks, Scale Bars)
 // ═══════════════════════════════════════════════════════════════════════════
 

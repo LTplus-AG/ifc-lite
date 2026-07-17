@@ -20,6 +20,82 @@ import { formatDistance } from '@/components/viewer/tools/formatDistance';
 import { formatArea, computePolygonCentroid } from '@/components/viewer/tools/computePolygonArea';
 import { generateCloudSVGPath } from '@/components/viewer/tools/cloudPathGenerator';
 import type { PolygonArea2DResult, TextAnnotation2D, CloudAnnotation2D } from '@/store/slices/drawing2DSlice';
+import type { DxfUnderlayRenderData } from '@/hooks/useDxfUnderlay';
+
+/** Map a DXF vertical justification onto an SVG dominant-baseline. */
+function dxfValignToBaseline(valign: 'baseline' | 'bottom' | 'middle' | 'top'): string {
+  switch (valign) {
+    case 'bottom': return 'text-after-edge';
+    case 'middle': return 'central';
+    case 'top': return 'text-before-edge';
+    default: return 'alphabetic';
+  }
+}
+
+/**
+ * Render DXF reference underlays as an SVG group (issue #1782). Geometry
+ * arrives pre-mapped to drawing space (render-frame shift, flipped-section
+ * mirror, and user placement applied by useDxfUnderlaysForDrawing — plan
+ * sections only); `mapPoint` converts a drawing-space point into the
+ * export's coordinate system (identity for the direct export, paper mm for
+ * the sheet export). `strokeWidthForMm` and `fontScale` are in export units.
+ */
+function buildDxfUnderlaySvg(
+  underlays: readonly DxfUnderlayRenderData[],
+  mapPoint: (x: number, y: number) => { x: number; y: number },
+  strokeWidthForMm: (mm: number) => number,
+  fontScale: number,
+  escapeXml: (s: string) => string,
+): string {
+  const visibleUnderlays = underlays.filter((u) => u.opacity > 0);
+  if (visibleUnderlays.length === 0) return '';
+
+  let svg = '  <g id="dxf-underlays">\n';
+  for (const data of visibleUnderlays) {
+    svg += `    <g data-dxf-underlay="${escapeXml(data.id)}" opacity="${data.opacity.toFixed(2)}">\n`;
+
+    for (const fill of data.fills) {
+      let d = '';
+      for (const ring of fill.loops) {
+        if (ring.length < 3) continue;
+        const first = mapPoint(ring[0].x, ring[0].y);
+        d += `${d ? ' ' : ''}M ${first.x.toFixed(4)} ${first.y.toFixed(4)}`;
+        for (let i = 1; i < ring.length; i++) {
+          const p = mapPoint(ring[i].x, ring[i].y);
+          d += ` L ${p.x.toFixed(4)} ${p.y.toFixed(4)}`;
+        }
+        d += ' Z';
+      }
+      if (!d) continue;
+      svg += `      <path d="${d}" fill="${fill.color}" fill-opacity="${fill.pattern ? 0.25 : 1}" fill-rule="evenodd" stroke="none"/>\n`;
+    }
+
+    for (const line of data.lines) {
+      if (line.points.length < 2) continue;
+      const pts = line.points.map((p) => mapPoint(p.x, p.y));
+      const pointsAttr = pts.map((p) => `${p.x.toFixed(4)},${p.y.toFixed(4)}`).join(' ');
+      const tag = line.closed ? 'polygon' : 'polyline';
+      const strokeWidth = strokeWidthForMm(line.widthMm ?? 0.18);
+      const dash = line.dashed ? ` stroke-dasharray="${(strokeWidth * 6).toFixed(4)} ${(strokeWidth * 4).toFixed(4)}"` : '';
+      svg += `      <${tag} points="${pointsAttr}" fill="none" stroke="${line.color}" stroke-width="${strokeWidth.toFixed(4)}" stroke-linecap="round"${dash}/>\n`;
+    }
+
+    for (const text of data.texts) {
+      const anchor = mapPoint(text.x, text.y);
+      const tip = mapPoint(text.x + text.dirX, text.y + text.dirY);
+      const angle = (Math.atan2(tip.y - anchor.y, tip.x - anchor.x) * 180) / Math.PI;
+      const fontSize = text.height * fontScale;
+      if (fontSize <= 0) continue;
+      const anchorAttr = text.align === 'center' ? 'middle' : text.align === 'right' ? 'end' : 'start';
+      const content = escapeXml(text.text).replace(/\n/g, ' ');
+      svg += `      <text x="${anchor.x.toFixed(4)}" y="${anchor.y.toFixed(4)}" font-family="Arial, sans-serif" font-size="${fontSize.toFixed(4)}" fill="${text.color}" text-anchor="${anchorAttr}" dominant-baseline="${dxfValignToBaseline(text.valign)}" transform="rotate(${angle.toFixed(2)} ${anchor.x.toFixed(4)} ${anchor.y.toFixed(4)})">${content}</text>\n`;
+    }
+
+    svg += '    </g>\n';
+  }
+  svg += '  </g>\n';
+  return svg;
+}
 
 interface UseDrawingExportParams {
   drawing: Drawing2D | null;
@@ -35,6 +111,8 @@ interface UseDrawingExportParams {
   cloudAnnotations2D: CloudAnnotation2D[];
   sheetEnabled: boolean;
   activeSheet: DrawingSheet | null;
+  /** DXF underlays pre-mapped to drawing space, rendered beneath the drawing (issue #1782) */
+  dxfUnderlays: readonly DxfUnderlayRenderData[];
 }
 
 interface UseDrawingExportResult {
@@ -57,6 +135,7 @@ function useDrawingExport({
   cloudAnnotations2D,
   sheetEnabled,
   activeSheet,
+  dxfUnderlays,
 }: UseDrawingExportParams): UseDrawingExportResult {
 
   // Generate SVG that matches the canvas rendering exactly
@@ -145,6 +224,17 @@ function useDrawingExport({
      viewBox="${viewBoxMinX.toFixed(4)} ${viewBoxMinY.toFixed(4)} ${viewWidth.toFixed(4)} ${viewHeight.toFixed(4)}">
   <rect x="${viewBoxMinX.toFixed(4)}" y="${viewBoxMinY.toFixed(4)}" width="${viewWidth.toFixed(4)}" height="${viewHeight.toFixed(4)}" fill="#FFFFFF"/>
 `;
+
+    // 0. DXF REFERENCE UNDERLAYS (issue #1782) - beneath everything. Data
+    // exists only for plan ('down') sections, where the direct export has
+    // no axis flips, so the identity mapping matches the canvas.
+    svg += buildDxfUnderlaySvg(
+      dxfUnderlays,
+      (x, y) => ({ x, y }),
+      mmToModel,
+      1, // text height is already in model units (metres)
+      escapeXml,
+    );
 
     // 1. FILL CUT POLYGONS (with color from IFC materials or override engine)
     svg += '  <g id="polygon-fills">\n';
@@ -390,7 +480,7 @@ function useDrawingExport({
 
     svg += '</svg>';
     return svg;
-  }, [drawing, displayOptions, activePresetId, entityColorMap, overridesEnabled, overrideEngine, measure2DResults, polygonArea2DResults, textAnnotations2D, cloudAnnotations2D, sectionPlane.axis]);
+  }, [drawing, displayOptions, activePresetId, entityColorMap, overridesEnabled, overrideEngine, measure2DResults, polygonArea2DResults, textAnnotations2D, cloudAnnotations2D, sectionPlane.axis, dxfUnderlays]);
 
   // Generate SVG with drawing sheet (frame, title block, scale bar)
   // This generates coordinates directly in paper mm space (like the canvas rendering)
@@ -490,6 +580,17 @@ function useDrawingExport({
       }
       return path;
     };
+
+    // DXF reference underlays (issue #1782) - beneath everything. Data
+    // exists only for plan ('down') sections, where the sheet mapping has
+    // no axis flips, so the plain drawing→paper transform matches the canvas.
+    svg += buildDxfUnderlaySvg(
+      dxfUnderlays,
+      (x, y) => ({ x: x * scaleFactor + translateX, y: y * scaleFactor + translateY }),
+      (mm) => mm * 0.3, // mm on paper, matching the model outline convention
+      scaleFactor, // metres -> mm on paper
+      escapeXml,
+    );
 
     // Render polygon fills
     svg += '    <g id="polygon-fills">\n';
@@ -622,7 +723,7 @@ function useDrawingExport({
 
     svg += '</svg>';
     return svg;
-  }, [drawing, activeSheet, displayOptions, activePresetId, entityColorMap, overridesEnabled, overrideEngine]);
+  }, [drawing, activeSheet, displayOptions, activePresetId, entityColorMap, overridesEnabled, overrideEngine, dxfUnderlays]);
 
   // Export SVG
   const handleExportSVG = useCallback(() => {

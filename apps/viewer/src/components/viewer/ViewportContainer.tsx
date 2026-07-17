@@ -4,6 +4,7 @@
 
 import { useMemo, useRef, useState, useCallback, useEffect, useSyncExternalStore } from 'react';
 import { useLevelDisplayEffect } from '@/hooks/useLevelDisplayEffect';
+import { ingestDxfFiles, splitDxfFiles } from '@/hooks/ingest/dxfIngest';
 import { Viewport } from './Viewport';
 import {
   initialDragOverlayState,
@@ -515,8 +516,14 @@ export function ViewportContainer() {
     // once this handler returns, so this must run before any await.
     const handlesPromise = handlesFromDataTransfer(e.dataTransfer);
 
+    // DXF reference underlays split off before model routing (issue #1782):
+    // a dropped site plan must never replace or federate with the model.
+    const allDropped0 = Array.from(e.dataTransfer.files);
+    const { dxfFiles, modelFiles: allDropped } = splitDxfFiles(allDropped0);
+    if (dxfFiles.length > 0) void ingestDxfFiles(dxfFiles);
+    if (allDropped.length === 0) return;
+
     // Filter to supported files (IFC, IFCX, GLB, point clouds)
-    const allDropped = Array.from(e.dataTransfer.files);
     const supportedFiles = allDropped.filter(isSupportedFile);
 
     if (supportedFiles.length === 0) {
@@ -555,11 +562,18 @@ export function ViewportContainer() {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
+    // DXF reference underlays split off before model routing (issue #1782).
+    const { dxfFiles, modelFiles } = splitDxfFiles(Array.from(files));
+    if (dxfFiles.length > 0) void ingestDxfFiles(dxfFiles);
+
     // Filter to supported files (IFC, IFCX, GLB). The <input> path yields no
     // live handle, so these models are not refreshable.
-    const supportedFiles = Array.from(files).filter(isSupportedFile);
+    const supportedFiles = modelFiles.filter(isSupportedFile);
 
-    if (supportedFiles.length === 0) return;
+    if (supportedFiles.length === 0) {
+      e.target.value = '';
+      return;
+    }
 
     recordRecentFiles(supportedFiles.map((file) => ({ name: file.name, size: file.size })));
     void cacheFileBlobs(supportedFiles);
@@ -582,6 +596,9 @@ export function ViewportContainer() {
     }
     const opened = await openIfcFilesWithHandles();
     if (!opened) return;
+    // DXF reference underlays split off before model routing (issue #1782).
+    const dxfPicked = opened.filter((o) => o.file.name.toLowerCase().endsWith('.dxf'));
+    if (dxfPicked.length > 0) void ingestDxfFiles(dxfPicked.map((o) => o.file));
     const supported = opened.filter((o) => isSupportedFile(o.file));
     if (supported.length === 0) return;
 
@@ -971,7 +988,7 @@ export function ViewportContainer() {
         <input
           ref={fileInputRef}
           type="file"
-          accept=".ifc,.ifcx,.ifczip,.glb,.las,.laz,.ply,.pcd,.e57,.pts,.xyz"
+          accept=".ifc,.ifcx,.ifczip,.glb,.las,.laz,.ply,.pcd,.e57,.pts,.xyz,.dxf"
           multiple
           onChange={handleFileSelect}
           className="hidden"

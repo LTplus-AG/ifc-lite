@@ -445,6 +445,47 @@ describe('consolidated additions (SPLINE, SOLID, lineweight, valign, unit heuris
     expect(t2.valign).toBe('bottom');
   });
 
+  it('prefers a layer true colour (420) over its ACI colour for BYLAYER entities', () => {
+    const text =
+      pairsToText(
+        [0, 'SECTION'],
+        [2, 'TABLES'],
+        [0, 'TABLE'],
+        [2, 'LAYER'],
+        [0, 'LAYER'], [2, 'branded'], [62, 3], [420, 1193046], [70, 0], // #123456 wins over green
+        [0, 'ENDTAB'],
+        [0, 'ENDSEC'],
+      ) +
+      entitiesSection(
+        [0, 'LINE'], [8, 'branded'], [10, 0], [20, 0], [11, 1], [21, 0],
+      );
+    const underlay = importDxf(text);
+    const layer = layerByName(underlay, 'branded');
+    expect(layer.color).toBe('#123456');
+    expect(layer.paths[0].color).toBeUndefined(); // BYLAYER inherits it
+  });
+
+  it('honours the clockwise flag on elliptical HATCH edges', () => {
+    // Ellipse edge from 0° to 90°, clockwise (73 = 0): the boundary must be
+    // the 270° complement mirrored across X, not the CCW quarter sweep.
+    const buildHatch = (ccw: number) => entitiesSection(
+      [0, 'HATCH'], [8, 'fills'], [2, 'SOLID'], [70, 1], [91, 1],
+      [92, 0], [93, 1],
+      [72, 3],
+      [10, 0], [20, 0],
+      [11, 10], [21, 0],
+      [40, 0.5],
+      [50, 0], [51, 90],
+      [73, ccw],
+    );
+    const ccwFill = importDxf(buildHatch(1)).layers[0].fills[0];
+    const cwFill = importDxf(buildHatch(0)).layers[0].fills[0];
+    // CCW quarter sweep stays in the +x/+y quadrant (world y >= 0).
+    expect(ccwFill.polygon.outer.every((p) => p.y >= -1e-9)).toBe(true);
+    // CW gets the mirrored sweep: it must dip into negative world y.
+    expect(cwFill.polygon.outer.some((p) => p.y < -1e-6)).toBe(true);
+  });
+
   it('assumes millimetres for unitless files with large extents', () => {
     const big = entitiesSection(
       [0, 'LINE'], [8, '0'], [10, 0], [20, 0], [11, 25000], [21, 12000],

@@ -173,9 +173,14 @@ function getBucket(state: ConvertState, layerName: string): DxfUnderlayLayer {
   let bucket = state.layers.get(layerName);
   if (!bucket) {
     const info = state.layerInfos.get(layerName);
+    const color = info
+      ? info.trueColor !== undefined
+        ? rgbIntToCss(info.trueColor)
+        : aciToCss(info.colorNumber)
+      : '#000000';
     bucket = {
       name: layerName,
-      color: info ? aciToCss(info.colorNumber) : '#000000',
+      color,
       visible: info ? info.visible : true,
       paths: [],
       fills: [],

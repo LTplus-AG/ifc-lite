@@ -495,7 +495,9 @@ export class SVGExporter {
         const anchor = mapPoint(text.position);
         const tip = mapPoint({ x: text.position.x + text.dirX, y: text.position.y + text.dirY });
         const angle = (Math.atan2(tip.y - anchor.y, tip.x - anchor.x) * 180) / Math.PI;
-        const heightMm = text.height * transform.scale;
+        // Placement scales geometry through mapPoint; the font height must
+        // follow or labels detach from their linework.
+        const heightMm = text.height * placement.scale * transform.scale;
         const anchorAttr = text.align === 'center' ? 'middle' : text.align === 'right' ? 'end' : 'start';
         const content = this.escapeXml(text.text).replace(/\n/g, ' ');
         layer += `      <text x="${anchor.x.toFixed(3)}" y="${anchor.y.toFixed(3)}" font-family="Arial, sans-serif" font-size="${heightMm.toFixed(3)}" fill="${text.color ?? dxfLayer.color}" text-anchor="${anchorAttr}" transform="rotate(${angle.toFixed(2)} ${anchor.x.toFixed(3)} ${anchor.y.toFixed(3)})">${content}</text>\n`;

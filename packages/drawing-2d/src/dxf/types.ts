@@ -185,6 +185,8 @@ export interface DxfLayerInfo {
   name: string;
   /** ACI colour number (absolute value of group 62). */
   colorNumber: number;
+  /** 24-bit true colour (group 420); wins over `colorNumber` when present. */
+  trueColor?: number;
   /** False when the layer is off (negative group 62) or frozen (70 bit 1). */
   visible: boolean;
   linetype?: string;

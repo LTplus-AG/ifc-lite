@@ -197,6 +197,9 @@ function parseTables(pairs: DxfPair[], start: number, end: number, doc: DxfDocum
           case 6:
             layer.linetype = value.trim();
             break;
+          case 420:
+            layer.trueColor = int(value) & 0xffffff;
+            break;
           case 370: {
             const lw = int(value);
             if (lw > 0) layer.lineweightMm = lw / 100;
@@ -812,9 +815,15 @@ function parseHatch(body: DxfPair[], doc: DxfDocument): DxfHatchEntity {
           const mx = takeIf(11) ?? 1;
           const my = takeIf(21) ?? 0;
           const ratio = takeIf(40) ?? 1;
-          const startDeg = takeIf(50) ?? 0;
-          const endDeg = takeIf(51) ?? 360;
-          takeIf(73); // ccw flag; degenerate handling matches arcs closely enough
+          let startDeg = takeIf(50) ?? 0;
+          let endDeg = takeIf(51) ?? 360;
+          const ccw = (takeIf(73) ?? 1) !== 0;
+          if (!ccw) {
+            // Clockwise edges mirror the parameter sweep, same as arc edges.
+            const s = startDeg;
+            startDeg = -endDeg;
+            endDeg = -s;
+          }
           const pts = sampleEllipse(
             cx,
             cy,

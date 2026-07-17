@@ -20,6 +20,8 @@ export {
   ENTITY_ATTRIBUTES,
   executeList,
   summariseListRows,
+  groupingColumnIds,
+  GROUP_KEY_SEPARATOR,
   listResultToCSV,
   discoverColumns,
   LIST_PRESETS,

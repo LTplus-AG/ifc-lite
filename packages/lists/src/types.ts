@@ -172,6 +172,13 @@ export interface ListDefinition {
 export interface ListGrouping {
   /** Column id to group rows by (e.g. a Type / Material / Storey column). */
   columnId: string;
+  /**
+   * Multi-criteria grouping (issue #1790): ordered column ids to group by,
+   * outermost first (e.g. Building, then Storey). When present and non-empty
+   * this takes precedence over `columnId`; `columnId` is kept in sync with the
+   * first entry for consumers built before multi-level grouping existed.
+   */
+  columnIds?: string[];
   /** Column ids whose numeric values are summed per group and overall. */
   sumColumnIds: string[];
 }
@@ -270,16 +277,24 @@ export interface ListResult {
   summary?: ListSummary;
 }
 
-/** One group in a grouped list result. */
+/** One group in a grouped list result. With multi-criteria grouping (issue
+ *  #1790) groups are emitted as a FLAT pre-order list: each parent group is
+ *  immediately followed by its subgroups (`level` gives the nesting depth). */
 export interface ListGroup {
-  /** Group-by value, stringified. Empty values group under `label`. */
+  /** Unique group key — the `path` labels joined with `'\u001f'` (equals the
+   *  label for a top-level group). */
   key: string;
-  /** Display label for the group header. */
+  /** Display label for the group header (this level's value only). */
   label: string;
-  /** Number of rows in the group. */
+  /** Number of rows in the group (the Count aggregate, issue #1790). */
   count: number;
   /** columnId → summed numeric value, for the configured sum columns. */
   sums: Record<string, number>;
+  /** 0-based nesting depth (0 = outermost grouping column). Always emitted by
+   *  `summariseListRows`; optional for backward type compatibility. */
+  level?: number;
+  /** Group-by labels from the outermost level down to this group. */
+  path?: string[];
 }
 
 /** Whole-result aggregates. */

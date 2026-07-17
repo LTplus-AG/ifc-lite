@@ -4,7 +4,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import type { ColumnDefinition, ListRow } from '@ifc-lite/lists';
+import { GROUP_KEY_SEPARATOR, type ColumnDefinition, type ListRow } from '@ifc-lite/lists';
 import { buildGroupedView, compareCells, type GroupSort } from './list-table-utils';
 
 const columns: ColumnDefinition[] = [
@@ -97,6 +97,90 @@ describe('buildGroupedView group ordering (#1498)', () => {
     const noSum = { columnId: 'cat', sumColumnIds: [] };
     const view = buildGroupedView(sample, columns, noSum, NO_EXPAND, { colIdx: 1, dir: 'asc' });
     assert.deepStrictEqual(groupOrder(view), ['C', 'A', 'B']);
+  });
+});
+
+// Multi-criteria grouping (issue #1790): e.g. group by Building, then Storey.
+describe('buildGroupedView multi-criteria grouping (#1790)', () => {
+  const cols: ColumnDefinition[] = [
+    { id: 'building', source: 'spatial', propertyName: 'Building' },
+    { id: 'storey', source: 'spatial', propertyName: 'Storey' },
+    { id: 'qty', source: 'quantity', propertyName: 'Qty' },
+  ];
+  const mkRows = (...tuples: [string, string, number][]): ListRow[] =>
+    tuples.map(([b, s, q], i) => ({ entityId: i + 1, modelId: 'm', values: [b, s, q] }));
+  // Building A: 3 rows over 2 storeys; Building B: 1 row.
+  const sample = mkRows(['A', 'L0', 1], ['A', 'L0', 2], ['A', 'L1', 3], ['B', 'L0', 4]);
+  const grouping = { columnId: 'building', columnIds: ['building', 'storey'], sumColumnIds: ['qty'] };
+  const keyAL0 = `A${GROUP_KEY_SEPARATOR}L0`;
+
+  it('collapsed: shows only top-level headers, but groupKeys covers every level', () => {
+    const view = buildGroupedView(sample, cols, grouping, new Set(), null);
+    assert.deepStrictEqual(
+      view.items.map((i) => (i.kind === 'group' ? [i.level, i.label, i.count] : 'row')),
+      [[0, 'A', 3], [0, 'B', 1]],
+    );
+    assert.strictEqual(view.groupCount, 2);
+    assert.deepStrictEqual(view.groupKeys, ['A', keyAL0, `A${GROUP_KEY_SEPARATOR}L1`, 'B', `B${GROUP_KEY_SEPARATOR}L0`]);
+  });
+
+  it('expanding a parent reveals its sub-groups with per-group counts, not rows', () => {
+    const view = buildGroupedView(sample, cols, grouping, new Set(['A']), null);
+    assert.deepStrictEqual(
+      view.items.map((i) => (i.kind === 'group' ? [i.level, i.label, i.count] : 'row')),
+      [[0, 'A', 3], [1, 'L0', 2], [1, 'L1', 1], [0, 'B', 1]],
+    );
+  });
+
+  it('expanding a leaf sub-group reveals its member rows in place', () => {
+    const view = buildGroupedView(sample, cols, grouping, new Set(['A', keyAL0]), null);
+    assert.deepStrictEqual(
+      view.items.map((i) => (i.kind === 'group' ? `${i.level}:${i.label}` : `row:${(i as { row: ListRow }).row.entityId}`)),
+      ['0:A', '1:L0', 'row:1', 'row:2', '1:L1', '0:B'],
+    );
+  });
+
+  it('a collapsed parent hides expanded children (no orphaned sub-headers)', () => {
+    const view = buildGroupedView(sample, cols, grouping, new Set([keyAL0]), null);
+    assert.deepStrictEqual(
+      view.items.map((i) => (i.kind === 'group' ? i.label : 'row')),
+      ['A', 'B'],
+    );
+  });
+
+  it('sums subtotal at every level and grand totals are not double-counted', () => {
+    const view = buildGroupedView(sample, cols, grouping, new Set(['A']), null);
+    const byLabel = new Map(view.items.filter((i) => i.kind === 'group').map((g) => [`${(g as { level: number }).level}:${(g as { label: string }).label}`, (g as { sums: Record<string, number> }).sums.qty]));
+    assert.strictEqual(byLabel.get('0:A'), 6);
+    assert.strictEqual(byLabel.get('1:L0'), 3);
+    assert.strictEqual(byLabel.get('1:L1'), 3);
+    assert.strictEqual(view.totals.sums.qty, 10);
+    assert.strictEqual(view.totals.count, 4);
+  });
+
+  it('the same sub-label under two parents stays two distinct groups', () => {
+    const view = buildGroupedView(sample, cols, grouping, new Set(['A', 'B']), null);
+    const l0Groups = view.items.filter((i) => i.kind === 'group' && (i as { label: string }).label === 'L0');
+    assert.strictEqual(l0Groups.length, 2);
+    const keys = l0Groups.map((g) => (g as { key: string }).key);
+    assert.deepStrictEqual(keys, [keyAL0, `B${GROUP_KEY_SEPARATOR}L0`]);
+  });
+
+  it('an empty row set yields no groups and zero totals', () => {
+    const view = buildGroupedView([], cols, grouping, new Set(), null);
+    assert.deepStrictEqual(view.items, []);
+    assert.strictEqual(view.groupCount, 0);
+    assert.deepStrictEqual(view.groupKeys, []);
+    assert.strictEqual(view.totals.count, 0);
+    assert.strictEqual(view.totals.sums.qty, 0);
+  });
+
+  it('legacy single-columnId grouping is unchanged (level 0 only)', () => {
+    const view = buildGroupedView(sample, cols, { columnId: 'building', sumColumnIds: [] }, new Set(['A']), null);
+    assert.deepStrictEqual(
+      view.items.map((i) => (i.kind === 'group' ? [i.level, i.label, i.count] : 'row')),
+      [[0, 'A', 3], 'row', 'row', 'row', [0, 'B', 1]],
+    );
   });
 });
 

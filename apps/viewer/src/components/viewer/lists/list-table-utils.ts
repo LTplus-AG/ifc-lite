@@ -8,8 +8,8 @@
  * aggregation that powers the in-table (settings-free) grouped view.
  */
 
-import type { CellValue, ColumnDefinition, ListRow, ListGrouping } from '@ifc-lite/lists';
-import { buildGroupBuckets, compareCells, orderGroups, type GroupSort, type OrderableGroup } from '@/lib/lists/group-sort';
+import { groupingColumnIds, type CellValue, type ColumnDefinition, type ListRow, type ListGrouping } from '@ifc-lite/lists';
+import { buildNestedGroupBuckets, compareCells, orderGroups, type GroupSort, type OrderableGroup } from '@/lib/lists/group-sort';
 
 // Re-exported so existing consumers keep importing the list-table barrel.
 export { compareCells, orderGroups };
@@ -56,11 +56,19 @@ export function autoColumnWidth(label: string, rows: ListRow[], colIdx: number):
 }
 
 export type DisplayItem =
-  | { kind: 'group'; key: string; label: string; count: number; sums: Record<string, number> }
+  | { kind: 'group'; key: string; label: string; count: number; sums: Record<string, number>; level: number }
   | { kind: 'row'; row: ListRow };
 
 export interface Totals { count: number; sums: Record<string, number> }
-export interface GroupedView { items: DisplayItem[]; groupCount: number; totals: Totals }
+export interface GroupedView {
+  items: DisplayItem[];
+  /** Number of top-level groups. */
+  groupCount: number;
+  totals: Totals;
+  /** EVERY group key at every nesting level (including ones hidden inside a
+   *  collapsed parent), so expand-all can open the whole tree at once. */
+  groupKeys: string[];
+}
 
 function sumIndices(columns: ColumnDefinition[], sumColumnIds: string[]) {
   return sumColumnIds
@@ -68,9 +76,11 @@ function sumIndices(columns: ColumnDefinition[], sumColumnIds: string[]) {
     .filter((s) => s.idx >= 0);
 }
 
-/** Bucket already-filtered/sorted rows by the group-by column, accumulate
+/** Bucket already-filtered/sorted rows by the group-by column(s), accumulate
  *  per-group + grand count/sums, and flatten into a virtualizable list
- *  (group header followed by its rows when the group is expanded). */
+ *  (group header followed by its subgroups/rows when the group is expanded).
+ *  Multi-criteria grouping (issue #1790) nests one header level per group
+ *  column; every header carries its member count. */
 export function buildGroupedView(
   rows: ListRow[],
   columns: ColumnDefinition[],
@@ -78,28 +88,52 @@ export function buildGroupedView(
   expanded: Set<string>,
   sort: GroupSort = null,
 ): GroupedView {
-  const groupIdx = columns.findIndex((c) => c.id === grouping.columnId);
+  const groupIds = groupingColumnIds(grouping).filter((id) => columns.some((c) => c.id === id));
+  // No resolvable group column keeps the legacy single-"(none)"-bucket shape.
+  const levelIndices = groupIds.length > 0
+    ? groupIds.map((id) => columns.findIndex((c) => c.id === id))
+    : [-1];
   const sums = sumIndices(columns, grouping.sumColumnIds);
 
-  const byKey = buildGroupBuckets(
+  const nested = buildNestedGroupBuckets(
     rows,
-    (r) => (groupIdx >= 0 ? r.values[groupIdx] : null),
+    levelIndices,
     sums,
     (r, idx) => r.values[idx],
     formatCellValue,
+    sort,
   );
 
-  // Grand totals are the sum of the per-group subtotals.
+  // Grand totals from the TOP-LEVEL subtotals only (deeper levels re-split the
+  // same rows — adding them too would double-count).
   const totals: Totals = { count: rows.length, sums: Object.fromEntries(sums.map((s) => [s.id, 0])) };
-  for (const g of byKey.values()) for (const s of sums) totals.sums[s.id] += g.sums[s.id];
-
-  const groups = orderGroups(Array.from(byKey.values()), sort, groupIdx, sums);
-  const items: DisplayItem[] = [];
-  for (const g of groups) {
-    items.push({ kind: 'group', key: g.key, label: g.label, count: g.count, sums: g.sums });
-    if (expanded.has(g.key)) for (const r of g.rows) items.push({ kind: 'row', row: r });
+  let groupCount = 0;
+  for (const g of nested) {
+    if (g.level !== 0) continue;
+    groupCount++;
+    for (const s of sums) totals.sums[s.id] += g.sums[s.id];
   }
-  return { items, groupCount: groups.length, totals };
+
+  const items: DisplayItem[] = [];
+  const groupKeys: string[] = [];
+  const leafLevel = levelIndices.length - 1;
+  // Visibility of the currently open branch, per level. Pre-order guarantees a
+  // parent is visited before its children, so index level-1 is this group's
+  // direct parent.
+  const branchOpen: boolean[] = [];
+  for (const g of nested) {
+    groupKeys.push(g.key);
+    const parentVisible = g.level === 0 || branchOpen[g.level - 1] === true;
+    if (parentVisible) {
+      items.push({ kind: 'group', key: g.key, label: g.label, count: g.count, sums: g.sums, level: g.level });
+    }
+    const open = parentVisible && expanded.has(g.key);
+    branchOpen[g.level] = open;
+    if (open && g.level === leafLevel) {
+      for (const r of g.rows) items.push({ kind: 'row', row: r });
+    }
+  }
+  return { items, groupCount, totals, groupKeys };
 }
 
 /** Grand totals for the flat (ungrouped) view when sum columns are active. */

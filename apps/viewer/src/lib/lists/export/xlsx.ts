@@ -60,13 +60,16 @@ export async function toXlsx(model: ExportModel): Promise<Blob> {
   };
 
   if (model.groups) {
+    // Nested (multi-criteria) grouping: sub-group headers indent one step per
+    // level and carry their own count; member rows sit on leaf groups only.
     for (const g of model.groups) {
-      const gr = ws.addRow(cols.map((c, i) => (i === 0 ? `${g.label} (${g.count})` : (c.summed ? g.sums[c.id] : null))));
+      const gr = ws.addRow(cols.map((c, i) => (i === 0 ? `${'  '.repeat(g.level)}${g.label} (${g.count})` : (c.summed ? g.sums[c.id] : null))));
       gr.font = { bold: true };
       gr.eachCell((cell) => { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } }; });
-      for (const row of g.rows) addDataRow(row, 1);
+      if (g.level > 0) gr.outlineLevel = g.level;
+      for (const row of g.rows) addDataRow(row, g.level + 1);
     }
-    ws.properties.outlineLevelRow = 1;
+    ws.properties.outlineLevelRow = model.groups.reduce((m, g) => Math.max(m, g.level + 1), 1);
   } else {
     for (const row of model.rows) addDataRow(row);
   }

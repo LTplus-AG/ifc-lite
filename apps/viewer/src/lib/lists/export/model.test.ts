@@ -51,6 +51,56 @@ describe('buildExportModel grouped-section order honours the on-screen sort (#14
   });
 });
 
+// Multi-criteria grouping in exports (issue #1790): nested sections in
+// pre-order, per-group counts at every level, member rows on leaves only.
+describe('buildExportModel multi-criteria grouping (#1790)', () => {
+  const cols3: ColumnDefinition[] = [
+    { id: 'building', source: 'spatial', propertyName: 'Building' },
+    { id: 'storey', source: 'spatial', propertyName: 'Storey' },
+    { id: 'qty', source: 'quantity', propertyName: 'Qty' },
+  ];
+  const rows3: ListRow[] = ([
+    ['A', 'L0', 1], ['A', 'L0', 2], ['A', 'L1', 3], ['B', 'L0', 4],
+  ] as [string, string, number][]).map(([b, s, q], i) => ({ entityId: i + 1, modelId: 'm', values: [b, s, q] }));
+  const input = {
+    title: 'List',
+    columns: cols3,
+    rows: rows3,
+    numericCols: [false, false, true],
+    columnWidths: [120, 120, 120],
+    generatedAt: 'now',
+    grouping: { columnId: 'building', columnIds: ['building', 'storey'], sumColumnIds: ['qty'] },
+  };
+
+  it('emits pre-order nested groups with level, path and per-group count', () => {
+    const m = buildExportModel({ ...input });
+    assert.deepStrictEqual(
+      m.groups?.map((g) => [g.level, g.label, g.count, g.rows.length]),
+      [
+        [0, 'A', 3, 0],
+        [1, 'L0', 2, 2],
+        [1, 'L1', 1, 1],
+        [0, 'B', 1, 0],
+        [1, 'L0', 1, 1],
+      ],
+    );
+    assert.deepStrictEqual(m.groups?.[1].path, ['A', 'L0']);
+    assert.deepStrictEqual(m.groupColumnIds, ['building', 'storey']);
+    assert.strictEqual(m.groupColumnId, 'building');
+    // Subtotals at both levels; grand totals not double-counted.
+    assert.strictEqual(m.groups?.[0].sums.qty, 6);
+    assert.strictEqual(m.groups?.[1].sums.qty, 3);
+    assert.strictEqual(m.totals.sums.qty, 10);
+    assert.strictEqual(m.totals.count, 4);
+  });
+
+  it('single-level grouping keeps rows on every group (all groups are leaves)', () => {
+    const m = buildExportModel({ ...input, grouping: { columnId: 'building', sumColumnIds: [] } });
+    assert.deepStrictEqual(m.groups?.map((g) => [g.level, g.label, g.rows.length]), [[0, 'A', 3], [0, 'B', 1]]);
+    assert.deepStrictEqual(m.groupColumnIds, ['building']);
+  });
+});
+
 // #1573: quantity/measure columns export converted into the user's
 // display-unit override, with the resolved symbol folded into the header.
 describe('buildExportModel display-unit conversion (#1573)', () => {

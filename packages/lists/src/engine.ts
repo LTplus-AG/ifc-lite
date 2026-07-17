@@ -18,6 +18,7 @@ import type {
   ListResult,
   ListRow,
   ListGroup,
+  ListGrouping,
   ListSummary,
   CellValue,
   PropertyCondition,
@@ -93,11 +94,32 @@ interface ColumnMeta {
 // Grouping & Aggregation
 // ============================================================================
 
+/** Separator used to build unique composite group keys from group paths. */
+export const GROUP_KEY_SEPARATOR = '\u001f';
+
+/**
+ * Effective ordered group-by column ids for a grouping config — `columnIds`
+ * (multi-criteria, issue #1790) when present, else the legacy single
+ * `columnId`. `[]` when the config only carries sum columns (or is absent).
+ */
+export function groupingColumnIds(grouping: ListGrouping | undefined): string[] {
+  if (!grouping) return [];
+  const ids = grouping.columnIds && grouping.columnIds.length > 0
+    ? grouping.columnIds
+    : (grouping.columnId ? [grouping.columnId] : []);
+  return ids.filter(id => id !== '');
+}
+
 /**
  * Build the grouped breakdown + whole-result summary for a definition over a
  * row set. Returns `{}` when no grouping is configured, so the result shape is
  * unchanged for plain flat lists. Exported so federated callers can re-derive
  * groups/summary after merging rows from several models.
+ *
+ * Multi-criteria grouping (issue #1790): with several group columns the
+ * returned `groups` is a FLAT pre-order list — each parent group followed by
+ * its subgroups, `level`/`path` carrying the nesting. Every group carries its
+ * own `count` (the Count aggregate) and per-column sums.
  */
 export function summariseListRows(
   definition: ListDefinition,
@@ -107,7 +129,12 @@ export function summariseListRows(
   if (!grouping) return {};
 
   const columns = definition.columns;
-  const groupIdx = columns.findIndex(c => c.id === grouping.columnId);
+  const groupIds = groupingColumnIds(grouping);
+  // No group column configured (sums only) keeps the legacy single-bucket
+  // behaviour: every row lands in one "(none)" group.
+  const levelIndices = groupIds.length > 0
+    ? groupIds.map(id => columns.findIndex(c => c.id === id))
+    : [-1];
   const sumIndices = grouping.sumColumnIds
     .map(id => ({ id, idx: columns.findIndex(c => c.id === id) }))
     .filter(s => s.idx >= 0);
@@ -118,35 +145,51 @@ export function summariseListRows(
     return out;
   };
 
-  // Whole-result summary.
+  // Whole-result summary (accumulated once, independent of nesting depth).
   const summary: ListSummary = { count: rows.length, sums: zeroSums() };
-
-  // Group accumulation, preserving first-seen order.
-  const byKey = new Map<string, ListGroup>();
   for (const row of rows) {
-    const raw = groupIdx >= 0 ? row.values[groupIdx] : null;
-    const label = raw === null || raw === undefined || raw === '' ? '(none)' : String(raw);
-    const key = label;
-
-    let group = byKey.get(key);
-    if (!group) {
-      group = { key, label, count: 0, sums: zeroSums() };
-      byKey.set(key, group);
-    }
-    group.count++;
-
     for (const s of sumIndices) {
       const v = row.values[s.idx];
-      if (typeof v === 'number' && Number.isFinite(v)) {
-        group.sums[s.id] += v;
-        summary.sums[s.id] += v;
-      }
+      if (typeof v === 'number' && Number.isFinite(v)) summary.sums[s.id] += v;
     }
   }
 
-  const groups = Array.from(byKey.values());
-  // Stable, useful default: largest groups first.
-  groups.sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+  // Recursive per-level bucketing, preserving first-seen order within a level,
+  // then ordered largest-group-first (stable default) before flattening.
+  const groups: ListGroup[] = [];
+  const walk = (subRows: ListRow[], level: number, parentKey: string, parentPath: string[]) => {
+    const colIdx = levelIndices[level];
+    const byKey = new Map<string, { group: ListGroup; rows: ListRow[] }>();
+    for (const row of subRows) {
+      const raw = colIdx >= 0 ? row.values[colIdx] : null;
+      const label = raw === null || raw === undefined || raw === '' ? '(none)' : String(raw);
+
+      let bucket = byKey.get(label);
+      if (!bucket) {
+        const path = [...parentPath, label];
+        const key = parentKey === '' ? label : `${parentKey}${GROUP_KEY_SEPARATOR}${label}`;
+        bucket = { group: { key, label, count: 0, sums: zeroSums(), level, path }, rows: [] };
+        byKey.set(label, bucket);
+      }
+      bucket.group.count++;
+      bucket.rows.push(row);
+
+      for (const s of sumIndices) {
+        const v = row.values[s.idx];
+        if (typeof v === 'number' && Number.isFinite(v)) bucket.group.sums[s.id] += v;
+      }
+    }
+
+    const ordered = Array.from(byKey.values())
+      .sort((a, b) => b.group.count - a.group.count || a.group.label.localeCompare(b.group.label));
+    for (const bucket of ordered) {
+      groups.push(bucket.group);
+      if (level + 1 < levelIndices.length) {
+        walk(bucket.rows, level + 1, bucket.group.key, bucket.group.path!);
+      }
+    }
+  };
+  walk(rows, 0, '', []);
 
   return { groups, summary };
 }

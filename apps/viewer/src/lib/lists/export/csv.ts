@@ -18,7 +18,9 @@ function esc(s: string, delim: string): string {
 /**
  * CSV faithful to the configured columns. When grouped, a leading "Group"
  * column preserves the grouping as data (so it stays re-importable), rows are
- * ordered by group, and a TOTAL row carries the grand count + sums.
+ * ordered by group, and a TOTAL row carries the grand count + sums. With
+ * multi-criteria grouping the Group cell carries the full path ("Building /
+ * Storey") so nested grouping survives as flat data.
  */
 export function toCsv(model: ExportModel, delimiter = ','): string {
   const grouped = model.groups !== null;
@@ -32,7 +34,8 @@ export function toCsv(model: ExportModel, delimiter = ','): string {
   };
 
   if (grouped && model.groups) {
-    for (const g of model.groups) for (const r of g.rows) lines.push(line(g.label, r));
+    // Only leaf groups carry rows; parents are represented via the path.
+    for (const g of model.groups) for (const r of g.rows) lines.push(line(g.path.join(' / '), r));
   } else {
     for (const r of model.rows) lines.push(line(null, r));
   }

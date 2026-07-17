@@ -1018,11 +1018,14 @@ ifc-lite simplify model.ifc --out light.ifc --level 5 --ids 12,44,107 --json
 | `--ids <a,b,...>` | Only simplify these express ids (default: all meshed elements) |
 | `--json` | Machine-readable report |
 
-What "lighter" means: the guaranteed win is TRIANGLE COUNT (viewer/render
-load). File size usually drops on tessellation-heavy models (scans, CAD
+What "lighter" means: the goal is TRIANGLE COUNT (viewer/render load), and
+on tessellation-heavy elements the reduction is large. It is not guaranteed
+per element: meshes below 32 triangles pass through levels 1-4 unchanged,
+and level 5 always emits a 12-triangle box, which can exceed a smaller
+input. File size usually drops on tessellation-heavy models (scans, CAD
 imports), but small parametric models can GROW in bytes, since verbose
 explicit tessellation replaces compact swept solids. Check the reported
-`trisBefore`/`trisAfter` and output size for your workload.
+`trianglesBefore`/`trianglesAfter` and output size for your workload.
 
 ## Output Modes
 

@@ -20,6 +20,8 @@ mod synthesis;
 mod reveal_tests;
 
 use geom::*;
+use sweep::{cut_changed_mesh, drop_faces_outside_host};
+mod sweep;
 
 /// Epsilon for normalizing direction vectors (guards against zero-length).
 const NORMALIZE_EPSILON: f64 = 1e-12;
@@ -39,8 +41,6 @@ const MAX_EXTRUSION_EXTRACT_DEPTH: usize = 32;
 /// apart on what counts as "engulfs the host".
 const ENGULF_TOLERANCE: f64 = 0.03;
 const ENGULF_TOLERANCE_F32: f32 = 0.03;
-
-
 
 /// Classification of an opening for void subtraction.
 #[derive(Clone)]
@@ -1107,6 +1107,7 @@ impl GeometryRouter {
         if ctx.is_noop() {
             return mesh;
         }
+        let original_host = mesh.clone(); // stray-shard sweep parity reference
 
         // LOCAL-FRAME CUT (issue #1167): a vertical wall rotated in plan is cut
         // in its own axis-aligned, origin-centred frame — where the exact
@@ -1489,10 +1490,11 @@ impl GeometryRouter {
                     if admissible {
                         let cutters: Vec<&Mesh> = extended.iter().map(|(_, m)| m).collect();
                         let tri_before = result.triangle_count();
+                        let vol_before = mesh_signed_volume(&result);
                         if let Ok(csg_result) = clipper.subtract_mesh_many(&result, &cutters) {
                             let min_tris = (tri_before / CSG_TRIANGLE_RETENTION_DIVISOR)
                                 .max(MIN_VALID_TRIANGLES);
-                            let changed = csg_result.triangle_count() != tri_before;
+                            let changed = cut_changed_mesh(&csg_result, tri_before, vol_before);
                             if !csg_result.is_empty()
                                 && csg_result.triangle_count() >= min_tris
                                 && changed
@@ -1630,18 +1632,11 @@ impl GeometryRouter {
                         depth_dir,
                     );
                     let cutter = &extended_opening;
+                    let vol_before = mesh_signed_volume(&result);
                     if let Ok(csg_result) = clipper.subtract_mesh(&result, cutter) {
                         let min_tris = (tri_before / CSG_TRIANGLE_RETENTION_DIVISOR)
                             .max(MIN_VALID_TRIANGLES);
-                        // CSG only counts as a success when the result actually
-                        // changed (either fewer triangles, indicating polygons
-                        // were removed, or more triangles, indicating the
-                        // opening was carved as new boundary tris). When the
-                        // safety thresholds in `subtract_mesh` short-circuit,
-                        // e.g. `MAX_CSG_POLYGONS_PER_MESH` rejects a high-poly
-                        // round/curved opening (issue #635), the host mesh is
-                        // returned unchanged, leaving the void uncut.
-                        let changed = csg_result.triangle_count() != tri_before;
+                        let changed = cut_changed_mesh(&csg_result, tri_before, vol_before);
                         csg_unchanged = !changed;
                         if !csg_result.is_empty()
                             && csg_result.triangle_count() >= min_tris
@@ -1855,6 +1850,11 @@ impl GeometryRouter {
             [wall_min.x as f32, wall_min.y as f32, wall_min.z as f32],
             [wall_max.x as f32, wall_max.y as f32, wall_max.z as f32],
         );
+
+        // STRAY-SHARD SWEEP: see `sweep::drop_faces_outside_host` (#1788).
+        if host_mutated {
+            result = drop_faces_outside_host(result, &original_host);
+        }
 
         // Per-host cut-effect snapshot: tris_before / tris_after lets the
         // diagnostic surface the silent-no-op case (rectangular boxes

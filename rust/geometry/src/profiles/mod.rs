@@ -250,11 +250,10 @@ impl ProfileProcessor {
 
         // Process outer curve
         let raw_outer = self.process_curve(&curve, decoder)?;
-        // Issue #635 — downsample over-tessellated smooth curves so that
-        // round/curved openings produce compact extrusions (historically:
-        // to fit the deleted BSP polygon budget and avoid the AABB
-        // rectangular fallback; still a big perf win on the exact kernel).
-        let outer_points = simplify_smooth_curve_polyline(&raw_outer);
+        // Issue #635 — downsample over-tessellated smooth curves so round/
+        // curved openings produce compact extrusions (a big perf win on the
+        // exact kernel; historically also the deleted BSP polygon budget).
+        let outer_points = simplify_smooth_curve_polyline(&raw_outer, decoder.length_unit_scale());
         let mut result = Profile2D::new(outer_points);
 
         // Check if this is IfcArbitraryProfileDefWithVoids (has inner curves)
@@ -264,7 +263,8 @@ impl ProfileProcessor {
                 let inner_curves = decoder.resolve_ref_list(inner_curves_attr)?;
                 for inner_curve in inner_curves {
                     let raw_hole = self.process_curve(&inner_curve, decoder)?;
-                    let hole_points = simplify_smooth_curve_polyline(&raw_hole);
+                    let hole_points =
+                        simplify_smooth_curve_polyline(&raw_hole, decoder.length_unit_scale());
                     result.add_hole(hole_points);
                 }
             }

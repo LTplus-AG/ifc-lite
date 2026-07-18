@@ -109,3 +109,8 @@ tests/benchmark/benchmark-results/viewer-*.console.log
 /blob-report/
 /playwright/.cache/
 .vercel
+
+# Railway `railway config pull` scratch output. These land as
+# `.railway-config-pull-<n>/railway.ts` placeholders and must never be
+# committed; the desired Railway state lives elsewhere.
+.railway-config-pull-*/

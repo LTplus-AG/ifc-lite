@@ -118,12 +118,16 @@ impl ProfileProcessor {
         // FilletRadius (attr 7) rounds the four web↔flange junctions (concave,
         // adds the root-fillet material). FlangeEdgeRadius (8) and FlangeSlope
         // (9) are not yet modelled (rare; absent in the ara3d set).
-        let fillet = profile
-            .get_float(7)
-            .unwrap_or(0.0)
-            .clamp(0.0, ((overall_depth - 2.0 * flange_thickness) * 0.5)
-                .min((overall_width - web_thickness) * 0.5)
-                .max(0.0));
+        // Below Medium the radius collapses to 0 and the section stays at its
+        // 12 sharp corners (issue #1809).
+        let fillet = self.quality().profile_fillet_radius(
+            profile
+                .get_float(7)
+                .unwrap_or(0.0)
+                .clamp(0.0, ((overall_depth - 2.0 * flange_thickness) * 0.5)
+                    .min((overall_width - web_thickness) * 0.5)
+                    .max(0.0)),
+        );
 
         let half_width = overall_width / 2.0;
         let half_depth = overall_depth / 2.0;

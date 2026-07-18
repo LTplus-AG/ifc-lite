@@ -51,13 +51,19 @@ impl ProfileProcessor {
         // FilletRadius rounds the inner re-entrant corner (concave, adds
         // material); EdgeRadius rounds the two leg toes (convex, removes the
         // sharp tips). Both optional; clamp so the arcs stay inside the legs.
-        let rf = profile
-            .get_float(6)
-            .unwrap_or(0.0)
-            .clamp(0.0, (width - t).min(depth - t).max(0.0));
-        let re = profile.get_float(7).unwrap_or(0.0).clamp(0.0, (t * 0.999).max(0.0));
+        // Below Medium both collapse to 0 — sharp corners only (issue #1809).
+        let q = self.quality();
+        let rf = q.profile_fillet_radius(
+            profile
+                .get_float(6)
+                .unwrap_or(0.0)
+                .clamp(0.0, (width - t).min(depth - t).max(0.0)),
+        );
+        let re = q.profile_fillet_radius(
+            profile.get_float(7).unwrap_or(0.0).clamp(0.0, (t * 0.999).max(0.0)),
+        );
         // Root-fillet segments per corner: 6 at Medium+, coarser below.
-        let seg = self.quality().profile_arc_segments(6, 2);
+        let seg = q.profile_arc_segments(6, 2);
         let half_pi = std::f64::consts::FRAC_PI_2;
         let pi = std::f64::consts::PI;
 
@@ -111,13 +117,19 @@ impl ProfileProcessor {
         // FilletRadius (attr 7) rounds the two inner web↔flange junctions
         // (concave); EdgeRadius (attr 8) rounds the two flange toes (convex).
         // FlangeSlope (9) not modelled.
+        // Below Medium both collapse to 0 — sharp corners only (issue #1809).
         let half_depth = depth / 2.0;
         let ft = flange_thickness;
-        let rf = profile
-            .get_float(7)
-            .unwrap_or(0.0)
-            .clamp(0.0, (flange_width - web_thickness).min(half_depth - ft).max(0.0));
-        let re = profile.get_float(8).unwrap_or(0.0).clamp(0.0, (ft * 0.999).max(0.0));
+        let q = self.quality();
+        let rf = q.profile_fillet_radius(
+            profile
+                .get_float(7)
+                .unwrap_or(0.0)
+                .clamp(0.0, (flange_width - web_thickness).min(half_depth - ft).max(0.0)),
+        );
+        let re = q.profile_fillet_radius(
+            profile.get_float(8).unwrap_or(0.0).clamp(0.0, (ft * 0.999).max(0.0)),
+        );
 
         // Sharp outline (counter-clockwise). 2,5 = flange toes; 3,4 = junctions.
         let sharp = [
@@ -131,7 +143,7 @@ impl ProfileProcessor {
             Point2::new(0.0, half_depth),                 // 7 back-top outer
         ];
         // Root-fillet segments per corner: 6 at Medium+, coarser below.
-        let seg = self.quality().profile_arc_segments(6, 2);
+        let seg = q.profile_arc_segments(6, 2);
         let radii = [(2, re), (3, rf), (4, rf), (5, re)];
         Ok(Profile2D::new(fillet_outline(&sharp, &radii, seg)))
     }
@@ -163,12 +175,20 @@ impl ProfileProcessor {
         let half_web = web_thickness / 2.0;
         let ft = flange_thickness;
         let ftf = depth - ft; // flange inner face Y
-        let rf = profile
-            .get_float(7)
-            .unwrap_or(0.0)
-            .clamp(0.0, (half_flange - half_web).min(ftf).max(0.0));
-        let r_fl = profile.get_float(8).unwrap_or(0.0).clamp(0.0, (ft * 0.999).max(0.0));
-        let r_web = profile.get_float(9).unwrap_or(0.0).clamp(0.0, (half_web * 0.999).max(0.0));
+        // Below Medium all three collapse to 0 — sharp corners only (issue #1809).
+        let q = self.quality();
+        let rf = q.profile_fillet_radius(
+            profile
+                .get_float(7)
+                .unwrap_or(0.0)
+                .clamp(0.0, (half_flange - half_web).min(ftf).max(0.0)),
+        );
+        let r_fl = q.profile_fillet_radius(
+            profile.get_float(8).unwrap_or(0.0).clamp(0.0, (ft * 0.999).max(0.0)),
+        );
+        let r_web = q.profile_fillet_radius(
+            profile.get_float(9).unwrap_or(0.0).clamp(0.0, (half_web * 0.999).max(0.0)),
+        );
 
         // Sharp outline (counter-clockwise). 1,6 = junctions; 2,5 = flange toes;
         // 0,7 = web free-end corners.
@@ -183,7 +203,7 @@ impl ProfileProcessor {
             Point2::new(half_web, 0.0),        // 7 web bottom-right (web edge)
         ];
         // Root-fillet segments per corner: 6 at Medium+, coarser below.
-        let seg = self.quality().profile_arc_segments(6, 2);
+        let seg = q.profile_arc_segments(6, 2);
         let radii = [
             (0, r_web),
             (1, rf),

@@ -341,6 +341,18 @@ pub fn subtract_many(host: &Mesh, cutters: &[&Mesh]) -> Option<Mesh> {
             orient_outward(c)
         })
         .collect();
+
+    // FUZZY FAST TIER (env-gated OFF by default via `IFC_LITE_FUZZY_BOOL`): try
+    // the f64 tolerance boolean first, but ACCEPT it only if it self-checks
+    // watertight AND removes exactly the disjoint oracle volume. On any failure
+    // fall straight through to the exact kernel below — a bad fuzzy result can
+    // never regress correctness, it can only be discarded here.
+    if super::fuzzy::enabled() {
+        if let Some(m) = super::fuzzy::subtract_checked(&h, &comp_tris) {
+            return Some(m);
+        }
+    }
+
     let refs: Vec<&[Tri]> = comp_tris.iter().map(|c| c.as_slice()).collect();
     // Conforming batch: the fast, exact, byte-identical common path.
     if let Some(r) = difference_all(&h, &refs) {
@@ -353,34 +365,8 @@ pub fn subtract_many(host: &Mesh, cutters: &[&Mesh]) -> Option<Mesh> {
     // Trust the lenient batch ONLY when its removed volume matches the true removed
     // volume; else None, so the caller runs its full sequential path.
     let batch = difference_all_lenient(&h, &refs);
-    // ORACLE for the volume comparison (#1788): batched cutters are pairwise
-    // disjoint (this fn's contract), so the TRUE removed volume is
-    // Σ |host ∩ cutterᵢ| — each a small single boolean against the PRISTINE
-    // host, the well-conditioned regime. The previous oracle re-ran the
-    // sequential subtract chain, but that chain re-jitters its own seams
-    // cut-over-cut and UNDER-cuts on multi-void walls — on the ISSUE_098
-    // Poroton wall its "reference" removed 2% less volume than the (correct)
-    // batch, so a perfect batch was rejected in favour of the broken
-    // sequential fallback, leaving an opening uncut (T6 fail:opening-not-cut).
-    // Budget snapshot/restore: oracle work isn't charged to the caller's
-    // batch budget (codex P2 on #1660); a trip DURING an oracle intersection
-    // makes its volume untrustworthy ⇒ reject the group (as before).
-    let budget_snap = super::budget::snapshot_counters();
-    let mut inter_sum = 0.0f64;
-    let mut oracle_tripped = false;
-    for c in &comp_tris {
-        super::budget::begin();
-        let i = boolean(&h, c, BoolOp::Intersection);
-        if super::budget::tripped() {
-            oracle_tripped = true;
-            break;
-        }
-        inter_sum += signed_volume6(&i).abs();
-    }
-    super::budget::restore_counters(budget_snap);
-    if oracle_tripped {
-        return None;
-    }
+    // `?`: an oracle intersection tripping the budget ⇒ reject the group (None).
+    let inter_sum = super::fuzzy::oracle_removed_volume(&h, &comp_tris)?;
     let host_v = signed_volume6(&h).abs();
     let batch_removed = host_v - signed_volume6(&batch).abs();
     // 1% agreement — above f64/FMA noise (parity-stable branch), tight enough to

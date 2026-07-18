@@ -1,0 +1,7 @@
+---
+"@ifc-lite/wasm": patch
+---
+
+perf(geometry): fuzzy-boolean f64 subtract fast-tier with exact fallback
+
+Add a tolerance-based f64 boolean SUBTRACT (ported from web-ifc's `fuzzybools`) as an opt-in FAST TIER in front of the exact mesh-arrangement kernel, for the batched disjoint-cutter path (`mesh_bridge::subtract_many`). It shared-position snaps both operands onto the kernel grid, intersects BVH-culled host×cutter triangle pairs into per-face constraint segments, re-triangulates only the intersected faces with the in-tree deterministic CDT (untouched faces pass through verbatim — the speedup vs re-arranging everything), and classifies each sub-triangle inside/outside by a ray-cast from a non-barycentric centroid voted across three fixed directions. All f64, FMA-free, IEEE-sqrt only, so native==wasm bit-identical. Every fuzzy result is STRICT self-checked — watertight AND removed-volume == the disjoint oracle Σ|host∩cutterᵢ| within 1% — and discarded (exact kernel runs unchanged) on any failure, so correctness can never regress. Gated OFF by default via `IFC_LITE_FUZZY_BOOL`; a default build is byte-identical to the exact kernel (mesh-determinism manifest unperturbed). First increment: on ISSUE_129 the tier is performance-neutral (the strict exact-volume oracle costs about as much as the exact difference it replaces, and only the few batched many-opening hosts are hooked), with zero verdict regression on the IfcOpenShell correctness harness (ISSUE_129 361/361, duplex 86/86, ISSUE_098 unchanged). Refs #1788.

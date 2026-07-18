@@ -21,11 +21,11 @@
 //!    SUBTRACT keeps host tris OUTSIDE the cutters + cutter tris INSIDE the host
 //!    (flipped) as reveal caps.
 //!
-//! This is NOT a replacement: the caller ([`super::mesh_bridge::subtract_many`])
-//! STRICT-SELF-CHECKS every fuzzy result (watertight AND removed-volume == the
-//! disjoint oracle Σ|host∩cutterᵢ|) and DISCARDS it — running the exact kernel
-//! unchanged — on any failure. A bad fuzzy result can therefore never regress
-//! correctness; the tier only ever makes a provably-good result faster.
+//! This is NOT a replacement: the callers (`mesh_bridge::subtract` binary AND
+//! `subtract_many` batched) STRICT-SELF-CHECK every fuzzy result (watertight AND
+//! removed-volume == the cheap/exact oracle Σ|host∩cutterᵢ|) and DISCARD it —
+//! running the exact kernel unchanged — on any failure. A volume/topology-bad
+//! fuzzy result can therefore never regress; the tier only accepts a good one.
 //!
 //! DETERMINISM: all f64, FMA-free (no `mul_add`), fixed ray directions,
 //! deterministic vertex/face ordering, IEEE `sqrt` only, and the shared CDT is
@@ -169,8 +169,7 @@ pub(super) fn subtract(host: &[Tri], comps: &[Vec<Tri>]) -> Option<Vec<Tri>> {
     if host.is_empty() {
         return Some(Vec::new());
     }
-    // Reject non-finite / malformed operands up front (defensive: `mesh_to_tris`
-    // already drops non-finite, but a caller could pass raw tris).
+    // Reject non-finite / malformed operands up front (defensive).
     if !all_finite(host) || !comps.iter().all(|c| all_finite(c)) {
         return None;
     }
@@ -278,7 +277,13 @@ pub(super) fn subtract_checked(host: &[Tri], comps: &[Vec<Tri>]) -> Option<crate
         trace_fallback("not-watertight");
         return None;
     }
-    let inter_sum = match oracle_removed_volume(host, comps) {
+    // CHEAP INDEPENDENT ORACLE FIRST (#1806 Σ-box): Σ|vol6(contained cutter)|
+    // when every cutter is provably inside/outside the host (no boolean); only a
+    // cutter straddling ∂A pays the exact per-cutter intersection oracle. Both
+    // are independent of the fuzzy retri/classify, so either self-checks it.
+    let inter_sum = match cheap_oracle_removed_volume(host, comps)
+        .or_else(|| oracle_removed_volume(host, comps))
+    {
         Some(s) => s,
         None => {
             trace_fallback("oracle-tripped");
@@ -326,6 +331,52 @@ pub(super) fn oracle_removed_volume(host: &[Tri], comps: &[Vec<Tri>]) -> Option<
     } else {
         Some(inter_sum)
     }
+}
+
+/// CHEAP, INDEPENDENT removed-volume oracle (the O(cutters) analytic alternative
+/// to [`oracle_removed_volume`]'s per-cutter exact boolean; #1806 Σ-box idea).
+///
+/// For `A − ∪Bᵢ` with disjoint cutters removed = `Σ vol(A∩Bᵢ)`. A cutter that
+/// never crosses `∂A` is entirely inside (`vol(A∩Bᵢ)=|vol6(Bᵢ)|`) or outside
+/// (`0`) — read from the cutter alone, no boolean. If ANY cutter STRADDLES `∂A`
+/// (a transversal tri-tri crossing) the identity fails, so return `None` and let
+/// the caller fall to the exact oracle. Independent of the fuzzy retri/classify
+/// (only cutter signed volumes + host containment), so it validly self-checks a
+/// fuzzy result. Units: ×6 volume, matching `oracle_removed_volume`.
+pub(super) fn cheap_oracle_removed_volume(host: &[Tri], comps: &[Vec<Tri>]) -> Option<f64> {
+    if host.is_empty() {
+        return Some(0.0);
+    }
+    let host_bvh = Bvh::build(host);
+    let mut ext = coord_extent(host);
+    for c in comps {
+        ext = ext.max(coord_extent(c));
+    }
+    let ray_far = 4.0 * ext + 1.0;
+    let mut scratch: Vec<u32> = Vec::new();
+    let mut cand: Vec<u32> = Vec::new();
+    let mut sum = 0.0f64;
+    for c in comps {
+        if c.is_empty() {
+            continue;
+        }
+        // Any transversal crossing ⇒ cutter straddles ∂A ⇒ defer the whole group.
+        for ct in c {
+            cand.clear();
+            host_bvh.query(&super::broadphase::tri_aabb(ct), &mut cand);
+            for &j in &cand {
+                if intersect::tri_tri_segment(ct, &host[j as usize], ext).is_some() {
+                    return None;
+                }
+            }
+        }
+        // No crossing: fully inside or fully outside. Vote a non-barycentric
+        // centroid (off any shared edge/vertex) against the host.
+        if classify::inside_vote(centroid_nb(&c[0]), host, &host_bvh, ray_far, &mut scratch) {
+            sum += super::signed_volume::signed_volume6(c).abs();
+        }
+    }
+    Some(sum)
 }
 
 /// Is the f64 triangle list a CLOSED oriented surface — every directed edge

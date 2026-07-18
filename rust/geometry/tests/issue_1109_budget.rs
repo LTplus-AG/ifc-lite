@@ -125,6 +125,19 @@ fn element_escalations(host: &Mesh, cutters: &[Mesh]) -> (u64, Mesh) {
 
 #[test]
 fn issue_1109_per_element_budget_bounds_pathological_csg() {
+    // This measures the EXACT mesh-arrangement kernel's per-element escalation
+    // budget. With the fuzzy fast-tier ON (IFC_LITE_FUZZY_BOOL) the tolerance
+    // boolean resolves these transversal planar cuts watertight+volume-checked
+    // and the exact path is never entered (0 escalations), so the >60k-premise
+    // below does not apply — skip on the fuzzy-ON leg. The default (OFF) CI leg
+    // exercises the budget; the fuzzy result stays correctness-safe via its own
+    // self-check regardless.
+    if matches!(
+        std::env::var("IFC_LITE_FUZZY_BOOL").as_deref(),
+        Ok("1") | Ok("true") | Ok("on")
+    ) {
+        return;
+    }
     // A host slab cut by several coplanar-fragment slabs at staggered internal
     // heights — the dense-coplanar-cut pattern that hung the exact kernel.
     let host = box_mesh([0.0, 0.0, 0.0], [10.0, 10.0, 10.0]);

@@ -314,6 +314,17 @@ pub fn subtract(host: &Mesh, cutter: &Mesh) -> Mesh {
     let mut c = mesh_to_tris(cutter);
     promote_cutter_verts_onto_host_faces(&mut c, &h);
     let c = orient_outward(c);
+    // FUZZY FAST TIER (env-gated OFF by default): the binary single-cutter path
+    // is where the BULK of subtract cost lives (most opening cuts route here, not
+    // through the batched `subtract_many`). Try the f64 tolerance boolean first,
+    // accepted only if it self-checks watertight AND removes the cheap oracle
+    // volume; on any failure fall straight through to the exact kernel — a bad
+    // fuzzy result can never regress correctness.
+    if super::fuzzy::enabled() {
+        if let Some(m) = super::fuzzy::subtract_checked(&h, std::slice::from_ref(&c)) {
+            return m;
+        }
+    }
     tris_to_mesh(&boolean(&h, &c, BoolOp::Difference))
 }
 

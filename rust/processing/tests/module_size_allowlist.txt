@@ -113,7 +113,7 @@
 # +79: #1112 roof-opening fixes — collinear profile simplification (unblocks
 # the flush-strip edge extension), exact-kernel-matched flush band, and the
 # self-checked post-cut sliver refinement (final cuts only).
-    2821 rust/geometry/src/router/voids/prism_cut.rs
+    2830 rust/geometry/src/router/voids/prism_cut.rs
      755 rust/geometry/src/router/voids/probe.rs
     1002 rust/geometry/src/router/voids/synthesis.rs
     1472 rust/geometry/src/space_dcel/mod.rs

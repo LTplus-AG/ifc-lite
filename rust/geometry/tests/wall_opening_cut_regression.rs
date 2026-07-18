@@ -144,7 +144,14 @@ fn wall_552611_2_openings_matches_ios() {
     // mesh-determinism manifest): the refinement's first-seen canonical ids
     // follow mesh order, so its bisection cascade re-baselined; bbox + oracle
     // volume above are the load-bearing invariants and are unchanged.
-    assert_eq!(mesh.indices.len() / 3, 188, "triangle count (kernel-native, was IOS 60)");
+    // Re-pinned 188 -> 204 for the analytic-prism void path (perf/beat-webifc):
+    // the conforming per-triangle CDT + the same consolidate_coplanar +
+    // refine_high_aspect_slivers post-passes tessellate the cut differently
+    // from the exact arrangement but with the same density class. The count is
+    // platform-stable for the same reason the exact pin was: FMA-free f64,
+    // deterministic CDT / i_overlay, BTreeMap bucket order. Load-bearing
+    // invariants remain the bbox + oracle volume above.
+    assert_eq!(mesh.indices.len() / 3, 204, "triangle count (kernel-native, was IOS 60)");
 }
 
 #[test]
@@ -155,7 +162,9 @@ fn wall_552761_2_openings_matches_ios() {
     let vol = mesh_volume(&mesh);
     assert!((vol - 16.3967).abs() < 1e-3, "cut volume = {vol}, expected 16.3967");
     // Kernel re-baseline (was IOS 60): ~3x from `refine_high_aspect_slivers`.
-    assert_eq!(mesh.indices.len() / 3, 188);
+    // Re-pinned 188 -> 196 for the analytic-prism void path (see wall_552611's
+    // pin note); bbox + oracle volume are the load-bearing invariants.
+    assert_eq!(mesh.indices.len() / 3, 196);
     let _ = mx; // not used; presence of non-empty mesh is the assertion
 }
 
@@ -169,7 +178,9 @@ fn wall_555082_1_opening_matches_ios() {
     // Kernel re-baseline (IOS: v=20 t=36): ~3x from `refine_high_aspect_slivers`.
     // Re-pinned 114 -> 138 with the consolidate_coplanar BTreeMap bucket order
     // (see wall_552611 above); oracle volume is the load-bearing invariant.
-    assert_eq!(mesh.indices.len() / 3, 138);
+    // Re-pinned 138 -> 130 for the analytic-prism void path (see wall_552611's
+    // pin note) — the analytic cut consolidates BELOW the exact kernel here.
+    assert_eq!(mesh.indices.len() / 3, 130);
 }
 
 // ──────────────────────────── known-bad cases ──────────────────────────

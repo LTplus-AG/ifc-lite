@@ -2742,6 +2742,15 @@ impl GeometryRouter {
         }
 
         let mut out = mesh_from_ptris(&tris, mesh);
+        // COPLANAR CONSOLIDATION: the conforming per-triangle CDT deliberately
+        // over-fragments faces (every decomposed host triangle keeps its own
+        // sub-triangulation, and caps carry their constraint scaffolding). Run
+        // the SAME coplanar merge the exact kernel and the rect/param fast
+        // paths apply (i_overlay union per plane bucket + CDT re-triangulation,
+        // watertight-preserving), collapsing each planar face back to a few
+        // large triangles — 2-3x fewer output triangles on the advanced_model
+        // walls, matching the exact kernel's tessellation density.
+        out = crate::csg::ClippingProcessor::consolidate_coplanar(out);
         // WATERTIGHT SLIVER REFINEMENT (#1007): the per-triangle CDT can emit a
         // high-aspect corner sliver at an opening rim (a far-corner triangle
         // fanned to two rim vertices) — the visible roof-slope chamfer the

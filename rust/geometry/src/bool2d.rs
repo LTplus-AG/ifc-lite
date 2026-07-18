@@ -119,15 +119,16 @@ pub fn subtract_multiple_2d_counted(
     let subject = profile_to_paths(profile);
     let clip: Vec<Vec<[f64; 2]>> = valid_contours.iter().map(|c| contour_to_path(c)).collect();
     let result = subject.overlay(&clip, OverlayRule::Difference, FillRule::EvenOdd);
+    // Count EVERY non-empty output shape (any outer contour with >= 3 vertices),
+    // NOT just those above MIN_AREA_THRESHOLD. This gate decides single-vs-multi
+    // shape for the caller: only `shapes == 1` lets the re-extrude proceed with the
+    // largest shape. Filtering by area would let a valid-but-tiny disconnected
+    // sliver report `shapes == 1`, and its geometry would be silently dropped; the
+    // conservative count forces the exact-kernel fallback whenever the difference
+    // splits the profile at all, even into a sub-threshold piece.
     let shapes = result
         .iter()
-        .filter(|s| {
-            s.first().is_some_and(|outer| {
-                let ring: Vec<Point2<f64>> =
-                    outer.iter().map(|p| Point2::new(p[0], p[1])).collect();
-                compute_signed_area(&ring).abs() > MIN_AREA_THRESHOLD
-            })
-        })
+        .filter(|s| s.first().is_some_and(|outer| outer.len() >= 3))
         .count();
     Ok((shapes_to_profile(&result)?, shapes))
 }

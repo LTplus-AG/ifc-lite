@@ -518,7 +518,7 @@ fn ptris_from_mesh(mesh: &Mesh) -> Option<Vec<PTri>> {
     // silently drops any trailing partial triple, so a positions/indices length
     // that is not a multiple of 3 would rebuild the solid missing its tail data
     // while every emitted index still passed its bounds check.
-    if mesh.positions.len() % 3 != 0 || mesh.indices.len() % 3 != 0 {
+    if !mesh.positions.len().is_multiple_of(3) || !mesh.indices.len().is_multiple_of(3) {
         return None;
     }
     let vc = mesh.positions.len() / 3;

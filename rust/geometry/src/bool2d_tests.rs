@@ -157,6 +157,76 @@ fn test_subtract_counted_splitting_void_multi_shape() {
 }
 
 #[test]
+fn test_subtract_counted_subthreshold_sliver_still_multi_shape() {
+    // Data-integrity regression: a void that splits the profile into a big piece
+    // plus a TINY disconnected sliver whose signed area is at/below
+    // MIN_AREA_THRESHOLD must STILL report shapes > 1, so the caller defers to the
+    // exact kernel instead of silently dropping the sliver via largest-shape keep.
+    //
+    // Small coordinate scale (0.02) so i_overlay's grid preserves the sliver as a
+    // distinct output shape while its area stays below MIN_AREA_THRESHOLD (a
+    // full-width band split at scale 10 either drops the sliver entirely or leaves
+    // one whose area is orders of magnitude above the threshold).
+    let scale = 0.02_f64;
+    let profile = Profile2D::new(vec![
+        Point2::new(0.0, 0.0),
+        Point2::new(scale, 0.0),
+        Point2::new(scale, scale),
+        Point2::new(0.0, scale),
+    ]);
+    // Full-width band that leaves a `scale * 1e-8`-thick sliver along the top edge.
+    let top_h = scale * 1e-8;
+    let b_lo = scale * 0.45;
+    let b_hi = scale - top_h;
+    let band = vec![
+        Point2::new(-scale, b_lo),
+        Point2::new(scale * 2.0, b_lo),
+        Point2::new(scale * 2.0, b_hi),
+        Point2::new(-scale, b_hi),
+    ];
+
+    let (_res, shapes) =
+        subtract_multiple_2d_counted(&profile, std::slice::from_ref(&band)).unwrap();
+    assert_eq!(
+        shapes, 2,
+        "a sub-threshold sliver must still be counted, forcing the exact-kernel defer"
+    );
+
+    // Confirm the split really produces a sub-threshold shape (i.e. this exercises
+    // the area-filter blind spot, not merely two above-threshold pieces): the
+    // smaller output shape's area is at/below MIN_AREA_THRESHOLD, so the old
+    // `area > MIN_AREA_THRESHOLD` count would have undercounted it to shapes == 1.
+    let subject = profile_to_paths(&profile);
+    let clip = vec![contour_to_path(&band)];
+    let result = subject.overlay(&clip, OverlayRule::Difference, FillRule::EvenOdd);
+    let mut areas: Vec<f64> = result
+        .iter()
+        .filter_map(|s| {
+            s.first().map(|o| {
+                let ring: Vec<Point2<f64>> = o.iter().map(|p| Point2::new(p[0], p[1])).collect();
+                compute_signed_area(&ring).abs()
+            })
+        })
+        .collect();
+    areas.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    assert_eq!(areas.len(), 2, "the split yields exactly two output shapes");
+    assert!(
+        areas[0] <= MIN_AREA_THRESHOLD,
+        "smaller shape area {} must be <= MIN_AREA_THRESHOLD {} (the blind spot the fix closes)",
+        areas[0],
+        MIN_AREA_THRESHOLD
+    );
+    let above_threshold = areas
+        .iter()
+        .filter(|a| **a > MIN_AREA_THRESHOLD)
+        .count();
+    assert_eq!(
+        above_threshold, 1,
+        "old area-filtered count would have seen only 1 shape and proceeded"
+    );
+}
+
+#[test]
 fn test_point_in_contour() {
     let contour = vec![
         Point2::new(0.0, 0.0),

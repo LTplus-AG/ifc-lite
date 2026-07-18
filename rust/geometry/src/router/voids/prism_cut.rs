@@ -639,6 +639,47 @@ fn basis_from_depth(d: V3) -> Option<(V3, V3)> {
 /// belongs to the exact kernel).
 const MAX_SLABS: usize = 6;
 
+/// Remove collinear run vertices from a ring (the cross-section stitcher emits
+/// one vertex per crossed cutter edge, subdividing straight profile sides).
+/// Beyond bloating the face set, they defeat the profile-edge extension: every
+/// edge's neighbours look collinear, so the corner re-derivation guard skips
+/// it — the #1112 flush-strip roofs never extended.
+fn simplify_collinear(profile: &mut Vec<V2>, tol: f64) {
+    loop {
+        let n = profile.len();
+        if n <= 3 {
+            return;
+        }
+        let mut removed = false;
+        let mut i = 0;
+        while profile.len() > 3 && i < profile.len() {
+            let m = profile.len();
+            let a = profile[(i + m - 1) % m];
+            let b = profile[i];
+            let c = profile[(i + 1) % m];
+            let ab = [b[0] - a[0], b[1] - a[1]];
+            let ac = [c[0] - a[0], c[1] - a[1]];
+            let lac = (ac[0] * ac[0] + ac[1] * ac[1]).sqrt();
+            if lac > 1.0e-12 {
+                let perp = (ab[0] * ac[1] - ab[1] * ac[0]).abs() / lac;
+                // Only drop a vertex whose removal keeps the ring within `tol`
+                // AND that lies BETWEEN its neighbours along the run (a true
+                // subdivision point, not a hairpin spike).
+                let t = (ab[0] * ac[0] + ab[1] * ac[1]) / (lac * lac);
+                if perp <= tol && (0.0..=1.0).contains(&t) {
+                    profile.remove(i);
+                    removed = true;
+                    continue;
+                }
+            }
+            i += 1;
+        }
+        if !removed {
+            return;
+        }
+    }
+}
+
 /// CCW normalization + area of a 2D ring. `None` when degenerate.
 fn ccw_area(profile: &mut Vec<V2>) -> Option<f64> {
     profile.dedup_by(|a, b| (a[0] - b[0]).abs() < 1.0e-9 && (a[1] - b[1]).abs() < 1.0e-9);
@@ -918,6 +959,7 @@ fn detect_prism(verts: &[V3], tris: &[[usize; 3]], mesh_vol: f64) -> Option<Pris
         let mut vol = 0.0;
         for (k, mut ring) in raw_rings.into_iter().enumerate() {
             let (w_a, w_b) = (plane_ws[k], plane_ws[k + 1]);
+            simplify_collinear(&mut ring, 1.0e-6 * (1.0 + mag));
             let Some(area) = ccw_area(&mut ring) else {
                 continue 'cand;
             };
@@ -1283,11 +1325,14 @@ fn extend_prism_caps(pf: &mut PrismFrame, tris: &[PTri], aabbs: &[(V3, V3)]) {
     let span = pf.d1() - pf.d0();
     let delta = (span * 0.1).clamp(0.005, 0.5);
     let mag = pf.corner_mag();
-    // Flush-exclusion band: a host FACE lying exactly ON the cap plane (the
-    // flush window/sleeve case — including its f32 storage jitter) is not
-    // material BEYOND the plane and must not block the extension; only
-    // geometry clearly past the band does. 0.2 mm is far below any real shell.
-    let band = 2.0e-4_f64.max(mag * 4.0e-7);
+    // Flush-exclusion band: a host FACE lying (near-)flush ON the cap plane —
+    // the flush window/sleeve case, or a cutter authored a hair SHORT of the
+    // surface (the #1112 roof skylights) — is not material BEYOND the plane
+    // and must not block the extension; only geometry clearly past the band
+    // does. Matches the exact kernel's flush-cap detection band
+    // (`extend_opening_mesh_through_host`: `open_span.max(1.0) * 1e-3`), so
+    // the analytic path pushes through exactly where the exact path would.
+    let band = (span.max(1.0) * 1.0e-3).max(mag * 4.0e-7);
     let pad = 1.0e-6 * (1.0 + mag);
     for hi_side in [false, true] {
         let (slab_lo, slab_hi) = if hi_side {
@@ -2697,6 +2742,40 @@ impl GeometryRouter {
         }
 
         let mut out = mesh_from_ptris(&tris, mesh);
+        // WATERTIGHT SLIVER REFINEMENT (#1007): the per-triangle CDT can emit a
+        // high-aspect corner sliver at an opening rim (a far-corner triangle
+        // fanned to two rim vertices) — the visible roof-slope chamfer the
+        // exact path also produces and repairs. Run the SAME lockstep-bisection
+        // pass the exact kernel output gets (targets aspect <= 8:1, watertight
+        // by construction), so the analytic cut meets the same rim-quality bar.
+        // The pass fixes one edge per internal round (64 max); the analytic
+        // cut can carry more rim fans than that, so drive it to a (bounded)
+        // fixpoint — each iteration is a no-op clone once no sliver remains.
+        // SELF-CHECKED application, and ONLY when this cut is FINAL (no
+        // residual): with a residual, the exact kernel still cuts this mesh and
+        // runs its own sliver refinement on ITS output — refining first would
+        // hand the arrangement midpoint-split geometry it re-fragments (#1167).
+        // On a hairline-tolerated output the lockstep split can also see just
+        // one side of an overlapping chain pair and amplify the sub-grid
+        // mismatch, and the split slivers can fall below the clean-degenerate
+        // grid — so accept the refined mesh only when it is STRICTLY closed
+        // and a cleaned probe stays at least hairline-closed.
+        if residual_idx.is_empty() && directed_closed(&out) {
+            let mut refined = out.clone();
+            for _ in 0..6 {
+                let next = crate::facet_weld::refine_high_aspect_slivers(&refined);
+                if next.indices.len() == refined.indices.len() {
+                    break;
+                }
+                refined = next;
+            }
+            let mut probe = refined.clone();
+            probe.clean_degenerate();
+            if directed_closed(&refined) && (directed_closed(&probe) || closed_or_hairline(&probe))
+            {
+                out = refined;
+            }
+        }
         // Never emit a cut that is not a consistently-wound closed surface —
         // the DIRECTED audit also catches doubled coincident faces and flipped
         // caps that the undirected 2-manifold check cannot see. Audited BEFORE

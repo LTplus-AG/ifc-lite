@@ -784,9 +784,11 @@ use super::*;
         }
     }
 
-    // Asymmetric radii (L-shape FilletRadius 12 / EdgeRadius 8, C-shape via the
-    // U-channel's toe edges) all collapse together, leaving the plain sharp
-    // corner counts: L = 6, U = 8, T = 8.
+    // Profiles carrying several independent radii collapse all of them together,
+    // leaving the plain sharp corner counts: L = 6, U = 8, T = 8. The L-shape
+    // separates FilletRadius (concave root) from EdgeRadius (convex toes), and
+    // the T-shape splits its edge radius into flange and web variants, so this
+    // covers the mixed concave/convex cases the I-shape alone does not.
     #[test]
     fn asymmetric_steel_radii_drop_together_below_medium() {
         let cases = [

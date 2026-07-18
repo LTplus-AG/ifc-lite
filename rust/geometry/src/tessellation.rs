@@ -121,8 +121,13 @@ impl TessellationQuality {
         n.max(min)
     }
 
-    /// Fillet / edge radius for a **parametric steel-section corner**
-    /// (`IfcI/L/U/T/C/ZShapeProfileDef`), given the model's declared `radius`.
+    /// Fillet / edge radius for a **parametric steel-section corner**, given the
+    /// model's declared `radius`.
+    ///
+    /// Callers today are `IfcI/L/U/TShapeProfileDef` — the profiles whose builders
+    /// actually read a radius attribute. `IfcC/ZShapeProfileDef` build plain sharp
+    /// point lists and ignore their radius attributes entirely, so they never reach
+    /// here; route them through this helper if that ever changes.
     ///
     /// Below `Medium` the radius collapses to `0.0`, so the corner is emitted
     /// sharp instead of as an arc: an I-section drops from ~28 outline vertices

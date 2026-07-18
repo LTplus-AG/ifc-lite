@@ -166,6 +166,7 @@ fn nonzero_origin_host_records_world_space_bbox() {
         merged_openings: vec![opening.clone()],
         openings: vec![opening],
         param: None,
+        bool2d: None,
     };
 
     let element_id = 4242u32;
@@ -281,6 +282,7 @@ fn budget_tripped_engulfing_cutter_skips_aabb_fallback() {
         merged_openings: vec![engulf_open.clone()],
         openings: vec![engulf_open],
         param: None,
+        bool2d: None,
     };
 
     // Arm a per-element cap of 1 so the FIRST exact escalation trips the
@@ -340,6 +342,7 @@ fn budget_tripped_engulfing_cutter_skips_aabb_fallback() {
         merged_openings: vec![small_open.clone()],
         openings: vec![small_open],
         param: None,
+        bool2d: None,
     };
 
     let small_id = 91_635_u32;

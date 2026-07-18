@@ -48,6 +48,30 @@ impl GeometryRouter {
         opening_ids: &[u32],
         decoder: &mut EntityDecoder,
     ) -> Vec<OpeningType> {
+        self.classify_openings_impl(host, opening_ids, decoder, true)
+    }
+
+    /// Classify a subset of a host's openings WITHOUT recording the per-host
+    /// diagnostic. Used by the 2D fast path to build the residual (exact-kernel)
+    /// context for the ineligible openings after the host's full opening set has
+    /// already been diagnosed once — `record_host_opening_diagnostic` appends, so
+    /// a second recording for the same host would double-count.
+    pub(super) fn classify_openings_quiet(
+        &self,
+        host: &DecodedEntity,
+        opening_ids: &[u32],
+        decoder: &mut EntityDecoder,
+    ) -> Vec<OpeningType> {
+        self.classify_openings_impl(host, opening_ids, decoder, false)
+    }
+
+    fn classify_openings_impl(
+        &self,
+        host: &DecodedEntity,
+        opening_ids: &[u32],
+        decoder: &mut EntityDecoder,
+        record_diag: bool,
+    ) -> Vec<OpeningType> {
         use super::super::{ClassificationKind, OpeningDiagnostic, OpeningKindDiag};
 
         // Per-opening diagnostic accumulator for this host. Pushed to the
@@ -246,7 +270,7 @@ impl GeometryRouter {
 
         // Stash the per-host diagnostic before returning. `host.ifc_type`
         // implements `Display` to its STEP name (e.g. "IFCWALLSTANDARDCASE").
-        if !host_diag.is_empty() {
+        if record_diag && !host_diag.is_empty() {
             self.record_host_opening_diagnostic(
                 host.id,
                 &format!("{}", host.ifc_type),

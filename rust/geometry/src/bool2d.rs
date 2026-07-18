@@ -102,6 +102,36 @@ pub fn subtract_multiple_2d(
     shapes_to_profile(&result)
 }
 
+/// Like [`subtract_multiple_2d`], but also reports how many DISCONNECTED output
+/// shapes the difference produced (each with non-degenerate area). The returned
+/// `Profile2D` is the largest shape (as [`subtract_multiple_2d`]); a caller that
+/// must not silently drop geometry — the 2D opening-subtraction re-extrude —
+/// checks `shapes == 1` and otherwise defers to the exact kernel (a void that
+/// splits the profile into pieces can't be re-extruded from a single profile).
+pub fn subtract_multiple_2d_counted(
+    profile: &Profile2D,
+    void_contours: &[Vec<Point2<f64>>],
+) -> Result<(Profile2D, usize)> {
+    let valid_contours: Vec<_> = void_contours.iter().filter(|c| c.len() >= 3).collect();
+    if valid_contours.is_empty() {
+        return Ok((profile.clone(), 1));
+    }
+    let subject = profile_to_paths(profile);
+    let clip: Vec<Vec<[f64; 2]>> = valid_contours.iter().map(|c| contour_to_path(c)).collect();
+    let result = subject.overlay(&clip, OverlayRule::Difference, FillRule::EvenOdd);
+    let shapes = result
+        .iter()
+        .filter(|s| {
+            s.first().is_some_and(|outer| {
+                let ring: Vec<Point2<f64>> =
+                    outer.iter().map(|p| Point2::new(p[0], p[1])).collect();
+                compute_signed_area(&ring).abs() > MIN_AREA_THRESHOLD
+            })
+        })
+        .count();
+    Ok((shapes_to_profile(&result)?, shapes))
+}
+
 /// Check if a contour is valid (has area, not degenerate)
 pub fn is_valid_contour(contour: &[Point2<f64>]) -> bool {
     if contour.len() < 3 {
@@ -271,143 +301,5 @@ fn shapes_to_profile(shapes: &[Vec<Vec<[f64; 2]>>]) -> Result<Profile2D> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_compute_signed_area_ccw() {
-        // Counter-clockwise square
-        let contour = vec![
-            Point2::new(0.0, 0.0),
-            Point2::new(1.0, 0.0),
-            Point2::new(1.0, 1.0),
-            Point2::new(0.0, 1.0),
-        ];
-        let area = compute_signed_area(&contour);
-        assert!((area - 1.0).abs() < EPSILON_2D);
-    }
-
-    #[test]
-    fn test_compute_signed_area_cw() {
-        // Clockwise square
-        let contour = vec![
-            Point2::new(0.0, 0.0),
-            Point2::new(0.0, 1.0),
-            Point2::new(1.0, 1.0),
-            Point2::new(1.0, 0.0),
-        ];
-        let area = compute_signed_area(&contour);
-        assert!((area + 1.0).abs() < EPSILON_2D);
-    }
-
-    #[test]
-    fn test_ensure_ccw() {
-        // Clockwise square
-        let cw = vec![
-            Point2::new(0.0, 0.0),
-            Point2::new(0.0, 1.0),
-            Point2::new(1.0, 1.0),
-            Point2::new(1.0, 0.0),
-        ];
-        let ccw = ensure_ccw(&cw);
-        assert!(compute_signed_area(&ccw) > 0.0);
-    }
-
-    #[test]
-    fn test_subtract_2d_simple() {
-        // 10x10 square profile
-        let profile = Profile2D::new(vec![
-            Point2::new(0.0, 0.0),
-            Point2::new(10.0, 0.0),
-            Point2::new(10.0, 10.0),
-            Point2::new(0.0, 10.0),
-        ]);
-
-        // 2x2 square void in the center
-        let void_contour = vec![
-            Point2::new(4.0, 4.0),
-            Point2::new(6.0, 4.0),
-            Point2::new(6.0, 6.0),
-            Point2::new(4.0, 6.0),
-        ];
-
-        let result = subtract_2d(&profile, &void_contour).unwrap();
-
-        // Should have one hole
-        assert_eq!(result.holes.len(), 1);
-
-        // Outer boundary should be preserved
-        assert_eq!(result.outer.len(), 4);
-    }
-
-    #[test]
-    fn test_subtract_multiple_2d() {
-        // 10x10 square profile
-        let profile = Profile2D::new(vec![
-            Point2::new(0.0, 0.0),
-            Point2::new(10.0, 0.0),
-            Point2::new(10.0, 10.0),
-            Point2::new(0.0, 10.0),
-        ]);
-
-        // Two 1x1 voids
-        let voids = vec![
-            vec![
-                Point2::new(2.0, 2.0),
-                Point2::new(3.0, 2.0),
-                Point2::new(3.0, 3.0),
-                Point2::new(2.0, 3.0),
-            ],
-            vec![
-                Point2::new(7.0, 7.0),
-                Point2::new(8.0, 7.0),
-                Point2::new(8.0, 8.0),
-                Point2::new(7.0, 8.0),
-            ],
-        ];
-
-        let result = subtract_multiple_2d(&profile, &voids).unwrap();
-
-        // Should have two holes
-        assert_eq!(result.holes.len(), 2);
-    }
-
-    #[test]
-    fn test_point_in_contour() {
-        let contour = vec![
-            Point2::new(0.0, 0.0),
-            Point2::new(10.0, 0.0),
-            Point2::new(10.0, 10.0),
-            Point2::new(0.0, 10.0),
-        ];
-
-        assert!(point_in_contour(&Point2::new(5.0, 5.0), &contour));
-        assert!(!point_in_contour(&Point2::new(15.0, 5.0), &contour));
-        assert!(!point_in_contour(&Point2::new(-1.0, 5.0), &contour));
-    }
-
-    #[test]
-    fn test_is_valid_contour() {
-        // Valid square
-        let valid = vec![
-            Point2::new(0.0, 0.0),
-            Point2::new(1.0, 0.0),
-            Point2::new(1.0, 1.0),
-            Point2::new(0.0, 1.0),
-        ];
-        assert!(is_valid_contour(&valid));
-
-        // Degenerate (all points collinear)
-        let degenerate = vec![
-            Point2::new(0.0, 0.0),
-            Point2::new(1.0, 0.0),
-            Point2::new(2.0, 0.0),
-        ];
-        assert!(!is_valid_contour(&degenerate));
-
-        // Too few points
-        let too_few = vec![Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)];
-        assert!(!is_valid_contour(&too_few));
-    }
-
-}
+#[path = "bool2d_tests.rs"]
+mod tests;

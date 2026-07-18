@@ -20,6 +20,7 @@ mod voids;
 
 pub use transforms::local_frame_set_enabled_override;
 pub use voids::RectParam;
+pub use voids::take_bool2d_stats;
 pub use diagnostics::{
     GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION,
     aggregate_diagnostics, ClassificationStats, ClassificationSummary, GeometryDiagnostics,

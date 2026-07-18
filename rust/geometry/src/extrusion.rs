@@ -70,6 +70,73 @@ pub fn extrude_profile(
     Ok(mesh)
 }
 
+/// Watertight polygon-with-holes extrude for the 2D opening-subtraction path
+/// ([`crate::router`]'s `bool2d_path`). The caps are triangulated with the
+/// boundary-preserving constrained-Delaunay path
+/// ([`crate::triangulation::triangulate_polygon_with_holes_refined`]) instead of
+/// earcut: an earcut cap over a many-hole profile sprouts hole-bridge slivers
+/// that leave it non-manifold and that `clean_degenerate` later drops into
+/// cracks. The CDT keeps every profile-ring edge un-subdivided, so the caps
+/// close bit-for-bit against the side walls; only interior Steiner points are
+/// added (never on the rings), so the cap↔wall seam stays watertight.
+#[inline]
+pub fn extrude_profile_watertight(
+    profile: &Profile2D,
+    depth: f64,
+    transform: Option<Matrix4<f64>>,
+) -> Result<Mesh> {
+    if depth <= 0.0 {
+        return Err(Error::InvalidExtrusion(
+            "Depth must be positive".to_string(),
+        ));
+    }
+    if profile.outer.len() < 3 {
+        return Err(Error::InvalidExtrusion(
+            "Outer boundary needs >= 3 vertices".to_string(),
+        ));
+    }
+    // Unrefined CDT caps: manifold (no earcut hole-bridge slivers) and fast (no
+    // Ruppert refinement, which dominates on a large multi-hole face). Fall back
+    // to the earcut polygon-with-holes triangulation if the CDT declines.
+    let (points, indices) =
+        match crate::cdt::triangulate_constrained(&profile.outer, &profile.holes) {
+            Some(t) => t,
+            None => {
+                let mut all: Vec<nalgebra::Point2<f64>> = profile.outer.clone();
+                for h in &profile.holes {
+                    all.extend_from_slice(h);
+                }
+                let idx = crate::triangulation::triangulate_polygon_with_holes(
+                    &profile.outer,
+                    &profile.holes,
+                )
+                .map_err(|e| Error::InvalidExtrusion(format!("cap triangulation failed: {e}")))?;
+                (all, idx)
+            }
+        };
+    let tri = Triangulation { points, indices };
+
+    let mut mesh = Mesh::new();
+    create_cap_mesh(&tri, 0.0, Vector3::new(0.0, 0.0, -1.0), &mut mesh);
+    create_cap_mesh(&tri, depth, Vector3::new(0.0, 0.0, 1.0), &mut mesh);
+    create_side_walls(&profile.outer, depth, &mut mesh);
+    for hole in &profile.holes {
+        create_side_walls(hole, depth, &mut mesh);
+    }
+    // The CDT emits cap triangles in arbitrary orientation, so the assembled
+    // solid closes as a 2-manifold but with INCONSISTENT winding — harmless for
+    // the (undirected) watertight check and for per-vertex-normal rendering, but
+    // it breaks the divergence volume that downstream consumers (and the #1297
+    // local-frame regression test) compute. Flood-fill a consistent OUTWARD
+    // orientation across the closed surface; this only flips triangle winding
+    // (per-face vertices are never welded, so creases / flat shading are intact).
+    crate::mesh_orient::orient_mesh_outward(&mut mesh);
+    if let Some(mat) = transform {
+        apply_transform(&mut mesh, &mat);
+    }
+    Ok(mesh)
+}
+
 /// Check if a profile has an extreme aspect ratio (very elongated shape)
 /// Returns true if the profile is so disproportionate the extrusion caps
 /// can't be emitted as a meaningful filled face.
@@ -717,6 +784,91 @@ pub fn apply_transform(mesh: &mut Mesh, transform: &Matrix4<f64>) {
 mod tests {
     use super::*;
     use crate::profile::create_rectangle;
+
+    /// Count UNDIRECTED edges NOT shared by exactly two triangles — 0 on a closed
+    /// 2-manifold (the production watertightness contract, `param_cut_watertight`).
+    /// Vertices welded by exact f32 bits (coincident verts share bit patterns).
+    fn open_edges(m: &Mesh) -> usize {
+        use std::collections::HashMap;
+        let key = |i: u32| {
+            let b = i as usize * 3;
+            (
+                m.positions[b].to_bits(),
+                m.positions[b + 1].to_bits(),
+                m.positions[b + 2].to_bits(),
+            )
+        };
+        let mut edges: HashMap<_, u32> = HashMap::new();
+        for t in m.indices.chunks_exact(3) {
+            for (a, b) in [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])] {
+                let (ka, kb) = (key(a), key(b));
+                let e = if ka < kb { (ka, kb) } else { (kb, ka) };
+                *edges.entry(e).or_insert(0) += 1;
+            }
+        }
+        edges.values().filter(|&&c| c != 2).count()
+    }
+
+    /// Total area of the triangles lying on the plane `z ≈ z0` (a cap), summed
+    /// with |signed area| so it is winding-independent.
+    fn cap_area(m: &Mesh, z0: f32) -> f64 {
+        let v = |i: u32| {
+            let b = i as usize * 3;
+            [m.positions[b], m.positions[b + 1], m.positions[b + 2]]
+        };
+        let mut a = 0.0;
+        for t in m.indices.chunks_exact(3) {
+            let (p, q, r) = (v(t[0]), v(t[1]), v(t[2]));
+            if (p[2] - z0).abs() < 1e-3 && (q[2] - z0).abs() < 1e-3 && (r[2] - z0).abs() < 1e-3 {
+                a += (((q[0] - p[0]) * (r[1] - p[1]) - (r[0] - p[0]) * (q[1] - p[1])) as f64).abs()
+                    * 0.5;
+            }
+        }
+        a
+    }
+
+    /// The 2D opening-subtraction re-extrude must produce a WATERTIGHT solid even
+    /// for a many-hole profile — the case earcut hole-bridge slivers break (they
+    /// leave the cap non-manifold, then `clean_degenerate` cracks it). A 10×10
+    /// plate with a 4×4 grid of 0.4×0.4 through-holes, extruded 2 m: the CDT caps
+    /// close as a 2-manifold (every edge shared by two triangles) and each cap's
+    /// area equals outer − holes (the holes are genuinely cut, not filled).
+    #[test]
+    fn watertight_extrude_many_holes() {
+        use nalgebra::Point2;
+        let outer = vec![
+            Point2::new(0.0, 0.0),
+            Point2::new(10.0, 0.0),
+            Point2::new(10.0, 10.0),
+            Point2::new(0.0, 10.0),
+        ];
+        let mut profile = Profile2D::new(outer);
+        let mut hole_area = 0.0;
+        for i in 0..4 {
+            for j in 0..4 {
+                let (x, y) = (1.0 + i as f64 * 2.2, 1.0 + j as f64 * 2.2);
+                // Clockwise hole (opposite the CCW outer).
+                profile.add_hole(vec![
+                    Point2::new(x, y),
+                    Point2::new(x, y + 0.4),
+                    Point2::new(x + 0.4, y + 0.4),
+                    Point2::new(x + 0.4, y),
+                ]);
+                hole_area += 0.4 * 0.4;
+            }
+        }
+        let depth = 2.0;
+        let mesh = extrude_profile_watertight(&profile, depth, None).unwrap();
+        assert_eq!(open_edges(&mesh), 0, "many-hole re-extrude must be a closed 2-manifold");
+        let expect = 100.0 - hole_area;
+        for (label, z) in [("bottom", 0.0f32), ("top", depth as f32)] {
+            assert!(
+                (cap_area(&mesh, z) - expect).abs() < 1e-3,
+                "{label} cap area {} != expected {expect} (holes not cut?)",
+                cap_area(&mesh, z)
+            );
+        }
+    }
 
     #[test]
     fn test_extrude_rectangle() {

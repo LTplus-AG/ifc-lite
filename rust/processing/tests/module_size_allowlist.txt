@@ -28,12 +28,11 @@
      611 rust/export/src/step.rs
 # +45: reject non-positive SegmentLength/HorizontalLength (malformed-input NaN guard) + regression test.
     1170 rust/geometry/src/alignment.rs
-     413 rust/geometry/src/bool2d.rs
 # +19: split_on_edge now sets a failed flag and bails to the ear-clip fallback instead of the lone .expect() panic.
-    1526 rust/geometry/src/cdt.rs
+     1569 rust/geometry/src/cdt.rs
      894 rust/geometry/src/csg/consolidate.rs
      947 rust/geometry/src/csg/mod.rs
-     998 rust/geometry/src/extrusion.rs
+     1142 rust/geometry/src/extrusion.rs
 # +4: refine_high_aspect_slivers routes its rebuild through Mesh::rebuilt_like so a slivered host keeps its local-frame origin + #1474 placement capture (B7 metadata-loss fix).
 # +1: SNAP_GRID/NORMAL_QUANT single-homed to kernel::mesh_bridge / crate::grid (import replaces local const; doc rewrap costs a line).
           778 rust/geometry/src/facet_weld.rs
@@ -77,7 +76,7 @@
 # +42: #1623 Phase 3 batch-local template mode — instancing_batch_local flag + instanced_sources_materialized tracker fields + set_/getter/mark_source_materialized_if_first methods (browser per-batch don't-bake).
 # +1: #1293 dedup rep_identity: build_dedup_extra_enabled/set_build_dedup_extra_override gate + DEDUP_EXTRA_OVERRIDE static; net +1 after the ItemDedupCache doc consolidation.
 # +1: #1781 `mod textured;` — texture channel split OUT of processing.rs (that file drops ~90 lines below its budget; crate trends down).
-     748 rust/geometry/src/router/mod.rs
+     749 rust/geometry/src/router/mod.rs
 # +65: #1623 Phase 2 don't-bake — the top-level mapped-item intercept (template retag + instance placeholder) + the public/impl process_element_with_submeshes split; the two eligibility/ensure helpers were extracted to router/instancing.rs (new, 92 lines) to hold the net down.
 # +7: #858 palette guard — exclude an indexed-colour single-solid source from the don't-bake decision (one .filter on the resolved solid id + explanatory comment) so its per-triangle palette survives the flat split.
 # +16: #1623 Phase 3 — thread the batch-local vs global template decision through the mapped-item intercept (is_template match arm + retag guard).
@@ -95,8 +94,8 @@
 # +32: engulf-cutter #635 AABB box-cut suppression on a #1109 budget trip (drop `!capped`) + its rewritten rationale comment and a diag_warn! else-branch (correctness: an engulfing box-cut would DELETE the host).
 # +5: ENGULF_TOLERANCE / ENGULF_TOLERANCE_F32 single-homed (3 sites shared one literal 0.03 tolerance, now one named const each).
 # +2: #1623 Phase 2 — route the voided sub-mesh path through process_element_with_submeshes_impl(allow_instancing=false) so cut occurrences never instance an un-cut template.
-    1938 rust/geometry/src/router/voids/mod.rs
-     621 rust/geometry/src/router/voids/probe.rs
+     1985 rust/geometry/src/router/voids/mod.rs
+     755 rust/geometry/src/router/voids/probe.rs
     1002 rust/geometry/src/router/voids/synthesis.rs
     1472 rust/geometry/src/space_dcel/mod.rs
      525 rust/geometry/src/transform.rs

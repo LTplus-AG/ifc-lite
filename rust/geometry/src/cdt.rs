@@ -1322,6 +1322,36 @@ pub(crate) fn triangulate_refined(
     Some((out_pts, idx))
 }
 
+/// Constrained Delaunay triangulation of a polygon-with-holes WITHOUT quality
+/// (Ruppert) refinement — the minimal boundary-conforming triangulation of the
+/// input vertices, no Steiner points. Returned vertex list is exactly the input
+/// (`outer ++ holes`) in order; indices reference it. This is the fast,
+/// slivers-free cap triangulator for the 2D opening-subtraction extrude: unlike
+/// earcut it never bridges holes (so a many-hole cap stays manifold), and unlike
+/// [`triangulate_refined`] it never pays the min-angle refinement that dominates
+/// on a large multi-hole face. `None` if the CDT can't be built (caller falls
+/// back to earcut).
+pub(crate) fn triangulate_constrained(
+    outer: &[Point2<f64>],
+    holes: &[Vec<Point2<f64>>],
+) -> Option<(Vec<Point2<f64>>, Vec<usize>)> {
+    let mut rings: Vec<Vec<P2>> = Vec::with_capacity(1 + holes.len());
+    rings.push(outer.iter().map(p2).collect());
+    for h in holes {
+        if h.len() >= 3 {
+            rings.push(h.iter().map(p2).collect());
+        }
+    }
+    let (points, segments) = rings_to_pslg(&rings);
+    let cdt = Cdt::build_from(points, &segments)?;
+    let (pts, idx) = cdt.emit();
+    if idx.is_empty() {
+        return None;
+    }
+    let out_pts: Vec<Point2<f64>> = pts.iter().map(|p| Point2::new(p[0], p[1])).collect();
+    Some((out_pts, idx))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1523,4 +1553,17 @@ mod tests {
         assert_structurally_valid(&cdt);
     }
 
+    /// The unrefined constrained triangulation EXCLUDES hole interiors (returns
+    /// only the material region) and adds no Steiner points — the properties the
+    /// 2D opening-subtraction re-extrude relies on for a manifold, minimal cap.
+    #[test]
+    fn constrained_excludes_holes_no_steiner() {
+        let outer = vec![pt(0.0, 0.0), pt(10.0, 0.0), pt(10.0, 10.0), pt(0.0, 10.0)];
+        let holes = vec![vec![pt(4.0, 4.0), pt(4.0, 6.0), pt(6.0, 6.0), pt(6.0, 4.0)]];
+        let (pts, idx) = super::triangulate_constrained(&outer, &holes).unwrap();
+        // No Steiner points: the vertex list is exactly outer ++ holes.
+        assert_eq!(pts.len(), 8);
+        // Material area = 100 − 4 (the hole is excluded).
+        assert!((area_of(&pts, &idx) - 96.0).abs() < 1e-9);
+    }
 }

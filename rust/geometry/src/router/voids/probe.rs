@@ -6,11 +6,29 @@
 
 use super::geom::*;
 use super::{GeometryRouter, RectParam, MAX_EXTRUSION_EXTRACT_DEPTH};
+use crate::profile::Profile2D;
+use crate::profiles::ProfileProcessor;
 use crate::router::is_body_representation;
 use crate::{Error, Mesh, Point3, Result, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use nalgebra::{Matrix3, Matrix4};
 use rustc_hash::FxHashSet;
+
+/// A host or opening solid recovered as a single IfcExtrudedAreaSolid swept along
+/// its profile normal (local ±Z), for the 2D opening-subtraction fast path
+/// ([`super::bool2d_path`]). `m` maps profile-local coordinates (profile in the
+/// z=0 plane, swept to `dir_sign·depth`) to NATIVE world (pre unit-scale / RTC),
+/// composed as `placement · mapped-chain · solid-Position`.
+pub(super) struct ExtrudedSolidInfo {
+    /// Full 2D profile (outer + any holes) in the solid's profile plane.
+    pub profile: Profile2D,
+    /// Extrusion depth (> 0).
+    pub depth: f64,
+    /// +1 for a +Z sweep, -1 for a -Z sweep (the only two eligible cases).
+    pub dir_sign: f64,
+    /// Profile-local → native-world transform.
+    pub m: Matrix4<f64>,
+}
 
 impl GeometryRouter {
     // Get individual bounding boxes for each representation item in an opening element.
@@ -611,5 +629,127 @@ impl GeometryRouter {
         }
 
         Ok(bounds_list)
+    }
+
+    /// Unwrap `item` — through `IfcMappedItem` (accumulating the mapping
+    /// transform), but NOT through `IfcBooleanClippingResult`/`IfcBooleanResult`
+    /// (a clipped host is ineligible for the 2D re-extrude) — to a single
+    /// `IfcExtrudedAreaSolid` swept along its profile normal (local ±Z), and
+    /// recover its full 2D profile + depth + composed profile-local→native-world
+    /// transform. Returns `None` for any non-extrusion, clipped, obliquely-swept,
+    /// or degenerate solid, so callers fall back to the exact kernel.
+    pub(super) fn extruded_solid_from_item(
+        &self,
+        item: DecodedEntity,
+        placement: &Matrix4<f64>,
+        decoder: &mut EntityDecoder,
+    ) -> Option<ExtrudedSolidInfo> {
+        let mut current = item;
+        let mut chain = Matrix4::<f64>::identity();
+        let mut visited = FxHashSet::default();
+        let solid = loop {
+            if !visited.insert(current.id) || visited.len() > MAX_EXTRUSION_EXTRACT_DEPTH {
+                return None;
+            }
+            match current.ifc_type {
+                IfcType::IfcExtrudedAreaSolid => break current,
+                IfcType::IfcMappedItem => {
+                    let source = decoder.resolve_ref(current.get(0)?).ok()??;
+                    let mapped_rep = decoder.resolve_ref(source.get(1)?).ok()??;
+                    if let Some(t) = current.get(1) {
+                        if !t.is_null() {
+                            if let Ok(Some(te)) = decoder.resolve_ref(t) {
+                                if let Ok(mm) =
+                                    self.parse_cartesian_transformation_operator(&te, decoder)
+                                {
+                                    chain *= mm;
+                                }
+                            }
+                        }
+                    }
+                    current =
+                        decoder.resolve_ref_list(mapped_rep.get(3)?).ok()?.into_iter().next()?;
+                }
+                // Boolean clipping / anything else: ineligible for the 2D path.
+                _ => return None,
+            }
+        };
+
+        let profile_entity = decoder.resolve_ref(solid.get(0)?).ok()??;
+        let profile = ProfileProcessor::new(self.schema.clone())
+            .process(&profile_entity, decoder, self.tessellation_quality)
+            .ok()?;
+        if profile.outer.len() < 3 {
+            return None;
+        }
+        let depth = solid.get_float(3)?;
+        if depth <= 0.0 {
+            return None;
+        }
+        let dir_local = {
+            let e = decoder.resolve_ref(solid.get(2)?).ok()??;
+            self.parse_direction(&e).ok()?
+        }
+        .try_normalize(1e-12)?;
+        // The 2D re-extrude is only valid when the sweep is along the profile
+        // normal (local ±Z). An oblique / sheared extrusion shifts the footprint
+        // with depth, so the through-cut projection would be wrong — defer.
+        if dir_local.x.abs() > 1e-6 || dir_local.y.abs() > 1e-6 {
+            return None;
+        }
+        let dir_sign = if dir_local.z >= 0.0 { 1.0 } else { -1.0 };
+        let solid_pos = match solid.get(1) {
+            Some(a) if !a.is_null() => {
+                let e = decoder.resolve_ref(a).ok()??;
+                self.parse_axis2_placement_3d(&e, decoder).ok()?
+            }
+            _ => Matrix4::identity(),
+        };
+        Some(ExtrudedSolidInfo {
+            profile,
+            depth,
+            dir_sign,
+            m: placement * chain * solid_pos,
+        })
+    }
+
+    /// The host element's body as a SINGLE eligible extruded solid (exactly one
+    /// Body item, an `IfcExtrudedAreaSolid` after unwrapping mapped items). A
+    /// multi-item body or a clipped host returns `None`.
+    pub(super) fn host_extruded_solid(
+        &self,
+        element: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Option<ExtrudedSolidInfo> {
+        let placement = self
+            .get_placement_transform_from_element(element, decoder)
+            .ok()?;
+        let items = self.body_representation_items(element, decoder)?;
+        if items.len() != 1 {
+            return None;
+        }
+        self.extruded_solid_from_item(items.into_iter().next()?, &placement, decoder)
+    }
+
+    /// Every Body item of an opening element as an eligible extruded solid (an
+    /// opening may be a union of extruded prisms — Tekla multi-solid). `None` if
+    /// the body is empty or ANY item is not a clean extruded solid.
+    pub(super) fn opening_extruded_solids(
+        &self,
+        element: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Option<Vec<ExtrudedSolidInfo>> {
+        let placement = self
+            .get_placement_transform_from_element(element, decoder)
+            .ok()?;
+        let items = self.body_representation_items(element, decoder)?;
+        if items.is_empty() {
+            return None;
+        }
+        let mut out = Vec::with_capacity(items.len());
+        for it in items {
+            out.push(self.extruded_solid_from_item(it, &placement, decoder)?);
+        }
+        Some(out)
     }
 }

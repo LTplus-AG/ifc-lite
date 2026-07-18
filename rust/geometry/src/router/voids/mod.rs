@@ -13,9 +13,12 @@ use nalgebra::Matrix3;
 use rustc_hash::FxHashMap;
 
 mod aabb_clip;
+mod bool2d_path;
 mod geom;
 mod probe;
 mod synthesis;
+
+pub use bool2d_path::take_bool2d_stats;
 #[cfg(test)]
 mod reveal_tests;
 
@@ -112,6 +115,11 @@ pub(super) struct VoidContext {
     /// captured only when `rect_fast::param_enabled()`. Drives the analytic fast
     /// path in `apply_void_context`; `None` defers to the exact kernel.
     param: Option<ParamRectCut>,
+    /// 2D opening-subtraction data (host profile + projected opening footprints),
+    /// captured only when `bool2d_path::enabled()`. Drives the arbitrary-profile
+    /// 2D re-extrude fast path in `apply_void_context`, tried after the rect
+    /// parametric path; `None` defers to the exact kernel.
+    bool2d: Option<bool2d_path::Bool2dCut>,
 }
 
 impl VoidContext {
@@ -149,6 +157,10 @@ impl VoidContext {
             // non-relativized world mesh (it makes its own frame), so the
             // relativized context never uses `param` — drop it.
             param: None,
+            // Likewise the 2D path builds its own world frame from the parametrics
+            // and runs in the OUTER apply_void_context; the relativized context
+            // never uses it.
+            bool2d: None,
         }
     }
 
@@ -661,10 +673,22 @@ impl GeometryRouter {
             None
         };
 
+        // 2D opening-subtraction capture (flag-gated). Cheap when it misses
+        // (profile recovery only, no meshing), tried after the rect parametric
+        // path in `apply_void_context` so rect+rect hosts keep their existing
+        // output byte-identical and only the arbitrary-profile / rect-declined
+        // hosts reach the 2D re-extrude.
+        let bool2d = if bool2d_path::enabled() {
+            self.capture_bool2d(element, opening_ids, decoder)
+        } else {
+            None
+        };
+
         VoidContext {
             openings,
             merged_openings,
             param,
+            bool2d,
         }
     }
 
@@ -897,6 +921,27 @@ impl GeometryRouter {
             }
         }
 
+        // 2D OPENING-SUBTRACTION fast path (flag-gated). Generalises the rect
+        // parametric path above to arbitrary extruded-host profiles: subtract the
+        // openings' footprints from the host's 2D profile and re-extrude. Tried
+        // after `try_param_rect_cut` so proven rect+rect outputs are unchanged;
+        // ORIGIN-AWARE (it builds its own world frame from the parametrics and
+        // reconciles against the real host mesh, whatever `mesh.origin`). Any miss
+        // falls through to the exact kernel below unchanged.
+        if let Some(cut) = ctx.bool2d.as_ref() {
+            if let Some(holed) = self.try_bool2d_cut(&mesh, cut) {
+                // Eligible openings are now subtracted. Any residual (ineligible)
+                // openings — perpendicular sleeves, partial-depth recesses — are
+                // cut by the exact kernel on the re-extruded host (origin 0, world
+                // frame; residual cutters are world-framed), so a single
+                // ineligible opening no longer forfeits its host's cheap ones.
+                return match self.bool2d_residual(cut) {
+                    None => holed,
+                    Some(residual) => self.apply_void_context(holed, residual, element_id),
+                };
+            }
+        }
+
         // WORLD-space host AABB for the per-host diagnostic (`bbox`), captured
         // HERE — before the local-frame branch below zeroes `mesh.origin` and
         // before `try_cut_wall_local_frame` rotates the mesh into its own frame.
@@ -1076,8 +1121,10 @@ impl GeometryRouter {
             openings: local_openings,
             // The local-frame recursion never re-captures the parametric cut
             // (issue #1209): it operates on already-classified openings, so the
-            // analytic `param` path is irrelevant here — defer to the exact path.
+            // analytic `param` / 2D paths are irrelevant here — defer to the exact
+            // path.
             param: None,
+            bool2d: None,
         };
 
         // Forward the WORLD host bounds captured before this rotation so the

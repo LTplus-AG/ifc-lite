@@ -506,6 +506,7 @@
                 host,
                 openings: vec![opening],
             }),
+            bool2d: None,
         };
 
         let out1 = router

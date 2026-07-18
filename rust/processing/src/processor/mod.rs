@@ -1218,23 +1218,25 @@ pub fn process_geometry_streaming_filtered_with_options(
     // face-set id the router resolves as the source's single solid, so the ids line up
     // 1:1.
     //
-    // #1807: filter to `distinct_used() >= 2`. A UNIFORM (single-colour) map never
-    // splits — `split_mesh_by_indexed_colour` returns None below 2 distinct entries
+    // #1807: keep only MULTI-COLOUR maps. A UNIFORM (single-colour) map never splits —
+    // `split_mesh_by_indexed_colour` returns None below 2 distinct entries
     // (style/indexed_colour.rs) — so it collapses to one `dominant()`-coloured mesh an
     // instance carries losslessly. Excluding uniform sources bought nothing and
     // disabled don't-bake wholesale on models that store colour as per-triangle
-    // IfcIndexedColourMap on shared face sets (metering stations, CATIA exports).
+    // IfcIndexedColourMap on shared face sets (metering stations, CATIA exports). An
+    // all-uniform model collects nothing → leave the guard unarmed (None) rather than
+    // pay a per-element lookup against an empty set on every router.
     let indexed_colour_split_ids: Option<Arc<FxHashSet<u32>>> = (instancing_plan.is_some()
         && !indexed_colour_full.is_empty())
     .then(|| {
-        Arc::new(
-            indexed_colour_full
-                .iter()
-                .filter(|(_, m)| m.distinct_used() >= 2)
-                .map(|(&id, _)| id)
-                .collect::<FxHashSet<u32>>(),
-        )
-    });
+        let ids: FxHashSet<u32> = indexed_colour_full
+            .iter()
+            .filter(|(_, m)| m.has_multiple_colours())
+            .map(|(&id, _)| id)
+            .collect();
+        (!ids.is_empty()).then(|| Arc::new(ids))
+    })
+    .flatten();
     // Collect the don't-bake occurrences across all chunks/threads; resolved into
     // `InstanceRecord`s against the retained template meshes after the geometry phase.
     let raw_instance_collector: std::sync::Mutex<Vec<RawInstanceOccurrence>> =

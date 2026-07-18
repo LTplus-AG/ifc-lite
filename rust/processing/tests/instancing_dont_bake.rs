@@ -445,7 +445,10 @@ fn uniform_indexed_colour_source_instances_keeping_dominant_colour() {
     assert_uniform_indexed_colour_instances(
         &fixture_bytes("mapped_instances_indexed_colour_uniform.ifc"),
         "uniform-indexed-colour",
-        [1.0, 0.0, 0.0, 1.0], // palette entry 1 (red) is the only one referenced
+        // The fixture's ColourIndex is IFC 1-based `(1,1,1,1)`: value 1 → the 0-based
+        // `triangle_palette` index 0 → IfcColourRgbList entry (1.,0.,0.) = red, the
+        // only palette entry referenced (so `has_multiple_colours()` is false).
+        [1.0, 0.0, 0.0, 1.0],
     );
 }
 

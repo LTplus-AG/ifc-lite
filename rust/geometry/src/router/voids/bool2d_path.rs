@@ -34,6 +34,7 @@
 //!      least one hole formed.
 //!   4. The no-hole re-extrude reconciles with the host mesh (bounds + volume),
 //!      and the holed re-extrude (watertight CDT caps) self-checks watertight.
+//!
 //! When ANY of these fail the host falls through to the exact kernel with its
 //! FULL opening set unchanged, so correctness can never regress.
 //!
@@ -362,7 +363,7 @@ use super::probe::ExtrudedSolidInfo as ExtrudedSolidLike;
 
 /// Reconcile the no-hole re-extruded `solid` against the real host `mesh` by
 /// world AABB (per axis) and signed volume. Validates that the recovered profile
-/// + composed transform reproduce the host — catching clipped hosts, unit / RTC
+/// and composed transform reproduce the host — catching clipped hosts, unit / RTC
 /// mistakes, and profiles the processor tessellates differently.
 fn reconcile_solid(host: &Mesh, solid: &Mesh) -> bool {
     let (hmn, hmx) = world_host_bounds(host); // folds host.origin

@@ -656,19 +656,29 @@ impl GeometryRouter {
                 IfcType::IfcMappedItem => {
                     let source = decoder.resolve_ref(current.get(0)?).ok()??;
                     let mapped_rep = decoder.resolve_ref(source.get(1)?).ok()??;
+                    // A non-null MappingTarget MUST resolve + parse to a valid
+                    // transform: silently dropping it would misplace the
+                    // re-extruded footprint, so any failure defers the whole
+                    // opening to the exact kernel rather than continuing with an
+                    // identity transform.
                     if let Some(t) = current.get(1) {
                         if !t.is_null() {
-                            if let Ok(Some(te)) = decoder.resolve_ref(t) {
-                                if let Ok(mm) =
-                                    self.parse_cartesian_transformation_operator(&te, decoder)
-                                {
-                                    chain *= mm;
-                                }
-                            }
+                            let te = decoder.resolve_ref(t).ok()??;
+                            let mm =
+                                self.parse_cartesian_transformation_operator(&te, decoder).ok()?;
+                            chain *= mm;
                         }
                     }
-                    current =
-                        decoder.resolve_ref_list(mapped_rep.get(3)?).ok()?.into_iter().next()?;
+                    // Require EXACTLY ONE mapped representation item. A multi-item
+                    // mapped opening would otherwise be reduced to its first
+                    // solid, dropping the rest from BOTH the 2D footprint and the
+                    // residual exact cut; defer the whole opening instead.
+                    let mut items = decoder.resolve_ref_list(mapped_rep.get(3)?).ok()?.into_iter();
+                    let first = items.next()?;
+                    if items.next().is_some() {
+                        return None;
+                    }
+                    current = first;
                 }
                 // Boolean clipping / anything else: ineligible for the 2D path.
                 _ => return None,

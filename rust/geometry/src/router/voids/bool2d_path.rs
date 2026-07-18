@@ -143,7 +143,9 @@ impl GeometryRouter {
         } else {
             (-host.depth, 0.0)
         };
-        let z_tol = 0.01 * host.depth + 1e-6;
+        // Numerical-precision coincidence (1 ppm): near-through blind openings
+        // defer to the exact kernel instead of becoming a full-depth hole.
+        let z_tol = 1.0e-6 * host.depth.abs() + 1.0e-9;
 
         let mut footprints: Vec<Vec<Point2<f64>>> = Vec::new();
         let mut residual_ids: Vec<u32> = Vec::new();
@@ -331,16 +333,21 @@ fn opening_solid_footprint(
     }
     let op_rot = op.m.fixed_view::<3, 3>(0, 0).into_owned();
     let op_axis = (op_rot * Vector3::new(0.0, 0.0, op.dir_sign)).try_normalize(1e-9)?;
-    if host_axis.dot(&op_axis).abs() < 0.9995 {
-        return None;
+    if host_axis.dot(&op_axis).abs() < 1.0 - 1.0e-6 {
+        return None; // near-exact host-parallelism only (~0.08°); a tilt skews the cut
     }
     let to_host = hm_inv * op.m;
     let mut fp: Vec<Point2<f64>> = Vec::with_capacity(op.profile.outer.len());
     let mut zmin = f64::INFINITY;
     let mut zmax = f64::NEG_INFINITY;
+    // Zero lateral sweep: base/far images must share host-XY (no oblique drift).
+    let lat_tol = 1.0e-4 * (hz_max - hz_min).abs() + 1.0e-6;
     for p in &op.profile.outer {
         let base = to_host.transform_point(&Point3::new(p.x, p.y, 0.0));
         let far = to_host.transform_point(&Point3::new(p.x, p.y, op.dir_sign * op.depth));
+        if (far.x - base.x).abs() > lat_tol || (far.y - base.y).abs() > lat_tol {
+            return None;
+        }
         fp.push(Point2::new(base.x, base.y));
         zmin = zmin.min(base.z.min(far.z));
         zmax = zmax.max(base.z.max(far.z));

@@ -71,14 +71,14 @@ pub fn extrude_profile(
 }
 
 /// Watertight polygon-with-holes extrude for the 2D opening-subtraction path
-/// ([`crate::router`]'s `bool2d_path`). The caps are triangulated with the
-/// boundary-preserving constrained-Delaunay path
-/// ([`crate::triangulation::triangulate_polygon_with_holes_refined`]) instead of
-/// earcut: an earcut cap over a many-hole profile sprouts hole-bridge slivers
-/// that leave it non-manifold and that `clean_degenerate` later drops into
-/// cracks. The CDT keeps every profile-ring edge un-subdivided, so the caps
-/// close bit-for-bit against the side walls; only interior Steiner points are
-/// added (never on the rings), so the cap↔wall seam stays watertight.
+/// ([`crate::router`]'s `bool2d_path`). The caps are triangulated by the
+/// boundary-preserving constrained triangulator
+/// ([`crate::cdt::triangulate_constrained`]) instead of earcut: an earcut cap
+/// over a many-hole profile sprouts hole-bridge slivers that leave it
+/// non-manifold and that `clean_degenerate` later drops into cracks. The
+/// constrained triangulator performs NO refinement and adds NO Steiner points;
+/// it keeps every profile-ring edge un-subdivided, so the caps close bit-for-bit
+/// against the side walls and the cap↔wall seam stays watertight.
 #[inline]
 pub fn extrude_profile_watertight(
     profile: &Profile2D,
@@ -93,6 +93,15 @@ pub fn extrude_profile_watertight(
     if profile.outer.len() < 3 {
         return Err(Error::InvalidExtrusion(
             "Outer boundary needs >= 3 vertices".to_string(),
+        ));
+    }
+    // Reject degenerate hole rings BEFORE triangulation: `triangulate_constrained`
+    // silently drops a < 3-vertex ring from the cap, but `create_side_walls` below
+    // would still emit its walls (cap/wall mismatch → cracked mesh). Erroring here
+    // defers the whole cut to the exact kernel (`bool2d_path`'s `.ok()?`).
+    if profile.holes.iter().any(|h| h.len() < 3) {
+        return Err(Error::InvalidExtrusion(
+            "Hole ring needs >= 3 vertices".to_string(),
         ));
     }
     // Unrefined CDT caps: manifold (no earcut hole-bridge slivers) and fast (no

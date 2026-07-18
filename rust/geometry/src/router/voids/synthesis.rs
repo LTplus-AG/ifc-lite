@@ -99,11 +99,16 @@ impl GeometryRouter {
 
             let vertex_count = opening_mesh.positions.len() / 3;
 
-            // Local helper: record both the aggregate counter bump and a
-            // per-host diagnostic line in one place.
+            // Local helper: bump the aggregate counter and push a per-host
+            // diagnostic line together. QUIET mode (`record_diag == false`) is a
+            // full no-op — the host's opening set was already classified once by
+            // `classify_openings`, so bumping `ClassificationStats` again (or
+            // pushing a second host diagnostic) would double-count each residual.
             let mut bump = |router: &Self, ck: ClassificationKind, kind: OpeningKindDiag| {
-                router.bump_classification(ck);
-                host_diag.push(OpeningDiagnostic { opening_id, kind, vertex_count });
+                if record_diag {
+                    router.bump_classification(ck);
+                    host_diag.push(OpeningDiagnostic { opening_id, kind, vertex_count });
+                }
             };
 
             // Probe per-item geometry up front. An opening that holds several

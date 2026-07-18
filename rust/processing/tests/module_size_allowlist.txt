@@ -37,7 +37,10 @@
      894 rust/geometry/src/csg/consolidate.rs
      947 rust/geometry/src/csg/mod.rs
  # -73: #1806 watertight-extrude tests split out to extrusion_watertight_tests.rs (ratchet-exempt); budget refreshed downward.
-    1069 rust/geometry/src/extrusion.rs
+# +9: #1806 review — extrude_profile_watertight rejects < 3-vertex hole rings before
+# triangulation (triangulate_constrained drops them from the cap while create_side_walls
+# still emits their walls → cracked mesh); erroring defers the cut to the exact kernel.
+    1078 rust/geometry/src/extrusion.rs
 # +4: refine_high_aspect_slivers routes its rebuild through Mesh::rebuilt_like so a slivered host keeps its local-frame origin + #1474 placement capture (B7 metadata-loss fix).
 # +1: SNAP_GRID/NORMAL_QUANT single-homed to kernel::mesh_bridge / crate::grid (import replaces local const; doc rewrap costs a line).
           778 rust/geometry/src/facet_weld.rs
@@ -113,8 +116,19 @@
 # +79: #1112 roof-opening fixes — collinear profile simplification (unblocks
 # the flush-strip edge extension), exact-kernel-matched flush band, and the
 # self-checked post-cut sliver refinement (final cuts only).
-    2830 rust/geometry/src/router/voids/prism_cut.rs
-     755 rust/geometry/src/router/voids/probe.rs
+# +24: #1806 review correctness guards — bounds-check the host (ptris_from_mesh)
+# BEFORE the panic-prone closure audits, merge cutters only across a
+# numerically-coincident (8·SNAP_GRID) interface not a 2 mm gap/overlap, and
+# re-audit AFTER clean_degenerate so the EMITTED mesh is validated — keeping the
+# already-closed pre-clean construction when hygiene would crack it (vs deferring
+# the whole host to the exact kernel), which preserves the analytic hit-rate.
+    2854 rust/geometry/src/router/voids/prism_cut.rs
+# probe.rs +134: the 2D bool-path host/opening extraction — `extruded_solid_from_item`
+# (unwrap IfcMappedItem chains to a single IfcExtrudedAreaSolid + composed transform),
+# `host_extruded_solid` and `opening_extruded_solids` (single-body eligibility gates).
+# +10: mapped-item completeness guard — a non-null MappingTarget must parse and the
+# mapped representation must hold exactly one item, else the opening defers to exact.
+     765 rust/geometry/src/router/voids/probe.rs
     1002 rust/geometry/src/router/voids/synthesis.rs
     1472 rust/geometry/src/space_dcel/mod.rs
      525 rust/geometry/src/transform.rs

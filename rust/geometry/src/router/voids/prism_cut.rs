@@ -1188,20 +1188,28 @@ fn rings_equal(a: &[V2], b: &[V2], tol: f64) -> bool {
 }
 
 /// Merge two stacks whose union is exactly one stack: identical depth axis
-/// (hence identical deterministic basis) and TOUCHING depth ranges (within
-/// `tol`); the stacks concatenate at the touching plane, and equal adjacent
-/// profiles fuse into one slab. This is the wall-leaf half-void pattern (FZK /
-/// masonry leaf walls): one window void split into abutting halves along the
-/// wall thickness — cutting the union in one pass sidesteps their coplanar
-/// interface entirely.
+/// (hence identical deterministic basis) and NUMERICALLY-COINCIDENT depth
+/// ranges (touching within `weld` plane jitter, NOT the geometric `tol`); the
+/// stacks concatenate at the touching plane, and equal adjacent profiles fuse
+/// into one slab (`tol` gates only that profile-equality fusion). This is the
+/// wall-leaf half-void pattern (FZK / masonry leaf walls): one window void
+/// split into abutting halves along the wall thickness — cutting the union in
+/// one pass sidesteps their coplanar interface entirely.
 fn try_merge_prisms(a: &PrismFrame, b: &PrismFrame, tol: f64) -> Option<PrismFrame> {
     if dot(a.d, b.d) < 1.0 - 1.0e-8 {
         return None; // same authored axis ⇒ same deterministic basis
     }
-    // Order along d; only TOUCHING (not overlapping) ranges concatenate.
-    let (lo, hi) = if a.d1() <= b.d0() + tol && a.d1() >= b.d0() - tol {
+    // Concatenate ONLY at a NUMERICALLY-COINCIDENT interface: depth ranges must
+    // touch within PLANE JITTER (f32 + snap-grid roundoff), never the geometric
+    // `tol`. A real gap back-fills cutter volume and a real overlap reassigns a
+    // differing-profile slab — both keep the synthesized prism self-consistent so
+    // the self-check misses the over/under-cut. Non-touching / overlapping pairs
+    // stay unmerged for the overlap veto / exact path. 8·SNAP_GRID (~122 µm) is
+    // the kernel's per-axis-snap scatter: ≫ f32 roundoff, ≪ any authored gap.
+    let weld = 8.0 * crate::kernel::mesh_bridge::SNAP_GRID;
+    let (lo, hi) = if (a.d1() - b.d0()).abs() <= weld {
         (a, b)
-    } else if b.d1() <= a.d0() + tol && b.d1() >= a.d0() - tol {
+    } else if (b.d1() - a.d0()).abs() <= weld {
         (b, a)
     } else {
         return None;
@@ -2601,6 +2609,16 @@ impl GeometryRouter {
         if ctx.merged_openings.is_empty() || mesh.is_empty() || mesh.indices.len() < 12 {
             return None;
         }
+        // Promote to the f64 triangle list FIRST: `ptris_from_mesh` bounds-checks
+        // every index, whereas the closure audits index `mesh.positions` straight
+        // from `mesh.indices`. Auditing first would PANIC (abort under
+        // panic=abort) on a malformed host index instead of recording
+        // `host_promote_fail` and deferring. Post-promotion all indices are valid.
+        let origin = mesh.origin;
+        let Some(mut tris) = ptris_from_mesh(mesh) else {
+            defer(1);
+            return None;
+        };
         // The volume identity, the parity classification, and the closed
         // self-check are only meaningful on a host that arrives as a
         // consistently-wound closed solid (hairline subdivision mismatches
@@ -2609,11 +2627,6 @@ impl GeometryRouter {
             defer(0);
             return None;
         }
-        let origin = mesh.origin;
-        let Some(mut tris) = ptris_from_mesh(mesh) else {
-            defer(1);
-            return None;
-        };
         let min_vol = Self::min_opening_volume(self.tessellation_quality);
 
         // ── Candidate prisms ────────────────────────────────────────────────
@@ -2785,20 +2798,31 @@ impl GeometryRouter {
                 out = refined;
             }
         }
-        // Never emit a cut that is not a consistently-wound closed surface —
-        // the DIRECTED audit also catches doubled coincident faces and flipped
-        // caps that the undirected 2-manifold check cannot see. Audited BEFORE
-        // the standard `clean_degenerate` hygiene: cleaning drops sub-grid
-        // slivers on EVERY void path (the exact kernel included — the #1167
-        // fragmentation bar tolerates dozens of such hairlines), so the gate
-        // demands the analytic construction itself be closed, then applies the
-        // same hygiene every other path gets. On failure the WHOLE host (full
-        // opening set) goes back to the exact kernel.
+        // Never emit a cut that is not a consistently-wound closed surface. The
+        // analytic CONSTRUCTION itself must be closed (the DIRECTED audit also
+        // catches doubled coincident faces and flipped caps the undirected
+        // 2-manifold check cannot see); if it is not, the prism decomposition was
+        // wrong and the WHOLE host (full opening set) goes back to the exact
+        // kernel.
         if !directed_closed(&out) && !closed_or_hairline(&out) {
             defer(9);
             return None;
         }
-        out.clean_degenerate();
+        // Apply the standard `clean_degenerate` hygiene (every void path, the
+        // exact kernel included, drops sub-grid slivers), then RE-AUDIT: the
+        // EMITTED mesh must be the audited one (#1806 review), because cleaning
+        // can drop a thin-but-counted triangle that was load-bearing for closure
+        // and crack the surface. When hygiene opens such a crack, keep the
+        // already-closed pre-clean construction rather than emitting the cracked
+        // mesh — its un-cleaned slivers are the same hairlines every other path
+        // (the exact kernel included, #1167) already carries, so this stays
+        // correct without paying the exact-kernel tax for a host the analytic
+        // path cut cleanly.
+        let mut cleaned = out.clone();
+        cleaned.clean_degenerate();
+        if directed_closed(&cleaned) || closed_or_hairline(&cleaned) {
+            out = cleaned;
+        }
 
         // Residual openings in their original classification order.
         residual_idx.sort_unstable();

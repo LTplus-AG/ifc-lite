@@ -82,6 +82,25 @@ fn partial_depth_opening_defers() {
 }
 
 #[test]
+fn near_parallel_oblique_opening_defers() {
+    // A ~1° tilt from the host axis: the OLD 0.9995 dot threshold (≈1.8°) marked
+    // this eligible and re-extruded the base contour STRAIGHT through the host —
+    // but the real cutter sweeps ~70 mm sideways across the 4 m depth
+    // (far corner ≠ base corner in host-XY), so the flat cut is wrong. Both the
+    // tightened parallelism gate and the zero-lateral-sweep gate now defer it to
+    // the exact kernel.
+    let theta = 1.0_f64.to_radians();
+    let axis = Vector3::new(theta.sin(), 0.0, theta.cos());
+    // Anchor so the tilted sweep still spans the full host depth [0, 4] (it would
+    // have passed the OLD through-cut + interior gates).
+    let op = opening((1.0, 1.0, 0.5 * theta.sin()), axis, 4.0, 1.0);
+    assert!(
+        opening_solid_footprint(&op, &hm_inv(), &host_axis(), HZ_MIN, HZ_MAX, 0.04).is_none(),
+        "a near-parallel oblique opening must defer to the exact kernel"
+    );
+}
+
+#[test]
 fn annular_opening_defers() {
     // An opening whose own profile carries a hole can't reduce to one
     // subtracted footprint → defer.

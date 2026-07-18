@@ -104,7 +104,9 @@
 # +2: #1623 Phase 2 — route the voided sub-mesh path through process_element_with_submeshes_impl(allow_instancing=false) so cut occurrences never instance an un-cut template.
 # +42: analytic convex-prism fast-path wiring — module decl + apply_void_context
 # call site with residual composition and cut-effect diagnostics parity.
-     2027 rust/geometry/src/router/voids/mod.rs
+# +27: #129 coaxial-union prepass wiring — module decl + feature-gated stats
+# re-export + the pre-batch `coaxial_union_prepass` call and its consumed-skip.
+     2054 rust/geometry/src/router/voids/mod.rs
 # NEW: analytic prism (stepped-extrusion) subtraction on the host mesh — the
 # CSG-heavy-corpus lever (ISSUE_098/129: exact void booleans are ~75-82% of
 # geometry time; rebated masonry openings on brep/clipped hosts had no fast
@@ -140,6 +142,12 @@
 # %3 malformed-mesh guard at the top of ptris_from_mesh and the PROFILE_FUSE_TOL
 # (8·SNAP_GRID) weld for profile-equality fusion.
     3106 rust/geometry/src/router/voids/prism_cut.rs
+# NEW: #129 coaxial footprint-union for OVERLAPPING opening clusters. One cohesive
+# algorithm: extended-AABB overlap clustering (union-find), coaxial detection, 2.5D
+# depth-slicing with per-slab i_overlay footprint union + watertight re-extrude to
+# disjoint prisms (fed to subtract_mesh_many), and a 3D union_many fallback — plus
+# the mesh-cap footprint projection, orthonormal frame, and feature-gated telemetry.
+     599 rust/geometry/src/router/voids/coaxial_union.rs
 # probe.rs +134: the 2D bool-path host/opening extraction — `extruded_solid_from_item`
 # (unwrap IfcMappedItem chains to a single IfcExtrudedAreaSolid + composed transform),
 # `host_extruded_solid` and `opening_extruded_solids` (single-body eligibility gates).

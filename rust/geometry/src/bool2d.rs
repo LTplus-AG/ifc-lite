@@ -133,6 +133,49 @@ pub fn subtract_multiple_2d_counted(
     Ok((shapes_to_profile(&result)?, shapes))
 }
 
+/// Union many 2D contours into a set of DISJOINT shapes, each an outer boundary
+/// plus any holes, via ONE i_overlay Union pass (NonZero fill). Overlapping input
+/// contours merge exactly — no pairwise accumulation, so the coaxial
+/// footprint-union void path can't diverge from the true union. Every input
+/// contour is normalised CCW first so opposing windings (e.g. the two caps of a
+/// projected prism) accumulate coverage rather than cancelling. Degenerate
+/// (< 3-vertex or zero-area) contours are dropped; an empty input yields an empty
+/// result. Deterministic f64 → byte-identical native==wasm.
+pub fn union_contours_to_shapes(contours: &[Vec<Point2<f64>>]) -> Vec<Profile2D> {
+    let subject: Vec<Vec<[f64; 2]>> = contours
+        .iter()
+        .filter(|c| c.len() >= 3)
+        .map(|c| contour_to_path(&ensure_ccw(c)))
+        .collect();
+    if subject.is_empty() {
+        return Vec::new();
+    }
+    // Self-union: overlay the subject against an empty clip with the Union rule and
+    // NonZero fill so overlapping subject paths dissolve into merged shapes.
+    let empty: Vec<Vec<[f64; 2]>> = Vec::new();
+    let result = subject.overlay(&empty, OverlayRule::Union, FillRule::NonZero);
+    let mut out = Vec::new();
+    for shape in &result {
+        let Some(outer_raw) = shape.first() else {
+            continue;
+        };
+        let outer: Vec<Point2<f64>> = outer_raw.iter().map(|p| Point2::new(p[0], p[1])).collect();
+        if !is_valid_contour(&outer) {
+            continue;
+        }
+        let outer = ensure_ccw(&outer);
+        let mut holes = Vec::new();
+        for c in shape.iter().skip(1) {
+            let hole: Vec<Point2<f64>> = c.iter().map(|p| Point2::new(p[0], p[1])).collect();
+            if is_valid_contour(&hole) {
+                holes.push(ensure_cw(&hole));
+            }
+        }
+        out.push(Profile2D { outer, holes });
+    }
+    out
+}
+
 /// Check if a contour is valid (has area, not degenerate)
 pub fn is_valid_contour(contour: &[Point2<f64>]) -> bool {
     if contour.len() < 3 {

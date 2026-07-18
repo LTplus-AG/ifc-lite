@@ -14,6 +14,7 @@ use rustc_hash::FxHashMap;
 
 mod aabb_clip;
 mod bool2d_path;
+mod coaxial_union;
 mod geom;
 mod prism_cut;
 mod probe;
@@ -1393,6 +1394,22 @@ impl GeometryRouter {
         // Set on every successful cut; while false, a group's admission-time
         // extended cutters are still valid and reused verbatim.
         let mut host_mutated = false;
+
+        // COAXIAL FOOTPRINT-UNION for OVERLAPPING clusters (issue #129, flag
+        // `IFC_LITE_VOID_UNION`). Overlapping cutters can't join the disjoint batch
+        // below and otherwise fall to the O(N) sequential exact path; this fuses
+        // each overlapping coaxial cluster into disjoint re-extruded prisms and cuts
+        // them in one `subtract_mesh_many`. See `coaxial_union`. Marks consumed
+        // openings so the batch + sequential loops skip them; a cluster that fails
+        // any guard is left unconsumed for the exact path (never worse than exact).
+        self.coaxial_union_prepass(
+            &mut result,
+            &all_openings,
+            &mut batch_consumed,
+            &mut host_mutated,
+            &clipper,
+        );
+
         if all_openings.len() >= 2 {
             // Inflation pad: ≥ 2×(promote band 8·2⁻¹⁶ ≈ 122 µm + snap radius);
             // 1 mm is conservative and far below any real opening separation.
@@ -1411,6 +1428,10 @@ impl GeometryRouter {
             }
             let mut cands: Vec<Cand> = Vec::new();
             for (idx, opening) in all_openings.iter().enumerate() {
+                // Already cut by the coaxial/overlap-union prepass above.
+                if batch_consumed[idx] {
+                    continue;
+                }
                 let norm: Option<(&Mesh, Option<Vector3<f64>>)> = match **opening {
                     OpeningType::Rectangular(..) => None,
                     OpeningType::DiagonalRectangular(ref m, ref f) => Some((m, Some(f.depth))),

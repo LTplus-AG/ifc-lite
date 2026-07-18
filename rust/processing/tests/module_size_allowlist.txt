@@ -136,7 +136,13 @@
 # `host_extruded_solid` and `opening_extruded_solids` (single-body eligibility gates).
 # +10: mapped-item completeness guard — a non-null MappingTarget must parse and the
 # mapped representation must hold exactly one item, else the opening defers to exact.
-     765 rust/geometry/src/router/voids/probe.rs
+# +87 (#1806 CodeRabbit): body_representation_items now mirrors the mesh path's
+# effective_rep_type + is_body_representation selection (incl. MappedRepresentation
+# de-dup, collecting items across ALL body reps so a multi-rep body defers) instead of
+# a raw RepresentationType match, and mapping_origin_is_identity defers the fast path
+# when an IfcMappedItem's RepresentationMap.MappingOrigin is non-identity (the mesh
+# path drops it) — both keep the analytic cut bit-consistent with the rendered solid.
+     852 rust/geometry/src/router/voids/probe.rs
     1002 rust/geometry/src/router/voids/synthesis.rs
     1472 rust/geometry/src/space_dcel/mod.rs
      525 rust/geometry/src/transform.rs

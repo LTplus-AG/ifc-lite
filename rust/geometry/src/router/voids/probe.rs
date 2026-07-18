@@ -240,7 +240,21 @@ impl GeometryRouter {
         }
     }
 
-    /// Items of the element's first non-empty Body/SweptSolid shape representation.
+    /// Items of the element's body shape representation(s), selected EXACTLY as
+    /// the main mesh path (`process_element` /
+    /// `process_element_with_submeshes_impl`): the effective representation type
+    /// (`RepresentationType`, falling back to the `RepresentationIdentifier`
+    /// when blank — CATIA #1661) filtered by [`is_body_representation`], with a
+    /// `MappedRepresentation` skipped when the element also carries direct body
+    /// geometry (the mesh path's de-dup, so the fast path reads the same solids
+    /// the renderer draws). Items from EVERY qualifying representation are
+    /// collected — the mesh path merges them all — so a probe that requires a
+    /// single item correctly DEFERS when the rendered body spans more than one
+    /// representation instead of silently cutting only the first. The old raw
+    /// `RepresentationType`-only match could latch onto an earlier auxiliary
+    /// `SweptSolid`/`SolidModel` (or miss a CATIA blank-type/`Body`-identifier
+    /// rep the renderer meshes), driving the cut off a DIFFERENT solid than the
+    /// one rendered.
     fn body_representation_items(
         &self,
         element: &DecodedEntity,
@@ -251,24 +265,84 @@ impl GeometryRouter {
             return None;
         }
         let reps = decoder.resolve_ref_list(rep.get(2)?).ok()?;
+        // Mirror the mesh path's direct-vs-mapped de-dup: a MappedRepresentation
+        // is skipped only when the element ALSO carries direct body geometry.
+        let has_direct_geometry = reps.iter().any(|sr| {
+            sr.ifc_type == IfcType::IfcShapeRepresentation
+                && crate::router::effective_rep_type(sr)
+                    .map(crate::router::is_direct_body_representation)
+                    .unwrap_or(false)
+        });
+        let mut items = Vec::new();
         for sr in reps {
             if sr.ifc_type != IfcType::IfcShapeRepresentation {
                 continue;
             }
-            let rt = sr.get(2).and_then(|a| a.as_string()).unwrap_or("");
-            if matches!(
-                rt,
-                "Body" | "SweptSolid" | "SolidModel" | "Clipping" | "AdvancedSweptSolid"
-                    | "MappedRepresentation"
-            ) {
-                if let Ok(items) = decoder.resolve_ref_list(sr.get(3)?) {
-                    if !items.is_empty() {
-                        return Some(items);
-                    }
-                }
+            let Some(rt) = crate::router::effective_rep_type(&sr) else {
+                continue;
+            };
+            if rt == "MappedRepresentation" && has_direct_geometry {
+                continue;
+            }
+            if !crate::router::is_body_representation(rt) {
+                continue;
+            }
+            let Some(items_attr) = sr.get(3) else {
+                continue;
+            };
+            if let Ok(rep_items) = decoder.resolve_ref_list(items_attr) {
+                items.extend(rep_items);
             }
         }
-        None
+        if items.is_empty() {
+            None
+        } else {
+            Some(items)
+        }
+    }
+
+    /// Whether an `IfcMappedItem`'s `RepresentationMap.MappingOrigin` (attr 0) is
+    /// a geometric no-op for the fast-path solid recovery.
+    ///
+    /// The `IfcMappedItem` MESH path drops `MappingOrigin` entirely and applies
+    /// ONLY the `MappingTarget` operator (see
+    /// [`GeometryRouter::process_mapped_item_cached`] and
+    /// `profile_extractor::extract_mapped_item_profiles`, whose composed
+    /// transform is `elem_transform · mapping_target`). To stay bit-for-bit
+    /// consistent with that rendered geometry — the very geometry the exact void
+    /// kernel also cuts — this fast path must drop it too. A non-identity origin
+    /// would shift the recovered solid off the rendered mesh, so we only proceed
+    /// when the origin provably has no effect; otherwise the caller defers the
+    /// whole opening/host to the exact kernel. Returns `true` when the origin is
+    /// absent / null / an identity `IfcAxis2Placement3D`, `false` when it is
+    /// non-identity, a 2D placement, or cannot be confirmed identity.
+    fn mapping_origin_is_identity(
+        &self,
+        source: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> bool {
+        let Some(origin_attr) = source.get(0) else {
+            return true; // no MappingOrigin attribute -> no effect
+        };
+        if origin_attr.is_null() {
+            return true;
+        }
+        let origin = match decoder.resolve_ref(origin_attr) {
+            Ok(Some(e)) => e,
+            _ => return false, // present but unresolvable -> defer
+        };
+        // Only a 3D identity placement is a provable no-op for the 3D solid
+        // recovery; a 2D placement (or anything else) -> defer.
+        if origin.ifc_type != IfcType::IfcAxis2Placement3D {
+            return false;
+        }
+        match self.parse_axis2_placement_3d(&origin, decoder) {
+            Ok(m) => {
+                let id = Matrix4::<f64>::identity();
+                m.iter().zip(id.iter()).all(|(a, b)| (a - b).abs() < 1e-9)
+            }
+            Err(_) => false,
+        }
     }
 
     /// One representation item → its EXACT oriented box, unwrapping IfcBooleanClippingResult
@@ -295,6 +369,12 @@ impl GeometryRouter {
                 IfcType::IfcMappedItem => {
                     let source = decoder.resolve_ref(current.get(0)?).ok()??;
                     let mapped_rep = decoder.resolve_ref(source.get(1)?).ok()??;
+                    // The mesh path drops MappingOrigin (applies only
+                    // MappingTarget); a non-identity origin would shift the
+                    // recovered box off the rendered solid, so defer.
+                    if !self.mapping_origin_is_identity(&source, decoder) {
+                        return None;
+                    }
                     if let Some(t) = current.get(1) {
                         if !t.is_null() {
                             if let Ok(Some(te)) = decoder.resolve_ref(t) {
@@ -656,6 +736,13 @@ impl GeometryRouter {
                 IfcType::IfcMappedItem => {
                     let source = decoder.resolve_ref(current.get(0)?).ok()??;
                     let mapped_rep = decoder.resolve_ref(source.get(1)?).ok()??;
+                    // The mesh path drops MappingOrigin (applies only
+                    // MappingTarget); a non-identity origin would shift the
+                    // re-extruded footprint off the rendered solid, so defer the
+                    // whole opening to the exact kernel.
+                    if !self.mapping_origin_is_identity(&source, decoder) {
+                        return None;
+                    }
                     // A non-null MappingTarget MUST resolve + parse to a valid
                     // transform: silently dropping it would misplace the
                     // re-extruded footprint, so any failure defers the whole

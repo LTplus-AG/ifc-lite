@@ -147,7 +147,7 @@
 # depth-slicing with per-slab i_overlay footprint union + watertight re-extrude to
 # disjoint prisms (fed to subtract_mesh_many), and a 3D union_many fallback — plus
 # the mesh-cap footprint projection, orthonormal frame, and feature-gated telemetry.
-     599 rust/geometry/src/router/voids/coaxial_union.rs
+     612 rust/geometry/src/router/voids/coaxial_union.rs
 # probe.rs +134: the 2D bool-path host/opening extraction — `extruded_solid_from_item`
 # (unwrap IfcMappedItem chains to a single IfcExtrudedAreaSolid + composed transform),
 # `host_extruded_solid` and `opening_extruded_solids` (single-body eligibility gates).

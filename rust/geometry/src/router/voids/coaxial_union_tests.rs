@@ -252,11 +252,14 @@ fn mixed_depth_bands_slice_into_multiple_prisms() {
     };
     let cands = vec![mk(a), mk(b)];
     let host = host_wall();
-    let (prisms, multi_slab) = router
+    let (prisms, multi_slab, contributors) = router
         .build_coaxial_prisms(&host, &cands, &[0, 1], &Vector3::new(0.0, 1.0, 0.0))
         .expect("depth-slicing handles mixed bands");
     assert!(prisms.len() >= 2, "two depth bands slice into >= 2 prisms");
     assert!(multi_slab, "two depth bands flag multi-slab fusion");
+    // Both cutters straddle a slab midpoint (the through-cut both, the shallow one
+    // the -Y slab), so both contribute and are eligible for consumption.
+    assert_eq!(contributors, vec![0, 1], "both bands contribute to a slab");
 }
 
 #[test]
@@ -287,6 +290,53 @@ fn partial_depth_cutter_is_not_over_cut_end_to_end() {
     assert!(
         (removed - 0.576).abs() < 5e-3,
         "removed {removed}, expected true 2.5D union 0.576 (not through-union 0.72)"
+    );
+}
+
+#[test]
+fn sub_ztol_shallow_recess_is_not_dropped_end_to_end() {
+    // A WIDE but very SHALLOW recess (authored depth < z_tol) overlapping a
+    // through-cut on the same axis. The depth-slicing coalesces the recess's whole
+    // depth band away (< z_tol), so it passes the per-slab midpoint filter for NO
+    // slab and contributes NOTHING to the union prisms. The OLD code marked every
+    // cluster member consumed on a successful subtract, so the recess's material was
+    // DROPPED entirely (removed ≈ 0.36, the through-cut alone). The fix consumes only
+    // the cutters that fed an emitted slab, leaving the recess for the exact path,
+    // which removes it faithfully (removed ≈ 0.4056: through-cut + shallow recess).
+    //
+    // Host: X[-2,2] × Y[-0.15,0.15] × Z[-1.5,1.5] (thin +Y axis).
+    // Through: X[-1,0], Z[-0.6,0.6], authored Y[-1,1]  → 1.0 × 1.2 × 0.3 = 0.36.
+    // Recess:  X[-0.2,1.8], Z[-1.2,1.2], authored Y[-0.16,-0.14] (20 mm band, below
+    //          the ~21 mm z_tol) → cuts from the -Y face to -0.14 = 10 mm deep over
+    //          the footprint NOT already bored by the through-cut:
+    //          (4.8 - 0.24) × 0.01 = 0.0456.  Total removed ≈ 0.4056.
+    super::set_enabled_override(Some(true));
+    let router = GeometryRouter::new();
+    let openings = vec![
+        box_opening_y([-1.0, -1.0, -0.6], [0.0, 1.0, 0.6]),      // through-cut
+        box_opening_y([-0.2, -0.16, -1.2], [1.8, -0.14, 1.2]),  // wide shallow recess
+    ];
+    let ctx = super::super::VoidContext {
+        merged_openings: openings.clone(),
+        openings,
+        param: None,
+        bool2d: None,
+    };
+    let host = host_wall();
+    let host_v = vol(&host);
+    let cut = router.apply_void_context(host, &ctx, 1);
+    super::set_enabled_override(None);
+    assert!(watertight(&cut), "cut must be watertight");
+    let removed = host_v - vol(&cut);
+    assert!(
+        removed > 0.38,
+        "removed {removed}: the sub-z_tol shallow recess was DROPPED (old code \
+         removed only the ~0.36 through-cut)"
+    );
+    assert!(
+        (removed - 0.4056).abs() < 8e-3,
+        "removed {removed}, expected through-cut + shallow recess ≈ 0.4056 \
+         (not the through-union / over-cut)"
     );
 }
 

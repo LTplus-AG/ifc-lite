@@ -251,12 +251,15 @@ impl GeometryRouter {
             .all(|&m| cands[m].dir.dot(&ref_dir).abs() > 0.985);
 
         if coaxial {
-            if let Some((prisms, multi_slab)) =
+            if let Some((prisms, multi_slab, contributors)) =
                 self.build_coaxial_prisms(result, cands, members, &ref_dir)
             {
                 if self.subtract_prisms(result, &prisms, multi_slab, clipper) {
-                    for &m in members {
-                        consumed[cands[m].idx] = true;
+                    // Consume ONLY cutters that fed an emitted slab prism; one whose
+                    // band coalesced below `z_tol` spans no slab (removed nothing) and
+                    // stays for the exact path rather than being silently dropped.
+                    for &i in &contributors {
+                        consumed[cands[members[i]].idx] = true;
                     }
                     *host_mutated = true;
                     return;
@@ -287,13 +290,17 @@ impl GeometryRouter {
     /// planes, which the conforming N-ary subtract dissolves). Returns `None`
     /// (defer to `union_many`) when a footprint can't be recovered, the cluster has
     /// too many distinct depths, or a re-extrude/watertight check fails.
+    ///
+    /// The third tuple element lists the `members`-relative indices that fed ≥ 1
+    /// emitted slab prism; a cutter whose band coalesced below `z_tol` spans no slab
+    /// and is absent, so the caller leaves it for the exact path (never dropped).
     fn build_coaxial_prisms(
         &self,
         result: &Mesh,
         cands: &[UnionCand],
         members: &[usize],
         axis: &Vector3<f64>,
-    ) -> Option<(Vec<Mesh>, bool)> {
+    ) -> Option<(Vec<Mesh>, bool, Vec<usize>)> {
         let (u, v, d) = ortho_frame(axis)?;
         let mut fps: Vec<Footprint> = Vec::with_capacity(members.len());
         for &m in members {
@@ -335,6 +342,8 @@ impl GeometryRouter {
         );
 
         let mut prisms: Vec<Mesh> = Vec::new();
+        // Which members (by fps/`members` position) contributed to ≥ 1 emitted slab.
+        let mut contributed = vec![false; fps.len()];
         for w in coalesced.windows(2) {
             let (slab_lo, slab_hi) = (w[0], w[1]);
             let slab_depth = slab_hi - slab_lo;
@@ -342,12 +351,15 @@ impl GeometryRouter {
                 continue;
             }
             let mid = 0.5 * (slab_lo + slab_hi);
-            // Cutters that FULLY span this slab (authored to cover [slab_lo, slab_hi]).
-            let contours: Vec<Vec<Point2<f64>>> = fps
-                .iter()
-                .filter(|f| f.z_lo <= mid && f.z_hi >= mid)
-                .flat_map(|f| f.contours.iter().cloned())
-                .collect();
+            // Cutters that FULLY span this slab; record each as a contributor so only
+            // cutters this pass actually removed are consumed by the caller.
+            let mut contours: Vec<Vec<Point2<f64>>> = Vec::new();
+            for (i, f) in fps.iter().enumerate() {
+                if f.z_lo <= mid && f.z_hi >= mid {
+                    contours.extend(f.contours.iter().cloned());
+                    contributed[i] = true;
+                }
+            }
             if contours.is_empty() {
                 continue; // an empty slab (a gap between depth bands) removes nothing
             }
@@ -382,7 +394,8 @@ impl GeometryRouter {
         // first (see `subtract_prisms`). A single slab yields footprint-disjoint
         // prisms that the N-ary subtract handles directly.
         let multi_slab = coalesced.len() > 2;
-        Some((prisms, multi_slab))
+        let contributors: Vec<usize> = (0..fps.len()).filter(|&i| contributed[i]).collect();
+        Some((prisms, multi_slab, contributors))
     }
 
     /// Subtract the re-extruded prisms from `result`. Single-slab prisms are

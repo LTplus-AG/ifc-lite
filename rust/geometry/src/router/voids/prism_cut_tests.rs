@@ -145,7 +145,6 @@ fn box_cutter_through_wall_watertight_and_volume_exact() {
         (removed - 0.3).abs() < 1.0e-3,
         "removed {removed}, expected 0.3"
     );
-    let _ = take_prism_stats();
 }
 
 #[test]
@@ -183,7 +182,6 @@ fn rotated_prism_cutter_fires_and_reconciles() {
         (removed - 0.3).abs() < 1.0e-3,
         "removed {removed}, expected 0.3"
     );
-    let _ = take_prism_stats();
 }
 
 #[test]
@@ -202,7 +200,6 @@ fn non_convex_cutter_falls_back() {
         router.try_prism_cut(&host, &ctx).is_none(),
         "non-box cutter must defer to the exact kernel"
     );
-    let _ = take_prism_stats();
 }
 
 #[test]
@@ -223,7 +220,6 @@ fn open_shell_cutter_falls_back() {
         router.try_prism_cut(&host, &ctx).is_none(),
         "open-shell cutter must defer (volume/manifold reconciliation)"
     );
-    let _ = take_prism_stats();
 }
 
 #[test]
@@ -243,10 +239,16 @@ fn multi_window_host_watertight_and_volume_exact() {
         ));
     }
     let ctx = ctx_of(openings);
+    // NOTE: path coverage is asserted through the RETURN VALUE, never through
+    // `take_prism_stats()` — the stats are process-global atomics shared by
+    // every concurrently running test in this binary, so exact counts are a
+    // scheduling race (CI x86_64 runners interleave differently than a local
+    // many-core arm64). `Some(..)` proves the prism path fired; a `None`
+    // residual proves EVERY opening was cut analytically.
     let (cut, residual) = router
         .try_prism_cut(&host, &ctx)
         .expect("three windows must all take the prism path");
-    assert!(residual.is_none());
+    assert!(residual.is_none(), "all three windows must be analytic");
     assert!(watertight(&cut), "multi-window cut must be watertight");
     let removed = mesh_volume(&host) - mesh_volume(&cut);
     let expect = 3.0 * 0.7 * 0.3 * 0.9;
@@ -254,10 +256,6 @@ fn multi_window_host_watertight_and_volume_exact() {
         (removed - expect).abs() < 1.0e-3,
         "removed {removed}, expected {expect}"
     );
-    let (fires, analytic, resid) = take_prism_stats();
-    assert_eq!(fires, 1);
-    assert_eq!(analytic, 3);
-    assert_eq!(resid, 0);
 }
 
 #[test]
@@ -295,7 +293,6 @@ fn mixed_eligible_and_ineligible_returns_residual() {
         (removed - expect).abs() < 1.0e-3,
         "removed {removed}, expected {expect}"
     );
-    let _ = take_prism_stats();
 }
 
 #[test]
@@ -324,7 +321,6 @@ fn blind_recess_keeps_authored_depth() {
         (removed - expect).abs() < 1.0e-3,
         "removed {removed}, expected {expect}"
     );
-    let _ = take_prism_stats();
 }
 
 #[test]
@@ -357,7 +353,6 @@ fn deterministic_output() {
     assert_eq!(a.positions, b.positions, "prism cut must be deterministic");
     assert_eq!(a.indices, b.indices);
     assert_eq!(a.normals, b.normals);
-    let _ = take_prism_stats();
 }
 
 #[test]
@@ -375,7 +370,6 @@ fn engulfing_cutter_defers_to_exact_semantics() {
         None,
     )]);
     assert!(router.try_prism_cut(&host, &ctx).is_none());
-    let _ = take_prism_stats();
 }
 
 /// Closed stepped-extrusion cutter (the ISSUE_098 rebated masonry opening):
@@ -502,8 +496,11 @@ fn rebated_stepped_cutter_fires_watertight_and_volume_exact() {
             take_prism_defers()
         );
     }
+    // `Some(..)` + `None` residual prove the analytic path cut the (single)
+    // opening; see the multi-window test for why global stats counters must
+    // not be asserted from parallel unit tests.
     let (cut, residual) = got.unwrap();
-    assert!(residual.is_none());
+    assert!(residual.is_none(), "the rebated opening must be analytic");
     assert!(
         watertight(&cut),
         "stepped cut must be watertight (quantized 2-manifold)"
@@ -516,6 +513,4 @@ fn rebated_stepped_cutter_fires_watertight_and_volume_exact() {
         (removed - expect).abs() < 2.0e-3,
         "removed {removed}, expected {expect}"
     );
-    let (fires, analytic, resid) = take_prism_stats();
-    assert_eq!((fires, analytic, resid), (1, 1, 0));
 }

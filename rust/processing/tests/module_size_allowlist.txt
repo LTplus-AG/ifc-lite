@@ -130,7 +130,16 @@
 # axis; carry the host face normal onto resolve_crossings' new points; and
 # feature-gate the process-global diagnostic counters (default build carries no
 # hot-path atomics — also removes the parallel-test race).
-    3001 rust/geometry/src/router/voids/prism_cut.rs
+# +105: #1806 CodeRabbit round-2 — the hairline self-check (the whole prism
+# safety net) replaced its midpoint-proximity boundary matcher with a rigorous
+# per-supporting-line SIGNED-multiplicity coverage sweep (true collinearity +
+# full-interval coverage + multiplicity, rejecting a long open edge that a short
+# reverse edge merely grazed). Lines are seeded longest-edge-first so genuine
+# collinear hairline covers are not fragmented into phantom-gap groups (keeps the
+# analytic hit-rate on the dense faceted-reveal walls). Plus a positions/indices
+# %3 malformed-mesh guard at the top of ptris_from_mesh and the PROFILE_FUSE_TOL
+# (8·SNAP_GRID) weld for profile-equality fusion.
+    3106 rust/geometry/src/router/voids/prism_cut.rs
 # probe.rs +134: the 2D bool-path host/opening extraction — `extruded_solid_from_item`
 # (unwrap IfcMappedItem chains to a single IfcExtrudedAreaSolid + composed transform),
 # `host_extruded_solid` and `opening_extruded_solids` (single-body eligibility gates).
@@ -142,7 +151,10 @@
 # a raw RepresentationType match, and mapping_origin_is_identity defers the fast path
 # when an IfcMappedItem's RepresentationMap.MappingOrigin is non-identity (the mesh
 # path drops it) — both keep the analytic cut bit-consistent with the rendered solid.
-     852 rust/geometry/src/router/voids/probe.rs
+# +6 (#1806 CodeRabbit round-2): reject non-finite rectangle dims/extrusion depth
+# (is_finite guards) so an inf depth can no longer slip past the `> 0.0` / `<= 0.0`
+# gates into the fast path.
+     858 rust/geometry/src/router/voids/probe.rs
     1002 rust/geometry/src/router/voids/synthesis.rs
     1472 rust/geometry/src/space_dcel/mod.rs
      525 rust/geometry/src/transform.rs

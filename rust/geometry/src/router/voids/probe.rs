@@ -397,7 +397,13 @@ impl GeometryRouter {
         let (x_dim, y_dim, off_x, off_y, cos_t, sin_t) =
             self.read_rect_profile_2d(&profile, decoder)?;
         let depth = solid.get_float(3)?;
-        if !(x_dim > 0.0 && y_dim > 0.0 && depth > 0.0) {
+        if !(x_dim.is_finite()
+            && y_dim.is_finite()
+            && depth.is_finite()
+            && x_dim > 0.0
+            && y_dim > 0.0
+            && depth > 0.0)
+        {
             return None;
         }
         let solid_pos = match solid.get(1) {
@@ -780,7 +786,7 @@ impl GeometryRouter {
             return None;
         }
         let depth = solid.get_float(3)?;
-        if depth <= 0.0 {
+        if !depth.is_finite() || depth <= 0.0 {
             return None;
         }
         let dir_local = {

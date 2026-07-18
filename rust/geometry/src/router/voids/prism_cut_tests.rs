@@ -514,3 +514,151 @@ fn rebated_stepped_cutter_fires_watertight_and_volume_exact() {
         "removed {removed}, expected {expect}"
     );
 }
+
+/// Build a mesh from explicit f64 triangles (per-triangle vertices, computed
+/// flat normal). Used to author precise boundary-edge configurations for the
+/// `closed_or_hairline` self-check.
+fn mesh_from_tris(tris: &[[[f64; 3]; 3]]) -> Mesh {
+    let mut m = Mesh::new();
+    for t in tris {
+        let e1 = [
+            t[1][0] - t[0][0],
+            t[1][1] - t[0][1],
+            t[1][2] - t[0][2],
+        ];
+        let e2 = [
+            t[2][0] - t[0][0],
+            t[2][1] - t[0][1],
+            t[2][2] - t[0][2],
+        ];
+        let n = [
+            e1[1] * e2[2] - e1[2] * e2[1],
+            e1[2] * e2[0] - e1[0] * e2[2],
+            e1[0] * e2[1] - e1[1] * e2[0],
+        ];
+        let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt().max(1e-30);
+        let nn = [
+            (n[0] / len) as f32,
+            (n[1] / len) as f32,
+            (n[2] / len) as f32,
+        ];
+        let base = (m.positions.len() / 3) as u32;
+        for v in t {
+            m.positions
+                .extend_from_slice(&[v[0] as f32, v[1] as f32, v[2] as f32]);
+            m.normals.extend_from_slice(&nn);
+        }
+        m.indices.extend_from_slice(&[base, base + 1, base + 2]);
+    }
+    m
+}
+
+/// The ORIGINAL midpoint-only hairline predicate (pre-fix), reproduced verbatim
+/// so the tightening can be demonstrated against the exact configuration it
+/// wrongly accepted. Do not "improve" this — it is a frozen witness.
+fn old_closed_or_hairline(mesh: &Mesh) -> bool {
+    type K = (i64, i64, i64);
+    let key = |i: u32| -> K {
+        let b = i as usize * 3;
+        let q = |v: f32| (v as f64 / 1.0e-4).round() as i64;
+        (
+            q(mesh.positions[b]),
+            q(mesh.positions[b + 1]),
+            q(mesh.positions[b + 2]),
+        )
+    };
+    let mut edges: std::collections::HashMap<(K, K), i64> = std::collections::HashMap::new();
+    for tri in mesh.indices.chunks_exact(3) {
+        let (ka, kb, kc) = (key(tri[0]), key(tri[1]), key(tri[2]));
+        if ka == kb || kb == kc || kc == ka {
+            continue;
+        }
+        for (x, y) in [(ka, kb), (kb, kc), (kc, ka)] {
+            *edges.entry((x, y)).or_insert(0) += 1;
+            *edges.entry((y, x)).or_insert(0) -= 1;
+        }
+    }
+    if edges.is_empty() {
+        return false;
+    }
+    let mut bad: Vec<(K, K, i64)> = Vec::new();
+    for (&(a, b), &c) in edges.iter() {
+        if c > 0 {
+            bad.push((a, b, c));
+        }
+    }
+    if bad.is_empty() {
+        return true;
+    }
+    if bad.len() > 64 {
+        return false;
+    }
+    let p = |k: K| [k.0 as f64, k.1 as f64, k.2 as f64];
+    let dist_pt_seg = |x: [f64; 3], a: [f64; 3], b: [f64; 3]| -> f64 {
+        let ab = sub(b, a);
+        let l2 = dot(ab, ab);
+        if l2 <= 0.0 {
+            return norm(sub(x, a));
+        }
+        let t = (dot(sub(x, a), ab) / l2).clamp(0.0, 1.0);
+        norm(sub(x, add(a, scale(ab, t))))
+    };
+    for (i, &(a, b, _)) in bad.iter().enumerate() {
+        let mid = scale(add(p(a), p(b)), 0.5);
+        let dir_i = sub(p(b), p(a));
+        let mut covered = false;
+        for (j, &(c, d, _)) in bad.iter().enumerate() {
+            if i == j {
+                continue;
+            }
+            if dot(dir_i, sub(p(d), p(c))) >= 0.0 {
+                continue;
+            }
+            if dist_pt_seg(mid, p(c), p(d)) <= 2.0 {
+                covered = true;
+                break;
+            }
+        }
+        if !covered {
+            return false;
+        }
+    }
+    true
+}
+
+/// A LONG unmatched boundary edge (`A→B`, 10 m along +x on the grid line y=0)
+/// whose midpoint is merely GRAZED by a reverse-oriented edge that runs 0.3 mm
+/// (3 grid units) off that line. The old midpoint-only test declared `A→B`
+/// "covered" — the reverse edge passes 0.15 mm from the midpoint — and admitted
+/// this open triangle as watertight, the exact hole the whole prism safety net
+/// leans on. The tightened test groups edges by their supporting LINE: the
+/// reverse edge is NOT collinear with `A→B` (its far endpoint sits 3 grid units
+/// off, beyond the 2-unit slack), so `A→B` is genuinely uncovered along its own
+/// line and the surface is correctly rejected.
+#[test]
+fn hairline_long_edge_grazed_by_offline_reverse_now_rejected() {
+    // Single open triangle: base A→B on y=0, apex 3 grid units off the line.
+    let m = mesh_from_tris(&[[[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [10.0, 0.000_3, 0.0]]]);
+    assert!(
+        old_closed_or_hairline(&m),
+        "the OLD midpoint test wrongly accepted the grazed long edge"
+    );
+    assert!(
+        !closed_or_hairline(&m),
+        "the tightened test must reject the genuinely-open long edge"
+    );
+}
+
+/// Regression guard for the tightening: a genuine near-collinear hairline —
+/// where the reverse edge DOES lie along the boundary line (0.1 mm / 1 grid
+/// unit off, inside the 2-unit slack) and fully covers it — must still be
+/// accepted, so the stricter self-check does not needlessly defer real
+/// hairline hosts to the exact path.
+#[test]
+fn hairline_true_collinear_cover_still_accepted() {
+    let m = mesh_from_tris(&[[[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [10.0, 0.000_1, 0.0]]]);
+    assert!(
+        closed_or_hairline(&m),
+        "a near-collinear fully-covered hairline must remain accepted"
+    );
+}

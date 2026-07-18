@@ -212,7 +212,7 @@ fn norm(a: V3) -> f64 {
 #[inline]
 fn normalize(a: V3) -> Option<V3> {
     let n = norm(a);
-    if n < 1.0e-12 {
+    if !n.is_finite() || n < 1.0e-12 {
         None
     } else {
         Some(scale(a, 1.0 / n))
@@ -350,37 +350,131 @@ fn closed_or_hairline(mesh: &Mesh) -> bool {
         return false; // way past hairline territory
     }
     let p = |k: K| [k.0 as f64, k.1 as f64, k.2 as f64]; // grid units (0.1 mm)
-    let dist_pt_seg = |x: V3, a: V3, b: V3| -> f64 {
-        let ab = sub(b, a);
-        let l2 = dot(ab, ab);
-        if l2 <= 0.0 {
-            return norm(sub(x, a));
-        }
-        let t = (dot(sub(x, a), ab) / l2).clamp(0.0, 1.0);
-        norm(sub(x, add(a, scale(ab, t))))
+
+    // Rigorous hairline test. A hairline (T-junction) boundary is one where the
+    // uncancelled directed edges, viewed as a 1-D SIGNED measure along each
+    // supporting line, net to ZERO everywhere: every stretch covered by an edge
+    // running one way is covered the SAME number of times by edges running the
+    // other way (two adjacent faces subdividing a shared line differently). A
+    // genuine hole — or a boundary edge only PARTIALLY covered, or covered the
+    // wrong number of times — leaves a stretch with nonzero net coverage and
+    // fails. This is strictly stronger than the old midpoint-proximity test,
+    // which a LONG unmatched edge could spoof merely by having a SHORT reverse
+    // edge sit near its midpoint (the short edge "covered" a single point, never
+    // the whole interval, and multiplicity was ignored entirely).
+    const COLLINEAR_TOL: f64 = 2.0; // grid units (~0.2 mm) perpendicular slack
+    const T_EPS: f64 = 1.0e-6; // grid units: ignore sub-interval slivers
+
+    struct Seg {
+        a: V3,
+        b: V3,
+        m: i64,
+    }
+    let segs: Vec<Seg> = bad
+        .iter()
+        .map(|&(a, b, c)| Seg {
+            a: p(a),
+            b: p(b),
+            m: c,
+        })
+        .collect();
+
+    // Perpendicular distance from point `x` to the infinite line `(o, dir)`
+    // (`dir` unit). Perp distance is convex along a segment, so if BOTH
+    // endpoints of a segment are within tol of a line, the whole segment is —
+    // that is our collinearity-coincidence test (no separate parallel check
+    // needed, and it correctly rejects a segment that merely crosses the line).
+    let perp = |x: V3, o: V3, dir: V3| -> f64 {
+        let w = sub(x, o);
+        let along = dot(w, dir);
+        norm(sub(w, scale(dir, along)))
     };
-    // Every bad edge's midpoint must lie ON some other bad edge running the
-    // OPPOSITE way (net sign of the same orientation negative ⇒ its positive
-    // form goes the other direction along the shared line).
-    for (i, &(a, b, _)) in bad.iter().enumerate() {
-        let mid = scale(add(p(a), p(b)), 0.5);
-        let dir_i = sub(p(b), p(a));
-        let mut covered = false;
-        for (j, &(c, d, _)) in bad.iter().enumerate() {
-            if i == j {
-                continue;
-            }
-            // Opposite direction along ~the same line (the chain runs back).
-            if dot(dir_i, sub(p(d), p(c))) >= 0.0 {
-                continue;
-            }
-            if dist_pt_seg(mid, p(c), p(d)) <= 2.0 {
-                covered = true;
-                break;
+
+    struct Line {
+        o: V3,
+        dir: V3,
+        members: Vec<usize>,
+    }
+    // Seed lines from the LONGEST segments first: a long edge fixes a stable
+    // direction, so its collinear short neighbours join it rather than each
+    // spawning a slightly-rotated line of its own (greedy fragmentation would
+    // split a genuinely-covered boundary across groups and report phantom gaps).
+    let mut order: Vec<usize> = (0..segs.len()).collect();
+    order.sort_by(|&i, &j| {
+        let li = dot(sub(segs[i].b, segs[i].a), sub(segs[i].b, segs[i].a));
+        let lj = dot(sub(segs[j].b, segs[j].a), sub(segs[j].b, segs[j].a));
+        lj.partial_cmp(&li).unwrap()
+    });
+    let mut lines: Vec<Line> = Vec::new();
+    'seg: for si in order {
+        let s = &segs[si];
+        let Some(sdir) = normalize(sub(s.b, s.a)) else {
+            // Degenerate (zero-length) bad edge: cannot seal anything → defer.
+            return false;
+        };
+        for line in lines.iter_mut() {
+            if perp(s.a, line.o, line.dir) <= COLLINEAR_TOL
+                && perp(s.b, line.o, line.dir) <= COLLINEAR_TOL
+            {
+                line.members.push(si);
+                continue 'seg;
             }
         }
-        if !covered {
-            return false;
+        lines.push(Line {
+            o: s.a,
+            dir: sdir,
+            members: vec![si],
+        });
+    }
+
+    // Sweep each line's signed multiplicity coverage. At every point along the
+    // line the signed count of covering edges (this line's `+dir` edges minus
+    // its `-dir` edges, weighted by multiplicity) must net to ZERO — the exact
+    // T-junction signature. We track the longest CONTIGUOUS mis-covered run and
+    // reject once it exceeds `GAP_TOL`: a hole, a partially-covered long edge,
+    // or a multiply-covered stretch leaves a macroscopic run, whereas the ≤0.2mm
+    // sub-grid jitter of a genuine hairline stays inside the same quantization
+    // slack the collinearity grouping already allows. (This deliberately still
+    // admits the hosts whose exact-kernel meshing is itself not undirected-
+    // watertight — the documented reason the hairline gate exists — while the
+    // old midpoint test's spoof, a long edge grazed only near its midpoint by a
+    // short reverse edge, leaves a run of nearly the whole edge and is rejected.)
+    const GAP_TOL: f64 = COLLINEAR_TOL; // 2 grid units (~0.2 mm)
+    for line in &lines {
+        let mut ints: Vec<(f64, f64, i64)> = Vec::with_capacity(line.members.len());
+        let mut breaks: Vec<f64> = Vec::with_capacity(line.members.len() * 2);
+        for &si in &line.members {
+            let s = &segs[si];
+            let ta = dot(sub(s.a, line.o), line.dir);
+            let tb = dot(sub(s.b, line.o), line.dir);
+            let sign = if tb >= ta { 1 } else { -1 };
+            ints.push((ta.min(tb), ta.max(tb), sign * s.m));
+            breaks.push(ta);
+            breaks.push(tb);
+        }
+        breaks.sort_by(|x, y| x.partial_cmp(y).unwrap());
+        let mut run = 0.0_f64;
+        for w in breaks.windows(2) {
+            let (lo, hi) = (w[0], w[1]);
+            let len = hi - lo;
+            if len <= T_EPS {
+                continue;
+            }
+            let mid = 0.5 * (lo + hi);
+            let mut sum = 0i64;
+            for &(ilo, ihi, sm) in &ints {
+                if ilo - T_EPS <= mid && mid <= ihi + T_EPS {
+                    sum += sm;
+                }
+            }
+            if sum != 0 {
+                run += len;
+                if run > GAP_TOL {
+                    return false;
+                }
+            } else {
+                run = 0.0;
+            }
         }
     }
     true
@@ -420,6 +514,13 @@ fn tri_volume6(tris: &[PTri]) -> f64 {
 /// Promote a `Mesh` to the f64 triangle list, folding nothing (the mesh is
 /// taken in its own frame — `origin` semantics are preserved by the caller).
 fn ptris_from_mesh(mesh: &Mesh) -> Option<Vec<PTri>> {
+    // Reject structurally malformed meshes outright: `chunks_exact(3)` below
+    // silently drops any trailing partial triple, so a positions/indices length
+    // that is not a multiple of 3 would rebuild the solid missing its tail data
+    // while every emitted index still passed its bounds check.
+    if mesh.positions.len() % 3 != 0 || mesh.indices.len() % 3 != 0 {
+        return None;
+    }
     let vc = mesh.positions.len() / 3;
     let have_normals = mesh.normals.len() == mesh.positions.len();
     let mut out = Vec::with_capacity(mesh.indices.len() / 3);
@@ -2802,12 +2903,16 @@ impl GeometryRouter {
                 }
             }
         }
-        const MERGE_TOL: f64 = 2.0e-3; // 2 mm: leaf-half interfaces are flush
+        // Profile-equality fusion must weld on NUMERICAL coincidence, not a 2 mm
+        // geometric slack: at 2 mm two genuinely distinct leaf profiles could be
+        // declared equal and fused, silently collapsing a real slab boundary. Use
+        // the same 8·SNAP_GRID weld the depth-concatenation gate already uses.
+        const PROFILE_FUSE_TOL: f64 = 8.0 * crate::kernel::mesh_bridge::SNAP_GRID;
         loop {
             let mut merged_pair: Option<(usize, usize, PrismFrame)> = None;
             'search: for i in 0..cands.len() {
                 for j in (i + 1)..cands.len() {
-                    if let Some(m) = try_merge_prisms(&cands[i].pf, &cands[j].pf, MERGE_TOL) {
+                    if let Some(m) = try_merge_prisms(&cands[i].pf, &cands[j].pf, PROFILE_FUSE_TOL) {
                         merged_pair = Some((i, j, m));
                         break 'search;
                     }

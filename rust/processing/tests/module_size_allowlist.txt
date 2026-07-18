@@ -122,7 +122,15 @@
 # re-audit AFTER clean_degenerate so the EMITTED mesh is validated — keeping the
 # already-closed pre-clean construction when hygiene would crack it (vs deferring
 # the whole host to the exact kernel), which preserves the analytic hit-rate.
-    2854 rust/geometry/src/router/voids/prism_cut.rs
+# +147: #1806 CodeRabbit review guards — validate profile-edge extensions stay
+# SIMPLE and still contain the authored profile (ring_is_simple + boundary-
+# tolerant point_in_or_on/ring_contains_ring; a folded non-convex ring passes
+# ccw_area); prefilter occupancy against the SUPPLIED footprint bbox not pf.bb;
+# merge prisms only across an identical basis (u/v/d), not just a shared depth
+# axis; carry the host face normal onto resolve_crossings' new points; and
+# feature-gate the process-global diagnostic counters (default build carries no
+# hot-path atomics — also removes the parallel-test race).
+    3001 rust/geometry/src/router/voids/prism_cut.rs
 # probe.rs +134: the 2D bool-path host/opening extraction — `extruded_solid_from_item`
 # (unwrap IfcMappedItem chains to a single IfcExtrudedAreaSolid + composed transform),
 # `host_extruded_solid` and `opening_extruded_solids` (single-body eligibility gates).

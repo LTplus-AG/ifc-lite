@@ -59,7 +59,6 @@
 //! kernel (A/B measurement). Default ON; wasm has no env, so the default holds
 //! on both targets.
 
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::OnceLock;
 
 use super::geom::opening_mesh_thinnest_axis_dir;
@@ -76,62 +75,104 @@ pub(super) fn enabled() -> bool {
     *ON.get_or_init(|| std::env::var("IFC_LITE_PRISM_CUT").as_deref() != Ok("0"))
 }
 
-static FIRES: AtomicU64 = AtomicU64::new(0);
-static OPENINGS_ANALYTIC: AtomicU64 = AtomicU64::new(0);
-static OPENINGS_RESIDUAL: AtomicU64 = AtomicU64::new(0);
+// ─────────────────────────── diagnostic counters ────────────────────────────
+// Per the geometry-crate convention, telemetry is compiled in ONLY under an
+// observability feature (`observability` / `csg_capture` / `debug_geometry`).
+// The default build carries no process-global atomics on the hot path — no
+// per-opening atomic traffic, and no shared mutable state for concurrent unit
+// tests to race on. `take_prism_stats` / `take_prism_defers` stay public in
+// both configurations (return zeros when the feature is off) so the crate's
+// exported surface is stable; unit tests assert path coverage through
+// `try_prism_cut`'s RETURN VALUE, not these counters.
 
-/// Defer-reason counters (diagnostic only): indices into [`DEFER_NAMES`].
-const DEFER_NAMES: [&str; 10] = [
-    "host_not_closed",
-    "host_promote_fail",
-    "op_not_prism",
-    "op_tiny",
-    "op_no_overlap",
-    "op_engulf",
-    "op_veto_overlap",
-    "cut_cdt_fail",
-    "cut_vol_fail",
-    "out_not_closed",
-];
-static DEFERS: [AtomicU64; 10] = [
-    AtomicU64::new(0),
-    AtomicU64::new(0),
-    AtomicU64::new(0),
-    AtomicU64::new(0),
-    AtomicU64::new(0),
-    AtomicU64::new(0),
-    AtomicU64::new(0),
-    AtomicU64::new(0),
-    AtomicU64::new(0),
-    AtomicU64::new(0),
-];
+#[cfg(any(feature = "observability", feature = "csg_capture", feature = "debug_geometry"))]
+mod diag {
+    use std::sync::atomic::{AtomicU64, Ordering};
 
-#[inline]
-fn defer(i: usize) {
-    DEFERS[i].fetch_add(1, Ordering::Relaxed);
+    static FIRES: AtomicU64 = AtomicU64::new(0);
+    static OPENINGS_ANALYTIC: AtomicU64 = AtomicU64::new(0);
+    static OPENINGS_RESIDUAL: AtomicU64 = AtomicU64::new(0);
+
+    /// Defer-reason counters (diagnostic only): indices into [`DEFER_NAMES`].
+    const DEFER_NAMES: [&str; 10] = [
+        "host_not_closed",
+        "host_promote_fail",
+        "op_not_prism",
+        "op_tiny",
+        "op_no_overlap",
+        "op_engulf",
+        "op_veto_overlap",
+        "cut_cdt_fail",
+        "cut_vol_fail",
+        "out_not_closed",
+    ];
+    static DEFERS: [AtomicU64; 10] = [
+        AtomicU64::new(0),
+        AtomicU64::new(0),
+        AtomicU64::new(0),
+        AtomicU64::new(0),
+        AtomicU64::new(0),
+        AtomicU64::new(0),
+        AtomicU64::new(0),
+        AtomicU64::new(0),
+        AtomicU64::new(0),
+        AtomicU64::new(0),
+    ];
+
+    #[inline]
+    pub(super) fn defer(i: usize) {
+        DEFERS[i].fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Record one analytic-cut host: (fires, openings cut, openings residual).
+    #[inline]
+    pub(super) fn record_cut(committed_ops: usize, residual: usize) {
+        FIRES.fetch_add(1, Ordering::Relaxed);
+        OPENINGS_ANALYTIC.fetch_add(committed_ops as u64, Ordering::Relaxed);
+        OPENINGS_RESIDUAL.fetch_add(residual as u64, Ordering::Relaxed);
+    }
+
+    /// Read + reset the per-reason defer counters as (name, count) pairs.
+    pub fn take_prism_defers() -> Vec<(&'static str, u64)> {
+        DEFER_NAMES
+            .iter()
+            .enumerate()
+            .map(|(i, n)| (*n, DEFERS[i].swap(0, Ordering::Relaxed)))
+            .collect()
+    }
+
+    /// Read + reset the prism-path telemetry: (hosts cut via the prism path,
+    /// openings subtracted analytically, openings routed to the exact residual
+    /// on prism-cut hosts). Process-global; the perf harness reports the
+    /// fast-path hit-rate from it. Relaxed atomics — a stale read under
+    /// concurrency only mis-reports a diagnostic count, never geometry.
+    pub fn take_prism_stats() -> (u64, u64, u64) {
+        (
+            FIRES.swap(0, Ordering::Relaxed),
+            OPENINGS_ANALYTIC.swap(0, Ordering::Relaxed),
+            OPENINGS_RESIDUAL.swap(0, Ordering::Relaxed),
+        )
+    }
 }
 
-/// Read + reset the per-reason defer counters as (name, count) pairs.
-pub fn take_prism_defers() -> Vec<(&'static str, u64)> {
-    DEFER_NAMES
-        .iter()
-        .enumerate()
-        .map(|(i, n)| (*n, DEFERS[i].swap(0, Ordering::Relaxed)))
-        .collect()
+#[cfg(not(any(feature = "observability", feature = "csg_capture", feature = "debug_geometry")))]
+mod diag {
+    #[inline]
+    pub(super) fn defer(_i: usize) {}
+    #[inline]
+    pub(super) fn record_cut(_committed_ops: usize, _residual: usize) {}
+    /// Telemetry disabled in the default build; the perf harness must enable an
+    /// observability feature to read real counts.
+    pub fn take_prism_defers() -> Vec<(&'static str, u64)> {
+        Vec::new()
+    }
+    pub fn take_prism_stats() -> (u64, u64, u64) {
+        (0, 0, 0)
+    }
 }
 
-/// Read + reset the prism-path telemetry: (hosts cut via the prism path,
-/// openings subtracted analytically, openings routed to the exact residual on
-/// prism-cut hosts). Process-global; used by the perf harness to report the
-/// fast-path hit-rate. Relaxed atomics — a stale read under concurrency only
-/// mis-reports a diagnostic count, never geometry.
-pub fn take_prism_stats() -> (u64, u64, u64) {
-    (
-        FIRES.swap(0, Ordering::Relaxed),
-        OPENINGS_ANALYTIC.swap(0, Ordering::Relaxed),
-        OPENINGS_RESIDUAL.swap(0, Ordering::Relaxed),
-    )
-}
+use diag::{defer, record_cut};
+pub use diag::{take_prism_defers, take_prism_stats};
 
 // ─────────────────────────── small f64 vector kit ───────────────────────────
 // Explicit component arithmetic (no nalgebra matrix products) so no FMA can
@@ -1196,8 +1237,16 @@ fn rings_equal(a: &[V2], b: &[V2], tol: f64) -> bool {
 /// split into abutting halves along the wall thickness — cutting the union in
 /// one pass sidesteps their coplanar interface entirely.
 fn try_merge_prisms(a: &PrismFrame, b: &PrismFrame, tol: f64) -> Option<PrismFrame> {
-    if dot(a.d, b.d) < 1.0 - 1.0e-8 {
-        return None; // same authored axis ⇒ same deterministic basis
+    // The merged stack concatenates `hi`'s (u, v)-expressed profiles onto `lo`'s
+    // planes/profiles verbatim, so the two frames must share the SAME basis:
+    // not just a coincident depth axis but coincident in-plane axes too. A
+    // frame rotated about `d` (or with u/v swapped) expresses identical
+    // geometry in incompatible 2D coordinates — stitching them silently
+    // mis-cuts, and the volume self-check (computed in the merged basis) cannot
+    // see it. Require all three basis vectors to align within a tight tol.
+    const BASIS_TOL: f64 = 1.0 - 1.0e-8;
+    if dot(a.d, b.d) < BASIS_TOL || dot(a.u, b.u) < BASIS_TOL || dot(a.v, b.v) < BASIS_TOL {
+        return None; // differing basis/frame ⇒ leave to the veto / exact path
     }
     // Concatenate ONLY at a NUMERICALLY-COINCIDENT interface: depth ranges must
     // touch within PLANE JITTER (f32 + snap-grid roundoff), never the geometric
@@ -1383,11 +1432,74 @@ fn extend_prism_caps(pf: &mut PrismFrame, tris: &[PTri], aabbs: &[(V3, V3)]) {
 /// coplanar with host skin (parity garbage), with it the threshold band falls
 /// cleanly inside the cutter. Corners are re-derived by intersecting the
 /// translated edge line with the (unchanged) neighbour edge lines.
+/// Point-in-or-on-polygon: inside by ray parity OR within `eps` of any edge.
+/// The boundary tolerance matters for the extension containment check: a
+/// re-derived corner is COLLINEAR with the authored corner it replaces (both
+/// lie on the shared neighbour-edge line), so the authored corner sits exactly
+/// on `cand`'s boundary — a strict interior test would wrongly reject it.
+fn point_in_or_on(p: V2, poly: &[V2], eps: f64) -> bool {
+    let n = poly.len();
+    let eps2 = eps * eps;
+    for i in 0..n {
+        let a = poly[i];
+        let b = poly[(i + 1) % n];
+        let ab = [b[0] - a[0], b[1] - a[1]];
+        let ap = [p[0] - a[0], p[1] - a[1]];
+        let len2 = ab[0] * ab[0] + ab[1] * ab[1];
+        if len2 < 1.0e-20 {
+            if ap[0] * ap[0] + ap[1] * ap[1] < eps2 {
+                return true;
+            }
+            continue;
+        }
+        let t = ((ap[0] * ab[0] + ap[1] * ab[1]) / len2).clamp(0.0, 1.0);
+        let proj = [a[0] + ab[0] * t, a[1] + ab[1] * t];
+        let dx = p[0] - proj[0];
+        let dy = p[1] - proj[1];
+        if dx * dx + dy * dy < eps2 {
+            return true;
+        }
+    }
+    pip(p, poly)
+}
+
+/// Whether `outer` contains every vertex of `inner` (boundary-inclusive).
+fn ring_contains_ring(outer: &[V2], inner: &[V2], eps: f64) -> bool {
+    inner.iter().all(|&p| point_in_or_on(p, outer, eps))
+}
+
+/// Whether a 2D ring is a SIMPLE polygon: no pair of non-adjacent edges
+/// crosses. Adjacent edges (sharing a vertex) are exempt. Used to reject a
+/// profile-edge extension that folded a non-convex ring back on itself.
+fn ring_is_simple(ring: &[V2]) -> bool {
+    let n = ring.len();
+    if n < 3 {
+        return false;
+    }
+    for i in 0..n {
+        let (a, b) = (ring[i], ring[(i + 1) % n]);
+        for j in (i + 1)..n {
+            // Skip edges adjacent to edge i (they legitimately share a vertex).
+            if j == (i + 1) % n || (j + 1) % n == i {
+                continue;
+            }
+            let (c, d) = (ring[j], ring[(j + 1) % n]);
+            if seg_cross_param(a, b, c, d).is_some() {
+                return false;
+            }
+        }
+    }
+    true
+}
+
 fn extend_profile_edges(pf: &mut PrismFrame, tris: &[PTri], aabbs: &[(V3, V3)]) {
     let mag = pf.corner_mag();
     let band = 2.0e-4_f64.max(mag * 4.0e-7);
     for k in 0..pf.profiles.len() {
         let (w_a, w_b) = (pf.planes[k], pf.planes[k + 1]);
+        // Authored ring for this slab: every extension must keep containing it
+        // (a moved edge on a non-convex ring can otherwise shrink the profile).
+        let authored = pf.profiles[k].clone();
         let mut i = 0usize;
         while i < pf.profiles[k].len() {
             let prof = pf.profiles[k].clone();
@@ -1464,8 +1576,24 @@ fn extend_profile_edges(pf: &mut PrismFrame, tris: &[PTri], aabbs: &[(V3, V3)]) 
                 i += 1;
                 continue;
             };
-            pf.profiles[k][i] = na;
-            pf.profiles[k][(i + 1) % n] = nb;
+            // Commit the extension only if the resulting ring stays SIMPLE and
+            // still contains the authored profile. `ccw_area` accepts a
+            // self-intersecting ring (positive signed area), so the downstream
+            // volume self-check cannot catch an over/under-cut from a folded
+            // non-convex ring — validate here and keep the un-extended edge
+            // otherwise.
+            let mut cand = pf.profiles[k].clone();
+            cand[i] = na;
+            cand[(i + 1) % n] = nb;
+            // Boundary-tolerant containment: the authored corners are collinear
+            // with (and on the boundary of) `cand`, so a strict interior test
+            // is unusable — `contain_eps` (≫ the collinearity float error, ≪
+            // any real shrink) accepts a genuine outward growth and rejects a
+            // reflex corner that pulled the profile inward.
+            let contain_eps = 1.0e-6 * (1.0 + mag);
+            if ring_is_simple(&cand) && ring_contains_ring(&cand, &authored, contain_eps) {
+                pf.profiles[k] = cand;
+            }
             i += 1;
         }
         // Refresh the slab area (the interior point stays valid — the profile
@@ -1535,7 +1663,11 @@ fn tri_touches_slab_footprint(
     // 2D overlap of the clipped (convex) polygon with the profile: vertex of
     // one inside the other, or any edge pair crossing.
     let poly2: Vec<V2> = poly.iter().map(|p| pf.to2(*p)).collect();
-    // bbox prefilter with pad.
+    // bbox prefilter with pad — against the SUPPLIED `profile` footprint, NOT
+    // `pf.bb`. The profile-edge extension passes an outward band that can lie
+    // entirely OUTSIDE the prism's overall bbox; prefiltering on pf.bb would
+    // wrongly report "empty" and let the extension sweep through nearby host
+    // material.
     let mut lo = [f64::INFINITY; 2];
     let mut hi = [f64::NEG_INFINITY; 2];
     for p in &poly2 {
@@ -1544,10 +1676,18 @@ fn tri_touches_slab_footprint(
             hi[k] = hi[k].max(p[k]);
         }
     }
-    if hi[0] < pf.bb.0[0] - pad
-        || lo[0] > pf.bb.1[0] + pad
-        || hi[1] < pf.bb.0[1] - pad
-        || lo[1] > pf.bb.1[1] + pad
+    let mut footprint_lo = [f64::INFINITY; 2];
+    let mut footprint_hi = [f64::NEG_INFINITY; 2];
+    for p in profile {
+        for k in 0..2 {
+            footprint_lo[k] = footprint_lo[k].min(p[k]);
+            footprint_hi[k] = footprint_hi[k].max(p[k]);
+        }
+    }
+    if hi[0] < footprint_lo[0] - pad
+        || lo[0] > footprint_hi[0] + pad
+        || hi[1] < footprint_lo[1] - pad
+        || lo[1] > footprint_hi[1] + pad
     {
         return false;
     }
@@ -2066,11 +2206,20 @@ fn decompose_tri(
     segments.sort();
     segments.dedup();
     let t0 = t.p[0];
+    // `resolve_crossings` interns any new seam×seam / T-junction points with a
+    // placeholder [0,0,1] normal. These points land on the RETAINED host
+    // surface (`out`), so a Z-up placeholder on a non-horizontal face shades
+    // wrong. Overwrite every point it created with the host triangle's own
+    // face normal.
+    let existing_points = pool.nrm.len();
     resolve_crossings(
         &mut pool,
         |q| add(t0, add(scale(u, q[0]), scale(v, q[1]))),
         &mut segments,
     );
+    for n in pool.nrm.iter_mut().skip(existing_points) {
+        *n = face_n;
+    }
 
     let Some((pts2, idx2)) = triangulate_pslg(&pool.pts2, &segments) else {
         return false;
@@ -2831,9 +2980,7 @@ impl GeometryRouter {
             .map(|&i| ctx.merged_openings[i].clone())
             .collect();
 
-        FIRES.fetch_add(1, Ordering::Relaxed);
-        OPENINGS_ANALYTIC.fetch_add(committed_ops as u64, Ordering::Relaxed);
-        OPENINGS_RESIDUAL.fetch_add(residual.len() as u64, Ordering::Relaxed);
+        record_cut(committed_ops, residual.len());
 
         let residual_ctx = if residual.is_empty() {
             None

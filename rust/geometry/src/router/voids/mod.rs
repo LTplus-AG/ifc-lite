@@ -944,11 +944,12 @@ impl GeometryRouter {
             }
         }
 
-        // ANALYTIC CONVEX-PRISM fast path (flag-gated): each opening whose
-        // cutter is a genuine oriented rectangular box is subtracted from the
-        // host MESH analytically — host-shape-agnostic, so it fires on the
-        // faceted-BREP / clipped / multi-item hosts the parametric and 2D
-        // paths above cannot serve (the ISSUE_098 Poroton walls). Tried after
+        // ANALYTIC PRISM fast path (flag-gated): each opening whose cutter is
+        // a genuine stepped-extrusion prism (plain boxes AND the rebated
+        // masonry windows) is subtracted from the host MESH analytically —
+        // host-shape-agnostic, so it fires on the faceted-BREP / clipped /
+        // multi-item hosts the parametric and 2D paths above cannot serve
+        // (the ISSUE_098 Poroton walls). Tried after
         // them so their proven outputs stay byte-identical; ORIGIN-AWARE (the
         // cut runs in the host's own local frame, cutters relativized in f64,
         // `origin` re-stamped). Ineligible openings come back as a residual

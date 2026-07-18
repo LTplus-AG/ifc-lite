@@ -1352,6 +1352,54 @@ pub(crate) fn triangulate_constrained(
     Some((out_pts, idx))
 }
 
+/// Conforming (constrained) Delaunay triangulation of an arbitrary PSLG —
+/// points plus non-crossing constraint segments — returning EVERY triangle of
+/// the convex hull, with NO inside/outside domain filtering. The caller
+/// classifies each output triangle itself (e.g. by a centroid test).
+///
+/// Unlike [`triangulate_constrained`] the segments need not form closed rings:
+/// the prism-cut path passes OPEN seam polylines (host-surface cross-sections)
+/// as constraints, which would corrupt the ring depth-parity flood that
+/// [`Cdt::emit`] uses — so this entry point deliberately skips it. Vertices are
+/// exactly the input points in input order (no Steiner insertion); triangles
+/// referencing the internal super-triangle are dropped and each triangle is
+/// emitted CCW. `None` when the CDT cannot be built (degenerate input, crossing
+/// constraints) — callers fall back to their exact path.
+pub(crate) fn triangulate_pslg(
+    points: &[Point2<f64>],
+    segments: &[(usize, usize)],
+) -> Option<(Vec<Point2<f64>>, Vec<usize>)> {
+    let pts: Vec<P2> = points.iter().map(p2).collect();
+    let cdt = Cdt::build_from(pts, segments)?;
+    let keep_upto = cdt.super_base;
+    let mut indices: Vec<usize> = Vec::new();
+    for tri in &cdt.tris {
+        if !tri.alive {
+            continue;
+        }
+        let v = tri.v;
+        if v.iter().any(|&x| x >= keep_upto) {
+            continue;
+        }
+        let a = cdt.points[v[0]];
+        let b = cdt.points[v[1]];
+        let c = cdt.points[v[2]];
+        if orient(a, b, c) >= 0 {
+            indices.extend_from_slice(&[v[0], v[1], v[2]]);
+        } else {
+            indices.extend_from_slice(&[v[0], v[2], v[1]]);
+        }
+    }
+    if indices.is_empty() {
+        return None;
+    }
+    let out_pts: Vec<Point2<f64>> = cdt.points[..keep_upto]
+        .iter()
+        .map(|p| Point2::new(p[0], p[1]))
+        .collect();
+    Some((out_pts, indices))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

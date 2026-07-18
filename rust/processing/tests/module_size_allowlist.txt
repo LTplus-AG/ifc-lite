@@ -29,10 +29,15 @@
 # +45: reject non-positive SegmentLength/HorizontalLength (malformed-input NaN guard) + regression test.
     1170 rust/geometry/src/alignment.rs
 # +19: split_on_edge now sets a failed flag and bails to the ear-clip fallback instead of the lone .expect() panic.
-     1569 rust/geometry/src/cdt.rs
+# +48: triangulate_pslg — conforming CDT over an arbitrary PSLG (open seam
+# polylines as constraints, all hull triangles emitted, caller classifies);
+# the prism-cut path's cap/decompose triangulator. Skips the ring depth-parity
+# flood that open segments would corrupt.
+     1617 rust/geometry/src/cdt.rs
      894 rust/geometry/src/csg/consolidate.rs
      947 rust/geometry/src/csg/mod.rs
-     1142 rust/geometry/src/extrusion.rs
+ # -73: #1806 watertight-extrude tests split out to extrusion_watertight_tests.rs (ratchet-exempt); budget refreshed downward.
+    1069 rust/geometry/src/extrusion.rs
 # +4: refine_high_aspect_slivers routes its rebuild through Mesh::rebuilt_like so a slivered host keeps its local-frame origin + #1474 placement capture (B7 metadata-loss fix).
 # +1: SNAP_GRID/NORMAL_QUANT single-homed to kernel::mesh_bridge / crate::grid (import replaces local const; doc rewrap costs a line).
           778 rust/geometry/src/facet_weld.rs
@@ -94,7 +99,18 @@
 # +32: engulf-cutter #635 AABB box-cut suppression on a #1109 budget trip (drop `!capped`) + its rewritten rationale comment and a diag_warn! else-branch (correctness: an engulfing box-cut would DELETE the host).
 # +5: ENGULF_TOLERANCE / ENGULF_TOLERANCE_F32 single-homed (3 sites shared one literal 0.03 tolerance, now one named const each).
 # +2: #1623 Phase 2 — route the voided sub-mesh path through process_element_with_submeshes_impl(allow_instancing=false) so cut occurrences never instance an un-cut template.
-     1985 rust/geometry/src/router/voids/mod.rs
+# +42: analytic convex-prism fast-path wiring — module decl + apply_void_context
+# call site with residual composition and cut-effect diagnostics parity.
+     2027 rust/geometry/src/router/voids/mod.rs
+# NEW: analytic prism (stepped-extrusion) subtraction on the host mesh — the
+# CSG-heavy-corpus lever (ISSUE_098/129: exact void booleans are ~75-82% of
+# geometry time; rebated masonry openings on brep/clipped hosts had no fast
+# path). One cohesive algorithm: stack detection via normal clustering +
+# cross-section slicing, canonical-order crossing cache, conforming CDT
+# decomposition, parity-classified reveal caps with cross-face breakpoint
+# injection, flush cap/edge extension, volume-identity + closed-surface
+# self-checks. Tests live in prism_cut_tests.rs (exempt).
+    2742 rust/geometry/src/router/voids/prism_cut.rs
      755 rust/geometry/src/router/voids/probe.rs
     1002 rust/geometry/src/router/voids/synthesis.rs
     1472 rust/geometry/src/space_dcel/mod.rs

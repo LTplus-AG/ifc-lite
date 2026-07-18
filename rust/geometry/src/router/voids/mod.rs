@@ -15,10 +15,12 @@ use rustc_hash::FxHashMap;
 mod aabb_clip;
 mod bool2d_path;
 mod geom;
+mod prism_cut;
 mod probe;
 mod synthesis;
 
 pub use bool2d_path::take_bool2d_stats;
+pub use prism_cut::{take_prism_defers, take_prism_stats};
 #[cfg(test)]
 mod reveal_tests;
 
@@ -938,6 +940,46 @@ impl GeometryRouter {
                 return match self.bool2d_residual(cut) {
                     None => holed,
                     Some(residual) => self.apply_void_context(holed, residual, element_id),
+                };
+            }
+        }
+
+        // ANALYTIC CONVEX-PRISM fast path (flag-gated): each opening whose
+        // cutter is a genuine oriented rectangular box is subtracted from the
+        // host MESH analytically — host-shape-agnostic, so it fires on the
+        // faceted-BREP / clipped / multi-item hosts the parametric and 2D
+        // paths above cannot serve (the ISSUE_098 Poroton walls). Tried after
+        // them so their proven outputs stay byte-identical; ORIGIN-AWARE (the
+        // cut runs in the host's own local frame, cutters relativized in f64,
+        // `origin` re-stamped). Ineligible openings come back as a residual
+        // context and are cut by the exact kernel on the analytic result — the
+        // same composition contract as the 2D path (which also routes ITS
+        // residual through this path on recursion, so a 2D host's perpendicular
+        // sleeves take the prism cut too). Any miss falls through to the exact
+        // kernel below with the FULL opening set unchanged.
+        if prism_cut::enabled() {
+            // World bounds + triangle count captured BEFORE the cut so the
+            // per-host diagnostic matches what the exact/rect paths record.
+            let prism_bounds = world_host_bounds(&mesh);
+            let prism_tris_before = mesh.triangle_count();
+            if let Some((cut, residual)) = self.try_prism_cut(&mesh, ctx) {
+                return match residual {
+                    None => {
+                        // Same per-host cut-effect snapshot the exact path
+                        // records, so prism-cut hosts aren't missing from the
+                        // diagnostics.
+                        self.record_host_cut_effect(
+                            element_id,
+                            prism_tris_before,
+                            cut.triangle_count(),
+                            ctx.merged_openings.len(),
+                            prism_bounds,
+                        );
+                        cut
+                    }
+                    // With a residual, the recursive exact pass below records
+                    // the (final) cut-effect snapshot itself.
+                    Some(res) => self.apply_void_context(cut, &res, element_id),
                 };
             }
         }

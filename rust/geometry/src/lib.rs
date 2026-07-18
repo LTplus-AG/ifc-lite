@@ -162,6 +162,7 @@ pub use profile::{Profile2D, Profile2DWithVoids, ProfileType, VoidInfo};
 pub use profile_extractor::{extract_profiles, ExtractedProfile};
 pub use profiles::ProfileProcessor;
 pub use router::take_bool2d_stats;
+pub use router::{take_prism_defers, take_prism_stats};
 pub use router::{
     aggregate_diagnostics, local_frame_set_enabled_override, ClassificationStats,
     GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION,

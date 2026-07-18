@@ -661,7 +661,7 @@ impl GeometryRouter {
     /// solids into one continuous tube whose only caps are the true outer ends, so
     /// the subtract carves a clean through-hole. A no-op for ordinary single-solid
     /// openings (no interior back-to-back cap plane exists).
-    fn remove_internal_membrane(opening_mesh: &Mesh, axis_dir: Vector3<f64>) -> Mesh {
+    pub(super) fn remove_internal_membrane(opening_mesh: &Mesh, axis_dir: Vector3<f64>) -> Mesh {
         let tri_count = opening_mesh.indices.len() / 3;
         if tri_count < 4 {
             return opening_mesh.clone();

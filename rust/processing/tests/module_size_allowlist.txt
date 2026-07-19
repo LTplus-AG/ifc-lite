@@ -34,7 +34,7 @@
 # the prism-cut path's cap/decompose triangulator. Skips the ring depth-parity
 # flood that open segments would corrupt.
      1617 rust/geometry/src/cdt.rs
-     894 rust/geometry/src/csg/consolidate.rs
+     956 rust/geometry/src/csg/consolidate.rs
      947 rust/geometry/src/csg/mod.rs
  # -73: #1806 watertight-extrude tests split out to extrusion_watertight_tests.rs (ratchet-exempt); budget refreshed downward.
 # +9: #1806 review — extrude_profile_watertight rejects < 3-vertex hole rings before

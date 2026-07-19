@@ -53,7 +53,11 @@ import { notifyIfWasmAssetUnavailable, notifyIfWorkerScriptUnavailable } from '.
  * or compilation fails, so non-Vite consumers and offline/edge failures degrade
  * to the previous behaviour rather than breaking.
  */
-let sharedWasmModulePromise: Promise<WebAssembly.Module | null> | null = null;
+// Keyed by the RESOLVED wasm URL, not a single global slot: federation / version
+// skew can load a DIFFERENT binary in the same session, and returning the first
+// compiled module for a later, incompatible URL would initialize the worker's
+// wasm-bindgen glue against the wrong module. One promise per distinct binary.
+const sharedWasmModulePromises = new Map<string, Promise<WebAssembly.Module | null>>();
 
 function resolveWasmUrl(explicitUrl?: string): string | URL | null {
   if (explicitUrl) return explicitUrl;
@@ -71,11 +75,13 @@ function resolveWasmUrl(explicitUrl?: string): string | URL | null {
 }
 
 async function compileSharedWasmModule(explicitUrl?: string): Promise<WebAssembly.Module | null> {
-  if (sharedWasmModulePromise) return sharedWasmModulePromise;
+  if (typeof WebAssembly === 'undefined') return null;
+  const url = resolveWasmUrl(explicitUrl);
+  if (!url) return null;
+  const cacheKey = url instanceof URL ? url.href : url;
+  const cached = sharedWasmModulePromises.get(cacheKey);
+  if (cached) return cached;
   const p = (async (): Promise<WebAssembly.Module | null> => {
-    if (typeof WebAssembly === 'undefined') return null;
-    const url = resolveWasmUrl(explicitUrl);
-    if (!url) return null;
     try {
       if (typeof WebAssembly.compileStreaming === 'function') {
         try {
@@ -95,11 +101,12 @@ async function compileSharedWasmModule(explicitUrl?: string): Promise<WebAssembl
       return null;
     }
   })();
-  sharedWasmModulePromise = p;
+  sharedWasmModulePromises.set(cacheKey, p);
   const result = await p;
-  // Don't cache a failure — let the next load retry (a transient fetch error
-  // shouldn't permanently disable the shared-module fast path for the session).
-  if (result === null) sharedWasmModulePromise = null;
+  // Don't cache a failure — evict ONLY this URL's entry so the next load retries
+  // (a transient fetch error shouldn't permanently disable the shared-module fast
+  // path for the session), while other URLs' successful modules stay cached.
+  if (result === null) sharedWasmModulePromises.delete(cacheKey);
   return result;
 }
 

@@ -1,5 +1,17 @@
 # @ifc-lite/viewer
 
+## 1.33.0
+
+### Minor Changes
+
+- [#1819](https://github.com/LTplus-AG/ifc-lite/pull/1819) [`c570987`](https://github.com/LTplus-AG/ifc-lite/commit/c57098768d27ce08250206f0a55d1d048798c669) Thanks [@xyzbety](https://github.com/xyzbety)! - Update Ribbon icons and styles
+
+### Patch Changes
+
+- Updated dependencies [[`fb99bda`](https://github.com/LTplus-AG/ifc-lite/commit/fb99bda31397cff2fce7077a8553d2247c2dd151), [`74b9cd2`](https://github.com/LTplus-AG/ifc-lite/commit/74b9cd2ae0c8bd7888536c882baf809dd4f9e5d8)]:
+  - @ifc-lite/geometry@3.3.1
+  - @ifc-lite/wasm@4.1.3
+
 ## 1.32.8
 
 ### Patch Changes

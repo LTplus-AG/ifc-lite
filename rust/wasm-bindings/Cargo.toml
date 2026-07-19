@@ -42,14 +42,14 @@ ifc-lite-core.workspace = true
 # same kernel on wasm32 and native. The Manifold C++ kernel and its
 # LLVM/emsdk build prerequisites were removed in the kernel
 # consolidation (docs/architecture/geometry-pipeline.md).
-ifc-lite-geometry = { version = "4.1.2", path = "../geometry", default-features = false, features = [] }
+ifc-lite-geometry = { version = "4.1.3", path = "../geometry", default-features = false, features = [] }
 # Canonical 2D-symbol extractor lives here; the wasm bindings just
 # delegate (issue #843 follow-up — full parity, one implementation).
-ifc-lite-processing = { version = "4.1.2", path = "../processing" }
+ifc-lite-processing = { version = "4.1.3", path = "../processing" }
 # Pure-geometry clash kernel (BVH broad phase + exact triangle narrow phase).
-ifc-lite-clash = { version = "4.1.2", path = "../clash" }
+ifc-lite-clash = { version = "4.1.3", path = "../clash" }
 # Domain-format exporters (HBJSON, OBJ, glTF/GLB, CSV, JSON, JSON-LD, STEP, IFC5, Merged).
-ifc-lite-export = { version = "4.1.2", path = "../export" }
+ifc-lite-export = { version = "4.1.3", path = "../export" }
 js-sys = "=0.3.83"
 rayon = "1.10"
 # `ifc-lite-geometry` uses rayon `par_iter` (e.g. FacetedBrep

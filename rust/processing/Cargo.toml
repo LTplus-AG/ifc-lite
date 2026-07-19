@@ -31,11 +31,11 @@ name = "csg_scaling_bench"
 required-features = ["csg-capture"]
 
 [dependencies]
-ifc-lite-core = { version = "4.1.2", path = "../core" }
+ifc-lite-core = { version = "4.1.3", path = "../core" }
 # CSG runs on the pure-Rust exact kernel inside ifc-lite-geometry on every
 # target (the Manifold C++ kernel was removed in the kernel consolidation —
 # see docs/architecture/geometry-pipeline.md).
-ifc-lite-geometry = { version = "4.1.2", path = "../geometry", default-features = false }
+ifc-lite-geometry = { version = "4.1.3", path = "../geometry", default-features = false }
 rayon = "1.10"
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"

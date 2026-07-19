@@ -1,5 +1,13 @@
 # @ifc-lite/wasm
 
+## 4.1.3
+
+### Patch Changes
+
+- [#1820](https://github.com/LTplus-AG/ifc-lite/pull/1820) [`74b9cd2`](https://github.com/LTplus-AG/ifc-lite/commit/74b9cd2ae0c8bd7888536c882baf809dd4f9e5d8) Thanks [@louistrue](https://github.com/louistrue)! - fix(geometry): void fast-path no longer drops a host's local-frame origin (misplaced walls)
+
+  The analytic prism / coaxial-union void fast paths ([#1806](https://github.com/LTplus-AG/ifc-lite/issues/1806)/[#1815](https://github.com/LTplus-AG/ifc-lite/issues/1815)) run `consolidate_coplanar` on their re-triangulated cut host. That helper rebuilt the mesh into a bare buffer whose `origin`, `rtc_applied`, and [#1474](https://github.com/LTplus-AG/ifc-lite/issues/1474) world-capture defaulted to zero, silently discarding the host's per-element local-frame `origin`. For a local-frame host (the wasm default, `origin != 0`) the whole voided element was then placed at the world origin — e.g. AC20-FZK-Haus's opening-bearing ground-floor walls floated ~6 m off the building. `consolidate_coplanar` only re-triangulates coplanar faces in place, so it now carries the input mesh's frame metadata onto the output (mirroring `refine_high_aspect_slivers`'s `rebuilt_like`); world-frame callers (`origin == 0`, the exact kernel) are unaffected. The fast paths' perf and triangle output are unchanged.
+
 ## 4.1.2
 
 ### Patch Changes

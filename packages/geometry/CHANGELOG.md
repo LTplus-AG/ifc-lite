@@ -1,5 +1,16 @@
 # @ifc-lite/geometry
 
+## 3.3.1
+
+### Patch Changes
+
+- [#1818](https://github.com/LTplus-AG/ifc-lite/pull/1818) [`fb99bda`](https://github.com/LTplus-AG/ifc-lite/commit/fb99bda31397cff2fce7077a8553d2247c2dd151) Thanks [@louistrue](https://github.com/louistrue)! - fix(viewer): share compiled wasm module across workers to kill cold-start wait
+
+  Compile the geometry engine's `WebAssembly.Module` ONCE on the main thread and structured-clone that single compiled module to every geometry + pre-pass worker, which then `initSync` it (cheap) instead of each independently fetching and compiling the ~3.9 MB binary. Previously all N geometry workers plus the pre-pass worker called wasm-bindgen `init()`, so 4-5 parallel cold compiles of a multi-MB module contended on the CPU on a user's first load — producing a multi-second "WASM ready" stagger before any geometry appeared, and on large files enough startup latency to trip the geometry-stream stall watchdog. The worker already accepted a shared module but the path was dead code: it called `initSync({ module_or_path })` while wasm-bindgen's glue destructures `.module`, so it would have thrown `new WebAssembly.Module(undefined)` — and the host never sent a module. Uses `compileStreaming` (compile-while-download), caches the module for the session (federation/reload reuse it), and falls back to per-worker `init()` when the URL can't be resolved or compilation fails, so non-Vite consumers are unaffected. Geometry output is unchanged.
+
+- Updated dependencies [[`74b9cd2`](https://github.com/LTplus-AG/ifc-lite/commit/74b9cd2ae0c8bd7888536c882baf809dd4f9e5d8)]:
+  - @ifc-lite/wasm@4.1.3
+
 ## 3.3.0
 
 ### Minor Changes

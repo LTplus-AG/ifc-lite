@@ -33,6 +33,77 @@ import type { BatchSizingConfig } from './batch-sizing.js';
 import { notifyIfWasmAssetUnavailable, notifyIfWorkerScriptUnavailable } from './wasm-asset-error.js';
 
 /**
+ * Compile the geometry engine's `WebAssembly.Module` ONCE per session and share
+ * that single compiled module to every geometry + pre-pass worker.
+ *
+ * Before this, each of the N geometry workers PLUS the pre-pass worker called
+ * wasm-bindgen `init()`, which fetches and COMPILES the ~3.9 MB binary
+ * independently. Four-to-five parallel compiles of a multi-MB module contend on
+ * the CPU, producing a multi-second "WASM ready" stagger (one worker finishes
+ * ~3 s, the rest ~8-22 s) before any geometry is meshed — and on large files
+ * the extra startup latency tips the geometry stream past the stall watchdog.
+ *
+ * A `WebAssembly.Module` is structured-cloneable and cheap to instantiate per
+ * worker (`initSync`, ~tens of ms), so compiling once on the main thread and
+ * broadcasting the module removes the N× compile entirely.
+ *
+ * Cached module-level so repeated loads in one session (federation, reload,
+ * export) reuse the already-compiled module. Resolves to `null` — the caller
+ * then leaves each worker on its own `init()` — when the URL can't be resolved
+ * or compilation fails, so non-Vite consumers and offline/edge failures degrade
+ * to the previous behaviour rather than breaking.
+ */
+let sharedWasmModulePromise: Promise<WebAssembly.Module | null> | null = null;
+
+function resolveWasmUrl(explicitUrl?: string): string | URL | null {
+  if (explicitUrl) return explicitUrl;
+  try {
+    // Source-aliased (Vite) build: the sibling `@ifc-lite/wasm` package's
+    // binary, resolved relative to THIS module. Vite statically rewrites this
+    // `new URL(..., import.meta.url)` to the emitted, content-hashed asset URL
+    // — the same asset the worker's wasm-bindgen glue resolves. In a plain
+    // tsc/npm build it resolves against dist/ and may 404, which the caller
+    // treats as "no shared module" and falls back to per-worker init.
+    return new URL('../../wasm/pkg/ifc-lite_bg.wasm', import.meta.url);
+  } catch {
+    return null;
+  }
+}
+
+async function compileSharedWasmModule(explicitUrl?: string): Promise<WebAssembly.Module | null> {
+  if (sharedWasmModulePromise) return sharedWasmModulePromise;
+  const p = (async (): Promise<WebAssembly.Module | null> => {
+    if (typeof WebAssembly === 'undefined') return null;
+    const url = resolveWasmUrl(explicitUrl);
+    if (!url) return null;
+    try {
+      if (typeof WebAssembly.compileStreaming === 'function') {
+        try {
+          // Compile WHILE the binary downloads (one streaming fetch + compile
+          // for the whole pool).
+          return await WebAssembly.compileStreaming(fetch(url));
+        } catch {
+          // Some static hosts serve `.wasm` with the wrong MIME type, which
+          // rejects compileStreaming — fall through to the buffer path.
+        }
+      }
+      const resp = await fetch(url);
+      if (!resp.ok) return null;
+      return await WebAssembly.compile(await resp.arrayBuffer());
+    } catch (err) {
+      console.warn('[stream] shared wasm compile failed; workers will self-init:', err);
+      return null;
+    }
+  })();
+  sharedWasmModulePromise = p;
+  const result = await p;
+  // Don't cache a failure — let the next load retry (a transient fetch error
+  // shouldn't permanently disable the shared-module fast path for the session).
+  if (result === null) sharedWasmModulePromise = null;
+  return result;
+}
+
+/**
  * Plan content-affinity routing for one chunk: assign each job (by index) to a
  * worker bucket so that every job sharing an affinity key lands on the SAME
  * worker — across the whole stream, since `keyToWorker` is the caller's sticky
@@ -306,6 +377,11 @@ export async function* processParallel(
 
   yield { type: 'start', totalEstimate: buffer.length / 1000 };
   yield { type: 'model-open', modelID: 0 };
+
+  // Kick off the ONE shared wasm compile immediately so it overlaps the SAB
+  // setup + worker-count planning below; awaited just before the workers init
+  // (see `compileSharedWasmModule`). Null ⇒ each worker self-inits (unchanged).
+  const wasmModulePromise = compileSharedWasmModule(options?.wasmUrls?.wasm);
 
   // SAB sharing — see Tier-1 / fix-RAM history. Three paths:
   //   1. Caller-supplied SAB.
@@ -632,24 +708,38 @@ export async function* processParallel(
   });
   const workerCount = workerCountResult.count;
 
+  // Await the ONE shared compile (started up-front) so every worker instantiates
+  // the SAME module via `initSync` instead of recompiling the binary N+1 times.
+  // `null` (URL unresolved / compile failed) keeps the legacy per-worker `init`.
+  const sharedWasmModule = await wasmModulePromise;
+  if (sharedWasmModule) {
+    console.log('[stream] shared wasm module compiled once — workers initSync (no per-worker recompile)');
+  }
+
   const workers: Worker[] = [];
   for (let i = 0; i < workerCount; i++) {
     const worker = makeGeometryWorker();
     workers.push(worker);
     installWorkerHandlers(worker, i);
-    // Kick off WASM compile concurrently with the pre-pass scan. The
-    // worker's tail-promise serialiser guarantees this `init` completes
-    // before any subsequent `stream-start`/`stream-chunk` runs.
+    // Instantiate WASM. When the host compiled the module once (above), each
+    // worker `initSync`s it (cheap); otherwise it falls back to compiling from
+    // bytes. The worker's tail-promise serialiser guarantees this `init`
+    // completes before any subsequent `stream-start`/`stream-chunk` runs.
     //
-    // `wasmUrl` is forwarded only when the consumer explicitly provided
-    // one — undefined leaves the worker on wasm-bindgen's default
-    // `import.meta.url`-based resolution, which is what Vite + webpack
-    // already handle.
+    // `wasmUrl` is forwarded only when the consumer explicitly provided one AND
+    // no shared module is available — undefined leaves the worker on
+    // wasm-bindgen's default `import.meta.url`-based resolution (Vite + webpack).
     const wasmUrlForWorker = options?.wasmUrls?.wasm;
-    worker.postMessage({
-      type: 'init',
-      ...(wasmUrlForWorker ? { wasmUrl: wasmUrlForWorker } : {}),
-    });
+    worker.postMessage(
+      {
+        type: 'init',
+        ...(sharedWasmModule
+          ? { wasmModule: sharedWasmModule }
+          : wasmUrlForWorker
+            ? { wasmUrl: wasmUrlForWorker }
+            : {}),
+      },
+    );
     // Issue #540: forward the user's "Merge Multilayer Walls" toggle
     // BEFORE any stream-start so the worker's IfcAPI has the flag set
     // before its first parse call. The tail-promise serialiser inside
@@ -1143,7 +1233,13 @@ export async function* processParallel(
   // legacy (non-threaded) wasm, so `wasmUrls.wasm` is the right key.
   // Skipped entirely when no URL was provided — keeps Vite/webpack
   // consumers on the bundler-native resolution path.
-  if (options?.wasmUrls?.wasm) {
+  // The pre-pass worker runs the same bundle + legacy wasm, so give it the ONE
+  // shared compiled module too (else it independently compiles the binary, the
+  // 4th/5th parallel compile that fed the cold-start stagger). Falls back to the
+  // explicit URL, then to wasm-bindgen's `import.meta.url` default.
+  if (sharedWasmModule) {
+    prepassWorker.postMessage({ type: 'init', wasmModule: sharedWasmModule });
+  } else if (options?.wasmUrls?.wasm) {
     prepassWorker.postMessage({ type: 'init', wasmUrl: options.wasmUrls.wasm });
   }
   let chunkArrivals = 0;

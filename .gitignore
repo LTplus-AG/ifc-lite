@@ -9,6 +9,9 @@ build/
 *.tsbuildinfo
 .turbo/
 
+# IDE directories
+.agents/
+
 # Rust
 target/
 **/*.rs.bk

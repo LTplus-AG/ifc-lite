@@ -8,20 +8,8 @@
  */
 
 import React from 'react';
-import {
-  Camera,
-  Download,
-  FileJson,
-  FileSpreadsheet,
-  FileText,
-  FolderOpen,
-  Globe2,
-  Loader2,
-  Plus,
-  RefreshCw,
-  Share2,
-  Users,
-} from 'lucide-react';
+import { Share2, Users } from 'lucide-react';
+import { AddFile, Loading, OpenFile, Refresh, Screenshot, FileCsv, FileIfc, FileGlb, FileKmz, FileJson, FileHbjson } from '@/icons';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -66,23 +54,23 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
     <>
       <RibbonGroup label="Model">
         <RibbonLargeButton
-          icon={loading ? Loader2 : FolderOpen}
+          icon={loading ? Loading : OpenFile}
           label="Open"
-          tooltip="Open IFC file"
+          tooltip="Open model from disk"
           disabled={loading}
           className={loading ? '[&_svg]:animate-spin' : undefined}
           onClick={() => { void handleOpenClick(); }}
         />
         <RibbonSmallStack>
           <RibbonSmallButton
-            icon={Plus}
+            icon={AddFile}
             label="Add model"
             tooltip="Add model to scene (multi-select supported)"
             disabled={loading || !hasModelsLoaded}
             onClick={() => { void handleAddModelClick(); }}
           />
           <RibbonSmallButton
-            icon={RefreshCw}
+            icon={Refresh}
             label="Refresh"
             tooltip={models.size > 1 ? 'Refresh models from disk' : 'Refresh model from disk'}
             disabled={loading || !canRefresh}
@@ -99,41 +87,41 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
             geometryResult null, which would hide the whole export group. */}
         <ExportDialog
           trigger={
-            <RibbonLargeButton icon={FileText} label="IFC" tooltip="Export IFC (with changes)" disabled={!canExport} />
+            <RibbonLargeButton icon={FileIfc} label="IFC" tooltip="Export IFC (with changes)" disabled={!canExport} />
           }
         />
         <RibbonSmallStack>
           <GLBExportDialog
-            trigger={<RibbonSmallButton icon={Download} label="GLB" tooltip="Export GLB (3D model)" disabled={!canExport} />}
+            trigger={<RibbonSmallButton icon={FileGlb} label="GLB" tooltip="Export GLB (3D model)" disabled={!canExport} />}
           />
           <KmzExportDialog
-            trigger={<RibbonSmallButton icon={Globe2} label="KMZ" tooltip="Export KMZ (Google Earth Pro)" disabled={!canExport} />}
+            trigger={<RibbonSmallButton icon={FileKmz} label="KMZ" tooltip="Export KMZ (Google Earth Pro)" disabled={!canExport} />}
           />
           <HbjsonExportDialog
-            trigger={<RibbonSmallButton icon={Download} label="HBJSON" tooltip="Export HBJSON (energy model)" disabled={!canExport} />}
+            trigger={<RibbonSmallButton icon={FileHbjson} label="HBJSON" tooltip="Export HBJSON (energy model)" disabled={!canExport} />}
           />
         </RibbonSmallStack>
         <RibbonSmallStack>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <RibbonSmallButton icon={FileSpreadsheet} label="CSV" hasMenu tooltip="Export CSV tables" disabled={!ifcDataStore} />
+              <RibbonSmallButton icon={FileCsv} label="CSV" hasMenu tooltip="Export CSV tables" disabled={!ifcDataStore} />
             </DropdownMenuTrigger>
             <DropdownMenuContent>
               <DropdownMenuItem onClick={() => handleExportCSV('entities')}>
-                <FileSpreadsheet className="h-4 w-4 mr-2" />
+                <FileCsv className="h-4 w-4 mr-2" />
                 Entities
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => handleExportCSV('properties')}>
-                <FileSpreadsheet className="h-4 w-4 mr-2" />
+                <FileCsv className="h-4 w-4 mr-2" />
                 Properties
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => handleExportCSV('quantities')}>
-                <FileSpreadsheet className="h-4 w-4 mr-2" />
+                <FileCsv className="h-4 w-4 mr-2" />
                 Quantities
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => handleExportCSV('spatial')}>
-                <FileSpreadsheet className="h-4 w-4 mr-2" />
+                <FileCsv className="h-4 w-4 mr-2" />
                 Spatial Hierarchy
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -145,7 +133,7 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
             disabled={!ifcDataStore}
             onClick={handleExportJSON}
           />
-          <RibbonSmallButton icon={Camera} label="Screenshot" tooltip="Save viewport as PNG" onClick={handleScreenshot} />
+          <RibbonSmallButton icon={Screenshot} label="Screenshot" tooltip="Save viewport as PNG" onClick={handleScreenshot} />
         </RibbonSmallStack>
       </RibbonGroup>
 

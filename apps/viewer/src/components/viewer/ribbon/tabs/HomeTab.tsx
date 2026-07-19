@@ -8,19 +8,7 @@
  */
 
 import { useCallback } from 'react';
-import {
-  Crosshair,
-  Equal,
-  Eye,
-  EyeOff,
-  Home,
-  Maximize2,
-  MousePointer2,
-  PersonStanding,
-  Ruler,
-  Scissors,
-  StickyNote,
-} from 'lucide-react';
+import { Select, Walk, Annotate, Measure, Section, ShowAll, FitAll, Home, IsolateSelected, HideSelected, FocusSelected } from '@/icons';
 import { useViewerStore } from '@/store';
 import { goHomeFromStore, resetVisibilityForHomeFromStore } from '@/store/homeView';
 import { executeBasketIsolate } from '@/store/basket/basketCommands';
@@ -66,7 +54,7 @@ export function HomeTab() {
     <>
       <RibbonGroup label="Tools">
         <RibbonLargeButton
-          icon={MousePointer2}
+          icon={Select}
           label="Select"
           shortcut="V"
           active={activeTool === 'select'}
@@ -74,7 +62,7 @@ export function HomeTab() {
           {...tourAnchor(toolAnchor('select'))}
         />
         <RibbonLargeButton
-          icon={PersonStanding}
+          icon={Walk}
           label="Walk"
           shortcut="C"
           active={activeTool === 'walk'}
@@ -87,7 +75,7 @@ export function HomeTab() {
 
       <RibbonGroup label="Measure & Mark">
         <RibbonLargeButton
-          icon={Ruler}
+          icon={Measure}
           label="Measure"
           shortcut="M"
           active={activeTool === 'measure'}
@@ -95,7 +83,7 @@ export function HomeTab() {
           {...tourAnchor(toolAnchor('measure'))}
         />
         <RibbonLargeButton
-          icon={Scissors}
+          icon={Section}
           label="Section"
           shortcut="X"
           active={activeTool === 'section'}
@@ -103,7 +91,7 @@ export function HomeTab() {
           {...tourAnchor(toolAnchor('section'))}
         />
         <RibbonLargeButton
-          icon={StickyNote}
+          icon={Annotate}
           label="Annotate"
           shortcut="P"
           active={activeTool === 'annotate'}
@@ -122,7 +110,7 @@ export function HomeTab() {
       <RibbonGroup label={hasSelection ? `Selection · ${selectionCount}` : 'Selection'}>
         <RibbonSmallStack>
           <RibbonSmallButton
-            icon={Equal}
+            icon={IsolateSelected}
             label="Isolate"
             tooltip="Isolate selection (set basket)"
             shortcut="I / ="
@@ -130,7 +118,7 @@ export function HomeTab() {
             onClick={() => executeBasketIsolate()}
           />
           <RibbonSmallButton
-            icon={EyeOff}
+            icon={HideSelected}
             label="Hide"
             tooltip="Hide selection"
             shortcut="Del / Space"
@@ -138,7 +126,7 @@ export function HomeTab() {
             onClick={handleHide}
           />
           <RibbonSmallButton
-            icon={Crosshair}
+            icon={FocusSelected}
             label="Frame"
             tooltip="Frame selection"
             shortcut="F"
@@ -160,14 +148,14 @@ export function HomeTab() {
         />
         <RibbonSmallStack>
           <RibbonSmallButton
-            icon={Eye}
+            icon={ShowAll}
             label="Show all"
             tooltip="Show all (reset filters)"
             shortcut="A"
             onClick={resetVisibilityForHomeFromStore}
           />
           <RibbonSmallButton
-            icon={Maximize2}
+            icon={FitAll}
             label="Fit all"
             tooltip="Fit all in view"
             shortcut="Z"

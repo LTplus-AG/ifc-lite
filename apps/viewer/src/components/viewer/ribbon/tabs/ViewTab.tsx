@@ -7,22 +7,8 @@
  * world context (Cesium / sun / SpaceMouse), and interface options.
  */
 
-import {
-  ArrowDown,
-  ArrowLeft,
-  ArrowRight,
-  ArrowUp,
-  Box,
-  Filter,
-  Globe2,
-  Info,
-  LayoutTemplate,
-  Move,
-  Move3d,
-  Orbit,
-  PanelTop,
-  Sun,
-} from 'lucide-react';
+import { Globe2, Move, PanelTop, } from 'lucide-react';
+import { TopView, BottomView, FrontView, BackView, LeftView, RightView, IsometricView, Orthographic, Viewpoint, SpaceMouse, Lighting, ElementTooltips, ClassVisibility } from '@/icons';
 import { DropdownMenu, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useViewerStore } from '@/store';
 import { goHomeFromStore } from '@/store/homeView';
@@ -77,25 +63,25 @@ export function ViewTab() {
     <>
       <RibbonGroup label="Camera">
         <RibbonLargeButton
-          icon={Box}
+          icon={IsometricView}
           label="Isometric"
           tooltip="Home (isometric + reset visibility)"
           shortcut="H"
           onClick={goHomeFromStore}
         />
         <RibbonSmallStack>
-          <RibbonSmallButton icon={ArrowUp} label="Top" shortcut="1" onClick={() => cameraCallbacks.setPresetView?.('top')} />
-          <RibbonSmallButton icon={ArrowRight} label="Front" shortcut="3" onClick={() => cameraCallbacks.setPresetView?.('front')} />
-          <RibbonSmallButton icon={ArrowLeft} label="Left" shortcut="5" onClick={() => cameraCallbacks.setPresetView?.('left')} />
+          <RibbonSmallButton icon={TopView} label="Top" shortcut="1" onClick={() => cameraCallbacks.setPresetView?.('top')} />
+          <RibbonSmallButton icon={FrontView} label="Front" shortcut="3" onClick={() => cameraCallbacks.setPresetView?.('front')} />
+          <RibbonSmallButton icon={LeftView} label="Left" shortcut="5" onClick={() => cameraCallbacks.setPresetView?.('left')} />
         </RibbonSmallStack>
         <RibbonSmallStack>
-          <RibbonSmallButton icon={ArrowDown} label="Bottom" shortcut="2" onClick={() => cameraCallbacks.setPresetView?.('bottom')} />
-          <RibbonSmallButton icon={ArrowLeft} label="Back" shortcut="4" onClick={() => cameraCallbacks.setPresetView?.('back')} />
-          <RibbonSmallButton icon={ArrowRight} label="Right" shortcut="6" onClick={() => cameraCallbacks.setPresetView?.('right')} />
+          <RibbonSmallButton icon={BottomView} label="Bottom" shortcut="2" onClick={() => cameraCallbacks.setPresetView?.('bottom')} />
+          <RibbonSmallButton icon={BackView} label="Back" shortcut="4" onClick={() => cameraCallbacks.setPresetView?.('back')} />
+          <RibbonSmallButton icon={RightView} label="Right" shortcut="6" onClick={() => cameraCallbacks.setPresetView?.('right')} />
         </RibbonSmallStack>
         <RibbonSmallStack>
           <RibbonSmallButton
-            icon={Orbit}
+            icon={Orthographic}
             label="Orthographic"
             tooltip="Toggle orthographic projection"
             active={projectionMode === 'orthographic'}
@@ -110,7 +96,7 @@ export function ViewTab() {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <RibbonLargeButton
-              icon={Filter}
+              icon={ClassVisibility}
               label="Classes"
               hasMenu
               tooltip={mergeLayers
@@ -152,8 +138,8 @@ export function ViewTab() {
           />
         )}
         <RibbonLargeButton
-          icon={Sun}
-          label="Sun & Sky"
+          icon={Lighting}
+          label="Lighting"
           tooltip="Sun, sky and lighting presets"
           active={envPanelOpen || solarEnabled || envSkyEnabled || envPreset !== 'default'}
           activeClassName="bg-amber-500/20 text-foreground ring-1 ring-inset ring-amber-500/50"
@@ -175,7 +161,7 @@ export function ViewTab() {
             />
           )}
           <RibbonSmallButton
-            icon={Move3d}
+            icon={SpaceMouse}
             label="SpaceMouse"
             tooltip="Connect a 3Dconnexion SpaceMouse (WebHID)"
             active={spaceMousePanelOpen || spaceMouseConnected}
@@ -189,7 +175,7 @@ export function ViewTab() {
 
       <RibbonGroup label="Interface">
         <RibbonLargeButton
-          icon={LayoutTemplate}
+          icon={Viewpoint}
           label="Present"
           tooltip={`Basket presentation dock (views: ${basketViewCount}, entities: ${pinboardEntities.size})`}
           active={basketPresentationVisible}
@@ -203,7 +189,7 @@ export function ViewTab() {
         />
         <RibbonSmallStack>
           <RibbonSmallButton
-            icon={Info}
+            icon={ElementTooltips}
             label="Hover tips"
             tooltip="Show entity tooltips on hover"
             active={hoverTooltipsEnabled}

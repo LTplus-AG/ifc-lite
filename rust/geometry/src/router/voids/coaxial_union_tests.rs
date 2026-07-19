@@ -252,9 +252,13 @@ fn mixed_depth_bands_slice_into_multiple_prisms() {
     };
     let cands = vec![mk(a), mk(b)];
     let host = host_wall();
-    let (prisms, multi_slab, contributors) = router
+    let (prisms, multi_slab, contributors, max_removed) = router
         .build_coaxial_prisms(&host, &cands, &[0, 1], &Vector3::new(0.0, 1.0, 0.0))
         .expect("depth-slicing handles mixed bands");
+    assert!(
+        max_removed > 0.0 && max_removed.is_finite(),
+        "removed-volume upper bound is a finite positive number ({max_removed})"
+    );
     assert!(prisms.len() >= 2, "two depth bands slice into >= 2 prisms");
     assert!(multi_slab, "two depth bands flag multi-slab fusion");
     // Both cutters straddle a slab midpoint (the through-cut both, the shallow one
@@ -340,6 +344,74 @@ fn sub_ztol_shallow_recess_is_not_dropped_end_to_end() {
     );
 }
 
+/// Rotate a mesh (positions + normals) about the world Z axis by `deg` degrees.
+fn rotate_z(m: &Mesh, deg: f64) -> Mesh {
+    let (s, c) = deg.to_radians().sin_cos();
+    let mut out = m.clone();
+    for p in out.positions.chunks_exact_mut(3) {
+        let (x, y) = (p[0] as f64, p[1] as f64);
+        p[0] = (x * c - y * s) as f32;
+        p[1] = (x * s + y * c) as f32;
+    }
+    for n in out.normals.chunks_exact_mut(3) {
+        let (x, y) = (n[0] as f64, n[1] as f64);
+        n[0] = (x * c - y * s) as f32;
+        n[1] = (x * s + y * c) as f32;
+    }
+    out
+}
+
+#[test]
+fn tilted_member_defers_to_exact_and_does_not_over_cut() {
+    // A straight through-cut (axis +Y) overlapped by a DEEP box tilted ~7° about Z.
+    // cos(7°) ≈ 0.9925 > 0.985, so the OLD coaxial gate wrongly classified this
+    // cluster coaxial and reconstructed the tilted cutter as a prism from caps
+    // projected ⟂ the reference axis — a footprint inflated by ~depth·sin(7°) that
+    // OVER-CUTS the host. The tightened (1 − 1e-6) gate defers the tilted cluster to
+    // the exact 3D union (which unions the ACTUAL solids, no projection), so the
+    // feature-ON removed volume matches the feature-OFF exact sequential path exactly
+    // — never the over-cut.
+    let straight = box_opening_y([-1.0, -0.6, -0.6], [0.2, 0.6, 0.6]);
+    let base = box_mesh([-0.2, -0.6, -0.6], [1.0, 0.6, 0.6]);
+    let tilted_mesh = rotate_z(&base, 7.0);
+    let (tmn, tmx) = tilted_mesh.bounds();
+    let (s, c) = 7f64.to_radians().sin_cos();
+    let tilted = OpeningType::NonRectangular(
+        tilted_mesh,
+        Point3::new(tmn.x as f64, tmn.y as f64, tmn.z as f64),
+        Point3::new(tmx.x as f64, tmx.y as f64, tmx.z as f64),
+        Some(Vector3::new(-s, c, 0.0)), // +Y rotated 7° about Z
+    );
+    let openings = vec![straight, tilted];
+    let ctx = super::super::VoidContext {
+        merged_openings: openings.clone(),
+        openings,
+        param: None,
+        bool2d: None,
+    };
+    let host_v = vol(&host_wall());
+
+    let router = GeometryRouter::new();
+    super::set_enabled_override(Some(true));
+    let on = router.apply_void_context(host_wall(), &ctx, 1);
+    super::set_enabled_override(Some(false));
+    let off = router.apply_void_context(host_wall(), &ctx, 1);
+    super::set_enabled_override(None);
+
+    assert!(watertight(&on), "feature-on tilted cut must be watertight");
+    let removed_on = host_v - vol(&on);
+    let removed_off = host_v - vol(&off);
+    assert!(
+        removed_on > 0.0 && removed_off > 0.0,
+        "both paths cut something (on {removed_on}, off {removed_off})"
+    );
+    assert!(
+        (removed_on - removed_off).abs() < 5e-3,
+        "tilted cluster: feature-on removed {removed_on} must match the exact \
+         feature-off {removed_off} (the OLD 0.985 prism path OVER-CUT)"
+    );
+}
+
 #[test]
 fn non_coaxial_cluster_routes_through_union3d() {
     // Two overlapping boxes with PERPENDICULAR penetration axes (+Y and +X). Not
@@ -385,7 +457,7 @@ fn feature_off_is_a_noop_and_deterministic() {
     ];
     let router = GeometryRouter::new();
     let clipper = ClippingProcessor::new();
-    let run = || -> (Vec<f32>, Vec<u32>, Vec<bool>, bool) {
+    let run = || -> (Vec<f32>, Vec<u32>, Vec<f32>, Vec<bool>, bool) {
         super::set_enabled_override(Some(false));
         let mut result = host_wall();
         let refs: Vec<&OpeningType> = openings.iter().collect();
@@ -393,14 +465,21 @@ fn feature_off_is_a_noop_and_deterministic() {
         let mut mutated = false;
         router.coaxial_union_prepass(&mut result, &refs, &mut consumed, &mut mutated, &clipper);
         super::set_enabled_override(None);
-        (result.positions.clone(), result.indices.clone(), consumed, mutated)
+        (
+            result.positions.clone(),
+            result.indices.clone(),
+            result.normals.clone(),
+            consumed,
+            mutated,
+        )
     };
     let host = host_wall();
-    let (p1, i1, c1, m1) = run();
-    let (p2, i2, _, _) = run();
+    let (p1, i1, n1, c1, m1) = run();
+    let (p2, i2, n2, _, _) = run();
     assert!(!m1, "feature-off prepass does not mutate");
     assert!(c1.iter().all(|&c| !c), "feature-off consumes nothing");
     assert_eq!(p1, host.positions, "feature-off leaves the host byte-identical");
     assert_eq!(i1, host.indices);
-    assert_eq!((p1, i1), (p2, i2), "deterministic across runs");
+    assert_eq!(n1, host.normals, "feature-off leaves normals byte-identical");
+    assert_eq!((p1, i1, n1), (p2, i2, n2), "deterministic across runs");
 }

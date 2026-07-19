@@ -99,7 +99,8 @@ struct UnionCand {
 }
 
 /// A cutter's cap footprint (in the shared frame's ⟂ plane) plus its depth span
-/// along the axis.
+/// along the axis. Only cutters that pass `cutter_footprint`'s prism reconciliation
+/// (`area × depth ≈ |mesh volume|`) are represented here.
 struct Footprint {
     contours: Vec<Vec<Point2<f64>>>,
     z_lo: f64,
@@ -244,17 +245,28 @@ impl GeometryRouter {
         host_mutated: &mut bool,
         clipper: &ClippingProcessor,
     ) {
-        // Coaxial? Every member's axis parallel to the reference (|d·ref| ≈ 1).
+        // Coaxial? Every member's axis NEAR-EXACTLY parallel to the reference. The
+        // footprint-union path reconstructs each cutter as a prism by projecting its
+        // caps ONTO the plane ⟂ `ref_dir`; for a member whose own axis is tilted
+        // from `ref_dir` that projection INFLATES the footprint (and stretches the
+        // depth band), so the re-extruded prism is NOT geometrically equivalent to
+        // the cutter and can OVER-CUT the host. The old 0.985 gate (~10°) was far too
+        // loose for treating a projected-cap reconstruction as exact. Require near-
+        // exact alignment (matching the #1806 oblique-opening rationale) so only
+        // genuinely axis-aligned coaxial openings take the union path; anything more
+        // tilted DEFERS to the overlap-safe 3D `union_many` below (which unions the
+        // ACTUAL cutter solids — no projection — so it is exact for any tilt).
+        const COAXIAL_DOT_MIN: f64 = 1.0 - 1.0e-6;
         let ref_dir = cands[members[0]].dir;
         let coaxial = members
             .iter()
-            .all(|&m| cands[m].dir.dot(&ref_dir).abs() > 0.985);
+            .all(|&m| cands[m].dir.dot(&ref_dir).abs() >= COAXIAL_DOT_MIN);
 
         if coaxial {
-            if let Some((prisms, multi_slab, contributors)) =
+            if let Some((prisms, multi_slab, contributors, max_removed)) =
                 self.build_coaxial_prisms(result, cands, members, &ref_dir)
             {
-                if self.subtract_prisms(result, &prisms, multi_slab, clipper) {
+                if self.subtract_prisms(result, &prisms, multi_slab, max_removed, clipper) {
                     // Consume ONLY cutters that fed an emitted slab prism; one whose
                     // band coalesced below `z_tol` spans no slab (removed nothing) and
                     // stays for the exact path rather than being silently dropped.
@@ -294,13 +306,20 @@ impl GeometryRouter {
     /// The third tuple element lists the `members`-relative indices that fed ≥ 1
     /// emitted slab prism; a cutter whose band coalesced below `z_tol` spans no slab
     /// and is absent, so the caller leaves it for the exact path (never dropped).
+    ///
+    /// The fourth tuple element is an UPPER BOUND on the volume this cut may remove
+    /// from the host: Σ over contributing cutters of `footprint_area × depth`. Since
+    /// the true removal is `union(cutters) ∩ host ≤ Σ (cutter ∩ host) ≤ Σ area·depth`,
+    /// a subtract that removes MORE than this bound (e.g. a `z_tol` depth-band that
+    /// bridged distinct bands and over-cut) is REJECTED by `subtract_prisms`, which
+    /// then defers the cluster to the exact 3D union.
     fn build_coaxial_prisms(
         &self,
         result: &Mesh,
         cands: &[UnionCand],
         members: &[usize],
         axis: &Vector3<f64>,
-    ) -> Option<(Vec<Mesh>, bool, Vec<usize>)> {
+    ) -> Option<(Vec<Mesh>, bool, Vec<usize>, f64)> {
         let (u, v, d) = ortho_frame(axis)?;
         let mut fps: Vec<Footprint> = Vec::with_capacity(members.len());
         for &m in members {
@@ -395,7 +414,29 @@ impl GeometryRouter {
         // prisms that the N-ary subtract handles directly.
         let multi_slab = coalesced.len() > 2;
         let contributors: Vec<usize> = (0..fps.len()).filter(|&i| contributed[i]).collect();
-        Some((prisms, multi_slab, contributors))
+        // Removed-volume upper bound: Σ over contributing cutters of the volume of the
+        // SAME through-host extension the prisms use. The union of the reconstructed
+        // prisms equals the union of the actual cutters, so the removed (host-clipped)
+        // volume `Vol(∪prism ∩ host) = Vol(∪cutter ∩ host) ≤ Σ Vol(cutter_i ∩ host) ≤
+        // Σ Vol(extended cutter_i)` — a subtract that removes MORE (an inflated /
+        // bridged prism reconstruction) is over-cutting and is rejected downstream.
+        // Using the EXTENDED cutter (not `area × authored_depth`) is essential: a
+        // through-cut of a host THICKER than the authored opening legitimately removes
+        // more than the authored volume, and must not be mistaken for an over-cut.
+        // 2% relative slack absorbs the f32 volume-differencing noise of a large host.
+        let max_removed = 1.02
+            * contributors
+                .iter()
+                .map(|&i| {
+                    let ext = Self::extend_opening_mesh_through_host(
+                        &cands[members[i]].mesh,
+                        result,
+                        d,
+                    );
+                    mesh_signed_volume(&ext).abs()
+                })
+                .sum::<f64>();
+        Some((prisms, multi_slab, contributors, max_removed))
     }
 
     /// Subtract the re-extruded prisms from `result`. Single-slab prisms are
@@ -404,13 +445,15 @@ impl GeometryRouter {
     /// coplanar boundary planes, so they are first FUSED with the exact
     /// `union_many` (which dissolves the seams into ONE watertight solid, gated by
     /// `mesh_is_closed_exact`) and subtracted as a single mesh. Returns `true`
-    /// (updating `result`) only on a real, non-degenerate change; otherwise `false`
-    /// (the caller falls back to the 3D union, then defers).
+    /// (updating `result`) only on a real, non-degenerate change WHOSE removed volume
+    /// does not exceed `max_removed` (the over-cut guard); otherwise `false` (the
+    /// caller falls back to the 3D union, then defers).
     fn subtract_prisms(
         &self,
         result: &mut Mesh,
         prisms: &[Mesh],
         multi_slab: bool,
+        max_removed: f64,
         clipper: &ClippingProcessor,
     ) -> bool {
         let tri_before = result.triangle_count();
@@ -418,7 +461,7 @@ impl GeometryRouter {
         if !multi_slab {
             let cutters: Vec<&Mesh> = prisms.iter().collect();
             if let Ok(cut) = clipper.subtract_mesh_many(result, &cutters) {
-                return accept_cut(result, cut, tri_before, vol_before);
+                return accept_cut(result, cut, tri_before, vol_before, max_removed);
             }
             return false;
         }
@@ -434,7 +477,7 @@ impl GeometryRouter {
         let Ok(cut) = clipper.subtract_mesh(result, &union) else {
             return false;
         };
-        accept_cut(result, cut, tri_before, vol_before)
+        accept_cut(result, cut, tri_before, vol_before, max_removed)
     }
 
     /// 3D overlap-safe fallback: extend every member cutter through the host,
@@ -464,7 +507,9 @@ impl GeometryRouter {
         let Ok(cut) = clipper.subtract_mesh(result, &union) else {
             return false;
         };
-        accept_cut(result, cut, tri_before, vol_before)
+        // The 3D union of the ACTUAL cutter solids is geometrically exact, so no
+        // over-cut bound applies here.
+        accept_cut(result, cut, tri_before, vol_before, f64::INFINITY)
     }
 }
 
@@ -480,11 +525,27 @@ fn omy_span(lo: f32, hi: f32) -> f64 {
 /// cut is guaranteed upstream: each cutter is `mesh_is_closed_exact`, and the
 /// kernel's conformity gate rejects a non-conforming arrangement). A blanket
 /// `param_cut_watertight` scan here is far too slow on the hot path.
-fn accept_cut(result: &mut Mesh, cut: Mesh, tri_before: usize, vol_before: f64) -> bool {
+///
+/// `max_removed` is an OVER-CUT guard: the cut is rejected if it removed more host
+/// volume than the caller's provable upper bound (Σ contributing-cutter footprint
+/// volumes for the coaxial prism path; `f64::INFINITY` for the exact 3D union, which
+/// cannot over-cut). This catches an approximate union reconstruction — a bridged
+/// depth band, a residual projection inflation — before it is committed and consumed
+/// as if it were an exact cut, so the cluster instead defers to the exact path.
+fn accept_cut(
+    result: &mut Mesh,
+    cut: Mesh,
+    tri_before: usize,
+    vol_before: f64,
+    max_removed: f64,
+) -> bool {
     use super::{CSG_TRIANGLE_RETENTION_DIVISOR, MIN_VALID_TRIANGLES};
     let min_tris = (tri_before / CSG_TRIANGLE_RETENTION_DIVISOR).max(MIN_VALID_TRIANGLES);
     let changed = cut_changed_mesh(&cut, tri_before, vol_before);
-    if !cut.is_empty() && cut.triangle_count() >= min_tris && changed {
+    // Removed volume = host solid before − after (both same orientation). A cut that
+    // removed MORE than the caller's upper bound is an over-cut → reject (defer).
+    let removed = vol_before - mesh_signed_volume(&cut);
+    if !cut.is_empty() && cut.triangle_count() >= min_tris && changed && removed <= max_removed {
         *result = cut;
         true
     } else {
@@ -534,8 +595,15 @@ fn ortho_frame(axis: &Vector3<f64>) -> Option<(Vector3<f64>, Vector3<f64>, Vecto
 /// Recover a prism cutter's cross-section footprint in the `(u, v)` plane and its
 /// depth span along `d`. The footprint is the union of the cutter's CAP triangles
 /// (facet normal ∥ `d`, |n·d| ≥ 0.985), each projected to `(p·u, p·v)` and
-/// oriented CCW so opposing caps accumulate rather than cancel. `None` when no cap
-/// facets are found (an oblique / non-prismatic cutter → defer).
+/// oriented CCW so opposing caps accumulate rather than cancel.
+///
+/// Returns `None` (→ defer to the exact 3D union) when the cutter is NOT provably a
+/// prism along `d`: no cap facets (oblique cutter), or the recovered cross-section
+/// does not reconcile with the cutter's true solid volume
+/// (`area × depth ≈ |mesh volume|`). The volume reconciliation rejects tapered,
+/// slanted-cap, or otherwise non-extruded cutters whose projected caps would
+/// reconstruct a prism that OVER-CUTS the host — the union path must never consume
+/// a cutter it cannot reproduce exactly.
 fn cutter_footprint(
     mesh: &Mesh,
     u: &Vector3<f64>,
@@ -598,6 +666,30 @@ fn cutter_footprint(
         contours.push(crate::bool2d::ensure_ccw(&tri));
     }
     if contours.is_empty() {
+        return None;
+    }
+    // Cross-section area: each CCW cap triangle contributes positive area; a genuine
+    // prism has TWO opposing caps that tile the same footprint, so the sum is 2× the
+    // cross-section (holes already subtracted — annular caps tessellate the annulus).
+    let cap_area_sum: f64 = contours
+        .iter()
+        .map(|c| crate::bool2d::compute_signed_area(c).abs())
+        .sum();
+    let area = 0.5 * cap_area_sum;
+    let depth = z_hi - z_lo;
+    if area <= NORMALIZE_EPSILON || depth <= NORMALIZE_EPSILON {
+        return None;
+    }
+    // PRISM RECONCILIATION: a true prism along `d` satisfies `area × depth ==
+    // |signed volume|`. A tapered/slanted/non-extruded cutter — or one with only one
+    // cap facet ⟂ `d` (the other slanted away and dropped) — fails this, so its
+    // projected-cap reconstruction is NOT geometrically equivalent and is deferred to
+    // the exact 3D union rather than consumed. 5% relative tolerance absorbs f32
+    // quantisation / tessellation noise while catching gross non-prisms (a single
+    // recovered cap already misses by ~2×).
+    let mesh_vol = mesh_signed_volume(mesh).abs();
+    let recon_vol = area * depth;
+    if (recon_vol - mesh_vol).abs() > 0.05 * recon_vol.max(mesh_vol) {
         return None;
     }
     Some(Footprint {

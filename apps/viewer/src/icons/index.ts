@@ -6,7 +6,7 @@ export { default as AddFile } from '~icons/viewer/add-file';
 export { default as Loading } from '~icons/viewer/loading';
 export { default as OpenFile } from '~icons/viewer/open-file';
 export { default as Refresh } from '~icons/viewer/refresh';
-export { default as Screenshot } from '~icons/viewer/screenshot'
+export { default as Screenshot } from '~icons/viewer/screenshot';
 export { default as FileIfc } from '~icons/viewer/file-ifc';
 export { default as FileCsv } from '~icons/viewer/file-csv';
 export { default as FileJson } from '~icons/viewer/file-json';

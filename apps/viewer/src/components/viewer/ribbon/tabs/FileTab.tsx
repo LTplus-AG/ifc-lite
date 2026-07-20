@@ -8,8 +8,7 @@
  */
 
 import React from 'react';
-import { Share2, Users } from 'lucide-react';
-import { AddFile, Loading, OpenFile, Refresh, Screenshot, FileCsv, FileIfc, FileGlb, FileKmz, FileJson, FileHbjson } from '@/icons';
+import { AddFile, Loading, OpenFile, Refresh, Screenshot, FileCsv, FileIfc, FileGlb, FileKmz, FileJson, FileHbjson, Share, CollabsRoom } from '@/icons';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -142,7 +141,7 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
           <RibbonGroupDivider />
           <RibbonGroup label="Share">
             <RibbonLargeButton
-              icon={Share2}
+              icon={Share}
               label="Share"
               tooltip="Share: link-based multiuser collaboration"
               disabled={!hasModelsLoaded}
@@ -156,8 +155,8 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
             {/* Room panel toggle — live presence + management, only while in a room. */}
             {collabRoomId && (
               <RibbonLargeButton
-                icon={Users}
-                label="Room"
+                icon={CollabsRoom}
+                label="Collabs Room"
                 tooltip="Collaboration room"
                 active={collabPanelVisible}
                 onClick={() => useViewerStore.getState().toggleWorkspacePanel('collab')}

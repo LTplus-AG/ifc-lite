@@ -249,6 +249,10 @@ export interface CameraCallbacks {
   home?: () => void;
   zoomIn?: () => void;
   zoomOut?: () => void;
+  /** Rotate the camera exactly 90° around the vertical axis. */
+  rotateLeft?: () => void;
+  /** Rotate the camera exactly 90° around the vertical axis. */
+  rotateRight?: () => void;
   frameSelection?: () => void;
   /**
    * Frame an explicit world-space box (min/max corners) from the canonical

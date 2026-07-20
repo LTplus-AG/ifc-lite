@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { Renderer, type VisualEnhancementOptions, type LightingEnvironment } from '@ifc-lite/renderer';
 import type { MeshData, CoordinateInfo, PointCloudAsset } from '@ifc-lite/geometry';
-import { useViewerStore, resolveEntityRef, type MeasurePoint, type SnapVisualization } from '@/store';
+import { useViewerStore, resolveEntityRef, type CameraViewpoint, type MeasurePoint, type SnapVisualization } from '@/store';
 import { LIGHTING_PRESETS } from '@/lib/lighting-presets';
 import { presetViewRotation } from '@/lib/preset-view-orientation';
 import { isGeometryLoadStreaming } from '@/lib/pick-gating';
@@ -770,6 +770,64 @@ export function Viewport({
       const renderCurrent = () => {
         renderer.requestRender();
       };
+      const applyViewpoint = (viewpoint: CameraViewpoint, animate = true, durationMs = 300) => {
+        camera.setProjectionMode(viewpoint.projectionMode);
+        useViewerStore.setState({ projectionMode: viewpoint.projectionMode });
+        camera.setFOV(viewpoint.fov);
+        if (
+          viewpoint.projectionMode === 'orthographic' &&
+          typeof viewpoint.orthoSize === 'number' &&
+          Number.isFinite(viewpoint.orthoSize)
+        ) {
+          camera.setOrthoSize(viewpoint.orthoSize);
+        }
+
+        if (animate) {
+          camera.animateToWithUp(viewpoint.position, viewpoint.target, viewpoint.up, durationMs);
+        } else {
+          camera.setPosition(viewpoint.position.x, viewpoint.position.y, viewpoint.position.z);
+          camera.setTarget(viewpoint.target.x, viewpoint.target.y, viewpoint.target.z);
+          camera.setUp(viewpoint.up.x, viewpoint.up.y, viewpoint.up.z);
+        }
+
+        renderCurrent();
+        updateCameraRotationRealtime(camera.getRotation());
+        calculateScale();
+      };
+      const orbitCamera = (deltaX: number, deltaY: number) => {
+        camera.orbit(deltaX, deltaY, false);
+        renderCurrent();
+        updateCameraRotationRealtime(camera.getRotation());
+        calculateScale();
+      };
+      const animateHorizontalRotation = (angle: number) => {
+        const position = camera.getPosition();
+        const target = camera.getTarget();
+        const offsetX = position.x - target.x;
+        const offsetZ = position.z - target.z;
+        const cosine = Math.cos(angle);
+        const sine = Math.sin(angle);
+        const projectionMode = camera.getProjectionMode();
+
+        // Keep CameraControls' spherical-orbit convention, then use the
+        // shared viewpoint path so the ViewCube's animator interpolates it.
+        applyViewpoint(
+          {
+            position: {
+              x: target.x + offsetX * cosine + offsetZ * sine,
+              y: position.y,
+              z: target.z - offsetX * sine + offsetZ * cosine,
+            },
+            target,
+            up: camera.getUp(),
+            fov: camera.getFOV(),
+            projectionMode,
+            orthoSize: projectionMode === 'orthographic' ? camera.getOrthoSize() : undefined,
+          },
+          true,
+          300,
+        );
+      };
 
       // Register camera callbacks for ViewCube and other controls
       setCameraCallbacks({
@@ -820,6 +878,12 @@ export function Viewport({
           camera.zoom(50, false);
           renderCurrent();
           calculateScale();
+        },
+        rotateLeft: () => {
+          animateHorizontalRotation(-Math.PI / 2);
+        },
+        rotateRight: () => {
+          animateHorizontalRotation(Math.PI / 2);
         },
         frameSelection: () => {
           // Frame the current selection. Prefer the full multi-selection set
@@ -885,13 +949,7 @@ export function Viewport({
           );
           calculateScale();
         },
-        orbit: (deltaX: number, deltaY: number) => {
-          // Orbit camera from ViewCube drag
-          camera.orbit(deltaX, deltaY, false);
-          renderCurrent();
-          updateCameraRotationRealtime(camera.getRotation());
-          calculateScale();
-        },
+        orbit: orbitCamera,
         projectToScreen: (worldPos: { x: number; y: number; z: number }) => {
           // Project 3D world position to 2D CSS-pixel screen coordinates.
           // projectToCssScreen rescales the drawing-buffer result (buffer width
@@ -948,30 +1006,7 @@ export function Viewport({
           projectionMode: camera.getProjectionMode(),
           orthoSize: camera.getProjectionMode() === 'orthographic' ? camera.getOrthoSize() : undefined,
         }),
-        applyViewpoint: (viewpoint, animate = true, durationMs = 300) => {
-          camera.setProjectionMode(viewpoint.projectionMode);
-          useViewerStore.setState({ projectionMode: viewpoint.projectionMode });
-          camera.setFOV(viewpoint.fov);
-          if (
-            viewpoint.projectionMode === 'orthographic' &&
-            typeof viewpoint.orthoSize === 'number' &&
-            Number.isFinite(viewpoint.orthoSize)
-          ) {
-            camera.setOrthoSize(viewpoint.orthoSize);
-          }
-
-          if (animate) {
-            camera.animateToWithUp(viewpoint.position, viewpoint.target, viewpoint.up, durationMs);
-          } else {
-            camera.setPosition(viewpoint.position.x, viewpoint.position.y, viewpoint.position.z);
-            camera.setTarget(viewpoint.target.x, viewpoint.target.y, viewpoint.target.z);
-            camera.setUp(viewpoint.up.x, viewpoint.up.y, viewpoint.up.z);
-          }
-
-          renderCurrent();
-          updateCameraRotationRealtime(camera.getRotation());
-          calculateScale();
-        },
+        applyViewpoint,
       });
 
       // ResizeObserver — let renderer handle its own dimension alignment

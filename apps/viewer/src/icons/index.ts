@@ -18,7 +18,7 @@ export { default as Measure } from '~icons/viewer/measure';
 export { default as Section } from '~icons/viewer/section';
 export { default as Select } from '~icons/viewer/select';
 export { default as Walk } from '~icons/viewer/walk';
-export { default as ShowAll } from '~icons/viewer/show-all';
+export { default as DisplayAll } from '~icons/viewer/display-all';
 export { default as FitAll } from '~icons/viewer/fit-all';
 export { default as Home } from '~icons/viewer/home';
 export { default as FocusSelected } from '~icons/viewer/focus-selected';
@@ -54,8 +54,16 @@ export { default as ImportData } from '~icons/viewer/import-data';
 export { default as EditProperty } from '~icons/viewer/edit-property';
 export { default as Undo } from '~icons/viewer/undo';
 export { default as Redo } from '~icons/viewer/redo';
-
-
-
-
-
+export { default as ZoomIn } from '~icons/viewer/zoom-in';
+export { default as ZoomOut } from '~icons/viewer/zoom-out';
+export { default as RotateLeft } from '~icons/viewer/rotate-left';
+export { default as RotateRight } from '~icons/viewer/rotate-right';
+export { default as Share } from '~icons/viewer/share';
+export { default as Search } from '~icons/viewer/search';
+export { default as CopyGuid } from '~icons/viewer/copy-guid';
+export { default as CollabsRoom } from '~icons/viewer/collabs-room';
+export { default as Spatial } from '~icons/viewer/spatial';
+export { default as Class } from '~icons/viewer/class';
+export { default as Type } from '~icons/viewer/type';
+export { default as Group } from '~icons/viewer/group';
+export { default as Material } from '~icons/viewer/material';

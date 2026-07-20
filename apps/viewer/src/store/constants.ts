@@ -141,6 +141,9 @@ export const AUTO_LOWEST_TIER_MB = 150; // >= this → 'lowest'
 /** localStorage key for the load-time geometry fidelity mode (mirrors merge-layers). */
 export const GEOMETRY_MODE_STORAGE_KEY = 'ifc-lite-geometry-mode';
 
+/** localStorage key for the active Hierarchy view mode. */
+export const HIERARCHY_MODE_STORAGE_KEY = 'hierarchy-mode';
+
 /**
  * Load-time geometry fidelity mode — a user-facing, persistent switch that
  * mirrors the merge-layers load-time input (sticky in localStorage, folded into

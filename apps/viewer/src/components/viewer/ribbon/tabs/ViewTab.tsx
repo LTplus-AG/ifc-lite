@@ -3,16 +3,14 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Ribbon · View tab — camera presets and projection, class visibility,
- * world context (Cesium / sun / SpaceMouse), and interface options.
+ * Ribbon · View tab — camera presets and projection, world context
+ * (Cesium / sun / SpaceMouse), and interface options.
  */
 
 import { Globe2, Move, PanelTop, } from 'lucide-react';
-import { TopView, BottomView, FrontView, BackView, LeftView, RightView, IsometricView, Orthographic, Viewpoint, SpaceMouse, Lighting, ElementTooltips, ClassVisibility } from '@/icons';
-import { DropdownMenu, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { TopView, BottomView, FrontView, BackView, LeftView, RightView, ZoomIn, ZoomOut, IsometricView, Orthographic, Viewpoint, SpaceMouse, Lighting, FitAll, RotateLeft, RotateRight } from '@/icons';
 import { useViewerStore } from '@/store';
 import { goHomeFromStore } from '@/store/homeView';
-import { ClassVisibilityMenuContent, useVisibleClassCount } from '../../toolbar/ClassVisibilityMenu';
 import {
   RibbonGroup,
   RibbonGroupDivider,
@@ -25,10 +23,6 @@ export function ViewTab() {
   const cameraCallbacks = useViewerStore((state) => state.cameraCallbacks);
   const projectionMode = useViewerStore((state) => state.projectionMode);
   const toggleProjectionMode = useViewerStore((state) => state.toggleProjectionMode);
-  const hoverTooltipsEnabled = useViewerStore((state) => state.hoverTooltipsEnabled);
-  const toggleHoverTooltips = useViewerStore((state) => state.toggleHoverTooltips);
-  const mergeLayers = useViewerStore((state) => state.mergeLayers);
-  const { visible: visibleClassCount } = useVisibleClassCount();
   const setToolbarStyle = useViewerStore((state) => state.setToolbarStyle);
 
   // Cesium 3D overlay state
@@ -61,6 +55,18 @@ export function ViewTab() {
 
   return (
     <>
+      <RibbonGroup label="Projection">
+        <RibbonLargeButton
+          icon={Orthographic}
+          label="Orthographic"
+          tooltip="Toggle orthographic projection"
+          active={projectionMode === 'orthographic'}
+          onClick={() => toggleProjectionMode()}
+        />
+      </RibbonGroup>
+
+      <RibbonGroupDivider />
+
       <RibbonGroup label="Camera">
         <RibbonLargeButton
           icon={IsometricView}
@@ -69,6 +75,23 @@ export function ViewTab() {
           shortcut="H"
           onClick={goHomeFromStore}
         />
+        <RibbonLargeButton
+          icon={ZoomIn}
+          label="Zoom in"
+          tooltip="Zoom In"
+          onClick={() => cameraCallbacks.zoomIn?.()}
+        />
+        <RibbonLargeButton
+          icon={ZoomOut}
+          label="Zoom out"
+          tooltip="Zoom Out"
+          onClick={() => cameraCallbacks.zoomOut?.()}
+        />
+      </RibbonGroup>
+
+      <RibbonGroupDivider />
+
+      <RibbonGroup label="View">
         <RibbonSmallStack>
           <RibbonSmallButton icon={TopView} label="Top" shortcut="1" onClick={() => cameraCallbacks.setPresetView?.('top')} />
           <RibbonSmallButton icon={FrontView} label="Front" shortcut="3" onClick={() => cameraCallbacks.setPresetView?.('front')} />
@@ -79,39 +102,25 @@ export function ViewTab() {
           <RibbonSmallButton icon={BackView} label="Back" shortcut="4" onClick={() => cameraCallbacks.setPresetView?.('back')} />
           <RibbonSmallButton icon={RightView} label="Right" shortcut="6" onClick={() => cameraCallbacks.setPresetView?.('right')} />
         </RibbonSmallStack>
-        <RibbonSmallStack>
-          <RibbonSmallButton
-            icon={Orthographic}
-            label="Orthographic"
-            tooltip="Toggle orthographic projection"
-            active={projectionMode === 'orthographic'}
-            onClick={() => toggleProjectionMode()}
-          />
-        </RibbonSmallStack>
-      </RibbonGroup>
-
-      <RibbonGroupDivider />
-
-      <RibbonGroup label="Visibility">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <RibbonLargeButton
-              icon={ClassVisibility}
-              label="Classes"
-              hasMenu
-              tooltip={mergeLayers
-                ? `Class visibility (${visibleClassCount} on) · Merge Multilayer Walls is on`
-                : `Class visibility (${visibleClassCount} on)`}
-              badge={mergeLayers ? (
-                // Tiny accent dot announcing that a non-default load
-                // setting is active. Decorative — semantics live on the
-                // button's tooltip.
-                <span aria-hidden="true" className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-primary ring-1 ring-background" />
-              ) : undefined}
-            />
-          </DropdownMenuTrigger>
-          <ClassVisibilityMenuContent align="start" />
-        </DropdownMenu>
+        <RibbonLargeButton
+          icon={RotateLeft}
+          label="Rotate left"
+          tooltip="Rotate Left 90°"
+          onClick={() => cameraCallbacks.rotateLeft?.()}
+        />
+        <RibbonLargeButton
+          icon={RotateRight}
+          label="Rotate right"
+          tooltip="Rotate Right 90°"
+          onClick={() => cameraCallbacks.rotateRight?.()}
+        />
+        <RibbonLargeButton
+          icon={FitAll}
+          label="Fit all"
+          tooltip="Fit all in view"
+          shortcut="Z"
+          onClick={() => cameraCallbacks.fitAll?.()}
+        />
       </RibbonGroup>
 
       <RibbonGroupDivider />
@@ -188,13 +197,6 @@ export function ViewTab() {
           ) : undefined}
         />
         <RibbonSmallStack>
-          <RibbonSmallButton
-            icon={ElementTooltips}
-            label="Hover tips"
-            tooltip="Show entity tooltips on hover"
-            active={hoverTooltipsEnabled}
-            onClick={() => toggleHoverTooltips()}
-          />
           <RibbonSmallButton
             icon={PanelTop}
             label="Classic bar"

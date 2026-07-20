@@ -5,7 +5,7 @@
 import { useMemo, useState, useCallback, useEffect } from 'react';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult } from '@ifc-lite/geometry';
-import { useViewerStore, type FederatedModel } from '@/store';
+import { useViewerStore, type FederatedModel, type HierarchyMode } from '@/store';
 import type { TreeNode, UnifiedStorey, HierarchySortMode } from './types';
 import { HIERARCHY_SORT_MODES, DEFAULT_HIERARCHY_SORT } from './types';
 import {
@@ -22,7 +22,7 @@ import {
   type GroupSubFilter,
 } from './treeDataBuilder';
 
-export type GroupingMode = 'spatial' | 'type' | 'ifc-type' | 'material' | 'groups';
+export type { HierarchyMode } from '@/store';
 
 const SORT_STORAGE_KEY = 'hierarchy-sort';
 
@@ -116,9 +116,8 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [hasInitializedExpansion, setHasInitializedExpansion] = useState(false);
-  const [groupingMode, setGroupingMode] = useState<GroupingMode>(() =>
-    (typeof window !== 'undefined' && localStorage.getItem('hierarchy-grouping') as GroupingMode) || 'spatial'
-  );
+  const groupingMode = useViewerStore((state) => state.HierarchyMode);
+  const setGroupingMode = useViewerStore((state) => state.setHierarchyMode);
   const [sortMode, setSortMode] = useState<HierarchySortMode>(readStoredSortMode);
   // Groups-tab sub-filter (All / Systems / Zones / Other) — session-only state,
   // deliberately not persisted (#1622).
@@ -403,14 +402,6 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
     return [];
   }, [models, ifcDataStore, unifiedStoreys, getUnifiedStoreyElements, toGlobalIdsForModel]);
 
-  // Persist grouping mode preference
-  const handleSetGroupingMode = useCallback((mode: GroupingMode) => {
-    setGroupingMode(mode);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('hierarchy-grouping', mode);
-    }
-  }, []);
-
   // Persist storey sort-order preference (issue #1296)
   const handleSetSortMode = useCallback((mode: HierarchySortMode) => {
     setSortMode(mode);
@@ -427,7 +418,7 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
     searchQuery,
     setSearchQuery,
     groupingMode,
-    setGroupingMode: handleSetGroupingMode,
+    setGroupingMode,
     sortMode,
     setSortMode: handleSetSortMode,
     groupFilter,

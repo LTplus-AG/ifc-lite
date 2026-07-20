@@ -10,6 +10,7 @@ import type { StateCreator } from 'zustand';
 import {
   MERGE_LAYERS_STORAGE_KEY,
   GEOMETRY_MODE_STORAGE_KEY,
+  HIERARCHY_MODE_STORAGE_KEY,
   TOOLBAR_STYLE_STORAGE_KEY,
   RIBBON_COLLAPSED_STORAGE_KEY,
   UI_DEFAULTS,
@@ -22,6 +23,20 @@ import type { GeometryResult } from '@ifc-lite/geometry';
 import type { CesiumPlacementDraft } from './cesiumSlice.js';
 
 export type ThemeMode = 'light' | 'dark' | 'colorful';
+export type HierarchyMode = 'spatial' | 'type' | 'ifc-type' | 'material' | 'groups';
+
+function getInitialHierarchyMode(): HierarchyMode {
+  if (typeof window === 'undefined') return 'spatial';
+  try {
+    const stored = localStorage.getItem(HIERARCHY_MODE_STORAGE_KEY);
+    if (stored === 'type' || stored === 'ifc-type' || stored === 'material' || stored === 'groups') {
+      return stored;
+    }
+  } catch (err) {
+    console.warn('[hierarchy-mode] storage unavailable; using spatial', err);
+  }
+  return 'spatial';
+}
 
 /**
  * One-shot target for "jump to a property and edit it" flows (issue #1107).
@@ -90,6 +105,8 @@ export interface UISlice {
   /** Active tab in the Properties panel. Controlled so in-app flows (e.g.
    *  adding a bSDD property) can jump back to "properties" — issue #1107. */
   propertiesActiveTab: 'properties' | 'quantities' | 'bsdd' | 'raw-step';
+  /** Active grouping tab shared by the Hierarchy panel and Ribbon. */
+  HierarchyMode: HierarchyMode;
   /** One-shot "scroll to + highlight + edit this property" request, armed by
    *  the bSDD add flow and consumed by the Properties panel. Null when idle. */
   pendingPropertyFocus: PropertyFocusTarget | null;
@@ -140,6 +157,7 @@ export interface UISlice {
   setEditEnabled: (enabled: boolean) => void;
   toggleEditEnabled: () => void;
   setPropertiesActiveTab: (tab: 'properties' | 'quantities' | 'bsdd' | 'raw-step') => void;
+  setHierarchyMode: (mode: HierarchyMode) => void;
   /** Arm (or clear, with null) the one-shot property-focus request. */
   setPendingPropertyFocus: (focus: PropertyFocusTarget | null) => void;
   setTheme: (theme: ThemeMode) => void;
@@ -197,6 +215,7 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   activeTool: UI_DEFAULTS.ACTIVE_TOOL,
   editEnabled: false,
   propertiesActiveTab: 'properties',
+  HierarchyMode: getInitialHierarchyMode(),
   pendingPropertyFocus: null,
   theme: UI_DEFAULTS.THEME,
   isMobile: false,
@@ -281,6 +300,15 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   },
 
   setPropertiesActiveTab: (propertiesActiveTab) => set({ propertiesActiveTab }),
+
+  setHierarchyMode: (HierarchyMode) => {
+    set({ HierarchyMode });
+    try {
+      localStorage.setItem(HIERARCHY_MODE_STORAGE_KEY, HierarchyMode);
+    } catch (err) {
+      console.warn('[hierarchy-mode] persist failed; in-memory only', err);
+    }
+  },
 
   setPendingPropertyFocus: (pendingPropertyFocus) => set({ pendingPropertyFocus }),
 

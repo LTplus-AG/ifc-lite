@@ -32,7 +32,7 @@ export function ElementsTab() {
   const mergeLayers = useViewerStore((state) => state.mergeLayers);
   const setSearchModalOpen = useViewerStore((state) => state.setSearchModalOpen);
   const setSearchModalTab = useViewerStore((state) => state.setSearchModalTab);
-  const HierarchyMode = useViewerStore((state) => state.HierarchyMode);
+  const hierarchyMode = useViewerStore((state) => state.hierarchyMode);
   const setHierarchyMode = useViewerStore((state) => state.setHierarchyMode);
   const setLeftPanelCollapsed = useViewerStore((state) => state.setLeftPanelCollapsed);
   const setPanelShownInSidebar = useViewerStore((state) => state.setPanelShownInSidebar);
@@ -148,35 +148,35 @@ export function ElementsTab() {
           icon={Spatial}
           label="Spatial"
           tooltip="Displays ifc spatial structure"
-          active={HierarchyMode === 'spatial'}
+          active={hierarchyMode === 'spatial'}
           onClick={() => handleHierarchyMode('spatial')}
         />
         <RibbonLargeButton
           icon={Class}
           label="Class"
           tooltip="Displays class of elements"
-          active={HierarchyMode === 'type'}
+          active={hierarchyMode === 'type'}
           onClick={() => handleHierarchyMode('type')}
         />
         <RibbonLargeButton
           icon={Type}
           label="Type"
           tooltip="Displays type of elements"
-          active={HierarchyMode === 'ifc-type'}
+          active={hierarchyMode === 'ifc-type'}
           onClick={() => handleHierarchyMode('ifc-type')}
         />
         <RibbonLargeButton
           icon={Material}
           label="Materials"
           tooltip="Displays materials of the model"
-          active={HierarchyMode === 'material'}
+          active={hierarchyMode === 'material'}
           onClick={() => handleHierarchyMode('material')}
         />
         <RibbonLargeButton
           icon={Group}
           label="Groups"
           tooltip="Displays groups of the model"
-          active={HierarchyMode === 'groups'}
+          active={hierarchyMode === 'groups'}
           onClick={() => handleHierarchyMode('groups')}
         />
       </RibbonGroup>

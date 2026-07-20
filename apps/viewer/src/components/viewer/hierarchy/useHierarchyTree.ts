@@ -116,7 +116,7 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [hasInitializedExpansion, setHasInitializedExpansion] = useState(false);
-  const groupingMode = useViewerStore((state) => state.HierarchyMode);
+  const groupingMode = useViewerStore((state) => state.hierarchyMode);
   const setGroupingMode = useViewerStore((state) => state.setHierarchyMode);
   const [sortMode, setSortMode] = useState<HierarchySortMode>(readStoredSortMode);
   // Groups-tab sub-filter (All / Systems / Zones / Other) — session-only state,

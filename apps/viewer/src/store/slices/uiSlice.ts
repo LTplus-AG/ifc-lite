@@ -29,7 +29,7 @@ function getInitialHierarchyMode(): HierarchyMode {
   if (typeof window === 'undefined') return 'spatial';
   try {
     const stored = localStorage.getItem(HIERARCHY_MODE_STORAGE_KEY);
-    if (stored === 'type' || stored === 'ifc-type' || stored === 'material' || stored === 'groups') {
+    if (stored === 'spatial' || stored === 'type' || stored === 'ifc-type' || stored === 'material' || stored === 'groups') {
       return stored;
     }
   } catch (err) {
@@ -106,7 +106,7 @@ export interface UISlice {
    *  adding a bSDD property) can jump back to "properties" — issue #1107. */
   propertiesActiveTab: 'properties' | 'quantities' | 'bsdd' | 'raw-step';
   /** Active grouping tab shared by the Hierarchy panel and Ribbon. */
-  HierarchyMode: HierarchyMode;
+  hierarchyMode: HierarchyMode;
   /** One-shot "scroll to + highlight + edit this property" request, armed by
    *  the bSDD add flow and consumed by the Properties panel. Null when idle. */
   pendingPropertyFocus: PropertyFocusTarget | null;
@@ -215,7 +215,7 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   activeTool: UI_DEFAULTS.ACTIVE_TOOL,
   editEnabled: false,
   propertiesActiveTab: 'properties',
-  HierarchyMode: getInitialHierarchyMode(),
+  hierarchyMode: getInitialHierarchyMode(),
   pendingPropertyFocus: null,
   theme: UI_DEFAULTS.THEME,
   isMobile: false,
@@ -301,10 +301,10 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
 
   setPropertiesActiveTab: (propertiesActiveTab) => set({ propertiesActiveTab }),
 
-  setHierarchyMode: (HierarchyMode) => {
-    set({ HierarchyMode });
+  setHierarchyMode: (mode) => {
+    set({ hierarchyMode: mode });
     try {
-      localStorage.setItem(HIERARCHY_MODE_STORAGE_KEY, HierarchyMode);
+      localStorage.setItem(HIERARCHY_MODE_STORAGE_KEY, mode);
     } catch (err) {
       console.warn('[hierarchy-mode] persist failed; in-memory only', err);
     }

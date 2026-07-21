@@ -2943,6 +2943,13 @@ impl GeometryRouter {
 
         // ── Sequential analytic cuts ────────────────────────────────────────
         let mut committed_ops = 0usize;
+        // AABB (host-local frame) of every COMMITTED cutter prism, captured
+        // post-extension: the region the cut actually re-triangulated. Feeds the
+        // scoped sliver refinement below (#1007 targets rim slivers, not the
+        // host's own authored long-thin faces). 1 mm pad = the batch/veto margin,
+        // comfortably covering the seam vertices shared with kept host fragments.
+        const REFINE_REGION_PAD: f64 = 1.0e-3;
+        let mut refine_boxes: Vec<([f64; 3], [f64; 3])> = Vec::new();
         for (cand, veto) in cands.iter().zip(&vetoed) {
             let mut ok = false;
             if *veto {
@@ -2994,6 +3001,33 @@ impl GeometryRouter {
                                 tris = outcome.tris;
                                 committed_ops += cand.ops.len();
                                 ok = true;
+                                // Committed-cutter AABB (extended pf): lift the
+                                // 4 profile-bb corners at both depth planes.
+                                let mut lo = [f64::INFINITY; 3];
+                                let mut hi = [f64::NEG_INFINITY; 3];
+                                for &uu in &[pf.bb.0[0], pf.bb.1[0]] {
+                                    for &vv in &[pf.bb.0[1], pf.bb.1[1]] {
+                                        for &w in &[pf.d0(), pf.d1()] {
+                                            let p = pf.lift(uu, vv, w);
+                                            for k in 0..3 {
+                                                lo[k] = lo[k].min(p[k]);
+                                                hi[k] = hi[k].max(p[k]);
+                                            }
+                                        }
+                                    }
+                                }
+                                refine_boxes.push((
+                                    [
+                                        lo[0] - REFINE_REGION_PAD,
+                                        lo[1] - REFINE_REGION_PAD,
+                                        lo[2] - REFINE_REGION_PAD,
+                                    ],
+                                    [
+                                        hi[0] + REFINE_REGION_PAD,
+                                        hi[1] + REFINE_REGION_PAD,
+                                        hi[2] + REFINE_REGION_PAD,
+                                    ],
+                                ));
                             }
                             Err(reason) => defer(reason),
                         }
@@ -3037,19 +3071,39 @@ impl GeometryRouter {
         // grid — so accept the refined mesh only when it is STRICTLY closed
         // and a cleaned probe stays at least hairline-closed.
         if residual_idx.is_empty() && directed_closed(&out) {
-            let mut refined = out.clone();
-            for _ in 0..6 {
-                let next = crate::facet_weld::refine_high_aspect_slivers(&refined);
-                if next.indices.len() == refined.indices.len() {
-                    break;
+            // SCOPED to the committed cutters' padded AABBs: #1007's target is
+            // the high-aspect corner sliver the CUT emits at an opening rim, and
+            // every rim-incident sliver touches its cutter's box. The unscoped
+            // pass also bisected the host's own authored long-thin faces (a thin
+            // steel wall is legitimately full of >8:1 quads), inflating output
+            // triangles and paying the full lockstep fixpoint on every
+            // analytic-cut host (the Holter 4.1.x regression).
+            //
+            // Refine straight off `out` first: the scoped pass returns the input
+            // unchanged when no in-region sliver fires (the common clean-cut
+            // case), and for a NO-OP fixpoint `refined == out` byte-for-byte, so
+            // the upfront clone, the probe clean, and the closure audits decided
+            // nothing. Only a fixpoint that actually split an edge pays the
+            // probe + self-check audits. Same 6-refine budget as before
+            // (1 here + up to 5 below).
+            let mut refined =
+                crate::facet_weld::refine_high_aspect_slivers_within(&out, &refine_boxes);
+            if refined.indices.len() != out.indices.len() {
+                for _ in 0..5 {
+                    let next =
+                        crate::facet_weld::refine_high_aspect_slivers_within(&refined, &refine_boxes);
+                    if next.indices.len() == refined.indices.len() {
+                        break;
+                    }
+                    refined = next;
                 }
-                refined = next;
-            }
-            let mut probe = refined.clone();
-            probe.clean_degenerate();
-            if directed_closed(&refined) && (directed_closed(&probe) || closed_or_hairline(&probe))
-            {
-                out = refined;
+                let mut probe = refined.clone();
+                probe.clean_degenerate();
+                if directed_closed(&refined)
+                    && (directed_closed(&probe) || closed_or_hairline(&probe))
+                {
+                    out = refined;
+                }
             }
         }
         // Never emit a cut that is not a consistently-wound closed surface. The

@@ -43,7 +43,17 @@
     1078 rust/geometry/src/extrusion.rs
 # +4: refine_high_aspect_slivers routes its rebuild through Mesh::rebuilt_like so a slivered host keeps its local-frame origin + #1474 placement capture (B7 metadata-loss fix).
 # +1: SNAP_GRID/NORMAL_QUANT single-homed to kernel::mesh_bridge / crate::grid (import replaces local const; doc rewrap costs a line).
-          778 rust/geometry/src/facet_weld.rs
+# +150: Holter void fast-path perf — raw no-sliver pre-scan (skips the O(V) canonicalization on
+# clean cuts), region-scoped refine_high_aspect_slivers_within (prism path refines only the
+# cut region, batching disjoint splits per round with a finite-aspect guard + hard split
+# budget so a degenerate needle can't double its fragments every round; unscoped callers
+# keep the byte-pinned one-edge-per-round behavior).
+# +24: the raw pre-scan needs its OWN wider region padding (2x EDGE_SLACK) than the
+# canonical scans, because canonicalization can move a vertex one dedup cell INTO the
+# region — with a single padding the pre-scan could wrongly early-out on a triangle the
+# canonical scan would refine. Plus the #[cfg(test)] include for facet_weld_scoped_tests.rs
+# (the test file itself is ratchet-exempt).
+          952 rust/geometry/src/facet_weld.rs
 # +2: mix64 made pub(crate); doc-comment noting the shared use by router::content_hash.
      410 rust/geometry/src/geom_hash.rs
      633 rust/geometry/src/kernel/arrangement/classify.rs
@@ -141,7 +151,11 @@
 # analytic hit-rate on the dense faceted-reveal walls). Plus a positions/indices
 # %3 malformed-mesh guard at the top of ptris_from_mesh and the PROFILE_FUSE_TOL
 # (8·SNAP_GRID) weld for profile-equality fusion.
-    3106 rust/geometry/src/router/voids/prism_cut.rs
+# +54: Holter perf — capture committed-cutter AABBs (post-extension) and run the
+# post-cut sliver refinement REGION-SCOPED (refine_high_aspect_slivers_within) so
+# only rim slivers the cut created are bisected, not the host's authored
+# long-thin faces; skip the probe/audit tail when the fixpoint was a no-op.
+    3160 rust/geometry/src/router/voids/prism_cut.rs
 # NEW: #129 coaxial footprint-union for OVERLAPPING opening clusters. One cohesive
 # algorithm: extended-AABB overlap clustering (union-find), coaxial detection, 2.5D
 # depth-slicing with per-slab i_overlay footprint union + watertight re-extrude to

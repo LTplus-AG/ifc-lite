@@ -92,7 +92,15 @@ export async function compileSharedWasmModule(
   // Don't cache a failure — evict ONLY this URL's entry so the next load retries
   // (a transient fetch error shouldn't permanently disable the shared-module fast
   // path for the session), while other URLs' successful modules stay cached.
-  if (result === null) sharedWasmModulePromises.delete(cacheKey);
+  //
+  // Evict only if THIS promise is still the installed one. A failed compile can
+  // have several awaiters; the first to resume evicts and a retry may install a
+  // fresh promise before the rest resume. Without the identity check those late
+  // awaiters would delete the *replacement*, breaking single-flight and letting
+  // a second compile of the same binary start.
+  if (result === null && sharedWasmModulePromises.get(cacheKey) === p) {
+    sharedWasmModulePromises.delete(cacheKey);
+  }
   return result;
 }
 

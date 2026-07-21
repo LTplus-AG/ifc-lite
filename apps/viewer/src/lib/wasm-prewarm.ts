@@ -54,13 +54,16 @@ let scheduled = false;
  */
 export function scheduleWasmPrewarm(): void {
   if (scheduled || typeof window === 'undefined') return;
-  scheduled = true;
+  // Gate BEFORE latching: a session that was on a metered/2g link at mount can
+  // become eligible later, and latching first would lock it out for good.
   if (shouldSkipPrewarm(connection())) return;
+  scheduled = true;
 
   const run = () => {
-    // Dynamic import so the geometry package (and its worker graph) stays out
-    // of the entry chunk — prewarming must not make the app shell heavier, only
-    // move already-required work earlier.
+    // Imported dynamically so this module has no load-order dependency on the
+    // geometry package. (It does NOT keep it out of the entry chunk —
+    // useIfcLoader value-imports GeometryProcessor, so @ifc-lite/geometry is
+    // already in the entry graph and this resolves from memory.)
     void import('@ifc-lite/geometry')
       .then(({ prewarmSharedWasmModule }) => prewarmSharedWasmModule())
       .catch((err) => {

@@ -44,7 +44,7 @@ export { getGeometryStreamWatchdogMs, type WatchdogInputs } from './watchdog.js'
 // opened so the download overlaps the user's think time instead of blocking
 // first geometry. The host app decides when (idle / intent) and whether the
 // connection can afford it.
-export { prewarmSharedWasmModule } from './geometry-parallel.js';
+export { prewarmSharedWasmModule } from './wasm-shared-module.js';
 // Stale-deployment WASM-asset detection (#1363). The host app subscribes to
 // WASM_ASSET_UNAVAILABLE_EVENT and uses `isWasmAssetUnavailableError` to reload
 // onto the current deployment. `notifyIfWasmAssetUnavailable` stays internal —

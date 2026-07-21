@@ -1,5 +1,18 @@
 # @ifc-lite/geometry
 
+## 3.4.0
+
+### Minor Changes
+
+- [#1830](https://github.com/LTplus-AG/ifc-lite/pull/1830) [`52d16e1`](https://github.com/LTplus-AG/ifc-lite/commit/52d16e17817ffcacfec2f58bc592cec252f324b8) Thanks [@louistrue](https://github.com/louistrue)! - Add `prewarmSharedWasmModule` so hosts can start the engine binary's fetch + compile before a file is opened.
+
+  The ~3.9 MB wasm (~1.3 MB brotli) was fetched lazily by `processParallel`, putting the entire download between "user picks a file" and "first geometry". On a ~4 Mbit link that measured 2535 ms of dead wait for a 225 KB model. The compile is memoised per resolved binary URL, so a prewarmed module is simply awaited by the subsequent load, and a failed prewarm degrades to today's behaviour.
+
+### Patch Changes
+
+- Updated dependencies [[`62f0d4f`](https://github.com/LTplus-AG/ifc-lite/commit/62f0d4fe8178af6eb09f0a0efc7486da8725a8d0)]:
+  - @ifc-lite/wasm@4.1.4
+
 ## 3.3.1
 
 ### Patch Changes

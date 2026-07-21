@@ -104,8 +104,10 @@
       "picomatch@>=4": "^4.0.4",
       "uuid@<11.1.1": "^11.1.1",
       "@babel/core": "^7.29.6",
-      "js-yaml@4": "^4.2.0",
-      "read-yaml-file": "^2.1.0"
+      "js-yaml@4": "^4.3.0",
+      "read-yaml-file": "^2.1.0",
+      "brace-expansion@1": "^1.1.16",
+      "brace-expansion@2": "^2.1.2"
     }
   }
 }

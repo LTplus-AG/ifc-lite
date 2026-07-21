@@ -111,6 +111,36 @@ async function compileSharedWasmModule(explicitUrl?: string): Promise<WebAssembl
 }
 
 /**
+ * Start the shared wasm fetch+compile BEFORE a file is opened, so the binary is
+ * already downloaded and compiled by the time `processParallel` wants it.
+ *
+ * Without this the ~3.9 MB binary (~1.3 MB over the wire) is fetched lazily, on
+ * the click that opens a model: nothing overlaps the user's think time, and on a
+ * slow link the whole download sits in front of first geometry (measured 2.5 s
+ * on a ~4 Mbit connection, for a 225 KB model). `compileSharedWasmModule`
+ * memoises per resolved URL, so the later `processParallel` call awaits this
+ * same promise instead of starting its own fetch.
+ *
+ * Fire-and-forget by design: a prewarm failure must never surface to the user or
+ * poison the load path. `compileSharedWasmModule` already evicts a failed URL so
+ * the real load retries, and falls back to per-worker `init()` when it can't
+ * resolve the binary. Callers decide *when* to call this (idle, intent) and
+ * whether the connection can afford it.
+ *
+ * `wasmUrl` MUST match the `wasmUrls.wasm` later passed to `processParallel` —
+ * the memo is keyed on the resolved URL, so prewarming one binary and loading
+ * another downloads both. Vite/webpack consumers (the viewer included) pass
+ * neither and share the default resolution, which is the intended usage.
+ */
+export function prewarmSharedWasmModule(wasmUrl?: string): void {
+  void compileSharedWasmModule(wasmUrl).catch((err) => {
+    // Unreachable in practice — compileSharedWasmModule swallows its own
+    // failures and resolves null — but never let a prewarm reject unhandled.
+    console.warn('[stream] wasm prewarm failed; load path will retry:', err);
+  });
+}
+
+/**
  * Plan content-affinity routing for one chunk: assign each job (by index) to a
  * worker bucket so that every job sharing an affinity key lands on the SAME
  * worker — across the whole stream, since `keyToWorker` is the caller's sticky

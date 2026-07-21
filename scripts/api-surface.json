@@ -1809,7 +1809,8 @@
     "isTauri: function",
     "isWasmAssetUnavailableError: function",
     "mergeGeometryDiagnostics: function",
-    "pickWorkerCount: function"
+    "pickWorkerCount: function",
+    "prewarmSharedWasmModule: function"
   ],
   "@ifc-lite/ids": [
     "ClassificationInfo: interface",

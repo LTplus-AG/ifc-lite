@@ -149,17 +149,20 @@ pub fn count_ray_hits(mesh: &Mesh, ray_origin: [f32; 3], ray_dir: [f32; 3]) -> u
 }
 
 /// Compute the AABB of an opening as seen by the production void path —
-/// `process_element` on the opening then take its bounds.
+/// `process_element` on the opening then take its bounds. The mesh origin is
+/// folded first so the result is genuinely WORLD-space (`Mesh::bounds` only
+/// looks at `positions`, which are local-frame whenever `origin != 0`).
 pub fn opening_world_aabb(
     router: &GeometryRouter,
     opening_id: u32,
     decoder: &mut EntityDecoder,
 ) -> Option<([f32; 3], [f32; 3])> {
     let opening = decoder.decode_by_id(opening_id).ok()?;
-    let mesh = router.process_element(&opening, decoder).ok()?;
+    let mut mesh = router.process_element(&opening, decoder).ok()?;
     if mesh.is_empty() {
         return None;
     }
+    fold_origin(&mut mesh);
     let (min, max) = mesh.bounds();
     Some(([min.x, min.y, min.z], [max.x, max.y, max.z]))
 }
@@ -230,7 +233,9 @@ pub fn count_hits_through_opening(
 }
 
 /// Drive a single host wall through the production code path
-/// (`process_element_with_voids`) and return the resulting mesh.
+/// (`process_element_with_voids`) and return the resulting mesh in WORLD
+/// coordinates (origin folded — see [`fold_origin`]), which is what the
+/// ray-cast helpers here assume.
 pub fn process_host_like_production(
     content: &str,
     host_id: u32,
@@ -240,9 +245,11 @@ pub fn process_host_like_production(
     let mut decoder = EntityDecoder::with_index(content, entity_index);
     let entity = decoder.decode_by_id(host_id).ok()?;
     let router = GeometryRouter::with_scale(1.0);
-    router
+    let mut mesh = router
         .process_element_with_voids(&entity, &mut decoder, void_index)
-        .ok()
+        .ok()?;
+    fold_origin(&mut mesh);
+    Some(mesh)
 }
 
 /// Fold `mesh.origin` into the positions (world = origin + position), leaving

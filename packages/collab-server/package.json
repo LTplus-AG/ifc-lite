@@ -30,7 +30,7 @@
     "@ifc-lite/ifcx": "workspace:^",
     "@ifc-lite/merge": "workspace:^",
     "lib0": "^0.2.99",
-    "ws": "^8.21.0",
+    "ws": "^8.21.1",
     "y-protocols": "^1.0.6",
     "yjs": "^13.6.31"
   },

@@ -60,6 +60,26 @@ Edits accumulate in the same overlay used by `setProperty` / `setAttribute`
 and materialise the next time you call
 `StepExporter.export({ applyMutations: true })`.
 
+### Whole numbers on REAL-typed attributes
+
+ISO 10303-21 requires a REAL-typed attribute (`IfcLengthMeasure` coordinates,
+profile dimensions, `IfcExtrudedAreaSolid.Depth`, …) to carry a decimal point —
+`450.`, never `450`. The exporter is schema-aware: when a slot's declared type
+is unambiguously REAL-backed, a whole-number value is serialized with the
+decimal point automatically, so the natural call just works:
+
+```typescript
+editor.setPositionalAttribute(profile.expressId, 3, 1);  // XDim → 1.  (dotted)
+```
+
+For the rare slot that a bare value genuinely can't disambiguate — a
+`SELECT(IfcInteger, IfcReal)` where you specifically want the REAL member — wrap
+the number in the write-only `{ real }` marker to force a REAL literal:
+
+```typescript
+editor.addEntity('IfcQuantityLength', ['L', null, unitRef, { real: 3 }]); // → IFCLENGTHMEASURE-safe 3.
+```
+
 ## Mutation history (for undo / export)
 
 ```typescript

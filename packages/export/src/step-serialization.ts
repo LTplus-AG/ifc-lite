@@ -103,6 +103,17 @@ export function serializePropertyValue(value: unknown, type: PropertyValueType):
 }
 
 /**
+ * True when a STEP source token is a REAL literal — a numeric token carrying a
+ * decimal point or an exponent (`0.4`, `1.5E-7`, `4.`). Used to preserve
+ * REAL-ness when a positional edit replaces such a value with a whole number,
+ * so `1` written over `0.4` re-emits as `1.` rather than a bare INTEGER.
+ */
+export function tokenIsRealLiteral(token: string): boolean {
+  const t = token.trim();
+  return /^-?\d+(?:\.\d*)?(?:E[+-]?\d+)?$/i.test(t) && (t.includes('.') || /E/i.test(t));
+}
+
+/**
  * Serialize a root attribute value for STEP, inferring the format from the
  * existing token (enum, boolean, number, string, etc.).
  */
@@ -156,16 +167,24 @@ export function serializeAttributeValue(value: string, currentToken: string): st
  *   (callers tag references as the string `"#42"` or via `entityRef(42)`)
  * - other strings are emitted as quoted STEP strings
  * - arrays are emitted as STEP lists `(a,b,c)`, recursing on each element
+ *
+ * `forceReal` makes whole numbers serialize as REAL literals (`450.`, not
+ * `450`) and propagates into nested lists — used by the schema-aware export
+ * path for attribute slots statically known to be REAL-backed (coordinates,
+ * `IfcLengthMeasure` dimensions, …), where a bare INTEGER literal is an ISO
+ * 10303-21 type violation strict validators reject (LTplus-AG/ifc-lite#1839).
+ * It never overrides the explicit `{ real }` marker, which is always REAL.
  */
-export function serializeStepValue(value: IfcAttributeValue): string {
+export function serializeStepValue(value: IfcAttributeValue, forceReal = false): string {
   if (value === null || value === undefined) return '$';
   if (typeof value === 'boolean') return value ? '.T.' : '.F.';
   if (typeof value === 'number') {
     if (!Number.isFinite(value)) return '$';
+    if (forceReal) return toStepReal(value);
     return Number.isInteger(value) ? String(value) : toStepReal(value);
   }
   if (Array.isArray(value)) {
-    return `(${value.map(serializeStepValue).join(',')})`;
+    return `(${value.map(v => serializeStepValue(v, forceReal)).join(',')})`;
   }
   if (typeof value === 'object' && 'real' in value) {
     // Write-only typed-real marker (see `IfcAttributeValue`): always a REAL
@@ -177,14 +196,6 @@ export function serializeStepValue(value: IfcAttributeValue): string {
   if (/^#\d+$/.test(trimmed)) return trimmed;
   if (/^\.[A-Z0-9_]+\.$/i.test(trimmed)) return trimmed.toUpperCase();
   return `'${escapeStepString(String(value))}'`;
-}
-
-/**
- * Serialize an attribute list to a STEP entity body.
- * Example: `[1, '.AREA.', null]` → `1,.AREA.,$`
- */
-export function serializeStepArgs(values: IfcAttributeValue[]): string {
-  return values.map(serializeStepValue).join(',');
 }
 
 /** Tag a number as a STEP entity reference (`#N`) for `serializeStepValue`. */

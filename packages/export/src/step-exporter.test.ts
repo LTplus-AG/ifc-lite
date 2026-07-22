@@ -411,8 +411,11 @@ describe('StepExporter', () => {
 
     expect(point.expressId).toBe(11);
     expect(content).toContain('#10=IFCCARTESIANPOINT((0.,0.,0.));');
-    expect(content).toContain('#11=IFCCARTESIANPOINT((1,2,3));');
-    expect(content).toContain('#12=IFCDIRECTION((0,0,1));');
+    // Coordinates / DirectionRatios are REAL-backed slots, so whole numbers
+    // serialize with a decimal point (#1839) — a bare `(1,2,3)` is a STEP type
+    // violation strict validators reject.
+    expect(content).toContain('#11=IFCCARTESIANPOINT((1.,2.,3.));');
+    expect(content).toContain('#12=IFCDIRECTION((0.,0.,1.));');
     expect(result.stats.newEntityCount).toBe(2);
   });
 
@@ -451,6 +454,73 @@ describe('StepExporter', () => {
     expect(result.stats.modifiedEntityCount).toBe(1);
   });
 
+  // Regression #1839: a WHOLE number written into a REAL-backed positional slot
+  // (IfcRectangleProfileDef.XDim : IfcPositiveLengthMeasure) must serialize with
+  // a decimal point. Previously it came out as a bare INTEGER (`...,1,0.4`) and
+  // strict validators (ifcopenshell.validate) rejected the file.
+  it('serializes an integral edit of a REAL-typed positional slot as a STEP REAL', () => {
+    const dataStore = buildMockDataStore([
+      [35, 'IFCRECTANGLEPROFILEDEF', '#35=IFCRECTANGLEPROFILEDEF(.AREA.,$,#34,0.4,0.4);'],
+    ]);
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.setPositionalAttribute(35, 3, 1); // XDim := 1.0
+
+    const result = new StepExporter(dataStore, view).export({
+      schema: 'IFC4',
+      applyMutations: true,
+    });
+    const content = decode(result.content);
+
+    expect(content).toContain('#35=IFCRECTANGLEPROFILEDEF(.AREA.,$,#34,1.,0.4);');
+    expect(content).not.toContain('#34,1,0.4');
+  });
+
+  // Regression #1839: the in-store builders emit their own geometry as overlay
+  // entities with whole-number lengths (millimetre models are the common case).
+  // Every REAL-backed slot on a freshly-added entity must carry a decimal point.
+  it('forces REAL literals on whole-number lengths of overlay-created geometry', () => {
+    const dataStore = buildMockDataStore([
+      [10, 'IFCCARTESIANPOINT', '#10=IFCCARTESIANPOINT((0.,0.,0.));'],
+    ]);
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.setExpressIdWatermark(10);
+    // #11 profile: XDim/YDim are REAL; #12 extruded solid: Depth (index 3) is REAL.
+    view.createEntity('IFCRECTANGLEPROFILEDEF', ['.AREA.', null, '#34', 400, 400]);
+    view.createEntity('IFCEXTRUDEDAREASOLID', ['#11', '#20', '#21', 3000]);
+
+    const result = new StepExporter(dataStore, view).export({
+      schema: 'IFC4',
+      applyMutations: true,
+    });
+    const content = decode(result.content);
+
+    expect(content).toContain('#11=IFCRECTANGLEPROFILEDEF(.AREA.,$,#34,400.,400.);');
+    expect(content).toContain('#12=IFCEXTRUDEDAREASOLID(#11,#20,#21,3000.);');
+  });
+
+  // Guard against over-forcing: an INTEGER-typed slot keeps its integer form.
+  // IfcQuantityCount.CountValue is a pure IfcCountMeasure (xs:integer), so a
+  // whole-number value must NOT gain a decimal point. Uses the new-entity path
+  // (no source token) so only the schema signal is in play.
+  it('leaves integer-typed slots as INTEGER literals', () => {
+    const dataStore = buildMockDataStore([
+      [1, 'IFCCARTESIANPOINT', '#1=IFCCARTESIANPOINT((0.,0.,0.));'],
+    ]);
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.setExpressIdWatermark(1);
+    // Name, Description, Unit, CountValue (integer), Formula
+    view.createEntity('IFCQUANTITYCOUNT', ['n', null, null, 5, null]);
+
+    const result = new StepExporter(dataStore, view).export({
+      schema: 'IFC4',
+      applyMutations: true,
+    });
+    const content = decode(result.content);
+
+    expect(content).toContain("#2=IFCQUANTITYCOUNT('n',$,$,5,$);");
+    expect(content).not.toContain('5.');
+  });
+
   // Regression: the deltaOnly early-return previously fired before the
   // overlay-entities pass, so `createEntity()`-only edits were silently
   // dropped from delta exports.
@@ -469,7 +539,7 @@ describe('StepExporter', () => {
     });
     const content = decode(result.content);
 
-    expect(content).toContain('#2=IFCDIRECTION((1,0,0));');
+    expect(content).toContain('#2=IFCDIRECTION((1.,0.,0.));');
     expect(content).not.toContain('#1=IFCCARTESIANPOINT');
     expect(result.stats.newEntityCount).toBe(1);
   });

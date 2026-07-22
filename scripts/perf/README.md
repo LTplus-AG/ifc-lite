@@ -119,20 +119,68 @@ Encoded so a spike does not re-walk a dead end. History lives in the PRs cited.
 - **Local-frame f32 collapse** (#1114): per-element origin removes far-from-origin
   jitter and shrinks coordinates.
 - **Worker right-sizing** (#1431): `SMALL_FILE_MB` 64->24, -21% peak, 0 regression.
-- **SharedEntityIndex** (#1445): ~600 MB less peak on huge files.
+- **Shared entity-index on the export/native path** (#1516/#1533, #1682): one sorted
+  `(id,start,end)` binary-search buffer instead of per-worker FxHashMaps, where a
+  *single* consumer builds it (streaming glTF export, binary-search columns). This
+  shipped and is a real win; it is NOT the viewer huge-file case below (see dead ends).
 - **Vertex weld at faceted-brep source** (#1562): closes the volume-metric gap.
 
 ### Dead ends (do NOT re-spike without a new mechanism)
 - **More geometry workers** -> zero CSG speedup: memory-bandwidth bound, not CPU.
+- **Shared entity-index for the VIEWER huge-file path** (#1445): CLOSED, branch
+  deleted, REFUTED by an end-to-end 722MB re-measure. The retained-size spike looked
+  great (152 vs 354 MB/worker, projected ~600 MB lower peak) but `peakWasm` went *up*
+  ~680 MB (3930 vs 3250 MB): peak is set *during* the build, `from_columns`
+  double-buffers a transient `Vec<(u32,u32,u32)>` + output `Vec<u8>`, and N workers
+  building concurrently spike above the old single-FxHashMap footprint. Third
+  isolated-bench-misled case after #1429 and Manifold. Do NOT re-attempt without a
+  transient-free in-place build — and even then the index is not the dominant cost
+  (the per-worker 1x source copy is). (The single-consumer export/native shared index
+  above is a *different* thing and did ship.)
+- **Threaded WASM CSG** (#1429): 4.19x CSG-only isolated, but whole-pipeline only
+  2.33x @ 4 threads and it REGRESSED at 8 threads (atomics tax + SAB scaling). Second
+  isolated-bench-misled case. `init_thread_pool` survives in the off-by-default
+  `threads` bundle only; the live path is the JS worker pool.
 - **Void-cut dedup** (#1286-P5 / #1571): ~4% eligible on real models (plan-rotated
   walls ineligible AND costliest); world-frame cut can't be byte-identical. PARKED.
 - **Content-dedup** (#1130): hash re-decodes the subtree, 20-30% slower net. OFF.
+  (It became a NET LOSS once rect_fast made CSG cheap — a "regime rot" example: a
+  measured win can flip when the surrounding cost regime changes.)
 - **Manifold WASM / BSP kernel**: deleted at M9; pure-Rust exact kernel is the only
   one. C++ accelerator was a dead end.
 - **Rect-fast void path**: correct where it fires but barely fires (0 on Revit/Tekla);
   not the lever.
 - **CSG exact-arith**: ~15ms/cut floor is the arithmetic cost; the only lever there
   is *doing fewer/cheaper cuts* (analytic bypass), not faster exact CSG.
+- **`wasm-opt` for size**: a NET LOSS on the *shipped* (brotli-compressed) bundle —
+  it grows the brotli-compressed transfer size even when it shrinks the raw `.wasm`.
+  Track raw AND brotli, and gate on brotli (what the user downloads).
+- **`bnum` fixed-width bigint** (bnum#74): OBSOLETE post-FixedInt; the -8.9% it once
+  bought is now ~0%. Another regime-rot casualty.
+
+### Live levers NOT yet shipped (read the status — one is a mirage today)
+- **Brotli -q11 on the served bundle** (SHIPPABLE NOW): Vercel serves ~1266 KB where
+  brotli -q11 reaches ~947 KB (~25% smaller cold download). Cold-start only, no code
+  change, no browser dependency. Verify against the real served response before/after.
+- **Shared-module compile memo gap** (SHIPPABLE NOW): `packages/parser/src/parser.worker.ts`
+  compiles the ~3.9 MB binary outside the shared-module memo, re-paying compile on that
+  path. Small cold-start win; verify with an isolated compile-time mark.
+- **Threaded WASM CSG — in-instance rayon** (CONTESTED, verify end-to-end before
+  believing either number): the detached `rust/csg-thread-bench` rung-2 result claims
+  2.9-4.2x on the CSG step @ 8T and **1.6-1.9x end-to-end**, byte-identical, ~0% atomics
+  tax, in today's cross-origin-isolated Chrome/Firefox (the viewer already sets
+  COOP/COEP); `pkg-threaded` is built (#1255) but not wired into runtime selection.
+  This DIRECTLY CONFLICTS with the #1429 dead-end entry above (whole-pipeline regressed
+  at 8T). The two used different mechanisms/eras; do NOT ship on either number until an
+  interleaved base-vs-branch end-to-end A/B on the worker pool resolves it. See
+  `docs/architecture/csg-threading-design.md`.
+- **Wide-arithmetic exact-CSG bundle** (~1.7x on a real void cut — NOT SHIPPABLE TODAY):
+  built by `BUILD_WIDE=1 scripts/build-wasm.sh`, but **no stable browser runs it** — V8
+  has it behind `--experimental-wasm-wide-arithmetic` (default off); `WebAssembly.validate`
+  returns false on every shipping engine. Track-and-adopt only; the runtime feature-probe
+  (`packages/geometry/src/wasm-features.ts`, not yet created) would auto-upgrade per engine
+  as each ships. Re-check when V8 stages the flag on by default. See
+  `docs/architecture/wasm-wide-arithmetic.md` (delivery status verified 2026-07-16).
 
 ### Standing constraints
 - Geometry is **client-side only** (no server meshing).

@@ -58,4 +58,10 @@ else
     fi
 fi
 
+# Propagate build failure (and a missing artifact) as a non-zero exit so a CI
+# size gate can't read this as "0 KiB, all good". A green build with the wasm
+# present exits 0.
+if [ $build_exit -ne 0 ] || [ ! -f "$wasm_path" ]; then
+    exit 1
+fi
 exit 0

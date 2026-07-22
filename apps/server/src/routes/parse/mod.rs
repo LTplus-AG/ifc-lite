@@ -227,6 +227,68 @@ fn unwrap_ifczip(
 }
 
 #[cfg(test)]
+mod extract_file_tests {
+    use super::*;
+    use axum::body::Body;
+    use axum::extract::FromRequest;
+    use axum::http::{header, Request};
+
+    const BOUNDARY: &str = "extractfileboundary";
+
+    /// Build an `axum::extract::Multipart` carrying a single `file` field with
+    /// `content`, mirroring a real POST body.
+    async fn multipart_of(content: &[u8]) -> Multipart {
+        let mut body = Vec::new();
+        body.extend_from_slice(
+            format!(
+                "--{BOUNDARY}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"model.ifc\"\r\nContent-Type: application/octet-stream\r\n\r\n"
+            )
+            .as_bytes(),
+        );
+        body.extend_from_slice(content);
+        body.extend_from_slice(format!("\r\n--{BOUNDARY}--\r\n").as_bytes());
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/")
+            .header(
+                header::CONTENT_TYPE,
+                format!("multipart/form-data; boundary={BOUNDARY}"),
+            )
+            .body(Body::from(body))
+            .unwrap();
+
+        Multipart::from_request(request, &()).await.unwrap()
+    }
+
+    #[tokio::test]
+    async fn rejects_an_oversized_file_without_buffering_the_whole_body() {
+        // 1 MB ceiling; a 1.5 MB upload crosses it partway through the
+        // chunked read in `extract_file`, so this must reject before EOF
+        // rather than only after the full field has been received. Kept
+        // under axum's 2 MB default `DefaultBodyLimit` (not applied by the
+        // real router, which raises it — see `main.rs`) so this exercises
+        // `extract_file`'s own check, not the framework's raw body limit.
+        let content = vec![0u8; 1536 * 1024];
+        let mut multipart = multipart_of(&content).await;
+
+        let err = extract_file(&mut multipart, 1).await.unwrap_err();
+        assert!(matches!(err, ApiError::FileTooLarge { max_mb: 1 }));
+    }
+
+    #[tokio::test]
+    async fn accepts_a_file_within_the_ceiling() {
+        // Also exercises the non-gzip/non-zip branch under the new
+        // chunk-by-chunk read (previously a single `Field::bytes()` call).
+        let content = vec![0u8; 512 * 1024];
+        let mut multipart = multipart_of(&content).await;
+
+        let bytes = extract_file(&mut multipart, 1).await.unwrap();
+        assert_eq!(bytes.len(), content.len());
+    }
+}
+
+#[cfg(test)]
 mod ifczip_tests {
     use super::*;
     use std::io::Write;

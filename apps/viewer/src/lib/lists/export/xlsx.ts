@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { CellValue } from '@ifc-lite/lists';
-import { displayCell, type ExportModel, type ExportColumn } from './model';
+import { displayCell, neutralizeSpreadsheetFormula, type ExportModel, type ExportColumn } from './model';
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 const NUM_FMT = '#,##0.####';
@@ -16,7 +16,9 @@ const excelWidth = (px: number): number => Math.max(8, Math.min(80, Math.round(p
 function cellValue(v: CellValue, c: ExportColumn): string | number | null {
   if (v === null || v === undefined) return null;
   if (c.numeric && typeof v === 'number' && Number.isFinite(v)) return v;
-  return displayCell(v);
+  // String cells derive from attacker-controllable IFC values — neutralize
+  // spreadsheet formula injection before Excel treats a leading =/+/-/@ as one.
+  return neutralizeSpreadsheetFormula(displayCell(v));
 }
 
 export async function toXlsx(model: ExportModel): Promise<Blob> {
@@ -39,8 +41,9 @@ export async function toXlsx(model: ExportModel): Promise<Blob> {
   ws.getCell(2, 1).font = { italic: true, size: 9, color: { argb: 'FF94A3B8' } };
   ws.addRow([]);
 
-  // Header.
-  const header = ws.addRow(cols.map((c) => c.label));
+  // Header. Column labels can be user-authored (custom pset/regex columns), so
+  // they pass through the same formula-injection guard.
+  const header = ws.addRow(cols.map((c) => neutralizeSpreadsheetFormula(c.label)));
   header.font = { bold: true, color: { argb: 'FFFFFFFF' } };
   header.eachCell((cell) => {
     cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } };
@@ -60,13 +63,18 @@ export async function toXlsx(model: ExportModel): Promise<Blob> {
   };
 
   if (model.groups) {
+    // Nested (multi-criteria) grouping: sub-group headers indent one step per
+    // level and carry their own count; member rows sit on leaf groups only.
+    // Outline levels are clamped to Excel's maximum of 8.
+    const MAX_OUTLINE = 8;
     for (const g of model.groups) {
-      const gr = ws.addRow(cols.map((c, i) => (i === 0 ? `${g.label} (${g.count})` : (c.summed ? g.sums[c.id] : null))));
+      const gr = ws.addRow(cols.map((c, i) => (i === 0 ? `${'  '.repeat(g.level)}${neutralizeSpreadsheetFormula(g.label)} (${g.count})` : (c.summed ? g.sums[c.id] : null))));
       gr.font = { bold: true };
       gr.eachCell((cell) => { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } }; });
-      for (const row of g.rows) addDataRow(row, 1);
+      if (g.level > 0) gr.outlineLevel = Math.min(g.level, MAX_OUTLINE);
+      for (const row of g.rows) addDataRow(row, Math.min(g.level + 1, MAX_OUTLINE));
     }
-    ws.properties.outlineLevelRow = 1;
+    ws.properties.outlineLevelRow = Math.min(model.groups.reduce((m, g) => Math.max(m, g.level + 1), 1), MAX_OUTLINE);
   } else {
     for (const row of model.rows) addDataRow(row);
   }

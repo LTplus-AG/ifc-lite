@@ -32,6 +32,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 // itself so its overlay-path logic stays unit-testable.
 import './lib/placement-edit.boot';
 import { installWasmVersionSkewRecovery } from './lib/wasm-version-skew';
+import { scheduleWasmPrewarm } from './lib/wasm-prewarm';
 
 // WASM engine-binary recovery — the sibling of the chunk recovery below for the
 // `ifc-lite_bg.wasm` binary, which wasm-bindgen fetches inside a worker and so
@@ -87,3 +88,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <App />
   </React.StrictMode>
 );
+
+// Pull the geometry engine binary down while the user is still deciding which
+// file to open, instead of on the click that opens it. See wasm-prewarm.ts.
+scheduleWasmPrewarm();

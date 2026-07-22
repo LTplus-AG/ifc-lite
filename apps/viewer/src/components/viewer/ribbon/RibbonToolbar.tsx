@@ -23,7 +23,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useViewerStore } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
 import { cn } from '@/lib/utils';
-import { SearchInline } from '../SearchInline';
 import { ThemeSwitch } from '../ThemeSwitch';
 import { ExportChangesButton } from '../ExportChangesButton';
 import { ExtensionToolbarSlot } from '@/components/extensions/ExtensionToolbarSlot';
@@ -31,15 +30,17 @@ import { useFileCommands } from '../toolbar/useFileCommands';
 import { FileTab } from './tabs/FileTab';
 import { HomeTab } from './tabs/HomeTab';
 import { ViewTab } from './tabs/ViewTab';
+import { ElementsTab } from './tabs/ElementsTab';
 import { AnalyzeTab } from './tabs/AnalyzeTab';
 import { AuthorTab } from './tabs/AuthorTab';
 
-type RibbonTabId = 'file' | 'home' | 'view' | 'analyze' | 'author';
+type RibbonTabId = 'file' | 'home' | 'view' | 'elements' | 'analyze' | 'author';
 
 const RIBBON_TABS: { id: RibbonTabId; label: string }[] = [
   { id: 'file', label: 'File' },
   { id: 'home', label: 'Home' },
   { id: 'view', label: 'View' },
+  { id: 'elements', label: 'Elements' },
   { id: 'analyze', label: 'Analyze' },
   { id: 'author', label: 'Author' },
 ];
@@ -49,7 +50,7 @@ interface RibbonToolbarProps {
 }
 
 export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as RibbonToolbarProps) {
-  // Home first: it holds the everyday loop (tools, selection, camera).
+  // Home first: it holds the everyday tool and camera loop.
   const [activeTab, setActiveTab] = useState<RibbonTabId>('home');
   const ribbonCollapsed = useViewerStore((s) => s.ribbonCollapsed);
   const setRibbonCollapsed = useViewerStore((s) => s.setRibbonCollapsed);
@@ -134,14 +135,6 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
           <span className="mr-2 max-w-72 truncate text-xs text-destructive">{error}</span>
         )}
 
-        {/* Search lives in the strip (Office puts it in the title row):
-            always visible, collapse-proof, and anchored to real chrome
-            instead of floating in the band. max-h trims the h-9 input to
-            the strip's rhythm without forking SearchInline. */}
-        <div className="mr-1 hidden md:block [&_input]:max-h-8">
-          <SearchInline />
-        </div>
-
         {/* Extension toolbar contributions (right-aligned, same slot as
             the classic toolbar). */}
         <ExtensionToolbarSlot slot="toolbar.right" />
@@ -201,6 +194,7 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
           {activeTab === 'file' && <FileTab fileCommands={fileCommands} />}
           {activeTab === 'home' && <HomeTab />}
           {activeTab === 'view' && <ViewTab />}
+          {activeTab === 'elements' && <ElementsTab />}
           {activeTab === 'analyze' && <AnalyzeTab />}
           {activeTab === 'author' && <AuthorTab />}
         </div>

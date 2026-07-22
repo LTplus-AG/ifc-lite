@@ -56,6 +56,16 @@ fn mesh_volume(mesh: &Mesh) -> f64 {
         / 6.0
 }
 
+/// Which void path these hosts take. The analytic prism cut (default) and the
+/// exact kernel (`IFC_LITE_PRISM_CUT=0`) tessellate the same cut with the same
+/// density class but different triangle counts, so the count pins below select
+/// per path — the feature-off build must still reproduce the old exact-kernel
+/// counts byte-for-byte. The bbox + oracle volume are the path-independent
+/// load-bearing invariants and are asserted unconditionally.
+fn prism_cut_enabled() -> bool {
+    std::env::var("IFC_LITE_PRISM_CUT").as_deref() != Ok("0")
+}
+
 fn bbox(positions: &[f32]) -> Option<((f32, f32, f32), (f32, f32, f32))> {
     if positions.is_empty() {
         return None;
@@ -144,7 +154,27 @@ fn wall_552611_2_openings_matches_ios() {
     // mesh-determinism manifest): the refinement's first-seen canonical ids
     // follow mesh order, so its bisection cascade re-baselined; bbox + oracle
     // volume above are the load-bearing invariants and are unchanged.
-    assert_eq!(mesh.indices.len() / 3, 188, "triangle count (kernel-native, was IOS 60)");
+    // Re-pinned 188 -> 204 for the analytic-prism void path (perf/beat-webifc):
+    // the conforming per-triangle CDT + the same consolidate_coplanar +
+    // refine_high_aspect_slivers post-passes tessellate the cut differently
+    // from the exact arrangement but with the same density class. The count is
+    // platform-stable for the same reason the exact pin was: FMA-free f64,
+    // deterministic CDT / i_overlay, BTreeMap bucket order. Load-bearing
+    // invariants remain the bbox + oracle volume above. Feature-off
+    // (IFC_LITE_PRISM_CUT=0) routes back through the exact kernel: 188.
+    // Re-pinned 204 -> 158 when the prism path's post-cut sliver refinement
+    // became REGION-SCOPED to the committed cutter boxes: it no longer bisects
+    // the host's own authored long-thin faces away from the cut, so the count
+    // moves back TOWARD the IOS/Manifold 60 rather than away from it. The rim
+    // itself is refined exactly as before (every rim sliver lies inside its
+    // cutter's box). Feature-off is unchanged at 188 — the exact kernel still
+    // takes the unscoped, byte-pinned pass.
+    let expect_tris = if prism_cut_enabled() { 158 } else { 188 };
+    assert_eq!(
+        mesh.indices.len() / 3,
+        expect_tris,
+        "triangle count (kernel-native, was IOS 60)"
+    );
 }
 
 #[test]
@@ -155,7 +185,13 @@ fn wall_552761_2_openings_matches_ios() {
     let vol = mesh_volume(&mesh);
     assert!((vol - 16.3967).abs() < 1e-3, "cut volume = {vol}, expected 16.3967");
     // Kernel re-baseline (was IOS 60): ~3x from `refine_high_aspect_slivers`.
-    assert_eq!(mesh.indices.len() / 3, 188);
+    // Re-pinned 188 -> 196 for the analytic-prism void path (see wall_552611's
+    // pin note); bbox + oracle volume are the load-bearing invariants.
+    // Feature-off (IFC_LITE_PRISM_CUT=0) routes back through the exact kernel: 188.
+    // Re-pinned 196 -> 168 for the region-scoped sliver refinement (see
+    // wall_552611's pin note); feature-off unchanged at 188.
+    let expect_tris = if prism_cut_enabled() { 168 } else { 188 };
+    assert_eq!(mesh.indices.len() / 3, expect_tris);
     let _ = mx; // not used; presence of non-empty mesh is the assertion
 }
 
@@ -169,7 +205,13 @@ fn wall_555082_1_opening_matches_ios() {
     // Kernel re-baseline (IOS: v=20 t=36): ~3x from `refine_high_aspect_slivers`.
     // Re-pinned 114 -> 138 with the consolidate_coplanar BTreeMap bucket order
     // (see wall_552611 above); oracle volume is the load-bearing invariant.
-    assert_eq!(mesh.indices.len() / 3, 138);
+    // Re-pinned 138 -> 130 for the analytic-prism void path (see wall_552611's
+    // pin note) — the analytic cut consolidates BELOW the exact kernel here.
+    // Feature-off (IFC_LITE_PRISM_CUT=0) routes back through the exact kernel: 138.
+    // Re-pinned 130 -> 88 for the region-scoped sliver refinement (see
+    // wall_552611's pin note); feature-off unchanged at 138.
+    let expect_tris = if prism_cut_enabled() { 88 } else { 138 };
+    assert_eq!(mesh.indices.len() / 3, expect_tris);
 }
 
 // ──────────────────────────── known-bad cases ──────────────────────────
@@ -217,8 +259,14 @@ fn wall_553010_opening_does_not_empty_wall() {
     // Cut produced a real wall-with-slot mesh, not the uncut host (12 tris).
     // Kernel-native count: 138 (`refine_high_aspect_slivers` splits the tall
     // wall faces around the slot); IOS produces 40 with coarser tessellation.
+    // Re-pinned 138 -> 82 (prism path only) for the region-scoped sliver
+    // refinement: the tall wall faces AWAY from the slot are no longer bisected,
+    // only the slot's own rim (see wall_552611's pin note). Now gated like its
+    // sibling pins in this file — feature-off (IFC_LITE_PRISM_CUT=0) still
+    // routes through the exact kernel's unscoped pass and stays at 138.
     let tris = mesh.indices.len() / 3;
-    assert_eq!(tris, 138, "wall-with-slot triangle count");
+    let expect_tris = if prism_cut_enabled() { 82 } else { 138 };
+    assert_eq!(tris, expect_tris, "wall-with-slot triangle count");
 }
 
 /// Wall #612315 (MW 11.5, 3 openings) used to collapse to a 4.22 m fragment

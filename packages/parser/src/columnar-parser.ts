@@ -1101,11 +1101,22 @@ export function extractRootAttributesFromEntity(
     entity: IfcEntity
 ): { globalId: string; name: string; description: string; objectType: string; tag: string } {
     const attrs = entity.attributes || [];
+    const enumIdx = entity.enumAttrIndices;
     const idx = getRootAttrIndices(entity.type);
     const pick = (schemaIndex: number, fallbackIndex: number): string => {
         const i = idx.known ? schemaIndex : fallbackIndex;
         const raw = i >= 0 ? attrs[i] : undefined;
-        return typeof raw === 'string' ? raw : '';
+        if (typeof raw !== 'string') return '';
+        // Unknown-type fallback only: a fixed index can land on a STEP bare-enum
+        // token — e.g. a PredefinedType at attr 7 for a non-IfcElement layout —
+        // which must not leak into a Tag/Description cell. Reject by token KIND
+        // via the extractor's side channel (#1799), not by dotted-string shape:
+        // a quoted string that merely looks like an enum ('.USERDEFINED.')
+        // survives, exactly matching the Rust server path (string_at accepts
+        // AttributeValue::String and rejects ::Enum, #1779). Skipped for known
+        // types, whose schema indices point at genuine string slots.
+        if (!idx.known && enumIdx !== undefined && enumIdx.includes(i)) return '';
+        return raw;
     };
     return {
         globalId: pick(idx.globalId, 0),

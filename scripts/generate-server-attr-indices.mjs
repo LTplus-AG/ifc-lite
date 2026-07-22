@@ -17,13 +17,22 @@
  *
  * Regenerate after a schema-registry change:
  *   pnpm turbo build --filter=@ifc-lite/parser && node scripts/generate-server-attr-indices.mjs
+ *   (then `cargo fmt -p ifc-lite-server` — the emitted arms are single-line)
+ *
+ * `--check` compares the committed file's per-type indices against a fresh
+ * derivation from the registry and exits 1 on drift. The comparison is
+ * SEMANTIC (parses the indices out of the committed arms), so it's immune to
+ * rustfmt reflowing the single-line arms into multiple lines — no Rust
+ * toolchain required in CI (issue #1780).
  *
  * Output: apps/server/src/services/data_model/generated/attr_indices.rs
  */
 
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+const CHECK = process.argv.includes('--check');
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const { SCHEMA_REGISTRY, getAttributeNames } = await import(
@@ -80,6 +89,62 @@ ${arms}
 `;
 
 const outPath = join(root, 'apps/server/src/services/data_model/generated/attr_indices.rs');
+
+if (CHECK) {
+  // Parse the committed arms semantically (format-agnostic): each type maps to
+  // its [description, object_type, tag, predefined_type] tuple.
+  let committed;
+  try {
+    committed = readFileSync(outPath, 'utf8');
+  } catch {
+    console.error(`✗ ${outPath} is missing — run: node scripts/generate-server-attr-indices.mjs`);
+    process.exit(1);
+  }
+  // A commented-out arm is dead to Rust (it falls back to the unknown-type
+  // indices), but the arm regex would still match it and report "in sync" —
+  // recreating the very drift this guards against. Strip Rust block and line
+  // comments first. (attr_indices.rs holds no string literals containing `//`
+  // or `/*` — type-name keys are `[A-Z0-9_]+` — so this can't eat a real arm.)
+  const stripRustComments = (text) =>
+    text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+  // Rust `match` is FIRST-arm-wins; a Map is last-wins. Track duplicates so a
+  // hand-added second arm can't slip a wrong value past this guard by matching
+  // the registry on its (dead) last copy while Rust dispatches the first.
+  const parseArms = (rawText) => {
+    const text = stripRustComments(rawText);
+    const map = new Map();
+    const dups = new Set();
+    const re = /"([A-Z0-9_]+)"\s*=>\s*Some\(RootAttrIndices\s*\{\s*description:\s*(-?\d+)\s*,\s*object_type:\s*(-?\d+)\s*,\s*tag:\s*(-?\d+)\s*,\s*predefined_type:\s*(-?\d+)\s*,?\s*\}\)/g;
+    for (const m of text.matchAll(re)) {
+      // Keep the FIRST arm's value (mirrors Rust dispatch); flag the rest.
+      if (map.has(m[1])) dups.add(m[1]);
+      else map.set(m[1], [Number(m[2]), Number(m[3]), Number(m[4]), Number(m[5])].join(','));
+    }
+    return { map, dups };
+  };
+  const expected = new Map(rows.map((r) => [r.upper, r.idx.join(',')]));
+  const { map: actual, dups } = parseArms(committed);
+
+  const drift = [];
+  for (const k of dups) drift.push(`  duplicate arm (Rust uses the first, unreachable rest): ${k}`);
+  for (const [k, v] of expected) {
+    if (!actual.has(k)) drift.push(`  missing row: ${k}`);
+    else if (actual.get(k) !== v) drift.push(`  ${k}: committed [${actual.get(k)}] != registry [${v}]`);
+  }
+  for (const k of actual.keys()) if (!expected.has(k)) drift.push(`  stale row (not in registry): ${k}`);
+
+  if (drift.length > 0) {
+    console.error(
+      `✗ apps/server/.../generated/attr_indices.rs is out of sync with @ifc-lite/parser's SCHEMA_REGISTRY (${SCHEMA_REGISTRY.name}).\n` +
+      `  Regenerate: pnpm turbo build --filter=@ifc-lite/parser && node scripts/generate-server-attr-indices.mjs && cargo fmt -p ifc-lite-server\n` +
+      `${drift.slice(0, 20).join('\n')}${drift.length > 20 ? `\n  …and ${drift.length - 20} more` : ''}`,
+    );
+    process.exit(1);
+  }
+  console.log(`✓ attr_indices.rs in sync (${expected.size} types, registry ${SCHEMA_REGISTRY.name})`);
+  process.exit(0);
+}
+
 mkdirSync(dirname(outPath), { recursive: true });
 writeFileSync(outPath, out);
 console.log(`wrote ${outPath} (${rows.length} types, registry ${SCHEMA_REGISTRY.name})`);

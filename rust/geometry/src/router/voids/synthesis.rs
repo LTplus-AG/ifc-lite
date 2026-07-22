@@ -48,6 +48,30 @@ impl GeometryRouter {
         opening_ids: &[u32],
         decoder: &mut EntityDecoder,
     ) -> Vec<OpeningType> {
+        self.classify_openings_impl(host, opening_ids, decoder, true)
+    }
+
+    /// Classify a subset of a host's openings WITHOUT recording the per-host
+    /// diagnostic. Used by the 2D fast path to build the residual (exact-kernel)
+    /// context for the ineligible openings after the host's full opening set has
+    /// already been diagnosed once — `record_host_opening_diagnostic` appends, so
+    /// a second recording for the same host would double-count.
+    pub(super) fn classify_openings_quiet(
+        &self,
+        host: &DecodedEntity,
+        opening_ids: &[u32],
+        decoder: &mut EntityDecoder,
+    ) -> Vec<OpeningType> {
+        self.classify_openings_impl(host, opening_ids, decoder, false)
+    }
+
+    fn classify_openings_impl(
+        &self,
+        host: &DecodedEntity,
+        opening_ids: &[u32],
+        decoder: &mut EntityDecoder,
+        record_diag: bool,
+    ) -> Vec<OpeningType> {
         use super::super::{ClassificationKind, OpeningDiagnostic, OpeningKindDiag};
 
         // Per-opening diagnostic accumulator for this host. Pushed to the
@@ -75,11 +99,16 @@ impl GeometryRouter {
 
             let vertex_count = opening_mesh.positions.len() / 3;
 
-            // Local helper: record both the aggregate counter bump and a
-            // per-host diagnostic line in one place.
+            // Local helper: bump the aggregate counter and push a per-host
+            // diagnostic line together. QUIET mode (`record_diag == false`) is a
+            // full no-op — the host's opening set was already classified once by
+            // `classify_openings`, so bumping `ClassificationStats` again (or
+            // pushing a second host diagnostic) would double-count each residual.
             let mut bump = |router: &Self, ck: ClassificationKind, kind: OpeningKindDiag| {
-                router.bump_classification(ck);
-                host_diag.push(OpeningDiagnostic { opening_id, kind, vertex_count });
+                if record_diag {
+                    router.bump_classification(ck);
+                    host_diag.push(OpeningDiagnostic { opening_id, kind, vertex_count });
+                }
             };
 
             // Probe per-item geometry up front. An opening that holds several
@@ -246,7 +275,7 @@ impl GeometryRouter {
 
         // Stash the per-host diagnostic before returning. `host.ifc_type`
         // implements `Display` to its STEP name (e.g. "IFCWALLSTANDARDCASE").
-        if !host_diag.is_empty() {
+        if record_diag && !host_diag.is_empty() {
             self.record_host_opening_diagnostic(
                 host.id,
                 &format!("{}", host.ifc_type),
@@ -637,7 +666,7 @@ impl GeometryRouter {
     /// solids into one continuous tube whose only caps are the true outer ends, so
     /// the subtract carves a clean through-hole. A no-op for ordinary single-solid
     /// openings (no interior back-to-back cap plane exists).
-    fn remove_internal_membrane(opening_mesh: &Mesh, axis_dir: Vector3<f64>) -> Mesh {
+    pub(super) fn remove_internal_membrane(opening_mesh: &Mesh, axis_dir: Vector3<f64>) -> Mesh {
         let tri_count = opening_mesh.indices.len() / 3;
         if tri_count < 4 {
             return opening_mesh.clone();

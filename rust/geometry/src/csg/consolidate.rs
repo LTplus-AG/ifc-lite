@@ -595,6 +595,21 @@ impl ClippingProcessor {
                 }
             }
         }
+        // Carry the input's placement / frame metadata (`origin` local-frame
+        // translation, `rtc_applied`, and the #1474 world-capture `local_bounds` /
+        // `local_to_world`) onto the re-triangulated output. `consolidate_coplanar`
+        // only re-triangulates coplanar faces — the geometry stays in the SAME
+        // frame — but `output` is a bare `Mesh::new()` whose defaults reset those
+        // fields to zero/None. For a LOCAL-FRAME caller (origin != 0: the prism /
+        // coaxial-union void fast paths, #1806/#1815) that reset drops the host's
+        // per-element origin and mis-places the whole cut host at the world origin
+        // (the mesh.rs #1474 hazard; mirrors `refine_high_aspect_slivers`'s
+        // `rebuilt_like`). World-frame callers (origin 0) are unaffected. The early
+        // `return mesh` branches above already carry the original frame.
+        output.rtc_applied = mesh.rtc_applied;
+        output.origin = mesh.origin;
+        output.local_bounds = mesh.local_bounds;
+        output.local_to_world = mesh.local_to_world;
         output
     }
 }
@@ -737,6 +752,53 @@ mod tests {
             2,
             "consolidated quad should triangulate to 2 tris, got {}",
             consolidated.indices.len() / 3
+        );
+    }
+
+    #[test]
+    fn consolidate_preserves_local_frame_origin() {
+        // Regression (#1806 void fast-path misplacement): `consolidate_coplanar`
+        // rebuilds into a bare `Mesh::new()` whose `origin`/`rtc_applied`/#1474
+        // capture default to zero. A LOCAL-FRAME host (origin != 0 — the wasm
+        // default, and the frame the prism/coaxial void fast paths cut in) must
+        // keep its per-element `origin` through the merge, or the whole cut host
+        // is re-placed at the world origin (the AC20-FZK-Haus ground-floor walls
+        // that floated ~6 m off the building). Uses the same subdivided quad the
+        // merge test drives so consolidation genuinely runs (not the early
+        // `return mesh` no-op path, which trivially preserves the frame).
+        let mut mesh = Mesh::new();
+        for p in [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.5, 0.5, 0.0],
+        ] {
+            mesh.add_vertex(Point3::new(p[0], p[1], p[2]), Vector3::new(0.0, 0.0, 1.0));
+        }
+        mesh.add_triangle(0, 1, 4);
+        mesh.add_triangle(1, 2, 4);
+        mesh.add_triangle(2, 3, 4);
+        mesh.add_triangle(3, 0, 4);
+        mesh.origin = [11.85, 5.0, 1.35];
+        mesh.rtc_applied = true;
+
+        let consolidated = ClippingProcessor::consolidate_coplanar(mesh);
+        // Sanity: consolidation actually ran (merged 4 tris -> 2), i.e. the
+        // `output` path (not an early `return mesh`) produced this result.
+        assert_eq!(
+            consolidated.indices.len() / 3,
+            2,
+            "test precondition: the mesh must consolidate so the rebuilt-output frame carry is exercised"
+        );
+        assert_eq!(
+            consolidated.origin,
+            [11.85, 5.0, 1.35],
+            "consolidate_coplanar dropped the local-frame origin — the cut host would render at the world origin"
+        );
+        assert!(
+            consolidated.rtc_applied,
+            "consolidate_coplanar dropped rtc_applied"
         );
     }
 

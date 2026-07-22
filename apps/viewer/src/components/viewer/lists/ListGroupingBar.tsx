@@ -12,17 +12,18 @@ import { Group, Sigma, X, ChevronsDownUp, ChevronsUpDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface ListGroupingBarProps {
-  groupLabel: string | null;
+  /** Active grouping columns, outermost first (multi-criteria, issue #1790). */
+  groups: { id: string; label: string }[];
   sums: { id: string; label: string }[];
   groupCount: number;
   count: number;
   allExpanded: boolean;
-  onClearGroup: () => void;
+  onRemoveGroup: (id: string) => void;
   onRemoveSum: (id: string) => void;
   onToggleExpandAll: () => void;
 }
 
-function Chip({ icon, children, onRemove }: { icon: React.ReactNode; children: React.ReactNode; onRemove: () => void }) {
+function Chip({ icon, children, onRemove, removeLabel = 'Remove' }: { icon: React.ReactNode; children: React.ReactNode; onRemove: () => void; removeLabel?: string }) {
   return (
     <span className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 py-0.5 pl-2 pr-1 text-[11px] font-medium text-foreground">
       {icon}
@@ -30,7 +31,7 @@ function Chip({ icon, children, onRemove }: { icon: React.ReactNode; children: R
       <button
         onClick={onRemove}
         className="ml-0.5 rounded-full p-0.5 text-muted-foreground hover:bg-primary/20 hover:text-foreground"
-        aria-label="Remove"
+        aria-label={removeLabel}
       >
         <X className="h-3 w-3" />
       </button>
@@ -39,10 +40,10 @@ function Chip({ icon, children, onRemove }: { icon: React.ReactNode; children: R
 }
 
 export function ListGroupingBar({
-  groupLabel, sums, groupCount, count, allExpanded,
-  onClearGroup, onRemoveSum, onToggleExpandAll,
+  groups, sums, groupCount, count, allExpanded,
+  onRemoveGroup, onRemoveSum, onToggleExpandAll,
 }: ListGroupingBarProps) {
-  const grouped = groupLabel !== null;
+  const grouped = groups.length > 0;
   return (
     <div className="flex flex-wrap items-center gap-1.5 border-b bg-muted/30 px-3 py-1.5 text-xs">
       {grouped && (
@@ -56,11 +57,15 @@ export function ListGroupingBar({
       )}
 
       {grouped
-        ? <Chip icon={<Group className="h-3 w-3 text-primary" />} onRemove={onClearGroup}>Grouped by {groupLabel}</Chip>
+        ? groups.map((g, i) => (
+            <Chip key={g.id} icon={<Group className="h-3 w-3 text-primary" />} onRemove={() => onRemoveGroup(g.id)} removeLabel={`Remove grouping by ${g.label}`}>
+              {i === 0 ? `Grouped by ${g.label}` : `then ${g.label}`}
+            </Chip>
+          ))
         : <span className="text-muted-foreground">No grouping — use a column&apos;s <span className="font-medium text-foreground">⋮</span> menu to group or sum</span>}
 
       {sums.map((s) => (
-        <Chip key={s.id} icon={<Sigma className="h-3 w-3 text-primary" />} onRemove={() => onRemoveSum(s.id)}>{s.label}</Chip>
+        <Chip key={s.id} icon={<Sigma className="h-3 w-3 text-primary" />} onRemove={() => onRemoveSum(s.id)} removeLabel={`Remove sum of ${s.label}`}>{s.label}</Chip>
       ))}
 
       <span className={cn('ml-auto whitespace-nowrap font-medium text-muted-foreground')}>

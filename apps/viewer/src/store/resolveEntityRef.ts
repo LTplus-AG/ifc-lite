@@ -14,19 +14,11 @@
 import type { EntityRef } from './types.js';
 import { useViewerStore } from './index.js';
 
-/**
- * Resolve a globalId (renderer-space) to an EntityRef (model-space).
- *
- * Resolution order:
- *  1. resolveGlobalIdFromModels (offset-based range check — the canonical path)
- *  2. First loaded model as fallback (single-model, offset 0)
- *  3. 'legacy' sentinel for truly legacy single-model mode (no federation map)
- *
- * ALWAYS returns an EntityRef — never null.  This ensures all callers
- * (multi-select, basket, context menu) can proceed without null-guards.
- */
-export function resolveEntityRef(globalId: number): EntityRef {
-  const state = useViewerStore.getState();
+/** Resolve a renderer/global ID against one consistent Viewer store snapshot. */
+function resolveEntityRefFromState(
+  state: ReturnType<typeof useViewerStore.getState>,
+  globalId: number,
+): EntityRef {
   const resolved = state.resolveGlobalIdFromModels(globalId);
   if (resolved) {
     return { modelId: resolved.modelId, expressId: resolved.expressId };
@@ -41,4 +33,37 @@ export function resolveEntityRef(globalId: number): EntityRef {
   // Legacy single-model mode: no models in federation map yet.
   // 'legacy' is recognized by PropertiesPanel for fallback to legacy ifcDataStore.
   return { modelId: 'legacy', expressId: globalId };
+}
+
+/**
+ * Resolve a globalId (renderer-space) to an EntityRef (model-space).
+ *
+ * Resolution order:
+ *  1. resolveGlobalIdFromModels (offset-based range check — the canonical path)
+ *  2. First loaded model as fallback (single-model, offset 0)
+ *  3. 'legacy' sentinel for truly legacy single-model mode (no federation map)
+ *
+ * ALWAYS returns an EntityRef — never null.  This ensures all callers
+ * (multi-select, basket, context menu) can proceed without null-guards.
+ */
+export function resolveEntityRef(globalId: number): EntityRef {
+  return resolveEntityRefFromState(useViewerStore.getState(), globalId);
+}
+
+/**
+ * Resolve a renderer/global ID to its GlobalId string.
+ *
+ * This builds on {@link resolveEntityRef}, so federation offsets, legacy
+ * single-model mode, and overlay-created entities all use the same canonical
+ * renderer ID resolution path.
+ */
+export function resolveGlobalId(globalId: number): string | null {
+  const state = useViewerStore.getState();
+  const entityRef = resolveEntityRefFromState(state, globalId);
+  const dataStore = state.models.get(entityRef.modelId)?.ifcDataStore ?? state.ifcDataStore;
+  const resolvedGlobalId = dataStore?.entities.getGlobalId(entityRef.expressId);
+  if (resolvedGlobalId) return resolvedGlobalId;
+
+  const overlayGlobalId = state.getMutationView(entityRef.modelId)?.getNewEntity(entityRef.expressId)?.attributes[0];
+  return typeof overlayGlobalId === 'string' && overlayGlobalId.length > 0 ? overlayGlobalId : null;
 }

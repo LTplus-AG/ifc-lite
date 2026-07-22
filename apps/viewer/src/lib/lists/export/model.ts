@@ -9,9 +9,9 @@
  * grouped sections with per-group count + subtotals, plus grand totals.
  */
 
-import type { CellValue, ColumnDefinition, ListRow, ListGrouping } from '@ifc-lite/lists';
+import { groupingColumnIds, type CellValue, type ColumnDefinition, type ListRow, type ListGrouping } from '@ifc-lite/lists';
 import type { ProjectUnits } from '@ifc-lite/parser';
-import { buildGroupBuckets, orderGroups, type GroupSort } from '@/lib/lists/group-sort';
+import { buildNestedGroupBuckets, type GroupSort } from '@/lib/lists/group-sort';
 import { resolveListColumnUnits } from '@/lib/units/list-column-units';
 
 export interface ExportColumn {
@@ -32,20 +32,30 @@ export interface ExportColumn {
 
 export interface ExportGroup {
   label: string;
+  /** Member-row count of this group (the Count aggregate, issue #1790). */
   count: number;
   sums: Record<string, number>;
+  /** Member rows. With multi-criteria grouping only LEAF groups carry rows
+   *  (parents would duplicate them); parent groups export with `rows: []`. */
   rows: CellValue[][];
+  /** 0-based nesting depth (0 = outermost grouping column). */
+  level: number;
+  /** Group labels from the outermost level down to this group. */
+  path: string[];
 }
 
 export interface ExportModel {
   title: string;
   generatedAt: string;
   columns: ExportColumn[];
-  /** Grouped sections (with member rows), or null when the list isn't grouped. */
+  /** Grouped sections in pre-order (parent group immediately followed by its
+   *  subgroups), or null when the list isn't grouped. */
   groups: ExportGroup[] | null;
   /** All rows in display order (flat) — used by writers that don't section. */
   rows: CellValue[][];
   groupColumnId: string | null;
+  /** Ordered group-by column ids, outermost first (multi-criteria #1790). */
+  groupColumnIds: string[];
   sumColumnIds: string[];
   totals: { count: number; sums: Record<string, number> };
 }
@@ -89,6 +99,21 @@ export function displayCell(value: CellValue): string {
     return value.toFixed(4).replace(/\.?0+$/, '');
   }
   return String(value);
+}
+
+/**
+ * Neutralize spreadsheet formula injection (CWE-1236): a leading =, +, -, @,
+ * TAB or CR makes a cell execute as a formula in Excel/LibreOffice/Sheets.
+ * List-export cells (values, group labels, custom column headers) derive from
+ * attacker-controllable IFC values, so any such cell is prefixed with an
+ * apostrophe. A leading UTF-8 BOM is treated as file metadata by spreadsheet
+ * importers, so a marker hidden behind one still executes; strip the BOM first
+ * so the apostrophe guard actually lands in front. Shared by the CSV and XLSX
+ * writers so both honour the guideline identically.
+ */
+export function neutralizeSpreadsheetFormula(s: string): string {
+  s = s.replace(/^\uFEFF/, '');
+  return /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
 }
 
 export function buildExportModel(input: BuildModelInput): ExportModel {
@@ -142,24 +167,32 @@ export function buildExportModel(input: BuildModelInput): ExportModel {
   const flatRows: CellValue[][] = [];
   for (const r of convertedRows) { flatRows.push(r.values); addSums(totals.sums, r.values); }
 
-  const groupColumnId = grouping?.columnId && columns.some((c) => c.id === grouping.columnId)
-    ? grouping.columnId : null;
+  const groupColumnIds = groupingColumnIds(grouping).filter((id) => columns.some((c) => c.id === id));
+  const groupColumnId = groupColumnIds[0] ?? null;
 
   let groups: ExportGroup[] | null = null;
-  if (groupColumnId) {
-    const groupIdx = columns.findIndex((c) => c.id === groupColumnId);
+  if (groupColumnIds.length > 0) {
+    const levelIndices = groupColumnIds.map((id) => columns.findIndex((c) => c.id === id));
+    const leafLevel = levelIndices.length - 1;
     // Bucket + subtotal via the shared helper so the sections match the table
-    // exactly, then order and project each member row to its display values.
-    const byKey = buildGroupBuckets(
+    // exactly (multi-criteria grouping nests one section level per group
+    // column), then project each LEAF group's member rows to display values.
+    groups = buildNestedGroupBuckets(
       convertedRows,
-      (r) => r.values[groupIdx],
+      levelIndices,
       sumIdx,
       (r, idx) => r.values[idx],
       displayCell,
-    );
-    groups = orderGroups(Array.from(byKey.values()), sort ?? null, groupIdx, sumIdx)
-      .map((g) => ({ label: g.label, count: g.count, sums: g.sums, rows: g.rows.map((r) => r.values) }));
+      sort ?? null,
+    ).map((g) => ({
+      label: g.label,
+      count: g.count,
+      sums: g.sums,
+      level: g.level,
+      path: g.path,
+      rows: g.level === leafLevel ? g.rows.map((r) => r.values) : [],
+    }));
   }
 
-  return { title, generatedAt, columns: exportCols, groups, rows: flatRows, groupColumnId, sumColumnIds, totals };
+  return { title, generatedAt, columns: exportCols, groups, rows: flatRows, groupColumnId, groupColumnIds, sumColumnIds, totals };
 }

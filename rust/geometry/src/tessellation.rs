@@ -121,6 +121,32 @@ impl TessellationQuality {
         n.max(min)
     }
 
+    /// Fillet / edge radius for a **parametric steel-section corner**, given the
+    /// model's declared `radius`.
+    ///
+    /// Callers today are `IfcI/L/U/TShapeProfileDef` — the profiles whose builders
+    /// actually read a radius attribute. `IfcC/ZShapeProfileDef` build plain sharp
+    /// point lists and ignore their radius attributes entirely, so they never reach
+    /// here; route them through this helper if that ever changes.
+    ///
+    /// Below `Medium` the radius collapses to `0.0`, so the corner is emitted
+    /// sharp instead of as an arc: an I-section drops from ~28 outline vertices
+    /// to its 12 sharp ones, halving the cross-section triangles on slender
+    /// members where the fillet is a sub-pixel detail anyway (issue #1809).
+    /// `Medium` and above return the radius untouched, keeping default output
+    /// byte-identical — the same identity invariant as
+    /// [`profile_arc_segments`](Self::profile_arc_segments).
+    ///
+    /// This only applies to parametric profiles swept by `IfcExtrudedAreaSolid`;
+    /// faceted / tessellated exports have their fillets baked into the mesh.
+    #[inline]
+    pub fn profile_fillet_radius(self, radius: f64) -> f64 {
+        match self {
+            Self::Lowest | Self::Low => 0.0,
+            Self::Medium | Self::High | Self::Highest => radius,
+        }
+    }
+
     /// Segment count for a **circular profile** outline (opening cutter / cap),
     /// where `base` is the historical fixed count (e.g. 36 for
     /// `IfcCircleProfileDef`).
@@ -255,6 +281,19 @@ mod tests {
         }
         // Floor respected.
         assert_eq!(Lowest.profile_arc_segments(6, 2), 2);
+    }
+
+    #[test]
+    fn profile_fillet_radius_drops_below_medium_identity_above() {
+        use TessellationQuality::*;
+        for q in [Lowest, Low] {
+            assert_eq!(q.profile_fillet_radius(15.0), 0.0, "{q:?} must go sharp");
+        }
+        for q in [Medium, High, Highest] {
+            assert_eq!(q.profile_fillet_radius(15.0), 15.0, "{q:?} keeps the radius");
+        }
+        // An already-sharp corner stays sharp everywhere.
+        assert_eq!(Medium.profile_fillet_radius(0.0), 0.0);
     }
 
     #[test]

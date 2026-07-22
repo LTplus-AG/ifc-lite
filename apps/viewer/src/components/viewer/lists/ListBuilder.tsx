@@ -36,7 +36,7 @@ import type {
   PropertyCondition,
   ConditionOperator,
 } from '@ifc-lite/lists';
-import { discoverColumns, ENTITY_ATTRIBUTES } from '@ifc-lite/lists';
+import { discoverColumns, ENTITY_ATTRIBUTES, groupingColumnIds } from '@ifc-lite/lists';
 import { collectScopeTypes } from '@/lib/lists/scope-types';
 import {
   isEditableColumn,
@@ -222,7 +222,10 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
     for (const p of providers) { const n = p.getModelName?.(); if (n) set.add(n); }
     return Array.from(set).sort();
   }, [providers]);
-  const [groupByColumnId, setGroupByColumnId] = useState<string>(initial?.grouping?.columnId ?? '');
+  // Ordered group-by columns, outermost first (multi-criteria grouping #1790).
+  const [groupByColumnIds, setGroupByColumnIds] = useState<string[]>(
+    () => groupingColumnIds(initial?.grouping)
+  );
   const [sumColumnIds, setSumColumnIds] = useState<Set<string>>(
     new Set(initial?.grouping?.sumColumnIds ?? [])
   );
@@ -266,7 +269,7 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
   const removeColumn = useCallback((id: string) => {
     setColumns(prev => prev.filter(c => c.id !== id));
     // Keep grouping consistent when its column is removed.
-    setGroupByColumnId(prev => (prev === id ? '' : prev));
+    setGroupByColumnIds(prev => (prev.includes(id) ? prev.filter(g => g !== id) : prev));
     setSumColumnIds(prev => {
       if (!prev.has(id)) return prev;
       const next = new Set(prev);
@@ -283,8 +286,12 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
   }, []);
 
   const toggleColumn = useCallback((col: ColumnDefinition) => {
-    setColumns(prev => (prev.some(c => c.id === col.id) ? prev.filter(c => c.id !== col.id) : [...prev, col]));
-  }, []);
+    // Delegate to add/removeColumn so the removal path shares removeColumn's
+    // grouping + sum cleanup — otherwise toggling off a grouped/summed column
+    // would strand a stale level in the config until buildDefinition prunes it.
+    if (columns.some(c => c.id === col.id)) removeColumn(col.id);
+    else addColumn(col);
+  }, [columns, addColumn, removeColumn]);
 
   // Would `draft` duplicate an EXISTING column's definition? Keyed by content
   // (source + set + property), not by column id, so the guard still fires after
@@ -328,13 +335,31 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
     });
   }, []);
 
+  // Set / clear one grouping level. An empty id removes the level; setting the
+  // slot one past the end appends a new level (multi-criteria grouping #1790).
+  const setGroupLevel = useCallback((level: number, id: string) => {
+    setGroupByColumnIds(prev => {
+      const next = [...prev];
+      if (id === '') {
+        if (level < next.length) next.splice(level, 1);
+      } else if (level < next.length) {
+        next[level] = id;
+      } else {
+        next.push(id);
+      }
+      // Safety de-dup (the selects already hide ids used at other levels).
+      return next.filter((v, i) => next.indexOf(v) === i);
+    });
+  }, []);
+
   const buildDefinition = useCallback((): ListDefinition => {
-    const groupValid = groupByColumnId && columns.some(c => c.id === groupByColumnId);
+    const validGroupIds = groupByColumnIds.filter(id => columns.some(c => c.id === id));
     const sumCols = columns.filter(c => sumColumnIds.has(c.id)).map(c => c.id);
     // Keep grouping when there's a valid group column OR any sum column — sums
     // alone still produce grand totals, and may have been set from the table.
-    const grouping = (groupValid || sumCols.length > 0)
-      ? { columnId: groupValid ? groupByColumnId : '', sumColumnIds: sumCols }
+    // `columnId` mirrors the first level for pre-multi-level consumers.
+    const grouping = (validGroupIds.length > 0 || sumCols.length > 0)
+      ? { columnId: validGroupIds[0] ?? '', columnIds: validGroupIds, sumColumnIds: sumCols }
       : undefined;
     return {
       id: initial?.id ?? crypto.randomUUID(),
@@ -349,7 +374,7 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
       columns,
       grouping,
     };
-  }, [initial, name, description, selectedTypes, conditions, columns, groupByColumnId, sumColumnIds]);
+  }, [initial, name, description, selectedTypes, conditions, columns, groupByColumnIds, sumColumnIds]);
 
   const handleSave = useCallback(() => onSave(buildDefinition()), [buildDefinition, onSave]);
   const handleRun = useCallback(() => onExecute(buildDefinition()), [buildDefinition, onExecute]);
@@ -469,9 +494,9 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
             <Section label="Grouping & Totals">
               <GroupingBody
                 columns={columns}
-                groupByColumnId={groupByColumnId}
+                groupByColumnIds={groupByColumnIds}
                 sumColumnIds={sumColumnIds}
-                onGroupByChange={setGroupByColumnId}
+                onGroupLevelChange={setGroupLevel}
                 onToggleSum={toggleSumColumn}
               />
             </Section>
@@ -1014,32 +1039,49 @@ function PickerItem({
 
 function GroupingBody({
   columns,
-  groupByColumnId,
+  groupByColumnIds,
   sumColumnIds,
-  onGroupByChange,
+  onGroupLevelChange,
   onToggleSum,
 }: {
   columns: ColumnDefinition[];
-  groupByColumnId: string;
+  /** Ordered group-by columns, outermost first (multi-criteria grouping #1790). */
+  groupByColumnIds: string[];
   sumColumnIds: Set<string>;
-  onGroupByChange: (id: string) => void;
+  onGroupLevelChange: (level: number, id: string) => void;
   onToggleSum: (id: string) => void;
 }) {
+  // One select per active level, plus a trailing empty slot to add the next
+  // level (as long as ungrouped columns remain).
+  const levelSlots = groupByColumnIds.length < columns.length
+    ? [...groupByColumnIds, '']
+    : groupByColumnIds;
   return (
     <div className="space-y-3 rounded-md border border-border/60 bg-card p-2.5">
-      <label className="flex items-center gap-2 text-xs">
-        <span className="w-16 shrink-0 text-muted-foreground">Group by</span>
-        <select
-          value={groupByColumnId}
-          onChange={(e) => onGroupByChange(e.target.value)}
-          className="h-7 flex-1 rounded-md border border-border bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
-        >
-          <option value="">— None (flat list) —</option>
-          {columns.map((c) => (
-            <option key={c.id} value={c.id}>{c.label ?? c.propertyName}</option>
-          ))}
-        </select>
-      </label>
+      <div className="space-y-1.5">
+        {levelSlots.map((id, level) => (
+          <label key={level} className="flex items-center gap-2 text-xs">
+            <span className="w-16 shrink-0 text-muted-foreground">{level === 0 ? 'Group by' : 'then by'}</span>
+            <select
+              value={id}
+              onChange={(e) => onGroupLevelChange(level, e.target.value)}
+              className="h-7 flex-1 rounded-md border border-border bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+            >
+              <option value="">{level === 0 ? '— None (flat list) —' : 'None'}</option>
+              {columns
+                .filter((c) => c.id === id || !groupByColumnIds.includes(c.id))
+                .map((c) => (
+                  <option key={c.id} value={c.id}>{c.label ?? c.propertyName}</option>
+                ))}
+            </select>
+          </label>
+        ))}
+        {groupByColumnIds.length > 0 && (
+          <div className="text-[11px] text-muted-foreground">
+            Each group shows its element count.
+          </div>
+        )}
+      </div>
       <div>
         <div className="mb-1 text-[11px] text-muted-foreground">
           Σ Totals — sum these columns per group and overall

@@ -85,7 +85,7 @@ export const RibbonLargeButton = forwardRef<HTMLButtonElement, RibbonButtonProps
             onClick?.(e);
           }}
           className={cn(
-            'relative flex h-full w-14 shrink-0 select-none flex-col items-center justify-center gap-1 rounded-md px-1 py-1',
+            'relative flex h-full w-14 shrink-0 select-none flex-col items-center justify-start gap-1 rounded-md px-1 py-1',
             'text-[10px] font-medium leading-[1.15] text-foreground/90 transition-colors',
             'hover:bg-muted/70 disabled:pointer-events-none disabled:opacity-40',
             'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
@@ -94,9 +94,9 @@ export const RibbonLargeButton = forwardRef<HTMLButtonElement, RibbonButtonProps
           )}
           {...rest}
         >
-          <Icon className="h-[18px] w-[18px] shrink-0" aria-hidden="true" />
-          <span className="flex max-w-full items-center gap-0.5">
-            <span className="line-clamp-2 text-center">{label}</span>
+          <Icon className="h-8 w-8 shrink-0" aria-hidden="true" />
+          <span className="flex h-[2.3em] w-full items-start justify-center gap-0.5">
+            <span className="line-clamp-2 min-w-0 text-center">{label}</span>
             {hasMenu && <ChevronDown className="h-2.5 w-2.5 shrink-0 opacity-60" aria-hidden="true" />}
           </span>
           {badge}

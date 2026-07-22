@@ -13,13 +13,21 @@ use nalgebra::Matrix3;
 use rustc_hash::FxHashMap;
 
 mod aabb_clip;
+mod bool2d_path;
+mod coaxial_union;
 mod geom;
+mod prism_cut;
 mod probe;
 mod synthesis;
+
+pub use bool2d_path::take_bool2d_stats;
+pub use prism_cut::{take_prism_defers, take_prism_stats};
 #[cfg(test)]
 mod reveal_tests;
 
 use geom::*;
+use sweep::{cut_changed_mesh, drop_faces_outside_host};
+mod sweep;
 
 /// Epsilon for normalizing direction vectors (guards against zero-length).
 const NORMALIZE_EPSILON: f64 = 1e-12;
@@ -39,8 +47,6 @@ const MAX_EXTRUSION_EXTRACT_DEPTH: usize = 32;
 /// apart on what counts as "engulfs the host".
 const ENGULF_TOLERANCE: f64 = 0.03;
 const ENGULF_TOLERANCE_F32: f32 = 0.03;
-
-
 
 /// Classification of an opening for void subtraction.
 #[derive(Clone)]
@@ -112,6 +118,11 @@ pub(super) struct VoidContext {
     /// captured only when `rect_fast::param_enabled()`. Drives the analytic fast
     /// path in `apply_void_context`; `None` defers to the exact kernel.
     param: Option<ParamRectCut>,
+    /// 2D opening-subtraction data (host profile + projected opening footprints),
+    /// captured only when `bool2d_path::enabled()`. Drives the arbitrary-profile
+    /// 2D re-extrude fast path in `apply_void_context`, tried after the rect
+    /// parametric path; `None` defers to the exact kernel.
+    bool2d: Option<bool2d_path::Bool2dCut>,
 }
 
 impl VoidContext {
@@ -149,6 +160,10 @@ impl VoidContext {
             // non-relativized world mesh (it makes its own frame), so the
             // relativized context never uses `param` — drop it.
             param: None,
+            // Likewise the 2D path builds its own world frame from the parametrics
+            // and runs in the OUTER apply_void_context; the relativized context
+            // never uses it.
+            bool2d: None,
         }
     }
 
@@ -661,10 +676,22 @@ impl GeometryRouter {
             None
         };
 
+        // 2D opening-subtraction capture (flag-gated). Cheap when it misses
+        // (profile recovery only, no meshing), tried after the rect parametric
+        // path in `apply_void_context` so rect+rect hosts keep their existing
+        // output byte-identical and only the arbitrary-profile / rect-declined
+        // hosts reach the 2D re-extrude.
+        let bool2d = if bool2d_path::enabled() {
+            self.capture_bool2d(element, opening_ids, decoder)
+        } else {
+            None
+        };
+
         VoidContext {
             openings,
             merged_openings,
             param,
+            bool2d,
         }
     }
 
@@ -897,6 +924,67 @@ impl GeometryRouter {
             }
         }
 
+        // 2D OPENING-SUBTRACTION fast path (flag-gated). Generalises the rect
+        // parametric path above to arbitrary extruded-host profiles: subtract the
+        // openings' footprints from the host's 2D profile and re-extrude. Tried
+        // after `try_param_rect_cut` so proven rect+rect outputs are unchanged;
+        // ORIGIN-AWARE (it builds its own world frame from the parametrics and
+        // reconciles against the real host mesh, whatever `mesh.origin`). Any miss
+        // falls through to the exact kernel below unchanged.
+        if let Some(cut) = ctx.bool2d.as_ref() {
+            if let Some(holed) = self.try_bool2d_cut(&mesh, cut) {
+                // Eligible openings are now subtracted. Any residual (ineligible)
+                // openings — perpendicular sleeves, partial-depth recesses — are
+                // cut by the exact kernel on the re-extruded host (origin 0, world
+                // frame; residual cutters are world-framed), so a single
+                // ineligible opening no longer forfeits its host's cheap ones.
+                return match self.bool2d_residual(cut) {
+                    None => holed,
+                    Some(residual) => self.apply_void_context(holed, residual, element_id),
+                };
+            }
+        }
+
+        // ANALYTIC PRISM fast path (flag-gated): each opening whose cutter is
+        // a genuine stepped-extrusion prism (plain boxes AND rebated masonry
+        // windows) is subtracted from the host MESH analytically — host-shape-
+        // agnostic, so it fires on the faceted-BREP / clipped / multi-item
+        // hosts the parametric and 2D paths above cannot serve. Tried after
+        // them so their proven outputs stay byte-identical; ORIGIN-AWARE (the
+        // cut runs in the host's own local frame, cutters relativized in f64,
+        // `origin` re-stamped). Ineligible openings come back as a residual
+        // context and are cut by the exact kernel on the analytic result — the
+        // same composition contract as the 2D path (which also routes ITS
+        // residual through this path on recursion, so a 2D host's perpendicular
+        // sleeves take the prism cut too). Any miss falls through to the exact
+        // kernel below with the FULL opening set unchanged.
+        if prism_cut::enabled() {
+            // World bounds + triangle count captured BEFORE the cut so the
+            // per-host diagnostic matches what the exact/rect paths record.
+            let prism_bounds = world_host_bounds(&mesh);
+            let prism_tris_before = mesh.triangle_count();
+            if let Some((cut, residual)) = self.try_prism_cut(&mesh, ctx) {
+                return match residual {
+                    None => {
+                        // Same per-host cut-effect snapshot the exact path
+                        // records, so prism-cut hosts aren't missing from the
+                        // diagnostics.
+                        self.record_host_cut_effect(
+                            element_id,
+                            prism_tris_before,
+                            cut.triangle_count(),
+                            ctx.merged_openings.len(),
+                            prism_bounds,
+                        );
+                        cut
+                    }
+                    // With a residual, the recursive exact pass below records
+                    // the (final) cut-effect snapshot itself.
+                    Some(res) => self.apply_void_context(cut, &res, element_id),
+                };
+            }
+        }
+
         // WORLD-space host AABB for the per-host diagnostic (`bbox`), captured
         // HERE — before the local-frame branch below zeroes `mesh.origin` and
         // before `try_cut_wall_local_frame` rotates the mesh into its own frame.
@@ -1076,8 +1164,10 @@ impl GeometryRouter {
             openings: local_openings,
             // The local-frame recursion never re-captures the parametric cut
             // (issue #1209): it operates on already-classified openings, so the
-            // analytic `param` path is irrelevant here — defer to the exact path.
+            // analytic `param` / 2D paths are irrelevant here — defer to the exact
+            // path.
             param: None,
+            bool2d: None,
         };
 
         // Forward the WORLD host bounds captured before this rotation so the
@@ -1107,6 +1197,7 @@ impl GeometryRouter {
         if ctx.is_noop() {
             return mesh;
         }
+        let original_host = mesh.clone(); // stray-shard sweep parity reference
 
         // LOCAL-FRAME CUT (issue #1167): a vertical wall rotated in plan is cut
         // in its own axis-aligned, origin-centred frame — where the exact
@@ -1303,6 +1394,22 @@ impl GeometryRouter {
         // Set on every successful cut; while false, a group's admission-time
         // extended cutters are still valid and reused verbatim.
         let mut host_mutated = false;
+
+        // COAXIAL FOOTPRINT-UNION for OVERLAPPING clusters (issue #129, flag
+        // `IFC_LITE_VOID_UNION`). Overlapping cutters can't join the disjoint batch
+        // below and otherwise fall to the O(N) sequential exact path; this fuses
+        // each overlapping coaxial cluster into disjoint re-extruded prisms and cuts
+        // them in one `subtract_mesh_many`. See `coaxial_union`. Marks consumed
+        // openings so the batch + sequential loops skip them; a cluster that fails
+        // any guard is left unconsumed for the exact path (never worse than exact).
+        self.coaxial_union_prepass(
+            &mut result,
+            &all_openings,
+            &mut batch_consumed,
+            &mut host_mutated,
+            &clipper,
+        );
+
         if all_openings.len() >= 2 {
             // Inflation pad: ≥ 2×(promote band 8·2⁻¹⁶ ≈ 122 µm + snap radius);
             // 1 mm is conservative and far below any real opening separation.
@@ -1321,6 +1428,10 @@ impl GeometryRouter {
             }
             let mut cands: Vec<Cand> = Vec::new();
             for (idx, opening) in all_openings.iter().enumerate() {
+                // Already cut by the coaxial/overlap-union prepass above.
+                if batch_consumed[idx] {
+                    continue;
+                }
                 let norm: Option<(&Mesh, Option<Vector3<f64>>)> = match **opening {
                     OpeningType::Rectangular(..) => None,
                     OpeningType::DiagonalRectangular(ref m, ref f) => Some((m, Some(f.depth))),
@@ -1489,10 +1600,11 @@ impl GeometryRouter {
                     if admissible {
                         let cutters: Vec<&Mesh> = extended.iter().map(|(_, m)| m).collect();
                         let tri_before = result.triangle_count();
+                        let vol_before = mesh_signed_volume(&result);
                         if let Ok(csg_result) = clipper.subtract_mesh_many(&result, &cutters) {
                             let min_tris = (tri_before / CSG_TRIANGLE_RETENTION_DIVISOR)
                                 .max(MIN_VALID_TRIANGLES);
-                            let changed = csg_result.triangle_count() != tri_before;
+                            let changed = cut_changed_mesh(&csg_result, tri_before, vol_before);
                             if !csg_result.is_empty()
                                 && csg_result.triangle_count() >= min_tris
                                 && changed
@@ -1630,18 +1742,11 @@ impl GeometryRouter {
                         depth_dir,
                     );
                     let cutter = &extended_opening;
+                    let vol_before = mesh_signed_volume(&result);
                     if let Ok(csg_result) = clipper.subtract_mesh(&result, cutter) {
                         let min_tris = (tri_before / CSG_TRIANGLE_RETENTION_DIVISOR)
                             .max(MIN_VALID_TRIANGLES);
-                        // CSG only counts as a success when the result actually
-                        // changed (either fewer triangles, indicating polygons
-                        // were removed, or more triangles, indicating the
-                        // opening was carved as new boundary tris). When the
-                        // safety thresholds in `subtract_mesh` short-circuit,
-                        // e.g. `MAX_CSG_POLYGONS_PER_MESH` rejects a high-poly
-                        // round/curved opening (issue #635), the host mesh is
-                        // returned unchanged, leaving the void uncut.
-                        let changed = csg_result.triangle_count() != tri_before;
+                        let changed = cut_changed_mesh(&csg_result, tri_before, vol_before);
                         csg_unchanged = !changed;
                         if !csg_result.is_empty()
                             && csg_result.triangle_count() >= min_tris
@@ -1855,6 +1960,11 @@ impl GeometryRouter {
             [wall_min.x as f32, wall_min.y as f32, wall_min.z as f32],
             [wall_max.x as f32, wall_max.y as f32, wall_max.z as f32],
         );
+
+        // STRAY-SHARD SWEEP: see `sweep::drop_faces_outside_host` (#1788).
+        if host_mutated {
+            result = drop_faces_outside_host(result, &original_host);
+        }
 
         // Per-host cut-effect snapshot: tris_before / tris_after lets the
         // diagnostic surface the silent-no-op case (rectangular boxes

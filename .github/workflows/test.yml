@@ -140,7 +140,7 @@ jobs:
         uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
 
       - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: pnpm
@@ -260,7 +260,7 @@ jobs:
           lfs: false
           persist-credentials: false
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: pnpm
@@ -285,7 +285,7 @@ jobs:
           lfs: false
           persist-credentials: false
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: pnpm
@@ -309,7 +309,7 @@ jobs:
           lfs: false
           persist-credentials: false
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: pnpm
@@ -337,6 +337,14 @@ jobs:
       # can't ship silently.
       - name: Check API surface
         run: node scripts/check-api-surface.mjs
+      # The server-parse root-attribute table (attr_indices.rs) is generated
+      # from @ifc-lite/parser's SCHEMA_REGISTRY — the SAME table the in-browser
+      # parse resolves names against. Guard that the committed file is in sync
+      # so a registry change can't silently break server↔client parity. Uses
+      # the parser dist from the build artifact above; format-agnostic, no Rust
+      # toolchain needed (issue #1780).
+      - name: Check server attr-indices freshness
+        run: node scripts/generate-server-attr-indices.mjs --check
       # Docs upkeep guards (cheap, no build/fixtures needed — the doc-sample
       # typecheck resolves @ifc-lite/* to each package's src via tsconfig
       # paths). Keep the docs in lockstep with the code they describe.
@@ -373,7 +381,7 @@ jobs:
           lfs: false
           persist-credentials: false
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: pnpm
@@ -473,7 +481,7 @@ jobs:
           lfs: false
           persist-credentials: false
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: pnpm
@@ -482,7 +490,7 @@ jobs:
       # gate resolves it from the lockfile like every other node job.
       - run: pnpm install --frozen-lockfile
       - name: Setup .NET 9 SDK
-        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: '9.0.x'
       # The toolchain checkouts and NuGet packages only change when the pins
@@ -519,7 +527,7 @@ jobs:
           lfs: false
           persist-credentials: false
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: pnpm

@@ -70,6 +70,82 @@ pub fn extrude_profile(
     Ok(mesh)
 }
 
+/// Watertight polygon-with-holes extrude for the 2D opening-subtraction path
+/// ([`crate::router`]'s `bool2d_path`). The caps are triangulated by the
+/// boundary-preserving constrained triangulator
+/// ([`crate::cdt::triangulate_constrained`]) instead of earcut: an earcut cap
+/// over a many-hole profile sprouts hole-bridge slivers that leave it
+/// non-manifold and that `clean_degenerate` later drops into cracks. The
+/// constrained triangulator performs NO refinement and adds NO Steiner points;
+/// it keeps every profile-ring edge un-subdivided, so the caps close bit-for-bit
+/// against the side walls and the cap↔wall seam stays watertight.
+#[inline]
+pub fn extrude_profile_watertight(
+    profile: &Profile2D,
+    depth: f64,
+    transform: Option<Matrix4<f64>>,
+) -> Result<Mesh> {
+    if depth <= 0.0 {
+        return Err(Error::InvalidExtrusion(
+            "Depth must be positive".to_string(),
+        ));
+    }
+    if profile.outer.len() < 3 {
+        return Err(Error::InvalidExtrusion(
+            "Outer boundary needs >= 3 vertices".to_string(),
+        ));
+    }
+    // Reject degenerate hole rings BEFORE triangulation: `triangulate_constrained`
+    // silently drops a < 3-vertex ring from the cap, but `create_side_walls` below
+    // would still emit its walls (cap/wall mismatch → cracked mesh). Erroring here
+    // defers the whole cut to the exact kernel (`bool2d_path`'s `.ok()?`).
+    if profile.holes.iter().any(|h| h.len() < 3) {
+        return Err(Error::InvalidExtrusion(
+            "Hole ring needs >= 3 vertices".to_string(),
+        ));
+    }
+    // Unrefined CDT caps: manifold (no earcut hole-bridge slivers) and fast (no
+    // Ruppert refinement, which dominates on a large multi-hole face). Fall back
+    // to the earcut polygon-with-holes triangulation if the CDT declines.
+    let (points, indices) =
+        match crate::cdt::triangulate_constrained(&profile.outer, &profile.holes) {
+            Some(t) => t,
+            None => {
+                let mut all: Vec<nalgebra::Point2<f64>> = profile.outer.clone();
+                for h in &profile.holes {
+                    all.extend_from_slice(h);
+                }
+                let idx = crate::triangulation::triangulate_polygon_with_holes(
+                    &profile.outer,
+                    &profile.holes,
+                )
+                .map_err(|e| Error::InvalidExtrusion(format!("cap triangulation failed: {e}")))?;
+                (all, idx)
+            }
+        };
+    let tri = Triangulation { points, indices };
+
+    let mut mesh = Mesh::new();
+    create_cap_mesh(&tri, 0.0, Vector3::new(0.0, 0.0, -1.0), &mut mesh);
+    create_cap_mesh(&tri, depth, Vector3::new(0.0, 0.0, 1.0), &mut mesh);
+    create_side_walls(&profile.outer, depth, &mut mesh);
+    for hole in &profile.holes {
+        create_side_walls(hole, depth, &mut mesh);
+    }
+    // The CDT emits cap triangles in arbitrary orientation, so the assembled
+    // solid closes as a 2-manifold but with INCONSISTENT winding — harmless for
+    // the (undirected) watertight check and for per-vertex-normal rendering, but
+    // it breaks the divergence volume that downstream consumers (and the #1297
+    // local-frame regression test) compute. Flood-fill a consistent OUTWARD
+    // orientation across the closed surface; this only flips triangle winding
+    // (per-face vertices are never welded, so creases / flat shading are intact).
+    crate::mesh_orient::orient_mesh_outward(&mut mesh);
+    if let Some(mat) = transform {
+        apply_transform(&mut mesh, &mat);
+    }
+    Ok(mesh)
+}
+
 /// Check if a profile has an extreme aspect ratio (very elongated shape)
 /// Returns true if the profile is so disproportionate the extrusion caps
 /// can't be emitted as a meaningful filled face.
@@ -712,6 +788,10 @@ pub fn apply_transform(mesh: &mut Mesh, transform: &Matrix4<f64>) {
 // orphaned it (zero callers, production or test), so per the anti-cruft rule it
 // goes rather than gain a dead-code allow. The RTC rebase runs in the
 // processing orchestrator (see rust/AGENTS.md), not this per-mesh helper.
+
+#[cfg(test)]
+#[path = "extrusion_watertight_tests.rs"]
+mod watertight_tests;
 
 #[cfg(test)]
 mod tests {

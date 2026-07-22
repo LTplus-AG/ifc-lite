@@ -182,12 +182,14 @@ use super::*;
     }
 
     fn process_content(content: &str, id: u32) -> Profile2D {
+        process_content_at(content, id, TessellationQuality::Medium)
+    }
+
+    fn process_content_at(content: &str, id: u32, quality: TessellationQuality) -> Profile2D {
         let mut decoder = EntityDecoder::new(content);
         let processor = ProfileProcessor::new(IfcSchema::new());
         let entity = decoder.decode_by_id(id).unwrap();
-        processor
-            .process(&entity, &mut decoder, TessellationQuality::Medium)
-            .unwrap()
+        processor.process(&entity, &mut decoder, quality).unwrap()
     }
 
     // A U-shape (channel) is centred on its bounding box: X spans
@@ -730,4 +732,86 @@ use super::*;
         assert!(processor
             .process(&entity, &mut decoder, TessellationQuality::Medium)
             .is_ok());
+    }
+
+    // Issue #1809: at Low/Lowest the parametric steel-section fillet and edge
+    // radii collapse to sharp corners — a filleted I-section costs the same 12
+    // outline vertices as an unfilleted one, cutting the cross-section triangle
+    // count on slender members where the root fillet is sub-pixel anyway.
+    #[test]
+    fn steel_fillets_drop_to_sharp_corners_below_medium() {
+        // ISSUE_021 W180 I-beam with FilletRadius 15 (same fixture as
+        // `test_i_shape_honours_fillet_radius`).
+        const I_BEAM: &str = "#1=IFCISHAPEPROFILEDEF(.AREA.,$,$,180.,171.,6.,9.5,15.,$,$);\n";
+        for q in [TessellationQuality::Low, TessellationQuality::Lowest] {
+            let profile = process_content_at(I_BEAM, 1, q);
+            assert_eq!(
+                profile.outer.len(),
+                12,
+                "{q:?} I-shape should be the 12-point sharp section"
+            );
+            // Sharp section area (closed form): 180·171 − (180−6)·(171−2·9.5).
+            let expected = 180.0 * 171.0 - 174.0 * 152.0;
+            let area = outer_area(&profile);
+            assert!(
+                (area - expected).abs() < 1e-6,
+                "{q:?} sharp I area {area:.3} vs {expected:.3}"
+            );
+            // Fillets are interior, so the bbox is the nominal section either way.
+            let (mnx, mny, mxx, mxy) = outer_bbox(&profile);
+            assert!((mxx - mnx - 180.0).abs() < 1e-6 && (mxy - mny - 171.0).abs() < 1e-6);
+        }
+    }
+
+    // Medium and above are untouched by #1809 — the arcs must stay byte-identical
+    // to the pre-change output, which is the `TessellationQuality` identity
+    // invariant the whole enum rests on.
+    #[test]
+    fn steel_fillets_unchanged_at_medium_and_above() {
+        const I_BEAM: &str = "#1=IFCISHAPEPROFILEDEF(.AREA.,$,$,180.,171.,6.,9.5,15.,$,$);\n";
+        let medium = process_content_at(I_BEAM, 1, TessellationQuality::Medium);
+        assert!(
+            medium.outer.len() > 12,
+            "Medium must keep the fillet arcs, got {} points",
+            medium.outer.len()
+        );
+        for q in [TessellationQuality::High, TessellationQuality::Highest] {
+            let profile = process_content_at(I_BEAM, 1, q);
+            assert_eq!(profile.outer.len(), medium.outer.len(), "{q:?} vertex count");
+            for (a, b) in profile.outer.iter().zip(medium.outer.iter()) {
+                assert_eq!((a.x, a.y), (b.x, b.y), "{q:?} must be byte-identical to Medium");
+            }
+        }
+    }
+
+    // Profiles carrying several independent radii collapse all of them together,
+    // leaving the plain sharp corner counts: L = 6, U = 8, T = 8. The L-shape
+    // separates FilletRadius (concave root) from EdgeRadius (convex toes), and
+    // the T-shape splits its edge radius into flange and web variants, so this
+    // covers the mixed concave/convex cases the I-shape alone does not.
+    #[test]
+    fn asymmetric_steel_radii_drop_together_below_medium() {
+        let cases = [
+            // Depth 100, Width 80, Thickness 10, FilletRadius 12, EdgeRadius 8.
+            ("#1=IFCLSHAPEPROFILEDEF(.AREA.,$,$,100.,80.,10.,12.,8.,$,$,$);\n", 6),
+            // Depth 200, FlangeWidth 80, Web 10, Flange 12, Fillet 12, Edge 6.
+            ("#1=IFCUSHAPEPROFILEDEF(.AREA.,$,$,200.,80.,10.,12.,12.,6.,$,$);\n", 8),
+            // Depth 200, FlangeWidth 100, Web 10, Flange 15, Fillet 12,
+            // FlangeEdgeRadius 6, WebEdgeRadius 4.
+            ("#1=IFCTSHAPEPROFILEDEF(.AREA.,$,$,200.,100.,10.,15.,12.,6.,4.,$,$);\n", 8),
+        ];
+        for (content, sharp_points) in cases {
+            for q in [TessellationQuality::Low, TessellationQuality::Lowest] {
+                let profile = process_content_at(content, 1, q);
+                assert_eq!(
+                    profile.outer.len(),
+                    sharp_points,
+                    "{q:?} expected {sharp_points} sharp points for {content}"
+                );
+            }
+            assert!(
+                process_content(content, 1).outer.len() > sharp_points,
+                "Medium must still round {content}"
+            );
+        }
     }

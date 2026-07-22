@@ -23,7 +23,7 @@ import { useViewerStore } from '@/store';
 import { getVisibleBasketEntityRefsFromStore } from '@/store/basketVisibleSet';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { useEntityListMultiSelect, type MultiSelectItem } from '@/hooks/useEntityListMultiSelect';
-import type { ListResult, ListRow, ColumnDefinition, ListGrouping } from '@ifc-lite/lists';
+import { groupingColumnIds, type ListResult, type ListRow, type ColumnDefinition, type ListGrouping } from '@ifc-lite/lists';
 import type { ProjectUnits } from '@ifc-lite/parser';
 import { exportList, buildExportModel, EXPORT_LABELS, type ExportFormat } from '@/lib/lists/export';
 import { resolveListColumnUnits } from '@/lib/units/list-column-units';
@@ -132,24 +132,31 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
   );
 
   // ── Grouping / aggregation derived from the definition ──
-  const groupByColumnId = grouping?.columnId ?? '';
+  // Multi-criteria grouping (issue #1790): ordered group-by columns,
+  // outermost first, restricted to columns that actually exist in the result.
+  const groupColumnIds = useMemo(
+    () => groupingColumnIds(grouping).filter((id) => columns.some((c) => c.id === id)),
+    [grouping, columns]);
   const sumColumnIds = useMemo(() => grouping?.sumColumnIds ?? [], [grouping]);
-  const isGrouped = groupByColumnId !== '' && columns.some((c) => c.id === groupByColumnId);
-  const groupColLabel = useMemo(() => {
-    const c = columns.find((c) => c.id === groupByColumnId);
-    return c ? (c.label ?? c.propertyName) : null;
-  }, [columns, groupByColumnId]);
+  const isGrouped = groupColumnIds.length > 0;
+  const groupChips = useMemo(
+    () => groupColumnIds.map((id) => {
+      const c = columns.find((c) => c.id === id);
+      return { id, label: c ? (c.label ?? c.propertyName) : id };
+    }),
+    [groupColumnIds, columns]);
 
   const { items, groupCount, totals, groupKeys } = useMemo<{
     items: DisplayItem[]; groupCount: number; totals: Totals; groupKeys: string[];
   }>(() => {
     if (isGrouped) {
       const sort = sortCol === null ? null : { colIdx: sortCol, dir: sortDir };
-      const view = buildGroupedView(displayRows, columns, { columnId: groupByColumnId, sumColumnIds }, expandedGroups, sort);
-      return {
-        items: view.items, groupCount: view.groupCount, totals: view.totals,
-        groupKeys: view.items.filter((i) => i.kind === 'group').map((i) => (i as { key: string }).key),
-      };
+      const view = buildGroupedView(
+        displayRows, columns,
+        { columnId: groupColumnIds[0], columnIds: groupColumnIds, sumColumnIds },
+        expandedGroups, sort,
+      );
+      return { items: view.items, groupCount: view.groupCount, totals: view.totals, groupKeys: view.groupKeys };
     }
     return {
       items: displayRows.map((row): DisplayItem => ({ kind: 'row', row })),
@@ -157,7 +164,7 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
       totals: flatTotals(displayRows, columns, sumColumnIds),
       groupKeys: [],
     };
-  }, [isGrouped, displayRows, columns, groupByColumnId, sumColumnIds, expandedGroups, sortCol, sortDir]);
+  }, [isGrouped, displayRows, columns, groupColumnIds, sumColumnIds, expandedGroups, sortCol, sortDir]);
 
   const columnWidths = useMemo(
     () => columns.map((c, i) => widthOverrides[c.id] ?? autoColumnWidth(c.label ?? c.propertyName, result.rows, i)),
@@ -190,17 +197,26 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
     setColorByColIdx(colIdx);
   }, [activateAutoColorFromColumn]);
 
+  // Toggling a column in/out of the grouping: a second (third, …) column adds
+  // a nesting level (multi-criteria grouping, issue #1790). `columnId` is kept
+  // in sync with the first level for pre-multi-level consumers.
   const toggleGroupBy = useCallback((colId: string) => {
     if (!onGroupingChange) return;
-    if (groupByColumnId === colId) onGroupingChange(sumColumnIds.length ? { columnId: '', sumColumnIds } : undefined);
-    else onGroupingChange({ columnId: colId, sumColumnIds });
-  }, [onGroupingChange, groupByColumnId, sumColumnIds]);
+    const next = groupColumnIds.includes(colId)
+      ? groupColumnIds.filter((x) => x !== colId)
+      : [...groupColumnIds, colId];
+    onGroupingChange((next.length || sumColumnIds.length)
+      ? { columnId: next[0] ?? '', columnIds: next, sumColumnIds }
+      : undefined);
+  }, [onGroupingChange, groupColumnIds, sumColumnIds]);
 
   const toggleSum = useCallback((colId: string) => {
     if (!onGroupingChange) return;
     const next = sumColumnIds.includes(colId) ? sumColumnIds.filter((x) => x !== colId) : [...sumColumnIds, colId];
-    onGroupingChange((groupByColumnId || next.length) ? { columnId: groupByColumnId, sumColumnIds: next } : undefined);
-  }, [onGroupingChange, groupByColumnId, sumColumnIds]);
+    onGroupingChange((groupColumnIds.length || next.length)
+      ? { columnId: groupColumnIds[0] ?? '', columnIds: groupColumnIds, sumColumnIds: next }
+      : undefined);
+  }, [onGroupingChange, groupColumnIds, sumColumnIds]);
 
   const toggleGroupExpand = useCallback((key: string) => {
     setExpandedGroups((prev) => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; });
@@ -334,12 +350,12 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
       {/* Grouping / totals control strip */}
       {(isGrouped || showSumRow) && onGroupingChange && (
         <ListGroupingBar
-          groupLabel={isGrouped ? groupColLabel : null}
+          groups={groupChips}
           sums={sumChips}
           groupCount={groupCount}
           count={totals.count}
           allExpanded={allExpanded}
-          onClearGroup={() => onGroupingChange(sumColumnIds.length ? { columnId: '', sumColumnIds } : undefined)}
+          onRemoveGroup={(id) => toggleGroupBy(id)}
           onRemoveSum={(id) => toggleSum(id)}
           onToggleExpandAll={toggleExpandAll}
         />
@@ -352,7 +368,8 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
           <div className="flex sticky top-0 z-10 bg-muted/80 backdrop-blur-sm border-b">
             {columns.map((col, colIdx) => {
               const colored = activeLensId === AUTO_COLOR_FROM_LIST_ID && colorByColIdx === colIdx;
-              const groupedBy = groupByColumnId === col.id;
+              const groupLevel = groupColumnIds.indexOf(col.id);
+              const groupedBy = groupLevel >= 0;
               const summed = sumColumnIds.includes(col.id);
               const unit = unitResolver.unitSymbol(colIdx);
               return (
@@ -367,6 +384,11 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
                 >
                   <button className="flex min-w-0 flex-1 items-center gap-1 hover:text-foreground" onClick={() => handleHeaderClick(colIdx)}>
                     {groupedBy && <ChevronDown className="h-3 w-3 shrink-0 text-primary" aria-label="grouped" />}
+                    {groupedBy && groupColumnIds.length > 1 && (
+                      <span className="shrink-0 text-[9px] font-semibold tabular-nums text-primary" aria-label={`grouping level ${groupLevel + 1}`}>
+                        {groupLevel + 1}
+                      </span>
+                    )}
                     <span className="truncate">{col.label ?? col.propertyName}{unit ? ` (${unit})` : ''}</span>
                     {summed && <span className="text-primary">Σ</span>}
                     {sortCol === colIdx && (sortDir === 'asc' ? <ArrowUp className="h-3 w-3 shrink-0" /> : <ArrowDown className="h-3 w-3 shrink-0" />)}
@@ -375,6 +397,7 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
                     <ColumnHeaderMenu
                       isNumeric={numericCols[colIdx]}
                       isGroupedBy={groupedBy}
+                      groupedElsewhere={isGrouped && !groupedBy}
                       isSummed={summed}
                       active={groupedBy || summed || colored}
                       onSort={(dir) => { setSortCol(colIdx); setSortDir(dir); }}
@@ -412,7 +435,12 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
                     onClick={() => toggleGroupExpand(item.key)}
                   >
                     {columns.map((col, colIdx) => (
-                      <div key={col.id} className="flex items-center gap-1 border-r border-border/20 px-2 py-1 text-xs font-medium shrink-0" style={{ width: columnWidths[colIdx] }}>
+                      <div
+                        key={col.id}
+                        className="flex items-center gap-1 border-r border-border/20 px-2 py-1 text-xs font-medium shrink-0"
+                        // Sub-groups indent one step per nesting level (#1790).
+                        style={{ width: columnWidths[colIdx], ...(colIdx === 0 && item.level > 0 ? { paddingLeft: 8 + item.level * 14 } : undefined) }}
+                      >
                         {colIdx === 0 && (
                           <>
                             {expanded ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
@@ -442,8 +470,9 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
                   {row.values.map((value, colIdx) => (
                     <div
                       key={colIdx}
-                      className={cn('border-r border-border/20 px-2 py-1 text-xs truncate shrink-0', numericCols[colIdx] && 'text-right font-mono tabular-nums', isGrouped && colIdx === 0 && 'pl-6')}
-                      style={{ width: columnWidths[colIdx] }}
+                      className={cn('border-r border-border/20 px-2 py-1 text-xs truncate shrink-0', numericCols[colIdx] && 'text-right font-mono tabular-nums')}
+                      // Member rows sit one indent step past the deepest group header.
+                      style={{ width: columnWidths[colIdx], ...(isGrouped && colIdx === 0 ? { paddingLeft: 8 + groupColumnIds.length * 16 } : undefined) }}
                       title={value !== null ? String(value) : ''}
                     >
                       {formatCellValue(value)}

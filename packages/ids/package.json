@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/ids",
-  "version": "1.15.32",
+  "version": "1.15.34",
   "description": "IDS (Information Delivery Specification) support for IFC-Lite",
   "type": "module",
   "main": "./dist/index.js",
@@ -27,7 +27,7 @@
     "@xmldom/xmldom": "^0.9.10"
   },
   "devDependencies": {
-    "happy-dom": "^20.10.6",
+    "happy-dom": "^20.11.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.10"
   },

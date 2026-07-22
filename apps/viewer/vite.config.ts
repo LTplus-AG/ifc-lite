@@ -1,5 +1,8 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import Icons from 'unplugin-icons/vite';
+import { FileSystemIconLoader } from 'unplugin-icons/loaders';
+import { optimize } from 'svgo';
 import wasm from 'vite-plugin-wasm';
 import topLevelAwait from 'vite-plugin-top-level-await';
 import path from 'path';
@@ -216,6 +219,25 @@ const buildSha = (process.env.VERCEL_GIT_COMMIT_SHA || process.env.GITHUB_SHA ||
 export default defineConfig({
   plugins: [
     react(),
+    Icons({
+      compiler: 'jsx',
+      jsx: 'react',
+      customCollections: {
+        viewer: FileSystemIconLoader(path.resolve(__dirname, 'src/icons'), (svg) => {
+          const themedSvg = svg
+            .replaceAll(/#000000\b/gi, 'currentColor')
+            .replaceAll(/#0063b1\b|rgba\(\s*0\s*,\s*99\s*,\s*177\s*,\s*1\s*\)/gi, 'var(--viewer-icon-accent)');
+
+          return optimize(themedSvg, {
+            multipass: true,
+            plugins: [
+              'preset-default',
+              'removeDimensions',
+            ],
+          }).data;
+        }),
+      },
+    }),
     wasm(),
     topLevelAwait(),
     cesiumStaticAssets(),

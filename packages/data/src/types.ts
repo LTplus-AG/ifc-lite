@@ -583,4 +583,20 @@ export interface IfcEntity {
   expressId: number;
   type: string;
   attributes: IfcAttributeValue[];
+  /**
+   * STEP token-kind side channel (#1799): indices into `attributes` whose
+   * TOP-LEVEL source token was a bare enumeration (`.USERDEFINED.` — dotted in
+   * the source, unquoted). The value representation is unchanged (an enum is
+   * still stored as its dotted string), so existing consumers are unaffected;
+   * this channel only records the token KIND, letting consumers distinguish a
+   * bare enum from a quoted string that happens to look like one
+   * (`'.USERDEFINED.'`) — mirroring the Rust parser's separate
+   * `AttributeValue::String` / `AttributeValue::Enum` variants.
+   *
+   * Optional: absent when the entity has no bare-enum attributes, or when the
+   * producer predates / does not track token kinds (hand-built entities,
+   * mutation authoring). Nested tokens (inside lists or typed values) are not
+   * tracked. Indices are in ascending order.
+   */
+  enumAttrIndices?: readonly number[];
 }

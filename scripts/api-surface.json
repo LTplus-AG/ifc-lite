@@ -1809,7 +1809,8 @@
     "isTauri: function",
     "isWasmAssetUnavailableError: function",
     "mergeGeometryDiagnostics: function",
-    "pickWorkerCount: function"
+    "pickWorkerCount: function",
+    "prewarmSharedWasmModule: function"
   ],
   "@ifc-lite/ids": [
     "ClassificationInfo: interface",
@@ -2032,6 +2033,8 @@
     "compileNameMatcher: function",
     "discoverColumns: function",
     "executeList: function",
+    "groupPathKey: function",
+    "groupingColumnIds: function",
     "isNamePattern: function",
     "listResultToCSV: function",
     "summariseListRows: function"

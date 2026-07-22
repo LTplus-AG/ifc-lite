@@ -55,6 +55,12 @@ mod routes;
 mod services;
 mod types;
 
+/// Slack added on top of `max_file_size_mb` for the raw framework-level body
+/// limit — covers multipart boundary/header overhead so the app's own
+/// `FileTooLarge` check (clean 413) is what rejects an oversized file, not
+/// axum's raw limit (generic 400 `MultipartError`).
+const BODY_LIMIT_SLACK_MB: usize = 16;
+
 #[cfg(test)]
 mod parity_tests;
 
@@ -196,7 +202,16 @@ fn build_router(state: AppState) -> Router {
     open_routes
         .merge(protected_routes)
         // Middleware (applies to all routes below this point)
-        .layer(DefaultBodyLimit::max(config.max_file_size_mb * 1024 * 1024)) // Match max_file_size_mb
+        // A hard backstop above `max_file_size_mb`, not the limit itself: multipart
+        // framing (boundary + field headers) adds a little overhead on top of the
+        // file payload, so a raw body limit equal to `max_file_size_mb` trips before
+        // `extract_file`'s own check on a file right at the ceiling. That raw-limit
+        // rejection surfaces as a generic `MultipartError` -> 400, not the clean
+        // `FileTooLarge` -> 413 below. Keep this layer only as defense-in-depth
+        // against grossly oversized bodies; the app-level check is the real gate.
+        .layer(DefaultBodyLimit::max(
+            (config.max_file_size_mb + BODY_LIMIT_SLACK_MB) * 1024 * 1024,
+        ))
         .layer(CompressionLayer::new()) // Compress responses (gzip)
         // Note: Request decompression handled manually in extract_file() to support multipart
         .layer(TimeoutLayer::new(Duration::from_secs(

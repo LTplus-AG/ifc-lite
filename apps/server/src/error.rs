@@ -58,6 +58,10 @@ pub struct ErrorResponse {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
+        if let ApiError::FileTooLarge { max_mb } = &self {
+            tracing::warn!(max_mb, "Rejecting oversized upload");
+        }
+
         let (status, code) = match &self {
             ApiError::BadRequest(_) => (StatusCode::BAD_REQUEST, "BAD_REQUEST"),
             ApiError::MissingFile => (StatusCode::BAD_REQUEST, "MISSING_FILE"),

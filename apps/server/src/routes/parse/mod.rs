@@ -54,18 +54,36 @@ impl ParseQuery {
 /// Extract file data from multipart request.
 /// Automatically decompresses gzip-compressed files, refusing inputs whose
 /// decompressed size would exceed `max_file_size_mb`.
+///
+/// Reads the `file` field one chunk at a time (rather than buffering the
+/// whole field via `Field::bytes()`) so an oversized upload is caught and
+/// rejected — with a clean `FileTooLarge` -> 413, logged in
+/// `ApiError::into_response` — as soon as the running total crosses
+/// `max_file_size_mb`, instead of only after the entire body has been
+/// received. This also means the raw framework body limit
+/// (`DefaultBodyLimit`, set well above this ceiling in `main.rs`) is a
+/// defense-in-depth backstop, not the thing actually enforcing the limit.
 pub(crate) async fn extract_file(
     multipart: &mut Multipart,
     max_file_size_mb: usize,
 ) -> Result<bytes::Bytes, ApiError> {
     let max_bytes = max_file_size_mb.saturating_mul(1024 * 1024);
 
-    while let Some(field) = multipart.next_field().await? {
+    while let Some(mut field) = multipart.next_field().await? {
         let field_name = field.name().unwrap_or_default();
         tracing::debug!(field_name = %field_name, "Processing multipart field");
 
         if field_name == "file" {
-            let bytes = field.bytes().await?;
+            let mut buf = Vec::new();
+            while let Some(chunk) = field.chunk().await? {
+                if buf.len() + chunk.len() > max_bytes {
+                    return Err(ApiError::FileTooLarge {
+                        max_mb: max_file_size_mb,
+                    });
+                }
+                buf.extend_from_slice(&chunk);
+            }
+            let bytes = bytes::Bytes::from(buf);
             let original_size = bytes.len();
             tracing::debug!(size = original_size, "Extracted file from multipart");
 
@@ -107,13 +125,7 @@ pub(crate) async fn extract_file(
                 );
                 return Ok(bytes::Bytes::from(decompressed));
             } else {
-                if bytes.len() > max_bytes {
-                    return Err(ApiError::FileTooLarge {
-                        max_mb: max_file_size_mb,
-                    });
-                }
-                // Already-buffered multipart Bytes: hand back the same
-                // allocation instead of a full `.to_vec()` copy.
+                // The chunked read loop above already enforces max_bytes.
                 return Ok(bytes);
             }
         }

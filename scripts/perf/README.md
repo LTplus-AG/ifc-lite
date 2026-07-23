@@ -165,15 +165,27 @@ Encoded so a spike does not re-walk a dead end. History lives in the PRs cited.
 - **Shared-module compile memo gap** (SHIPPABLE NOW): `packages/parser/src/parser.worker.ts`
   compiles the ~3.9 MB binary outside the shared-module memo, re-paying compile on that
   path. Small cold-start win; verify with an isolated compile-time mark.
-- **Threaded WASM CSG — in-instance rayon** (CONTESTED, verify end-to-end before
-  believing either number): the detached `rust/csg-thread-bench` rung-2 result claims
-  2.9-4.2x on the CSG step @ 8T and **1.6-1.9x end-to-end**, byte-identical, ~0% atomics
-  tax, in today's cross-origin-isolated Chrome/Firefox (the viewer already sets
-  COOP/COEP); `pkg-threaded` is built (#1255) but not wired into runtime selection.
-  This DIRECTLY CONFLICTS with the #1429 dead-end entry above (whole-pipeline regressed
-  at 8T). The two used different mechanisms/eras; do NOT ship on either number until an
-  interleaved base-vs-branch end-to-end A/B on the worker pool resolves it. See
-  `docs/architecture/csg-threading-design.md`.
+- **Threaded WASM CSG — in-instance rayon** (RE-REFUTED end-to-end, measured
+  2026-07-23; keep in the dead-end column): a fresh browser A/B on ISSUE_129 (the most
+  CSG-heavy public model, 71% CSG) settles the old CONTESTED status against threading.
+  The CSG *kernel* really does parallelize in WASM (corpus replay 4152 -> 1724 ms,
+  **2.41x**), but the **full pipeline REGRESSED**: plain single-thread 6450 ms vs
+  threaded-8T 7383 ms = **0.87x** (byte-identical, fp=1402). The atomics tax on the
+  serial parse/decode majority (2298 -> 5659 ms, ~2.5x slower) exceeds the CSG savings.
+  ISSUE_129 is the *best* case, so lighter models are worse. This vindicates #1429 and
+  supersedes the `docs/architecture/csg-threading-design.md` rung-2 "1.6-1.9x
+  end-to-end" numbers, which have regime-rotted (see below). Do NOT wire `pkg-threaded`
+  without first defeating the whole-pipeline atomics tax (not just the CSG step).
+  Data: `csg-thread-bench` build.sh was itself broken (missing shared-memory link args)
+  and never booted the threaded bundle until fixed in this PR.
+- **Regime rot: CSG is no longer the universal bottleneck.** Native capture 2026-07-23
+  (`csg_scaling_bench`): the *expensive-CSG* corpus has collapsed 10-160x vs the
+  threading-doc era as the fast paths (rect_fast, analytic bypass, faceted-brep dedup)
+  matured. advanced_model CSG = **4%** of load (13/316 ms; doc: 103 jobs/26 s), dental
+  32%, ISSUE_068 33%, ISSUE_129 71%. The dominant cost on the majority of models is now
+  the **single-threaded parse/prepass/decode/extrude path** (advanced_model 96% non-CSG),
+  which gates time-to-first-geometry and hits every model — that, not CSG threading, is
+  where the next real speedup lives.
 - **Wide-arithmetic exact-CSG bundle** (~1.7x on a real void cut — NOT SHIPPABLE TODAY):
   built by `BUILD_WIDE=1 scripts/build-wasm.sh`, but **no stable browser runs it** — V8
   has it behind `--experimental-wasm-wide-arithmetic` (default off); `WebAssembly.validate`

@@ -24,7 +24,12 @@ echo "==> building plain bundle -> $OUT_PLAIN"
 wasm-pack build --release --target web --out-dir "$OUT_PLAIN" --out-name csgbench
 
 echo "==> building threaded bundle -> $OUT_THREADED"
-RUSTFLAGS='-C target-feature=+atomics,+bulk-memory,+mutable-globals' \
+# Full shared-memory flag set (mirrors scripts/build-wasm.sh's validated threaded
+# path). Without --shared-memory/--import-memory + the __wasm_init_tls exports the
+# WebAssembly.Memory is NOT SharedArrayBuffer-backed, so wasm-bindgen-rayon's
+# postMessage of the Memory to workers throws DataCloneError and initThreadPool
+# fails. (Was missing here — the bench threaded build never actually booted.)
+RUSTFLAGS='-C link-arg=--max-memory=4294967296 -C link-arg=-zstack-size=8388608 -C target-feature=+simd128,+atomics,+bulk-memory,+mutable-globals -C link-arg=--shared-memory -C link-arg=--import-memory -C link-arg=--export=__wasm_init_tls -C link-arg=--export=__tls_size -C link-arg=--export=__tls_align -C link-arg=--export=__tls_base -C link-arg=--export=__heap_base' \
   rustup run nightly \
   wasm-pack build --release --target web --out-dir "$OUT_THREADED" \
   --out-name csgbench -- --features threads -Z build-std=std,panic_abort

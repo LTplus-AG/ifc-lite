@@ -1964,8 +1964,6 @@ export class Scene {
       this.lastDrawnFrame.clear();
       this.residencyRestoreQueue.clear();
       this.pendingBatchKeys.clear();
-      // Destroy cached partial batches — their colorKeys are now stale
-      this.dropAllPartialCaches();
 
       // Re-seat the carried cold shells in the fresh bucket map (their GPU
       // shells re-enter the flat array via rebuildPendingBatches below).
@@ -1992,6 +1990,15 @@ export class Scene {
       this.batchedMeshes = [];
       this.rebuildPendingBatches(device, pipeline);
       rebuilt = true;
+
+      // Cached partial (filtered-visibility) batches are keyed by their SOURCE
+      // batch, so they only go stale once the replacement batches are live.
+      // Dropping them up in step 2 destroyed their GPU resources BEFORE the
+      // rebuild could fail, and the rollback cannot bring them back — an active
+      // hide/isolate view lost its visible subset and had to recreate it
+      // against the very device that just failed. On the failure path they now
+      // survive, still matching the restored batches.
+      this.dropAllPartialCaches();
     } finally {
       if (!rebuilt) {
         // Free ONLY what this attempt created. Carried cold shells are aliased

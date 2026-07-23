@@ -105,6 +105,41 @@ describe('Scene.finalizeStreaming — GPU-failure rollback', () => {
     assert.deepStrictEqual(scene['batchedMeshes'], [batch, carriedCold]);
   });
 
+  it('keeps cached partial batches alive when the rebuild throws', () => {
+    // Partial batches back an active hide/isolate view. Dropping them before
+    // the rebuild destroyed their GPU resources, and the rollback cannot bring
+    // them back — the view lost its visible subset and had to rebuild it
+    // against the device that just failed.
+    const scene = new Scene();
+    const partial = fakeBatch(9);
+    scene['streamingFragments'] = [fakeBatch(1)];
+    scene['partialBatchCache'].set('src:v1', partial);
+    scene['partialBatchCacheKeys'].set('src', 'src:v1');
+    scene['rebuildPendingBatches'] = () => { throw new Error('boom'); };
+
+    assert.throws(() => scene.finalizeStreaming(device, pipeline));
+
+    assert.strictEqual(partial.vertexBuffer.destroyed, 0);
+    assert.strictEqual(partial.indexBuffer.destroyed, 0);
+    assert.strictEqual(scene['partialBatchCache'].get('src:v1'), partial);
+  });
+
+  it('drops cached partial batches once the replacement build succeeds', () => {
+    const scene = new Scene();
+    const partial = fakeBatch(9);
+    scene['streamingFragments'] = [fakeBatch(1)];
+    scene['partialBatchCache'].set('src:v1', partial);
+    scene['partialBatchCacheKeys'].set('src', 'src:v1');
+    scene['rebuildPendingBatches'] = () => { /* succeeds */ };
+
+    scene.finalizeStreaming(device, pipeline);
+
+    // Their colorKeys are stale against the new batches, so they must go.
+    assert.strictEqual(partial.vertexBuffer.destroyed, 1);
+    assert.strictEqual(scene['partialBatchCache'].size, 0);
+    assert.strictEqual(scene['partialBatchCacheKeys'].size, 0);
+  });
+
   it('clears the in-progress flag even when the rebuild throws', () => {
     const scene = new Scene();
     scene['streamingFragments'] = [fakeBatch(1)];

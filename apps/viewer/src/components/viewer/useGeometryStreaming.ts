@@ -343,6 +343,8 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
 
     // ── Extract new meshes ──
     let newMeshes: MeshData[];
+    const claimedMeshKeys: string[] = [];
+    let appendFailed = false;
     if (isStreaming || isIncremental) {
       // Fast path: new meshes are always appended at end
       const start = lastGeometryLengthRef.current;
@@ -355,7 +357,11 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
         const compoundKey = `${meshData.expressId}:${i}`;
         if (!processedMeshIdsRef.current.has(compoundKey)) {
           newMeshes.push(meshData);
+          // Marked processed BEFORE the upload runs, so the keys are kept to
+          // roll back if it fails — otherwise a failed batch would be recorded
+          // as done and never retried (silently missing geometry).
           processedMeshIdsRef.current.add(compoundKey);
+          claimedMeshKeys.push(compoundKey);
         }
       }
     }
@@ -376,15 +382,30 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
           // The production crash path: this effect is where a failed
           // createBuffer escaped into React's commit phase and unmounted the
           // viewport, blanking the canvas.
-          runGpuUpload('appendToBatches:non-streaming', () => {
+          const uploaded = runGpuUpload('appendToBatches:non-streaming', () => {
             scene.appendToBatches(newMeshes, device, pipeline, false);
-          });
-          renderer.clearCaches();
+            return true;
+          }) ?? false;
+          if (uploaded) {
+            renderer.clearCaches();
+          } else {
+            appendFailed = true;
+            // Release the claim so a later pass retries these meshes rather
+            // than leaving a permanent hole in the model.
+            for (const key of claimedMeshKeys) {
+              processedMeshIdsRef.current.delete(key);
+            }
+          }
         }
       }
     }
 
-    lastGeometryLengthRef.current = currentLength;
+    // The incremental/fast path tracks progress by length rather than by
+    // key, so it needs the same rollback: leaving this un-advanced is what
+    // makes the failed append retryable there.
+    if (!appendFailed) {
+      lastGeometryLengthRef.current = currentLength;
+    }
 
     // ── Fit camera ──
     //
@@ -663,7 +684,13 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     if (pendingMeshRemovals.size > 0) {
       scene.removeMeshesForEntities(pendingMeshRemovals);
       if (scene.hasPendingBatches()) {
-        runGpuUpload('rebuildPendingBatches:removals', () => scene.rebuildPendingBatches(device, pipeline));
+        const rebuilt = runGpuUpload(
+          'rebuildPendingBatches:removals',
+          () => { scene.rebuildPendingBatches(device, pipeline); return true; },
+        ) ?? false;
+        // Leave the pending map intact on failure so the next mutation retries
+        // this rebuild instead of dropping it.
+        if (!rebuilt) return;
       }
       renderer.requestRender();
     }
@@ -721,7 +748,13 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     if (pendingMeshTranslations.size > 0) {
       scene.translateMeshesForEntities(pendingMeshTranslations);
       if (scene.hasPendingBatches()) {
-        runGpuUpload('rebuildPendingBatches:translations', () => scene.rebuildPendingBatches(device, pipeline));
+        const rebuilt = runGpuUpload(
+          'rebuildPendingBatches:translations',
+          () => { scene.rebuildPendingBatches(device, pipeline); return true; },
+        ) ?? false;
+        // Leave the pending map intact on failure so the next mutation retries
+        // this rebuild instead of dropping it.
+        if (!rebuilt) return;
       }
       // An element appended during streaming (e.g. an authored IfcSpace) lingers
       // as a streaming fragment at its ORIGINAL position on top of its now-moved
@@ -729,7 +762,11 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       // buckets (no-op once none remain). Skipped in ephemeral mode, where no
       // geometry is retained to rebuild the batches from.
       if (scene.hasStreamingFragments() && !scene.isEphemeralStreaming()) {
-        runGpuUpload('finalizeStreaming:translations', () => scene.finalizeStreaming(device, pipeline));
+        const finalized = runGpuUpload(
+          'finalizeStreaming:translations',
+          () => { scene.finalizeStreaming(device, pipeline); return true; },
+        ) ?? false;
+        if (!finalized) return;
       }
       renderer.requestRender();
     }
@@ -751,10 +788,20 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     if (pendingMeshRotations.size > 0) {
       scene.rotateMeshesForEntities(pendingMeshRotations);
       if (scene.hasPendingBatches()) {
-        runGpuUpload('rebuildPendingBatches:rotations', () => scene.rebuildPendingBatches(device, pipeline));
+        const rebuilt = runGpuUpload(
+          'rebuildPendingBatches:rotations',
+          () => { scene.rebuildPendingBatches(device, pipeline); return true; },
+        ) ?? false;
+        // Leave the pending map intact on failure so the next mutation retries
+        // this rebuild instead of dropping it.
+        if (!rebuilt) return;
       }
       if (scene.hasStreamingFragments() && !scene.isEphemeralStreaming()) {
-        runGpuUpload('finalizeStreaming:rotations', () => scene.finalizeStreaming(device, pipeline));
+        const finalized = runGpuUpload(
+          'finalizeStreaming:rotations',
+          () => { scene.finalizeStreaming(device, pipeline); return true; },
+        ) ?? false;
+        if (!finalized) return;
       }
       renderer.requestRender();
     }

@@ -72,6 +72,17 @@ export function runGpuUpload<T>(label: string, run: () => T): T | undefined {
         gpu_upload_site: label,
         error_kind: classifyLoadError(err),
       });
+      // Tell the user once. Containment keeps the session alive, but a lost
+      // device does not come back on its own and the affected batches will not
+      // draw — silently showing an incomplete model would be worse than the
+      // crash this replaces. Imported lazily to keep the render-path module
+      // free of UI imports (same pattern as useKeyboardShortcuts).
+      void import('@/components/ui/toast').then((m) => {
+        m.toast.error(
+          'The graphics device stopped accepting new geometry, so part of the ' +
+          'model may not be drawn. Reload the page to restore full rendering.',
+        );
+      }).catch(() => { /* toast is best-effort; never mask the original failure */ });
     }
     return undefined;
   }

@@ -36,8 +36,15 @@ function loadIgnorePatterns() {
   let text;
   try {
     text = readFileSync(IGNORE_PATH, 'utf8');
-  } catch {
-    return [];
+  } catch (error) {
+    // Fail CLOSED: only a genuinely absent file means "no exclusions". Any other
+    // read error (EACCES, the path is a directory, I/O failure) must NOT be
+    // swallowed into an empty list — that would silently disable the guard and
+    // let a private fixture be manifested and pushed to the public bucket.
+    if (error && typeof error === 'object' && error.code === 'ENOENT') {
+      return [];
+    }
+    throw error;
   }
   return text
     .split('\n')

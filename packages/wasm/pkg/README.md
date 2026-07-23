@@ -27,7 +27,7 @@ Open, view, and work with IFC files. Right in the browser.
 
 # IFClite
 
-Parse, view, query, edit, validate, and export IFC files, entirely client-side. A Rust core compiled to WASM does the parsing and geometry, a WebGPU renderer puts it on screen, and 36 npm packages let you pick exactly the pieces you need. Geometry processing is up to 5x faster than web-ifc (median ~2.2x across the benchmark corpus).
+Parse, view, query, edit, validate, and export IFC files, entirely client-side. A Rust core compiled to WASM does the parsing and geometry, a WebGPU renderer puts it on screen, and 36 npm packages let you pick exactly the pieces you need. Geometry runs on an exact-arithmetic CSG kernel, verified element-by-element against IfcOpenShell across the public benchmark corpus.
 
 Works with **IFC2X3**, **IFC4 / IFC4X3** and **IFC5 (IFCX)**. Live demo at [ifclite.com](https://www.ifclite.com/) and more info at [ifclite.dev](https://www.ifclite.dev/).
 
@@ -256,7 +256,8 @@ Full list: [API Reference](https://ifclite.dev/docs/api/typescript/) (36 npm pac
 ## Performance
 
 - **Streaming first render:** geometry is processed in batches, so the first triangles are on screen while the rest of the file is still parsing.
-- **Geometry processing:** up to 5x faster than `web-ifc` (median ~2.2x across the benchmark corpus).
+- **Geometry correctness:** exact-arithmetic boolean kernel — every opening is cut exactly, and the output is verified element-by-element against IfcOpenShell (99.9%+ agreement on the public benchmark corpus). Engines with approximate booleans are faster on boolean-heavy models; that trade is deliberate.
+- **Geometry speed:** native (server/CLI, multi-threaded) beats `web-ifc` on most of the benchmark corpus; in the browser the viewer streams geometry across workers so the first triangles render long before the file finishes processing.
 - **Parse speed:** STEP tokenization runs at roughly 1.2 GB/s; a full parse lands around 50 MB/s.
 - **Schema coverage:** 100% of IFC4 (776 entities) and IFC4X3 (876 entities).
 - **Footprint:** one lazily fetched WASM module (~1.2 MB gzipped) plus small per-package JS wrappers.

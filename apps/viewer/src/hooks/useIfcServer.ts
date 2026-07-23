@@ -174,11 +174,14 @@ export function useIfcServer() {
 
           // Update bounds incrementally
           for (const mesh of batchMeshes) {
-            // Fold the per-element local-frame origin so the progressive bounds
-            // are WORLD-space (world = origin + position, issue #1841). Without
-            // it an origin-relative mesh contributes only its small local
-            // coordinates and the camera fits onto the scene origin — the
-            // non-streaming path already folds it via calculateMeshBounds.
+            // Fold the per-element local-frame origin (position + origin,
+            // issue #1841). Without it an origin-relative mesh contributes only
+            // its small LOCAL coordinates and the camera fits onto the scene
+            // origin. NOTE the frame: `origin` is the element's local frame
+            // WITHIN the server's already-RTC-shifted space, so these bounds
+            // stay SHIFTED — `originalBounds` below still reconstructs world by
+            // adding `originShift`. This mirrors the non-streaming path, whose
+            // `calculateMeshBounds` folds origin and then adds originShift too.
             updateBoundsFromPositions(bounds, mesh.positions, MAX_VALID_COORD, mesh.origin ?? null);
             totalVertices += mesh.positions.length / 3;
             totalTriangles += mesh.indices.length / 3;

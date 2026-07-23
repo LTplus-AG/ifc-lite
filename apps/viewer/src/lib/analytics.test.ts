@@ -105,4 +105,200 @@ describe('scrubEvent — noise filter + PII guard (regression)', () => {
   it('passes a null event through untouched', () => {
     assert.equal(scrubEvent(null), null);
   });
+
+  it("drops Outlook SafeLinks' injected-crawler rejection", () => {
+    const out = scrubEvent(exceptionEvent(
+      'Non-Error promise rejection captured with value: Object Not Found Matching Id:2, MethodName:update, ParamCount:4',
+    ));
+    assert.equal(out, null);
+  });
+
+  it('drops the opaque cross-origin "Script error." only when it has no frames', () => {
+    // Information-free by construction: no file, no line, no stack.
+    assert.equal(scrubEvent(exceptionEvent('Script error.')), null);
+    assert.equal(scrubEvent(exceptionEvent('Script error')), null);
+    // …but if one ever arrives WITH a stack, it is ours and must survive.
+    const withStack: CaptureEvent = {
+      event: '$exception',
+      properties: {
+        $exception_list: [
+          { type: 'Error', value: 'Script error.', stacktrace: { frames: [{ source: '/assets/index.js' }] } },
+        ],
+      },
+    };
+    assert.notEqual(scrubEvent(withStack), null);
+  });
+
+  it('keeps exceptions that merely mention a dropped pattern in passing', () => {
+    // Guard against the noise regexes being too greedy.
+    assert.notEqual(scrubEvent(exceptionEvent('Failed to load Script error handler module')), null);
+    assert.notEqual(scrubEvent(exceptionEvent('Object Not Found in scene graph')), null);
+  });
+});
+
+describe('scrubEvent — issue grouping', () => {
+  it('collapses every stream-watchdog variant onto one fingerprint', () => {
+    // The volatile mesh count used to mint a separate PostHog issue (and a
+    // separate GitHub issue) per value — eleven issues for one bug.
+    const a = scrubEvent(exceptionEvent('Geometry stream stalled after 40000ms. Last rendered meshes: 120070.'));
+    const b = scrubEvent(exceptionEvent('Geometry stream stalled after 38374ms. Last rendered meshes: 0.'));
+    assert.equal(a?.properties?.$exception_fingerprint, 'ifc-lite:geometry_stream_stalled');
+    assert.equal(
+      a?.properties?.$exception_fingerprint,
+      b?.properties?.$exception_fingerprint,
+    );
+  });
+
+  it('gives each recognised family its OWN fingerprint (no over-grouping)', () => {
+    const stalled = scrubEvent(exceptionEvent('Geometry stream stalled after 40000ms. Last rendered meshes: 5.'));
+    const worker = scrubEvent(exceptionEvent('Geometry worker failed: worker terminated unexpectedly'));
+    const oom = scrubEvent(exceptionEvent('Array buffer allocation failed'));
+    assert.equal(stalled?.properties?.$exception_fingerprint, 'ifc-lite:geometry_stream_stalled');
+    assert.equal(worker?.properties?.$exception_fingerprint, 'ifc-lite:geometry_worker_crash');
+    assert.equal(oom?.properties?.$exception_fingerprint, 'ifc-lite:out_of_memory');
+  });
+
+  it('leaves unrecognised exceptions on PostHog default grouping', () => {
+    const out = scrubEvent(exceptionEvent("Cannot read properties of undefined (reading 'toLowerCase')"));
+    assert.equal(out?.properties?.$exception_fingerprint, undefined);
+  });
+
+  it('never overrides a fingerprint chosen at the capture site', () => {
+    const out = scrubEvent(exceptionEvent('Array buffer allocation failed', {
+      $exception_fingerprint: 'deliberate-group',
+    }));
+    assert.equal(out?.properties?.$exception_fingerprint, 'deliberate-group');
+  });
+
+  it('does not fingerprint non-exception events', () => {
+    const out = scrubEvent({ event: 'ifc_model_loaded', properties: {} } as CaptureEvent);
+    assert.equal(out?.properties?.$exception_fingerprint, undefined);
+  });
+});
+
+describe('scrubEvent — nested + message redaction', () => {
+  it('redacts a confidential model name nested inside an object', () => {
+    // Regression: scrubProperties only walked top-level keys, so anything one
+    // level down sailed straight through the privacy guard.
+    const out = scrubEvent({
+      event: 'custom',
+      properties: { meta: { file_name: 'Confidential-Tower.ifc', detail: '/Users/me/Tower.ifc', count: 2 } },
+    } as CaptureEvent);
+    const meta = out?.properties?.meta as Record<string, unknown>;
+    assert.equal(meta.file_name, undefined);
+    assert.equal(meta.detail, '[redacted]');
+    assert.equal(meta.count, 2);
+  });
+
+  it('redacts inside arrays of objects', () => {
+    const out = scrubEvent({
+      event: 'custom',
+      properties: { models: [{ title: 'Client HQ' }, { detail: 'C:\\jobs\\HQ.ifc' }] },
+    } as CaptureEvent);
+    const models = out?.properties?.models as Record<string, unknown>[];
+    assert.equal(models[0].title, undefined);
+    assert.equal(models[1].detail, '[redacted]');
+  });
+
+  it('cuts a file name out of an exception message but keeps the message', () => {
+    // The stream watchdog used to embed `file.name`; fixed at the source, but
+    // the net has to cover it — three such names reached error tracking.
+    const out = scrubEvent(exceptionEvent(
+      'Geometry stream stalled after 40580ms while loading SV3822-UIH-CN-001-M3D-EST-003-PA.ifc. Last rendered meshes: 0.',
+    ));
+    const value = (out?.properties?.$exception_list as { value: string }[])[0].value;
+    assert.ok(!value.includes('SV3822'), `file name survived: ${value}`);
+    assert.ok(value.includes('[file]'));
+    assert.ok(value.includes('Geometry stream stalled after 40580ms'));
+    // Classification still works — it matches the stable prefix.
+    assert.equal(out?.properties?.error_kind, 'geometry_stream_stalled');
+  });
+
+  it('redacts non-ASCII model names in $exception_values too', () => {
+    const out = scrubEvent({
+      event: '$exception',
+      properties: {
+        $exception_values: ['Geometry stream stalled while loading 16201598 Østraadt Havn - Fabian 2.ifc.'],
+      },
+    } as CaptureEvent);
+    const values = out?.properties?.$exception_values as string[];
+    assert.ok(!values[0].includes('Østraadt'), `file name survived: ${values[0]}`);
+    assert.ok(values[0].includes('[file]'));
+  });
+
+  it('redacts every model name that actually reached error tracking', () => {
+    // The four real leaked names, verbatim from the PostHog corpus. Spaces,
+    // non-ASCII, underscores and embedded dots all have to survive redaction.
+    const leaked: [string, string][] = [
+      ['SV3822-UIH-CN-001-M3D-EST-003-PA.ifc', 'SV3822'],
+      ['16201598 Østraadt Havn - Hovedfil BT1 Fabian 2.ifc', 'Østraadt'],
+      ['bwk_rv bn15.ifc', 'bwk_rv'],
+      ['Luxembourg_EMEA RTC_SST_EXE_4000.1_TOUS_Maquette HYD.ifc', 'Luxembourg'],
+    ];
+    for (const [name, secret] of leaked) {
+      const out = scrubEvent(exceptionEvent(
+        `Geometry stream stalled after 40000ms while loading ${name}. Last rendered meshes: 7.`,
+      ));
+      const value = (out?.properties?.$exception_list as { value: string }[])[0].value;
+      assert.ok(!value.includes(secret), `leaked "${secret}" in: ${value}`);
+      assert.equal(
+        value,
+        'Geometry stream stalled after 40000ms while loading [file]. Last rendered meshes: 7.',
+      );
+    }
+  });
+
+  it('does not over-redact messages that merely mention an extension', () => {
+    // The run must stop at ordinary lower-case message words, or a stray
+    // extension would swallow the whole (useful) message.
+    const cases = [
+      'Could not parse the .ifc header',
+      "Cannot read properties of undefined (reading 'toLowerCase')",
+      'Failed to fetch dynamically imported module: https://www.ifclite.com/assets/index-B42.js',
+    ];
+    for (const c of cases) {
+      const out = scrubEvent(exceptionEvent(c));
+      assert.equal((out?.properties?.$exception_list as { value: string }[])[0].value, c);
+    }
+  });
+
+  it('redacts in linear time on a hostile message (no catastrophic backtracking)', () => {
+    const started = Date.now();
+    scrubEvent(exceptionEvent(`${'x-1 '.repeat(5000)}nope`));
+    assert.ok(Date.now() - started < 1000, 'redaction regex backtracked');
+  });
+
+  it('does NOT delete stack-frame keys that look sensitive', () => {
+    // `resolved_name` / `mangled_name` match SENSITIVE_KEY's `name` word.
+    // Walking into $exception_list with the key rules would erase every stack
+    // trace we have — the whole point of error tracking.
+    const out = scrubEvent({
+      event: '$exception',
+      properties: {
+        $exception_list: [{
+          type: 'Error',
+          value: 'boom',
+          stacktrace: { frames: [{ resolved_name: 'appendToBatches', source: '/assets/store.js', line: 4914 }] },
+        }],
+      },
+    } as CaptureEvent);
+    const frame = (out?.properties?.$exception_list as {
+      stacktrace: { frames: Record<string, unknown>[] };
+    }[])[0].stacktrace.frames[0];
+    assert.equal(frame.resolved_name, 'appendToBatches');
+    assert.equal(frame.source, '/assets/store.js');
+    assert.equal(frame.line, 4914);
+  });
+
+  it('survives a self-referencing property object', () => {
+    const cyclic: Record<string, unknown> = { count: 1 };
+    cyclic.self = cyclic;
+    const out = scrubEvent({ event: 'custom', properties: { nested: cyclic } } as CaptureEvent);
+    assert.equal((out?.properties?.nested as Record<string, unknown>).count, 1);
+  });
+
+  it('leaves a null-valued property alone', () => {
+    const out = scrubEvent({ event: 'custom', properties: { thing: null } } as CaptureEvent);
+    assert.equal(out?.properties?.thing, null);
+  });
 });

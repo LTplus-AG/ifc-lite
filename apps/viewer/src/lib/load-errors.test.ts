@@ -111,6 +111,40 @@ describe('classifyLoadError', () => {
     );
   });
 
+  it('classifies a WebGPU buffer-allocation failure as out_of_memory', () => {
+    // Chromium's wording is misleading — 193 KB is not "too large" for any
+    // device; what failed is mapping host memory. Same user guidance as OOM.
+    assert.equal(
+      classifyLoadError(new RangeError(
+        "Failed to execute 'createBuffer' on 'GPUDevice': createBuffer failed, size (193836) is too large for the implementation when mappedAtCreation == true",
+      )),
+      'out_of_memory',
+    );
+  });
+
+  it('classifies an unreadable picked file, not as a memory or model failure', () => {
+    assert.equal(
+      classifyLoadError(new Error(
+        'NotReadableError: The requested file could not be read, typically due to permission problems that have occurred after a reference to a file was acquired.',
+      )),
+      'file_unreadable',
+    );
+    // A DOMException stringifies name-first; also match engines that only
+    // phrase it in prose.
+    assert.equal(
+      classifyLoadError(new Error('The requested file could not be read due to permission problems')),
+      'file_unreadable',
+    );
+  });
+
+  it('does not mistake unrelated read failures for an unreadable file', () => {
+    assert.equal(classifyLoadError(new Error('could not be read')), 'unknown');
+    assert.equal(
+      classifyLoadError(new Error('Geometry worker error: Array buffer allocation failed')),
+      'out_of_memory',
+    );
+  });
+
   it('classifies cancellation', () => {
     assert.equal(classifyLoadError(new Error('The operation was aborted')), 'cancelled');
     assert.equal(classifyLoadError('cancelled'), 'cancelled');
@@ -152,6 +186,17 @@ describe('formatLoadError', () => {
     );
     assert.match(msg, /"tower\.ifc"/);
     assert.match(msg, /stalled/i);
+  });
+
+  it('tells the user to re-pick an unreadable file instead of blaming the model', () => {
+    const msg = formatLoadError(
+      new Error('NotReadableError: The requested file could not be read'),
+      'tower.ifc',
+    );
+    assert.match(msg, /"tower\.ifc"/);
+    assert.match(msg, /select the file again/i);
+    // Must NOT tell them to close tabs / shrink the model — nothing is too big.
+    assert.doesNotMatch(msg, /memory|too large|smaller/i);
   });
 
   it('preserves the raw message for unknown failures', () => {

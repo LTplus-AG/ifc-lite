@@ -37,6 +37,15 @@ export type LoadErrorKind =
    * genuinely too-large/complex model that never streams on this device.
    */
   | 'geometry_stream_stalled'
+  /**
+   * The browser could not read the file the user picked. The `File`/handle
+   * reference was acquired successfully, but the bytes were unreadable by the
+   * time we asked for them — the file moved or was deleted, a cloud-sync client
+   * evicted it, removable media was unplugged, or an AV/permission change
+   * locked it. Nothing about the model is wrong and nothing in the app failed;
+   * the user just needs to pick the file again.
+   */
+  | 'file_unreadable'
   /** The user (or a superseding load) cancelled the operation. */
   | 'cancelled'
   /** Anything else. */
@@ -76,7 +85,31 @@ function isOutOfMemoryError(message: string): boolean {
   return (
     /out of memory|oom|memory access out of bounds|cannot enlarge memory|allocation failed|maximum call stack|array buffer allocation failed|rangeerror: (?:invalid array|array buffer)/i.test(
       message,
-    )
+    ) ||
+    // WebGPU buffer allocation failure. Chromium reports a failed
+    // `createBuffer({ mappedAtCreation: true })` as
+    //   "createBuffer failed, size (N) is too large for the implementation
+    //    when mappedAtCreation == true"
+    // and the wording is misleading: the sizes we hit this with are tiny
+    // (~190 KB against a device advertising hundreds of MB), because what
+    // actually failed is mapping host memory for the new buffer — i.e. memory
+    // exhaustion or a device that can no longer service allocations, not a
+    // size-limit violation. Grouped with the OOM family because the user
+    // guidance is identical.
+    /createbuffer failed/i.test(message)
+  );
+}
+
+/**
+ * The picked file could not be read. Every browser surfaces this as a
+ * `NotReadableError` DOMException, whose message differs per engine, so match
+ * the stable error name first and the phrasing only as a fallback.
+ */
+function isFileUnreadableError(message: string): boolean {
+  return (
+    /notreadableerror/i.test(message) ||
+    (/could not be read|failed to read/i.test(message) &&
+      /permission|file/i.test(message))
   );
 }
 
@@ -117,6 +150,10 @@ function isCancelledError(message: string): boolean {
 /** Classify a load failure into a stable analytics bucket. */
 export function classifyLoadError(err: unknown): LoadErrorKind {
   const message = messageOf(err);
+  // Checked before the memory/worker buckets: a NotReadableError says nothing
+  // about the model or this device's capacity, and its message ("...could not
+  // be read...permission problems...") must not be mistaken for one of them.
+  if (isFileUnreadableError(message)) return 'file_unreadable';
   if (isWasmEngineLoadError(message)) return 'wasm_engine_load';
   // Explicit memory-exhaustion signals win over the worker-crash bucket so a
   // worker that died with a clear OOM message is grouped as out_of_memory.
@@ -160,6 +197,12 @@ export function formatLoadError(err: unknown, fileName?: string): string {
         `Processing ${subject} stalled and was stopped. ` +
         `The model may be too large or complex for this device. ` +
         `Try closing other tabs, or load fewer/smaller models at once.`
+      );
+    case 'file_unreadable':
+      return (
+        `Couldn't read ${subject} — the file is no longer available to the browser. ` +
+        `It may have been moved, renamed, deleted, or unloaded by a cloud-sync client ` +
+        `(OneDrive/Dropbox/iCloud) since you picked it. Please select the file again.`
       );
     case 'cancelled':
       return `Loading ${subject} was cancelled.`;

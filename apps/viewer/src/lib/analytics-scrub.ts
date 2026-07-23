@@ -35,13 +35,70 @@ const URL_KEYS = new Set<string>([
 const PATHISH =
   /[\\/][^\\/]*\.(?:ifc|ifcx|ifczip|bcf|bcfzip|glb|gltf|obj|csv|xlsx|pdf|json|step|stp|las|laz)\b|^(?:file|blob):|^[A-Za-z]:\\|\/Users\/|\/home\//i;
 
+// A building-model file name appearing INSIDE a longer string (an exception
+// message, typically). PATHISH above answers "is this whole value a path?";
+// this one cuts the file name out of surrounding text that is worth keeping.
+//
+// Real leaked names contain spaces ("16201598 Østraadt Havn - Hovedfil BT1
+// Fabian 2.ifc"), so the match cannot stop at whitespace — but it must not run
+// away and eat the whole sentence either. It therefore extends leftwards only
+// across NAME-ish words: a word containing a digit, `_` or `-`, or starting
+// with an upper-case letter. Ordinary message words ("while", "loading",
+// "after") are lower-case and plain, so they end the run.
+//
+// Case-insensitivity is applied per-character rather than with the `i` flag on
+// purpose: `/\p{Lu}/iu` case-folds and would match LOWER-case letters too,
+// turning every word into a NAME word and swallowing the entire message.
+const MODEL_EXTENSIONS = [
+  'ifczip', 'bcfzip', 'ifcx', 'gltf', 'xlsx', 'step', 'ifc', 'bcf',
+  'glb', 'obj', 'csv', 'pdf', 'stp', 'las', 'laz',
+];
+const anyCase = (s: string): string =>
+  [...s].map((c) => `[${c}${c.toUpperCase()}]`).join('');
+// Longest-first so `.ifcx` cannot be matched as `.ifc` + a stray `x`.
+const EXT_ALTERNATION = MODEL_EXTENSIONS
+  .slice()
+  .sort((a, b) => b.length - a.length)
+  .map(anyCase)
+  .join('|');
+
+// Bounded quantifiers throughout — a lookahead plus one bounded run, never a
+// nested star, so a hostile message cannot trigger catastrophic backtracking.
+const NAME_WORD = String.raw`(?:(?=[^\s\\/]{0,64}[\d_-])|(?=\p{Lu}))[^\s\\/]{1,64}`;
+const FILE_TOKEN = new RegExp(
+  String.raw`(?:${NAME_WORD}[ \t]{1,3}){0,12}[^\s\\/]{1,80}\.(?:${EXT_ALTERNATION})\b`,
+  'gu',
+);
+
+const redactFileTokens = (value: string): string =>
+  value.replace(FILE_TOKEN, '[file]');
+
 const stripQueryAndHash = (value: string): string => {
   const cut = value.search(/[?#]/);
   return cut === -1 ? value : value.slice(0, cut);
 };
 
-const scrubProperties = (props: Record<string, unknown> | undefined): void => {
+// SDK-owned keys whose nested shape is schema, not payload. `scrubProperties`
+// must NOT walk into these with the key-name rules: a stack frame carries
+// `resolved_name` / `mangled_name`, which match SENSITIVE_KEY's `name` word and
+// would be deleted outright — silently destroying every stack trace. Their
+// human-readable strings are handled by `scrubExceptionMessages` instead.
+const SDK_STRUCTURED_KEYS = new Set<string>([
+  '$exception_list', '$exception_values', '$exception_types',
+]);
+
+// Guard against pathological/cyclic payloads: bounded depth, and a seen-set so
+// a self-referencing object can't spin forever.
+const MAX_SCRUB_DEPTH = 5;
+
+const scrubProperties = (
+  props: Record<string, unknown> | undefined,
+  depth = 0,
+  seen: WeakSet<object> = new WeakSet(),
+): void => {
   if (!props) return;
+  if (depth > MAX_SCRUB_DEPTH || seen.has(props)) return;
+  seen.add(props);
   for (const k of Object.keys(props)) {
     const v = props[k];
     // URL_KEYS must be checked BEFORE SENSITIVE_KEY: keys like `$current_url`
@@ -56,7 +113,42 @@ const scrubProperties = (props: Record<string, unknown> | undefined): void => {
       delete props[k];
       continue;
     }
-    if (typeof v === 'string' && PATHISH.test(v)) props[k] = '[redacted]';
+    if (SDK_STRUCTURED_KEYS.has(k)) continue;
+    if (typeof v === 'string') {
+      if (PATHISH.test(v)) props[k] = '[redacted]';
+      continue;
+    }
+    // Recurse: the privacy guard is a net for call sites that don't exist yet,
+    // and a nested object was previously invisible to it — a `{ meta: { file:
+    // 'Tower-A.ifc' } }` payload sailed straight through. Arrays are walked as
+    // index-keyed records so their string members get the same treatment.
+    if (v !== null && typeof v === 'object') {
+      scrubProperties(v as Record<string, unknown>, depth + 1, seen);
+    }
+  }
+};
+
+// Exception messages are the one place a file name has actually reached error
+// tracking in the field (the stream watchdog used to embed `file.name`; fixed
+// at the source, but the net has to cover it too). Redact just the file-name
+// token so the rest of the message — which is what makes the issue triageable
+// — survives.
+const scrubExceptionMessages = (
+  props: Record<string, unknown> | undefined,
+): void => {
+  if (!props) return;
+  const list = props.$exception_list;
+  if (Array.isArray(list)) {
+    for (const entry of list) {
+      const e = entry as { value?: unknown };
+      if (e && typeof e.value === 'string') e.value = redactFileTokens(e.value);
+    }
+  }
+  const values = props.$exception_values;
+  if (Array.isArray(values)) {
+    props.$exception_values = values.map((v) =>
+      typeof v === 'string' ? redactFileTokens(v) : v,
+    );
   }
 };
 
@@ -75,17 +167,42 @@ const scrubProperties = (props: Record<string, unknown> | undefined): void => {
 const CESIUM_REQUEST_ERROR =
   /captured as exception with keys:(?=[^]*\bstatusCode\b)(?=[^]*\bresponse\b)(?=[^]*\bresponseHeaders\b)/;
 
+// Microsoft's Outlook SafeLinks / Office link-preview crawler injects a script
+// into the page and rejects a promise with this bare string when its own
+// bookkeeping misses. It is not our code, carries no stack, and fires only for
+// visitors arriving from an Outlook link — 18 occurrences made it the single
+// highest-volume "issue" in error tracking, all of it someone else's crawler.
+const OUTLOOK_SAFELINK_NOISE =
+  /Object Not Found Matching Id:\s*\d+,\s*MethodName:/i;
+
+// The browser's opaque cross-origin error: `window.onerror` reports literally
+// "Script error." with no file, line, or stack when a script from another
+// origin throws (an extension, a translated page, an ISP-injected script). It
+// is information-free by construction — and PostHog's own ingestion fragments
+// it into hundreds of orphaned issues. Only dropped when there are NO frames:
+// if a "Script error." ever arrives with a usable stack, it is ours to fix.
+const OPAQUE_CROSS_ORIGIN = /^Script error\.?$/i;
+
+const frameCount = (e: unknown): number => {
+  const frames = (e as { stacktrace?: { frames?: unknown } } | null)
+    ?.stacktrace?.frames;
+  return Array.isArray(frames) ? frames.length : 0;
+};
+
 const isUnactionableThirdPartyException = (
   event: { event?: string; properties?: Record<string, unknown> },
 ): boolean => {
   if (event.event !== '$exception') return false;
   const list = event.properties?.$exception_list;
   if (!Array.isArray(list)) return false;
-  return list.some(
-    (e) =>
-      typeof (e as { value?: unknown })?.value === 'string' &&
-      CESIUM_REQUEST_ERROR.test((e as { value: string }).value),
-  );
+  return list.some((entry) => {
+    const value = (entry as { value?: unknown })?.value;
+    if (typeof value !== 'string') return false;
+    if (CESIUM_REQUEST_ERROR.test(value)) return true;
+    if (OUTLOOK_SAFELINK_NOISE.test(value)) return true;
+    if (OPAQUE_CROSS_ORIGIN.test(value.trim()) && frameCount(entry) === 0) return true;
+    return false;
+  });
 };
 
 // ── Error-family tagging ─────────────────────────────────────────────────────
@@ -130,6 +247,32 @@ const tagErrorKind = (
   event.properties.error_kind = kind;
 };
 
+// ── Issue grouping ──────────────────────────────────────────────────────────
+// PostHog groups exceptions into issues by hashing the exception type + message
+// (+ stack) unless the client supplies `$exception_fingerprint`, which takes
+// priority over every server-side rule. Our recognised failure families embed
+// volatile numbers in their message — "stalled after 40000ms. Last rendered
+// meshes: 120070." — so every distinct mesh count minted its OWN issue: one
+// real bug arrived as eleven separate issues (and eleven GitHub issues) in a
+// single retention window, which is exactly the "same problem, one fix" case
+// PostHog documents custom fingerprints for.
+//
+// Scoped deliberately to the families `classifyLoadError` recognises. An
+// unrecognised exception keeps PostHog's default per-message grouping, so we
+// never over-group unrelated failures into one meaningless bucket. The volatile
+// detail is not lost — it stays in the message and in the event's properties,
+// both still queryable within the issue.
+const stampFingerprint = (
+  event: { event?: string; properties?: Record<string, unknown> },
+): void => {
+  if (event.event !== '$exception' || !event.properties) return;
+  // Never override a fingerprint chosen at the capture site.
+  if (typeof event.properties.$exception_fingerprint === 'string') return;
+  const kind = event.properties.error_kind;
+  if (typeof kind !== 'string' || kind === 'unknown') return;
+  event.properties.$exception_fingerprint = `ifc-lite:${kind}`;
+};
+
 // `before_send` shape: (event | null) => (event | null). Returning null drops
 // the event (noise filter above); otherwise we mutate properties in place,
 // which keeps PostHog's event intact. Generic so it satisfies posthog-js's
@@ -141,7 +284,14 @@ export const scrubEvent = <
 ): T | null => {
   if (!event) return event;
   if (isUnactionableThirdPartyException(event)) return null;
+  // Order matters: tag first (stampFingerprint reads `error_kind`), then redact
+  // messages, then walk the properties. Message redaction runs BEFORE tagging
+  // would be wrong — `classifyLoadError` matches on the stable prefix, but
+  // keeping the raw text until after classification means a future matcher can
+  // still rely on the original wording.
   tagErrorKind(event);
+  stampFingerprint(event);
+  scrubExceptionMessages(event.properties);
   scrubProperties(event.properties);
   return event;
 };

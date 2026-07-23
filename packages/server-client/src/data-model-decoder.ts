@@ -153,9 +153,15 @@ export class ServerEntityIndex {
     for (let row = 0; row < this.size; row++) yield this.materializeRow(row);
   }
 
-  forEach(callback: (value: EntityMetadata, key: number) => void): void {
+  /**
+   * Map-compatible `forEach`, including the third `(value, key, collection)`
+   * argument — consumers written against a `Map` may destructure it.
+   */
+  forEach(
+    callback: (value: EntityMetadata, key: number, index: ServerEntityIndex) => void
+  ): void {
     for (let row = 0; row < this.size; row++) {
-      callback(this.materializeRow(row), this.columns.expressId[row]);
+      callback(this.materializeRow(row), this.columns.expressId[row], this);
     }
   }
 

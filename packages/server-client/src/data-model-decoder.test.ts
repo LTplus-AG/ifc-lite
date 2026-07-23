@@ -90,8 +90,10 @@ describe('ServerEntityIndex', () => {
     ]);
 
     const seen: number[] = [];
-    index.forEach((value, key) => {
+    index.forEach((value, key, collection) => {
       expect(value.entity_id).toBe(key);
+      // Third argument, like `Map.forEach(value, key, map)`.
+      expect(collection).toBe(index);
       seen.push(key);
     });
     expect(seen).toEqual([300, 100, 200]);

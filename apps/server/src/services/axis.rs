@@ -41,7 +41,20 @@ pub fn mesh_to_yup_in_place(mesh: &mut MeshData) {
     // Iterate only COMPLETE triplets. A malformed buffer whose length is not a
     // multiple of 3 must not index past the end — `debug_assert` would be a
     // no-op in release and the last partial chunk would panic the handler.
+    //
+    // Drop the partial tail rather than shipping it: a 1-2 float remainder is
+    // not a position, and leaving it would put unrotated Z-up values on the
+    // wire next to Y-up ones. Same rule as the normals below.
     let positions_end = mesh.positions.len() / 3 * 3;
+    if positions_end != mesh.positions.len() {
+        tracing::warn!(
+            express_id = mesh.express_id,
+            ifc_type = %mesh.ifc_type,
+            positions = mesh.positions.len(),
+            "Mesh position buffer is not a whole number of triplets; dropping the partial tail"
+        );
+        mesh.positions.truncate(positions_end);
+    }
     for i in (0..positions_end).step_by(3) {
         let (x, y, z) = zup_to_yup(mesh.positions[i], mesh.positions[i + 1], mesh.positions[i + 2]);
         mesh.positions[i] = x;

@@ -80,9 +80,10 @@ fn mesh_to_yup_drops_mismatched_normals_instead_of_leaving_them_zup() {
 
 /// A truncated position buffer (not a whole number of triplets) must not index
 /// past the end — in release `debug_assert` is a no-op, so this would panic the
-/// request handler. Complete triplets are still converted.
+/// request handler. Complete triplets are converted; the partial tail is dropped
+/// rather than emitted unrotated next to Y-up values.
 #[test]
-fn mesh_to_yup_does_not_panic_on_truncated_positions() {
+fn mesh_to_yup_drops_the_partial_tail_of_a_truncated_position_buffer() {
     let mut mesh = MeshData::new(
         4,
         "IfcSlab".to_string(),
@@ -92,5 +93,23 @@ fn mesh_to_yup_does_not_panic_on_truncated_positions() {
         [0.5, 0.5, 0.5, 1.0],
     );
     mesh_to_yup_in_place(&mut mesh);
-    assert_eq!(mesh.positions, vec![1.0, 3.0, -2.0, 4.0, 5.0]);
+    assert_eq!(mesh.positions, vec![1.0, 3.0, -2.0]);
+}
+
+/// Normals that paralleled the ORIGINAL (malformed) position length must not
+/// survive the truncation half-rotated — they no longer parallel the vertices,
+/// so they are cleared like any other mismatch.
+#[test]
+fn mesh_to_yup_drops_normals_that_paralleled_a_truncated_position_buffer() {
+    let mut mesh = MeshData::new(
+        5,
+        "IfcSlab".to_string(),
+        vec![1.0, 2.0, 3.0, 4.0, 5.0],
+        vec![0.0, 0.0, 1.0, 0.0, 0.0],
+        vec![0],
+        [0.5, 0.5, 0.5, 1.0],
+    );
+    mesh_to_yup_in_place(&mut mesh);
+    assert_eq!(mesh.positions, vec![1.0, 3.0, -2.0]);
+    assert!(mesh.normals.is_empty());
 }

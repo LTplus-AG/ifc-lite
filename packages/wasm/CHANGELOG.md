@@ -1,5 +1,63 @@
 # @ifc-lite/wasm
 
+## 4.1.4
+
+### Patch Changes
+
+- [#1832](https://github.com/LTplus-AG/ifc-lite/pull/1832) [`62f0d4f`](https://github.com/LTplus-AG/ifc-lite/commit/62f0d4fe8178af6eb09f0a0efc7486da8725a8d0) Thanks [@louistrue](https://github.com/louistrue)! - Scope the prism void fast path's post-cut sliver refinement to the cut region.
+
+  The refinement exists to repair high-aspect corner slivers a cut emits at an opening rim ([#1007](https://github.com/LTplus-AG/ifc-lite/issues/1007)), but it scanned the whole host — so on models whose walls are legitimately full of long-thin authored faces (thin steel), it also bisected geometry the cut never created, inflating triangle output and paying the full lockstep fixpoint on every analytic-cut host. Holter Tower geometry drops ~3430ms → ~3180ms in wasm with ~10k fewer output triangles; ISSUE_098 improves ~19% natively. Unscoped callers (the exact kernel) keep their byte-identical one-split-per-round behaviour.
+
+## 4.1.3
+
+### Patch Changes
+
+- [#1820](https://github.com/LTplus-AG/ifc-lite/pull/1820) [`74b9cd2`](https://github.com/LTplus-AG/ifc-lite/commit/74b9cd2ae0c8bd7888536c882baf809dd4f9e5d8) Thanks [@louistrue](https://github.com/louistrue)! - fix(geometry): void fast-path no longer drops a host's local-frame origin (misplaced walls)
+
+  The analytic prism / coaxial-union void fast paths ([#1806](https://github.com/LTplus-AG/ifc-lite/issues/1806)/[#1815](https://github.com/LTplus-AG/ifc-lite/issues/1815)) run `consolidate_coplanar` on their re-triangulated cut host. That helper rebuilt the mesh into a bare buffer whose `origin`, `rtc_applied`, and [#1474](https://github.com/LTplus-AG/ifc-lite/issues/1474) world-capture defaulted to zero, silently discarding the host's per-element local-frame `origin`. For a local-frame host (the wasm default, `origin != 0`) the whole voided element was then placed at the world origin — e.g. AC20-FZK-Haus's opening-bearing ground-floor walls floated ~6 m off the building. `consolidate_coplanar` only re-triangulates coplanar faces in place, so it now carries the input mesh's frame metadata onto the output (mirroring `refine_high_aspect_slivers`'s `rebuilt_like`); world-frame callers (`origin == 0`, the exact kernel) are unaffected. The fast paths' perf and triangle output are unchanged.
+
+## 4.1.2
+
+### Patch Changes
+
+- [#1815](https://github.com/LTplus-AG/ifc-lite/pull/1815) [`b016b1d`](https://github.com/LTplus-AG/ifc-lite/commit/b016b1dae1a09921acd6f82d42c9f4eeb57310a5) Thanks [@louistrue](https://github.com/louistrue)! - perf(geometry): coaxial footprint union for overlapping opening clusters (i129)
+
+  Openings whose cutter prisms OVERLAP cannot join the disjoint-cutter batch and otherwise fall to the O(N) sequential exact-kernel path — the dominant remaining void cost on opening-dense slabs (ISSUE_129 has hosts with 47/39/34/29/24 openings whose prisms overlap). This clusters overlapping cutters (union-find on the extended-AABB graph, using the same 1 mm pad as the batch so touching-but-disjoint cutters stay separate) and, for a COAXIAL cluster (all cutters share one penetration axis), recovers the removed solid cheaply and exactly: the depth axis is sliced at every cutter's authored z-boundary and, within each slab, the cutters' true cap footprints are unioned in ONE i_overlay pass and re-extruded (watertight CDT caps, holes and all) into pairwise-disjoint prisms fed to the existing `subtract_mesh_many`. A partial-depth / blind cutter is never stretched to a through-cut (it only contributes to the slabs it authored); a non-coaxial or self-check-failing cluster routes to the overlap-safe 3D `union_many`, and any cluster that fails a guard is left unconsumed for the exact kernel — so the emitted mesh is never worse than exact. On ISSUE_129 this takes native geometry from ~1.12 s to ~1.07 s at 10 threads with no per-element verdict regression on the IfcOpenShell correctness harness (and a warn:volume element resolved to pass); ISSUE_098 is unchanged. Gate `IFC_LITE_VOID_UNION=0` to force the sequential path. Default ON on native and wasm.
+
+- [#1806](https://github.com/LTplus-AG/ifc-lite/pull/1806) [`ef0743d`](https://github.com/LTplus-AG/ifc-lite/commit/ef0743dd970a844f5190fadb9717ff792cded31a) Thanks [@louistrue](https://github.com/louistrue)! - perf(geometry): analytic prism (stepped-extrusion) void subtraction on the host mesh
+
+  Subtract rectangular and rebated (stepped) prism openings — the dominant expensive void cut on CSG-heavy masonry models — analytically on ANY host mesh (faceted-brep, clipped, multi-item), instead of running the exact mesh-arrangement kernel. The cutter must weld to a closed manifold whose facets are all parallel or perpendicular to one depth axis; its per-slab cross-sections are sliced into a stepped-extrusion stack, then the host triangles are decomposed by a conforming per-triangle CDT constrained by the exact host∩cutter seam segments, and each cutter face's reveal cap is triangulated and classified by ray parity against the host solid. Every cut passes hard self-checks — an f64 volume identity (outside + inside == host, 0 < removed <= cutter volume) and a closed-surface audit stricter than the exact kernel's own output — or the host defers to the exact kernel with its full opening set (residual openings compose through the same recursion contract as the 2D path). On ISSUE_098-class models this takes native geometry from ~3.9 s to ~2.4-2.6 s at 10 threads, past web-ifc, with no per-element verdict regression on the IfcOpenShell correctness harness. Gate `IFC_LITE_PRISM_CUT=0` to force the exact kernel. Default ON on native and wasm.
+
+- [#1806](https://github.com/LTplus-AG/ifc-lite/pull/1806) [`ef0743d`](https://github.com/LTplus-AG/ifc-lite/commit/ef0743dd970a844f5190fadb9717ff792cded31a) Thanks [@louistrue](https://github.com/louistrue)! - perf(geometry): 2D opening-subtraction fast path for extruded hosts
+
+  Wire IfcOpenShell's `boolean-attempt-2d` technique into the void-cutting pipeline. For an extruded host whose openings penetrate straight through the extrusion depth (parallel to the host axis), the exact 3D mesh-boolean is replaced by a cheap 2D polygon difference on the host profile plus a re-extrude of the holed profile. Per-opening hybrid: eligible through-openings take the 2D path, ineligible ones (perpendicular sleeves, partial-depth recesses) fall to the exact kernel on the re-extruded host, so one ineligible opening no longer forfeits a host's cheap ones. Every host reconciles by bounds + volume against the real mesh and self-checks watertight before it is emitted; any doubt defers to the exact kernel with the full opening set, so geometry output is equivalent (validated against the IfcOpenShell correctness harness — no per-element verdict regression). Gate `IFC_LITE_VOID_2D=0` to force the exact kernel. Default ON on native and wasm.
+
+## 4.1.1
+
+### Patch Changes
+
+- [#1802](https://github.com/LTplus-AG/ifc-lite/pull/1802) [`eb414a4`](https://github.com/LTplus-AG/ifc-lite/commit/eb414a4aa62f81434911df41a7b1d6ccf6f054c3) Thanks [@louistrue](https://github.com/louistrue)! - Geometry-correctness fixes from the T1-T6 vs IfcOpenShell sweep ([#1788](https://github.com/LTplus-AG/ifc-lite/issues/1788)):
+
+  - Batched void subtraction now verifies the lenient (non-conforming) batch against the sum of per-cutter intersection volumes instead of re-running the sequential subtract chain. The chain re-jitters its own seams cut-over-cut and under-cuts multi-void walls, so a perfect batch was being rejected in favour of the broken sequential fallback — leaving one Poroton wall opening entirely uncut (ISSUE_098 T6 `fail:opening-not-cut`) and fragmenting/drifting the volume of five sibling walls.
+  - A void cut that keeps the host's triangle count but moves its volume (a miter/end cut replacing a 12-tri box with another 12-tri box) is no longer misread as "no change" — previously the perfect cut was discarded and the [#635](https://github.com/LTplus-AG/ifc-lite/issues/635) AABB fallback carved the cutter's world-axis box instead (ISSUE_129 `IGC_MUR` wedge wall).
+  - New stray-shard sweep after void cutting: faces with no original-host material on either side (misclassified extended-cutter fragments up to ~1 m off a plan-rotated wall's plane, invisible to the world-AABB clip) are provably not part of `host − openings` and are dropped, with vertex arrays compacted so bounds/hull readers no longer see the shards.
+  - Profile smooth-curve simplification (RDP) now caps its epsilon at an absolute 10 mm (converted through the file's length unit) instead of scaling unboundedly with profile size — a 2.5 m curved slab's correctly-tessellated 4-arc boundary was being decimated from ~60 to 17 points (ISSUE_098 `1AR_PAV_CS008` slabs, voxel-IoU 0.64 vs IfcOpenShell). Window-scale openings are unaffected.
+
+## 4.1.0
+
+### Minor Changes
+
+- [#1769](https://github.com/LTplus-AG/ifc-lite/pull/1769) [`2a7c7ff`](https://github.com/LTplus-AG/ifc-lite/commit/2a7c7ffe0ac27a8cc315e5d4a633c56469646cf0) Thanks [@Blogbotana](https://github.com/Blogbotana)! - Demesher: selective per-element mesh simplification with lightweight IFC re-export ([#1767](https://github.com/LTplus-AG/ifc-lite/issues/1767)). `@ifc-lite/export` gains `DemeshSession` — pick elements (usually the heaviest, see `heaviest(n)`), escalate simplification one level per `simplify()` call (levels 1-4 = internal-cavity removal + vertex-clustering decimation at target ratios 0.5/0.25/0.10/0.03, level 5 = bounding-box collapse) with render-ready replacement meshes for live scene updates, then export a lighter IFC separately via `exportIfc()`, which authors `IfcTriangulatedFaceSet` geometry and prunes the replaced representation subgraphs (IFC2X3 input auto-upconverts to IFC4). Also exported: `applySimplifiedGeometry` and the supporting types.
+
+  `@ifc-lite/geometry` gains `GeometryProcessor.simplifyMeshes()` backed by the new wasm `simplifyMeshes` API (`SimplifiedMeshes`). `@ifc-lite/cli` gains `ifc-lite simplify <file.ifc> --level 1..5 [--ids ...] --out light.ifc [--json]` for dev/testing. `@ifc-lite/data` / `@ifc-lite/mutations` widen `IfcAttributeValue` with a write-only `{ real: number }` marker (serialized by `stepReal()` in `@ifc-lite/export`) so tessellation coordinates always carry a decimal point.
+
+- [#1793](https://github.com/LTplus-AG/ifc-lite/pull/1793) [`502c61b`](https://github.com/LTplus-AG/ifc-lite/commit/502c61bc7c0ae1ac313ed93ab335fdd942471c72) Thanks [@louistrue](https://github.com/louistrue)! - Render IFC4 `IfcImageTexture` surface textures from `.ifcZIP` containers ([#1781](https://github.com/LTplus-AG/ifc-lite/issues/1781)).
+
+  - parser: new `unwrapIfcZipWithResources` surfaces sibling raster images (the files `IfcImageTexture.URLReference` points at) alongside the model entry, keyed by lowercased basename; `unwrapIfcZip` is unchanged.
+  - geometry/wasm: `IfcImageTexture` now resolves to a lightweight reference (`textureId` = the `IfcSurfaceTexture` express id, URL, repeat flags) instead of being dropped — the host decodes the image once per id, so a 4096² JPEG shared by dozens of face sets is decoded and uploaded exactly once. `IfcIndexedTriangleTextureMap` with a null `TexCoordIndex` (the SketchUp IFC Manager export shape) now maps UVs 1:1 with the face set's coordinates per spec. Textured face sets on ORDINARY occurrences (direct `Body` items, not just type-product representation maps) now carry UVs + texture through the sub-mesh path, and blob/pixel texture decodes are Arc-shared instead of cloned per face set.
+  - renderer: textured meshes with an external image reference render through the existing WebGPU textured pipeline via a refcounted shared-texture registry (one GPU texture per `textureId`, uploaded from the viewer-decoded `ImageBitmap`); per-mesh [#961](https://github.com/LTplus-AG/ifc-lite/issues/961) blob/pixel uploads are unchanged.
+  - viewer: `.ifcZIP` loads decode sibling images with `createImageBitmap` and attach them to arriving meshes; textured models skip the binary geometry cache (which cannot persist textures yet) instead of silently losing textures on the second open.
+
 ## 4.0.1
 
 ### Patch Changes

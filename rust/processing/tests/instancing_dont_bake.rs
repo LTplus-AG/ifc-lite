@@ -389,6 +389,69 @@ fn indexed_colour_source_palette_survives_instancing() {
     );
 }
 
+/// #1807 — a UNIFORM (single-colour) IfcIndexedColourMap must NOT block don't-bake.
+/// The #858 palette guard was over-broad: it excluded EVERY indexed-colour source, but
+/// `split_mesh_by_indexed_colour` only splits when >=2 palette entries are actually
+/// used (`style/indexed_colour.rs`), so a uniform source never splits and loses nothing
+/// by instancing — its `dominant()` colour is a single value an instance carries fine.
+/// This is the counterpart to `indexed_colour_source_palette_survives_instancing`
+/// (multi-colour → stays flat): here the source at the origin tier must now INSTANCE,
+/// recompose to the flat world triangles bit-for-bit, and keep its one dominant colour.
+fn assert_uniform_indexed_colour_instances(bytes: &[u8], label: &str, expected: [f32; 4]) {
+    // Correctness gate: it instances (don't-bake fires) and recomposes to the flat
+    // world triangles within 1um — the same hard gate the hello-wall/synthetic use.
+    assert_instanced_matches_flat(bytes, label);
+
+    let flat = run(bytes, false);
+    let inst = run(bytes, true);
+    assert_eq!(
+        inst.mesh_coordinate_space.as_deref(),
+        Some("raw_ifc"),
+        "{label}: expected the origin tier so the don't-bake plan arms (only the \
+         indexed-colour guard could keep this source flat)"
+    );
+
+    let expected_bits = [
+        expected[0].to_bits(),
+        expected[1].to_bits(),
+        expected[2].to_bits(),
+        expected[3].to_bits(),
+    ];
+    // Uniform ⇒ every retained occurrence mesh carries exactly the one dominant colour
+    // in BOTH runs (no palette split; the instanced template inherits the flat colour).
+    for (run_label, res) in [("flat", &flat), ("instanced", &inst)] {
+        for (expr, colors) in distinct_colors_by_expr(&res.meshes) {
+            assert_eq!(
+                colors.len(),
+                1,
+                "{label} ({run_label}): occurrence {expr} has {} distinct colour(s); a uniform \
+                 indexed-colour source must stay single-colour",
+                colors.len()
+            );
+            assert!(
+                colors.contains(&expected_bits),
+                "{label} ({run_label}): occurrence {expr} colour != dominant {expected:?}"
+            );
+        }
+    }
+    eprintln!(
+        "[#1807 uniform indexed-colour] {label}: {} instance record(s), single dominant colour preserved",
+        inst.instances.len()
+    );
+}
+
+#[test]
+fn uniform_indexed_colour_source_instances_keeping_dominant_colour() {
+    assert_uniform_indexed_colour_instances(
+        &fixture_bytes("mapped_instances_indexed_colour_uniform.ifc"),
+        "uniform-indexed-colour",
+        // The fixture's ColourIndex is IFC 1-based `(1,1,1,1)`: value 1 → the 0-based
+        // `triangle_palette` index 0 → IfcColourRgbList entry (1.,0.,0.) = red, the
+        // only palette entry referenced (so `has_multiple_colours()` is false).
+        [1.0, 0.0, 0.0, 1.0],
+    );
+}
+
 #[test]
 fn instanced_world_triangles_equal_flat_hello_wall() {
     assert_instanced_matches_flat(&sample_bytes(), "hello-wall");

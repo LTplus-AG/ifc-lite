@@ -1,5 +1,16 @@
 # @ifc-lite/drawing-2d
 
+## 1.19.0
+
+### Minor Changes
+
+- [#1794](https://github.com/LTplus-AG/ifc-lite/pull/1794) [`631c3a0`](https://github.com/LTplus-AG/ifc-lite/commit/631c3a0813e722fa65ff052108c2cea3ac905801) Thanks [@louistrue](https://github.com/louistrue)! - Add DXF import as a 2D reference underlay ([#1782](https://github.com/LTplus-AG/ifc-lite/issues/1782)): `importDxf` parses ASCII DXF (LINE, LWPOLYLINE/POLYLINE with bulges, CIRCLE, ARC, ELLIPSE, SPLINE, SOLID/TRACE, HATCH, TEXT/MTEXT, DIMENSION blocks, INSERT/BLOCK with nested transforms) into world-plan geometry (metres, +Y = north) with per-layer visibility, ACI/true-colour and lineweight resolution, $INSUNITS scaling, and a unitless-file millimetre heuristic. `SVGExporter` gains an `underlays` option to composite DXF reference layers beneath exported drawings, and `applyDxfPlacement` positions underlays (offset/rotation/scale) in drawing space.
+
+### Patch Changes
+
+- Updated dependencies [[`2a7c7ff`](https://github.com/LTplus-AG/ifc-lite/commit/2a7c7ffe0ac27a8cc315e5d4a633c56469646cf0), [`90522d2`](https://github.com/LTplus-AG/ifc-lite/commit/90522d218d5a9c4df0760349b5bfc60916a23f8f), [`502c61b`](https://github.com/LTplus-AG/ifc-lite/commit/502c61bc7c0ae1ac313ed93ab335fdd942471c72), [`502bdbf`](https://github.com/LTplus-AG/ifc-lite/commit/502bdbf5c4c4c86999f4e662b71ee5b0b16307ae)]:
+  - @ifc-lite/geometry@3.3.0
+
 ## 1.18.6
 
 ### Patch Changes

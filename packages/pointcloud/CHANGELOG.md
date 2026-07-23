@@ -1,5 +1,11 @@
 # @ifc-lite/pointcloud
 
+## 0.4.0
+
+### Minor Changes
+
+- [#1789](https://github.com/LTplus-AG/ifc-lite/pull/1789) [`7dcf3e1`](https://github.com/LTplus-AG/ifc-lite/commit/7dcf3e1e33101c694f0acc74aa77cf07770c63c5) Thanks [@louistrue](https://github.com/louistrue)! - Point cloud classification toggles ([#1783](https://github.com/LTplus-AG/ifc-lite/issues/1783)). `@ifc-lite/pointcloud` now aggregates a per-class point histogram during streaming decode (`streamPointCloud`'s `onComplete` gains a `classCounts` argument) and exports the ASPRS class-name table plus aggregation helpers (`lasClassificationName`, `createClassificationCounts`, `accumulateClassificationCounts`, `classificationCountEntries`). `@ifc-lite/renderer` extends the splat shader's class-visibility mask from 32 bits to the full 256-bit LAS code range, so user-defined classes (64-255) can be hidden too; `PointCloudRenderOptions.classMask` accepts either the legacy 32-bit number or up to 8 mask words.
+
 ## 0.3.6
 
 ### Patch Changes

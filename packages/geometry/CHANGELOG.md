@@ -1,5 +1,54 @@
 # @ifc-lite/geometry
 
+## 3.4.0
+
+### Minor Changes
+
+- [#1830](https://github.com/LTplus-AG/ifc-lite/pull/1830) [`52d16e1`](https://github.com/LTplus-AG/ifc-lite/commit/52d16e17817ffcacfec2f58bc592cec252f324b8) Thanks [@louistrue](https://github.com/louistrue)! - Add `prewarmSharedWasmModule` so hosts can start the engine binary's fetch + compile before a file is opened.
+
+  The ~3.9 MB wasm (~1.3 MB brotli) was fetched lazily by `processParallel`, putting the entire download between "user picks a file" and "first geometry". On a ~4 Mbit link that measured 2535 ms of dead wait for a 225 KB model. The compile is memoised per resolved binary URL, so a prewarmed module is simply awaited by the subsequent load, and a failed prewarm degrades to today's behaviour.
+
+### Patch Changes
+
+- Updated dependencies [[`62f0d4f`](https://github.com/LTplus-AG/ifc-lite/commit/62f0d4fe8178af6eb09f0a0efc7486da8725a8d0)]:
+  - @ifc-lite/wasm@4.1.4
+
+## 3.3.1
+
+### Patch Changes
+
+- [#1818](https://github.com/LTplus-AG/ifc-lite/pull/1818) [`fb99bda`](https://github.com/LTplus-AG/ifc-lite/commit/fb99bda31397cff2fce7077a8553d2247c2dd151) Thanks [@louistrue](https://github.com/louistrue)! - fix(viewer): share compiled wasm module across workers to kill cold-start wait
+
+  Compile the geometry engine's `WebAssembly.Module` ONCE on the main thread and structured-clone that single compiled module to every geometry + pre-pass worker, which then `initSync` it (cheap) instead of each independently fetching and compiling the ~3.9 MB binary. Previously all N geometry workers plus the pre-pass worker called wasm-bindgen `init()`, so 4-5 parallel cold compiles of a multi-MB module contended on the CPU on a user's first load — producing a multi-second "WASM ready" stagger before any geometry appeared, and on large files enough startup latency to trip the geometry-stream stall watchdog. The worker already accepted a shared module but the path was dead code: it called `initSync({ module_or_path })` while wasm-bindgen's glue destructures `.module`, so it would have thrown `new WebAssembly.Module(undefined)` — and the host never sent a module. Uses `compileStreaming` (compile-while-download), caches the module for the session (federation/reload reuse it), and falls back to per-worker `init()` when the URL can't be resolved or compilation fails, so non-Vite consumers are unaffected. Geometry output is unchanged.
+
+- Updated dependencies [[`74b9cd2`](https://github.com/LTplus-AG/ifc-lite/commit/74b9cd2ae0c8bd7888536c882baf809dd4f9e5d8)]:
+  - @ifc-lite/wasm@4.1.3
+
+## 3.3.0
+
+### Minor Changes
+
+- [#1769](https://github.com/LTplus-AG/ifc-lite/pull/1769) [`2a7c7ff`](https://github.com/LTplus-AG/ifc-lite/commit/2a7c7ffe0ac27a8cc315e5d4a633c56469646cf0) Thanks [@Blogbotana](https://github.com/Blogbotana)! - Demesher: selective per-element mesh simplification with lightweight IFC re-export ([#1767](https://github.com/LTplus-AG/ifc-lite/issues/1767)). `@ifc-lite/export` gains `DemeshSession` — pick elements (usually the heaviest, see `heaviest(n)`), escalate simplification one level per `simplify()` call (levels 1-4 = internal-cavity removal + vertex-clustering decimation at target ratios 0.5/0.25/0.10/0.03, level 5 = bounding-box collapse) with render-ready replacement meshes for live scene updates, then export a lighter IFC separately via `exportIfc()`, which authors `IfcTriangulatedFaceSet` geometry and prunes the replaced representation subgraphs (IFC2X3 input auto-upconverts to IFC4). Also exported: `applySimplifiedGeometry` and the supporting types.
+
+  `@ifc-lite/geometry` gains `GeometryProcessor.simplifyMeshes()` backed by the new wasm `simplifyMeshes` API (`SimplifiedMeshes`). `@ifc-lite/cli` gains `ifc-lite simplify <file.ifc> --level 1..5 [--ids ...] --out light.ifc [--json]` for dev/testing. `@ifc-lite/data` / `@ifc-lite/mutations` widen `IfcAttributeValue` with a write-only `{ real: number }` marker (serialized by `stepReal()` in `@ifc-lite/export`) so tessellation coordinates always carry a decimal point.
+
+- [#1793](https://github.com/LTplus-AG/ifc-lite/pull/1793) [`502c61b`](https://github.com/LTplus-AG/ifc-lite/commit/502c61bc7c0ae1ac313ed93ab335fdd942471c72) Thanks [@louistrue](https://github.com/louistrue)! - Render IFC4 `IfcImageTexture` surface textures from `.ifcZIP` containers ([#1781](https://github.com/LTplus-AG/ifc-lite/issues/1781)).
+
+  - parser: new `unwrapIfcZipWithResources` surfaces sibling raster images (the files `IfcImageTexture.URLReference` points at) alongside the model entry, keyed by lowercased basename; `unwrapIfcZip` is unchanged.
+  - geometry/wasm: `IfcImageTexture` now resolves to a lightweight reference (`textureId` = the `IfcSurfaceTexture` express id, URL, repeat flags) instead of being dropped — the host decodes the image once per id, so a 4096² JPEG shared by dozens of face sets is decoded and uploaded exactly once. `IfcIndexedTriangleTextureMap` with a null `TexCoordIndex` (the SketchUp IFC Manager export shape) now maps UVs 1:1 with the face set's coordinates per spec. Textured face sets on ORDINARY occurrences (direct `Body` items, not just type-product representation maps) now carry UVs + texture through the sub-mesh path, and blob/pixel texture decodes are Arc-shared instead of cloned per face set.
+  - renderer: textured meshes with an external image reference render through the existing WebGPU textured pipeline via a refcounted shared-texture registry (one GPU texture per `textureId`, uploaded from the viewer-decoded `ImageBitmap`); per-mesh [#961](https://github.com/LTplus-AG/ifc-lite/issues/961) blob/pixel uploads are unchanged.
+  - viewer: `.ifcZIP` loads decode sibling images with `createImageBitmap` and attach them to arriving meshes; textured models skip the binary geometry cache (which cannot persist textures yet) instead of silently losing textures on the second open.
+
+### Patch Changes
+
+- [#1792](https://github.com/LTplus-AG/ifc-lite/pull/1792) [`90522d2`](https://github.com/LTplus-AG/ifc-lite/commit/90522d218d5a9c4df0760349b5bfc60916a23f8f) Thanks [@louistrue](https://github.com/louistrue)! - Docs-only: refresh the package description and README performance claim. The old "1.9x faster than web-ifc" figure predates both web-ifc 0.0.77 (which substantially improved its geometry speed) and ifc-lite's exact-arithmetic CSG kernel; the package now describes what is actually differentiating - exact boolean cuts verified element-by-element against IfcOpenShell.
+
+- [#1784](https://github.com/LTplus-AG/ifc-lite/pull/1784) [`502bdbf`](https://github.com/LTplus-AG/ifc-lite/commit/502bdbf5c4c4c86999f4e662b71ee5b0b16307ae) Thanks [@louistrue](https://github.com/louistrue)! - Fix `GeometryProcessor.process()` throwing `RangeError: Maximum call stack size exceeded` on models with more than ~65k meshes (e.g. 169MB Holter tower, ~110k meshes). The synchronous collect path spread the whole mesh batch into a single `Array.push(...)` call, which passes one argument per mesh and blows V8's argument ceiling; it now appends in a loop. The streaming path was never affected.
+
+- Updated dependencies [[`2a7c7ff`](https://github.com/LTplus-AG/ifc-lite/commit/2a7c7ffe0ac27a8cc315e5d4a633c56469646cf0), [`502c61b`](https://github.com/LTplus-AG/ifc-lite/commit/502c61bc7c0ae1ac313ed93ab335fdd942471c72), [`7194c95`](https://github.com/LTplus-AG/ifc-lite/commit/7194c95002f2c84cd3c9444d710a50190a976a90)]:
+  - @ifc-lite/wasm@4.1.0
+  - @ifc-lite/data@2.7.0
+
 ## 3.2.1
 
 ### Patch Changes

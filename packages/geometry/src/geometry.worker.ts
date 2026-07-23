@@ -1464,7 +1464,14 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
     if (e.data.type === 'init') {
       if (e.data.wasmUrl) cachedWasmUrl = e.data.wasmUrl;
       if (e.data.wasmModule) {
-        initSync({ module_or_path: e.data.wasmModule });
+        // Instantiate from the pre-compiled module the host compiled ONCE and
+        // structured-cloned to every worker — no per-worker recompile of the
+        // multi-MB binary. NB: wasm-bindgen's `initSync` destructures the
+        // `.module` key (see `initSync(module)` in the generated glue); the
+        // older `{ module_or_path }` shape here silently destructured to
+        // `undefined` and threw `new WebAssembly.Module(undefined)`, which is
+        // why the shared-module path was never actually taken.
+        initSync({ module: e.data.wasmModule });
         api = new IfcAPI();
         mergeLayersApplied = false;
         applyMergeLayersToApi();

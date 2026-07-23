@@ -35,12 +35,14 @@ pub struct FullIndexedColourMap {
 }
 
 impl FullIndexedColourMap {
-    /// Number of distinct palette entries actually referenced by triangles.
-    pub(crate) fn distinct_used(&self) -> usize {
-        let mut seen = self.triangle_palette.clone();
-        seen.sort_unstable();
-        seen.dedup();
-        seen.len()
+    /// Whether >=2 distinct palette entries are referenced by triangles — the
+    /// split threshold. Zero-alloc with an early exit: true as soon as any triangle
+    /// differs from the first, so a uniform (single-colour) map costs one scan with
+    /// no heap work.
+    pub(crate) fn has_multiple_colours(&self) -> bool {
+        self.triangle_palette
+            .first()
+            .is_some_and(|&first| self.triangle_palette.iter().any(|&c| c != first))
     }
 
     /// The most-frequently-referenced colour (single-colour maps return their
@@ -131,7 +133,7 @@ pub fn split_mesh_by_indexed_colour(
     if tri_count == 0 || tri_count != map.triangle_palette.len() {
         return None;
     }
-    if map.distinct_used() < 2 {
+    if !map.has_multiple_colours() {
         return None; // single colour — nothing to split
     }
 

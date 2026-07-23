@@ -350,28 +350,43 @@ pub fn subtract_many(host: &Mesh, cutters: &[&Mesh]) -> Option<Mesh> {
     // traversal recovery). Its exact topology is CLEANER than sequential per-cutter
     // re-jitter on dense faceted-reveal walls (issue #098 V5C: 532→108 open edges),
     // but a straddling misclassification can over/under-cut VOLUME (#559171/#1167).
-    // Trust the lenient batch ONLY when its removed volume matches the sequential
-    // reference; else None, so the caller runs its full sequential path.
+    // Trust the lenient batch ONLY when its removed volume matches the true removed
+    // volume; else None, so the caller runs its full sequential path.
     let batch = difference_all_lenient(&h, &refs);
-    // The sequential reference is an ORACLE for the volume comparison, not the
-    // operation — snapshot/restore the budget so these full booleans don't charge
-    // the caller's batch budget. Otherwise a dense group could trip the shared
-    // #1109 budget merely computing the reference, and the caller would discard
-    // even a volume-matched batch, defeating recovery on exactly the hard cases
-    // this path targets (codex P2 on #1660).
+    // ORACLE for the volume comparison (#1788): batched cutters are pairwise
+    // disjoint (this fn's contract), so the TRUE removed volume is
+    // Σ |host ∩ cutterᵢ| — each a small single boolean against the PRISTINE
+    // host, the well-conditioned regime. The previous oracle re-ran the
+    // sequential subtract chain, but that chain re-jitters its own seams
+    // cut-over-cut and UNDER-cuts on multi-void walls — on the ISSUE_098
+    // Poroton wall its "reference" removed 2% less volume than the (correct)
+    // batch, so a perfect batch was rejected in favour of the broken
+    // sequential fallback, leaving an opening uncut (T6 fail:opening-not-cut).
+    // Budget snapshot/restore: oracle work isn't charged to the caller's
+    // batch budget (codex P2 on #1660); a trip DURING an oracle intersection
+    // makes its volume untrustworthy ⇒ reject the group (as before).
     let budget_snap = super::budget::snapshot_counters();
-    let mut seq = tris_to_mesh(&h);
-    for c in cutters {
-        seq = subtract(&seq, c);
+    let mut inter_sum = 0.0f64;
+    let mut oracle_tripped = false;
+    for c in &comp_tris {
+        super::budget::begin();
+        let i = boolean(&h, c, BoolOp::Intersection);
+        if super::budget::tripped() {
+            oracle_tripped = true;
+            break;
+        }
+        inter_sum += signed_volume6(&i).abs();
     }
     super::budget::restore_counters(budget_snap);
+    if oracle_tripped {
+        return None;
+    }
     let host_v = signed_volume6(&h).abs();
     let batch_removed = host_v - signed_volume6(&batch).abs();
-    let seq_removed = host_v - signed_volume6(&mesh_to_tris(&seq)).abs();
     // 1% agreement — above f64/FMA noise (parity-stable branch), tight enough to
     // reject the #1167 gross under-cut (3.7 m³ vs 13 m³).
-    let tol = seq_removed.abs().max(1.0e-9) * 0.01;
-    if (batch_removed - seq_removed).abs() <= tol {
+    let tol = inter_sum.abs().max(1.0e-9) * 0.01;
+    if (batch_removed - inter_sum).abs() <= tol {
         Some(tris_to_mesh(&batch))
     } else {
         None

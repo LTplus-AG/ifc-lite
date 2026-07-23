@@ -9,16 +9,7 @@
  * toolbar (viewer/commenter roles cannot unlock authoring).
  */
 
-import {
-  DraftingCompass,
-  Filter,
-  PackagePlus,
-  PenLine,
-  Puzzle,
-  Redo2,
-  Undo2,
-  Upload,
-} from 'lucide-react';
+import { Extension, SpaceSketch, AddElement, EditElement, EditProperty, ImportData, Undo, Redo } from '@/icons';
 import { useViewerStore } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
 import { tourAnchor, toolAnchor } from '@/lib/tours/anchors';
@@ -66,7 +57,7 @@ export function AuthorTab() {
     <>
       <RibbonGroup label="Edit">
         <RibbonLargeButton
-          icon={PenLine}
+          icon={EditElement}
           label="Edit Mode"
           tooltip={canEditInSession
             ? (editEnabled ? 'Exit edit mode' : 'Enter edit mode')
@@ -79,14 +70,14 @@ export function AuthorTab() {
         />
         <RibbonSmallStack>
           <RibbonSmallButton
-            icon={Undo2}
+            icon={Undo}
             label="Undo"
             shortcut="⌘Z"
             disabled={!canUndo}
             onClick={() => { if (activeModelId) undo(activeModelId); }}
           />
           <RibbonSmallButton
-            icon={Redo2}
+            icon={Redo}
             label="Redo"
             shortcut="⌘⇧Z"
             disabled={!canRedo}
@@ -99,7 +90,7 @@ export function AuthorTab() {
 
       <RibbonGroup label="Create">
         <RibbonLargeButton
-          icon={PackagePlus}
+          icon={AddElement}
           label="Add Element"
           tooltip="Add element (opens the drawing panel)"
           active={activeWorkspacePanels.has('addElement')}
@@ -112,7 +103,7 @@ export function AuthorTab() {
             stay visible (not hidden behind edit mode like the classic
             toolbar) — the ribbon has room for stable geography. */}
         <RibbonLargeButton
-          icon={DraftingCompass}
+          icon={SpaceSketch}
           label="Space Sketch"
           active={activeTool === 'spaceSketch'}
           activeClassName={EDIT_ACTIVE_CLASS}
@@ -129,7 +120,7 @@ export function AuthorTab() {
           <BulkPropertyEditor
             trigger={
               <RibbonSmallButton
-                icon={Filter}
+                icon={EditProperty}
                 label="Bulk property editor"
                 disabled={!ifcDataStore}
               />
@@ -138,7 +129,7 @@ export function AuthorTab() {
           <DataConnector
             trigger={
               <RibbonSmallButton
-                icon={Upload}
+                icon={ImportData}
                 label="Import data (CSV)"
                 disabled={!ifcDataStore}
               />
@@ -155,7 +146,7 @@ export function AuthorTab() {
           which files Extensions under its "Author" section). */}
       <RibbonGroup label="Customize">
         <RibbonLargeButton
-          icon={Puzzle}
+          icon={Extension}
           label="Extensions"
           tooltip="Extensions & flavors"
           active={activeWorkspacePanels.has('extensions')}

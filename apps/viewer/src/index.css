@@ -42,6 +42,9 @@
   --tokyo-green: #9ece6a;
   --tokyo-teal: #73daca;
   --tokyo-red: #f7768e;
+
+  /* Custom SVG icon accent: preserve the source blue in light mode. */
+  --viewer-icon-accent: #0063b1;
   
   /* Special */
   --tokyo-git-add: #449dab;
@@ -120,6 +123,7 @@
 /* Dark mode - Tokyo Night Storm */
 :root.dark,
 .dark {
+  --viewer-icon-accent: var(--tokyo-blue);
   --color-background: var(--tokyo-storm) !important;
   --color-foreground: var(--tokyo-fg) !important;
   --color-card: var(--tokyo-night) !important;

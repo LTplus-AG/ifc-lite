@@ -67,12 +67,13 @@ export type * from './types.js';
 
 // Explicitly re-export multi-model types that need to be imported by name
 export type { EntityRef, SchemaVersion, FederatedModel, MeasurementConstraintEdge, OrthogonalAxis, SectionCapStyle, SectionCapHatchId, SectionPlane, SectionPlaneAxis } from './types.js';
+export type { HierarchyMode } from './slices/uiSlice.js';
 
 // Re-export utility functions for entity references
 export { entityRefToString, stringToEntityRef, entityRefEquals, isIfcxDataStore } from './types.js';
 
-// Re-export single source of truth for globalId → EntityRef resolution
-export { resolveEntityRef } from './resolveEntityRef.js';
+// Re-export single source of truth for renderer ID → IFC entity resolution.
+export { resolveEntityRef, resolveGlobalId } from './resolveEntityRef.js';
 export { fromGlobalIdFromModels, toGlobalIdFromModels, toGlobalIdForRef } from './globalId.js';
 export type { ForwardModelMapLike } from './globalId.js';
 

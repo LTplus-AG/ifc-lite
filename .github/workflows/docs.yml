@@ -32,7 +32,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
 
@@ -43,7 +43,7 @@ jobs:
         # when the toolchain advances — pinning to a `stable`-branch SHA
         # would silently break the build the next time stable ships.
         # See dtolnay/rust-toolchain README and PR #692 Codex review.
-        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master 2026-05
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master 2026-05
         with:
           toolchain: stable
 

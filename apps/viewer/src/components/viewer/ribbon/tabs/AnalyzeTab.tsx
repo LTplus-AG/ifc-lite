@@ -9,17 +9,7 @@
  * `useWorkspacePanelControls`, shared with the classic toolbar.
  */
 
-import {
-  CalendarClock,
-  ClipboardCheck,
-  Crosshair,
-  FileCode2,
-  FileSpreadsheet,
-  GitCompareArrows,
-  Layers,
-  MessageSquare,
-  Palette,
-} from 'lucide-react';
+import { Issue, List, Compare, Layer, Clash, Check, Script, Schedule, Coloring } from '@/icons';
 import { useViewerStore } from '@/store';
 import { useWorkspacePanelControls } from '../../toolbar/useWorkspacePanelControls';
 import {
@@ -53,20 +43,20 @@ export function AnalyzeTab() {
     <>
       <RibbonGroup label="Validate">
         <RibbonLargeButton
-          icon={MessageSquare}
+          icon={Issue}
           label="BCF Issues"
           active={activeWorkspacePanels.has('bcf')}
           onClick={() => handleToggleRightPanel('bcf')}
         />
         <RibbonLargeButton
-          icon={ClipboardCheck}
+          icon={Check}
           label="IDS Check"
           tooltip="IDS validation"
           active={activeWorkspacePanels.has('ids')}
           onClick={() => handleToggleRightPanel('ids')}
         />
         <RibbonLargeButton
-          icon={Crosshair}
+          icon={Clash}
           label="Clash"
           tooltip="Clash detection"
           active={activeWorkspacePanels.has('clash')}
@@ -78,14 +68,14 @@ export function AnalyzeTab() {
 
       <RibbonGroup label="Compare">
         <RibbonLargeButton
-          icon={GitCompareArrows}
+          icon={Compare}
           label="Compare"
           tooltip="Compare models"
           active={activeWorkspacePanels.has('compare')}
           onClick={() => handleToggleRightPanel('compare')}
         />
         <RibbonLargeButton
-          icon={Layers}
+          icon={Layer}
           label="Layers"
           tooltip="Layer stack"
           active={activeWorkspacePanels.has('layers')}
@@ -97,21 +87,21 @@ export function AnalyzeTab() {
 
       <RibbonGroup label="Data">
         <RibbonLargeButton
-          icon={FileSpreadsheet}
-          label="Lists"
+          icon={List}
+          label="List"
           tooltip="Lists & schedules"
           active={activeWorkspacePanels.has('list')}
           onClick={() => handleToggleBottomPanel('list')}
         />
         <RibbonLargeButton
-          icon={CalendarClock}
+          icon={Schedule}
           label="Schedule"
           tooltip="Schedule (Gantt)"
           active={activeWorkspacePanels.has('gantt')}
           onClick={() => handleToggleBottomPanel('gantt')}
         />
         <RibbonLargeButton
-          icon={FileCode2}
+          icon={Script}
           label="Script"
           tooltip="Script editor"
           active={activeWorkspacePanels.has('script')}
@@ -123,7 +113,7 @@ export function AnalyzeTab() {
 
       <RibbonGroup label="Style">
         <RibbonLargeButton
-          icon={Palette}
+          icon={Coloring}
           label="Lens"
           tooltip="Lens rules"
           active={activeWorkspacePanels.has('lens')}

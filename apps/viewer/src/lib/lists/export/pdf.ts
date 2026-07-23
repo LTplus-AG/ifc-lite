@@ -26,9 +26,11 @@ export async function toPdf(model: ExportModel): Promise<Blob> {
   const body: Array<Array<string | { content: string; styles: Record<string, unknown> }>> = [];
 
   if (model.groups) {
+    // Nested (multi-criteria) grouping: sub-group headers indent one step per
+    // level and carry their own count; member rows sit on leaf groups only.
     for (const g of model.groups) {
       body.push(model.columns.map((c, i) => ({
-        content: i === 0 ? `${g.label}  (${g.count})` : (c.summed ? displayCell(g.sums[c.id]) : ''),
+        content: i === 0 ? `${'    '.repeat(g.level)}${g.label}  (${g.count})` : (c.summed ? displayCell(g.sums[c.id]) : ''),
         styles: { fontStyle: 'bold', fillColor: [226, 232, 240] as unknown as number[] },
       })));
       for (const r of g.rows) body.push(model.columns.map((_, i) => cell(r, i)));

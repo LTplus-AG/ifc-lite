@@ -38,7 +38,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@automerge/automerge": "^3.3.0",
+    "@automerge/automerge": "^3.3.2",
     "@ifc-lite/data": "workspace:^",
     "@ifc-lite/ifcx": "workspace:^",
     "@ifc-lite/mutations": "workspace:^",

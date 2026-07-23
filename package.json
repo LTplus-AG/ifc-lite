@@ -1,6 +1,6 @@
 {
   "name": "ifc-lite",
-  "version": "4.1.1",
+  "version": "4.1.4",
   "description": "High-performance browser IFC parser & renderer",
   "private": true,
   "type": "module",
@@ -67,12 +67,12 @@
   },
   "devDependencies": {
     "@changesets/changelog-github": "^0.7.0",
-    "@changesets/cli": "^2.31.0",
+    "@changesets/cli": "^2.31.1",
     "@playwright/test": "^1.61.1",
     "@types/node": "^26.1.1",
-    "knip": "^6.26.0",
+    "knip": "^6.27.0",
     "tsx": "^4.23.1",
-    "turbo": "^2.10.4",
+    "turbo": "^2.10.5",
     "typescript": "^6.0.3"
   },
   "engines": {
@@ -104,8 +104,10 @@
       "picomatch@>=4": "^4.0.4",
       "uuid@<11.1.1": "^11.1.1",
       "@babel/core": "^7.29.6",
-      "js-yaml@4": "^4.2.0",
-      "read-yaml-file": "^2.1.0"
+      "js-yaml@4": "^4.3.0",
+      "read-yaml-file": "^2.1.0",
+      "brace-expansion@1": "^1.1.16",
+      "brace-expansion@2": "^2.1.2"
     }
   }
 }

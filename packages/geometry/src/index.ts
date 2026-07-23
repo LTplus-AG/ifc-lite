@@ -40,6 +40,11 @@ export { CoordinateHandler } from './coordinate-handler.js';
 export { GeometryQuality } from './progressive-loader.js';
 export { computeWorkerCount, pickWorkerCount, type WorkerCountInputs, type WorkerCountResult } from './worker-count.js';
 export { getGeometryStreamWatchdogMs, type WatchdogInputs } from './watchdog.js';
+// Cold-start prewarm: start the shared wasm fetch+compile before a file is
+// opened so the download overlaps the user's think time instead of blocking
+// first geometry. The host app decides when (idle / intent) and whether the
+// connection can afford it.
+export { prewarmSharedWasmModule } from './wasm-shared-module.js';
 // Stale-deployment WASM-asset detection (#1363). The host app subscribes to
 // WASM_ASSET_UNAVAILABLE_EVENT and uses `isWasmAssetUnavailableError` to reload
 // onto the current deployment. `notifyIfWasmAssetUnavailable` stays internal —

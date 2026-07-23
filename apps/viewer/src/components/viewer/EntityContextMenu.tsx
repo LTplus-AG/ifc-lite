@@ -21,7 +21,7 @@ import {
   Trash2,
   CopyPlus,
 } from 'lucide-react';
-import { useViewerStore, resolveEntityRef } from '@/store';
+import { useViewerStore, resolveEntityRef, resolveGlobalId } from '@/store';
 import type { DuplicateDirection } from '@/store/slices/mutationSlice';
 import { resetVisibilityForHomeFromStore } from '@/store/homeView';
 import {
@@ -221,15 +221,12 @@ export function EntityContextMenu() {
   }, [resolvedExpressId, activeDataStore, setSelectedEntityIds, closeContextMenu]);
 
   const handleCopyId = useCallback(() => {
-    // Use resolvedExpressId (original ID) for IfcDataStore lookups
-    if (resolvedExpressId && activeDataStore) {
-      const globalId = activeDataStore.entities.getGlobalId(resolvedExpressId);
-      if (globalId) {
-        navigator.clipboard.writeText(globalId);
-      }
+    if (contextMenu.entityId !== null) {
+      const globalId = resolveGlobalId(contextMenu.entityId);
+      if (globalId) void navigator.clipboard.writeText(globalId);
     }
     closeContextMenu();
-  }, [resolvedExpressId, activeDataStore, closeContextMenu]);
+  }, [contextMenu.entityId, closeContextMenu]);
 
   // Right-clicked entity's type — used in the toast message.
   const contextEntityType = useMemo(() => {

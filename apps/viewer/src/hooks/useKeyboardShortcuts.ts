@@ -11,6 +11,7 @@ import { useViewerStore } from '@/store';
 import { resetVisibilityForHomeFromStore } from '@/store/homeView';
 import { workspacePanelForShortcutCode } from '@/lib/panels/registry';
 import { closeAllPanelWindows } from '@/services/panel-windows';
+import { eventKey, isTextEntryTarget } from '@/lib/keyboard-event';
 import {
   executeBasketIsolate,
   executeBasketSet,
@@ -60,19 +61,17 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     // Ignore if typing in an input or textarea
-    const target = e.target as HTMLElement;
-    if (
-      target.tagName === 'INPUT' ||
-      target.tagName === 'TEXTAREA' ||
-      target.isContentEditable
-    ) {
+    if (isTextEntryTarget(e)) {
       return;
     }
 
     // Get modifier keys
     const ctrl = e.ctrlKey || e.metaKey;
     const shift = e.shiftKey;
-    const key = e.key.toLowerCase();
+    // Browsers may dispatch a key event with no `key` (autofill, synthetic
+    // events) — see lib/keyboard-event.ts. No shortcut below could match one.
+    const key = eventKey(e);
+    if (key === null) return;
 
     // Undo / Redo — Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z, scoped to the
     // active model's mutation stack. Always available regardless

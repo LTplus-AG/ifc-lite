@@ -268,7 +268,7 @@ fn build_spatial_nodes_recursive(
 /// ```
 ///
 /// This MUST stay in step with `IFC_BUILDING_STOREY_ELEVATION_INDEX` in
-/// `packages/parser/src/storey-elevation.ts` — the two paths must read the same
+/// `packages/data/src/storey-elevation.ts` — the two paths must read the same
 /// slot (issue #1841). It previously read 8 (CompositionType, an enum) and fell
 /// back to 7 (LongName, a string): both yield no float, so every storey reported
 /// no elevation and the UI showed 0.

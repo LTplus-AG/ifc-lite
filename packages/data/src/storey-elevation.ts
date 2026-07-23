@@ -46,6 +46,12 @@ export const STOREY_ELEVATION_MATCH_TOLERANCE_M = 1.0;
  * Resolve the storey whose elevation is nearest `z`, or `null` when none is
  * within {@link STOREY_ELEVATION_MATCH_TOLERANCE_M}.
  *
+ * Exact-distance ties resolve to the lower `storeyId`, NOT to iteration order.
+ * That determinism is the point of this being one shared function: the parser
+ * and the server-loaded path insert storeys into their maps in different
+ * orders, so an order-dependent tie-break would let the same building still
+ * answer differently across entry paths — the exact drift #1841 is about.
+ *
  * @param storeyElevations - storeyId -> elevation in metres. An empty collection
  *   (the cache-restore path, which has no source buffer) yields `null`.
  * @param z - elevation to match, in metres.
@@ -58,7 +64,10 @@ export function findStoreyByElevation(
   let closestDistance = Infinity;
   for (const [storeyId, elevation] of storeyElevations) {
     const distance = Math.abs(elevation - z);
-    if (distance < closestDistance) {
+    if (
+      distance < closestDistance ||
+      (distance === closestDistance && closestStorey !== null && storeyId < closestStorey)
+    ) {
       closestDistance = distance;
       closestStorey = storeyId;
     }

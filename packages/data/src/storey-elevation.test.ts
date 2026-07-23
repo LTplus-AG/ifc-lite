@@ -51,8 +51,14 @@ describe('findStoreyByElevation', () => {
   });
 
   it('picks the closer of two candidates that are both in range', () => {
-    // Midway between 0 and 3 is out of range of both; nudge toward 0.
-    expect(findStoreyByElevation(storeys, 0.6)).toBe(10);
+    // Both within 1m of z=0.8, so this rejects a resolver that returns the
+    // first eligible storey rather than the nearest one.
+    const nearby = new Map<number, number>([
+      [10, 0],
+      [20, 1.5],
+    ]);
+    expect(findStoreyByElevation(nearby, 0.8)).toBe(20);
+    expect(findStoreyByElevation(nearby, 0.7)).toBe(10);
   });
 
   it('returns null for an empty set (the cache-restore path)', () => {
@@ -74,6 +80,23 @@ describe('findStoreyByElevation', () => {
 
   it('handles a negative elevation (basement)', () => {
     expect(findStoreyByElevation(new Map([[5, -3.5]]), -3.2)).toBe(5);
+  });
+
+  it('breaks an exact-distance tie by lower storeyId, not iteration order', () => {
+    // z=0.5 sits exactly between storeys at 0 and 1 (both 0.5m away, both inside
+    // the 1m band). The answer must not depend on which order the pairs are
+    // iterated, or the parser and server paths could still disagree despite
+    // sharing this fn.
+    const forward: Array<[number, number]> = [
+      [10, 0],
+      [20, 1],
+    ];
+    const reversed: Array<[number, number]> = [
+      [20, 1],
+      [10, 0],
+    ];
+    expect(findStoreyByElevation(forward, 0.5)).toBe(10);
+    expect(findStoreyByElevation(reversed, 0.5)).toBe(10);
   });
 });
 

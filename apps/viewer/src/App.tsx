@@ -13,13 +13,33 @@
  */
 
 import { ViewerLayout } from './components/viewer/ViewerLayout';
-import { McpLanding } from './components/mcp/McpLanding';
-import { McpPlayground } from './components/mcp/McpPlayground';
 import { BimProvider } from './sdk/BimProvider';
 import { ExtensionHostProvider } from './sdk/ExtensionHostProvider';
 import { Toaster } from './components/ui/toast';
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { Analytics } from '@vercel/analytics/react';
+
+// The /mcp marketing surface pulls in three.js (HeroScene / PlaygroundViewer)
+// and its own component tree — none of which the main `/` viewer route needs.
+// Statically importing McpLanding/McpPlayground dragged all of it into the
+// entry's static import graph, so `/` preloaded three.js (~140 KB br) and the
+// marketing chunks on every first paint. Loading these two roots lazily moves
+// three.js + the marketing code into their own async chunks, off the `/`
+// critical path. ViewerLayout stays static — it IS the `/` route, so keeping it
+// eager avoids an extra round-trip for the overwhelmingly common case.
+const McpLanding = lazy(() =>
+  import('./components/mcp/McpLanding').then((m) => ({ default: m.McpLanding })),
+);
+const McpPlayground = lazy(() =>
+  import('./components/mcp/McpPlayground').then((m) => ({ default: m.McpPlayground })),
+);
+
+// Neutral full-viewport placeholder while a lazy MCP route chunk loads. Both
+// /mcp routes render on a near-black stage (McpLanding's `NIGHT` = #0a0a0c), so
+// matching it here means the async chunk resolves with no color flash.
+function RouteFallback() {
+  return <div style={{ minHeight: '100vh', background: '#0a0a0c' }} />;
+}
 
 export function App() {
   const [pathname, setPathname] = useState(() => window.location.pathname);
@@ -45,7 +65,9 @@ export function App() {
   if (normalizedPath === '/mcp/playground') {
     return (
       <>
-        <McpPlayground />
+        <Suspense fallback={<RouteFallback />}>
+          <McpPlayground />
+        </Suspense>
         <Toaster />
         <Analytics />
       </>
@@ -54,7 +76,9 @@ export function App() {
   if (normalizedPath === '/mcp' || normalizedPath.startsWith('/mcp/')) {
     return (
       <>
-        <McpLanding />
+        <Suspense fallback={<RouteFallback />}>
+          <McpLanding />
+        </Suspense>
         <Toaster />
         <Analytics />
       </>

@@ -41,14 +41,16 @@ const PATHISH =
 //
 // Real leaked names contain spaces ("16201598 Østraadt Havn - Hovedfil BT1
 // Fabian 2.ifc"), so the match cannot stop at whitespace — but it must not run
-// away and eat the whole sentence either. It therefore extends leftwards only
-// across NAME-ish words: a word containing a digit, `_` or `-`, or starting
-// with an upper-case letter. Ordinary message words ("while", "loading",
-// "after") are lower-case and plain, so they end the run.
+// away and eat the whole sentence either.
 //
-// Case-insensitivity is applied per-character rather than with the `i` flag on
-// purpose: `/\p{Lu}/iu` case-folds and would match LOWER-case letters too,
-// turning every word into a NAME word and swallowing the entire message.
+// The run therefore extends leftwards across any word EXCEPT the small set of
+// English connectives that realistically precede a file name in a message
+// ("while loading X", "failed to parse X"). Keying on a stop-list rather than
+// on "looks name-ish" is deliberate: an all-lower-case name — `while loading
+// acme tower.ifc` — would otherwise keep its client-name prefix, which is
+// exactly what this guard exists to prevent. Over-redacting a stray adjacent
+// word is the acceptable direction to err in.
+//
 // Kept in step with PATHISH's extension list above — `json` included because
 // IFC5/ifcx models are JSON, so a bare `.json` name can be just as
 // confidential as a `.ifc` one.
@@ -56,21 +58,34 @@ const MODEL_EXTENSIONS = [
   'ifczip', 'bcfzip', 'ifcx', 'gltf', 'xlsx', 'step', 'json', 'ifc', 'bcf',
   'glb', 'obj', 'csv', 'pdf', 'stp', 'las', 'laz',
 ];
-const anyCase = (s: string): string =>
-  [...s].map((c) => `[${c}${c.toUpperCase()}]`).join('');
-// Longest-first so `.ifcx` cannot be matched as `.ifc` + a stray `x`.
+// Longest-first so `.ifcx` cannot be matched as `.ifc` plus a stray `x`.
 const EXT_ALTERNATION = MODEL_EXTENSIONS
   .slice()
   .sort((a, b) => b.length - a.length)
-  .map(anyCase)
   .join('|');
 
-// Bounded quantifiers throughout — a lookahead plus one bounded run, never a
-// nested star, so a hostile message cannot trigger catastrophic backtracking.
-const NAME_WORD = String.raw`(?:(?=[^\s\\/]{0,64}[\d_-])|(?=\p{Lu}))[^\s\\/]{1,64}`;
+// Words that end the leftward run. A file name never starts with one, and
+// every realistic message wraps the name in one of them.
+const NAME_STOPWORDS = [
+  'while', 'loading', 'load', 'loads', 'file', 'files', 'model', 'models',
+  'open', 'opening', 'read', 'reading', 'parse', 'parsing', 'parsed',
+  'import', 'importing', 'imported', 'export', 'exporting', 'exported',
+  'process', 'processing', 'processed', 'fetch', 'fetching', 'save', 'saving',
+  'for', 'from', 'in', 'at', 'of', 'the', 'to', 'and', 'with', 'on', 'a', 'an',
+  'is', 'was', 'be', 'by', 'as', 'it', 'this', 'that',
+].join('|');
+
+// The leading \b is load-bearing: without it the run can start in the MIDDLE
+// of a stop-word ("loading" -> "oading"), which sails straight past the
+// lookahead and defeats the whole stop-list.
+//
+// Bounded quantifiers throughout - a negative lookahead plus one bounded run,
+// never a nested star, so a hostile message cannot force catastrophic
+// backtracking.
 const FILE_TOKEN = new RegExp(
-  String.raw`(?:${NAME_WORD}[ \t]{1,3}){0,12}[^\s\\/]{1,80}\.(?:${EXT_ALTERNATION})\b`,
-  'gu',
+  String.raw`\b(?:(?!(?:${NAME_STOPWORDS})[ \t])[^\s\\/]{1,64}[ \t]{1,3}){0,12}` +
+  String.raw`[^\s\\/]{1,80}\.(?:${EXT_ALTERNATION})\b`,
+  'gi',
 );
 
 const redactFileTokens = (value: string): string =>

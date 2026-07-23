@@ -51,6 +51,18 @@ export type LoadErrorKind =
   /** Anything else. */
   | 'unknown';
 
+/**
+ * A DOMException's `.name` is its STABLE identity; `.message` is
+ * engine-specific prose that may not repeat the name at all. Classification
+ * that only sees the stringified message therefore misses the very object it
+ * is meant to catch on some browsers.
+ */
+function errorNameOf(err: unknown): string {
+  if (typeof err !== 'object' || err === null) return '';
+  const name = (err as { name?: unknown }).name;
+  return typeof name === 'string' ? name : '';
+}
+
 function messageOf(err: unknown): string {
   if (err instanceof Error) return err.message;
   if (typeof err === 'string') return err;
@@ -153,7 +165,12 @@ export function classifyLoadError(err: unknown): LoadErrorKind {
   // Checked before the memory/worker buckets: a NotReadableError says nothing
   // about the model or this device's capacity, and its message ("...could not
   // be read...permission problems...") must not be mistaken for one of them.
-  if (isFileUnreadableError(message)) return 'file_unreadable';
+  // The `.name` check catches the live DOMException regardless of how the
+  // browser worded `.message`; the message match covers the analytics path,
+  // where all we have is the already-stringified value.
+  if (errorNameOf(err) === 'NotReadableError' || isFileUnreadableError(message)) {
+    return 'file_unreadable';
+  }
   if (isWasmEngineLoadError(message)) return 'wasm_engine_load';
   // Explicit memory-exhaustion signals win over the worker-crash bucket so a
   // worker that died with a clear OOM message is grouped as out_of_memory.

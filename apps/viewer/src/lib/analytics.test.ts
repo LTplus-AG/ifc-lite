@@ -248,6 +248,28 @@ describe('scrubEvent — nested + message redaction', () => {
     }
   });
 
+  it('redacts an ALL-LOWER-CASE model name, prefix and all', () => {
+    // A "looks name-ish" heuristic left the client prefix behind here —
+    // `while loading acme tower.ifc` scrubbed to `while loading acme [file]`,
+    // still shipping the client name. The stop-word rule takes the whole name.
+    for (const [message, secret] of [
+      ['Geometry stream stalled after 40000ms while loading confidential tower.ifc.', 'confidential'],
+      ['Failed to load acme corporate headquarters phase two.ifc', 'acme'],
+    ] as [string, string][]) {
+      const out = scrubEvent(exceptionEvent(message));
+      const value = (out?.properties?.$exception_list as { value: string }[])[0].value;
+      assert.ok(!value.includes(secret), `leaked "${secret}" in: ${value}`);
+    }
+  });
+
+  it('does not start the run inside a stop-word', () => {
+    // Without a leading \b the run could begin mid-word ("loading" -> "oading"),
+    // sailing past the stop-list and leaking the prefix anyway.
+    const out = scrubEvent(exceptionEvent('x while loading confidential tower.ifc.'));
+    const value = (out?.properties?.$exception_list as { value: string }[])[0].value;
+    assert.equal(value, 'x while loading [file].');
+  });
+
   it('redacts a JSON model name too (IFC5/ifcx models are JSON)', () => {
     const out = scrubEvent(exceptionEvent('Failed to parse Client-Tower-A.json'));
     const value = (out?.properties?.$exception_list as { value: string }[])[0].value;

@@ -137,6 +137,15 @@ describe('classifyLoadError', () => {
     );
   });
 
+  it('classifies a DOMException by its stable .name, whatever the message says', () => {
+    // `.message` is engine-specific prose that need not repeat the name — only
+    // `.name` is stable, and `messageOf` alone would never see it.
+    const domException = Object.assign(new Error('The operation failed'), {
+      name: 'NotReadableError',
+    });
+    assert.equal(classifyLoadError(domException), 'file_unreadable');
+  });
+
   it('does not mistake unrelated read failures for an unreadable file', () => {
     assert.equal(classifyLoadError(new Error('could not be read')), 'unknown');
     assert.equal(

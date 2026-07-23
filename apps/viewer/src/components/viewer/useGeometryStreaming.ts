@@ -23,6 +23,7 @@ import type { Renderer } from '@ifc-lite/renderer';
 import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
 import { decodeInstancedShard } from '@ifc-lite/geometry';
 import { toast } from '../ui/toast.js';
+import { runGpuUpload } from './gpu-upload-guard';
 
 // Session-scoped flag so the linear-infrastructure hint fires at most once
 // per page load (model swaps included). Stored at module scope rather than
@@ -176,7 +177,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       const pipeline = renderer.getPipeline();
       const scene = renderer.getScene();
       if (!device || !pipeline || !scene.hasQueuedMeshes()) return;
-      const flushed = scene.flushPending(device, pipeline);
+      const flushed = runGpuUpload('flushPending:pump', () => scene.flushPending(device, pipeline)) ?? false;
       if (flushed) {
         renderer.clearCaches();
         renderer.requestRender();
@@ -372,7 +373,12 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
           ensureQueuePump();
         } else {
           // Non-streaming: process immediately (visibility toggles, etc.)
-          scene.appendToBatches(newMeshes, device, pipeline, false);
+          // The production crash path: this effect is where a failed
+          // createBuffer escaped into React's commit phase and unmounted the
+          // viewport, blanking the canvas.
+          runGpuUpload('appendToBatches:non-streaming', () => {
+            scene.appendToBatches(newMeshes, device, pipeline, false);
+          });
           renderer.clearCaches();
         }
       }
@@ -657,7 +663,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     if (pendingMeshRemovals.size > 0) {
       scene.removeMeshesForEntities(pendingMeshRemovals);
       if (scene.hasPendingBatches()) {
-        scene.rebuildPendingBatches(device, pipeline);
+        runGpuUpload('rebuildPendingBatches:removals', () => scene.rebuildPendingBatches(device, pipeline));
       }
       renderer.requestRender();
     }
@@ -715,7 +721,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     if (pendingMeshTranslations.size > 0) {
       scene.translateMeshesForEntities(pendingMeshTranslations);
       if (scene.hasPendingBatches()) {
-        scene.rebuildPendingBatches(device, pipeline);
+        runGpuUpload('rebuildPendingBatches:translations', () => scene.rebuildPendingBatches(device, pipeline));
       }
       // An element appended during streaming (e.g. an authored IfcSpace) lingers
       // as a streaming fragment at its ORIGINAL position on top of its now-moved
@@ -723,7 +729,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       // buckets (no-op once none remain). Skipped in ephemeral mode, where no
       // geometry is retained to rebuild the batches from.
       if (scene.hasStreamingFragments() && !scene.isEphemeralStreaming()) {
-        scene.finalizeStreaming(device, pipeline);
+        runGpuUpload('finalizeStreaming:translations', () => scene.finalizeStreaming(device, pipeline));
       }
       renderer.requestRender();
     }
@@ -745,10 +751,10 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     if (pendingMeshRotations.size > 0) {
       scene.rotateMeshesForEntities(pendingMeshRotations);
       if (scene.hasPendingBatches()) {
-        scene.rebuildPendingBatches(device, pipeline);
+        runGpuUpload('rebuildPendingBatches:rotations', () => scene.rebuildPendingBatches(device, pipeline));
       }
       if (scene.hasStreamingFragments() && !scene.isEphemeralStreaming()) {
-        scene.finalizeStreaming(device, pipeline);
+        runGpuUpload('finalizeStreaming:rotations', () => scene.finalizeStreaming(device, pipeline));
       }
       renderer.requestRender();
     }

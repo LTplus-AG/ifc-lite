@@ -158,10 +158,17 @@ Encoded so a spike does not re-walk a dead end. History lives in the PRs cited.
 - **`bnum` fixed-width bigint** (bnum#74): OBSOLETE post-FixedInt; the -8.9% it once
   bought is now ~0%. Another regime-rot casualty.
 
-### Live levers NOT yet shipped (read the status — one is a mirage today)
-- **Brotli -q11 on the served bundle** (SHIPPABLE NOW): Vercel serves ~1266 KB where
-  brotli -q11 reaches ~947 KB (~25% smaller cold download). Cold-start only, no code
-  change, no browser dependency. Verify against the real served response before/after.
+### Cold-start / CSG levers — mixed status (read each label)
+Entries below are tagged individually: CANDIDATE (measured once, not validated end-to-end),
+SHIPPED (landed with a PR), or RE-REFUTED / NOT SHIPPABLE. Do not read the section as
+"all unshipped".
+- **Brotli -q11 on the served bundle** (CANDIDATE — unvalidated): a single local estimate
+  suggested Vercel serves ~1266 KB where brotli -q11 reaches ~947 KB (~25% smaller cold
+  download). NOT confirmed against the real served response — Vercel controls its own
+  on-the-fly compression and may override a precompressed asset, so this may not be
+  realizable without platform support. Before claiming it: measure the actual
+  `Content-Encoding`/transfer size of the deployed `.wasm` before vs after, on a clean
+  deploy. Treat the 25% as preliminary context only.
 - **Parser worker's unused WASM compile** (SHIPPED, PR #1851): NOT the "compile outside
   the shared memo" this was first framed as. Verified: on the streaming cold-load path
   (`waitForEntityIndex`, every file >=2 MB) the parser worker eager-compiled the ~3.9 MB

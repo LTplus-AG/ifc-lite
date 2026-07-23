@@ -24,10 +24,16 @@ if [ "${1:-}" = "--json" ]; then
     JSON=1
 fi
 
+wasm_path="packages/wasm/pkg/ifc-lite_bg.wasm"
+# Remove any stale artifact FIRST so the `ok`/size below can only reflect a
+# binary produced by THIS build. Otherwise a soft-skip (no wasm-pack) would
+# leave a previous build's .wasm in place and report ok:true on stale bytes —
+# the exact stale-artifact trap this repo's perf work keeps hitting.
+rm -f "$wasm_path"
+
 echo "Building WASM bundle (pure-Rust CSG kernel)..." >&2
 bash scripts/build-wasm.sh > /tmp/build-wasm.log 2>&1
 build_exit=$?
-wasm_path="packages/wasm/pkg/ifc-lite_bg.wasm"
 wasm_size=0
 if [ $build_exit -eq 0 ] && [ -f "$wasm_path" ]; then
     wasm_size=$(wc -c < "$wasm_path")

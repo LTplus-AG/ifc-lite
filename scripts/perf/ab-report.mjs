@@ -50,7 +50,11 @@ const PHASES = [
   ['geometryMs', 'geometry'],
   ['totalMs', 'TOTAL'],
 ];
-// Output fingerprint fields — must be identical across sides.
+// Output fingerprint fields. NOTE: these are COUNTS, not a content hash — equal
+// counts across sides are necessary-but-not-sufficient for identical output
+// (distinct geometry can preserve all three). So the verdict says "counts
+// matched", never "byte-identical"; a real byte-identity gate is the
+// mesh_determinism manifest, not this harness.
 const FINGERPRINT = ['meshes', 'vertices', 'triangles'];
 
 const median = (xs) => {
@@ -87,14 +91,21 @@ for (const [path, sides] of byFixture) {
   const name = path.split('/').pop();
   const fx = { fixture: name, phases: [], fingerprint: {} };
 
-  // Byte-identity first — a changed output invalidates any timing comparison.
+  // Output-count fingerprint first — a changed count invalidates any timing
+  // comparison. Check EVERY round on both sides (not just the first): a count
+  // that drifts across rounds is itself non-determinism worth flagging, and a
+  // base-vs-branch difference in any round means the output changed.
   const fpNotes = [];
   for (const f of FINGERPRINT) {
-    const b = sides.base[0]?.[f];
-    const br = sides.branch[0]?.[f];
-    fx.fingerprint[f] = { base: b, branch: br };
-    if (b !== br) {
-      fpNotes.push(`${f} ${b}→${br}`);
+    const baseSet = [...new Set(sides.base.map((r) => r[f]))];
+    const branchSet = [...new Set(sides.branch.map((r) => r[f]))];
+    fx.fingerprint[f] = { base: baseSet, branch: branchSet };
+    // Non-constant within a side = the pipeline isn't deterministic on this run.
+    if (baseSet.length > 1 || branchSet.length > 1) {
+      fpNotes.push(`${f} varied across rounds (base ${baseSet.join('/')} · branch ${branchSet.join('/')})`);
+      anyFingerprintDrift = true;
+    } else if (baseSet[0] !== branchSet[0]) {
+      fpNotes.push(`${f} ${baseSet[0]}→${branchSet[0]}`);
       anyFingerprintDrift = true;
     }
   }
@@ -138,9 +149,9 @@ if (anyFingerprintDrift) {
 } else if (anyTooNoisy) {
   lines.push('VERDICT: ⚠️  machine too noisy (base TOTAL spread >15%) — close other load and re-run with more --iters before trusting any delta.');
 } else if (anyRealChange) {
-  lines.push('VERDICT: a phase moved beyond the noise floor (✅ faster / ⛔ slower). Output is byte-identical. Cite the ✅/⛔ phases + these numbers in the PR.');
+  lines.push('VERDICT: a phase moved beyond the noise floor (✅ faster / ⛔ slower). Output counts matched across all rounds (mesh/vertex/triangle — NOT a byte hash; confirm byte-identity via the mesh_determinism manifest if the change could alter geometry). Cite the ✅/⛔ phases + these numbers in the PR.');
 } else {
-  lines.push('VERDICT: no phase moved beyond the machine noise floor — within noise, byte-identical. Not a measurable change on this fixture.');
+  lines.push('VERDICT: no phase moved beyond the machine noise floor — within noise; output counts matched across all rounds. Not a measurable change on this fixture.');
 }
 
 const out = lines.join('\n');

@@ -61,6 +61,14 @@ if [ "${#FIXTURES[@]}" -eq 0 ]; then
   exit 2
 fi
 
+# --iters must be a positive integer: 0 runs produces no data (yet the reporter
+# would print a non-error verdict), and a decimal makes `seq` iterate an
+# unintended count.
+if ! [[ "$ITERS" =~ ^[1-9][0-9]*$ ]]; then
+  echo "ab.sh: --iters must be a positive integer (got '$ITERS')" >&2
+  exit 2
+fi
+
 # Resolve fixtures to absolute paths so the base worktree (no fetched fixtures)
 # still reads them. Fail early on a missing/typo'd path rather than after a build.
 ABS_FIXTURES=()

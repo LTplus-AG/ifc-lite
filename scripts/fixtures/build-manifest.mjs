@@ -59,9 +59,18 @@ function globToRegExp(glob) {
     const c = glob[i];
     if (c === '*') {
       if (glob[i + 1] === '*') {
-        re += '.*';
         i++;
-        if (glob[i + 1] === '/') i++; // `**/` also matches zero dirs
+        if (glob[i + 1] === '/') {
+          // `**/` is segment-aware: zero or more COMPLETE path segments
+          // (each ending in `/`). So `client/**/model.ifc` matches
+          // `client/model.ifc` and `client/a/b/model.ifc` but NOT
+          // `client/xmodel.ifc`.
+          re += '(?:[^/]+/)*';
+          i++;
+        } else {
+          // bare `**` (not followed by `/`): match anything, any depth.
+          re += '.*';
+        }
       } else {
         re += '[^/]*';
       }
@@ -189,10 +198,21 @@ console.error(
 );
 
 if (ignoredFiles.length) {
-  console.error(
-    `\n  excluded by .manifest-ignore (NOT published): ${ignoredFiles.length}\n` +
-      ignoredFiles.map((p) => `    - ${p}`).join('\n')
-  );
+  // Log the COUNT only by default — the excluded paths are precisely the
+  // private/client fixture names this guard exists to keep out of shared output
+  // (git, CI logs), so printing them here would leak exactly what must not leak.
+  // Opt in to the path list with FIXTURES_DEBUG_IGNORED=1 for local debugging.
+  if (process.env.FIXTURES_DEBUG_IGNORED === '1') {
+    console.error(
+      `\n  excluded by .manifest-ignore (NOT published): ${ignoredFiles.length}\n` +
+        ignoredFiles.map((p) => `    - ${p}`).join('\n')
+    );
+  } else {
+    console.error(
+      `\n  excluded by .manifest-ignore (NOT published): ${ignoredFiles.length}` +
+        ` (set FIXTURES_DEBUG_IGNORED=1 to list — omitted so private names don't leak to logs)`
+    );
+  }
 }
 
 // Silent-add guard: publishing a fixture is a redistribution decision, so a

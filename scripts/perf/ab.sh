@@ -87,7 +87,14 @@ if [ -z "$BASE_REF" ]; then
   BASE_REF="$(git merge-base HEAD origin/main 2>/dev/null || git rev-parse HEAD~1)"
 fi
 BASE_SHA="$(git rev-parse --short "$BASE_REF")"
-BRANCH_DESC="$(git rev-parse --short HEAD)$( git diff --quiet || echo '+dirty' )"
+# `+dirty` must reflect BOTH unstaged (worktree) and staged (index) edits — the
+# working tree is what actually gets built, so a staged-but-uncommitted change
+# still makes the "branch" side differ from HEAD.
+if git diff --quiet && git diff --cached --quiet; then
+  BRANCH_DESC="$(git rev-parse --short HEAD)"
+else
+  BRANCH_DESC="$(git rev-parse --short HEAD)+dirty"
+fi
 echo "ab.sh: base=$BASE_SHA ($BASE_REF)  branch=$BRANCH_DESC  iters=$ITERS" >&2
 
 # --- Build the branch (working-tree) probe --------------------------------

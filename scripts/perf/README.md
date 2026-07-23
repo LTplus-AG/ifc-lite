@@ -162,9 +162,16 @@ Encoded so a spike does not re-walk a dead end. History lives in the PRs cited.
 - **Brotli -q11 on the served bundle** (SHIPPABLE NOW): Vercel serves ~1266 KB where
   brotli -q11 reaches ~947 KB (~25% smaller cold download). Cold-start only, no code
   change, no browser dependency. Verify against the real served response before/after.
-- **Shared-module compile memo gap** (SHIPPABLE NOW): `packages/parser/src/parser.worker.ts`
-  compiles the ~3.9 MB binary outside the shared-module memo, re-paying compile on that
-  path. Small cold-start win; verify with an isolated compile-time mark.
+- **Parser worker's unused WASM compile** (SHIPPED, PR #1851): NOT the "compile outside
+  the shared memo" this was first framed as. Verified: on the streaming cold-load path
+  (`waitForEntityIndex`, every file >=2 MB) the parser worker eager-compiled the ~3.9 MB
+  scanner and then NEVER USED IT — the geometry pre-pass hands over the entity index and
+  `entity-scanner.ts` short-circuits before the wasm scan. So the compile was pure waste
+  stealing a core from the concurrent pre-pass. Fix = defer the compile (eager only on
+  the no-handoff path; lazy on the timeout fallback). Win = CPU-contention relief on the
+  parse<->pre-pass overlap; shows on LOW-CORE devices, so read magnitude off the CI
+  viewer benchmark / PostHog, not a fast dev machine. Lesson: the "shared compile memo"
+  fix was a mis-frame — verify the code path before building the fix the research names.
 - **Threaded WASM CSG — in-instance rayon** (RE-REFUTED end-to-end, measured
   2026-07-23; keep in the dead-end column): a fresh browser A/B on ISSUE_129 (the most
   CSG-heavy public model, 71% CSG) settles the old CONTESTED status against threading.

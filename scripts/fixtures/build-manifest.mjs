@@ -21,6 +21,66 @@ import { pipeline } from 'node:stream/promises';
 const ROOT = resolve(import.meta.dirname, '../..');
 const MODELS_DIR = resolve(ROOT, 'tests/models');
 const MANIFEST_PATH = resolve(MODELS_DIR, 'manifest.json');
+const IGNORE_PATH = resolve(MODELS_DIR, '.manifest-ignore');
+
+// `.manifest-ignore` is the redistribution guard: fixtures whose paths match a
+// pattern here are NEVER written to the manifest, so `fixtures:upload` can never
+// push them to the public release bucket — even though they sit on disk and look
+// like ordinary fixtures. Use it for models that are referenced by a test at a
+// fixed path (so `local/` won't do) but are NOT cleared for public redistribution
+// (client models, un-licensed sample files, anything with a name that must not
+// enter git). Syntax: one glob per line, `#` comments, blank lines ignored.
+// Globs match the manifest-relative posix path (e.g. `various/ClientTower.ifc`,
+// `**/*_private.ifc`).
+function loadIgnorePatterns() {
+  let text;
+  try {
+    text = readFileSync(IGNORE_PATH, 'utf8');
+  } catch {
+    return [];
+  }
+  return text
+    .split('\n')
+    .map((l) => l.replace(/#.*$/, '').trim())
+    .filter(Boolean);
+}
+
+// Minimal glob → RegExp: supports `**` (any depth), `*` (one segment), `?`.
+function globToRegExp(glob) {
+  let re = '';
+  for (let i = 0; i < glob.length; i++) {
+    const c = glob[i];
+    if (c === '*') {
+      if (glob[i + 1] === '*') {
+        re += '.*';
+        i++;
+        if (glob[i + 1] === '/') i++; // `**/` also matches zero dirs
+      } else {
+        re += '[^/]*';
+      }
+    } else if (c === '?') {
+      re += '[^/]';
+    } else if ('.+^${}()|[]\\'.includes(c)) {
+      re += '\\' + c;
+    } else {
+      re += c;
+    }
+  }
+  return new RegExp('^' + re + '$');
+}
+
+const IGNORE_PATTERNS = loadIgnorePatterns();
+const IGNORE_RES = IGNORE_PATTERNS.map(globToRegExp);
+const isIgnored = (relPath) => IGNORE_RES.some((re) => re.test(relPath));
+
+// Previous manifest's path set — used to flag NEW fixtures (silent-add guard).
+let prevPaths = new Set();
+try {
+  const prev = JSON.parse(readFileSync(MANIFEST_PATH, 'utf8'));
+  if (Array.isArray(prev.files)) prevPaths = new Set(prev.files.map((f) => f.path));
+} catch {
+  // No prior manifest — every fixture is "new"; the warning below still fires.
+}
 
 // Files at the top level of tests/models/ that aren't fixtures.
 const META_FILES = new Set(['manifest.json', 'README.md']);
@@ -60,10 +120,19 @@ function* walk(dir, depth = 0) {
 }
 
 const files = [];
+const ignoredFiles = [];
+const newFiles = [];
 for (const { abs, size, name } of walk(MODELS_DIR)) {
   const relFromModels = posix.normalize(relative(MODELS_DIR, abs).split(/[\\/]/).join('/'));
   if (META_FILES.has(name) && !relFromModels.includes('/')) continue;
   if (!FIXTURE_EXT.test(name)) continue;
+
+  // Redistribution guard: never manifest (and thus never upload) an ignored file.
+  if (isIgnored(relFromModels)) {
+    ignoredFiles.push(relFromModels);
+    continue;
+  }
+  if (!prevPaths.has(relFromModels)) newFiles.push(relFromModels);
 
   let entry;
   // LFS pointers are always small (~130 B). Skip the read for anything
@@ -111,3 +180,23 @@ const inlineCount = files.length - lfsCount;
 console.error(
   `Wrote ${MANIFEST_PATH}\n  files: ${files.length} (${lfsCount} from LFS pointers, ${inlineCount} hashed from disk)\n  total: ${(totalSize / 1024 / 1024).toFixed(1)} MiB`
 );
+
+if (ignoredFiles.length) {
+  console.error(
+    `\n  excluded by .manifest-ignore (NOT published): ${ignoredFiles.length}\n` +
+      ignoredFiles.map((p) => `    - ${p}`).join('\n')
+  );
+}
+
+// Silent-add guard: publishing a fixture is a redistribution decision, so a
+// file that wasn't in the previous manifest must be seen, not slipped in. This
+// is advisory (regeneration is often exactly to add a legit new public fixture),
+// but it forces a conscious "is this cleared for the public bucket?" check.
+if (newFiles.length) {
+  console.error(
+    `\n  ⚠️  NEW fixtures added to the manifest — \`fixtures:upload\` will publish these to the PUBLIC release bucket.\n` +
+      `      Confirm each is cleared for public redistribution; if not, add it to tests/models/.manifest-ignore\n` +
+      `      (or move it under tests/models/local/):\n` +
+      newFiles.map((p) => `    + ${p}`).join('\n')
+  );
+}

@@ -104,13 +104,14 @@ export function serializePropertyValue(value: unknown, type: PropertyValueType):
 
 /**
  * True when a STEP source token is a REAL literal — a numeric token carrying a
- * decimal point or an exponent (`0.4`, `1.5E-7`, `4.`). Used to preserve
- * REAL-ness when a positional edit replaces such a value with a whole number,
- * so `1` written over `0.4` re-emits as `1.` rather than a bare INTEGER.
+ * decimal point or an exponent (`0.4`, `+0.4`, `1.5E-7`, `4.`). Used to
+ * preserve REAL-ness when a positional edit replaces such a value with a whole
+ * number, so `1` written over `0.4` re-emits as `1.` rather than a bare INTEGER.
+ * A leading `+` is a valid ISO 10303-21 sign, so it is accepted alongside `-`.
  */
 export function tokenIsRealLiteral(token: string): boolean {
   const t = token.trim();
-  return /^-?\d+(?:\.\d*)?(?:E[+-]?\d+)?$/i.test(t) && (t.includes('.') || /E/i.test(t));
+  return /^[+-]?\d+(?:\.\d*)?(?:E[+-]?\d+)?$/i.test(t) && (t.includes('.') || /E/i.test(t));
 }
 
 /**

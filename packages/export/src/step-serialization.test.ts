@@ -9,8 +9,23 @@ import {
   assembleStepBytes,
   serializePropertyValue,
   serializeAttributeValue,
+  tokenIsRealLiteral,
   toStepReal,
 } from './step-serialization.js';
+
+describe('tokenIsRealLiteral', () => {
+  it('recognizes REAL literals with either sign', () => {
+    for (const t of ['0.4', '-0.4', '+0.4', '4.', '1.5E-7', '+1E3', '-2.E+5']) {
+      expect(tokenIsRealLiteral(t)).toBe(true);
+    }
+  });
+
+  it('rejects INTEGER literals and non-numeric tokens', () => {
+    for (const t of ['4', '-4', '+4', '#42', '.AREA.', '$', "'x'", '']) {
+      expect(tokenIsRealLiteral(t)).toBe(false);
+    }
+  });
+});
 
 /** A conforming STEP REAL: mantissa carries a decimal point, exponent (if any)
  *  is uppercase `E`. Rejects the invalid `5e-8.` / lowercase-`e` forms. */

@@ -3436,6 +3436,7 @@
     "getAllAttributesForEntity: function",
     "getAttributeNameAt: function",
     "getAttributeNames: function",
+    "getAttributeNamesAcrossSchemas: function",
     "getClassificationCodeForElement: function",
     "getClassificationPath: function",
     "getClassificationsForElement: function",

@@ -21,7 +21,7 @@
  */
 
 import type { IfcAttributeValue } from '@ifc-lite/parser';
-import { getAttributeNames } from '@ifc-lite/parser';
+import { getAttributeNamesAcrossSchemas } from '@ifc-lite/parser';
 import { getAttributeXsdTypes, type IfcSchemaVersion as DataSchemaVersion } from '@ifc-lite/data';
 import type { IfcSchemaVersion } from './schema-converter.js';
 import { serializeStepValue } from './step-serialization.js';
@@ -67,7 +67,12 @@ export function getRealTypedSlots(entityType: string, version: IfcSchemaVersion)
   const cached = realSlotCache.get(key);
   if (cached) return cached;
 
-  const names = getAttributeNames(entityType);
+  // Resolve positional names across the bundled schema union (2X3 + 4 + 4X3),
+  // not just the parser's IFC4-pinned registry — otherwise IFC4X3-only leaves
+  // (IfcAlignmentHorizontalSegment and the civil/alignment geometry this fix
+  // targets) return no names, and their REAL slots (StartDirection,
+  // SegmentLength, …) would still emit bare INTEGER literals.
+  const names = getAttributeNamesAcrossSchemas(entityType);
   const slots = new Set<number>();
   for (let i = 0; i < names.length; i++) {
     const xsd = getAttributeXsdTypes(dataVersion, upperType, names[i]);

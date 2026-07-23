@@ -498,6 +498,34 @@ describe('StepExporter', () => {
     expect(content).toContain('#12=IFCEXTRUDEDAREASOLID(#11,#20,#21,3000.);');
   });
 
+  // Regression #1839 (Codex review): IFC4X3-only entities are absent from the
+  // parser's IFC4-pinned registry, so positional names must resolve across the
+  // schema union — otherwise alignment/civil REAL slots (StartDirection,
+  // SegmentLength, …) fall back to bare INTEGER literals.
+  it('forces REAL literals on IFC4X3-only entity slots (alignment geometry)', () => {
+    const dataStore = buildMockDataStore([
+      [5, 'IFCCARTESIANPOINT', '#5=IFCCARTESIANPOINT((0.,0.));'],
+    ]);
+    (dataStore as unknown as { schemaVersion: string }).schemaVersion = 'IFC4X3';
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.setExpressIdWatermark(5);
+    // StartTag, EndTag, StartPoint, StartDirection, StartRadiusOfCurvature,
+    // EndRadiusOfCurvature, SegmentLength, GravityCenterLineHeight, PredefinedType
+    view.createEntity('IFCALIGNMENTHORIZONTALSEGMENT', [
+      null, null, '#5', 0, 0, 0, 5000, 0, '.LINE.',
+    ]);
+
+    const result = new StepExporter(dataStore, view).export({
+      schema: 'IFC4X3',
+      applyMutations: true,
+    });
+    const content = decode(result.content);
+
+    expect(content).toContain(
+      '#6=IFCALIGNMENTHORIZONTALSEGMENT($,$,#5,0.,0.,0.,5000.,0.,.LINE.);',
+    );
+  });
+
   // Guard against over-forcing: an INTEGER-typed slot keeps its integer form.
   // IfcQuantityCount.CountValue is a pure IfcCountMeasure (xs:integer), so a
   // whole-number value must NOT gain a decimal point. Uses the new-entity path

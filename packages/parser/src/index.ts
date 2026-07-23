@@ -124,7 +124,7 @@ export {
 } from './generated/serializers.js';
 
 export * from './types.js';
-export { getAttributeNames, getAttributeNameAt, isKnownType, normalizeIfcTypeName } from './ifc-schema.js';
+export { getAttributeNames, getAttributeNamesAcrossSchemas, getAttributeNameAt, isKnownType, normalizeIfcTypeName } from './ifc-schema.js';
 
 import type { IfcEntity, ParseResult } from './types.js';
 import { EntityIndexBuilder } from './entity-index.js';

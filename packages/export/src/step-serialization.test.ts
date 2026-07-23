@@ -9,9 +9,46 @@ import {
   assembleStepBytes,
   serializePropertyValue,
   serializeAttributeValue,
+  serializeStepValue,
+  serializeTypedMarker,
+  resolveExpressBase,
   tokenIsRealLiteral,
   toStepReal,
 } from './step-serialization.js';
+
+describe('resolveExpressBase', () => {
+  it('resolves defined types to their EXPRESS primitive, following alias chains', () => {
+    expect(resolveExpressBase('IfcBoolean')).toBe('BOOLEAN');
+    expect(resolveExpressBase('IfcLogical')).toBe('LOGICAL');
+    expect(resolveExpressBase('IfcInteger')).toBe('INTEGER');
+    expect(resolveExpressBase('IfcLengthMeasure')).toBe('REAL');
+    // nested alias: IfcPositiveLengthMeasure -> IfcLengthMeasure -> REAL
+    expect(resolveExpressBase('IfcPositiveLengthMeasure')).toBe('REAL');
+    expect(resolveExpressBase('IfcLabel')).toBe('STRING');
+  });
+
+  it('returns null for unknown types and entity/select types', () => {
+    expect(resolveExpressBase('IfcWall')).toBeNull();
+    expect(resolveExpressBase('NotARealType')).toBeNull();
+  });
+});
+
+describe('serializeTypedMarker', () => {
+  it('emits a type-qualified token per the declared primitive', () => {
+    expect(serializeTypedMarker('IfcBoolean', true)).toBe('IFCBOOLEAN(.T.)');
+    expect(serializeTypedMarker('IfcBoolean', false)).toBe('IFCBOOLEAN(.F.)');
+    expect(serializeTypedMarker('IfcLengthMeasure', 3)).toBe('IFCLENGTHMEASURE(3.)');
+    expect(serializeTypedMarker('IfcInteger', 5)).toBe('IFCINTEGER(5)');
+    expect(serializeTypedMarker('IfcLabel', "O'Brien")).toBe("IFCLABEL('O''Brien')");
+    // subsumes { real }
+    expect(serializeTypedMarker('IfcReal', 450)).toBe('IFCREAL(450.)');
+  });
+
+  it('is reachable through the { typed } marker in serializeStepValue', () => {
+    expect(serializeStepValue({ typed: { type: 'IfcBoolean', value: true } })).toBe('IFCBOOLEAN(.T.)');
+    expect(serializeStepValue({ typed: { type: 'IfcLengthMeasure', value: 3 } })).toBe('IFCLENGTHMEASURE(3.)');
+  });
+});
 
 describe('tokenIsRealLiteral', () => {
   it('recognizes REAL literals with either sign', () => {

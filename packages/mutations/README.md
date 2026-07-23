@@ -80,6 +80,32 @@ the number in the write-only `{ real }` marker to force a REAL literal:
 editor.addEntity('IfcQuantityLength', ['L', null, unitRef, { real: 3 }]); // → IFCLENGTHMEASURE-safe 3.
 ```
 
+### Type-qualified values on SELECT attributes
+
+ISO 10303-21 requires a SELECT member that is a defined type to be
+type-QUALIFIED — `IFCBOOLEAN(.T.)`, not a bare `.T.`, in an
+`IfcTranslationalStiffnessSelect` slot. The exporter auto-qualifies these when
+the member is unambiguous, so the natural call just works:
+
+```typescript
+// TranslationalStiffnessX : SELECT(IfcBoolean, IfcLinearStiffnessMeasure)
+editor.setPositionalAttribute(condition.expressId, 1, true);  // → IFCBOOLEAN(.T.)
+editor.setPositionalAttribute(condition.expressId, 1, 1000);  // → IFCLINEARSTIFFNESSMEASURE(1000.)
+```
+
+When the SELECT has several members of the same primitive class (a number in
+`IfcValue`, which has 100+ REAL-backed members) auto-qualification can't choose.
+Use the write-only `{ typed: { type, value } }` marker to pin the exact type —
+it also works for the whole `IfcValue` family (`NominalValue`, etc.) and
+subsumes `{ real }`:
+
+```typescript
+// IfcPropertySingleValue: Name, Description, NominalValue (IfcValue), Unit
+editor.addEntity('IfcPropertySingleValue', [
+  'Length', null, { typed: { type: 'IfcLengthMeasure', value: 3 } }, null,
+]); // NominalValue → IFCLENGTHMEASURE(3.)
+```
+
 ## Mutation history (for undo / export)
 
 ```typescript

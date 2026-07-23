@@ -9,8 +9,71 @@
  * and deal exclusively with converting data to ISO 10303-21 STEP format strings.
  */
 
-import { serializeValue, type IfcAttributeValue } from '@ifc-lite/parser';
+import { serializeValue, SCHEMA_REGISTRY, type IfcAttributeValue } from '@ifc-lite/parser';
 import { PropertyValueType, QuantityType, formatStepReal } from '@ifc-lite/data';
+
+/** EXPRESS base primitives a defined type ultimately resolves to. */
+const EXPRESS_PRIMITIVES = new Set(['BOOLEAN', 'LOGICAL', 'INTEGER', 'REAL', 'NUMBER', 'STRING', 'BINARY']);
+
+/**
+ * Resolve an IFC defined type (`IfcLengthMeasure`, `IfcPositiveLengthMeasure`,
+ * `IfcBoolean`, …) to its underlying EXPRESS primitive (`REAL`, `BOOLEAN`, …)
+ * by walking the schema registry's `types` alias chain. Returns `null` for a
+ * type the registry doesn't know or one that bottoms out in an entity/select.
+ */
+export function resolveExpressBase(typeName: string): string | null {
+  let cursor: string | undefined = typeName;
+  const seen = new Set<string>();
+  while (cursor && !seen.has(cursor)) {
+    seen.add(cursor);
+    const underlying: string | undefined = SCHEMA_REGISTRY.types[cursor];
+    if (!underlying) return null;
+    // Strip width qualifiers like `STRING(255)` before the primitive test.
+    const head = underlying.replace(/\(.*$/, '').trim().toUpperCase();
+    if (EXPRESS_PRIMITIVES.has(head)) return head;
+    cursor = underlying; // nested alias, e.g. IfcPositiveLengthMeasure -> IfcLengthMeasure
+  }
+  return null;
+}
+
+/**
+ * Serialize the inner value of a type-qualified token according to the resolved
+ * EXPRESS primitive of its declared type. REAL/NUMBER always carry a decimal
+ * point; BOOLEAN/LOGICAL emit `.T.`/`.F.`/`.U.`; STRING/BINARY are quoted.
+ * An unresolved base falls back to inferring from the JS value.
+ */
+function serializeInnerByBase(value: string | number | boolean, base: string | null): string {
+  switch (base) {
+    case 'REAL':
+    case 'NUMBER':
+      return toStepReal(Number(value));
+    case 'INTEGER':
+      return String(Math.trunc(Number(value)));
+    case 'BOOLEAN':
+      return value ? '.T.' : '.F.';
+    case 'LOGICAL':
+      return value === true ? '.T.' : value === false ? '.F.' : '.U.';
+    case 'STRING':
+    case 'BINARY':
+      return `'${escapeStepString(String(value))}'`;
+    default:
+      if (typeof value === 'boolean') return value ? '.T.' : '.F.';
+      if (typeof value === 'number') return Number.isInteger(value) ? String(value) : toStepReal(value);
+      return `'${escapeStepString(String(value))}'`;
+  }
+}
+
+/**
+ * Serialize a type-qualified STEP value `IFC<TYPE>(<inner>)` — the form a SELECT
+ * member that is a defined type requires (`IFCBOOLEAN(.T.)`,
+ * `IFCLENGTHMEASURE(3.)`). `type` is the IFC type name (`'IfcBoolean'`); the
+ * inner value is serialized to match that type's underlying primitive.
+ */
+export function serializeTypedMarker(type: string, value: string | number | boolean): string {
+  let token = type.toUpperCase();
+  if (!token.startsWith('IFC')) token = `IFC${token}`;
+  return `${token}(${serializeInnerByBase(value, resolveExpressBase(type))})`;
+}
 
 /**
  * Escape a string for STEP format (backslash and single-quote escaping).
@@ -191,6 +254,11 @@ export function serializeStepValue(value: IfcAttributeValue, forceReal = false):
     // Write-only typed-real marker (see `IfcAttributeValue`): always a REAL
     // literal with a decimal point, even for whole numbers.
     return toStepReal(value.real);
+  }
+  if (typeof value === 'object' && 'typed' in value) {
+    // Write-only typed-value marker (see `IfcAttributeValue`): a type-qualified
+    // token `IFC<TYPE>(<value>)` for SELECT members / the IfcValue family.
+    return serializeTypedMarker(value.typed.type, value.typed.value);
   }
   const trimmed = String(value).trim();
   if (trimmed === '$' || trimmed === '*') return trimmed;

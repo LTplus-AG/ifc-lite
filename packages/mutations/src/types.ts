@@ -14,10 +14,13 @@ import type { PropertyValueType } from '@ifc-lite/data';
  * Mirrors the parser's `IfcAttributeValue` to keep `@ifc-lite/mutations` free
  * of a `@ifc-lite/parser` dependency (parser → ifcx → mutations would cycle).
  *
- * The extra `{ real: number }` variant is a WRITE-ONLY marker (never produced
- * by extraction): it forces STEP REAL serialization with a decimal point for
- * whole numbers (`5.` not `5`), which typed measures like `IfcLengthMeasure`
- * require. Plain `number` keeps the historical integer-when-whole behavior.
+ * The extra `{ real: number }` and `{ typed: { type, value } }` variants are
+ * WRITE-ONLY markers (never produced by extraction). `{ real }` forces STEP
+ * REAL serialization with a decimal point for whole numbers (`5.` not `5`).
+ * `{ typed }` forces a type-qualified value `IFC<TYPE>(<value>)` for a SELECT
+ * member that is a defined type (`IFCBOOLEAN(.T.)`) or the `IfcValue` family;
+ * it generalizes `{ real }`. See `@ifc-lite/data`'s `IfcAttributeValue` for the
+ * full contract (kept in sync here to avoid a package cycle).
  */
 export type IfcAttributeValue =
   | string
@@ -25,6 +28,7 @@ export type IfcAttributeValue =
   | boolean
   | null
   | { real: number }
+  | { typed: { type: string; value: string | number | boolean } }
   | IfcAttributeValue[];
 
 /**

@@ -25,6 +25,41 @@ import { getAttributeNamesAcrossSchemas } from '@ifc-lite/parser';
 import { getAttributeXsdTypes, type IfcSchemaVersion as DataSchemaVersion } from '@ifc-lite/data';
 import type { IfcSchemaVersion } from './schema-converter.js';
 import { serializeStepValue } from './step-serialization.js';
+import { serializeQualifiedSelectSlot } from './select-qualification.js';
+
+/**
+ * True for the write-only `{ real }` / `{ typed }` markers — an explicit caller
+ * intent that `serializeStepValue` handles directly and that must bypass the
+ * schema-driven SELECT/REAL inference below.
+ */
+export function isTypedMarker(value: IfcAttributeValue): boolean {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    ('real' in value || 'typed' in value)
+  );
+}
+
+/**
+ * Serialize one positional attribute slot to its STEP token, composing the
+ * schema-aware passes in priority order:
+ *   1. an explicit `{ real }` / `{ typed }` marker wins outright;
+ *   2. a SELECT slot auto-qualifies an unambiguous bare value (`IFCBOOLEAN(.T.)`);
+ *   3. otherwise a REAL-backed slot forces a decimal point (#1839);
+ *   4. otherwise the default value serialization.
+ */
+export function serializeAttributeSlot(
+  entityType: string,
+  index: number,
+  value: IfcAttributeValue,
+  version: IfcSchemaVersion,
+): string {
+  if (isTypedMarker(value)) return serializeStepValue(value);
+  const qualified = serializeQualifiedSelectSlot(entityType, index, value);
+  if (qualified !== null) return qualified;
+  return serializeStepValue(value, getRealTypedSlots(entityType, version).has(index));
+}
 
 /**
  * Map the exporter's schema tag to the version the attribute XSD index is keyed
@@ -86,15 +121,14 @@ export function getRealTypedSlots(entityType: string, version: IfcSchemaVersion)
 
 /**
  * Serialize a full positional attribute list for an entity to a STEP body,
- * forcing a REAL literal (decimal point) on every unambiguously double-backed
- * slot. Used for freshly-emitted overlay entities (`addEntity`, the in-store
- * builders) whose numbers never pass through a source token.
+ * schema-aware per slot (SELECT qualification + REAL forcing). Used for
+ * freshly-emitted overlay entities (`addEntity`, the in-store builders) whose
+ * numbers never pass through a source token.
  */
 export function serializeEntityArgs(
   entityType: string,
   values: readonly IfcAttributeValue[],
   version: IfcSchemaVersion,
 ): string {
-  const realSlots = getRealTypedSlots(entityType, version);
-  return values.map((value, i) => serializeStepValue(value, realSlots.has(i))).join(',');
+  return values.map((value, i) => serializeAttributeSlot(entityType, i, value, version)).join(',');
 }

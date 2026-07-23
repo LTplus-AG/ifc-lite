@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'vitest';
-import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
+import { IfcParser, EntityExtractor, type IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView, Mutation } from '@ifc-lite/mutations';
 import { PropertyValueType } from '@ifc-lite/data';
 import { isValidIfcGuid } from '@ifc-lite/encoding';
@@ -547,6 +547,77 @@ describe('StepExporter', () => {
 
     expect(content).toContain("#2=IFCQUANTITYCOUNT('n',$,$,5,$);");
     expect(content).not.toContain('5.');
+  });
+
+  // #1839 follow-up: SELECT-typed slots must type-qualify a defined-type member.
+  // IfcBoundaryNodeCondition.TranslationalStiffnessX : SELECT(IfcBoolean,
+  // IfcLinearStiffnessMeasure). A bare `.T.` is non-conformant (strict validators
+  // reject it; ifc-lite's own reader loses the member type).
+  it('auto-qualifies a boolean written into a SELECT slot (positional edit)', () => {
+    const dataStore = buildMockDataStore([
+      [1, 'IFCBOUNDARYNODECONDITION', "#1=IFCBOUNDARYNODECONDITION('bc',IFCLINEARSTIFFNESSMEASURE(1000.),$,$,$,$,$);"],
+    ]);
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.setPositionalAttribute(1, 1, true); // TranslationalStiffnessX := true
+
+    const content = decode(new StepExporter(dataStore, view).export({ schema: 'IFC4', applyMutations: true }).content);
+    expect(content).toContain("#1=IFCBOUNDARYNODECONDITION('bc',IFCBOOLEAN(.T.),$,$,$,$,$);");
+    expect(content).not.toMatch(/,\.T\.,/); // never a bare .T. in the slot
+  });
+
+  it('auto-qualifies boolean and number SELECT members on overlay-created entities', () => {
+    const dataStore = buildMockDataStore([
+      [1, 'IFCCARTESIANPOINT', '#1=IFCCARTESIANPOINT((0.,0.,0.));'],
+    ]);
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.setExpressIdWatermark(1);
+    // Name, TranslationalStiffnessX(bool), TranslationalStiffnessY(number), Z, Rot X/Y/Z
+    view.createEntity('IFCBOUNDARYNODECONDITION', ['bc', true, 2000, null, null, null, null]);
+
+    const content = decode(new StepExporter(dataStore, view).export({ schema: 'IFC4', applyMutations: true }).content);
+    // boolean -> IFCBOOLEAN(.T.); number -> the sole REAL member IfcLinearStiffnessMeasure
+    expect(content).toContain("#2=IFCBOUNDARYNODECONDITION('bc',IFCBOOLEAN(.T.),IFCLINEARSTIFFNESSMEASURE(2000.),$,$,$,$);");
+  });
+
+  // The emitted qualified token round-trips: ifc-lite's parser reads it back with
+  // the member type preserved (a bare `.T.` would parse as the untyped string).
+  it('emits SELECT qualification that the parser reads back with its type', () => {
+    const dataStore = buildMockDataStore([
+      [1, 'IFCBOUNDARYNODECONDITION', "#1=IFCBOUNDARYNODECONDITION('bc',$,$,$,$,$,$);"],
+    ]);
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.setPositionalAttribute(1, 1, true);
+    const content = decode(new StepExporter(dataStore, view).export({ schema: 'IFC4', applyMutations: true }).content);
+    const line = content.split(/\r?\n/).find(l => l.includes('IFCBOUNDARYNODECONDITION'))!;
+
+    const bytes = new TextEncoder().encode(line);
+    const extractor = new EntityExtractor(bytes);
+    const entity = extractor.extractEntity({
+      expressId: 1, type: 'IFCBOUNDARYNODECONDITION', byteOffset: 0, byteLength: bytes.length, lineNumber: 0,
+    })!;
+    // Typed value round-trips as [typeName, innerValue] — the member type survives.
+    expect(entity.attributes[1]).toEqual(['IFCBOOLEAN', '.T.']);
+  });
+
+  // The { typed } marker is the escape hatch for ambiguous SELECTs / the IfcValue
+  // family, where a bare value can't disambiguate the member. NominalValue is
+  // IfcValue (100+ REAL members) so a number does NOT auto-qualify.
+  it('honours the { typed } marker and leaves ambiguous selects to it', () => {
+    const dataStore = buildMockDataStore([
+      [1, 'IFCCARTESIANPOINT', '#1=IFCCARTESIANPOINT((0.,0.,0.));'],
+    ]);
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.setExpressIdWatermark(1);
+    // Name(IfcIdentifier), Description, NominalValue(IfcValue, ambiguous), Unit
+    view.createEntity('IFCPROPERTYSINGLEVALUE', [
+      'P', null, { typed: { type: 'IfcLengthMeasure', value: 3 } }, null,
+    ]);
+    // A bare number in the same ambiguous slot stays bare (needs the marker).
+    view.createEntity('IFCPROPERTYSINGLEVALUE', ['Q', null, 5, null]);
+
+    const content = decode(new StepExporter(dataStore, view).export({ schema: 'IFC4', applyMutations: true }).content);
+    expect(content).toContain("#2=IFCPROPERTYSINGLEVALUE('P',$,IFCLENGTHMEASURE(3.),$);");
+    expect(content).toContain("#3=IFCPROPERTYSINGLEVALUE('Q',$,5,$);");
   });
 
   // Regression: the deltaOnly early-return previously fired before the

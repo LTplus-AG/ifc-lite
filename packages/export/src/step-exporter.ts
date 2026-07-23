@@ -40,7 +40,8 @@ import {
   splitTopLevelStepArguments,
   assembleStepBytes,
 } from './step-serialization.js';
-import { getRealTypedSlots, serializeEntityArgs } from './attribute-real-slots.js';
+import { getRealTypedSlots, serializeEntityArgs, serializeAttributeSlot, isTypedMarker } from './attribute-real-slots.js';
+import { serializeQualifiedSelectSlot } from './select-qualification.js';
 
 /**
  * Options for STEP export
@@ -753,9 +754,8 @@ export class StepExporter {
         if (typeMut) {
           // Serialize against the AUTHORED layout (`entity.type`); retypeArgTokens
           // then re-lays the tokens out by name up to the effective class.
-          const authoredRealSlots = getRealTypedSlots(entity.type, sourceSchema);
           const srcTokens = entity.attributes.map(
-            (value, i) => serializeStepValue(value, authoredRealSlots.has(i)),
+            (value, i) => serializeAttributeSlot(entity.type, i, value, sourceSchema),
           );
           const { tokens } = retypeArgTokens(
             srcTokens,
@@ -1053,16 +1053,34 @@ export class StepExporter {
     let changed = false;
     for (const [index, value] of positionals) {
       if (index < 0 || index >= args.length) continue;
-      // Force a REAL literal when the slot's declared type is REAL-backed. The
-      // current token is a secondary signal: editing a value that was already a
-      // REAL (`0.4`, `1.5E-7`) keeps it REAL even for entities the XSD index
-      // doesn't cover, so a whole-number edit can't silently downgrade the slot.
-      const forceReal = realSlots.has(index) || tokenIsRealLiteral(args[index]);
-      args[index] = serializeStepValue(value, forceReal);
+      args[index] = this.serializePositionalOverride(entityType, index, value, args[index], realSlots, schemaVersion);
       changed = true;
     }
     if (!changed) return entityText;
     return `${entityText.slice(0, openParen + 1)}${args.join(',')}${entityText.slice(closeParen)}`;
+  }
+
+  /**
+   * Serialize one positional override, composing the schema-aware passes:
+   * explicit `{ real }`/`{ typed }` marker → SELECT auto-qualification
+   * (`IFCBOOLEAN(.T.)`) → REAL forcing. For REAL forcing the current source
+   * token is a secondary signal: replacing a value that was already a REAL
+   * (`0.4`, `1.5E-7`) keeps it REAL even for entities the XSD index doesn't
+   * cover, so a whole-number edit can't silently downgrade the slot.
+   */
+  private serializePositionalOverride(
+    entityType: string,
+    index: number,
+    value: IfcAttributeValue,
+    currentToken: string,
+    realSlots: ReadonlySet<number>,
+    schemaVersion: IfcSchemaVersion,
+  ): string {
+    if (isTypedMarker(value)) return serializeStepValue(value);
+    const qualified = serializeQualifiedSelectSlot(entityType, index, value);
+    if (qualified !== null) return qualified;
+    const forceReal = realSlots.has(index) || tokenIsRealLiteral(currentToken);
+    return serializeStepValue(value, forceReal);
   }
 
   private resolveMapUnitReference(unitName: string, newGeorefLines: string[]): number {

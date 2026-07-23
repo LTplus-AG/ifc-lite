@@ -9,9 +9,11 @@
 //! - JSON: ~30KB per mesh with ~500 vertices
 //! - Parquet: ~2KB per mesh (15x smaller)
 
+use crate::services::axis::{zup_to_yup, zup_to_yup_f64};
+use crate::services::parquet_schema::{index_schema, mesh_schema, vertex_schema};
 use crate::types::MeshData;
 use arrow::array::{Float32Array, Float64Array, StringArray, UInt8Array, UInt32Array};
-use arrow::datatypes::{DataType, Field, Schema};
+use arrow::datatypes::{DataType, Schema};
 use arrow::record_batch::RecordBatch;
 use bytes::Bytes;
 use parquet::arrow::ArrowWriter;
@@ -155,15 +157,11 @@ fn build_mesh_tables(
         .zip(index_offsets.par_iter())
         .map(|((mesh, &v_start), &i_start)| {
             let vert_count = mesh.positions.len() / 3;
-            // Emit the per-mesh origin in the SAME Z-up→Y-up frame as positions
-            // (X stays, new Y = old Z, new Z = -old Y). Because the swap is
-            // linear, swap(origin + position) = swap(origin) + swap(position),
-            // so the client reconstructs world = origin + position in Y-up.
-            let origin_yup = [
-                mesh.origin[0],
-                mesh.origin[2],
-                -mesh.origin[1],
-            ];
+            // Emit the per-mesh origin in the SAME frame as positions; the swap
+            // is linear, so swap(origin + position) = swap(origin) +
+            // swap(position) and the client reconstructs world = origin +
+            // position in Y-up. See services::axis for the one definition.
+            let origin_yup = zup_to_yup_f64(mesh.origin);
             (
                 mesh.express_id,
                 mesh.ifc_type.as_str(),
@@ -242,16 +240,24 @@ fn build_mesh_tables(
             }
 
             for i in 0..vert_count {
-                // Position: Z-up to Y-up transform
-                px.push(mesh.positions[i * 3]); // X stays the same
-                py.push(mesh.positions[i * 3 + 2]); // New Y = old Z (vertical)
-                pz.push(-mesh.positions[i * 3 + 1]); // New Z = -old Y (depth)
+                let (x, y, z) = zup_to_yup(
+                    mesh.positions[i * 3],
+                    mesh.positions[i * 3 + 1],
+                    mesh.positions[i * 3 + 2],
+                );
+                px.push(x);
+                py.push(y);
+                pz.push(z);
 
                 if has_normals {
-                    // Normal: Same transform as position
-                    nx.push(mesh.normals[i * 3]); // X stays the same
-                    ny.push(mesh.normals[i * 3 + 2]); // New Y = old Z
-                    nz.push(-mesh.normals[i * 3 + 1]); // New Z = -old Y
+                    let (x, y, z) = zup_to_yup(
+                        mesh.normals[i * 3],
+                        mesh.normals[i * 3 + 1],
+                        mesh.normals[i * 3 + 2],
+                    );
+                    nx.push(x);
+                    ny.push(y);
+                    nz.push(z);
                 } else {
                     nx.push(0.0);
                     ny.push(0.0);
@@ -353,55 +359,6 @@ fn build_mesh_tables(
     Ok((mesh_batch, vertex_batch, index_batch))
 }
 
-fn mesh_schema() -> Arc<Schema> {
-    Arc::new(Schema::new(vec![
-        Field::new("express_id", DataType::UInt32, false),
-        Field::new("ifc_type", DataType::Utf8, false),
-        Field::new("vertex_start", DataType::UInt32, false),
-        Field::new("vertex_count", DataType::UInt32, false),
-        Field::new("index_start", DataType::UInt32, false),
-        Field::new("index_count", DataType::UInt32, false),
-        Field::new("color_r", DataType::Float32, false),
-        Field::new("color_g", DataType::Float32, false),
-        Field::new("color_b", DataType::Float32, false),
-        Field::new("color_a", DataType::Float32, false),
-        // Per-mesh local-frame origin, in the SAME Y-up metres frame as the
-        // emitted positions (world vertex = origin + position). Carries the
-        // canonical `MeshData.origin` the geometry pipeline already computes so
-        // the client renders origin-relative geometry in the correct place
-        // instead of collapsing every mesh onto the world origin (issue #1841).
-        // Zero for world-baked meshes (the current native default), so this is
-        // byte-neutral for those payloads.
-        Field::new("origin_x", DataType::Float64, false),
-        Field::new("origin_y", DataType::Float64, false),
-        Field::new("origin_z", DataType::Float64, false),
-        // Canonical geometry provenance (0 = occurrence, 1 = orphan type map,
-        // 2 = instanced type-library template). The viewer must NOT draw class 2
-        // in the normal view; without this column server meshes all decode as
-        // class 0 and instanced type templates render as duplicate overlapping
-        // geometry (issue #1841).
-        Field::new("geometry_class", DataType::UInt8, false),
-    ]))
-}
-
-fn vertex_schema() -> Arc<Schema> {
-    Arc::new(Schema::new(vec![
-        Field::new("x", DataType::Float32, false),
-        Field::new("y", DataType::Float32, false),
-        Field::new("z", DataType::Float32, false),
-        Field::new("nx", DataType::Float32, false),
-        Field::new("ny", DataType::Float32, false),
-        Field::new("nz", DataType::Float32, false),
-    ]))
-}
-
-fn index_schema() -> Arc<Schema> {
-    Arc::new(Schema::new(vec![
-        Field::new("i0", DataType::UInt32, false),
-        Field::new("i1", DataType::UInt32, false),
-        Field::new("i2", DataType::UInt32, false),
-    ]))
-}
 
 /// Incremental whole-model cache writer for the streaming endpoint: each
 /// batch's columns are appended as one Parquet row group per table, so no

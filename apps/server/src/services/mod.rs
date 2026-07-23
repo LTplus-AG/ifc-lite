@@ -4,10 +4,12 @@
 
 //! Service modules for IFC processing and caching.
 
+pub mod axis;
 pub mod cache;
 pub mod data_model;
 pub mod parquet;
 pub mod parquet_data_model;
+mod parquet_schema;
 pub mod parquet_optimized;
 pub mod processor;
 pub mod streaming;

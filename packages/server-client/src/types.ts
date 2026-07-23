@@ -27,7 +27,12 @@ export interface MeshData {
   express_id: number;
   /** IFC type name (e.g., "IfcWall") */
   ifc_type: string;
-  /** Vertex positions as flat array (x, y, z triplets) */
+  /**
+   * Vertex positions as flat array (x, y, z triplets), in **Y-up metres**.
+   * Every server transport (JSON, parquet, optimized parquet) emits the same
+   * Y-up frame — the server converts from IFC Z-up once, in one place. See
+   * `origin`: the world position of vertex i is `origin + positions[3i..3i+3]`.
+   */
   positions: Float32Array;
   /** Vertex normals as flat array (x, y, z triplets) */
   normals: Float32Array;

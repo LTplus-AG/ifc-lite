@@ -168,10 +168,12 @@ export interface FileSourceProvider {
 
   /**
    * List containers (file areas, folders) within a project.
-   * @param parentId - Optional. When provided, scope results to the direct
-   * descendants of this container (e.g. pass a file area's id to fetch just
-   * its folders). When omitted, return only the top-level containers (e.g.
-   * file areas) — cheap, so hosts can show that list before walking deeper.
+   * @param parentId - Optional. When provided, scope results to every
+   * descendant container of this one, flattened with `parentId` links intact
+   * (e.g. pass a file area's id to fetch its whole folder tree in one call —
+   * hosts nest it into a tree client-side rather than paging one level at a
+   * time). When omitted, return only the top-level containers (e.g. file
+   * areas) — cheap, so hosts can show that list before walking deeper.
    */
   listContainers(ctx: PluginContext, projectId: string, parentId?: string): Promise<SourceContainer[]>;
 

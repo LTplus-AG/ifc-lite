@@ -169,7 +169,10 @@ export function HierarchyNode({
                     onSyncSourceModel(modelId, e);
                   }}
                   aria-label={`Sync model ${node.name} from source`}
-                  className="p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                  className={cn(
+                    'p-0.5 opacity-0 group-hover:opacity-100 transition-opacity',
+                    sourceSyncing && 'opacity-100',
+                  )}
                   disabled={sourceSyncing}
                 >
                   <RefreshCw

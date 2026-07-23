@@ -79,33 +79,17 @@ export class DaluxBuildProvider implements FileSourceProvider {
     const location = await this.resolveContainerLocation(ctx, parentId);
     const fileAreaId = location?.fileAreaId ?? parentId;
 
-    // Every folder in the file area (nested levels included) — the
-    // `parentFolderId` param doesn't filter server-side, it just echoes
-    // back the same full result.
-    const rawFolders = await fetchAllPages(
-      api.client,
-      `/5.1/projects/${projectId}/file_areas/${fileAreaId}/folders`,
-    );
-    const folders = convertToModelList<DaluxFolder>(rawFolders, FolderSchema, 'Folder');
-    const folderIds = new Set(folders.map((folder) => folder.folderId));
+    // Returns every descendant folder of the file area, flattened — not just
+    // parentId's direct children. The viewer's SourceFolderTree relies on
+    // getting the whole subtree in this one call and nests it client-side
+    // (see buildContainerTree), so it can browse folders without a
+    // round-trip per level.
+    const containers = await this.fetchFolderTree(ctx, api.client, projectId, fileAreaId);
 
-    const containers: SourceContainer[] = [];
-    for (const folder of folders) {
-      await this.storeContainerLocation(ctx, folder.folderId, { projectId, fileAreaId, folderId: folder.folderId });
-      const parentFolderId = nonEmptyString(folder.parentFolderId);
-      const resolvedParentId = !parentFolderId || parentFolderId === fileAreaId || folderIds.has(parentFolderId)
-        ? (parentFolderId ?? fileAreaId)
-        : fileAreaId;
-      containers.push({
-        id: folder.folderId,
-        name: folder.folderName,
-        parentId: resolvedParentId,
-        meta: { kind: 'folder', fileAreaId },
-      });
-    }
     ctx.log.debug('listContainers folder structure', {
       projectId,
       fileAreaId,
+      parentId,
       folderCount: containers.length,
       sample: containers.slice(0, 50).map((container) => ({
         id: container.id,
@@ -125,15 +109,52 @@ export class DaluxBuildProvider implements FileSourceProvider {
     return containers;
   }
 
+  /**
+   * Every folder in a file area (nested levels included), flattened — the
+   * `parentFolderId` param doesn't filter server-side, it just echoes back
+   * the same full result. Shared by `listContainers` and `listAllContainers`
+   * so the fetch only happens once per file area.
+   */
+  private async fetchFolderTree(
+    ctx: PluginContext,
+    client: BrowserDaluxApiClient,
+    projectId: string,
+    fileAreaId: string,
+  ): Promise<SourceContainer[]> {
+    const rawFolders = await fetchAllPages(
+      client,
+      `/5.1/projects/${projectId}/file_areas/${fileAreaId}/folders`,
+    );
+    const folders = convertToModelList<DaluxFolder>(rawFolders, FolderSchema, 'Folder');
+    const folderIds = new Set(folders.map((folder) => folder.folderId));
+
+    const containers: SourceContainer[] = [];
+    for (const folder of folders) {
+      await this.storeContainerLocation(ctx, folder.folderId, { projectId, fileAreaId, folderId: folder.folderId });
+      const parentFolderId = nonEmptyString(folder.parentFolderId);
+      const resolvedParentId = !parentFolderId || parentFolderId === fileAreaId || folderIds.has(parentFolderId)
+        ? (parentFolderId ?? fileAreaId)
+        : fileAreaId;
+      containers.push({
+        id: folder.folderId,
+        name: folder.folderName,
+        parentId: resolvedParentId,
+        meta: { kind: 'folder', fileAreaId },
+      });
+    }
+    return containers;
+  }
+
   /** Every container in a project — file areas plus all of their folders. */
   private async listAllContainers(
     ctx: PluginContext,
     projectId: string,
   ): Promise<SourceContainer[]> {
+    const api = await this.createApi(ctx);
     const fileAreas = await this.listContainers(ctx, projectId);
     const all = [...fileAreas];
     for (const fileArea of fileAreas) {
-      all.push(...(await this.listContainers(ctx, projectId, fileArea.id)));
+      all.push(...(await this.fetchFolderTree(ctx, api.client, projectId, fileArea.id)));
     }
     return all;
   }
@@ -264,27 +285,39 @@ export class DaluxBuildProvider implements FileSourceProvider {
   ): Promise<RevisionEvent[]> {
     const events: RevisionEvent[] = [];
 
+    // Resolve every tracked file's location first, then group by area so a
+    // sync covering many files from the same folder/file area issues one
+    // listFiles call instead of one per file.
+    const fileIdsByArea = new Map<string, string[]>();
     for (const fileId of fileIds) {
-      const cached = await ctx.storage.get(`rev:${fileId}`);
       const location = await this.resolveFileLocation(ctx, fileId);
       if (!location) continue;
 
-      const files = await this.listFiles(
-        ctx,
-        location.folderId ?? location.fileAreaId,
-      );
-      const match = files.find((file) => file.id === fileId);
-      if (!match?.currentRevisionId) continue;
+      const areaKey = location.folderId ?? location.fileAreaId;
+      const group = fileIdsByArea.get(areaKey);
+      if (group) group.push(fileId);
+      else fileIdsByArea.set(areaKey, [fileId]);
+    }
 
-      if (cached && cached !== match.currentRevisionId) {
-        events.push({
-          fileId,
-          latestRevisionId: match.currentRevisionId,
-          previousRevisionId: cached,
-        });
+    for (const [areaKey, areaFileIds] of fileIdsByArea) {
+      const files = await this.listFiles(ctx, areaKey);
+      const filesById = new Map(files.map((file) => [file.id, file] as const));
+
+      for (const fileId of areaFileIds) {
+        const match = filesById.get(fileId);
+        if (!match?.currentRevisionId) continue;
+
+        const cached = await ctx.storage.get(`rev:${fileId}`);
+        if (cached && cached !== match.currentRevisionId) {
+          events.push({
+            fileId,
+            latestRevisionId: match.currentRevisionId,
+            previousRevisionId: cached,
+          });
+        }
+
+        await ctx.storage.set(`rev:${fileId}`, match.currentRevisionId);
       }
-
-      await ctx.storage.set(`rev:${fileId}`, match.currentRevisionId);
     }
 
     return events;

@@ -154,12 +154,22 @@ export function SourceBrowser({ provider, ctx, onDownload, onBack, busy = false 
       setFiles([]);
       setSelectedFiles(new Map());
       resetCatalog();
-      load(setLoadingFileAreas, async () => {
-        const result = await provider.listContainers(ctx, p.id);
-        if (fileAreasRequestRef.current === requestId) setFileAreas(result);
-      });
+      setLoadingFileAreas(true);
+      setError(null);
+      void (async () => {
+        try {
+          const result = await provider.listContainers(ctx, p.id);
+          if (fileAreasRequestRef.current !== requestId) return;
+          setFileAreas(result);
+        } catch (err) {
+          if (fileAreasRequestRef.current !== requestId) return;
+          setError(err instanceof Error ? err.message : String(err));
+        } finally {
+          if (fileAreasRequestRef.current === requestId) setLoadingFileAreas(false);
+        }
+      })();
     },
-    [provider, ctx, load, resetCatalog],
+    [provider, ctx, resetCatalog],
   );
 
   const openFileArea = useCallback(
@@ -197,28 +207,43 @@ export function SourceBrowser({ provider, ctx, onDownload, onBack, busy = false 
 
   const handleSyncLoadedFile = useCallback(async (file: SourceFile) => {
     const loadedModelIds = loadedModelIdsByFileId.get(file.id);
-    const modelId = loadedModelIds?.[0];
-    const model = modelId ? models.get(modelId) : undefined;
-    const tag = modelId ? sourceTags.get(modelId) : undefined;
-    if (!modelId || !model || !tag) return;
+    if (!loadedModelIds || loadedModelIds.length === 0) return;
 
     setSyncingFileIds((previous) => new Set(previous).add(file.id));
     try {
-      const { latestFile } = await syncSourceModel({
-        modelId,
-        model,
-        tag,
-        models,
-        activeModelId,
-        sourceHost,
-        addModel,
-        removeModel,
-        setModelCollapsed,
-        setActiveModel,
-        setSourceTag,
-      });
+      let synced = 0;
+      let lastLatestFileName: string | undefined;
+      let lastProviderName: string | undefined;
+      for (const modelId of loadedModelIds) {
+        const model = models.get(modelId);
+        const tag = sourceTags.get(modelId);
+        if (!model || !tag) continue;
+
+        const { latestFile } = await syncSourceModel({
+          modelId,
+          model,
+          tag,
+          models,
+          activeModelId,
+          sourceHost,
+          addModel,
+          removeModel,
+          setModelCollapsed,
+          setActiveModel,
+          setSourceTag,
+        });
+        synced += 1;
+        lastLatestFileName = latestFile.name;
+        lastProviderName = tag.provider;
+      }
       refreshDownloadedRecords();
-      toast.success(`Synced ${latestFile.name} from ${tag.provider}`);
+      if (synced > 0 && lastLatestFileName && lastProviderName) {
+        toast.success(
+          synced === 1
+            ? `Synced ${lastLatestFileName} from ${lastProviderName}`
+            : `Synced ${synced} models from ${lastProviderName}`,
+        );
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to sync source model');
     } finally {
@@ -251,6 +276,7 @@ export function SourceBrowser({ provider, ctx, onDownload, onBack, busy = false 
       setSelectedFiles(new Map());
       resetCatalog();
     } else if (step === 'file-areas') {
+      fileAreasRequestRef.current++;
       setStep('projects');
       setSelectedProject(null);
       setFileAreas([]);

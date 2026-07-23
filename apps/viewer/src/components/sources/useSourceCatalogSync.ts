@@ -94,7 +94,9 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
           );
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
+        if (fileAreaContentsRequestRef.current === requestId) {
+          setError(err instanceof Error ? err.message : String(err));
+        }
       } finally {
         if (fileAreaContentsRequestRef.current === requestId) {
           setLoadingFolders(false);
@@ -109,8 +111,13 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
   /** Resolves a newly-entered file area's catalog: localStorage cache, then in-memory cache, then a fresh sync. */
   const openFileArea = useCallback(
     (projectId: string, fileAreaId: string) => {
+      // Invalidates any in-flight syncFileArea request. Its own finally block
+      // can no longer clear these flags once invalidated, so reset them here.
       fileAreaContentsRequestRef.current += 1;
       setCatalogUpdatedAt(null);
+      setLoadingFolders(false);
+      setLoadingFiles(false);
+      setSyncing(false);
 
       if (applyCachedCatalog(projectId, fileAreaId)) return;
 
@@ -130,10 +137,15 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
   );
 
   const resetCatalog = useCallback(() => {
+    // See openFileArea: invalidating the request here means its finally
+    // block will no longer reset these flags, so do it eagerly.
     fileAreaContentsRequestRef.current += 1;
     setFolders([]);
     setAllFiles([]);
     setCatalogUpdatedAt(null);
+    setLoadingFolders(false);
+    setLoadingFiles(false);
+    setSyncing(false);
   }, []);
 
   return {

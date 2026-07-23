@@ -7,6 +7,7 @@ import type { FederatedModel } from '@/store';
 import type { SourceHost } from '@/services/sources/source-host';
 import { recordDownloadedSourceFile } from './persistence';
 import { loadSavedSourcePrefs } from './preferences';
+import { sanitizeFilename } from '@/lib/export/download';
 
 const IFC_NAME_PATTERNS = ['*.ifc', '*.ifcx', '*.ifc5'];
 
@@ -77,7 +78,8 @@ export async function syncSourceModel({
     latestFile.id,
     latestFile.currentRevisionId,
   );
-  const replacement = new File([buffer], latestFile.name);
+  const safeFileName = sanitizeFilename(latestFile.name, { fallback: 'model' });
+  const replacement = new File([buffer], safeFileName);
   const otherCollapseStates = Array.from(models.entries())
     .filter(([id]) => id !== modelId)
     .map(([id, current]) => ({ id, collapsed: current.collapsed }));
@@ -86,7 +88,7 @@ export async function syncSourceModel({
   removeModel(modelId);
   const reloadedModelId = await addModel(replacement, {
     modelId,
-    name: latestFile.name,
+    name: safeFileName,
     loadedAt: model.loadedAt,
     visible: model.visible,
     collapsed: model.collapsed,

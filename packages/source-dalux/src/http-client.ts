@@ -138,7 +138,7 @@ export async function fetchAllPages(
     });
     items.push(...pageItems);
 
-    const remaining = page.metadata?.totalRemainingItems ?? 0;
+    const remaining = page.metadata?.totalRemainingItems;
     const nextLink = (page.links ?? []).find((link) => link.rel === 'nextPage');
     if (!pageItems.length || remaining === 0 || !nextLink) {
       client.debug('pagination complete', {

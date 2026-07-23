@@ -4,10 +4,25 @@
 
 const PREFS_KEY_PREFIX = 'ifc-lite-source-prefs:';
 
+function isStringRecord(value: unknown): value is Record<string, string> {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.values(value).every((v) => typeof v === 'string')
+  );
+}
+
 export function loadSavedSourcePrefs(providerId: string): Record<string, string> {
   try {
     const raw = localStorage.getItem(PREFS_KEY_PREFIX + providerId);
-    return raw ? (JSON.parse(raw) as Record<string, string>) : {};
+    if (!raw) return {};
+    const parsed: unknown = JSON.parse(raw);
+    if (!isStringRecord(parsed)) {
+      console.warn(`Ignoring malformed saved source prefs for "${providerId}"`);
+      return {};
+    }
+    return parsed;
   } catch (err) {
     console.warn(`Failed to parse saved source prefs for "${providerId}"`, err);
     return {};

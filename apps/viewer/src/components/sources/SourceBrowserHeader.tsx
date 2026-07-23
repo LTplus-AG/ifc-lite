@@ -40,7 +40,7 @@ export function SourceBrowserHeader({
 }: SourceBrowserHeaderProps) {
   return (
     <div className="flex items-center gap-2 border-b px-3 py-2">
-      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onBack}>
+      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onBack} aria-label="Back">
         <ChevronLeft className="h-4 w-4" />
       </Button>
       <span className="truncate text-sm font-medium">

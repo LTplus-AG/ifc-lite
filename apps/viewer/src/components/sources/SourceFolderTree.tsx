@@ -165,7 +165,8 @@ function TreeRow({
             'flex h-5 w-5 shrink-0 items-center justify-center rounded-sm',
             !hasChildren && 'invisible',
           )}
-          aria-label={open ? 'Collapse folder' : 'Expand folder'}
+          aria-label={hasChildren ? (open ? 'Collapse folder' : 'Expand folder') : undefined}
+          disabled={!hasChildren}
           onClick={() => hasChildren && onToggle(node.id)}
         >
           <ChevronRight className={cn('h-3.5 w-3.5 transition-transform', open && 'rotate-90')} />

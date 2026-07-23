@@ -65,6 +65,7 @@ export class SourceHost {
     const allowedDomains = manifest.permissions.network;
 
     const wrappedFetch: typeof fetch = async (input, init) => {
+      const originalRequest = input instanceof Request ? input : null;
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
       const parsed = new URL(url);
 
@@ -83,7 +84,25 @@ export class SourceHost {
         });
       }
 
-      return fetch(finalUrl, init);
+      let finalInit: RequestInit = { ...init };
+      if (originalRequest) {
+        finalInit = {
+          method: originalRequest.method,
+          headers: originalRequest.headers,
+          credentials: originalRequest.credentials,
+          signal: originalRequest.signal,
+          ...init,
+        };
+        if (originalRequest.method !== 'GET' && originalRequest.method !== 'HEAD') {
+          finalInit.body = await originalRequest.clone().arrayBuffer();
+        }
+      }
+      // Never let a source provider's fetch silently follow a redirect off the
+      // permission-checked host — a compromised/malicious endpoint could 302
+      // to an arbitrary origin and exfiltrate the request (headers, API key).
+      finalInit.redirect = 'error';
+
+      return fetch(finalUrl, finalInit);
     };
 
     return {

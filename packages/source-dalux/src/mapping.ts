@@ -54,7 +54,7 @@ export function matchGlob(pattern: string, name: string): boolean {
     '^' +
       pattern
         .replace(/[.+^${}()|[\]\\]/g, '\\$&')
-        .replace(/\*/g, '.*')
+        .replace(/\*+/g, '.*')
         .replace(/\?/g, '.') +
       '$',
     'i',

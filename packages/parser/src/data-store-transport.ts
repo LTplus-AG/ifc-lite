@@ -41,6 +41,7 @@ import {
   quantityTableToColumns,
   relationshipGraphFromColumns,
   relationshipGraphToColumns,
+  findStoreyByElevation,
 } from '@ifc-lite/data';
 
 import { CompactEntityIndex } from './compact-entity-index.js';
@@ -203,16 +204,11 @@ export function spatialHierarchyFromColumns(columns: SpatialHierarchyColumns): S
       return byStorey.get(storeyId) ?? [];
     },
     getStoreyByElevation(z: number): number | null {
-      let best: number | null = null;
-      let bestDistance = Number.POSITIVE_INFINITY;
-      for (const [storeyId, elevation] of storeyElevations) {
-        const distance = Math.abs(elevation - z);
-        if (distance < bestDistance) {
-          bestDistance = distance;
-          best = storeyId;
-        }
-      }
-      return best;
+      // Canonical resolver (#1841). Rehydrating a store over the worker
+      // transport used to drop the 1m tolerance that `SpatialHierarchyBuilder`
+      // applies, so the SAME parse answered differently either side of the
+      // worker boundary.
+      return findStoreyByElevation(storeyElevations, z);
     },
     getContainingSpace(elementId: number): number | null {
       return elementToSpace.get(elementId) ?? null;

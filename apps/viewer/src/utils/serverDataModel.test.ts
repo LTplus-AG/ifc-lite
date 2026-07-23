@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { ServerEntityIndex, type DataModel } from '@ifc-lite/server-client';
-import { IfcTypeEnum, RelationshipType } from '@ifc-lite/data';
+import { IfcTypeEnum, RelationshipType, STOREY_ELEVATION_MATCH_TOLERANCE_M } from '@ifc-lite/data';
 import { convertServerDataModel, type ServerParseResult } from './serverDataModel';
 
 const parseResult: ServerParseResult = {
@@ -186,5 +186,74 @@ describe('convertServerDataModel', () => {
     assert.equal(byName('Manufacturer').value, 'ACME');
     // TYPEHASPROPERTYSETS must NOT become a graph edge.
     assert.deepEqual(store.relationships.getRelated(20, RelationshipType.DefinesByProperties, 'forward'), []);
+  });
+  it('resolves storey by elevation with the same tolerance as the parser path (#1841)', () => {
+    // Two storeys at 0m and 3m. The server-loaded path used to always snap to
+    // the nearest storey, so a Z far above the building still resolved to the
+    // top floor while the wasm/parser path correctly returned null.
+    const storey = (entity_id: number, name: string, elevation: number) => ({
+      entity_id,
+      parent_id: 1,
+      level: 1,
+      path: `Project/${name}`,
+      type_name: 'IFCBUILDINGSTOREY',
+      name,
+      elevation,
+      children_ids: [],
+      element_ids: [],
+    });
+
+    const dataModel: DataModel = {
+      entities: ServerEntityIndex.fromRows([
+        { entity_id: 1, type_name: 'IFCPROJECT', global_id: '0', name: 'Project', has_geometry: false },
+        { entity_id: 2, type_name: 'IFCBUILDINGSTOREY', global_id: '1', name: 'Level 0', has_geometry: false },
+        { entity_id: 3, type_name: 'IFCBUILDINGSTOREY', global_id: '2', name: 'Level 1', has_geometry: false },
+      ]),
+      propertySets: new Map(),
+      quantitySets: new Map(),
+      relationships: [
+        { rel_type: 'IFCRELAGGREGATES', relating_id: 1, related_id: 2 },
+        { rel_type: 'IFCRELAGGREGATES', relating_id: 1, related_id: 3 },
+      ],
+      classifications: [],
+      materials: [],
+      documents: [],
+      spatialHierarchy: {
+        nodes: [
+          {
+            entity_id: 1,
+            parent_id: 0,
+            level: 0,
+            path: 'Project',
+            type_name: 'IFCPROJECT',
+            name: 'Project',
+            children_ids: [2, 3],
+            element_ids: [],
+          },
+          storey(2, 'Level 0', 0),
+          storey(3, 'Level 1', 3),
+        ],
+        project_id: 1,
+        element_to_storey: new Map(),
+        element_to_building: new Map(),
+        element_to_site: new Map(),
+        element_to_space: new Map(),
+      },
+    };
+
+    const dataStore = convertServerDataModel(dataModel, parseResult, { size: 1 }, []);
+    const hierarchy = dataStore.spatialHierarchy!;
+
+    // Exact and near matches resolve.
+    assert.equal(hierarchy.getStoreyByElevation(0), 2);
+    assert.equal(hierarchy.getStoreyByElevation(3), 3);
+    assert.equal(hierarchy.getStoreyByElevation(3.4), 3);
+
+    // Beyond the 1m band: no storey, rather than snapping to the closest.
+    assert.equal(hierarchy.getStoreyByElevation(40), null);
+    assert.equal(hierarchy.getStoreyByElevation(-25), null);
+
+    // Exactly ON the boundary is out of range (exclusive comparison).
+    assert.equal(hierarchy.getStoreyByElevation(3 + STOREY_ELEVATION_MATCH_TOLERANCE_M), null);
   });
 });

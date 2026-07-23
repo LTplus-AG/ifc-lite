@@ -19,6 +19,7 @@ import {
   type CompactEntityIndex,
 } from '@ifc-lite/parser';
 import {
+  findStoreyByElevation,
   IfcTypeEnum,
   RelationshipType,
   IfcTypeEnumFromString,
@@ -247,16 +248,11 @@ function buildSpatialHierarchy(
     storeyHeights,
     elementToStorey: dataModel.spatialHierarchy.element_to_storey,
     getStoreyElements: (storeyId: number) => byStorey.get(storeyId) || [],
-    getStoreyByElevation: (z: number) => {
-      let closest: [number, number] | null = null;
-      for (const [storeyId, elev] of storeyElevations) {
-        const diff = Math.abs(elev - z);
-        if (!closest || diff < closest[1]) {
-          closest = [storeyId, diff];
-        }
-      }
-      return closest ? closest[0] : null;
-    },
+    // Canonical resolver shared with the parser path (#1841). This used to
+    // always snap to the nearest storey while the parser returned null beyond
+    // 1m, so the same Z resolved to a different storey depending on whether the
+    // model came from the server or from wasm.
+    getStoreyByElevation: (z: number) => findStoreyByElevation(storeyElevations, z),
     getContainingSpace: (elementId: number) => {
       return dataModel.spatialHierarchy.element_to_space.get(elementId) || null;
     },

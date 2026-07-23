@@ -116,7 +116,11 @@ for (const [path, sides] of byFixture) {
     // A change is only "real" if it exceeds the base's own spread AND a small
     // absolute floor (sub-ms phases are all noise).
     const real = d != null && Math.abs(d) > Math.max(noise, 3) && Math.abs(brMed - bMed) >= 1;
-    if (key !== 'totalMs' && real) anyRealChange = true;
+    // TOTAL participates in the verdict too: a regression can be spread across
+    // sub-phases that each stay under the per-phase floor while the TOTAL clears
+    // it (or land in unaccounted overhead). Excluding TOTAL would let that show
+    // ⛔ in the table yet still print "within noise" — a false no-regression.
+    if (real) anyRealChange = true;
     if (key === 'totalMs' && noise > 15) anyTooNoisy = true;
     const tag = real ? (d < 0 ? '  ✅' : '  ⛔') : '  ·';
     lines.push(

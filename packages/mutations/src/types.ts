@@ -6,7 +6,7 @@
  * Types for IFC mutation tracking
  */
 
-import type { PropertyValueType } from '@ifc-lite/data';
+import type { PropertyValueType, IfcAttributeValue as CanonicalIfcAttributeValue } from '@ifc-lite/data';
 
 /**
  * IFC STEP attribute value, as produced by `EntityExtractor.extractEntity()`.
@@ -30,6 +30,19 @@ export type IfcAttributeValue =
   | { real: number }
   | { typed: { type: string; value: string | number | boolean } }
   | IfcAttributeValue[];
+
+/**
+ * Compile-time drift guard (no runtime footprint): this mirror MUST stay
+ * structurally identical to the canonical `@ifc-lite/data` `IfcAttributeValue`
+ * — the two are hand-duplicated only to keep the documented parser-cycle
+ * boundary. If they diverge, `MutuallyAssignable` resolves to `false`, which
+ * violates `AssertTrue`'s `extends true` constraint and fails the build.
+ */
+type MutuallyAssignable<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+type AssertTrue<T extends true> = T;
+type _IfcAttributeValueMirrorInSync = AssertTrue<
+  MutuallyAssignable<IfcAttributeValue, CanonicalIfcAttributeValue>
+>;
 
 /**
  * Property value types supported by mutations

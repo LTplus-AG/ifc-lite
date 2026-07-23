@@ -37,6 +37,23 @@ export function resolveExpressBase(typeName: string): string | null {
 }
 
 /**
+ * Interpret a `{ typed }` marker's boolean/logical inner value. The marker
+ * accepts `string | number | boolean`, so a caller may copy a value straight
+ * from the parser as a STEP token string (`'.T.'`/`'.F.'`/`'.U.'`) or a word
+ * (`'true'`). A plain JS truthiness test would corrupt these — `'.F.'` is a
+ * truthy string — so normalize to a tri-state: `true` / `false` / `null`
+ * (unknown, valid only for LOGICAL).
+ */
+function coerceLogical(value: string | number | boolean): boolean | null {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  const t = value.trim().toUpperCase();
+  if (t === 'TRUE' || t === '.T.' || t === 'T' || t === '1') return true;
+  if (t === 'FALSE' || t === '.F.' || t === 'F' || t === '0') return false;
+  return null;
+}
+
+/**
  * Serialize the inner value of a type-qualified token according to the resolved
  * EXPRESS primitive of its declared type. REAL/NUMBER always carry a decimal
  * point; BOOLEAN/LOGICAL emit `.T.`/`.F.`/`.U.`; STRING/BINARY are quoted.
@@ -50,9 +67,12 @@ function serializeInnerByBase(value: string | number | boolean, base: string | n
     case 'INTEGER':
       return String(Math.trunc(Number(value)));
     case 'BOOLEAN':
-      return value ? '.T.' : '.F.';
-    case 'LOGICAL':
-      return value === true ? '.T.' : value === false ? '.F.' : '.U.';
+      // A BOOLEAN has no unknown state; an unrecognized token coerces to `.F.`.
+      return coerceLogical(value) === true ? '.T.' : '.F.';
+    case 'LOGICAL': {
+      const logical = coerceLogical(value);
+      return logical === true ? '.T.' : logical === false ? '.F.' : '.U.';
+    }
     case 'STRING':
     case 'BINARY':
       return `'${escapeStepString(String(value))}'`;

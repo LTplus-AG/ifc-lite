@@ -10,7 +10,7 @@
 //! - Parquet: ~2KB per mesh (15x smaller)
 
 use crate::types::MeshData;
-use arrow::array::{Float32Array, StringArray, UInt32Array};
+use arrow::array::{Float32Array, Float64Array, StringArray, UInt8Array, UInt32Array};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 use bytes::Bytes;
@@ -155,6 +155,15 @@ fn build_mesh_tables(
         .zip(index_offsets.par_iter())
         .map(|((mesh, &v_start), &i_start)| {
             let vert_count = mesh.positions.len() / 3;
+            // Emit the per-mesh origin in the SAME Z-up→Y-up frame as positions
+            // (X stays, new Y = old Z, new Z = -old Y). Because the swap is
+            // linear, swap(origin + position) = swap(origin) + swap(position),
+            // so the client reconstructs world = origin + position in Y-up.
+            let origin_yup = [
+                mesh.origin[0],
+                mesh.origin[2],
+                -mesh.origin[1],
+            ];
             (
                 mesh.express_id,
                 mesh.ifc_type.as_str(),
@@ -163,6 +172,8 @@ fn build_mesh_tables(
                 i_start,
                 mesh.indices.len() as u32,
                 mesh.color,
+                origin_yup,
+                mesh.geometry_class,
             )
         })
         .collect();
@@ -178,8 +189,12 @@ fn build_mesh_tables(
     let mut color_g = Vec::with_capacity(mesh_count);
     let mut color_b = Vec::with_capacity(mesh_count);
     let mut color_a = Vec::with_capacity(mesh_count);
+    let mut origin_x = Vec::with_capacity(mesh_count);
+    let mut origin_y = Vec::with_capacity(mesh_count);
+    let mut origin_z = Vec::with_capacity(mesh_count);
+    let mut geometry_class = Vec::with_capacity(mesh_count);
 
-    for (eid, itype, vstart, vcount, istart, icount, color) in metadata {
+    for (eid, itype, vstart, vcount, istart, icount, color, origin, geo_class) in metadata {
         express_ids.push(eid);
         ifc_types.push(itype);
         vertex_starts.push(vstart);
@@ -190,6 +205,10 @@ fn build_mesh_tables(
         color_g.push(color[1]);
         color_b.push(color[2]);
         color_a.push(color[3]);
+        origin_x.push(origin[0]);
+        origin_y.push(origin[1]);
+        origin_z.push(origin[2]);
+        geometry_class.push(geo_class);
     }
 
     // Phase 3: Extract vertex and index data in parallel chunks
@@ -303,6 +322,10 @@ fn build_mesh_tables(
             Arc::new(Float32Array::from(color_g)),
             Arc::new(Float32Array::from(color_b)),
             Arc::new(Float32Array::from(color_a)),
+            Arc::new(Float64Array::from(origin_x)),
+            Arc::new(Float64Array::from(origin_y)),
+            Arc::new(Float64Array::from(origin_z)),
+            Arc::new(UInt8Array::from(geometry_class)),
         ],
     )?;
 
@@ -342,6 +365,22 @@ fn mesh_schema() -> Arc<Schema> {
         Field::new("color_g", DataType::Float32, false),
         Field::new("color_b", DataType::Float32, false),
         Field::new("color_a", DataType::Float32, false),
+        // Per-mesh local-frame origin, in the SAME Y-up metres frame as the
+        // emitted positions (world vertex = origin + position). Carries the
+        // canonical `MeshData.origin` the geometry pipeline already computes so
+        // the client renders origin-relative geometry in the correct place
+        // instead of collapsing every mesh onto the world origin (issue #1841).
+        // Zero for world-baked meshes (the current native default), so this is
+        // byte-neutral for those payloads.
+        Field::new("origin_x", DataType::Float64, false),
+        Field::new("origin_y", DataType::Float64, false),
+        Field::new("origin_z", DataType::Float64, false),
+        // Canonical geometry provenance (0 = occurrence, 1 = orphan type map,
+        // 2 = instanced type-library template). The viewer must NOT draw class 2
+        // in the normal view; without this column server meshes all decode as
+        // class 0 and instanced type templates render as duplicate overlapping
+        // geometry (issue #1841).
+        Field::new("geometry_class", DataType::UInt8, false),
     ]))
 }
 

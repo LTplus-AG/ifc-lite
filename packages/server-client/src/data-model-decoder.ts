@@ -22,6 +22,182 @@ export interface EntityMetadata {
   has_geometry: boolean;
 }
 
+/**
+ * Raw entity columns as decoded from the server's Parquet entity table.
+ * Optional columns (`description`…`predefinedType`) are `undefined` when the
+ * payload predates them (older servers / caches).
+ */
+export interface ServerEntityColumns {
+  readonly count: number;
+  readonly expressId: Uint32Array;
+  readonly typeName: readonly (string | null)[];
+  readonly globalId: readonly (string | null)[];
+  readonly name: readonly (string | null)[];
+  readonly description: readonly (string | null)[] | undefined;
+  readonly objectType: readonly (string | null)[] | undefined;
+  readonly tag: readonly (string | null)[] | undefined;
+  readonly predefinedType: readonly (string | null)[] | undefined;
+  readonly hasGeometry: Uint8Array;
+}
+
+/**
+ * Columnar entity index for the server data model (issue #1841).
+ *
+ * Replaces the previous `Map<number, EntityMetadata>`: V8 caps Map/Set at
+ * 2^24 (~16.7M) entries, so huge models hit a hard ceiling the canonical
+ * parser path (CompactEntityIndex) avoids. This mirrors that design — the
+ * decoded columns are kept as-is, lookups binary-search a sorted expressId
+ * view, and `EntityMetadata` rows are materialized lazily on access.
+ *
+ * The read surface is Map-compatible (`size`/`get`/`has`/iteration/`keys`/
+ * `values`/`entries`/`forEach`) so existing consumers keep working; columnar
+ * consumers should iterate `columns` by index instead.
+ */
+export class ServerEntityIndex {
+  /** Raw decoded columns; iterate these by index for bulk consumption. */
+  readonly columns: ServerEntityColumns;
+  /** Number of entities (Map-compatible). */
+  readonly size: number;
+  /** expressIds sorted ascending (aliases `columns.expressId` when already sorted). */
+  private readonly sortedIds: Uint32Array;
+  /** Sorted position -> row index; null when the input was already sorted. */
+  private readonly sortedRows: Uint32Array | null;
+
+  constructor(columns: ServerEntityColumns) {
+    this.columns = columns;
+    this.size = columns.count;
+
+    // The server emits entities roughly in id order, but do not assume it:
+    // build a sorted view for binary search when needed.
+    const ids = columns.expressId;
+    const n = columns.count;
+    let isSorted = true;
+    for (let i = 1; i < n; i++) {
+      if (ids[i] < ids[i - 1]) {
+        isSorted = false;
+        break;
+      }
+    }
+    if (isSorted) {
+      this.sortedIds = ids;
+      this.sortedRows = null;
+    } else {
+      // Argsort: permutation of row indices ordered by expressId.
+      const perm = new Uint32Array(n);
+      for (let i = 0; i < n; i++) perm[i] = i;
+      perm.sort((a, b) => ids[a] - ids[b]);
+      const sortedIds = new Uint32Array(n);
+      for (let i = 0; i < n; i++) sortedIds[i] = ids[perm[i]];
+      this.sortedIds = sortedIds;
+      this.sortedRows = perm;
+    }
+  }
+
+  /** Row index into `columns` for an expressId, or -1 when absent. */
+  rowIndexOf(expressId: number): number {
+    const ids = this.sortedIds;
+    let lo = 0;
+    let hi = ids.length - 1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >>> 1;
+      const v = ids[mid];
+      if (v === expressId) return this.sortedRows ? this.sortedRows[mid] : mid;
+      if (v < expressId) lo = mid + 1;
+      else hi = mid - 1;
+    }
+    return -1;
+  }
+
+  private materializeRow(row: number): EntityMetadata {
+    const c = this.columns;
+    return {
+      entity_id: c.expressId[row],
+      type_name: c.typeName[row] ?? '',
+      global_id: c.globalId[row] || undefined,
+      name: c.name[row] || undefined,
+      description: c.description?.[row] || undefined,
+      object_type: c.objectType?.[row] || undefined,
+      tag: c.tag?.[row] || undefined,
+      predefined_type: c.predefinedType?.[row] || undefined,
+      has_geometry: c.hasGeometry[row] !== 0,
+    };
+  }
+
+  /** Map-compatible lookup; materializes the row object lazily. */
+  get(expressId: number): EntityMetadata | undefined {
+    const row = this.rowIndexOf(expressId);
+    return row < 0 ? undefined : this.materializeRow(row);
+  }
+
+  /** Map-compatible existence check. */
+  has(expressId: number): boolean {
+    return this.rowIndexOf(expressId) >= 0;
+  }
+
+  /** Map-compatible iteration, in row (server emission) order. */
+  *[Symbol.iterator](): IterableIterator<[number, EntityMetadata]> {
+    for (let row = 0; row < this.size; row++) {
+      yield [this.columns.expressId[row], this.materializeRow(row)];
+    }
+  }
+
+  entries(): IterableIterator<[number, EntityMetadata]> {
+    return this[Symbol.iterator]();
+  }
+
+  *keys(): IterableIterator<number> {
+    for (let row = 0; row < this.size; row++) yield this.columns.expressId[row];
+  }
+
+  *values(): IterableIterator<EntityMetadata> {
+    for (let row = 0; row < this.size; row++) yield this.materializeRow(row);
+  }
+
+  forEach(callback: (value: EntityMetadata, key: number) => void): void {
+    for (let row = 0; row < this.size; row++) {
+      callback(this.materializeRow(row), this.columns.expressId[row]);
+    }
+  }
+
+  /** Build from row objects (tests / small in-memory models). */
+  static fromRows(rows: readonly EntityMetadata[]): ServerEntityIndex {
+    const n = rows.length;
+    const expressId = new Uint32Array(n);
+    const hasGeometry = new Uint8Array(n);
+    const typeName: (string | null)[] = new Array(n);
+    const globalId: (string | null)[] = new Array(n);
+    const name: (string | null)[] = new Array(n);
+    const description: (string | null)[] = new Array(n);
+    const objectType: (string | null)[] = new Array(n);
+    const tag: (string | null)[] = new Array(n);
+    const predefinedType: (string | null)[] = new Array(n);
+    for (let i = 0; i < n; i++) {
+      const r = rows[i];
+      expressId[i] = r.entity_id;
+      hasGeometry[i] = r.has_geometry ? 1 : 0;
+      typeName[i] = r.type_name;
+      globalId[i] = r.global_id ?? null;
+      name[i] = r.name ?? null;
+      description[i] = r.description ?? null;
+      objectType[i] = r.object_type ?? null;
+      tag[i] = r.tag ?? null;
+      predefinedType[i] = r.predefined_type ?? null;
+    }
+    return new ServerEntityIndex({
+      count: n,
+      expressId,
+      typeName,
+      globalId,
+      name,
+      description,
+      objectType,
+      tag,
+      predefinedType,
+      hasGeometry,
+    });
+  }
+}
+
 export interface Property {
   property_name: string;
   property_value: string;
@@ -117,7 +293,7 @@ export interface DocumentAssociation {
 }
 
 export interface DataModel {
-  entities: Map<number, EntityMetadata>;
+  entities: ServerEntityIndex;
   propertySets: Map<number, PropertySet>;
   quantitySets: Map<number, QuantitySet>;
   relationships: Relationship[];
@@ -230,23 +406,21 @@ export async function decodeDataModel(data: ArrayBuffer): Promise<DataModel> {
   // tag / predefined_type arrive with the v4 payload (issue #1765).
   const tags = entitiesArrow.getChild('tag')?.toArray() as (string | null)[] | undefined;
   const predefinedTypes = entitiesArrow.getChild('predefined_type')?.toArray() as (string | null)[] | undefined;
-  const entityCount = entityIds.length;
 
-  // Build entity map with pre-extracted arrays (no per-element .get() calls)
-  const entities = new Map<number, EntityMetadata>();
-  for (let i = 0; i < entityCount; i++) {
-    entities.set(entityIds[i], {
-      entity_id: entityIds[i],
-      type_name: typeNames[i] ?? '',
-      global_id: globalIds[i] || undefined,
-      name: names[i] || undefined,
-      description: descriptions?.[i] || undefined,
-      object_type: objectTypes?.[i] || undefined,
-      tag: tags?.[i] || undefined,
-      predefined_type: predefinedTypes?.[i] || undefined,
-      has_geometry: hasGeometry[i] !== 0,
-    });
-  }
+  // Keep the extracted columns as-is — no per-entity Map or objects (issue
+  // #1841: V8 caps Map at 2^24 entries; rows materialize lazily on access).
+  const entities = new ServerEntityIndex({
+    count: entityIds.length,
+    expressId: entityIds,
+    typeName: typeNames,
+    globalId: globalIds,
+    name: names,
+    description: descriptions,
+    objectType: objectTypes,
+    tag: tags,
+    predefinedType: predefinedTypes,
+    hasGeometry,
+  });
 
   // OPTIMIZED: Extract all property columns as arrays upfront
   const psetIds = propertiesArrow.getChild('pset_id')?.toArray() as Uint32Array;

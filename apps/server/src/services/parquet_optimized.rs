@@ -14,7 +14,7 @@
 //! Typical additional compression: 3-5x over basic Parquet format.
 
 use crate::types::MeshData;
-use arrow::array::{Float32Array, Int32Array, StringArray, UInt32Array, UInt8Array};
+use arrow::array::{Float32Array, Float64Array, Int32Array, StringArray, UInt32Array, UInt8Array};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 use bytes::Bytes;
@@ -128,6 +128,17 @@ pub fn serialize_to_parquet_optimized(
     let mut instance_ifc_types: Vec<&str> = Vec::with_capacity(meshes.len());
     let mut instance_mesh_indices: Vec<u32> = Vec::with_capacity(meshes.len());
     let mut instance_material_indices: Vec<u32> = Vec::with_capacity(meshes.len());
+    // Per-instance placement + provenance (issue #1841). Dedup merges meshes
+    // whose vertex buffers are bit-identical — which, in an origin-relative
+    // frame, is exactly two occurrences of the same shape at DIFFERENT origins.
+    // Without a per-instance origin those repeats all render at the shared
+    // template coordinates ("N slabs collapse to one"). Carrying the origin (in
+    // the same Y-up frame as the vertices) lets the client place each instance
+    // via world = origin + template_position. Zero for world-baked meshes.
+    let mut instance_origin_x: Vec<f64> = Vec::with_capacity(meshes.len());
+    let mut instance_origin_y: Vec<f64> = Vec::with_capacity(meshes.len());
+    let mut instance_origin_z: Vec<f64> = Vec::with_capacity(meshes.len());
+    let mut instance_geometry_class: Vec<u8> = Vec::with_capacity(meshes.len());
 
     for mesh in meshes {
         // Compute geometry hash for deduplication
@@ -153,11 +164,17 @@ pub fn serialize_to_parquet_optimized(
             idx
         });
 
-        // Record instance
+        // Record instance. Origin is emitted in the same Z-up→Y-up frame as the
+        // vertices (X stays, new Y = old Z, new Z = -old Y) so the client
+        // reconstructs world = origin + template_position in Y-up.
         instance_entity_ids.push(mesh.express_id);
         instance_ifc_types.push(&mesh.ifc_type);
         instance_mesh_indices.push(mesh_idx);
         instance_material_indices.push(material_idx);
+        instance_origin_x.push(mesh.origin[0]);
+        instance_origin_y.push(mesh.origin[2]);
+        instance_origin_z.push(-mesh.origin[1]);
+        instance_geometry_class.push(mesh.geometry_class);
     }
 
     // Phase 2: Build vertex and index buffers from unique meshes
@@ -255,6 +272,10 @@ pub fn serialize_to_parquet_optimized(
         Field::new("ifc_type", DataType::Utf8, false),
         Field::new("mesh_index", DataType::UInt32, false),
         Field::new("material_index", DataType::UInt32, false),
+        Field::new("origin_x", DataType::Float64, false),
+        Field::new("origin_y", DataType::Float64, false),
+        Field::new("origin_z", DataType::Float64, false),
+        Field::new("geometry_class", DataType::UInt8, false),
     ]));
 
     let instance_batch = RecordBatch::try_new(
@@ -264,6 +285,10 @@ pub fn serialize_to_parquet_optimized(
             Arc::new(StringArray::from(instance_ifc_types)),
             Arc::new(UInt32Array::from(instance_mesh_indices)),
             Arc::new(UInt32Array::from(instance_material_indices)),
+            Arc::new(Float64Array::from(instance_origin_x)),
+            Arc::new(Float64Array::from(instance_origin_y)),
+            Arc::new(Float64Array::from(instance_origin_z)),
+            Arc::new(UInt8Array::from(instance_geometry_class)),
         ],
     )?;
 
@@ -538,13 +563,80 @@ mod tests {
         assert_eq!(stats.unique_materials, 2);
         assert!(stats.mesh_reuse_ratio > 1.0);
 
-        // Should be very compact
-        // Note: Parquet has fixed overhead, so small test data may be larger
+        // Should be very compact. Parquet has fixed per-column overhead, so
+        // tiny fixtures are dominated by it — the per-instance placement columns
+        // (origin_x/y/z + geometry_class, issue #1841) add four columns' worth of
+        // that fixed overhead, so the floor here is generous on purpose.
         assert!(
-            data.len() < 5000,
+            data.len() < 8000,
             "Expected compact output, got {} bytes",
             data.len()
         );
+    }
+
+    /// Contract test for issue #1841: the instance table MUST carry a
+    /// per-instance `origin` (Y-up) and `geometry_class`. Deduplication merges
+    /// bit-identical template geometry, so the ONLY thing that places a repeated
+    /// occurrence is its origin — dropping it collapses "N slabs into one slab"
+    /// at the template coordinates. Two identical slabs at different origins must
+    /// dedup to one mesh yet keep two distinct origins.
+    #[test]
+    fn instance_table_carries_origin_and_geometry_class() {
+        use arrow::array::{Float64Array, UInt8Array};
+        use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
+
+        let slab = |id: u32, ifc_origin: [f64; 3]| {
+            MeshData::new(
+                id,
+                "IfcSlab".to_string(),
+                vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0],
+                vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
+                vec![0, 1, 2],
+                [0.5, 0.5, 0.5, 1.0],
+            )
+            .with_origin(ifc_origin)
+        };
+        // Same shape, two different placements → must dedup to ONE template.
+        let meshes = vec![
+            slab(1, [0.0, 0.0, 0.0]),
+            slab(2, [10.0, 20.0, 3.0]),
+        ];
+
+        let (data, stats) = serialize_to_parquet_optimized_with_stats(&meshes, false).unwrap();
+        assert_eq!(stats.unique_meshes, 1, "identical shapes must deduplicate");
+
+        // Unframe: [version:u8][flags:u8][instance_len:u32][...4 more lens][instance_parquet]...
+        let instance_len = u32::from_le_bytes(data[2..6].try_into().unwrap()) as usize;
+        let header = 2 + 5 * 4;
+        let instance_bytes = Bytes::copy_from_slice(&data[header..header + instance_len]);
+        let reader = ParquetRecordBatchReaderBuilder::try_new(instance_bytes)
+            .unwrap()
+            .build()
+            .unwrap();
+        let batch = reader.map(|b| b.unwrap()).next().unwrap();
+
+        let col = |name: &str| batch.schema().index_of(name).expect(name);
+        let oy = batch
+            .column(col("origin_y"))
+            .as_any()
+            .downcast_ref::<Float64Array>()
+            .unwrap();
+        let oz = batch
+            .column(col("origin_z"))
+            .as_any()
+            .downcast_ref::<Float64Array>()
+            .unwrap();
+        // geometry_class column must exist even when all-zero.
+        let _ = batch
+            .column(col("geometry_class"))
+            .as_any()
+            .downcast_ref::<UInt8Array>()
+            .unwrap();
+
+        assert_eq!(batch.num_rows(), 2, "both occurrences kept as instances");
+        // Instance 1: origin [10,20,3] IFC Z-up → Y-up [x, z, -y] = [10, 3, -20].
+        assert_eq!(oy.value(1), 3.0);
+        assert_eq!(oz.value(1), -20.0);
     }
 
     #[test]

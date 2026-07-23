@@ -179,6 +179,13 @@ export async function decodeParquetGeometry(data: ArrayBuffer): Promise<MeshData
   const colorG = meshArrow.getChild('color_g')?.toArray() as Float32Array;
   const colorB = meshArrow.getChild('color_b')?.toArray() as Float32Array;
   const colorA = meshArrow.getChild('color_a')?.toArray() as Float32Array;
+  // Per-mesh local-frame origin + geometry provenance (issue #1841). Additive
+  // columns — absent on payloads/caches from servers predating this field, in
+  // which case origin defaults to [0,0,0] (world-baked, the prior behaviour).
+  const originX = meshArrow.getChild('origin_x')?.toArray() as Float64Array | undefined;
+  const originY = meshArrow.getChild('origin_y')?.toArray() as Float64Array | undefined;
+  const originZ = meshArrow.getChild('origin_z')?.toArray() as Float64Array | undefined;
+  const geometryClass = meshArrow.getChild('geometry_class')?.toArray() as Uint8Array | undefined;
 
   // Extract columns from vertex table
   const posX = vertexArrow.getChild('x')?.toArray() as Float32Array;
@@ -215,6 +222,14 @@ export async function decodeParquetGeometry(data: ArrayBuffer): Promise<MeshData
   // Reconstruct MeshData array
   const meshCount = expressIds.length;
   const meshes: MeshData[] = new Array(meshCount);
+
+  // Only consume the additive origin/geometry_class columns when all three
+  // origin components are present AND parallel to the mesh rows — a short or
+  // partial set (malformed/truncated payload) must not read `undefined` → NaN.
+  const hasOrigin =
+    !!originX && !!originY && !!originZ &&
+    originX.length === meshCount && originY.length === meshCount && originZ.length === meshCount;
+  const hasGeometryClass = !!geometryClass && geometryClass.length === meshCount;
 
   for (let i = 0; i < meshCount; i++) {
     const vertexStart = vertexStarts[i];
@@ -278,6 +293,12 @@ export async function decodeParquetGeometry(data: ArrayBuffer): Promise<MeshData
       normals,
       indices,
       color: [colorR[i], colorG[i], colorB[i], colorA[i]],
+      // world vertex = origin + position (both Y-up metres). Omit the field when
+      // the frame is the world origin so world-baked meshes stay byte-identical.
+      ...(hasOrigin && (originX![i] || originY![i] || originZ![i])
+        ? { origin: [originX![i], originY![i], originZ![i]] as [number, number, number] }
+        : {}),
+      ...(hasGeometryClass && geometryClass![i] ? { geometry_class: geometryClass![i] } : {}),
     };
   }
 
@@ -389,6 +410,15 @@ export async function decodeOptimizedParquetGeometry(
   const ifcTypes = instanceArrow.getChild('ifc_type');
   const meshIndices = instanceArrow.getChild('mesh_index')?.toArray() as Uint32Array;
   const materialIndices = instanceArrow.getChild('material_index')?.toArray() as Uint32Array;
+  // Per-instance placement + provenance (issue #1841). Additive columns —
+  // absent on payloads from servers predating them, where origin defaults to
+  // [0,0,0]. Dedup merges identical template geometry; the per-instance origin
+  // is what places each occurrence, so WITHOUT this a repeated element renders
+  // every occurrence at the shared template coords ("N slabs collapse to one").
+  const instOriginX = instanceArrow.getChild('origin_x')?.toArray() as Float64Array | undefined;
+  const instOriginY = instanceArrow.getChild('origin_y')?.toArray() as Float64Array | undefined;
+  const instOriginZ = instanceArrow.getChild('origin_z')?.toArray() as Float64Array | undefined;
+  const instGeometryClass = instanceArrow.getChild('geometry_class')?.toArray() as Uint8Array | undefined;
 
   // Extract mesh columns
   const meshVertexOffsets = meshArrow.getChild('vertex_offset')?.toArray() as Uint32Array;
@@ -441,6 +471,15 @@ export async function decodeOptimizedParquetGeometry(
   const instanceCount = entityIds.length;
   const meshes: MeshData[] = new Array(instanceCount);
   const dequantMultiplier = 1.0 / vertexMultiplier;
+
+  // Additive per-instance origin/geometry_class columns (issue #1841): consume
+  // only when present AND parallel to the instance rows.
+  const hasInstOrigin =
+    !!instOriginX && !!instOriginY && !!instOriginZ &&
+    instOriginX.length === instanceCount &&
+    instOriginY.length === instanceCount &&
+    instOriginZ.length === instanceCount;
+  const hasInstGeometryClass = !!instGeometryClass && instGeometryClass.length === instanceCount;
 
   for (let i = 0; i < instanceCount; i++) {
     const meshIdx = meshIndices[i];
@@ -509,7 +548,10 @@ export async function decodeOptimizedParquetGeometry(
       meshIndicesArray[j] = indices[indexOffset + j];
     }
 
-    // Convert byte colors to float [0-1]
+    // Convert byte colors to float [0-1]. `positions` are the TEMPLATE-local
+    // vertices; `origin` (not baked in, to keep f32 precision at building scale)
+    // carries the per-instance placement so the renderer reconstructs
+    // world = origin + position — the same contract as the standard path.
     meshes[i] = {
       express_id: entityIds[i],
       ifc_type: (ifcTypes?.get(i) as string) ?? 'Unknown',
@@ -517,6 +559,10 @@ export async function decodeOptimizedParquetGeometry(
       normals,
       indices: meshIndicesArray,
       color: [matR[materialIdx] / 255, matG[materialIdx] / 255, matB[materialIdx] / 255, matA[materialIdx] / 255],
+      ...(hasInstOrigin && (instOriginX![i] || instOriginY![i] || instOriginZ![i])
+        ? { origin: [instOriginX![i], instOriginY![i], instOriginZ![i]] as [number, number, number] }
+        : {}),
+      ...(hasInstGeometryClass && instGeometryClass![i] ? { geometry_class: instGeometryClass![i] } : {}),
     };
   }
 

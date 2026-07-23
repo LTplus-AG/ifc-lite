@@ -23,7 +23,6 @@ import {
   type ParseResponse,
   type ModelMetadata,
   type ProcessingStats,
-  type MeshData as ServerMeshData,
 } from '@ifc-lite/server-client';
 
 import { SERVER_URL } from '../utils/ifcConfig.js';
@@ -37,19 +36,8 @@ import {
 
 // Server data model conversion
 import { convertServerDataModel, type ServerParseResult } from '../utils/serverDataModel.js';
+import { convertServerMesh } from '../utils/serverMesh.js';
 import { buildSpatialIndexGuarded } from '../utils/loadingUtils.js';
-
-/** Convert server mesh data (snake_case) to viewer format (camelCase) */
-function convertServerMesh(m: ServerMeshData): MeshData {
-  return {
-    expressId: m.express_id,
-    positions: new Float32Array(m.positions),
-    indices: new Uint32Array(m.indices),
-    normals: m.normals ? new Float32Array(m.normals) : new Float32Array(0),
-    color: m.color,
-    ifcType: m.ifc_type,
-  };
-}
 
 /** Server parse result type - union of streaming and non-streaming responses */
 type ServerParseResultType = ParquetParseResponse | ParquetStreamResult | ParseResponse;

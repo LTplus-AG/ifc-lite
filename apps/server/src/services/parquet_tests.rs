@@ -170,6 +170,63 @@
         }
     }
 
+    /// Regression + contract test for issue #1841: the mesh table MUST carry
+    /// the per-mesh `origin` (Y-up, world = origin + position) and
+    /// `geometry_class`. Dropping either silently collapses origin-relative
+    /// geometry onto the world origin / renders instanced type templates as
+    /// duplicates. This pins that the columns exist, in the canonical frame.
+    #[test]
+    fn mesh_table_carries_origin_and_geometry_class() {
+        use arrow::array::{Float64Array, UInt8Array};
+
+        // A slab whose vertices are stored RELATIVE to a building-scale origin.
+        // origin is in IFC Z-up; the wire must emit it Z-up→Y-up swapped so it
+        // matches the swapped positions: [x, z, -y].
+        let ifc_origin = [1000.0_f64, 2000.0, 30.0];
+        let mesh = MeshData::new(
+            7,
+            "IfcSlab".to_string(),
+            vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0],
+            vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
+            vec![0, 1, 2],
+            [0.5, 0.5, 0.5, 1.0],
+        )
+        .with_origin(ifc_origin)
+        .with_geometry_class(2);
+
+        let blob = serialize_to_parquet(&[mesh]).unwrap();
+        let sections = read_sections(&blob);
+        let mesh_table = concat_all(&sections[0]);
+
+        let col = |name: &str| mesh_table.schema().index_of(name).expect(name);
+        let ox = mesh_table
+            .column(col("origin_x"))
+            .as_any()
+            .downcast_ref::<Float64Array>()
+            .unwrap();
+        let oy = mesh_table
+            .column(col("origin_y"))
+            .as_any()
+            .downcast_ref::<Float64Array>()
+            .unwrap();
+        let oz = mesh_table
+            .column(col("origin_z"))
+            .as_any()
+            .downcast_ref::<Float64Array>()
+            .unwrap();
+        let gc = mesh_table
+            .column(col("geometry_class"))
+            .as_any()
+            .downcast_ref::<UInt8Array>()
+            .unwrap();
+
+        // Z-up→Y-up: x stays, y = old z, z = -old y.
+        assert_eq!(ox.value(0), 1000.0);
+        assert_eq!(oy.value(0), 30.0);
+        assert_eq!(oz.value(0), -2000.0);
+        assert_eq!(gc.value(0), 2);
+    }
+
     /// Regression test for #586: meshes with positions but no normals
     /// (e.g. `advanced_brep.ifc`) used to panic with "index out of bounds"
     /// inside the rayon worker, taking down the server process.

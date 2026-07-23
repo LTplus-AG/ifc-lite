@@ -25,7 +25,7 @@ import { describe, it } from 'node:test';
 import { IfcParser } from '@ifc-lite/parser';
 import { IfcTypeEnum } from '@ifc-lite/data';
 import { executeList, type ListDefinition } from '@ifc-lite/lists';
-import type { DataModel } from '@ifc-lite/server-client';
+import { ServerEntityIndex, type DataModel } from '@ifc-lite/server-client';
 import { createListDataProvider } from './adapter';
 import { convertServerDataModel, type ServerParseResult } from '../../utils/serverDataModel';
 
@@ -63,12 +63,12 @@ END-ISO-10303-21;
  *  resolved; DefinesByType + TYPEHASPROPERTYSETS edges present). */
 function serverDataModelForFixture(): DataModel {
   return {
-    entities: new Map([
-      [1, { entity_id: 1, type_name: 'IFCPROJECT', global_id: 'Proj0000000000000000001', name: 'P', has_geometry: false }],
-      [100, { entity_id: 100, type_name: 'IFCWALL', global_id: 'Wall00000000000000001A', name: 'W-A', description: 'South wall', object_type: 'Basic Wall', tag: 'T-100', predefined_type: 'SOLIDWALL', has_geometry: false }],
-      [110, { entity_id: 110, type_name: 'IFCWALL', global_id: 'Wall00000000000000001B', name: 'W-B', predefined_type: 'PARTITIONING', has_geometry: false }],
-      [200, { entity_id: 200, type_name: 'IFCWALLTYPE', global_id: 'Type00000000000000001A', name: 'WT-Std', predefined_type: 'STANDARD', has_geometry: false }],
-      [300, { entity_id: 300, type_name: 'IFCSITE', global_id: 'Site000000000000000001A', name: 'S', description: 'site desc', has_geometry: false }],
+    entities: ServerEntityIndex.fromRows([
+      { entity_id: 1, type_name: 'IFCPROJECT', global_id: 'Proj0000000000000000001', name: 'P', has_geometry: false },
+      { entity_id: 100, type_name: 'IFCWALL', global_id: 'Wall00000000000000001A', name: 'W-A', description: 'South wall', object_type: 'Basic Wall', tag: 'T-100', predefined_type: 'SOLIDWALL', has_geometry: false },
+      { entity_id: 110, type_name: 'IFCWALL', global_id: 'Wall00000000000000001B', name: 'W-B', predefined_type: 'PARTITIONING', has_geometry: false },
+      { entity_id: 200, type_name: 'IFCWALLTYPE', global_id: 'Type00000000000000001A', name: 'WT-Std', predefined_type: 'STANDARD', has_geometry: false },
+      { entity_id: 300, type_name: 'IFCSITE', global_id: 'Site000000000000000001A', name: 'S', description: 'site desc', has_geometry: false },
     ]),
     propertySets: new Map([
       [210, { pset_id: 210, pset_name: 'Pset_WallCommon', properties: [

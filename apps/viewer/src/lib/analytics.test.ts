@@ -248,6 +248,12 @@ describe('scrubEvent — nested + message redaction', () => {
     }
   });
 
+  it('redacts a JSON model name too (IFC5/ifcx models are JSON)', () => {
+    const out = scrubEvent(exceptionEvent('Failed to parse Client-Tower-A.json'));
+    const value = (out?.properties?.$exception_list as { value: string }[])[0].value;
+    assert.ok(!value.includes('Client-Tower-A'), value);
+  });
+
   it('does not over-redact messages that merely mention an extension', () => {
     // The run must stop at ordinary lower-case message words, or a stray
     // extension would swallow the whole (useful) message.

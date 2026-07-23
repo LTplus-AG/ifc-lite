@@ -49,8 +49,11 @@ const PATHISH =
 // Case-insensitivity is applied per-character rather than with the `i` flag on
 // purpose: `/\p{Lu}/iu` case-folds and would match LOWER-case letters too,
 // turning every word into a NAME word and swallowing the entire message.
+// Kept in step with PATHISH's extension list above — `json` included because
+// IFC5/ifcx models are JSON, so a bare `.json` name can be just as
+// confidential as a `.ifc` one.
 const MODEL_EXTENSIONS = [
-  'ifczip', 'bcfzip', 'ifcx', 'gltf', 'xlsx', 'step', 'ifc', 'bcf',
+  'ifczip', 'bcfzip', 'ifcx', 'gltf', 'xlsx', 'step', 'json', 'ifc', 'bcf',
   'glb', 'obj', 'csv', 'pdf', 'stp', 'las', 'laz',
 ];
 const anyCase = (s: string): string =>

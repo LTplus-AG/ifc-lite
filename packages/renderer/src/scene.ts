@@ -1930,59 +1930,81 @@ export class Scene {
     const oldFragments = this.streamingFragments;
     const oldBatches = this.batchedMeshes;
     const fragmentSet = new Set(oldFragments);
-    this.streamingFragments = [];
+    // Steps 1-4 detach the old drawables (streamingFragments = [],
+    // batchedMeshes = []) BEFORE the replacement GPU buffers exist. If a
+    // createBuffer fails part-way through, callers that CONTAIN the throw to
+    // keep the canvas alive would otherwise be left rendering a half-built —
+    // often empty — scene, turning a crash into a silently blank model.
+    let rebuilt = false;
+    try {
+      this.streamingFragments = [];
 
-    // 1. Collect ALL accumulated meshData before clearing state.
-    //    Cold buckets (issue #1682 phase 3b) hold NO meshData — their
-    //    geometry lives on disk — so they are carried through the rebuild as
-    //    sealed shells instead of being re-grouped (re-grouping would
-    //    silently drop them).
-    const allMeshData: MeshData[] = [];
-    const carriedCold: Array<[string, BatchBucket]> = [];
-    for (const [key, bucket] of this.buckets) {
-      if (this.coldBuckets.has(key) && bucket.meshData.length === 0 && bucket.batchedMesh) {
-        carriedCold.push([key, bucket]);
-        continue;
+      // 1. Collect ALL accumulated meshData before clearing state.
+      //    Cold buckets (issue #1682 phase 3b) hold NO meshData — their
+      //    geometry lives on disk — so they are carried through the rebuild as
+      //    sealed shells instead of being re-grouped (re-grouping would
+      //    silently drop them).
+      const allMeshData: MeshData[] = [];
+      const carriedCold: Array<[string, BatchBucket]> = [];
+      for (const [key, bucket] of this.buckets) {
+        if (this.coldBuckets.has(key) && bucket.meshData.length === 0 && bucket.batchedMesh) {
+          carriedCold.push([key, bucket]);
+          continue;
+        }
+        for (const md of bucket.meshData) allMeshData.push(md);
       }
-      for (const md of bucket.meshData) allMeshData.push(md);
+
+      // 2. Clear all bucket/batch state for a clean rebuild
+      // NOTE: batchedMeshes keeps the OLD array reference — the renderer
+      // continues to draw from it until we swap in the new array below.
+      this.buckets.clear();
+      this.meshDataBucket = new Map();
+      this.activeBucketKey.clear();
+      this.lastDrawnFrame.clear();
+      this.residencyRestoreQueue.clear();
+      this.pendingBatchKeys.clear();
+      // Destroy cached partial batches — their colorKeys are now stale
+      this.dropAllPartialCaches();
+
+      // Re-seat the carried cold shells in the fresh bucket map (their GPU
+      // shells re-enter the flat array via rebuildPendingBatches below).
+      for (const [key, bucket] of carriedCold) this.buckets.set(key, bucket);
+
+      // 3. Re-group ALL meshData by their CURRENT color (and grid cell).
+      //    meshData.color may have been mutated in-place since the mesh was
+      //    first bucketed, so the original bucket key is stale. Re-grouping
+      //    by current color ensures batches render with correct colors.
+      for (const meshData of allMeshData) {
+        const baseKey = this.bucketBaseKey(meshData);
+        const bucketKey = this.resolveActiveBucket(baseKey, meshData);
+        let bucket = this.buckets.get(bucketKey);
+        if (!bucket) {
+          bucket = { key: bucketKey, meshData: [], batchedMesh: null, vertexBytes: 0 };
+          this.buckets.set(bucketKey, bucket);
+        }
+        bucket.meshData.push(meshData);
+        this.meshDataBucket.set(meshData, bucket);
+        this.pendingBatchKeys.add(bucketKey);
+      }
+
+      // 4. Build new proper batches into a fresh array
+      this.batchedMeshes = [];
+      this.rebuildPendingBatches(device, pipeline);
+      rebuilt = true;
+    } finally {
+      if (!rebuilt) {
+        // Step 5 never ran, so every old fragment/batch is still a live GPU
+        // resource: putting the arrays back restores exactly what was on
+        // screen. Deliberately does NOT destroy the partially-rebuilt
+        // batches — carried cold shells are aliased into BOTH arrays, so
+        // destroying them would free buffers the restored array still points
+        // at. A bounded leak on a device that just failed to allocate is the
+        // lesser evil, and the caller tells the user to reload.
+        this.streamingFragments = oldFragments;
+        this.batchedMeshes = oldBatches;
+      }
     }
 
-    // 2. Clear all bucket/batch state for a clean rebuild
-    // NOTE: batchedMeshes keeps the OLD array reference — the renderer
-    // continues to draw from it until we swap in the new array below.
-    this.buckets.clear();
-    this.meshDataBucket = new Map();
-    this.activeBucketKey.clear();
-    this.lastDrawnFrame.clear();
-    this.residencyRestoreQueue.clear();
-    this.pendingBatchKeys.clear();
-    // Destroy cached partial batches — their colorKeys are now stale
-    this.dropAllPartialCaches();
-
-    // Re-seat the carried cold shells in the fresh bucket map (their GPU
-    // shells re-enter the flat array via rebuildPendingBatches below).
-    for (const [key, bucket] of carriedCold) this.buckets.set(key, bucket);
-
-    // 3. Re-group ALL meshData by their CURRENT color (and grid cell).
-    //    meshData.color may have been mutated in-place since the mesh was
-    //    first bucketed, so the original bucket key is stale. Re-grouping
-    //    by current color ensures batches render with correct colors.
-    for (const meshData of allMeshData) {
-      const baseKey = this.bucketBaseKey(meshData);
-      const bucketKey = this.resolveActiveBucket(baseKey, meshData);
-      let bucket = this.buckets.get(bucketKey);
-      if (!bucket) {
-        bucket = { key: bucketKey, meshData: [], batchedMesh: null, vertexBytes: 0 };
-        this.buckets.set(bucketKey, bucket);
-      }
-      bucket.meshData.push(meshData);
-      this.meshDataBucket.set(meshData, bucket);
-      this.pendingBatchKeys.add(bucketKey);
-    }
-
-    // 4. Build new proper batches into a fresh array
-    this.batchedMeshes = [];
-    this.rebuildPendingBatches(device, pipeline);
 
     // 5. NOW destroy old fragment/batch GPU resources (new batches are live)
     for (const fragment of oldFragments) destroyGpuResources(fragment);

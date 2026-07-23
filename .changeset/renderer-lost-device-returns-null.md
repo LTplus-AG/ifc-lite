@@ -16,3 +16,11 @@ Returning `null` routes into the `if (!device) return` check that call sites
 already have, so a lost device degrades to "stop uploading" rather than an
 uncaught throw. `isDeviceLost()` / `onDeviceLost()` are unchanged and remain the
 recovery contract.
+
+`finalizeStreaming()` is now rollback-safe. It detaches the old fragments and
+batches before the replacement GPU buffers exist, so a `createBuffer` failure
+part-way through the rebuild left the scene rendering a half-built — often
+empty — array. Callers that contain the throw to keep the canvas alive would
+therefore have turned a crash into a silently blank model. On failure the
+previous drawables are restored (their GPU resources are still live, since the
+destroy step never runs) and the error is rethrown for the caller to handle.

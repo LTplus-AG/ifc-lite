@@ -24,3 +24,6 @@ empty — array. Callers that contain the throw to keep the canvas alive would
 therefore have turned a crash into a silently blank model. On failure the
 previous drawables are restored (their GPU resources are still live, since the
 destroy step never runs) and the error is rethrown for the caller to handle.
+Batches the failed attempt had already created are freed, while anything that
+predates it — including cold shells aliased into both the old and the new array
+— is left alone.

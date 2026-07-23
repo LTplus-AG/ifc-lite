@@ -1930,6 +1930,7 @@ export class Scene {
     const oldFragments = this.streamingFragments;
     const oldBatches = this.batchedMeshes;
     const fragmentSet = new Set(oldFragments);
+    const oldBatchSet = new Set(oldBatches);
     // Steps 1-4 detach the old drawables (streamingFragments = [],
     // batchedMeshes = []) BEFORE the replacement GPU buffers exist. If a
     // createBuffer fails part-way through, callers that CONTAIN the throw to
@@ -1993,13 +1994,18 @@ export class Scene {
       rebuilt = true;
     } finally {
       if (!rebuilt) {
+        // Free ONLY what this attempt created. Carried cold shells are aliased
+        // into BOTH the old and the new array, so anything that was already
+        // live before the rebuild must be left alone — destroying it would
+        // leave the restored arrays pointing at dead buffers.
+        for (const created of this.batchedMeshes) {
+          if (!oldBatchSet.has(created) && !fragmentSet.has(created)) {
+            destroyGpuResources(created);
+          }
+        }
         // Step 5 never ran, so every old fragment/batch is still a live GPU
         // resource: putting the arrays back restores exactly what was on
-        // screen. Deliberately does NOT destroy the partially-rebuilt
-        // batches — carried cold shells are aliased into BOTH arrays, so
-        // destroying them would free buffers the restored array still points
-        // at. A bounded leak on a device that just failed to allocate is the
-        // lesser evil, and the caller tells the user to reload.
+        // screen.
         this.streamingFragments = oldFragments;
         this.batchedMeshes = oldBatches;
       }

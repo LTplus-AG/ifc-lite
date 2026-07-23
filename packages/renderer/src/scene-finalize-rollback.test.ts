@@ -73,21 +73,36 @@ describe('Scene.finalizeStreaming — GPU-failure rollback', () => {
     assert.deepStrictEqual(scene['batchedMeshes'], [batch]);
   });
 
-  it('destroys nothing on the failure path — the restored arrays still point at it', () => {
+  it('frees the batches the failed attempt created, but nothing that predates it', () => {
     const scene = new Scene();
     const fragment = fakeBatch(1);
     const batch = fakeBatch(2);
+    // A cold shell carried through the rebuild: aliased into BOTH the old and
+    // the new array. Freeing it would leave the restored array pointing at
+    // dead buffers.
+    const carriedCold = fakeBatch(3);
+    const partiallyBuilt = fakeBatch(4);
     scene['streamingFragments'] = [fragment];
-    scene['batchedMeshes'] = [batch];
-    scene['rebuildPendingBatches'] = () => { throw new Error('boom'); };
+    scene['batchedMeshes'] = [batch, carriedCold];
+
+    // Realistic partial rebuild: some batches land, then createBuffer throws.
+    scene['rebuildPendingBatches'] = () => {
+      scene['batchedMeshes'].push(carriedCold, partiallyBuilt);
+      throw new RangeError("createBuffer failed");
+    };
 
     assert.throws(() => scene.finalizeStreaming(device, pipeline));
 
-    // Freeing these would leave the restored arrays pointing at dead buffers.
+    // Created by the doomed attempt and referenced by nothing else → freed.
+    assert.strictEqual(partiallyBuilt.vertexBuffer.destroyed, 1);
+    assert.strictEqual(partiallyBuilt.indexBuffer.destroyed, 1);
+    // Pre-existing drawables (including the aliased cold shell) → untouched.
+    assert.strictEqual(carriedCold.vertexBuffer.destroyed, 0);
     assert.strictEqual(fragment.vertexBuffer.destroyed, 0);
-    assert.strictEqual(fragment.indexBuffer.destroyed, 0);
     assert.strictEqual(batch.vertexBuffer.destroyed, 0);
-    assert.strictEqual(batch.indexBuffer.destroyed, 0);
+    // …and still on screen.
+    assert.deepStrictEqual(scene['streamingFragments'], [fragment]);
+    assert.deepStrictEqual(scene['batchedMeshes'], [batch, carriedCold]);
   });
 
   it('clears the in-progress flag even when the rebuild throws', () => {
@@ -100,20 +115,28 @@ describe('Scene.finalizeStreaming — GPU-failure rollback', () => {
     assert.strictEqual(scene.isFinalizeInProgress(), false);
   });
 
-  it('still swaps in the new batches and frees the old ones on success', () => {
+  it('keeps the replacement and frees the old drawables on success', () => {
     const scene = new Scene();
     const fragment = fakeBatch(1);
     const batch = fakeBatch(2);
+    const replacement = fakeBatch(3);
     scene['streamingFragments'] = [fragment];
     scene['batchedMeshes'] = [batch];
-    scene['rebuildPendingBatches'] = () => { /* succeeds, builds nothing */ };
+    scene['rebuildPendingBatches'] = () => {
+      scene['batchedMeshes'].push(replacement);
+    };
 
     scene.finalizeStreaming(device, pipeline);
 
+    // The replacement is installed and must NOT be caught by any cleanup.
+    assert.deepStrictEqual(scene['batchedMeshes'], [replacement]);
+    assert.strictEqual(replacement.vertexBuffer.destroyed, 0);
+    assert.strictEqual(replacement.indexBuffer.destroyed, 0);
     assert.deepStrictEqual(scene['streamingFragments'], []);
-    assert.deepStrictEqual(scene['batchedMeshes'], []);
-    // The rollback must not have suppressed the normal cleanup.
+    // The rollback must not have suppressed the normal cleanup of the old ones.
     assert.strictEqual(fragment.vertexBuffer.destroyed, 1);
+    assert.strictEqual(fragment.indexBuffer.destroyed, 1);
     assert.strictEqual(batch.vertexBuffer.destroyed, 1);
+    assert.strictEqual(batch.indexBuffer.destroyed, 1);
   });
 });

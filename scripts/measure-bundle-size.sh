@@ -42,10 +42,19 @@ fmt_kib() {
     fi
 }
 
+# `ok` must reflect a real, present artifact — not just a zero build exit. When
+# build-wasm.sh soft-skips (no wasm-pack), build_exit is 0 but $wasm_path is
+# absent, so an ok-on-build_exit-alone would report `ok:true, bytes:0` while the
+# script exits 1 — a successful zero-byte measurement to a machine consumer.
+ok=false
+if [ $build_exit -eq 0 ] && [ -f "$wasm_path" ]; then
+    ok=true
+fi
+
 if [ "$JSON" -eq 1 ]; then
     cat <<EOF
 {
-  "bundle": { "ok": $([ $build_exit -eq 0 ] && echo true || echo false), "bytes": $wasm_size }
+  "bundle": { "ok": $ok, "bytes": $wasm_size }
 }
 EOF
 else

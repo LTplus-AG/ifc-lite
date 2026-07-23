@@ -30,6 +30,7 @@ import {
   createEmptyBounds,
   updateBoundsFromPositions,
   calculateMeshBounds,
+  MAX_VALID_COORD,
   createCoordinateInfo,
   getServerStreamIntervalMs,
 } from '../utils/localParsingUtils.js';
@@ -173,7 +174,12 @@ export function useIfcServer() {
 
           // Update bounds incrementally
           for (const mesh of batchMeshes) {
-            updateBoundsFromPositions(bounds, mesh.positions);
+            // Fold the per-element local-frame origin so the progressive bounds
+            // are WORLD-space (world = origin + position, issue #1841). Without
+            // it an origin-relative mesh contributes only its small local
+            // coordinates and the camera fits onto the scene origin — the
+            // non-streaming path already folds it via calculateMeshBounds.
+            updateBoundsFromPositions(bounds, mesh.positions, MAX_VALID_COORD, mesh.origin ?? null);
             totalVertices += mesh.positions.length / 3;
             totalTriangles += mesh.indices.length / 3;
           }

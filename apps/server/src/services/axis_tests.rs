@@ -43,9 +43,7 @@ fn mesh_to_yup_rotates_positions_normals_and_origin_together() {
     assert_eq!(mesh.origin, [100.0, 300.0, -200.0]);
 }
 
-/// Meshes with positions but no normals (advanced_brep) must not panic or
-/// desynchronize — the normal buffer is left alone when it doesn't parallel
-/// the positions.
+/// Meshes with positions but no normals (advanced_brep) must not panic.
 #[test]
 fn mesh_to_yup_tolerates_missing_normals() {
     let mut mesh = MeshData::new(
@@ -59,4 +57,40 @@ fn mesh_to_yup_tolerates_missing_normals() {
     mesh_to_yup_in_place(&mut mesh);
     assert_eq!(mesh.positions, vec![1.0, 3.0, -2.0]);
     assert!(mesh.normals.is_empty());
+}
+
+/// A normal buffer that does NOT parallel the positions can't be rotated
+/// per-vertex, and shipping it unrotated would put normals in Z-up while the
+/// positions are Y-up. Drop it (the parquet path zero-fills for the same
+/// reason) rather than emit a mixed-frame mesh.
+#[test]
+fn mesh_to_yup_drops_mismatched_normals_instead_of_leaving_them_zup() {
+    let mut mesh = MeshData::new(
+        3,
+        "IfcAdvancedBrep".to_string(),
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+        vec![0.0, 0.0, 1.0], // half as many normals as positions
+        vec![0, 1, 2],
+        [0.8, 0.8, 0.8, 1.0],
+    );
+    mesh_to_yup_in_place(&mut mesh);
+    assert_eq!(mesh.positions, vec![1.0, 3.0, -2.0, 4.0, 6.0, -5.0]);
+    assert!(mesh.normals.is_empty(), "mismatched normals must be dropped");
+}
+
+/// A truncated position buffer (not a whole number of triplets) must not index
+/// past the end — in release `debug_assert` is a no-op, so this would panic the
+/// request handler. Complete triplets are still converted.
+#[test]
+fn mesh_to_yup_does_not_panic_on_truncated_positions() {
+    let mut mesh = MeshData::new(
+        4,
+        "IfcSlab".to_string(),
+        vec![1.0, 2.0, 3.0, 4.0, 5.0], // 5 floats: one triplet + a partial
+        Vec::new(),
+        vec![0],
+        [0.5, 0.5, 0.5, 1.0],
+    );
+    mesh_to_yup_in_place(&mut mesh);
+    assert_eq!(mesh.positions, vec![1.0, 3.0, -2.0, 4.0, 5.0]);
 }

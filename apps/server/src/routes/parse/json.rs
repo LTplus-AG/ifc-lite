@@ -4,7 +4,7 @@
 
 //! JSON / SSE-JSON parse endpoints.
 
-use super::cache_keys::{cache_symbolic_data, request_cache_key};
+use super::cache_keys::{cache_symbolic_data, json_response_cache_key, request_cache_key};
 use super::{extract_file, ParseQuery};
 use crate::error::ApiError;
 use crate::services::axis::mesh_to_yup_in_place;
@@ -42,9 +42,13 @@ pub async fn parse_full(
     // Generate cache key (include opening filter so different modes get different cache entries)
     let tessellation_quality = query.resolved_tessellation_quality()?;
     let cache_key = request_cache_key(&data, &query, tessellation_quality);
+    // The stored ParseResponse is versioned separately from the client-facing
+    // cache_key so the Y-up switch (#1841) retires the old Z-up entries without
+    // invalidating the parquet caches. See `json_response_cache_key`.
+    let response_cache_key = json_response_cache_key(&cache_key);
 
     // Check cache first
-    if let Some(mut cached) = state.cache.get::<ParseResponse>(&cache_key).await? {
+    if let Some(mut cached) = state.cache.get::<ParseResponse>(&response_cache_key).await? {
         tracing::info!(cache_key = %cache_key, "Cache HIT");
         cached.stats.from_cache = true;
         return Ok(Json(cached));
@@ -101,7 +105,7 @@ pub async fn parse_full(
     let response_clone = response.clone();
     tokio::spawn(async move {
         cache_symbolic_data(&cache, &cache_key, &response_clone.symbolic_data).await;
-        if let Err(e) = cache.set(&cache_key, &response_clone).await {
+        if let Err(e) = cache.set(&response_cache_key, &response_clone).await {
             tracing::error!(error = %e, "Failed to cache result");
         }
     });

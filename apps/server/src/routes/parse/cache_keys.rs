@@ -30,6 +30,21 @@ pub(crate) fn request_cache_key(data: &[u8], query: &ParseQuery, quality: Tessel
     )
 }
 
+/// Typed `ParseResponse` cache key for the JSON transport.
+///
+/// Versioned SEPARATELY from [`request_cache_key`], which is the client-facing
+/// identifier and the seed for the parquet keys — bumping that would needlessly
+/// invalidate every parquet entry too.
+///
+/// Introduced at `v2` with issue #1841: the JSON route now emits Y-up meshes
+/// like every other transport, so the pre-existing (unversioned) entries hold
+/// raw IFC Z-up meshes and would silently serve a ROTATED model to a client
+/// that rightly expects the uniform wire frame. A new suffix retires them.
+/// Bump again on any change to what `ParseResponse` means on the wire.
+pub(crate) fn json_response_cache_key(cache_key: &str) -> String {
+    format!("{cache_key}-json-v2")
+}
+
 /// Build the parquet geometry cache key for a given file hash and opening filter.
 ///
 /// Must stay in sync with the writer in `parse_parquet` / `parse_parquet_stream`,
@@ -168,6 +183,20 @@ mod tests {
         assert_eq!(key, "abc-default-parquet-v4");
         let key = parquet_cache_key("abc", OpeningFilterMode::Default, TessellationQuality::High);
         assert_eq!(key, "abc-default-qhigh-parquet-v4");
+    }
+
+    /// The JSON `ParseResponse` cache must NOT be keyed by the bare request key
+    /// (issue #1841): entries written before the Y-up switch hold raw IFC Z-up
+    /// meshes, and serving one to a client that expects the uniform wire frame
+    /// silently renders the model rotated. The version suffix retires them, and
+    /// must stay distinct from the client-facing key and the symbolic sidecar.
+    #[test]
+    fn json_response_cache_key_is_versioned_and_distinct() {
+        let request_key = "0ab20f4e4014-default";
+        let json_key = json_response_cache_key(request_key);
+        assert_eq!(json_key, format!("{request_key}-json-v2"));
+        assert_ne!(json_key, request_key, "must retire the unversioned entries");
+        assert_ne!(json_key, symbolic_cache_key(request_key));
     }
 
     /// The symbolic cache key (issue #900) is derived from the full

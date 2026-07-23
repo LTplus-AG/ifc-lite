@@ -29,7 +29,10 @@ export function convertServerMesh(m: ServerMeshData): MeshData {
     normals: m.normals ? new Float32Array(m.normals) : new Float32Array(0),
     color: m.color,
     ifcType: m.ifc_type,
-    ...(m.origin ? { origin: m.origin } : {}),
+    // Omit a zero origin rather than stamping `[0,0,0]`: the parquet decoder and
+    // the Rust serde skip it for world-baked meshes, so carrying it here would
+    // make the same mesh decode to a different shape depending on transport.
+    ...(m.origin?.some((v) => v !== 0) ? { origin: m.origin } : {}),
     ...(m.geometry_class ? { geometryClass: m.geometry_class } : {}),
   };
 }

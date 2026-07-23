@@ -39,3 +39,14 @@ test('omits origin / geometryClass when absent (world-baked meshes stay bare)', 
   assert.equal('origin' in out, false);
   assert.equal('geometryClass' in out, false);
 });
+
+test('omits an all-zero origin so every transport decodes to the same shape', () => {
+  const out = convertServerMesh({ ...base, origin: [0, 0, 0], geometry_class: 0 });
+  assert.equal('origin' in out, false);
+  assert.equal('geometryClass' in out, false);
+});
+
+test('keeps an origin that is zero on only some axes', () => {
+  const out = convertServerMesh({ ...base, origin: [0, 0, -20] });
+  assert.deepEqual(out.origin, [0, 0, -20]);
+});

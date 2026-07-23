@@ -7,7 +7,7 @@ import type { PluginManifest } from '@ifc-lite/plugin-api';
 export const DALUX_MANIFEST: PluginManifest = {
   name: 'dalux-build',
   title: 'Dalux Box',
-  api: '^2.0.0',
+  api: '^0.1.0',
   permissions: {
     network: ['*.dalux.com', 'dalux.com'],
   },

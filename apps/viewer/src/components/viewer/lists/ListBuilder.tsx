@@ -357,9 +357,12 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
     const sumCols = columns.filter(c => sumColumnIds.has(c.id)).map(c => c.id);
     // Keep grouping when there's a valid group column OR any sum column — sums
     // alone still produce grand totals, and may have been set from the table.
-    // `columnId` mirrors the first level for pre-multi-level consumers.
+    // `columnId` mirrors the first level for pre-multi-level consumers. The
+    // Builder form has no `view` control of its own (that toggle lives on the
+    // results table, issue #1790 round 2) — carry the existing schedule/nested
+    // choice through so editing OTHER settings here doesn't silently reset it.
     const grouping = (validGroupIds.length > 0 || sumCols.length > 0)
-      ? { columnId: validGroupIds[0] ?? '', columnIds: validGroupIds, sumColumnIds: sumCols }
+      ? { columnId: validGroupIds[0] ?? '', columnIds: validGroupIds, sumColumnIds: sumCols, view: initial?.grouping?.view }
       : undefined;
     return {
       id: initial?.id ?? crypto.randomUUID(),

@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { IfcTypeEnum } from '@ifc-lite/data';
-import { executeList, listResultToCSV, summariseListRows, groupPathKey } from './engine.js';
+import { executeList, listResultToCSV, summariseListRows, groupPathKey, toScheduleRows } from './engine.js';
 import { discoverColumns } from './discovery.js';
 import { LIST_PRESETS } from './presets.js';
 import type { ListDataProvider, ListDefinition } from './types.js';
@@ -851,6 +851,84 @@ describe('grouping & summary', () => {
     const result = executeList(def, provider);
     expect(result.groups).toBeUndefined();
     expect(result.summary).toBeUndefined();
+  });
+});
+
+// Schedule/pivot presentation (issue #1790 round 2): one row per group-value
+// tuple (leaf group), Count + sums as first-class fields — the projection
+// that feeds the viewer's Bonsai-style "Building | Storey | Type | Count"
+// table and its CSV export.
+describe('toScheduleRows', () => {
+  it('single-criterion grouping: every group IS a leaf, one schedule row each', () => {
+    const provider = createMockProvider();
+    const def: ListDefinition = {
+      id: 'sched-1',
+      name: 'Test',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [IfcTypeEnum.IfcWall, IfcTypeEnum.IfcSlab],
+      conditions: [],
+      columns: [
+        { id: 'class', source: 'attribute', propertyName: 'Class' },
+        { id: 'len', source: 'quantity', psetName: 'Qto_WallBaseQuantities', propertyName: 'Length' },
+      ],
+      grouping: { columnId: 'class', sumColumnIds: ['len'] },
+    };
+    const result = executeList(def, provider);
+    const rows = toScheduleRows(result.groups, 1);
+    expect(rows).toEqual([
+      { key: groupPathKey(['IfcWall']), path: ['IfcWall'], count: 2, sums: { len: expect.closeTo(8.5) } },
+      { key: groupPathKey(['IfcSlab']), path: ['IfcSlab'], count: 1, sums: { len: 0 } },
+    ]);
+  });
+
+  it('multi-criteria grouping: only LEAF (deepest-level) tuples become rows, contiguous per parent', () => {
+    const provider = createMockProvider();
+    const def: ListDefinition = {
+      id: 'sched-multi',
+      name: 'Test',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [IfcTypeEnum.IfcWall, IfcTypeEnum.IfcSlab],
+      conditions: [],
+      columns: [
+        { id: 'class', source: 'attribute', propertyName: 'Class' },
+        { id: 'name', source: 'attribute', propertyName: 'Name' },
+        { id: 'len', source: 'quantity', psetName: 'Qto_WallBaseQuantities', propertyName: 'Length' },
+      ],
+      grouping: { columnId: 'class', columnIds: ['class', 'name'], sumColumnIds: ['len'] },
+    };
+    const result = executeList(def, provider);
+    const rows = toScheduleRows(result.groups, 2);
+
+    // Parent-level ('IfcWall'/'IfcSlab' alone) groups are dropped — only the
+    // 2-level tuples remain, and they stay grouped by their parent (Wall rows
+    // before the Slab row) even though the tree itself is never rendered.
+    expect(rows.map(r => r.path)).toEqual([
+      ['IfcWall', 'Wall-01'],
+      ['IfcWall', 'Wall-02'],
+      ['IfcSlab', 'Slab-01'],
+    ]);
+    expect(rows.every(r => r.count === 1)).toBe(true);
+    expect(rows.find(r => r.path[1] === 'Wall-01')?.sums.len).toBeCloseTo(5.0);
+    // Every row's key matches the collision-free path encoding, and all keys
+    // in the schedule are unique (tuple-key stability).
+    for (const r of rows) expect(r.key).toBe(groupPathKey(r.path));
+    expect(new Set(rows.map(r => r.key)).size).toBe(rows.length);
+  });
+
+  it('returns [] when there is no grouping (levelCount 0) even if groups happen to be present', () => {
+    expect(toScheduleRows([{ key: 'x', label: 'x', count: 1, sums: {}, level: 0, path: ['x'] }], 0)).toEqual([]);
+  });
+
+  it('returns [] for an empty/absent group list', () => {
+    expect(toScheduleRows(undefined, 2)).toEqual([]);
+    expect(toScheduleRows([], 1)).toEqual([]);
+  });
+
+  it('a group with no path falls back to a single-entry path built from its label (defensive for older callers)', () => {
+    const rows = toScheduleRows([{ key: 'k', label: 'Solo', count: 4, sums: {}, level: 0 }], 1);
+    expect(rows).toEqual([{ key: 'k', path: ['Solo'], count: 4, sums: {} }]);
   });
 });
 

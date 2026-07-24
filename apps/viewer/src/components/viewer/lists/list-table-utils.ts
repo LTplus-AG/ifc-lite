@@ -136,6 +136,73 @@ export function buildGroupedView(
   return { items, groupCount, totals, groupKeys };
 }
 
+/** One row of the `schedule` / pivot presentation (issue #1790 round 2) — a
+ *  single group-value tuple (a leaf group combination) with its Count and
+ *  configured sums, display-unit-converted like the rest of the on-screen
+ *  table. Unlike `DisplayItem`'s `group` kind, there is no tree here: every
+ *  row IS a leaf, one per distinct combination of group-by values. */
+export interface ScheduleRow {
+  /** Collision-free key — `groupPathKey(path)`. */
+  key: string;
+  /** Group-by values, outermost first — one per active grouping level. */
+  path: string[];
+  count: number;
+  sums: Record<string, number>;
+}
+
+/**
+ * Bonsai-style pivot/schedule table (issue #1790 round 2): the grouping
+ * criteria become leading columns and each row is one group-value tuple
+ * (Building | Storey | Type | Count | Sum(...)), instead of per-element rows
+ * nested under collapsible group headers. Reuses `buildNestedGroupBuckets` —
+ * the SAME bucket-building `buildGroupedView` uses — so the schedule can
+ * never disagree with the nested view on which rows land in which group or
+ * how groups are ordered; this just keeps the leaf buckets and drops the
+ * parent levels (pre-order flattening already keeps a parent's leaves
+ * contiguous, so no re-sorting is needed here).
+ */
+export function buildScheduleRows(
+  rows: ListRow[],
+  columns: ColumnDefinition[],
+  grouping: ListGrouping,
+  sort: GroupSort = null,
+): ScheduleRow[] {
+  const groupIds = groupingColumnIds(grouping).filter((id) => columns.some((c) => c.id === id));
+  if (groupIds.length === 0) return [];
+  const levelIndices = groupIds.map((id) => columns.findIndex((c) => c.id === id));
+  const sums = sumIndices(columns, grouping.sumColumnIds);
+  const nested = buildNestedGroupBuckets(rows, levelIndices, sums, (r, idx) => r.values[idx], formatCellValue, sort);
+  const leafLevel = levelIndices.length - 1;
+  return nested
+    .filter((g) => g.level === leafLevel)
+    .map((g) => ({ key: g.key, path: g.path, count: g.count, sums: g.sums }));
+}
+
+/**
+ * Blank out a schedule row's leading group-value cells where they repeat the
+ * row above (Bonsai-style: "P01 / Wall / 12" then "· / Door / 4" — the
+ * building doesn't repeat once shown). Purely a display convenience for the
+ * on-screen table: only a value whose ENTIRE prefix up to and including this
+ * level matches the previous row is blanked, so a change at an outer level
+ * always re-shows every level nested inside it. CSV/XLSX/PDF exports keep
+ * the full repeated values (machine-friendly, matches Bonsai's own CSV).
+ */
+export function blankRepeatedPathValues(rows: { path: string[] }[]): string[][] {
+  const out: string[][] = [];
+  let prev: string[] | null = null;
+  for (const r of rows) {
+    const display: string[] = new Array(r.path.length);
+    let matched = true;
+    for (let j = 0; j < r.path.length; j++) {
+      matched = matched && prev !== null && prev[j] === r.path[j];
+      display[j] = matched ? '' : r.path[j];
+    }
+    out.push(display);
+    prev = r.path;
+  }
+  return out;
+}
+
 /** Grand totals for the flat (ungrouped) view when sum columns are active. */
 export function flatTotals(rows: ListRow[], columns: ColumnDefinition[], sumColumnIds: string[]): Totals {
   const sums = sumIndices(columns, sumColumnIds);

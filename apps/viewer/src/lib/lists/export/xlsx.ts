@@ -29,7 +29,10 @@ export async function toXlsx(model: ExportModel): Promise<Blob> {
     views: [{ state: 'frozen', ySplit: 4 }],
   });
 
-  const cols = model.columns;
+  // Schedule / pivot presentation (issue #1790 round 2): grouping columns
+  // become leading columns, one row per group-value tuple, then Count and any
+  // configured sums — matching the on-screen schedule view exactly.
+  const cols = model.schedule?.columns ?? model.columns;
   const ncol = cols.length;
 
   // Title + meta.
@@ -62,7 +65,9 @@ export async function toXlsx(model: ExportModel): Promise<Blob> {
     if (outline) r.outlineLevel = outline;
   };
 
-  if (model.groups) {
+  if (model.schedule) {
+    for (const row of model.schedule.rows) addDataRow(row);
+  } else if (model.groups) {
     // Nested (multi-criteria) grouping: sub-group headers indent one step per
     // level and carry their own count; member rows sit on leaf groups only.
     // Outline levels are clamped to Excel's maximum of 8.
@@ -81,7 +86,11 @@ export async function toXlsx(model: ExportModel): Promise<Blob> {
 
   // Grand total.
   if (model.sumColumnIds.length > 0) {
-    const tr = ws.addRow(cols.map((c, i) => (c.summed ? model.totals.sums[c.id] : (i === 0 ? `Total (${model.totals.count})` : null))));
+    const tr = ws.addRow(cols.map((c, i) => {
+      if (i === 0) return `Total (${model.totals.count})`;
+      if (model.schedule && c.id === '__count') return model.totals.count;
+      return c.summed ? model.totals.sums[c.id] : null;
+    }));
     tr.font = { bold: true };
     tr.eachCell((cell) => { cell.border = { top: { style: 'double', color: { argb: 'FF334155' } } }; });
   }

@@ -35,7 +35,8 @@ import { ColumnHeaderMenu } from './ColumnHeaderMenu';
 import { ListGroupingBar } from './ListGroupingBar';
 import {
   formatCellValue, compareCells, detectNumericColumns, autoColumnWidth,
-  buildGroupedView, flatTotals, type DisplayItem, type Totals,
+  buildGroupedView, flatTotals, buildScheduleRows, blankRepeatedPathValues,
+  type DisplayItem, type Totals, type ScheduleRow,
 } from './list-table-utils';
 
 interface ListResultsTableProps {
@@ -145,6 +146,52 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
       return { id, label: c ? (c.label ?? c.propertyName) : id };
     }),
     [groupColumnIds, columns]);
+  const sumChips = useMemo(
+    () => sumColumnIds.map((id) => {
+      const c = columns.find((c) => c.id === id);
+      return { id, label: c ? (c.label ?? c.propertyName) : id };
+    }),
+    [sumColumnIds, columns]);
+  const showSumRow = sumColumnIds.length > 0;
+
+  // Result presentation (issue #1790 round 2): `schedule` swaps the nested
+  // collapsible tree for a Bonsai-style pivot table — one row per group-value
+  // tuple, grouping columns first, then a first-class Count column, then any
+  // configured sums. Only meaningful once grouped.
+  const scheduleMode = isGrouped && grouping?.view === 'schedule';
+  const scheduleRows = useMemo<ScheduleRow[]>(() => {
+    if (!scheduleMode) return [];
+    const sort = sortCol === null ? null : { colIdx: sortCol, dir: sortDir };
+    return buildScheduleRows(
+      displayRows, columns,
+      { columnId: groupColumnIds[0], columnIds: groupColumnIds, sumColumnIds },
+      sort,
+    );
+  }, [scheduleMode, displayRows, columns, groupColumnIds, sumColumnIds, sortCol, sortDir]);
+  // Bonsai-style blank-on-repeat: display sugar ONLY — export keeps full values.
+  const scheduleDisplayPaths = useMemo(() => blankRepeatedPathValues(scheduleRows), [scheduleRows]);
+  // Header for the pivot table: one column per grouping level, a first-class
+  // Count column, then the configured sum columns.
+  const scheduleColumns = useMemo(
+    () => [...groupChips, { id: '__count', label: 'Count' }, ...sumChips],
+    [groupChips, sumChips]);
+  const scheduleColumnWidths = useMemo(() => scheduleColumns.map((c, i) => {
+    if (widthOverrides[c.id] !== undefined) return widthOverrides[c.id];
+    if (i >= groupChips.length) return c.id === '__count' ? 90 : 130; // Count / sum columns
+    // Group-value columns: size to the widest value actually shown.
+    let maxLen = c.label.length;
+    for (const row of scheduleRows) {
+      const len = (row.path[i] ?? '').length;
+      if (len > maxLen) maxLen = len;
+    }
+    return Math.max(90, Math.min(320, maxLen * 7 + 34));
+  }), [scheduleColumns, groupChips.length, scheduleRows, widthOverrides]);
+  const scheduleTotalWidth = useMemo(() => scheduleColumnWidths.reduce((a, b) => a + b, 0), [scheduleColumnWidths]);
+
+  const handleViewChange = useCallback((next: 'nested' | 'schedule') => {
+    if (!onGroupingChange || !grouping) return;
+    onGroupingChange({ ...grouping, view: next });
+  }, [onGroupingChange, grouping]);
 
   const { items, groupCount, totals, groupKeys } = useMemo<{
     items: DisplayItem[]; groupCount: number; totals: Totals; groupKeys: string[];
@@ -172,11 +219,12 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
   const totalWidth = useMemo(() => columnWidths.reduce((a, b) => a + b, 0), [columnWidths]);
 
   const virtualizer = useVirtualizer({
-    count: items.length,
+    count: scheduleMode ? scheduleRows.length : items.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: (i) => (items[i]?.kind === 'group' ? 30 : 28),
+    estimateSize: (i) => (scheduleMode ? 28 : (items[i]?.kind === 'group' ? 30 : 28)),
     overscan: 18,
     getItemKey: (i) => {
+      if (scheduleMode) return `s:${scheduleRows[i]?.key ?? i}`;
       const it = items[i];
       if (it?.kind === 'group') return `g:${it.key}`;
       const r = (it as { row: ListRow }).row;
@@ -226,10 +274,12 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
     setExpandedGroups(allExpanded ? new Set() : new Set(groupKeys));
   }, [allExpanded, groupKeys]);
 
-  const startResize = useCallback((e: React.MouseEvent, colId: string, colIdx: number) => {
+  // `startWidth` is passed in (rather than looked up here) so the SAME
+  // resize handler works for both the normal column header and the schedule
+  // (pivot) header, which index into different width arrays.
+  const startResize = useCallback((e: React.MouseEvent, colId: string, startWidth: number) => {
     e.preventDefault(); e.stopPropagation();
     const startX = e.clientX;
-    const startWidth = columnWidths[colIdx];
     const onMove = (ev: MouseEvent) => setWidthOverrides((p) => ({ ...p, [colId]: Math.max(56, startWidth + (ev.clientX - startX)) }));
     const onUp = () => {
       window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp);
@@ -237,7 +287,7 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
     };
     window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp);
     document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none';
-  }, [columnWidths]);
+  }, []);
 
   // Export honours the on-screen view: configured columns, the active
   // grouping (sections + per-group count/sums), and the grand totals.
@@ -291,14 +341,6 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
     if (idx === undefined) return;
     onMultiSelect(selectableItems, idx, e);
   }, [rowIndexByKey, selectableItems, onMultiSelect]);
-
-  const sumChips = useMemo(
-    () => sumColumnIds.map((id) => {
-      const c = columns.find((c) => c.id === id);
-      return { id, label: c ? (c.label ?? c.propertyName) : id };
-    }),
-    [sumColumnIds, columns]);
-  const showSumRow = sumColumnIds.length > 0;
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
@@ -358,11 +400,112 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
           onRemoveGroup={(id) => toggleGroupBy(id)}
           onRemoveSum={(id) => toggleSum(id)}
           onToggleExpandAll={toggleExpandAll}
+          view={isGrouped ? (grouping?.view ?? 'nested') : undefined}
+          onViewChange={isGrouped ? handleViewChange : undefined}
         />
       )}
 
       {/* Table */}
       <div ref={parentRef} className="flex-1 overflow-auto min-h-0">
+      {scheduleMode ? (
+        <div style={{ minWidth: scheduleTotalWidth }}>
+          {/* Schedule (pivot) header: grouping columns, then a first-class
+              Count column, then any configured sums (issue #1790 round 2). */}
+          <div className="flex sticky top-0 z-10 bg-muted/80 backdrop-blur-sm border-b">
+            {scheduleColumns.map((col, colIdx) => {
+              const isCount = col.id === '__count';
+              const isSum = sumColumnIds.includes(col.id);
+              // Sort state rides the ORIGINAL column index space (shared with
+              // the nested view), so toggling between views keeps the same
+              // sort. Count has no original column — it IS the null-sort
+              // default (count-descending), so it's shown but not clickable.
+              const originalIdx = isCount ? -1 : columns.findIndex((c) => c.id === col.id);
+              return (
+                <div
+                  key={col.id}
+                  className={cn(
+                    'relative flex items-center gap-0.5 border-r border-border/50 px-2 py-1.5 text-xs font-medium shrink-0',
+                    (isCount || isSum) ? 'text-foreground' : 'text-muted-foreground',
+                  )}
+                  style={{ width: scheduleColumnWidths[colIdx] }}
+                >
+                  {originalIdx >= 0 ? (
+                    <button className="flex min-w-0 flex-1 items-center gap-1 hover:text-foreground" onClick={() => handleHeaderClick(originalIdx)}>
+                      <span className="truncate">{col.label}</span>
+                      {isSum && <span className="text-primary">Σ</span>}
+                      {sortCol === originalIdx && (sortDir === 'asc' ? <ArrowUp className="h-3 w-3 shrink-0" /> : <ArrowDown className="h-3 w-3 shrink-0" />)}
+                    </button>
+                  ) : (
+                    <span className="truncate flex-1" title="Count aggregate — the default sort order">{col.label}</span>
+                  )}
+                  <div
+                    onMouseDown={(e) => startResize(e, col.id, scheduleColumnWidths[colIdx])}
+                    onDoubleClick={() => setWidthOverrides((p) => { const n = { ...p }; delete n[col.id]; return n; })}
+                    className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-primary/40"
+                    title="Drag to resize · double-click to auto-fit"
+                  />
+                </div>
+              );
+            })}
+          </div>
+
+          {/* One row per group-value tuple — no per-element detail rows. */}
+          <div style={{ height: `${virtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}>
+            {virtualizer.getVirtualItems().map((vRow) => {
+              const row = scheduleRows[vRow.index];
+              if (!row) return null;
+              const displayPath = scheduleDisplayPaths[vRow.index];
+              const transform = `translateY(${vRow.start}px)`;
+              return (
+                <div
+                  key={vRow.key}
+                  className="absolute left-0 top-0 flex w-full border-b border-border/30 hover:bg-muted/40"
+                  style={{ transform }}
+                >
+                  {groupChips.map((c, i) => (
+                    <div
+                      key={c.id}
+                      className="border-r border-border/20 px-2 py-1 text-xs truncate shrink-0"
+                      style={{ width: scheduleColumnWidths[i] }}
+                      title={row.path[i]}
+                    >
+                      {displayPath[i]}
+                    </div>
+                  ))}
+                  <div
+                    className="border-r border-border/20 px-2 py-1 text-xs text-right font-mono tabular-nums shrink-0"
+                    style={{ width: scheduleColumnWidths[groupChips.length] }}
+                  >
+                    {row.count.toLocaleString()}
+                  </div>
+                  {sumChips.map((s, i) => (
+                    <div
+                      key={s.id}
+                      className="border-r border-border/20 px-2 py-1 text-xs text-right font-mono tabular-nums shrink-0"
+                      style={{ width: scheduleColumnWidths[groupChips.length + 1 + i] }}
+                    >
+                      {formatCellValue(row.sums[s.id])}
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Grand-totals footer (sticky, aligned under columns) */}
+          <div className="flex sticky bottom-0 z-10 border-t-2 border-border bg-muted/90 backdrop-blur-sm">
+            {scheduleColumns.map((col, colIdx) => (
+              <div key={col.id} className="flex items-center border-r border-border/30 px-2 py-1 text-xs font-semibold shrink-0" style={{ width: scheduleColumnWidths[colIdx] }}>
+                {colIdx === 0 && <span className="text-muted-foreground">Total · {scheduleRows.length.toLocaleString()} group{scheduleRows.length === 1 ? '' : 's'}</span>}
+                {col.id === '__count' && <span className="ml-auto font-mono tabular-nums text-foreground">{totals.count.toLocaleString()}</span>}
+                {sumColumnIds.includes(col.id) && (
+                  <span className="ml-auto font-mono tabular-nums text-foreground">{formatCellValue(totals.sums[col.id])}</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
         <div style={{ minWidth: totalWidth }}>
           {/* Header */}
           <div className="flex sticky top-0 z-10 bg-muted/80 backdrop-blur-sm border-b">
@@ -407,7 +550,7 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
                     />
                   )}
                   <div
-                    onMouseDown={(e) => startResize(e, col.id, colIdx)}
+                    onMouseDown={(e) => startResize(e, col.id, columnWidths[colIdx])}
                     onClick={(e) => e.stopPropagation()}
                     onDoubleClick={() => setWidthOverrides((p) => { const n = { ...p }; delete n[col.id]; return n; })}
                     className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-primary/40"
@@ -497,6 +640,7 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
             </div>
           )}
         </div>
+      )}
       </div>
     </div>
   );

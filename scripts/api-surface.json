@@ -2032,6 +2032,7 @@
     "ListGrouping: interface",
     "ListResult: interface",
     "ListRow: interface",
+    "ListScheduleRow: interface",
     "ListSummary: interface",
     "PropertyCondition: interface",
     "compileNameMatcher: function",
@@ -2041,7 +2042,8 @@
     "groupingColumnIds: function",
     "isNamePattern: function",
     "listResultToCSV: function",
-    "summariseListRows: function"
+    "summariseListRows: function",
+    "toScheduleRows: function"
   ],
   "@ifc-lite/mcp": [
     "AllowAllAuth: class",

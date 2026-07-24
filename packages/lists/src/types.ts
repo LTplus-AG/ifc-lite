@@ -181,6 +181,21 @@ export interface ListGrouping {
   columnIds?: string[];
   /** Column ids whose numeric values are summed per group and overall. */
   sumColumnIds: string[];
+  /**
+   * Result presentation for a grouped list (issue #1790 round 2 — the
+   * reporter's follow-up: Count as a first-class column, and a pivot/schedule
+   * layout like Bonsai's, not a nested tree):
+   * - `nested` (default) — the existing collapsible tree: one header per
+   *   (sub)group with a count badge next to the label, per-element rows
+   *   underneath.
+   * - `schedule` — a pivot/schedule table: ONE row per group-value tuple (a
+   *   leaf group combination), the grouping columns repeated as leading
+   *   columns, followed by a first-class `Count` column and any configured
+   *   sums. No per-element detail rows.
+   * Optional so lists persisted before this existed keep their prior (nested)
+   * behaviour — `undefined` is treated as `nested`.
+   */
+  view?: 'nested' | 'schedule';
 }
 
 // ============================================================================
@@ -301,6 +316,25 @@ export interface ListGroup {
 /** Whole-result aggregates. */
 export interface ListSummary {
   count: number;
+  sums: Record<string, number>;
+}
+
+/**
+ * One row of the `schedule` presentation (issue #1790 round 2) — a single
+ * group-value tuple (a leaf group combination) carrying its Count and sums,
+ * projected from the LEAF entries of `ListGroup[]` (see `toScheduleRows`).
+ * Unlike `ListGroup`, a schedule row is never a parent: there is exactly one
+ * row per distinct combination of group-by values, matching Bonsai's
+ * "Building | Storey | Type | Count" schedule format.
+ */
+export interface ListScheduleRow {
+  /** Collision-free key — `groupPathKey(path)`, matching the source `ListGroup.key`. */
+  key: string;
+  /** Group-by values, outermost first — one per active grouping level. */
+  path: string[];
+  /** Count aggregate: number of matched elements in this group combination. */
+  count: number;
+  /** columnId -> summed numeric value, for the configured sum columns. */
   sums: Record<string, number>;
 }
 

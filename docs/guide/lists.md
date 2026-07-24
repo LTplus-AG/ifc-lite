@@ -97,6 +97,42 @@ const csv = listResultToCSV(result);
 
 `listResultToCSV` guards against spreadsheet formula injection (CWE-1236): any cell that starts with `=`, `+`, `-`, `@`, tab, or carriage return is prefixed with a single quote so Excel and Google Sheets treat it as text rather than a formula. Standard CSV quoting (double quotes, `""` escaping) is applied on top.
 
+## Grouping, Aggregation & Schedules
+
+Set `grouping` on a `ListDefinition` to bucket rows by one or more columns (outermost first) and sum numeric columns per group:
+
+```typescript
+import { executeList, summariseListRows, toScheduleRows, LIST_PRESETS } from '@ifc-lite/lists';
+
+const definition = {
+  ...LIST_PRESETS[0], // Wall Schedule
+  grouping: {
+    columnId: 'attr-name',       // legacy single-column field, kept in sync with columnIds[0]
+    columnIds: ['attr-name'],    // ordered group-by columns, outermost first
+    sumColumnIds: ['quant-qto_wallbasequantities-length'],
+  },
+};
+
+const result = executeList(definition, provider);
+
+// result.groups is a flat PRE-ORDER list: each parent group is immediately
+// followed by its subgroups. Every group carries a Count aggregate (`count`)
+// and per-column sums (`sums`).
+for (const group of result.groups ?? []) {
+  console.log(group.label, group.count, group.sums);
+}
+
+// A Bonsai-style schedule/pivot table — one row per group-value tuple (the
+// LEAF groups only) instead of a nested tree. `levelCount` is the number of
+// active grouping columns.
+const scheduleRows = toScheduleRows(result.groups, definition.grouping.columnIds.length);
+for (const row of scheduleRows) {
+  console.log(row.path, row.count, row.sums); // e.g. ["Wall-01"], 1, { ... }
+}
+```
+
+`summariseListRows(definition, rows)` is what `executeList` calls internally to build `groups`/`summary`; call it directly when you already have rows from elsewhere (e.g. merged across federated models) and just need to re-derive the grouping.
+
 ## The Data Provider
 
 `executeList` reads model data through the `ListDataProvider` interface, so the package has no hard dependency on how you parsed the model. Required methods include `getEntitiesByType`, `getEntityName`, `getEntityGlobalId`, `getPropertySets`, and `getQuantitySets`; optional methods (`getMaterialNames`, `getClassifications`, `getStoreyName`, `getProjectName`, ...) unlock the `material`, `classification`, `spatial`, and `model` column sources, and the engine degrades gracefully when they are absent.
@@ -134,7 +170,9 @@ Conditions and lookups that match by name accept either an exact string or a reg
 |--------|-------------|
 | `executeList(definition, provider, modelId?)` | Run a list definition, returns `ListResult` |
 | `listResultToCSV(result, delimiter?)` | CSV export with formula-injection guard |
-| `summariseListRows` | Aggregate rows into group summaries |
+| `summariseListRows` | Aggregate rows into group summaries (`ListGroup[]` + whole-result `ListSummary`) |
+| `groupingColumnIds(grouping)` | Resolve a grouping config's ordered group-by column ids |
+| `toScheduleRows(groups, levelCount)` | Project grouped `ListGroup[]` to a schedule/pivot `ListScheduleRow[]` — one row per group-value tuple |
 | `discoverColumns(providers, entityTypes)` | Sample available attributes/properties/quantities |
 | `compileNameMatcher(pattern)` / `isNamePattern(pattern)` | Exact-or-regex name matching |
 | `LIST_PRESETS` | Built-in schedule definitions |

@@ -16,13 +16,16 @@ export type {
   ListGrouping,
   ListGroup,
   ListSummary,
+  ListScheduleRow,
   DiscoveredColumns,
   EntityAttribute,
 } from './types.js';
 export { ENTITY_ATTRIBUTES } from './types.js';
 
 // Engine
-export { executeList, listResultToCSV, summariseListRows, groupingColumnIds, groupPathKey } from './engine.js';
+export {
+  executeList, listResultToCSV, summariseListRows, groupingColumnIds, groupPathKey, toScheduleRows,
+} from './engine.js';
 
 // Name pattern matching (Bonsai-style `/regex/` set/property names)
 export { compileNameMatcher, isNamePattern } from './name-pattern.js';

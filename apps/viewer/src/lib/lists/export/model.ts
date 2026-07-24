@@ -58,6 +58,17 @@ export interface ExportModel {
   groupColumnIds: string[];
   sumColumnIds: string[];
   totals: { count: number; sums: Record<string, number> };
+  /**
+   * Present when the grouping's presentation is `schedule` (issue #1790
+   * round 2): a Bonsai-style pivot table — one row per group-value tuple
+   * (leaf group), grouping columns first, then a first-class `Count` column,
+   * then any configured sums. Every writer renders THIS instead of
+   * `groups`/`rows` when it is present, so the export always mirrors exactly
+   * what the on-screen schedule view shows. Cell values already carry the
+   * FULL (repeated) group-value tuple — no blank-on-repeat here, that's
+   * on-screen-only sugar; a re-importable CSV/XLSX needs every row complete.
+   */
+  schedule: { columns: ExportColumn[]; rows: CellValue[][] } | null;
 }
 
 export interface BuildModelInput {
@@ -171,20 +182,22 @@ export function buildExportModel(input: BuildModelInput): ExportModel {
   const groupColumnId = groupColumnIds[0] ?? null;
 
   let groups: ExportGroup[] | null = null;
+  let schedule: ExportModel['schedule'] = null;
   if (groupColumnIds.length > 0) {
     const levelIndices = groupColumnIds.map((id) => columns.findIndex((c) => c.id === id));
     const leafLevel = levelIndices.length - 1;
     // Bucket + subtotal via the shared helper so the sections match the table
     // exactly (multi-criteria grouping nests one section level per group
     // column), then project each LEAF group's member rows to display values.
-    groups = buildNestedGroupBuckets(
+    const nested = buildNestedGroupBuckets(
       convertedRows,
       levelIndices,
       sumIdx,
       (r, idx) => r.values[idx],
       displayCell,
       sort ?? null,
-    ).map((g) => ({
+    );
+    groups = nested.map((g) => ({
       label: g.label,
       count: g.count,
       sums: g.sums,
@@ -192,7 +205,26 @@ export function buildExportModel(input: BuildModelInput): ExportModel {
       path: g.path,
       rows: g.level === leafLevel ? g.rows.map((r) => r.values) : [],
     }));
+
+    // Schedule / pivot presentation (issue #1790 round 2): one row per
+    // group-value tuple (leaf group), grouping columns first, then a
+    // first-class Count column, then the configured sums — the same leaf
+    // buckets, just flattened into a single tuple row instead of a section.
+    if (grouping?.view === 'schedule') {
+      const scheduleCols: ExportColumn[] = [
+        ...groupColumnIds.map((id) => {
+          const i = columns.findIndex((c) => c.id === id);
+          return { id, label: exportCols[i]?.label ?? id, numeric: false, summed: false, width: exportCols[i]?.width ?? 120 };
+        }),
+        { id: '__count', label: 'Count', numeric: true, summed: false, width: 80 },
+        ...sumIdx.map((s) => exportCols[s.idx]),
+      ];
+      const scheduleRows: CellValue[][] = nested
+        .filter((g) => g.level === leafLevel)
+        .map((g) => [...g.path, g.count, ...sumIdx.map((s) => g.sums[s.id])]);
+      schedule = { columns: scheduleCols, rows: scheduleRows };
+    }
   }
 
-  return { title, generatedAt, columns: exportCols, groups, rows: flatRows, groupColumnId, groupColumnIds, sumColumnIds, totals };
+  return { title, generatedAt, columns: exportCols, groups, rows: flatRows, groupColumnId, groupColumnIds, sumColumnIds, totals, schedule };
 }

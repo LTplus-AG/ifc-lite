@@ -5,7 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { groupPathKey, type ColumnDefinition, type ListRow } from '@ifc-lite/lists';
-import { buildGroupedView, compareCells, type GroupSort } from './list-table-utils';
+import { buildGroupedView, buildScheduleRows, blankRepeatedPathValues, compareCells, type GroupSort } from './list-table-utils';
 
 const columns: ColumnDefinition[] = [
   { id: 'cat', source: 'attribute', propertyName: 'Category' },
@@ -190,6 +190,90 @@ describe('buildGroupedView multi-criteria grouping (#1790)', () => {
       view.items.map((i) => (i.kind === 'group' ? [i.level, i.label, i.count] : 'row')),
       [[0, 'A', 3], 'row', 'row', 'row', [0, 'B', 1]],
     );
+  });
+});
+
+// Schedule / pivot presentation (issue #1790 round 2): one row per group-value
+// tuple instead of the nested collapsible tree.
+describe('buildScheduleRows', () => {
+  const cols: ColumnDefinition[] = [
+    { id: 'building', source: 'spatial', propertyName: 'Building' },
+    { id: 'storey', source: 'spatial', propertyName: 'Storey' },
+    { id: 'qty', source: 'quantity', propertyName: 'Qty' },
+  ];
+  const mkRows = (...tuples: [string, string, number][]): ListRow[] =>
+    tuples.map(([b, s, q], i) => ({ entityId: i + 1, modelId: 'm', values: [b, s, q] }));
+  // Building A: 3 rows over 2 storeys; Building B: 1 row.
+  const sample = mkRows(['A', 'L0', 1], ['A', 'L0', 2], ['A', 'L1', 3], ['B', 'L0', 4]);
+  const grouping = { columnId: 'building', columnIds: ['building', 'storey'], sumColumnIds: ['qty'] };
+
+  it('emits one row per leaf tuple, contiguous per outer group, with count + sums', () => {
+    const rows = buildScheduleRows(sample, cols, grouping, null);
+    assert.deepStrictEqual(rows.map((r) => [r.path, r.count, r.sums.qty]), [
+      [['A', 'L0'], 2, 3],
+      [['A', 'L1'], 1, 3],
+      [['B', 'L0'], 1, 4],
+    ]);
+  });
+
+  it('every row key is the collision-free path encoding and all keys are unique', () => {
+    const rows = buildScheduleRows(sample, cols, grouping, null);
+    for (const r of rows) assert.strictEqual(r.key, groupPathKey(r.path));
+    assert.strictEqual(new Set(rows.map((r) => r.key)).size, rows.length);
+  });
+
+  it('single-criterion grouping: every top-level group IS a leaf row', () => {
+    const rows = buildScheduleRows(sample, cols, { columnId: 'building', sumColumnIds: ['qty'] }, null);
+    assert.deepStrictEqual(rows.map((r) => [r.path, r.count, r.sums.qty]), [
+      [['A'], 3, 6],
+      [['B'], 1, 4],
+    ]);
+  });
+
+  it('returns [] when there is no grouping configured', () => {
+    assert.deepStrictEqual(buildScheduleRows(sample, cols, { columnId: '', sumColumnIds: [] }, null), []);
+  });
+
+  it('returns [] for an empty row set', () => {
+    assert.deepStrictEqual(buildScheduleRows([], cols, grouping, null), []);
+  });
+
+  it('honours the active header sort like the nested view does', () => {
+    const asc = buildScheduleRows(sample, cols, grouping, { colIdx: 0, dir: 'asc' });
+    // 'A' before 'B' either way (only two top groups); sort matters for the
+    // sub-level ordering within 'A' (L0 sums 3, L1 sums 3 -> tie by label).
+    assert.deepStrictEqual(asc.map((r) => r.path), [['A', 'L0'], ['A', 'L1'], ['B', 'L0']]);
+    const desc = buildScheduleRows(sample, cols, grouping, { colIdx: 0, dir: 'desc' });
+    assert.deepStrictEqual(desc.map((r) => r.path), [['B', 'L0'], ['A', 'L0'], ['A', 'L1']]);
+  });
+});
+
+describe('blankRepeatedPathValues (Bonsai-style repeat blanking, issue #1790 round 2)', () => {
+  it('blanks a level only when its entire prefix matches the row above', () => {
+    const rows = [
+      { path: ['A', 'L0', 'Wall'] },
+      { path: ['A', 'L0', 'Door'] }, // building + storey repeat -> blanked; type differs -> shown
+      { path: ['A', 'L1', 'Wall'] }, // building repeats -> blanked; storey differs -> shown (and so does type)
+      { path: ['B', 'L0', 'Wall'] }, // nothing repeats
+    ];
+    assert.deepStrictEqual(blankRepeatedPathValues(rows), [
+      ['A', 'L0', 'Wall'],
+      ['', '', 'Door'],
+      ['', 'L1', 'Wall'],
+      ['B', 'L0', 'Wall'],
+    ]);
+  });
+
+  it('never blanks the first row', () => {
+    assert.deepStrictEqual(blankRepeatedPathValues([{ path: ['A', 'B'] }]), [['A', 'B']]);
+  });
+
+  it('is a no-op for single-criterion (single-column) schedules', () => {
+    const rows = [{ path: ['A'] }, { path: ['A'] }, { path: ['B'] }];
+    // Single-level tuples are already unique rows (a repeat here would mean
+    // two IDENTICAL leaf tuples, which buildScheduleRows never produces), but
+    // the helper still blanks on a literal match — documented, not a bug.
+    assert.deepStrictEqual(blankRepeatedPathValues(rows), [['A'], [''], ['B']]);
   });
 });
 

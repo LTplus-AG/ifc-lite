@@ -8,7 +8,8 @@
  * the connective tissue between the table and the list definition.
  */
 
-import { Group, Sigma, X, ChevronsDownUp, ChevronsUpDown } from 'lucide-react';
+import { Group, Sigma, X, ChevronsDownUp, ChevronsUpDown, ListTree, Table2 } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 
 interface ListGroupingBarProps {
@@ -21,6 +22,12 @@ interface ListGroupingBarProps {
   onRemoveGroup: (id: string) => void;
   onRemoveSum: (id: string) => void;
   onToggleExpandAll: () => void;
+  /** Result presentation (issue #1790 round 2): `nested` (default, collapsible
+   *  tree) or `schedule` (Bonsai-style pivot table — one row per group-value
+   *  tuple with Count as its own column). Omitted callers keep the nested-only
+   *  toggle hidden (back-compat with call sites built before this existed). */
+  view?: 'nested' | 'schedule';
+  onViewChange?: (view: 'nested' | 'schedule') => void;
 }
 
 function Chip({ icon, children, onRemove, removeLabel = 'Remove' }: { icon: React.ReactNode; children: React.ReactNode; onRemove: () => void; removeLabel?: string }) {
@@ -42,11 +49,31 @@ function Chip({ icon, children, onRemove, removeLabel = 'Remove' }: { icon: Reac
 export function ListGroupingBar({
   groups, sums, groupCount, count, allExpanded,
   onRemoveGroup, onRemoveSum, onToggleExpandAll,
+  view = 'nested', onViewChange,
 }: ListGroupingBarProps) {
   const grouped = groups.length > 0;
+  const scheduleMode = view === 'schedule';
   return (
     <div className="flex flex-wrap items-center gap-1.5 border-b bg-muted/30 px-3 py-1.5 text-xs">
-      {grouped && (
+      {grouped && onViewChange && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={() => onViewChange(scheduleMode ? 'nested' : 'schedule')}
+              aria-pressed={scheduleMode}
+              aria-label={scheduleMode ? 'Switch to nested tree view' : 'Switch to schedule (pivot) table view'}
+              className={cn(
+                'mr-0.5 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] hover:bg-muted hover:text-foreground',
+                scheduleMode ? 'text-primary' : 'text-muted-foreground',
+              )}
+            >
+              {scheduleMode ? <Table2 className="h-3.5 w-3.5" /> : <ListTree className="h-3.5 w-3.5" />}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>{scheduleMode ? 'Showing schedule (pivot) table — switch to nested tree' : 'Showing nested tree — switch to schedule (pivot) table'}</TooltipContent>
+        </Tooltip>
+      )}
+      {grouped && !scheduleMode && (
         <button
           onClick={onToggleExpandAll}
           className="mr-0.5 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"

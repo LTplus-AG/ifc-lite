@@ -1,14 +1,17 @@
-# World Gym — procedural building generator + deterministic labeler
+# World Gym - procedural building generator + deterministic labeler
 
-M2 midterm exam (Phase 1, Bet B1.2 in `docs/vision/moonshots-execution-plan.md`):
-the "data factory" play from `docs/vision/moonshots-tech.md` M2 — a procedural
-generator + deterministic labeling pipeline over `packages/create`, piloted at
-1,000 models with a documented scaling path to 100k.
+M2 (docs/vision/moonshots-execution-plan.md): a procedural generator +
+deterministic labeling pipeline over `packages/create`, now at the M2
+midterm bar - **100k generated models, 100% labeled, mixed positive and
+negative label classes, labels spot-validated against the IfcOpenShell
+differential oracle, five discriminative reward channels behind one env
+API**.
 
 Every sample gets perfect ground-truth labels because the labels are either
-the exact numbers used to author the geometry (not re-derived from the file),
-or come from actually running the kernel's own check commands on the
-serialized bytes.
+the exact numbers used to author the geometry (not re-derived from the
+file), the exact defects planted by the corruption layer (recorded at plant
+time, independent of any checker), or the output of actually running the
+kernel's own checks on the serialized bytes.
 
 ## Quick start
 
@@ -16,17 +19,31 @@ serialized bytes.
 # One model, standalone
 node generator.mjs --seed 42 --family frame --out /tmp/model.ifc --json
 
-# One model, generated + labeled (writes the file, prints one JSONL line)
+# One adversarial model with known-by-construction defects
+node generator.mjs --seed 42 --corrupt --out /tmp/bad.ifc --json
+
+# One model, generated + labeled in-process (writes the file, prints one JSONL line)
 node labeler.mjs --seed 42 --family frame --model-dir /tmp/world-gym
 
-# Determinism proof over 20 seeds (see "Determinism" below)
+# Determinism proof over 20 seeds
 node determinism-check.mjs --seeds 20
 
-# The 1,000-model pilot (output MUST go outside the repo)
-node run-pilot.mjs --count 1000 --out-dir /path/outside/repo/world-gym-pilot --workers 10
+# A corpus run (output MUST go outside the repo). 30% adversarial, no .ifc
+# files kept (every model is reproducible from its seed; the manifest is
+# the deliverable):
+node run-pilot.mjs --count 100000 --out-dir /path/outside/repo/wg-100k \
+  --corrupt-rate 0.3 --no-keep-files --workers 10
+
+# Reward-channel discrimination report over a labeled corpus
+node channel-report.mjs --manifest /path/wg-100k/manifest.jsonl --out channels-report.json
+
+# IfcOpenShell differential oracle spot-validation (needs a python with
+# ifcopenshell==0.8.5, the same pin as tools/ifcopenshell_reference)
+node oracle-validate.mjs --manifest /path/wg-100k/manifest.jsonl \
+  --python /path/to/venv/bin/python --every 500
 ```
 
-`--family` accepts `frame`, `office`, or `auto` (default — the seed itself
+`--family` accepts `frame`, `office`, or `auto` (default - the seed itself
 picks the family, so `--seed N` alone still determines one specific building
 end to end).
 
@@ -38,40 +55,46 @@ tools/world-gym/
     rng.mjs                   deterministic seeded PRNG (mulberry32 + FNV-1a seed hash)
     deterministic-runtime.mjs shim that pins Date/crypto.randomUUID for one build (see Gaps)
     quantities.mjs            wall/slab/column/beam/space quantity math, shared by both families
+    corruption.mjs            adversarial defect planner + injector (negative-label half)
+    checks.mjs                in-process schema/clash/quantity checks (warm WASM per worker)
+    reward-channels.mjs       the five reward channels behind one env API
   families/
     frame.mjs                 Family A: multi-storey slab-and-column frame
     office.mjs                Family B: single-storey partitioned office slab
-  generator.mjs                generateModel(seed, family) -> {content, entities, labels, ...}; CLI wrapper
+  generator.mjs                generateModel(seed, family, {corruptRate|forceCorrupt}) -> model; CLI wrapper
   labeler.mjs                   labelModel(model, filePath) -> manifest line; CLI wrapper
-  worker.mjs                    per-model worker: generate + write + label, over IPC
+  worker.mjs                    per-model worker: generate + (write) + label, over IPC
   run-pilot.mjs                 worker-pool orchestrator: N models, dedup, timing, summary.json
   determinism-check.mjs         byte-identical proof over N seeds
+  channel-report.mjs            per-channel value distributions over a corpus manifest
+  oracle-validate.mjs           samples + regenerates models, drives the python oracle
+  oracle_validate.py            IfcOpenShell 0.8.5 differential checks per sampled model
 ```
 
 `generateModel()` is the single source of truth. It:
 
-1. Derives a family choice (`{seed}:family` sub-stream) and a parameter draw
-   (`{seed}:params:{family}` sub-stream) from independent RNG streams keyed
-   off the seed — so adding a third family later cannot perturb any existing
-   seed's building.
+1. Derives a family choice (`{seed}:family` sub-stream), a parameter draw
+   (`{seed}:params:{family}` sub-stream), and a corruption decision + defect
+   plan (`{seed}:corrupt` sub-stream) from independent RNG streams keyed off
+   the seed.
 2. Builds the model into one `IfcCreator` instance using the exact same
-   `@ifc-lite/create` methods the CLI's `ifc-lite create` command calls
-   (`addIfcWall`, `addIfcSlab`, `addIfcColumn`, `addIfcBeam`, `addIfcSpace`,
-   `addIfcElementQuantity`, wall `Openings`) — metres, identity placement,
-   one `toIfc()` call, per house convention.
-3. Wraps the whole build + `toIfc()` in `withDeterministicRuntime(seed, fn)`.
-
-`labelModel()` then produces one manifest line per model, combining two
-categorically different kinds of label (see "Label sources" below).
+   `@ifc-lite/create` methods the CLI's `ifc-lite create` command calls -
+   metres, identity placement, one `toIfc()` call, per house convention.
+3. If the seed is corrupted: applies build-time defects (overlapping footing
+   pairs, zero-height columns) before `toIfc()` and text-level defects
+   (GUID duplication, deleted IfcSite, duplicated IfcProject, dangling ref,
+   deleted quantity bindings) after it - all drawn from the seed, all
+   recorded as ground truth at plant time.
+4. Wraps the build + `toIfc()` in `withDeterministicRuntime(seed, fn)`.
 
 ## Family parameter spaces
 
-### Family A — `frame` (rectangular multi-storey slab-and-column frame)
+### Family A - `frame` (rectangular multi-storey slab-and-column frame)
 
 Perimeter walls with generic rectangular openings cut (never filled by a
-door/window — "door/window-free openings" per the brief) ring every storey; a
-column grid sits at every bay intersection; beams tie the grid together at
-the top of each storey; a slab floors every level plus one roof slab on top.
+door/window) ring every storey; a column grid sits at every bay
+intersection; beams tie the grid together at the top of each storey; a slab
+floors every level plus one roof slab on top.
 
 | Parameter | Range | Notes |
 |---|---|---|
@@ -86,12 +109,7 @@ the top of each storey; a slab floors every level plus one roof slab on top.
 | `openingsPerLongWall` | 0-3 (int) | cut into the two longer perimeter walls only |
 | `openingWidth` / `openingHeight` / `sillHeight` | 1.0-1.8 / 1.2-1.8 / 0.8-1.0 m | |
 
-Elements per model: `IfcWall` (4 x storeys, some with `IfcOpeningElement`
-voids), `IfcSlab` (storeys + 1 roof), `IfcColumn` ((baysX+1)x(baysY+1) x
-storeys), `IfcBeam` (two directions x storeys). Pilot range: 553-4,749
-entities (median 1,913).
-
-### Family B — `office` (single-storey partitioned office slab)
+### Family B - `office` (single-storey partitioned office slab)
 
 One floor slab, a perimeter wall ring, and a lattice of partition walls
 carving the footprint into a `rows x cols` grid of rooms, each captured as an
@@ -105,58 +123,79 @@ carving the footprint into a `rows x cols` grid of rooms, each captured as an
 | `perimeterThickness` / `partitionThickness` | 0.2-0.35 / 0.1-0.15 m | |
 | `slabThickness` | 0.15-0.30 m | |
 
-Elements per model: `IfcSlab` (1), `IfcWall` (4 perimeter + (rows-1)+(cols-1)
-partitions), `IfcSpace` (rows x cols). Pilot range: 248-641 entities (median
-380). Room footprints use the grid centerline, not partition-half-thickness
-subtraction — a documented v1 approximation, good enough for reward-channel
+Room footprints use the grid centerline, not partition-half-thickness
+subtraction - a documented v1 approximation, good enough for reward-channel
 ground truth.
 
-Both families are deliberately non-adversarial in v1: no family intentionally
-produces an invalid or clashing model (see "Known gaps" — the 1,000-model
-pilot came back 100% schema-valid and 0 clashes, which is a real limitation
-for training a *discriminative* reward signal, not just a positive-only one).
+### Adversarial mode (negative-label corpus half)
 
-## Label sources ("perfect ground truth", two kinds)
+`--corrupt-rate p` corrupts a deterministic Bernoulli(p) subset of seeds
+(`--corrupt` forces one model). Each corrupted model carries 1-3 distinct
+defect types drawn from the `{seed}:corrupt` stream:
+
+| Defect | Mechanism | Detected by |
+|---|---|---|
+| `clash-pair` | 1-3 pairs of overlapping `IfcFooting` at isolated positions, penetration 0.3-0.7 m, known pair names | clash engine (footing self-clash rule) |
+| `degenerate-geometry` | 1-2 zero-height `IfcColumn` (extrusion depth 0) | geometry pipeline emits no mesh for them |
+| `duplicate-globalid` | second wall's GlobalId overwritten with the first's | `validate` unique-globalid (error) |
+| `missing-site` | `IFCSITE` line deleted (leaves a dangling aggregate ref too) | `validate` required-entity (error) |
+| `multiple-project` | `IFCPROJECT` line duplicated under a fresh express id | `validate` single-project (error) |
+| `dangling-ref` | one containment ref rewritten to `#99999999` | **nothing today** - see Known gaps |
+| `missing-quantities` | 1-3 quantity-binding rel lines deleted | `validate` quantity-completeness + quantity re-extraction |
+
+Ground truth for every planted defect is recorded in the manifest
+(`defects` = what was planted, `expected` = what a correct checker must
+observe) at plant time, independent of the labeler - so the labeler is
+*validated against the plants*, never against itself. The 100k run's
+`groundTruthAgreement` was 100,000/100,000 (`allMatchRate: 1`).
+
+Corruption is exactly as deterministic as generation: same seed in, same
+defects, same bytes out (verified byte-identical across repeated runs; the
+Bernoulli roll is always burned before the plan draw so `--corrupt-rate`
+corpora and `forceCorrupt` regeneration produce identical bytes).
+
+## Label sources ("perfect ground truth", three kinds)
 
 1. **Generation-parameter ground truth (free, exact, cannot drift).**
-   `entityCountsByType` comes straight from `IfcCreator`'s own
-   `result.entities` array — the creator's own bookkeeping of what it built,
-   not a re-parse. `storeyCount` and every quantity (`wallGrossVolume`,
-   `slabGrossArea`, `roomNetFloorArea`, footprint area, gross floor area, ...)
-   come straight from the family module's `build()` return value: the exact
-   same numbers used to author the geometry *and* the `IfcElementQuantity`
-   sets embedded in the file via `addIfcElementQuantity` (`lib/quantities.mjs`
-   computes each element's numbers once, feeds both the STEP output and the
-   label).
-2. **Checks that require actually running the pipeline on the serialized
-   bytes** — schema/structural validity and clash count. These reuse the
-   CLI's own `ifc-lite validate --json` and `ifc-lite clash --matrix --json`
-   commands via subprocess rather than reimplementing that logic (see
-   "Deviation from the brief" below — the plan referenced an `ifc-lite gym`
-   reset line that does not exist in this worktree).
+   `entityCountsByType` from `IfcCreator`'s own bookkeeping; storey count
+   and every quantity from the family module's `build()` return value
+   (`lib/quantities.mjs` computes each element's numbers once, feeds both
+   the STEP output and the label).
+2. **Planted-defect ground truth** (corrupted models): defect records and
+   derived expectations written by the corruption layer at plant time.
+3. **Checks that run the pipeline on the serialized bytes** - schema
+   verdict, clash detection, and an independent quantity re-extraction.
+   Since v2 these run in-process (`lib/checks.mjs`) via the exact functions
+   `ifc-lite validate` / `ifc-lite clash` call (`computeValidationIssues`,
+   `GeometryProcessor` + `elementsFromStep` + `createClashEngine`), with one
+   warm WASM processor per worker. The v1 subprocess path is retained
+   behind `--engine subprocess` for A/B measurement.
 
-## Reward-channel mapping (for M2's gym / B2.2's benchmark)
+## Reward channels (the single env API)
 
-Every label in the manifest line is a candidate reward channel for the RLVR
-loop the moonshot describes:
+`lib/reward-channels.mjs#computeRewardChannels(manifestLine, opts)` - one
+manifest line in, five scalars in [0, 1] out:
 
-| Manifest field | Reward channel |
-|---|---|
-| `schemaCheck.valid`, `.errors`, `.warnings` | parses / is schema-legal |
-| `clash.total`, `.bySeverity` | clash-free (currently always 0 — see gaps) |
-| `groundTruth.totals.*GrossVolume` / `*GrossArea` | quantities-within-budget (compare an agent's output Qtos to ground truth) |
-| `entityCountsByType` | structural completeness (did the agent emit every expected element type) |
-| `storeyCount`, `groundTruth.footprint` | spatial-structure correctness |
-| `sha256` | exact-match / dedup channel (agent reproduced the byte-identical target) |
+| Channel | Definition | 100k distribution (clean / corrupted mean) |
+|---|---|---|
+| `schemaValidity` | 1 valid no warnings, 0.5 valid with warnings, 0 invalid | 1.0 / ~0.33 |
+| `clashScore` | `1 / (1 + detected clashes)` | 1.0 / ~0.84 |
+| `determinismHashMatch` | candidate sha256 == manifest sha256 (no candidate = regenerate from seed) | 1.0 self-eval; 0 on every tampered candidate |
+| `quantityAccuracy` | 1 - mean relative error, re-extracted totals vs ground truth | 1.0 / <1 when quantities were removed |
+| `defectDetection` | planted defect types detected / planted (clean: 1 unless phantom detection) | 1.0 / <1 (dangling-ref is invisible - real gap, surfaced not hidden) |
 
-The gap is that v1's corpus is 100% positive-label (every model is valid,
-zero clashes) — a real reward signal needs negative examples too (schema
-violations, intentional clashes, missing quantities). That is direct backlog
-for whichever bet extends this generator (B2.2 benchmark launch, most
-likely): add a `--corrupt` mode or a third "adversarial" family that
-deliberately overlaps elements / omits required entities / breaks a specific
-IDS rule, at a documented rate, so the reward channels have both classes to
-discriminate.
+`channel-report.mjs` proves discrimination over a corpus: per-channel value
+histograms split clean/corrupted, a regenerate-and-rehash determinism
+re-proof over a deterministic 10% slice, and a tamper probe (one flipped
+byte must drop `determinismHashMatch` to 0). On the 100k corpus every
+channel is non-constant across classes and the tamper probe was 100/100.
+
+Relationship to `ifc-lite gym` (B0.4): `packages/cli/src/commands/gym.ts`
+now exists on this branch - a reset/step/reward loop over ONE loaded model
+with schema/clash/ids channels. That surface and this corpus API are
+different layers (interactive episode env vs corpus-scale labeling); wiring
+`computeRewardChannels` + the generator into `ifc-lite gym` as an episode
+factory is the natural B2.2 follow-up, not duplicated here.
 
 ## Determinism
 
@@ -168,167 +207,148 @@ documented and worked around here, not patched at the source:
   timestamp) and `new Date().toISOString()` (STEP header `FILE_NAME`
   timestamp) directly, with no seed hook.
 - `packages/encoding/src/guid.ts#generateUuid()` calls `crypto.randomUUID()`
-  for every `IfcGloballyUniqueId` — the actual, dominant determinism blocker.
-  A first pass (diffing two un-shimmed generations of the identical model)
-  showed the *only* differing lines were GlobalIds; the header/owner-history
-  timestamps happened not to visibly differ in that quick test only because
-  both calls landed in the same wall-clock second — they are just as real a
-  leak and would fail on any run that crosses a second boundary.
+  for every `IfcGloballyUniqueId` - the dominant determinism blocker.
 
 `lib/deterministic-runtime.mjs` works around both without touching either
 package: for the duration of one synchronous `build()` + `toIfc()` call, it
 replaces `globalThis.Date` with a subclass pinned to a fixed epoch and
-replaces `globalThis.crypto.randomUUID` (plus `Math.random`, defensively, for
-`generateUuid()`'s no-crypto fallback branch) with a seeded generator, then
-restores both in a `finally`. `determinism-check.mjs` proves this holds by
-generating each of the first 20 seeds twice with a real wall-clock delay
-(default 60ms, spanning a real timer tick) between the two runs and hashing
-both outputs.
+replaces `globalThis.crypto.randomUUID` (plus `Math.random`, defensively)
+with a seeded generator, then restores both in a `finally`.
 
-**Result: `node determinism-check.mjs --seeds 20` — 20/20 seeds
-byte-identical across two runs, wall-clock gap included.** (Verified in this
-session; re-run to reproduce.)
+**Result: `node determinism-check.mjs --seeds 20` - 20/20 seeds
+byte-identical across two runs, wall-clock gap included; corrupted models
+verified byte-identical the same way; the 100k channel report re-proved
+10,000 models by regenerate-and-rehash with 0 failures.**
 
-If GlobalId/timestamp seeding is ever added upstream to `@ifc-lite/create` or
-`@ifc-lite/encoding`, this shim becomes unnecessary and should be deleted —
-it is a workaround, not a design choice.
+If GlobalId/timestamp seeding is ever added upstream, this shim becomes
+unnecessary and should be deleted - it is a workaround, not a design choice.
 
-## 1,000-model pilot — results
-
-Run on this machine (10 logical cores), `--workers 10`, family `auto` (seed
-picks family), seeds 0-999, checks not skipped (both `validate` and `clash`
-ran for every model):
+## 100k corpus run - results (this machine, 10 cores, 10 workers)
 
 ```
-requested / completed / failed:   1000 / 1000 / 0
-wall time:                        150.365 s  (2m 30s)
-throughput:                       6.651 models/sec
-dedup:                            0 duplicate content hashes out of 1000 (dedupRate 0)
-label coverage:                   1000/1000 (100%) — every model got entity counts,
-                                   quantities, schema verdict, AND clash count
-family distribution:               office 485 / frame 515
-entity-count distribution:         min 248, median 641, p95 3541, max 4749
-  - frame only:                    min 553, median 1913, max 4749
-  - office only:                   min 248, median 380, max 641
-schema-check verdict:              1000/1000 valid=true, 0 errors, 0 warnings (sum across corpus)
-clash verdict:                     1000/1000 total=0 (no model clashed — see reward-channel gap above)
-extrapolated cost of 100k:         ~4.18 hours on this machine at this rate (linear extrapolation)
+requested / completed / failed:   100000 / 100000 / 0
+wall time:                        126.4 s  (2m 6s)
+throughput:                       791.0 models/sec  (v1 subprocess engine: 6.6/sec -> ~120x)
+label coverage:                   100000/100000 (100%): entity counts, quantities,
+                                   schema verdict, clash verdict, quantity re-extraction
+label classes:                     69693 clean / 30307 corrupted (corruptRate 0.3)
+defect instances:                  8531-8728 per defect type (7 types, near-uniform)
+schema verdicts:                   79554 valid / 20446 invalid
+clash totals:                      91272 zero / 8728 with 1-3 detected pairs
+ground-truth agreement:            100000/100000 models, every dimension
+                                   (schema, clash, degenerate, quantity) - allMatchRate 1.0
+determinism re-proof:              10000/10000 regenerated models re-hash to the
+                                   manifest sha256; 100/100 tampered candidates score 0
+dedup:                             100000 unique content hashes, 0 duplicates
+entity counts:                     min 244, median 641, p95 3549, max 4840
+per-model timing:                  generation median 1 ms; total (gen+label) median 7 ms, p95 33 ms
 ```
 
-Full manifest and summary are pilot artifacts written to whatever `--out-dir`
-was passed (this session used the session scratch directory, *not* the
-repo — see "Constraints" below); they are not checked in.
+Reward-channel distributions over this corpus (clean mean / corrupted mean):
+`schemaValidity` 1.0 / 0.325, `clashScore` 1.0 / 0.817, `quantityAccuracy`
+1.0 / 0.935 (293 distinct values, min 0.52), `defectDetection` 1.0 / 0.855
+(the shortfall is exactly the invisible `dangling-ref`),
+`determinismHashMatch` 1 on every self-evaluation and 0 on every tampered
+candidate. No channel is constant across classes.
 
-### Per-model timing breakdown
+Corpus artifacts (manifest.jsonl ~190 MB, summary.json, channels-report.json,
+oracle-report.json) are run outputs written outside the repo; they are not
+checked in. `.ifc` bytes are not kept at this scale (`--no-keep-files`) -
+every model is reproducible from its seed, and `oracle-validate.mjs`
+verifies regenerated sha256 against the manifest before using regenerated
+bytes.
 
-```
-generation only (in-process, no subprocess): min 0ms, median 1ms, p95 8ms, max 34ms
-total per model (gen + write + validate subprocess + clash subprocess, run concurrently): 
-  min 764ms, median 1434ms, p95 2026ms, max 2774ms
-```
+### Throughput: what changed vs v1
 
-Generation itself is essentially free (sub-10ms median). The entire
-per-model cost is two Node subprocess launches (`ifc-lite validate`,
-`ifc-lite clash --matrix`), each paying ~250-500ms of Node startup + module
-load + (for clash) WASM geometry-processor init, run concurrently via
-`Promise.all` inside `labelModel()` but still gating the model on the slower
-of the two. This is the single biggest lever for scaling further (see next
-section).
+v1 paid two fresh `node dist/index.js` subprocess launches per model
+(validate + clash), ~1.4 s median per model, 6.6 models/sec on 10 workers.
+v2 imports the same building blocks in-process and keeps one WASM geometry
+processor warm per worker: median label cost fell to ~6 ms, throughput rose
+to 791 models/sec end to end (measured A/B on 200 models: 6.58/s subprocess
+vs 186/s in-process, the latter pool-start dominated; at 100k scale
+amortization pushes it to 791/s). A 100k corpus now costs ~2 minutes on one
+laptop; 1M extrapolates to ~21 minutes.
 
-## Scaling path to 100k (and beyond)
+## IfcOpenShell differential oracle
 
-At the pilot's measured throughput (6.65 models/sec, 10 workers on 10 cores,
-checks not skipped), 100k models extrapolates linearly to **~4.2 hours** on
-this exact machine. That number is a *lower bound on effort, not a plan* —
-the real path to 100k (and to the 1M-scale corpus M2's "data factory" play
-describes) is to remove the per-model subprocess tax entirely, in priority
-order:
+`oracle-validate.mjs` + `oracle_validate.py` spot-validate labels against
+IfcOpenShell 0.8.5 (the exact pin from
+`tools/ifcopenshell_reference/requirements.lock`; the harness's own local
+venv recipe applies). Per sampled model, the oracle independently:
 
-1. **Amortize the CLI subprocess cost across models, per worker.** Right now
-   every model pays two fresh `node dist/index.js <cmd>` process launches.
-   Importing `@ifc-lite/parser` + `@ifc-lite/geometry` + `@ifc-lite/clash`
-   directly inside each long-lived worker (the same modules `validate.ts`
-   and `clash.ts` import) and keeping one `GeometryProcessor` instance warm
-   per worker would turn "two Node startups + one WASM init per model" into
-   "one WASM init per worker, amortized across its whole shard." This is the
-   single highest-value change and was scoped out of v1 to keep `labeler.mjs`
-   a thin, obviously-correct reuse of the existing CLI surface rather than a
-   re-plumbing of the geometry pipeline — worth doing before a 100k run.
-2. **More cores / more machines.** The worker pool is already sized to
-   `os.cpus().length` and the whole pipeline is embarrassingly parallel
-   (every model is independent) — this is a pure horizontal-scaling problem
-   once (1) removes the subprocess tax. Split `--seed-start`/`--count`
-   ranges across machines and concatenate `manifest.jsonl` files; nothing in
-   the design assumes a single host.
-3. **Skip clash for the bulk, sample it.** Given v1's frame/office families
-   never clash by construction (0/1000 in this pilot), running full clash
-   detection on every one of 100k models is mostly spending compute to
-   confirm a foregone conclusion. Once an adversarial/corrupted family exists
-   (see reward-channel gap above), clash becomes informative and should run
-   on 100% of *that* family; for the non-adversarial families, a 5-10%
-   sample for QA is defensible and cuts the dominant cost roughly in half.
-4. **Batch schema validation.** `ifc-lite validate` re-parses the whole file
-   from disk per call; a long-lived worker holding the parsed `IfcDataStore`
-   already in memory (from generation) could run the same required-entity /
-   GlobalId-uniqueness checks in-process for near-zero marginal cost per
-   model — same "reuse the check logic, not the subprocess" idea as (1).
-5. **What B2.2 (benchmark launch) will need on top of this:** held-out
-   splits (this pilot's `sha256` field plus `{seed, family}` is enough to
-   define a deterministic train/held-out split — e.g. `seed % 10 == 0` held
-   out — without re-generating anything); the client-side verifier the
-   benchmark promises is exactly `labelModel()`'s "checks that require
-   running the pipeline" half, already factored out as a reusable function;
-   and the negative-label / adversarial family from the reward-channel gap
-   above, since a benchmark that only ever contains valid models cannot
-   distinguish a lucky agent from a correct one.
+- parses the file and confirms the schema;
+- recounts entities per type (expectations adjusted for planted text
+  defects);
+- recounts duplicate GlobalIds (must equal planted count, 0 for clean);
+- re-sums the embedded GymQuantities and compares to the labeler's
+  extraction at 1e-6 relative tolerance;
+- meshes every product with its own geometry kernel and compares slab /
+  column / beam volumes to ground truth at 1%, and wall volumes net of the
+  planted openings;
+- verifies the planted footing pairs overlap by the recorded penetration in
+  ITS geometry (AABB overlap, 1 mm tolerance);
+- verifies the planted zero-height columns are degenerate for it too.
+
+Result on the 100k corpus (200-model deterministic sample, `seed % 500 ==
+0`, 144 clean / 56 corrupted): **200/200 models pass all seven checks**
+(parse, entity-counts, guid-dups, quantities, geometry-volume, clash-pairs,
+degenerate), with 0/200 regeneration sha mismatches. The validation layers each caught a real
+corpus bug during bring-up: the 100k agreement stats caught
+`String.replace` garbling planted duplicate GUIDs containing `$` (a
+replacement-pattern metacharacter, 120 affected models), and the oracle
+caught the duplicated IfcProject silently doubling as an unplanned GUID dup
+- both fixed in `lib/corruption.mjs`. The redundancy is doing its job.
 
 ## Deviation from the brief / known gaps
 
-- **`ifc-lite gym` does not exist in this worktree.** The task brief said
-  "reuse the `ifc-lite gym` reset line or the check commands" — this
-  worktree's `packages/cli/src/commands/` has no `gym.ts`, no `gym` string
-  anywhere in the CLI source, and no README section describing it. Reused
-  `ifc-lite validate --json` and `ifc-lite clash --matrix --json` instead,
-  exactly per the brief's fallback clause.
-- **`ifc-lite clash --json` leaks non-JSON diagnostic lines to stdout.**
-  `[IFC-LITE] Opening classifier: ...`, `rect_fast: fired ...` and similar
-  lines are written to stdout by the geometry/opening-cutting pipeline
-  itself (deep under `GeometryProcessor`, not through `clash.ts`'s own
-  `printJson`), unconditionally — not gated by `--json` or any `--quiet`
-  flag. This breaks naive `JSON.parse(stdout)` for any programmatic
-  consumer, not just this pilot. Worked around in `labeler.mjs`
-  (`extractTrailingJson()`, finds the first stdout line that is exactly `{`
-  and parses from there) rather than fixed upstream, since that is outside
-  `tools/world-gym`'s own path. Should be fixed in `packages/cli` (route
-  those diagnostics through the same logger `loader.ts` already uses to
-  suppress parser console output) or `packages/geometry`.
+- **The discipline clash matrix is structurally blind to this corpus.**
+  `disciplineMatrixRules()` only pairs MEP/HVAC/ELEC/FIRE selectors against
+  structure/architecture; a corpus containing only walls, slabs, columns,
+  beams and spaces can never fire a single matrix rule. The v1 pilot's
+  "0 clashes across 1,000 models" was therefore vacuous - not evidence of
+  clean geometry. v2 keeps the matrix (parity) and adds an `IfcFooting`
+  self-clash rule that the injected clash pairs (a type no clean family
+  emits) trigger exactly. A follow-up should add ARCH/STR self-clash rules
+  plus baseline-noise budgets so the channel can grade *organic* clashes
+  too, not only planted ones.
+- **`dangling-ref` is undetected by `ifc-lite validate`.** The planted
+  ground truth records it anyway, and the `defectDetection` channel scores
+  the miss (models carrying it score < 1) - surfacing the gap instead of
+  hiding it. Upstream candidate: a reference-integrity rule in
+  `computeValidationIssues`.
+- **`ifc-lite validate` exits non-zero on invalid files**, so the v1
+  subprocess labeler could not even record a negative schema verdict
+  (`schemaCheck.ok = false` instead of `valid: false`) - visible in the A/B
+  run. The in-process engine reads the verdict directly; the subprocess
+  path keeps the flaw for honesty.
+- **`ifc-lite clash --json` leaks non-JSON diagnostics to stdout** (from
+  the geometry pipeline's console bindings, some captured at WASM init and
+  immune to scoped console patching - in-process the labeler patches
+  console to stderr process-wide at init). Still worth fixing upstream in
+  `packages/cli` / `packages/geometry`.
 - **GlobalId/timestamp non-determinism in `@ifc-lite/create` /
-  `@ifc-lite/encoding`** — see "Determinism" above. Worked around via a
-  runtime shim, not fixed at the source.
-- **v1 corpus has no negative labels** — every generated model is valid and
-  clash-free by construction; see the reward-channel section above.
-- Coverage is intentionally narrower than "every element family
-  `packages/create` supports" (it also has stairs, roofs, doors, windows,
-  ramps, railings, plates, members, footings, piles, curtain walls,
-  furnishings, and a dozen structural-profile variants). Two families were
-  enough to satisfy the brief's "at least TWO families" bar and to exercise
-  five distinct element types (`IfcWall`, `IfcSlab`, `IfcColumn`, `IfcBeam`,
-  `IfcSpace`, plus `IfcOpeningElement`) end-to-end with quantities; breadth
-  into stairs/roofs/openings-with-fills is a ratchet for whoever picks this
-  up next, not a blocker — the family module interface
+  `@ifc-lite/encoding`** - see "Determinism". Worked around via a runtime
+  shim, not fixed at the source.
+- **`ifc-lite gym` exists now** (B0.4, `packages/cli/src/commands/gym.ts`) -
+  the earlier note here that it did not exist is obsolete. Integration of
+  this corpus with that episode loop is future work (see Reward channels).
+- Coverage is intentionally narrower than everything `packages/create`
+  supports (stairs, roofs, doors, windows, ramps, railings, plates,
+  members, piles, curtain walls, ...). The family module interface
   (`{ name, paramSpace(rng), build(creator, params) }`) is designed so a
   third family drops in without touching `generator.mjs`, `labeler.mjs`, or
   `run-pilot.mjs`.
+- Room footprints in `office` use grid centerlines (documented v1
+  approximation, unchanged).
 
 ## Constraints honored
 
-- Own path: everything pilot-relevant lives under `tools/world-gym/**`;
-  nothing outside that path was modified (the gaps above are documented, not
-  patched, for exactly that reason).
-- No new npm dependencies — plain `.mjs` with only Node built-ins
-  (`node:crypto`, `node:child_process`, `node:fs/promises`, `node:os`,
-  `node:path`) plus relative imports into already-built
-  `packages/create/dist` and a subprocess call into already-built
-  `packages/cli/dist`.
-- Generated corpus (IFC files, manifest, summary) was written to the session
-  scratch directory, never into the repo, and nothing here was committed.
+- Own path: everything lives under `tools/world-gym/**`; nothing outside
+  that path was modified (gaps above are documented, not patched, for
+  exactly that reason).
+- No new npm dependencies - plain `.mjs` with Node built-ins plus relative
+  imports into already-built `packages/*/dist`. The oracle needs a python
+  venv with `ifcopenshell==0.8.5` (same pin as
+  `tools/ifcopenshell_reference`), created outside the repo.
+- Generated corpora (IFC files, manifests, reports) are written outside the
+  repo and are not checked in.

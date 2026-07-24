@@ -3,10 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Family A — rectangular multi-storey slab-and-column frame.
+ * Family A - rectangular multi-storey slab-and-column frame.
  *
  * Perimeter walls (with generic rectangular openings cut but never filled by
- * a door/window — "door/window-free openings" per the brief) ring each
+ * a door/window - "door/window-free openings" per the brief) ring each
  * storey; a column grid sits at every bay intersection; beams tie the grid
  * together at the top of each storey; a slab floors every level plus one
  * roof slab on top. Exercises IfcWall, IfcSlab, IfcColumn, IfcBeam,
@@ -19,7 +19,7 @@ import {
 
 export const name = 'frame';
 
-/** Draw a fully-determined parameter set from a seeded RNG. Pure — no I/O, no clock. */
+/** Draw a fully-determined parameter set from a seeded RNG. Pure - no I/O, no clock. */
 export function paramSpace(rng) {
   const storeys = rng.int(1, 4);
   const storeyHeight = round3(rng.range(2.7, 3.9));
@@ -202,5 +202,8 @@ export function build(creator, params) {
     grossFloorArea: round3(width * depth * storeys),
     openingCount,
     totals,
+    // Internal handle for the corruption layer (stripped from the label by
+    // generator.mjs): where build-time defect injections attach.
+    firstStoreyId: storeyIds[0],
   };
 }

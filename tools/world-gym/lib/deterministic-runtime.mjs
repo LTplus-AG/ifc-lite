@@ -5,7 +5,7 @@
 /**
  * Byte-identical determinism shim for @ifc-lite/create.
  *
- * GAP (documented, not fixed here — out of tools/world-gym's own path):
+ * GAP (documented, not fixed here - out of tools/world-gym's own path):
  * `IfcCreator` calls `Date.now()` / `new Date()` twice per file
  * (packages/create/src/ifc-creator.ts: buildHeader's FILE_NAME timestamp,
  * buildPreamble's IfcOwnerHistory timestamp), and every GlobalId comes from

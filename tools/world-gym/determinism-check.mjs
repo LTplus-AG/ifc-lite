@@ -6,9 +6,9 @@
 /**
  * Determinism proof for the World Gym generator.
  *
- * For each of N seeds, generates the model twice — with a real wall-clock
+ * For each of N seeds, generates the model twice - with a real wall-clock
  * delay between the two generations, so a naive implementation that leaks
- * Date.now()/crypto.randomUUID() would be caught — and asserts the two IFC
+ * Date.now()/crypto.randomUUID() would be caught - and asserts the two IFC
  * files are byte-identical (compared by SHA-256, not just length).
  *
  * Usage: node determinism-check.mjs [--seeds 20] [--delay-ms 50]
@@ -35,7 +35,7 @@ async function main() {
   for (let seed = 0; seed < seedCount; seed++) {
     const first = generateModel(seed, 'auto');
     const hashA = sha256(first.content);
-    // Real wall-clock gap between the two generations of the same seed —
+    // Real wall-clock gap between the two generations of the same seed -
     // this is what actually exercises the Date-freeze half of the shim.
     // eslint-disable-next-line no-await-in-loop
     await new Promise((r) => setTimeout(r, delayMs));

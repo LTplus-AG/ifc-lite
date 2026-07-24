@@ -7,7 +7,7 @@
  *
  * Each function returns the exact numbers used to author the geometry AND
  * the IfcElementQuantity set attached to that element, so the embedded Qto
- * and the labeler's ground truth can never drift from one another — they
+ * and the labeler's ground truth can never drift from one another - they
  * are the same numbers, computed once.
  */
 

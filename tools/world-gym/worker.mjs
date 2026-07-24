@@ -6,27 +6,40 @@
  * World Gym pilot worker process (forked by run-pilot.mjs).
  *
  * Receives `{ seed, family }` jobs over IPC, generates + labels the model,
- * writes the IFC file into the shared output directory, and sends the
- * manifest line + timing back to the parent. One worker handles many jobs
- * sequentially (not one process per model) so the CLI-subprocess checks
- * inside labelModel() overlap across the worker pool instead of paying
- * Node startup cost per model.
+ * optionally writes the IFC file into the shared output directory, and
+ * sends the manifest line + timing back to the parent. One worker handles
+ * many jobs sequentially. With the default in-process label engine the
+ * worker warms one GeometryProcessor at init and amortizes it across every
+ * job it handles - the v1 design (two fresh CLI subprocesses per model) is
+ * still available via engine: 'subprocess'.
+ *
+ * keepFiles=false skips the disk write entirely (the in-process labeler
+ * reads from memory); any model is reproducible from its seed, so a corpus
+ * run only needs the manifest.
  */
 
 import { writeFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { generateModel } from './generator.mjs';
 import { labelModel } from './labeler.mjs';
+import { initChecks } from './lib/checks.mjs';
 
 let modelDir;
 let skipChecks = false;
+let engine = 'in-process';
+let corruptRate = 0;
+let keepFiles = true;
 let ready = false;
 
 process.on('message', async (msg) => {
   if (msg.type === 'init') {
     modelDir = msg.modelDir;
     skipChecks = !!msg.skipChecks;
-    await mkdir(modelDir, { recursive: true });
+    engine = msg.engine ?? 'in-process';
+    corruptRate = msg.corruptRate ?? 0;
+    keepFiles = msg.keepFiles !== false;
+    if (keepFiles) await mkdir(modelDir, { recursive: true });
+    if (engine === 'in-process' && !skipChecks) await initChecks();
     ready = true;
     process.send({ type: 'ready' });
     return;
@@ -39,11 +52,12 @@ process.on('message', async (msg) => {
     }
     const t0 = performance.now();
     try {
-      const model = generateModel(msg.seed, msg.family);
+      const model = generateModel(msg.seed, msg.family, { corruptRate });
       const genTimeMs = performance.now() - t0;
       const filePath = join(modelDir, `${model.family}-${msg.seed}.ifc`);
-      await writeFile(filePath, model.content, 'utf-8');
-      const line = await labelModel(model, filePath, { skipChecks });
+      if (keepFiles) await writeFile(filePath, model.content, 'utf-8');
+      const line = await labelModel(model, filePath, { skipChecks, engine });
+      if (!keepFiles) line.file = null;
       process.send({
         type: 'result',
         seed: msg.seed,

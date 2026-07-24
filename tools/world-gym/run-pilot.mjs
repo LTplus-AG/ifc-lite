@@ -13,7 +13,18 @@
  * just raising --count and running on more/bigger machines (see README).
  *
  * Usage:
- *   node run-pilot.mjs --count 1000 --out-dir <dir> [--workers N] [--family frame|office|auto] [--seed-start 0] [--skip-checks]
+ *   node run-pilot.mjs --count 1000 --out-dir <dir> [--workers N] [--family frame|office|auto] \
+ *     [--seed-start 0] [--skip-checks] [--corrupt-rate 0.3] [--engine in-process|subprocess] [--no-keep-files]
+ *
+ * --corrupt-rate: fraction of seeds (Bernoulli per seed, deterministic) that
+ *   carry known-by-construction defects - the negative-label half of the
+ *   corpus (see lib/corruption.mjs).
+ * --engine: label-check engine. 'in-process' (default) warms one WASM
+ *   geometry processor per worker; 'subprocess' is the v1 two-CLI-launches
+ *   path, kept for A/B throughput comparison.
+ * --no-keep-files: skip writing .ifc files (labels run from memory; any
+ *   model is reproducible from its seed) - for large corpus runs where the
+ *   manifest is the deliverable and 10-20 GB of STEP text is not.
  *
  * IMPORTANT: --out-dir is required and must point outside the repo (this
  * tool's own path is tools/world-gym/**; generated corpora are pilot
@@ -21,6 +32,7 @@
  */
 
 import { fork } from 'node:child_process';
+import { createWriteStream } from 'node:fs';
 import { writeFile, mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
@@ -51,10 +63,13 @@ function percentile(sorted, p) {
 }
 
 class WorkerPool {
-  constructor(size, modelDir, skipChecks) {
+  constructor(size, modelDir, skipChecks, { engine = 'in-process', corruptRate = 0, keepFiles = true } = {}) {
     this.size = size;
     this.modelDir = modelDir;
     this.skipChecks = skipChecks;
+    this.engine = engine;
+    this.corruptRate = corruptRate;
+    this.keepFiles = keepFiles;
     this.workers = [];
     this.idle = [];
     this.pending = new Map(); // seed -> { resolve, reject }
@@ -74,7 +89,14 @@ class WorkerPool {
         child.on('message', onMessage);
       });
       child.on('message', (msg) => this._handleMessage(child, msg));
-      child.send({ type: 'init', modelDir: this.modelDir, skipChecks: this.skipChecks });
+      child.send({
+        type: 'init',
+        modelDir: this.modelDir,
+        skipChecks: this.skipChecks,
+        engine: this.engine,
+        corruptRate: this.corruptRate,
+        keepFiles: this.keepFiles,
+      });
       this.workers.push(child);
       readyPromises.push(readyPromise);
     }
@@ -104,7 +126,7 @@ class WorkerPool {
     }
   }
 
-  /** Run one job — resolves with the worker's result or rejects with its error. */
+  /** Run one job - resolves with the worker's result or rejects with its error. */
   runJob(seed, family) {
     return new Promise((resolvePromise, rejectPromise) => {
       this.pending.set(seed, { resolve: resolvePromise, reject: rejectPromise });
@@ -137,24 +159,30 @@ async function main() {
   const workerCount = Number(getFlag(args, '--workers') ?? cpus().length);
   const outDirRaw = getFlag(args, '--out-dir');
   const skipChecks = hasFlag(args, '--skip-checks');
+  const engine = getFlag(args, '--engine') ?? 'in-process';
+  const corruptRate = Number(getFlag(args, '--corrupt-rate') ?? 0);
+  const keepFiles = !hasFlag(args, '--no-keep-files');
 
   if (!outDirRaw) {
-    process.stderr.write('Usage: node run-pilot.mjs --count 1000 --out-dir <dir> [--workers N] [--family frame|office|auto] [--seed-start 0] [--skip-checks]\n');
+    process.stderr.write('Usage: node run-pilot.mjs --count 1000 --out-dir <dir> [--workers N] [--family frame|office|auto] [--seed-start 0] [--skip-checks] [--corrupt-rate 0.3] [--engine in-process|subprocess] [--no-keep-files]\n');
     process.exit(1);
   }
   const outDir = resolve(outDirRaw);
   const modelDir = join(outDir, 'models');
-  await mkdir(modelDir, { recursive: true });
+  await mkdir(keepFiles ? modelDir : outDir, { recursive: true });
 
-  process.stderr.write(`World Gym pilot: ${count} models, ${workerCount} workers, family=${family}, out=${outDir}\n`);
+  process.stderr.write(`World Gym pilot: ${count} models, ${workerCount} workers, family=${family}, engine=${engine}, corruptRate=${corruptRate}, keepFiles=${keepFiles}, out=${outDir}\n`);
 
-  const pool = new WorkerPool(workerCount, modelDir, skipChecks);
+  const pool = new WorkerPool(workerCount, modelDir, skipChecks, { engine, corruptRate, keepFiles });
   const poolStartT0 = performance.now();
   await pool.start();
   const poolStartMs = performance.now() - poolStartT0;
 
   const manifestPath = join(outDir, 'manifest.jsonl');
-  const manifestLines = [];
+  // Stream manifest lines to disk as they arrive: at 100k models the
+  // manifest is hundreds of MB and must not accumulate in this process.
+  const manifestStream = createWriteStream(manifestPath, { encoding: 'utf-8' });
+  let manifestCount = 0;
   const shaSeeds = new Map(); // sha256 -> [seed, ...]
   const errors = [];
   const entityCounts = [];
@@ -162,6 +190,13 @@ async function main() {
   const totalTimesMs = [];
   const familyCounts = {};
   let checksOkCount = 0;
+  // Negative-label / discrimination bookkeeping.
+  let corruptedCount = 0;
+  const defectTypeCounts = {};
+  let schemaValidCount = 0;
+  let schemaInvalidCount = 0;
+  const clashTotalHist = {}; // clash total -> model count
+  const agreementCounts = { evaluated: 0, allMatch: 0, schemaMatch: 0, clashMatch: 0, degenerateMatch: 0, quantityMatch: 0 };
 
   const wallT0 = performance.now();
   let completed = 0;
@@ -173,7 +208,8 @@ async function main() {
   await Promise.all(jobs.map(async ({ seed, family: fam }) => {
     try {
       const { line, genTimeMs, totalTimeMs } = await pool.runJob(seed, fam);
-      manifestLines.push(JSON.stringify(line));
+      manifestStream.write(`${JSON.stringify(line)}\n`);
+      manifestCount++;
       entityCounts.push(line.entityCount);
       genTimesMs.push(genTimeMs);
       totalTimesMs.push(totalTimeMs);
@@ -184,6 +220,25 @@ async function main() {
       const schemaOk = line.schemaCheck?.ok !== false && (line.schemaCheck?.skipped || line.schemaCheck?.valid !== undefined);
       const clashOk = line.clash?.ok !== false && (line.clash?.skipped || line.clash?.total !== undefined);
       if (schemaOk && clashOk) checksOkCount++;
+      if (line.corrupted) {
+        corruptedCount++;
+        for (const d of line.defects ?? []) {
+          defectTypeCounts[d.type] = (defectTypeCounts[d.type] ?? 0) + 1;
+        }
+      }
+      if (line.schemaCheck?.valid === true) schemaValidCount++;
+      else if (line.schemaCheck?.valid === false) schemaInvalidCount++;
+      if (typeof line.clash?.total === 'number') {
+        clashTotalHist[line.clash.total] = (clashTotalHist[line.clash.total] ?? 0) + 1;
+      }
+      if (line.agreement?.ok) {
+        agreementCounts.evaluated++;
+        if (line.agreement.allMatch) agreementCounts.allMatch++;
+        if (line.agreement.schemaMatch) agreementCounts.schemaMatch++;
+        if (line.agreement.clashMatch) agreementCounts.clashMatch++;
+        if (line.agreement.degenerateMatch) agreementCounts.degenerateMatch++;
+        if (line.agreement.quantityMatch) agreementCounts.quantityMatch++;
+      }
     } catch (err) {
       errors.push({ seed, error: String(err.message ?? err) });
     } finally {
@@ -197,25 +252,28 @@ async function main() {
   const wallMs = performance.now() - wallT0;
   await pool.shutdown();
 
-  await writeFile(manifestPath, `${manifestLines.join('\n')}\n`, 'utf-8');
+  await new Promise((res, rej) => manifestStream.end((err) => (err ? rej(err) : res())));
 
   const sortedEntities = [...entityCounts].sort((a, b) => a - b);
   const sortedGen = [...genTimesMs].sort((a, b) => a - b);
   const sortedTotal = [...totalTimesMs].sort((a, b) => a - b);
   const duplicateGroups = [...shaSeeds.entries()].filter(([, seeds]) => seeds.length > 1);
-  const dedupRate = manifestLines.length > 0 ? duplicateGroups.length / manifestLines.length : 0;
-  const modelsPerSec = manifestLines.length / (wallMs / 1000);
+  const dedupRate = manifestCount > 0 ? duplicateGroups.length / manifestCount : 0;
+  const modelsPerSec = manifestCount / (wallMs / 1000);
   const cores = cpus().length;
-  const estimated100kHours = manifestLines.length > 0
+  const estimated100kHours = manifestCount > 0
     ? (100_000 / modelsPerSec) / 3600
     : null;
 
   const summary = {
     requested: count,
-    completed: manifestLines.length,
+    completed: manifestCount,
     failed: errors.length,
     seedRange: [seedStart, seedStart + count - 1],
     family,
+    engine,
+    corruptRate,
+    keepFiles,
     workers: workerCount,
     cores,
     poolStartMs: Math.round(poolStartMs),
@@ -229,8 +287,23 @@ async function main() {
     },
     labelCoverage: {
       modelsWithFullLabels: checksOkCount,
-      coverageRate: manifestLines.length > 0 ? Number((checksOkCount / manifestLines.length).toFixed(4)) : 0,
+      coverageRate: manifestCount > 0 ? Number((checksOkCount / manifestCount).toFixed(4)) : 0,
       skippedChecks: skipChecks,
+    },
+    labelClasses: {
+      clean: manifestCount - corruptedCount,
+      corrupted: corruptedCount,
+      defectTypeCounts,
+      schemaValidCount,
+      schemaInvalidCount,
+      clashTotalHistogram: clashTotalHist,
+    },
+    groundTruthAgreement: {
+      note: 'expected-vs-detected per model: planted defects (or all-clean expectations) compared against what the checks actually saw',
+      ...agreementCounts,
+      allMatchRate: agreementCounts.evaluated > 0
+        ? Number((agreementCounts.allMatch / agreementCounts.evaluated).toFixed(4))
+        : null,
     },
     familyDistribution: familyCounts,
     entityCountDistribution: {

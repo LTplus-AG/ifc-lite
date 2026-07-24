@@ -25,7 +25,7 @@ export function hashSeed(input) {
   return h >>> 0;
 }
 
-/** mulberry32 PRNG factory — returns a `() => float in [0,1)` closure. */
+/** mulberry32 PRNG factory - returns a `() => float in [0,1)` closure. */
 export function mulberry32(seedUint32) {
   let a = seedUint32 >>> 0;
   return function next() {

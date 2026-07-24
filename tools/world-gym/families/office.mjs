@@ -3,12 +3,12 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Family B — single-storey partitioned office slab.
+ * Family B - single-storey partitioned office slab.
  *
  * One floor slab, a perimeter wall ring, and a lattice of partition walls
  * carving the footprint into a rows x cols grid of rooms, each captured as
  * an IfcSpace. Exercises IfcWall, IfcSlab, IfcSpace, IfcElementQuantity from
- * packages/create — the room-partition family that Family A (frame) does
+ * packages/create - the room-partition family that Family A (frame) does
  * not cover.
  */
 
@@ -16,7 +16,7 @@ import { wallQuantities, slabQuantities, spaceQuantities, accumulate } from '../
 
 export const name = 'office';
 
-/** Draw a fully-determined parameter set from a seeded RNG. Pure — no I/O, no clock. */
+/** Draw a fully-determined parameter set from a seeded RNG. Pure - no I/O, no clock. */
 export function paramSpace(rng) {
   const rows = rng.int(2, 4);
   const cols = rng.int(2, 5);
@@ -122,7 +122,7 @@ export function build(creator, params) {
   }
 
   // Rooms: one IfcSpace per grid cell. Uses the room-centerline footprint
-  // (does not subtract partition half-thickness) — documented approximation,
+  // (does not subtract partition half-thickness) - documented approximation,
   // good enough for reward-channel ground truth at v1.
   let roomCount = 0;
   for (let r = 0; r < rows; r++) {
@@ -153,5 +153,8 @@ export function build(creator, params) {
     roomCount,
     grid: { rows, cols },
     totals,
+    // Internal handle for the corruption layer (stripped from the label by
+    // generator.mjs): where build-time defect injections attach.
+    firstStoreyId: storeyId,
   };
 }

@@ -4,45 +4,53 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * World Gym deterministic labeler (M2 midterm, B1.2).
+ * World Gym deterministic labeler (M2 midterm, B1.2 -> Phase 2 debt closure).
  *
- * Two label sources, on purpose:
+ * Label sources (three, categorically different):
  *
  * 1. Generation-parameter ground truth (free, exact, zero re-derivation
- *    risk): entity counts by type come straight from IfcCreator's own
- *    `result.entities`; storey count and every quantity (wall area, slab
- *    volume, room area, ...) come straight from the family module's
- *    `build()` return value — the same numbers used to author the geometry
- *    and the embedded IfcElementQuantity sets. This is what "perfect
- *    ground truth" means here: the label was never re-inferred from the
- *    serialized file, so it cannot drift from what was actually built.
+ *    risk): entity counts by type from IfcCreator's own `result.entities`;
+ *    storey count and every quantity from the family module's `build()`
+ *    return value. Plus, for corrupted models, the planted-defect records
+ *    and the derived expectations (`model.defects` / `model.expected`) -
+ *    written by the corruption layer, never by this labeler, so the two
+ *    cannot be circular.
  *
- * 2. Checks that can only be answered by actually running the pipeline on
- *    the serialized bytes: schema/structural validity and clash count.
- *    These reuse the CLI's own `validate` and `clash` commands (subprocess,
- *    `--json`) rather than reimplementing that logic here — per instructions,
- *    "reuse, don't reimplement." (The plan referenced an `ifc-lite gym`
- *    reset line; it does not exist in this worktree — see README gap notes.)
+ * 2. Checks that run the real pipeline on the serialized bytes: schema
+ *    validity, clash detection, and independent quantity re-extraction.
+ *    Since v2 these run IN-PROCESS (lib/checks.mjs) using the exact same
+ *    functions the `ifc-lite validate` / `ifc-lite clash` commands call,
+ *    with one warm GeometryProcessor per process. The v1 subprocess path
+ *    (two fresh `node dist/index.js` launches per model, ~1.4s median) is
+ *    retained behind `engine: 'subprocess'` for A/B measurement and as a
+ *    fallback; it produces the same verdict fields. The v1 stdout-JSON
+ *    workaround (`extractTrailingJson`, see below) only applies to the
+ *    subprocess path.
  *
- * GAP (documented, not fixed here — out of tools/world-gym's own path):
- * `ifc-lite clash --json` writes non-JSON diagnostic lines
- * (`[IFC-LITE] Opening classifier...`, `rect_fast: fired...`) to stdout
- * *before* the JSON payload. They come from the geometry/opening-cutting
- * pipeline's own console.log calls deep under GeometryProcessor, which are
- * not gated by --json or any --quiet flag. Naive `JSON.parse(stdout)`
- * breaks. Worked around here via `extractTrailingJson()`, which locates the
- * first stdout line that is exactly `{` (pretty-printed JSON.stringify's
- * opening brace; no diagnostic line matches that shape) and parses from
- * there. Should be fixed upstream in packages/cli or packages/geometry.
+ * 3. Agreement: expected-vs-detected comparison per model - does the
+ *    pipeline actually see what the corruption layer planted (and see
+ *    nothing on clean models)? This is the per-model unit of the
+ *    defect-detection reward channel.
+ *
+ * GAP (documented, not fixed here - outside tools/world-gym's own path):
+ * `ifc-lite clash --json` writes non-JSON diagnostic lines to stdout (from
+ * the geometry pipeline's console.log calls). The subprocess path works
+ * around it via `extractTrailingJson()`; the in-process path routes the
+ * same console noise to stderr instead (lib/checks.mjs withQuietConsole).
+ * Should still be fixed upstream in packages/cli or packages/geometry.
  */
 
 import { writeFile, mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { dirname, join, basename } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createHash } from 'node:crypto';
 import { generateModel } from './generator.mjs';
+import {
+  parseStore, schemaCheckInProcess, clashCheckInProcess,
+  extractQuantityTotals, findExpressIdsByNamePrefix, initChecks,
+} from './lib/checks.mjs';
 
 const execFileAsync = promisify(execFile);
 
@@ -67,8 +75,8 @@ async function runCli(args, { timeoutMs = 60_000 } = {}) {
   return extractTrailingJson(stdout);
 }
 
-/** Schema/structural validity — reuses `ifc-lite validate --json`. */
-async function schemaCheck(filePath) {
+/** Schema/structural validity - v1 subprocess path (`ifc-lite validate --json`). */
+async function schemaCheckSubprocess(filePath) {
   try {
     const v = await runCli(['validate', filePath, '--json']);
     return {
@@ -83,8 +91,8 @@ async function schemaCheck(filePath) {
   }
 }
 
-/** Clash count — reuses `ifc-lite clash --matrix --json` (full discipline matrix, hard mode). */
-async function clashCheck(filePath) {
+/** Clash count - v1 subprocess path (`ifc-lite clash --matrix --json`). NOTE: matrix-only, so blind to footing self-clashes (see lib/checks.mjs). */
+async function clashCheckSubprocess(filePath) {
   try {
     const c = await runCli(['clash', filePath, '--matrix', '--json'], { timeoutMs: 120_000 });
     return {
@@ -106,12 +114,51 @@ function entityCountsByType(entities) {
 }
 
 /**
- * Compute the full manifest line for an already-generated model.
- * `model` is `generateModel()`'s return value; `filePath` is where its
- * `.content` was (or will be) written to disk — needed because
- * validate/clash operate on a file path, not in-memory bytes.
+ * Expected-vs-detected agreement for one model. `expected` comes from the
+ * corruption layer (all-clean expectations for uncorrupted models), the
+ * rest from the just-run checks. Every mismatch is a real finding: either
+ * a planted defect the pipeline missed, or a phantom the pipeline invented.
  */
-export async function labelModel(model, filePath, { skipChecks = false } = {}) {
+function computeAgreement(expected, schema, clash, quantities, degenerateProbes) {
+  if (!expected || schema.ok === false || clash.ok === false) {
+    return { ok: false, reason: 'checks did not complete' };
+  }
+  const detectedFootingClashes = clash.byRule?.['gym-footing-self'] ?? 0;
+  const unmeshedProbes = Object.values(clash.probesMeshed ?? {}).filter((meshed) => !meshed).length;
+  // Degenerate columns never had quantity sets, so the observable
+  // missing-quantity count is planted removals plus planted degenerates.
+  const expectedMissingQto = expected.missingQuantitySets + expected.unmeshedElementCount;
+  const observedMissingQto = quantities
+    ? quantities.quantifiableElements - quantities.elementsWithQuantities
+    : null;
+
+  const schemaMatch = schema.valid === expected.schemaValid;
+  const clashMatch = detectedFootingClashes === expected.clashPairCount;
+  const degenerateMatch = degenerateProbes.length === expected.unmeshedElementCount
+    && unmeshedProbes === expected.unmeshedElementCount;
+  const quantityMatch = observedMissingQto === null ? null : observedMissingQto === expectedMissingQto;
+
+  return {
+    ok: true,
+    schemaMatch,
+    clashMatch,
+    degenerateMatch,
+    quantityMatch,
+    allMatch: schemaMatch && clashMatch && degenerateMatch && quantityMatch === true,
+  };
+}
+
+/**
+ * Compute the full manifest line for an already-generated model.
+ *
+ * `filePath` is where the content was (or would be) written - the
+ * in-process engine labels straight from `model.content` in memory and only
+ * uses `filePath` as an identifier, so callers running with keepFiles=false
+ * never touch the disk at all.
+ *
+ * options.engine: 'in-process' (default, v2) | 'subprocess' (v1 parity/fallback).
+ */
+export async function labelModel(model, filePath, { skipChecks = false, engine = 'in-process' } = {}) {
   const t0 = performance.now();
   const sha256 = createHash('sha256').update(model.content, 'utf-8').digest('hex');
 
@@ -119,11 +166,35 @@ export async function labelModel(model, filePath, { skipChecks = false } = {}) {
 
   let schema = { ok: true, skipped: true };
   let clash = { ok: true, skipped: true };
+  let quantities = null;
+  let agreement = null;
+  let degenerateProbes = [];
+
   if (!skipChecks) {
-    [schema, clash] = await Promise.all([schemaCheck(filePath), clashCheck(filePath)]);
+    if (engine === 'subprocess') {
+      [schema, clash] = await Promise.all([schemaCheckSubprocess(filePath), clashCheckSubprocess(filePath)]);
+    } else {
+      try {
+        const store = await parseStore(model.content, basename(filePath));
+        schema = schemaCheckInProcess(store);
+        degenerateProbes = findExpressIdsByNamePrefix(store, 'IFCCOLUMN', 'GymDegenerate');
+        clash = await clashCheckInProcess(store, basename(filePath), degenerateProbes);
+        quantities = extractQuantityTotals(store);
+        agreement = computeAgreement(model.expected, schema, clash, quantities, degenerateProbes);
+      } catch (err) {
+        schema = { ok: false, error: String(err.message ?? err) };
+        clash = { ok: false, error: String(err.message ?? err) };
+      }
+    }
   }
 
   const labelTimeMs = performance.now() - t0;
+
+  // Keep the clash payload compact in the manifest: drop the per-pair list
+  // for clean verdicts (it is always empty there anyway).
+  const clashOut = clash.ok && Array.isArray(clash.pairs) && clash.total === 0
+    ? { ...clash, pairs: undefined }
+    : clash;
 
   return {
     seed: model.seed,
@@ -136,14 +207,20 @@ export async function labelModel(model, filePath, { skipChecks = false } = {}) {
     entityCountsByType: counts,
     storeyCount: model.labels.storeyCount,
     groundTruth: model.labels,
+    corrupted: model.corrupted ?? false,
+    defects: model.defects ?? [],
+    expected: model.expected ?? null,
     schemaCheck: schema,
-    clash,
+    clash: clashOut,
+    quantitiesExtracted: quantities,
+    agreement,
+    labelEngine: skipChecks ? 'skipped' : engine,
     labelTimeMs: Math.round(labelTimeMs),
   };
 }
 
 // ============================================================================
-// CLI entry point — standalone single-model generate + label
+// CLI entry point - standalone single-model generate + label
 // ============================================================================
 
 async function main() {
@@ -156,20 +233,25 @@ async function main() {
 
   const seedRaw = getFlag('--seed');
   if (seedRaw === undefined) {
-    process.stderr.write('Usage: node labeler.mjs --seed <n> [--family frame|office|auto] --model-dir <dir> [--skip-checks] [--json]\n');
+    process.stderr.write('Usage: node labeler.mjs --seed <n> [--family frame|office|auto] [--corrupt | --corrupt-rate 0.3] [--engine in-process|subprocess] --model-dir <dir> [--skip-checks] [--json]\n');
     process.exit(1);
   }
   const seed = Number.isFinite(Number(seedRaw)) ? Number(seedRaw) : seedRaw;
   const family = getFlag('--family') ?? 'auto';
   const modelDir = getFlag('--model-dir') ?? '.';
   const skipChecks = hasFlag('--skip-checks');
+  const engine = getFlag('--engine') ?? 'in-process';
+  const corruptRate = Number(getFlag('--corrupt-rate') ?? 0);
+  const forceCorrupt = hasFlag('--corrupt') ? true : undefined;
 
-  const model = generateModel(seed, family);
+  if (engine === 'in-process' && !skipChecks) await initChecks();
+
+  const model = generateModel(seed, family, { corruptRate, forceCorrupt });
   await mkdir(modelDir, { recursive: true });
   const filePath = join(modelDir, `${model.family}-${seed}.ifc`);
   await writeFile(filePath, model.content, 'utf-8');
 
-  const line = await labelModel(model, filePath, { skipChecks });
+  const line = await labelModel(model, filePath, { skipChecks, engine });
   process.stdout.write(`${JSON.stringify(line)}\n`);
 }
 

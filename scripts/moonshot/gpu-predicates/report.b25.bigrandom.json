@@ -1,0 +1,30 @@
+{
+  "phase": "bigrandom",
+  "generatedAt": "2026-07-24T16:27:56.325Z",
+  "adapterInfo": {
+    "vendor": "apple",
+    "architecture": "metal-3",
+    "device": "",
+    "description": ""
+  },
+  "bigRandom": {
+    "orient3d": {
+      "totalCases": 20000000,
+      "checked": 20000000,
+      "mismatches": 0,
+      "gpuFallbacks": 0,
+      "expectedFallbacks": 0,
+      "gpuTimeMs": 1759.9000000003725,
+      "mismatchSamples": []
+    },
+    "incircle": {
+      "totalCases": 5000000,
+      "checked": 5000000,
+      "mismatches": 0,
+      "gpuFallbacks": 0,
+      "expectedFallbacks": 0,
+      "gpuTimeMs": 386.4999999990687,
+      "mismatchSamples": []
+    }
+  }
+}

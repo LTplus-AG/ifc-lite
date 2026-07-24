@@ -1,0 +1,20 @@
+{
+  "phase": "selftest",
+  "generatedAt": "2026-07-24T16:36:41.361Z",
+  "adapterInfo": {
+    "vendor": "apple",
+    "architecture": "metal-3",
+    "device": "",
+    "description": ""
+  },
+  "selfTests": {
+    "mulVar": {
+      "cases": 307,
+      "mismatches": 0
+    },
+    "decode": {
+      "cases": 26624,
+      "mismatches": 0
+    }
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "phase": "encodecheck",
+  "generatedAt": "2026-07-24T16:22:04.602Z",
+  "encoderMicrobench": {
+    "n": 200000,
+    "bigIntEncodeMs": 387.17108400000006,
+    "fastEncodeMs": 50.84295799999995,
+    "ratio": 7.615038527066038
+  },
+  "results": [
+    {
+      "label": "random_mag1e3_2e5",
+      "cases": 200000,
+      "mismatches": 0,
+      "firstMismatch": null,
+      "ms": 437.21166700000003
+    },
+    {
+      "label": "random_mag1e9_5e4",
+      "cases": 50000,
+      "mismatches": 0,
+      "firstMismatch": null,
+      "ms": 107.67004199999997
+    },
+    {
+      "label": "random_mag1e-6_5e4",
+      "cases": 50000,
+      "mismatches": 0,
+      "firstMismatch": null,
+      "ms": 108.56270799999993
+    },
+    {
+      "label": "adversarial_specials_3e4",
+      "cases": 30016,
+      "mismatches": 0,
+      "firstMismatch": null,
+      "ms": 20.070749999999975
+    }
+  ],
+  "totalMismatches": 0
+}

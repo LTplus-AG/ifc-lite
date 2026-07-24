@@ -1,10 +1,17 @@
-# B1.3 spike: exact orient3d on WebGPU
+# B1.3 spike + B2.5 follow-up: exact orient3d and incircle on WebGPU
 
-Spike for M6c (docs/vision/moonshots-tech.md) / B1.3 (docs/vision/moonshots-execution-plan.md).
-Scope: **orient3d only** (stage 1). No incircle, no CSG integration, no `rust/` or
-`packages/` changes. This directory is self-contained: `reference.mjs` (CPU exact
-oracle), `orient3d.wgsl` (GPU exact kernel), `harness.mjs` (Playwright-driven
-browser runner that does both and compares).
+Spike for M6c (docs/vision/moonshots-tech.md) / B1.3 (docs/vision/moonshots-execution-plan.md),
+extended by B2.5 (encode-bottleneck attack + incircle; see section 9). No CSG
+integration, no `rust/` or `packages/` changes. This directory is self-contained:
+
+- B1.3 (sections 1-8): `reference.mjs` (CPU exact oracle + CPU encoder),
+  `orient3d.wgsl` (GPU exact kernel, CPU-encoded inputs), `harness.mjs`
+  (Playwright-driven browser runner that does both and compares).
+- B2.5 (section 9): `predicates-raw.wgsl` (GPU kernels taking RAW f64 bits:
+  decode, exponent frame, D_MAX gate, and both predicates fully on-GPU),
+  `harness-b25.mjs` (runner for the new paths), plus additions to
+  `reference.mjs` (incircle BigInt oracle, BigInt-free fast CPU encoder).
+  The B1.3 files are untouched so the original baseline stays reproducible.
 
 ## 1. Why floats can't just be uploaded to the GPU
 
@@ -231,3 +238,147 @@ produced by `node harness.mjs --phase=all`. Headline:
   unoptimized single-threaded-CPU-encode pipeline is already a 10x win
   end-to-end for a real caller — that gap is real, disclosed, and left for
   B2.5/B3.4 to close.
+
+## 9. B2.5 follow-up: the encode bottleneck is closed, and incircle is in
+
+Everything in this section was measured on the same machine and stack as
+section 8 (Apple M4, Metal-3 WebGPU adapter, real Chrome via Playwright's
+`chrome` channel, headed, `--enable-unsafe-webgpu`; all generation, CPU
+references, and dispatch inside the page). Raw numbers live in
+`report.b25.*.json`, produced by `node harness-b25.mjs --phase=<phase>`.
+
+### 9.1 Baseline reproduction
+
+Re-running the untouched B1.3 harness (`node harness.mjs --phase=throughput
+--sizes=100000,1000000`, 2026-07-24) reproduced section 8's caveat exactly:
+at n=1e6, encode 1731 ms + GPU 146 ms vs CPU BigInt 2523 ms, i.e. **1.34x
+end-to-end** (GPU arithmetic alone 17x in that run). One methodology note
+uncovered while reproducing: harness.mjs's first dispatch pays pipeline
+compilation (~290 ms), which is visible in the 1e5 row when the throughput
+phase runs alone; harness-b25.mjs therefore runs explicit warmup dispatches
+on every pipeline before any timed region.
+
+### 9.2 What was built
+
+Three candidates from section 8's follow-up list, in the order that killed
+the bottleneck:
+
+1. **GPU-side bit-decode (the winner, "path C").** Section 7 claimed the
+   CPU-side decomposition step was "unavoidable in any WGSL scheme" because
+   WGSL has no f64. That claim confused *receiving doubles* with *receiving
+   the bits of doubles*. The caller reinterprets its `Float64Array` as a
+   `Uint32Array` (zero copies, zero arithmetic) and uploads raw IEEE-754
+   halves; `predicates-raw.wgsl` does the frexp decomposition, the per-test
+   shared exponent frame, the D_MAX gate, and the mantissa shifts entirely
+   in integer WGSL. A gated lane (NaN/Inf or D > 100) writes the sentinel
+   sign 2 instead of computing - fallback-not-wrong is preserved, it just
+   moved to the GPU. Upload also shrinks 3x (96 B/test vs 288 B/test).
+2. **BigInt-free CPU encode ("path B", `encodeTestFast`).** Same output
+   words as `encodeTest`, using only 32-bit integer ops on the IEEE halves.
+   Verified word-for-word identical on 330,016 cases including NaN/Inf,
+   subnormals, DBL_MAX, mixed specials, and the exact D_MAX boundary
+   (`--phase=encodecheck`, 0 mismatches). 7.6x faster than the BigInt
+   encoder in Node, 5.4x inside Chrome (319 ms vs 1731 ms per 1e6). Kept as
+   the fallback story for callers that need CPU-side encoding; obsoleted for
+   the main GPU path by candidate 1.
+3. **Length-aware multiply (narrow-limb tiering, per-lane).** Instead of
+   per-lane width *branching* into separate kernels, `magMul` in the new
+   kernel scans both operands' true limb lengths and loops only that far.
+   Typical differences at small per-test D have 2-3 significant limbs, so
+   the schoolbook shrinks from 16x16=256 partial products to ~tens. Lanes
+   diverge only as far as their limb lengths differ (magnitude-coherent
+   batches: barely). This more than pays for the wider 20-limb container
+   the unified kernel uses (see 9.3): the new kernel's full pipeline is
+   *faster* than the old 16-limb one despite also doing the decode.
+
+The worker-parallelized-encode candidate was not implemented: with encode
+gone from the pipeline entirely, there is nothing left for workers to
+parallelize on the main path (it would only multiply path B's 5.4x).
+
+### 9.3 incircle and the unified width budget
+
+`incircleRaw` computes the standard lifted 3x3 determinant (sign of d
+against the circle through a,b,c), matching the new BigInt oracle
+`incircleSignBigInt` in `reference.mjs`. It is homogeneous of degree 4 in
+the coordinate differences, so the shared positive frame scale preserves
+the sign exactly as the degree-3 argument in section 2 does for orient3d.
+
+Width budget at D_MAX = 100 (magnitudes strictly below 2^k): input 2^153,
+difference 2^154, square 2^308, lift (sum of two squares) 2^309, row term
+2^618, three-term determinant 2^620. Both predicates therefore share one
+**20-limb (640-bit)** sign-magnitude working width in `predicates-raw.wgsl`
+(orient3d only needs 465 bits; the length-aware multiply makes the extra
+container limbs nearly free). Truncation to 20 limbs is exact for gated
+inputs, same argument as section 5.
+
+### 9.4 Correctness results (all zero-mismatch)
+
+- `mulVar` self-test (length-aware 640-bit multiply vs BigInt mod 2^640,
+  including full-width, top-limb-only, and random sparse-length operands):
+  307 cases, 0 mismatches.
+- Decode self-test (GPU decode/frame/shift vs the trusted CPU encoder,
+  word-for-word including eMin and the valid flag): 26,624 cases spanning
+  random at three magnitudes, 1-ulp coplanar sets, zeros, subnormals,
+  NaN/Inf, and the D 99/100/101/120/300 boundary: 0 mismatches.
+- orient3d raw-path battery (same adversarial families as the B1.3 battery
+  plus NaN/Inf-must-flag): 1,500,524 cases, 0 mismatches; all 511
+  must-fallback cases produced exactly the sentinel, and the D_MAX boundary
+  is exact (D=100 computes, D=101 flags).
+- incircle battery: 1,453,523 cases, 0 mismatches - random at three
+  magnitudes, 51,000 cocircular 1-ulp perturbations, 2,000
+  exactly-cocircular integer constructions (Pythagorean points on
+  translated radius-25 circles; determinant exactly zero), collinear and
+  all-zero degeneracies, subnormal/NaN/spread fallbacks.
+- Large-scale random battery (`--phase=bigrandom`, chunked, magnitudes
+  rotating 1e3/1e9/1e-6): orient3d 20,000,000 cases and incircle 5,000,000
+  cases vs the BigInt oracle, 0 mismatches.
+
+Total verified this round: ~21.5M orient3d + ~6.5M incircle evaluations,
+zero sign disagreements, zero gate disagreements.
+
+### 9.5 End-to-end throughput (the number that was missing)
+
+Measured e2e = everything the caller pays: CPU-side prep (none for path C
+beyond a typed-array view), upload, dispatch, readback, and the sentinel
+scan. CPU baseline = single-thread BigInt exact, same distribution, chunked
+identically (chunk = 1e6). Warmup excluded via pre-dispatch. Random uniform
+magnitude 1e3, zero fallbacks in all runs.
+
+| n | orient3d CPU | path B e2e | path C e2e | B speedup | **C speedup** |
+|---|---|---|---|---|---|
+| 1e5 | 261 ms | 64 ms | 21 ms | 4.1x | **12.3x** |
+| 1e6 | 2537 ms | 503 ms | 103 ms | 5.0x | **24.6x** |
+| 1e7 | 24950 ms | 4962 ms | 781 ms | 5.0x | **31.9x** |
+
+| n | incircle CPU | path C e2e | **C speedup** |
+|---|---|---|---|
+| 1e5 | 925 ms | 18 ms | **51.7x** |
+| 1e6 | 8296 ms | 88 ms | **94.8x** |
+| 1e7 | 91088 ms | 674 ms | **135.1x** |
+
+The B1.3 arithmetic-only ratio (31x at 1e7) is now the *end-to-end* ratio:
+the 1.3-1.4x caveat of section 8 is closed. incircle lands higher because
+its CPU BigInt cost per test is ~3.6x orient3d's (degree 4, wider
+intermediates) while its GPU cost is barely higher.
+
+### 9.6 Remaining gaps
+
+- **Exam-scale battery.** The literal 1e8-case battery has not been run:
+  verified scale is 2.15e7 (orient3d) + 6.45e6 (incircle). The binding
+  constraint is the CPU BigInt oracle (~2.5 us / ~9 us per case), i.e.
+  ~2 h of oracle time for 1e8 of each; nothing structural blocks it, it is
+  wall-clock only. GPU-side cost at 1e8 is seconds.
+- **Adversarial fraction at scale**: the zero-mismatch adversarial families
+  (1-ulp coplanar/cocircular, exact zeros, boundary D) are thousands to
+  tens of thousands of cases each; scaling those to exam size is oracle
+  wall-clock too.
+- Little-endian host assumed for the raw-bits reinterpret (both the fast
+  encoder and the upload path); a big-endian host would need a word swap.
+- Still out of scope, unchanged from section 7: rational escalation tier,
+  ImplicitPoint/LPI/TPI configurations, batched-op fallback policy (the
+  sentinel composes per-predicate; an integrated CSG op still needs a
+  policy for partially-flagged batches), NaN/Inf as anything other than a
+  flagged lane.
+- Single machine / single backend measured (Apple M4, Metal-3, Chrome).
+  The WGSL uses nothing exotic (no subgroups, no f16), but the numbers are
+  one-GPU numbers.

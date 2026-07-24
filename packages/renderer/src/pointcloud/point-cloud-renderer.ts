@@ -26,6 +26,7 @@ import {
   type PointCloudNode,
   type PointCloudNodeMeta,
 } from './point-cloud-node.js';
+import type { PointCloudSpatialIndex } from './point-cloud-spatial-index.js';
 import {
   normalizeClassMask,
   writePointCloudUniforms,
@@ -428,6 +429,28 @@ export class PointCloudRenderer {
         expressId: node.meta.expressId,
         modelIndex: node.meta.modelIndex,
         chunks: node.chunks.map((c) => ({ vertexBuffer: c.vertexBuffer, pointCount: c.pointCount })),
+      });
+    }
+    return out;
+  }
+
+  /**
+   * Snapshot of every node's CPU spatial index (issue #1860), for the
+   * measure tool's ray-based point snapping (`RaycastEngine`). Skips
+   * empty nodes, mirroring `getPickNodes`.
+   */
+  getRayQuerySources(): Array<{
+    expressId: number;
+    modelIndex?: number;
+    index: PointCloudSpatialIndex;
+  }> {
+    const out: Array<{ expressId: number; modelIndex?: number; index: PointCloudSpatialIndex }> = [];
+    for (const node of this.nodes.values()) {
+      if (node.spatialIndex.pointCount === 0) continue;
+      out.push({
+        expressId: node.meta.expressId,
+        modelIndex: node.meta.modelIndex,
+        index: node.spatialIndex,
       });
     }
     return out;

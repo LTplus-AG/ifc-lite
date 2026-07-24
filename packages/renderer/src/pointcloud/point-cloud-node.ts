@@ -13,6 +13,7 @@
 import type { PointCloudAsset } from '@ifc-lite/geometry';
 import type { PointRenderPipeline } from './point-pipeline.js';
 import { POINT_VERTEX_BYTES } from './point-pipeline.js';
+import { PointCloudSpatialIndex } from './point-cloud-spatial-index.js';
 
 export interface PointCloudGpuChunk {
   vertexBuffer: GPUBuffer;
@@ -53,6 +54,13 @@ export interface PointCloudNode {
   chunks: PointCloudGpuChunk[];
   bounds: { min: [number, number, number]; max: [number, number, number] };
   pointCount: number;
+  /**
+   * CPU spatial index over this node's points (issue #1860), so the
+   * measure tool can snap to real scan points even though `chunks`
+   * above holds only opaque GPU buffers. Built incrementally in
+   * `appendChunkToNode`, alongside the GPU upload.
+   */
+  spatialIndex: PointCloudSpatialIndex;
 }
 
 /** Build an empty node — chunks are appended via `appendChunkToNode`. */
@@ -74,6 +82,7 @@ export function createNode(
       max: [-Infinity, -Infinity, -Infinity],
     },
     pointCount: 0,
+    spatialIndex: new PointCloudSpatialIndex(),
   };
 }
 
@@ -106,6 +115,12 @@ export function appendChunkToNode(
 ): void {
   const total = chunk.pointCount;
   if (total <= 0) return;
+  // Index the whole chunk's points for measure-tool snapping (#1860),
+  // independent of how the GPU sub-buffer split below divides it up —
+  // the index doesn't care about buffer size limits, only world
+  // positions. Retains `chunk.positions` by reference (see spatial
+  // index class docs); no-ops past the index's point cap.
+  node.spatialIndex.insertRange(chunk.positions, total);
   // Honour BOTH the raw buffer cap and the storage-binding cap, with a 5%
   // margin for safety against driver rounding.
   const maxBytes = Math.min(
@@ -244,6 +259,10 @@ export function destroyNode(node: PointCloudNode): void {
   node.uniformBuffer.destroy();
   node.chunks = [];
   node.pointCount = 0;
+  // Drop the retained position arrays + grid buckets (#1860) — without
+  // this the spatial index would keep every chunk's Float32Array alive
+  // for the rest of the session even after the GPU buffers are freed.
+  node.spatialIndex.dispose();
 }
 
 function growBounds(

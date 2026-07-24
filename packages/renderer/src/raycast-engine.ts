@@ -10,10 +10,17 @@
 import { Camera } from './camera.js';
 import { Scene } from './scene.js';
 import { Raycaster, type Intersection, type Ray } from './raycaster.js';
-import { SnapDetector, type SnapTarget, type SnapOptions, type EdgeLockInput, type MagneticSnapResult } from './snap-detector.js';
+import { SnapDetector, SnapType, type SnapTarget, type SnapOptions, type EdgeLockInput, type MagneticSnapResult } from './snap-detector.js';
 import { BVH } from './bvh.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { PickOptions } from './types.js';
+import {
+    queryPointClouds,
+    releasedEdgeLock,
+    type PointCloudRayProvider,
+} from './raycast-point-cloud-query.js';
+
+export type { PointCloudRaySource, PointCloudRayProvider } from './raycast-point-cloud-query.js';
 
 /**
  * Cheap order-sensitive 32-bit signature of a mesh set, used to detect when the
@@ -38,6 +45,7 @@ export class RaycastEngine {
     private raycaster: Raycaster;
     private snapDetector: SnapDetector;
     private bvh: BVH;
+    private pointCloudProvider: PointCloudRayProvider | null = null;
 
     // BVH cache
     private bvhCache: {
@@ -332,44 +340,55 @@ export class RaycastEngine {
             // Create ray from screen coordinates
             const ray = this.camera.unprojectToRay(scaled.scaledX, scaled.scaledY, this.canvas.width, this.canvas.height);
 
-            // Get all mesh data from scene
+            // Get all mesh data from scene. Unlike before #1860, an empty
+            // scene no longer short-circuits here — a point-cloud-only
+            // model (no IFC mesh loaded at all) must still fall through
+            // to the point-cloud query below instead of returning a hard
+            // miss.
             const allMeshData = this.collectVisibleMeshData(options, ray);
 
-            if (allMeshData.length === 0) {
-                return {
-                    intersection: null,
-                    snapTarget: null,
-                    edgeLock: {
-                        edge: null,
-                        meshExpressId: null,
-                        edgeT: 0,
-                        shouldLock: false,
-                        shouldRelease: true,
-                        isCorner: false,
-                        cornerValence: 0,
-                    },
-                };
-            }
-
-            // Use BVH for performance if we have many meshes
-            const meshesToTest = this.filterWithBVH(allMeshData, ray);
-
-            // Perform raycasting
-            const intersection = this.raycaster.raycast(ray, meshesToTest);
-
-            // Use magnetic snap detection
             const cameraPos = this.camera.getPosition();
             const cameraFov = this.camera.getFOV();
 
-            const magneticResult = this.snapDetector.detectMagneticSnap(
-                ray,
-                meshesToTest,
-                intersection,
-                { position: cameraPos, fov: cameraFov },
-                this.canvas.height,
-                currentEdgeLock,
-                options?.snapOptions || {}
-            );
+            let intersection: Intersection | null = null;
+            let magneticResult: MagneticSnapResult = { snapTarget: null, edgeLock: releasedEdgeLock() };
+
+            if (allMeshData.length > 0) {
+                // Use BVH for performance if we have many meshes
+                const meshesToTest = this.filterWithBVH(allMeshData, ray);
+
+                // Perform raycasting
+                intersection = this.raycaster.raycast(ray, meshesToTest);
+
+                // Use magnetic snap detection
+                magneticResult = this.snapDetector.detectMagneticSnap(
+                    ray,
+                    meshesToTest,
+                    intersection,
+                    { position: cameraPos, fov: cameraFov },
+                    this.canvas.height,
+                    currentEdgeLock,
+                    options?.snapOptions || {}
+                );
+            }
+
+            // Point-cloud snapping (#1860): only wins when it's strictly
+            // nearer than whatever the mesh path already found (or there
+            // was no mesh hit at all) — a real mesh surface in front of a
+            // scan point should still win the pick.
+            const maxPointDistance = intersection ? intersection.distance : Infinity;
+            const pointHit = queryPointClouds(this.pointCloudProvider, ray, cameraFov, this.canvas.height, maxPointDistance, options);
+            if (pointHit) {
+                magneticResult = {
+                    snapTarget: {
+                        type: SnapType.POINT_CLOUD,
+                        position: pointHit.position,
+                        expressId: pointHit.expressId,
+                        confidence: 1,
+                    },
+                    edgeLock: releasedEdgeLock(),
+                };
+            }
 
             return {
                 intersection,
@@ -412,6 +431,14 @@ export class RaycastEngine {
      */
     getSnapDetector(): SnapDetector {
         return this.snapDetector;
+    }
+
+    /**
+     * Renderer wires this once point clouds are initialised so the
+     * measure tool can snap to scan points (#1860). Pass null to disable.
+     */
+    setPointCloudProvider(provider: PointCloudRayProvider | null): void {
+        this.pointCloudProvider = provider;
     }
 
     /**

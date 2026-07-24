@@ -433,6 +433,11 @@ export class Renderer {
                 },
             };
         });
+        // Let the CPU raycast engine (measure tool / snap) query each
+        // point-cloud asset's spatial index (#1860) — a separate concern
+        // from the GPU click-pick provider above, since raycastScene* is
+        // synchronous CPU code while pick() is an async GPU readback.
+        this.raycastEngine.setPointCloudProvider(() => this.pointCloudRenderer?.getRayQuerySources() ?? []);
 
         this.markReady();
     }

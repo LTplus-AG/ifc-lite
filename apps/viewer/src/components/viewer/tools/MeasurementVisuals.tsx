@@ -563,6 +563,7 @@ function SnapIndicator({ screenX, screenY, snapType }: SnapIndicatorProps) {
     [SnapType.EDGE]: '#FF9800', // Orange - line = edge
     [SnapType.FACE]: '#03A9F4', // Light Blue - square = face
     [SnapType.FACE_CENTER]: '#00BCD4', // Cyan - square with dot = center
+    [SnapType.POINT_CLOUD]: '#AB47BC', // Violet - small dot = snapped scan point (#1860)
   };
 
   const color = snapColors[snapType];
@@ -586,6 +587,16 @@ function SnapIndicator({ screenX, screenY, snapType }: SnapIndicatorProps) {
 
       {/* Vertex: filled circle (point) */}
       {snapType === SnapType.VERTEX && (
+        <>
+          <circle cx={screenX} cy={screenY} r="5" fill={color} opacity="0.3" />
+          <circle cx={screenX} cy={screenY} r="2.5" fill={color} />
+        </>
+      )}
+
+      {/* Point cloud: same "point" shape as vertex, distinct colour, so
+          a snapped scan point reads as a subtly different kind of point
+          rather than a wholly new indicator (#1860). */}
+      {snapType === SnapType.POINT_CLOUD && (
         <>
           <circle cx={screenX} cy={screenY} r="5" fill={color} opacity="0.3" />
           <circle cx={screenX} cy={screenY} r="2.5" fill={color} />

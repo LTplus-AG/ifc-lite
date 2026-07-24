@@ -105,6 +105,16 @@ export interface GeometryMeshPayload {
   normals: ArrayLike<number>;
   indices: ArrayLike<number>;
   origin: readonly [number, number, number];
+  /**
+   * Optional RTC-invariant semantic hash (spec §3.1, decision Q2 2026-07-24):
+   * the `rust/geometry/src/geom_hash.rs` value already exposed through the
+   * wasm boundary as `geometryHashValues` (a u64). Carried as an ANNOTATION
+   * for dedup/memoization ("the same door hashes the same in Tokyo and
+   * Zurich") — it is deliberately NOT folded into the node hash, which stays
+   * byte-exact so certificates prove deterministic replay. Certificates must
+   * only ever claim over the node hash, never over this field.
+   */
+  semanticHash?: bigint | string;
 }
 
 export type PropertyValue = string | number | boolean | null;
@@ -123,6 +133,15 @@ export interface RelationshipPayload {
 }
 
 export interface LayerPayload {
+  /**
+   * The layer document's own content identity (spec §3.4, decision Q1
+   * 2026-07-24): the tagged blake3 hash produced by `packages/ifcx`'s
+   * `computeLayerId` (`"blake3:<hex>"`). The DAG layer node EMBEDS the ifcx
+   * identity rather than competing with it — one node carries both the
+   * document identity (this field) and the effect commitment (childHashes),
+   * and the node's own hash stays SHA-256 like every composite kind.
+   */
+  layerId: string;
   /** Tagged hashes of the element/entity nodes this layer's ops touch. */
   childHashes: readonly string[];
 }
@@ -304,6 +323,7 @@ function encodeRelationship(payload: RelationshipPayload): Uint8Array {
 function encodeLayer(payload: LayerPayload): Uint8Array {
   const w = new ByteWriter();
   w.header('layer');
+  w.str(payload.layerId);
   const children = [...payload.childHashes].sort(compareUtf8);
   w.u32(children.length);
   for (const c of children) w.str(c);

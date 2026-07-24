@@ -44,22 +44,49 @@ export interface HashEqualityClaim {
   b: NodeRef;
 }
 
-/** A named scalar metric moved from `before` to `after` by exactly `delta`.
- *  When `beforeNodeId`/`afterNodeId` are supplied, the verifier also checks
- *  that those nodes resolve to a `property-set` payload carrying a property
- *  named `metric` whose value matches `before`/`after` respectively (spec §6
- *  Q3 notes this as a v0-scoped, not fully general, verification contract). */
+/** The registered scalar-metric vocabulary (spec §6 decision Q3 2026-07-24).
+ *  `net-volume` and `element-count` read fixed property names (`NetVolume`,
+ *  `ElementCount`); `property-numeric` reads the claim's own `property`. */
+export type ScalarMetric = 'net-volume' | 'element-count' | 'property-numeric';
+
+const METRIC_PROPERTY_NAME: Record<Exclude<ScalarMetric, 'property-numeric'>, string> = {
+  'net-volume': 'NetVolume',
+  'element-count': 'ElementCount',
+};
+
+/** A registered scalar metric moved from `before` to `after` by exactly
+ *  `delta`. Per decision Q3 (2026-07-24) the node bindings are MANDATORY: a
+ *  scalar claim that does not bind to DAG nodes is a free-floating assertion,
+ *  which is against the spirit of the whole scheme. The verifier checks that
+ *  `beforeNodeId`/`afterNodeId` resolve to `property-set` payloads carrying
+ *  the metric's property with values matching `before`/`after`. Deltas the
+ *  verifier derives itself from geometry diffs are a B1.1/B1.4 concern. */
 export interface ScalarDeltaClaim {
   type: 'scalar-delta';
-  metric: string;
+  metric: ScalarMetric;
+  /** Required when `metric` is `property-numeric`: the property name read
+   *  from the bound property-set payloads. Forbidden otherwise. */
+  property?: string;
   before: number;
   after: number;
   delta: number;
-  beforeNodeId?: string;
-  afterNodeId?: string;
+  beforeNodeId: string;
+  afterNodeId: string;
 }
 
 export type Claim = SubtreeUntouchedClaim | HashEqualityClaim | ScalarDeltaClaim;
+
+/** Reserved signature slot (spec §6 decision Q5 2026-07-24): mirrors the
+ *  `packages/ifcx` provenance-manifest signature shape (`alg`/`key`/`sig`,
+ *  see `canonical.ts`'s "signatures sign the id" rule) so the codebase keeps
+ *  one signature idiom. v0 verification IGNORES this field entirely — actual
+ *  signing lands with M4 (encrypted multiplayer, Phase 2); key custody is a
+ *  human-calendar item. */
+export interface CertificateSignature {
+  alg: 'ed25519';
+  key: string;
+  sig: string;
+}
 
 /** Certificate v0. `kernelVersion` and `trustRoot` are pinned separately
  *  (spec §4): `kernelVersion` identifies the geometry-kernel build,
@@ -73,6 +100,8 @@ export interface Certificate {
   reads: readonly NodeRef[];
   writes: readonly NodeRef[];
   claims: readonly Claim[];
+  /** Reserved, ignored by v0 verification — see {@link CertificateSignature}. */
+  signatures?: readonly CertificateSignature[];
 }
 
 export interface CreateCertificateInput {
@@ -81,6 +110,7 @@ export interface CreateCertificateInput {
   reads: readonly NodeRef[];
   writes: readonly NodeRef[];
   claims: readonly Claim[];
+  signatures?: readonly CertificateSignature[];
 }
 
 const HASH_TAG_PATTERN = /^(fnv1a64|sha256):/;
@@ -111,6 +141,32 @@ export function createCertificate(input: CreateCertificateInput): Certificate {
     } else if (claim.type === 'hash-equality') {
       assertTaggedHash(claim.a, 'hash-equality claim');
       assertTaggedHash(claim.b, 'hash-equality claim');
+    } else {
+      // scalar-delta (decision Q3 2026-07-24): registered vocabulary +
+      // mandatory node bindings, validated at creation so a malformed claim
+      // never travels.
+      if (!['net-volume', 'element-count', 'property-numeric'].includes(claim.metric)) {
+        throw new Error(
+          `@ifc-lite/provenance: scalar-delta metric "${String(claim.metric)}" is not in the ` +
+            `registered vocabulary (net-volume, element-count, property-numeric)`,
+        );
+      }
+      if (claim.metric === 'property-numeric' && !claim.property) {
+        throw new Error(
+          '@ifc-lite/provenance: scalar-delta with metric "property-numeric" requires `property`',
+        );
+      }
+      if (claim.metric !== 'property-numeric' && claim.property !== undefined) {
+        throw new Error(
+          `@ifc-lite/provenance: scalar-delta metric "${claim.metric}" must not carry \`property\``,
+        );
+      }
+      if (!claim.beforeNodeId || !claim.afterNodeId) {
+        throw new Error(
+          '@ifc-lite/provenance: scalar-delta claims must bind beforeNodeId and afterNodeId ' +
+            '(free-floating scalar assertions are not certifiable — decision Q3)',
+        );
+      }
     }
   }
   return {
@@ -120,6 +176,7 @@ export function createCertificate(input: CreateCertificateInput): Certificate {
     reads: input.reads,
     writes: input.writes,
     claims: input.claims,
+    ...(input.signatures !== undefined ? { signatures: input.signatures } : {}),
   };
 }
 
@@ -162,9 +219,14 @@ async function verifyNodeRef(
   return undefined;
 }
 
-function extractMetric(resolved: ResolvedNode, metric: string): number | undefined {
+function extractMetric(resolved: ResolvedNode, claim: ScalarDeltaClaim): number | undefined {
   if (resolved.kind !== 'property-set') return undefined;
-  const prop = resolved.payload.properties.find((p) => p.name === metric);
+  const propertyName =
+    claim.metric === 'property-numeric'
+      ? claim.property
+      : METRIC_PROPERTY_NAME[claim.metric];
+  if (!propertyName) return undefined;
+  const prop = resolved.payload.properties.find((p) => p.name === propertyName);
   return typeof prop?.value === 'number' ? prop.value : undefined;
 }
 
@@ -198,31 +260,28 @@ async function verifyClaim(claim: Claim, resolver: NodeResolver): Promise<Verifi
       expectedDelta,
     });
   }
-  if (claim.beforeNodeId !== undefined) {
-    const resolved = await resolver(claim.beforeNodeId);
-    if (!resolved) return fail('unresolvable-node', { where: 'claim:scalar-delta:before', nodeId: claim.beforeNodeId });
-    const value = extractMetric(resolved, claim.metric);
-    if (value === undefined || Math.abs(value - claim.before) > 1e-9) {
-      return fail('claim-scalar-delta-before-mismatch', {
-        nodeId: claim.beforeNodeId,
-        metric: claim.metric,
-        expected: claim.before,
-        actual: value,
-      });
-    }
+  // Bindings are mandatory (decision Q3) — no branch for their absence.
+  const before = await resolver(claim.beforeNodeId);
+  if (!before) return fail('unresolvable-node', { where: 'claim:scalar-delta:before', nodeId: claim.beforeNodeId });
+  const beforeValue = extractMetric(before, claim);
+  if (beforeValue === undefined || Math.abs(beforeValue - claim.before) > 1e-9) {
+    return fail('claim-scalar-delta-before-mismatch', {
+      nodeId: claim.beforeNodeId,
+      metric: claim.metric,
+      expected: claim.before,
+      actual: beforeValue,
+    });
   }
-  if (claim.afterNodeId !== undefined) {
-    const resolved = await resolver(claim.afterNodeId);
-    if (!resolved) return fail('unresolvable-node', { where: 'claim:scalar-delta:after', nodeId: claim.afterNodeId });
-    const value = extractMetric(resolved, claim.metric);
-    if (value === undefined || Math.abs(value - claim.after) > 1e-9) {
-      return fail('claim-scalar-delta-after-mismatch', {
-        nodeId: claim.afterNodeId,
-        metric: claim.metric,
-        expected: claim.after,
-        actual: value,
-      });
-    }
+  const after = await resolver(claim.afterNodeId);
+  if (!after) return fail('unresolvable-node', { where: 'claim:scalar-delta:after', nodeId: claim.afterNodeId });
+  const afterValue = extractMetric(after, claim);
+  if (afterValue === undefined || Math.abs(afterValue - claim.after) > 1e-9) {
+    return fail('claim-scalar-delta-after-mismatch', {
+      nodeId: claim.afterNodeId,
+      metric: claim.metric,
+      expected: claim.after,
+      actual: afterValue,
+    });
   }
   return undefined;
 }

@@ -1,4 +1,4 @@
-# Node-hash v0 (DRAFT — for Louis's review, not yet approved)
+# Node-hash v0 (decisions resolved 2026-07-24, see §6; format not yet frozen)
 
 Bet B0.1 (`docs/vision/moonshots-execution-plan.md` line 232) toward M1 "Proof-carrying
 buildings" (`docs/vision/moonshots-tech.md` §M1). Unifies the repo's existing hash systems into
@@ -6,8 +6,9 @@ one canonical node-hash spec so a certificate can claim, and a verifier can chec
 did not change" across the whole building DAG (mesh → property set → relationship → layer →
 element).
 
-This document is a draft. Every "Open question" in §6 needs a decision from Louis before v0
-freezes; nothing here is load-bearing yet outside the `@ifc-lite/provenance` prototype.
+Status 2026-07-24: the five §6 questions were decided by Louis (decisions recorded inline
+below and in §6); the prototype implements them. The v0 FORMAT is still not frozen — freezing
+is an explicit human-calendar act (ABI-freeze rule), separate from deciding the design.
 
 ## 0. Why unify, and why now
 
@@ -353,7 +354,33 @@ walks from any claimed-unchanged ancestor down through the resolver only far eno
 its hash matches — it does not need to re-walk the whole DAG, which is the whole point (cheap
 subtree replay, per the Gate G0 framing in `moonshots-execution-plan.md` line 241-243).
 
-## 6. Open questions for Louis
+## 6. Decisions (resolved by Louis, 2026-07-24)
+
+All five questions below were decided on 2026-07-24; the original question text is preserved
+for the record, each followed by the decision. Summary:
+
+- **Q1 — Embed, don't compete.** The DAG `layer` node EMBEDS the ifcx blake3 `layerId`
+  (`computeLayerId` output, tagged string) as its first payload field; the node's own hash
+  stays SHA-256 like every composite. One node carries both the document identity and the
+  effect commitment. Implemented: `LayerPayload.layerId`, encoded immediately after the header.
+- **Q2 — Both hashes in v0.** `geometry-mesh` nodes carry the byte-exact `fnv1a64:` node hash
+  (the only hash certificates may claim over) plus an optional `semanticHash` annotation (the
+  RTC-invariant `geom_hash.rs` u64 already exposed via wasm `geometryHashValues`) for
+  dedup/memoization. The annotation is deliberately NOT folded into the node hash; a test pins
+  that.
+- **Q3 — Assert-style with mandatory binding.** `scalar-delta` claims restrict `metric` to a
+  registered vocabulary (`net-volume` → reads `NetVolume`, `element-count` → reads
+  `ElementCount`, `property-numeric` → reads the claim's own `property` field) and
+  `beforeNodeId`/`afterNodeId` are mandatory: a scalar claim that does not bind to DAG nodes
+  is a free-floating assertion. Verifier-derived deltas from geometry diffs remain a
+  B1.1/B1.4 concern.
+- **Q4 — Confirmed out of scope.** The FxHasher dedup caches stay excluded (toolchain-unstable,
+  never persisted).
+- **Q5 — Reserve now, sign in M4.** `Certificate.signatures?` mirrors the ifcx
+  provenance-manifest signature shape (`{alg: 'ed25519', key, sig}`) and is ignored by v0
+  verification; actual signing lands with M4 (Phase 2); key custody is a human-calendar item.
+
+### Original questions (for the record)
 
 1. **Blake3 layer collision (§3.4).** `packages/ifcx`'s `computeLayerId` already exists, is
    already in production use (`packages/merge`), and is already called a "layer" hash. Should

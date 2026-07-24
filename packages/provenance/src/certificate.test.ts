@@ -55,16 +55,22 @@ describe('createCertificate + verifyCertificate: round trip', () => {
         { type: 'subtree-untouched', nodes: [{ nodeId: 'wall/500', hash: hashAfter }] },
         {
           type: 'scalar-delta',
-          metric: 'ThermalTransmittance',
+          metric: 'property-numeric',
+          property: 'ThermalTransmittance',
           before: 0.24,
           after: 0.24,
           delta: 0,
+          beforeNodeId: 'wall/500/pset',
+          afterNodeId: 'wall/500/pset',
         },
       ],
     });
 
     const resolver = resolverFromMap(
-      new Map([['wall/500', { kind: 'geometry-mesh', payload: meshAfter }]]),
+      new Map<string, ResolvedNode>([
+        ['wall/500', { kind: 'geometry-mesh', payload: meshAfter }],
+        ['wall/500/pset', { kind: 'property-set', payload: pset(0.24) }],
+      ]),
     );
 
     const result = await verifyCertificate(cert, resolver, {
@@ -276,7 +282,8 @@ describe('verifyCertificate: scalar-delta claim', () => {
       claims: [
         {
           type: 'scalar-delta',
-          metric: 'ThermalTransmittance',
+          metric: 'property-numeric',
+          property: 'ThermalTransmittance',
           before: 0.3,
           after: 0.24,
           delta: -0.06,
@@ -294,6 +301,37 @@ describe('verifyCertificate: scalar-delta claim', () => {
     expect(await verifyCertificate(cert, resolver)).toEqual({ ok: true });
   });
 
+  it('passes for a registered fixed-name metric (net-volume reads NetVolume)', async () => {
+    const volPset = (v: number): PropertySetPayload => ({
+      name: 'Qto_WallBaseQuantities',
+      properties: [{ name: 'NetVolume', value: v }],
+    });
+    const cert = createCertificate({
+      kernelVersion: KERNEL_VERSION,
+      trustRoot: TRUST_ROOT,
+      reads: [],
+      writes: [],
+      claims: [
+        {
+          type: 'scalar-delta',
+          metric: 'net-volume',
+          before: 10.5,
+          after: 10.84,
+          delta: 0.34,
+          beforeNodeId: 'wall/500#before',
+          afterNodeId: 'wall/500#after',
+        },
+      ],
+    });
+    const resolver = resolverFromMap(
+      new Map([
+        ['wall/500#before', { kind: 'property-set', payload: volPset(10.5) }],
+        ['wall/500#after', { kind: 'property-set', payload: volPset(10.84) }],
+      ]),
+    );
+    expect(await verifyCertificate(cert, resolver)).toEqual({ ok: true });
+  });
+
   it('tamper: fails when delta does not equal after - before (forged claim)', async () => {
     const cert = createCertificate({
       kernelVersion: KERNEL_VERSION,
@@ -301,7 +339,15 @@ describe('verifyCertificate: scalar-delta claim', () => {
       reads: [],
       writes: [],
       claims: [
-        { type: 'scalar-delta', metric: 'Volume', before: 10, after: 12, delta: 999 },
+        {
+          type: 'scalar-delta',
+          metric: 'net-volume',
+          before: 10,
+          after: 12,
+          delta: 999,
+          beforeNodeId: 'a',
+          afterNodeId: 'b',
+        },
       ],
     });
     const result = await verifyCertificate(cert, resolverFromMap(new Map()));
@@ -318,7 +364,8 @@ describe('verifyCertificate: scalar-delta claim', () => {
       claims: [
         {
           type: 'scalar-delta',
-          metric: 'ThermalTransmittance',
+          metric: 'property-numeric',
+          property: 'ThermalTransmittance',
           before: 0.3,
           after: 0.24,
           delta: -0.06,
@@ -351,6 +398,111 @@ describe('createCertificate structural validation', () => {
         claims: [],
       }),
     ).toThrow(/untagged hash/);
+  });
+
+  it('rejects a scalar-delta metric outside the registered vocabulary (decision Q3)', () => {
+    expect(() =>
+      createCertificate({
+        kernelVersion: KERNEL_VERSION,
+        trustRoot: TRUST_ROOT,
+        reads: [],
+        writes: [],
+        claims: [
+          {
+            type: 'scalar-delta',
+            // Deliberately bypass the type to simulate an untrusted producer.
+            metric: 'FreeformMetric' as never,
+            before: 1,
+            after: 2,
+            delta: 1,
+            beforeNodeId: 'a',
+            afterNodeId: 'b',
+          },
+        ],
+      }),
+    ).toThrow(/registered vocabulary/);
+  });
+
+  it('rejects property-numeric without a property name, and fixed metrics with one', () => {
+    const base = {
+      kernelVersion: KERNEL_VERSION,
+      trustRoot: TRUST_ROOT,
+      reads: [],
+      writes: [],
+    };
+    expect(() =>
+      createCertificate({
+        ...base,
+        claims: [
+          {
+            type: 'scalar-delta',
+            metric: 'property-numeric',
+            before: 1,
+            after: 2,
+            delta: 1,
+            beforeNodeId: 'a',
+            afterNodeId: 'b',
+          },
+        ],
+      }),
+    ).toThrow(/requires `property`/);
+    expect(() =>
+      createCertificate({
+        ...base,
+        claims: [
+          {
+            type: 'scalar-delta',
+            metric: 'net-volume',
+            property: 'NetVolume',
+            before: 1,
+            after: 2,
+            delta: 1,
+            beforeNodeId: 'a',
+            afterNodeId: 'b',
+          },
+        ],
+      }),
+    ).toThrow(/must not carry/);
+  });
+
+  it('rejects a scalar-delta claim with empty node bindings (decision Q3)', () => {
+    expect(() =>
+      createCertificate({
+        kernelVersion: KERNEL_VERSION,
+        trustRoot: TRUST_ROOT,
+        reads: [],
+        writes: [],
+        claims: [
+          {
+            type: 'scalar-delta',
+            metric: 'element-count',
+            before: 1,
+            after: 2,
+            delta: 1,
+            beforeNodeId: '',
+            afterNodeId: 'b',
+          },
+        ],
+      }),
+    ).toThrow(/must bind beforeNodeId and afterNodeId/);
+  });
+
+  it('carries signatures through untouched and ignores them in verification (decision Q5)', async () => {
+    const mesh = wallMesh(1);
+    const hash = await computeNodeHash('geometry-mesh', mesh);
+    const cert = createCertificate({
+      kernelVersion: KERNEL_VERSION,
+      trustRoot: TRUST_ROOT,
+      reads: [{ nodeId: 'a', hash }],
+      writes: [],
+      claims: [],
+      signatures: [{ alg: 'ed25519', key: 'test-key', sig: 'not-a-real-signature' }],
+    });
+    expect(cert.signatures).toEqual([{ alg: 'ed25519', key: 'test-key', sig: 'not-a-real-signature' }]);
+    const resolver = resolverFromMap(new Map([['a', { kind: 'geometry-mesh', payload: mesh }]]));
+    // v0 verification ignores signatures entirely: a garbage sig neither
+    // helps nor hurts. Real signing lands with M4.
+    expect(await verifyCertificate(cert, resolver)).toEqual({ ok: true });
   });
 });
 

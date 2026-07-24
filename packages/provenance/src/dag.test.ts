@@ -94,7 +94,7 @@ async function buildDagHashes(dag: Dag): Promise<Record<string, string>> {
   const element2Hash = await computeNodeHash('element', element2);
   const element3Hash = await computeNodeHash('element', element3);
 
-  const layer1: LayerPayload = { childHashes: [element1Hash, element2Hash, element3Hash] };
+  const layer1: LayerPayload = { layerId: 'blake3:testlayer', childHashes: [element1Hash, element2Hash, element3Hash] };
   const layer1Hash = await computeNodeHash('layer', layer1);
 
   return {

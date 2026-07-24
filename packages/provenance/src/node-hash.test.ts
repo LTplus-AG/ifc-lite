@@ -164,16 +164,39 @@ describe('computeNodeHash: relationship', () => {
   });
 });
 
+describe('geometry-mesh semanticHash annotation (decision Q2)', () => {
+  it('does NOT change the node hash: byte-exact primary is the only certified hash', async () => {
+    const base = {
+      expressId: 100,
+      geometryClass: 1,
+      positions: [0, 0, 0, 1, 0, 0, 0, 1, 0],
+      normals: [0, 0, 1, 0, 0, 1, 0, 0, 1],
+      indices: [0, 1, 2],
+      origin: [0, 0, 0] as const,
+    };
+    const withAnnotation = { ...base, semanticHash: 0x5bd1e995deadbeefn };
+    expect(await computeNodeHash('geometry-mesh', withAnnotation)).toBe(
+      await computeNodeHash('geometry-mesh', base),
+    );
+  });
+});
+
 describe('computeNodeHash: layer', () => {
+  it('embeds the ifcx layerId: a different blake3 identity is a different node hash (decision Q1)', async () => {
+    const a: LayerPayload = { layerId: 'blake3:aaaa', childHashes: ['sha256:one'] };
+    const b: LayerPayload = { layerId: 'blake3:bbbb', childHashes: ['sha256:one'] };
+    expect(await computeNodeHash('layer', a)).not.toBe(await computeNodeHash('layer', b));
+  });
+
   it('is order-independent over child hashes', async () => {
-    const a: LayerPayload = { childHashes: ['sha256:one', 'sha256:two', 'fnv1a64:0x1'] };
-    const b: LayerPayload = { childHashes: ['fnv1a64:0x1', 'sha256:two', 'sha256:one'] };
+    const a: LayerPayload = { layerId: 'blake3:testlayer', childHashes: ['sha256:one', 'sha256:two', 'fnv1a64:0x1'] };
+    const b: LayerPayload = { layerId: 'blake3:testlayer', childHashes: ['fnv1a64:0x1', 'sha256:two', 'sha256:one'] };
     expect(await computeNodeHash('layer', a)).toBe(await computeNodeHash('layer', b));
   });
 
   it('detects a removed child', async () => {
-    const a: LayerPayload = { childHashes: ['sha256:one', 'sha256:two'] };
-    const b: LayerPayload = { childHashes: ['sha256:one'] };
+    const a: LayerPayload = { layerId: 'blake3:testlayer', childHashes: ['sha256:one', 'sha256:two'] };
+    const b: LayerPayload = { layerId: 'blake3:testlayer', childHashes: ['sha256:one'] };
     expect(await computeNodeHash('layer', a)).not.toBe(await computeNodeHash('layer', b));
   });
 });

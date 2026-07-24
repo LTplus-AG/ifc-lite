@@ -25,6 +25,11 @@ import type { CoordinateInfo, GeometryResult, PointCloudAsset } from '@ifc-lite/
 import { createSyntheticDataStore, type IfcDataStore } from '@ifc-lite/parser';
 import type { SchemaVersion } from '../../store/types.js';
 import { createCoordinateInfo } from '../../utils/localParsingUtils.js';
+import {
+  registerPointCloudAlignment,
+  unregisterPointCloudAlignment,
+  type PointCloudAlignmentTransform,
+} from './pointCloudAlignment.js';
 
 export type PointCloudFormat = 'las' | 'laz' | 'ply' | 'pcd' | 'e57' | 'pts' | 'xyz';
 
@@ -105,6 +110,25 @@ export interface PointCloudIngestOptions {
   onClassCounts?: (handleId: number, counts: Record<number, number> | null) => void;
   /** Abort signal to cancel ingest. */
   signal?: AbortSignal;
+  /**
+   * IfcMapConversion-derived alignment transform for this scan (issue
+   * #1804), computed by the caller from the reference model's
+   * georeference (`computePointCloudAlignment`). `undefined` when the
+   * loaded model has no usable `IfcMapConversion` — the scan streams at
+   * its raw native coordinates, exactly as before this feature existed.
+   * When present:
+   *   - `decodeOriginOffset` is threaded into `streamPointCloud` so the
+   *     LAS/LAZ decoder subtracts it in f64 before narrowing to f32
+   *     (only LAS/LAZ formats consume it; ignored otherwise).
+   *   - the asset defaults to the ALIGNED matrix (alignment ON) and is
+   *     registered so the panel's toggle can flip every loaded scan
+   *     between aligned/unaligned without re-streaming.
+   */
+  alignment?: PointCloudAlignmentTransform;
+  /** Alignment toggle's current value at ingest time. Defaults to `true`
+   *  (aligned) — matches the issue's "on by default" requirement. Only
+   *  consulted when `alignment` is provided. */
+  alignmentEnabled?: boolean;
 }
 
 /**
@@ -299,6 +323,18 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
   const onCountChange = opts.onAssetCountDelta ?? (() => {});
   onCountChange(+1);
 
+  // IfcMapConversion alignment (issue #1804): register so the panel's
+  // global toggle can flip this asset later, and push the initial matrix
+  // now (default ON — matches the issue's "apply by default" ask).
+  if (opts.alignment) {
+    registerPointCloudAlignment(handle, opts.alignment);
+    const enabled = opts.alignmentEnabled ?? true;
+    opts.renderer.setPointCloudTransform(
+      handle,
+      enabled ? opts.alignment.alignedMatrix : opts.alignment.unalignedMatrix,
+    );
+  }
+
   // Running per-class histogram, pushed to the caller periodically so
   // the classes checklist populates while a large scan is still
   // streaming (#1783). Every 8 chunks ≈ every 1.6M points at the
@@ -339,6 +375,7 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
       maxPointsInMemory: opts.maxPointsInMemory,
       maxFileSize: opts.maxFileSize,
       signal: opts.signal,
+      originOffset: opts.alignment?.decodeOriginOffset,
       onOpen: (info) => {
         opts.onProgress?.({
           phase: info.stride > 1
@@ -390,12 +427,14 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
       onError: () => {
         opts.renderer.removePointCloudAsset(handle);
         opts.onClassCounts?.(handle.id, null);
+        unregisterPointCloudAlignment(handle.id);
         onCountChange(-1);
       },
     });
   } catch (err) {
     opts.renderer.removePointCloudAsset(handle);
     opts.onClassCounts?.(handle.id, null);
+    unregisterPointCloudAlignment(handle.id);
     onCountChange(-1);
     throw err;
   }

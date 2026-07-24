@@ -57,6 +57,7 @@ import { boundedIteratorReturn } from './ingest/streamCleanup.js';
 import { detectPointCloudFormat, ingestPointCloud } from './ingest/pointCloudIngest.js';
 import { getGlobalRenderer } from './useBCF.js';
 import { extractModelGeoref, alignGeometryToReference, findReferenceGeorefModel } from './ingest/federationAlign.js';
+import { computePointCloudAlignment, unregisterPointCloudAlignment } from './ingest/pointCloudAlignment.js';
 import { toast } from '../components/ui/toast.js';
 import { posthog } from '../lib/analytics.js';
 import { reportRenderStats } from '../utils/renderStatsReport.js';
@@ -604,6 +605,18 @@ export function useIfcLoader() {
         const blob = file;
         const incCount = useViewerStore.getState().incrementPointCloudAssetCount;
         const setClassCounts = useViewerStore.getState().setPointCloudClassCounts;
+        // IfcMapConversion alignment (issue #1804): reuse the SAME
+        // reference-model georef federated IFC loads already align to
+        // (`findReferenceGeorefModel`) — a point cloud aligns to whichever
+        // model is the federation anchor, not necessarily the one just
+        // dropped. `null` (no loaded model has a usable IfcMapConversion)
+        // leaves the scan at its raw native coordinates, unchanged from
+        // before this feature existed.
+        const reference = findReferenceGeorefModel();
+        const alignment = reference ? computePointCloudAlignment(reference.georef) : null;
+        const setAlignmentAvailable = useViewerStore.getState().setPointCloudAlignmentAvailable;
+        const alignmentEnabled = useViewerStore.getState().pointCloudAlignmentEnabled;
+        if (alignment) setAlignmentAvailable(true);
         const ingest = ingestPointCloud({
           format,
           blob,
@@ -612,6 +625,8 @@ export function useIfcLoader() {
           renderer,
           onProgress: setProgress,
           onAssetCountDelta: incCount,
+          alignment: alignment ?? undefined,
+          alignmentEnabled,
           // Session-guard the histogram writes: a superseded stream
           // keeps publishing periodic counts until `done` settles, and
           // an unguarded write would repopulate phantom classes after
@@ -656,6 +671,7 @@ export function useIfcLoader() {
             // lifecycle hook can't drop its classification histogram —
             // clear it here or the classes panel shows phantom counts.
             setClassCounts(ingest.rendererHandle.id, null);
+            unregisterPointCloudAlignment(ingest.rendererHandle.id);
             clearOwnedCanceller();
             return;
           }
@@ -691,6 +707,7 @@ export function useIfcLoader() {
           // for the lifecycle hook to clean up, so drop the counts too.
           renderer.removePointCloudAsset(ingest.rendererHandle);
           setClassCounts(ingest.rendererHandle.id, null);
+          unregisterPointCloudAlignment(ingest.rendererHandle.id);
           return;
         }
         // Primary owns the active-model slots; a federated add must not touch

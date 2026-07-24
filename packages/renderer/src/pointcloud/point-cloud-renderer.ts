@@ -258,6 +258,19 @@ export class PointCloudRenderer {
     node.meta.expressId = newExpressId >>> 0;
   }
 
+  /**
+   * Set (or clear) a streamed asset's per-vertex GPU model matrix
+   * (issue #1804: point-cloud ↔ `IfcMapConversion` alignment). Pass
+   * `null` to reset to identity. Takes effect on the next frame's
+   * uniform write — no GPU buffer rewrite needed, so toggling alignment
+   * on/off is cheap.
+   */
+  setAssetTransform(handle: PointCloudAssetHandle, matrix: Float32Array | null): void {
+    const node = this.nodes.get(handle.id);
+    if (!node) return;
+    node.model = matrix ?? undefined;
+  }
+
   // ─── lifecycle / queries ─────────────────────────────────────────────────
 
   clear(): void {

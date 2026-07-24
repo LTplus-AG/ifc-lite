@@ -23,6 +23,9 @@ export type WorkerRequest =
       blob: Blob;
       label?: string;
       stride: number;
+      /** See `decodeLasPoints`'s `originOffset` param (issue #1804);
+       *  ignored by non-LAS/LAZ formats. */
+      originOffset?: readonly [number, number, number];
     }
   | {
       kind: 'next';

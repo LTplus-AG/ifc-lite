@@ -108,9 +108,15 @@ export function writePointCloudUniforms(
 
   // viewProj — floats 0..15
   u.set(inputs.viewProj.subarray(0, 16), 0);
-  // model — floats 16..31 (identity for now; per-asset transforms can be added later)
-  u.fill(0, 16, 32);
-  u[16] = 1; u[21] = 1; u[26] = 1; u[31] = 1;
+  // model — floats 16..31. Per-asset transform (issue #1804: point-cloud
+  // ↔ IfcMapConversion alignment); defaults to identity when the node
+  // carries none.
+  if (node.model && node.model.length === 16) {
+    u.set(node.model, 16);
+  } else {
+    u.fill(0, 16, 32);
+    u[16] = 1; u[21] = 1; u[26] = 1; u[31] = 1;
+  }
   // colorOverride — floats 32..35
   u[32] = inputs.fixedColor[0];
   u[33] = inputs.fixedColor[1];

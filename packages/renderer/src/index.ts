@@ -657,6 +657,20 @@ export class Renderer {
     }
 
     /**
+     * Set (or clear, with `null`) a streamed point-cloud asset's per-vertex
+     * GPU model matrix (column-major, 16 floats) — issue #1804's
+     * `IfcMapConversion` alignment toggle. Cheap: takes effect on the next
+     * frame's uniform write, no GPU buffer rewrite.
+     */
+    setPointCloudTransform(
+        handle: import('./pointcloud/point-cloud-renderer.js').PointCloudAssetHandle,
+        matrix: Float32Array | null,
+    ): void {
+        this.pointCloudRenderer?.setAssetTransform(handle, matrix);
+        this.requestRender();
+    }
+
+    /**
      * Compute BIM ↔ scan deviation for every loaded point cloud asset.
      *
      * Walks every triangle in the scene (individual + batched meshes,

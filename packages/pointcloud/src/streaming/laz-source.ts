@@ -128,11 +128,21 @@ export class LazStreamingSource implements StreamingPointSource {
   private pointBuffer: Uint8Array | null = null;
   private cursor = 0;
   private rgbScale = 1;
+  private originOffset?: readonly [number, number, number];
 
-  constructor(blob: Blob, options: { label?: string; downsample?: DownsampleHint } = {}) {
+  constructor(
+    blob: Blob,
+    options: {
+      label?: string;
+      downsample?: DownsampleHint;
+      /** See `decodeLasPoints`'s `originOffset` param (issue #1804). */
+      originOffset?: readonly [number, number, number];
+    } = {},
+  ) {
     this.blob = blob;
     this.downsample = options.downsample ?? { stride: 1 };
     this.label = options.label;
+    this.originOffset = options.originOffset;
   }
 
   async open(signal?: AbortSignal): Promise<PointSourceInfo> {
@@ -240,7 +250,7 @@ export class LazStreamingSource implements StreamingPointSource {
     }
     this.cursor += sourceTake;
 
-    return decodeLasPoints(slab, this.header, decodedCount, pointSize, this.rgbScale);
+    return decodeLasPoints(slab, this.header, decodedCount, pointSize, this.rgbScale, this.originOffset);
   }
 
   close(): void {

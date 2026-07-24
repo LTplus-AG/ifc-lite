@@ -106,6 +106,27 @@ export interface PointCloudSlice {
    * controls panel and the EDL post-pass.
    */
   pointCloudAssetCount: number;
+  /**
+   * True once at least one loaded point cloud has a usable
+   * `IfcMapConversion`-derived alignment transform available (issue
+   * #1804). Set by the ingest path (`useIfcLoader.ts`); the panel shows
+   * the alignment toggle only when this is true — there's nothing to
+   * toggle when no loaded model has a real map conversion. Scoped
+   * globally (not per-asset): every point cloud ingested against the
+   * same reference model shares an IDENTICAL transform (it derives
+   * entirely from the model's `IfcMapConversion`, never from the scan
+   * file itself), so one flag/toggle pair covers every loaded scan —
+   * same "global-ish" scoping as `pointCloudClassMask`.
+   */
+  pointCloudAlignmentAvailable: boolean;
+  /**
+   * Whether the (available) alignment transform is currently applied.
+   * Defaults to `true` — the issue asks for alignment ON by default when
+   * the model has a map conversion. Flipping this doesn't re-stream any
+   * scan: `applyPointCloudAlignmentToggle` (pointCloudAlignment.ts) swaps
+   * every registered asset's GPU model matrix in place.
+   */
+  pointCloudAlignmentEnabled: boolean;
   setPointCloudColorMode: (mode: PointColorModeUi) => void;
   setPointCloudFixedColor: (rgba: [number, number, number, number]) => void;
   setPointCloudSizeMode: (mode: PointSizeModeUi) => void;
@@ -130,6 +151,8 @@ export interface PointCloudSlice {
   setPointCloudDeviationComputed: (computed: boolean) => void;
   setPointCloudAssetCount: (count: number) => void;
   incrementPointCloudAssetCount: (n?: number) => void;
+  setPointCloudAlignmentAvailable: (available: boolean) => void;
+  setPointCloudAlignmentEnabled: (enabled: boolean) => void;
 }
 
 /**
@@ -157,6 +180,8 @@ export const POINT_CLOUD_DEFAULTS = {
   pointCloudDeviationHalfRange: 0.05,
   pointCloudDeviationComputed: false,
   pointCloudAssetCount: 0,
+  pointCloudAlignmentAvailable: false,
+  pointCloudAlignmentEnabled: true,
 } as const;
 
 export const createPointCloudSlice: StateCreator<PointCloudSlice, [], [], PointCloudSlice> = (set) => ({
@@ -223,4 +248,6 @@ export const createPointCloudSlice: StateCreator<PointCloudSlice, [], [], PointC
       ? Math.max(0, s.pointCloudAssetCount + n)
       : s.pointCloudAssetCount,
   })),
+  setPointCloudAlignmentAvailable: (available) => set({ pointCloudAlignmentAvailable: available }),
+  setPointCloudAlignmentEnabled: (enabled) => set({ pointCloudAlignmentEnabled: enabled }),
 });

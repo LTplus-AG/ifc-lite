@@ -61,6 +61,14 @@ export interface PointCloudNode {
    * `appendChunkToNode`, alongside the GPU upload.
    */
   spatialIndex: PointCloudSpatialIndex;
+  /**
+   * Optional per-asset GPU model matrix (column-major, 16 floats),
+   * applied in the vertex shader as `uniforms.model * vec4(position, 1)`
+   * before `viewProj` (issue #1804: aligns a georeferenced point cloud
+   * with the IFC model's `IfcMapConversion`). `undefined` → identity,
+   * written by `writePointCloudUniforms`.
+   */
+  model?: Float32Array;
 }
 
 /** Build an empty node — chunks are appended via `appendChunkToNode`. */

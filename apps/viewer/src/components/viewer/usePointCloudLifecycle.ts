@@ -19,6 +19,7 @@
 import { useEffect, useRef, type MutableRefObject } from 'react';
 import type { Renderer } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
+import { unregisterPointCloudAlignment } from '@/hooks/ingest/pointCloudAlignment';
 
 export interface UsePointCloudLifecycleParams {
   rendererRef: MutableRefObject<Renderer | null>;
@@ -56,6 +57,9 @@ export function usePointCloudLifecycle(params: UsePointCloudLifecycleParams): vo
         // Drop the asset's classification histogram so the classes
         // checklist stops listing points that are no longer loaded.
         setClassCounts(handleId, null);
+        // Drop its IfcMapConversion alignment registration (issue #1804)
+        // so a later toggle doesn't push a stale matrix to a freed handle.
+        unregisterPointCloudAlignment(handleId);
         decCount(-1);
       }
     }

@@ -1,0 +1,202 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# WASM wide-arithmetic tripwire. Turns an external dependency (upstream
+# wasm-bindgen/walrus support + a V8 flag no stable browser ships yet) into a
+# monitored condition instead of something we have to remember to re-check.
+#
+# Full context: docs/architecture/wasm-wide-arithmetic.md. Short version: the
+# exact-CSG kernel's `bnum` limb arithmetic maps to the WASM wide-arithmetic
+# proposal's `i64.mul_wide_s/u` / `i64.add128` / `i64.sub128` instead of
+# `__multi3` libcalls, measured 1.9-3.1x on the predicate hot path and 1.71x
+# end-to-end on a real void cut. `scripts/build-wasm.sh` already has a
+# `BUILD_WIDE=1` bundle (`packages/wasm/pkg-wide`) behind this flag, verified
+# with `wasm-tools print | grep` for the actual wide ops. Two things gate
+# shipping it, and this workflow is built to name which one is failing:
+#
+#   1. Build-toolchain gate: `rust/wasm-bindings` pins `wasm-bindgen = "=0.2.106"`.
+#      That version's bundled `walrus` parser rejects a wide-arithmetic code
+#      section ("failed to parse code section: wide arithmetic support is not
+#      enabled"). Upstream `walrus` 0.26.0 (wasm-bindgen/walrus#306, merged
+#      2026-03-25) fixed this, and wasm-bindgen >=0.2.126 depends on it — but
+#      OUR pin hasn't moved, so `wasm-pack build`/`wasm-pack test` still hit
+#      the old parser today. This is a real Cargo.toml version bump belonging
+#      to its own PR (out of scope here — this workflow only builds/tests with
+#      the toolchain as pinned in the repo right now, deliberately, so a green
+#      run here is proof the pin has actually moved, not a workaround for it).
+#   2. Engine-support gate: even once (1) clears, no stable browser runs the
+#      module — V8 has it prototyped behind the (default-off) flag
+#      `--experimental-wasm-wide-arithmetic`. Node ships the same V8, so we
+#      pass that flag to the Node runner `wasm-pack test --node` uses via
+#      `NODE_OPTIONS`, which is the earliest possible in-repo signal that V8
+#      accepts the module — well before it is on-by-default in any browser.
+#
+# Until BOTH clear, the "Build pkg-wide" and/or "wasm32 mesh-determinism"
+# steps below are EXPECTED to fail — that is the tripwire working, not a bug
+# in this workflow. What must never happen quietly is a determinism
+# divergence: if both gates clear (build succeeds, Node/V8 runs the module)
+# but the pinned wasm32 manifest no longer matches, wide-arithmetic changed
+# the kernel's exact-predicate output and it must not ship. The three step
+# names below are deliberately distinct so a failure notification alone says
+# which of the three happened without opening the log.
+#
+# Cost: weekly + on-demand only, same profile as determinism.yml, and
+# deliberately NOT a `pull_request` trigger — this must never become a
+# required or noisy check; it exists to be looked at, not to gate merges.
+
+name: WASM wide-arithmetic tripwire
+
+on:
+  schedule:
+    # Weekly, Wednesday 04:29 UTC — a different day/minute than
+    # determinism.yml's Monday 03:17 so the two weekly wasm32 jobs don't pile
+    # onto the same scheduler slot.
+    - cron: '29 4 * * 3'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  # The exact `BUILD_WIDE=1` incantation from scripts/build-wasm.sh, repeated
+  # here (not sourced from the script) because RUSTFLAGS as an env var fully
+  # replaces .cargo/config.toml's `[target.wasm32-unknown-unknown] rustflags`
+  # for any cargo invocation that doesn't go through the script — the
+  # wasm-pack test step below needs to set it directly. Keep this in lockstep
+  # with scripts/build-wasm.sh's BUILD_WIDE block if that ever changes.
+  WIDE_ARITH_RUSTFLAGS: >-
+    -C link-arg=--max-memory=4294967296
+    -C link-arg=-zstack-size=8388608
+    -C target-feature=+simd128,+wide-arithmetic
+
+jobs:
+  wide-arithmetic-tripwire:
+    name: Build + determinism check (wide-arithmetic wasm)
+    runs-on: ubuntu-latest
+    # Generous: a cold nightly + wasm-pack build plus a cargo-installed
+    # wasm-tools can take a while before caches warm up. Weekly, so slow is fine.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          lfs: false
+          persist-credentials: false
+
+      # Same composite action determinism.yml's wasm32 job uses: pinned Rust
+      # nightly (rust-toolchain.toml already has the wasm32 target — no extra
+      # nightly bump needed, `wide-arithmetic` is a plain target-feature the
+      # pinned LLVM already lowers `bnum`'s checked_mul to) + wasm-pack + cargo
+      # cache.
+      - name: Setup WASM build toolchain
+        uses: ./.github/actions/setup-wasm-build
+        with:
+          cache-prefix: ci-wide-arithmetic
+
+      # wasm-tools is required by scripts/build-wasm.sh's own BUILD_WIDE=1
+      # litmus check (it refuses to ship an unverified bundle without it) and
+      # is reused below for the informational op-count step. Cached like
+      # fuzz.yml caches cargo-fuzz, keyed on the pinned version so a bump
+      # rebuilds cleanly instead of silently reusing a stale binary.
+      - name: Cache wasm-tools binary
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cargo/bin/wasm-tools
+          key: ci-wasm-tools-${{ runner.os }}-1.254.0
+
+      - name: Install wasm-tools
+        run: command -v wasm-tools || cargo install wasm-tools --version 1.254.0 --locked
+
+      # --- Gate 1: build-toolchain -----------------------------------------
+      # Runs the repo's OWN BUILD_WIDE=1 path exactly as scripts/build-wasm.sh
+      # defines it — no flags reimplemented here. If wasm-pack's matched
+      # wasm-bindgen-cli (pinned by rust/wasm-bindings/Cargo.toml) still can't
+      # parse the wide-arithmetic code section, this fails here, before any
+      # determinism question is even reachable.
+      - name: Build pkg-wide bundle (wasm-bindgen + wide-arithmetic)
+        id: build_wide
+        run: BUILD_WIDE=1 bash scripts/build-wasm.sh
+
+      - name: Diagnose build-toolchain gap
+        if: failure() && steps.build_wide.outcome == 'failure'
+        run: |
+          echo "::error::pkg-wide build failed — this is gate 1 (build-toolchain), not a determinism regression."
+          echo "Most likely cause: rust/wasm-bindings/Cargo.toml still pins wasm-bindgen = \"=0.2.106\","
+          echo "whose bundled walrus parser rejects the wide-arithmetic code section"
+          echo "(\"failed to parse code section: wide arithmetic support is not enabled\")."
+          echo "Upstream fix landed in walrus 0.26.0 / wasm-bindgen >=0.2.126 (2026-03-25); this repo's"
+          echo "pin has not moved yet. Bumping it is a real Cargo.toml change in its own PR — see"
+          echo "docs/architecture/wasm-wide-arithmetic.md blocker 1 for the exact version chain."
+          echo "If the error instead mentions a missing wasm-tools/wasm-pack binary, that is an"
+          echo "environment problem with this job, not a toolchain-support gap."
+
+      # --- Gate 2 + the real check: engine support + byte-determinism ------
+      # Reuses the SAME wasm32 determinism manifest check determinism.yml runs
+      # (rust/wasm-bindings/tests/mesh_determinism.rs against the pinned
+      # rust/processing/tests/manifests/mesh_determinism.wasm32.json), just
+      # compiled with +wide-arithmetic and run under a Node started with V8's
+      # experimental flag for it. `if: always()` so this gate's own signal
+      # never gets swallowed by gate 1 failing above — a future world where
+      # wasm-bindgen is bumped but Node still rejects the module (or vice
+      # versa) should still show up as exactly one red step, not zero.
+      - name: wasm32 mesh-determinism vs pinned manifest (wide-arithmetic bundle)
+        id: determinism_check
+        if: always() && !cancelled()
+        env:
+          RUSTFLAGS: ${{ env.WIDE_ARITH_RUSTFLAGS }}
+          # V8's implementation is staged behind this flag (default off) — see
+          # docs/architecture/wasm-wide-arithmetic.md "Delivery status". Node
+          # ships the same V8 build a browser would, so passing it here is the
+          # earliest in-repo signal for when the engine actually accepts the
+          # module, independent of when any browser turns the flag on by
+          # default. Best-effort: if a Node/V8 release stops accepting this
+          # flag via NODE_OPTIONS, the diagnostic step below calls that out
+          # rather than reporting it as a determinism failure.
+          NODE_OPTIONS: '--experimental-wasm-wide-arithmetic'
+        run: wasm-pack test --node rust/wasm-bindings --test mesh_determinism
+
+      - name: Diagnose determinism-check failure
+        if: failure() && steps.determinism_check.outcome == 'failure'
+        run: |
+          echo "::error::wasm32 mesh-determinism check failed — read which gate this is before treating it as a regression."
+          echo ""
+          echo "Failure mentions a code-section parse error / walrus / \"wide arithmetic support is not"
+          echo "enabled\" -> gate 1 (build-toolchain): same cause as the pkg-wide build step above,"
+          echo "this compile of the TEST crate hit the same wasm-bindgen/walrus limitation."
+          echo ""
+          echo "Failure mentions WebAssembly.validate / instantiate / \"invalid opcode\" / RuntimeError"
+          echo "from Node -> gate 2 (engine support): this runner's Node/V8 build still rejects"
+          echo "wide-arithmetic even with --experimental-wasm-wide-arithmetic set. Expected until V8"
+          echo "stages the feature on by default (docs/architecture/wasm-wide-arithmetic.md)."
+          echo ""
+          echo "Failure is an assertion/panic naming mesh_determinism.wasm32.json (a manifest diff"
+          echo "report, e.g. positions_hash/indices_origin_hash/normals_hash mismatch) -> REAL"
+          echo "regression: wide-arithmetic changed the kernel's emitted bytes. Both gates above must"
+          echo "have cleared for this to even be reachable, so treat it as high-priority regardless of"
+          echo "the weekly/non-blocking schedule -> do NOT flip BUILD_WIDE on by default until fixed."
+
+      # --- Informational only: NOT a timing benchmark ----------------------
+      # There is no in-repo wasm timing harness for this — the predicate and
+      # end-to-end benches that produced the 1.9-3.1x / 1.71x numbers in
+      # docs/architecture/wasm-wide-arithmetic.md live in a separate profiling
+      # repo, not here. Cheapest useful in-repo signal without adding new Rust
+      # code: confirm the shipped pkg-wide bundle keeps emitting wide ops (the
+      # mechanism the speedup depends on), as a step-summary count. This does
+      # NOT measure speed and must never gate the job.
+      - name: Wide-op emission count (informational, not a benchmark)
+        if: always() && steps.build_wide.outcome == 'success'
+        continue-on-error: true
+        run: |
+          count=$(wasm-tools print packages/wasm/pkg-wide/ifc-lite_bg.wasm 2>/dev/null | grep -cE 'mul_wide|add128|sub128' || true)
+          {
+            echo "### Wide-arithmetic op emission (informational)"
+            echo ""
+            echo "\`packages/wasm/pkg-wide/ifc-lite_bg.wasm\` emits **${count}** wide-arithmetic ops"
+            echo "(\`mul_wide\`/\`add128\`/\`sub128\`, via \`wasm-tools print\`)."
+            echo ""
+            echo "This confirms the mechanism the measured speedup depends on is present in the"
+            echo "shipped bundle; it is not a timing measurement. See"
+            echo "docs/architecture/wasm-wide-arithmetic.md for the actual measured speedups"
+            echo "(1.9-3.1x predicate microbench, 1.71x end-to-end), captured externally."
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -179,3 +179,75 @@ RUSTFLAGS="-C target-feature=+wide-arithmetic" \
 wasm-tools print target-wide/wasm32-unknown-unknown/release/*.wasm | grep -c 'mul_wide\|add128'
 wasmtime run -W wide-arithmetic=y --invoke <fn> target-wide/.../*.wasm <args>
 ```
+
+## CI tripwire (`.github/workflows/wide-arithmetic.yml`)
+
+Both blockers above are external (an upstream crate version, a V8 flag) — the
+kind of thing that silently goes stale if the only record of it is this doc.
+`wide-arithmetic.yml` turns them into a monitored, weekly-scheduled +
+`workflow_dispatch` CI lane (never on `pull_request` — this must not become a
+required or noisy check) so a status change on either blocker shows up as a
+step going from red to green, not as something we have to remember to re-check.
+
+**What it does**, in three named steps so a failure alone (no log-diving)
+says which gate tripped:
+
+1. **Build pkg-wide bundle (wasm-bindgen + wide-arithmetic)** — runs the
+   repo's own `BUILD_WIDE=1 scripts/build-wasm.sh` path unmodified (same
+   `-C target-feature=+simd128,+wide-arithmetic` RUSTFLAGS documented above,
+   plus that script's own `wasm-tools`-verified litmus check that the bundle
+   actually contains wide ops). This is **blocker 1** (wasm-bindgen/walrus):
+   it fails today because `rust/wasm-bindings/Cargo.toml` still pins
+   `wasm-bindgen = "=0.2.106"`, whose bundled `walrus` predates the parser fix
+   (walrus 0.26.0 / wasm-bindgen >=0.2.126). Turning this step green requires
+   an actual version-bump PR — out of scope for the CI lane itself, by design:
+   a green run here is proof the bump landed, not a workaround for it not
+   having landed.
+2. **wasm32 mesh-determinism vs pinned manifest (wide-arithmetic bundle)** —
+   reuses the exact check `determinism.yml`'s wasm32 job already runs
+   (`wasm-pack test --node rust/wasm-bindings --test mesh_determinism` against
+   the pinned `rust/processing/tests/manifests/mesh_determinism.wasm32.json`),
+   compiled with the same wide-arithmetic RUSTFLAGS and run under Node started
+   with `NODE_OPTIONS=--experimental-wasm-wide-arithmetic` — the earliest
+   in-repo signal for **blocker 2** (V8/engine support), since Node ships the
+   same V8 a browser would, well before any browser turns the flag on by
+   default. `if: always()` keeps this independent of step 1's outcome, so
+   each blocker's status is legible on its own.
+3. **Wide-op emission count** — informational only (`continue-on-error`),
+   counts `mul_wide`/`add128`/`sub128` in the built bundle via `wasm-tools
+   print`. Confirms the mechanism is present, not a timing measurement —
+   there is no in-repo wasm timing harness for this (the predicate/e2e benches
+   above live in a separate profiling repo), so this is deliberately not a
+   perf regression gate.
+
+**What a real failure looks like:** the *only* failure mode that is not one
+of the two expected/tracked blockers above is step 2 failing with a manifest
+diff report (naming `positions_hash` / `indices_origin_hash` / `normals_hash`
+etc.) rather than a parse/instantiate error. That means both gates cleared
+far enough to execute the kernel under wide-arithmetic and the emitted bytes
+diverged from the pinned wasm32 manifest — a real determinism regression that
+must block flipping `BUILD_WIDE` on, regardless of the workflow's
+weekly/non-blocking schedule.
+
+**Flip-the-flag shipping checklist**, once this workflow is green end to end:
+
+- [ ] Blocker 1 cleared: `rust/wasm-bindings/Cargo.toml`'s `wasm-bindgen` pin
+      bumped past a walrus-0.26+ release (its own reviewed PR — check
+      `wasm-bindgen-futures` / `wasm-bindgen-test` / `js-sys` / `web-sys`
+      companion pins move in lockstep).
+- [ ] Blocker 2 cleared: `WebAssembly.validate()` of the 40-byte probe in
+      `packages/geometry/src/wasm-features.ts` (see the Delivery plan above)
+      returns `true` on a genuinely shipping (non-flagged) release of at
+      least the two engines the viewer must support without a fallback path
+      (Chrome/Edge + Firefox at minimum; confirm Safari's status explicitly
+      rather than assuming parity).
+- [ ] This workflow green: pkg-wide builds, and step 2's determinism check
+      passes with **no manifest diff** — not just "the step ran."
+- [ ] Wire the runtime probe + `pkg-wide` bundle selection (Delivery plan
+      steps 2-4 above) and re-run the viewer's own benchmark/E2E suite before
+      flipping `BUILD_WIDE=1` on by default in `scripts/build-wasm.sh` /
+      `apps/viewer`'s build.
+- [ ] Re-pin the wasm32 determinism manifest is **not** expected to be needed
+      (that is the whole point of step 2 passing) — if it turns out to be
+      needed, treat that as the regression the checklist above exists to
+      catch, not a routine re-pin.

@@ -4,6 +4,20 @@
 
 import posthogClient from 'posthog-js';
 import { scrubEvent } from './analytics-scrub.js';
+import { shouldSuppressWasmSkewNoise } from './wasm-version-skew.js';
+
+// `before_send` gate: drop the noise from an auto-recovered wasm version-skew
+// (the tab reloads onto fresh assets, so the captured exception describes a
+// failure the user never actually hits — see shouldSuppressWasmSkewNoise),
+// then run the privacy/tagging scrub on everything that remains. Kept here
+// rather than inside scrubEvent so analytics-scrub.ts stays dependency-free
+// (no @ifc-lite/geometry import) and independently unit-testable.
+const beforeSend = <
+  T extends { event?: string; properties?: Record<string, unknown> } | null,
+>(event: T): T | null => {
+  if (shouldSuppressWasmSkewNoise(event)) return null;
+  return scrubEvent(event);
+};
 
 // `import.meta.env` is undefined under the Node test runner (no Vite define
 // plugin), and this module is loaded transitively by most viewer tests. The
@@ -39,7 +53,7 @@ if (enabled) {
       // (current + future) before it leaves the browser, drop unactionable
       // third-party noise, and tag the geometry error family. See scrubEvent
       // in ./analytics-scrub.ts.
-      before_send: scrubEvent,
+      before_send: beforeSend,
     });
     // Register build attribution as super-properties so every event (incl.
     // ifc_model_loaded) carries the deploy it was served from — this is what

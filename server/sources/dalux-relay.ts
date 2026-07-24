@@ -74,6 +74,46 @@ export interface DaluxRelayDeps {
   readonly fetchImpl: typeof fetch;
 }
 
+/** Thrown when the upstream redirects to a host other than the upstream. */
+export class OffHostRedirectError extends Error {
+  constructor(readonly location: string) {
+    super(`Upstream redirected off-host to ${location}`);
+    this.name = 'OffHostRedirectError';
+  }
+}
+
+const MAX_REDIRECTS = 3;
+
+/**
+ * Fetches `target`, following 3xx redirects manually but ONLY while they stay
+ * on the upstream host, so the forwarded `X-API-KEY` can never leave it.
+ *
+ * fetch's own `redirect: 'follow'` strips `Authorization`/`Cookie` on a
+ * cross-origin hop but keeps custom headers, which would hand the caller's key
+ * to whatever host an open redirect names. A same-host redirect (e.g. a
+ * download endpoint bouncing within `node1.field.dalux.com`) is still legal and
+ * is followed; anything off-host throws {@link OffHostRedirectError}.
+ */
+async function followSameHost(
+  fetchImpl: typeof fetch,
+  target: URL,
+  init: { method: string; headers: Headers },
+): Promise<Response> {
+  let current = target;
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    const response = await fetchImpl(current.toString(), { ...init, redirect: 'manual' });
+    if (response.status < 300 || response.status >= 400) return response;
+
+    const location = response.headers.get('location');
+    if (!location) return response;
+
+    const next = new URL(location, current);
+    if (next.origin !== target.origin) throw new OffHostRedirectError(next.toString());
+    current = next;
+  }
+  throw new Error(`Exceeded ${MAX_REDIRECTS} same-host redirects`);
+}
+
 function jsonError(status: number, message: string, cors: Record<string, string>): Response {
   return new Response(JSON.stringify({ error: message }), {
     status,
@@ -177,12 +217,17 @@ export function createDaluxRelayHandler(
 
     let response: Response;
     try {
-      response = await deps.fetchImpl(upstream.toString(), {
+      response = await followSameHost(deps.fetchImpl, upstream, {
         method: request.method,
         headers: forwardedHeaders,
-        redirect: 'follow',
       });
     } catch (err) {
+      if (err instanceof OffHostRedirectError) {
+        // A 3xx pointing off the upstream host would, if followed, re-send the
+        // caller's X-API-KEY to that host — fetch strips Authorization/Cookie
+        // across origins but NOT a custom header. Refuse rather than leak.
+        return jsonError(502, 'Upstream redirected off-host; refusing to forward credentials', cors);
+      }
       // Never include the request headers here: they carry the caller's key.
       const reason = err instanceof Error ? err.message : String(err);
       return jsonError(502, `Upstream request failed: ${reason}`, cors);

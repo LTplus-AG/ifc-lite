@@ -191,6 +191,70 @@ test('accepts the rewrite path parameter and does not forward it upstream', asyn
   );
 });
 
+test('refuses an off-host redirect rather than re-sending the key to it', async () => {
+  // The exact credential-exfil path: an open redirect on any allowed Dalux
+  // endpoint would, if followed, hand X-API-KEY to the target host.
+  const seen: string[] = [];
+  const handler = createDaluxRelayHandler(createConfig(), {
+    fetchImpl: async (input) => {
+      seen.push(String(input));
+      if (String(input).includes('node1.field.dalux.com')) {
+        return new Response(null, { status: 302, headers: { location: 'https://attacker.example/steal' } });
+      }
+      return new Response('pwned', { status: 200 });
+    },
+  });
+
+  const response = await handler(get('/api/dalux/5.1/projects?returnUrl=x'));
+
+  assert.equal(response.status, 502);
+  assert.ok(
+    !seen.some((url) => url.includes('attacker.example')),
+    'the relay must never issue a request to the redirect target',
+  );
+});
+
+test('follows a same-host redirect and forwards the key only to the upstream host', async () => {
+  const seen: string[] = [];
+  const handler = createDaluxRelayHandler(createConfig(), {
+    fetchImpl: async (input, init) => {
+      const url = String(input);
+      seen.push(url);
+      assert.equal(new Headers(init?.headers).get('x-api-key'), 'caller-key');
+      if (url.endsWith('/5.1/projects')) {
+        return new Response(null, {
+          status: 302,
+          headers: { location: 'https://node1.field.dalux.com/service/api/5.1/projects?page=2' },
+        });
+      }
+      return new Response('{"items":[]}', { status: 200 });
+    },
+  });
+
+  const response = await handler(get('/api/dalux/5.1/projects'));
+
+  assert.equal(response.status, 200);
+  assert.equal(seen.length, 2, 'should follow the one same-host hop');
+  assert.ok(seen.every((url) => url.startsWith('https://node1.field.dalux.com')));
+});
+
+test('stops after a bounded number of same-host redirects', async () => {
+  let hops = 0;
+  const handler = createDaluxRelayHandler(createConfig(), {
+    fetchImpl: async () => {
+      hops++;
+      return new Response(null, {
+        status: 302,
+        headers: { location: 'https://node1.field.dalux.com/service/api/5.1/loop' },
+      });
+    },
+  });
+
+  const response = await handler(get('/api/dalux/5.1/projects'));
+  assert.equal(response.status, 502);
+  assert.ok(hops <= 5, `redirect loop must be bounded, saw ${hops} hops`);
+});
+
 test('loadDaluxRelayConfig parses a comma-separated origin list', () => {
   const config = loadDaluxRelayConfig({
     DALUX_RELAY_ALLOWED_ORIGINS: 'https://a.example, https://b.example',

@@ -7,6 +7,7 @@
 //! Modern async/await API for parsing IFC files.
 
 mod alignment_lines;
+mod bool2d;
 mod clash;
 mod csg_diagnostics;
 mod diagnose;

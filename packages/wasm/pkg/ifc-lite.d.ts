@@ -35,6 +35,71 @@ export class ClashSession {
   runRule(group_a: Uint32Array, group_b: Uint32Array, mode: number, tolerance: number, clearance: number, report_touch: boolean): ClashRunResult;
 }
 
+export class Contours2D {
+  free(): void;
+  [Symbol.dispose](): void;
+  /**
+   * Vertex count of each ring, in the same order as `coords()`.
+   */
+  ringLengths(): Uint32Array;
+  /**
+   * Ring index at which each shape starts. Entry `s` is shape `s`'s OUTER
+   * ring; the rings up to the next entry (or `ringCount`) are its holes.
+   */
+  shapeOffsets(): Uint32Array;
+  /**
+   * Adopt the rings of a `meshOutline2d` result, widening its f32
+   * coordinates to the f64 the boolean engine works in.
+   *
+   * The outline's `axisMin`/`axisMax` are dropped — they describe the cut
+   * axis, which a 2D boolean has no notion of; keep them on the JS side if
+   * the caller still needs them for band classification.
+   */
+  static fromMeshOutline(outline: MeshOutlineJs): Contours2D;
+  /**
+   * Build a contour set from flat coordinates plus per-ring vertex counts.
+   *
+   * `coords` is `[x0, y0, x1, y1, …]` with every ring concatenated in order;
+   * `ringLengths[i]` is the VERTEX count (not the float count) of ring `i`.
+   * Throws when the counts do not add up to `coords.length / 2`.
+   *
+   * Shape grouping is a property of boolean *results*: a set built here is
+   * an unstructured ring soup, so `shapeCount` reports 0 until it has been
+   * through an operation (`resolve2d` alone is enough).
+   */
+  constructor(coords: Float64Array, ring_lengths: Uint32Array);
+  /**
+   * Ring `index` as a flat `[x0, y0, x1, y1, …]` array, or `undefined` when
+   * out of range.
+   */
+  ring(index: number): Float64Array | undefined;
+  /**
+   * Axis-aligned bounds as `[minX, minY, maxX, maxY]`, or `undefined` when
+   * empty. Cheap enough to gate the boolean itself: an accumulated occluder
+   * whose bounds miss the next element needs no difference at all.
+   */
+  bounds(): Float64Array | undefined;
+  /**
+   * Every ring's coordinates concatenated. Paired with `ringLengths()` this
+   * is the exact inverse of the constructor, and it reads a whole result
+   * back in one boundary crossing instead of one per ring.
+   */
+  coords(): Float64Array;
+  /**
+   * Total number of boundary rings across every shape.
+   */
+  readonly ringCount: number;
+  /**
+   * Number of disjoint shapes, or 0 for a set that has not been through an
+   * operation yet (see the constructor).
+   */
+  readonly shapeCount: number;
+  /**
+   * True when the set covers no area.
+   */
+  readonly isEmpty: boolean;
+}
+
 export class GridAxisCollection {
   private constructor();
   free(): void;
@@ -1266,6 +1331,18 @@ export class SymbolicText {
 }
 
 /**
+ * `a - b`, keeping EVERY disjoint remnant.
+ *
+ * This is the operation the existing `subtract_2d` could not stand in for: it
+ * returns one shape per island, where `subtract_2d` collapses to the largest
+ * (correct for a single extrusion profile, silent geometry loss anywhere else).
+ *
+ * `b` may hold any number of rings; they subtract as their union, so there is
+ * no separate "difference against many" entry point.
+ */
+export function difference2d(a: Contours2D, b: Contours2D): Contours2D;
+
+/**
  * Get WASM memory to allow JavaScript to create TypedArray views
  */
 export function get_memory(): any;
@@ -1277,6 +1354,11 @@ export function get_memory(): any;
  * It sets up panic hooks for better error messages in the browser console.
  */
 export function init(): void;
+
+/**
+ * `a ∩ b`.
+ */
+export function intersection2d(a: Contours2D, b: Contours2D): Contours2D;
 
 /**
  * Compute the winding-robust 2D footprint outline of a triangle mesh.
@@ -1296,6 +1378,18 @@ export function init(): void;
  * ```
  */
 export function meshOutline2d(positions: Float32Array, indices: Uint32Array, axis: number, flipped: boolean): MeshOutlineJs | undefined;
+
+/**
+ * Resolve a ring soup into disjoint outer/hole shapes without changing the
+ * area it covers (a self-union). Use it to give a hand-built set — or a
+ * `meshOutline2d` result — the shape grouping the operations produce.
+ */
+export function resolve2d(a: Contours2D): Contours2D;
+
+/**
+ * `a ∪ b`.
+ */
+export function union2d(a: Contours2D, b: Contours2D): Contours2D;
 
 /**
  * Get the version of IFC-Lite.
@@ -1318,6 +1412,7 @@ export interface InitOutput {
   readonly memory: WebAssembly.Memory;
   readonly __wbg_clashrunresult_free: (a: number, b: number) => void;
   readonly __wbg_clashsession_free: (a: number, b: number) => void;
+  readonly __wbg_contours2d_free: (a: number, b: number) => void;
   readonly __wbg_gridaxiscollection_free: (a: number, b: number) => void;
   readonly __wbg_gridaxisjs_free: (a: number, b: number) => void;
   readonly __wbg_ifcapi_free: (a: number, b: number) => void;
@@ -1343,6 +1438,17 @@ export interface InitOutput {
   readonly clashsession_ingest: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => void;
   readonly clashsession_new: () => number;
   readonly clashsession_runRule: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => number;
+  readonly contours2d_bounds: (a: number) => number;
+  readonly contours2d_coords: (a: number) => number;
+  readonly contours2d_fromMeshOutline: (a: number) => number;
+  readonly contours2d_isEmpty: (a: number) => number;
+  readonly contours2d_new: (a: number, b: number, c: number, d: number, e: number) => void;
+  readonly contours2d_ring: (a: number, b: number) => number;
+  readonly contours2d_ringCount: (a: number) => number;
+  readonly contours2d_ringLengths: (a: number) => number;
+  readonly contours2d_shapeCount: (a: number) => number;
+  readonly contours2d_shapeOffsets: (a: number) => number;
+  readonly difference2d: (a: number, b: number) => number;
   readonly gridaxiscollection_getAxis: (a: number, b: number) => number;
   readonly gridaxiscollection_isEmpty: (a: number) => number;
   readonly gridaxiscollection_length: (a: number) => number;
@@ -1401,6 +1507,7 @@ export interface InitOutput {
   readonly ifcapi_setTessellationQuality: (a: number, b: number, c: number, d: number) => void;
   readonly ifcapi_simplifyMeshes: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number) => void;
   readonly ifcapi_version: (a: number, b: number) => void;
+  readonly intersection2d: (a: number, b: number) => number;
   readonly meshOutline2d: (a: number, b: number, c: number, d: number, e: number, f: number) => number;
   readonly meshcollection_buildingRotation: (a: number, b: number) => void;
   readonly meshcollection_diagnostics: (a: number) => number;
@@ -1441,7 +1548,6 @@ export interface InitOutput {
   readonly meshoutlinejs_axisMax: (a: number) => number;
   readonly meshoutlinejs_axisMin: (a: number) => number;
   readonly meshoutlinejs_contour: (a: number, b: number) => number;
-  readonly meshoutlinejs_contourCount: (a: number) => number;
   readonly partitionedbatch_instancedOccurrences: (a: number) => number;
   readonly partitionedbatch_takeMeshes: (a: number) => number;
   readonly partitionedbatch_takeShard: (a: number, b: number) => void;
@@ -1456,6 +1562,7 @@ export interface InitOutput {
   readonly profileentryjs_modelIndex: (a: number) => number;
   readonly profileentryjs_outerPoints: (a: number) => number;
   readonly profileentryjs_transform: (a: number) => number;
+  readonly resolve2d: (a: number) => number;
   readonly simplifiedmeshes_cavitiesDropped: (a: number, b: number) => void;
   readonly simplifiedmeshes_elementIds: (a: number, b: number) => void;
   readonly simplifiedmeshes_indexCounts: (a: number, b: number) => void;
@@ -1541,8 +1648,10 @@ export interface InitOutput {
   readonly symbolictext_ifcType: (a: number, b: number) => void;
   readonly symbolictext_repIdentifier: (a: number, b: number) => void;
   readonly symbolictext_targetPx: (a: number) => number;
+  readonly union2d: (a: number, b: number) => number;
   readonly version: (a: number) => void;
   readonly init: () => void;
+  readonly meshoutlinejs_contourCount: (a: number) => number;
   readonly symbolicpolyline_pointCount: (a: number) => number;
   readonly get_memory: () => number;
   readonly symbolicfillarea_expressId: (a: number) => number;

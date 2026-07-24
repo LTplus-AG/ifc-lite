@@ -10,7 +10,16 @@ import { readFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import assert from 'node:assert/strict';
-import { initSync, IfcAPI } from '../packages/wasm/pkg/ifc-lite.js';
+import {
+  initSync,
+  IfcAPI,
+  Contours2D,
+  union2d,
+  difference2d,
+  intersection2d,
+  resolve2d,
+  meshOutline2d,
+} from '../packages/wasm/pkg/ifc-lite.js';
 import { parseMeshesViaPrePass } from './lib/mesh-via-prepass.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -833,6 +842,184 @@ test('setEntityIndex resets pipeline diagnostics like a fresh load, and installs
       'the post-setEntityIndex batch must start a fresh accumulator at 1, not accumulate onto the prior load');
   } finally {
     entityIdxApi.clearPrePassCache();
+  }
+});
+
+// ===== 2D boolean contour sets (issue #1863) =====
+console.log('\n📋 2D boolean contour sets');
+
+/** CCW axis-aligned rectangle as a flat ring. */
+function rectCcw(x0, y0, x1, y1) {
+  return [x0, y0, x1, y0, x1, y1, x0, y1];
+}
+
+/** Build a Contours2D from an array of flat rings. */
+function contours(...rings) {
+  const coords = Float64Array.from(rings.flat());
+  const lengths = Uint32Array.from(rings.map((r) => r.length / 2));
+  return new Contours2D(coords, lengths);
+}
+
+/**
+ * Covered area read back ACROSS the boundary: sum of signed ring areas, which
+ * is the total only because winding carries outer-vs-hole. If the boundary ever
+ * normalised winding, holes would start adding area and this would catch it.
+ */
+function coveredArea(set) {
+  const coords = set.coords();
+  const lengths = set.ringLengths();
+  let at = 0;
+  let total = 0;
+  for (const n of lengths) {
+    let a = 0;
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      a += coords[(at + i) * 2] * coords[(at + j) * 2 + 1]
+        - coords[(at + j) * 2] * coords[(at + i) * 2 + 1];
+    }
+    total += a / 2;
+    at += n;
+  }
+  return total;
+}
+
+test('Contours2D rejects coords that disagree with ringLengths', () => {
+  assert.throws(
+    () => new Contours2D(Float64Array.from(rectCcw(0, 0, 1, 1)), Uint32Array.from([5])),
+    /ringLengths/,
+    'a length mismatch must throw, not silently truncate the ring',
+  );
+});
+
+test('coords/ringLengths round-trip the constructor across the boundary', () => {
+  const ring = rectCcw(0, 0, 2, 3);
+  const set = contours(ring);
+  try {
+    assert.deepEqual(Array.from(set.coords()), ring);
+    assert.deepEqual(Array.from(set.ringLengths()), [4]);
+    assert.equal(set.ringCount, 1);
+    assert.equal(set.isEmpty, false);
+    // A raw ring soup carries no shape grouping until an op resolves it.
+    assert.equal(set.shapeCount, 0);
+  } finally {
+    set.free();
+  }
+});
+
+test('difference2d keeps every disjoint island', () => {
+  // The guarantee `subtract_2d` cannot give: a bar cut in two by a strip must
+  // come back as TWO shapes, not just the larger remnant.
+  const bar = contours(rectCcw(0, 0, 10, 1));
+  const cutter = contours(rectCcw(4, -1, 6, 2));
+  const out = difference2d(bar, cutter);
+  try {
+    assert.equal(out.shapeCount, 2, 'both remnants must survive');
+    assert.deepEqual(Array.from(out.shapeOffsets()), [0, 1]);
+    assert.ok(Math.abs(coveredArea(out) - 8) < 1e-9, `area ${coveredArea(out)}`);
+  } finally {
+    out.free();
+    cutter.free();
+    bar.free();
+  }
+});
+
+test('union2d punches a hole and difference2d reports it as one shape', () => {
+  const outer = contours(rectCcw(0, 0, 10, 10));
+  const inner = contours(rectCcw(4, 4, 6, 6));
+  const holed = difference2d(outer, inner);
+  try {
+    assert.equal(holed.shapeCount, 1);
+    assert.equal(holed.ringCount, 2, 'outer boundary + hole');
+    assert.deepEqual(Array.from(holed.shapeOffsets()), [0]);
+    // Hole ring is CW, so it subtracts: 100 - 4.
+    assert.ok(Math.abs(coveredArea(holed) - 96) < 1e-9, `area ${coveredArea(holed)}`);
+    const bounds = holed.bounds();
+    assert.deepEqual(Array.from(bounds), [0, 0, 10, 10]);
+    // ring() must agree with the bulk coords() readout.
+    assert.deepEqual(Array.from(holed.ring(0)), Array.from(holed.coords()).slice(0, 8));
+    assert.equal(holed.ring(2), undefined, 'out-of-range ring index');
+  } finally {
+    holed.free();
+    inner.free();
+    outer.free();
+  }
+});
+
+test('intersection2d clips to the shared region', () => {
+  const a = contours(rectCcw(0, 0, 2, 2));
+  const b = contours(rectCcw(1, 1, 3, 3));
+  const out = intersection2d(a, b);
+  try {
+    assert.equal(out.shapeCount, 1);
+    assert.ok(Math.abs(coveredArea(out) - 1) < 1e-9);
+  } finally {
+    out.free();
+    b.free();
+    a.free();
+  }
+});
+
+test('an empty operand has a defined answer, not a crash', () => {
+  const a = contours(rectCcw(0, 0, 1, 1));
+  const empty = new Contours2D(new Float64Array(), new Uint32Array());
+  const u = union2d(empty, a);
+  const d = difference2d(empty, a);
+  const i = intersection2d(a, empty);
+  try {
+    assert.equal(empty.isEmpty, true);
+    assert.equal(empty.bounds(), undefined);
+    assert.ok(Math.abs(coveredArea(u) - 1) < 1e-9, 'union with empty is identity');
+    assert.equal(d.isEmpty, true, 'nothing minus something is nothing');
+    assert.equal(i.isEmpty, true, 'intersection with empty is empty');
+  } finally {
+    i.free();
+    d.free();
+    u.free();
+    empty.free();
+    a.free();
+  }
+});
+
+test('Contours2D.fromMeshOutline feeds a real meshOutline2d result into a boolean', () => {
+  // Two triangles forming the unit square in z=0, viewed down Z (axis 2).
+  const positions = Float32Array.from([0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0]);
+  const indices = Uint32Array.from([0, 1, 2, 0, 2, 3]);
+  const outline = meshOutline2d(positions, indices, 2, false);
+  assert.ok(outline, 'meshOutline2d must produce a footprint');
+
+  const adopted = Contours2D.fromMeshOutline(outline);
+  const resolved = resolve2d(adopted);
+  const cutter = contours(rectCcw(0.25, -1, 0.75, 2));
+  const cut = difference2d(adopted, cutter);
+  try {
+    assert.equal(adopted.ringCount, outline.contourCount, 'every ring must be adopted');
+    assert.ok(Math.abs(coveredArea(resolved) - 1) < 1e-6, 'outline area survives adoption');
+    assert.equal(cut.shapeCount, 2, 'the strip splits the footprint in two');
+    assert.ok(Math.abs(coveredArea(cut) - 0.5) < 1e-6, `area ${coveredArea(cut)}`);
+  } finally {
+    cut.free();
+    cutter.free();
+    resolved.free();
+    adopted.free();
+    outline.free();
+  }
+});
+
+test('operations return new handles and leave their operands usable', () => {
+  // The accumulating occluder loop depends on this: freeing the result must
+  // not invalidate the operands, and the operands must be unmodified.
+  const a = contours(rectCcw(0, 0, 2, 2));
+  const b = contours(rectCcw(1, 1, 3, 3));
+  const first = union2d(a, b);
+  first.free();
+  const second = union2d(a, b);
+  try {
+    assert.ok(Math.abs(coveredArea(second) - 7) < 1e-9, 'operands survive an op + free');
+    assert.ok(Math.abs(coveredArea(a) - 4) < 1e-9, 'union2d must not mutate its subject');
+  } finally {
+    second.free();
+    b.free();
+    a.free();
   }
 });
 

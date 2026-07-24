@@ -76,6 +76,11 @@
 // re-exports below, so those modules are `pub(crate)` (see #C3.2).
 pub(crate) mod alignment;
 pub(crate) mod bool2d;
+/// General 2D booleans over contour sets (union/difference/intersection),
+/// keeping every disjoint output shape. Distinct from `bool2d`, which is the
+/// fixed single-`Profile2D` void-subtraction path. Reached through the
+/// root-level re-exports below, so it stays `pub(crate)` per #C3.2.
+pub(crate) mod contour_bool2d;
 /// Deterministic Constrained Delaunay Triangulation + bounded Ruppert
 /// min-angle refinement. Backs the quality triangulators in `triangulation`.
 mod cdt;
@@ -133,6 +138,7 @@ pub use bool2d::{
     compute_signed_area, ensure_ccw, ensure_cw, is_valid_contour, point_in_contour, subtract_2d,
     subtract_multiple_2d, subtract_multiple_2d_counted,
 };
+pub use contour_bool2d::{boolean_2d, resolve_2d, BooleanOp2D, ContourSet, Ring2D};
 pub use csg::{calculate_normals, ClippingProcessor, Plane, Triangle};
 pub use diagnostics::{BoolFailure, BoolFailureReason, BoolOp};
 pub use error::{Error, Result};

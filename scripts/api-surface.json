@@ -4031,6 +4031,7 @@
   "@ifc-lite/wasm": [
     "ClashRunResult: class",
     "ClashSession: class",
+    "Contours2D: class",
     "GridAxisCollection: class",
     "GridAxisJs: class",
     "IfcAPI: class",
@@ -4051,10 +4052,14 @@
     "SymbolicText: class",
     "SyncInitInput: type",
     "default: function",
+    "difference2d: function",
     "get_memory: function",
     "init: function",
     "initSync: function",
+    "intersection2d: function",
     "meshOutline2d: function",
+    "resolve2d: function",
+    "union2d: function",
     "version: function"
   ],
   "create-ifc-lite": []

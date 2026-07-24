@@ -1,0 +1,149 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * DXF writer tests (issue #1861): header/tables/entities structure, layer
+ * sanitization, and a round trip of every entity kind through this
+ * package's own `parseDxf` (the counterpart parser from #1782).
+ */
+
+import { describe, expect, it } from 'vitest';
+import { DxfWriter, sanitizeDxfLayerName } from './writer.js';
+import { cssToAci, aciToCss } from './aci-colors.js';
+import { parseDxf } from './parser.js';
+import type { DxfLineEntity, DxfPolylineEntity, DxfTextEntity } from './types.js';
+
+describe('DxfWriter structure', () => {
+  it('writes HEADER with AC1015 and INSUNITS=6 (metres)', () => {
+    const w = new DxfWriter();
+    const layer = w.layer('A', '#000000');
+    w.addLine({ x: 0, y: 0 }, { x: 1, y: 1 }, layer);
+    const dxf = w.toString();
+    expect(dxf).toContain('$ACADVER\n1\nAC1015');
+    expect(dxf).toContain('$INSUNITS\n70\n6');
+  });
+
+  it('computes $EXTMIN/$EXTMAX from written geometry', () => {
+    const w = new DxfWriter();
+    const layer = w.layer('A', '#000000');
+    w.addLine({ x: -5, y: 2 }, { x: 10, y: -3 }, layer);
+    const dxf = w.toString();
+    expect(dxf).toContain('$EXTMIN\n10\n-5.000000\n20\n-3.000000');
+    expect(dxf).toContain('$EXTMAX\n10\n10.000000\n20\n2.000000');
+  });
+
+  it('declares CONTINUOUS and DASHED linetypes in the LTYPE table', () => {
+    const w = new DxfWriter();
+    const dxf = w.toString();
+    expect(dxf).toContain('TABLE\n2\nLTYPE');
+    expect(dxf).toContain('2\nCONTINUOUS');
+    expect(dxf).toContain('2\nDASHED');
+  });
+
+  it('registers one LAYER row per distinct layer, colour resolved to ACI', () => {
+    const w = new DxfWriter();
+    const red = w.layer('Cut Lines', '#ff0000');
+    w.addLine({ x: 0, y: 0 }, { x: 1, y: 0 }, red);
+    const dxf = w.toString();
+    expect(dxf).toContain('TABLE\n2\nLAYER');
+    expect(dxf).toContain('2\nCut_Lines\n70\n0\n62\n1\n6\nCONTINUOUS'); // ACI 1 = red
+  });
+
+  it('sanitizes layer names (spaces and DXF-illegal characters)', () => {
+    expect(sanitizeDxfLayerName('A/B:C')).toBe('A_B_C');
+    expect(sanitizeDxfLayerName('Cut Lines')).toBe('Cut_Lines');
+    expect(sanitizeDxfLayerName('')).toBe('LAYER');
+  });
+});
+
+describe('DxfWriter entity round trip (via this package\'s own parser)', () => {
+  it('round-trips a LINE entity', () => {
+    const w = new DxfWriter();
+    const layer = w.layer('walls', '#000000');
+    w.addLine({ x: 1.5, y: -2.25 }, { x: 10, y: 20 }, layer);
+    const doc = parseDxf(w.toString());
+    expect(doc.insunits).toBe(6);
+    expect(doc.entities).toHaveLength(1);
+    const line = doc.entities[0] as DxfLineEntity;
+    expect(line.kind).toBe('line');
+    expect(line.layer).toBe('walls');
+    expect(line.x1).toBeCloseTo(1.5);
+    expect(line.y1).toBeCloseTo(-2.25);
+    expect(line.x2).toBeCloseTo(10);
+    expect(line.y2).toBeCloseTo(20);
+  });
+
+  it('round-trips a closed LWPOLYLINE', () => {
+    const w = new DxfWriter();
+    const layer = w.layer('slab', '#333333');
+    w.addLwPolyline(
+      [{ x: 0, y: 0 }, { x: 5, y: 0 }, { x: 5, y: 5 }, { x: 0, y: 5 }],
+      layer,
+      true,
+    );
+    const doc = parseDxf(w.toString());
+    expect(doc.entities).toHaveLength(1);
+    const poly = doc.entities[0] as DxfPolylineEntity;
+    expect(poly.kind).toBe('polyline');
+    expect(poly.closed).toBe(true);
+    expect(poly.vertices).toHaveLength(4);
+    expect(poly.vertices[2].x).toBeCloseTo(5);
+    expect(poly.vertices[2].y).toBeCloseTo(5);
+  });
+
+  it('round-trips a TEXT entity with rotation', () => {
+    const w = new DxfWriter();
+    const layer = w.layer('anno', '#000000');
+    w.addText({ x: 3, y: 4 }, 'Room 101', 0.25, layer, { rotationDeg: 90 });
+    const doc = parseDxf(w.toString());
+    expect(doc.entities).toHaveLength(1);
+    const text = doc.entities[0] as DxfTextEntity;
+    expect(text.kind).toBe('text');
+    expect(text.text).toBe('Room 101');
+    expect(text.height).toBeCloseTo(0.25);
+    expect(text.rotationDeg).toBeCloseTo(90);
+    expect(text.x).toBeCloseTo(3);
+    expect(text.y).toBeCloseTo(4);
+  });
+
+  it('per-entity colour override survives the round trip via the LAYER-BYLAYER default', () => {
+    // The entity's own ACI (group 62) always wins over the layer's colour in a
+    // real CAD reader; this package's parser models that with `colorNumber`.
+    const w = new DxfWriter();
+    const layer = w.layer('mixed', '#000000');
+    w.addLine({ x: 0, y: 0 }, { x: 1, y: 0 }, layer, '#ff0000');
+    const doc = parseDxf(w.toString());
+    const line = doc.entities[0] as DxfLineEntity;
+    expect(line.colorNumber).toBe(cssToAci('#ff0000'));
+  });
+
+  it('skips degenerate geometry (single-point polyline, empty/whitespace text)', () => {
+    const w = new DxfWriter();
+    const layer = w.layer('x', '#000000');
+    w.addLwPolyline([{ x: 0, y: 0 }], layer, false);
+    w.addText({ x: 0, y: 0 }, '   ', 0.2, layer);
+    w.addText({ x: 0, y: 0 }, 'ok', 0, layer); // zero height also dropped
+    const doc = parseDxf(w.toString());
+    expect(doc.entities).toHaveLength(0);
+  });
+});
+
+describe('cssToAci / aciToCss', () => {
+  it('maps primary hues to their classic ACI index', () => {
+    expect(cssToAci('#ff0000')).toBe(1); // red
+    expect(cssToAci('#ffff00')).toBe(2); // yellow
+    expect(cssToAci('#00ff00')).toBe(3); // green
+    expect(cssToAci('#0000ff')).toBe(5); // blue
+  });
+
+  it('round-trips aciToCss -> cssToAci for the classic entries', () => {
+    for (const aci of [1, 2, 3, 4, 5, 6]) {
+      expect(cssToAci(aciToCss(aci))).toBe(aci);
+    }
+  });
+
+  it('falls back to black (ACI 7) for unparseable colour strings', () => {
+    expect(cssToAci('not-a-color')).toBe(7);
+  });
+});

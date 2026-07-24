@@ -175,6 +175,16 @@ export { SVGExporter, exportToSVG } from './svg-exporter.js';
 export type { SVGExportOptions } from './svg-exporter.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
+// DXF EXPORT (issue #1861)
+// ═══════════════════════════════════════════════════════════════════════════
+
+export { DXFExporter, exportToDXF } from './dxf-exporter.js';
+export type { DXFExportOptions, DXFUnderlayOptions } from './dxf-exporter.js';
+export { DxfWriter, sanitizeDxfLayerName } from './dxf/writer.js';
+export type { DxfLinetype, DxfTextHAlign, DxfTextVAlign } from './dxf/writer.js';
+export { cssToAci } from './dxf/aci-colors.js';
+
+// ═══════════════════════════════════════════════════════════════════════════
 // GPU ACCELERATION
 // ═══════════════════════════════════════════════════════════════════════════
 

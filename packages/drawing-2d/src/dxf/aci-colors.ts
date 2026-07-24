@@ -71,3 +71,58 @@ export function aciToCss(index: number): string {
   if (i < 1 || i > 255 || !Number.isFinite(i)) return '#000000';
   return rgbIntToCss(ACI_TABLE[i]);
 }
+
+/**
+ * Resolve a CSS colour (`#rrggbb`/`#rgb`, `rgb(...)`, or a bare colour
+ * keyword) to the nearest AutoCAD Color Index (1-255), for the DXF writer
+ * (issue #1861): DXF LAYER/entity colour is always an ACI, so an exported
+ * layer's CSS style colour needs a reverse lookup against the same table
+ * {@link aciToCss} reads forward. Ties break toward the lowest index (the
+ * classic 1-9 entries sort first, so a primary hue prefers its named ACI
+ * over a near-identical generated band entry). Unparseable input falls back
+ * to ACI 7 (black/white — the classic "on paper" colour).
+ */
+export function cssToAci(css: string): number {
+  const rgb = parseCssColor(css);
+  if (rgb === null) return 7;
+  const r = (rgb >> 16) & 0xff;
+  const g = (rgb >> 8) & 0xff;
+  const b = rgb & 0xff;
+  let best = 7;
+  let bestDist = Infinity;
+  for (let i = 1; i <= 255; i++) {
+    const c = ACI_TABLE[i];
+    const dr = r - ((c >> 16) & 0xff);
+    const dg = g - ((c >> 8) & 0xff);
+    const db = b - (c & 0xff);
+    const dist = dr * dr + dg * dg + db * db;
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = i;
+      if (dist === 0) break;
+    }
+  }
+  return best;
+}
+
+/** Parse `#rgb`, `#rrggbb`, or `rgb(r,g,b)` into a 24-bit integer; null on failure. */
+function parseCssColor(css: string): number | null {
+  const s = css.trim();
+  const hex3 = /^#([0-9a-f])([0-9a-f])([0-9a-f])$/i.exec(s);
+  if (hex3) {
+    const r = parseInt(hex3[1] + hex3[1], 16);
+    const g = parseInt(hex3[2] + hex3[2], 16);
+    const b = parseInt(hex3[3] + hex3[3], 16);
+    return (r << 16) | (g << 8) | b;
+  }
+  const hex6 = /^#([0-9a-f]{6})$/i.exec(s);
+  if (hex6) return parseInt(hex6[1], 16);
+  const rgbFn = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i.exec(s);
+  if (rgbFn) {
+    const r = Math.min(255, parseInt(rgbFn[1], 10));
+    const g = Math.min(255, parseInt(rgbFn[2], 10));
+    const b = Math.min(255, parseInt(rgbFn[3], 10));
+    return (r << 16) | (g << 8) | b;
+  }
+  return null;
+}

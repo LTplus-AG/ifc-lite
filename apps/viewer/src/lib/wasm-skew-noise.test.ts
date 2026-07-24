@@ -110,6 +110,22 @@ describe('shouldSuppressWasmSkewNoise', () => {
     assert.equal(out, true);
   });
 
+  it('does NOT suppress when only the TIMESTAMP fails to persist', () => {
+    // Partial persistence is the subtler runaway: with no durable `lastTs`,
+    // every later call sees the episode as decayed, resets the count to 1, and
+    // would suppress forever — reaching the same failure through the decay
+    // branch rather than the counter. Both read-backs must confirm.
+    const store = new Map<string, string>();
+    const countOnly: SkewNoiseDeps = {
+      now: () => 1,
+      read: (k) => (store.has(k) ? store.get(k)! : null),
+      // Drop timestamp writes only; the count persists fine.
+      write: (k, v) => { if (!k.endsWith('-ts')) store.set(k, v); },
+    };
+    assert.equal(shouldSuppressWasmSkewNoise(skewEvent(MIME_SKEW), countOnly), false);
+    assert.equal(shouldSuppressWasmSkewNoise(skewEvent(MIME_SKEW), countOnly), false);
+  });
+
   it('does NOT suppress when storage is unavailable (cannot bound the count)', () => {
     // Blocked storage: writes are dropped and reads return null, so the count
     // could never advance past 1 and suppression would run forever — hiding a

@@ -241,7 +241,16 @@ export function shouldSuppressWasmSkewNoise(
   // exception is the correct, consistent default.
   deps.write(SKEW_NOISE_COUNT_KEY, String(count));
   deps.write(SKEW_NOISE_TS_KEY, String(now));
-  if (deps.read(SKEW_NOISE_COUNT_KEY) !== String(count)) return false;
+  // BOTH reads must confirm. The timestamp is not incidental: if only it fails
+  // to persist, every later call sees no `lastTs`, treats the episode as
+  // decayed, resets the count to 1 and suppresses forever — the same runaway,
+  // just reached through the decay branch instead of the counter.
+  if (
+    deps.read(SKEW_NOISE_COUNT_KEY) !== String(count) ||
+    deps.read(SKEW_NOISE_TS_KEY) !== String(now)
+  ) {
+    return false;
+  }
 
   return count <= SKEW_NOISE_SUPPRESS_MAX;
 }

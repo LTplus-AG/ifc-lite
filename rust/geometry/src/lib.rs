@@ -138,7 +138,9 @@ pub use bool2d::{
     compute_signed_area, ensure_ccw, ensure_cw, is_valid_contour, point_in_contour, subtract_2d,
     subtract_multiple_2d, subtract_multiple_2d_counted,
 };
-pub use contour_bool2d::{boolean_2d, resolve_2d, BooleanOp2D, ContourSet, Ring2D};
+pub use contour_bool2d::{
+    boolean_2d, resolve_2d, sanitize as sanitize_contours, BooleanOp2D, ContourSet, Ring2D,
+};
 pub use csg::{calculate_normals, ClippingProcessor, Plane, Triangle};
 pub use diagnostics::{BoolFailure, BoolFailureReason, BoolOp};
 pub use error::{Error, Result};

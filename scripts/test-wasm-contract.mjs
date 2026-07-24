@@ -891,6 +891,48 @@ test('Contours2D rejects coords that disagree with ringLengths', () => {
   );
 });
 
+test('the constructor drops degenerate rings so accessors stay consistent', () => {
+  // A raw set built from a soup must not report state a later boolean would
+  // disagree with: an all-degenerate input is empty, and isEmpty must agree
+  // with bounds() (a 2-vertex ring is not "one ring" that bounds() can't cover).
+  const coords = Float64Array.from([
+    ...[0, 0, 1, 0], // 2-vertex ring — degenerate
+    ...rectCcw(0, 0, 1, 1), // one real ring
+  ]);
+  const set = new Contours2D(coords, Uint32Array.from([2, 4]));
+  try {
+    assert.equal(set.ringCount, 1, 'the 2-vertex ring must be dropped');
+    assert.equal(set.isEmpty, false);
+    assert.ok(Math.abs(coveredArea(set) - 1) < 1e-9);
+  } finally {
+    set.free();
+  }
+
+  const empty = new Contours2D(Float64Array.from([0, 0, 1, 0]), Uint32Array.from([2]));
+  try {
+    assert.equal(empty.ringCount, 0, 'an all-degenerate set holds no rings');
+    assert.equal(empty.isEmpty, true, 'isEmpty must agree with the dropped ring');
+    assert.equal(empty.bounds(), undefined, 'bounds() must agree with isEmpty');
+  } finally {
+    empty.free();
+  }
+
+  // A 3-vertex COLLINEAR ring is structurally valid but covers zero area; it
+  // must not slip past sanitation and leave isEmpty/bounds disagreeing with a
+  // later boolean (the adversarial edge case behind the constructor sanitation).
+  const collinear = new Contours2D(
+    Float64Array.from([0, 0, 1, 0, 2, 0]),
+    Uint32Array.from([3]),
+  );
+  try {
+    assert.equal(collinear.ringCount, 0, 'a zero-area ring must be dropped');
+    assert.equal(collinear.isEmpty, true);
+    assert.equal(collinear.bounds(), undefined, 'bounds() must not span a dropped ring');
+  } finally {
+    collinear.free();
+  }
+});
+
 test('coords/ringLengths round-trip the constructor across the boundary', () => {
   const ring = rectCcw(0, 0, 2, 3);
   const set = contours(ring);
@@ -923,7 +965,7 @@ test('difference2d keeps every disjoint island', () => {
   }
 });
 
-test('union2d punches a hole and difference2d reports it as one shape', () => {
+test('difference2d punches a hole and reports the holed shape as one region', () => {
   const outer = contours(rectCcw(0, 0, 10, 10));
   const inner = contours(rectCcw(4, 4, 6, 6));
   const holed = difference2d(outer, inner);

@@ -34,7 +34,9 @@
 //! full contract.
 
 use super::mesh_outline::MeshOutlineJs;
-use ifc_lite_geometry::{boolean_2d, resolve_2d, BooleanOp2D, ContourSet, Ring2D};
+use ifc_lite_geometry::{
+    boolean_2d, resolve_2d, sanitize_contours, BooleanOp2D, ContourSet, Ring2D,
+};
 use wasm_bindgen::prelude::*;
 
 /// A set of closed 2D rings, grouped into disjoint shapes.
@@ -59,16 +61,27 @@ impl Contours2D {
     ///
     /// Shape grouping is a property of boolean *results*: a set built here is
     /// an unstructured ring soup, so `shapeCount` reports 0 until it has been
-    /// through an operation (`resolve2d` alone is enough).
+    /// through an operation (`resolve2d` alone is enough). Degenerate rings
+    /// (under 3 vertices or carrying a non-finite coordinate) are dropped at
+    /// construction, so `isEmpty`/`bounds()` report the same rings a later
+    /// boolean would keep rather than exposing an unsanitised soup.
     #[wasm_bindgen(constructor)]
     pub fn new(coords: &[f64], ring_lengths: &[u32]) -> Result<Contours2D, JsValue> {
         if coords.len() % 2 != 0 {
             return Err(js_sys::Error::new("Contours2D: coords length must be even").into());
         }
-        let expected: usize = ring_lengths.iter().map(|n| *n as usize).sum();
-        if expected * 2 != coords.len() {
+        // Checked arithmetic: on wasm32 `usize` is 32-bit, so a crafted
+        // `ringLengths` could otherwise overflow the vertex total (or its ×2)
+        // past the length check and then panic slicing `coords` below.
+        let expected = ring_lengths
+            .iter()
+            .try_fold(0usize, |acc, n| acc.checked_add(*n as usize))
+            .and_then(|v| v.checked_mul(2))
+            .ok_or_else(|| js_sys::Error::new("Contours2D: ringLengths overflow"))?;
+        if expected != coords.len() {
             return Err(js_sys::Error::new(&format!(
-                "Contours2D: ringLengths sum to {expected} vertices but coords hold {}",
+                "Contours2D: ringLengths sum to {} vertices but coords hold {}",
+                expected / 2,
                 coords.len() / 2
             ))
             .into());
@@ -86,7 +99,7 @@ impl Contours2D {
         }
         Ok(Contours2D {
             set: ContourSet {
-                rings,
+                rings: sanitize_contours(&rings),
                 shape_offsets: Vec::new(),
             },
         })
@@ -100,9 +113,12 @@ impl Contours2D {
     /// the caller still needs them for band classification.
     #[wasm_bindgen(js_name = fromMeshOutline)]
     pub fn from_mesh_outline(outline: &MeshOutlineJs) -> Contours2D {
+        // `meshOutline2d` rings are already valid (>= 3 vertices, finite,
+        // unclosed), so `sanitize` is a near no-op here — applied only to hold
+        // the same raw-accessor invariant the constructor documents.
         Contours2D {
             set: ContourSet {
-                rings: outline.rings_f64(),
+                rings: sanitize_contours(&outline.rings_f64()),
                 shape_offsets: Vec::new(),
             },
         }
@@ -121,7 +137,9 @@ impl Contours2D {
         self.set.shape_count()
     }
 
-    /// True when the set covers no area.
+    /// True when the set holds no rings. Degenerate rings are dropped at
+    /// construction and never emitted by an operation, so this also means the
+    /// set covers no area.
     #[wasm_bindgen(getter, js_name = isEmpty)]
     pub fn is_empty(&self) -> bool {
         self.set.is_empty()
@@ -153,8 +171,10 @@ impl Contours2D {
     }
 
     /// Every ring's coordinates concatenated. Paired with `ringLengths()` this
-    /// is the exact inverse of the constructor, and it reads a whole result
-    /// back in one boundary crossing instead of one per ring.
+    /// reconstructs the set through the constructor, and reads a whole result
+    /// back in one boundary crossing instead of one per ring. It round-trips the
+    /// constructor's *sanitised* rings — degenerate rings and explicit closing
+    /// vertices are dropped at construction, so those are not echoed back.
     pub fn coords(&self) -> js_sys::Float64Array {
         let total: usize = self.set.rings.iter().map(|r| r.len() * 2).sum();
         let mut flat = Vec::with_capacity(total);

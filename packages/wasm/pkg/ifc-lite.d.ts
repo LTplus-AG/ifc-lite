@@ -65,7 +65,10 @@ export class Contours2D {
    *
    * Shape grouping is a property of boolean *results*: a set built here is
    * an unstructured ring soup, so `shapeCount` reports 0 until it has been
-   * through an operation (`resolve2d` alone is enough).
+   * through an operation (`resolve2d` alone is enough). Degenerate rings
+   * (under 3 vertices or carrying a non-finite coordinate) are dropped at
+   * construction, so `isEmpty`/`bounds()` report the same rings a later
+   * boolean would keep rather than exposing an unsanitised soup.
    */
   constructor(coords: Float64Array, ring_lengths: Uint32Array);
   /**
@@ -81,8 +84,10 @@ export class Contours2D {
   bounds(): Float64Array | undefined;
   /**
    * Every ring's coordinates concatenated. Paired with `ringLengths()` this
-   * is the exact inverse of the constructor, and it reads a whole result
-   * back in one boundary crossing instead of one per ring.
+   * reconstructs the set through the constructor, and reads a whole result
+   * back in one boundary crossing instead of one per ring. It round-trips the
+   * constructor's *sanitised* rings — degenerate rings and explicit closing
+   * vertices are dropped at construction, so those are not echoed back.
    */
   coords(): Float64Array;
   /**
@@ -95,7 +100,9 @@ export class Contours2D {
    */
   readonly shapeCount: number;
   /**
-   * True when the set covers no area.
+   * True when the set holds no rings. Degenerate rings are dropped at
+   * construction and never emitted by an operation, so this also means the
+   * set covers no area.
    */
   readonly isEmpty: boolean;
 }

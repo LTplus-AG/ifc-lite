@@ -24,14 +24,20 @@
 //! ## Winding is the contract
 //!
 //! Every operation uses [`FillRule::NonZero`] and **respects the input ring
-//! winding**: counter-clockwise rings add coverage, clockwise rings remove it.
-//! That is the convention
-//! [`mesh_outline_2d`](crate::projection_outline::mesh_outline_2d) emits, so an
+//! winding**: counter-clockwise rings add coverage, clockwise rings remove it
+//! *from the region they overlap*. So a clockwise ring nested inside a
+//! counter-clockwise one is a hole, which is the convention
+//! [`mesh_outline_2d`](crate::projection_outline::mesh_outline_2d) emits — an
 //! outline's rings feed straight back in and its holes survive the round trip,
-//! and it is what SVG `fill-rule="nonzero"` renders. A caller holding raw,
-//! arbitrarily-wound contours (projected triangles, say) must normalise them
-//! CCW first — see [`ensure_ccw`](crate::ensure_ccw). This layer will not
-//! guess, because guessing is precisely what destroys holes.
+//! and it is what SVG `fill-rule="nonzero"` renders. NonZero is literal here:
+//! winding matters relative to the rings around a point, not in the absolute.
+//! A *lone* clockwise ring still has non-zero winding inside it, so it fills
+//! (and comes back counter-clockwise) rather than staying "negative" — a bare
+//! hole with no outer to subtract from is not a meaningful input. A caller
+//! holding raw, arbitrarily-wound contours (projected triangles, say) that all
+//! mean "covered" must normalise them CCW first — see
+//! [`ensure_ccw`](crate::ensure_ccw). This layer will not guess, because
+//! guessing is precisely what destroys the holes of a well-formed set.
 
 use i_overlay::core::fill_rule::FillRule;
 use i_overlay::core::overlay_rule::OverlayRule;
@@ -55,7 +61,11 @@ pub struct ContourSet {
 }
 
 impl ContourSet {
-    /// True when the set covers no area at all.
+    /// True when the set holds no boundary rings. Every `ContourSet` produced
+    /// by this module — a boolean result, or a soup that has been through
+    /// [`sanitize`] (which the WASM constructor applies) — has had its
+    /// non-contributing rings (under 3 vertices, non-finite, or zero-area)
+    /// dropped, so for those this also means it covers no area.
     pub fn is_empty(&self) -> bool {
         self.rings.is_empty()
     }
@@ -123,13 +133,34 @@ impl BooleanOp2D {
     }
 }
 
+/// Exactly-zero signed (shoelace) area of a ring — a fully collinear loop.
+/// Used only to drop rings that provably cover nothing; a genuinely thin
+/// sliver has non-zero area and is left for i_overlay to judge, so this never
+/// discards real coverage.
+fn is_zero_area(path: &[[f64; 2]]) -> bool {
+    let n = path.len();
+    let mut a = 0.0;
+    for i in 0..n {
+        let j = (i + 1) % n;
+        a += path[i][0] * path[j][1] - path[j][0] * path[i][1];
+    }
+    a == 0.0
+}
+
 /// Drop rings that cannot contribute, so no input can panic or hang the
-/// overlay: fewer than 3 vertices, or ANY non-finite coordinate (a NaN makes
+/// overlay: fewer than 3 vertices, ANY non-finite coordinate (a NaN makes
 /// i_overlay's segment ordering meaningless, so the whole ring goes rather than
 /// the offending point — dropping single points would silently deform the
-/// boundary instead). A trailing vertex equal to the first is stripped, so a
-/// caller that closes its rings explicitly does not feed in a zero-length edge.
-fn sanitize(rings: &[Ring2D]) -> Vec<Vec<[f64; 2]>> {
+/// boundary instead), or an exactly-zero (collinear) area. A trailing vertex
+/// equal to the first is stripped, so a caller that closes its rings explicitly
+/// does not feed in a zero-length edge.
+///
+/// Re-exported (as `sanitize_contours`) so the WASM `Contours2D` constructor
+/// can hold the same invariant its accessors document, rather than exposing a
+/// raw ring soup that a later boolean would silently disagree with: after this,
+/// a set's rings are exactly the ones a boolean would keep, so `is_empty`/
+/// `bounds` cannot report a collinear or degenerate ring that covers nothing.
+pub fn sanitize(rings: &[Ring2D]) -> Vec<Vec<[f64; 2]>> {
     rings
         .iter()
         .filter_map(|ring| {
@@ -140,7 +171,10 @@ fn sanitize(rings: &[Ring2D]) -> Vec<Vec<[f64; 2]>> {
             while path.len() >= 2 && path[path.len() - 1] == path[0] {
                 path.pop();
             }
-            (path.len() >= 3).then_some(path)
+            if path.len() < 3 || is_zero_area(&path) {
+                return None;
+            }
+            Some(path)
         })
         .collect()
 }

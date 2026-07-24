@@ -187,7 +187,63 @@ readonly is_ready: boolean; // true once the API is initialized
 
 ### Other Exported Classes
 
-Beyond `IfcAPI` and the mesh types below, the module exports `ClashSession` / `ClashRunResult` (native clash detection over ingested mesh buffers), `GridAxisCollection` / `GridAxisJs` (parsed grid axes), `ProfileCollection` / `ProfileEntryJs`, `PartitionedBatch`, `MeshOutlineJs`, `SpacePlateHandle` (interactive space-sketch topology), and the `Symbolic*` classes (`SymbolicRepresentationCollection`, `SymbolicPolyline`, `SymbolicCircle`, `SymbolicText`, `SymbolicFillArea`). See `packages/wasm/pkg/ifc-lite.d.ts` for their full definitions.
+Beyond `IfcAPI` and the mesh types below, the module exports `ClashSession` / `ClashRunResult` (native clash detection over ingested mesh buffers), `GridAxisCollection` / `GridAxisJs` (parsed grid axes), `ProfileCollection` / `ProfileEntryJs`, `PartitionedBatch`, `MeshOutlineJs`, `SpacePlateHandle` (interactive space-sketch topology), `Contours2D` (see below), and the `Symbolic*` classes (`SymbolicRepresentationCollection`, `SymbolicPolyline`, `SymbolicCircle`, `SymbolicText`, `SymbolicFillArea`). See `packages/wasm/pkg/ifc-lite.d.ts` for their full definitions.
+
+### 2D Boolean Operations (contour sets)
+
+General union / difference / intersection over 2D contour sets, backed by the same `i_overlay` engine the void/CSG paths use. This is the general form of `meshOutline2d`: where that unions one mesh's projected triangles into a silhouette, these combine two silhouettes. Use them for analytic hidden-surface removal (subtract an accumulated occluder from each element's outline), screen tiling, or any downstream 2D CSG.
+
+```typescript
+class Contours2D {
+  // Build from flat [x0,y0,x1,y1,…] coords + per-ring VERTEX counts.
+  // Throws if the counts don't sum to coords.length / 2. Degenerate rings
+  // (< 3 vertices, non-finite, or zero-area) are dropped at construction.
+  constructor(coords: Float64Array, ringLengths: Uint32Array);
+
+  // Adopt a meshOutline2d result directly (widens its f32 coords to f64).
+  static fromMeshOutline(outline: MeshOutlineJs): Contours2D;
+
+  readonly ringCount: number;   // total boundary rings across all shapes
+  readonly shapeCount: number;  // disjoint shapes; 0 for a raw, unresolved set
+  readonly isEmpty: boolean;
+
+  shapeOffsets(): Uint32Array;  // ring index where each shape's OUTER ring starts
+  ring(index: number): Float64Array | undefined;  // one ring, flat [x,y,…]
+  coords(): Float64Array;       // every ring concatenated (one boundary crossing)
+  ringLengths(): Uint32Array;   // vertex count per ring, matching coords()
+  bounds(): Float64Array | undefined;  // [minX, minY, maxX, maxY]
+  free(): void;
+}
+
+function union2d(a: Contours2D, b: Contours2D): Contours2D;         // a ∪ b
+function difference2d(a: Contours2D, b: Contours2D): Contours2D;    // a − b
+function intersection2d(a: Contours2D, b: Contours2D): Contours2D;  // a ∩ b
+function resolve2d(a: Contours2D): Contours2D;  // self-union a ring soup into shapes
+```
+
+**Winding is the contract.** Counter-clockwise rings cover area, clockwise rings subtract it (a CW ring nested in a CCW ring is a hole), the fill rule is always `nonzero`, and input winding is respected — matching `meshOutline2d` output and SVG `fill-rule="nonzero"`, so holes survive a round trip. Raw contours that all mean "covered" (e.g. projected triangles) must be wound CCW before use.
+
+**Results keep every disjoint shape.** `difference2d` that splits its subject returns one shape per island (grouped via `shapeOffsets()`) — a wall seen past a column is two visible slivers, not one. `difference2d` also takes any number of clip rings; they subtract as their union, so there is no separate "difference against many".
+
+**Manual freeing.** Every returned `Contours2D` owns wasm memory and the operations return **new** handles without mutating their operands. An accumulating loop must `free()` the handle it replaces:
+
+```typescript
+import { Contours2D, difference2d, union2d } from '@ifc-lite/wasm';
+
+let occluders = new Contours2D(new Float64Array(), new Uint32Array()); // empty
+for (const outline of frontToBackOutlines) {
+  const visible = difference2d(outline, occluders); // may split into islands
+  const grown = union2d(occluders, outline);
+  occluders.free();          // free the handle we're replacing
+  occluders = grown;
+  emitSvgPath(visible);      // fill-rule="nonzero"
+  visible.free();
+  outline.free();
+}
+occluders.free();
+```
+
+`bounds()` is cheap enough to gate the boolean itself: skip the difference when an accumulated occluder's bounds miss the next element.
 
 ## Data Types
 

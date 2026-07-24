@@ -300,9 +300,18 @@ fn explicitly_closed_rings_are_accepted() {
 
 #[test]
 fn a_zero_area_ring_contributes_nothing() {
+    // A 3-vertex collinear ring is structurally valid (>= 3 finite vertices)
+    // but covers nothing. `sanitize` must drop it, so a set built from ONLY
+    // such rings is genuinely empty — its `is_empty`/`bounds` cannot then
+    // disagree with what a boolean keeps.
     let collinear = vec![[0.0, 0.0], [1.0, 0.0], [2.0, 0.0]];
+    assert!(
+        sanitize(std::slice::from_ref(&collinear)).is_empty(),
+        "sanitize must drop a zero-area ring, not just the overlay"
+    );
     let out = resolve_2d(&[collinear]);
     assert!(out.is_empty(), "a collapsed ring covers no area");
+    assert!(out.bounds().is_none(), "bounds must agree with is_empty");
 }
 
 // ---------------------------------------------------------------------------

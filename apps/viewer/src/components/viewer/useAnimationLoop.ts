@@ -23,6 +23,7 @@ import type { SectionPlane } from '@/store';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
 import { getContributionCullConfig } from '../../utils/renderCullConfig.js';
 import { getLodScreenPx } from '../../utils/lodConfig.js';
+import { runGpuUpload } from './gpu-upload-guard';
 
 export interface UseAnimationLoopParams {
   canvasRef: RefObject<HTMLCanvasElement | null>;
@@ -165,7 +166,10 @@ export function useAnimationLoop(params: UseAnimationLoopParams): void {
         const device = renderer.getGPUDevice();
         const pipeline = renderer.getPipeline();
         if (device && pipeline) {
-          queueFlushed = scene.flushPending(device, pipeline);
+          // Contained like the residency drain below: an uncaught throw here
+          // skips the tail-position requestAnimationFrame(animate) that re-arms
+          // this loop, so rendering would stop permanently.
+          queueFlushed = runGpuUpload('flushPending:raf', () => scene.flushPending(device, pipeline)) ?? false;
           if (queueFlushed) {
             renderer.clearCaches();
           }

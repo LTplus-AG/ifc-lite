@@ -9,9 +9,11 @@
 //! - JSON: ~30KB per mesh with ~500 vertices
 //! - Parquet: ~2KB per mesh (15x smaller)
 
+use crate::services::axis::{zup_to_yup, zup_to_yup_f64};
+use crate::services::parquet_schema::{index_schema, mesh_schema, vertex_schema};
 use crate::types::MeshData;
-use arrow::array::{Float32Array, StringArray, UInt32Array};
-use arrow::datatypes::{DataType, Field, Schema};
+use arrow::array::{Float32Array, Float64Array, StringArray, UInt8Array, UInt32Array};
+use arrow::datatypes::{DataType, Schema};
 use arrow::record_batch::RecordBatch;
 use bytes::Bytes;
 use parquet::arrow::ArrowWriter;
@@ -155,6 +157,11 @@ fn build_mesh_tables(
         .zip(index_offsets.par_iter())
         .map(|((mesh, &v_start), &i_start)| {
             let vert_count = mesh.positions.len() / 3;
+            // Emit the per-mesh origin in the SAME frame as positions; the swap
+            // is linear, so swap(origin + position) = swap(origin) +
+            // swap(position) and the client reconstructs world = origin +
+            // position in Y-up. See services::axis for the one definition.
+            let origin_yup = zup_to_yup_f64(mesh.origin);
             (
                 mesh.express_id,
                 mesh.ifc_type.as_str(),
@@ -163,6 +170,8 @@ fn build_mesh_tables(
                 i_start,
                 mesh.indices.len() as u32,
                 mesh.color,
+                origin_yup,
+                mesh.geometry_class,
             )
         })
         .collect();
@@ -178,8 +187,12 @@ fn build_mesh_tables(
     let mut color_g = Vec::with_capacity(mesh_count);
     let mut color_b = Vec::with_capacity(mesh_count);
     let mut color_a = Vec::with_capacity(mesh_count);
+    let mut origin_x = Vec::with_capacity(mesh_count);
+    let mut origin_y = Vec::with_capacity(mesh_count);
+    let mut origin_z = Vec::with_capacity(mesh_count);
+    let mut geometry_class = Vec::with_capacity(mesh_count);
 
-    for (eid, itype, vstart, vcount, istart, icount, color) in metadata {
+    for (eid, itype, vstart, vcount, istart, icount, color, origin, geo_class) in metadata {
         express_ids.push(eid);
         ifc_types.push(itype);
         vertex_starts.push(vstart);
@@ -190,6 +203,10 @@ fn build_mesh_tables(
         color_g.push(color[1]);
         color_b.push(color[2]);
         color_a.push(color[3]);
+        origin_x.push(origin[0]);
+        origin_y.push(origin[1]);
+        origin_z.push(origin[2]);
+        geometry_class.push(geo_class);
     }
 
     // Phase 3: Extract vertex and index data in parallel chunks
@@ -223,16 +240,24 @@ fn build_mesh_tables(
             }
 
             for i in 0..vert_count {
-                // Position: Z-up to Y-up transform
-                px.push(mesh.positions[i * 3]); // X stays the same
-                py.push(mesh.positions[i * 3 + 2]); // New Y = old Z (vertical)
-                pz.push(-mesh.positions[i * 3 + 1]); // New Z = -old Y (depth)
+                let (x, y, z) = zup_to_yup(
+                    mesh.positions[i * 3],
+                    mesh.positions[i * 3 + 1],
+                    mesh.positions[i * 3 + 2],
+                );
+                px.push(x);
+                py.push(y);
+                pz.push(z);
 
                 if has_normals {
-                    // Normal: Same transform as position
-                    nx.push(mesh.normals[i * 3]); // X stays the same
-                    ny.push(mesh.normals[i * 3 + 2]); // New Y = old Z
-                    nz.push(-mesh.normals[i * 3 + 1]); // New Z = -old Y
+                    let (x, y, z) = zup_to_yup(
+                        mesh.normals[i * 3],
+                        mesh.normals[i * 3 + 1],
+                        mesh.normals[i * 3 + 2],
+                    );
+                    nx.push(x);
+                    ny.push(y);
+                    nz.push(z);
                 } else {
                     nx.push(0.0);
                     ny.push(0.0);
@@ -303,6 +328,10 @@ fn build_mesh_tables(
             Arc::new(Float32Array::from(color_g)),
             Arc::new(Float32Array::from(color_b)),
             Arc::new(Float32Array::from(color_a)),
+            Arc::new(Float64Array::from(origin_x)),
+            Arc::new(Float64Array::from(origin_y)),
+            Arc::new(Float64Array::from(origin_z)),
+            Arc::new(UInt8Array::from(geometry_class)),
         ],
     )?;
 
@@ -330,39 +359,6 @@ fn build_mesh_tables(
     Ok((mesh_batch, vertex_batch, index_batch))
 }
 
-fn mesh_schema() -> Arc<Schema> {
-    Arc::new(Schema::new(vec![
-        Field::new("express_id", DataType::UInt32, false),
-        Field::new("ifc_type", DataType::Utf8, false),
-        Field::new("vertex_start", DataType::UInt32, false),
-        Field::new("vertex_count", DataType::UInt32, false),
-        Field::new("index_start", DataType::UInt32, false),
-        Field::new("index_count", DataType::UInt32, false),
-        Field::new("color_r", DataType::Float32, false),
-        Field::new("color_g", DataType::Float32, false),
-        Field::new("color_b", DataType::Float32, false),
-        Field::new("color_a", DataType::Float32, false),
-    ]))
-}
-
-fn vertex_schema() -> Arc<Schema> {
-    Arc::new(Schema::new(vec![
-        Field::new("x", DataType::Float32, false),
-        Field::new("y", DataType::Float32, false),
-        Field::new("z", DataType::Float32, false),
-        Field::new("nx", DataType::Float32, false),
-        Field::new("ny", DataType::Float32, false),
-        Field::new("nz", DataType::Float32, false),
-    ]))
-}
-
-fn index_schema() -> Arc<Schema> {
-    Arc::new(Schema::new(vec![
-        Field::new("i0", DataType::UInt32, false),
-        Field::new("i1", DataType::UInt32, false),
-        Field::new("i2", DataType::UInt32, false),
-    ]))
-}
 
 /// Incremental whole-model cache writer for the streaming endpoint: each
 /// batch's columns are appended as one Parquet row group per table, so no

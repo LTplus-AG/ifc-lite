@@ -49,6 +49,7 @@ import { X, Undo2, Redo2, Layers, Maximize, AlertTriangle, Magnet, SlidersHorizo
 import { SpaceSketchCanvas } from './space-sketch/SpaceSketchCanvas';
 import { OptionsPopover, HelpPopover } from './space-sketch/SpaceSketchPopovers';
 import type { Hover, SplitTarget, IntentTone } from './space-sketch/types';
+import { eventKey, isTextEntryTarget } from '@/lib/keyboard-event';
 
 const DEFAULT_W = 580;
 const DEFAULT_H = 460;
@@ -309,9 +310,8 @@ export function SpaceSketchOverlay() {
   // listener's lifetime is exactly the tool's.
   useEffect(() => {
     const onUndoRedo = (e: KeyboardEvent) => {
-      if (e.key.toLowerCase() !== 'z' || !(e.ctrlKey || e.metaKey)) return;
-      const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      if (eventKey(e) !== 'z' || !(e.ctrlKey || e.metaKey)) return;
+      if (isTextEntryTarget(e)) return;
       e.preventDefault();
       e.stopPropagation();
       if (e.shiftKey) redo(); else undo();

@@ -1546,9 +1546,9 @@ export function useIfcLoader() {
         // and tag the captured exception so it is filterable in error tracking.
         const kind = classifyLoadError(err);
         setError(formatLoadError(err, file.name));
-        posthog.captureException(err, {
-          additional_properties: { context: 'geometry_processing', error_kind: kind },
-        });
+        // Flat properties: posthog-js spreads this object onto the event, so a
+        // wrapper key would bury `error_kind` in an unfilterable nested blob.
+        posthog.captureException(err, { context: 'geometry_processing', error_kind: kind });
         setLoading(false);
         setGeometryStreamingActive(false);
         return;
@@ -1640,9 +1640,7 @@ export function useIfcLoader() {
         loadError: friendly,
       });
       setError(friendly);
-      posthog.captureException(err, {
-        additional_properties: { context: 'ifc_model_load', error_kind: kind },
-      });
+      posthog.captureException(err, { context: 'ifc_model_load', error_kind: kind });
       setLoading(false);
       setGeometryStreamingActive(false);
     }

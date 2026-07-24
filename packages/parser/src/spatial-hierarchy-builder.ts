@@ -24,6 +24,9 @@ import {
   isSpaceLikeSpatialType,
   isSpatialStructureType,
   isStoreyLikeSpatialType,
+  IFC_BUILDING_STOREY_ELEVATION_INDEX,
+  IFC_BUILDING_STOREY_PLACEMENT_INDEX,
+  findStoreyByElevation,
 } from '@ifc-lite/data';
 import type { EntityRef } from './types.js';
 import { EntityExtractor } from './entity-extractor.js';
@@ -159,17 +162,9 @@ export class SpatialHierarchyBuilder {
 
       getStoreyByElevation(z: number): number | null {
         // With an empty storeyElevations map (cache path) this returns null.
-        let closestStorey: number | null = null;
-        let closestDistance = Infinity;
-        for (const [storeyId, elevation] of storeyElevations) {
-          const distance = Math.abs(elevation - z);
-          if (distance < closestDistance) {
-            closestDistance = distance;
-            closestStorey = storeyId;
-          }
-        }
-        // Only return if within a reasonable distance (1 meter).
-        return closestDistance < 1.0 ? closestStorey : null;
+        // Shared with the server-loaded path in the viewer (#1841) so the same
+        // Z can never resolve to a different storey depending on entry path.
+        return findStoreyByElevation(storeyElevations, z);
       },
 
       getContainingSpace(elementId: number): number | null {
@@ -417,13 +412,13 @@ export class SpatialHierarchyBuilder {
         return undefined;
       };
 
-      // Read ONLY slot 9: a previous "scan every attribute for a number < 10000"
-      // fallback wrongly treated reference attributes (parsed as bare express-id
-      // numbers, e.g. OwnerHistory #3628 -> 3628) as elevations, so a storey with
-      // a null Elevation got a garbage value instead of falling through to the
-      // ObjectPlacement-Z fallback below (#1289).
-      if (attrs.length > 9) {
-        return extractNumber(attrs[9]);
+      // Read ONLY the Elevation slot: a previous "scan every attribute for a
+      // number < 10000" fallback wrongly treated reference attributes (parsed as
+      // bare express-id numbers, e.g. OwnerHistory #3628 -> 3628) as elevations,
+      // so a storey with a null Elevation got a garbage value instead of falling
+      // through to the ObjectPlacement-Z fallback below (#1289).
+      if (attrs.length > IFC_BUILDING_STOREY_ELEVATION_INDEX) {
+        return extractNumber(attrs[IFC_BUILDING_STOREY_ELEVATION_INDEX]);
       }
     } catch (error) {
       log.caught('Failed to extract elevation', error, {
@@ -460,8 +455,7 @@ export class SpatialHierarchyBuilder {
         return extractor.extractEntity(ref)?.attributes ?? undefined;
       };
 
-      // IfcBuildingStorey.ObjectPlacement is attribute index 5.
-      const placementId = readAttrs(expressId)?.[5];
+      const placementId = readAttrs(expressId)?.[IFC_BUILDING_STOREY_PLACEMENT_INDEX];
       if (typeof placementId !== 'number') return undefined;
 
       // IfcLocalPlacement(PlacementRelTo, RelativePlacement) - RelativePlacement

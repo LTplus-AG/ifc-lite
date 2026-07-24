@@ -27,7 +27,12 @@ export interface MeshData {
   express_id: number;
   /** IFC type name (e.g., "IfcWall") */
   ifc_type: string;
-  /** Vertex positions as flat array (x, y, z triplets) */
+  /**
+   * Vertex positions as flat array (x, y, z triplets), in **Y-up metres**.
+   * Every server transport (JSON, parquet, optimized parquet) emits the same
+   * Y-up frame — the server converts from IFC Z-up once, in one place. See
+   * `origin`: the world position of vertex i is `origin + positions[3i..3i+3]`.
+   */
   positions: Float32Array;
   /** Vertex normals as flat array (x, y, z triplets) */
   normals: Float32Array;
@@ -47,6 +52,22 @@ export interface MeshData {
   geometry_item_id?: number;
   /** Space/zone properties attached to the element, when extracted. */
   properties?: Record<string, string>;
+  /**
+   * Per-mesh local-frame origin in Y-up metres: world vertex = `origin +
+   * position` (issue #1841). Mirrors the canonical `@ifc-lite/geometry`
+   * `MeshData.origin`. Absent (⇒ `[0,0,0]`) means `positions` are already
+   * absolute world coords — the world-baked default. The renderer applies it as
+   * a per-batch translation, so building/georef-scale placement never collapses
+   * to the world origin and repeated (instanced) elements place correctly.
+   */
+  origin?: [number, number, number];
+  /**
+   * Geometry provenance for the viewer's Model/Types switch (issue #1841),
+   * mirroring the canonical `MeshData.geometryClass`: 0 = occurrence,
+   * 1 = orphan type-product map, 2 = instanced type-library template (must NOT
+   * be drawn in the normal view — doing so duplicates geometry). Absent ⇒ 0.
+   */
+  geometry_class?: number;
 }
 
 /**

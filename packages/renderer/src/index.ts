@@ -3414,10 +3414,24 @@ export class Renderer {
     }
 
     /**
-     * Get the GPU device (returns null if not initialized)
+     * Get the GPU device (returns null if not initialized, or if the device
+     * has been lost).
+     *
+     * The device-lost check is load-bearing, not defensive tidiness. A lost
+     * device is NOT torn down: `WebGPUDevice.destroy()` is the only thing that
+     * nulls the handle and it is never called for an involuntary loss (TDR /
+     * GPU-process crash / driver reset), so `isInitialized()` stays true and
+     * this used to keep handing out a zombie `GPUDevice`. Every caller then
+     * called `createBuffer()` on it, which throws — bypassing both `render()`'s
+     * own deviceLost guard and the `onDeviceLost` listeners entirely.
+     *
+     * Returning null instead routes into the `if (!device) return` check that
+     * every call site already has, so a lost device degrades to "stop
+     * uploading" rather than an uncaught throw. See `isDeviceLost()` /
+     * `onDeviceLost()` for the recovery contract.
      */
     getGPUDevice(): GPUDevice | null {
-        if (!this.device.isInitialized()) {
+        if (!this.device.isInitialized() || this.deviceLost) {
             return null;
         }
         return this.device.getDevice();

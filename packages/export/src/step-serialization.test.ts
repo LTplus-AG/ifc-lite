@@ -9,8 +9,74 @@ import {
   assembleStepBytes,
   serializePropertyValue,
   serializeAttributeValue,
+  serializeStepValue,
+  serializeTypedMarker,
+  resolveExpressBase,
+  tokenIsRealLiteral,
   toStepReal,
 } from './step-serialization.js';
+
+describe('resolveExpressBase', () => {
+  it('resolves defined types to their EXPRESS primitive, following alias chains', () => {
+    expect(resolveExpressBase('IfcBoolean')).toBe('BOOLEAN');
+    expect(resolveExpressBase('IfcLogical')).toBe('LOGICAL');
+    expect(resolveExpressBase('IfcInteger')).toBe('INTEGER');
+    expect(resolveExpressBase('IfcLengthMeasure')).toBe('REAL');
+    // nested alias: IfcPositiveLengthMeasure -> IfcLengthMeasure -> REAL
+    expect(resolveExpressBase('IfcPositiveLengthMeasure')).toBe('REAL');
+    expect(resolveExpressBase('IfcLabel')).toBe('STRING');
+  });
+
+  it('returns null for unknown types and entity/select types', () => {
+    expect(resolveExpressBase('IfcWall')).toBeNull();
+    expect(resolveExpressBase('NotARealType')).toBeNull();
+  });
+});
+
+describe('serializeTypedMarker', () => {
+  it('emits a type-qualified token per the declared primitive', () => {
+    expect(serializeTypedMarker('IfcBoolean', true)).toBe('IFCBOOLEAN(.T.)');
+    expect(serializeTypedMarker('IfcBoolean', false)).toBe('IFCBOOLEAN(.F.)');
+    expect(serializeTypedMarker('IfcLengthMeasure', 3)).toBe('IFCLENGTHMEASURE(3.)');
+    expect(serializeTypedMarker('IfcInteger', 5)).toBe('IFCINTEGER(5)');
+    expect(serializeTypedMarker('IfcLabel', "O'Brien")).toBe("IFCLABEL('O''Brien')");
+    // subsumes { real }
+    expect(serializeTypedMarker('IfcReal', 450)).toBe('IFCREAL(450.)');
+  });
+
+  it('is reachable through the { typed } marker in serializeStepValue', () => {
+    expect(serializeStepValue({ typed: { type: 'IfcBoolean', value: true } })).toBe('IFCBOOLEAN(.T.)');
+    expect(serializeStepValue({ typed: { type: 'IfcLengthMeasure', value: 3 } })).toBe('IFCLENGTHMEASURE(3.)');
+  });
+
+  // The marker accepts `value: string`, so a caller may copy a STEP token or a
+  // word straight from the parser. Boolean/logical inner values must normalize
+  // rather than fall to JS truthiness (`'.F.'` is a truthy string).
+  it('normalizes string / numeric boolean and logical inner values', () => {
+    expect(serializeTypedMarker('IfcBoolean', '.F.')).toBe('IFCBOOLEAN(.F.)');
+    expect(serializeTypedMarker('IfcBoolean', 'false')).toBe('IFCBOOLEAN(.F.)');
+    expect(serializeTypedMarker('IfcBoolean', 0)).toBe('IFCBOOLEAN(.F.)');
+    expect(serializeTypedMarker('IfcBoolean', '.T.')).toBe('IFCBOOLEAN(.T.)');
+    expect(serializeTypedMarker('IfcLogical', '.T.')).toBe('IFCLOGICAL(.T.)');
+    expect(serializeTypedMarker('IfcLogical', '.F.')).toBe('IFCLOGICAL(.F.)');
+    expect(serializeTypedMarker('IfcLogical', '.U.')).toBe('IFCLOGICAL(.U.)');
+    expect(serializeTypedMarker('IfcLogical', 'UNKNOWN')).toBe('IFCLOGICAL(.U.)');
+  });
+});
+
+describe('tokenIsRealLiteral', () => {
+  it('recognizes REAL literals with either sign', () => {
+    for (const t of ['0.4', '-0.4', '+0.4', '4.', '1.5E-7', '+1E3', '-2.E+5']) {
+      expect(tokenIsRealLiteral(t)).toBe(true);
+    }
+  });
+
+  it('rejects INTEGER literals and non-numeric tokens', () => {
+    for (const t of ['4', '-4', '+4', '#42', '.AREA.', '$', "'x'", '']) {
+      expect(tokenIsRealLiteral(t)).toBe(false);
+    }
+  });
+});
 
 /** A conforming STEP REAL: mantissa carries a decimal point, exponent (if any)
  *  is uppercase `E`. Rejects the invalid `5e-8.` / lowercase-`e` forms. */

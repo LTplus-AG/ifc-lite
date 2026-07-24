@@ -1,0 +1,26 @@
+# Redistribution guard for `pnpm fixtures:manifest` / `fixtures:upload`.
+#
+# Fixtures whose manifest-relative path matches a pattern below are NEVER written
+# to manifest.json, so they can never be pushed to the PUBLIC release bucket —
+# even though they sit on disk under tests/models/ and look like ordinary
+# fixtures. Use this for models that must stay off the public bucket:
+#   - client / project models (and anything whose NAME must not enter git),
+#   - sample files without clear public-redistribution rights.
+#
+# Prefer tests/models/local/ for private fixtures (that whole dir is already
+# skipped). Use THIS file only when a test references the fixture at a fixed
+# non-local path, so moving it isn't an option.
+#
+# Syntax: one glob per line; `#` starts a comment; blank lines ignored.
+#   *   matches within one path segment       various/Foo*.ifc
+#   **  matches across segments (any depth)    **/*-private.ifc
+#   ?   matches one character
+#
+# Regenerating the manifest also prints a "NEW fixtures" warning for any on-disk
+# fixture not previously manifested, so a private drop can't be published
+# silently — add it here (or to local/) when that warning names it.
+
+# (no exclusions yet — the two gitignored root fixtures AB22.ifc and
+# linear-placement-of-signal.ifc are referenced by tests and are cleared public,
+# so they are intentionally NOT ignored.)
+

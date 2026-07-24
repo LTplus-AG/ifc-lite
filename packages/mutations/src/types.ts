@@ -6,7 +6,7 @@
  * Types for IFC mutation tracking
  */
 
-import type { PropertyValueType } from '@ifc-lite/data';
+import type { PropertyValueType, IfcAttributeValue as CanonicalIfcAttributeValue } from '@ifc-lite/data';
 
 /**
  * IFC STEP attribute value, as produced by `EntityExtractor.extractEntity()`.
@@ -14,10 +14,13 @@ import type { PropertyValueType } from '@ifc-lite/data';
  * Mirrors the parser's `IfcAttributeValue` to keep `@ifc-lite/mutations` free
  * of a `@ifc-lite/parser` dependency (parser → ifcx → mutations would cycle).
  *
- * The extra `{ real: number }` variant is a WRITE-ONLY marker (never produced
- * by extraction): it forces STEP REAL serialization with a decimal point for
- * whole numbers (`5.` not `5`), which typed measures like `IfcLengthMeasure`
- * require. Plain `number` keeps the historical integer-when-whole behavior.
+ * The extra `{ real: number }` and `{ typed: { type, value } }` variants are
+ * WRITE-ONLY markers (never produced by extraction). `{ real }` forces STEP
+ * REAL serialization with a decimal point for whole numbers (`5.` not `5`).
+ * `{ typed }` forces a type-qualified value `IFC<TYPE>(<value>)` for a SELECT
+ * member that is a defined type (`IFCBOOLEAN(.T.)`) or the `IfcValue` family;
+ * it generalizes `{ real }`. See `@ifc-lite/data`'s `IfcAttributeValue` for the
+ * full contract (kept in sync here to avoid a package cycle).
  */
 export type IfcAttributeValue =
   | string
@@ -25,7 +28,21 @@ export type IfcAttributeValue =
   | boolean
   | null
   | { real: number }
+  | { typed: { type: string; value: string | number | boolean } }
   | IfcAttributeValue[];
+
+/**
+ * Compile-time drift guard (no runtime footprint): this mirror MUST stay
+ * structurally identical to the canonical `@ifc-lite/data` `IfcAttributeValue`
+ * — the two are hand-duplicated only to keep the documented parser-cycle
+ * boundary. If they diverge, `MutuallyAssignable` resolves to `false`, which
+ * violates `AssertTrue`'s `extends true` constraint and fails the build.
+ */
+type MutuallyAssignable<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+type AssertTrue<T extends true> = T;
+type _IfcAttributeValueMirrorInSync = AssertTrue<
+  MutuallyAssignable<IfcAttributeValue, CanonicalIfcAttributeValue>
+>;
 
 /**
  * Property value types supported by mutations

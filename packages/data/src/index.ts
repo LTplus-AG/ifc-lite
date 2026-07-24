@@ -33,6 +33,12 @@ export * from './types.js';
 // Explicitly export const enums for runtime use
 export { IfcTypeEnum, PropertyValueType, QuantityType, RelationshipType, EntityFlags } from './types.js';
 export type { SpatialNode, SpatialHierarchy } from './types.js';
+export {
+  IFC_BUILDING_STOREY_ELEVATION_INDEX,
+  IFC_BUILDING_STOREY_PLACEMENT_INDEX,
+  STOREY_ELEVATION_MATCH_TOLERANCE_M,
+  findStoreyByElevation,
+} from './storey-elevation.js';
 export type { IfcStoreBase, IfcSourceHeader } from './data-store.js';
 // Schema-agnostic STEP serialization primitives — the single source of truth
 // re-exported by the per-schema serializer bundles (parser runtime + codegen).

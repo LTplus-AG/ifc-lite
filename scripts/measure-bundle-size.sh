@@ -24,10 +24,16 @@ if [ "${1:-}" = "--json" ]; then
     JSON=1
 fi
 
+wasm_path="packages/wasm/pkg/ifc-lite_bg.wasm"
+# Remove any stale artifact FIRST so the `ok`/size below can only reflect a
+# binary produced by THIS build. Otherwise a soft-skip (no wasm-pack) would
+# leave a previous build's .wasm in place and report ok:true on stale bytes —
+# the exact stale-artifact trap this repo's perf work keeps hitting.
+rm -f "$wasm_path"
+
 echo "Building WASM bundle (pure-Rust CSG kernel)..." >&2
 bash scripts/build-wasm.sh > /tmp/build-wasm.log 2>&1
 build_exit=$?
-wasm_path="packages/wasm/pkg/ifc-lite_bg.wasm"
 wasm_size=0
 if [ $build_exit -eq 0 ] && [ -f "$wasm_path" ]; then
     wasm_size=$(wc -c < "$wasm_path")
@@ -42,10 +48,19 @@ fmt_kib() {
     fi
 }
 
+# `ok` must reflect a real, present artifact — not just a zero build exit. When
+# build-wasm.sh soft-skips (no wasm-pack), build_exit is 0 but $wasm_path is
+# absent, so an ok-on-build_exit-alone would report `ok:true, bytes:0` while the
+# script exits 1 — a successful zero-byte measurement to a machine consumer.
+ok=false
+if [ $build_exit -eq 0 ] && [ -f "$wasm_path" ]; then
+    ok=true
+fi
+
 if [ "$JSON" -eq 1 ]; then
     cat <<EOF
 {
-  "bundle": { "ok": $([ $build_exit -eq 0 ] && echo true || echo false), "bytes": $wasm_size }
+  "bundle": { "ok": $ok, "bytes": $wasm_size }
 }
 EOF
 else
@@ -58,4 +73,10 @@ else
     fi
 fi
 
+# Propagate build failure (and a missing artifact) as a non-zero exit so a CI
+# size gate can't read this as "0 KiB, all good". A green build with the wasm
+# present exits 0.
+if [ $build_exit -ne 0 ] || [ ! -f "$wasm_path" ]; then
+    exit 1
+fi
 exit 0

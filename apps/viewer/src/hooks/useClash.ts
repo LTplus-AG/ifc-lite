@@ -220,7 +220,7 @@ export function useClash() {
       } catch (err) {
         console.error('[clash] detection run failed', err);
         state.setClashError(err instanceof Error ? err.message : String(err));
-        posthog.captureException(err, { additional_properties: { context: 'clash_detection' } });
+        posthog.captureException(err, { context: 'clash_detection' });
       } finally {
         state.setClashRunning(false);
         state.setClashProgress(null);
@@ -302,7 +302,7 @@ export function useClash() {
     } catch (err) {
       console.error('[clash] duplicate scan failed', err);
       state.setClashError(err instanceof Error ? err.message : String(err));
-      posthog.captureException(err, { additional_properties: { context: 'clash_duplicates' } });
+      posthog.captureException(err, { context: 'clash_duplicates' });
     } finally {
       state.setClashRunning(false);
       state.setClashProgress(null);

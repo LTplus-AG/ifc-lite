@@ -13,8 +13,13 @@
 import type { MeshData } from '@ifc-lite/geometry';
 import type { DataModel } from '@ifc-lite/server-client';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { REL_TYPE_MAP as CANONICAL_REL_TYPE_MAP } from '@ifc-lite/parser';
 import {
+  REL_TYPE_MAP as CANONICAL_REL_TYPE_MAP,
+  CompactEntityIndexBuilder,
+  type CompactEntityIndex,
+} from '@ifc-lite/parser';
+import {
+  findStoreyByElevation,
   IfcTypeEnum,
   RelationshipType,
   IfcTypeEnumFromString,
@@ -243,16 +248,11 @@ function buildSpatialHierarchy(
     storeyHeights,
     elementToStorey: dataModel.spatialHierarchy.element_to_storey,
     getStoreyElements: (storeyId: number) => byStorey.get(storeyId) || [],
-    getStoreyByElevation: (z: number) => {
-      let closest: [number, number] | null = null;
-      for (const [storeyId, elev] of storeyElevations) {
-        const diff = Math.abs(elev - z);
-        if (!closest || diff < closest[1]) {
-          closest = [storeyId, diff];
-        }
-      }
-      return closest ? closest[0] : null;
-    },
+    // Canonical resolver shared with the parser path (#1841). This used to
+    // always snap to the nearest storey while the parser returned null beyond
+    // 1m, so the same Z resolved to a different storey depending on whether the
+    // model came from the server or from wasm.
+    getStoreyByElevation: (z: number) => findStoreyByElevation(storeyElevations, z),
     getContainingSpace: (elementId: number) => {
       return dataModel.spatialHierarchy.element_to_space.get(elementId) || null;
     },
@@ -272,8 +272,11 @@ function buildSpatialHierarchy(
 function buildEntityTable(
   dataModel: DataModel,
   strings: StringTable
-): { entities: EntityTable; entityByIdMap: Map<number, any>; typeGroups: Map<IfcTypeEnum, number[]> } {
-  const entityCount = dataModel.entities.size;
+): { entities: EntityTable; entityById: CompactEntityIndex; typeGroups: Map<IfcTypeEnum, number[]> } {
+  // Columnar consumption (issue #1841): iterate the decoder's raw columns by
+  // index instead of a per-entity Map (V8 caps Map at 2^24 entries).
+  const cols = dataModel.entities.columns;
+  const entityCount = cols.count;
 
   // Pre-allocate TypedArrays
   const expressId = new Uint32Array(entityCount);
@@ -291,46 +294,47 @@ function buildEntityTable(
   const geometryIndexArr = new Int32Array(entityCount).fill(-1);
 
   // Maps for fast lookup
-  const idToIndex = new Map<number, number>();
   const globalIdToExpressId = new Map<string, number>();
-  const entityByIdMap = new Map<number, { expressId: number; type: string; byteOffset: number; byteLength: number; lineNumber: number }>();
   const typeGroups = new Map<IfcTypeEnum, number[]>();
 
-  // Single pass through entities
-  let idx = 0;
-  for (const [id, entity] of dataModel.entities) {
-    idToIndex.set(id, idx);
+  // Canonical compact byId index (replaces the hand-rolled Map of faked
+  // EntityRef objects). The server has no source buffer, so byteOffset /
+  // byteLength are 0 — matching the previous faked EntityRef exactly.
+  const byIdBuilder = new CompactEntityIndexBuilder(entityCount);
+
+  // Single pass through entity columns
+  for (let idx = 0; idx < entityCount; idx++) {
+    const id = cols.expressId[idx];
     expressId[idx] = id;
-    const typeVal = IfcTypeEnumFromString(entity.type_name);
+    const typeName = cols.typeName[idx] ?? '';
+    const typeVal = IfcTypeEnumFromString(typeName);
     typeEnumArr[idx] = typeVal;
-    const globalIdString = entity.global_id || '';
+    const globalIdString = cols.globalId[idx] || '';
     globalIdArr[idx] = strings.intern(globalIdString);
     if (globalIdString) {
       globalIdToExpressId.set(globalIdString, id);
     }
-    nameArr[idx] = strings.intern(entity.name || '');
-    descriptionArr[idx] = strings.intern((entity as { description?: string }).description || '');
-    objectTypeArr[idx] = strings.intern((entity as { object_type?: string }).object_type || '');
-    tagArr[idx] = strings.intern((entity as { tag?: string }).tag || '');
-    predefinedTypeArr[idx] = strings.intern((entity as { predefined_type?: string }).predefined_type || '');
-    flagsArr[idx] = entity.has_geometry ? EntityFlags.HAS_GEOMETRY : 0;
+    nameArr[idx] = strings.intern(cols.name[idx] || '');
+    descriptionArr[idx] = strings.intern(cols.description?.[idx] || '');
+    objectTypeArr[idx] = strings.intern(cols.objectType?.[idx] || '');
+    tagArr[idx] = strings.intern(cols.tag?.[idx] || '');
+    predefinedTypeArr[idx] = strings.intern(cols.predefinedType?.[idx] || '');
+    flagsArr[idx] = cols.hasGeometry[idx] !== 0 ? EntityFlags.HAS_GEOMETRY : 0;
 
-    entityByIdMap.set(id, {
-      expressId: id,
-      type: entity.type_name,
-      byteOffset: 0,
-      byteLength: 0,
-      lineNumber: 0,
-    });
+    byIdBuilder.add(id, typeName, 0, 0);
 
     if (!typeGroups.has(typeVal)) {
       typeGroups.set(typeVal, []);
     }
     typeGroups.get(typeVal)!.push(idx);
-    idx++;
   }
 
-  const indexOfId = (id: number): number => idToIndex.get(id) ?? -1;
+  const entityById = byIdBuilder.build();
+
+  // Rows above were filled in column order, so the ServerEntityIndex row
+  // position IS the EntityTable index — binary search instead of an
+  // idToIndex Map (which would hit the same 2^24 ceiling).
+  const indexOfId = (id: number): number => dataModel.entities.rowIndexOf(id);
 
   // Additive display-class overrides (UI retype). See entity-table.ts.
   const typeOverrides = new Map<number, string>();
@@ -406,7 +410,7 @@ function buildEntityTable(
     },
   };
 
-  return { entities, entityByIdMap, typeGroups };
+  return { entities, entityById, typeGroups };
 }
 
 // ============================================================================
@@ -574,7 +578,7 @@ export function convertServerDataModel(
   const { relationships, entityToPsets, entityToQsets } = buildRelationships(dataModel);
 
   // Build entity table
-  const { entities, entityByIdMap, typeGroups } = buildEntityTable(dataModel, strings);
+  const { entities, entityById, typeGroups } = buildEntityTable(dataModel, strings);
 
   // Convert typeGroups (IfcTypeEnum keyed, contains indices) to string-keyed Map with express IDs
   const byType = new Map<string, number[]>();
@@ -786,7 +790,7 @@ export function convertServerDataModel(
     entityCount: dataModel.entities.size,
     parseTime: parseResult.stats.total_time_ms,
     source: new Uint8Array(0),
-    entityIndex: { byId: entityByIdMap, byType },
+    entityIndex: { byId: entityById, byType },
     strings,
     entities,
     properties,

@@ -34,12 +34,14 @@ import {
   quantityTypeToIfcType,
   serializePropertyValue,
   serializeAttributeValue,
-  serializeStepArgs,
   serializeStepValue,
+  tokenIsRealLiteral,
   splitTopLevelArgs,
   splitTopLevelStepArguments,
   assembleStepBytes,
 } from './step-serialization.js';
+import { getRealTypedSlots, serializeEntityArgs, serializeAttributeSlot, isTypedMarker } from './attribute-real-slots.js';
+import { serializeQualifiedSelectSlot } from './select-qualification.js';
 
 /**
  * Options for STEP export
@@ -640,7 +642,7 @@ export class StepExporter {
           ? this.mutationView!.getPositionalMutationsForEntity(expressId)
           : null;
         if (positional && positional.size > 0) {
-          nextEntityText = this.applyPositionalMutations(nextEntityText, positional);
+          nextEntityText = this.applyPositionalMutations(nextEntityText, positional, workingType, sourceSchema);
           if (!modifiedEntities.has(expressId)) {
             modifiedEntities.add(expressId);
             modifiedEntityCount++;
@@ -750,7 +752,11 @@ export class StepExporter {
         // (e.g. setEntityType(id, 'IfcColumn', 'PILASTER')).
         let argsText: string;
         if (typeMut) {
-          const srcTokens = entity.attributes.map(serializeStepValue);
+          // Serialize against the AUTHORED layout (`entity.type`); retypeArgTokens
+          // then re-lays the tokens out by name up to the effective class.
+          const srcTokens = entity.attributes.map(
+            (value, i) => serializeAttributeSlot(entity.type, i, value, sourceSchema),
+          );
           const { tokens } = retypeArgTokens(
             srcTokens,
             entity.type,
@@ -760,7 +766,7 @@ export class StepExporter {
           );
           argsText = tokens.join(',');
         } else {
-          argsText = serializeStepArgs(entity.attributes);
+          argsText = serializeEntityArgs(entity.type, entity.attributes, sourceSchema);
         }
         const line = `#${entity.expressId}=${upperType}(${argsText});`;
         if (converting) {
@@ -1035,20 +1041,46 @@ export class StepExporter {
   private applyPositionalMutations(
     entityText: string,
     positionals: Map<number, IfcAttributeValue>,
+    entityType: string,
+    schemaVersion: IfcSchemaVersion,
   ): string {
     const openParen = entityText.indexOf('(');
     const closeParen = entityText.lastIndexOf(');');
     if (openParen < 0 || closeParen < openParen) return entityText;
 
     const args = splitTopLevelArgs(entityText.slice(openParen + 1, closeParen));
+    const realSlots = getRealTypedSlots(entityType, schemaVersion);
     let changed = false;
     for (const [index, value] of positionals) {
       if (index < 0 || index >= args.length) continue;
-      args[index] = serializeStepValue(value);
+      args[index] = this.serializePositionalOverride(entityType, index, value, args[index], realSlots, schemaVersion);
       changed = true;
     }
     if (!changed) return entityText;
     return `${entityText.slice(0, openParen + 1)}${args.join(',')}${entityText.slice(closeParen)}`;
+  }
+
+  /**
+   * Serialize one positional override, composing the schema-aware passes:
+   * explicit `{ real }`/`{ typed }` marker → SELECT auto-qualification
+   * (`IFCBOOLEAN(.T.)`) → REAL forcing. For REAL forcing the current source
+   * token is a secondary signal: replacing a value that was already a REAL
+   * (`0.4`, `1.5E-7`) keeps it REAL even for entities the XSD index doesn't
+   * cover, so a whole-number edit can't silently downgrade the slot.
+   */
+  private serializePositionalOverride(
+    entityType: string,
+    index: number,
+    value: IfcAttributeValue,
+    currentToken: string,
+    realSlots: ReadonlySet<number>,
+    schemaVersion: IfcSchemaVersion,
+  ): string {
+    if (isTypedMarker(value)) return serializeStepValue(value);
+    const qualified = serializeQualifiedSelectSlot(entityType, index, value);
+    if (qualified !== null) return qualified;
+    const forceReal = realSlots.has(index) || tokenIsRealLiteral(currentToken);
+    return serializeStepValue(value, forceReal);
   }
 
   private resolveMapUnitReference(unitName: string, newGeorefLines: string[]): number {

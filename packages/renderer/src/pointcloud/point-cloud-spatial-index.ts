@@ -59,6 +59,25 @@ export const DEFAULT_POINTCLOUD_INDEX_CELL_SIZE = 0.5;
  */
 export const DEFAULT_MAX_INDEXED_POINTS = 30_000_000;
 
+/**
+ * Cap on the per-visited-cell neighborhood dilation radius, in cells
+ * (issue #1860 review finding 1). `toleranceAt(t)` GROWS with depth
+ * (it's a screen-space pixel tolerance projected to world units), so a
+ * fixed +-1 cell dilation (~0.5 * cellSize of perpendicular coverage)
+ * silently stops covering the true tolerance once
+ * `toleranceAt(t) > cellSize` — which for the measure tool's ~8px
+ * tolerance happens around t = 60-130 m depending on canvas/fov, i.e.
+ * exactly the zoomed-out site-scale scans where this matters most.
+ * `queryRay` instead computes `r = clamp(ceil(toleranceAt(t)/cellSize),
+ * 1, MAX_DILATION_RADIUS_CELLS)` at every visited cell and dilates by
+ * that many cells. Capped so a single visited cell never tests more
+ * than `(2*4+1)^3 = 729` cells worst case; beyond the cap the
+ * *effective* snap radius clamps at `MAX_DILATION_RADIUS_CELLS *
+ * cellSize` (2 m at the default 0.5 m cell size) instead of growing
+ * unbounded with depth.
+ */
+export const MAX_DILATION_RADIUS_CELLS = 4;
+
 /** Non-negative bias so packed cell coordinates never go negative. */
 const CELL_BIAS = 1 << 20; // 1,048,576
 /** Per-axis coordinate range after biasing (< 2^21, safe for f64 exact ints). */
@@ -246,12 +265,19 @@ export class PointCloudSpatialIndex {
     return { position: p, distance: t };
   }
 
-  /** Test every point in the 3x3x3 cell block around (cx,cy,cz), skipping
-   *  cells already visited by an earlier step of the same query. */
+  /**
+   * Test every point in the `(2*radiusCells+1)^3` cell block around
+   * (cx,cy,cz), skipping cells already visited by an earlier step of
+   * the same query. `radiusCells` must cover `toleranceAt(t)` at the
+   * depth this cell is visited at — see `queryRay`'s per-step radius
+   * computation (#1860 review finding 1: a fixed +-1 dilation under-covers
+   * tolerance at long range).
+   */
   private testCellNeighborhood(
     cx: number,
     cy: number,
     cz: number,
+    radiusCells: number,
     origin: Vec3,
     dir: Vec3,
     maxDistance: number,
@@ -259,9 +285,10 @@ export class PointCloudSpatialIndex {
     visited: Set<number>,
     best: { hit: PointCloudRayHit | null },
   ): void {
-    for (let dx = -1; dx <= 1; dx++) {
-      for (let dy = -1; dy <= 1; dy++) {
-        for (let dz = -1; dz <= 1; dz++) {
+    const r = radiusCells;
+    for (let dx = -r; dx <= r; dx++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dz = -r; dz <= r; dz++) {
           const key = packCellKey(cx + dx, cy + dy, cz + dz);
           if (visited.has(key)) continue;
           visited.add(key);
@@ -287,11 +314,16 @@ export class PointCloudSpatialIndex {
    * behind it.
    *
    * O(cells touched) via an Amanatides & Woo DDA march from the ray's
-   * entry into the index's bounding box; each visited cell's 3x3x3
-   * neighborhood is tested once (dedup via `visited`) so a point that
-   * lands just across a cell boundary from the ray's exact path is not
-   * missed. Marching stops one cell past the first tolerance hit, since
-   * DDA visits cells in non-decreasing ray-parameter order.
+   * entry into the index's bounding box. `toleranceAt(t)` grows with
+   * depth, so each visited cell's neighborhood dilation radius is
+   * recomputed from `toleranceAt` at that cell's ray parameter —
+   * `clamp(ceil(toleranceAt(t)/cellSize), 1, MAX_DILATION_RADIUS_CELLS)`
+   * — instead of a fixed +-1 cell, so a point within the true
+   * screen-space tolerance is never missed just because it's more than
+   * half a cell off the ray's exact cell path at long range (#1860
+   * review finding 1). Marching stops one cell past the first
+   * tolerance hit (using the largest radius seen so far, conservative),
+   * since DDA visits cells in non-decreasing ray-parameter order.
    */
   queryRay(
     origin: Vec3,
@@ -304,17 +336,21 @@ export class PointCloudSpatialIndex {
     if (!bounds) return null;
 
     const cs = this.cellSize;
-    // Pad the coarse bounding-box cull by one cell: `bounds` is the
-    // exact (often near-zero-thickness, e.g. a flat wall scan) extent
-    // of the indexed points, so an UNPADDED box/ray test would reject a
-    // ray that passes close to — but not exactly through — the box,
-    // even though a point within tolerance sits just past its face.
-    // One cell of padding matches the 3x3x3 neighborhood dilation the
-    // march already applies at every visited cell, so it doesn't miss
-    // anything the per-cell test wouldn't have caught anyway.
+    // Pad the coarse bounding-box cull by the MAX possible dilation
+    // radius (not just one cell): `bounds` is the exact (often
+    // near-zero-thickness, e.g. a flat wall scan) extent of the indexed
+    // points, so an UNPADDED box/ray test would reject a ray that
+    // passes close to — but not exactly through — the box, even though
+    // a point within tolerance sits just past its face. Since the
+    // per-cell dilation radius below can grow up to
+    // `MAX_DILATION_RADIUS_CELLS` cells at long range, the outer cull
+    // must be padded by the same amount or a ray whose only near-miss
+    // is right at the cloud's edge could be rejected before the march
+    // even starts.
+    const maxPad = MAX_DILATION_RADIUS_CELLS * cs;
     const paddedBounds = {
-      min: { x: bounds.min.x - cs, y: bounds.min.y - cs, z: bounds.min.z - cs },
-      max: { x: bounds.max.x + cs, y: bounds.max.y + cs, z: bounds.max.z + cs },
+      min: { x: bounds.min.x - maxPad, y: bounds.min.y - maxPad, z: bounds.min.z - maxPad },
+      max: { x: bounds.max.x + maxPad, y: bounds.max.y + maxPad, z: bounds.max.z + maxPad },
     };
 
     const entry = rayBoxEntryExit(origin, dir, paddedBounds);
@@ -352,17 +388,37 @@ export class PointCloudSpatialIndex {
     const best: { hit: PointCloudRayHit | null } = { hit: null };
     const visited = new Set<number>();
     let t = tMin;
+    // Largest dilation radius (in cells) used by any step so far — the
+    // early-break margin below must use this, not a fixed 1, since a
+    // hit found under a wide (long-range) radius could still have a
+    // nearer neighbor one radius-worth of cells further along the ray.
+    let maxRadiusUsed = 1;
 
     // Safety cap: bounds the loop even if DDA step math misbehaves at a
     // grazing angle (near-zero direction components with fp error).
     const maxSteps = 8 + Math.ceil((tMax - tMin) / cs) * 3;
     for (let step = 0; step < maxSteps && t <= tMax; step++) {
-      this.testCellNeighborhood(cx, cy, cz, origin, dir, tMax, toleranceAt, visited, best);
+      // Dilation radius covering toleranceAt(t) at THIS cell's ray
+      // parameter — toleranceAt grows with depth, so a fixed +-1 cell
+      // (as before #1860 finding 1) silently under-covers tolerance
+      // once toleranceAt(t) exceeds one cell size.
+      const tolWorld = toleranceAt(Math.max(0, t));
+      const radius = Math.min(
+        MAX_DILATION_RADIUS_CELLS,
+        Math.max(1, Math.ceil(tolWorld / cs)),
+      );
+      if (radius > maxRadiusUsed) maxRadiusUsed = radius;
+
+      this.testCellNeighborhood(cx, cy, cz, radius, origin, dir, tMax, toleranceAt, visited, best);
 
       // DDA visits cells in non-decreasing t order, so once we have a
-      // hit and have advanced one full cell past it, no later cell can
-      // hold a nearer point — stop early instead of walking to tMax.
-      if (best.hit && t > best.hit.distance + cs) break;
+      // hit and have advanced `maxRadiusUsed` full cells past it, no
+      // later cell can hold a nearer point — stop early instead of
+      // walking to tMax. Using the largest radius seen so far (rather
+      // than the current step's) is conservative: a hit found under a
+      // wide dilation could still have a nearer point just beyond a
+      // narrower later step's smaller neighborhood.
+      if (best.hit && t > best.hit.distance + maxRadiusUsed * cs) break;
 
       if (tMaxX < tMaxY) {
         if (tMaxX < tMaxZ) {

@@ -17,6 +17,7 @@ import type { PickOptions } from './types.js';
 import {
     queryPointClouds,
     releasedEdgeLock,
+    pointCloudWinsOverMeshSnap,
     type PointCloudRayProvider,
 } from './raycast-point-cloud-query.js';
 
@@ -372,22 +373,40 @@ export class RaycastEngine {
                 );
             }
 
-            // Point-cloud snapping (#1860): only wins when it's strictly
-            // nearer than whatever the mesh path already found (or there
-            // was no mesh hit at all) — a real mesh surface in front of a
-            // scan point should still win the pick.
+            // Point-cloud snapping (#1860): search up to whatever the mesh
+            // path already found (or the whole scene, if there was no mesh
+            // hit at all) — a real mesh surface in front of a scan point
+            // should still win the pick.
             const maxPointDistance = intersection ? intersection.distance : Infinity;
             const pointHit = queryPointClouds(this.pointCloudProvider, ray, cameraFov, this.canvas.height, maxPointDistance, options);
             if (pointHit) {
-                magneticResult = {
-                    snapTarget: {
-                        type: SnapType.POINT_CLOUD,
-                        position: pointHit.position,
-                        expressId: pointHit.expressId,
-                        confidence: 1,
-                    },
-                    edgeLock: releasedEdgeLock(),
-                };
+                // A point-cloud hit only OVERRIDES an existing mesh snap
+                // target (vertex/edge/face/...) when it's meaningfully in
+                // front of the mesh surface, not just scan noise a few mm
+                // nearer along the ray — otherwise a scan overlapping its
+                // as-designed model would non-deterministically steal
+                // intended vertex/corner snaps on most measurements over
+                // scanned-over geometry (#1860 review finding 2). When the
+                // mesh path found no snap target at all (bare face hit, or
+                // no mesh hit), the point snap wins as before.
+                const wins = pointCloudWinsOverMeshSnap({
+                    pointHit,
+                    meshSnapTarget: magneticResult.snapTarget,
+                    meshIntersectionDistance: intersection ? intersection.distance : null,
+                    cameraFov,
+                    canvasHeightPx: this.canvas.height,
+                });
+                if (wins) {
+                    magneticResult = {
+                        snapTarget: {
+                            type: SnapType.POINT_CLOUD,
+                            position: pointHit.position,
+                            expressId: pointHit.expressId,
+                            confidence: 1,
+                        },
+                        edgeLock: releasedEdgeLock(),
+                    };
+                }
             }
 
             return {

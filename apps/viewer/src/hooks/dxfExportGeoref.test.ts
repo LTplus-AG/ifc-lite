@@ -114,7 +114,7 @@ describe('buildDxfExportTransform', () => {
 
 function emptyDrawing(): Drawing2D {
   return {
-    config: { ...DEFAULT_SECTION_CONFIG, scale: 100 },
+    config: { ...DEFAULT_SECTION_CONFIG, scale: 100, plane: { axis: 'y', position: 0, flipped: false } },
     lines: [],
     cutPolygons: [],
     projectionPolygons: [],

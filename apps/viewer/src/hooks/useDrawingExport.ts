@@ -10,6 +10,7 @@ import {
   renderFrame,
   renderTitleBlock,
   calculateDrawingTransform,
+  exportToDXF,
   type Drawing2D,
   type DrawingSheet,
   type ElementData,
@@ -21,6 +22,10 @@ import { formatArea, computePolygonCentroid } from '@/components/viewer/tools/co
 import { generateCloudSVGPath } from '@/components/viewer/tools/cloudPathGenerator';
 import type { PolygonArea2DResult, TextAnnotation2D, CloudAnnotation2D } from '@/store/slices/drawing2DSlice';
 import type { DxfUnderlayRenderData } from '@/hooks/useDxfUnderlay';
+import type { GeometryResult } from '@ifc-lite/geometry';
+import type { IfcDataStore } from '@ifc-lite/parser';
+import { getEffectiveGeoreference } from '@/lib/geo/effective-georef';
+import { buildDxfExportTransform } from '@/hooks/dxfExportGeoref';
 
 /** Map a DXF vertical justification onto an SVG dominant-baseline. */
 function dxfValignToBaseline(valign: 'baseline' | 'bottom' | 'middle' | 'top'): string {
@@ -104,7 +109,7 @@ function buildDxfUnderlaySvg(
 interface UseDrawingExportParams {
   drawing: Drawing2D | null;
   displayOptions: { showHiddenLines: boolean; scale: number };
-  sectionPlane: { axis: 'down' | 'front' | 'side'; position: number; flipped: boolean };
+  sectionPlane: { axis: 'down' | 'front' | 'side'; position: number; flipped: boolean; custom?: unknown };
   activePresetId: string | null;
   entityColorMap: Map<number, [number, number, number, number]>;
   overridesEnabled: boolean;
@@ -117,11 +122,16 @@ interface UseDrawingExportParams {
   activeSheet: DrawingSheet | null;
   /** DXF underlays pre-mapped to drawing space, rendered beneath the drawing (issue #1782) */
   dxfUnderlays: readonly DxfUnderlayRenderData[];
+  /** Source IFC data store, for IfcMapConversion/IfcProjectedCRS lookup (issue #1861 DXF georeferencing). */
+  ifcDataStore: IfcDataStore | null;
+  /** Geometry coordinate info (RTC offset + origin shift), for the DXF world-coordinate re-derivation (issue #1861). */
+  coordinateInfo: GeometryResult['coordinateInfo'] | undefined;
 }
 
 interface UseDrawingExportResult {
   formatDistance: (distance: number) => string;
   handleExportSVG: () => void;
+  handleExportDXF: () => void;
   handlePrint: () => void;
 }
 
@@ -140,6 +150,8 @@ function useDrawingExport({
   sheetEnabled,
   activeSheet,
   dxfUnderlays,
+  ifcDataStore,
+  coordinateInfo,
 }: UseDrawingExportParams): UseDrawingExportResult {
 
   // Generate SVG that matches the canvas rendering exactly
@@ -741,6 +753,45 @@ function useDrawingExport({
     posthog.capture('drawing_exported', { format: 'svg', axis: sectionPlane.axis, sheet_enabled: sheetEnabled });
   }, [generateExportSVG, generateSheetSVG, sheetEnabled, activeSheet, sectionPlane]);
 
+  // Export DXF (issue #1861). Unlike SVG, DXF has no paper space, so this
+  // always exports the raw model-space drawing (sheet frame/title block are
+  // not represented) — real-world metres, with a plan ('down') section
+  // re-georeferenced to true IFC world coordinates (and further to
+  // map/CRS coordinates when the model has an IfcMapConversion). DXF
+  // reference underlays are not embedded in this export; see PR notes.
+  const handleExportDXF = useCallback(() => {
+    if (!drawing) return;
+    const isCustomPlane = sectionPlane.custom !== undefined;
+    const georeference = (() => {
+      if (!ifcDataStore) return null;
+      const effective = getEffectiveGeoreference(ifcDataStore, coordinateInfo);
+      if (!effective?.mapConversion || !effective?.projectedCRS) return null;
+      return {
+        mapConversion: effective.mapConversion,
+        projectedCRS: effective.projectedCRS,
+        lengthUnitScale: effective.lengthUnitScale,
+      };
+    })();
+    const coordinateTransform = buildDxfExportTransform({
+      coordinateInfo,
+      sectionAxis: sectionPlane.axis,
+      isCustomPlane,
+      flipped: sectionPlane.flipped,
+      georeference,
+    });
+    const dxf = exportToDXF(drawing, {
+      showHiddenLines: displayOptions.showHiddenLines,
+      coordinateTransform,
+    });
+    const stem = `section-${sectionPlane.axis}-${sectionPlane.position}`;
+    downloadFile(dxf, `${stem}.dxf`, 'application/dxf');
+    posthog.capture('drawing_exported', {
+      format: 'dxf',
+      axis: sectionPlane.axis,
+      georeferenced: georeference !== null && sectionPlane.axis === 'down' && !isCustomPlane,
+    });
+  }, [drawing, displayOptions.showHiddenLines, sectionPlane, ifcDataStore, coordinateInfo]);
+
   // Print handler
   const handlePrint = useCallback(() => {
     // Use sheet export if enabled, otherwise raw drawing export
@@ -812,6 +863,7 @@ function useDrawingExport({
   return {
     formatDistance,
     handleExportSVG,
+    handleExportDXF,
     handlePrint,
   };
 }

@@ -12,7 +12,7 @@
  */
 
 import React, { useCallback, useRef, useState, useEffect, useMemo } from 'react';
-import { X, Download, Eye, EyeOff, Maximize2, ZoomIn, ZoomOut, Loader2, Printer, GripVertical, MoreHorizontal, RefreshCw, Pin, PinOff, Palette, Ruler, Trash2, FileText, Shapes, Box, BoxSelect, PenTool, Hexagon, Type, Cloud, MousePointer2, Tag, Layers } from 'lucide-react';
+import { X, Download, FileDown, Eye, EyeOff, Maximize2, ZoomIn, ZoomOut, Loader2, Printer, GripVertical, MoreHorizontal, RefreshCw, Pin, PinOff, Palette, Ruler, Trash2, FileText, Shapes, Box, BoxSelect, PenTool, Hexagon, Type, Cloud, MousePointer2, Tag, Layers } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -425,11 +425,12 @@ export function Section2DPanel({
     updateDxfUnderlayPlacement(id, { offsetX: modelCx - underlayCx, offsetY: modelCy - underlayCy });
   }, [dxfUnderlays, drawing, geometryResult, sectionPlane.flipped, sectionPlane.custom, updateDxfUnderlayPlacement]);
 
-  const { formatDistance, handleExportSVG, handlePrint } = useDrawingExport({
+  const { formatDistance, handleExportSVG, handleExportDXF, handlePrint } = useDrawingExport({
     drawing, displayOptions, sectionPlane, activePresetId,
     entityColorMap, overridesEnabled, overrideEngine,
     measure2DResults, polygonArea2DResults, textAnnotations2D, cloudAnnotations2D,
     sheetEnabled, activeSheet, dxfUnderlays: dxfUnderlayData,
+    ifcDataStore, coordinateInfo: geometryResult?.coordinateInfo,
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -818,6 +819,15 @@ export function Section2DPanel({
               <Button
                 variant="ghost"
                 size="icon-sm"
+                onClick={handleExportDXF}
+                disabled={!drawing}
+                title="Download DXF"
+              >
+                <FileDown className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
                 onClick={handlePrint}
                 disabled={!drawing}
                 title="Print"
@@ -935,6 +945,10 @@ export function Section2DPanel({
                   <DropdownMenuItem onClick={handleExportSVG} disabled={!drawing}>
                     <Download className="h-4 w-4 mr-2" />
                     Download SVG
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleExportDXF} disabled={!drawing}>
+                    <FileDown className="h-4 w-4 mr-2" />
+                    Download DXF
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={handlePrint} disabled={!drawing}>
                     <Printer className="h-4 w-4 mr-2" />

@@ -236,3 +236,86 @@ describe('gymCommand', () => {
     expect(error!.message).toMatch(/Unsupported op "addWall"/);
   });
 });
+
+describe('gymCommand episode factory (--seed, B2.2)', () => {
+  // Seed 42 is a clean office model under the benchmark corrupt rate (0.3);
+  // seed 8 force-corrupted plants duplicate-globalid + multiple-project
+  // (both schema errors). All deterministic by construction.
+
+  it('serves a generated episode from --seed, byte-identical across runs', async () => {
+    const run1 = await runGym(['--seed', '42', '--checks', 'schema'], [{ type: 'close' }]);
+    const run2 = await runGym(['--seed', '42', '--checks', 'schema'], [{ type: 'close' }]);
+
+    const reset = run1[0];
+    expect(reset.type).toBe('reset');
+    expect(reset.episode).toEqual({ seed: 42, family: 'office', corrupted: false });
+    const observation = reset.observation as Record<string, unknown>;
+    expect(observation.storeyCount).toBe(1);
+    const entityCounts = observation.entityCounts as Record<string, number>;
+    expect(entityCounts.IFCPROJECT).toBe(1);
+    expect(entityCounts.IFCSPACE).toBeGreaterThan(0);
+    expect((reset.channels as any).schema.score).toBe(1);
+
+    expect(JSON.stringify(run1[0])).toBe(JSON.stringify(run2[0]));
+  });
+
+  it('mid-session reset with a seed swaps to a new generated episode', async () => {
+    const lines = await runGym(
+      ['--seed', '42', '--checks', 'schema'],
+      [
+        // Seed 2 is a frame-family model: its observation (columns, beams, no
+        // spaces) cannot coincide with seed 42's office observation.
+        { type: 'reset', seed: 2, corrupt: false },
+        { type: 'close' },
+      ],
+    );
+    const resets = lines.filter(l => l.type === 'reset');
+    expect(resets).toHaveLength(2);
+    expect((resets[0].episode as any).seed).toBe(42);
+    expect((resets[1].episode as any).seed).toBe(2);
+    expect((resets[1].episode as any).family).toBe('frame');
+    expect((resets[1].episode as any).corrupted).toBe(false);
+    expect(JSON.stringify(resets[0].observation)).not.toBe(JSON.stringify(resets[1].observation));
+  });
+
+  it('a forced-corrupt episode surfaces planted schema defects in the reward channel', async () => {
+    const lines = await runGym(['--seed', '8', '--corrupt', '--checks', 'schema'], [{ type: 'close' }]);
+    const reset = lines[0];
+    expect((reset.episode as any).corrupted).toBe(true);
+    const schema = (reset.channels as any).schema;
+    expect(schema.score).toBe(0); // duplicate-globalid + multiple-project are errors
+    expect(schema.errors).toBeGreaterThan(0);
+  });
+
+  it('step ops apply to a generated episode', async () => {
+    // #58 is 'Perimeter Wall 0' (IFCWALL) in the seed-42 office model.
+    const lines = await runGym(
+      ['--seed', '42', '--checks', 'schema'],
+      [
+        { type: 'step', ops: [{ op: 'setProperty', expressId: 58, psetName: 'Pset_Gym', propName: 'Touched', value: true }] },
+        { type: 'close' },
+      ],
+    );
+    const reward = lines.find(l => l.type === 'reward');
+    expect(reward).toBeDefined();
+    expect((reward!.channels as any).schema.score).toBe(1);
+  });
+
+  it('rejects a malformed reset seed with a structured error, keeping the session alive', async () => {
+    const lines = await runGym(
+      ['--seed', '42', '--checks', 'schema'],
+      [
+        { type: 'reset', seed: -3 },
+        { type: 'reset' },
+        { type: 'close' },
+      ],
+    );
+    const error = lines.find(l => l.type === 'error');
+    expect(error).toBeDefined();
+    expect(error!.message).toMatch(/non-negative integer/);
+    // The plain reset afterwards still answers with the original episode.
+    const resets = lines.filter(l => l.type === 'reset');
+    expect(resets).toHaveLength(2);
+    expect((resets[1].episode as any).seed).toBe(42);
+  });
+});

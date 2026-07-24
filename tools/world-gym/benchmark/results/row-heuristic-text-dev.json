@@ -1,0 +1,98 @@
+{
+  "benchmark": "ifc-lite-world-gym",
+  "specVersion": "1.0.0",
+  "split": "dev",
+  "name": "heuristic-text",
+  "tasks": [
+    "defect-detection",
+    "quantity-estimation",
+    "validity-triage"
+  ],
+  "models": 1000,
+  "scores": {
+    "defect-detection": 1,
+    "quantity-estimation": 0.977655,
+    "validity-triage": 1,
+    "aggregate": 0.992552
+  },
+  "detail": {
+    "defect-detection": {
+      "metric": "macro-F1 over 7 defect types",
+      "perType": {
+        "clash-pair": {
+          "tp": 97,
+          "fp": 0,
+          "fn": 0,
+          "f1": 1
+        },
+        "degenerate-geometry": {
+          "tp": 96,
+          "fp": 0,
+          "fn": 0,
+          "f1": 1
+        },
+        "duplicate-globalid": {
+          "tp": 89,
+          "fp": 0,
+          "fn": 0,
+          "f1": 1
+        },
+        "missing-site": {
+          "tp": 83,
+          "fp": 0,
+          "fn": 0,
+          "f1": 1
+        },
+        "multiple-project": {
+          "tp": 106,
+          "fp": 0,
+          "fn": 0,
+          "f1": 1
+        },
+        "dangling-ref": {
+          "tp": 94,
+          "fp": 0,
+          "fn": 0,
+          "f1": 1
+        },
+        "missing-quantities": {
+          "tp": 93,
+          "fp": 0,
+          "fn": 0,
+          "f1": 1
+        }
+      }
+    },
+    "quantity-estimation": {
+      "metric": "mean per-model 1 - relative error (clamped)",
+      "perKey": {
+        "wallGrossVolume": {
+          "models": 1000,
+          "meanScore": 0.981559
+        },
+        "slabGrossVolume": {
+          "models": 1000,
+          "meanScore": 0.949
+        },
+        "columnGrossVolume": {
+          "models": 509,
+          "meanScore": 1
+        },
+        "beamGrossVolume": {
+          "models": 509,
+          "meanScore": 1
+        },
+        "roomNetFloorArea": {
+          "models": 491,
+          "meanScore": 1
+        }
+      }
+    },
+    "validity-triage": {
+      "metric": "concordance index vs planted severity (0.5 = uninformative)",
+      "pairs": 251058,
+      "concordant": 251058,
+      "ties": 0
+    }
+  }
+}

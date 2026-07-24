@@ -1,0 +1,35 @@
+{
+  "benchmark": "ifc-lite-world-gym",
+  "specVersion": "1.0.0",
+  "split": "dev",
+  "note": "Reference baselines (leaderboard anchors). Rows sorted by aggregate, descending.",
+  "rows": [
+    {
+      "name": "heuristic-text",
+      "scores": {
+        "defect-detection": 1,
+        "quantity-estimation": 0.977655,
+        "validity-triage": 1,
+        "aggregate": 0.992552
+      }
+    },
+    {
+      "name": "oracle-kernel",
+      "scores": {
+        "defect-detection": 0.857143,
+        "quantity-estimation": 0.977655,
+        "validity-triage": 0.959139,
+        "aggregate": 0.931312
+      }
+    },
+    {
+      "name": "always-clean",
+      "scores": {
+        "defect-detection": 0,
+        "quantity-estimation": 0,
+        "validity-triage": 0.5,
+        "aggregate": 0.166667
+      }
+    }
+  ]
+}

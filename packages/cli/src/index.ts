@@ -100,7 +100,7 @@ const HELP = `
     ext       validate <path>|init <dir>          Manage IFClite extensions (Phase 0 — validate, init)
     layer     <publish|diff|merge|log|bake|...>    Layered change tracking over a local store (.ifc-lite/)
     ref       <list|create|move|protect>           Manage named refs in the layer store
-    gym       --model <file.ifc> [--checks ...]    reset/step/reward environment loop (JSONL over stdin/stdout)
+    gym       --model <file.ifc> | --seed <n>      reset/step/reward environment loop (JSONL over stdin/stdout)
 
   Options:
     --help, -h           Show help
@@ -178,6 +178,7 @@ const HELP = `
     ifc-lite layer bake main -o flat.ifcx
     ifc-lite gym --model model.ifc --checks schema,clash
     ifc-lite gym --model model.ifc --checks schema,clash,ids --ids rules.ids
+    ifc-lite gym --seed 42 --checks schema,clash
 
   Pipe-friendly:
     ifc-lite query model.ifc --type IfcWall --json | jq '.[].name'
@@ -196,6 +197,11 @@ const HELP = `
     -> {"type":"step","ops":[{"op":"setProperty"|"setAttribute"|"deleteProperty", ...}]}
     <- {"type":"reward","channels":{schema:{score,...},clash:{score,...},ids:{score,...}},"done":false}
     -> {"type":"reset"}               reloads the pristine model, replies like the initial reset
+    -> {"type":"reset","seed":8}      episode factory: swaps to a generated World Gym benchmark
+                                      model (optional "family"/"corrupt"/"corruptRate" fields);
+                                      needs the repo checkout (tools/world-gym). Also on start via
+                                      --seed <n> [--family ...] [--corrupt|--no-corrupt|--corrupt-rate p].
+                                      Generated-episode resets add "episode":{seed,family,corrupted}.
     -> {"type":"close"}               exits 0
     Malformed input replies {"type":"error","message":"..."} instead of crashing.
     v0 ops: setProperty/setAttribute/deleteProperty only (mirrors bim.mutate's method

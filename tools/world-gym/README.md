@@ -1,11 +1,15 @@
-# World Gym - procedural building generator + deterministic labeler
+# World Gym - procedural building generator + deterministic labeler + benchmark
 
 M2 (docs/vision/moonshots-execution-plan.md): a procedural generator +
 deterministic labeling pipeline over `packages/create`, now at the M2
 midterm bar - **100k generated models, 100% labeled, mixed positive and
 negative label classes, labels spot-validated against the IfcOpenShell
 differential oracle, five discriminative reward channels behind one env
-API**.
+API** - plus, since B2.2, a **versioned public benchmark**
+(`benchmark/BENCHMARK.md`): three scored tasks over a 10k-seed universe with
+deterministic train/dev/test splits, a submission validator + scoring
+harness, three committed reference baselines, and benchmark episodes served
+through `ifc-lite gym --seed <n>`.
 
 Every sample gets perfect ground-truth labels because the labels are either
 the exact numbers used to author the geometry (not re-derived from the
@@ -43,6 +47,47 @@ node oracle-validate.mjs --manifest /path/wg-100k/manifest.jsonl \
   --python /path/to/venv/bin/python --every 500
 ```
 
+## Benchmark quickstart (B2.2)
+
+The benchmark is seeds 0..9999 at corrupt rate 0.3, split by seed
+arithmetic: train `seed % 10 <= 7` (8,000), dev `seed % 10 == 8` (1,000),
+test `seed % 10 == 9` (1,000). Three tasks, each scored 0-1: defect
+detection (macro-F1 over the 7 planted defect types), quantity estimation
+(1 - relative error vs the authoring-time kernel quantities), validity
+triage (concordance of a severity ranking); aggregate = unweighted mean.
+`benchmark/BENCHMARK.md` is the normative spec.
+
+```bash
+# Regenerate any benchmark model (same call the episode server makes)
+node generator.mjs --seed 4218 --corrupt-rate 0.3 --out /tmp/m.ifc
+
+# Validate a submission (JSONL: header line + one prediction line per seed)
+node benchmark/score.mjs --submission sub.jsonl --split dev --validate-only
+
+# Score it: regenerates the split's ground truth from seeds (~1s for dev),
+# emits a deterministic leaderboard-row JSON
+node benchmark/score.mjs --submission sub.jsonl --split dev --out row.json
+
+# Re-run the three reference baselines (submissions land outside the repo,
+# rows + split summary in benchmark/results/)
+node benchmark/baselines.mjs --split dev --out-dir /path/outside/repo/wg-bench
+
+# Serve benchmark episodes over the gym protocol (RL-style consumers);
+# mid-session {"type":"reset","seed":N} swaps episodes
+node ../../packages/cli/dist/index.js gym --seed 42 --checks schema,clash
+```
+
+Submission how-to, in three steps: (1) for every seed of your split,
+obtain the model (regenerate locally, or stream episodes via `ifc-lite gym
+--seed N`) and produce per-model predictions; (2) write the JSONL file -
+header `{"type":"header","benchmark":"ifc-lite-world-gym","specVersion":
+"1.0.0","split":"dev","name":"<your-method>","tasks":[...]}` then one
+`{"seed":8,"defects":{...},"quantities":{...},"triage":0.7}` line per seed;
+(3) run `score.mjs` as above. The only rule that matters locally: reading
+`generateModel(...).defects`/`labels` for an evaluated seed is reading the
+answer key (see BENCHMARK.md rules). Dev-split anchor rows to beat are in
+`benchmark/results/leaderboard-dev.json`.
+
 `--family` accepts `frame`, `office`, or `auto` (default - the seed itself
 picks the family, so `--seed N` alone still determines one specific building
 end to end).
@@ -69,6 +114,14 @@ tools/world-gym/
   channel-report.mjs            per-channel value distributions over a corpus manifest
   oracle-validate.mjs           samples + regenerates models, drives the python oracle
   oracle_validate.py            IfcOpenShell 0.8.5 differential checks per sampled model
+  benchmark/
+    BENCHMARK.md                the versioned benchmark spec (tasks, splits, rules, scoring)
+    splits.mjs                  constants + seed-arithmetic splits (normative universe)
+    ground-truth.mjs            per-seed answer-key regeneration (generation labels only)
+    submission.mjs              submission JSONL parser + validator
+    score.mjs                   scoring harness CLI (per-task + aggregate + leaderboard row)
+    baselines.mjs               always-clean / heuristic-text / oracle-kernel anchors
+    results/                    committed anchor rows + split summaries (small JSONs)
 ```
 
 `generateModel()` is the single source of truth. It:
@@ -190,12 +243,18 @@ re-proof over a deterministic 10% slice, and a tamper probe (one flipped
 byte must drop `determinismHashMatch` to 0). On the 100k corpus every
 channel is non-constant across classes and the tamper probe was 100/100.
 
-Relationship to `ifc-lite gym` (B0.4): `packages/cli/src/commands/gym.ts`
-now exists on this branch - a reset/step/reward loop over ONE loaded model
-with schema/clash/ids channels. That surface and this corpus API are
-different layers (interactive episode env vs corpus-scale labeling); wiring
-`computeRewardChannels` + the generator into `ifc-lite gym` as an episode
-factory is the natural B2.2 follow-up, not duplicated here.
+Relationship to `ifc-lite gym` (B0.4 -> B2.2): `packages/cli/src/commands/
+gym.ts` is a reset/step/reward loop with schema/clash/ids channels, and
+since B2.2 it doubles as the benchmark's **episode factory**: `--seed <n>`
+(or a mid-session `{"type":"reset","seed":n}` command) generates a World Gym
+model in-process and serves it over the same JSONL protocol, with an
+`episode: {seed, family, corrupted}` descriptor on generated-episode resets.
+Corruption defaults to the benchmark's deterministic Bernoulli(0.3) draw;
+`--corrupt` / `--no-corrupt` / `--corrupt-rate p` override. The factory
+needs the repo checkout (the npm package does not ship tools/world-gym; it
+fails with a clear error there and `--model` keeps working). The five
+corpus-level channels above and the gym's interactive channels remain
+different layers; `computeRewardChannels` stays the corpus/manifest API.
 
 ## Determinism
 
@@ -329,9 +388,34 @@ caught the duplicated IfcProject silently doubling as an unplanned GUID dup
 - **GlobalId/timestamp non-determinism in `@ifc-lite/create` /
   `@ifc-lite/encoding`** - see "Determinism". Worked around via a runtime
   shim, not fixed at the source.
-- **`ifc-lite gym` exists now** (B0.4, `packages/cli/src/commands/gym.ts`) -
-  the earlier note here that it did not exist is obsolete. Integration of
-  this corpus with that episode loop is future work (see Reward channels).
+- **`ifc-lite gym` integration is DONE** (B2.2): the generator is wired into
+  the gym as an episode factory (`--seed` / reset-with-seed, see Reward
+  channels above), with tests in `packages/cli/src/commands/gym.test.ts`.
+  Still open on that surface: `HeadlessBackend.mutate` remains a no-op stub
+  (the gym drives `MutablePropertyView` directly), no entity-creation ops,
+  `done` never fires, `observation.bounds` always null.
+- **The defect-detection task is near-saturated by text heuristics
+  (measured, v1.0).** On the dev split the no-kernel `heuristic-text`
+  baseline scores macro-F1 1.0 while the kernel oracle scores 0.857 (it
+  cannot see `dangling-ref`). The v1 corruption layer plants mostly
+  text-level defects, so v1.0's defect task rewards pattern-matching the
+  corruption conventions; real headroom currently lives in
+  quantity-estimation (both anchors 0.978 - the missing-quantities share
+  requires geometry to recover) and in generalization. Spec v1.1 should add
+  geometric/organic defect families (misalignment, unit-scale errors,
+  off-by-storey placement) that text scans cannot see. Documented in
+  BENCHMARK.md section 5.
+- **Test-split integrity is honesty-based until hosting exists.** Labels
+  are regenerable-by-seed by design (open generator), so local test rows
+  are self-reported; the trusted channel is a hosted leaderboard that
+  scores test submissions server-side. Public hosting, benchmark
+  governance/licensing, and external-lab recruitment are HUMAN-track items
+  (execution plan B2.2), not covered by this code.
+- **Leaderboard verifier is Node-side, not yet client-side in a browser.**
+  The M2 final exam wants the leaderboard verifier running client-side;
+  score.mjs + the generator are plain ESM with no Node-only APIs beyond
+  fs/crypto entrypoints, so a browser build is packaging work, but it is
+  not done.
 - Coverage is intentionally narrower than everything `packages/create`
   supports (stairs, roofs, doors, windows, ramps, railings, plates,
   members, piles, curtain walls, ...). The family module interface

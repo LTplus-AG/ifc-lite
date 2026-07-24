@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * `ifc-lite gym --model <file.ifc> [--checks schema,clash,ids] [--ids <rules.xml>]`
+ * `ifc-lite gym (--model <file.ifc> | --seed <n>) [--checks schema,clash,ids] [--ids <rules.xml>]`
  *
  * A reset/step/reward environment loop over the existing headless checks:
  * the skeleton of an RLVR environment for buildings (docs/vision/moonshots-tech.md
@@ -25,6 +25,23 @@
  *
  * Malformed input never crashes the process: it replies with a structured
  * {"type":"error","message":"..."} line and keeps reading.
+ *
+ * Episode factory (B2.2): instead of `--model`, `--seed <n>` generates a
+ * World Gym benchmark model in-process (tools/world-gym/generator.mjs,
+ * dynamically imported from the repo checkout - the published npm package
+ * does not ship the generator, so `--seed` fails there with a clear error
+ * while `--model` keeps working). `[--family frame|office|auto]` pins the
+ * family; corruption follows the benchmark's deterministic Bernoulli draw at
+ * the spec's corrupt rate (tools/world-gym/benchmark/splits.mjs) unless
+ * `--corrupt` / `--no-corrupt` forces it or `--corrupt-rate <p>` overrides
+ * the rate. Mid-session, `{"type":"reset","seed":8}` (plus optional
+ * "family"/"corrupt"/"corruptRate" fields) swaps to a fresh generated
+ * episode, so an RL consumer can stream the whole benchmark through one gym
+ * process without touching generator internals. Generated-episode reset
+ * lines carry an extra `episode` field: {seed, family, corrupted}. (The
+ * `corrupted` flag is deliberately exposed: the gym is the TRAINING surface;
+ * benchmark ground truth is regenerable from the seed anyway - see
+ * tools/world-gym/benchmark/BENCHMARK.md.)
  *
  * Determinism: the same model plus the same op sequence must yield
  * byte-identical reward lines. Every array the reward payload emits is
@@ -97,7 +114,93 @@ type GymOp =
   | { op: 'setAttribute'; expressId: number; attrName: string; value: string }
   | { op: 'deleteProperty'; expressId: number; psetName: string; propName: string };
 
-const USAGE = 'Usage: ifc-lite gym --model <file.ifc> [--checks schema,clash,ids] [--ids <rules.xml>] [--locale en|de|fr]';
+const USAGE = 'Usage: ifc-lite gym (--model <file.ifc> | --seed <n> [--family frame|office|auto] [--corrupt|--no-corrupt|--corrupt-rate <p>]) [--checks schema,clash,ids] [--ids <rules.xml>] [--locale en|de|fr]';
+
+// ============================================================================
+// Episode factory: the World Gym generator, loaded from the repo checkout
+// ============================================================================
+
+interface GeneratedModel {
+  seed: number | string;
+  family: string;
+  corrupted: boolean;
+  content: string;
+}
+
+interface WorldGymGenerator {
+  generateModel: (
+    seed: number | string,
+    family?: string,
+    opts?: { corruptRate?: number; forceCorrupt?: boolean },
+  ) => GeneratedModel;
+}
+
+/** Episode descriptor echoed on generated-episode reset lines. */
+interface EpisodeInfo {
+  seed: number | string;
+  family: string;
+  corrupted: boolean;
+}
+
+interface EpisodeSpec {
+  seed: number | string;
+  family: string;
+  forceCorrupt?: boolean;
+  corruptRate?: number;
+}
+
+/** Benchmark default; overwritten from benchmark/splits.mjs when loadable. */
+let benchmarkCorruptRate = 0.3;
+let generatorModule: WorldGymGenerator | null = null;
+
+async function loadGenerator(): Promise<WorldGymGenerator> {
+  if (generatorModule) return generatorModule;
+  // Both src (vitest) and dist layouts sit 4 levels below the repo root.
+  const generatorUrl = new URL('../../../../tools/world-gym/generator.mjs', import.meta.url);
+  try {
+    generatorModule = (await import(generatorUrl.href)) as WorldGymGenerator;
+  } catch (err) {
+    throw new Error(
+      `the gym episode factory needs the ifc-lite repo checkout (could not load ${generatorUrl.pathname}: ${(err as Error).message}); use --model <file.ifc> instead`,
+    );
+  }
+  try {
+    const splits = (await import(new URL('../../../../tools/world-gym/benchmark/splits.mjs', import.meta.url).href)) as { CORRUPT_RATE?: number };
+    if (typeof splits.CORRUPT_RATE === 'number') benchmarkCorruptRate = splits.CORRUPT_RATE;
+  } catch {
+    // Keep the compiled-in default; the generator itself is what matters.
+  }
+  return generatorModule;
+}
+
+function parseSeed(raw: unknown, source: string): number | string {
+  if (typeof raw === 'number' && Number.isInteger(raw) && raw >= 0) return raw;
+  if (typeof raw === 'string' && raw.length > 0) {
+    const n = Number(raw);
+    return Number.isInteger(n) && n >= 0 ? n : raw;
+  }
+  throw new Error(`${source} must be a non-negative integer (benchmark seed) or a non-empty string`);
+}
+
+function parseCorruptRate(raw: unknown, source: string): number {
+  const n = typeof raw === 'number' ? raw : Number(raw);
+  if (!Number.isFinite(n) || n < 0 || n > 1) {
+    throw new Error(`${source} must be a number in [0, 1]`);
+  }
+  return n;
+}
+
+async function generateEpisode(spec: EpisodeSpec): Promise<{ model: GeneratedModel; episode: EpisodeInfo }> {
+  const generator = await loadGenerator();
+  const opts = spec.forceCorrupt !== undefined
+    ? { forceCorrupt: spec.forceCorrupt }
+    : { corruptRate: spec.corruptRate ?? benchmarkCorruptRate };
+  const model = generator.generateModel(spec.seed, spec.family, opts);
+  return {
+    model,
+    episode: { seed: spec.seed, family: model.family, corrupted: model.corrupted },
+  };
+}
 
 function round(value: number, decimals = 6): number {
   const factor = 10 ** decimals;
@@ -303,7 +406,9 @@ export interface GymIO {
 
 export async function gymCommand(args: string[], io: GymIO = {}): Promise<void> {
   const modelPath = getFlag(args, '--model');
-  if (!modelPath) fatal(USAGE);
+  const seedFlag = getFlag(args, '--seed');
+  if (!modelPath && seedFlag === undefined) fatal(USAGE);
+  if (modelPath && seedFlag !== undefined) fatal(`--model and --seed are mutually exclusive\n${USAGE}`);
 
   const idsPath = getFlag(args, '--ids');
   const checks = parseChecks(getFlag(args, '--checks'), idsPath);
@@ -316,8 +421,30 @@ export async function gymCommand(args: string[], io: GymIO = {}): Promise<void> 
     output.write(`${JSON.stringify(msg)}\n`);
   }
 
-  const modelId = basename(modelPath);
-  const originalStore = await loadIfcFile(modelPath);
+  let modelId: string;
+  let originalStore: IfcDataStore;
+  let episode: EpisodeInfo | null = null;
+
+  async function loadEpisode(spec: EpisodeSpec): Promise<void> {
+    const { model, episode: info } = await generateEpisode(spec);
+    originalStore = await loadIfcBytes(new TextEncoder().encode(model.content), `gym-seed-${info.seed}.ifc`);
+    episode = info;
+    modelId = `gym-seed-${info.seed}.ifc`;
+  }
+
+  if (modelPath) {
+    modelId = basename(modelPath);
+    originalStore = await loadIfcFile(modelPath);
+  } else {
+    const forceCorrupt = args.includes('--corrupt') ? true : args.includes('--no-corrupt') ? false : undefined;
+    const corruptRateFlag = getFlag(args, '--corrupt-rate');
+    await loadEpisode({
+      seed: parseSeed(seedFlag, '--seed'),
+      family: getFlag(args, '--family') ?? 'auto',
+      forceCorrupt,
+      corruptRate: corruptRateFlag !== undefined ? parseCorruptRate(corruptRateFlag, '--corrupt-rate') : undefined,
+    });
+  }
 
   const ids = new IDSNamespace();
   let idsDoc: unknown = null;
@@ -354,7 +481,7 @@ export async function gymCommand(args: string[], io: GymIO = {}): Promise<void> 
     const schema = (originalStore.schemaVersion ?? 'IFC4') as 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
     const exporter = new StepExporter(originalStore, mutationView);
     const result = exporter.export({ schema, applyMutations: true });
-    return loadIfcBytes(result.content, modelPath);
+    return loadIfcBytes(result.content, modelId);
   }
 
   async function computeChannels(store: IfcDataStore): Promise<Record<string, unknown>> {
@@ -372,7 +499,9 @@ export async function gymCommand(args: string[], io: GymIO = {}): Promise<void> 
     mutationView = createMutationView();
     const observation = computeObservation(originalStore);
     const channels = await computeChannels(originalStore);
-    send({ type: 'reset', observation, channels });
+    // `episode` only exists for generated episodes; --model resets keep the
+    // exact v0 payload shape for backward compatibility.
+    send(episode ? { type: 'reset', episode, observation, channels } : { type: 'reset', observation, channels });
   }
 
   await emitReset();
@@ -400,6 +529,22 @@ export async function gymCommand(args: string[], io: GymIO = {}): Promise<void> 
         const channels = await computeChannels(store);
         send({ type: 'reward', channels, done: false });
       } else if (type === 'reset') {
+        const m = msg as { seed?: unknown; family?: unknown; corrupt?: unknown; corruptRate?: unknown };
+        if (m.seed !== undefined) {
+          // New generated episode over the same protocol (episode factory).
+          if (m.family !== undefined && typeof m.family !== 'string') {
+            throw new Error('reset field "family" must be a string (frame|office|auto)');
+          }
+          if (m.corrupt !== undefined && typeof m.corrupt !== 'boolean') {
+            throw new Error('reset field "corrupt" must be a boolean');
+          }
+          await loadEpisode({
+            seed: parseSeed(m.seed, 'reset field "seed"'),
+            family: (m.family as string | undefined) ?? 'auto',
+            forceCorrupt: m.corrupt as boolean | undefined,
+            corruptRate: m.corruptRate !== undefined ? parseCorruptRate(m.corruptRate, 'reset field "corruptRate"') : undefined,
+          });
+        }
         await emitReset();
       } else if (type === 'close') {
         rl.close();

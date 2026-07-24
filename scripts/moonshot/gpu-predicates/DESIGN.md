@@ -363,11 +363,12 @@ intermediates) while its GPU cost is barely higher.
 
 ### 9.6 Remaining gaps
 
-- **Exam-scale battery.** The literal 1e8-case battery has not been run:
-  verified scale is 2.15e7 (orient3d) + 6.45e6 (incircle). The binding
-  constraint is the CPU BigInt oracle (~2.5 us / ~9 us per case), i.e.
-  ~2 h of oracle time for 1e8 of each; nothing structural blocks it, it is
-  wall-clock only. GPU-side cost at 1e8 is seconds.
+- **Exam-scale battery: CLOSED 2026-07-24.** The literal 1e8-case random
+  battery has now been run for BOTH predicates (`--phase=bigrandom
+  --sizes=100000000,100000000`, report.b25.bigrandom.json): 1e8 orient3d +
+  1e8 incircle, 100% oracle-checked, 0 mismatches, 0 unexpected fallbacks.
+  GPU time ~9.1 s / ~8.1 s; wall clock ~50 min, oracle-bound as predicted.
+  Chunked magnitude rotation (1e3 / 1e9 / 1e-6) covered scale regimes.
 - **Adversarial fraction at scale**: the zero-mismatch adversarial families
   (1-ulp coplanar/cocircular, exact zeros, boundary D) are thousands to
   tens of thousands of cases each; scaling those to exam size is oracle

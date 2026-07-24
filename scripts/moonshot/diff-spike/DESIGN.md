@@ -220,3 +220,152 @@ The M3 spike gate is met on its stated terms. The result de-risks the
 claim and sharpens where the real research risk lives: adjoints through
 the kernel's own CSG path and the validity projection, not the
 differentiation of quantities itself.
+
+## 8. B3.3: proof-carrying optimization (Phase 3 flagship)
+
+Phase 3 fuses this spike with the M1 provenance machinery
+(`packages/provenance`, node-hash-v0): the optimization trajectory itself
+becomes a verifiable artifact. Three new scripts extend the ones above
+(nothing in the mathematics changed; `optimize.mjs` gained observation
+hooks, a scenario parameter and an extracted `endpointChecks`, all
+default-compatible):
+
+- `trajectory.mjs` - state commitments and the certificate chain. Every
+  ACCEPTED optimizer step is committed as a small Merkle DAG: a
+  `DesignParameters` property-set (24 exact f64 bit patterns), a
+  `DerivedQuantities` property-set (carbon, total volume, per-material
+  volumes, max constraint violation - all RE-DERIVED from the parameters,
+  never copied from the optimizer), and an element root binding both. A
+  step record chains `{prevRoot, newRoot, parameterDelta, carbon/merit
+  before+after, gradientNormBefore, stepSize, backtracks}` and carries a
+  real `@ifc-lite/provenance` v0 certificate (reads = previous state's
+  nodes, writes = new state's nodes, claim = scalar-delta on
+  `EmbodiedCarbon`). mu ramps are explicit chain records.
+- `optimize-certified.mjs` - runs the unchanged optimizer under a named
+  scenario, records the trajectory, builds the chain, then grounds the
+  endpoint: builds the real IFC, runs the kernel checks (meshing +
+  quantity comparison, `ifc-lite validate`, `ifc-lite clash`), and binds
+  the kernel-measured numbers plus the IFC hash into a final endpoint
+  certificate whose root commits BOTH the final design state and the
+  kernel validation.
+- `verify-trajectory.mjs` - the independent verifier. Input: the chain
+  JSON (start parameters live in its header) and nothing else. It
+  re-derives everything instead of trusting the optimizer: per step it
+  re-evaluates merit/carbon/gradient at the previous state (bitwise f64
+  equality), REPLAYS the Armijo line search (every recorded backtrack
+  trial must fail the acceptance test, the accepted trial must pass and
+  must reproduce the recorded iterate bit for bit - so a step verifies
+  only if it IS the projected-gradient step the published algorithm
+  produces, not an arbitrary descent move), checks monotone merit
+  descent, recommits the state DAG and checks chain linkage, and runs
+  `verifyCertificate` against a resolver seeded only with the verifier's
+  own re-derived payloads. At the endpoint it rebuilds the IFC from the
+  final parameters, pins it to the committed canonical hash, re-runs the
+  wasm kernel and compares the re-measured carbon/deviations to the bound
+  values; `--recheck-cli` additionally re-runs validate and clash.
+- `tamper-test.mjs` - adversarial battery, see below.
+
+Reproduce (IFC artifacts and chains go to a working directory):
+
+```
+node scripts/moonshot/diff-spike/optimize-certified.mjs --scenario baseline --out /tmp/b33/baseline
+node scripts/moonshot/diff-spike/optimize-certified.mjs --scenario strict   --out /tmp/b33/strict
+node scripts/moonshot/diff-spike/verify-trajectory.mjs /tmp/b33/baseline/trajectory-chain.json --recheck-cli
+node scripts/moonshot/diff-spike/verify-trajectory.mjs /tmp/b33/strict/trajectory-chain.json
+node scripts/moonshot/diff-spike/tamper-test.mjs /tmp/b33/baseline/trajectory-chain.json --full
+```
+
+### Protocol notes
+
+- **Kernel identity pins.** Certificates carry `kernelVersion`
+  (`@ifc-lite/wasm@x + @ifc-lite/geometry@y`) and `trustRoot` = SHA-256 of
+  the actual `ifc-lite_bg.wasm` binary. A verifier on a different kernel
+  build fails fast instead of comparing incomparable numbers.
+- **Bitwise determinism is the backbone.** The whole parametric path is
+  deterministic f64 arithmetic, so the verifier demands exact equality on
+  merit, objective, gradient norm and every replayed iterate. Node-hash-v0
+  hashes numbers as f64 bit patterns, so a state root pins the design to
+  the bit. Two tolerances are documented exceptions: the endpoint kernel
+  re-measurement (1e-9 relative; mesh iteration order inside the pipeline
+  is not contractually stable - both runs here reproduced bit-identically
+  anyway) and the provenance package's own 1e-9 scalar-claim tolerance.
+- **Canonical IFC hash.** `IfcCreator` output embeds random GlobalIds and
+  two header timestamps a rebuild cannot reproduce; `canonicalIfc()`
+  strips exactly those (verified: two same-parameter builds differ ONLY
+  there), and the endpoint commits the canonical hash (re-derivable) plus
+  the raw file hash (artifact label only).
+
+### Results
+
+Two scenarios, both certified and independently verified end to end:
+
+| | baseline | strict |
+|---|---|---|
+| programme | >= 600 m2, 12% daylight, 2.5 m headroom | >= 720 m2, 15% daylight, 2.7 m headroom |
+| carbon | 177.10 t -> 73.45 t (-58.5%) | 177.10 t -> 86.02 t (-51.4%) |
+| accepted steps / records | 22,000 / 22,010 | 24,000 / 24,011 |
+| optimize + chain build | 70.2 s + 2.6 s | 74.6 s + 2.9 s |
+| chain size | 46.2 MB | 50.8 MB |
+| independent verification | 69.9 s (incl. validate+clash recheck) | 81.2 s |
+| kernel re-measured carbon | 73450.9 kgCO2e, rel dev 0.0 (bound) / 2.7e-8 (parametric) | 86016.1 kgCO2e, rel dev 0.0 (bound) / 9.7e-8 (parametric) |
+| endpoint validity | 0 CSG failures, validate 0 errors, 0 real hard clashes | same |
+
+Verification cost is ~3.1-3.4 ms per step (dominated by the dual-number
+merit re-evaluations of the line-search replay, ~0.2 ms of it certificate
+hashing), i.e. roughly the same order as the optimization itself - the
+verifier re-runs the accepted mathematics once, plus every failed
+backtrack trial.
+
+Tamper battery (each mutation on a fresh copy of the real baseline chain,
+mid-chain where applicable): a flipped parameter (delta kept consistent,
+as a lazy forger would) is caught as `step-not-reproducible`; a faked
+objective (certificate claim adjusted to match) as
+`objective-after-mismatch`; a swapped prevRoot as
+`chain-linkage-broken`; a forged newRoot as `state-root-mismatch`; a
+tampered bound kernel number as `kernel-pset-hash-mismatch`; and the hard
+case - faked kernel numbers with ALL hashes and the endpoint certificate
+honestly recomputed - is caught by the kernel re-measurement as
+`kernel-carbon-mismatch`. The untampered control verifies.
+
+### What the chain proves - and what it does NOT
+
+Proves, to a verifier trusting only the model/algorithm source and its
+own kernel build:
+
+1. **Trajectory integrity.** The published start state leads to the
+   endpoint through exactly this sequence of states; every state's
+   quantities are the true closed-form quantities of its parameters;
+   every step is the projected-gradient/Armijo step the published
+   algorithm produces (including the failed backtrack trials); merit
+   descent is monotone within each mu level; mu follows the declared
+   schedule.
+2. **Endpoint validity.** The final parameters materialize to an IFC
+   whose canonical bytes are hash-committed, which the real kernel meshes
+   with 0 CSG failures, whose kernel-measured quantities match the
+   certified quantities, and which passes validate and hard-clash checks.
+
+Does NOT prove:
+
+1. **Global optimality.** Nothing certifies the endpoint is the best
+   design - only that this descent trajectory is genuine and its endpoint
+   is kernel-valid.
+2. **Authorship.** v0 certificates are unsigned (signing is reserved for
+   M4). An adversary who actually RUNS the published algorithm from some
+   start point can produce a different, equally valid chain; what they
+   cannot do is fake a chain without doing the descent work, or alter one
+   step of an existing chain undetected.
+3. **The scenario's merit.** The constraint set is committed in the chain
+   header, but whether 12% daylight is the RIGHT requirement is a human
+   question outside the proof.
+4. **Kernel correctness.** The endpoint grounding trusts the pinned wasm
+   build (trustRoot); certifying the kernel itself is M1's
+   predicate-sign manifest territory, not this chain's.
+5. **CLI outcome re-derivation is optional.** validate/clash outcomes are
+   hash-bound always, but only re-measured under `--recheck-cli`; without
+   it a (pointless) consistent forgery of those two summaries would pass.
+
+The compounding thesis this demonstrates: B2.4's gradients gave fast
+descent, M1's hashes gave verifiable state, and their composition gives
+something neither had alone - an optimization result a third party can
+audit step by step without re-running the optimizer's search or trusting
+its author.

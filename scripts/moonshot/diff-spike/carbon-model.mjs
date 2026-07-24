@@ -256,21 +256,31 @@ export function evaluateModel(p) {
 /**
  * Optimization constraints, all expressed as g(x) <= 0.
  * Returns an array of { name, g } with g a Dual|number.
+ *
+ * `scenario` (B3.3, proof-carrying optimization) parameterizes the
+ * programme-level requirements so the same constraint code serves several
+ * certified optimization runs. Omitting it (or any field) reproduces the
+ * original spike constraints bit-for-bit.
  */
-export function constraints(p, model) {
+export function constraints(p, model, scenario = {}) {
+  const {
+    floorAreaMin = 600,
+    daylightFrac = 0.12,
+    headroomMin = 2.5,
+  } = scenario;
   const [Lx, Ly, , , , tw, ts, tr, , wh, sill, dw, , cw, cd, , bh] = p;
   const { storeyHeights, floorAreaTotal, floorAreaPerStorey, windowAreas } = model.derived;
   const gs = [];
 
-  // Headroom: clear height per storey >= 2.5 m.
+  // Headroom: clear height per storey >= headroomMin.
   for (let s = 0; s < NSTOREYS; s++) {
-    gs.push({ name: `headroom-s${s}`, g: sub(2.5, sub(storeyHeights[s], ts)) });
+    gs.push({ name: `headroom-s${s}`, g: sub(headroomMin, sub(storeyHeights[s], ts)) });
   }
-  // Programme: total floor area >= 600 m2.
-  gs.push({ name: 'floor-area', g: sub(600, floorAreaTotal) });
-  // Daylight: window area per storey >= 12% of that storey's floor area.
+  // Programme: total floor area >= floorAreaMin.
+  gs.push({ name: 'floor-area', g: sub(floorAreaMin, floorAreaTotal) });
+  // Daylight: window area per storey >= daylightFrac of that storey's floor area.
   for (let s = 0; s < NSTOREYS; s++) {
-    gs.push({ name: `daylight-s${s}`, g: sub(scale(floorAreaPerStorey, 0.12), windowAreas[s]) });
+    gs.push({ name: `daylight-s${s}`, g: sub(scale(floorAreaPerStorey, daylightFrac), windowAreas[s]) });
   }
   // Window fit: sill + window height + 0.1 <= clear wall height.
   for (let s = 0; s < NSTOREYS; s++) {
@@ -294,9 +304,9 @@ export function constraints(p, model) {
 }
 
 /** Evaluate model + constraints on plain numbers (no gradients). */
-export function evaluateNumeric(x) {
+export function evaluateNumeric(x, scenario = {}) {
   const model = evaluateModel(Array.from(x));
-  const gs = constraints(Array.from(x), model);
+  const gs = constraints(Array.from(x), model, scenario);
   return {
     carbon: value(model.carbon),
     totalVolume: value(model.totalVolume),

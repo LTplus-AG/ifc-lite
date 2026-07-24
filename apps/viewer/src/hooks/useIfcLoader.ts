@@ -29,7 +29,9 @@ import {
   type MeshData,
   type CoordinateInfo,
   type GeometryResult,
+  type TessellationQuality,
 } from '@ifc-lite/geometry';
+import { resolveResourceRetryTier } from '../lib/resource-retry.js';
 import { acquireFileBuffer, type AcquiredBuffer } from '../utils/acquireFileBuffer.js';
 import { buildSpatialIndexGuarded, buildSpatialIndexForModel } from '../utils/loadingUtils.js';
 import { buildGeometryCacheKey } from './geometryCacheKey.js';
@@ -58,7 +60,7 @@ import { extractModelGeoref, alignGeometryToReference, findReferenceGeorefModel 
 import { toast } from '../components/ui/toast.js';
 import { posthog } from '../lib/analytics.js';
 import { reportRenderStats } from '../utils/renderStatsReport.js';
-import { classifyLoadError, formatLoadError } from '../lib/load-errors.js';
+import { classifyLoadError, formatLoadError, type LoadErrorKind } from '../lib/load-errors.js';
 
 /**
  * The skip-tiny-cuts flag is no longer a hard constant: it is derived per-load
@@ -182,7 +184,18 @@ export function useIfcLoader() {
   // Latest `loadFile`, so the background revalidation can reload without being a
   // dependency of `loadFile` itself (avoids a definition cycle). Kept current by
   // the effect below.
-  const loadFileRef = useRef<((file: File, target?: LoadTarget) => Promise<void>) | null>(null);
+  const loadFileRef = useRef<
+    | ((
+        file: File,
+        target?: LoadTarget,
+        options?: {
+          sourceHandle?: FileSystemFileHandle;
+          tierOverride?: TessellationQuality;
+          isResourceRetry?: boolean;
+        },
+      ) => Promise<void>)
+    | null
+  >(null);
 
   /**
    * Background revalidation for a SERVED source-decoupled (mesh-only) cache hit:
@@ -224,7 +237,14 @@ export function useIfcLoader() {
   const loadFile = useCallback(async (
     file: File,
     target: LoadTarget = { kind: 'primary' },
-    options?: { sourceHandle?: FileSystemFileHandle },
+    options?: {
+      sourceHandle?: FileSystemFileHandle;
+      // Auto-retry-at-lower-detail (resource-retry.ts): when a resource-limit
+      // failure re-invokes loadFile, it forces this tier and marks the attempt
+      // so a second failure surfaces instead of looping.
+      tierOverride?: TessellationQuality;
+      isResourceRetry?: boolean;
+    },
   ) => {
     const { resetViewerState, clearAllModels } = useViewerStore.getState();
     // Only a primary (destructive, replace-everything) load bumps the session.
@@ -259,6 +279,62 @@ export function useIfcLoader() {
 
     // Track total elapsed time for complete user experience
     const totalStartTime = performance.now();
+
+    // Records the tier the WASM tessellation path actually ran at, for the
+    // resource-retry decision in the catch. Declared out here (not in the try)
+    // so the catch can read it. Stays `null` until that path runs (a GLB /
+    // point-cloud / server / cache load never sets it), so a lower IFC tier is
+    // never pointlessly retried for a load it cannot help.
+    let attemptedTessellationTier: TessellationQuality | null | undefined = null;
+
+    /**
+     * Resource-limit recovery, shared by BOTH failure paths.
+     *
+     * The geometry-streaming loop has its own inner catch (it must close the
+     * WASM iterator and swallow the orphaned parser promise), and it RETURNS
+     * rather than rethrowing — so the stall / worker-crash failures this
+     * recovery exists for never reach the outer catch. Both call sites go
+     * through here so the policy lives in one place.
+     *
+     * Returns true when a retry was started, in which case the caller must
+     * return immediately: the retry owns the model's terminal state.
+     */
+    const tryResourceRetry = async (
+      err: unknown,
+      kind: LoadErrorKind,
+      context: string,
+    ): Promise<boolean> => {
+      const retryTier = resolveResourceRetryTier({
+        kind,
+        attemptedTier: attemptedTessellationTier,
+        isPrimary: target.kind === 'primary',
+        alreadyRetried: options?.isResourceRetry === true,
+      });
+      if (retryTier === null) return false;
+      // Still report the original failure so the memory wall stays visible in
+      // analytics — the retry only gives the user a shot at a result first.
+      posthog.captureException(err, { context, error_kind: kind, resource_retry: retryTier });
+      void import('@/components/ui/toast')
+        .then((m) => {
+          m.toast.info(
+            `"${file.name}" was too detailed for this device — retrying at lower detail…`,
+          );
+        })
+        // Best-effort notice; a failed chunk load must never turn into an
+        // unhandled rejection that masks the retry itself.
+        .catch(() => { /* no toast — the retry still proceeds */ });
+      setGeometryStreamingActive(false);
+      // Awaited, not fire-and-forget: callers await loadFile to know the load
+      // finished, so the original promise must stay pending until the
+      // replacement load settles. loadFile never rethrows (both its catches
+      // return), so this cannot throw back into the caller.
+      await loadFileRef.current?.(file, target, {
+        ...options,
+        tierOverride: retryTier,
+        isResourceRetry: true,
+      });
+      return true;
+    };
 
     try {
       // Reset all viewer state before loading new file — PRIMARY ONLY. A
@@ -725,7 +801,13 @@ export function useIfcLoader() {
       // model-weight signal available pre-geometry, so the key stays
       // deterministic at cache-check time). `undefined` = engine default
       // (medium). `exact` never auto-lowers.
-      const loadTessellationTier = resolveLoadTessellationTier(fileSizeMB, geometryModeAtLoad);
+      // An auto-retry after a resource-limit failure forces the tier (lowest);
+      // otherwise resolve it from the mode + file size as usual. Forcing it here
+      // (before the cache key) keeps the key and the live tessellation in
+      // agreement, so the retry re-meshes at the lower density instead of
+      // serving the failed attempt's cached bytes.
+      const loadTessellationTier = options?.tierOverride ??
+        resolveLoadTessellationTier(fileSizeMB, geometryModeAtLoad);
       // Desktop Tauri cache commands only accept [A-Za-z0-9_-], so the key
       // stays filename-safe and independent of the original filename. Pinned
       // to FORMAT_VERSION so a format bump invalidates stale entries (e.g. v5
@@ -868,6 +950,11 @@ export function useIfcLoader() {
       if (target.kind === 'primary') {
         setGeometryStreamingActive(true);
       }
+
+      // From here the WASM tessellation path runs, so a resource-limit failure
+      // downstream (stall / worker crash / OOM) is one a lower tier can help —
+      // record the tier we attempted for the retry decision in the catch.
+      attemptedTessellationTier = loadTessellationTier;
 
       // Initialize geometry processor first (WASM init is fast if already loaded)
       // Reuses the merge-layers snapshot taken above for the cache key so the
@@ -1545,6 +1632,9 @@ export function useIfcLoader() {
         // here as a cryptic `compile on 'WebAssembly'` TypeError — humanise it
         // and tag the captured exception so it is filterable in error tracking.
         const kind = classifyLoadError(err);
+        // The stall / worker-crash / OOM failures land HERE, not in the outer
+        // catch — retry once at lower detail before surfacing a dead end.
+        if (await tryResourceRetry(err, kind, 'geometry_processing')) return;
         setError(formatLoadError(err, file.name));
         // Flat properties: posthog-js spreads this object onto the event, so a
         // wrapper key would bury `error_kind` in an unfilterable nested blob.
@@ -1634,6 +1724,12 @@ export function useIfcLoader() {
       console.error(`[useIfc] loadFile THREW (session=${currentSession}, current=${loadSessionRef.current}):`, err);
       if (loadSessionRef.current !== currentSession) return;
       const kind = classifyLoadError(err);
+
+      // Resource-limit recovery — see tryResourceRetry. A failure that reaches
+      // this outer catch (rather than the streaming loop's inner one) still
+      // qualifies, e.g. an allocation failure outside the stream.
+      if (await tryResourceRetry(err, kind, 'ifc_model_load')) return;
+
       const friendly = formatLoadError(err, file.name);
       updateModel(modelId, {
         loadState: 'error',

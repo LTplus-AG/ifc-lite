@@ -59,7 +59,8 @@ export function SourceFileRow({
                 isUpdateAvailable ? 'text-orange-500/90 dark:text-orange-300' : 'text-muted-foreground'
               }`}
             >
-              <span>v{file.revisions[0]?.version ?? 1}</span>
+              {file.modifiedAt && <span>{formatModifiedAt(file.modifiedAt)}</span>}
+              {file.modifiedBy && <span>{file.modifiedBy}</span>}
               {file.sizeBytes != null && <span>{formatBytes(file.sizeBytes)}</span>}
               {isUpdateAvailable && (
                 <span className="rounded border border-orange-300 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-orange-600 dark:border-orange-700 dark:text-orange-300">
@@ -95,6 +96,14 @@ export function SourceFileRow({
       </div>
     </li>
   );
+}
+
+/** Provider-supplied ISO timestamp -> short local date; falls back to the raw
+ *  string when the provider sent something unparsable. */
+function formatModifiedAt(modifiedAt: string): string {
+  const ms = Date.parse(modifiedAt);
+  if (Number.isNaN(ms)) return modifiedAt;
+  return new Date(ms).toLocaleDateString();
 }
 
 function formatBytes(bytes: number): string {

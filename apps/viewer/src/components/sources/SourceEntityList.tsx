@@ -48,3 +48,29 @@ export function SourceEntityList<T extends { id: string; name: string }>({
     </ul>
   );
 }
+
+interface LoadMoreRowProps {
+  hasMore: boolean;
+  loading: boolean;
+  onLoadMore: () => void;
+  label: string;
+}
+
+/** Explicit continuation affordance for paged listings — renders nothing when
+ *  the provider reported no further page, so a complete list stays clean. */
+export function LoadMoreRow({ hasMore, loading, onLoadMore, label }: LoadMoreRowProps) {
+  if (!hasMore) return null;
+  return (
+    <div className="px-3 py-2">
+      <button
+        type="button"
+        className="flex w-full items-center justify-center gap-2 rounded border px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+        disabled={loading}
+        onClick={onLoadMore}
+      >
+        {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />}
+        {loading ? 'Loading…' : label}
+      </button>
+    </div>
+  );
+}

@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Signing in - IFClite</title>
+</head>
+<body>
+  <!--
+    MSAL v5 redirect-bridge page for the @ifc-lite/source-msgraph provider's
+    Microsoft Graph sign-in (SharePoint / OneDrive).
+
+    Why this page exists: the viewer sends
+    `Cross-Origin-Opener-Policy: same-origin` on every response (required for
+    SharedArrayBuffer / cross-origin isolation elsewhere in the app), which
+    severs the `window.opener` link classic MSAL popup flows rely on to hand
+    the auth response back to the main tab. MSAL v5 solves this by routing
+    every flow — including `loginPopup` — through a same-origin bridge page
+    that broadcasts the raw response over a `BroadcastChannel` instead of
+    reaching across `window.opener`. This page IS that bridge: MSAL opens it
+    in the popup it controls, and it never renders anything a real user sees
+    for more than an instant.
+
+    This is the actual `redirectUri` used by `@ifc-lite/source-msgraph`'s
+    `PublicClientApplication` config (see packages/source-msgraph/src/msal-client.ts) —
+    `${window.location.origin}/msal-redirect.html`.
+
+    Placement note: this file lives at the app root next to `index.html`
+    (not under `public/`) so Vite treats it as a real build entry — see the
+    `msalRedirect` key in `apps/viewer/vite.config.ts`'s
+    `build.rollupOptions.input`. Vite's `publicDir` copy step runs *after*
+    the build and would silently overwrite a same-named build output with
+    the raw, unprocessed source, which would break the bare
+    `@azure/msal-browser/redirect-bridge` import below (bare specifiers only
+    resolve through Vite's own bundling, not as a static browser fetch). Keep
+    it here.
+
+    In production this must NOT be served with
+    `Cross-Origin-Opener-Policy`/`Cross-Origin-Embedder-Policy` headers —
+    those headers are exactly what the bridge exists to work around, and
+    MSAL's popup/BroadcastChannel handshake needs this page to *not* be
+    cross-origin-isolated. `vercel.json`'s current `headers` rule applies
+    COOP/COEP to `/(.*)` (every path), so it needs a carve-out for this one
+    route before this ships — see this package's README and the final task
+    report for the exact rule to add. `vercel.json` is out of this package's
+    ownership.
+  -->
+  <script type="module">
+    import { broadcastResponseToMainFrame } from '@azure/msal-browser/redirect-bridge';
+
+    // This page is only ever opened by MSAL itself (as a popup or an SSO
+    // iframe target), never navigated to directly by a person, so there's no
+    // UI to show — only somewhere to send a diagnostic if the handshake
+    // itself fails.
+    broadcastResponseToMainFrame().catch((error) => {
+      console.error('[msal-redirect] failed to broadcast the auth response back to the app', error);
+    });
+  </script>
+</body>
+</html>

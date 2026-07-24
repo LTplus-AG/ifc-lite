@@ -17,10 +17,12 @@ import { loadDownloadedSourceFileRecords } from '@/lib/sources/persistence';
 import { useSourceHost } from '@/services/sources/SourceHostProvider';
 import { useViewerStore } from '@/store';
 import { useSourceCatalogSync } from './useSourceCatalogSync';
-import { SourceEntityList } from './SourceEntityList';
+import { usePagedList } from './usePagedList';
+import { SourceEntityList, LoadMoreRow } from './SourceEntityList';
+import { SourceProjectsStep } from './SourceProjectsStep';
 import { SourceFolderStep } from './SourceFolderStep';
 import { SourceBrowserHeader } from './SourceBrowserHeader';
-import { Folder, FolderOpen, AlertCircle } from 'lucide-react';
+import { FolderOpen, AlertCircle } from 'lucide-react';
 
 interface SourceBrowserProps {
   provider: FileSourceProvider;
@@ -35,57 +37,93 @@ type Step = 'projects' | 'file-areas' | 'folders';
 
 export function SourceBrowser({ provider, ctx, onDownload, onBack, busy = false }: SourceBrowserProps) {
   const sourceHost = useSourceHost();
-  const { models, activeModelId, addModel, removeModel, setActiveModel, setModelCollapsed } = useIfc();
+  const { models, addModel, removeModel } = useIfc();
   const sourceTags = useViewerStore((s) => s.sourceTags);
-  const setSourceTag = useViewerStore((s) => s.setSourceTag);
+  const capabilities = provider.manifest.capabilities;
   const [step, setStep] = useState<Step>('projects');
-  const [projects, setProjects] = useState<SourceProject[]>([]);
   const [selectedProject, setSelectedProject] = useState<SourceProject | null>(null);
-  const [fileAreas, setFileAreas] = useState<SourceContainer[]>([]);
   const [selectedFileArea, setSelectedFileArea] = useState<SourceContainer | null>(null);
   const [selectedContainer, setSelectedContainer] = useState<SourceContainer | null>(null);
-  const [files, setFiles] = useState<SourceFile[]>([]);
   // Selections persist across folders within a file area, so files picked
   // from several folders can be loaded together as one federated model.
   const [selectedFiles, setSelectedFiles] = useState<Map<string, SourceFile>>(new Map());
   const [downloadedRecords, setDownloadedRecords] = useState(() => loadDownloadedSourceFileRecords());
-
-  const [loadingProjects, setLoadingProjects] = useState(false);
-  const [loadingFileAreas, setLoadingFileAreas] = useState(false);
   const [syncingFileIds, setSyncingFileIds] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
+
+  // Server-side file search (capabilities.search only).
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchActive, setSearchActive] = useState(false);
+  const searchQueryRef = useRef('');
 
   const refreshDownloadedRecords = useCallback(() => {
     setDownloadedRecords(loadDownloadedSourceFileRecords());
   }, []);
 
-  const {
-    folders,
-    allFiles,
-    loadingFolders,
-    loadingFiles,
-    syncing,
-    catalogUpdatedAt,
-    openFileArea: openFileAreaCatalog,
-    syncFileArea,
-    resetCatalog,
-  } = useSourceCatalogSync({ provider, ctx, setError, onSynced: refreshDownloadedRecords });
+  const catalog = useSourceCatalogSync({
+    provider,
+    ctx,
+    setError,
+    onSynced: refreshDownloadedRecords,
+  });
+  const { folders, allFiles } = catalog;
 
-  // Guards against a slow, stale fetch overwriting a newer one if the user
-  // backs out and re-enters a project quickly.
-  const fileAreasRequestRef = useRef(0);
+  // Top-level containers ("file areas"): a paged listing with no parent.
+  // The fetcher reads the project id from a ref so a project change only
+  // needs a `start()`.
+  const projectIdRef = useRef<string | null>(null);
+  const fileAreasPaged = usePagedList<SourceContainer>(
+    useCallback(
+      (cursor, signal) => {
+        const projectId = projectIdRef.current;
+        if (!projectId) return Promise.resolve({ items: [] });
+        return provider.listContainers(ctx, projectId, undefined, { cursor, limit: 200, signal });
+      },
+      [provider, ctx],
+    ),
+    setError,
+  );
+
+  const searchPaged = usePagedList<SourceFile>(
+    useCallback(
+      (cursor, signal) => {
+        const projectId = projectIdRef.current;
+        const query = searchQueryRef.current.trim();
+        if (!projectId || !query || !provider.searchFiles) return Promise.resolve({ items: [] });
+        return provider.searchFiles(
+          ctx,
+          projectId,
+          query,
+          { namePatterns: ['*.ifc', '*.ifcx', '*.ifc5'] },
+          { cursor, limit: 200, signal },
+        );
+      },
+      [provider, ctx],
+    ),
+    setError,
+  );
 
   const sortedFolders = useMemo(
     () => [...folders].sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: 'base' })),
     [folders],
   );
+
+  const visibleFiles = useMemo(() => {
+    if (searchActive) return searchPaged.items;
+    const targetId = selectedContainer?.id ?? selectedFileArea?.id;
+    if (!targetId || !selectedFileArea) return [];
+    if (capabilities.listFilesIsRecursive && targetId === selectedFileArea.id) return allFiles;
+    return allFiles.filter((file) => file.containerId === targetId);
+  }, [allFiles, capabilities.listFilesIsRecursive, searchActive, searchPaged.items, selectedContainer, selectedFileArea]);
+
   const sortedFiles = useMemo(
-    () => [...files].sort((left, right) => left.name.localeCompare(right.name, undefined, {
+    () => [...visibleFiles].sort((left, right) => left.name.localeCompare(right.name, undefined, {
       numeric: true,
       sensitivity: 'base',
     })),
-    [files],
+    [visibleFiles],
   );
+
   const loadedModelIdsByFileId = useMemo(() => {
     const next = new Map<string, string[]>();
     if (!selectedProject) return next;
@@ -115,61 +153,48 @@ export function SourceBrowser({ provider, ctx, onDownload, onBack, busy = false 
     return next;
   }, [loadedModelIdsByFileId, models]);
 
-  const load = useCallback(
-    async (setLoading: (v: boolean) => void, fn: () => Promise<void>) => {
-      setLoading(true);
-      setError(null);
-      try {
-        await fn();
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
-      } finally {
-        setLoading(false);
-      }
-    },
-    [],
-  );
-
-  useEffect(() => {
-    load(setLoadingProjects, async () => {
-      setProjects(await provider.listProjects(ctx));
-    });
-  }, [provider, ctx, load]);
-
   useEffect(() => {
     refreshDownloadedRecords();
   }, [refreshDownloadedRecords, selectedFileArea?.id]);
 
+  const clearSearch = useCallback(() => {
+    setSearchActive(false);
+    setSearchQuery('');
+    searchQueryRef.current = '';
+    searchPaged.reset();
+  }, [searchPaged]);
+
+  const submitSearch = useCallback(() => {
+    const query = searchQuery.trim();
+    if (!query) {
+      clearSearch();
+      return;
+    }
+    searchQueryRef.current = query;
+    setSearchActive(true);
+    searchPaged.start();
+  }, [clearSearch, searchPaged, searchQuery]);
+
   const selectContainer = useCallback((c: SourceContainer) => {
+    setError(null);
     setSelectedContainer(c);
-  }, []);
+    catalog.openContainer(c);
+  }, [catalog]);
 
   const openProject = useCallback(
     (p: SourceProject) => {
-      const requestId = ++fileAreasRequestRef.current;
       setSelectedProject(p);
       setStep('file-areas');
       setSelectedFileArea(null);
       setSelectedContainer(null);
-      setFiles([]);
       setSelectedFiles(new Map());
-      resetCatalog();
-      setLoadingFileAreas(true);
       setError(null);
-      void (async () => {
-        try {
-          const result = await provider.listContainers(ctx, p.id);
-          if (fileAreasRequestRef.current !== requestId) return;
-          setFileAreas(result);
-        } catch (err) {
-          if (fileAreasRequestRef.current !== requestId) return;
-          setError(err instanceof Error ? err.message : String(err));
-        } finally {
-          if (fileAreasRequestRef.current === requestId) setLoadingFileAreas(false);
-        }
-      })();
+      clearSearch();
+      catalog.resetCatalog();
+      projectIdRef.current = p.id;
+      fileAreasPaged.start();
     },
-    [provider, ctx, resetCatalog],
+    [catalog, clearSearch, fileAreasPaged],
   );
 
   const openFileArea = useCallback(
@@ -179,9 +204,11 @@ export function SourceBrowser({ provider, ctx, onDownload, onBack, busy = false 
       setStep('folders');
       setSelectedFiles(new Map());
       setSelectedContainer(c);
-      openFileAreaCatalog(selectedProject.id, c.id);
+      setError(null);
+      clearSearch();
+      catalog.openFileArea(selectedProject.id, c.id);
     },
-    [openFileAreaCatalog, selectedProject],
+    [catalog, clearSearch, selectedProject],
   );
 
   const toggleFile = useCallback((file: SourceFile) => {
@@ -201,9 +228,17 @@ export function SourceBrowser({ provider, ctx, onDownload, onBack, busy = false 
   }, [onDownload, selectedFiles, selectedProject]);
 
   const handleSync = useCallback(() => {
-    if (!selectedProject || !selectedFileArea || syncing) return;
-    void syncFileArea(selectedProject.id, selectedFileArea.id, { announce: true });
-  }, [selectedFileArea, selectedProject, syncFileArea, syncing]);
+    if (!selectedProject || !selectedFileArea || catalog.syncing) return;
+    setError(null);
+    // A manual sync refetches from the area root. Per-folder catalogs
+    // (direct-children containers or per-folder files) are dropped by it, so
+    // the selection returns to the root rather than pointing at a folder
+    // whose data is gone until re-entered.
+    if (capabilities.containerListing === 'direct-children' || !capabilities.listFilesIsRecursive) {
+      setSelectedContainer(selectedFileArea);
+    }
+    void catalog.syncFileArea(selectedProject.id, selectedFileArea.id, { announce: true });
+  }, [capabilities, catalog, selectedFileArea, selectedProject]);
 
   const handleSyncLoadedFile = useCallback(async (file: SourceFile) => {
     const loadedModelIds = loadedModelIdsByFileId.get(file.id);
@@ -213,35 +248,28 @@ export function SourceBrowser({ provider, ctx, onDownload, onBack, busy = false 
     try {
       let synced = 0;
       let lastLatestFileName: string | undefined;
-      let lastProviderName: string | undefined;
+      let lastProviderTitle: string | undefined;
       for (const modelId of loadedModelIds) {
-        const model = models.get(modelId);
         const tag = sourceTags.get(modelId);
-        if (!model || !tag) continue;
+        if (!tag) continue;
 
         const { latestFile } = await syncSourceModel({
           modelId,
-          model,
           tag,
-          models,
-          activeModelId,
           sourceHost,
           addModel,
           removeModel,
-          setModelCollapsed,
-          setActiveModel,
-          setSourceTag,
         });
         synced += 1;
         lastLatestFileName = latestFile.name;
-        lastProviderName = tag.provider;
+        lastProviderTitle = sourceHost.get(tag.provider)?.manifest.title ?? tag.provider;
       }
       refreshDownloadedRecords();
-      if (synced > 0 && lastLatestFileName && lastProviderName) {
+      if (synced > 0 && lastLatestFileName && lastProviderTitle) {
         toast.success(
           synced === 1
-            ? `Synced ${lastLatestFileName} from ${lastProviderName}`
-            : `Synced ${synced} models from ${lastProviderName}`,
+            ? `Synced ${lastLatestFileName} from ${lastProviderTitle}`
+            : `Synced ${synced} models from ${lastProviderTitle}`,
         );
       }
     } catch (err) {
@@ -254,51 +282,37 @@ export function SourceBrowser({ provider, ctx, onDownload, onBack, busy = false 
       });
     }
   }, [
-    activeModelId,
     addModel,
     loadedModelIdsByFileId,
-    models,
     refreshDownloadedRecords,
     removeModel,
-    setActiveModel,
-    setModelCollapsed,
-    setSourceTag,
     sourceHost,
     sourceTags,
   ]);
 
   const goBack = useCallback(() => {
+    // A failed listing must never leave a dead-end screen: navigating always
+    // clears the error and re-renders the previous step's list.
+    setError(null);
     if (step === 'folders') {
       setStep('file-areas');
       setSelectedFileArea(null);
       setSelectedContainer(null);
-      setFiles([]);
       setSelectedFiles(new Map());
-      resetCatalog();
+      clearSearch();
+      catalog.resetCatalog();
     } else if (step === 'file-areas') {
-      fileAreasRequestRef.current++;
       setStep('projects');
       setSelectedProject(null);
-      setFileAreas([]);
+      projectIdRef.current = null;
+      fileAreasPaged.reset();
     } else {
       onBack();
     }
-  }, [step, onBack, resetCatalog]);
+  }, [catalog, clearSearch, fileAreasPaged, step, onBack]);
 
-  useEffect(() => {
-    if (!selectedFileArea || !selectedContainer) {
-      setFiles(allFiles);
-      return;
-    }
-
-    if (selectedContainer.id === selectedFileArea.id) {
-      setFiles(allFiles);
-      return;
-    }
-
-    setFiles(allFiles.filter((file) => file.containerId === selectedContainer.id));
-  }, [allFiles, selectedContainer, selectedFileArea]);
-
+  // Keep selected files fresh as listings update; files that vanished from
+  // the source drop out of the selection.
   useEffect(() => {
     const byId = new Map(allFiles.map((file) => [file.id, file] as const));
     setSelectedFiles((previous) => {
@@ -317,6 +331,8 @@ export function SourceBrowser({ provider, ctx, onDownload, onBack, busy = false 
     });
   }, [allFiles]);
 
+  const selectedContainerId = selectedContainer?.id ?? null;
+
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <SourceBrowserHeader
@@ -324,40 +340,43 @@ export function SourceBrowser({ provider, ctx, onDownload, onBack, busy = false 
         providerTitle={provider.manifest.title}
         selectedProject={selectedProject}
         selectedFileArea={selectedFileArea}
-        catalogUpdatedAt={catalogUpdatedAt}
-        syncing={syncing}
+        catalogUpdatedAt={catalog.catalogUpdatedAt}
+        syncing={catalog.syncing}
         busy={busy}
         onBack={goBack}
         onSync={handleSync}
       />
 
       {error && (
-        <div className="flex items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400">
-          <AlertCircle className="h-4 w-4 shrink-0" />
+        <div className="flex items-center gap-2 border-b px-3 py-2 text-sm text-red-600 dark:text-red-400">
+          <AlertCircle className="h-4 w-4 shrink-0" aria-hidden />
           <span>{error}</span>
         </div>
       )}
 
-      {step === 'projects' && !error && (
-        <div className="flex-1 overflow-y-auto">
-          <SourceEntityList
-            items={projects}
-            loading={loadingProjects}
-            icon={Folder}
-            emptyLabel="No projects found"
-            onSelect={openProject}
-          />
-        </div>
+      {step === 'projects' && (
+        <SourceProjectsStep
+          provider={provider}
+          ctx={ctx}
+          onError={setError}
+          onSelect={openProject}
+        />
       )}
 
-      {step === 'file-areas' && !error && (
+      {step === 'file-areas' && (
         <div className="flex-1 overflow-y-auto">
           <SourceEntityList
-            items={fileAreas}
-            loading={loadingFileAreas}
+            items={fileAreasPaged.items}
+            loading={fileAreasPaged.loading}
             icon={FolderOpen}
             emptyLabel="No file areas found"
             onSelect={openFileArea}
+          />
+          <LoadMoreRow
+            hasMore={fileAreasPaged.hasMore}
+            loading={fileAreasPaged.loadingMore}
+            onLoadMore={fileAreasPaged.loadMore}
+            label="Load more"
           />
         </div>
       )}
@@ -371,8 +390,13 @@ export function SourceBrowser({ provider, ctx, onDownload, onBack, busy = false 
           onSelectContainer={selectContainer}
           sortedFolders={sortedFolders}
           allFiles={allFiles}
-          loadingFolders={loadingFolders}
-          loadingFiles={loadingFiles}
+          gateEmptyFolders={
+            capabilities.containerListing === 'flat-subtree' &&
+            capabilities.listFilesIsRecursive &&
+            catalog.catalogComplete
+          }
+          loadingFolders={catalog.loadingFolders}
+          loadingFiles={searchActive ? searchPaged.loading : catalog.loadingFiles}
           sortedFiles={sortedFiles}
           selectedFiles={selectedFiles}
           onToggleFile={toggleFile}
@@ -382,6 +406,21 @@ export function SourceBrowser({ provider, ctx, onDownload, onBack, busy = false 
           onSyncLoadedFile={(file) => void handleSyncLoadedFile(file)}
           busy={busy}
           onLoad={handleLoad}
+          foldersHaveMore={catalog.hasMoreFolders(selectedContainerId)}
+          onLoadMoreFolders={() => catalog.loadMoreFolders(selectedContainerId)}
+          filesHaveMore={
+            searchActive ? searchPaged.hasMore : catalog.hasMoreFiles(selectedContainerId)
+          }
+          onLoadMoreFiles={() =>
+            searchActive ? searchPaged.loadMore() : catalog.loadMoreFiles(selectedContainerId)
+          }
+          loadingMore={catalog.loadingMore || searchPaged.loadingMore}
+          searchEnabled={capabilities.search && provider.searchFiles !== undefined}
+          searchQuery={searchQuery}
+          searchActive={searchActive}
+          onSearchQueryChange={setSearchQuery}
+          onSearchSubmit={submitSearch}
+          onSearchClear={clearSearch}
         />
       )}
     </div>

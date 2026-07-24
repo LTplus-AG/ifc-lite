@@ -68,6 +68,9 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^0.112.4
         version: 0.112.4(zod@4.4.3)
+      '@azure/msal-browser':
+        specifier: ^5.17.1
+        version: 5.17.1
       '@codemirror/autocomplete':
         specifier: ^6.20.3
         version: 6.20.3
@@ -179,6 +182,9 @@ importers:
       '@ifc-lite/source-dalux':
         specifier: workspace:^
         version: link:../../packages/source-dalux
+      '@ifc-lite/source-msgraph':
+        specifier: workspace:^
+        version: link:../../packages/source-msgraph
       '@ifc-lite/spatial':
         specifier: workspace:^
         version: link:../../packages/spatial
@@ -1355,6 +1361,38 @@ importers:
         specifier: ^4.1.0
         version: 4.1.10(@edge-runtime/vm@3.2.0)(@types/node@26.1.1)(happy-dom@20.11.0)(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
 
+  packages/source-fixture:
+    dependencies:
+      '@ifc-lite/plugin-api':
+        specifier: workspace:^
+        version: link:../plugin-api
+    devDependencies:
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^4.1.0
+        version: 4.1.10(@edge-runtime/vm@3.2.0)(@types/node@26.1.1)(happy-dom@20.11.0)(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
+
+  packages/source-msgraph:
+    dependencies:
+      '@azure/msal-browser':
+        specifier: ^5.17.1
+        version: 5.17.1
+      '@ifc-lite/plugin-api':
+        specifier: workspace:^
+        version: link:../plugin-api
+    devDependencies:
+      '@ifc-lite/source-fixture':
+        specifier: workspace:^
+        version: link:../source-fixture
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^4.1.0
+        version: 4.1.10(@edge-runtime/vm@3.2.0)(@types/node@26.1.1)(happy-dom@20.11.0)(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
+
   packages/spatial:
     dependencies:
       '@ifc-lite/geometry':
@@ -1410,6 +1448,14 @@ packages:
 
   '@automerge/automerge@3.3.2':
     resolution: {integrity: sha512-9vCdCL7pdQwUra66SBxPVHr+/t9epXKni9KDeak2rNBFMzABVh2u6gSpcwxi3jkR5qr047jVqZv9DlrOfVxLFw==}
+
+  '@azure/msal-browser@5.17.1':
+    resolution: {integrity: sha512-zBhRGzABKSI7hfWh5EaZmril5ybZ7imBN1qEZl5sDTaelr+l8SnPjZO50Q4dnKnm347YPIlBMSnXKZyh3Yu5DQ==}
+    engines: {node: '>=0.8.0'}
+
+  '@azure/msal-common@16.11.2':
+    resolution: {integrity: sha512-yDhtBOGDCdK9ipQ9g3+wmlMEPnZx2pXaDicDd9jYyR1L+7lEbvEohTDmF5qejZDutZY3m9pWPxeYxzNC701A2w==}
+    engines: {node: '>=0.8.0'}
 
   '@babel/code-frame@7.29.7':
     resolution: {integrity: sha512-Aup7aUOfpbAUg2ROOJN6Iw5f9DMBlzu0mIkm/malLQFN/YQgO48wCj0Kxa3sEHJvPVFg7siR+qRInwXd2qhQKw==}
@@ -5621,6 +5667,12 @@ snapshots:
       zod: 4.4.3
 
   '@automerge/automerge@3.3.2': {}
+
+  '@azure/msal-browser@5.17.1':
+    dependencies:
+      '@azure/msal-common': 16.11.2
+
+  '@azure/msal-common@16.11.2': {}
 
   '@babel/code-frame@7.29.7':
     dependencies:

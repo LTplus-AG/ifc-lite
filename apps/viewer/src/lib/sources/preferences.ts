@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { PluginManifest } from '@ifc-lite/plugin-api';
+
 const PREFS_KEY_PREFIX = 'ifc-lite-source-prefs:';
 
 function isStringRecord(value: unknown): value is Record<string, string> {
@@ -29,11 +31,39 @@ export function loadSavedSourcePrefs(providerId: string): Record<string, string>
   }
 }
 
+/** Manifest-declared preference defaults, e.g. `{ region: 'eu' }` for every pref carrying a `default`. */
+export function manifestPreferenceDefaults(manifest: PluginManifest): Record<string, string> {
+  const defaults: Record<string, string> = {};
+  for (const pref of manifest.preferences) {
+    if (pref.default !== undefined) defaults[pref.name] = pref.default;
+  }
+  return defaults;
+}
+
+/**
+ * The preference values a provider should actually run with: manifest
+ * defaults, overridden by whatever the user saved. Every `createContext`
+ * call site must use this rather than the raw saved record — otherwise a
+ * declared default is shown in the settings form but never reaches
+ * `ctx.getPreference`.
+ */
+export function loadResolvedSourcePrefs(manifest: PluginManifest): Record<string, string> {
+  return { ...manifestPreferenceDefaults(manifest), ...loadSavedSourcePrefs(manifest.name) };
+}
+
 export function saveSourcePrefs(providerId: string, values: Record<string, string>): void {
-  localStorage.setItem(PREFS_KEY_PREFIX + providerId, JSON.stringify(values));
+  try {
+    localStorage.setItem(PREFS_KEY_PREFIX + providerId, JSON.stringify(values));
+  } catch (err) {
+    console.warn(`[sources] Failed to save prefs for "${providerId}" (storage unavailable?)`, err);
+  }
 }
 
 /** Clears saved preferences (including any stored API key) for a provider. */
 export function clearSourcePrefs(providerId: string): void {
-  localStorage.removeItem(PREFS_KEY_PREFIX + providerId);
+  try {
+    localStorage.removeItem(PREFS_KEY_PREFIX + providerId);
+  } catch (err) {
+    console.warn(`[sources] Failed to clear prefs for "${providerId}"`, err);
+  }
 }

@@ -3,10 +3,17 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { SourceContainer, SourceFile, SourceTag } from '@ifc-lite/plugin-api';
+import { clearSourcePrefs } from './preferences';
 
 const CATALOG_KEY_PREFIX = 'ifc-lite-source-catalog:';
 const DOWNLOADED_FILES_KEY = 'ifc-lite-downloaded-source-files';
-const STORAGE_VERSION = 1;
+const WATCH_CURSOR_KEY_PREFIX = 'ifc-lite-source-watch:';
+/** Prefix `createNamespacedStorage` (services/sources/host-storage.ts) uses for
+ *  a provider's own `ctx.storage` keys. Mirrored here so "forget saved values"
+ *  can sweep them; the conformance of the two constants is asserted by
+ *  `persistence.test.ts`. */
+const PROVIDER_STORAGE_KEY_PREFIX = 'ifc-lite-source:';
+const STORAGE_VERSION = 2;
 
 export interface SourceCatalogCacheEntry {
   readonly version: number;
@@ -25,7 +32,6 @@ export interface DownloadedSourceFileRecord {
   readonly fileId: string;
   readonly name: string;
   readonly loadedRevisionId: string;
-  readonly loadedRevisionVersion: number;
   readonly sizeBytes?: number;
   readonly loadedAt: number;
 }
@@ -34,6 +40,22 @@ export type DownloadedSourceFileStatus =
   | 'never-loaded'
   | 'loaded-current'
   | 'update-available';
+
+/**
+ * Best-effort localStorage write. Persistence here is an optimisation (caches,
+ * "already downloaded" markers), never load-bearing — a `QuotaExceededError`
+ * or a locked-down/private-mode storage must degrade to "not persisted this
+ * session" with a warning, not abort the sync or download that triggered it.
+ */
+function tryWrite(key: string, value: string, what: string): boolean {
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch (err) {
+    console.warn(`[sources] Failed to persist ${what} (quota exceeded or storage unavailable)`, err);
+    return false;
+  }
+}
 
 export function loadSourceCatalogCache(
   providerId: string,
@@ -72,6 +94,10 @@ export function loadSourceCatalogCache(
   }
 }
 
+/**
+ * Persists a fully-fetched file-area catalog. Returns the entry either way —
+ * a failed write (quota) only means the cache misses next session.
+ */
 export function saveSourceCatalogCache(
   providerId: string,
   projectId: string,
@@ -88,9 +114,10 @@ export function saveSourceCatalogCache(
     folders: [...folders],
     files: [...files],
   };
-  localStorage.setItem(
+  tryWrite(
     `${CATALOG_KEY_PREFIX}${providerId}:${projectId}:${fileAreaId}`,
     JSON.stringify(entry),
+    `catalog cache for "${providerId}"`,
   );
   return entry;
 }
@@ -118,7 +145,6 @@ export function loadDownloadedSourceFileRecords(): Map<string, DownloadedSourceF
         typeof record.containerId !== 'string' ||
         typeof record.name !== 'string' ||
         typeof record.loadedRevisionId !== 'string' ||
-        typeof record.loadedRevisionVersion !== 'number' ||
         typeof record.loadedAt !== 'number'
       ) {
         return [];
@@ -136,7 +162,6 @@ export function loadDownloadedSourceFileRecords(): Map<string, DownloadedSourceF
           fileId: record.fileId,
           name: record.name,
           loadedRevisionId: record.loadedRevisionId,
-          loadedRevisionVersion: record.loadedRevisionVersion,
           sizeBytes: record.sizeBytes,
           loadedAt: record.loadedAt,
         } satisfies DownloadedSourceFileRecord,
@@ -152,9 +177,10 @@ export function loadDownloadedSourceFileRecords(): Map<string, DownloadedSourceF
 export function saveDownloadedSourceFileRecords(
   records: ReadonlyMap<string, DownloadedSourceFileRecord>,
 ): void {
-  localStorage.setItem(
+  tryWrite(
     DOWNLOADED_FILES_KEY,
     JSON.stringify([...records.values()]),
+    'downloaded source-file records',
   );
 }
 
@@ -170,7 +196,6 @@ export function recordDownloadedSourceFile(
     fileId: sourceFile.id,
     name: sourceFile.name,
     loadedRevisionId: tag.revisionId,
-    loadedRevisionVersion: sourceFile.revisions[0]?.version ?? 1,
     sizeBytes: sourceFile.sizeBytes,
     loadedAt: tag.loadedAt,
   };
@@ -199,4 +224,78 @@ export function getDownloadedSourceFileStatus(
   return record.loadedRevisionId === file.currentRevisionId
     ? 'loaded-current'
     : 'update-available';
+}
+
+// ---------------------------------------------------------------------------
+// watchRevisions cursor — persisted per provider + project so change
+// detection resumes from the provider's delta cursor instead of re-sweeping.
+// ---------------------------------------------------------------------------
+
+export function loadRevisionWatchCursor(providerId: string, projectId: string): string | undefined {
+  try {
+    return localStorage.getItem(`${WATCH_CURSOR_KEY_PREFIX}${providerId}:${projectId}`) ?? undefined;
+  } catch (err) {
+    console.warn('[sources] Failed to read revision-watch cursor', err);
+    return undefined;
+  }
+}
+
+export function saveRevisionWatchCursor(
+  providerId: string,
+  projectId: string,
+  cursor: string | undefined,
+): void {
+  const key = `${WATCH_CURSOR_KEY_PREFIX}${providerId}:${projectId}`;
+  if (cursor === undefined) {
+    try {
+      localStorage.removeItem(key);
+    } catch (err) {
+      console.warn('[sources] Failed to clear revision-watch cursor', err);
+    }
+    return;
+  }
+  tryWrite(key, cursor, 'revision-watch cursor');
+}
+
+// ---------------------------------------------------------------------------
+// Forget-everything sweep
+// ---------------------------------------------------------------------------
+
+/**
+ * Removes every piece of persistent state the sources feature owns for one
+ * provider: saved preferences (API keys), catalog caches, downloaded-file
+ * records, revision-watch cursors, and the provider's own `ctx.storage`
+ * namespace. This is what "Forget saved values" must mean on a shared
+ * machine — not just the prefs key.
+ */
+export function clearAllSourceData(providerId: string): void {
+  clearSourcePrefs(providerId);
+
+  try {
+    const doomed: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key) continue;
+      if (
+        key.startsWith(`${CATALOG_KEY_PREFIX}${providerId}:`) ||
+        key.startsWith(`${WATCH_CURSOR_KEY_PREFIX}${providerId}:`) ||
+        key.startsWith(`${PROVIDER_STORAGE_KEY_PREFIX}${providerId}:`)
+      ) {
+        doomed.push(key);
+      }
+    }
+    for (const key of doomed) localStorage.removeItem(key);
+  } catch (err) {
+    console.warn(`[sources] Failed to sweep stored data for "${providerId}"`, err);
+  }
+
+  const records = loadDownloadedSourceFileRecords();
+  let changed = false;
+  for (const [key, record] of records) {
+    if (record.providerId === providerId) {
+      records.delete(key);
+      changed = true;
+    }
+  }
+  if (changed) saveDownloadedSourceFileRecords(records);
 }

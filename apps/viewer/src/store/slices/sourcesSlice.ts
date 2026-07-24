@@ -5,36 +5,20 @@
 import type { StateCreator } from 'zustand';
 import type { SourceTag } from '@ifc-lite/plugin-api';
 
-export type SourceBrowserStep = 'providers' | 'projects' | 'containers' | 'files';
-
-export interface SourceBrowserState {
-  step: SourceBrowserStep;
-  providerId?: string;
-  projectId?: string;
-  containerId?: string;
-}
-
 export interface SourcesSlice {
   sourcesPanelVisible: boolean;
   setSourcesPanelVisible: (visible: boolean) => void;
   toggleSourcesPanel: () => void;
 
-  sourceBrowser: SourceBrowserState;
-  setSourceBrowser: (state: SourceBrowserState) => void;
-  resetSourceBrowser: () => void;
-
-  sourceSettingsOpen: string | null;
-  setSourceSettingsOpen: (providerId: string | null) => void;
-
-  sourceConnectionTesting: string | null;
-  setSourceConnectionTesting: (providerId: string | null) => void;
-
+  /** Provenance tags for models loaded from a cloud source, keyed by model id.
+   *  Written when a source download finishes loading; removed by
+   *  `modelSlice.removeModel` (cross-slice) so tags can never outlive their
+   *  model, and cleared wholesale by `clearAllModels`. */
   sourceTags: Map<string, SourceTag>;
   setSourceTag: (modelId: string, tag: SourceTag) => void;
   removeSourceTag: (modelId: string) => void;
+  clearSourceTags: () => void;
 }
-
-const INITIAL_BROWSER: SourceBrowserState = { step: 'providers' };
 
 export const createSourcesSlice: StateCreator<
   SourcesSlice,
@@ -47,17 +31,6 @@ export const createSourcesSlice: StateCreator<
   toggleSourcesPanel: () =>
     set((state) => ({ sourcesPanelVisible: !state.sourcesPanelVisible })),
 
-  sourceBrowser: INITIAL_BROWSER,
-  setSourceBrowser: (sourceBrowser) => set({ sourceBrowser }),
-  resetSourceBrowser: () => set({ sourceBrowser: INITIAL_BROWSER }),
-
-  sourceSettingsOpen: null,
-  setSourceSettingsOpen: (sourceSettingsOpen) => set({ sourceSettingsOpen }),
-
-  sourceConnectionTesting: null,
-  setSourceConnectionTesting: (sourceConnectionTesting) =>
-    set({ sourceConnectionTesting }),
-
   sourceTags: new Map(),
   setSourceTag: (modelId, tag) =>
     set((state) => {
@@ -67,8 +40,11 @@ export const createSourcesSlice: StateCreator<
     }),
   removeSourceTag: (modelId) =>
     set((state) => {
+      if (!state.sourceTags.has(modelId)) return {};
       const next = new Map(state.sourceTags);
       next.delete(modelId);
       return { sourceTags: next };
     }),
+  clearSourceTags: () =>
+    set((state) => (state.sourceTags.size === 0 ? {} : { sourceTags: new Map() })),
 });

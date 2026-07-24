@@ -31,7 +31,8 @@
       "@ifc-lite/sandbox": ["../../packages/sandbox/src"],
       "@ifc-lite/sandbox/schema": ["../../packages/sandbox/src/bridge-schema"],
       "@ifc-lite/plugin-api": ["../../packages/plugin-api/src"],
-      "@ifc-lite/source-dalux": ["../../packages/source-dalux/src"]
+      "@ifc-lite/source-dalux": ["../../packages/source-dalux/src"],
+      "@ifc-lite/source-msgraph": ["../../packages/source-msgraph/src"]
     }
   },
   "include": ["src/**/*", "../../packages/renderer/src/webgpu-types.d.ts"],

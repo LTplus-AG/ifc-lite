@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import type { PluginManifest, PluginPreference, ConnectionTestResult } from '@ifc-lite/plugin-api';
 import {
   Dialog,
@@ -39,12 +39,19 @@ export function SourceSettingsDialog({
   const [testResult, setTestResult] = useState<ConnectionTestResult | null>(null);
   const [testing, setTesting] = useState(false);
 
+  // Re-seed the form only when the dialog transitions closed -> open. Keying
+  // the effect on `initialValues` identity wiped in-progress typing whenever
+  // the parent re-rendered with a freshly built object.
+  const initialValuesRef = useRef(initialValues);
+  initialValuesRef.current = initialValues;
+  const wasOpenRef = useRef(false);
   useEffect(() => {
-    if (open) {
-      setValues(initialValues);
+    if (open && !wasOpenRef.current) {
+      setValues(initialValuesRef.current);
       setTestResult(null);
     }
-  }, [open, initialValues]);
+    wasOpenRef.current = open;
+  }, [open]);
 
   const updateValue = useCallback((name: string, value: string) => {
     setValues((prev) => ({ ...prev, [name]: value }));
@@ -79,9 +86,11 @@ export function SourceSettingsDialog({
     onOpenChange(false);
   }, [onForget, onOpenChange]);
 
+  // Default-aware: a required pref whose manifest declares a default is
+  // satisfied by that default (which is also what the field displays).
   const requiredMissing = manifest.preferences
     .filter((p) => p.required)
-    .some((p) => !values[p.name]?.trim());
+    .some((p) => !(values[p.name] ?? p.default)?.trim());
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -95,6 +104,8 @@ export function SourceSettingsDialog({
             <PreferenceField
               key={pref.name}
               pref={pref}
+              // Defaults are merged into the initial values by the parent, so
+              // what is displayed is always what will be saved and validated.
               value={values[pref.name] ?? pref.default ?? ''}
               onChange={(v) => updateValue(pref.name, v)}
             />

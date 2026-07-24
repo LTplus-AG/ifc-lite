@@ -15,7 +15,7 @@
     },
     {
       "source": "/api/dalux/:path*",
-      "destination": "https://node1.field.dalux.com/service/api/:path*"
+      "destination": "/api/dalux?path=:path*"
     },
     {
       "source": "/mcp",
@@ -50,6 +50,19 @@
         {
           "key": "Content-Type",
           "value": "application/wasm"
+        }
+      ]
+    },
+    {
+      "source": "/msal-redirect.html",
+      "headers": [
+        {
+          "key": "Cross-Origin-Opener-Policy",
+          "value": "unsafe-none"
+        },
+        {
+          "key": "Cross-Origin-Embedder-Policy",
+          "value": "unsafe-none"
         }
       ]
     },

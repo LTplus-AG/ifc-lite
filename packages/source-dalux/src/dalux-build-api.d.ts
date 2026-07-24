@@ -6,21 +6,23 @@
  * Ambient types for dalux-build-api@2.0.0 (a plain-JS package, no shipped
  * .d.ts). Only the subpaths this provider actually imports are declared.
  *
- * `FilesApi.js`, `FoldersApi.js`'s `getAllFolders`, and `configuration.js`
- * are intentionally NOT used here:
- * - `FilesApi.js` and `configuration.js` `require('fs')`/`require('path')`/
- *   `require('readline')`/`dotenv` at module scope, which breaks browser
- *   bundling.
- * - `FoldersApi.getAllFolders` (and the generic `utils/pagination.js`
- *   helper it's built on) reads pages as `response.items` only — it never
- *   applies the bare-array normalization that `listResponseSchema` (used by
- *   the single-page `listFolders`/`listFiles`/etc.) does, so an endpoint
- *   that responds with a bare array instead of `{ items, metadata, links }`
- *   silently paginates to zero results.
+ * None of the library's `*Api` classes are used here — `ProjectsApi` and
+ * `FileAreasApi`'s single-GET methods never follow `nextPage`, silently
+ * truncating any tenant with more than one page of projects or file areas.
+ * `FilesApi.js` and `configuration.js` additionally `require('fs')`/
+ * `require('path')`/`require('readline')`/`dotenv` at module scope, which
+ * breaks browser bundling. `FoldersApi.getAllFolders` (and the generic
+ * `utils/pagination.js` helper it's built on) reads pages as
+ * `response.items` only — it never applies the bare-array normalization
+ * that the single-page schemas do, so an endpoint that responds with a bare
+ * array instead of `{ items, metadata, links }` would silently paginate to
+ * zero results.
  *
- * Both files and folders are instead fetched with this package's own
- * shape-tolerant pager (see `provider.ts`), validated with the library's
- * zod models directly.
+ * Every listing (projects, file areas, folders, files) is instead fetched
+ * with this package's own shape-tolerant, truncation-detecting pager (see
+ * `http-client.ts`) and validated with the library's zod schemas directly,
+ * dropping individually invalid records rather than failing the whole page
+ * (see `mapping.ts#convertListLenient`).
  *
  * This has to live in its own `.d.ts` file rather than inline in
  * `provider.ts`: once a file has top-level `import`/`export` it's a module,
@@ -36,6 +38,9 @@ declare module 'dalux-build-api/src/models/projects/index.js' {
     readonly projectId: string;
     readonly projectName: string;
   }
+
+  /** Zod schema; `.parse` is called directly by `convertListLenient`. */
+  export const ProjectSchema: { parse(value: unknown): DaluxProject };
 }
 
 declare module 'dalux-build-api/src/models/fileAreas/index.js' {
@@ -44,6 +49,8 @@ declare module 'dalux-build-api/src/models/fileAreas/index.js' {
     readonly fileAreaName: string;
     readonly fileAreaType: string;
   }
+
+  export const FileAreaSchema: { parse(value: unknown): DaluxFileArea };
 }
 
 declare module 'dalux-build-api/src/models/folders/index.js' {
@@ -53,8 +60,7 @@ declare module 'dalux-build-api/src/models/folders/index.js' {
     readonly parentFolderId?: string | null;
   }
 
-  /** Opaque zod schema — passed through to `convertToModelList`, never inspected directly. */
-  export const FolderSchema: unknown;
+  export const FolderSchema: { parse(value: unknown): DaluxFolder };
 }
 
 declare module 'dalux-build-api/src/models/files/index.js' {
@@ -80,30 +86,14 @@ declare module 'dalux-build-api/src/models/files/index.js' {
     readonly data: DaluxFile;
   }
 
-  /** Opaque zod schemas — passed through to `convertToModel(List)`, never inspected directly. */
-  export const FileSchema: unknown;
+  export const FileSchema: { parse(value: unknown): DaluxFile };
+  /** Opaque single-item envelope schema — passed through to `convertToModel`
+   * for the one-off metadata lookup in `download()`, never inspected
+   * directly (unlike the list schemas, a single invalid record there should
+   * fail loudly rather than being dropped). */
   export const FileResponseSchema: unknown;
 }
 
 declare module 'dalux-build-api/src/models/convert.js' {
   export function convertToModel<T>(response: unknown, schema: unknown, schemaName?: string): T | null;
-  export function convertToModelList<T>(items: readonly unknown[], itemSchema: unknown, schemaName?: string): T[];
-}
-
-declare module 'dalux-build-api/src/api/ProjectsApi.js' {
-  import type { DaluxProject } from 'dalux-build-api/src/models/projects/index.js';
-
-  export default class ProjectsApi {
-    constructor(apiClient: { get(path: string, params?: Record<string, unknown>): Promise<unknown> });
-    listProjects(params?: Record<string, unknown>): Promise<{ items: readonly DaluxProject[] }>;
-  }
-}
-
-declare module 'dalux-build-api/src/api/FileAreasApi.js' {
-  import type { DaluxFileArea } from 'dalux-build-api/src/models/fileAreas/index.js';
-
-  export default class FileAreasApi {
-    constructor(apiClient: { get(path: string, params?: Record<string, unknown>): Promise<unknown> });
-    getFileAreas(projectId: string, params?: Record<string, unknown>): Promise<{ items: readonly DaluxFileArea[] }>;
-  }
 }

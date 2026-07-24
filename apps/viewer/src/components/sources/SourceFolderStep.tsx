@@ -7,9 +7,11 @@ import type { SourceContainer, SourceFile, SourceProject } from '@ifc-lite/plugi
 import type { DownloadedSourceFileRecord } from '@/lib/sources/persistence';
 import { getDownloadedSourceFileRecord, getDownloadedSourceFileStatus } from '@/lib/sources/persistence';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { SourceFolderTree } from './SourceFolderTree';
 import { SourceFileRow } from './SourceFileRow';
-import { Download, FolderOpen, Loader2 } from 'lucide-react';
+import { LoadMoreRow } from './SourceEntityList';
+import { Download, FolderOpen, Loader2, Search, X } from 'lucide-react';
 
 interface SourceFolderStepProps {
   providerName: string;
@@ -19,6 +21,10 @@ interface SourceFolderStepProps {
   onSelectContainer: (container: SourceContainer) => void;
   sortedFolders: SourceContainer[];
   allFiles: readonly SourceFile[];
+  /** Only grey out folders that contain no files when the catalog is complete
+   *  enough to actually know that (flat-subtree + recursive files, no pages
+   *  outstanding). Partial or per-folder catalogs must not guess. */
+  gateEmptyFolders: boolean;
   loadingFolders: boolean;
   loadingFiles: boolean;
   sortedFiles: readonly SourceFile[];
@@ -30,6 +36,18 @@ interface SourceFolderStepProps {
   onSyncLoadedFile: (file: SourceFile) => void;
   busy: boolean;
   onLoad: () => void;
+  foldersHaveMore: boolean;
+  onLoadMoreFolders: () => void;
+  filesHaveMore: boolean;
+  onLoadMoreFiles: () => void;
+  loadingMore: boolean;
+  /** Server-side file search — rendered only when the provider declares `capabilities.search`. */
+  searchEnabled: boolean;
+  searchQuery: string;
+  searchActive: boolean;
+  onSearchQueryChange: (query: string) => void;
+  onSearchSubmit: () => void;
+  onSearchClear: () => void;
 }
 
 export function SourceFolderStep({
@@ -40,6 +58,7 @@ export function SourceFolderStep({
   onSelectContainer,
   sortedFolders,
   allFiles,
+  gateEmptyFolders,
   loadingFolders,
   loadingFiles,
   sortedFiles,
@@ -51,6 +70,17 @@ export function SourceFolderStep({
   onSyncLoadedFile,
   busy,
   onLoad,
+  foldersHaveMore,
+  onLoadMoreFolders,
+  filesHaveMore,
+  onLoadMoreFiles,
+  loadingMore,
+  searchEnabled,
+  searchQuery,
+  searchActive,
+  onSearchQueryChange,
+  onSearchSubmit,
+  onSearchClear,
 }: SourceFolderStepProps) {
   const containerById = useMemo(() => {
     const entries = sortedFolders.map((folder) => [folder.id, folder] as const);
@@ -76,6 +106,8 @@ export function SourceFolderStep({
   }, [containerById, selectedContainer, selectedFileArea]);
 
   const activeFolderIds = useMemo(() => {
+    if (!gateEmptyFolders) return undefined;
+
     const active = new Set<string>();
     active.add(selectedFileArea.id);
 
@@ -92,7 +124,7 @@ export function SourceFolderStep({
     }
 
     return active;
-  }, [allFiles, containerById, selectedFileArea]);
+  }, [allFiles, containerById, gateEmptyFolders, selectedFileArea]);
 
   const childFolders = useMemo(() => {
     if (!selectedContainer) return [];
@@ -112,99 +144,154 @@ export function SourceFolderStep({
             }`}
             onClick={() => onSelectContainer(selectedFileArea)}
           >
-            <FolderOpen className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <FolderOpen className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
             <span className="truncate">{selectedFileArea.name}</span>
           </button>
 
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
             {loadingFolders ? (
               <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-hidden />
               </div>
             ) : (
-              <SourceFolderTree
-                containers={sortedFolders}
-                rootId={selectedFileArea.id}
-                selectedId={selectedContainer?.id}
-                activeIds={activeFolderIds}
-                onSelect={onSelectContainer}
-              />
+              <>
+                <SourceFolderTree
+                  containers={sortedFolders}
+                  rootId={selectedFileArea.id}
+                  selectedId={selectedContainer?.id}
+                  activeIds={activeFolderIds}
+                  onSelect={onSelectContainer}
+                />
+                <LoadMoreRow
+                  hasMore={foldersHaveMore}
+                  loading={loadingMore}
+                  onLoadMore={onLoadMoreFolders}
+                  label="Load more folders"
+                />
+              </>
             )}
           </div>
         </div>
 
         <div className="min-h-0 flex flex-col overflow-hidden">
-          <div className="border-b px-3 py-2 text-xs text-muted-foreground">
-            <div className="flex flex-wrap items-center gap-x-1 gap-y-1">
-              {trail.map((container, index) => (
-                <div key={container.id} className="flex items-center gap-x-1">
+          {searchEnabled && (
+            <div className="border-b px-3 py-2">
+              <div className="relative">
+                <Search
+                  className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+                  aria-hidden
+                />
+                <Input
+                  className="h-8 pl-7 pr-7 text-sm"
+                  placeholder="Search files in project…"
+                  aria-label="Search files in project"
+                  value={searchQuery}
+                  onChange={(e) => onSearchQueryChange(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') onSearchSubmit();
+                    if (e.key === 'Escape') onSearchClear();
+                  }}
+                />
+                {searchActive && (
                   <button
                     type="button"
-                    className="hover:text-foreground hover:underline"
-                    onClick={() => onSelectContainer(container)}
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:text-foreground"
+                    aria-label="Clear search"
+                    onClick={onSearchClear}
                   >
-                    {container.name}
+                    <X className="h-3.5 w-3.5" aria-hidden />
                   </button>
-                  {index < trail.length - 1 && <span>/</span>}
-                </div>
-              ))}
+                )}
+              </div>
+              {searchActive && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Showing search results across the whole project.
+                </p>
+              )}
             </div>
-          </div>
-          {childFolders.length > 0 && (
+          )}
+          {!searchActive && (
+            <div className="border-b px-3 py-2 text-xs text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-x-1 gap-y-1">
+                {trail.map((container, index) => (
+                  <div key={container.id} className="flex items-center gap-x-1">
+                    <button
+                      type="button"
+                      className="hover:text-foreground hover:underline"
+                      onClick={() => onSelectContainer(container)}
+                    >
+                      {container.name}
+                    </button>
+                    {index < trail.length - 1 && <span>/</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {!searchActive && childFolders.length > 0 && (
             <div className="border-b px-3 py-2">
               <div className="mb-1 text-[11px] uppercase tracking-wide text-muted-foreground">
                 Subfolders
               </div>
               <div className="flex flex-wrap gap-1">
-                {childFolders.map((folder) => (
-                  <button
-                    key={folder.id}
-                    type="button"
-                    className={`rounded border px-2 py-1 text-xs hover:bg-accent ${
-                      activeFolderIds.has(folder.id)
-                        ? ''
-                        : 'cursor-default text-muted-foreground/60 hover:bg-transparent'
-                    }`}
-                    disabled={!activeFolderIds.has(folder.id)}
-                    onClick={() => activeFolderIds.has(folder.id) && onSelectContainer(folder)}
-                  >
-                    {folder.name}
-                  </button>
-                ))}
+                {childFolders.map((folder) => {
+                  const inactive = activeFolderIds !== undefined && !activeFolderIds.has(folder.id);
+                  return (
+                    <button
+                      key={folder.id}
+                      type="button"
+                      className={`rounded border px-2 py-1 text-xs hover:bg-accent ${
+                        inactive ? 'cursor-default text-muted-foreground/60 hover:bg-transparent' : ''
+                      }`}
+                      disabled={inactive}
+                      onClick={() => !inactive && onSelectContainer(folder)}
+                    >
+                      {folder.name}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
             {loadingFiles ? (
               <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-hidden />
               </div>
             ) : (
-              <ul className="divide-y">
-                {sortedFiles.map((f) => {
-                  const downloadedRecord = selectedProject
-                    ? getDownloadedSourceFileRecord(downloadedRecords, providerName, selectedProject.id, f.id)
-                    : undefined;
+              <>
+                <ul className="divide-y">
+                  {sortedFiles.map((f) => {
+                    const downloadedRecord = selectedProject
+                      ? getDownloadedSourceFileRecord(downloadedRecords, providerName, selectedProject.id, f.id)
+                      : undefined;
 
-                  return (
-                    <SourceFileRow
-                      key={f.id}
-                      file={f}
-                      selected={selectedFiles.has(f.id)}
-                      onToggle={() => onToggleFile(f)}
-                      loadedModelNames={loadedModelNamesByFileId.get(f.id) ?? []}
-                      syncingFile={syncingFileIds.has(f.id)}
-                      onSyncLoadedFile={() => onSyncLoadedFile(f)}
-                      downloadedStatus={getDownloadedSourceFileStatus(f, downloadedRecord)}
-                    />
-                  );
-                })}
-                {sortedFiles.length === 0 && (
-                  <li className="px-3 py-4 text-center text-sm text-muted-foreground">
-                    No IFC files found in this folder
-                  </li>
-                )}
-              </ul>
+                    return (
+                      <SourceFileRow
+                        key={f.id}
+                        file={f}
+                        selected={selectedFiles.has(f.id)}
+                        onToggle={() => onToggleFile(f)}
+                        loadedModelNames={loadedModelNamesByFileId.get(f.id) ?? []}
+                        syncingFile={syncingFileIds.has(f.id)}
+                        onSyncLoadedFile={() => onSyncLoadedFile(f)}
+                        downloadedStatus={getDownloadedSourceFileStatus(f, downloadedRecord)}
+                      />
+                    );
+                  })}
+                  {sortedFiles.length === 0 && (
+                    <li className="px-3 py-4 text-center text-sm text-muted-foreground">
+                      {searchActive ? 'No files match this search' : 'No IFC files found in this folder'}
+                    </li>
+                  )}
+                </ul>
+                <LoadMoreRow
+                  hasMore={filesHaveMore}
+                  loading={loadingMore}
+                  onLoadMore={onLoadMoreFiles}
+                  label="Load more files"
+                />
+              </>
             )}
           </div>
         </div>
@@ -214,9 +301,9 @@ export function SourceFolderStep({
         <div className="shrink-0 border-t bg-background px-3 py-2">
           <Button className="w-full" onClick={onLoad} disabled={busy}>
             {busy ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
             ) : (
-              <Download className="mr-2 h-4 w-4" />
+              <Download className="mr-2 h-4 w-4" aria-hidden />
             )}
             {busy
               ? 'Loading…'

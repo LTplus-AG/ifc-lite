@@ -6,17 +6,23 @@ import { beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert';
 import type { SourceFile, SourceTag } from '@ifc-lite/plugin-api';
 import {
+  clearAllSourceData,
   getDownloadedSourceFileRecord,
   getDownloadedSourceFileStatus,
   loadDownloadedSourceFileRecords,
+  loadRevisionWatchCursor,
   loadSourceCatalogCache,
   makeDownloadedSourceFileKey,
   recordDownloadedSourceFile,
+  saveRevisionWatchCursor,
   saveSourceCatalogCache,
 } from './persistence.js';
+import { saveSourcePrefs, loadSavedSourcePrefs } from './preferences.js';
 
 class MemoryStorage implements Storage {
   private readonly map = new Map<string, string>();
+  /** When true, every write throws like a QuotaExceededError would. */
+  failWrites = false;
 
   get length(): number {
     return this.map.size;
@@ -39,6 +45,9 @@ class MemoryStorage implements Storage {
   }
 
   setItem(key: string, value: string): void {
+    if (this.failWrites) {
+      throw new DOMException('Quota exceeded', 'QuotaExceededError');
+    }
     this.map.set(key, value);
   }
 }
@@ -50,9 +59,26 @@ Object.defineProperty(globalThis, 'localStorage', {
   value: localStorageMock,
 });
 
+const sourceFile: SourceFile = {
+  id: 'file-1',
+  name: 'Model.ifc',
+  containerId: 'folder-1',
+  currentRevisionId: 'rev-3',
+  sizeBytes: 512,
+};
+const tag: SourceTag = {
+  provider: 'dalux-build',
+  projectId: 'project-1',
+  containerId: 'folder-1',
+  fileId: 'file-1',
+  revisionId: 'rev-3',
+  loadedAt: 123,
+};
+
 describe('source persistence', () => {
   beforeEach(() => {
     localStorage.clear();
+    localStorageMock.failWrites = false;
   });
 
   it('round-trips a cached file-area catalog', () => {
@@ -61,13 +87,7 @@ describe('source persistence', () => {
       'project-1',
       'file-area-1',
       [{ id: 'folder-1', name: 'Folder A', parentId: 'file-area-1' }],
-      [{
-        id: 'file-1',
-        name: 'Model.ifc',
-        containerId: 'folder-1',
-        currentRevisionId: 'rev-2',
-        revisions: [{ id: 'rev-2', version: 2, createdAt: '2026-07-16T12:00:00Z' }],
-      }],
+      [sourceFile],
     );
 
     const loaded = loadSourceCatalogCache('dalux-build', 'project-1', 'file-area-1');
@@ -75,23 +95,6 @@ describe('source persistence', () => {
   });
 
   it('stores downloaded source-file metadata keyed by provider, project, and file', () => {
-    const sourceFile: SourceFile = {
-      id: 'file-1',
-      name: 'Model.ifc',
-      containerId: 'folder-1',
-      currentRevisionId: 'rev-3',
-      sizeBytes: 512,
-      revisions: [{ id: 'rev-3', version: 3, createdAt: '2026-07-16T12:00:00Z' }],
-    };
-    const tag: SourceTag = {
-      provider: 'dalux-build',
-      projectId: 'project-1',
-      containerId: 'folder-1',
-      fileId: 'file-1',
-      revisionId: 'rev-3',
-      loadedAt: 123,
-    };
-
     const record = recordDownloadedSourceFile(tag, sourceFile);
     const records = loadDownloadedSourceFileRecords();
 
@@ -105,41 +108,87 @@ describe('source persistence', () => {
     );
   });
 
-  it('flags downloaded files orange when Dalux exposes a newer revision', () => {
-    const sourceFile: SourceFile = {
-      id: 'file-1',
-      name: 'Model.ifc',
-      containerId: 'folder-1',
-      currentRevisionId: 'rev-4',
-      revisions: [{ id: 'rev-4', version: 4, createdAt: '2026-07-16T12:00:00Z' }],
-    };
+  it('flags downloaded files orange when the source exposes a newer revision', () => {
+    const newer: SourceFile = { ...sourceFile, currentRevisionId: 'rev-4' };
 
-    assert.strictEqual(getDownloadedSourceFileStatus(sourceFile), 'never-loaded');
+    assert.strictEqual(getDownloadedSourceFileStatus(newer), 'never-loaded');
     assert.strictEqual(
-      getDownloadedSourceFileStatus(sourceFile, {
+      getDownloadedSourceFileStatus(newer, {
         providerId: 'dalux-build',
         projectId: 'project-1',
         containerId: 'folder-1',
         fileId: 'file-1',
         name: 'Model.ifc',
         loadedRevisionId: 'rev-4',
-        loadedRevisionVersion: 4,
         loadedAt: 123,
       }),
       'loaded-current',
     );
     assert.strictEqual(
-      getDownloadedSourceFileStatus(sourceFile, {
+      getDownloadedSourceFileStatus(newer, {
         providerId: 'dalux-build',
         projectId: 'project-1',
         containerId: 'folder-1',
         fileId: 'file-1',
         name: 'Model.ifc',
         loadedRevisionId: 'rev-3',
-        loadedRevisionVersion: 3,
         loadedAt: 123,
       }),
       'update-available',
+    );
+  });
+
+  it('degrades to best-effort when localStorage writes fail (quota)', () => {
+    localStorageMock.failWrites = true;
+
+    // Neither call may throw — persistence is an optimisation, not load-bearing.
+    const record = recordDownloadedSourceFile(tag, sourceFile);
+    assert.strictEqual(record.fileId, 'file-1');
+
+    const entry = saveSourceCatalogCache('dalux-build', 'project-1', 'file-area-1', [], []);
+    assert.strictEqual(entry.providerId, 'dalux-build');
+
+    saveRevisionWatchCursor('dalux-build', 'project-1', 'cursor-1');
+    assert.strictEqual(loadRevisionWatchCursor('dalux-build', 'project-1'), undefined);
+  });
+
+  it('round-trips and clears the revision-watch cursor', () => {
+    saveRevisionWatchCursor('dalux-build', 'project-1', 'cursor-1');
+    assert.strictEqual(loadRevisionWatchCursor('dalux-build', 'project-1'), 'cursor-1');
+
+    saveRevisionWatchCursor('dalux-build', 'project-1', undefined);
+    assert.strictEqual(loadRevisionWatchCursor('dalux-build', 'project-1'), undefined);
+  });
+
+  it('clearAllSourceData sweeps every prefix the feature owns for one provider', () => {
+    saveSourcePrefs('dalux-build', { apiKey: 'secret' });
+    saveSourceCatalogCache('dalux-build', 'project-1', 'file-area-1', [], [sourceFile]);
+    recordDownloadedSourceFile(tag, sourceFile);
+    saveRevisionWatchCursor('dalux-build', 'project-1', 'cursor-1');
+    // Provider ctx.storage namespace (mirrors host-storage's prefix).
+    localStorage.setItem('ifc-lite-source:dalux-build:rev:p:a:f', 'rev-3');
+    // Another provider's data must survive the sweep.
+    saveSourcePrefs('other-provider', { apiKey: 'keep' });
+    recordDownloadedSourceFile(
+      { ...tag, provider: 'other-provider' },
+      sourceFile,
+    );
+
+    clearAllSourceData('dalux-build');
+
+    assert.deepStrictEqual(loadSavedSourcePrefs('dalux-build'), {});
+    assert.strictEqual(loadSourceCatalogCache('dalux-build', 'project-1', 'file-area-1'), null);
+    assert.strictEqual(loadRevisionWatchCursor('dalux-build', 'project-1'), undefined);
+    assert.strictEqual(localStorage.getItem('ifc-lite-source:dalux-build:rev:p:a:f'), null);
+    const records = loadDownloadedSourceFileRecords();
+    assert.strictEqual(
+      getDownloadedSourceFileRecord(records, 'dalux-build', 'project-1', 'file-1'),
+      undefined,
+    );
+    assert.deepStrictEqual(loadSavedSourcePrefs('other-provider'), { apiKey: 'keep' });
+    assert.notStrictEqual(
+      getDownloadedSourceFileRecord(records, 'other-provider', 'project-1', 'file-1'),
+      undefined,
     );
   });
 });

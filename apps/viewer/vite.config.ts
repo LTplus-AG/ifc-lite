@@ -279,6 +279,7 @@ export default defineConfig({
       '@ifc-lite/ids': path.resolve(__dirname, '../../packages/ids/src'),
       '@ifc-lite/lists': path.resolve(__dirname, '../../packages/lists/src'),
       '@ifc-lite/source-dalux': path.resolve(__dirname, '../../packages/source-dalux/src'),
+      '@ifc-lite/source-msgraph': path.resolve(__dirname, '../../packages/source-msgraph/src'),
     },
   },
   server: {
@@ -317,6 +318,17 @@ export default defineConfig({
     target: 'esnext',
     chunkSizeWarningLimit: 6000,
     rollupOptions: {
+      // Two HTML entries: the app itself, plus the MSAL v5 redirect-bridge
+      // page `@ifc-lite/source-msgraph`'s Microsoft Graph sign-in redirects
+      // to (see msal-redirect.html for why this app's COOP header forces
+      // MSAL onto the bridge-page flow). Vite defaults `input` to
+      // `index.html` alone when this key is absent, so `main` must be listed
+      // explicitly here or adding the second entry would silently drop the
+      // first.
+      input: {
+        main: path.resolve(__dirname, 'index.html'),
+        msalRedirect: path.resolve(__dirname, 'msal-redirect.html'),
+      },
       // @ifc-lite/geometry's NativeBridge does a dynamic `import('@tauri-apps/api/event')`
       // (under isTauri(), never reached on web). Rollup still resolves it
       // statically, so externalize it to prevent a build failure. ifc-lite no

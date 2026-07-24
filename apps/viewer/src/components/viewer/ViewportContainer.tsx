@@ -44,7 +44,9 @@ import {
 import {
   SOURCE_DOWNLOAD_EVENT,
   type SourceDownloadEvent,
+  type SourceDownloadItem,
 } from '@/services/sources/source-host';
+import { useOptionalSourceHost } from '@/services/sources/SourceHostProvider';
 import { recordDownloadedSourceFile } from '@/lib/sources/persistence';
 import { toast } from '@/components/ui/toast';
 import { TourInvite } from '@/components/tours/TourInvite';
@@ -91,6 +93,9 @@ export function ViewportContainer() {
   useLevelDisplayEffect();
 
   const { loadFile, loading, clearAllModels, loadFilesSequentially, addModel } = useIfc();
+  // Resolves a source provider's display title for toasts; null outside the
+  // SourceHostProvider tree (tests), in which case the machine name is shown.
+  const sourceHost = useOptionalSourceHost();
   const setActiveTool = useViewerStore((s) => s.setActiveTool);
   const releaseGeometryMemory = useViewerStore((s) => s.releaseGeometryMemory);
   const selectedStoreys = useViewerStore((s) => s.selectedStoreys);
@@ -509,45 +514,57 @@ export function ViewportContainer() {
 
   // Cloud source providers (Dalux Build, etc.) download bytes outside the
   // viewer and hand them off via this event rather than calling addModel()
-  // directly — keeps the sources UI decoupled from viewer internals. Every
-  // file in the batch is awaited in sequence (the WASM parser isn't
-  // thread-safe), then tagged with its provenance for later re-sync/refresh.
+  // directly — keeps the sources UI decoupled from viewer internals.
+  //
+  // Batches are SERIALIZED through a promise chain: a second batch arriving
+  // while the first is still loading must not run `resetViewerState()` /
+  // `clearAllModels()` mid-finalize, and two `addModel` loops must never
+  // interleave (the WASM parser is not thread-safe). "Are models loaded?" is
+  // read from the store at run time, not from a closure captured at dispatch
+  // time. Each item's buffer reference is dropped as soon as its model has
+  // loaded so a large batch is not held in memory wholesale.
+  const sourceLoadQueueRef = useRef<Promise<void>>(Promise.resolve());
   useEffect(() => {
     const handleSourceDownload = (event: Event) => {
-      const { items } = (event as SourceDownloadEvent).detail;
-      if (items.length === 0) return;
+      const detail = (event as SourceDownloadEvent).detail;
+      if (detail.items.length === 0) return;
+      // Take ownership of the items and drop the event's own reference so
+      // consumed buffers become collectable as the queue works through them.
+      const batch: Array<SourceDownloadItem | null> = [...detail.items];
+      detail.items.length = 0;
 
-      void (async () => {
-        if (!hasModelsLoaded) {
+      sourceLoadQueueRef.current = sourceLoadQueueRef.current.then(async () => {
+        const store = useViewerStore.getState();
+        const anyLoaded =
+          store.models.size > 0 || (store.geometryResult?.meshes?.length ?? 0) > 0;
+        if (!anyLoaded) {
           resetViewerState();
           clearAllModels();
         }
 
-        let loaded = 0;
-        for (const item of items) {
+        for (let i = 0; i < batch.length; i++) {
+          const item = batch[i];
+          if (!item) continue;
+          batch[i] = null; // release the buffer once this iteration owns it
           const file = new File([item.buffer], item.name);
           const modelId = await addModel(file, { name: item.name });
+          const providerTitle =
+            sourceHost?.get(item.tag.provider)?.manifest.title ?? item.tag.provider;
           if (modelId) {
             useViewerStore.getState().setSourceTag(modelId, item.tag);
             recordDownloadedSourceFile(item.tag, item.sourceFile);
-            loaded++;
+            toast.success(`Loaded ${item.name} from ${providerTitle}`);
           } else {
-            toast.error(`Failed to load ${item.name}`);
+            toast.error(`Failed to load ${item.name} from ${providerTitle}`);
           }
         }
-
-        if (loaded > 0) {
-          toast.success(
-            `Loaded ${loaded} file${loaded > 1 ? 's' : ''} from ${items[0].tag.provider}`,
-          );
-        }
-      })();
+      });
     };
 
     window.addEventListener(SOURCE_DOWNLOAD_EVENT, handleSourceDownload);
     return () =>
       window.removeEventListener(SOURCE_DOWNLOAD_EVENT, handleSourceDownload);
-  }, [addModel, hasModelsLoaded, resetViewerState, clearAllModels]);
+  }, [addModel, resetViewerState, clearAllModels, sourceHost]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -1276,7 +1293,10 @@ export function ViewportContainer() {
                 }`}
               >
                 <Cloud className="h-3 w-3 transition-transform group-enabled:group-hover:-translate-y-0.5" />
-                <span>Open from Dalux Build</span>
+                {/* Provider-neutral: this opens the Cloud Sources panel, which
+                    lists every registered provider. Naming one vendor on the
+                    front door stopped being accurate at the second provider. */}
+                <span>Open from cloud</span>
               </button>
               <a
                 href="/mcp"

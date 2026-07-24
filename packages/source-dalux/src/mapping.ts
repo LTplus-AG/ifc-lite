@@ -3,19 +3,57 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { DaluxFile } from 'dalux-build-api/src/models/files/index.js';
-import type { SourceFile, SourceRevision } from '@ifc-lite/plugin-api';
+import type { PluginContext, SourceFile } from '@ifc-lite/plugin-api';
+
+/**
+ * Sentinel used for `SourceFile.currentRevisionId` (and, symmetrically,
+ * `SourceFileRef.revisionId`) when Dalux hasn't given us a real revision id
+ * for a file. `fileRevisionId` is nullable in the schema; the previous
+ * mapping faked one with `file.fileId`, which then reached `download()` as
+ * if it were a genuine revision id and 404s against
+ * `/revisions/{fileId}/content` (a file id, not a revision id). Treating
+ * "no revision id" as this explicit, recognizable value instead lets
+ * `download()` detect it and fall back to the latest-content path.
+ */
+export const LATEST_REVISION = 'latest';
+
+/** Separator between a file area id and a folder id in a composite
+ * container id. Folder ids need this because `listFiles`/`download` only
+ * ever receive a `containerId` string — never the `SourceContainer` object
+ * `listContainers` returned it in — so the file area a folder belongs to
+ * must be recoverable from the id alone. This is what makes the v1
+ * `container-loc:`/`file-loc:` id-to-location cache in `ctx.storage`
+ * unnecessary: there is nothing left to look up. */
+const CONTAINER_SEP = '::';
+
+/** The container id for a file area itself (no folder component). */
+export function fileAreaContainerId(fileAreaId: string): string {
+  return fileAreaId;
+}
+
+/** The container id for a folder within a file area. */
+export function folderContainerId(fileAreaId: string, folderId: string): string {
+  return `${fileAreaId}${CONTAINER_SEP}${folderId}`;
+}
+
+export interface DecodedContainerId {
+  readonly fileAreaId: string;
+  readonly folderId?: string;
+}
+
+/** Inverse of {@link fileAreaContainerId}/{@link folderContainerId}. A
+ * container id with no separator is a bare file area id (folder omitted). */
+export function decodeContainerId(containerId: string): DecodedContainerId {
+  const sepIndex = containerId.indexOf(CONTAINER_SEP);
+  if (sepIndex === -1) return { fileAreaId: containerId };
+  return {
+    fileAreaId: containerId.slice(0, sepIndex),
+    folderId: containerId.slice(sepIndex + CONTAINER_SEP.length),
+  };
+}
 
 export function toSourceFile(fileAreaId: string, file: DaluxFile): SourceFile {
-  const currentRevisionId = file.fileRevisionId ?? file.fileId;
   const folderId = nonEmptyString(file.folderId);
-
-  const revision: SourceRevision = {
-    id: currentRevisionId,
-    version: file.version ? Number(file.version) || 1 : 1,
-    createdAt: file.lastModified ?? file.uploaded ?? new Date(0).toISOString(),
-    createdBy: orUndefined(file.lastModifiedByUserId ?? file.uploadedByUserId),
-    sizeBytes: orUndefined(file.fileSize),
-  };
 
   return {
     id: file.fileId,
@@ -23,15 +61,13 @@ export function toSourceFile(fileAreaId: string, file: DaluxFile): SourceFile {
     // A file's real container is whichever folder it's actually filed under
     // — not the container the caller happened to query — falling back to
     // the file area root only when it has no folder at all.
-    containerId: folderId ?? fileAreaId,
+    containerId: folderId ? folderContainerId(fileAreaId, folderId) : fileAreaContainerId(fileAreaId),
     mimeType: orUndefined(file.fileType),
     sizeBytes: orUndefined(file.fileSize),
-    currentRevisionId,
-    revisions: [revision],
-    meta: {
-      fileAreaId,
-      folderId,
-    },
+    currentRevisionId: file.fileRevisionId ?? LATEST_REVISION,
+    modifiedAt: orUndefined(file.lastModified ?? file.uploaded),
+    modifiedBy: orUndefined(file.lastModifiedByUserId ?? file.uploadedByUserId),
+    meta: { fileAreaId, folderId },
   };
 }
 
@@ -49,15 +85,45 @@ export function nonEmptyString(value: string | null | undefined): string | undef
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-export function matchGlob(pattern: string, name: string): boolean {
-  const re = new RegExp(
-    '^' +
-      pattern
-        .replace(/[.+^${}()|[\]\\]/g, '\\$&')
-        .replace(/\*+/g, '.*')
-        .replace(/\?/g, '.') +
-      '$',
-    'i',
-  );
-  return re.test(name);
+interface DaluxSchema<T> {
+  parse(value: unknown): T;
+}
+
+/** Unwraps a Dalux `{ data: {...} }` item envelope, mirroring the vendored
+ * library's own (unexported) `unwrapData` preprocessing. Bare objects with
+ * no `data` wrapper pass straight through. */
+function unwrapDaluxEnvelope(item: unknown): unknown {
+  if (item && typeof item === 'object' && !Array.isArray(item) && 'data' in item) {
+    return (item as { data: unknown }).data;
+  }
+  return item;
+}
+
+/**
+ * Validates a raw item list against a Dalux zod schema, dropping (with a
+ * logged warning) any record that fails validation instead of throwing.
+ *
+ * The vendored library's own `convertToModelList` throws on the first
+ * invalid record, which for a read-only file catalog means one malformed
+ * row — after every page has already been fetched, in some cases after a
+ * multi-page sweep — kills the entire listing. A single bad row shouldn't
+ * cost the user every other row that parsed fine.
+ */
+export function convertListLenient<T>(
+  ctx: PluginContext,
+  items: readonly unknown[],
+  schema: DaluxSchema<T>,
+  schemaName: string,
+): T[] {
+  const results: T[] = [];
+  for (const item of items) {
+    try {
+      results.push(schema.parse(unwrapDaluxEnvelope(item)));
+    } catch (err) {
+      ctx.log.warn(`Dalux: dropping invalid ${schemaName} record`, {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+  return results;
 }

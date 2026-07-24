@@ -41,10 +41,8 @@ export function HierarchyPanel() {
     ifcDataStore,
     geometryResult,
     models,
-    activeModelId,
     setActiveModel,
     setModelVisibility,
-    setModelCollapsed,
     removeModel,
     addModel,
   } = useIfc();
@@ -76,7 +74,6 @@ export function HierarchyPanel() {
   const clearAllFilters = useViewerStore((s) => s.clearAllFilters);
   const setHierarchyBasketSelection = useViewerStore((s) => s.setHierarchyBasketSelection);
   const sourceTags = useViewerStore((s) => s.sourceTags);
-  const setSourceTag = useViewerStore((s) => s.setSourceTag);
 
   // Group-isolation needs the camera + the hidden-by-default class toggles
   // (spaces / spatial zones), mirroring the properties panel's Groups & Zones
@@ -303,18 +300,13 @@ export function HierarchyPanel() {
     try {
       const { latestFile } = await syncSourceModel({
         modelId,
-        model,
         tag,
-        models,
-        activeModelId,
         sourceHost,
         addModel,
         removeModel,
-        setModelCollapsed,
-        setActiveModel,
-        setSourceTag,
       });
-      toast.success(`Synced ${latestFile.name} from ${tag.provider}`);
+      const providerTitle = sourceHost.get(tag.provider)?.manifest.title ?? tag.provider;
+      toast.success(`Synced ${latestFile.name} from ${providerTitle}`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to sync source model');
     } finally {
@@ -325,13 +317,9 @@ export function HierarchyPanel() {
       });
     }
   }, [
-    activeModelId,
     addModel,
     models,
     removeModel,
-    setActiveModel,
-    setModelCollapsed,
-    setSourceTag,
     sourceHost,
     sourceTags,
   ]);

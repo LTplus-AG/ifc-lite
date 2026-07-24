@@ -2,48 +2,103 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type {
-  FileSourceProvider,
-  PluginContext,
-  PluginManifest,
-  KeyValueStore,
-  Logger,
-  SourceFile,
-  SourceTag,
+import {
+  PLUGIN_API_VERSION,
+  satisfiesCaretRange,
+  type FileSourceProvider,
+  type PluginContext,
+  type PluginManifest,
+  type PublicFetchInit,
+  type SourceFile,
+  type SourceTag,
 } from '@ifc-lite/plugin-api';
+import {
+  applyRelay,
+  fetchWithBoundedRetry,
+  isAllowedHost,
+  isHttpsUrl,
+  validateRelayDeclaration,
+} from './host-fetch';
+import { createNamespacedStorage, createPrefixedLogger, sourcesDebugEnabled } from './host-storage';
 
-// ---------------------------------------------------------------------------
+// ============================================================================
 // SourceHost — manages registered file-source providers and manufactures
 // sandboxed PluginContext instances for each one.
-// ---------------------------------------------------------------------------
+//
+// The host and every provider must agree on exactly one version of the
+// contract. That constant, and the range check that compares against it,
+// live in `@ifc-lite/plugin-api` — not here — so the host can never drift
+// from what providers are written against. (The previous incarnation of this
+// file kept its own `HOST_API_VERSION` constant and its own copy of the caret
+// check; the two were free to disagree, which is exactly the bug this
+// rewrite closes.)
+// ============================================================================
 
-/** Version of the `PluginContext`/`FileSourceProvider` contract this host implements. */
-export const HOST_API_VERSION = '2.0.0';
+/** Convenience re-export — see `@ifc-lite/plugin-api`'s `version.ts` for what this means and how it's compared. */
+export { PLUGIN_API_VERSION };
 
 export interface SourceHostOptions {
   onProviderError?: (provider: string, error: unknown) => void;
 }
 
+/** Why a provider failed to register — surfaced by `getRegistrationFailures()` so a panel can render "provider X failed to load: reason" instead of the app going blank. */
+export interface ProviderRegistrationFailure {
+  readonly provider: string;
+  readonly reason: string;
+}
+
 export class SourceHost {
   private readonly providers = new Map<string, FileSourceProvider>();
+  private readonly failures: ProviderRegistrationFailure[] = [];
   private readonly options: SourceHostOptions;
 
   constructor(options: SourceHostOptions = {}) {
     this.options = options;
   }
 
-  register(provider: FileSourceProvider): void {
+  /**
+   * Registers a provider. Never throws: a bad manifest (version mismatch, an
+   * undeclared relay, a duplicate name) is recorded as a registration
+   * failure and logged, not raised — a provider bug or an operator forgetting
+   * to update a package must not be able to take down the whole app. Callers
+   * that want to know whether registration actually succeeded can check the
+   * boolean return value or `getRegistrationFailures()`.
+   */
+  register(provider: FileSourceProvider): boolean {
     const name = provider.manifest.name;
-    if (this.providers.has(name)) {
-      throw new Error(`Source provider "${name}" is already registered`);
+    const reason = this.validate(provider);
+    if (reason) {
+      this.failures.push({ provider: name, reason });
+      console.error(`[source-host] Failed to register provider "${name}": ${reason}`);
+      try {
+        this.options.onProviderError?.(name, new Error(reason));
+      } catch (callbackError) {
+        console.error(`[source-host] onProviderError callback threw for "${name}"`, callbackError);
+      }
+      return false;
     }
-    if (!satisfiesCaretRange(HOST_API_VERSION, provider.manifest.api)) {
-      throw new Error(
-        `Source provider "${name}" requires host api "${provider.manifest.api}", ` +
-        `but this host implements "${HOST_API_VERSION}"`,
+
+    this.providers.set(name, provider);
+    return true;
+  }
+
+  /** Returns a human-readable failure reason, or `undefined` if `provider` may be registered. */
+  private validate(provider: FileSourceProvider): string | undefined {
+    const { manifest } = provider;
+    if (this.providers.has(manifest.name)) {
+      return `a provider named "${manifest.name}" is already registered`;
+    }
+    if (!satisfiesCaretRange(PLUGIN_API_VERSION, manifest.api)) {
+      return (
+        `requires host api "${manifest.api}", but this host implements "${PLUGIN_API_VERSION}"`
       );
     }
-    this.providers.set(name, provider);
+    const relay = manifest.permissions.relay;
+    if (relay) {
+      const relayError = validateRelayDeclaration(relay);
+      if (relayError) return relayError;
+    }
+    return undefined;
   }
 
   unregister(name: string): void {
@@ -58,29 +113,41 @@ export class SourceHost {
     return [...this.providers.values()];
   }
 
+  /** Providers that failed to register, in registration order. Render these in the sources panel so a stale/misconfigured provider is visible instead of silently absent. */
+  getRegistrationFailures(): readonly ProviderRegistrationFailure[] {
+    return this.failures;
+  }
+
   createContext(
     manifest: PluginManifest,
     preferences: Record<string, string>,
   ): PluginContext {
-    const allowedDomains = manifest.permissions.network;
+    const { network: allowedDomains, publicNetwork, relay } = manifest.permissions;
+    const publicAllowedDomains = publicNetwork ?? [];
 
     const wrappedFetch: typeof fetch = async (input, init) => {
       const originalRequest = input instanceof Request ? input : null;
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
       const parsed = new URL(url);
 
+      if (!isHttpsUrl(parsed)) {
+        throw new Error(
+          `Source provider "${manifest.name}" attempted a non-https request to "${url}". ` +
+          `Only https is permitted.`,
+        );
+      }
       if (!isAllowedHost(allowedDomains, parsed.hostname)) {
         throw new Error(
           `Source provider "${manifest.name}" is not allowed to contact ${parsed.hostname}. ` +
-          `Allowed: ${[...allowedDomains].join(', ')}`,
+          `Allowed: ${allowedDomains.join(', ')}`,
         );
       }
 
-      const finalUrl = applyCorsRelay(url);
-      if (finalUrl !== url && sourcesDebugEnabled()) {
+      const relayedUrl = applyRelay(url, relay, window.location.origin);
+      if (relayedUrl !== url && sourcesDebugEnabled()) {
         console.debug(`[source:${manifest.name}]`, 'Relay fetch', {
           upstreamUrl: url,
-          relayUrl: finalUrl,
+          relayUrl: relayedUrl,
         });
       }
 
@@ -89,7 +156,6 @@ export class SourceHost {
         finalInit = {
           method: originalRequest.method,
           headers: originalRequest.headers,
-          credentials: originalRequest.credentials,
           signal: originalRequest.signal,
           ...init,
         };
@@ -101,12 +167,49 @@ export class SourceHost {
       // permission-checked host — a compromised/malicious endpoint could 302
       // to an arbitrary origin and exfiltrate the request (headers, API key).
       finalInit.redirect = 'error';
+      // Always omit ambient credentials, regardless of what the caller asked
+      // for: the relay makes this request same-origin, so the browser's
+      // default would attach the app's own session cookies and send them to
+      // a third-party API.
+      finalInit.credentials = 'omit';
 
-      return fetch(finalUrl, finalInit);
+      const signal = finalInit.signal ?? undefined;
+      return fetchWithBoundedRetry(() => fetch(relayedUrl, finalInit), signal);
+    };
+
+    const fetchPublic = async (url: string, init: PublicFetchInit = {}): Promise<Response> => {
+      const parsed = new URL(url);
+
+      if (!isHttpsUrl(parsed)) {
+        throw new Error(
+          `Source provider "${manifest.name}" attempted a non-https public fetch to "${url}". ` +
+          `Only https is permitted.`,
+        );
+      }
+      if (!isAllowedHost(publicAllowedDomains, parsed.hostname)) {
+        throw new Error(
+          `Source provider "${manifest.name}" is not allowed to fetch public URLs on ${parsed.hostname}. ` +
+          `Allowed (permissions.publicNetwork): ${publicAllowedDomains.length ? publicAllowedDomains.join(', ') : '(none declared)'}`,
+        );
+      }
+
+      // Every header this request will ever carry — nothing from the
+      // caller's environment leaks in, so a provider cannot use this path to
+      // smuggle a credential to a host outside `permissions.network`.
+      const headers: Record<string, string> = { Accept: '*/*' };
+      if (init.range) headers.Range = init.range;
+
+      return fetch(url, {
+        headers,
+        credentials: 'omit',
+        redirect: 'follow', // pre-signed URLs commonly bounce (e.g. to a CDN edge)
+        signal: init.signal,
+      });
     };
 
     return {
       fetch: wrappedFetch,
+      fetchPublic,
       getPreference: async (name: string) => preferences[name],
       storage: createNamespacedStorage(manifest.name),
       log: createPrefixedLogger(manifest.name),
@@ -149,111 +252,6 @@ export function dispatchSourceDownload(items: SourceDownloadItem[]): void {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Built-in CORS relay — some source APIs (Dalux Build) don't send CORS
-// headers, so a direct browser fetch fails the preflight. Rather than a
-// user-facing "relay URL" preference, we route known hosts through a fixed
-// same-origin path that the app's own server forwards upstream — the exact
-// pattern already used for bSDD/EPSG (see apps/viewer/vite.config.ts's dev
-// proxy and vercel.json's rewrites for the matching same-origin routes).
-// The permission check above still runs against the real upstream host;
-// this only changes where the browser physically sends the request.
-// ---------------------------------------------------------------------------
-
-const CORS_RELAY_ORIGINS: ReadonlyArray<readonly [string, string]> = [
-  ['https://node1.field.dalux.com/service/api', '/api/dalux'],
-];
-
-function applyCorsRelay(url: string): string {
-  for (const [upstreamOrigin, relayPath] of CORS_RELAY_ORIGINS) {
-    if (url.startsWith(upstreamOrigin)) {
-      return `${window.location.origin}${relayPath}${url.slice(upstreamOrigin.length)}`;
-    }
-  }
-  return url;
-}
-
-/**
- * Minimal `^x.y.z` caret-range check (host >= required, same major) — the
- * only range shape manifests use. Not a general semver implementation.
- */
-function satisfiesCaretRange(hostVersion: string, requiredRange: string): boolean {
-  const match = /^\^?(\d+)\.(\d+)\.(\d+)$/.exec(requiredRange);
-  if (!match) return false;
-  const [, reqMajor, reqMinor, reqPatch] = match.map(Number);
-  const [hostMajor, hostMinor, hostPatch] = hostVersion.split('.').map(Number);
-
-  if (hostMajor !== reqMajor) return false;
-  if (hostMinor !== reqMinor) return hostMinor > reqMinor;
-  return hostPatch >= reqPatch;
-}
-
-function isAllowedHost(
-  allowedDomains: readonly string[],
-  hostname: string,
-): boolean {
-  const normalizedHost = hostname.toLowerCase();
-
-  return allowedDomains.some((pattern) => {
-    const normalizedPattern = pattern.toLowerCase();
-    if (normalizedPattern.startsWith('*.')) {
-      const suffix = normalizedPattern.slice(2);
-      return normalizedHost === suffix || normalizedHost.endsWith(`.${suffix}`);
-    }
-    return normalizedHost === normalizedPattern;
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Namespaced IndexedDB storage
-// ---------------------------------------------------------------------------
-
-function createNamespacedStorage(namespace: string): KeyValueStore {
-  const prefix = `ifc-lite-source:${namespace}:`;
-
-  return {
-    async get(key: string) {
-      return localStorage.getItem(prefix + key) ?? undefined;
-    },
-    async set(key: string, value: string) {
-      localStorage.setItem(prefix + key, value);
-    },
-    async delete(key: string) {
-      localStorage.removeItem(prefix + key);
-    },
-    async keys() {
-      const result: string[] = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (k?.startsWith(prefix)) {
-          result.push(k.slice(prefix.length));
-        }
-      }
-      return result;
-    },
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Prefixed logger
-// ---------------------------------------------------------------------------
-
-/** Set `localStorage.IFC_SOURCES_DEBUG = '1'` in the browser to log verbose
- *  source-provider activity (request URLs, project/folder listings) to the
- *  console. Off by default — providers can log per-row details on every
- *  list call, which is too chatty to leave on unconditionally. */
-export const sourcesDebugEnabled = (): boolean => {
-  if (typeof window === 'undefined') return false;
-  try { return window.localStorage?.getItem('IFC_SOURCES_DEBUG') === '1'; }
-  catch { return false; }
-};
-
-function createPrefixedLogger(name: string): Logger {
-  const tag = `[source:${name}]`;
-  return {
-    debug: (...args: unknown[]) => { if (sourcesDebugEnabled()) console.debug(tag, ...args); },
-    info: (...args: unknown[]) => { if (sourcesDebugEnabled()) console.info(tag, ...args); },
-    warn: (...args: unknown[]) => console.warn(tag, ...args),
-    error: (...args: unknown[]) => console.error(tag, ...args),
-  };
-}
+// Re-exported so callers (and tests) can gate their own debug logging the
+// same way the host does, from a single import.
+export { sourcesDebugEnabled } from './host-storage';

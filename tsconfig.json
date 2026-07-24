@@ -120,6 +120,12 @@
       ],
       "@ifc-lite/source-dalux/*": [
         "packages/source-dalux/dist/*"
+      ],
+      "@ifc-lite/source-msgraph": [
+        "packages/source-msgraph/dist/index.d.ts"
+      ],
+      "@ifc-lite/source-msgraph/*": [
+        "packages/source-msgraph/dist/*"
       ]
     }
   },

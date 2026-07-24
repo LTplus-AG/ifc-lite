@@ -16,21 +16,22 @@
 import { loadIfcFile } from '../loader.js';
 import { hasFlag, fatal, printJson } from '../output.js';
 import { EntityNode } from '@ifc-lite/query';
-import { getInheritanceChainForEntity } from '@ifc-lite/parser';
+import { getInheritanceChainForEntity, type IfcDataStore } from '@ifc-lite/parser';
 
-interface ValidationIssue {
+export interface ValidationIssue {
   severity: 'error' | 'warning' | 'info';
   rule: string;
   message: string;
 }
 
-export async function validateCommand(args: string[]): Promise<void> {
-  const filePath = args.find(a => !a.startsWith('-'));
-  if (!filePath) fatal('Usage: ifc-lite validate <file.ifc> [--json]');
-
-  const jsonOutput = hasFlag(args, '--json');
-
-  const store = await loadIfcFile(filePath);
+/**
+ * Run the structural validation checks (required entities, storeys, GlobalId
+ * uniqueness, naming, schema version, quantity completeness) against an
+ * already-parsed store. Pulled out of {@link validateCommand} so other
+ * callers (e.g. `ifc-lite gym`'s "schema" reward channel) reuse the exact
+ * same rules instead of re-implementing them.
+ */
+export function computeValidationIssues(store: IfcDataStore): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
 
   // 1. Check required spatial entities
@@ -125,6 +126,18 @@ export async function validateCommand(args: string[]): Promise<void> {
       message: `${withoutQuantities}/${totalQuantifiable} building elements (${pct}%) have no quantity sets — quantity-based analysis may be incomplete`,
     });
   }
+
+  return issues;
+}
+
+export async function validateCommand(args: string[]): Promise<void> {
+  const filePath = args.find(a => !a.startsWith('-'));
+  if (!filePath) fatal('Usage: ifc-lite validate <file.ifc> [--json]');
+
+  const jsonOutput = hasFlag(args, '--json');
+
+  const store = await loadIfcFile(filePath);
+  const issues = computeValidationIssues(store);
 
   const summary = {
     file: filePath,

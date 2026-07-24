@@ -41,6 +41,7 @@ import { mcpCommand } from './commands/mcp.js';
 import { extCommand } from './commands/ext.js';
 import { layerCommand } from './commands/layer.js';
 import { refCommand } from './commands/ref.js';
+import { gymCommand } from './commands/gym.js';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -99,6 +100,7 @@ const HELP = `
     ext       validate <path>|init <dir>          Manage IFClite extensions (Phase 0 — validate, init)
     layer     <publish|diff|merge|log|bake|...>    Layered change tracking over a local store (.ifc-lite/)
     ref       <list|create|move|protect>           Manage named refs in the layer store
+    gym       --model <file.ifc> [--checks ...]    reset/step/reward environment loop (JSONL over stdin/stdout)
 
   Options:
     --help, -h           Show help
@@ -174,6 +176,8 @@ const HELP = `
     ifc-lite layer merge blake3:abc123 --into main --preview
     ifc-lite layer log main
     ifc-lite layer bake main -o flat.ifcx
+    ifc-lite gym --model model.ifc --checks schema,clash
+    ifc-lite gym --model model.ifc --checks schema,clash,ids --ids rules.ids
 
   Pipe-friendly:
     ifc-lite query model.ifc --type IfcWall --json | jq '.[].name'
@@ -186,6 +190,16 @@ const HELP = `
     space, curtain-wall, furnishing, proxy, circular-column,
     hollow-circular-column, i-shape-beam, l-shape-member, t-shape-member,
     u-shape-member, rectangle-hollow-beam
+
+  gym protocol (newline-delimited JSON, one command per stdin line):
+    On start:            {"type":"reset","observation":{entityCounts,storeyCount,schema,bounds},"channels":{...}}
+    -> {"type":"step","ops":[{"op":"setProperty"|"setAttribute"|"deleteProperty", ...}]}
+    <- {"type":"reward","channels":{schema:{score,...},clash:{score,...},ids:{score,...}},"done":false}
+    -> {"type":"reset"}               reloads the pristine model, replies like the initial reset
+    -> {"type":"close"}               exits 0
+    Malformed input replies {"type":"error","message":"..."} instead of crashing.
+    v0 ops: setProperty/setAttribute/deleteProperty only (mirrors bim.mutate's method
+    names). Geometry-creating ops are out of scope for v0.
 
   Learn more: https://ifclite.com
 `;
@@ -307,6 +321,9 @@ async function main(): Promise<void> {
       break;
     case 'ref':
       await refCommand(commandArgs);
+      break;
+    case 'gym':
+      await gymCommand(commandArgs);
       break;
     default:
       process.stderr.write(`Unknown command: ${command}\n`);

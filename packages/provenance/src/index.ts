@@ -66,3 +66,44 @@ export {
   type ConflictResult,
   type ConflictOptions,
 } from './footprint.js';
+
+export {
+  applyOp,
+  applyOps,
+  buildStateDag,
+  canonicalStateBytes,
+  cloneState,
+  computeMergeOpFootprint,
+  hashModelState,
+  MERGE_MODEL_ROOT_NODE_ID,
+  OpApplicationError,
+  type EntityInit,
+  type EntityState,
+  type MergeOp,
+  type ModelState,
+} from './merge-model.js';
+
+export {
+  attemptBothOrders,
+  COMMUTATION_CERTIFICATE_VERSION,
+  createCommutationCertificate,
+  findCrossConflicts,
+  verifyCommutationCertificate,
+  type CommutationCertificate,
+  type CommutationInput,
+  type CommutationOutcome,
+  type CommutationVerificationResult,
+  type OpConflict,
+  type OpSetSummary,
+  type ReplayOutcome,
+} from './commutation.js';
+
+export {
+  buildBaseModel,
+  generateClientOps,
+  mulberry32,
+  runMergeBattery,
+  type MergeBatteryOptions,
+  type MergeBatteryReport,
+  type Rng,
+} from './merge-battery.js';

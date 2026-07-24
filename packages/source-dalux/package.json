@@ -18,8 +18,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@ifc-lite/plugin-api": "workspace:^",
-    "dalux-build-api": "2.0.0"
+    "@ifc-lite/plugin-api": "workspace:^"
   },
   "devDependencies": {
     "typescript": "^6.0.3",

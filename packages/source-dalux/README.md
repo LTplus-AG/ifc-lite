@@ -6,9 +6,11 @@ Implements `FileSourceProvider` from `@ifc-lite/plugin-api` to browse projects,
 file areas, folders, and files in Dalux Build, and download IFC revisions
 directly into the viewer.
 
-Uses the published `dalux-build-api` npm client for Dalux route/version
-compatibility, while keeping browser requests on the host-provided `fetch`
-path.
+Has no runtime dependencies beyond `@ifc-lite/plugin-api`. Requests go through
+the host-provided `fetch`, and responses are narrowed by hand-written decoders
+in `src/dalux-types.ts` that reject wrong-typed fields rather than coercing
+them, dropping an individually invalid row from a listing instead of failing
+the whole page.
 
 Targets the Dalux **API Identities** auth model (legacy API keys expired
 2026-02-28). The API base URL is fixed at `https://node1.field.dalux.com/service/api`

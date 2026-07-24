@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { DaluxFile } from 'dalux-build-api/src/models/files/index.js';
+import type { DaluxDecoder, DaluxFile } from './dalux-types.js';
 import type { PluginContext, SourceFile } from '@ifc-lite/plugin-api';
 
 /**
@@ -85,13 +85,8 @@ export function nonEmptyString(value: string | null | undefined): string | undef
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-interface DaluxSchema<T> {
-  parse(value: unknown): T;
-}
-
-/** Unwraps a Dalux `{ data: {...} }` item envelope, mirroring the vendored
- * library's own (unexported) `unwrapData` preprocessing. Bare objects with
- * no `data` wrapper pass straight through. */
+/** Unwraps a Dalux `{ data: {...} }` item envelope. Bare objects with no
+ * `data` wrapper pass straight through — the API uses both shapes. */
 function unwrapDaluxEnvelope(item: unknown): unknown {
   if (item && typeof item === 'object' && !Array.isArray(item) && 'data' in item) {
     return (item as { data: unknown }).data;
@@ -100,27 +95,25 @@ function unwrapDaluxEnvelope(item: unknown): unknown {
 }
 
 /**
- * Validates a raw item list against a Dalux zod schema, dropping (with a
- * logged warning) any record that fails validation instead of throwing.
+ * Decodes a raw item list, dropping (with a logged warning) any record that
+ * fails to decode instead of throwing.
  *
- * The vendored library's own `convertToModelList` throws on the first
- * invalid record, which for a read-only file catalog means one malformed
- * row — after every page has already been fetched, in some cases after a
- * multi-page sweep — kills the entire listing. A single bad row shouldn't
- * cost the user every other row that parsed fine.
+ * For a read-only file catalog, one malformed row — discovered after every
+ * page has already been fetched, in some cases after a multi-page sweep —
+ * should not cost the user every other row that decoded fine.
  */
 export function convertListLenient<T>(
   ctx: PluginContext,
   items: readonly unknown[],
-  schema: DaluxSchema<T>,
-  schemaName: string,
+  decode: DaluxDecoder<T>,
+  typeName: string,
 ): T[] {
   const results: T[] = [];
   for (const item of items) {
     try {
-      results.push(schema.parse(unwrapDaluxEnvelope(item)));
+      results.push(decode(unwrapDaluxEnvelope(item)));
     } catch (err) {
-      ctx.log.warn(`Dalux: dropping invalid ${schemaName} record`, {
+      ctx.log.warn(`Dalux: dropping invalid ${typeName} record`, {
         error: err instanceof Error ? err.message : String(err),
       });
     }

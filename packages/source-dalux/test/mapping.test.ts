@@ -12,7 +12,7 @@ import {
   folderContainerId,
   toSourceFile,
 } from '../src/mapping.js';
-import type { DaluxFile } from 'dalux-build-api/src/models/files/index.js';
+import type { DaluxFile } from '../src/dalux-types.js';
 
 function createMockLogger(): Logger {
   return { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
@@ -83,21 +83,19 @@ interface Thing {
   readonly name: string;
 }
 
-/** Minimal stand-in for a zod schema — just enough surface
- * (`convertListLenient` only ever calls `.parse`) to exercise the
- * drop-invalid-records behavior without pulling in a real schema library. */
-const thingSchema = {
-  parse(value: unknown): Thing {
-    const record = value && typeof value === 'object' ? (value as Record<string, unknown>) : undefined;
-    if (!record || typeof record.id !== 'string' || typeof record.name !== 'string') {
-      throw new Error('invalid Thing');
-    }
-    return { id: record.id, name: record.name };
-  },
-};
+/** Stand-in decoder, so these tests exercise the drop-invalid-records
+ * behavior itself rather than any particular type's field rules (those are
+ * covered in dalux-types.test.ts). */
+function decodeThing(value: unknown): Thing {
+  const record = value && typeof value === 'object' ? (value as Record<string, unknown>) : undefined;
+  if (!record || typeof record.id !== 'string' || typeof record.name !== 'string') {
+    throw new Error('invalid Thing');
+  }
+  return { id: record.id, name: record.name };
+}
 
 describe('convertListLenient', () => {
-  const schema = thingSchema;
+  const schema = decodeThing;
 
   it('keeps every record that validates', () => {
     const ctx = createMockCtx();

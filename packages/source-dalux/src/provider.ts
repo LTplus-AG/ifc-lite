@@ -2,18 +2,20 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/// <reference path="./dalux-build-api.d.ts" />
+import {
+  decodeFile,
+  decodeFileArea,
+  decodeFileResponse,
+  decodeFolder,
+  decodeProject,
+} from './dalux-types.js';
 
-import { convertToModel } from 'dalux-build-api/src/models/convert.js';
-import { FileSchema, FileResponseSchema } from 'dalux-build-api/src/models/files/index.js';
-import { FolderSchema } from 'dalux-build-api/src/models/folders/index.js';
-import { ProjectSchema } from 'dalux-build-api/src/models/projects/index.js';
-import { FileAreaSchema } from 'dalux-build-api/src/models/fileAreas/index.js';
-
-import type { DaluxFile, DaluxFileResponse } from 'dalux-build-api/src/models/files/index.js';
-import type { DaluxFolder } from 'dalux-build-api/src/models/folders/index.js';
-import type { DaluxProject } from 'dalux-build-api/src/models/projects/index.js';
-import type { DaluxFileArea } from 'dalux-build-api/src/models/fileAreas/index.js';
+import type {
+  DaluxFile,
+  DaluxFileArea,
+  DaluxFolder,
+  DaluxProject,
+} from './dalux-types.js';
 
 import { matchesGlob } from '@ifc-lite/plugin-api';
 import type {
@@ -54,7 +56,7 @@ export class DaluxBuildProvider implements FileSourceProvider {
   async listProjects(ctx: PluginContext, options?: ListProjectsOptions): Promise<Page<SourceProject>> {
     const client = await this.createClient(ctx);
     const page = await fetchPage(client, '/5.1/projects', {}, options?.cursor, options?.signal);
-    const projects = convertListLenient<DaluxProject>(ctx, page.items, ProjectSchema, 'Project');
+    const projects = convertListLenient<DaluxProject>(ctx, page.items, decodeProject, 'Project');
 
     return {
       items: projects.map((project) => ({ id: project.projectId, name: project.projectName })),
@@ -81,7 +83,7 @@ export class DaluxBuildProvider implements FileSourceProvider {
         options?.cursor,
         options?.signal,
       );
-      const fileAreas = convertListLenient<DaluxFileArea>(ctx, page.items, FileAreaSchema, 'FileArea');
+      const fileAreas = convertListLenient<DaluxFileArea>(ctx, page.items, decodeFileArea, 'FileArea');
 
       return {
         items: fileAreas.map((fileArea) => ({
@@ -107,7 +109,7 @@ export class DaluxBuildProvider implements FileSourceProvider {
       options?.cursor,
       options?.signal,
     );
-    const folders = convertListLenient<DaluxFolder>(ctx, page.items, FolderSchema, 'Folder');
+    const folders = convertListLenient<DaluxFolder>(ctx, page.items, decodeFolder, 'Folder');
     const folderIdsThisPage = new Set(folders.map((folder) => folder.folderId));
 
     const containers: SourceContainer[] = folders.map((folder) => {
@@ -156,7 +158,7 @@ export class DaluxBuildProvider implements FileSourceProvider {
       options?.cursor,
       options?.signal,
     );
-    const daluxFiles = convertListLenient<DaluxFile>(ctx, page.items, FileSchema, 'File');
+    const daluxFiles = convertListLenient<DaluxFile>(ctx, page.items, decodeFile, 'File');
     const nonDeleted = daluxFiles.filter((file) => !file.deleted);
 
     let files = nonDeleted.map((file) => toSourceFile(fileAreaId, file));
@@ -204,8 +206,8 @@ export class DaluxBuildProvider implements FileSourceProvider {
       {},
       options?.signal,
     );
-    const metadata = convertToModel<DaluxFileResponse>(metadataResponse, FileResponseSchema, 'FileResponse');
-    const downloadLink = metadata?.data.downloadLink ?? undefined;
+    const metadata = decodeFileResponse(metadataResponse);
+    const downloadLink = metadata.data.downloadLink;
     if (!downloadLink) {
       throw new Error(`Dalux file ${ref.fileId} does not expose a download link`);
     }
@@ -244,7 +246,7 @@ export class DaluxBuildProvider implements FileSourceProvider {
         {},
         options?.signal,
       );
-      const daluxFiles = convertListLenient<DaluxFile>(ctx, rawItems, FileSchema, 'File');
+      const daluxFiles = convertListLenient<DaluxFile>(ctx, rawItems, decodeFile, 'File');
       const filesById = new Map(
         daluxFiles.filter((file) => !file.deleted).map((file) => [file.fileId, file] as const),
       );

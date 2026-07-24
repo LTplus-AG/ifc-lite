@@ -405,9 +405,6 @@ function buildEntityTable(
     getExpressIdByGlobalId: (gid) => {
       return globalIdToExpressId.get(gid) ?? -1;
     },
-    getGlobalIdMap: () => {
-      return new Map(globalIdToExpressId); // Defensive copy
-    },
   };
 
   return { entities, entityById, typeGroups };

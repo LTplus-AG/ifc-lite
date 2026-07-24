@@ -60,7 +60,6 @@ describe('createSyntheticDataStore', () => {
 
     // GlobalId ↔ expressId mapping (used by BCF / federation lookups).
     expect(store.entities.getExpressIdByGlobalId(`pointcloud-${expressId}`)).toBe(expressId);
-    expect(store.entities.getGlobalIdMap().get(`pointcloud-${expressId}`)).toBe(expressId);
 
     // Index wiring.
     expect(store.entityIndex.byType.get('IFCGEOGRAPHICELEMENT')).toEqual([expressId]);

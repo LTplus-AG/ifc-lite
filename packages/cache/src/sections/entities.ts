@@ -186,8 +186,5 @@ export function readEntities(reader: BufferReader, strings: StringTable): Entity
     getExpressIdByGlobalId: (gid) => {
       return globalIdToExpressId.get(gid) ?? -1;
     },
-    getGlobalIdMap: () => {
-      return new Map(globalIdToExpressId); // Defensive copy
-    },
   };
 }

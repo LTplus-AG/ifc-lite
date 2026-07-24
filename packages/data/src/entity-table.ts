@@ -68,9 +68,6 @@ export interface EntityTable {
 
   /** Get expressId by IFC GlobalId string (22-char GUID). Returns -1 if not found. */
   getExpressIdByGlobalId(globalId: string): number;
-
-  /** Get all GlobalId → expressId mappings (for BCF integration) */
-  getGlobalIdMap(): Map<string, number>;
 }
 
 export class EntityTableBuilder {
@@ -347,8 +344,6 @@ export function entityTableFromColumns(
     },
 
     getExpressIdByGlobalId: (gid) => globalIdToExpressId.get(gid) ?? -1,
-
-    getGlobalIdMap: () => new Map(globalIdToExpressId),
   };
 }
 

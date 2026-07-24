@@ -13,6 +13,7 @@ import {
   nextAdaptiveBatchJobs,
   type BatchSizingConfig,
 } from './batch-sizing.js';
+import { loadThreadedWasmModule } from './csg-threads.js';
 
 export interface GeometryWorkerInitMessage {
   type: 'init';
@@ -30,6 +31,20 @@ export interface GeometryWorkerInitMessage {
    * Vite/webpack/Rollup consumers that already work keep working.
    */
   wasmUrl?: string;
+  /**
+   * SPIKE opt-in (docs/architecture/csg-threading-design.md): when set, this
+   * worker attempts to load the THREADED wasm bundle
+   * (`packages/wasm/pkg-threaded/`, built via `scripts/build-wasm.sh
+   * BUILD_THREADED=1`) and start its internal rayon pool at this many
+   * threads, via `csg-threads.ts`'s `loadThreadedWasmModule`. Any failure
+   * (bundle not built for this deployment, not cross-origin isolated,
+   * `initThreadPool` rejecting) falls back to the plain single-thread bundle
+   * silently — this must never be why a load fails. The host is expected to
+   * pin `workerCount` to 1 when setting this (see `geometry-parallel.ts`):
+   * the threaded design is ONE shared-memory instance with N internal
+   * threads, not N outer workers each ALSO running N internal threads.
+   */
+  csgThreads?: number;
 }
 
 /**
@@ -411,6 +426,24 @@ let api: IfcAPI | null = null;
 let cachedWasmUrl: string | undefined = undefined;
 
 /**
+ * SPIKE opt-in (docs/architecture/csg-threading-design.md): thread count
+ * requested via the `init` message's `csgThreads` field, or `undefined` when
+ * the default single-thread bundle should be used (the common case). Set at
+ * most once per worker lifetime — see `GeometryWorkerInitMessage.csgThreads`.
+ */
+let csgThreadsRequested: number | undefined = undefined;
+
+/**
+ * Resolved threaded-engine handle: `undefined` = not yet attempted,
+ * an object = the threaded bundle loaded and its rayon pool started,
+ * `null` = attempted and unavailable (any reason — see `loadThreadedWasmModule`)
+ * so every subsequent `ensureInit()` in this worker sticks to the plain bundle
+ * instead of re-attempting the (already-failed) dynamic import per call.
+ */
+let resolvedThreadedEngine: Awaited<ReturnType<typeof loadThreadedWasmModule>> | undefined =
+  undefined;
+
+/**
  * Idempotent wasm + IfcAPI initializer. Centralises the
  * `if (!api) { await init(); api = new IfcAPI(); ... }` boilerplate that
  * every message handler used to repeat. Honours `cachedWasmUrl` so the
@@ -422,11 +455,34 @@ let cachedWasmUrl: string | undefined = undefined;
  * download failure (a cold CDN edge, mid-deploy race, or flaky proxy) is
  * retried once before failing. `__wbg_init` only short-circuits on
  * `wasm !== undefined`, so a retry after a failed load safely re-fetches.
+ *
+ * When `csgThreadsRequested` was set by the `init` message, this first tries
+ * the threaded bundle (see `csg-threads.ts`); on ANY failure it falls back to
+ * the plain bundle exactly as if threading had never been requested.
  */
 async function ensureInit(): Promise<IfcAPI> {
   if (api) return api;
-  await initWasmWithRetry(() => init(cachedWasmUrl), { label: 'geometry.worker' });
-  api = new IfcAPI();
+  if (csgThreadsRequested != null && resolvedThreadedEngine === undefined) {
+    resolvedThreadedEngine = await loadThreadedWasmModule(csgThreadsRequested);
+    if (resolvedThreadedEngine) {
+      console.log(`[geometry.worker] csgThreads=${csgThreadsRequested} — threaded CSG engine active`);
+    } else {
+      console.warn(
+        `[geometry.worker] csgThreads=${csgThreadsRequested} requested but unavailable; falling back to the plain single-thread engine`,
+      );
+    }
+  }
+  const engineInit = resolvedThreadedEngine?.default ?? init;
+  const EngineIfcAPI = (resolvedThreadedEngine?.IfcAPI ?? IfcAPI) as unknown as typeof IfcAPI;
+  // The threaded bundle resolves its own wasm binary relative to ITS OWN
+  // module location (packages/wasm/pkg-threaded/), so an explicit
+  // `cachedWasmUrl` (which points at the PLAIN bundle's binary) must not be
+  // forwarded to it — pass `undefined` and let it use its default resolution.
+  await initWasmWithRetry(
+    () => engineInit(resolvedThreadedEngine ? undefined : cachedWasmUrl),
+    { label: 'geometry.worker' },
+  );
+  api = new EngineIfcAPI();
   mergeLayersApplied = false;
   applyMergeLayersToApi();
   geometryHashApplied = false;
@@ -1463,7 +1519,13 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
 
     if (e.data.type === 'init') {
       if (e.data.wasmUrl) cachedWasmUrl = e.data.wasmUrl;
-      if (e.data.wasmModule) {
+      // SPIKE opt-in — set BEFORE the wasmModule/ensureInit branches below so
+      // whichever one runs first sees it. The host (geometry-parallel.ts)
+      // never sends `wasmModule` together with `csgThreads` (the precompiled
+      // shared module is always the PLAIN bundle), but guard here too in case
+      // a future/third-party host does: prefer the threaded path.
+      if (e.data.csgThreads != null) csgThreadsRequested = e.data.csgThreads;
+      if (e.data.wasmModule && csgThreadsRequested == null) {
         // Instantiate from the pre-compiled module the host compiled ONCE and
         // structured-cloned to every worker — no per-worker recompile of the
         // multi-MB binary. NB: wasm-bindgen's `initSync` destructures the

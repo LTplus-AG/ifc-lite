@@ -136,3 +136,88 @@ lever.
 Native: `cargo run --release -p ifc-lite-processing --example csg_scaling_bench --features csg-capture -- <model.ifc>`
 WASM: build `rust/csg-thread-bench` plain + threaded (see crate header), serve
 `web/` with COOP/COEP (`node serve.mjs`), open `index.html?pkg=threaded&mode=…`.
+
+## Addendum (Bet B0.3 spike, 2026-07-24): browser opt-in wired
+
+**Finding: the Rust/build side was already shipped, off by default, by #1255**
+("perf(wasm): validate + enable threaded-WASM CSG (off-by-default second
+bundle)"). Before writing any code this spike audited what already existed:
+
+- `rust/wasm-bindings`'s `threads` feature (`= ["dep:wasm-bindgen-rayon"]`)
+  re-exports `wasm_bindgen_rayon::init_thread_pool` as `initThreadPool`.
+- `scripts/build-wasm.sh BUILD_THREADED=1` already builds the threaded bundle
+  to `packages/wasm/pkg-threaded/` (gitignored, separate from the committed
+  `pkg/`), with the exact validated RUSTFLAGS, the wasm-bindgen-rayon worker-
+  helper directory-import patch, and a shared-memory-import litmus test that
+  refuses to ship a non-functional bundle.
+- The per-element mesh loop this design targets
+  (`rust/processing/src/processor/mod.rs`, the `jobs_chunk.par_iter().map(process_entity_job).collect::<Vec<MeshData>>()`
+  around line 1373) is **already** unconditional `rayon::par_iter` on every
+  target — native always parallel; wasm32 parallel only once `initThreadPool`
+  has run (otherwise rayon-core's `web_spin_lock` makes it behave serially).
+  **No new Rust code or cargo feature was needed**: introducing a second,
+  differently-named feature (e.g. `csg-threads`) gating a *duplicate* parallel
+  loop would have been pure drift against an already-shipped mechanism.
+  Determinism is inherited for free — rayon's `IndexedParallelIterator::collect`
+  on a slice writes into pre-sized output slots by index, never by completion
+  order, so `mesh_output_matches_pinned_manifest` /
+  `mesh_output_is_stable_across_reruns` (`rust/processing/tests/mesh_determinism.rs`)
+  hold unchanged whether the pool has 1 thread or N.
+- This IS the design doc's "naive" shape (§ Architecture #1), not yet the
+  "surgical" one (#2): `process_entity_job` decodes the representation, meshes,
+  and CSGs an element all inside the one parallelized closure. Splitting decode
+  (serial) from CSG (parallel) into two passes to chase the 4x ceiling is a
+  real restructuring, left as a follow-up — see "Still open" below.
+
+**What this spike actually built: the missing browser-side opt-in.**
+Nothing loaded `pkg-threaded/` or called `initThreadPool` from the browser.
+Added, scoped entirely to `packages/geometry/src/`:
+
+- `csg-threads.ts` — `parseCsgThreadsOverride()` (`?csgThreads=N` in the URL,
+  bounded `[1, 16]`, mirrors `?geomWorkers=N`'s parsing), `isCsgThreadsEnvSupported()`
+  (`SharedArrayBuffer` + `crossOriginIsolated` feature-detect — false on Safari
+  by design), and `loadThreadedWasmModule(n)` — a guarded dynamic
+  `import(/* @vite-ignore */ '../../wasm/pkg-threaded/ifc-lite.js')` that calls
+  the threaded bundle's `init()` then `initThreadPool(n)`, resolving to `null`
+  (never throwing) on any failure: bundle not built for this deployment (the
+  common case — `BUILD_THREADED=1` is opt-in), not cross-origin isolated, or
+  `initThreadPool` rejecting.
+- `geometry.worker.ts` — `ensureInit()` now tries the threaded engine first
+  when the `init` message carries `csgThreads`, falling back to the plain
+  `@ifc-lite/wasm` import/IfcAPI on any failure. Falls back per-worker, once,
+  memoized (no repeated failed dynamic imports).
+- `geometry-parallel.ts` — resolves `?csgThreads=N` (or an explicit
+  `csgThreadsOverride` option) and, when active, **pins the outer worker pool
+  to 1** and skips the precompiled-shared-module fast path (which is always
+  the plain bundle) so the one spawned worker actually takes the threaded
+  path. The pin matters: the validated architecture is ONE shared-memory wasm
+  instance with an internal pool, not N outer workers (the *existing*
+  `?geomWorkers=N` mechanism) each *also* spinning up its own N-thread rayon
+  pool — that combination would oversubscribe cores by `outerWorkers x N`.
+
+**Verified:**
+- `cargo test --no-fail-fast -p ifc-lite-processing` and the geometry crate's
+  `exact_predicate_determinism` / `mesh_determinism` suites: all passing,
+  unchanged (no Rust was touched — see above).
+- `cargo test --no-fail-fast --workspace`: two pre-existing, unrelated
+  failures — `ifc-lite-export --lib` and
+  `ifc-lite-geometry --test wall_opening_cut_regression` — both `tests/models/ara3d/{duplex,advanced_model}.ifc`
+  missing in this fresh worktree (`pnpm fixtures` not run), a known gap
+  (tracked elsewhere), not a regression from this spike.
+- `pnpm exec tsc --noEmit` and `pnpm exec vitest run` in `packages/geometry`:
+  no new type errors, 146/146 tests passing.
+- The threaded wasm bundle itself was **not built or run in a browser** in
+  this spike (no nightly wasm-pack build was executed — the toolchain is
+  already pinned to `nightly-2025-11-15` and available, so this is a scoping
+  choice, not a toolchain blocker). The dynamic-import wiring above is
+  therefore verified by type-checking and code inspection, not by an actual
+  `initThreadPool` round trip in a live worker.
+
+**Still open (not a blocker, scope for the next bet):**
+- The "surgical" split (decode serial, CSG-only parallel) that would recover
+  the 4x ceiling instead of the naive ~1.6-1.9x.
+- An actual browser run: `BUILD_THREADED=1 ./scripts/build-wasm.sh` (into a
+  scratch dir, not `packages/wasm/pkg`), serve with COOP/COEP, and confirm
+  `?csgThreads=8` on a void-heavy model actually engages the pool and produces
+  byte-identical geometry versus the plain path.
+- No CI coverage for the opt-in path (matches its off-by-default, spike status).

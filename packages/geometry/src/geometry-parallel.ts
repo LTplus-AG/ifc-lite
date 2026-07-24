@@ -35,6 +35,7 @@ import { notifyIfWasmAssetUnavailable, notifyIfWorkerScriptUnavailable } from '.
 // `IfcLiteBridge.init()` path can reuse whatever this pool already compiled
 // (and vice versa) instead of fetching the same binary a second time.
 import { compileSharedWasmModule } from './wasm-shared-module.js';
+import { parseCsgThreadsOverride, isCsgThreadsEnvSupported } from './csg-threads.js';
 
 /**
  * Plan content-affinity routing for one chunk: assign each job (by index) to a
@@ -296,6 +297,23 @@ export interface ProcessParallelOptions {
    * (workers process disjoint, deterministic element slices).
    */
   workerCountOverride?: number;
+  /**
+   * SPIKE opt-in (docs/architecture/csg-threading-design.md): explicit
+   * in-wasm rayon thread-pool size for the CSG-heavy per-element loop.
+   * `undefined` ⇒ read `?csgThreads=N` from `window.location.search`
+   * (mirrors `?geomWorkers=N`'s "URL is the default source" pattern);
+   * pass an explicit value to override that default, or `0`/`NaN` to force
+   * the plain single-thread bundle regardless of the URL.
+   *
+   * When active AND the environment is cross-origin isolated (checked via
+   * `isCsgThreadsEnvSupported`), the worker COUNT below is pinned to 1: the
+   * validated architecture is ONE shared-memory wasm instance with an
+   * internal thread pool, not N outer workers each also spinning up its own
+   * internal pool (which would oversubscribe cores by outerWorkers x N).
+   * Any failure to load the threaded bundle falls back to the plain bundle
+   * AND the normal worker-count heuristic, transparently.
+   */
+  csgThreadsOverride?: number;
 }
 
 export async function* processParallel(
@@ -632,19 +650,48 @@ export async function* processParallel(
     ? ((navigator as unknown as { deviceMemory?: number }).deviceMemory ?? 8) : 8;
   const fileSizeMB = buffer.byteLength / (1024 * 1024);
   const estimatedJobs = Math.max(1, Math.ceil(fileSizeMB * 100));
+
+  // SPIKE opt-in (docs/architecture/csg-threading-design.md). `undefined`
+  // ⇒ read `?csgThreads=N` from the URL, matching `?geomWorkers=N`'s default
+  // source. Only "active" when BOTH a thread count was requested AND the
+  // realm is actually cross-origin isolated — otherwise this behaves exactly
+  // as if the option were absent (plain bundle, normal worker-count tiering).
+  const csgThreadsOverride = options?.csgThreadsOverride ?? parseCsgThreadsOverride();
+  const csgThreadsActive = csgThreadsOverride != null
+    && Number.isFinite(csgThreadsOverride)
+    && csgThreadsOverride > 0
+    && isCsgThreadsEnvSupported();
+
   const workerCountResult = computeWorkerCount({
     fileSizeMB,
     cores,
     deviceMemoryGB,
     totalJobs: estimatedJobs,
-    workerCountOverride: options?.workerCountOverride,
+    // Pin to a single outer worker when the threaded CSG engine is active:
+    // the validated architecture is ONE shared-memory wasm instance with an
+    // internal rayon pool, not N outer workers each also running its own
+    // internal pool (outerWorkers x csgThreads would oversubscribe cores).
+    // `workerCountOverride` still wins if the caller explicitly asked for a
+    // specific outer count alongside csgThreads (an unusual A/B combination,
+    // but not this function's place to refuse it).
+    workerCountOverride: csgThreadsActive
+      ? (options?.workerCountOverride ?? 1)
+      : options?.workerCountOverride,
   });
   const workerCount = workerCountResult.count;
+  if (csgThreadsActive) {
+    console.log(
+      `[stream] csgThreads=${csgThreadsOverride} requested — pinning outer workerCount=${workerCount} (threaded CSG engine is one shared instance, not one per outer worker)`,
+    );
+  }
 
   // Await the ONE shared compile (started up-front) so every worker instantiates
   // the SAME module via `initSync` instead of recompiling the binary N+1 times.
   // `null` (URL unresolved / compile failed) keeps the legacy per-worker `init`.
-  const sharedWasmModule = await wasmModulePromise;
+  // Skipped when csgThreads is active: the precompiled module is always the
+  // PLAIN bundle, and sending it would short-circuit the worker straight past
+  // `ensureInit()` (which is what actually tries the threaded bundle first).
+  const sharedWasmModule = csgThreadsActive ? null : await wasmModulePromise;
   if (sharedWasmModule) {
     console.log('[stream] shared wasm module compiled once — workers initSync (no per-worker recompile)');
   }
@@ -666,6 +713,7 @@ export async function* processParallel(
     worker.postMessage(
       {
         type: 'init',
+        ...(csgThreadsActive ? { csgThreads: csgThreadsOverride } : {}),
         ...(sharedWasmModule
           ? { wasmModule: sharedWasmModule }
           : wasmUrlForWorker

@@ -3484,23 +3484,38 @@
   ],
   "@ifc-lite/plugin-api": [
     "ConnectionTestResult: interface",
+    "DownloadOptions: interface",
     "DropdownOption: interface",
     "FileFilter: interface",
     "FileSourceProvider: interface",
     "KeyValueStore: interface",
+    "ListOptions: interface",
+    "ListProjectsOptions: interface",
     "Logger: interface",
+    "PLUGIN_API_VERSION: const",
+    "Page: interface",
+    "PluginAuthKind: type",
     "PluginContext: interface",
     "PluginContributions: interface",
     "PluginManifest: interface",
     "PluginPermissions: interface",
     "PluginPreference: interface",
     "PluginPreferenceType: type",
+    "ProviderCapabilities: interface",
+    "PublicFetchInit: interface",
+    "RelayDeclaration: interface",
     "RevisionEvent: interface",
+    "RevisionWatchResult: interface",
+    "SourceAuth: interface",
     "SourceContainer: interface",
     "SourceFile: interface",
+    "SourceFileRef: interface",
+    "SourceIdentity: interface",
     "SourceProject: interface",
     "SourceRevision: interface",
-    "SourceTag: interface"
+    "SourceTag: interface",
+    "matchesGlob: function",
+    "satisfiesCaretRange: function"
   ],
   "@ifc-lite/pointcloud": [
     "AsciiPointsFormat: type",
@@ -4027,6 +4042,14 @@
   "@ifc-lite/source-dalux": [
     "DALUX_MANIFEST: const",
     "DaluxBuildProvider: class"
+  ],
+  "@ifc-lite/source-msgraph": [
+    "DEFAULT_AUTHORITY: const",
+    "GraphApiError: class",
+    "GraphAuthExpiredError: class",
+    "MSGRAPH_MANIFEST: const",
+    "MsGraphAuth: class",
+    "MsGraphProvider: class"
   ],
   "@ifc-lite/spatial": [
     "AABB: interface",

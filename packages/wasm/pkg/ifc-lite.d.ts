@@ -66,7 +66,7 @@ export class Contours2D {
    * Shape grouping is a property of boolean *results*: a set built here is
    * an unstructured ring soup, so `shapeCount` reports 0 until it has been
    * through an operation (`resolve2d` alone is enough). Degenerate rings
-   * (under 3 vertices or carrying a non-finite coordinate) are dropped at
+   * (under 3 vertices, non-finite, or exactly collinear) are dropped at
    * construction, so `isEmpty`/`bounds()` report the same rings a later
    * boolean would keep rather than exposing an unsanitised soup.
    */

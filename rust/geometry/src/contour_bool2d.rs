@@ -64,7 +64,7 @@ impl ContourSet {
     /// True when the set holds no boundary rings. Every `ContourSet` produced
     /// by this module — a boolean result, or a soup that has been through
     /// [`sanitize`] (which the WASM constructor applies) — has had its
-    /// non-contributing rings (under 3 vertices, non-finite, or zero-area)
+    /// non-contributing rings (under 3 vertices, non-finite, or exactly collinear)
     /// dropped, so for those this also means it covers no area.
     pub fn is_empty(&self) -> bool {
         self.rings.is_empty()

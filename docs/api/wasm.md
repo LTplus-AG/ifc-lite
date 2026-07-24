@@ -197,7 +197,7 @@ General union / difference / intersection over 2D contour sets, backed by the sa
 class Contours2D {
   // Build from flat [x0,y0,x1,y1,…] coords + per-ring VERTEX counts.
   // Throws if the counts don't sum to coords.length / 2. Degenerate rings
-  // (< 3 vertices, non-finite, or zero-area) are dropped at construction.
+  // (< 3 vertices, non-finite, or exactly collinear) are dropped at construction.
   constructor(coords: Float64Array, ringLengths: Uint32Array);
 
   // Adopt a meshOutline2d result directly (widens its f32 coords to f64).

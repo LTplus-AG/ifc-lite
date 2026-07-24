@@ -51,3 +51,18 @@ export {
   type CompositeNodeSpec,
   type RecomputeTelemetry,
 } from './dag-engine.js';
+
+export {
+  computeFootprint,
+  conflictPredicate,
+  inflateAabb,
+  aabbFromMesh,
+  unionAabb,
+  DEFAULT_EPSILON_MM,
+  type Aabb,
+  type EditOp,
+  type EditOpKind,
+  type Footprint,
+  type ConflictResult,
+  type ConflictOptions,
+} from './footprint.js';

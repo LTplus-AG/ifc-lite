@@ -67,6 +67,11 @@ function isComposite(spec: NodeSpec): spec is CompositeNodeSpec {
   return 'buildPayload' in spec;
 }
 
+/** Shared frozen empty set returned by {@link ProvenanceDag.getParents} for a
+ *  node with no recorded parent edges (e.g. a DAG root) — avoids allocating a
+ *  fresh empty Set on every such call. */
+const EMPTY_PARENT_SET: ReadonlySet<string> = new Set();
+
 interface InternalNode {
   id: string;
   kind: NodeKind;
@@ -157,6 +162,23 @@ export class ProvenanceDag {
 
   getKind(nodeId: string): NodeKind | undefined {
     return this.nodes.get(nodeId)?.kind;
+  }
+
+  /** Ids of nodes that directly reference `nodeId` as a child — the
+   *  reverse-edge parent set this engine already maintains incrementally in
+   *  {@link addNode} for `invalidate`'s ancestor cascade. Read-only: never
+   *  marks anything dirty, unlike `invalidate`. Returns an empty (frozen,
+   *  shared) set for a node with no parents (e.g. a DAG root). Exposed
+   *  primarily for `footprint.ts`'s ancestor walks, which need policy this
+   *  generic engine deliberately does not know about (which ancestor KINDS
+   *  count as a "write" for conflict purposes) — see that file's module
+   *  docstring for the full rationale. Throws on an unregistered node id,
+   *  same as every other by-id accessor on this class. */
+  getParents(nodeId: string): ReadonlySet<string> {
+    if (!this.nodes.has(nodeId)) {
+      throw new Error(`ProvenanceDag: getParents: unknown node id "${nodeId}"`);
+    }
+    return this.parents.get(nodeId) ?? EMPTY_PARENT_SET;
   }
 
   /** The node's currently-stored hash, or `undefined` if it has never been

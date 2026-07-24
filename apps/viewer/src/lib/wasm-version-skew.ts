@@ -168,9 +168,9 @@ export function __resetWasmVersionSkewForTests(): void {
 // mistaken for a persistent block.
 const SKEW_NOISE_COUNT_KEY = 'ifclite:wasm-skew-noise-count';
 const SKEW_NOISE_TS_KEY = 'ifclite:wasm-skew-noise-ts';
-// Drop this many recovered-noise hits before letting a persistent block through.
-// The reload round-trip produces the straggler or two we absorb here; a real
-// block keeps coming and surfaces on the next hit.
+// Flood cap for the PRE-reload window only: several workers can each throw the
+// same skew error in the tick before the reload navigates away. Anything after
+// a reload is judged by hasRecentReload above, not by this count.
 const SKEW_NOISE_SUPPRESS_MAX = 3;
 // Reset the counter when the last skew was longer ago than this, so an unrelated
 // later skew is judged on its own recurrence, not a stale count.
@@ -198,6 +198,8 @@ export interface SkewNoiseDeps {
   now: () => number;
   read: (key: string) => string | null;
   write: (key: string, value: string) => void;
+  /** Has a skew-recovery reload already run recently? See recentlyReloaded. */
+  hasRecentReload: (now: number) => boolean;
 }
 
 const defaultNoiseDeps: SkewNoiseDeps = {
@@ -205,6 +207,7 @@ const defaultNoiseDeps: SkewNoiseDeps = {
   read: (k) => {
     try { return sessionStorage.getItem(k); } catch { return null; }
   },
+  hasRecentReload: recentlyReloaded,
   write: (k, v) => {
     try { sessionStorage.setItem(k, v); } catch { /* blocked storage — see below */ }
   },
@@ -227,6 +230,16 @@ export function shouldSuppressWasmSkewNoise(
   if (message === undefined || !isWasmAssetUnavailableError(message)) return false;
 
   const now = deps.now();
+
+  // THE decisive signal: a recovery reload has already run for this episode and
+  // we are STILL seeing the error, so the reload did not fix it — this is the
+  // genuinely-stuck deploy (CSP-blocked worker, a proxy rewriting every wasm)
+  // that must reach error tracking. Surface it immediately rather than spending
+  // the suppression budget on it: a stuck user typically hits this once and
+  // gives up, so counting it as "noise" would hide exactly the case this gate
+  // exists to catch.
+  if (deps.hasRecentReload(now)) return false;
+
   const lastTs = Number(deps.read(SKEW_NOISE_TS_KEY));
   const decayed = !Number.isFinite(lastTs) || now - lastTs > SKEW_NOISE_RESET_MS;
   const prior = decayed ? 0 : Number(deps.read(SKEW_NOISE_COUNT_KEY)) || 0;

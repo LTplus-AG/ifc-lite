@@ -15,16 +15,20 @@ function harness(startMs = 1_000_000): {
   deps: SkewNoiseDeps;
   advance: (ms: number) => void;
   store: Map<string, string>;
+  setReloaded: (v: boolean) => void;
 } {
   let t = startMs;
+  let reloaded = false;
   const store = new Map<string, string>();
   return {
     store,
     advance: (ms) => { t += ms; },
+    setReloaded: (v) => { reloaded = v; },
     deps: {
       now: () => t,
       read: (k) => (store.has(k) ? store.get(k)! : null),
       write: (k, v) => { store.set(k, v); },
+      hasRecentReload: () => reloaded,
     },
   };
 }
@@ -41,15 +45,23 @@ const HTTP_SKEW =
   "Failed to execute 'compile' on 'WebAssembly': HTTP status code is not ok";
 
 describe('shouldSuppressWasmSkewNoise', () => {
-  it('suppresses the recovered-skew hits, then lets a persistent block through', () => {
+  it('surfaces the FIRST post-reload recurrence — the stuck-deploy case', () => {
+    // The scenario that matters: a stale tab hits skew (suppressed, we reload),
+    // and after the reload the wasm is STILL unreachable (CSP / proxy). The user
+    // typically hits this once and gives up, so if we spent a counting budget on
+    // it error tracking would never learn the deploy is broken.
     const h = harness();
-    // A recovered skew fires once or twice around the reload — suppressed.
+    assert.equal(shouldSuppressWasmSkewNoise(skewEvent(MIME_SKEW), h.deps), true);  // pre-reload
+    h.setReloaded(true);
+    assert.equal(shouldSuppressWasmSkewNoise(skewEvent(MIME_SKEW), h.deps), false); // post-reload → surfaces
+  });
+
+  it('caps a pre-reload flood (several workers throwing in the same tick)', () => {
+    const h = harness();
     assert.equal(shouldSuppressWasmSkewNoise(skewEvent(MIME_SKEW), h.deps), true);  // 1
     assert.equal(shouldSuppressWasmSkewNoise(skewEvent(MIME_SKEW), h.deps), true);  // 2
     assert.equal(shouldSuppressWasmSkewNoise(skewEvent(MIME_SKEW), h.deps), true);  // 3
-    // Still failing after the reload budget → genuine block → surfaces.
-    assert.equal(shouldSuppressWasmSkewNoise(skewEvent(MIME_SKEW), h.deps), false); // 4
-    assert.equal(shouldSuppressWasmSkewNoise(skewEvent(MIME_SKEW), h.deps), false); // 5
+    assert.equal(shouldSuppressWasmSkewNoise(skewEvent(MIME_SKEW), h.deps), false); // capped
   });
 
   it('matches both active skew signatures (MIME and HTTP-status)', () => {
@@ -121,6 +133,7 @@ describe('shouldSuppressWasmSkewNoise', () => {
       read: (k) => (store.has(k) ? store.get(k)! : null),
       // Drop timestamp writes only; the count persists fine.
       write: (k, v) => { if (!k.endsWith('-ts')) store.set(k, v); },
+      hasRecentReload: () => false,
     };
     assert.equal(shouldSuppressWasmSkewNoise(skewEvent(MIME_SKEW), countOnly), false);
     assert.equal(shouldSuppressWasmSkewNoise(skewEvent(MIME_SKEW), countOnly), false);
@@ -131,7 +144,9 @@ describe('shouldSuppressWasmSkewNoise', () => {
     // could never advance past 1 and suppression would run forever — hiding a
     // genuine persistent block. The read-back check must defeat that: with no
     // durable count we surface the exception every time.
-    const blocked: SkewNoiseDeps = { now: () => 1, read: () => null, write: () => {} };
+    const blocked: SkewNoiseDeps = {
+      now: () => 1, read: () => null, write: () => {}, hasRecentReload: () => false,
+    };
     assert.equal(shouldSuppressWasmSkewNoise(skewEvent(MIME_SKEW), blocked), false);
     assert.equal(shouldSuppressWasmSkewNoise(skewEvent(MIME_SKEW), blocked), false);
   });

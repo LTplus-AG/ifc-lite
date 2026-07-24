@@ -308,6 +308,19 @@ export default defineConfig({
   build: {
     target: 'esnext',
     chunkSizeWarningLimit: 6000,
+    // Opt-in production source maps, for PostHog error tracking. Without them
+    // every captured stack frame is unreadable minified soup ("Could not find
+    // sourcemap for source url"), which is why triaging a production crash has
+    // meant hand-fetching the deployed bundle from its immutable deployment URL.
+    //
+    // Gated on VITE_SOURCEMAP rather than always-on for two reasons: rollup's
+    // map generation for this bundle costs real build time and memory, and the
+    // Vercel builder is already tight enough that the WASM link has OOM'd it
+    // before. scripts/vercel-build.sh turns this on only when a PostHog CLI key
+    // is present - i.e. only when the maps will actually be uploaded and then
+    // deleted from the output. Declared in turbo.json's build `env` so toggling
+    // it busts the task cache instead of restoring a map-less dist.
+    sourcemap: process.env.VITE_SOURCEMAP === '1',
     rollupOptions: {
       // @ifc-lite/geometry's NativeBridge does a dynamic `import('@tauri-apps/api/event')`
       // (under isTauri(), never reached on web). Rollup still resolves it

@@ -1,6 +1,6 @@
 ---
-'@ifc-lite/data': minor
-'@ifc-lite/cache': minor
+'@ifc-lite/data': major
+'@ifc-lite/cache': major
 ---
 
 Remove `EntityTable.getGlobalIdMap()`.

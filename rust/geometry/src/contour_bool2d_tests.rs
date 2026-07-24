@@ -307,11 +307,37 @@ fn a_zero_area_ring_contributes_nothing() {
     let collinear = vec![[0.0, 0.0], [1.0, 0.0], [2.0, 0.0]];
     assert!(
         sanitize(std::slice::from_ref(&collinear)).is_empty(),
-        "sanitize must drop a zero-area ring, not just the overlay"
+        "sanitize must drop a collinear ring, not just the overlay"
     );
     let out = resolve_2d(&[collinear]);
     assert!(out.is_empty(), "a collapsed ring covers no area");
     assert!(out.bounds().is_none(), "bounds must agree with is_empty");
+}
+
+#[test]
+fn a_zero_signed_area_bowtie_is_kept_not_dropped() {
+    // A self-intersecting bow-tie has zero SIGNED (shoelace) area, but its two
+    // lobes both fill under NonZero — i_overlay covers area 2 here. Sanitation
+    // must judge degeneracy by collinearity, NOT by area, or this real coverage
+    // vanishes (the trap in an area-based drop).
+    let bowtie = vec![[0.0, 0.0], [2.0, 2.0], [2.0, 0.0], [0.0, 2.0]];
+    assert_eq!(
+        signed_area(&bowtie),
+        0.0,
+        "precondition: the bow-tie's signed area is exactly zero"
+    );
+    assert_eq!(
+        sanitize(std::slice::from_ref(&bowtie)).len(),
+        1,
+        "sanitize must keep a bow-tie — it is not collinear"
+    );
+    let out = resolve_2d(&[bowtie]);
+    assert!(!out.is_empty(), "the bow-tie's lobes must survive");
+    assert!(
+        (covered_area(&out) - 2.0).abs() < TOL,
+        "both lobes fill under NonZero: {}",
+        covered_area(&out)
+    );
 }
 
 // ---------------------------------------------------------------------------

@@ -133,27 +133,40 @@ impl BooleanOp2D {
     }
 }
 
-/// Exactly-zero signed (shoelace) area of a ring — a fully collinear loop.
-/// Used only to drop rings that provably cover nothing; a genuinely thin
-/// sliver has non-zero area and is left for i_overlay to judge, so this never
-/// discards real coverage.
-fn is_zero_area(path: &[[f64; 2]]) -> bool {
-    let n = path.len();
-    let mut a = 0.0;
-    for i in 0..n {
-        let j = (i + 1) % n;
-        a += path[i][0] * path[j][1] - path[j][0] * path[i][1];
-    }
-    a == 0.0
+/// True when every vertex lies on one straight line — a ring with no interior
+/// at all. This is deliberately NOT a zero-*area* test: a self-intersecting
+/// bow-tie has zero signed (shoelace) area yet i_overlay fills both its lobes
+/// under NonZero, so dropping by area would silently discard real coverage.
+/// Collinearity is exact (`== 0.0` cross product), so it fires only on
+/// provably-degenerate input; a genuinely thin sliver is not exactly collinear
+/// and is left for i_overlay to judge, exactly as before this filter existed.
+fn is_collinear(path: &[[f64; 2]]) -> bool {
+    let p0 = path[0];
+    // Direction from p0 to the first vertex that differs from it.
+    let dir = path.iter().find_map(|p| {
+        let d = [p[0] - p0[0], p[1] - p0[1]];
+        (d != [0.0, 0.0]).then_some(d)
+    });
+    // All vertices identical → no interior.
+    let Some(dir) = dir else {
+        return true;
+    };
+    // Every vertex on the p0 + t·dir line: cross(dir, p - p0) == 0.
+    path.iter().all(|p| {
+        let d = [p[0] - p0[0], p[1] - p0[1]];
+        dir[0] * d[1] - dir[1] * d[0] == 0.0
+    })
 }
 
 /// Drop rings that cannot contribute, so no input can panic or hang the
 /// overlay: fewer than 3 vertices, ANY non-finite coordinate (a NaN makes
 /// i_overlay's segment ordering meaningless, so the whole ring goes rather than
 /// the offending point — dropping single points would silently deform the
-/// boundary instead), or an exactly-zero (collinear) area. A trailing vertex
-/// equal to the first is stripped, so a caller that closes its rings explicitly
-/// does not feed in a zero-length edge.
+/// boundary instead), or all vertices collinear (a ring with no interior). A
+/// trailing vertex equal to the first is stripped, so a caller that closes its
+/// rings explicitly does not feed in a zero-length edge. Note this drops only
+/// provably-collinear rings, NOT by area: a zero-signed-area bow-tie still
+/// carries coverage under NonZero and is left for i_overlay.
 ///
 /// Re-exported (as `sanitize_contours`) so the WASM `Contours2D` constructor
 /// can hold the same invariant its accessors document, rather than exposing a
@@ -171,7 +184,7 @@ pub fn sanitize(rings: &[Ring2D]) -> Vec<Vec<[f64; 2]>> {
             while path.len() >= 2 && path[path.len() - 1] == path[0] {
                 path.pop();
             }
-            if path.len() < 3 || is_zero_area(&path) {
+            if path.len() < 3 || is_collinear(&path) {
                 return None;
             }
             Some(path)

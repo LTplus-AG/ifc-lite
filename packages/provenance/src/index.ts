@@ -43,3 +43,11 @@ export {
   type VerificationOk,
   type VerificationFailure,
 } from './certificate.js';
+
+export {
+  ProvenanceDag,
+  type NodeSpec,
+  type LeafNodeSpec,
+  type CompositeNodeSpec,
+  type RecomputeTelemetry,
+} from './dag-engine.js';

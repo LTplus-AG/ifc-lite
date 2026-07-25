@@ -132,16 +132,77 @@ describe('zones/assignment', () => {
       assert.strictEqual(a.zoneId, 'a'); // centroid (x=9.025) is still deep inside A
     });
 
-    it('a degenerate zero-thickness AABB lying exactly ON the boundary is UNASSIGNED, not straddling', () => {
-      // A collapsed/flattened element sitting exactly at the shared plane
-      // penetrates NEITHER neighbour by the threshold, so it touches no
-      // zone at all — documented behaviour, not an oversight.
+    it('a degenerate zero-thickness AABB lying exactly ON the boundary picks a deterministic side, not straddling', () => {
+      // A collapsed/flattened element sitting exactly at the shared plane:
+      // its centroid lies on BOTH zones' inclusive boundary, so the home
+      // zone is the first containing zone in set order (a deterministic
+      // tie-break by zone order, never float noise). It penetrates neither
+      // neighbour past the threshold, so it does not straddle.
       const elements: ElementAABB[] = [{ globalId: 1, min: [10, -1, -1], max: [10, 1, 1] }];
       const result = assignElementsToZoneSet(elements, tiledZoneSet);
       const a = result.get(1)!;
-      assert.strictEqual(a.zoneId, null);
+      assert.strictEqual(a.zoneId, 'a');
       assert.strictEqual(a.straddles, false);
-      assert.deepStrictEqual(a.touchedZoneIds, []);
+      assert.deepStrictEqual(a.touchedZoneIds, ['a']);
+    });
+  });
+
+  // PR #1869 review: centroid membership must NOT be gated behind the
+  // straddle-penetration overlap test. A sliver-thin element hugging a
+  // zone's outer face has an in-zone centroid but an overlap depth below
+  // STRADDLE_PENETRATION_M on its thin axis; it previously fell through to
+  // UNASSIGNED. Home-zone containment is now decided independently.
+  describe('thin elements near a zone face (PR #1869 regression)', () => {
+    // Zone A spans [-5, 5] on every axis.
+    const zoneSet = makeZoneSet('s1', [
+      { id: 'a', name: 'Zone a', center: [0, 0, 0], size: [10, 10, 10], rotationY: 0 },
+    ]);
+
+    it('a 0.5mm-thick element inside the +X face is assigned, not UNASSIGNED', () => {
+      const elements: ElementAABB[] = [{ globalId: 1, min: [4.9995, -1, -1], max: [5, 1, 1] }];
+      const a = assignElementsToZoneSet(elements, zoneSet).get(1)!;
+      assert.strictEqual(a.zoneId, 'a');
+      assert.strictEqual(a.straddles, false);
+      assert.deepStrictEqual(a.touchedZoneIds, ['a']);
+    });
+
+    it('a 0.5mm-thick element inside the +Y face is assigned, not UNASSIGNED', () => {
+      const elements: ElementAABB[] = [{ globalId: 1, min: [-1, 4.9995, -1], max: [1, 5, 1] }];
+      const a = assignElementsToZoneSet(elements, zoneSet).get(1)!;
+      assert.strictEqual(a.zoneId, 'a');
+      assert.strictEqual(a.straddles, false);
+      assert.deepStrictEqual(a.touchedZoneIds, ['a']);
+    });
+
+    it('a 0.5mm-thick element inside the +Z face is assigned, not UNASSIGNED', () => {
+      const elements: ElementAABB[] = [{ globalId: 1, min: [-1, -1, 4.9995], max: [1, 1, 5] }];
+      const a = assignElementsToZoneSet(elements, zoneSet).get(1)!;
+      assert.strictEqual(a.zoneId, 'a');
+      assert.strictEqual(a.straddles, false);
+      assert.deepStrictEqual(a.touchedZoneIds, ['a']);
+    });
+
+    it('centroid in zone A while also genuinely penetrating zone B: home stays A, straddles, touches both', () => {
+      // A x=[0,10], B x=[10,20]; element x=[9, 10.05] — centroid at 9.525
+      // (inside A), penetrating 5cm into B (past the 1mm threshold).
+      const tiled = makeZoneSet('s1', [makeZone('a', 5), makeZone('b', 15)]);
+      const a = assignElementsToZoneSet([el(1, 9, 10.05)], tiled).get(1)!;
+      assert.strictEqual(a.zoneId, 'a');
+      assert.strictEqual(a.straddles, true);
+      assert.deepStrictEqual(a.touchedZoneIds.sort(), ['a', 'b']);
+    });
+
+    it('a sub-threshold sliver crossing the shared plane resolves by centroid alone, no straddle', () => {
+      // A x=[0,10], B x=[10,20]; element x=[9.9993, 10.0005]: centroid at
+      // 9.9999 (inside A), overlap depth into A (0.7mm) and into B (0.5mm)
+      // both below the 1mm penetration threshold. No zone is "penetrated",
+      // so the home zone from the centroid must decide the assignment on
+      // its own — previously this fell through to UNASSIGNED.
+      const tiled = makeZoneSet('s1', [makeZone('a', 5), makeZone('b', 15)]);
+      const a = assignElementsToZoneSet([el(1, 9.9993, 10.0005)], tiled).get(1)!;
+      assert.strictEqual(a.zoneId, 'a');
+      assert.strictEqual(a.straddles, false);
+      assert.deepStrictEqual(a.touchedZoneIds, ['a']);
     });
   });
 });

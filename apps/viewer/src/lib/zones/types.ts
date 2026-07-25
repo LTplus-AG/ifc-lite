@@ -79,8 +79,10 @@ export interface ZoneAssignment {
    *  centroid is in no zone but the element still pokes into one). Geometry
    *  is never split in v1 — this is purely an informational flag. */
   straddles: boolean;
-  /** Every zone id whose box overlaps the element's AABB (including the
-   *  `zoneId` above, when set). Empty when the element touches no zone at
+  /** Every zone id whose box the element's AABB genuinely penetrates (past
+   *  `STRADDLE_PENETRATION_M`), plus the home `zoneId` above when set (the
+   *  home zone counts as touched even when the element is too thin to clear
+   *  the penetration threshold). Empty when the element touches no zone at
    *  all. */
   touchedZoneIds: string[];
 }

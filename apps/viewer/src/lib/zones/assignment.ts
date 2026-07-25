@@ -50,11 +50,18 @@ export const STRADDLE_PENETRATION_M = 0.001;
  *  allocation in the inner loop. See `geometry.ts`'s `CompiledZone` doc for
  *  why that matters at scale.
  *
- *  A degenerate, zero-thickness AABB lying EXACTLY on a shared zone
- *  boundary (e.g. a flattened/collapsed element) penetrates neither
- *  neighbour by `STRADDLE_PENETRATION_M`, so it touches no zone and
- *  classifies UNASSIGNED rather than straddling or picking an arbitrary
- *  side — see the "zero-thickness on boundary" test in assignment.test.ts. */
+ *  The home zone is determined by centroid containment INDEPENDENTLY of the
+ *  `STRADDLE_PENETRATION_M` gate — a sliver-thin element hugging a zone's
+ *  outer face (overlap depth below the threshold on its thin axis) still has
+ *  an in-zone centroid and MUST classify into that zone, not UNASSIGNED
+ *  (review finding on PR #1869; regression tests in assignment.test.ts).
+ *  The penetration threshold only decides which ADDITIONAL zones count as
+ *  "touched" for the straddle flag.
+ *
+ *  A degenerate zero-thickness AABB lying EXACTLY on a shared zone boundary
+ *  has its centroid on both zones' inclusive boundary, so it deterministically
+ *  classifies into the first such zone in set order (ties broken by zone
+ *  order, never by float noise) — see the "zero-thickness on boundary" test. */
 export function assignElementsToZoneSet(
   elements: readonly ElementAABB[],
   zoneSet: ZoneSet,
@@ -80,16 +87,21 @@ export function assignElementsToZoneSet(
     const touched: string[] = [];
 
     for (const zone of compiled) {
-      // Real penetration only (negative eps) — see STRADDLE_PENETRATION_M.
-      // Centroid-inside implies deep overlap for any non-degenerate AABB, so
-      // this gate essentially never disagrees with the (separately, more
-      // loosely) tested home-zone containment below — except exactly the
-      // zero-thickness-on-a-boundary case documented above.
-      if (!zoneOverlapsAABBCompiled(minX, minY, minZ, maxX, maxY, maxZ, zone, -STRADDLE_PENETRATION_M)) continue;
-      touched.push(zone.id);
-      if (homeZoneId === null && isPointInCompiledZone(cx, cy, cz, zone)) {
+      // Home zone: centroid containment, decided INDEPENDENTLY of the
+      // penetration gate below. Gating it behind the straddle threshold
+      // wrongly dropped sliver-thin elements whose overlap depth on their
+      // thin axis is below STRADDLE_PENETRATION_M even though they sit
+      // wholly inside the zone (PR #1869 review).
+      const isHome = homeZoneId === null && isPointInCompiledZone(cx, cy, cz, zone);
+      if (isHome) {
         homeZoneId = zone.id;
         homeZoneName = zone.name;
+      }
+      // "Touched" demands real penetration (negative eps) so boundary-abutting
+      // elements in tiling zone sets don't flood the straddle flag — see
+      // STRADDLE_PENETRATION_M. The home zone always counts as touched.
+      if (isHome || zoneOverlapsAABBCompiled(minX, minY, minZ, maxX, maxY, maxZ, zone, -STRADDLE_PENETRATION_M)) {
+        touched.push(zone.id);
       }
     }
 

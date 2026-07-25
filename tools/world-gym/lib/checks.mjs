@@ -41,12 +41,30 @@
  * output itself; this covers the geometry pipeline which it does not.)
  */
 
-import { loadIfcBytes } from '../../../packages/cli/dist/loader.js';
-import { computeValidationIssues } from '../../../packages/cli/dist/commands/validate.js';
-import { GeometryProcessor } from '../../../packages/geometry/dist/index.js';
-import { createClashEngine, disciplineMatrixRules } from '../../../packages/clash/dist/index.js';
-import { elementsFromStep } from '../../../packages/clash/dist/adapters/step.js';
-import { EntityNode } from '../../../packages/query/dist/index.js';
+// These bind to BUILT workspace artifacts (packages/*/dist). Guarded dynamic
+// imports (top-level await) instead of static imports so a missing/stale
+// build fails with an actionable message rather than a raw
+// ERR_MODULE_NOT_FOUND from deep inside the resolver. Note the guard can
+// only catch a missing build, not a stale one - rebuild before long runs.
+let loadIfcBytes;
+let computeValidationIssues;
+let GeometryProcessor;
+let createClashEngine;
+let disciplineMatrixRules;
+let elementsFromStep;
+let EntityNode;
+try {
+  ({ loadIfcBytes } = await import('../../../packages/cli/dist/loader.js'));
+  ({ computeValidationIssues } = await import('../../../packages/cli/dist/commands/validate.js'));
+  ({ GeometryProcessor } = await import('../../../packages/geometry/dist/index.js'));
+  ({ createClashEngine, disciplineMatrixRules } = await import('../../../packages/clash/dist/index.js'));
+  ({ elementsFromStep } = await import('../../../packages/clash/dist/adapters/step.js'));
+  ({ EntityNode } = await import('../../../packages/query/dist/index.js'));
+} catch (err) {
+  throw new Error(
+    `world-gym checks need the built workspace artifacts (packages/*/dist). Run 'pnpm build' (and 'pnpm build:wasm' or 'pnpm build:wasm:fetch') at the repo root first. Underlying error: ${err.message}`,
+  );
+}
 
 /** The one non-matrix rule; see module doc for why the matrix alone is blind here. */
 export const FOOTING_SELF_RULE = { id: 'gym-footing-self', name: 'IfcFooting self-clash', a: 'IfcFooting', mode: 'hard', severity: 'critical' };

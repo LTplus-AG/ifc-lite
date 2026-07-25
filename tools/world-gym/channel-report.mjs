@@ -28,11 +28,7 @@ import { createInterface } from 'node:readline';
 import { createHash } from 'node:crypto';
 import { computeRewardChannels, CHANNEL_NAMES } from './lib/reward-channels.mjs';
 import { generateModel } from './generator.mjs';
-
-function getFlag(args, name) {
-  const i = args.indexOf(name);
-  return i >= 0 ? args[i + 1] : undefined;
-}
+import { getFlag, numberFlag } from './lib/flags.mjs';
 
 class ChannelStats {
   constructor() {
@@ -84,8 +80,8 @@ async function main() {
     process.exit(1);
   }
   const outPath = getFlag(args, '--out');
-  const determinismEvery = Number(getFlag(args, '--determinism-every') ?? 10);
-  const tamperSampleTarget = Number(getFlag(args, '--tamper-sample') ?? 100);
+  const determinismEvery = numberFlag(args, '--determinism-every', { def: 10, min: 0, integer: true });
+  const tamperSampleTarget = numberFlag(args, '--tamper-sample', { def: 100, min: 0, integer: true });
 
   const stats = {
     all: Object.fromEntries(CHANNEL_NAMES.map((n) => [n, new ChannelStats()])),
@@ -104,8 +100,12 @@ async function main() {
     const line = JSON.parse(raw);
     total++;
 
-    const numericSeed = typeof line.seed === 'number' ? line.seed : total;
-    const proveDeterminism = determinismEvery > 0 && numericSeed % determinismEvery === 0;
+    // Only lines with a numeric seed can be re-proven: the tamper/determinism
+    // slice REGENERATES from `line.seed`, so a line without one must be
+    // excluded from the slice entirely (a positional fallback here would
+    // select lines that then regenerate from `undefined`).
+    const numericSeed = typeof line.seed === 'number' ? line.seed : null;
+    const proveDeterminism = determinismEvery > 0 && numericSeed !== null && numericSeed % determinismEvery === 0;
 
     let channels;
     if (proveDeterminism) {

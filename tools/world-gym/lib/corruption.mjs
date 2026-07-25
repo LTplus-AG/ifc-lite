@@ -187,7 +187,14 @@ export function applyTextDefects(content, plan) {
       case 'missing-site': {
         const idx = lines.findIndex((l) => /^#\d+=IFCSITE\(/.test(l));
         if (idx === -1) break;
-        const id = Number(LINE_RE.exec(lines[idx])[1]);
+        // The locator regex above is prefix-only; LINE_RE additionally
+        // demands the line end in ');'. An entity serialized across
+        // multiple physical lines matches the former but not the latter -
+        // skip the defect (recorded as skipped downstream) instead of
+        // dereferencing a null match.
+        const m = LINE_RE.exec(lines[idx]);
+        if (!m) break;
+        const id = Number(m[1]);
         lines.splice(idx, 1);
         records.push({ type: 'missing-site', removedExpressId: id });
         break;
@@ -196,6 +203,7 @@ export function applyTextDefects(content, plan) {
         const idx = lines.findIndex((l) => /^#\d+=IFCPROJECT\(/.test(l));
         if (idx === -1) break;
         const m = LINE_RE.exec(lines[idx]);
+        if (!m) break; // multi-line entity: cannot clone safely, skip
         const newId = maxExpressId(lines) + 1;
         // Give the duplicate project a DISTINCT GlobalId (first char
         // flipped, deterministic) so this defect is purely a
@@ -223,8 +231,20 @@ export function applyTextDefects(content, plan) {
         const refs = listMatch[1].match(/#\d+/g);
         if (!refs || refs.length === 0) break;
         const victim = refs[refs.length - 1];
-        // Replace only the list occurrence (the last one in the line).
-        const pos = lines[idx].lastIndexOf(victim);
+        // Replace only the list occurrence (the last one in the line) -
+        // and only where the match is the WHOLE express id: a bare
+        // lastIndexOf('#12') would also hit inside '#124' appearing later
+        // on the line and corrupt an unintended reference.
+        let pos = -1;
+        for (let s = lines[idx].lastIndexOf(victim); s !== -1; s = s > 0 ? lines[idx].lastIndexOf(victim, s - 1) : -1) {
+          const after = lines[idx][s + victim.length];
+          if (after === undefined || !/[0-9]/.test(after)) {
+            pos = s;
+            break;
+          }
+          if (s === 0) break;
+        }
+        if (pos === -1) break;
         lines[idx] = `${lines[idx].slice(0, pos)}#99999999${lines[idx].slice(pos + victim.length)}`;
         records.push({ type: 'dangling-ref', originalRef: Number(victim.slice(1)), danglingRef: 99999999 });
         break;
@@ -243,8 +263,9 @@ export function applyTextDefects(content, plan) {
         const toRemove = relIdx.slice(0, defect.count);
         const removed = [];
         for (let j = toRemove.length - 1; j >= 0; j--) {
-          const m = LINE_RE.exec(lines[toRemove[j]]);
-          removed.push(Number(m[1]));
+          const mm = LINE_RE.exec(lines[toRemove[j]]);
+          if (!mm) continue; // multi-line entity: leave it in place
+          removed.push(Number(mm[1]));
           lines.splice(toRemove[j], 1);
         }
         if (removed.length > 0) {

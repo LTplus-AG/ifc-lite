@@ -105,8 +105,12 @@ def check_model(entry):
         f = ifcopenshell.open(path)
     except Exception as err:  # noqa: BLE001
         return {"parse": {"ok": False, "error": str(err)}}
-    checks["parse"] = {"ok": True, "schema": f.schema,
-                       "schemaMatches": f.schema == entry.get("schema", "IFC4")}
+    # ok must reflect the schema comparison, not merely "the file opened":
+    # a hardcoded True made schemaMatches invisible to all_ok / perCheck /
+    # the exit code, leaving the docstring's schema check unenforced.
+    schema_matches = f.schema == entry.get("schema", "IFC4")
+    checks["parse"] = {"ok": schema_matches, "schema": f.schema,
+                       "schemaMatches": schema_matches}
 
     # --- entity counts (adjusted for planted text-level defects) ---
     expected_counts = dict(entry["entityCountsByType"])
@@ -167,14 +171,18 @@ def check_model(entry):
             continue
         if product.is_a("IfcOpeningElement") or product.is_a("IfcSpace"):
             continue
+        # product.Name is optional in IFC; a None in the set would make the
+        # sorted(set - set) reporting below raise TypeError after all the
+        # meshing work is done. Key unnamed products on their express id.
+        product_key = product.Name or f"#{product.id()}"
         try:
             shape = ifcopenshell.geom.create_shape(GEOM_SETTINGS, product)
             vol, bbox = mesh_volume_and_bbox(shape)
         except Exception:  # noqa: BLE001
-            unmeshable.append(product.Name)
+            unmeshable.append(product_key)
             continue
         if vol == 0.0:
-            unmeshable.append(product.Name)
+            unmeshable.append(product_key)
             continue
         for t in ("IfcWall", "IfcSlab", "IfcColumn", "IfcBeam", "IfcFooting"):
             if product.is_a(t):
@@ -189,9 +197,13 @@ def check_model(entry):
     if "wallGrossVolume" in totals:
         opening_vol = 0.0
         if params.get("family") == "frame":
+            # Prefer the as-built (clamped) opening size from the labels;
+            # fall back to the sampled params for older manifests.
+            opening_w = entry.get("openingWidthUsed", params.get("openingWidth", 0))
+            opening_h = entry.get("openingHeightUsed", params.get("openingHeight", 0))
             opening_vol = (entry.get("openingCount", 0)
-                           * params.get("openingWidth", 0)
-                           * params.get("openingHeight", 0)
+                           * opening_w
+                           * opening_h
                            * params.get("wallThickness", 0))
         expected_wall = totals["wallGrossVolume"] - opening_vol
         if not rel_close(volumes.get("IfcWall", 0.0), expected_wall, REL_TOL_VOLUME):

@@ -16,7 +16,7 @@ independent of the family and parameter streams (`${seed}:family`,
 byte streams through the same public `generateModel` the spec invites
 submitters to call:
 
-```
+```js
 corruptedBytes = generateModel(seed, 'auto', { corruptRate: 0.3 }).content   // what a consumer receives
 cleanBytes     = generateModel(seed, 'auto', { corruptRate: 0    }).content   // the CLEAN TWIN
 ```

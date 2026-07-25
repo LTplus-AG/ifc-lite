@@ -61,6 +61,23 @@ export function build(creator, params) {
   const depth = round3(baysY * spanY);
   const longWallIsXAxis = width >= depth; // openings go on the two walls running the long way
 
+  // Clamp openings to the host wall bounds. The sampled parameters can
+  // otherwise leave the wall: sillHeight (<= 1.0) + openingHeight (<= 1.8)
+  // can exceed the shortest storeyHeight (2.7), and with three openings on
+  // the long walls the sampled width can overlap the neighbouring opening
+  // (openings are centred at margin*k along the wall, so adjacent clearance
+  // requires width <= margin). A 50mm ligament is kept at the top and
+  // between openings; the clamp is a no-op for parameters that already fit.
+  // Both long walls share the same length, so the clamped size is uniform
+  // across the model and exported in the labels (openingWidthUsed /
+  // openingHeightUsed) for independent oracles to consume.
+  const longSegLength = longWallIsXAxis ? width : depth;
+  const openingMargin = openingsPerLongWall > 0 ? longSegLength / (openingsPerLongWall + 1) : 0;
+  const effOpeningHeight = round3(Math.min(openingHeight, Math.max(0.1, storeyHeight - sillHeight - 0.05)));
+  const effOpeningWidth = openingsPerLongWall > 0
+    ? round3(Math.min(openingWidth, Math.max(0.3, openingMargin - 0.05)))
+    : openingWidth;
+
   const storeyIds = [];
   const totals = {};
   let openingCount = 0;
@@ -82,13 +99,12 @@ export function build(creator, params) {
 
       const openings = [];
       if (isLongWall && openingsPerLongWall > 0) {
-        const margin = segLength / (openingsPerLongWall + 1);
         for (let k = 1; k <= openingsPerLongWall; k++) {
           openings.push({
             Name: `Opening ${i}-${side}-${k}`,
-            Width: openingWidth,
-            Height: openingHeight,
-            Position: [margin * k, 0, sillHeight],
+            Width: effOpeningWidth,
+            Height: effOpeningHeight,
+            Position: [openingMargin * k, 0, sillHeight],
           });
         }
       }
@@ -201,6 +217,9 @@ export function build(creator, params) {
     footprint: { width, depth, area: round3(width * depth) },
     grossFloorArea: round3(width * depth * storeys),
     openingCount,
+    // The clamped (as-built) opening size - can differ from the sampled
+    // params.openingWidth/openingHeight; independent oracles must use these.
+    ...(openingCount > 0 ? { openingWidthUsed: effOpeningWidth, openingHeightUsed: effOpeningHeight } : {}),
     totals,
     // Internal handle for the corruption layer (stripped from the label by
     // generator.mjs): where build-time defect injections attach.

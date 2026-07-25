@@ -16,20 +16,16 @@
 
 import { createHash } from 'node:crypto';
 import { generateModel } from './generator.mjs';
+import { numberFlag } from './lib/flags.mjs';
 
 function sha256(text) {
   return createHash('sha256').update(text, 'utf-8').digest('hex');
 }
 
-function getFlag(args, name) {
-  const i = args.indexOf(name);
-  return i >= 0 ? args[i + 1] : undefined;
-}
-
 async function main() {
   const args = process.argv.slice(2);
-  const seedCount = Number(getFlag(args, '--seeds') ?? 20);
-  const delayMs = Number(getFlag(args, '--delay-ms') ?? 50);
+  const seedCount = numberFlag(args, '--seeds', { def: 20, min: 1, integer: true });
+  const delayMs = numberFlag(args, '--delay-ms', { def: 50, min: 0 });
 
   const results = [];
   for (let seed = 0; seed < seedCount; seed++) {

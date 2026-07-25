@@ -32,6 +32,7 @@ import {
 } from './lib/corruption.mjs';
 import * as frame from './families/frame.mjs';
 import * as office from './families/office.mjs';
+import { getFlag, numberFlag, seedFlag } from './lib/flags.mjs';
 
 export const FAMILIES = { frame, office };
 export const FAMILY_NAMES = Object.keys(FAMILIES);
@@ -129,23 +130,22 @@ export function generateModel(seed, familyName = 'auto', opts = {}) {
 
 async function main() {
   const args = process.argv.slice(2);
-  const getFlag = (name) => {
-    const i = args.indexOf(name);
-    return i >= 0 ? args[i + 1] : undefined;
-  };
   const hasFlag = (name) => args.includes(name);
 
-  const seedRaw = getFlag('--seed');
-  if (seedRaw === undefined) {
+  if (getFlag(args, '--seed') === undefined) {
     process.stderr.write('Usage: node generator.mjs --seed <n> [--family frame|office|auto] [--corrupt | --corrupt-rate 0.3] --out <file.ifc> [--json]\n');
     process.exit(1);
   }
-  const seed = Number.isFinite(Number(seedRaw)) ? Number(seedRaw) : seedRaw;
-  const family = getFlag('--family') ?? 'auto';
-  const outPath = getFlag('--out');
+  const seed = seedFlag(args, '--seed');
+  const family = getFlag(args, '--family') ?? 'auto';
+  const outPath = getFlag(args, '--out');
   const jsonOutput = hasFlag('--json');
-  const corruptRate = Number(getFlag('--corrupt-rate') ?? 0);
   const forceCorrupt = hasFlag('--corrupt') ? true : undefined;
+  if (forceCorrupt !== undefined && getFlag(args, '--corrupt-rate') !== undefined) {
+    process.stderr.write('error: --corrupt and --corrupt-rate are mutually exclusive\n');
+    process.exit(2);
+  }
+  const corruptRate = numberFlag(args, '--corrupt-rate', { def: 0, min: 0, max: 1 });
 
   const model = generateModel(seed, family, { corruptRate, forceCorrupt });
 

@@ -94,7 +94,7 @@ end to end).
 
 ## Architecture
 
-```
+```text
 tools/world-gym/
   lib/
     rng.mjs                   deterministic seeded PRNG (mulberry32 + FNV-1a seed hash)
@@ -284,7 +284,7 @@ unnecessary and should be deleted - it is a workaround, not a design choice.
 
 ## 100k corpus run - results (this machine, 10 cores, 10 workers)
 
-```
+```text
 requested / completed / failed:   100000 / 100000 / 0
 wall time:                        126.4 s  (2m 6s)
 throughput:                       791.0 models/sec  (v1 subprocess engine: 6.6/sec -> ~120x)

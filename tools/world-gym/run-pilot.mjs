@@ -37,14 +37,11 @@ import { writeFile, mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { cpus } from 'node:os';
+import { getFlag, numberFlag } from './lib/flags.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WORKER_PATH = join(HERE, 'worker.mjs');
 
-function getFlag(args, name) {
-  const i = args.indexOf(name);
-  return i >= 0 ? args[i + 1] : undefined;
-}
 function hasFlag(args, name) {
   return args.includes(name);
 }
@@ -73,6 +70,8 @@ class WorkerPool {
     this.workers = [];
     this.idle = [];
     this.pending = new Map(); // seed -> { resolve, reject }
+    this.inFlight = new Map(); // child -> seed currently being processed
+    this.shuttingDown = false;
   }
 
   async start() {
@@ -89,6 +88,14 @@ class WorkerPool {
         child.on('message', onMessage);
       });
       child.on('message', (msg) => this._handleMessage(child, msg));
+      // A dying worker must never hang the run: settle its in-flight job
+      // (and, when no workers remain, everything queued) with a diagnostic
+      // instead of leaving Promise.all in main() waiting forever.
+      child.on('error', (err) => this._handleWorkerDeath(child, `worker error: ${err.message}`));
+      child.on('exit', (code, signal) => {
+        if (this.shuttingDown) return;
+        this._handleWorkerDeath(child, `worker exited unexpectedly (code=${code}, signal=${signal})`);
+      });
       child.send({
         type: 'init',
         modelDir: this.modelDir,
@@ -107,6 +114,7 @@ class WorkerPool {
   _handleMessage(child, msg) {
     if (msg.type === 'ready') return;
     const job = this.pending.get(msg.seed);
+    this.inFlight.delete(child);
     this.idle.push(child);
     this._drainQueue();
     if (!job) return;
@@ -118,21 +126,53 @@ class WorkerPool {
     }
   }
 
+  _handleWorkerDeath(child, why) {
+    this.workers = this.workers.filter((w) => w !== child);
+    this.idle = this.idle.filter((w) => w !== child);
+    const seed = this.inFlight.get(child);
+    this.inFlight.delete(child);
+    if (seed !== undefined && this.pending.has(seed)) {
+      const job = this.pending.get(seed);
+      this.pending.delete(seed);
+      job.reject(new Error(`${why} while processing seed ${seed}`));
+    }
+    if (this.workers.length === 0) {
+      // Nothing can ever drain the queue or settle the remaining jobs:
+      // fail them all fast instead of hanging.
+      this.queue = [];
+      for (const [pSeed, job] of [...this.pending]) {
+        this.pending.delete(pSeed);
+        job.reject(new Error(`${why}; no workers left for seed ${pSeed}`));
+      }
+    } else {
+      this._drainQueue();
+    }
+  }
+
+  _dispatch(child, seed, family) {
+    this.inFlight.set(child, seed);
+    child.send({ type: 'job', seed, family });
+  }
+
   _drainQueue() {
     while (this.idle.length > 0 && this.queue && this.queue.length > 0) {
       const child = this.idle.pop();
       const { seed, family } = this.queue.shift();
-      child.send({ type: 'job', seed, family });
+      this._dispatch(child, seed, family);
     }
   }
 
   /** Run one job - resolves with the worker's result or rejects with its error. */
   runJob(seed, family) {
     return new Promise((resolvePromise, rejectPromise) => {
+      if (this.workers.length === 0) {
+        rejectPromise(new Error(`no workers available for seed ${seed} (all workers died)`));
+        return;
+      }
       this.pending.set(seed, { resolve: resolvePromise, reject: rejectPromise });
       if (this.idle.length > 0) {
         const child = this.idle.pop();
-        child.send({ type: 'job', seed, family });
+        this._dispatch(child, seed, family);
       } else {
         this.queue = this.queue ?? [];
         this.queue.push({ seed, family });
@@ -141,6 +181,7 @@ class WorkerPool {
   }
 
   async shutdown() {
+    this.shuttingDown = true;
     for (const w of this.workers) {
       w.send({ type: 'shutdown' });
     }
@@ -153,14 +194,14 @@ class WorkerPool {
 
 async function main() {
   const args = process.argv.slice(2);
-  const count = Number(getFlag(args, '--count') ?? 1000);
-  const seedStart = Number(getFlag(args, '--seed-start') ?? 0);
+  const count = numberFlag(args, '--count', { def: 1000, min: 1, integer: true });
+  const seedStart = numberFlag(args, '--seed-start', { def: 0, min: 0, integer: true });
   const family = getFlag(args, '--family') ?? 'auto';
-  const workerCount = Number(getFlag(args, '--workers') ?? cpus().length);
+  const workerCount = numberFlag(args, '--workers', { def: cpus().length, min: 1, integer: true });
   const outDirRaw = getFlag(args, '--out-dir');
   const skipChecks = hasFlag(args, '--skip-checks');
   const engine = getFlag(args, '--engine') ?? 'in-process';
-  const corruptRate = Number(getFlag(args, '--corrupt-rate') ?? 0);
+  const corruptRate = numberFlag(args, '--corrupt-rate', { def: 0, min: 0, max: 1 });
   const keepFiles = !hasFlag(args, '--no-keep-files');
 
   if (!outDirRaw) {

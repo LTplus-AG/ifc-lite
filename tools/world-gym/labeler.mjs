@@ -51,6 +51,7 @@ import {
   parseStore, schemaCheckInProcess, clashCheckInProcess,
   extractQuantityTotals, findExpressIdsByNamePrefix, initChecks,
 } from './lib/checks.mjs';
+import { getFlag, numberFlag, seedFlag } from './lib/flags.mjs';
 
 const execFileAsync = promisify(execFile);
 
@@ -225,24 +226,23 @@ export async function labelModel(model, filePath, { skipChecks = false, engine =
 
 async function main() {
   const args = process.argv.slice(2);
-  const getFlag = (name) => {
-    const i = args.indexOf(name);
-    return i >= 0 ? args[i + 1] : undefined;
-  };
   const hasFlag = (name) => args.includes(name);
 
-  const seedRaw = getFlag('--seed');
-  if (seedRaw === undefined) {
+  if (getFlag(args, '--seed') === undefined) {
     process.stderr.write('Usage: node labeler.mjs --seed <n> [--family frame|office|auto] [--corrupt | --corrupt-rate 0.3] [--engine in-process|subprocess] --model-dir <dir> [--skip-checks] [--json]\n');
     process.exit(1);
   }
-  const seed = Number.isFinite(Number(seedRaw)) ? Number(seedRaw) : seedRaw;
-  const family = getFlag('--family') ?? 'auto';
-  const modelDir = getFlag('--model-dir') ?? '.';
+  const seed = seedFlag(args, '--seed');
+  const family = getFlag(args, '--family') ?? 'auto';
+  const modelDir = getFlag(args, '--model-dir') ?? '.';
   const skipChecks = hasFlag('--skip-checks');
-  const engine = getFlag('--engine') ?? 'in-process';
-  const corruptRate = Number(getFlag('--corrupt-rate') ?? 0);
+  const engine = getFlag(args, '--engine') ?? 'in-process';
   const forceCorrupt = hasFlag('--corrupt') ? true : undefined;
+  if (forceCorrupt !== undefined && getFlag(args, '--corrupt-rate') !== undefined) {
+    process.stderr.write('error: --corrupt and --corrupt-rate are mutually exclusive\n');
+    process.exit(2);
+  }
+  const corruptRate = numberFlag(args, '--corrupt-rate', { def: 0, min: 0, max: 1 });
 
   if (engine === 'in-process' && !skipChecks) await initChecks();
 

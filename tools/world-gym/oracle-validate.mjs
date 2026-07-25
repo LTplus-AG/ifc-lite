@@ -30,14 +30,10 @@ import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { generateModel } from './generator.mjs';
+import { getFlag, numberFlag } from './lib/flags.mjs';
 
 const execFileAsync = promisify(execFile);
 const HERE = dirname(fileURLToPath(import.meta.url));
-
-function getFlag(args, name) {
-  const i = args.indexOf(name);
-  return i >= 0 ? args[i + 1] : undefined;
-}
 
 async function main() {
   const args = process.argv.slice(2);
@@ -47,7 +43,7 @@ async function main() {
     process.stderr.write('Usage: node oracle-validate.mjs --manifest <manifest.jsonl> --python <venv/bin/python> [--every 500] [--work-dir <dir>] [--out <report.json>]\n');
     process.exit(1);
   }
-  const every = Number(getFlag(args, '--every') ?? 500);
+  const every = numberFlag(args, '--every', { def: 500, min: 1, integer: true });
   const workDir = resolve(getFlag(args, '--work-dir') ?? join(dirname(resolve(manifestPath)), 'oracle-sample'));
   const outPath = getFlag(args, '--out');
 
@@ -85,6 +81,10 @@ async function main() {
       quantitiesExtracted: line.quantitiesExtracted,
       groundTruthTotals: line.groundTruth?.totals ?? {},
       openingCount: line.groundTruth?.openingCount ?? 0,
+      // As-built (clamped) opening size; may differ from params.opening*.
+      ...(line.groundTruth?.openingWidthUsed !== undefined
+        ? { openingWidthUsed: line.groundTruth.openingWidthUsed, openingHeightUsed: line.groundTruth.openingHeightUsed }
+        : {}),
     });
   }
 

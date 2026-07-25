@@ -177,7 +177,7 @@ protocol.
 
 ## 7. Files
 
-```
+```text
 benchmark/
   BENCHMARK.md        this spec (versioned)
   splits.mjs          constants + split arithmetic (the normative universe)

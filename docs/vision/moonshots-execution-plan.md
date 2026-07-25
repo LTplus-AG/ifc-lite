@@ -37,7 +37,7 @@ honest.
 
 ### Dependency graph
 
-```
+```text
 M6 (speed)  ──────────────┐
                           ▼
 M1 (hashes, certificates) ──► M4 (provable merges)

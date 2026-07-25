@@ -450,7 +450,10 @@ async function main() {
   // after the certificate was created, then re-verify — must fail.
   const otherStorey = dag.storeys.find((s) => s.expressId !== target.meta.storeyId && s.elementIds.length > 0);
   let tamperExpressId;
-  for (const id of otherStorey.elementIds) {
+  // A model whose only populated storey is the edited one has nothing to
+  // tamper with; fall through to the existing "skip tamper test" path
+  // instead of dereferencing undefined.
+  for (const id of otherStorey?.elementIds ?? []) {
     const meta = dag.elementMeta.get(id);
     if (meta && meta.psetNodeIds.length > 0 && dag.dagNodes.get(meta.psetNodeIds[0]).payload.properties.length > 0) {
       tamperExpressId = id;

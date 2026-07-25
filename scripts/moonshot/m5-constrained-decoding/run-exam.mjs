@@ -26,6 +26,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { newState, validateOp, applyOp, describeState, DSL_SPEC } from './dsl.mjs';
 import { compileProgram } from './compile.mjs';
@@ -35,7 +36,7 @@ import { initModel, callModel, extractJsonArray, totalCalls, MODEL } from './mod
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SCRATCH = process.env.M5_SCRATCH
-  ?? '/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5';
+  ?? path.join(tmpdir(), 'ifc-lite-m5');
 const MAX_REPAIRS = 3;
 
 const log = (...a) => process.stderr.write(`[m5] ${a.join(' ')}\n`);
@@ -180,12 +181,15 @@ export async function finishArm(task, arm, ops, extra) {
     return { ...record, emitted: false, compileOk: false, compileError: e.message, quality: 0, criteria: [] };
   }
   const ifcPath = path.join(SCRATCH, 'ifc', `${task.id}-${arm}.ifc`);
+  // Records carry the SCRATCH-relative path only: absolute paths leak
+  // usernames/session temp dirs into the committed results artifacts.
+  const ifcPathRel = path.join('ifc', `${task.id}-${arm}.ifc`);
   fs.writeFileSync(ifcPath, content);
   let m;
   try {
     m = await measureModel(content);
   } catch (e) {
-    return { ...record, emitted: true, compileOk: false, compileError: `parse/measure failed: ${e.message}`, quality: 0, criteria: [], ifcPath };
+    return { ...record, emitted: true, compileOk: false, compileError: `parse/measure failed: ${e.message}`, quality: 0, criteria: [], ifcPath: ifcPathRel };
   }
   const score = scoreTask(task, m);
   return {
@@ -199,7 +203,7 @@ export async function finishArm(task, arm, ops, extra) {
     schema: m.schema,
     clash: m.clash,
     counts: m.counts,
-    ifcPath,
+    ifcPath: ifcPathRel,
   };
 }
 

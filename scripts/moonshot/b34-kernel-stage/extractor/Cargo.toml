@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 # B3.4 kernel-stage extractor (moonshot spike). Standalone crate, NOT a
 # workspace member: it path-depends on ifc-lite-geometry (with csg_capture for
 # the corpus deserializer) and reconstructs the tri-pair plane-classification

@@ -17,10 +17,12 @@ import path from 'node:path';
 export const MODEL = 'claude-haiku-4-5-20251001';
 // Overridable: raw-IFC emission is token-heavy and can exceed the default
 // (a full STEP file is thousands of output tokens vs tens of ops).
-export const CALL_TIMEOUT_MS = Number(process.env.M5_CALL_TIMEOUT_MS ?? 120_000);
+const timeoutRaw = Number(process.env.M5_CALL_TIMEOUT_MS ?? 120_000);
+export const CALL_TIMEOUT_MS = Number.isFinite(timeoutRaw) && timeoutRaw > 0 ? timeoutRaw : 120_000;
 // Overridable for the tier-2 exam (three arms + headroom probe need more
 // than the tier-1 two-arm budget; the hard cap still guards runaway loops).
-export const MAX_CALLS = Number(process.env.M5_MAX_CALLS ?? 120);
+const maxCallsRaw = Number(process.env.M5_MAX_CALLS ?? 120);
+export const MAX_CALLS = Number.isInteger(maxCallsRaw) && maxCallsRaw > 0 ? maxCallsRaw : 120;
 
 let callCount = 0;
 let rawDir = null;
@@ -59,6 +61,11 @@ export function callModel(prompt, label) {
       '--output-format', 'text',
     ], { stdio: ['ignore', 'pipe', 'pipe'] });
 
+    // UTF-8 stream decoding (not per-chunk Buffer coercion): a multibyte
+    // character split across chunk boundaries must survive into the
+    // persisted transcript and parsed ops.
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
     let out = '';
     let errOut = '';
     let done = false;

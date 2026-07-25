@@ -64,7 +64,7 @@ const { GeometryProcessor } = await import(path.join(REPO_ROOT, 'packages/geomet
 // stderr trace plus exactly one JSON object per run printed via
 // `console.log`; a consumer can isolate the scorecards with `grep '^{'`.
 
-const MESH_FIXTURE = path.join(REPO_ROOT, process.argv[2] ?? 'tests/models/ara3d/duplex.ifc');
+const MESH_FIXTURE = path.resolve(REPO_ROOT, process.argv[2] ?? 'tests/models/ara3d/duplex.ifc');
 const SCALE_FIXTURE = path.join(
   REPO_ROOT,
   'tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc',
@@ -243,7 +243,7 @@ function applyPropertyEdit(dag, leafPayloads, elementMeta, expressId) {
     properties: oldPayload.properties.map((p, i) => (i === 0 ? { name: p.name, value: newValue } : p)),
   };
   leafPayloads.set(target.nodeId, newPayload);
-  dag.setPayload(target.nodeId, newPayload);
+  dag.setPayload(target.nodeId, 'property-set', newPayload);
   return {
     kind: 'property',
     expressId,
@@ -265,7 +265,7 @@ function applyMeshEdit(dag, leafPayloads, elementMeta, expressId, meshIndex) {
   newPositions[0] = newPositions[0] + delta;
   const newPayload = { ...oldPayload, positions: newPositions };
   leafPayloads.set(nodeId, newPayload);
-  dag.setPayload(nodeId, newPayload);
+  dag.setPayload(nodeId, 'geometry-mesh', newPayload);
   return {
     kind: 'geometry',
     expressId,

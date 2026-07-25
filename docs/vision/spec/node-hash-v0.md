@@ -266,7 +266,8 @@ boolean: 1 byte; null: no payload). Mirrors `buildComponentFingerprints`'s per-p
 then roles **sorted by role name**, each: `roleName` (string), `refCount` (u32), then child-hash
 references **sorted by tagged hash string** (the role's members are a set).
 
-**`layer`**: header, `opCount` (u32), then child-hash references (the element/entity hashes this
+**`layer`**: header, `layerId` (string — the ifcx layer identity, see §6 Q1), `opCount` (u32),
+then child-hash references (the element/entity hashes this
 layer's ops touch) **sorted by tagged hash string**. v0 deliberately keeps this minimal (no op
 metadata, no author) — see §6 Q1 on reconciling with `computeLayerId`'s much richer canonical-JSON
 scheme, which is a different (and already shipping) answer to a similar question.

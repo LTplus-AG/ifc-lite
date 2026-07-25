@@ -52,6 +52,14 @@ if (!dir) {
 const models = (args.models ?? 'duplex,advanced,holter,c20,i129').split(',');
 const repeats = parseInt(args.repeats ?? '20', 10);
 const amplify = args.amplify ? parseInt(args.amplify, 10) : 0;
+if (!Number.isInteger(repeats) || repeats < 1) {
+  console.error(`error: --repeats expects a positive integer, got ${JSON.stringify(args.repeats)}`);
+  process.exit(2);
+}
+if (!Number.isInteger(amplify) || amplify < 0) {
+  console.error(`error: --amplify expects a non-negative integer, got ${JSON.stringify(args.amplify)}`);
+  process.exit(2);
+}
 
 // ---- collect available workloads ------------------------------------------
 const found = [];

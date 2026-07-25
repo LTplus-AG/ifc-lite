@@ -83,7 +83,7 @@ const {
   DEFAULT_EPSILON_MM,
 } = await import(path.join(REPO_ROOT, 'packages/provenance/dist/index.js'));
 
-const FIXTURE = path.join(REPO_ROOT, process.argv[2] ?? 'tests/models/ara3d/duplex.ifc');
+const FIXTURE = path.resolve(REPO_ROOT, process.argv[2] ?? 'tests/models/ara3d/duplex.ifc');
 const EPSILON_MM = Number(process.argv[3] ?? DEFAULT_EPSILON_MM);
 const EPSILON_M = EPSILON_MM / 1000;
 

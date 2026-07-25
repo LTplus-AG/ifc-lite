@@ -112,6 +112,7 @@ if (isMain) {
   console.log(`tolerance ${TOL} relative (abs floor ${ABS_FLOOR}), seed ${SEED}, ${NPARAMS} params, outputs: carbon + totalVolume`);
   console.log(`max relative error observed: ${r.maxRelErr.toExponential(3)} at`, r.maxRelErrInfo);
   console.log(`gate (>= 95%): ${r.fraction >= 0.95 ? 'PASS' : 'FAIL'}`);
+  if (r.fraction < 0.95) process.exitCode = 1;
   if (r.failures.length > 0) {
     console.log(`first ${r.failures.length} failing points:`);
     for (const f of r.failures) {

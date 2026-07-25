@@ -191,7 +191,10 @@ report's "self-test" section.
   decode-from-raw-f64-bits path** (WGSL has no `f64` type to even receive raw
   doubles — inputs must already be `u32`-encoded before upload, which is why
   the CPU-side decomposition step is unavoidable in *any* WGSL scheme, not a
-  shortcut specific to this one).
+  shortcut specific to this one). **[RETRACTED by B2.5: §9.2 candidate 1 —
+  the raw-bits path uploads the untouched f64 bit patterns as `vec2<u32>`
+  and decodes/frames/gates ON the GPU, eliminating the CPU decomposition;
+  see `predicates-raw.wgsl` and the B2.5 harness.]**
 - **This is stage 1 (orient3d) only.** incircle, the rational escalation tier,
   and the `ImplicitPoint`/LPI/TPI configurations from `kernel/predicates.rs`
   are all out of scope; a real library would need all of them plus a policy

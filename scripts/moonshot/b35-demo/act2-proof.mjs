@@ -232,6 +232,9 @@ export async function runAct2({ model }) {
   // building: multi-storey models claim every OTHER storey (the g0 shape);
   // single-storey models claim every untouched sibling element instead
   // (there is no other storey to point at, so the claim gets finer).
+  if (dag.storeys.length === 0) {
+    throw new Error('act2: generated model has no storeys -- cannot pick a certificate claim granularity');
+  }
   const multiStorey = dag.storeys.length > 1;
   const untouchedStoreyRefs = multiStorey
     ? dag.storeys

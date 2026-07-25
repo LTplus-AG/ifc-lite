@@ -345,6 +345,13 @@ fn main() {
             "[fidelity] {} single jobs re-run through the copied pre-pass + public boolean: {} byte-mismatches",
             fidelity_checked, fidelity_failed
         );
+        // The gate is authoritative: a fidelity mismatch means the extracted
+        // stage is NOT the production stage, so no workload/signs/metadata
+        // may be emitted from it.
+        if fidelity_failed > 0 {
+            eprintln!("[fidelity] FAIL: aborting before writing any outputs");
+            std::process::exit(1);
+        }
     }
 
     // --- stage extraction ---------------------------------------------------
@@ -485,11 +492,27 @@ fn main() {
     }
     {
         // hand-rolled JSON (no serde dep): numbers and arrays only.
+        // Record only the corpus BASENAME (absolute paths leak usernames /
+        // machine layout into committed report artifacts), JSON-escaped in
+        // case of quotes/backslashes in the file name.
+        let corpus_name = std::path::Path::new(&corpus_path)
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| corpus_path.clone());
+        let corpus_escaped: String = corpus_name
+            .chars()
+            .flat_map(|c| match c {
+                '"' => "\\\"".chars().collect::<Vec<_>>(),
+                '\\' => "\\\\".chars().collect::<Vec<_>>(),
+                c if (c as u32) < 0x20 => format!("\\u{:04x}", c as u32).chars().collect::<Vec<_>>(),
+                c => vec![c],
+            })
+            .collect();
         let mut j = String::new();
         let _ = write!(
             j,
             "{{\n  \"corpus\": \"{corpus}\",\n  \"jobs\": {jobs},\n  \"totalPairs\": {tp},\n  \"nearCoplanarPairs\": {ncp},\n  \"tuples\": {nt},\n  \"signCounts\": {{ \"neg\": {nn}, \"zero\": {nz}, \"pos\": {np} }},\n  \"nativeStageMsBestOf5\": {ns},\n  \"nativeZeroSubsetMs\": {nzm},\n  \"nativeNonzeroSubsetMs\": {nnm},\n  \"signManifestFnv1a\": \"0x{mf:016x}\",\n  \"fidelityChecked\": {fc},\n  \"fidelityFailed\": {ff},\n  \"jobPairCounts\": {jpc:?},\n  \"jobTupleCounts\": {jtc:?},\n  \"jobHostTris\": {jht:?},\n  \"jobCutterTris\": {jct:?}\n}}\n",
-            corpus = corpus_path,
+            corpus = corpus_escaped,
             jobs = jobs.len(),
             tp = total_pairs,
             ncp = near_coplanar_pairs,

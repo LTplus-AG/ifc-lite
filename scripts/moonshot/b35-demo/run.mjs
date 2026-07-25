@@ -48,6 +48,12 @@ import { runAct5 } from './act5-descent.mjs';
 
 const DEV_SLICE = Number(process.env.B35_DEV_SLICE ?? 40);
 const BATTERY_SCHEDULES = Number(process.env.B35_BATTERY ?? 1000);
+if (!Number.isInteger(DEV_SLICE) || DEV_SLICE < 1) {
+  throw new Error(`B35_DEV_SLICE must be a positive integer, got ${JSON.stringify(process.env.B35_DEV_SLICE)}`);
+}
+if (!Number.isInteger(BATTERY_SCHEDULES) || BATTERY_SCHEDULES < 1) {
+  throw new Error(`B35_BATTERY must be a positive integer, got ${JSON.stringify(process.env.B35_BATTERY)}`);
+}
 
 async function main() {
   const t0 = performance.now();

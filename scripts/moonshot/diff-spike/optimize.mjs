@@ -209,6 +209,13 @@ export async function endpointChecks({ x, outDir, fileBase = 'optimum', scenario
     if (row.kernelVolume === undefined) { missing += 1; continue; }
     kernelCarbon += row.kernelVolume * CARBON_FACTORS[row.material];
     const pv = paramVols.get(row.key);
+    if (pv === undefined) {
+      // A meshed element with no parametric counterpart is a mismatch, not
+      // a clean check: undefined would make `rel` NaN and every `>` false.
+      missing += 1;
+      log(`kernel quantities: no parametric volume for ${row.key} -- counted as missing`);
+      continue;
+    }
     const rel = Math.abs(row.kernelVolume - pv) / Math.max(pv, 1e-12);
     if (rel > worstRel) { worstRel = rel; worstKey = row.key; }
   }
@@ -224,9 +231,9 @@ export async function endpointChecks({ x, outDir, fileBase = 'optimum', scenario
     validate = { parsed: true, errors: errors.length, issues: (parsed.issues ?? []).length, exit: val.status };
     if (errors.length > 0) log(JSON.stringify(errors, null, 2));
     log(`validate: ${validate.errors} error(s), ${validate.issues} issue(s) total (exit ${val.status})`);
-  } catch {
+  } catch (err) {
     log(val.stdout, val.stderr);
-    log('validate: could not parse output');
+    log(`validate: could not parse output (${err.message})`);
   }
 
   // 3. ifc-lite clash, hard mode, whole model against itself. See main()'s
@@ -247,9 +254,9 @@ export async function endpointChecks({ x, outDir, fileBase = 'optimum', scenario
     }
     log(`clash: ${clash.real} real hard clash(es) deeper than the ${TOUCHING_EPSILON} m contact band; ` +
       `${clash.contacts} face contact(s), worst depth ${clash.worstDepth.toExponential(2)} m`);
-  } catch {
+  } catch (err) {
     log(clashRes.stdout?.slice(0, 2000), clashRes.stderr?.slice(0, 2000));
-    log('clash: could not parse output');
+    log(`clash: could not parse output (${err.message})`);
   }
 
   return {

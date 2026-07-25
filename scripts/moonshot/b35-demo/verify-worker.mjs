@@ -18,13 +18,7 @@
  */
 
 import { readFile } from 'node:fs/promises';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const { verifyCertificate } = await import(
-  path.join(HERE, '../../../packages/provenance/dist/index.js')
-);
+import { verifyCertificate } from '../../../packages/provenance/dist/index.js';
 
 const bundlePath = process.argv[2];
 if (!bundlePath) {

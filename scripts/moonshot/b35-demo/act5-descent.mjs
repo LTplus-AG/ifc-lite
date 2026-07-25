@@ -136,7 +136,11 @@ export async function runAct5({ seed, rounds = 6, maxIter = 400 }) {
   let missing = 0;
   for (const row of rows) {
     if (row.kernelVolume === undefined) { missing += 1; continue; }
-    kernelCarbon += row.kernelVolume * CARBON_FACTORS[row.material];
+    const factor = CARBON_FACTORS[row.material];
+    if (factor === undefined) {
+      throw new Error(`act5: unknown material "${row.material}" for ${row.key} -- NaN would silently poison carbonRelDev`);
+    }
+    kernelCarbon += row.kernelVolume * factor;
     const pv = paramVols.get(row.key);
     const rel = Math.abs(row.kernelVolume - pv) / Math.max(pv, 1e-12);
     if (rel > worstRel) { worstRel = rel; worstKey = row.key; }

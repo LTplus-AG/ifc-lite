@@ -17,6 +17,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { measureModel } from './kernel.mjs';
 import { TASKS, scoreTask } from './tasks.mjs';
@@ -24,7 +25,7 @@ import { initModel, callModel, totalCalls } from './model.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SCRATCH = process.env.M5_SCRATCH
-  ?? '/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5';
+  ?? path.join(tmpdir(), 'ifc-lite-m5');
 const resultsPath = path.join(__dirname, 'results.json');
 
 const log = (...a) => process.stderr.write(`[m5-raw] ${a.join(' ')}\n`);
@@ -57,7 +58,14 @@ function extractStep(text) {
 
 async function main() {
   const data = JSON.parse(fs.readFileSync(resultsPath, 'utf8'));
+  // Fail BEFORE spending model calls: the margin computation at the end
+  // needs the constrained-arm summary from a completed exam run.
+  if (!data.summary?.constrained) {
+    throw new Error(`${resultsPath} has no summary.constrained; run the exam first (the raw baseline is a comparison arm)`);
+  }
   data.records = data.records.filter((r) => r.arm !== 'baseline-raw');
+  // Standalone runs must not depend on run-exam.mjs having created the tree.
+  fs.mkdirSync(path.join(SCRATCH, 'ifc'), { recursive: true });
   initModel(path.join(SCRATCH, 'raw'));
 
   for (const task of TASKS) {
@@ -72,6 +80,7 @@ async function main() {
         record = { ...record, emitted: false, compileOk: false, extractError: ext.error, quality: 0, criteria: [] };
       } else {
         const ifcPath = path.join(SCRATCH, 'ifc', `${task.id}-baseline-raw.ifc`);
+        const ifcPathRel = path.join('ifc', `${task.id}-baseline-raw.ifc`);
         fs.writeFileSync(ifcPath, ext.content);
         try {
           const m = await measureModel(ext.content);
@@ -89,10 +98,10 @@ async function main() {
             clash: m.clash,
             counts: m.counts,
             meshedElements: m.meshedElements,
-            ifcPath,
+            ifcPath: ifcPathRel,
           };
         } catch (e) {
-          record = { ...record, emitted: true, compileOk: false, compileError: `kernel parse/measure failed: ${e.message}`, quality: 0, criteria: [], ifcPath };
+          record = { ...record, emitted: true, compileOk: false, compileError: `kernel parse/measure failed: ${e.message}`, quality: 0, criteria: [], ifcPath: ifcPathRel };
         }
       }
     }

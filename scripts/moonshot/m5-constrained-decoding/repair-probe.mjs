@@ -17,15 +17,17 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { newState, validateOp, applyOp, describeState, DSL_SPEC } from './dsl.mjs';
 import { compileProgram } from './compile.mjs';
 import { kernelGate, measureModel } from './kernel.mjs';
 import { initModel, callModel, extractJsonArray, totalCalls } from './model.mjs';
+import { acceptOps } from './run-exam.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SCRATCH = process.env.M5_SCRATCH
-  ?? '/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5';
+  ?? path.join(tmpdir(), 'ifc-lite-m5');
 const log = (...a) => process.stderr.write(`[m5-probe] ${a.join(' ')}\n`);
 const MAX_REPAIRS = 3;
 
@@ -64,32 +66,10 @@ function repairPrompt(accepted, state, failure) {
   return parts.join('\n');
 }
 
-async function acceptOps(accepted, stateRef, ops) {
-  for (const op of ops) {
-    const v = validateOp(stateRef.state, op);
-    if (!v.ok) return { op, error: v.error };
-    applyOp(stateRef.state, op);
-    accepted.push(op);
-    let gate;
-    try {
-      const { content, idMap } = compileProgram(accepted);
-      const newIds = op.op === 'set_property' || op.op === 'create_storey' ? [] : [idMap.get(op.id)];
-      gate = await kernelGate(content, newIds);
-    } catch (e) {
-      gate = { ok: false, error: `compiler rejected the op: ${e.message}` };
-    }
-    if (!gate.ok) {
-      accepted.pop();
-      const st = newState();
-      for (const a of accepted) applyOp(st, a);
-      stateRef.state = st;
-      return { op, error: gate.error };
-    }
-  }
-  return null;
-}
-
 async function main() {
+  // Standalone runs must not depend on run-exam.mjs having created the
+  // scratch tree first.
+  fs.mkdirSync(path.join(SCRATCH, 'ifc'), { recursive: true });
   initModel(path.join(SCRATCH, 'raw'));
   const accepted = [];
   const stateRef = { state: newState() };
@@ -126,6 +106,9 @@ async function main() {
 
   const resultsPath = path.join(__dirname, 'results.json');
   const data = JSON.parse(fs.readFileSync(resultsPath, 'utf8'));
+  if (!data.summary || typeof data.summary !== 'object') {
+    throw new Error(`${resultsPath} has no summary object; run the exam first (the probe annotates its results)`);
+  }
   data.summary.repairProbe = { brief: BRIEF, ...outcome, modelCalls: totalCalls() };
   fs.writeFileSync(resultsPath, JSON.stringify(data, null, 2));
   log('DONE');

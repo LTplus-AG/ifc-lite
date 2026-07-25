@@ -143,6 +143,11 @@ export async function runAct4({ model, batterySchedules = 300, seed }) {
   say(`  outcome: ${blocked
     ? `BLOCKED -- ${clashOutcome.conflicts.length} conflicting cross pair(s), no certificate, goes to resolution`
     : 'NOT BLOCKED -- BUG'}`);
+  if (!blocked) {
+    // A same-pset write pair that is NOT blocked is a soundness bug; the act
+    // must FAIL, not just narrate it.
+    throw new Error('act4: conflicting same-pset writes were not blocked by the conflict predicate');
+  }
 
   // -- 3. The G2 battery, demo-sized. -------------------------------------
   say(`  property battery: ${batterySchedules} randomized two-client schedules (seed ${seed})...`);

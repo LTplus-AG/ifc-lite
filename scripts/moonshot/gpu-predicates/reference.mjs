@@ -240,6 +240,14 @@ export function incircleSignBigInt(pts) {
 
 // ---- BigInt-free fast encoder (B2.5 encode-bottleneck candidate 1) --------
 //
+// TODO(remove-by: when the B2.5 raw-bits GPU path (predicates-raw.wgsl)
+// graduates out of spike status or the spike is archived; owner: moonshot
+// M6c workstream, tracked in docs/vision/moonshots-execution-plan.md B2.5):
+// this encoder AND the frozen B1.3 surface it mirrors (encodeTest +
+// orient3d.wgsl) are kept verbatim so the committed report.b25.*.json and
+// report.battery.json artifacts stay reproducible bit-for-bit. Do not edit
+// them in place; supersede them.
+//
 // Produces the exact same `words` as encodeTest, using only 32-bit integer
 // ops on the raw IEEE halves - no BigInt allocation per coordinate. The
 // mantissa is at most 53 bits (two u32 halves) and the frame shift is at

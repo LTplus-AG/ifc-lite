@@ -27,6 +27,9 @@ mkdirSync(OUT_DIR, { recursive: true });
 
 /** Demo-wide master seed. Every act derives its seeds from this one value. */
 export const MASTER_SEED = Number(process.env.B35_SEED ?? 20260724);
+if (!Number.isInteger(MASTER_SEED) || MASTER_SEED < 0) {
+  throw new Error(`B35_SEED must be a non-negative integer, got ${JSON.stringify(process.env.B35_SEED)}`);
+}
 
 /** Narrative output. NOTE: world-gym's initChecks() permanently reroutes
  *  console.log to stderr (wasm print-binding hygiene), so the demo narrative

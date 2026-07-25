@@ -44,8 +44,10 @@ async function main() {
     process.exit(2);
   }
   const outIdx = argv.indexOf('--out');
-  const outDir = outIdx >= 0
-    ? argv[outIdx + 1]
+  const outValue = outIdx >= 0 ? argv[outIdx + 1] : undefined;
+  // A bare trailing `--out` must fall back to the default, not mkdir(undefined).
+  const outDir = outValue !== undefined && !outValue.startsWith('--')
+    ? outValue
     : path.join(tmpdir(), 'ifc-lite-diff-spike-certified', scenarioName);
   mkdirSync(outDir, { recursive: true });
 

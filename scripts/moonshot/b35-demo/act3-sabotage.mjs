@@ -48,7 +48,7 @@ export function predictionFromLine(line) {
     'clash-pair': (line.clash?.byRule?.['gym-footing-self'] ?? 0) > 0,
     'degenerate-geometry': unmeshedProbes > 0,
     'duplicate-globalid': rules.has('unique-globalid'),
-    'missing-site': issues.some((i) => i.rule === 'required-entity' && i.message.includes('IFCSITE')),
+    'missing-site': issues.some((i) => i.rule === 'required-entity' && i.message?.includes('IFCSITE')),
     'multiple-project': rules.has('single-project'),
     'dangling-ref': false, // known validate blind spot, honestly declared
     // Degenerate columns never carried a qset; anything missing beyond them

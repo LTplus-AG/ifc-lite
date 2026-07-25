@@ -42,6 +42,20 @@ const { runMergeBattery, DEFAULT_EPSILON_MM } = await import(
 const SCHEDULES = Number(process.argv[2] ?? 1000);
 const SEED = Number(process.argv[3] ?? 20260724);
 const EPSILON_MM = Number(process.argv[4] ?? DEFAULT_EPSILON_MM);
+// Fail fast on "1k"-style typos: NaN would zero the loop and print a
+// misleading PASS over zero schedules.
+if (!Number.isInteger(SCHEDULES) || SCHEDULES < 1) {
+  console.error(`error: schedules must be a positive integer, got ${JSON.stringify(process.argv[2])}`);
+  process.exit(2);
+}
+if (!Number.isInteger(SEED) || SEED < 0) {
+  console.error(`error: seed must be a non-negative integer, got ${JSON.stringify(process.argv[3])}`);
+  process.exit(2);
+}
+if (!Number.isFinite(EPSILON_MM) || EPSILON_MM < 0) {
+  console.error(`error: epsilonMm must be a non-negative number, got ${JSON.stringify(process.argv[4])}`);
+  process.exit(2);
+}
 
 function pct(x) {
   return `${(x * 100).toFixed(2)}%`;

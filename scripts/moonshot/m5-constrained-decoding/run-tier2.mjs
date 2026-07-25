@@ -42,11 +42,17 @@
  *   node run-tier2.mjs --headroom   # truncated-spec probe (8 calls),
  *                                   # proves the rubric has headroom
  *   node run-tier2.mjs              # full exam, three arms, 23 tasks
+ *                                   # NOTE: needs M5_MAX_CALLS >= ~360 (23
+ *                                   # tasks x 3 arms x samples + repairs);
+ *                                   # the default budget of 120 exhausts
+ *                                   # mid-run and the tail tasks would score
+ *                                   # quality 0 from failed callModel results
  *   node run-tier2.mjs --tasks T2-01,T2-F1
  */
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { newState, describeState } from './dsl.mjs';
 import { compileProgram } from './compile.mjs';
@@ -61,7 +67,7 @@ import { initModel, callModel, extractJsonArray, totalCalls, MODEL } from './mod
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SCRATCH = process.env.M5_SCRATCH
-  ?? '/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5-tier2';
+  ?? path.join(tmpdir(), 'ifc-lite-m5-tier2');
 const MAX_REPAIRS_T2 = 2; // arm (a) uses at most 3 calls per task
 const K_SAMPLES = 3; // arms (b)/(c) budget = arm (a)'s cap
 const HEADROOM_TASKS = ['T2-01', 'T2-02', 'T2-04', 'T2-05', 'T2-06', 'T2-07', 'T2-09', 'T2-10'];
@@ -335,10 +341,25 @@ async function selftest() {
 }
 
 function loadResults(resultsPath) {
+  // Only a genuinely ABSENT file means "start fresh". A malformed/truncated/
+  // unreadable results file must FAIL the run: --headroom would otherwise
+  // overwrite the committed records with only the new block, and --resume
+  // would silently discard all prior records and restart an expensive model
+  // run on top of them.
+  let raw;
   try {
-    return JSON.parse(fs.readFileSync(resultsPath, 'utf8'));
-  } catch {
-    return {};
+    raw = fs.readFileSync(resultsPath, 'utf8');
+  } catch (err) {
+    if (err && err.code === 'ENOENT') return {};
+    throw new Error(`cannot read ${resultsPath}: ${err.message}`);
+  }
+  try {
+    return JSON.parse(raw);
+  } catch (err) {
+    throw new Error(
+      `refusing to continue: ${resultsPath} exists but is not valid JSON (${err.message}); ` +
+        'fix or move it aside instead of letting this run overwrite the recorded results',
+    );
   }
 }
 
@@ -354,6 +375,11 @@ async function headroomProbe(offline) {
   const rows = [];
   for (const id of HEADROOM_TASKS) {
     const task = TASKS_TIER2.find((t) => t.id === id);
+    if (!task) {
+      rows.push({ task: id, error: 'unknown headroom task id (tasks-tier2.mjs changed?)' });
+      log(`headroom: unknown task id ${id}, skipping`);
+      continue;
+    }
     let res;
     if (offline) {
       // Re-score saved transcripts after a rubric change: zero model calls.
@@ -511,7 +537,10 @@ async function main() {
   };
 
   for (const task of tasks) {
-    if (records.some((r) => r.task === task.id && r.arm === 'constrained')) {
+    const armsDone = ['constrained', 'filtered', 'unfiltered'].every(
+      (arm) => records.some((r) => r.task === task.id && r.arm === arm),
+    );
+    if (armsDone) {
       log(`${task.id} already complete (resume), skipping`);
       continue;
     }

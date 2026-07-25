@@ -43,7 +43,8 @@
  */
 
 import path from 'node:path';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { PARAMS, NPARAMS } from './carbon-model.mjs';
 import { meritDual, projectBox } from './optimize.mjs';
 import { buildIfc, REPO_ROOT } from './build-ifc.mjs';
@@ -87,6 +88,7 @@ export async function verifyChain(chain, opts = {}) {
   const optz = chain.optimizer ?? {};
   const stepInit = optz.stepInit ?? 0.1;
   const armijoC = optz.armijoC ?? 1e-4;
+  const btMax = Number.isInteger(optz.btMax) && optz.btMax > 0 ? optz.btMax : 60;
   let currentMu = optz.startMu ?? 10;
   const muFactor = optz.muFactor ?? 4;
 
@@ -148,6 +150,12 @@ export async function verifyChain(chain, opts = {}) {
     }
 
     // 2. Step-size discipline: geometric halving from stepInit.
+    // rec.backtracks is attacker-controlled chain data: a negative, fractional,
+    // non-finite, or absurdly large value would skip (or explode) the replay
+    // loop below, leaving mNext null or burning unbounded CPU.
+    if (!Number.isInteger(rec.backtracks) || rec.backtracks < 0 || rec.backtracks > btMax) {
+      return fail(where, 'invalid-backtracks', { recorded: rec.backtracks, btMax });
+    }
     const expectedStep = stepInit * 0.5 ** rec.backtracks;
     if (rec.stepSize !== expectedStep) {
       return fail(where, 'step-size-schedule-violation', { recorded: rec.stepSize, expected: expectedStep });
@@ -244,6 +252,19 @@ export async function verifyChain(chain, opts = {}) {
   // ---- endpoint ----
   const ep = chain.endpoint;
   if (!ep) return fail('endpoint', 'missing-endpoint');
+  // The bound outcome must itself be kernel-acceptable: hash/certificate
+  // checks below only prove the numbers are the ones that were bound, not
+  // that they describe an ACCEPTED end state. Sentinels (-1 from unparsed
+  // CLI output), non-finite depths, validation errors, or real clashes must
+  // fail verification here.
+  if (!Number.isInteger(ep.validate?.errors) || ep.validate.errors < 0
+    || !Number.isInteger(ep.clash?.real) || ep.clash.real < 0
+    || !Number.isFinite(ep.clash?.worstDepth)) {
+    return fail('endpoint', 'unmeasured-endpoint', { validate: ep.validate, clash: ep.clash });
+  }
+  if (ep.validate.errors > 0 || ep.clash.real > 0) {
+    return fail('endpoint', 'endpoint-not-acceptable', { validateErrors: ep.validate.errors, realClashes: ep.clash.real });
+  }
   if (ep.stateIndex !== k || ep.stateRoot !== cur.root) {
     return fail('endpoint', 'endpoint-state-mismatch', { stateIndex: ep.stateIndex, stateRoot: ep.stateRoot, expected: cur.root });
   }
@@ -319,18 +340,26 @@ export async function verifyChain(chain, opts = {}) {
       return fail('endpoint', 'kernel-deviation-mismatch', { recorded: ep.kernel, remeasured: { worstRel, missing } });
     }
     if (recheckCli) {
-      const { runCli, parseCliJson } = await import('./optimize.mjs');
-      const tmpIfc = path.join(path.dirname(opts.chainPath ?? '.'), 'verify-rebuilt.ifc');
-      writeFileSync(tmpIfc, content);
-      const val = parseCliJson(runCli(['validate', tmpIfc, '--json']).stdout);
-      const valErrors = (val.issues ?? []).filter((i) => i.severity === 'error').length;
-      if (valErrors !== ep.validate.errors) {
-        return fail('endpoint', 'validate-recheck-mismatch', { recorded: ep.validate.errors, remeasured: valErrors });
-      }
-      const clash = parseCliJson(runCli(['clash', tmpIfc, '--mode', 'hard', '--json']).stdout);
-      const real = (clash.clashes ?? []).filter((c) => c.distance < -1e-4).length;
-      if (real !== ep.clash.real) {
-        return fail('endpoint', 'clash-recheck-mismatch', { recorded: ep.clash.real, remeasured: real });
+      // The chain file's directory may be read-only for the verifier; the
+      // rebuilt IFC goes to a temp dir. CLI or parse failures return the
+      // machine-readable 'cli-recheck-unavailable' instead of an uncaught
+      // rejection tearing down the whole verification.
+      try {
+        const { runCli, parseCliJson } = await import('./optimize.mjs');
+        const tmpIfc = path.join(mkdtempSync(path.join(tmpdir(), 'ifc-lite-verify-')), 'verify-rebuilt.ifc');
+        writeFileSync(tmpIfc, content);
+        const val = parseCliJson(runCli(['validate', tmpIfc, '--json']).stdout);
+        const valErrors = (val.issues ?? []).filter((i) => i.severity === 'error').length;
+        if (valErrors !== ep.validate.errors) {
+          return fail('endpoint', 'validate-recheck-mismatch', { recorded: ep.validate.errors, remeasured: valErrors });
+        }
+        const clash = parseCliJson(runCli(['clash', tmpIfc, '--mode', 'hard', '--json']).stdout);
+        const real = (clash.clashes ?? []).filter((c) => c.distance < -1e-4).length;
+        if (real !== ep.clash.real) {
+          return fail('endpoint', 'clash-recheck-mismatch', { recorded: ep.clash.real, remeasured: real });
+        }
+      } catch (err) {
+        return fail('endpoint', 'cli-recheck-unavailable', { message: err.message });
       }
     }
     kernelMs = performance.now() - tk;

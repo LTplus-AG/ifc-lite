@@ -297,6 +297,19 @@ export function endpointRootPayload(stateRoot, kernelHash) {
  * @param {object} ep      result of optimize.mjs endpointChecks()
  */
 export async function attachEndpoint(chain, finalX, ep) {
+  // Refuse to certify an endpoint whose kernel outcome was not fully
+  // measured or not acceptable: -1 sentinels (unparsed validate/clash),
+  // non-finite depths, validation errors, or real clashes must never end
+  // up under a certificate that claims a verified endpoint.
+  if (!ep.validate?.parsed || !ep.clash?.parsed) {
+    throw new Error('attachEndpoint: validate/clash output was not parsed -- endpoint is unmeasured, refusing to certify');
+  }
+  if (!Number.isFinite(ep.clash.worstDepth) || ep.validate.errors < 0 || ep.clash.real < 0) {
+    throw new Error('attachEndpoint: endpoint carries sentinel/non-finite measurements, refusing to certify');
+  }
+  if (ep.validate.errors > 0 || ep.clash.real > 0) {
+    throw new Error(`attachEndpoint: endpoint fails kernel acceptance (validateErrors=${ep.validate.errors}, realClashes=${ep.clash.real}), refusing to certify`);
+  }
   const k = chain.steps;
   const finalState = await commitState(finalX, chain.scenario);
   if (finalState.root !== chain.finalState.root) {

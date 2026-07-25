@@ -1,0 +1,191 @@
+{
+  "phase": "all",
+  "generatedAt": "2026-07-24T12:14:30.757Z",
+  "adapterInfo": {
+    "vendor": "apple",
+    "architecture": "metal-3",
+    "device": "",
+    "description": ""
+  },
+  "limits": {
+    "maxStorageBufferBindingSize": 4294967292,
+    "maxBufferSize": 4294967292,
+    "maxComputeWorkgroupsPerDimension": 65535
+  },
+  "shaderCompileMessages": [],
+  "selfTests": {
+    "mul32": {
+      "cases": 59,
+      "mismatches": 0
+    },
+    "magMul": {
+      "cases": 22,
+      "mismatches": 0
+    }
+  },
+  "battery": [
+    {
+      "label": "random_uniform_1e6_mag1e3",
+      "totalCases": 1000000,
+      "checked": 1000000,
+      "mismatches": 0,
+      "fallback": 0,
+      "nanSkipped": 0,
+      "gpuTimeMs": 124.19999998807907,
+      "mismatchSamples": []
+    },
+    {
+      "label": "random_uniform_2e5_mag1e9",
+      "totalCases": 200000,
+      "checked": 200000,
+      "mismatches": 0,
+      "fallback": 0,
+      "nanSkipped": 0,
+      "gpuTimeMs": 22.400000005960464,
+      "mismatchSamples": []
+    },
+    {
+      "label": "random_uniform_2e5_mag1e-6",
+      "totalCases": 200000,
+      "checked": 200000,
+      "mismatches": 0,
+      "fallback": 0,
+      "nanSkipped": 0,
+      "gpuTimeMs": 27.30000001192093,
+      "mismatchSamples": []
+    },
+    {
+      "label": "coplanar_1ulp_perturbations",
+      "totalCases": 50000,
+      "checked": 50000,
+      "mismatches": 0,
+      "fallback": 0,
+      "nanSkipped": 0,
+      "gpuTimeMs": 7.700000017881393,
+      "mismatchSamples": []
+    },
+    {
+      "label": "last_bit_diff",
+      "totalCases": 50000,
+      "checked": 50000,
+      "mismatches": 0,
+      "fallback": 0,
+      "nanSkipped": 0,
+      "gpuTimeMs": 7.200000017881393,
+      "mismatchSamples": []
+    },
+    {
+      "label": "exact_zeros_and_collinear",
+      "totalCases": 5,
+      "checked": 5,
+      "mismatches": 0,
+      "fallback": 0,
+      "nanSkipped": 0,
+      "gpuTimeMs": 0.7999999821186066,
+      "mismatchSamples": []
+    },
+    {
+      "label": "subnormal_mixed_must_fallback",
+      "totalCases": 500,
+      "checked": 0,
+      "mismatches": 0,
+      "fallback": 500,
+      "nanSkipped": 0,
+      "gpuTimeMs": 0,
+      "mismatchSamples": []
+    },
+    {
+      "D": 99,
+      "label": "exponent_spread_D99",
+      "totalCases": 2,
+      "checked": 2,
+      "mismatches": 0,
+      "fallback": 0,
+      "nanSkipped": 0,
+      "gpuTimeMs": 0.7000000178813934,
+      "mismatchSamples": []
+    },
+    {
+      "D": 100,
+      "label": "exponent_spread_D100",
+      "totalCases": 2,
+      "checked": 2,
+      "mismatches": 0,
+      "fallback": 0,
+      "nanSkipped": 0,
+      "gpuTimeMs": 0.5999999940395355,
+      "mismatchSamples": []
+    },
+    {
+      "D": 101,
+      "label": "exponent_spread_D101",
+      "totalCases": 2,
+      "checked": 0,
+      "mismatches": 0,
+      "fallback": 2,
+      "nanSkipped": 0,
+      "gpuTimeMs": 0,
+      "mismatchSamples": []
+    },
+    {
+      "D": 120,
+      "label": "exponent_spread_D120",
+      "totalCases": 2,
+      "checked": 0,
+      "mismatches": 0,
+      "fallback": 2,
+      "nanSkipped": 0,
+      "gpuTimeMs": 0,
+      "mismatchSamples": []
+    },
+    {
+      "D": 300,
+      "label": "exponent_spread_D300",
+      "totalCases": 2,
+      "checked": 0,
+      "mismatches": 0,
+      "fallback": 2,
+      "nanSkipped": 0,
+      "gpuTimeMs": 0,
+      "mismatchSamples": []
+    }
+  ],
+  "throughput": [
+    {
+      "n": 100000,
+      "validCount": 100000,
+      "fallbackCount": 0,
+      "encodeMs": 177.59999999403954,
+      "gpuMs": 16.30000001192093,
+      "cpuBigIntMs": 248.90000000596046,
+      "gpuPredicatesPerSec": 6134969.3206665935,
+      "cpuPredicatesPerSec": 401767.7782145652,
+      "gpuIncludingEncodePredicatesPerSec": 515729.7575911605,
+      "cpuSignSumTouch": 26
+    },
+    {
+      "n": 1000000,
+      "validCount": 1000000,
+      "fallbackCount": 0,
+      "encodeMs": 1739.3999999761581,
+      "gpuMs": 84.40000000596046,
+      "cpuBigIntMs": 2500.100000023842,
+      "gpuPredicatesPerSec": 11848341.231390739,
+      "cpuPredicatesPerSec": 399984.00063616,
+      "gpuIncludingEncodePredicatesPerSec": 548305.7352833669,
+      "cpuSignSumTouch": 1732
+    },
+    {
+      "n": 10000000,
+      "validCount": 10000000,
+      "fallbackCount": 0,
+      "encodeMs": 17533.200000077486,
+      "gpuMs": 803.1999999880791,
+      "cpuBigIntMs": 24918.800000041723,
+      "gpuPredicatesPerSec": 12450199.203372035,
+      "cpuPredicatesPerSec": 401303.4335515055,
+      "gpuIncludingEncodePredicatesPerSec": 545363.3210425299,
+      "cpuSignSumTouch": -1598
+    }
+  ]
+}

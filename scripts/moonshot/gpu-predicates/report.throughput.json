@@ -1,0 +1,42 @@
+{
+  "phase": "throughput",
+  "generatedAt": "2026-07-24T16:12:58.531Z",
+  "adapterInfo": {
+    "vendor": "apple",
+    "architecture": "metal-3",
+    "device": "",
+    "description": ""
+  },
+  "limits": {
+    "maxStorageBufferBindingSize": 4294967292,
+    "maxBufferSize": 4294967292,
+    "maxComputeWorkgroupsPerDimension": 65535
+  },
+  "shaderCompileMessages": [],
+  "throughput": [
+    {
+      "n": 100000,
+      "validCount": 100000,
+      "fallbackCount": 0,
+      "encodeMs": 183.90000000037253,
+      "gpuMs": 304.90000000037253,
+      "cpuBigIntMs": 263.8999999994412,
+      "gpuPredicatesPerSec": 327976.38569982885,
+      "cpuPredicatesPerSec": 378931.4134149744,
+      "gpuIncludingEncodePredicatesPerSec": 204582.6513908502,
+      "cpuSignSumTouch": 806
+    },
+    {
+      "n": 1000000,
+      "validCount": 1000000,
+      "fallbackCount": 0,
+      "encodeMs": 1730.8999999994412,
+      "gpuMs": 146.3999999994412,
+      "cpuBigIntMs": 2523.399999999441,
+      "gpuPredicatesPerSec": 6830601.092922247,
+      "cpuPredicatesPerSec": 396290.7188714518,
+      "gpuIncludingEncodePredicatesPerSec": 532679.9126408115,
+      "cpuSignSumTouch": 520
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "phase": "throughput",
+  "generatedAt": "2026-07-24T16:37:06.283Z",
+  "adapterInfo": {
+    "vendor": "apple",
+    "architecture": "metal-3",
+    "device": "",
+    "description": ""
+  },
+  "throughput": [
+    {
+      "n": 1000000,
+      "o3dPathC": {
+        "gpuMs": 128,
+        "scanMs": 2.900000000372529,
+        "e2eMs": 130.90000000037253,
+        "gpuFallbacks": 0
+      },
+      "o3dPathB": {
+        "encodeMs": 319.40000000037253,
+        "gpuMs": 257,
+        "e2eMs": 576.4000000003725,
+        "validCount": 1000000
+      },
+      "o3dCpuBigIntMs": 2551.5,
+      "o3dCpuTouch": 726,
+      "o3dSpeedupPathB": 4.426613462870144,
+      "o3dSpeedupPathC": 19.491978609570197,
+      "icPathC": {
+        "gpuMs": 80.90000000037253,
+        "scanMs": 2.5,
+        "e2eMs": 83.40000000037253,
+        "gpuFallbacks": 0
+      },
+      "icCpuBigIntMs": 8552.100000000559,
+      "icCpuTouch": 394,
+      "icSpeedupPathC": 102.54316546717456
+    }
+  ]
+}

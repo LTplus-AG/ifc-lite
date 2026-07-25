@@ -1,0 +1,147 @@
+{
+  "phase": "incircle",
+  "generatedAt": "2026-07-24T16:23:32.061Z",
+  "adapterInfo": {
+    "vendor": "apple",
+    "architecture": "metal-3",
+    "device": "",
+    "description": ""
+  },
+  "batteryIncircle": [
+    {
+      "label": "random_uniform_1e6_mag1e3",
+      "totalCases": 1000000,
+      "checked": 1000000,
+      "mismatches": 0,
+      "gpuFallbacks": 0,
+      "expectedFallbacks": 0,
+      "gpuTimeMs": 84.3999999994412,
+      "mismatchSamples": []
+    },
+    {
+      "label": "random_uniform_2e5_mag1e9",
+      "totalCases": 200000,
+      "checked": 200000,
+      "mismatches": 0,
+      "gpuFallbacks": 0,
+      "expectedFallbacks": 0,
+      "gpuTimeMs": 31.90000000037253,
+      "mismatchSamples": []
+    },
+    {
+      "label": "random_uniform_2e5_mag1e-6",
+      "totalCases": 200000,
+      "checked": 200000,
+      "mismatches": 0,
+      "gpuFallbacks": 0,
+      "expectedFallbacks": 0,
+      "gpuTimeMs": 18.899999999441206,
+      "mismatchSamples": []
+    },
+    {
+      "label": "cocircular_1ulp_perturbations",
+      "totalCases": 51000,
+      "checked": 51000,
+      "mismatches": 0,
+      "gpuFallbacks": 0,
+      "expectedFallbacks": 0,
+      "gpuTimeMs": 10.600000000558794,
+      "mismatchSamples": []
+    },
+    {
+      "label": "exact_cocircular_integer_zero",
+      "totalCases": 2000,
+      "checked": 2000,
+      "mismatches": 0,
+      "gpuFallbacks": 0,
+      "expectedFallbacks": 0,
+      "gpuTimeMs": 1.5,
+      "mismatchSamples": []
+    },
+    {
+      "label": "degenerate_zero_and_collinear",
+      "totalCases": 4,
+      "checked": 4,
+      "mismatches": 0,
+      "gpuFallbacks": 0,
+      "expectedFallbacks": 0,
+      "gpuTimeMs": 0.7999999998137355,
+      "mismatchSamples": []
+    },
+    {
+      "label": "subnormal_mixed_must_fallback",
+      "totalCases": 500,
+      "checked": 500,
+      "mismatches": 0,
+      "gpuFallbacks": 500,
+      "expectedFallbacks": 500,
+      "gpuTimeMs": 0.7000000001862645,
+      "mismatchSamples": []
+    },
+    {
+      "label": "nan_inf_must_fallback",
+      "totalCases": 9,
+      "checked": 9,
+      "mismatches": 0,
+      "gpuFallbacks": 9,
+      "expectedFallbacks": 9,
+      "gpuTimeMs": 0.5,
+      "mismatchSamples": []
+    },
+    {
+      "D": 99,
+      "label": "exponent_spread_D99",
+      "totalCases": 2,
+      "checked": 2,
+      "mismatches": 0,
+      "gpuFallbacks": 0,
+      "expectedFallbacks": 0,
+      "gpuTimeMs": 1.099999999627471,
+      "mismatchSamples": []
+    },
+    {
+      "D": 100,
+      "label": "exponent_spread_D100",
+      "totalCases": 2,
+      "checked": 2,
+      "mismatches": 0,
+      "gpuFallbacks": 0,
+      "expectedFallbacks": 0,
+      "gpuTimeMs": 1,
+      "mismatchSamples": []
+    },
+    {
+      "D": 101,
+      "label": "exponent_spread_D101",
+      "totalCases": 2,
+      "checked": 2,
+      "mismatches": 0,
+      "gpuFallbacks": 2,
+      "expectedFallbacks": 2,
+      "gpuTimeMs": 0.5,
+      "mismatchSamples": []
+    },
+    {
+      "D": 120,
+      "label": "exponent_spread_D120",
+      "totalCases": 2,
+      "checked": 2,
+      "mismatches": 0,
+      "gpuFallbacks": 2,
+      "expectedFallbacks": 2,
+      "gpuTimeMs": 0.5,
+      "mismatchSamples": []
+    },
+    {
+      "D": 300,
+      "label": "exponent_spread_D300",
+      "totalCases": 2,
+      "checked": 2,
+      "mismatches": 0,
+      "gpuFallbacks": 2,
+      "expectedFallbacks": 2,
+      "gpuTimeMs": 0.30000000074505806,
+      "mismatchSamples": []
+    }
+  ]
+}

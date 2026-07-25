@@ -1,0 +1,284 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * Scan section-layer math (issue #1805): band selection, projection, and
+ * the render-frame shift point clouds need to line up with the section cut.
+ */
+
+import { describe, it } from 'node:test';
+import assert from 'node:assert';
+import {
+  pointCloudRenderFrameShift,
+  toRenderFrame,
+  signedBandDistance,
+  isPointInBand,
+  projectScanPoint,
+  selectScanBand,
+  mergeScanBandSelections,
+  type ScanSectionPlane,
+  type ScanPointSample,
+} from './scanSectionMath.js';
+import { dxfWorldShift } from './dxfUnderlayMath.js';
+
+const close = (a: number, b: number, eps = 1e-6) =>
+  assert.ok(Math.abs(a - b) < eps, `expected ${a} ≈ ${b}`);
+
+describe('pointCloudRenderFrameShift', () => {
+  it('matches dxfWorldShift on the plan (x, z) pair — one formula, two call sites', () => {
+    const coordinateInfo = {
+      wasmRtcOffset: { x: 1000, y: 2000, z: 5 },
+      originShift: { x: 3, y: 9, z: -7 },
+    } as never;
+    const shift = pointCloudRenderFrameShift(coordinateInfo);
+    const dxf = dxfWorldShift(coordinateInfo);
+    // dxfWorldShift.x is the plan-X shift; dxfWorldShift.y is the plan-Z
+    // shift (drawing y = -renderZ, so dxf.y = -(-shift.z) = ... see
+    // dxfUnderlayMath.ts's own derivation). Both were derived independently
+    // from reproject.ts's `computeModelCenterInIfcMeters`; this test pins
+    // them to the same numbers so a future edit to one can't silently
+    // diverge from the other.
+    close(shift.x, dxf.x);
+    close(shift.z, -dxf.y);
+  });
+
+  it('adds the elevation (Y) term absent from the plan-only DXF shift', () => {
+    const shift = pointCloudRenderFrameShift({
+      wasmRtcOffset: { x: 0, y: 0, z: 40 },
+      originShift: { x: 0, y: 5, z: 0 },
+    } as never);
+    close(shift.y, 45); // rtc.z + shift.y
+  });
+
+  it('degenerates to zero with no coordinate info', () => {
+    const shift = pointCloudRenderFrameShift(undefined);
+    close(shift.x, 0);
+    close(shift.y, 0);
+    close(shift.z, 0);
+  });
+});
+
+describe('toRenderFrame', () => {
+  it('subtracts the shift component-wise', () => {
+    const p = toRenderFrame({ x: 10, y: 20, z: 30 }, { x: 1, y: 2, z: 3 });
+    close(p.x, 9);
+    close(p.y, 18);
+    close(p.z, 27);
+  });
+});
+
+describe('signedBandDistance / isPointInBand (cardinal)', () => {
+  const plane: ScanSectionPlane = { axis: 'y', position: 5, flipped: false };
+
+  it('is zero exactly on the plane and signed off it', () => {
+    close(signedBandDistance({ x: 0, y: 5, z: 0 }, plane), 0);
+    close(signedBandDistance({ x: 0, y: 5.2, z: 0 }, plane), 0.2);
+    close(signedBandDistance({ x: 0, y: 4.7, z: 0 }, plane), -0.3);
+  });
+
+  it('band membership ignores `flipped` — flip only mirrors the projected U axis', () => {
+    const flipped: ScanSectionPlane = { ...plane, flipped: true };
+    const p = { x: 0, y: 5.1, z: 0 };
+    assert.strictEqual(isPointInBand(p, plane, 0.3), isPointInBand(p, flipped, 0.3));
+    assert.ok(isPointInBand(p, plane, 0.3));
+    assert.ok(!isPointInBand(p, plane, 0.1));
+  });
+});
+
+describe('signedBandDistance (custom plane)', () => {
+  it('matches signedDistanceToPlane against the custom normal/distance', () => {
+    const plane: ScanSectionPlane = {
+      axis: 'y',
+      position: 0,
+      flipped: false,
+      custom: {
+        normal: [0, 0, 1],
+        distance: 2,
+        origin: [0, 0, 2],
+        tangent: [1, 0, 0],
+        bitangent: [0, 1, 0],
+      },
+    };
+    close(signedBandDistance({ x: 5, y: 5, z: 2 }, plane), 0);
+    close(signedBandDistance({ x: 5, y: 5, z: 2.5 }, plane), 0.5);
+  });
+});
+
+describe('projectScanPoint (cardinal)', () => {
+  it('plan (down = y axis): x stays X, y becomes Z, matching section-cutter.ts', () => {
+    const plane: ScanSectionPlane = { axis: 'y', position: 0, flipped: false };
+    const p2 = projectScanPoint({ x: 3, y: 100, z: -4 }, plane);
+    close(p2.x, 3);
+    close(p2.y, -4);
+  });
+
+  it('flipped mirrors the U axis only', () => {
+    const plane: ScanSectionPlane = { axis: 'y', position: 0, flipped: true };
+    const p2 = projectScanPoint({ x: 3, y: 100, z: -4 }, plane);
+    close(p2.x, -3);
+    close(p2.y, -4);
+  });
+
+  it('vertical section (front = z axis): projects to (x, y)', () => {
+    const plane: ScanSectionPlane = { axis: 'z', position: 0, flipped: false };
+    const p2 = projectScanPoint({ x: 3, y: 7, z: -4 }, plane);
+    close(p2.x, 3);
+    close(p2.y, 7);
+  });
+
+  it('vertical section (side = x axis): projects to (z, y)', () => {
+    const plane: ScanSectionPlane = { axis: 'x', position: 0, flipped: false };
+    const p2 = projectScanPoint({ x: 3, y: 7, z: -4 }, plane);
+    close(p2.x, -4);
+    close(p2.y, 7);
+  });
+});
+
+describe('projectScanPoint (custom plane)', () => {
+  it('projects via dot(point - origin, tangent/bitangent)', () => {
+    const plane: ScanSectionPlane = {
+      axis: 'y',
+      position: 0,
+      flipped: false,
+      custom: {
+        normal: [0, 0, 1],
+        distance: 2,
+        origin: [1, 1, 2],
+        tangent: [1, 0, 0],
+        bitangent: [0, 1, 0],
+      },
+    };
+    const p2 = projectScanPoint({ x: 4, y: 6, z: 2 }, plane);
+    close(p2.x, 3); // 4 - origin.x(1)
+    close(p2.y, 5); // 6 - origin.y(1)
+  });
+});
+
+describe('selectScanBand', () => {
+  function sample(points: Array<[number, number, number]>, opts: {
+    colors?: Uint8Array | Float32Array;
+    classifications?: Uint8Array;
+  } = {}): ScanPointSample {
+    const positions = new Float32Array(points.length * 3);
+    points.forEach(([x, y, z], i) => {
+      positions[i * 3] = x;
+      positions[i * 3 + 1] = y;
+      positions[i * 3 + 2] = z;
+    });
+    return { positions, count: points.length, colors: opts.colors, classifications: opts.classifications };
+  }
+
+  it('keeps only points inside the band and projects them (plan section)', () => {
+    const s = sample([
+      [1, 5, 2],   // in band (y=5, position=5, thickness .3 -> [4.85,5.15])
+      [1, 5.1, 2], // in band
+      [1, 6, 2],   // out of band
+      [1, 4, 2],   // out of band
+    ]);
+    const plane: ScanSectionPlane = { axis: 'y', position: 5, flipped: false };
+    const result = selectScanBand({ sample: s, coordinateInfo: undefined, plane, thickness: 0.3 });
+    assert.strictEqual(result.totalInBand, 2);
+    assert.strictEqual(result.renderedCount, 2);
+    assert.strictEqual(result.stride, 1);
+    close(result.points[0].point.x, 1);
+    close(result.points[0].point.y, 2);
+  });
+
+  it('applies the render-frame shift before the band test', () => {
+    const s = sample([[0, 100, 0]]); // raw Y (elevation) = 100
+    const plane: ScanSectionPlane = { axis: 'y', position: 3, flipped: false };
+    // shift.y = rtc.z + originShift.y = 97 -> render Y = 100 - 97 = 3 (on-plane)
+    const coordinateInfo = { wasmRtcOffset: { x: 0, y: 0, z: 97 }, originShift: { x: 0, y: 0, z: 0 } } as never;
+    const result = selectScanBand({ sample: s, coordinateInfo, plane, thickness: 0.1 });
+    assert.strictEqual(result.totalInBand, 1);
+  });
+
+  it('vertical (front) section keeps points at the right Z depth, not Y', () => {
+    const s = sample([
+      [1, 2, 5],   // z=5, on a front-axis plane at position=5
+      [1, 9, 5.05],
+      [1, 2, 8],   // out of band
+    ]);
+    const plane: ScanSectionPlane = { axis: 'z', position: 5, flipped: false };
+    const result = selectScanBand({ sample: s, coordinateInfo: undefined, plane, thickness: 0.2 });
+    assert.strictEqual(result.totalInBand, 2);
+  });
+
+  it('mirrors the projected U axis on a flipped cardinal section', () => {
+    const s = sample([[2, 5, 0]]);
+    const unflipped = selectScanBand({
+      sample: s, coordinateInfo: undefined, thickness: 1,
+      plane: { axis: 'y', position: 5, flipped: false },
+    });
+    const flipped = selectScanBand({
+      sample: s, coordinateInfo: undefined, thickness: 1,
+      plane: { axis: 'y', position: 5, flipped: true },
+    });
+    close(unflipped.points[0].point.x, 2);
+    close(flipped.points[0].point.x, -2);
+  });
+
+  it('filters by the LAS class-visibility mask', () => {
+    const s = sample(
+      [[0, 5, 0], [1, 5, 0]],
+      { classifications: new Uint8Array([2, 7]) },
+    );
+    // Hide class 7: word0 = all bits except bit 7.
+    const mask = [0xFFFFFFFF & ~(1 << 7), 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF];
+    const result = selectScanBand({
+      sample: s, coordinateInfo: undefined, classMask: mask, thickness: 1,
+      plane: { axis: 'y', position: 5, flipped: false },
+    });
+    assert.strictEqual(result.totalInBand, 1);
+    close(result.points[0].point.x, 0);
+  });
+
+  it('carries per-point colour when the sample has it (Uint8 and Float32)', () => {
+    const s8 = sample([[0, 5, 0]], { colors: new Uint8Array([255, 0, 128]) });
+    const r8 = selectScanBand({ sample: s8, coordinateInfo: undefined, thickness: 1, plane: { axis: 'y', position: 5, flipped: false } });
+    assert.deepStrictEqual(r8.points[0].color?.map((c) => Math.round(c * 255)), [255, 0, 128]);
+
+    const sf = sample([[0, 5, 0]], { colors: new Float32Array([1, 0, 0.5]) });
+    const rf = selectScanBand({ sample: sf, coordinateInfo: undefined, thickness: 1, plane: { axis: 'y', position: 5, flipped: false } });
+    close(rf.points[0].color?.[2] ?? -1, 0.5);
+  });
+
+  it('decimates deterministically above the render cap', () => {
+    const points: Array<[number, number, number]> = [];
+    for (let i = 0; i < 1000; i++) points.push([i, 5, 0]);
+    const s = sample(points);
+    const plane: ScanSectionPlane = { axis: 'y', position: 5, flipped: false };
+    const run = () => selectScanBand({ sample: s, coordinateInfo: undefined, plane, thickness: 1, maxRendered: 100 });
+    const a = run();
+    const b = run();
+    assert.strictEqual(a.totalInBand, 1000);
+    assert.strictEqual(a.stride, 10);
+    assert.ok(a.renderedCount <= 100);
+    assert.ok(a.renderedCount > 0);
+    // Deterministic: repeated calls over the same input yield the identical set.
+    assert.deepStrictEqual(a.points.map((p) => p.point.x), b.points.map((p) => p.point.x));
+  });
+
+  it('does not decimate when under the cap', () => {
+    const s = sample([[0, 5, 0], [1, 5, 0]]);
+    const result = selectScanBand({
+      sample: s, coordinateInfo: undefined, thickness: 1, maxRendered: 500_000,
+      plane: { axis: 'y', position: 5, flipped: false },
+    });
+    assert.strictEqual(result.stride, 1);
+    assert.strictEqual(result.renderedCount, 2);
+  });
+});
+
+describe('mergeScanBandSelections', () => {
+  it('sums counts and reports the largest per-asset stride', () => {
+    const a = { points: [{ point: { x: 0, y: 0 } }], totalInBand: 10, renderedCount: 1, stride: 10 };
+    const b = { points: [{ point: { x: 1, y: 1 } }], totalInBand: 5, renderedCount: 5, stride: 1 };
+    const merged = mergeScanBandSelections([a, b]);
+    assert.strictEqual(merged.totalInBand, 15);
+    assert.strictEqual(merged.renderedCount, 6);
+    assert.strictEqual(merged.stride, 10);
+    assert.strictEqual(merged.points.length, 2);
+  });
+});

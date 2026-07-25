@@ -26,6 +26,7 @@ import type { GeometryResult } from '@ifc-lite/geometry';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
 import { buildDxfExportTransform, resolveDxfExportGeoreference } from '@/hooks/dxfExportGeoref';
+import { DEFAULT_SCAN_SVG_CAP, type ScanBandPoint } from '@/hooks/scanSectionMath';
 
 /** Map a DXF vertical justification onto an SVG dominant-baseline. */
 function dxfValignToBaseline(valign: 'baseline' | 'bottom' | 'middle' | 'top'): string {
@@ -106,9 +107,44 @@ function buildDxfUnderlaySvg(
   return svg;
 }
 
+/**
+ * Render the point-cloud scan overlay as SVG circles (issue #1805), capped
+ * hard at `DEFAULT_SCAN_SVG_CAP` (independent of, and typically tighter
+ * than, the on-screen render cap) so an exported file stays a sane size —
+ * a deterministic stride, same technique `selectScanBand` uses for the
+ * render cap, keeps the exported subset reproducible.
+ */
+function buildScanSectionSvg(
+  points: readonly ScanBandPoint[],
+  mapPoint: (x: number, y: number) => { x: number; y: number },
+  radiusModelUnits: number,
+  opacity: number,
+  cap: number = DEFAULT_SCAN_SVG_CAP,
+): string {
+  if (points.length === 0 || opacity <= 0) return '';
+  const stride = points.length > cap ? Math.ceil(points.length / cap) : 1;
+  let svg = `  <g id="scan-section" opacity="${opacity.toFixed(2)}">\n`;
+  for (let i = 0; i < points.length; i += stride) {
+    const p = mapPoint(points[i].point.x, points[i].point.y);
+    const color = points[i].color;
+    const fill = color
+      ? `#${color.map((c) => Math.round(c * 255).toString(16).padStart(2, '0')).join('')}`
+      : '#8a8a8a';
+    svg += `    <circle cx="${p.x.toFixed(4)}" cy="${p.y.toFixed(4)}" r="${radiusModelUnits.toFixed(4)}" fill="${fill}" stroke="none"/>\n`;
+  }
+  svg += '  </g>\n';
+  return svg;
+}
+
 interface UseDrawingExportParams {
   drawing: Drawing2D | null;
-  displayOptions: { showHiddenLines: boolean; scale: number };
+  displayOptions: {
+    showHiddenLines: boolean;
+    scale: number;
+    showScanSection: boolean;
+    scanSectionOpacity: number;
+    scanSectionIncludeInExport: boolean;
+  };
   sectionPlane: { axis: 'down' | 'front' | 'side'; position: number; flipped: boolean; custom?: unknown };
   activePresetId: string | null;
   entityColorMap: Map<number, [number, number, number, number]>;
@@ -126,6 +162,8 @@ interface UseDrawingExportParams {
   ifcDataStore: IfcDataStore | null;
   /** Geometry coordinate info (RTC offset + origin shift), for the DXF world-coordinate re-derivation (issue #1861). */
   coordinateInfo: GeometryResult['coordinateInfo'] | undefined;
+  /** Point-cloud scan overlay, already in drawing space (issue #1805) */
+  scanSection: { points: readonly ScanBandPoint[] };
 }
 
 interface UseDrawingExportResult {
@@ -152,6 +190,7 @@ function useDrawingExport({
   dxfUnderlays,
   ifcDataStore,
   coordinateInfo,
+  scanSection,
 }: UseDrawingExportParams): UseDrawingExportResult {
   // Georef inputs for the DXF export (PR #1871 review, P1): placement edits
   // applied in CesiumPlacementEditor live in `georefMutations` (per model
@@ -506,9 +545,21 @@ function useDrawingExport({
       svg += '  </g>\n';
     }
 
+    // POINT-CLOUD SCAN OVERLAY (issue #1805) — on top, same drawing-space
+    // content as cutPolygons/lines, so it needs the same flipX/flipY the
+    // rest of this direct export applies via `transformPt`.
+    if (displayOptions.showScanSection && displayOptions.scanSectionIncludeInExport) {
+      svg += buildScanSectionSvg(
+        scanSection.points,
+        (x, y) => ({ x: flipX ? -x : x, y: flipY ? -y : y }),
+        mmToModel(0.3),
+        displayOptions.scanSectionOpacity,
+      );
+    }
+
     svg += '</svg>';
     return svg;
-  }, [drawing, displayOptions, activePresetId, entityColorMap, overridesEnabled, overrideEngine, measure2DResults, polygonArea2DResults, textAnnotations2D, cloudAnnotations2D, sectionPlane.axis, dxfUnderlays]);
+  }, [drawing, displayOptions, activePresetId, entityColorMap, overridesEnabled, overrideEngine, measure2DResults, polygonArea2DResults, textAnnotations2D, cloudAnnotations2D, sectionPlane.axis, dxfUnderlays, scanSection]);
 
   // Generate SVG with drawing sheet (frame, title block, scale bar)
   // This generates coordinates directly in paper mm space (like the canvas rendering)
@@ -724,6 +775,18 @@ function useDrawingExport({
     }
     svg += '    </g>\n';
 
+    // POINT-CLOUD SCAN OVERLAY (issue #1805) — on top, inside the clipped
+    // drawing-content group like everything else. `modelToPaper` already
+    // applies the same flip + scale/translate the rest of the sheet uses.
+    if (displayOptions.showScanSection && displayOptions.scanSectionIncludeInExport) {
+      svg += buildScanSectionSvg(
+        scanSection.points,
+        modelToPaper,
+        0.3, // mm on paper
+        displayOptions.scanSectionOpacity,
+      );
+    }
+
     svg += '  </g>\n\n';
 
     // Render frame (on top of drawing content)
@@ -751,7 +814,7 @@ function useDrawingExport({
 
     svg += '</svg>';
     return svg;
-  }, [drawing, activeSheet, displayOptions, activePresetId, entityColorMap, overridesEnabled, overrideEngine, dxfUnderlays]);
+  }, [drawing, activeSheet, displayOptions, activePresetId, entityColorMap, overridesEnabled, overrideEngine, dxfUnderlays, scanSection]);
 
   // Export SVG
   const handleExportSVG = useCallback(() => {
@@ -771,6 +834,10 @@ function useDrawingExport({
   // re-georeferenced to true IFC world coordinates (and further to
   // map/CRS coordinates when the model has an IfcMapConversion). DXF
   // reference underlays are not embedded in this export; see PR notes.
+  // The point-cloud scan overlay (issue #1805) is likewise deliberately
+  // excluded: it is a raster-like screen aid (up to tens of thousands of
+  // circles), not vector drawing content, and would bloat a CAD exchange
+  // file — SVG export carries it (opt-in) instead.
   const handleExportDXF = useCallback(() => {
     if (!drawing) return;
     const isCustomPlane = sectionPlane.custom !== undefined;

@@ -20,6 +20,7 @@ import { useEffect, useRef, type MutableRefObject } from 'react';
 import type { Renderer } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
 import { unregisterPointCloudAlignment, hasRegisteredPointCloudAlignment } from '@/hooks/ingest/pointCloudAlignment';
+import { removePointCloudScanCache } from '@/hooks/ingest/pointCloudScanCache';
 
 export interface UsePointCloudLifecycleParams {
   rendererRef: MutableRefObject<Renderer | null>;
@@ -64,6 +65,10 @@ export function usePointCloudLifecycle(params: UsePointCloudLifecycleParams): vo
         // silently does nothing for the next (e.g. PLY) scan.
         unregisterPointCloudAlignment(handleId);
         useViewerStore.getState().setPointCloudAlignmentAvailable(hasRegisteredPointCloudAlignment());
+        // Same cleanup for the 2D section scan-layer cache (issue #1805) —
+        // nothing else frees this, since streamed assets live outside the
+        // normal geometryResult/pointClouds lifecycle.
+        removePointCloudScanCache(handleId);
         decCount(-1);
       }
     }

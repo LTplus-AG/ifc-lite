@@ -30,6 +30,11 @@ import {
   unregisterPointCloudAlignment,
   type PointCloudAlignmentTransform,
 } from './pointCloudAlignment.js';
+import {
+  addPointsToScanCache,
+  registerPointCloudScanCache,
+  removePointCloudScanCache,
+} from './pointCloudScanCache.js';
 
 export type PointCloudFormat = 'las' | 'laz' | 'ply' | 'pcd' | 'e57' | 'pts' | 'xyz';
 
@@ -95,6 +100,13 @@ export interface PointCloudIngestOptions {
   maxPointsInMemory?: number;
   /** Hard cap on file size in bytes. Default: 4 GB. */
   maxFileSize?: number;
+  /**
+   * Points retained CPU-side (reservoir-sampled) for the 2D section scan
+   * layer (issue #1805) — the GPU upload never keeps a JS-side copy, so
+   * this is the only way the section view can select an in-band slice.
+   * Default: {@link DEFAULT_SCAN_CACHE_CAPACITY}.
+   */
+  maxScanCachePoints?: number;
   /** Progress callback shared with the existing UI. */
   onProgress?: (progress: { phase: string; percent: number }) => void;
   /** Notified with +1 when streaming starts and -1 if it errors. */
@@ -324,6 +336,10 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
   });
   const onCountChange = opts.onAssetCountDelta ?? (() => {});
   onCountChange(+1);
+  // Reservoir-sample a bounded CPU-side copy for the 2D section scan layer
+  // (issue #1805) — see pointCloudScanCache.ts for why this can't just read
+  // back the GPU buffer.
+  registerPointCloudScanCache(handle.id, opts.maxScanCachePoints);
 
   // IfcMapConversion alignment (issue #1804): register so the panel's
   // global toggle can flip this asset later, and push the initial matrix
@@ -414,6 +430,11 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
         const yUp = swapZupChunkToYup(chunk);
         opts.renderer.appendPointCloudChunk(handle, yUp);
         opts.renderer.requestRender();
+        // Feed the SAME Y-up points into the bounded CPU reservoir the 2D
+        // section scan layer reads from (issue #1805) — must be the
+        // post-swap chunk so the retained sample and the GPU-rendered scan
+        // agree on orientation.
+        addPointsToScanCache(handle.id, yUp);
         // Classification histogram — the axis swap doesn't touch the
         // classifications buffer, so accumulate from the source chunk.
         sawClassifications = accumulateClassificationCounts(classCounts, chunk) || sawClassifications;
@@ -438,6 +459,7 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
         opts.renderer.removePointCloudAsset(handle);
         opts.onClassCounts?.(handle.id, null);
         unregisterPointCloudAlignment(handle.id);
+        removePointCloudScanCache(handle.id);
         onCountChange(-1);
       },
     });
@@ -445,6 +467,7 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
     opts.renderer.removePointCloudAsset(handle);
     opts.onClassCounts?.(handle.id, null);
     unregisterPointCloudAlignment(handle.id);
+    removePointCloudScanCache(handle.id);
     onCountChange(-1);
     throw err;
   }

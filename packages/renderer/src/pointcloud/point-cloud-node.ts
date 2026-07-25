@@ -118,9 +118,10 @@ export function appendChunkToNode(
   // Index the whole chunk's points for measure-tool snapping (#1860),
   // independent of how the GPU sub-buffer split below divides it up —
   // the index doesn't care about buffer size limits, only world
-  // positions. Retains `chunk.positions` by reference (see spatial
-  // index class docs); no-ops past the index's point cap.
-  node.spatialIndex.insertRange(chunk.positions, total);
+  // positions. Retains `chunk.positions` (and classifications, so the
+  // query can honour the class visibility mask #1783) by reference; see
+  // spatial index class docs. No-ops past the index's point cap.
+  node.spatialIndex.insertRange(chunk.positions, total, chunk.classifications ?? null);
   // Honour BOTH the raw buffer cap and the storage-binding cap, with a 5%
   // margin for safety against driver rounding.
   const maxBytes = Math.min(

@@ -306,3 +306,71 @@ describe('PointCloudSpatialIndex — streaming arrival (#1860)', () => {
     assert.ok(Math.abs(hit!.distance - 5.0) < 1e-6, `expected frontmost ~5.0, got ${hit!.distance}`);
   });
 });
+
+describe('PointCloudSpatialIndex — LAS class visibility mask (#1783 interplay)', () => {
+  // Mask helper: 8 words, all classes visible except the listed ones.
+  const maskHiding = (...hidden: number[]): Uint32Array => {
+    const m = new Uint32Array(8).fill(0xffffffff);
+    for (const c of hidden) m[c >> 5] &= ~(1 << (c & 31));
+    return m;
+  };
+
+  it('skips points whose class the splat shader currently hides', () => {
+    const idx = new PointCloudSpatialIndex(0.5);
+    // Near point is class 2 (e.g. ground), far point class 6 (building).
+    idx.insertRange(new Float32Array([0, 0, 5, 0, 0, 9]), 2, new Uint8Array([2, 6]));
+
+    // Everything visible: nearest (class 2, z=5) wins.
+    let hit = idx.queryRay(FORWARD_RAY.origin, FORWARD_RAY.direction, 100, flatTolerance(0.05), maskHiding());
+    assert.ok(hit);
+    assert.strictEqual(hit!.distance, 5);
+
+    // Class 2 hidden: the measure tool must NOT snap to the invisible
+    // near point; the visible class-6 point behind it wins instead.
+    hit = idx.queryRay(FORWARD_RAY.origin, FORWARD_RAY.direction, 100, flatTolerance(0.05), maskHiding(2));
+    assert.ok(hit);
+    assert.strictEqual(hit!.distance, 9);
+
+    // Both classes hidden: nothing snappable.
+    assert.strictEqual(
+      idx.queryRay(FORWARD_RAY.origin, FORWARD_RAY.direction, 100, flatTolerance(0.05), maskHiding(2, 6)),
+      null,
+    );
+  });
+
+  it('classification-free chunks behave as class 0, mirroring the GPU vertex packing', () => {
+    const idx = new PointCloudSpatialIndex(0.5);
+    idx.insertRange(new Float32Array([0, 0, 5]), 1); // no classifications buffer
+    assert.ok(idx.queryRay(FORWARD_RAY.origin, FORWARD_RAY.direction, 100, flatTolerance(0.05), maskHiding(1)));
+    // Hiding class 0 hides unclassified points — exactly what the shader does.
+    assert.strictEqual(
+      idx.queryRay(FORWARD_RAY.origin, FORWARD_RAY.direction, 100, flatTolerance(0.05), maskHiding(0)),
+      null,
+    );
+  });
+
+  it('no mask (undefined/null) means everything is snappable', () => {
+    const idx = new PointCloudSpatialIndex(0.5);
+    idx.insertRange(new Float32Array([0, 0, 5]), 1, new Uint8Array([7]));
+    assert.ok(idx.queryRay(FORWARD_RAY.origin, FORWARD_RAY.direction, 100, flatTolerance(0.05)));
+    assert.ok(idx.queryRay(FORWARD_RAY.origin, FORWARD_RAY.direction, 100, flatTolerance(0.05), null));
+  });
+
+  it('classifications survive a cap-crossing chunk in step with positions', () => {
+    // Chunk of 4 crosses a cap of 2: only the retained prefix is indexed
+    // AND its classes stay aligned (a mismatch would mask the wrong points).
+    const idx = new PointCloudSpatialIndex(0.5, 2);
+    idx.insertRange(
+      new Float32Array([0, 0, 1, 0, 0, 2, 0, 0, 3, 0, 0, 4]),
+      4,
+      new Uint8Array([9, 1, 1, 1]),
+    );
+    assert.strictEqual(idx.pointCount, 2);
+    // Hiding class 9 hides the first (z=1) point → z=2 wins.
+    const m = new Uint32Array(8).fill(0xffffffff);
+    m[0] &= ~(1 << 9);
+    const hit = idx.queryRay(FORWARD_RAY.origin, FORWARD_RAY.direction, 100, flatTolerance(0.05), m);
+    assert.ok(hit);
+    assert.strictEqual(hit!.distance, 2);
+  });
+});

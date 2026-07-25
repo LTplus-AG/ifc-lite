@@ -108,9 +108,29 @@ function clampRelCell(c: number): number {
 /** One inserted chunk: a retained position buffer plus its global-id offset. */
 interface IndexedChunk {
   positions: Float32Array;
+  /**
+   * Per-point LAS classification codes, retained so `queryRay` can skip
+   * points the splat shader currently hides via the class visibility
+   * mask (#1783) — otherwise the measure tool would snap to invisible
+   * scan data. `null` when the source chunk carried no classifications;
+   * those points behave as class 0, mirroring the GPU vertex packing
+   * (`appendPointSubBuffer` writes class 0 for classification-free
+   * chunks, so the shader masks them under bit 0 too).
+   */
+  classifications: Uint8Array | null;
   count: number;
   /** Global point id of this chunk's point 0 (cumulative across chunks). */
   startId: number;
+}
+
+/** Is `classId` visible under a normalized 8-word class bitmask?
+ *  (`undefined`/missing words default to visible, matching
+ *  `normalizeClassMask`.) */
+function classVisible(classMask: Uint32Array | null | undefined, classId: number): boolean {
+  if (!classMask) return true;
+  const word = classMask[classId >> 5];
+  if (word === undefined) return true;
+  return ((word >>> (classId & 31)) & 1) === 1;
 }
 
 export interface PointCloudRayHit {
@@ -196,7 +216,10 @@ export class PointCloudSpatialIndex {
     maxIndexedPoints: number = DEFAULT_MAX_INDEXED_POINTS,
   ) {
     this.cellSize = cellSize > 0 && Number.isFinite(cellSize) ? cellSize : DEFAULT_POINTCLOUD_INDEX_CELL_SIZE;
-    this.maxIndexedPoints = maxIndexedPoints > 0 ? Math.floor(maxIndexedPoints) : DEFAULT_MAX_INDEXED_POINTS;
+    this.maxIndexedPoints =
+      maxIndexedPoints > 0 && Number.isFinite(maxIndexedPoints)
+        ? Math.floor(maxIndexedPoints)
+        : DEFAULT_MAX_INDEXED_POINTS;
   }
 
   /** Total number of points currently indexed (may be less than the
@@ -212,16 +235,24 @@ export class PointCloudSpatialIndex {
 
   /**
    * Insert the first `count` xyz triples of `positions` (renderer/world
-   * space — the same frame `queryRay` expects). Keeps `positions` BY
-   * REFERENCE; the caller must not mutate it afterwards. A no-op past
-   * `maxIndexedPoints` (see class docs) — points beyond the cap render
-   * normally but are not indexed for picking.
+   * space — the same frame `queryRay` expects). Keeps `positions` (and
+   * `classifications`, when given) BY REFERENCE; the caller must not
+   * mutate them afterwards. A no-op past `maxIndexedPoints` (see class
+   * docs) — points beyond the cap render normally but are not indexed
+   * for picking. When a chunk CROSSES the cap, only the accepted prefix
+   * is retained (copied) so the cap genuinely bounds retained memory —
+   * keeping the whole source array by reference would retain e.g. a
+   * 100M-point one-shot chunk's full 1.2 GB for a 30M-point cap.
    */
-  insertRange(positions: Float32Array, count: number): void {
+  insertRange(positions: Float32Array, count: number, classifications?: Uint8Array | null): void {
     if (count <= 0 || this.total >= this.maxIndexedPoints) return;
     const usable = Math.min(count, this.maxIndexedPoints - this.total);
     const startId = this.total;
-    this.chunks.push({ positions, count: usable, startId });
+    const retainedPositions = usable < count ? positions.slice(0, usable * 3) : positions;
+    const retainedClasses = classifications
+      ? (usable < count ? classifications.slice(0, usable) : classifications)
+      : null;
+    this.chunks.push({ positions: retainedPositions, classifications: retainedClasses, count: usable, startId });
     for (let i = 0; i < usable; i++) {
       const o = i * 3;
       const x = positions[o];
@@ -263,8 +294,8 @@ export class PointCloudSpatialIndex {
     };
   }
 
-  /** Resolve a global point id back to its world position. */
-  private pointAt(globalId: number): Vec3 {
+  /** Resolve a global point id to its owning chunk, or null. */
+  private chunkFor(globalId: number): IndexedChunk | null {
     // Chunks are appended in id order, so `startId` is sorted ascending —
     // binary search for the owning chunk (dense buckets can resolve
     // thousands of ids per query; a linear chunk scan would multiply
@@ -278,12 +309,9 @@ export class PointCloudSpatialIndex {
       else hi = mid - 1;
     }
     const c = chunks[lo];
-    if (c && globalId >= c.startId && globalId < c.startId + c.count) {
-      const local = (globalId - c.startId) * 3;
-      return { x: c.positions[local], y: c.positions[local + 1], z: c.positions[local + 2] };
-    }
+    if (c && globalId >= c.startId && globalId < c.startId + c.count) return c;
     // Unreachable: every id in `cells` was handed out by this instance.
-    return { x: 0, y: 0, z: 0 };
+    return null;
   }
 
   private testPoint(
@@ -329,6 +357,7 @@ export class PointCloudSpatialIndex {
     dir: Vec3,
     maxDistance: number,
     toleranceAt: (t: number) => number,
+    classMask: Uint32Array | null | undefined,
     visited: Set<number>,
     best: { hit: PointCloudRayHit | null },
   ): void {
@@ -342,7 +371,17 @@ export class PointCloudSpatialIndex {
           const bucket = this.cells.get(key);
           if (!bucket) continue;
           for (const globalId of bucket) {
-            const p = this.pointAt(globalId);
+            const chunk = this.chunkFor(globalId);
+            if (!chunk) continue;
+            const local = globalId - chunk.startId;
+            // Skip points the splat shader currently hides via the LAS
+            // class visibility mask (#1783) — the measure tool must not
+            // snap to invisible scan data. Classification-free chunks
+            // are class 0, mirroring the GPU vertex packing.
+            const classId = chunk.classifications ? chunk.classifications[local] : 0;
+            if (!classVisible(classMask, classId)) continue;
+            const o = local * 3;
+            const p = { x: chunk.positions[o], y: chunk.positions[o + 1], z: chunk.positions[o + 2] };
             const hit = this.testPoint(p, origin, dir, maxDistance, toleranceAt);
             if (hit && (!best.hit || hit.distance < best.hit.distance)) best.hit = hit;
           }
@@ -377,6 +416,9 @@ export class PointCloudSpatialIndex {
     dir: Vec3,
     maxDistance: number,
     toleranceAt: (t: number) => number,
+    /** Normalized 8-word LAS class visibility bitmask (#1783); points of
+     *  hidden classes are skipped. Omit/null for "everything visible". */
+    classMask?: Uint32Array | null,
   ): PointCloudRayHit | null {
     if (this.total === 0 || maxDistance <= 0) return null;
     const bounds = this.getBounds();
@@ -456,7 +498,7 @@ export class PointCloudSpatialIndex {
       );
       if (radius > maxRadiusUsed) maxRadiusUsed = radius;
 
-      this.testCellNeighborhood(cx, cy, cz, radius, origin, dir, tMax, toleranceAt, visited, best);
+      this.testCellNeighborhood(cx, cy, cz, radius, origin, dir, tMax, toleranceAt, classMask, visited, best);
 
       // DDA visits cells in non-decreasing t order, so once we have a
       // hit and have advanced `maxRadiusUsed` full cells past it, no

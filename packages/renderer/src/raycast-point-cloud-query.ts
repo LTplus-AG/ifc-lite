@@ -20,6 +20,9 @@ export interface PointCloudRaySource {
   expressId: number;
   modelIndex?: number;
   index: PointCloudSpatialIndex;
+  /** Current LAS class visibility bitmask (#1783); hidden-class points
+   *  are not snappable. Omit for "everything visible". */
+  classMask?: Uint32Array | null;
 }
 
 /** Supplied by the renderer once point clouds are loaded; empty/null disables point snapping. */
@@ -126,7 +129,7 @@ export function queryPointClouds(
     // Never search past the current best (or the caller's bound) — keeps
     // the "nearest across assets" search itself O(assets).
     const bound = best ? Math.min(maxDistance, best.distance) : maxDistance;
-    const hit = src.index.queryRay(ray.origin, ray.direction, bound, toleranceAt);
+    const hit = src.index.queryRay(ray.origin, ray.direction, bound, toleranceAt, src.classMask);
     if (hit && (!best || hit.distance < best.distance)) {
       best = { position: hit.position, expressId: src.expressId, modelIndex: src.modelIndex, distance: hit.distance };
     }

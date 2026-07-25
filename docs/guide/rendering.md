@@ -361,7 +361,7 @@ const magneticConfig = {
 
 ```typescript
 interface SnapTarget {
-  type: 'vertex' | 'edge' | 'face' | 'face_center';
+  type: 'vertex' | 'edge' | 'face' | 'face_center' | 'point_cloud';
   position: { x: number; y: number; z: number };
   normal?: { x: number; y: number; z: number };
   expressId: number;

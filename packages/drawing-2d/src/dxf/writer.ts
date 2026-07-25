@@ -286,7 +286,11 @@ export class DxfWriter {
     } = {},
   ): void {
     const clean = sanitizeDxfText(text);
-    if (!clean.trim() || height <= 0) return;
+    // `height <= 0` alone lets NaN/Infinity through (both compare false), and
+    // `fmt` would then write them as the deterministic '0.0' fallback — i.e. a
+    // zero-height, invisible TEXT entity, exactly what the guard exists to
+    // skip. Reject non-finite heights outright instead.
+    if (!clean.trim() || !Number.isFinite(height) || height <= 0) return;
     this.extend(position);
     const rotationDeg = options.rotationDeg ?? 0;
     const hAlign = options.hAlign ?? 'left';

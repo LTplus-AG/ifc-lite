@@ -210,6 +210,20 @@ describe('DxfWriter entity round trip (via this package\'s own parser)', () => {
     const doc = parseDxf(w.toString());
     expect(doc.entities).toHaveLength(0);
   });
+
+  it('drops text with a non-finite height instead of emitting it at height 0', () => {
+    // `height <= 0` is false for both NaN and Infinity, so without an explicit
+    // finite check they reach `fmt`, which maps non-finite to the deterministic
+    // '0.0' fallback — producing an invisible zero-height TEXT entity rather
+    // than skipping it (CodeRabbit review of PR #1871).
+    const w = new DxfWriter();
+    const layer = w.layer('x', '#000000');
+    w.addText({ x: 0, y: 0 }, 'nan', Number.NaN, layer);
+    w.addText({ x: 0, y: 0 }, 'inf', Number.POSITIVE_INFINITY, layer);
+    w.addText({ x: 0, y: 0 }, '-inf', Number.NEGATIVE_INFINITY, layer);
+    const doc = parseDxf(w.toString());
+    expect(doc.entities).toHaveLength(0);
+  });
 });
 
 describe('cssToAci / aciToCss', () => {

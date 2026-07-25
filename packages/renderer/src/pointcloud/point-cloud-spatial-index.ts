@@ -361,12 +361,25 @@ export class PointCloudSpatialIndex {
   }
 
   /**
-   * Test every point in the `(2*radiusCells+1)^3` cell block around
-   * (cx,cy,cz), skipping cells already visited by an earlier step of
-   * the same query. `radiusCells` must cover `toleranceAt(t)` at the
-   * depth this cell is visited at — see `queryRay`'s per-step radius
-   * computation (#1860 review finding 1: a fixed +-1 dilation under-covers
-   * tolerance at long range).
+   * Test points in the dilated cell block around (cx,cy,cz), skipping
+   * cells already visited by an earlier step of the same query.
+   * `radiusCells` must cover `toleranceAt(t)` at the depth this cell is
+   * visited at — see `queryRay`'s per-step radius computation (#1860
+   * review finding 1: a fixed +-1 dilation under-covers tolerance at
+   * long range).
+   *
+   * When `slabAxis` is 0/1/2 the scan is restricted to the LEADING SLAB
+   * of the block along that axis (offset `slabDir * radiusCells`, the
+   * `(2r+1)^2` cells newly uncovered by a one-cell DDA advance) instead
+   * of the full `(2r+1)^3` block (hosted CodeRabbit review, PR #1875):
+   * consecutive DDA steps overlap ~90% of their blocks, and while the
+   * `visited` set kept the overlap from re-scanning buckets, every probe
+   * still paid `packKey` + `Set.has` — ~6M map operations for a capped
+   * worst-case march at radius 4. Since the DDA advances exactly one
+   * axis by exactly one cell per step, `block(new) \ block(old)` IS that
+   * leading slab whenever the radius is unchanged; `queryRay` passes
+   * `slabAxis: -1` (full block) for the first cell and whenever the
+   * radius changed between steps.
    */
   private testCellNeighborhood(
     cx: number,
@@ -380,14 +393,35 @@ export class PointCloudSpatialIndex {
     classMask: Uint32Array | null | undefined,
     visited: Set<number>,
     best: { hit: PointCloudRayHit | null },
+    slabAxis: -1 | 0 | 1 | 2 = -1,
+    slabDir: -1 | 1 = 1,
   ): void {
     const r = radiusCells;
-    for (let dx = -r; dx <= r; dx++) {
-      for (let dy = -r; dy <= r; dy++) {
-        for (let dz = -r; dz <= r; dz++) {
+    const lead = slabDir * r;
+    const xLo = slabAxis === 0 ? lead : -r;
+    const xHi = slabAxis === 0 ? lead : r;
+    const yLo = slabAxis === 1 ? lead : -r;
+    const yHi = slabAxis === 1 ? lead : r;
+    const zLo = slabAxis === 2 ? lead : -r;
+    const zHi = slabAxis === 2 ? lead : r;
+    for (let dx = xLo; dx <= xHi; dx++) {
+      for (let dy = yLo; dy <= yHi; dy++) {
+        for (let dz = zLo; dz <= zHi; dz++) {
           const key = this.packKey(cx + dx, cy + dy, cz + dz);
-          if (visited.has(key)) continue;
-          visited.add(key);
+          // The `visited` dedup is only worth paying for FULL-block scans
+          // (first cell / radius changes): a leading slab is disjoint from
+          // every earlier block by construction — each block-centre axis
+          // coordinate is monotone along the march, so the slab's fixed
+          // coordinate `c + slabDir * r` lies strictly beyond every prior
+          // block's extent (for the production monotone-radius case; a
+          // non-monotone `toleranceAt` can at worst re-test a bucket,
+          // which is idempotent — `testPoint` recomputes and `best` takes
+          // the min). Skipping the Set here removes two hash operations
+          // per probed cell — the dominant cost of long marches.
+          if (slabAxis === -1) {
+            if (visited.has(key)) continue;
+            visited.add(key);
+          }
           const bucket = this.cells.get(key);
           if (!bucket) continue;
           for (const globalId of bucket) {
@@ -510,6 +544,16 @@ export class PointCloudSpatialIndex {
     // with `maxDistance = Infinity` (no mesh under the cursor) walked the
     // whole bounding box on every pointer move (see MAX_MARCH_CELLS docs).
     const maxSteps = Math.min(MAX_MARCH_CELLS, 8 + Math.ceil((tMax - tMin) / cs) * 3);
+    // Which axis (and direction) the DDA advanced to REACH the current
+    // cell, so the neighborhood scan can restrict itself to the block's
+    // newly uncovered leading slab (see `testCellNeighborhood`). -1 for
+    // the first cell (no previous block) and after a radius change
+    // (block shape changed, rescan it whole; `visited` dedups overlap).
+    // `toleranceAt` is monotone in production (constant in ortho, linear
+    // in perspective), so the radius changes at most 3 times per query.
+    let steppedAxis: -1 | 0 | 1 | 2 = -1;
+    let steppedDir: -1 | 1 = 1;
+    let prevRadius = 0;
     for (let step = 0; step < maxSteps && t <= tMax; step++) {
       // Dilation radius covering toleranceAt(t) at THIS cell's ray
       // parameter — toleranceAt grows with depth, so a fixed +-1 cell
@@ -522,7 +566,12 @@ export class PointCloudSpatialIndex {
       );
       if (radius > maxRadiusUsed) maxRadiusUsed = radius;
 
-      this.testCellNeighborhood(cx, cy, cz, radius, origin, dir, tMax, toleranceAt, classMask, visited, best);
+      const slabAxis = radius === prevRadius ? steppedAxis : -1;
+      this.testCellNeighborhood(
+        cx, cy, cz, radius, origin, dir, tMax, toleranceAt, classMask, visited, best,
+        slabAxis, steppedDir,
+      );
+      prevRadius = radius;
 
       // DDA visits cells in non-decreasing t order, so once we have a
       // hit and have advanced well past it, no later cell can hold a
@@ -545,19 +594,27 @@ export class PointCloudSpatialIndex {
           t = tMaxX;
           cx += stepX;
           tMaxX += tDeltaX;
+          steppedAxis = 0;
+          steppedDir = stepX < 0 ? -1 : 1;
         } else {
           t = tMaxZ;
           cz += stepZ;
           tMaxZ += tDeltaZ;
+          steppedAxis = 2;
+          steppedDir = stepZ < 0 ? -1 : 1;
         }
       } else if (tMaxY < tMaxZ) {
         t = tMaxY;
         cy += stepY;
         tMaxY += tDeltaY;
+        steppedAxis = 1;
+        steppedDir = stepY < 0 ? -1 : 1;
       } else {
         t = tMaxZ;
         cz += stepZ;
         tMaxZ += tDeltaZ;
+        steppedAxis = 2;
+        steppedDir = stepZ < 0 ? -1 : 1;
       }
     }
     return best.hit;

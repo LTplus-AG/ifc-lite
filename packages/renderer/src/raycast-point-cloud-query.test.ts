@@ -20,9 +20,12 @@ import {
   pointCloudSnapEnabled,
   pointCloudSnapToleranceAt,
   pointCloudWinsOverMeshSnap,
+  queryPointClouds,
+  type PointCloudRaySource,
   type PointCloudRayResult,
   type PointCloudSnapCamera,
 } from './raycast-point-cloud-query.js';
+import { PointCloudSpatialIndex } from './pointcloud/point-cloud-spatial-index.js';
 import { SnapType, type SnapTarget } from './snap-detector.js';
 
 /** A representative measure-tool camera: ~60deg vertical FOV, 800px-tall canvas. */
@@ -160,6 +163,75 @@ describe('pointCloudSnapToleranceAt — orthographic camera', () => {
     );
     const otherFov: PointCloudSnapCamera = { ...ORTHO, fov: CAMERA_FOV / 2 };
     assert.strictEqual(pointCloudSnapToleranceAt(10, otherFov), pointCloudSnapToleranceAt(10, ORTHO));
+  });
+});
+
+describe('queryPointClouds — multi-asset dispatch (real indices, no mocks)', () => {
+  // Constant 0.1m world tolerance at every depth: ortho camera,
+  // (8px / 800px) * (2 * 5m) = 0.1m — deterministic for assertions.
+  const ORTHO_CAMERA: PointCloudSnapCamera = { fov: CAMERA_FOV, canvasHeightPx: 800, orthoHalfHeight: 5 };
+  const RAY = { origin: { x: 0, y: 0, z: 0 }, direction: { x: 0, y: 0, z: 1 } };
+
+  /** A real spatial index holding one on-axis point at depth z. */
+  function sourceAt(expressId: number, z: number, classification?: number): PointCloudRaySource {
+    const index = new PointCloudSpatialIndex(0.5);
+    index.insertRange(
+      new Float32Array([0, 0, z]),
+      1,
+      classification === undefined ? null : new Uint8Array([classification]),
+    );
+    return { expressId, index };
+  }
+
+  it('returns null for a null provider or no sources', () => {
+    assert.strictEqual(queryPointClouds(null, RAY, ORTHO_CAMERA, 100), null);
+    assert.strictEqual(queryPointClouds(() => [], RAY, ORTHO_CAMERA, 100), null);
+  });
+
+  it('picks the nearest hit ACROSS assets and reports its owning expressId', () => {
+    const provider = () => [sourceAt(11, 8), sourceAt(22, 3)];
+    const hit = queryPointClouds(provider, RAY, ORTHO_CAMERA, 100);
+    assert.ok(hit);
+    assert.strictEqual(hit!.expressId, 22);
+    assert.strictEqual(hit!.distance, 3);
+    // Source order must not matter (the per-source bound narrows to the
+    // current best, never excludes a nearer later source).
+    const reversed = queryPointClouds(() => [sourceAt(22, 3), sourceAt(11, 8)], RAY, ORTHO_CAMERA, 100);
+    assert.ok(reversed);
+    assert.strictEqual(reversed!.expressId, 22);
+  });
+
+  it('hiddenIds filters whole assets: a hidden nearer cloud yields to a visible farther one', () => {
+    const provider = () => [sourceAt(11, 8), sourceAt(22, 3)];
+    const hit = queryPointClouds(provider, RAY, ORTHO_CAMERA, 100, { hiddenIds: new Set([22]) });
+    assert.ok(hit);
+    assert.strictEqual(hit!.expressId, 11);
+    assert.strictEqual(
+      queryPointClouds(provider, RAY, ORTHO_CAMERA, 100, { hiddenIds: new Set([11, 22]) }),
+      null,
+    );
+  });
+
+  it('isolatedIds restricts snapping to the isolated assets', () => {
+    const provider = () => [sourceAt(11, 8), sourceAt(22, 3)];
+    const hit = queryPointClouds(provider, RAY, ORTHO_CAMERA, 100, { isolatedIds: new Set([11]) });
+    assert.ok(hit);
+    assert.strictEqual(hit!.expressId, 11);
+    // null isolation set means "no isolation" (everything participates).
+    const none = queryPointClouds(provider, RAY, ORTHO_CAMERA, 100, { isolatedIds: null });
+    assert.ok(none);
+    assert.strictEqual(none!.expressId, 22);
+  });
+
+  it('maxDistance bounds the search and each source honours its own classMask', () => {
+    assert.strictEqual(queryPointClouds(() => [sourceAt(11, 8)], RAY, ORTHO_CAMERA, 5), null);
+    // Hide class 7 on the nearer source only: the farther, unmasked one wins.
+    const mask = new Uint32Array(8).fill(0xffffffff);
+    mask[0] &= ~(1 << 7);
+    const masked: PointCloudRaySource = { ...sourceAt(22, 3, 7), classMask: mask };
+    const hit = queryPointClouds(() => [masked, sourceAt(11, 8, 7)], RAY, ORTHO_CAMERA, 100);
+    assert.ok(hit);
+    assert.strictEqual(hit!.expressId, 11);
   });
 });
 

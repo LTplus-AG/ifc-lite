@@ -558,7 +558,10 @@ interface SnapIndicatorProps {
 
 function SnapIndicator({ screenX, screenY, snapType }: SnapIndicatorProps) {
   // Distinct colors for each snap type - no labels needed, shapes are self-explanatory
-  const snapColors = {
+  // Record<SnapType, string> so a future SnapType member without a colour
+  // fails to compile instead of silently rendering undefined (mirrors
+  // getBestSnapTarget's priority map in snap-detector.ts).
+  const snapColors: Record<SnapType, string> = {
     [SnapType.VERTEX]: '#FFEB3B', // Yellow - circle = point
     [SnapType.EDGE]: '#FF9800', // Orange - line = edge
     [SnapType.FACE]: '#03A9F4', // Light Blue - square = face

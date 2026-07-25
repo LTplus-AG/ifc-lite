@@ -47,6 +47,9 @@ importers:
       '@playwright/test':
         specifier: ^1.61.1
         version: 1.61.1
+      '@posthog/cli':
+        specifier: 0.9.1
+        version: 0.9.1
       '@types/node':
         specifier: ^26.1.1
         version: 26.1.1
@@ -2140,6 +2143,11 @@ packages:
   '@playwright/test@1.61.1':
     resolution: {integrity: sha512-8nKv6+0RJSL9FE4jYOEGXnPeM/Hg12qZpmqzZjRh3qM0Y7c3z1mrOTfFLids72RDQYVh9WpLEfR5WdpNX4fkig==}
     engines: {node: '>=18'}
+    hasBin: true
+
+  '@posthog/cli@0.9.1':
+    resolution: {integrity: sha512-O02l2e5wuuIUzqdF3Q1gtqgi139fK1V9uXRJn8WToxmazT48ub/ODIrB3A+G/cK+ccZPc05NuPLqcsT1VOFkgw==}
+    engines: {node: '>=14.14', npm: '>=6'}
     hasBin: true
 
   '@posthog/core@1.44.0':
@@ -6318,6 +6326,10 @@ snapshots:
   '@playwright/test@1.61.1':
     dependencies:
       playwright: 1.61.1
+
+  '@posthog/cli@0.9.1':
+    dependencies:
+      detect-libc: 2.1.2
 
   '@posthog/core@1.44.0':
     dependencies:

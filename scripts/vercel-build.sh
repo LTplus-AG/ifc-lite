@@ -139,7 +139,7 @@ if [ $build_status -eq 0 ] && [ -n "${POSTHOG_CLI_API_KEY:-}" ] && [ -d "$OUT_DI
   node scripts/add-sourcemap-refs.mjs "$OUT_DIR"
   RELEASE_VERSION="$(printf '%.12s' "${VERCEL_GIT_COMMIT_SHA:-${GITHUB_SHA:-dev}}")"
   echo "🗺️  Uploading source maps (release ${RELEASE_VERSION})…"
-  npx --yes @posthog/cli@latest sourcemap process \
+  pnpm exec posthog-cli sourcemap process \
     --directory "$OUT_DIR" \
     --release-name ifc-lite-viewer \
     --release-version "$RELEASE_VERSION" \

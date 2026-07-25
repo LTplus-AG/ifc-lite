@@ -69,6 +69,7 @@
     "@changesets/changelog-github": "^0.7.0",
     "@changesets/cli": "^2.31.1",
     "@playwright/test": "^1.61.1",
+    "@posthog/cli": "0.9.1",
     "@types/node": "^26.1.1",
     "knip": "^6.27.0",
     "tsx": "^4.23.1",

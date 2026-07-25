@@ -162,8 +162,9 @@ impl TriMesh {
     pub fn max_penetration_into(&self, other: &TriMesh, cross_flags: &[bool]) -> f64 {
         let mut seen = vec![false; self.positions.len() / 3];
         let mut depth = 0.0f64;
-        for t in 0..self.count {
-            if !cross_flags[t] {
+        // `cross_flags` has one entry per triangle (len == self.count).
+        for (t, &flagged) in cross_flags.iter().enumerate() {
+            if !flagged {
                 continue;
             }
             let o = t * 3;

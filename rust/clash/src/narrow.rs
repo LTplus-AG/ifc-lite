@@ -94,9 +94,14 @@ pub fn test_pair(
             let [l0, l1, l2] = large.tri(tl as usize);
             if tri_tri_intersect(s0, s1, s2, l0, l1, l2) {
                 intersects = true;
-                if contained {
-                    cross_small[ts] = true;
-                    cross_large[tl as usize] = true;
+                // Flag the crossing pair for the contained-case depth
+                // measurement; the flag vecs are empty (`get_mut` = None)
+                // when the pair is not contained.
+                if let Some(flag) = cross_small.get_mut(ts) {
+                    *flag = true;
+                }
+                if let Some(flag) = cross_large.get_mut(tl as usize) {
+                    *flag = true;
                 }
                 let c = mid(centroid(s0, s1, s2), centroid(l0, l1, l2));
                 contact_sum[0] += c[0];

@@ -27,8 +27,11 @@ const NOTICE_ID = 'ribbon-default';
 function hasExplicitToolbarChoice(): boolean {
   try {
     return localStorage.getItem(TOOLBAR_STYLE_STORAGE_KEY) !== null;
-  } catch {
-    // Locked storage: treat it as "no choice recorded" and show the notice.
+  } catch (err) {
+    // Locked storage (Safari private mode): treat it as "no choice recorded"
+    // and show the notice. Logged rather than swallowed so a real storage
+    // fault is visible instead of silently re-showing the notice every load.
+    console.warn('[toolbar-style] could not read the toolbar preference; showing the switch notice', err);
     return false;
   }
 }

@@ -27,7 +27,12 @@ export function useRibbonContextualTab(): void {
   const ribbonTab = useViewerStore((s) => s.ribbonTab);
   const setRibbonTab = useViewerStore((s) => s.setRibbonTab);
   const hasModel = useViewerStore((s) => s.models.size > 0);
-  const hasSelection = useViewerStore((s) => s.selectedEntityIds.size > 0);
+  // BOTH selection channels: an ordinary single-entity viewport pick calls
+  // `setSelectedEntityId`, which does not populate `selectedEntityIds`. Reading
+  // only the set would leave the contextual Elements switch firing for
+  // multi/bulk selection but never for the commonest interaction there is
+  // (ElementsTab already falls back to the scalar for the same reason).
+  const hasSelection = useViewerStore((s) => s.selectedEntityIds.size > 0 || s.selectedEntityId !== null);
   const editEnabled = useViewerStore((s) => s.editEnabled);
   // A running walkthrough drives the tabs itself; contextual switching would
   // fight it (and move the spotlight target mid-step).

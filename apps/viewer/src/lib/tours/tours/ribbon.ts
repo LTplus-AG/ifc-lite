@@ -57,6 +57,17 @@ export const RIBBON_TOUR: TourDefinition = {
       body: 'Select something in 3D and the Elements tab opens itself; clear the selection and you land back where you were. Turning on edit mode does the same for Author. Follow work switches that off if you would rather steer by hand.',
     },
     {
+      id: 'collapse',
+      kind: 'passive',
+      anchor: TOUR_ANCHORS.ribbonCollapse,
+      placement: 'bottom',
+      title: 'Reclaim the height',
+      body: 'Collapse the band to the tab strip with this chevron, or by double-clicking the active tab. That is remembered too, so the ribbon costs you one strip at most.',
+    },
+    // LAST on purpose (PR #1880 review): this step spotlights the Classic bar
+    // switch, and acting on it unmounts RibbonToolbar. Any step after it would
+    // lose its ribbon-hosted anchor and auto-skip with a broken-anchor report.
+    {
       id: 'classic',
       kind: 'passive',
       anchor: TOUR_ANCHORS.ribbonClassicSwitch,
@@ -64,14 +75,6 @@ export const RIBBON_TOUR: TourDefinition = {
       prepare: (store) => store.getState().setRibbonTab('view'),
       title: 'The way back',
       body: 'Prefer the old strip? Classic bar brings it back and this browser remembers the choice. Its View menu has the way here again, so nothing is one-way.',
-    },
-    {
-      id: 'collapse',
-      kind: 'passive',
-      anchor: TOUR_ANCHORS.ribbonCollapse,
-      placement: 'bottom',
-      title: 'Reclaim the height',
-      body: 'Collapse the band to the tab strip with this chevron, or by double-clicking the active tab. That is remembered too, so the ribbon costs you one strip at most.',
     },
   ],
 };

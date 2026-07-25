@@ -17,6 +17,7 @@ import { MergeLayersBanner } from './MergeLayersBanner';
 import { GeometryModeBanner } from './GeometryModeBanner';
 import { LevelDisplayIndicator } from './LevelDisplayIndicator';
 import { ToolOverlays } from './ToolOverlays';
+import { ZoneOverlay, ZoneAssignmentSyncMount } from './tools/ZoneOverlay';
 import { AnnotationLayer } from './annotations/AnnotationLayer';
 import { CollabPresenceLayer } from './CollabPresenceLayer';
 import { Section2DPanel } from './Section2DPanel';
@@ -1406,6 +1407,8 @@ export function ViewportContainer() {
       <GeometryModeBanner onReload={handleGeometryModeReload} />
       <LevelDisplayIndicator />
       <ToolOverlays />
+      <ZoneOverlay />
+      <ZoneAssignmentSyncMount />
       <BasketPresentationDock />
       <Section2DPanel
         mergedGeometry={mergedGeometryResult}

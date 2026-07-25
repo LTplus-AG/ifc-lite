@@ -22,9 +22,8 @@ import { useViewerStore } from '@/store';
 import { useCameraTickSubscription } from '@/hooks/useCameraTickSubscription';
 import { useZoneAssignmentSync } from '@/hooks/useZoneAssignmentSync';
 import { zoneColorForIndex, zoneWorldCorners, type Zone } from '@/lib/zones';
+import { computeZoneDragPatch, type DragKind, type DragState, type Vec2, type Vec3 } from './zoneDrag';
 
-type Vec2 = { x: number; y: number };
-type Vec3 = { x: number; y: number; z: number };
 type Project = (worldPos: Vec3) => Vec2 | null;
 
 /** Wireframe edges as pairs of corner indices, matching `zoneWorldCorners`'
@@ -90,26 +89,6 @@ function projectZones(
   return out;
 }
 
-type DragKind =
-  | { kind: 'move'; axis: 'x' | 'y' | 'z' }
-  | { kind: 'resize'; axis: 'x' | 'y' | 'z' }
-  | { kind: 'rotate' };
-
-interface DragState {
-  op: DragKind;
-  setId: string;
-  zoneId: string;
-  cursorStart: Vec2;
-  /** Screen-space (dx, dy) for a +1 world-unit probe along the relevant
-   *  direction, captured at drag start. */
-  screenPerUnit: Vec2;
-  /** Zone snapshot at drag start (so deltas apply against a fixed base,
-   *  not the previous frame's already-mutated zone). */
-  startCenter: [number, number, number];
-  startSize: [number, number, number];
-  startRotationY: number;
-}
-
 const HANDLE_HIT_RADIUS = 10;
 
 export function ZoneOverlay() {
@@ -120,15 +99,21 @@ export function ZoneOverlay() {
   const getViewpoint = useViewerStore((s) => s.cameraCallbacks.getViewpoint);
 
   const anyVisible = zoneSets.some((zs) => zs.visible && zs.zones.length > 0);
-  useCameraTickSubscription(getViewpoint, anyVisible);
+  // The returned frame tick MUST participate in the projection memo below:
+  // `projectToScreen` is a stable callback, so without the tick an orbit/pan/
+  // zoom re-render would reuse the memoized screen coordinates and the boxes
+  // would visibly detach from the model (PR #1869 review, P1).
+  const frameTick = useCameraTickSubscription(getViewpoint, anyVisible);
 
   const dragRef = useRef<DragState | null>(null);
 
   const projected = useMemo(() => {
     if (!projectToScreen || !anyVisible) return [];
     return projectZones(projectToScreen as Project, zoneSets);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [zoneSets, projectToScreen, anyVisible, getViewpoint]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- frameTick is the
+    // camera-motion signal: it isn't read inside, but a new tick means the
+    // same world corners project to new screen positions.
+  }, [zoneSets, projectToScreen, anyVisible, frameTick]);
 
   if (!anyVisible || !projectToScreen) return null;
   const project = projectToScreen as Project;
@@ -167,6 +152,7 @@ export function ZoneOverlay() {
       zoneId: entry.zone.id,
       cursorStart: { x: e.clientX, y: e.clientY },
       screenPerUnit,
+      probeDir,
       startCenter: entry.zone.center,
       startSize: entry.zone.size,
       startRotationY: entry.zone.rotationY,
@@ -176,50 +162,21 @@ export function ZoneOverlay() {
   const onDragMove = (e: React.PointerEvent<SVGElement>) => {
     const drag = dragRef.current;
     if (!drag) return;
-    const cursorDelta: Vec2 = { x: e.clientX - drag.cursorStart.x, y: e.clientY - drag.cursorStart.y };
-
-    // Every op's `screenPerUnit` was probed against a UNIT world-space
-    // direction (a translation axis, a resize axis, or — for rotate — the
-    // handle's tangent direction), so this single dot-product decomposition
-    // gives "how many world metres along that unit direction does the
-    // cursor delta correspond to" regardless of which op is active.
-    const ax = drag.screenPerUnit;
-    const denom = ax.x * ax.x + ax.y * ax.y;
-    if (denom < 1e-6) return;
-    const metres = (cursorDelta.x * ax.x + cursorDelta.y * ax.y) / denom;
-
-    if (drag.op.kind === 'rotate') {
-      // Tangential arc-length (metres) at the handle's radius converts to an
-      // angle via the standard arc-length formula theta = s / r. Screen-space
-      // rotation isn't a perfect proxy for a world Y-axis rotation under an
-      // oblique camera, but it's exact in top/near-top view and a reasonable
-      // approximation otherwise (documented v1 limitation).
-      const radius = drag.startSize[0] / 2 + 1.2;
-      if (radius < 1e-3) return;
-      const rotationY = drag.startRotationY + metres / radius;
-      updateZone(drag.setId, drag.zoneId, { rotationY });
-      return;
-    }
-
-    if (drag.op.kind === 'move') {
-      const idx = drag.op.axis === 'x' ? 0 : drag.op.axis === 'y' ? 1 : 2;
-      const center: [number, number, number] = [...drag.startCenter];
-      center[idx] = drag.startCenter[idx] + metres;
-      updateZone(drag.setId, drag.zoneId, { center });
-      return;
-    }
-
-    // resize: symmetric about center along the given local axis.
-    const idx = drag.op.axis === 'x' ? 0 : drag.op.axis === 'y' ? 1 : 2;
-    const nextHalf = Math.max(0.05, drag.startSize[idx] / 2 + metres);
-    const size: [number, number, number] = [...drag.startSize];
-    size[idx] = nextHalf * 2;
-    updateZone(drag.setId, drag.zoneId, { size });
+    // All the drag math is in `computeZoneDragPatch` (pure, unit-tested —
+    // see zoneDrag.test.ts for the rotated-zone cases from PR #1869).
+    const patch = computeZoneDragPatch(drag, { x: e.clientX, y: e.clientY });
+    if (patch) updateZone(drag.setId, drag.zoneId, patch);
   };
 
   const onDragEnd = (e: React.PointerEvent<SVGElement>) => {
     if (!dragRef.current) return;
-    try { (e.target as SVGElement).releasePointerCapture(e.pointerId); } catch { /* already released */ }
+    try {
+      (e.target as SVGElement).releasePointerCapture(e.pointerId);
+    } catch (error) {
+      // Expected when capture was already released (e.g. pointercancel then
+      // pointerup); logged so a genuine capture bug can't hide here.
+      console.debug('[zones] releasePointerCapture after drag was a no-op', error);
+    }
     dragRef.current = null;
   };
 
@@ -271,7 +228,7 @@ export function ZoneOverlay() {
             key: 'move-x',
             world: { x: center.x + localX.x * (zone.size[0] / 2 + 0.6), y: center.y, z: center.z + localX.z * (zone.size[0] / 2 + 0.6) },
             color: '#ef4444',
-            op: { kind: 'move', axis: 'x' },
+            op: { kind: 'move' },
             probeOrigin: center,
             probeDir: localX,
           },
@@ -279,7 +236,7 @@ export function ZoneOverlay() {
             key: 'move-z',
             world: { x: center.x + localZ.x * (zone.size[2] / 2 + 0.6), y: center.y, z: center.z + localZ.z * (zone.size[2] / 2 + 0.6) },
             color: '#3b82f6',
-            op: { kind: 'move', axis: 'z' },
+            op: { kind: 'move' },
             probeOrigin: center,
             probeDir: localZ,
           },
@@ -287,7 +244,7 @@ export function ZoneOverlay() {
             key: 'move-y',
             world: { x: center.x, y: center.y + zone.size[1] / 2 + 0.6, z: center.z },
             color: '#10b981',
-            op: { kind: 'move', axis: 'y' },
+            op: { kind: 'move' },
             probeOrigin: center,
             probeDir: worldY,
           },

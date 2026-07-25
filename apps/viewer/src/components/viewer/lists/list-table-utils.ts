@@ -15,6 +15,26 @@ import { buildNestedGroupBuckets, compareCells, orderGroups, type GroupSort, typ
 export { compareCells, orderGroups };
 export type { GroupSort, OrderableGroup };
 
+/**
+ * Rebuild a `ListGrouping` after changing the group-by columns and/or sum
+ * columns from the results table (a grouping-bar chip's "x", or a column
+ * header menu's "Group by" / "Sum" toggle). SPREADS the previous grouping
+ * first, then overrides only the fields this rebuild actually changes
+ * (`columnId`, `columnIds`, `sumColumnIds`) — so a field neither caller
+ * knows about (e.g. `view`, issue #1790 round 2) survives instead of being
+ * silently dropped back to its default. Returns `undefined` when there is
+ * nothing left to track (no group columns AND no sum columns), matching the
+ * existing "clear grouping entirely" behaviour.
+ */
+export function rebuildGrouping(
+  previous: ListGrouping | undefined,
+  columnIds: string[],
+  sumColumnIds: string[],
+): ListGrouping | undefined {
+  if (columnIds.length === 0 && sumColumnIds.length === 0) return undefined;
+  return { ...previous, columnId: columnIds[0] ?? '', columnIds, sumColumnIds };
+}
+
 export function formatCellValue(value: CellValue): string {
   if (value === null || value === undefined) return '';
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';

@@ -5,7 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { groupPathKey, type ColumnDefinition, type ListRow } from '@ifc-lite/lists';
-import { buildGroupedView, buildScheduleRows, blankRepeatedPathValues, compareCells, type GroupSort } from './list-table-utils';
+import { buildGroupedView, buildScheduleRows, blankRepeatedPathValues, rebuildGrouping, compareCells, type GroupSort } from './list-table-utils';
 
 const columns: ColumnDefinition[] = [
   { id: 'cat', source: 'attribute', propertyName: 'Category' },
@@ -274,6 +274,57 @@ describe('blankRepeatedPathValues (Bonsai-style repeat blanking, issue #1790 rou
     // two IDENTICAL leaf tuples, which buildScheduleRows never produces), but
     // the helper still blanks on a literal match — documented, not a bug.
     assert.deepStrictEqual(blankRepeatedPathValues(rows), [['A'], [''], ['B']]);
+  });
+});
+
+// Regression: removing/adding a grouping level or sum column from the results
+// table (grouping-bar chip "x", column-header-menu toggles) used to build a
+// BRAND NEW ListGrouping literal that dropped `view` (issue #1790 round 2 QA
+// finding) — silently reverting an active schedule view to nested. Both
+// `toggleGroupBy` and `toggleSum` in ListResultsTable now go through this
+// helper, which spreads the previous grouping so unrelated fields survive.
+describe('rebuildGrouping (schedule-view drop regression, #1790 round 2)', () => {
+  const scheduleGrouping = { columnId: 'a', columnIds: ['a', 'b'], sumColumnIds: ['s'], view: 'schedule' as const };
+
+  it('removing one of two grouping columns preserves view="schedule"', () => {
+    const next = rebuildGrouping(scheduleGrouping, ['a'], ['s']);
+    assert.deepStrictEqual(next, { columnId: 'a', columnIds: ['a'], sumColumnIds: ['s'], view: 'schedule' });
+  });
+
+  it('toggling a sum column on preserves view="schedule"', () => {
+    const base = { columnId: 'a', columnIds: ['a'], sumColumnIds: [], view: 'schedule' as const };
+    const next = rebuildGrouping(base, ['a'], ['s']);
+    assert.deepStrictEqual(next, { columnId: 'a', columnIds: ['a'], sumColumnIds: ['s'], view: 'schedule' });
+  });
+
+  it('toggling a sum column off preserves view="schedule"', () => {
+    const next = rebuildGrouping(scheduleGrouping, ['a', 'b'], []);
+    assert.deepStrictEqual(next, { columnId: 'a', columnIds: ['a', 'b'], sumColumnIds: [], view: 'schedule' });
+  });
+
+  it('removing the LAST grouping column (sums remain) still returns a grouping and keeps view — harmless: scheduleMode requires isGrouped, so it has no visible effect until a group column is re-added', () => {
+    const next = rebuildGrouping(scheduleGrouping, [], ['s']);
+    assert.deepStrictEqual(next, { columnId: '', columnIds: [], sumColumnIds: ['s'], view: 'schedule' });
+  });
+
+  it('clearing everything (no group columns, no sums) returns undefined — grouping is gone, so there is nothing to preserve `view` on', () => {
+    assert.strictEqual(rebuildGrouping(scheduleGrouping, [], []), undefined);
+  });
+
+  it('the nested (non-schedule) view is equally preserved, not just schedule', () => {
+    const nested = { columnId: 'a', columnIds: ['a', 'b'], sumColumnIds: [], view: 'nested' as const };
+    const next = rebuildGrouping(nested, ['a'], []);
+    assert.strictEqual(next?.view, 'nested');
+  });
+
+  it('building a grouping from scratch (no previous grouping) has no view, matching legacy behaviour', () => {
+    const next = rebuildGrouping(undefined, ['a'], ['s']);
+    // Checked BEFORE deepStrictEqual: Node's `assert.deepStrictEqual<T>` is a
+    // `asserts actual is T` type-narrowing signature, so calling it first
+    // would narrow `next`'s type to the (view-less) expected literal and make
+    // a later `next?.view` a compile error, not just a runtime check.
+    assert.strictEqual(next?.view, undefined);
+    assert.deepStrictEqual(next, { columnId: 'a', columnIds: ['a'], sumColumnIds: ['s'] });
   });
 });
 

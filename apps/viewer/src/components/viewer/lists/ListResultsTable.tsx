@@ -35,7 +35,7 @@ import { ColumnHeaderMenu } from './ColumnHeaderMenu';
 import { ListGroupingBar } from './ListGroupingBar';
 import {
   formatCellValue, compareCells, detectNumericColumns, autoColumnWidth,
-  buildGroupedView, flatTotals, buildScheduleRows, blankRepeatedPathValues,
+  buildGroupedView, flatTotals, buildScheduleRows, blankRepeatedPathValues, rebuildGrouping,
   type DisplayItem, type Totals, type ScheduleRow,
 } from './list-table-utils';
 
@@ -247,24 +247,24 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
 
   // Toggling a column in/out of the grouping: a second (third, …) column adds
   // a nesting level (multi-criteria grouping, issue #1790). `columnId` is kept
-  // in sync with the first level for pre-multi-level consumers.
+  // in sync with the first level for pre-multi-level consumers. `rebuildGrouping`
+  // spreads the previous grouping so fields it doesn't touch — `view`, issue
+  // #1790 round 2 — survive instead of silently resetting (bug found in QA:
+  // removing a grouping level or toggling a sum column used to drop the
+  // active schedule view back to nested).
   const toggleGroupBy = useCallback((colId: string) => {
     if (!onGroupingChange) return;
     const next = groupColumnIds.includes(colId)
       ? groupColumnIds.filter((x) => x !== colId)
       : [...groupColumnIds, colId];
-    onGroupingChange((next.length || sumColumnIds.length)
-      ? { columnId: next[0] ?? '', columnIds: next, sumColumnIds }
-      : undefined);
-  }, [onGroupingChange, groupColumnIds, sumColumnIds]);
+    onGroupingChange(rebuildGrouping(grouping, next, sumColumnIds));
+  }, [onGroupingChange, grouping, groupColumnIds, sumColumnIds]);
 
   const toggleSum = useCallback((colId: string) => {
     if (!onGroupingChange) return;
     const next = sumColumnIds.includes(colId) ? sumColumnIds.filter((x) => x !== colId) : [...sumColumnIds, colId];
-    onGroupingChange((groupColumnIds.length || next.length)
-      ? { columnId: groupColumnIds[0] ?? '', columnIds: groupColumnIds, sumColumnIds: next }
-      : undefined);
-  }, [onGroupingChange, groupColumnIds, sumColumnIds]);
+    onGroupingChange(rebuildGrouping(grouping, groupColumnIds, next));
+  }, [onGroupingChange, grouping, groupColumnIds, sumColumnIds]);
 
   const toggleGroupExpand = useCallback((key: string) => {
     setExpandedGroups((prev) => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; });

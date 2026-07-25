@@ -7,9 +7,36 @@
  */
 
 import { writeFile } from 'node:fs/promises';
+import { format } from 'node:util';
 import { logger } from './logger.js';
 
 export type OutputFormat = 'json' | 'table' | 'csv';
+
+let consoleRoutedToStderr = false;
+
+/**
+ * Route console diagnostics (`console.log`/`info`/`debug`) to stderr for the
+ * rest of the process, so stdout stays reserved for the command's payload
+ * (JSON or the human summary). `console.warn`/`error` already write to stderr
+ * in Node and are left untouched.
+ *
+ * Deliberately NOT scoped/restored: the wasm geometry module captures its
+ * print bindings at init time, so a restore-in-finally wrapper leaks
+ * diagnostics back onto stdout whenever the module prints through a binding
+ * taken before or outside the scope. Call this before the first
+ * GeometryProcessor init; commands print their own output via
+ * `process.stdout.write`/`printJson`, which this does not touch.
+ */
+export function routeConsoleDiagnosticsToStderr(): void {
+  if (consoleRoutedToStderr) return;
+  consoleRoutedToStderr = true;
+  const toStderr = (...parts: unknown[]) => {
+    process.stderr.write(`${format(...parts)}\n`);
+  };
+  console.log = toStderr;
+  console.info = toStderr;
+  console.debug = toStderr;
+}
 
 /**
  * Write output to stdout or a file. Bytes are written verbatim (no string

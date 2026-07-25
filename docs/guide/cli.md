@@ -522,7 +522,7 @@ ifc-lite clash model.ifc --matrix --bcf clashes.bcfzip
 | `--group <g>` | BCF topic grouping: `cluster` (default), `rule`, `typePair`, `element` |
 | `--bcf-status <s>` | Topic status for exported BCF topics |
 | `--max-topics <N>` | Cap the number of BCF topics |
-| `--json` | JSON output |
+| `--json` | JSON output (stdout carries exactly one JSON document; progress and geometry diagnostics go to stderr) |
 
 ---
 

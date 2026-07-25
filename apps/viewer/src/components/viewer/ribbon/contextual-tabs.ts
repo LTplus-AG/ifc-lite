@@ -94,6 +94,13 @@ export function decideRibbonTab(
   // user already made this session.
   if (!prev) {
     if (!next.hasModel && tab === 'home') return takeOver('file', 'home');
+    // Switching over from the classic toolbar mid-session is also a first
+    // pass, and the context that was already live has to count: landing on
+    // Home while edit mode is on (or something is selected) would contradict
+    // the same precedence the edge branches below apply. Edit outranks
+    // selection here too.
+    if (tab === 'home' && next.editEnabled) return takeOver('author', 'home');
+    if (tab === 'home' && next.hasSelection) return takeOver('elements', 'home');
     return null;
   }
 

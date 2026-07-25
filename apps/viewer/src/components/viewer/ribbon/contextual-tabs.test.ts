@@ -27,6 +27,24 @@ describe('decideRibbonTab — landing tab', () => {
     assert.equal(decideRibbonTab(null, LOADED, 'home', NO_TAB_MEMORY), null);
   });
 
+  // Switching over from the classic toolbar mid-session is a first pass with
+  // live context (PR #1880 review).
+  it('opens Author on a first pass while edit mode is already on', () => {
+    const d = decideRibbonTab(null, EDITING, 'home', NO_TAB_MEMORY);
+    assert.deepEqual(d, { tab: 'author', memory: { autoOpened: 'author', returnTo: 'home' } });
+  });
+
+  it('opens Elements on a first pass with something already selected', () => {
+    const d = decideRibbonTab(null, SELECTED, 'home', NO_TAB_MEMORY);
+    assert.deepEqual(d, { tab: 'elements', memory: { autoOpened: 'elements', returnTo: 'home' } });
+  });
+
+  it('lets edit mode outrank selection on a first pass', () => {
+    const both: RibbonContext = { hasModel: true, hasSelection: true, editEnabled: true };
+    const d = decideRibbonTab(null, both, 'home', NO_TAB_MEMORY);
+    assert.deepEqual(d, { tab: 'author', memory: { autoOpened: 'author', returnTo: 'home' } });
+  });
+
   it('leaves a first pass alone when the user is not on the default tab', () => {
     // Switching over from the classic toolbar mid-session must not yank the
     // tab out from under a deliberate choice.

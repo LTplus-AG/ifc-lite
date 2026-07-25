@@ -147,11 +147,14 @@ export function restoreUiSnapshot(
     s.setPropertiesActiveTab(snapshot.propertiesActiveTab);
   }
 
-  // Toolbar: only written when a tour actually moved it. setToolbarStyle
-  // persists, and an unconditional write would silently pin the preference
-  // of every user who ever finished any tour.
+  // Toolbar: restored TRANSIENTLY (setState, not setToolbarStyle) so a tour
+  // never writes the stored preference. Tours move the toolbar to teach it,
+  // which is a preview, not a choice — localStorage must only ever change
+  // when the user works the toolbar control themselves. Restoring through
+  // the persisting setter would also overwrite a deliberate switch made
+  // DURING the tour with the pre-tour value.
   if (!keep.has('toolbarStyle') && store.getState().toolbarStyle !== snapshot.toolbarStyle) {
-    s.setToolbarStyle(snapshot.toolbarStyle);
+    store.setState({ toolbarStyle: snapshot.toolbarStyle });
   }
   if (!keep.has('ribbonTab') && store.getState().ribbonTab !== snapshot.ribbonTab) {
     s.setRibbonTab(snapshot.ribbonTab);

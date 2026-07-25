@@ -31,7 +31,12 @@ export const RIBBON_TOUR: TourDefinition = {
       title: 'Commands live in tabs now',
       body: 'Everything from the old single strip is here, grouped by task: File, Home, View, Elements, Analyze, Author. Nothing was removed, and every shortcut still works.',
       prepare: (store) => {
-        store.getState().setToolbarStyle('ribbon');
+        // Transient on purpose: `setToolbarStyle` PERSISTS, so a classic-bar
+        // user who reloads or closes the browser mid-tour would find their
+        // stored choice already replaced by a preview they never asked to
+        // keep. The tour only needs the ribbon on screen, and the snapshot
+        // restores the pre-tour value when it ends.
+        store.setState({ toolbarStyle: 'ribbon' });
         store.getState().setRibbonCollapsed(false);
         store.getState().setRibbonTab('home');
       },

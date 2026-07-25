@@ -38,6 +38,10 @@ function hasExplicitToolbarChoice(): boolean {
 
 export function RibbonSwitchNotice() {
   const setToolbarStyle = useViewerStore((s) => s.setToolbarStyle);
+  // `startTour` refuses to run on mobile. Offering "Show me what moved" there
+  // would retire the notice on click and then show nothing, so the invitation
+  // is only rendered where it can be honoured.
+  const isMobile = useViewerStore((s) => s.isMobile);
   const tourStatus = useTourStore((s) => s.status);
   const [dismissed, setDismissed] = useState(
     () => isNoticeDismissed(NOTICE_ID) || hasExplicitToolbarChoice(),
@@ -62,16 +66,20 @@ export function RibbonSwitchNotice() {
       <span className="min-w-0 truncate text-foreground/80">
         The tabbed ribbon is now the default toolbar. Same commands, grouped by task.
       </span>
-      <button
-        className="shrink-0 font-medium text-primary underline-offset-2 hover:underline"
-        onClick={() => {
-          close();
-          startTour('ribbon', 'invite');
-        }}
-      >
-        Show me what moved
-      </button>
-      <span aria-hidden="true" className="text-muted-foreground/40">|</span>
+      {!isMobile && (
+        <>
+          <button
+            className="shrink-0 font-medium text-primary underline-offset-2 hover:underline"
+            onClick={() => {
+              close();
+              startTour('ribbon', 'invite');
+            }}
+          >
+            Show me what moved
+          </button>
+          <span aria-hidden="true" className="text-muted-foreground/40">|</span>
+        </>
+      )}
       <button
         className="shrink-0 hover:text-foreground hover:underline"
         onClick={() => {

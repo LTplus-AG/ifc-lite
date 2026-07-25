@@ -302,20 +302,33 @@ export function selectScanBand(params: SelectScanBandParams): ScanBandSelection 
 
 /**
  * Merge several assets' selections into one (used when >1 scan is loaded).
- * `stride` reports the largest per-asset stride applied, for the UI's
+ * `stride` reports the largest effective stride applied, for the UI's
  * "showing N of M points" readout — each asset already decimated itself
  * independently, so this is informational only, not a re-appliable factor.
+ *
+ * When `maxRendered` is given, the MERGED result is re-decimated with the
+ * same deterministic keep-every-Nth stride — each asset's own cap bounds
+ * its individual selection, but N dense scans would otherwise concatenate
+ * to N × cap points and blow the per-redraw budget the cap exists to
+ * protect.
  */
-export function mergeScanBandSelections(selections: readonly ScanBandSelection[]): ScanBandSelection {
+export function mergeScanBandSelections(
+  selections: readonly ScanBandSelection[],
+  maxRendered?: number,
+): ScanBandSelection {
   let totalInBand = 0;
-  let renderedCount = 0;
   let maxStride = 1;
   const points: ScanBandPoint[] = [];
   for (const sel of selections) {
     totalInBand += sel.totalInBand;
-    renderedCount += sel.renderedCount;
     if (sel.stride > maxStride) maxStride = sel.stride;
     points.push(...sel.points);
   }
-  return { points, totalInBand, renderedCount, stride: maxStride };
+  if (maxRendered !== undefined && maxRendered > 0 && points.length > maxRendered) {
+    const extra = Math.ceil(points.length / maxRendered);
+    const capped: ScanBandPoint[] = [];
+    for (let i = 0; i < points.length; i += extra) capped.push(points[i]);
+    return { points: capped, totalInBand, renderedCount: capped.length, stride: maxStride * extra };
+  }
+  return { points, totalInBand, renderedCount: points.length, stride: maxStride };
 }

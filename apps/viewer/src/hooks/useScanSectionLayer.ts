@@ -195,7 +195,10 @@ export function useScanSectionLayer(params: UseScanSectionLayerParams): UseScanS
       const selections = sources.map((sample) => selectScanBand({
         sample, coordinateInfo, plane, thickness, classMask, maxRendered,
       }));
-      setSelection(mergeScanBandSelections(selections));
+      // Re-apply the render cap to the MERGED result: each asset caps its
+      // own selection, but several dense scans would otherwise concatenate
+      // to sources × maxRendered points per canvas redraw.
+      setSelection(mergeScanBandSelections(selections, maxRendered));
     }, RECOMPUTE_DEBOUNCE_MS);
 
     return () => {

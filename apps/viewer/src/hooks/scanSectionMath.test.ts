@@ -316,13 +316,41 @@ describe('selectScanBand', () => {
 });
 
 describe('mergeScanBandSelections', () => {
+  it('enforces the render cap across merged assets, not just per asset', () => {
+    // Two "assets" each already at a 1000-point per-asset cap: the merged
+    // result must still respect a 1000-point total, deterministically.
+    const mk = (offset: number) => ({
+      points: Array.from({ length: 1000 }, (_, i) => ({ point: { x: offset + i, y: 0 } })),
+      totalInBand: 1000,
+      renderedCount: 1000,
+      stride: 1,
+    });
+    const merged = mergeScanBandSelections([mk(0), mk(10_000)], 1000);
+    assert.ok(merged.renderedCount <= 1000, `expected <= 1000, got ${merged.renderedCount}`);
+    assert.strictEqual(merged.totalInBand, 2000);
+    assert.strictEqual(merged.stride, 2);
+    const again = mergeScanBandSelections([mk(0), mk(10_000)], 1000);
+    assert.deepStrictEqual(
+      merged.points.map((p) => p.point.x),
+      again.points.map((p) => p.point.x),
+    );
+    // Both assets still represented after the merge-level decimation.
+    assert.ok(merged.points.some((p) => p.point.x < 10_000));
+    assert.ok(merged.points.some((p) => p.point.x >= 10_000));
+  });
+
   it('sums counts and reports the largest per-asset stride', () => {
     const a = { points: [{ point: { x: 0, y: 0 } }], totalInBand: 10, renderedCount: 1, stride: 10 };
-    const b = { points: [{ point: { x: 1, y: 1 } }], totalInBand: 5, renderedCount: 5, stride: 1 };
+    const b = {
+      points: Array.from({ length: 5 }, (_, i) => ({ point: { x: i + 1, y: 1 } })),
+      totalInBand: 5,
+      renderedCount: 5,
+      stride: 1,
+    };
     const merged = mergeScanBandSelections([a, b]);
     assert.strictEqual(merged.totalInBand, 15);
     assert.strictEqual(merged.renderedCount, 6);
     assert.strictEqual(merged.stride, 10);
-    assert.strictEqual(merged.points.length, 2);
+    assert.strictEqual(merged.points.length, 6);
   });
 });

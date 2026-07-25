@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+     License, v. 2.0. If a copy of the MPL was not distributed with this
+     file, You can obtain one at https://mozilla.org/MPL/2.0/. -->
+<html>
+<head>
+<meta charset="utf-8">
+<title>moonshot video render host</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #1b1c1f; overflow: hidden; }
+  canvas { display: block; }
+</style>
+<script type="importmap">
+  { "imports": { "three": "/vendor/three.module.js" } }
+</script>
+</head>
+<body>
+<script type="module">
+/*
+ * Offline render host for the moonshot demo video. Driven entirely from
+ * Playwright via the window.* API below; nothing animates on its own.
+ *
+ *   window.viewerReady            promise, resolves when three.js is up
+ *   window.initScene(cfg)         one-time stage setup (ground, lights, fog)
+ *   window.loadScene(name, url)   fetch a SCN1 binary, build a group
+ *   window.disposeScene(name)     free a scene's GPU + JS memory
+ *   window.renderFrame(state)     position camera + per-scene transforms,
+ *                                 render once, return PNG data URL
+ *
+ * Deterministic: no clocks, no Math.random, camera fully caller-specified.
+ */
+import * as THREE from 'three';
+
+const WIDTH = 1920;
+const HEIGHT = 1080;
+
+const renderer = new THREE.WebGLRenderer({
+  antialias: true,
+  preserveDrawingBuffer: true,
+  powerPreference: 'high-performance',
+});
+renderer.setPixelRatio(1);
+renderer.setSize(WIDTH, HEIGHT);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.12;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1b1c1f);
+
+const camera = new THREE.PerspectiveCamera(35, WIDTH / HEIGHT, 0.1, 5000);
+
+let keyLight = null;
+let ground = null;
+const scenes = new Map(); // name -> THREE.Group
+
+window.initScene = (cfg = {}) => {
+  const {
+    groundY = 0,
+    groundRadius = 400,
+    shadowHalf = 40,
+    fogDensity = 0,
+    exposure = 1.35,
+    background = 0x1b1c1f,
+  } = cfg;
+
+  renderer.toneMappingExposure = exposure;
+  scene.background = new THREE.Color(background);
+  if (fogDensity > 0) scene.fog = new THREE.FogExp2(background, fogDensity);
+
+  // Warm key light with soft shadows.
+  keyLight = new THREE.DirectionalLight(0xffd9b0, 3.4);
+  keyLight.position.set(0.55, 0.78, 0.4).normalize().multiplyScalar(300);
+  keyLight.castShadow = true;
+  keyLight.shadow.mapSize.set(2048, 2048);
+  keyLight.shadow.camera.near = 1;
+  keyLight.shadow.camera.far = 1200;
+  keyLight.shadow.bias = -0.0002;
+  keyLight.shadow.normalBias = 0.02;
+  setShadowHalf(shadowHalf, [0, 0]);
+  scene.add(keyLight);
+  scene.add(keyLight.target);
+
+  // Cool rim/fill from the opposite side, no shadow.
+  const fill = new THREE.DirectionalLight(0x93a7c4, 1.0);
+  fill.position.set(-0.6, 0.5, -0.5).normalize().multiplyScalar(300);
+  scene.add(fill);
+
+  // Soft environment bounce.
+  scene.add(new THREE.HemisphereLight(0x565b66, 0x1d1e21, 1.5));
+
+  ground = new THREE.Mesh(
+    new THREE.CircleGeometry(groundRadius, 96),
+    new THREE.MeshStandardMaterial({ color: 0x25272c, roughness: 0.97, metalness: 0 }),
+  );
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.y = groundY;
+  ground.receiveShadow = true;
+  scene.add(ground);
+  return true;
+};
+
+function setShadowHalf(half, center) {
+  const cam = keyLight.shadow.camera;
+  cam.left = -half;
+  cam.right = half;
+  cam.top = half;
+  cam.bottom = -half;
+  cam.updateProjectionMatrix();
+  const dir = new THREE.Vector3(0.55, 0.78, 0.4).normalize();
+  keyLight.position.copy(dir.multiplyScalar(Math.max(200, half * 3)))
+    .add(new THREE.Vector3(center[0], 0, center[1]));
+  keyLight.target.position.set(center[0], 0, center[1]);
+  keyLight.target.updateMatrixWorld();
+}
+
+window.loadScene = async (name, url) => {
+  const buf = await (await fetch(url)).arrayBuffer();
+  const dv = new DataView(buf);
+  if (dv.getUint32(0, true) !== 0x53434e31) throw new Error('bad scene magic');
+  const headerLen = dv.getUint32(4, true);
+  const header = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 8, headerLen)).replace(/\0+$/, ''));
+  const group = new THREE.Group();
+  let off = 8 + headerLen;
+  for (const g of header.groups) {
+    const positions = new Float32Array(buf, off, g.vtx * 3); off += g.vtx * 12;
+    const normals = new Float32Array(buf, off, g.vtx * 3); off += g.vtx * 12;
+    const indices = new Uint32Array(buf, off, g.idx); off += g.idx * 4;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions.slice(), 3));
+    geo.setAttribute('normal', new THREE.BufferAttribute(normals.slice(), 3));
+    geo.setIndex(new THREE.BufferAttribute(indices.slice(), 1));
+    const [r, gg, b, a] = g.color;
+    const transparent = a < 0.999;
+    const mat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(r, gg, b),
+      roughness: transparent ? 0.25 : 0.88,
+      metalness: transparent ? 0.1 : 0.0,
+      transparent,
+      opacity: a,
+      depthWrite: !transparent,
+      // scene-bin re-orients winding to agree with authored normals, so
+      // front-side shading is correct; FrontSide also avoids the black
+      // back-face shading DoubleSide produces on flipped normals.
+      side: transparent ? THREE.DoubleSide : THREE.FrontSide,
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.castShadow = !transparent;
+    mesh.receiveShadow = true;
+    group.add(mesh);
+  }
+  group.visible = false;
+  scene.add(group);
+  scenes.set(name, group);
+  return { name, bounds: header.bounds, groups: header.groups.length };
+};
+
+window.disposeScene = (name) => {
+  const group = scenes.get(name);
+  if (!group) return false;
+  scene.remove(group);
+  for (const mesh of group.children) {
+    mesh.geometry.dispose();
+    mesh.material.dispose();
+  }
+  scenes.delete(name);
+  return true;
+};
+
+/**
+ * state = {
+ *   camera: { position: [x,y,z], target: [x,y,z], fov },
+ *   scenes: [{ name, visible, position: [x,y,z], scale }],   (optional)
+ *   shadow: { center: [x,z], half },                          (optional)
+ * }
+ */
+window.renderFrame = (state) => {
+  const c = state.camera;
+  camera.fov = c.fov ?? 35;
+  camera.position.set(c.position[0], c.position[1], c.position[2]);
+  camera.lookAt(c.target[0], c.target[1], c.target[2]);
+  camera.updateProjectionMatrix();
+
+  if (state.scenes) {
+    for (const s of state.scenes) {
+      const group = scenes.get(s.name);
+      if (!group) continue;
+      group.visible = s.visible !== false;
+      if (s.position) group.position.set(s.position[0], s.position[1], s.position[2]);
+      if (s.scale !== undefined) group.scale.setScalar(Math.max(s.scale, 1e-4));
+    }
+  }
+  if (state.shadow && keyLight) setShadowHalf(state.shadow.half, state.shadow.center);
+
+  renderer.render(scene, camera);
+  return renderer.domElement.toDataURL('image/png');
+};
+
+window.rendererInfo = () => ({
+  webgl2: renderer.capabilities.isWebGL2,
+  maxTextureSize: renderer.capabilities.maxTextureSize,
+  vendor: (() => {
+    const gl = renderer.getContext();
+    const ext = gl.getExtension('WEBGL_debug_renderer_info');
+    return ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : 'unknown';
+  })(),
+});
+
+window.__viewerUp = true;
+</script>
+</body>
+</html>

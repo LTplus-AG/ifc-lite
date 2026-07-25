@@ -8,22 +8,34 @@ import type { KeyValueStore, Logger } from '@ifc-lite/plugin-api';
 // Namespaced localStorage-backed key-value store, per provider.
 //
 // `localStorage` is synchronous and can throw (most commonly
-// `QuotaExceededError`, but also in locked-down/private-browsing contexts).
-// Writes degrade to an in-memory fallback rather than throwing out of a
-// provider's `ctx.storage.set` call; reads and deletes stay best-effort so a
-// key that only ever made it to the fallback still round-trips for the rest
-// of the session. Values are user-revocable (clearing site data drops them),
-// not securely encrypted — see `PluginContext.storage`'s doc comment.
+// `QuotaExceededError`, but also in locked-down/private-browsing contexts
+// where ANY access — reads included — throws a SecurityError). Every accessor
+// degrades to an in-memory fallback rather than throwing out of a provider's
+// `ctx.storage.*` call, so a key that only ever made it to the fallback still
+// round-trips for the rest of the session. Values are user-revocable
+// (clearing site data drops them), not securely encrypted — see
+// `PluginContext.storage`'s doc comment.
 // ---------------------------------------------------------------------------
 
 export function createNamespacedStorage(namespace: string): KeyValueStore {
   const prefix = `ifc-lite-source:${namespace}:`;
   const memoryFallback = new Map<string, string>();
+  const warnBlocked = (operation: string, error: unknown) => {
+    console.warn(
+      `[source:${namespace}] localStorage.${operation} failed (blocked or quota exceeded?); ` +
+      'falling back to in-memory storage for this session',
+      error,
+    );
+  };
 
   return {
     async get(key: string) {
-      const stored = localStorage.getItem(prefix + key);
-      if (stored !== null) return stored;
+      try {
+        const stored = localStorage.getItem(prefix + key);
+        if (stored !== null) return stored;
+      } catch (error) {
+        warnBlocked('getItem', error);
+      }
       return memoryFallback.get(key);
     },
     async set(key: string, value: string) {
@@ -31,23 +43,27 @@ export function createNamespacedStorage(namespace: string): KeyValueStore {
         localStorage.setItem(prefix + key, value);
         memoryFallback.delete(key); // a later successful write supersedes an earlier fallback
       } catch (error) {
-        console.warn(
-          `[source:${namespace}] localStorage.setItem failed (quota exceeded?); ` +
-          `"${key}" will only persist in memory for this session`,
-          error,
-        );
+        warnBlocked('setItem', error);
         memoryFallback.set(key, value);
       }
     },
     async delete(key: string) {
       memoryFallback.delete(key);
-      localStorage.removeItem(prefix + key);
+      try {
+        localStorage.removeItem(prefix + key);
+      } catch (error) {
+        warnBlocked('removeItem', error);
+      }
     },
     async keys() {
       const result = new Set<string>(memoryFallback.keys());
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (k?.startsWith(prefix)) result.add(k.slice(prefix.length));
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k?.startsWith(prefix)) result.add(k.slice(prefix.length));
+        }
+      } catch (error) {
+        warnBlocked('key', error);
       }
       return [...result];
     },

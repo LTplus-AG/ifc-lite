@@ -94,9 +94,15 @@ describe('decodeFile', () => {
     expect(() => decodeFile({ ...validFile, fileName: 123 })).toThrow(/fileName/);
   });
 
-  it('rejects non-finite numbers', () => {
-    expect(() => decodeFile({ ...validFile, fileSize: Number.NaN })).toThrow(/fileSize/);
-    expect(() => decodeFile({ ...validFile, fileSize: Number.POSITIVE_INFINITY })).toThrow(/fileSize/);
+  it('coerces a non-finite fileSize to undefined instead of dropping the whole file', () => {
+    // zod's z.number() accepted NaN/Infinity, so silently rejecting the
+    // whole row here would be an undocumented behaviour change: a bad
+    // fileSize shouldn't cost the user the rest of the row.
+    expect(decodeFile({ ...validFile, fileSize: Number.NaN }).fileSize).toBeUndefined();
+    expect(decodeFile({ ...validFile, fileSize: Number.POSITIVE_INFINITY }).fileSize).toBeUndefined();
+    expect(decodeFile({ ...validFile, fileSize: Number.NEGATIVE_INFINITY }).fileSize).toBeUndefined();
+    // The rest of the row still decodes normally.
+    expect(decodeFile({ ...validFile, fileSize: Number.NaN }).fileId).toBe('f1');
   });
 
   it('normalises every nullish field to undefined', () => {

@@ -36,10 +36,11 @@ import type {
 } from '@ifc-lite/plugin-api';
 
 import { DALUX_MANIFEST } from './manifest.js';
-import { BrowserDaluxApiClient, fetchPage, fetchAllPages } from './http-client.js';
+import { BrowserDaluxApiClient, DaluxHttpError, fetchPage, fetchAllPages } from './http-client.js';
 import {
   LATEST_REVISION,
   convertListLenient,
+  currentRevisionId,
   decodeContainerId,
   enc,
   fileAreaContainerId,
@@ -187,15 +188,23 @@ export class DaluxBuildProvider implements FileSourceProvider {
   async download(ctx: PluginContext, ref: SourceFileRef, options?: DownloadOptions): Promise<ArrayBuffer> {
     const client = await this.createClient(ctx);
     const { fileAreaId } = decodeContainerId(ref.containerId);
-    // `LATEST_REVISION` is the sentinel `toSourceFile` reports when Dalux
-    // gave no real `fileRevisionId`; treating it the same as "omitted" here
-    // is what stops that case from ever reaching `/revisions/.../content`
-    // with an id that isn't actually a revision id (see `mapping.ts`).
+    // `LATEST_REVISION` is the sentinel `toSourceFile`/`currentRevisionId`
+    // report when Dalux gave no real `fileRevisionId` or `contentHash`;
+    // treating it the same as "omitted" here is what stops that case from
+    // ever reaching `/revisions/.../content` with an id that isn't actually
+    // a revision id (see `mapping.ts`). The sentinel is deliberately not
+    // the plain string "latest" so this comparison isn't defeated by a file
+    // that happens to carry a real revision id spelled that way (see the
+    // collision note on `LATEST_REVISION` itself).
     const revisionId = ref.revisionId && ref.revisionId !== LATEST_REVISION ? ref.revisionId : undefined;
 
     if (revisionId) {
+      // Built from the client's own base URL, not the module-level default
+      // — the client is the single source of truth for which host this
+      // request should go to, and diverging from it here would be a latent
+      // bug the moment `baseUrl` ever becomes configurable.
       return client.getBinary(
-        `${DEFAULT_BASE_URL}/2.0/projects/${enc(ref.projectId)}/file_areas/${enc(fileAreaId)}` +
+        `${client.baseUrl}/2.0/projects/${enc(ref.projectId)}/file_areas/${enc(fileAreaId)}` +
           `/files/${enc(ref.fileId)}/revisions/${enc(revisionId)}/content`,
         options?.signal,
       );
@@ -220,6 +229,23 @@ export class DaluxBuildProvider implements FileSourceProvider {
    * given refs. Grouped strictly by file area so a sweep covering many refs
    * from the same area issues one listing sweep total — never a project- or
    * account-wide crawl, and never more than one sweep per distinct area.
+   *
+   * Two failure-isolation rules, both load-bearing:
+   *
+   * 1. One area's sweep failing (a deleted file area 404ing, or a pagination
+   *    error) must not abort the whole call — that would discard the
+   *    already-detected events from every *other*, healthy area too. So each
+   *    area's sweep is caught individually; a failed area's refs are
+   *    reported (with a warning) rather than the call rejecting outright.
+   * 2. `ctx.storage.set`/`delete` for every area are buffered and only
+   *    committed once the whole sweep is done, never per-area as each area
+   *    finishes. Advancing a cache immediately and *then* discovering a
+   *    later area failed used to mean: if the host reacted to that failure
+   *    by discarding this call's events, the already-advanced caches would
+   *    make the next poll compare against the new value and never emit the
+   *    now-lost event again — permanently. Buffering means a cache is only
+   *    ever advanced past a change once that change's event has actually
+   *    been returned.
    */
   async watchRevisions(
     ctx: PluginContext,
@@ -229,6 +255,8 @@ export class DaluxBuildProvider implements FileSourceProvider {
   ): Promise<RevisionWatchResult> {
     const client = await this.createClient(ctx);
     const events: RevisionEvent[] = [];
+    const pendingSets = new Map<string, string>();
+    const pendingDeletes = new Set<string>();
 
     const areas = new Map<string, { projectId: string; fileAreaId: string; refs: SourceFileRef[] }>();
     for (const ref of refs) {
@@ -240,16 +268,34 @@ export class DaluxBuildProvider implements FileSourceProvider {
     }
 
     for (const { projectId, fileAreaId, refs: areaRefs } of areas.values()) {
-      const rawItems = await fetchAllPages(
-        client,
-        `/6.1/projects/${enc(projectId)}/file_areas/${enc(fileAreaId)}/files`,
-        {},
-        options?.signal,
-      );
-      const daluxFiles = convertListLenient<DaluxFile>(ctx, rawItems, decodeFile, 'File');
-      const filesById = new Map(
-        daluxFiles.filter((file) => !file.deleted).map((file) => [file.fileId, file] as const),
-      );
+      let filesById: Map<string, DaluxFile>;
+      try {
+        const rawItems = await fetchAllPages(
+          client,
+          `/6.1/projects/${enc(projectId)}/file_areas/${enc(fileAreaId)}/files`,
+          {},
+          options?.signal,
+        );
+        const daluxFiles = convertListLenient<DaluxFile>(ctx, rawItems, decodeFile, 'File');
+        filesById = new Map(daluxFiles.filter((file) => !file.deleted).map((file) => [file.fileId, file] as const));
+      } catch (err) {
+        // This area's sweep failed outright (area deleted upstream -> 404,
+        // a Dalux pagination error, ...). Report its refs as deleted/skipped
+        // rather than letting the failure propagate and take every other
+        // area's already-detected events down with it. Crucially: don't
+        // touch this area's caches below, so a transient failure gets
+        // retried against the same baseline next poll instead of silently
+        // losing whatever change caused it.
+        ctx.log.warn('Dalux: file-area sweep failed during watchRevisions, skipping its refs this poll', {
+          projectId,
+          fileAreaId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        for (const ref of areaRefs) {
+          events.push({ fileId: ref.fileId, latestRevisionId: LATEST_REVISION, deleted: true });
+        }
+        continue;
+      }
 
       for (const ref of areaRefs) {
         const cacheKey = `rev:${projectId}:${fileAreaId}:${ref.fileId}`;
@@ -257,18 +303,24 @@ export class DaluxBuildProvider implements FileSourceProvider {
 
         if (!match) {
           events.push({ fileId: ref.fileId, latestRevisionId: LATEST_REVISION, deleted: true });
-          await ctx.storage.delete(cacheKey);
+          pendingDeletes.add(cacheKey);
           continue;
         }
 
-        const latestRevisionId = match.fileRevisionId ?? LATEST_REVISION;
+        const latestRevisionId = currentRevisionId(match);
         const cached = await ctx.storage.get(cacheKey);
         if (cached && cached !== latestRevisionId) {
           events.push({ fileId: ref.fileId, latestRevisionId, previousRevisionId: cached });
         }
-        await ctx.storage.set(cacheKey, latestRevisionId);
+        pendingSets.set(cacheKey, latestRevisionId);
       }
     }
+
+    // Commit only now that every area's sweep has run to completion (the
+    // areas that threw above never reach here, so their caches are left
+    // exactly as they were).
+    for (const cacheKey of pendingDeletes) await ctx.storage.delete(cacheKey);
+    for (const [cacheKey, revisionId] of pendingSets) await ctx.storage.set(cacheKey, revisionId);
 
     // No delta endpoint to resume from — every call is a fresh poll of the
     // given refs, so there is no cursor to hand back.
@@ -290,14 +342,18 @@ export class DaluxBuildProvider implements FileSourceProvider {
         projectCount: hasMore ? undefined : count,
       };
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (message.includes('401') || message.includes('403')) {
+      // Match on the actual HTTP status the client observed, not on
+      // whether the (possibly truncated, upstream-authored) error message
+      // happens to contain the digits "401"/"403" — a 500 whose body text
+      // mentions either would otherwise be misreported as an auth failure.
+      if (err instanceof DaluxHttpError && (err.status === 401 || err.status === 403)) {
         return {
           ok: false,
           message:
             'Your API identity lacks access. Check that the identity is assigned to a user group with project permissions.',
         };
       }
+      const message = err instanceof Error ? err.message : String(err);
       return { ok: false, message };
     }
   }

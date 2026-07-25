@@ -12,7 +12,8 @@ import { Folder, Search } from 'lucide-react';
 interface SourceProjectsStepProps {
   provider: FileSourceProvider;
   ctx: PluginContext;
-  onError: (message: string) => void;
+  /** Report a listing error, or clear the current one with `null`. */
+  onError: (message: string | null) => void;
   onSelect: (project: SourceProject) => void;
 }
 
@@ -50,9 +51,12 @@ export function SourceProjectsStep({ provider, ctx, onError, onSelect }: SourceP
   }, [start]);
 
   const submitSearch = useCallback(() => {
+    // A retry after a failed listing must not render results under the stale
+    // red banner — clear it up front.
+    onError(null);
     queryRef.current = query;
     start();
-  }, [query, start]);
+  }, [onError, query, start]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -91,7 +95,10 @@ export function SourceProjectsStep({ provider, ctx, onError, onSelect }: SourceP
         <LoadMoreRow
           hasMore={paged.hasMore}
           loading={paged.loadingMore}
-          onLoadMore={paged.loadMore}
+          onLoadMore={() => {
+            onError(null);
+            paged.loadMore();
+          }}
           label="Load more projects"
         />
       </div>

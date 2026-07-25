@@ -14,15 +14,20 @@
  * SharePoint/OneDrive provider talks to Microsoft Graph with nothing but
  * `fetch` and hand-written narrowing; there is no reason this one needs more.
  *
- * The decoders below reproduce the previous schemas' semantics exactly, so
- * this is a dependency change and not a behaviour change:
+ * The decoders below reproduce the previous schemas' semantics as closely as
+ * possible, so this is mostly a dependency change and not a behaviour
+ * change:
  *
  *   - Unknown keys are ignored (zod objects are non-strict by default).
  *   - `nullish()` fields accept a missing key *or* an explicit `null`, and
  *     both normalise to `undefined`.
  *   - A present field of the wrong type is a decode failure rather than
  *     something to coerce, because silently reinterpreting `fileSize: "big"`
- *     as a number would be worse than dropping the row.
+ *     as a number would be worse than dropping the row. The one deliberate
+ *     exception is a non-*finite* number (`NaN`/`Infinity`, e.g. from a
+ *     `fileSize: 1e999` payload): zod's `z.number()` accepted those, so
+ *     rejecting them outright would be a real behaviour change hiding in
+ *     this refactor. See {@link optionalNumber}.
  *   - `deleted` mirrors the old `nullableDefault(z.boolean(), false)`:
  *     absent or null becomes `false`, but a non-boolean is rejected.
  *
@@ -128,9 +133,18 @@ function optionalString(
   return value;
 }
 
-/** `z.number().nullish()`. NaN and Infinity are rejected: zod's `z.number()`
- *  accepts them, but a non-finite byte count is never meaningful here and
- *  would surface as a broken size in the UI. */
+/**
+ * `z.number().nullish()`. Deliberate, documented deviation from "reproduce
+ * the old zod semantics exactly": zod's `z.number()` *accepts* NaN and
+ * Infinity, so a response like `fileSize: 1e999` (JSON-parses to `Infinity`)
+ * decoded fine before this decoder replaced it. Rejecting non-finite values
+ * outright — as an earlier version of this decoder did — silently changed
+ * that: it turned `convertListLenient` into dropping the *entire file* from
+ * the listing over one bad numeric field, which is a worse outcome for a
+ * read-only catalog than just losing that field. So a non-finite number
+ * coerces to `undefined` (the row survives, `fileSize` just isn't reported)
+ * instead of failing the decode.
+ */
 function optionalNumber(
   source: Record<string, unknown>,
   key: string,
@@ -138,10 +152,10 @@ function optionalNumber(
 ): number | undefined {
   const value = source[key];
   if (value === undefined || value === null) return undefined;
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    return fail(`${what}.${key}: expected a finite number or null, got ${describe(value)}`);
+  if (typeof value !== 'number') {
+    return fail(`${what}.${key}: expected a number or null, got ${describe(value)}`);
   }
-  return value;
+  return Number.isFinite(value) ? value : undefined;
 }
 
 /** `nullableDefault(z.boolean(), false)` — absent or null becomes the default. */

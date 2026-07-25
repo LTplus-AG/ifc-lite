@@ -6,6 +6,7 @@ import type { SourceFile, SourceTag } from '@ifc-lite/plugin-api';
 import { useViewerStore, stringToEntityRef } from '@/store';
 import type { SourceHost } from '@/services/sources/source-host';
 import { recordDownloadedSourceFile } from './persistence';
+import { enqueueSourceLoad } from './loadQueue';
 import { loadResolvedSourcePrefs } from './preferences';
 import { sanitizeFilename } from '@/lib/export/download';
 
@@ -107,6 +108,14 @@ async function doSyncSourceModel({
     fileId: latestFile.id,
   }, { signal });
 
+  // The listing and download above can take a long time; the user may have
+  // removed the model (X in the model list) while they ran. Loading the
+  // replacement anyway would resurrect a model the user just deleted, so
+  // re-check the store before touching it.
+  if (!useViewerStore.getState().models.has(modelId)) {
+    throw new Error(`Sync cancelled: ${model.name} was removed while its update was downloading.`);
+  }
+
   const safeFileName = sanitizeFilename(latestFile.name, { fallback: 'model' });
   const replacement = new File([buffer], safeFileName);
 
@@ -115,23 +124,30 @@ async function doSyncSourceModel({
     .filter(([id]) => id !== modelId)
     .map(([id, current]) => ({ id, collapsed: current.collapsed }));
   const wasActive = preState.activeModelId === modelId;
-  // The old model's global-id range, captured before removal — used to purge
-  // stale selection/visibility ids once the swap has happened. (The registry
-  // burns the range on unregister, so those ids can never be valid again.)
-  const staleRange = { start: model.idOffset, end: model.idOffset + model.maxExpressId };
 
   // Load the replacement FIRST, under a fresh id, and only swap on success.
   // Removing before a fallible addModel deleted the user's model whenever the
   // reload failed (parse error, abort, or another federated load in flight).
+  //
+  // The load is routed through the shared source-load queue so it can never
+  // interleave with a cloud-source batch load (the WASM parser is not
+  // thread-safe) — a Sync clicked mid-batch waits its turn.
   const replacementId = crypto.randomUUID();
-  const addedId = await addModel(replacement, {
-    modelId: replacementId,
-    // Keep the user's label: `model.name` carries any rename, whereas the
-    // source file name would silently overwrite it.
-    name: model.name,
-    loadedAt: model.loadedAt,
-    visible: model.visible,
-    collapsed: model.collapsed,
+  const addedId = await enqueueSourceLoad(async () => {
+    // Re-check inside the queue too: the model may have been removed while
+    // this sync waited behind a batch load.
+    if (!useViewerStore.getState().models.has(modelId)) {
+      throw new Error(`Sync cancelled: ${model.name} was removed while its update was loading.`);
+    }
+    return addModel(replacement, {
+      modelId: replacementId,
+      // Keep the user's label: `model.name` carries any rename, whereas the
+      // source file name would silently overwrite it.
+      name: model.name,
+      loadedAt: model.loadedAt,
+      visible: model.visible,
+      collapsed: model.collapsed,
+    });
   });
   // addModel returns null both on real failure and when its load session was
   // superseded by a concurrent load — in the latter case the model may still
@@ -146,7 +162,7 @@ async function doSyncSourceModel({
   // slice), purge ids that pointed into its now-burned global-id range, and
   // restore the sibling collapse states addModel just collapsed.
   removeModel(modelId);
-  purgeStaleEntityState(modelId, staleRange);
+  purgeStaleEntityState(modelId, replacementId);
 
   const postStore = useViewerStore.getState();
   for (const state of otherCollapseStates) {
@@ -174,31 +190,68 @@ async function doSyncSourceModel({
 }
 
 /**
- * Drops every stored entity id that pointed into the removed model: ids in
- * its global-id range (selection, storeys, hidden/isolated/ghost sets) and
- * per-model entries keyed by its model id. The replacement model gets a new
- * offset range, so none of these can be remapped — they must go, or the
- * selection/isolation state dangles into the burned range forever.
+ * Drops every stored entity id that no longer belongs to any surviving model:
+ * ids in the removed model's burned global-id range, its overlay-allocated
+ * ids ABOVE that range (StoreEditor duplicates and scripted adds — see
+ * modelSlice's resolveGlobalIdFromModels), and per-model entries keyed by its
+ * model id. Purged state: selection, storeys, hidden/isolated/ghost sets, and
+ * the Class-tab filter. The replacement model gets a new offset range, so
+ * none of these can be remapped — they must all go, or selection / isolation
+ * state dangles forever.
+ *
+ * Runs after the swap. A survivor is any model still in the store EXCEPT the
+ * just-loaded replacement: nothing can legitimately reference the replacement
+ * yet, and a stale id (notably an old overlay id, which range-filtering on
+ * the removed model's own range would let escape) can land inside the
+ * replacement's new range and silently mis-highlight an unrelated entity. An
+ * id is kept iff a survivor owns it: inside its parse-time range, or an
+ * overlay-allocated entity in its mutation view (mirrors the two-pass
+ * resolution in resolveGlobalIdFromModels).
  */
-function purgeStaleEntityState(modelId: string, range: { start: number; end: number }): void {
-  const inRange = (id: number) => id >= range.start && id <= range.end;
+function purgeStaleEntityState(modelId: string, replacementId: string): void {
   const state = useViewerStore.getState();
+  const mutationViews = state.mutationViews;
+  const survivors = Array.from(state.models.values())
+    .filter((model) => model.id !== replacementId)
+    .map((model) => ({
+      id: model.id,
+      idOffset: model.idOffset,
+      maxExpressId: model.maxExpressId,
+    }));
 
-  const selectedEntityIds = new Set([...state.selectedEntityIds].filter((id) => !inRange(id)));
-  const selectedStoreys = new Set([...state.selectedStoreys].filter((id) => !inRange(id)));
-  const hiddenEntities = new Set([...state.hiddenEntities].filter((id) => !inRange(id)));
+  const isStale = (id: number): boolean => {
+    for (const survivor of survivors) {
+      const localId = id - survivor.idOffset;
+      if (localId < 0) continue;
+      if (localId <= survivor.maxExpressId) return false;
+      if (mutationViews.get(survivor.id)?.getNewEntity(localId) != null) return false;
+    }
+    return true;
+  };
+
+  const selectedEntityIds = new Set([...state.selectedEntityIds].filter((id) => !isStale(id)));
+  const selectedStoreys = new Set([...state.selectedStoreys].filter((id) => !isStale(id)));
+  const hiddenEntities = new Set([...state.hiddenEntities].filter((id) => !isStale(id)));
 
   let isolatedEntities = state.isolatedEntities;
   if (isolatedEntities) {
-    const kept = new Set([...isolatedEntities].filter((id) => !inRange(id)));
+    const kept = new Set([...isolatedEntities].filter((id) => !isStale(id)));
     // An isolation that only referenced the removed model must clear entirely
     // — an empty isolate set would hide everything.
     isolatedEntities = kept.size > 0 ? kept : null;
   }
   let ghostExceptEntities = state.ghostExceptEntities;
   if (ghostExceptEntities) {
-    const kept = new Set([...ghostExceptEntities].filter((id) => !inRange(id)));
+    const kept = new Set([...ghostExceptEntities].filter((id) => !isStale(id)));
     ghostExceptEntities = kept.size > 0 ? kept : null;
+  }
+  // The Class-tab filter intersects into the visible set: left unpurged it
+  // would hold only burned ids after a sync, matching nothing — every element
+  // of the reloaded model would disappear. An emptied filter clears entirely.
+  let classFilter = state.classFilter;
+  if (classFilter) {
+    const kept = new Set([...classFilter.ids].filter((id) => !isStale(id)));
+    classFilter = kept.size > 0 ? { ids: kept, label: classFilter.label } : null;
   }
 
   const selectedEntitiesSet = new Set(
@@ -216,7 +269,7 @@ function purgeStaleEntityState(modelId: string, range: { start: number; end: num
   useViewerStore.setState({
     selectedEntityIds,
     selectedEntityId:
-      state.selectedEntityId !== null && inRange(state.selectedEntityId)
+      state.selectedEntityId !== null && isStale(state.selectedEntityId)
         ? null
         : state.selectedEntityId,
     selectedStoreys,
@@ -228,6 +281,7 @@ function purgeStaleEntityState(modelId: string, range: { start: number; end: num
     hiddenEntities,
     isolatedEntities,
     ghostExceptEntities,
+    classFilter,
     hiddenEntitiesByModel,
     isolatedEntitiesByModel,
   });

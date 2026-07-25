@@ -14,8 +14,10 @@ export const MSGRAPH_MANIFEST: PluginManifest = {
     network: ['graph.microsoft.com', 'login.microsoftonline.com'],
     // Pre-signed download URLs — see `download()` in provider.ts. Tenant-
     // specific hosts, hence the wildcards: business tenants serve from
-    // `{tenant}.sharepoint.com`, consumer OneDrive from `*.files.1drv.com`.
-    publicNetwork: ['*.sharepoint.com', '*.1drv.com'],
+    // `{tenant}.sharepoint.com`, consumer OneDrive from `*.files.1drv.com`,
+    // and newer consumer OneDrive downloadUrls come from
+    // `*.microsoftpersonalcontent.com` (e.g. `my.microsoftpersonalcontent.com`).
+    publicNetwork: ['*.sharepoint.com', '*.1drv.com', '*.microsoftpersonalcontent.com'],
   },
   auth: 'interactive',
   preferences: [

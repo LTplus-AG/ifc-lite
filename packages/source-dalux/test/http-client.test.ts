@@ -148,7 +148,22 @@ describe('fetchPage', () => {
     await expect(fetchPage(client(mockFetch), '/x', {}, undefined)).rejects.toThrow(DaluxPaginationError);
   });
 
-  it('throws when the server claims completion but still sends a nextPage link', async () => {
+  it('follows a nextPage link on an empty page instead of throwing (bookmark pager can signal "keep going" on an empty page)', async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      mockResponse({
+        json: () =>
+          Promise.resolve({
+            items: [],
+            links: [{ rel: 'nextPage', href: 'https://node1.field.dalux.com/service/api/x?bookmark=b2' }],
+          }),
+      }),
+    );
+    const result = await fetchPage(client(mockFetch), '/x', {}, undefined);
+    expect(result.items).toEqual([]);
+    expect(result.cursor).toBe('b2');
+  });
+
+  it('follows a nextPage link when totalRemainingItems is 0 instead of throwing', async () => {
     const mockFetch = vi.fn().mockResolvedValue(
       mockResponse({
         json: () =>
@@ -159,7 +174,25 @@ describe('fetchPage', () => {
           }),
       }),
     );
-    await expect(fetchPage(client(mockFetch), '/x', {}, undefined)).rejects.toThrow(DaluxPaginationError);
+    const result = await fetchPage(client(mockFetch), '/x', {}, undefined);
+    expect(result.items).toEqual([]);
+    expect(result.cursor).toBe('zz');
+  });
+
+  it('follows a nextPage link on a non-empty page even when totalRemainingItems is 0', async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      mockResponse({
+        json: () =>
+          Promise.resolve({
+            items: [{ a: 1 }],
+            metadata: { totalRemainingItems: 0 },
+            links: [{ rel: 'nextPage', href: 'https://node1.field.dalux.com/service/api/x?bookmark=zz' }],
+          }),
+      }),
+    );
+    const result = await fetchPage(client(mockFetch), '/x', {}, undefined);
+    expect(result.items).toEqual([{ a: 1 }]);
+    expect(result.cursor).toBe('zz');
   });
 
   it('truncates an upstream error body to ~200 chars instead of putting the whole thing in the thrown message', async () => {

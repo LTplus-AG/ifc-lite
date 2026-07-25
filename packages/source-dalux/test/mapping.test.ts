@@ -7,6 +7,7 @@ import type { Logger, PluginContext } from '@ifc-lite/plugin-api';
 import {
   LATEST_REVISION,
   convertListLenient,
+  currentRevisionId,
   decodeContainerId,
   fileAreaContainerId,
   folderContainerId,
@@ -65,6 +66,35 @@ describe('toSourceFile', () => {
     const file = toSourceFile('fa1', daluxFile({ fileRevisionId: null }));
     expect(file.currentRevisionId).toBe(LATEST_REVISION);
     expect(file.currentRevisionId).not.toBe(file.id);
+  });
+
+  it('falls back to contentHash when fileRevisionId is absent, giving a stable non-sentinel id', () => {
+    const file = toSourceFile('fa1', daluxFile({ fileRevisionId: undefined, contentHash: 'hash-abc' }));
+    expect(file.currentRevisionId).toBe('hash-abc');
+    expect(file.currentRevisionId).not.toBe(LATEST_REVISION);
+  });
+
+  it('prefers a real fileRevisionId over contentHash when both are present', () => {
+    const file = toSourceFile('fa1', daluxFile({ fileRevisionId: 'rev-7', contentHash: 'hash-abc' }));
+    expect(file.currentRevisionId).toBe('rev-7');
+  });
+
+  it('only falls back to LATEST_REVISION when neither fileRevisionId nor contentHash is present', () => {
+    const file = toSourceFile('fa1', daluxFile({ fileRevisionId: undefined, contentHash: undefined }));
+    expect(file.currentRevisionId).toBe(LATEST_REVISION);
+  });
+
+  it('treats an empty-string fileRevisionId the same as absent, falling through to contentHash', () => {
+    // A "" cached as the revision id would fail `cached &&` checks
+    // downstream and silently swallow the first real transition away from
+    // it — normalising here at the source prevents that.
+    const file = toSourceFile('fa1', daluxFile({ fileRevisionId: '', contentHash: 'hash-xyz' }));
+    expect(file.currentRevisionId).toBe('hash-xyz');
+  });
+
+  it('treats an empty-string fileRevisionId as absent even with no contentHash to fall back to', () => {
+    const file = toSourceFile('fa1', daluxFile({ fileRevisionId: '', contentHash: undefined }));
+    expect(file.currentRevisionId).toBe(LATEST_REVISION);
   });
 
   it('places a folder-owned file under the composite folder container id', () => {

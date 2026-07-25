@@ -170,6 +170,9 @@ export function SourceBrowser({ provider, ctx, onDownload, onBack, busy = false 
       clearSearch();
       return;
     }
+    // A retry after a failed search must not render results under the stale
+    // red banner — clear it up front, like handleSync/selectContainer do.
+    setError(null);
     searchQueryRef.current = query;
     setSearchActive(true);
     searchPaged.start();
@@ -375,7 +378,10 @@ export function SourceBrowser({ provider, ctx, onDownload, onBack, busy = false 
           <LoadMoreRow
             hasMore={fileAreasPaged.hasMore}
             loading={fileAreasPaged.loadingMore}
-            onLoadMore={fileAreasPaged.loadMore}
+            onLoadMore={() => {
+              setError(null);
+              fileAreasPaged.loadMore();
+            }}
             label="Load more"
           />
         </div>
@@ -407,13 +413,18 @@ export function SourceBrowser({ provider, ctx, onDownload, onBack, busy = false 
           busy={busy}
           onLoad={handleLoad}
           foldersHaveMore={catalog.hasMoreFolders(selectedContainerId)}
-          onLoadMoreFolders={() => catalog.loadMoreFolders(selectedContainerId)}
+          onLoadMoreFolders={() => {
+            setError(null);
+            catalog.loadMoreFolders(selectedContainerId);
+          }}
           filesHaveMore={
             searchActive ? searchPaged.hasMore : catalog.hasMoreFiles(selectedContainerId)
           }
-          onLoadMoreFiles={() =>
-            searchActive ? searchPaged.loadMore() : catalog.loadMoreFiles(selectedContainerId)
-          }
+          onLoadMoreFiles={() => {
+            setError(null);
+            if (searchActive) searchPaged.loadMore();
+            else catalog.loadMoreFiles(selectedContainerId);
+          }}
           loadingMore={catalog.loadingMore || searchPaged.loadingMore}
           searchEnabled={capabilities.search && provider.searchFiles !== undefined}
           searchQuery={searchQuery}

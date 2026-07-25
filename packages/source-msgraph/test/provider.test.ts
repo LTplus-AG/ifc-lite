@@ -86,7 +86,11 @@ describe('MsGraphProvider', () => {
     expect(provider.manifest.name).toBe('ms-graph');
     expect(provider.manifest.auth).toBe('interactive');
     expect(provider.manifest.permissions.network).toEqual(['graph.microsoft.com', 'login.microsoftonline.com']);
-    expect(provider.manifest.permissions.publicNetwork).toEqual(['*.sharepoint.com', '*.1drv.com']);
+    expect(provider.manifest.permissions.publicNetwork).toEqual([
+      '*.sharepoint.com',
+      '*.1drv.com',
+      '*.microsoftpersonalcontent.com',
+    ]);
     expect(provider.manifest.capabilities.containerListing).toBe('direct-children');
     expect(provider.manifest.capabilities.listFilesIsRecursive).toBe(false);
     expect(provider.manifest.capabilities.projectsAreDiscoverableOnly).toBe(true);
@@ -94,6 +98,64 @@ describe('MsGraphProvider', () => {
     expect(clientId?.required).toBe(true);
     const authority = provider.manifest.preferences.find((p) => p.name === 'authority');
     expect(authority?.default).toBe('https://login.microsoftonline.com/common');
+  });
+
+  describe('listProjects', () => {
+    it('pages /me/followedSites via @odata.nextLink, returning it as the Page cursor, without duplicating "My OneDrive" on later pages', async () => {
+      const nextLink = 'https://graph.microsoft.com/v1.0/me/followedSites?$skiptoken=abc';
+      const mockFetch = vi.fn().mockImplementation((url: string) => {
+        if (url === nextLink) {
+          return Promise.resolve(jsonResponse({ value: [{ id: 'site-2', displayName: 'Site Two' }] }));
+        }
+        return Promise.resolve(
+          jsonResponse({ value: [{ id: 'site-1', displayName: 'Site One' }], '@odata.nextLink': nextLink }),
+        );
+      });
+      const ctx = createMockCtx(mockFetch as unknown as typeof fetch);
+
+      const firstPage = await provider.listProjects(ctx);
+      expect(firstPage.items.map((p) => p.name)).toEqual(['My OneDrive', 'Site One']);
+      expect(firstPage.cursor).toBe(nextLink);
+
+      const secondPage = await provider.listProjects(ctx, { cursor: firstPage.cursor });
+      expect(secondPage.items.map((p) => p.name)).toEqual(['Site Two']);
+      expect(secondPage.cursor).toBeUndefined();
+    });
+
+    it('pages /sites?search= the same way, threading the cursor across calls', async () => {
+      const nextLink = 'https://graph.microsoft.com/v1.0/sites?search=proj&$skiptoken=abc';
+      const mockFetch = vi.fn().mockImplementation((url: string) => {
+        if (url === nextLink) {
+          return Promise.resolve(jsonResponse({ value: [{ id: 'site-b', displayName: 'Project B' }] }));
+        }
+        return Promise.resolve(
+          jsonResponse({ value: [{ id: 'site-a', displayName: 'Project A' }], '@odata.nextLink': nextLink }),
+        );
+      });
+      const ctx = createMockCtx(mockFetch as unknown as typeof fetch);
+
+      const firstPage = await provider.listProjects(ctx, { query: 'proj' });
+      expect(firstPage.items.map((p) => p.name)).toEqual(['Project A']);
+      expect(firstPage.cursor).toBe(nextLink);
+
+      const secondPage = await provider.listProjects(ctx, { query: 'proj', cursor: firstPage.cursor });
+      expect(secondPage.items.map((p) => p.name)).toEqual(['Project B']);
+      expect(secondPage.cursor).toBeUndefined();
+    });
+
+    it('surfaces a followedSites failure once mid-pagination instead of silently reporting a truncated listing as complete', async () => {
+      const cursor = 'https://graph.microsoft.com/v1.0/me/followedSites?$skiptoken=abc';
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+        statusText: 'Internal Server Error',
+        headers: { get: () => null },
+        text: () => Promise.resolve('boom'),
+      });
+      const ctx = createMockCtx(mockFetch as unknown as typeof fetch);
+
+      await expect(provider.listProjects(ctx, { cursor })).rejects.toThrow();
+    });
   });
 
   describe('listContainers', () => {
@@ -389,6 +451,34 @@ describe('MsGraphProvider', () => {
       const [, publicInit] = mockFetchPublic.mock.calls[0] as [string, RequestInit];
       expect(publicInit.signal).toBe(controller.signal);
     });
+
+    it('truncates a long fetchPublic error body in the thrown message, but logs the full body', async () => {
+      const longBody = 'x'.repeat(2000);
+      const mockFetch = vi.fn().mockResolvedValue(
+        jsonResponse({ id: 'item-1', '@microsoft.graph.downloadUrl': 'https://contoso.sharepoint.com/d' }),
+      );
+      const mockFetchPublic = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+        statusText: 'Internal Server Error',
+        text: () => Promise.resolve(longBody),
+      });
+      const ctx = createMockCtx(mockFetch as unknown as typeof fetch, mockFetchPublic);
+
+      await expect(
+        provider.download(ctx, { projectId: 'onedrive:me', containerId: 'drive-1', fileId: 'item-1' }),
+      ).rejects.toThrow(/x{200}…/);
+
+      try {
+        await provider.download(ctx, { projectId: 'onedrive:me', containerId: 'drive-1', fileId: 'item-1' });
+        throw new Error('expected download to reject');
+      } catch (err) {
+        // The whole raw 2000-char body must not have reached the thrown
+        // message — only ~200 chars plus the surrounding explanation.
+        expect((err as Error).message.length).toBeLessThan(500);
+      }
+      expect(ctx.log.error).toHaveBeenCalledWith(expect.any(String), { body: longBody });
+    });
   });
 
   describe('listRevisions', () => {
@@ -492,6 +582,195 @@ describe('MsGraphProvider', () => {
       const state = JSON.parse(result.cursor ?? '{}') as Record<string, string>;
       expect(state.d1).toBe('https://graph.microsoft.com/v1.0/drives/d1/root/delta?tok=fresh');
       expect(ctx.log.warn).toHaveBeenCalled();
+    });
+
+    it('treats a JSON "null" cursor as no baseline rather than crashing on Object.keys(null)', async () => {
+      const mockFetch = vi.fn().mockResolvedValue(
+        jsonResponse({ value: [], '@odata.deltaLink': 'https://graph.microsoft.com/v1.0/drives/d1/root/delta?token=fresh' }),
+      );
+      const ctx = createMockCtx(mockFetch as unknown as typeof fetch);
+
+      const result = await provider.watchRevisions(
+        ctx,
+        [{ projectId: 'onedrive:me', containerId: 'd1', fileId: 'f1', revisionId: 'ctag-1' }],
+        'null',
+      );
+
+      expect(result.events).toEqual([]);
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://graph.microsoft.com/v1.0/drives/d1/root/delta?token=latest',
+        expect.any(Object),
+      );
+    });
+
+    it('treats a JSON array cursor as no baseline rather than crashing', async () => {
+      const mockFetch = vi.fn().mockResolvedValue(
+        jsonResponse({ value: [], '@odata.deltaLink': 'https://graph.microsoft.com/v1.0/drives/d1/root/delta?token=fresh' }),
+      );
+      const ctx = createMockCtx(mockFetch as unknown as typeof fetch);
+
+      const result = await provider.watchRevisions(
+        ctx,
+        [{ projectId: 'onedrive:me', containerId: 'd1', fileId: 'f1', revisionId: 'ctag-1' }],
+        '[1,2,3]',
+      );
+
+      expect(result.events).toEqual([]);
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://graph.microsoft.com/v1.0/drives/d1/root/delta?token=latest',
+        expect.any(Object),
+      );
+    });
+
+    it('drops a cursor entry whose value is not a string instead of crashing on link.startsWith later', async () => {
+      const mockFetch = vi.fn().mockResolvedValue(
+        jsonResponse({ value: [], '@odata.deltaLink': 'https://graph.microsoft.com/v1.0/drives/d1/root/delta?token=fresh' }),
+      );
+      const ctx = createMockCtx(mockFetch as unknown as typeof fetch);
+      // A corrupted/tampered cursor: `d1`'s value is a number, not a deltaLink string.
+      const corruptedCursor = JSON.stringify({ d1: 123 });
+
+      const result = await provider.watchRevisions(
+        ctx,
+        [{ projectId: 'onedrive:me', containerId: 'd1', fileId: 'f1', revisionId: 'ctag-1' }],
+        corruptedCursor,
+      );
+
+      expect(result.events).toEqual([]);
+      // The bad entry is dropped, so d1 has no baseline and gets reseeded via token=latest.
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://graph.microsoft.com/v1.0/drives/d1/root/delta?token=latest',
+        expect.any(Object),
+      );
+    });
+
+    it('drops a 404/403 drive from the cursor and keeps other drives\' events instead of throwing out of the loop', async () => {
+      const seededCursor = JSON.stringify({
+        d1: 'https://graph.microsoft.com/v1.0/drives/d1/root/delta?tok=healthy',
+        d2: 'https://graph.microsoft.com/v1.0/drives/d2/root/delta?tok=dead',
+      });
+      const mockFetch = vi.fn().mockImplementation((url: string) => {
+        if (url.includes('tok=healthy')) {
+          return Promise.resolve(
+            jsonResponse({
+              value: [{ id: 'f1', cTag: 'ctag-2' }],
+              '@odata.deltaLink': 'https://graph.microsoft.com/v1.0/drives/d1/root/delta?tok=next',
+            }),
+          );
+        }
+        if (url.includes('tok=dead')) {
+          return Promise.resolve({
+            ok: false,
+            status: 404,
+            statusText: 'Not Found',
+            headers: { get: () => null },
+            text: () => Promise.resolve('drive not found'),
+          });
+        }
+        throw new Error(`unexpected url ${url}`);
+      });
+      const ctx = createMockCtx(mockFetch as unknown as typeof fetch);
+
+      const result = await provider.watchRevisions(
+        ctx,
+        [
+          { projectId: 'onedrive:me', containerId: 'd1', fileId: 'f1', revisionId: 'ctag-1' },
+          { projectId: 'onedrive:me', containerId: 'd2', fileId: 'f2', revisionId: 'ctag-x' },
+        ],
+        seededCursor,
+      );
+
+      // d1's event survives even though d2 blew up.
+      expect(result.events).toEqual([{ fileId: 'f1', latestRevisionId: 'ctag-2', previousRevisionId: 'ctag-1' }]);
+      const state = JSON.parse(result.cursor ?? '{}') as Record<string, string>;
+      expect(state.d1).toBe('https://graph.microsoft.com/v1.0/drives/d1/root/delta?tok=next');
+      // d2 is gone from the cursor, so it won't be re-polled and re-fail forever.
+      expect(state.d2).toBeUndefined();
+      expect(ctx.log.warn).toHaveBeenCalled();
+    });
+
+    it('does not emit an event for a tracked item whose cTag in the delta feed is unchanged (e.g. a rename)', async () => {
+      const seededCursor = JSON.stringify({ d1: 'https://graph.microsoft.com/v1.0/drives/d1/root/delta?tok=seed' });
+      const mockFetch = vi.fn().mockResolvedValue(
+        jsonResponse({
+          // Same cTag the host already has loaded (`revisionId: 'ctag-1'` below) —
+          // only the name changed upstream.
+          value: [{ id: 'f1', cTag: 'ctag-1', name: 'renamed.ifc' }],
+          '@odata.deltaLink': 'https://graph.microsoft.com/v1.0/drives/d1/root/delta?tok=after-rename',
+        }),
+      );
+      const ctx = createMockCtx(mockFetch as unknown as typeof fetch);
+
+      const result = await provider.watchRevisions(
+        ctx,
+        [{ projectId: 'onedrive:me', containerId: 'd1', fileId: 'f1', revisionId: 'ctag-1' }],
+        seededCursor,
+      );
+
+      expect(result.events).toEqual([]);
+    });
+
+    it('does not re-fire on a second metadata-only delta hit even though the ref the host holds never advanced', async () => {
+      // Reuses one ctx (and therefore one ctx.storage) across two polls, the
+      // way the host actually calls watchRevisions repeatedly.
+      const mockFetch = vi.fn().mockImplementation((url: string) => {
+        if (url.includes('tok=seed')) {
+          return Promise.resolve(
+            jsonResponse({
+              value: [{ id: 'f1', cTag: 'ctag-2' }],
+              '@odata.deltaLink': 'https://graph.microsoft.com/v1.0/drives/d1/root/delta?tok=after-1',
+            }),
+          );
+        }
+        if (url.includes('tok=after-1')) {
+          // A second, purely cosmetic change (e.g. moved to another folder) —
+          // the content, and therefore the cTag, is exactly what it was after
+          // the first poll already reported it.
+          return Promise.resolve(
+            jsonResponse({
+              value: [{ id: 'f1', cTag: 'ctag-2' }],
+              '@odata.deltaLink': 'https://graph.microsoft.com/v1.0/drives/d1/root/delta?tok=after-2',
+            }),
+          );
+        }
+        throw new Error(`unexpected url ${url}`);
+      });
+      const ctx = createMockCtx(mockFetch as unknown as typeof fetch);
+      // The host never downloaded the new content, so its own ref is still
+      // pinned to the original revision for both polls.
+      const refs = [{ projectId: 'onedrive:me', containerId: 'd1', fileId: 'f1', revisionId: 'ctag-1' }];
+
+      const firstResult = await provider.watchRevisions(
+        ctx,
+        refs,
+        JSON.stringify({ d1: 'https://graph.microsoft.com/v1.0/drives/d1/root/delta?tok=seed' }),
+      );
+      expect(firstResult.events).toEqual([{ fileId: 'f1', latestRevisionId: 'ctag-2', previousRevisionId: 'ctag-1' }]);
+
+      const secondResult = await provider.watchRevisions(ctx, refs, firstResult.cursor);
+      // Without the fix this would fire again (item still appears in the
+      // delta feed) even though nothing has changed since the first report.
+      expect(secondResult.events).toEqual([]);
+    });
+
+    it('still emits deleted:true for a tracked item that disappears, and clears its cached cTag', async () => {
+      const seededCursor = JSON.stringify({ d1: 'https://graph.microsoft.com/v1.0/drives/d1/root/delta?tok=seed' });
+      const mockFetch = vi.fn().mockResolvedValue(
+        jsonResponse({
+          value: [{ id: 'f1', deleted: { state: 'deleted' } }],
+          '@odata.deltaLink': 'https://graph.microsoft.com/v1.0/drives/d1/root/delta?tok=after-delete',
+        }),
+      );
+      const ctx = createMockCtx(mockFetch as unknown as typeof fetch);
+
+      const result = await provider.watchRevisions(
+        ctx,
+        [{ projectId: 'onedrive:me', containerId: 'd1', fileId: 'f1', revisionId: 'ctag-1' }],
+        seededCursor,
+      );
+
+      expect(result.events).toEqual([{ fileId: 'f1', latestRevisionId: 'f1', previousRevisionId: 'ctag-1', deleted: true }]);
+      expect(ctx.storage.delete).toHaveBeenCalledWith('msgraph:ctag:d1:f1');
     });
   });
 

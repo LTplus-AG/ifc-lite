@@ -5,7 +5,7 @@
 import type { PluginContext, RevisionEvent, RevisionWatchResult, SourceFileRef } from '@ifc-lite/plugin-api';
 
 import { decodeContainerId } from './ids.js';
-import { GraphApiError, graphGetJson, type GraphTokenSource } from './graph-client.js';
+import { GraphApiError, MAX_SWEEP_PAGES, graphGetJson, type GraphTokenSource } from './graph-client.js';
 import type { GraphDriveItem, GraphPage } from './graph-types.js';
 
 // ============================================================================
@@ -39,16 +39,32 @@ async function fetchDeltaPage(
   return graphGetJson<GraphPage<GraphDriveItem>>(ctx, auth, link, { signal });
 }
 
+/**
+ * Parses a persisted cursor defensively. The host only ever saves a new
+ * cursor after a successful `watchRevisions` call, so a bad value here — a
+ * `JSON.parse` result that isn't a plain object (`null`, an array, a number),
+ * or one whose values aren't the `driveId -> deltaLink` strings this shape
+ * requires — has no path to self-heal: it would otherwise wedge change
+ * detection for the affected project forever, since nothing else ever
+ * overwrites it. Any deviation from the expected shape is treated as "no
+ * baseline yet" rather than thrown, and unusable entries are dropped
+ * individually rather than discarding the whole cursor.
+ */
 function parseCursor(cursor: string | undefined): DeltaCursorState {
   if (!cursor) return {};
+  let parsed: unknown;
   try {
-    return JSON.parse(cursor) as DeltaCursorState;
+    parsed = JSON.parse(cursor);
   } catch {
-    // A cursor from an older/incompatible provider version, or a corrupted
-    // one — treat as "no baseline yet" rather than throwing, so a bad
-    // cursor never wedges change detection permanently.
     return {};
   }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+
+  const state: DeltaCursorState = {};
+  for (const [driveId, link] of Object.entries(parsed as Record<string, unknown>)) {
+    if (typeof link === 'string') state[driveId] = link;
+  }
+  return state;
 }
 
 /**
@@ -78,7 +94,13 @@ async function seedDeltaLink(
   return link;
 }
 
-/** Follows one drive's delta stream from its stored link to the end, returning changed items and the new deltaLink. */
+/**
+ * Follows one drive's delta stream from its stored link to the end,
+ * returning changed items and the new deltaLink. Bounded by `MAX_SWEEP_PAGES`
+ * and a repeated-link guard, mirroring `graphListAll` — a buggy upstream
+ * re-issuing the same `nextLink` would otherwise poll forever instead of
+ * failing visibly.
+ */
 async function drainDelta(
   ctx: PluginContext,
   auth: GraphTokenSource,
@@ -88,15 +110,32 @@ async function drainDelta(
   const items: GraphDriveItem[] = [];
   let link: string | undefined = startLink;
   let deltaLink: string | undefined;
+  let pageCount = 0;
 
   while (link) {
     const page = await fetchDeltaPage(ctx, auth, link, signal);
     items.push(...page.value);
     deltaLink = page['@odata.deltaLink'];
-    link = page['@odata.nextLink'];
+    const nextLink = page['@odata.nextLink'];
+    if (nextLink && nextLink === link) {
+      throw new Error('Graph delta pagination re-issued the same nextLink — refusing to loop forever');
+    }
+    pageCount += 1;
+    if (pageCount > MAX_SWEEP_PAGES) {
+      throw new Error(`Graph delta pagination exceeded ${MAX_SWEEP_PAGES} pages without finishing`);
+    }
+    link = nextLink;
   }
 
   return { items, deltaLink };
+}
+
+/** `ctx.storage` key holding the last-seen cTag for one tracked file, so a
+ * metadata-only delta hit (rename, move, permission change) — which surfaces
+ * the item with an unchanged cTag — can be told apart from a real content
+ * change. */
+function ctagStorageKey(driveId: string, itemId: string): string {
+  return `msgraph:ctag:${driveId}:${itemId}`;
 }
 
 /**
@@ -147,12 +186,29 @@ export async function watchDriveRevisions(
       for (const item of items) {
         const ref = refByItemId.get(item.id);
         if (!ref) continue; // Changed upstream, but not a file this host is tracking.
-        events.push({
-          fileId: item.id,
-          latestRevisionId: item.cTag ?? item.eTag ?? item.id,
-          previousRevisionId: ref.revisionId,
-          ...(item.deleted !== undefined ? { deleted: true } : {}),
-        });
+
+        const cacheKey = ctagStorageKey(driveId, item.id);
+        const latestRevisionId = item.cTag ?? item.eTag ?? item.id;
+        // The delta feed surfaces an item for *any* change — a rename, a
+        // move, a permission edit — not just a content change. Comparing
+        // against `ref.revisionId` alone (what the host says it last loaded)
+        // would still fire on those, since the host's copy is genuinely
+        // "behind" the item's own metadata timestamp even when the bytes
+        // never moved. The stored cTag is the actual last-observed content
+        // identity; seed it from `ref.revisionId` the first time this file is
+        // seen so a real change since the host's last load is still reported.
+        const previousRevisionId = (await ctx.storage.get(cacheKey)) ?? ref.revisionId;
+
+        if (item.deleted !== undefined) {
+          events.push({ fileId: item.id, latestRevisionId, previousRevisionId, deleted: true });
+          await ctx.storage.delete(cacheKey);
+          continue;
+        }
+
+        if (previousRevisionId !== latestRevisionId) {
+          events.push({ fileId: item.id, latestRevisionId, previousRevisionId });
+        }
+        await ctx.storage.set(cacheKey, latestRevisionId);
       }
 
       nextState[driveId] = deltaLink ?? existingLink;
@@ -167,6 +223,21 @@ export async function watchDriveRevisions(
           driveId,
         });
         nextState[driveId] = await seedDeltaLink(ctx, auth, driveId, signal);
+        continue;
+      }
+      if (err instanceof GraphApiError && (err.status === 404 || err.status === 403)) {
+        // The drive itself is gone or no longer reachable (deleted, or access
+        // revoked). We deliberately keep every drive the cursor already
+        // tracks in `driveIds` above so its progress survives an unrelated
+        // day with no matching refs — but that means a dead drive would
+        // otherwise re-fail this exact request on every single poll forever.
+        // Drop it from the cursor so it stops being polled; a healthy drive's
+        // events collected earlier in this same loop are unaffected.
+        ctx.log.warn('Graph drive no longer accessible; dropping it from change detection', {
+          driveId,
+          status: err.status,
+        });
+        delete nextState[driveId];
         continue;
       }
       throw err;

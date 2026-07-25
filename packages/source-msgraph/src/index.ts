@@ -4,5 +4,5 @@
 
 export { MsGraphProvider } from './provider.js';
 export { MSGRAPH_MANIFEST } from './manifest.js';
-export { MsGraphAuth, GraphAuthExpiredError, DEFAULT_AUTHORITY } from './msal-client.js';
+export { MsGraphAuth, GraphAuthExpiredError, GraphPopupBlockedError, DEFAULT_AUTHORITY } from './msal-client.js';
 export { GraphApiError } from './graph-client.js';

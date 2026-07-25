@@ -4047,6 +4047,7 @@
     "DEFAULT_AUTHORITY: const",
     "GraphApiError: class",
     "GraphAuthExpiredError: class",
+    "GraphPopupBlockedError: class",
     "MSGRAPH_MANIFEST: const",
     "MsGraphAuth: class",
     "MsGraphProvider: class"

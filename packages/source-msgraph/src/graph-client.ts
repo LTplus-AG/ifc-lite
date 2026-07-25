@@ -7,6 +7,16 @@ import type { GraphPage } from './graph-types.js';
 
 export const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
 
+/**
+ * The only host `graphRequest` will ever attach a bearer token to. A cursor
+ * or `@odata.nextLink`/`@odata.deltaLink` is provider-opaque data that gets
+ * persisted (in the plugin-api `cursor` string, or in `ctx.storage`) and
+ * handed back to us later — if that persisted value were ever tampered with
+ * or simply came from an incompatible provider version, this allowlist stops
+ * it from smuggling our bearer token to an arbitrary absolute URL.
+ */
+const ALLOWED_TOKEN_HOSTS = new Set(['graph.microsoft.com']);
+
 /** Anything that can hand this client a bearer token for the active account. */
 export interface GraphTokenSource {
   getAccessToken(ctx: PluginContext): Promise<string>;
@@ -26,6 +36,9 @@ export class GraphApiError extends Error {
     const prefix = throttled
       ? `Microsoft Graph is still throttling this account after the host's own retries (status ${status})`
       : `Microsoft Graph ${status}: ${statusText}`;
+    // `body` here is already truncated by the caller (see `truncateErrorBody`)
+    // — this message reaches testConnection results and toasts, so it must
+    // stay short even when upstream sends back a verbose HTML error page.
     super(`${prefix} — ${url}${body ? ` — ${body}` : ''}`);
     this.name = 'GraphApiError';
     this.status = status;
@@ -33,10 +46,35 @@ export class GraphApiError extends Error {
   }
 }
 
+/** Upstream response bodies are interpolated into thrown `Error` messages,
+ * which reach user-facing toasts unmodified — cap them so a verbose upstream
+ * error page doesn't end up as a wall of HTML in the UI. Mirrors
+ * `@ifc-lite/source-dalux`'s `http-client.ts`. */
+export const MAX_ERROR_BODY_CHARS = 200;
+
+export function truncateErrorBody(text: string, max = MAX_ERROR_BODY_CHARS): string {
+  return text.length > max ? `${text.slice(0, max)}…` : text;
+}
+
+/** Hard ceiling on pages followed by {@link graphListAll} and the delta
+ * drainer in `delta.ts`. A server that keeps minting fresh bookmarks (buggy
+ * or malicious) would otherwise loop forever; this trades a clear failure for
+ * an unbounded hang. Mirrors `@ifc-lite/source-dalux`'s `MAX_SWEEP_PAGES`. */
+export const MAX_SWEEP_PAGES = 1000;
+
 function resolveUrl(pathOrUrl: string): string {
-  return pathOrUrl.startsWith('http://') || pathOrUrl.startsWith('https://')
-    ? pathOrUrl
-    : `${GRAPH_BASE}${pathOrUrl}`;
+  if (!pathOrUrl.startsWith('http://') && !pathOrUrl.startsWith('https://')) {
+    return `${GRAPH_BASE}${pathOrUrl}`;
+  }
+  const url = new URL(pathOrUrl);
+  if (!ALLOWED_TOKEN_HOSTS.has(url.hostname)) {
+    throw new Error(
+      `Refusing to attach a Microsoft Graph bearer token to "${url.hostname}" — only ` +
+        `${[...ALLOWED_TOKEN_HOSTS].join(', ')} is allowed. This can happen if a persisted ` +
+        'cursor was tampered with or came from an incompatible provider version.',
+    );
+  }
+  return pathOrUrl;
 }
 
 /**
@@ -59,7 +97,10 @@ export async function graphRequest(
   const response = await ctx.fetch(url, { ...init, headers });
   if (!response.ok) {
     const body = await response.text().catch(() => '');
-    throw new GraphApiError(response.status, response.statusText, body, url);
+    // The full body is worth keeping for diagnostics; only the message that
+    // reaches testConnection/toasts needs to stay short.
+    if (body) ctx.log.error(`Microsoft Graph ${response.status} ${response.statusText} at ${url}`, { body });
+    throw new GraphApiError(response.status, response.statusText, truncateErrorBody(body), url);
   }
   return response;
 }
@@ -103,7 +144,12 @@ export async function graphListPage<T>(
   return { items: page.value, cursor: page['@odata.nextLink'] };
 }
 
-/** Fetches every page of a Graph list endpoint, following `@odata.nextLink` to completion. */
+/**
+ * Fetches every page of a Graph list endpoint, following `@odata.nextLink` to
+ * completion. Bounded by `MAX_SWEEP_PAGES` and a repeated-link guard: a
+ * buggy upstream re-issuing the same `nextLink` forever would otherwise hang
+ * this indefinitely rather than fail.
+ */
 export async function graphListAll<T>(
   ctx: PluginContext,
   auth: GraphTokenSource,
@@ -112,10 +158,18 @@ export async function graphListAll<T>(
 ): Promise<T[]> {
   const items: T[] = [];
   let cursor: string | undefined;
+  let pageCount = 0;
   for (;;) {
     const page = await graphListPage<T>(ctx, auth, baseUrl, cursor, undefined, signal);
     items.push(...page.items);
     if (!page.cursor) break;
+    if (page.cursor === cursor) {
+      throw new Error(`Graph pagination at ${baseUrl} re-issued the same nextLink — refusing to loop forever`);
+    }
+    pageCount += 1;
+    if (pageCount > MAX_SWEEP_PAGES) {
+      throw new Error(`Graph pagination at ${baseUrl} exceeded ${MAX_SWEEP_PAGES} pages without finishing`);
+    }
     cursor = page.cursor;
   }
   return items;

@@ -77,6 +77,31 @@ export class GraphAuthExpiredError extends Error {
   }
 }
 
+/**
+ * Thrown when a token refresh needed an interactive popup and the browser
+ * blocked it. Distinct from {@link GraphAuthExpiredError}: the session isn't
+ * actually expired, and "sign in again" is the wrong instruction — the fix is
+ * to allow popups for this site, not to re-authenticate.
+ */
+export class GraphPopupBlockedError extends Error {
+  constructor(
+    message = 'Microsoft sign-in needs a popup window, but the browser blocked it. Allow popups for this site and try again.',
+  ) {
+    super(message);
+    this.name = 'GraphPopupBlockedError';
+  }
+}
+
+/** Thrown by `getClient` when no client ID preference is configured yet — distinct
+ * from every other failure mode so `restore()` can treat it as "not signed
+ * in" rather than a broken session. */
+class ClientNotConfiguredError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ClientNotConfiguredError';
+  }
+}
+
 function isInteractionRequiredError(
   err: unknown,
   InteractionRequiredAuthError: MsalBrowserModule['InteractionRequiredAuthError'],
@@ -85,6 +110,23 @@ function isInteractionRequiredError(
   // Belt-and-braces: errors that cross a `vi.mock`'d module boundary in
   // tests won't satisfy `instanceof` against the real class.
   return err instanceof Error && err.name === 'InteractionRequiredAuthError';
+}
+
+/**
+ * MSAL browser popup errors — including the one thrown when the browser
+ * blocks `window.open` — are `BrowserAuthError` instances with a stable
+ * `errorCode`. `@azure/msal-browser`'s public entry point doesn't export that
+ * class (only `InteractionRequiredAuthError` and a handful of others are
+ * exported), so this checks structurally rather than via `instanceof`,
+ * mirroring the belt-and-braces fallback `isInteractionRequiredError` already
+ * uses for the same cross-module-boundary reason.
+ */
+const POPUP_BLOCKED_ERROR_CODES = new Set(['popup_window_error', 'empty_window_error']);
+
+function isPopupBlockedError(err: unknown): boolean {
+  if (!(err instanceof Error) || err.name !== 'BrowserAuthError') return false;
+  const errorCode = (err as Error & { errorCode?: unknown }).errorCode;
+  return typeof errorCode === 'string' && POPUP_BLOCKED_ERROR_CODES.has(errorCode);
 }
 
 function toIdentity(account: MsalAccount): SourceIdentity {
@@ -111,7 +153,7 @@ export class MsGraphAuth implements SourceAuth {
   private async getClient(ctx: PluginContext): Promise<MsalPublicClientApplication> {
     const clientId = await ctx.getPreference('clientId');
     if (!clientId) {
-      throw new Error(
+      throw new ClientNotConfiguredError(
         'Microsoft Graph client ID not configured. Add an Entra app registration client ID in Source Settings.',
       );
     }
@@ -138,9 +180,24 @@ export class MsGraphAuth implements SourceAuth {
     return client;
   }
 
-  /** Silent, non-blocking: reads whatever account MSAL already has cached. Never opens a popup. */
+  /**
+   * Silent, non-blocking: reads whatever account MSAL already has cached.
+   * Never opens a popup. Returns `null` — "not signed in" — rather than
+   * throwing when no client ID preference is configured yet: this runs at
+   * registration for every provider the host knows about, including ones the
+   * user has never touched, and the host renders a thrown error here as
+   * "session expired, sign in again", which is wrong for a provider that was
+   * never signed into in the first place.
+   */
   async restore(ctx: PluginContext): Promise<SourceIdentity | null> {
-    const client = await this.getClient(ctx);
+    let client: MsalPublicClientApplication;
+    try {
+      client = await this.getClient(ctx);
+    } catch (err) {
+      if (err instanceof ClientNotConfiguredError) return null;
+      throw err;
+    }
+
     const active = client.getActiveAccount();
     if (active) return toIdentity(active);
 
@@ -202,7 +259,13 @@ export class MsGraphAuth implements SourceAuth {
       try {
         const result = await client.acquireTokenPopup({ scopes: SCOPES, account });
         return result.accessToken;
-      } catch {
+      } catch (popupErr) {
+        // A blocked popup is not an expired session — the account is fine,
+        // the browser just refused to open the window. Collapsing this into
+        // `GraphAuthExpiredError` sends the user to "sign in again" for a
+        // problem "sign in again" doesn't fix; the UI needs to tell these
+        // apart to say "allow popups" instead.
+        if (isPopupBlockedError(popupErr)) throw new GraphPopupBlockedError();
         throw new GraphAuthExpiredError();
       }
     }

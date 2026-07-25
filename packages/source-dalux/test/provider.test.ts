@@ -6,7 +6,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { PluginContext, KeyValueStore, Logger } from '@ifc-lite/plugin-api';
 import { PLUGIN_API_VERSION, satisfiesCaretRange } from '@ifc-lite/plugin-api';
 import { DaluxBuildProvider } from '../src/provider.js';
-import { fileAreaContainerId, folderContainerId } from '../src/mapping.js';
+import { LATEST_REVISION, fileAreaContainerId, folderContainerId } from '../src/mapping.js';
 
 function createMockStorage(): KeyValueStore {
   const store = new Map<string, string>();
@@ -394,7 +394,7 @@ describe('DaluxBuildProvider', () => {
 
     it('treats the LATEST_REVISION sentinel the same as an omitted revisionId, never hitting /revisions/.../content', async () => {
       const mockFetch = vi.fn().mockImplementation((url: string) => {
-        if (url.includes('/revisions/')) throw new Error('should never call the revisions endpoint for "latest"');
+        if (url.includes('/revisions/')) throw new Error('should never call the revisions endpoint for the sentinel');
         if (url.includes('/5.0/projects/proj1/file_areas/fa1/files/f1')) {
           return Promise.resolve(
             mockResponse({ json: () => Promise.resolve({ data: { fileId: 'f1', fileName: 'a.ifc', fileAreaId: 'fa1', deleted: false, downloadLink: 'https://cdn.dalux.com/x' } }) }),
@@ -404,8 +404,44 @@ describe('DaluxBuildProvider', () => {
       });
       const ctx = createMockCtx(mockFetch as unknown as typeof fetch);
 
-      await provider.download(ctx, { projectId: 'proj1', containerId: fileAreaContainerId('fa1'), fileId: 'f1', revisionId: 'latest' });
+      await provider.download(ctx, { projectId: 'proj1', containerId: fileAreaContainerId('fa1'), fileId: 'f1', revisionId: LATEST_REVISION });
       expect(mockFetch).toHaveBeenCalled();
+    });
+
+    it('does NOT reroute a real revision id that happens to be the plain string "latest" (sentinel collision guard)', async () => {
+      // The sentinel deliberately isn't the plain string "latest" — a file
+      // legitimately versioned with that literal label must still be
+      // fetched from /revisions/.../content, not silently redirected to
+      // "current bytes" as if no revision id had been given at all.
+      const mockFetch = vi.fn().mockResolvedValue(mockResponse({ arrayBuffer: () => Promise.resolve(new ArrayBuffer(4)) }));
+      const ctx = createMockCtx(mockFetch as unknown as typeof fetch);
+
+      await provider.download(ctx, {
+        projectId: 'proj1',
+        containerId: fileAreaContainerId('fa1'),
+        fileId: 'f1',
+        revisionId: 'latest',
+      });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/revisions/latest/content'),
+        expect.any(Object),
+      );
+    });
+
+    it('builds the revision-content URL from the client base URL, not a separate constant', async () => {
+      const mockFetch = vi.fn().mockResolvedValue(mockResponse({ arrayBuffer: () => Promise.resolve(new ArrayBuffer(4)) }));
+      const ctx = createMockCtx(mockFetch as unknown as typeof fetch);
+
+      await provider.download(ctx, {
+        projectId: 'proj1',
+        containerId: fileAreaContainerId('fa1'),
+        fileId: 'f1',
+        revisionId: 'rev-9',
+      });
+
+      const [calledUrl] = mockFetch.mock.calls[0] as [string];
+      expect(calledUrl.startsWith(provider.manifest.permissions.relay!.upstream)).toBe(true);
     });
 
     it('throws when the file exposes no download link', async () => {
@@ -464,7 +500,119 @@ describe('DaluxBuildProvider', () => {
         { projectId: 'proj1', containerId: fileAreaContainerId('fa1'), fileId: 'gone' },
       ]);
 
-      expect(result.events).toEqual([{ fileId: 'gone', latestRevisionId: 'latest', deleted: true }]);
+      expect(result.events).toEqual([{ fileId: 'gone', latestRevisionId: LATEST_REVISION, deleted: true }]);
+    });
+
+    it('watches a contentHash-only file for changes even though it has no fileRevisionId', async () => {
+      const mockFetch = vi.fn().mockResolvedValue(
+        mockResponse({
+          json: () =>
+            Promise.resolve({
+              items: [
+                { data: { fileId: 'f1', fileName: 'a.ifc', fileAreaId: 'fa1', contentHash: 'hash-2', deleted: false } },
+              ],
+            }),
+        }),
+      );
+      const ctx = createMockCtx(mockFetch as unknown as typeof fetch);
+      await ctx.storage.set('rev:proj1:fa1:f1', 'hash-1');
+
+      const result = await provider.watchRevisions(ctx, [
+        { projectId: 'proj1', containerId: fileAreaContainerId('fa1'), fileId: 'f1' },
+      ]);
+
+      expect(result.events).toEqual([{ fileId: 'f1', latestRevisionId: 'hash-2', previousRevisionId: 'hash-1' }]);
+    });
+
+    it('does not falsely emit an event for a contentHash-only file whose hash has not changed', async () => {
+      const mockFetch = vi.fn().mockResolvedValue(
+        mockResponse({
+          json: () =>
+            Promise.resolve({
+              items: [
+                { data: { fileId: 'f1', fileName: 'a.ifc', fileAreaId: 'fa1', contentHash: 'hash-1', deleted: false } },
+              ],
+            }),
+        }),
+      );
+      const ctx = createMockCtx(mockFetch as unknown as typeof fetch);
+      await ctx.storage.set('rev:proj1:fa1:f1', 'hash-1');
+
+      const result = await provider.watchRevisions(ctx, [
+        { projectId: 'proj1', containerId: fileAreaContainerId('fa1'), fileId: 'f1' },
+      ]);
+
+      expect(result.events).toEqual([]);
+    });
+
+    it('isolates a failed area sweep: other areas still report events instead of the whole call rejecting', async () => {
+      const mockFetch = vi.fn().mockImplementation((url: string) => {
+        if (url.includes('/file_areas/fa-broken/')) {
+          return Promise.reject(new Error('Dalux API 404: Not Found — file area deleted'));
+        }
+        if (url.includes('/file_areas/fa-ok/')) {
+          return Promise.resolve(
+            mockResponse({
+              json: () =>
+                Promise.resolve({
+                  items: [{ data: { fileId: 'ok-file', fileName: 'ok.ifc', fileAreaId: 'fa-ok', fileRevisionId: 'rev-2', deleted: false } }],
+                }),
+            }),
+          );
+        }
+        return Promise.resolve(mockResponse({ json: () => Promise.resolve({ items: [] }) }));
+      });
+
+      const ctx = createMockCtx(mockFetch as unknown as typeof fetch);
+      await ctx.storage.set('rev:proj1:fa-ok:ok-file', 'rev-1');
+      await ctx.storage.set('rev:proj1:fa-broken:broken-file', 'rev-1');
+
+      const result = await provider.watchRevisions(ctx, [
+        { projectId: 'proj1', containerId: fileAreaContainerId('fa-ok'), fileId: 'ok-file' },
+        { projectId: 'proj1', containerId: fileAreaContainerId('fa-broken'), fileId: 'broken-file' },
+      ]);
+
+      // The healthy area's event survives the broken area's failure.
+      expect(result.events).toContainEqual({ fileId: 'ok-file', latestRevisionId: 'rev-2', previousRevisionId: 'rev-1' });
+      expect(ctx.log.warn).toHaveBeenCalled();
+
+      // The healthy area's cache was advanced...
+      expect(await ctx.storage.get('rev:proj1:fa-ok:ok-file')).toBe('rev-2');
+      // ...but the broken area's cache is left untouched, so a retry next
+      // poll compares against the same baseline instead of silently having
+      // already "seen" whatever change caused the failure.
+      expect(await ctx.storage.get('rev:proj1:fa-broken:broken-file')).toBe('rev-1');
+    });
+
+    it('still advances a healthy area\'s cache even when a later area throws (buffer-then-commit is not all-or-nothing across areas)', async () => {
+      // Buffering exists to stop a cache from being advanced past a change
+      // whose event then gets lost — not to make one area's failure roll
+      // back another, healthy area's already-detected event too. Areas are
+      // isolated independently (per-area try/catch), so fa-ok's write must
+      // still land even though fa-broken's sweep throws.
+      const mockFetch = vi.fn().mockImplementation((url: string) => {
+        if (url.includes('/file_areas/fa-broken/')) {
+          return Promise.reject(new Error('boom'));
+        }
+        return Promise.resolve(
+          mockResponse({
+            json: () =>
+              Promise.resolve({
+                items: [{ data: { fileId: 'ok-file', fileName: 'ok.ifc', fileAreaId: 'fa-ok', fileRevisionId: 'rev-2', deleted: false } }],
+              }),
+          }),
+        );
+      });
+
+      const ctx = createMockCtx(mockFetch as unknown as typeof fetch);
+      await ctx.storage.set('rev:proj1:fa-ok:ok-file', 'rev-1');
+
+      await provider.watchRevisions(ctx, [
+        { projectId: 'proj1', containerId: fileAreaContainerId('fa-ok'), fileId: 'ok-file' },
+        { projectId: 'proj1', containerId: fileAreaContainerId('fa-broken'), fileId: 'broken-file' },
+      ]);
+
+      expect(await ctx.storage.get('rev:proj1:fa-ok:ok-file')).toBe('rev-2');
     });
   });
 
@@ -491,6 +639,32 @@ describe('DaluxBuildProvider', () => {
 
       expect(result.ok).toBe(false);
       expect(result.message).toContain('API identity lacks access');
+    });
+
+    it('returns a helpful message on 401', async () => {
+      const mockFetch = vi.fn().mockResolvedValue(mockResponse({ ok: false, status: 401, statusText: 'Unauthorized', text: () => Promise.resolve('') }));
+      const ctx = createMockCtx(mockFetch as unknown as typeof fetch);
+      const result = await provider.testConnection(ctx);
+
+      expect(result.ok).toBe(false);
+      expect(result.message).toContain('API identity lacks access');
+    });
+
+    it('does not misclassify a 500 whose body happens to mention "401" as an auth failure', async () => {
+      const mockFetch = vi.fn().mockResolvedValue(
+        mockResponse({
+          ok: false,
+          status: 500,
+          statusText: 'Internal Server Error',
+          text: () => Promise.resolve('upstream trace: handler for route /v401/x threw at line 403'),
+        }),
+      );
+      const ctx = createMockCtx(mockFetch as unknown as typeof fetch);
+      const result = await provider.testConnection(ctx);
+
+      expect(result.ok).toBe(false);
+      expect(result.message).not.toContain('API identity lacks access');
+      expect(result.message).toContain('500');
     });
   });
 });

@@ -51,6 +51,21 @@ export class DaluxPaginationError extends Error {
   }
 }
 
+/** Thrown for a non-2xx Dalux API response. Carries the actual HTTP status
+ * so callers that need to branch on it (auth-failure detection in
+ * `testConnection`, for one) match on `status` rather than on substrings of
+ * the interpolated error message — a truncated upstream body can contain
+ * digits that happen to look like a status code without being one. */
+export class DaluxHttpError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = 'DaluxHttpError';
+  }
+}
+
 export class BrowserDaluxApiClient {
   constructor(
     private readonly credentials: DaluxCredentials,
@@ -99,7 +114,10 @@ export class BrowserDaluxApiClient {
         statusText: response.statusText,
         body,
       });
-      throw new Error(`Dalux API ${response.status}: ${response.statusText} — ${truncate(body)}`);
+      throw new DaluxHttpError(
+        `Dalux API ${response.status}: ${response.statusText} — ${truncate(body)}`,
+        response.status,
+      );
     }
 
     return response.json() as Promise<unknown>;
@@ -129,7 +147,10 @@ export class BrowserDaluxApiClient {
         statusText: response.statusText,
         body,
       });
-      throw new Error(`Dalux API ${response.status}: ${response.statusText} — ${truncate(body)}`);
+      throw new DaluxHttpError(
+        `Dalux API ${response.status}: ${response.statusText} — ${truncate(body)}`,
+        response.status,
+      );
     }
 
     return response.arrayBuffer();
@@ -192,6 +213,15 @@ export interface DaluxPageResult {
  * eagerly loading an entire (potentially huge) tenant into memory before
  * returning the first row.
  *
+ * A `nextPage` link, when present, is authoritative and is always followed —
+ * even when the page it's attached to has zero items or reports
+ * `totalRemainingItems: 0`. That's a legitimate bookmark-pager shape: the
+ * server can signal "keep going" via the link while the counters on this
+ * particular page look like "done", with the real end only reached once a
+ * later page comes back both empty *and* linkless. Treating an empty or
+ * remaining-0 page as terminal whenever it still carries a `nextPage` link
+ * would silently truncate a listing that in fact had more pages.
+ *
  * Any condition that would otherwise truncate the listing silently — a
  * `nextPage` link with no bookmark, a bookmark that echoes the one just
  * used, or `metadata.totalRemainingItems > 0` with no `nextPage` link at
@@ -219,34 +249,30 @@ export async function fetchPage(
     hasNextLink: Boolean(nextLink),
   });
 
-  if (!page.items.length || remaining === 0) {
-    if (nextLink) {
+  // A nextPage link always wins over the item count or the remaining
+  // counter: follow it regardless of whether this particular page looks
+  // empty or "complete" (see the doc comment above for why that's not a
+  // contradiction upstream).
+  if (nextLink) {
+    const nextCursor = extractBookmark(nextLink.href, client.baseUrl, endpoint);
+    if (cursor && nextCursor === cursor) {
       throw new DaluxPaginationError(
-        `Dalux pagination inconsistent at ${endpoint}: server reported completion but still sent a nextPage link`,
+        `Dalux pagination stuck at ${endpoint}: server returned the same bookmark again`,
       );
     }
-    return { items: page.items, cursor: undefined };
+    return { items: page.items, cursor: nextCursor };
   }
 
-  if (!nextLink) {
-    if (remaining !== undefined && remaining > 0) {
-      throw new DaluxPaginationError(
-        `Dalux pagination truncated at ${endpoint}: ${remaining} item(s) remain but the server sent no nextPage link`,
-      );
-    }
-    // No metadata at all (e.g. a bare-array response) and no next link:
-    // there's nothing more to signal completion with, so this is the end.
-    return { items: page.items, cursor: undefined };
-  }
-
-  const nextCursor = extractBookmark(nextLink.href, client.baseUrl, endpoint);
-  if (cursor && nextCursor === cursor) {
+  // No nextPage link: this is the last page — unless the server claims more
+  // data remains with no link given to reach it, which is a genuinely
+  // truncated listing rather than a clean end.
+  if (remaining !== undefined && remaining > 0) {
     throw new DaluxPaginationError(
-      `Dalux pagination stuck at ${endpoint}: server returned the same bookmark again`,
+      `Dalux pagination truncated at ${endpoint}: ${remaining} item(s) remain but the server sent no nextPage link`,
     );
   }
 
-  return { items: page.items, cursor: nextCursor };
+  return { items: page.items, cursor: undefined };
 }
 
 /**

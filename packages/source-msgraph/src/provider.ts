@@ -43,7 +43,14 @@ import {
   matchesSearchNameFilter,
   matchesMimeFilter,
 } from './mapping.js';
-import { graphGetJson, graphListAll, graphListPage, graphRequest, type GraphTokenSource } from './graph-client.js';
+import {
+  graphGetJson,
+  graphListAll,
+  graphListPage,
+  graphRequest,
+  truncateErrorBody,
+  type GraphTokenSource,
+} from './graph-client.js';
 import { isFile, isFolder } from './graph-types.js';
 import type { GraphDrive, GraphDriveItem, GraphDriveItemVersion, GraphSite, GraphUser } from './graph-types.js';
 
@@ -58,38 +65,57 @@ export class MsGraphProvider implements FileSourceProvider {
 
   async listProjects(ctx: PluginContext, options?: ListProjectsOptions): Promise<Page<SourceProject>> {
     const query = options?.query?.trim();
+    const cursor = options?.cursor;
     const projects: SourceProject[] = [];
 
     if (!query) {
       // No-query default: the user's own OneDrive plus whatever sites Graph
       // says they follow. `projectsAreDiscoverableOnly` tells the host this
       // is knowingly partial — delegated Graph has no "list every site".
-      projects.push({ id: onedriveProjectId('me'), name: 'My OneDrive', meta: { kind: 'onedrive' } });
+      // "My OneDrive" only belongs on the first page: a `cursor` here is
+      // always a `/me/followedSites` `@odata.nextLink`, and re-adding it on
+      // every subsequent page would duplicate it in the host's listing.
+      if (!cursor) {
+        projects.push({ id: onedriveProjectId('me'), name: 'My OneDrive', meta: { kind: 'onedrive' } });
+      }
       try {
-        const followed = await graphGetJson<{ value: GraphSite[] }>(ctx, this.auth, '/me/followedSites', {
-          signal: options?.signal,
-        });
-        for (const site of followed.value) projects.push(siteToProject(site, PROJECT_SITE_PREFIX));
+        const page = await graphListPage<GraphSite>(
+          ctx,
+          this.auth,
+          '/me/followedSites',
+          cursor,
+          options?.limit,
+          options?.signal,
+        );
+        for (const site of page.items) projects.push(siteToProject(site, PROJECT_SITE_PREFIX));
+        return { items: projects, cursor: page.cursor };
       } catch (err) {
         // /me/followedSites carries a documented known-issue about
-        // occasionally-incorrect results; a hard failure here must not take
-        // down the OneDrive entry, which always works.
+        // occasionally-incorrect results; a hard failure on the *first* page
+        // must not take down the OneDrive entry, which always works. Once
+        // the host is mid-pagination (a cursor was supplied), though, a
+        // failure here must surface rather than being reported as a clean
+        // end-of-list — silently truncating would present a partial listing
+        // as complete.
+        if (cursor) throw err;
         ctx.log.warn('Failed to list followed SharePoint sites', { error: String(err) });
+        return { items: projects };
       }
-      return { items: projects };
     }
 
-    if ('onedrive'.includes(query.toLowerCase()) || 'my files'.includes(query.toLowerCase())) {
+    if (!cursor && ('onedrive'.includes(query.toLowerCase()) || 'my files'.includes(query.toLowerCase()))) {
       projects.push({ id: onedriveProjectId('me'), name: 'My OneDrive', meta: { kind: 'onedrive' } });
     }
-    const searched = await graphGetJson<{ value: GraphSite[] }>(
+    const page = await graphListPage<GraphSite>(
       ctx,
       this.auth,
       `/sites?search=${encodeURIComponent(query)}`,
-      { signal: options?.signal },
+      cursor,
+      options?.limit,
+      options?.signal,
     );
-    for (const site of searched.value) projects.push(siteToProject(site, PROJECT_SITE_PREFIX));
-    return { items: projects };
+    for (const site of page.items) projects.push(siteToProject(site, PROJECT_SITE_PREFIX));
+    return { items: projects, cursor: page.cursor };
   }
 
   async listContainers(
@@ -198,8 +224,11 @@ export class MsGraphProvider implements FileSourceProvider {
     const response = await ctx.fetchPublic(downloadUrl, { signal: options?.signal });
     if (!response.ok) {
       const body = await response.text().catch(() => '');
+      // The full body is worth keeping for diagnostics; the message below
+      // reaches user-facing toasts, so it must stay short.
+      if (body) ctx.log.error(`Pre-authenticated download failed (${response.status} ${response.statusText})`, { body });
       throw new Error(
-        `Download failed (${response.status} ${response.statusText})${body ? `: ${body}` : ''}. ` +
+        `Download failed (${response.status} ${response.statusText})${body ? `: ${truncateErrorBody(body)}` : ''}. ` +
           'The pre-authenticated download URL may have expired (it lives roughly an hour, ' +
           'sometimes only minutes) — retry the download to fetch a fresh one.',
       );

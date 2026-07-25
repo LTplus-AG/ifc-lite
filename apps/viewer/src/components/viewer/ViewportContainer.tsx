@@ -48,6 +48,7 @@ import {
 } from '@/services/sources/source-host';
 import { useOptionalSourceHost } from '@/services/sources/SourceHostProvider';
 import { recordDownloadedSourceFile } from '@/lib/sources/persistence';
+import { enqueueSourceLoad } from '@/lib/sources/loadQueue';
 import { toast } from '@/components/ui/toast';
 import { TourInvite } from '@/components/tours/TourInvite';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
@@ -516,14 +517,15 @@ export function ViewportContainer() {
   // viewer and hand them off via this event rather than calling addModel()
   // directly — keeps the sources UI decoupled from viewer internals.
   //
-  // Batches are SERIALIZED through a promise chain: a second batch arriving
-  // while the first is still loading must not run `resetViewerState()` /
-  // `clearAllModels()` mid-finalize, and two `addModel` loops must never
-  // interleave (the WASM parser is not thread-safe). "Are models loaded?" is
-  // read from the store at run time, not from a closure captured at dispatch
-  // time. Each item's buffer reference is dropped as soon as its model has
-  // loaded so a large batch is not held in memory wholesale.
-  const sourceLoadQueueRef = useRef<Promise<void>>(Promise.resolve());
+  // Batches are SERIALIZED through the shared source-load queue: a second
+  // batch arriving while the first is still loading must not run
+  // `resetViewerState()` / `clearAllModels()` mid-finalize, and two
+  // `addModel` loops must never interleave (the WASM parser is not
+  // thread-safe). Per-model syncs (syncSourceModel) route through the same
+  // queue, so a Sync clicked mid-batch waits its turn too. "Are models
+  // loaded?" is read from the store at run time, not from a closure captured
+  // at dispatch time. Each item's buffer reference is dropped as soon as its
+  // model has loaded so a large batch is not held in memory wholesale.
   useEffect(() => {
     const handleSourceDownload = (event: Event) => {
       const detail = (event as SourceDownloadEvent).detail;
@@ -533,30 +535,51 @@ export function ViewportContainer() {
       const batch: Array<SourceDownloadItem | null> = [...detail.items];
       detail.items.length = 0;
 
-      sourceLoadQueueRef.current = sourceLoadQueueRef.current.then(async () => {
-        const store = useViewerStore.getState();
-        const anyLoaded =
-          store.models.size > 0 || (store.geometryResult?.meshes?.length ?? 0) > 0;
-        if (!anyLoaded) {
-          resetViewerState();
-          clearAllModels();
-        }
-
-        for (let i = 0; i < batch.length; i++) {
-          const item = batch[i];
-          if (!item) continue;
-          batch[i] = null; // release the buffer once this iteration owns it
-          const file = new File([item.buffer], item.name);
-          const modelId = await addModel(file, { name: item.name });
-          const providerTitle =
-            sourceHost?.get(item.tag.provider)?.manifest.title ?? item.tag.provider;
-          if (modelId) {
-            useViewerStore.getState().setSourceTag(modelId, item.tag);
-            recordDownloadedSourceFile(item.tag, item.sourceFile);
-            toast.success(`Loaded ${item.name} from ${providerTitle}`);
-          } else {
-            toast.error(`Failed to load ${item.name} from ${providerTitle}`);
+      void enqueueSourceLoad(async () => {
+        // An unexpected throw must never escape this task unreported: the
+        // queue itself survives rejections, but the user still needs to hear
+        // that their batch died rather than watching nothing happen.
+        try {
+          const store = useViewerStore.getState();
+          const anyLoaded =
+            store.models.size > 0 || (store.geometryResult?.meshes?.length ?? 0) > 0;
+          if (!anyLoaded) {
+            resetViewerState();
+            clearAllModels();
           }
+
+          for (let i = 0; i < batch.length; i++) {
+            const item = batch[i];
+            if (!item) continue;
+            batch[i] = null; // release the buffer once this iteration owns it
+            const file = new File([item.buffer], item.name);
+            // Pass an explicit id and treat "registered in the store" as
+            // success: addModel returns null when a concurrent load
+            // (drag-drop, viewport picker) bumps the shared load session,
+            // even though this model finished registering — same recovery
+            // syncSourceModel uses. Without it the toast would falsely report
+            // a failure and the model would get no source tag (no sync
+            // button, no badge, no downloaded-file record).
+            const modelId = crypto.randomUUID();
+            const added = await addModel(file, { name: item.name, modelId });
+            const registered = added !== null || useViewerStore.getState().models.has(modelId);
+            const providerTitle =
+              sourceHost?.get(item.tag.provider)?.manifest.title ?? item.tag.provider;
+            if (registered) {
+              useViewerStore.getState().setSourceTag(modelId, item.tag);
+              recordDownloadedSourceFile(item.tag, item.sourceFile);
+              toast.success(`Loaded ${item.name} from ${providerTitle}`);
+            } else {
+              toast.error(`Failed to load ${item.name} from ${providerTitle}`);
+            }
+          }
+        } catch (error) {
+          console.error('[sources] Failed to load a source download batch:', error);
+          toast.error(
+            error instanceof Error
+              ? `Failed to load models from cloud source: ${error.message}`
+              : 'Failed to load models from cloud source',
+          );
         }
       });
     };

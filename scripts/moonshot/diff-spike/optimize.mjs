@@ -140,13 +140,13 @@ export function pgd(x0, mu, opts = {}) {
 }
 
 export function optimize(opts = {}) {
-  const { scenario = {}, onAccept, onMuRamp } = opts;
+  const { scenario = {}, onAccept, onMuRamp, maxIterPerRound = 2000 } = opts;
   // Start from the box centre.
   let x = PARAMS.map((p) => (p.lo + p.hi) / 2);
   const history = [];
   let mu = 10;
   for (let round = 0; round < 12; round++) {
-    const r = pgd(x, mu, { scenario, onAccept });
+    const r = pgd(x, mu, { scenario, onAccept, maxIter: maxIterPerRound });
     x = r.x;
     const n = evaluateNumeric(x, scenario);
     const maxViol = Math.max(0, ...n.constraints.map((c) => c.g / (G_SCALE[c.name] ?? 1)));

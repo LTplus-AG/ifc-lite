@@ -270,10 +270,15 @@ Reproduce (IFC artifacts and chains go to a working directory):
 ```
 node scripts/moonshot/diff-spike/optimize-certified.mjs --scenario baseline --out /tmp/b33/baseline
 node scripts/moonshot/diff-spike/optimize-certified.mjs --scenario strict   --out /tmp/b33/strict
-node scripts/moonshot/diff-spike/verify-trajectory.mjs /tmp/b33/baseline/trajectory-chain.json --recheck-cli
-node scripts/moonshot/diff-spike/verify-trajectory.mjs /tmp/b33/strict/trajectory-chain.json
-node scripts/moonshot/diff-spike/tamper-test.mjs /tmp/b33/baseline/trajectory-chain.json --full
+node scripts/moonshot/diff-spike/verify-trajectory.mjs /tmp/b33/baseline/trajectory-chain-v2.json --recheck-cli
+node scripts/moonshot/diff-spike/verify-trajectory.mjs /tmp/b33/strict/trajectory-chain-v2.json
+node scripts/moonshot/diff-spike/tamper-test.mjs /tmp/b33/baseline/trajectory-chain-v2.json --full
 ```
+
+(The certified run now writes the checkpointed v2 chain by default -
+`--emit-v1` additionally writes the original one-certificate-per-step
+chain; see "Chain format v2" below. The v1 numbers in the table above are
+unchanged history.)
 
 ### Protocol notes
 
@@ -369,3 +374,107 @@ descent, M1's hashes gave verifiable state, and their composition gives
 something neither had alone - an optimization result a third party can
 audit step by step without re-running the optimizer's search or trusting
 its author.
+
+### Chain format v2: checkpointed segments
+
+The v1 chain is one certificate per accepted step: correct, but 22,000+
+records and 46-51 MB per run, which makes storage and verification I/O the
+bottleneck artifact-side (verification itself is compute-bound at ~2-3 ms
+per step - the Armijo replay, not the reading, is the cost). Format v2
+(`trajectory-cert-v2`, built by `chainToV2()` in `trajectory.mjs`,
+emitted by default by `optimize-certified.mjs`) batches N consecutive
+steps (default 256, `--segment N`) into a segment record whose
+`@ifc-lite/provenance` v0 certificate commits:
+
+- the segment's start and end state DAG roots (certificate reads = the
+  entry state's nodes, writes = the exit state's nodes),
+- the aggregate claim: scalar-delta on `EmbodiedCarbon` from segment
+  start to segment end, bound to the boundary quantities nodes,
+- and, in the segment record itself, `stepsRoot`: a Merkle root over the
+  per-step commitment hashes inside the segment (`stepCommitHash`: SHA-256
+  over the step's fully DERIVED facts - index, mu, prev/new state roots,
+  new parameters, backtracks, step size, carbon/merit before+after,
+  gradient norm - so the sidecar is a replay aid, never a data channel),
+
+plus the segment's end parameters (24 f64s, so the skeleton can recommit
+the boundary state without replaying), step/record ranges and the mu at
+entry/exit. Per-step data shrinks to a JSONL sidecar with ONE field per
+step (`{"b":backtracks}` - everything else re-derives) and explicit mu-ramp
+lines; the sidecar's SHA-256 is pinned in the v2 header. The certificate
+wire format is untouched: segment certificates are ordinary v0
+certificates, the frozen `packages/provenance` primitives are used as-is,
+and v1 chains still verify (the verifier dispatches on the version tag).
+
+`verify-trajectory.mjs` has two modes for v2:
+
+- **FULL** (default): a skeleton pass over every segment (linkage of
+  boundary roots, mu schedule from the sidecar, boundary-state recommits
+  from the recorded end parameters, segment certificates against
+  re-derived payloads only, telescoping carbon aggregates) plus a full
+  replay of every segment - per-step exactly the v1 discipline (line-search
+  replay, monotone merit, state recommits) ending in the segment's Merkle
+  root. Exactly as strong as v1 verification.
+- **SPOT** (`--mode spot [--spot-k K] [--seed S]`): the same skeleton
+  pass over ALL segments, plus full replay of K seeded-randomly sampled
+  segments (default 8). Soundness tradeoff, stated plainly: anything that
+  breaks a segment boundary, certificate, aggregate claim, mu schedule, or
+  the sidecar bytes is still always caught; a forgery strictly INSIDE
+  unsampled segments - a fabricated interior descent path reconnecting
+  genuine boundary states with a self-consistent Merkle root and sidecar -
+  escapes with probability C(S-t,K)/C(S,K) for t tampered segments out of
+  S (e.g. 60% for t=1, S=20, K=8; the miss probability decays as
+  (1-K/S)^t for small t). The sample is only meaningful if the prover
+  cannot predict the seed: the CLI draws a fresh random seed per run and
+  prints it; `--seed` exists to reproduce, not to delegate the choice.
+  Both modes verify the endpoint exactly as v1 (kernel re-measurement
+  included unless `--skip-kernel`).
+
+Measured on a fresh 4,950-step baseline run (`--max-iter 450` to cap the
+per-round iteration count; same optimizer mathematics, endpoint fully
+kernel-valid), Apple Silicon, Node 22:
+
+| | v1 (per-step) | v2 (checkpointed, N=256) |
+|---|---|---|
+| chain size | 10.38 MB (4,960 records) | **39.6 KB** (20 segments) + 44.3 KB sidecar |
+| verification FULL (kernel-grounded) | 12.1 s | 11.3 s |
+| verification SPOT K=8 (kernel-grounded) | n/a | 4.3 s (8/20 segments replayed) |
+
+That is a ~124x size reduction at equal FULL-verification strength (the
+top-level chain alone is 262x smaller; at the original 22,000-step scale
+this extrapolates to ~180 KB chain + ~200 KB sidecar vs 46 MB, comfortably
+under the 1 MB target). v2 FULL is slightly FASTER than v1 despite doing
+the same merit replays because the per-step certificate hashing (6 node
+hashes/step) collapses into one SHA-256 step-commit plus 2 recommits and
+one certificate per 256 steps. SPOT cost is the skeleton (~0.2 s) + K
+segment replays + the endpoint kernel re-measurement.
+
+The v2 tamper battery (`tamper-test.mjs`, dispatches on the version tag)
+re-tests every mode on the real chain: a flipped boundary parameter,
+faked segment carbon (claim adjusted), broken segment linkage, forged end
+root, and a tampered sidecar are all caught by the SPOT skeleton alone; a
+consistently resealed sidecar flip and a forged Merkle root are caught by
+FULL replay; the endpoint tampers behave as in v1 (including the
+consistent forgery caught only by kernel re-measurement). The SPOT
+sampling tradeoff is demonstrated, not hidden: the same resealed interior
+forgery is DETECTED under a seed whose sample hits the tampered segment
+and MISSED under one that avoids it.
+
+What v2 gives up, honestly: (a) SPOT is probabilistic for interior
+forgeries - use FULL when the chain's author is the adversary and full
+assurance is required; (b) the per-step scalar audit trail (carbon/merit
+per step) is no longer stored - it is re-derived during replay, so
+inspecting an individual step's numbers requires replaying its segment
+(~0.6 s), not a JSON lookup; (c) failure localization in unreplayed
+segments is segment-granular, not step-granular. Storage-side there is no
+tradeoff: nothing the v1 verifier checked is weaker under v2 FULL.
+
+Reproduce:
+
+```
+node scripts/moonshot/diff-spike/optimize-certified.mjs --scenario baseline --out /tmp/b33/v2 --max-iter 450 --emit-v1
+node scripts/moonshot/diff-spike/verify-trajectory.mjs /tmp/b33/v2/trajectory-chain-v2.json
+node scripts/moonshot/diff-spike/verify-trajectory.mjs /tmp/b33/v2/trajectory-chain-v2.json --mode spot --recheck-cli
+node scripts/moonshot/diff-spike/verify-trajectory.mjs /tmp/b33/v2/trajectory-chain.json
+node scripts/moonshot/diff-spike/tamper-test.mjs /tmp/b33/v2/trajectory-chain-v2.json --full
+node scripts/moonshot/diff-spike/tamper-test.mjs /tmp/b33/v2/trajectory-chain.json --full
+```

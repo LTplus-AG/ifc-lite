@@ -156,6 +156,20 @@ export function isPointInCompiledZone(
  * projected half-width is `hx*|axis.x| + hz*|axis.z|` and, projected onto
  * one of ITS OWN axes, the zone's half-width is simply its own half-extent
  * — both closed forms of the standard box/box separating-axis test.
+ *
+ * `eps` is slack added to the "not separated" threshold on every axis (and
+ * the Y interval check), so its SIGN controls what "overlap" means:
+ *  - positive (the default, 1e-6) — INCLUSIVE: two boxes that merely touch
+ *    (zero-depth contact, e.g. floating-point-exact shared edges) still
+ *    count as overlapping. Right for "does this box touch the zone at
+ *    all" queries.
+ *  - negative — a MINIMUM-PENETRATION requirement: a separating axis is
+ *    found (boxes do NOT overlap) unless the true overlap depth on every
+ *    axis exceeds `-eps`. Passing `eps = -d` demands at least `d` metres of
+ *    real penetration, which is exactly what distinguishes "elements that
+ *    end at a shared zone-set boundary" (zero penetration, common when
+ *    zone sets tile a building) from "elements that actually straddle
+ *    into the next zone" — see `assignment.ts`'s `STRADDLE_PENETRATION_M`.
  */
 export function zoneOverlapsAABBCompiled(
   minX: number,

@@ -26,7 +26,7 @@ export {
   type CompiledZone,
 } from './geometry.js';
 
-export { assignElementsToZoneSet, assignElementsToZoneSets } from './assignment.js';
+export { assignElementsToZoneSet, assignElementsToZoneSets, STRADDLE_PENETRATION_M } from './assignment.js';
 
 export {
   generateStoreyZones,

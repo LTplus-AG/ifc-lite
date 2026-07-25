@@ -4,7 +4,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { assignElementsToZoneSet, assignElementsToZoneSets } from './assignment.js';
+import { assignElementsToZoneSet, assignElementsToZoneSets, STRADDLE_PENETRATION_M } from './assignment.js';
 import type { ElementAABB, Zone, ZoneSet } from './types.js';
 
 function makeZone(id: string, centerX: number, overrides: Partial<Zone> = {}): Zone {
@@ -100,5 +100,48 @@ describe('zones/assignment', () => {
     for (const id of [1, 2]) {
       assert.strictEqual(byElement.get(id)!.a.zoneId, null);
     }
+  });
+
+  // Zone sets that TILE a building (takt areas / construction sections) are
+  // the primary use case, so two zones sharing an exact boundary plane is the
+  // common case, not an edge case. An element ENDING exactly at that shared
+  // boundary (a wall or slab, very common) must not register as straddling
+  // with zero real overlap into the neighbour — that would flood the flag
+  // precisely on the models this feature targets. See STRADDLE_PENETRATION_M.
+  describe('shared zone-set boundaries (adversarial review follow-up)', () => {
+    // Zone A x=[0,10], Zone B x=[10,20] — share the boundary plane at x=10.
+    const tiledZoneSet = makeZoneSet('s1', [makeZone('a', 5), makeZone('b', 15)]);
+
+    it('an element ending exactly at the shared boundary touches only its own zone, no straddle', () => {
+      const elements = [el(1, 8, 10)]; // ends exactly at x=10, zero penetration into B
+      const result = assignElementsToZoneSet(elements, tiledZoneSet);
+      const a = result.get(1)!;
+      assert.strictEqual(a.zoneId, 'a');
+      assert.strictEqual(a.straddles, false);
+      assert.deepStrictEqual(a.touchedZoneIds, ['a']);
+    });
+
+    it('an element penetrating past the boundary by more than the threshold DOES straddle', () => {
+      // 5cm into zone B — comfortably past STRADDLE_PENETRATION_M (1mm).
+      assert.ok(0.05 > STRADDLE_PENETRATION_M);
+      const elements = [el(1, 8, 10.05)];
+      const result = assignElementsToZoneSet(elements, tiledZoneSet);
+      const a = result.get(1)!;
+      assert.strictEqual(a.straddles, true);
+      assert.deepStrictEqual(a.touchedZoneIds.sort(), ['a', 'b']);
+      assert.strictEqual(a.zoneId, 'a'); // centroid (x=9.025) is still deep inside A
+    });
+
+    it('a degenerate zero-thickness AABB lying exactly ON the boundary is UNASSIGNED, not straddling', () => {
+      // A collapsed/flattened element sitting exactly at the shared plane
+      // penetrates NEITHER neighbour by the threshold, so it touches no
+      // zone at all — documented behaviour, not an oversight.
+      const elements: ElementAABB[] = [{ globalId: 1, min: [10, -1, -1], max: [10, 1, 1] }];
+      const result = assignElementsToZoneSet(elements, tiledZoneSet);
+      const a = result.get(1)!;
+      assert.strictEqual(a.zoneId, null);
+      assert.strictEqual(a.straddles, false);
+      assert.deepStrictEqual(a.touchedZoneIds, []);
+    });
   });
 });

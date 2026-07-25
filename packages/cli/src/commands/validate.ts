@@ -265,10 +265,13 @@ export function computeValidationIssues(store: IfcDataStore): ValidationIssue[] 
   // it reports as an error like unique-globalid does.
   const dangling = collectDanglingReferences(store);
   for (const d of dangling.slice(0, DANGLING_REF_ISSUE_CAP)) {
+    // Display names render in IFC PascalCase (IfcWall, not IFCWALL); the
+    // collector carries the raw STEP token, so resolve through the table.
+    const typeName = store.entities.getTypeName(d.entityId) || d.entityType;
     issues.push({
       severity: 'error',
       rule: 'reference-integrity',
-      message: `#${d.entityId} ${d.entityType} attribute ${d.attributeIndex} references missing entity #${d.target}`,
+      message: `#${d.entityId} ${typeName} attribute ${d.attributeIndex} references missing entity #${d.target}`,
       entityId: d.entityId,
       attributeIndex: d.attributeIndex,
       target: d.target,

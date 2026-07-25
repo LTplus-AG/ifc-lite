@@ -781,7 +781,7 @@ Checks:
 - Building storeys existence
 - GlobalId uniqueness
 - Named elements
-- Reference integrity (every `#N` attribute reference must point at an entity that exists in the file; each dangling reference is reported with the referencing entity, attribute slot, and missing target)
+- Reference integrity (every `#N` attribute reference must point at an entity that exists in the file; each dangling reference is reported with the referencing entity, attribute slot, and missing target — detailed up to the first 50, after which a single rollup issue reports the count of remaining dangling references)
 
 Returns exit code 0 (valid) or 1 (errors found).
 

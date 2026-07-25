@@ -8,6 +8,9 @@
  * entity, attribute slot, and missing target), while `#N`-looking sequences
  * inside string literals must not. Proven gap: a text scan caught planted
  * dangling refs that `ifc-lite validate` missed entirely.
+ *
+ * Regression suite for PR #1868 (world-gym benchmark surfaced the gap: the
+ * kernel-oracle baseline scored F1=0 on 94 planted dangling refs).
  */
 
 import { describe, it, expect } from 'vitest';
@@ -95,6 +98,9 @@ describe('computeValidationIssues reference-integrity rule', () => {
       expect(issue.severity).toBe('error');
       expect(issue.message).toContain('references missing entity');
     }
+    // Display names render in IFC PascalCase, not the raw STEP token.
+    expect(refIssues.map(i => i.message).join('\n')).toContain('IfcWall');
+    expect(refIssues.map(i => i.message).join('\n')).not.toContain('IFCWALL');
     const targets = refIssues.map(i => i.target).sort();
     expect(targets).toEqual([8888, 9999]);
     // Errors present means the validate command reports the file as invalid.

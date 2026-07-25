@@ -29,6 +29,7 @@ import { getPointCloudScanSample } from './ingest/pointCloudScanCache.js';
 import {
   selectScanBand,
   mergeScanBandSelections,
+  resolveScanSectionPosition,
   DEFAULT_SCAN_RENDER_CAP,
   type ScanBandSelection,
   type ScanPointSample,
@@ -119,16 +120,23 @@ function collectScanSources(
   return sources;
 }
 
-function toScanSectionPlane(sectionPlane: UseScanSectionLayerParams['sectionPlane']): ScanSectionPlane {
+function toScanSectionPlane(
+  sectionPlane: UseScanSectionLayerParams['sectionPlane'],
+  coordinateInfo: UseScanSectionLayerParams['coordinateInfo'],
+): ScanSectionPlane {
   const axis = SCAN_SECTION_AXIS_MAP[sectionPlane.axis];
+  // The store's `position` is a 0-100 PERCENTAGE of model bounds, not
+  // metres — resolve it exactly the way `useDrawingGeneration` places the
+  // cut, or the band sits on a different plane than the drawn geometry.
+  const position = resolveScanSectionPosition(sectionPlane.position, axis, coordinateInfo);
   if (!sectionPlane.custom) {
-    return { axis, position: sectionPlane.position, flipped: sectionPlane.flipped };
+    return { axis, position, flipped: sectionPlane.flipped };
   }
   const c = sectionPlane.custom;
   const origin = customPlaneCenter(c);
   return {
     axis,
-    position: sectionPlane.position,
+    position,
     flipped: sectionPlane.flipped,
     custom: {
       normal: c.normal,
@@ -183,7 +191,7 @@ export function useScanSectionLayer(params: UseScanSectionLayerParams): UseScanS
         setSelection(EMPTY_SELECTION);
         return;
       }
-      const plane = toScanSectionPlane(sectionPlane);
+      const plane = toScanSectionPlane(sectionPlane, coordinateInfo);
       const selections = sources.map((sample) => selectScanBand({
         sample, coordinateInfo, plane, thickness, classMask, maxRendered,
       }));
@@ -207,7 +215,10 @@ export function useScanSectionLayer(params: UseScanSectionLayerParams): UseScanS
     maxRendered,
   ]);
 
-  return { ...selection, hasPointCloud };
+  // Stable result identity: consumers put this object in dependency arrays
+  // (`useDrawingExport`'s SVG memos), so a fresh spread per render would
+  // re-create those callbacks on every unrelated parent render.
+  return useMemo(() => ({ ...selection, hasPointCloud }), [selection, hasPointCloud]);
 }
 
 export default useScanSectionLayer;

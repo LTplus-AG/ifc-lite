@@ -168,6 +168,34 @@ export function toRenderFrame(p: Vec3, shift: Vec3): Vec3 {
   return { x: p.x - shift.x, y: p.y - shift.y, z: p.z - shift.z };
 }
 
+/**
+ * Resolve the store's cardinal section-plane `position` — a **0-100
+ * percentage of model bounds** (`SectionPlane.position` in `store/types.ts`)
+ * — into the shifted-render-frame metres {@link ScanSectionPlane.position}
+ * expects.
+ *
+ * MUST stay the exact formula `useDrawingGeneration` (and Section2DPanel's
+ * annotation slab) use to place the cut itself:
+ *
+ *   position = axisMin + (percent / 100) * (axisMax - axisMin)
+ *
+ * over `coordinateInfo.shiftedBounds` — feeding the percentage through as
+ * metres selects a band on a *different plane* than the drawn cut (the bug
+ * class this feature exists to avoid). Degenerate/absent bounds collapse to
+ * the axis minimum (0 when no coordinate info exists at all), matching the
+ * empty drawing those models produce.
+ */
+export function resolveScanSectionPosition(
+  positionPercent: number,
+  axis: ScanSectionAxis,
+  coordinateInfo: CoordinateInfo | undefined,
+): number {
+  const bounds = coordinateInfo?.shiftedBounds;
+  const axisMin = bounds?.min?.[axis] ?? 0;
+  const axisMax = bounds?.max?.[axis] ?? 0;
+  return axisMin + (positionPercent / 100) * (axisMax - axisMin);
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // BAND TEST + PROJECTION
 // ═══════════════════════════════════════════════════════════════════════════

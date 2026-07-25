@@ -12,6 +12,7 @@ import assert from 'node:assert';
 import {
   pointCloudRenderFrameShift,
   toRenderFrame,
+  resolveScanSectionPosition,
   signedBandDistance,
   isPointInBand,
   projectScanPoint,
@@ -65,6 +66,49 @@ describe('toRenderFrame', () => {
     close(p.x, 9);
     close(p.y, 18);
     close(p.z, 27);
+  });
+});
+
+describe('resolveScanSectionPosition', () => {
+  // Regression guard for the store contract: `SectionPlane.position` is a
+  // 0-100 PERCENTAGE of model bounds (store/types.ts), and the scan layer
+  // must resolve it over `shiftedBounds` with the exact formula
+  // `useDrawingGeneration` uses to place the cut — using the raw
+  // percentage as metres put the band on a different plane than the drawn
+  // geometry for almost every model.
+  const coordinateInfo = {
+    shiftedBounds: {
+      min: { x: -4, y: 2, z: -10 },
+      max: { x: 6, y: 12, z: 30 },
+    },
+  } as never;
+
+  it('maps 0 / 50 / 100 % onto the shifted-bounds axis range', () => {
+    close(resolveScanSectionPosition(0, 'y', coordinateInfo), 2);
+    close(resolveScanSectionPosition(50, 'y', coordinateInfo), 7);
+    close(resolveScanSectionPosition(100, 'y', coordinateInfo), 12);
+    close(resolveScanSectionPosition(25, 'z', coordinateInfo), 0); // -10 + 0.25*40
+    close(resolveScanSectionPosition(50, 'x', coordinateInfo), 1);
+  });
+
+  it('collapses to the axis minimum on degenerate/absent bounds', () => {
+    close(resolveScanSectionPosition(50, 'y', undefined), 0);
+  });
+
+  it('percentage slider selects the band at the DRAWN cut plane, not at "percent metres"', () => {
+    // Model spans y ∈ [2, 12]; slider at 30% → cut at y = 5.
+    // A point at y=5 must be in band; a point at y=30 ("percent as
+    // metres" trap) must not.
+    const positions = new Float32Array([0, 5, 0, 0, 30, 0]);
+    const sample: ScanPointSample = { positions, count: 2 };
+    const plane: ScanSectionPlane = {
+      axis: 'y',
+      position: resolveScanSectionPosition(30, 'y', coordinateInfo),
+      flipped: false,
+    };
+    const result = selectScanBand({ sample, coordinateInfo, plane, thickness: 0.2 });
+    assert.strictEqual(result.totalInBand, 1);
+    close(result.points[0].point.x, 0);
   });
 });
 

@@ -123,9 +123,16 @@ for (const group of result.groups ?? []) {
 }
 
 // A Bonsai-style schedule/pivot table — one row per group-value tuple (the
-// LEAF groups only) instead of a nested tree. `levelCount` is the number of
-// active grouping columns.
-const scheduleRows = toScheduleRows(result.groups, definition.grouping.columnIds.length);
+// LEAF groups only) instead of a nested tree. `levelCount` must be the number
+// of grouping columns that were ACTUALLY applied: the engine drops grouping
+// ids whose column is no longer in the definition (a stale persisted grouping
+// is the common case), so passing the raw `columnIds.length` can ask for a
+// deeper leaf level than the groups have — and `toScheduleRows` then matches
+// nothing and returns no rows.
+const activeGroupIds = definition.grouping.columnIds.filter(
+  (id) => definition.columns.some((c) => c.id === id),
+);
+const scheduleRows = toScheduleRows(result.groups, activeGroupIds.length);
 for (const row of scheduleRows) {
   console.log(row.path, row.count, row.sums); // e.g. ["Wall-01"], 1, { ... }
 }

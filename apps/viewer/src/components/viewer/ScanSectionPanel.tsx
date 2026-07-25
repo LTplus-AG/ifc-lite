@@ -117,9 +117,11 @@ export function ScanSectionPanel({
 
         {hasPointCloud && (
           <p className="text-[11px] text-muted-foreground border-t pt-2">
-            {renderedCount >= totalInBand
-              ? `Showing all ${totalInBand.toLocaleString()} points in band.`
-              : `Showing ${renderedCount.toLocaleString()} of ${totalInBand.toLocaleString()} points in band (decimated for display).`}
+            {!showScanSection
+              ? 'A scan is loaded but the overlay is hidden — enable "Show scan points" above.'
+              : renderedCount >= totalInBand
+                ? `Showing all ${totalInBand.toLocaleString()} points in band.`
+                : `Showing ${renderedCount.toLocaleString()} of ${totalInBand.toLocaleString()} points in band (decimated for display).`}
           </p>
         )}
       </div>

@@ -109,6 +109,22 @@ describe('pointCloudScanCache', () => {
     assert.deepStrictEqual(Array.from(sample.colors!.slice(3, 6)), [255, 0, 0]);
   });
 
+  it('clamps non-finite capacities to the bounded default', () => {
+    // Infinity would retain every streamed point until OOM; NaN would
+    // retain none. Both clamp to the (finite) default capacity.
+    registerPointCloudScanCache(8, Number.POSITIVE_INFINITY);
+    addPointsToScanCache(8, makeChunk(10));
+    const inf = getPointCloudScanSample(8)!;
+    assert.ok(Number.isFinite(inf.capacity) && inf.capacity >= 1);
+    assert.strictEqual(inf.count, 10);
+
+    registerPointCloudScanCache(9, Number.NaN);
+    addPointsToScanCache(9, makeChunk(10));
+    const nan = getPointCloudScanSample(9)!;
+    assert.ok(Number.isFinite(nan.capacity) && nan.capacity >= 1);
+    assert.strictEqual(nan.count, 10);
+  });
+
   it('re-registering the same handle resets the reservoir', () => {
     registerPointCloudScanCache(5, 10);
     addPointsToScanCache(5, makeChunk(10));

@@ -106,7 +106,13 @@ export function registerPointCloudScanCache(
   handleId: number,
   capacity: number = DEFAULT_SCAN_CACHE_CAPACITY,
 ): void {
-  caches.set(handleId, createReservoir(Math.max(1, Math.floor(capacity))));
+  // Non-finite capacities are caller bugs with catastrophic failure modes
+  // (Infinity → unbounded retention until OOM; NaN → a reservoir that
+  // retains nothing). Clamp to the default rather than propagating either.
+  const bounded = Number.isFinite(capacity)
+    ? Math.max(1, Math.floor(capacity))
+    : DEFAULT_SCAN_CACHE_CAPACITY;
+  caches.set(handleId, createReservoir(bounded));
 }
 
 function ensureColorBuffer(cache: ReservoirCache): Uint8Array {

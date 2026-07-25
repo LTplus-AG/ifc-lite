@@ -164,8 +164,11 @@ export function useScanSectionLayer(params: UseScanSectionLayerParams): UseScanS
   const customKey = sectionPlane.custom
     ? `${sectionPlane.custom.normal.join(',')}|${sectionPlane.custom.distance}|${sectionPlane.custom.tangent.join(',')}|${sectionPlane.custom.bitangent.join(',')}`
     : '';
+  // Includes the inline point-cloud count so a federated IFCx model whose
+  // `geometryResult.pointClouds` populates AFTER registration (same
+  // id/visible/handleId) still retriggers the recompute below.
   const modelsKey = Array.from(models.entries())
-    .map(([id, m]) => `${id}:${m.visible ? 1 : 0}:${m.pointCloudHandleId ?? ''}`)
+    .map(([id, m]) => `${id}:${m.visible ? 1 : 0}:${m.pointCloudHandleId ?? ''}:${m.geometryResult?.pointClouds?.length ?? 0}`)
     .join('|');
 
   // Cheap presence check (map lookups, no O(n) point scan) — independent of

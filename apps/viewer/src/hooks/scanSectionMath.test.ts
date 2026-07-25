@@ -339,6 +339,20 @@ describe('mergeScanBandSelections', () => {
     assert.ok(merged.points.some((p) => p.point.x >= 10_000));
   });
 
+  it('merges render-cap-scale selections without overflowing the call stack', () => {
+    // `push(...points)` turns every point into a call argument and throws
+    // RangeError somewhere above ~100k; the cap is 500k, so a merge at
+    // scale must use a plain loop.
+    const big = {
+      points: Array.from({ length: 300_000 }, (_, i) => ({ point: { x: i, y: 0 } })),
+      totalInBand: 300_000,
+      renderedCount: 300_000,
+      stride: 1,
+    };
+    const merged = mergeScanBandSelections([big]);
+    assert.strictEqual(merged.renderedCount, 300_000);
+  });
+
   it('sums counts and reports the largest per-asset stride', () => {
     const a = { points: [{ point: { x: 0, y: 0 } }], totalInBand: 10, renderedCount: 1, stride: 10 };
     const b = {

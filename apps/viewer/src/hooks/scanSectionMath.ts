@@ -322,7 +322,10 @@ export function mergeScanBandSelections(
   for (const sel of selections) {
     totalInBand += sel.totalInBand;
     if (sel.stride > maxStride) maxStride = sel.stride;
-    points.push(...sel.points);
+    // Plain loop, not `push(...sel.points)`: spreading turns every point
+    // into a call argument, and at render-cap scale (hundreds of
+    // thousands) that overflows the call stack (RangeError).
+    for (const p of sel.points) points.push(p);
   }
   if (maxRendered !== undefined && maxRendered > 0 && points.length > maxRendered) {
     const extra = Math.ceil(points.length / maxRendered);

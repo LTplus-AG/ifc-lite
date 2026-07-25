@@ -66,6 +66,35 @@ const svg = exportToSVG(drawing, {
 document.getElementById('drawing').innerHTML = svg;
 ```
 
+### DXF Export
+
+Drawings can also be exported as ASCII DXF R12 (`AC1009`) — the universal
+CAD interop baseline. Coordinates are written verbatim in the drawing's own
+unit (metres); an optional `coordinateTransform` maps every point (drawing
+geometry and underlays alike) right before it reaches the writer, which is
+how the viewer georeferences plan sections to true world/map coordinates
+(issue #1861):
+
+```typescript
+import { exportToDXF } from '@ifc-lite/drawing-2d';
+
+const dxf = exportToDXF(drawing, {
+  showHiddenLines: true,
+  showHatching: true, // cut polygons become closed POLYLINE boundaries
+  // Optional: applied to every emitted point, e.g. drawing -> world/CRS.
+  coordinateTransform: (p) => ({ x: p.x + 2600000, y: 2007 - p.y }),
+  // R12 has no $INSUNITS; the unit (and CRS, if any) goes in a leading 999 comment.
+  metadataComment: 'ifc-lite section export - units: metres, CRS: EPSG:2056',
+});
+// dxf is the full ASCII DXF document text
+```
+
+Lines land on per-category layers (`IFC-CUT`, `IFC-PROJECTION`,
+`IFC-HIDDEN`, …), hidden lines use a `DASHED` linetype, and colours are
+resolved to the nearest AutoCAD Color Index. Layer names follow the strict
+R12 symbol rules (31 chars, `A-Z a-z 0-9 $ - _`); names that collide after
+sanitizing get a numeric suffix instead of merging.
+
 ## Drawing Sheets
 
 For presentation-ready output, drawings can be placed on sheets with frames and title blocks:
@@ -182,7 +211,7 @@ In the IFClite viewer:
 4. **Annotate** - Add measurements, polygon areas, text boxes, and revision clouds
 5. **Select & edit** - Click annotations to select, drag to move, Delete to remove
 6. **Graphic overrides** - Apply presets to change element appearance
-7. **Export SVG** - Download the drawing as vector SVG
+7. **Export** - Download the drawing as vector SVG, or as DXF R12 (plan sections are georeferenced to true world/map coordinates when the model carries an `IfcMapConversion`)
 
 ### Annotation Tools
 

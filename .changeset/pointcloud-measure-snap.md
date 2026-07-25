@@ -14,4 +14,12 @@ front of — or on its own with no mesh loaded at all — is now pickable. The
 index is disposed with its owning `PointCloudNode`, mirroring the existing
 GPU-buffer teardown.
 
-Adds `SnapType.POINT_CLOUD` to the exported `SnapType` enum (additive).
+Point snapping respects the caller's snap configuration: with every mesh
+snap kind disabled (the viewer's snap toggle OFF) scan points are not
+grabbed either, and an explicit `SnapOptions.snapToPointClouds` overrides
+that default in either direction. The snap tolerance is camera-aware —
+linear in ray depth under perspective, constant under orthographic
+projection.
+
+Additive API: `SnapType.POINT_CLOUD` on the exported `SnapType` enum, and
+the optional `SnapOptions.snapToPointClouds` flag.

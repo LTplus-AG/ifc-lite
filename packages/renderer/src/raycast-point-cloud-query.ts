@@ -10,7 +10,7 @@
  */
 
 import type { Ray, Vec3 } from './raycaster.js';
-import type { MagneticSnapResult, SnapTarget } from './snap-detector.js';
+import type { MagneticSnapResult, SnapOptions, SnapTarget } from './snap-detector.js';
 import { screenToWorldRadius } from './snap-geometry-utils.js';
 import type { PickOptions } from './types.js';
 import type { PointCloudSpatialIndex } from './pointcloud/point-cloud-spatial-index.js';
@@ -39,6 +39,25 @@ export interface PointCloudRayResult {
 }
 
 /**
+ * The camera facts the point-cloud snap tolerance depends on. In
+ * perspective mode the world size of a screen pixel grows linearly with
+ * ray depth `t`; in orthographic mode it is CONSTANT
+ * (`2 * orthoHalfHeight / canvasHeightPx` per pixel, independent of
+ * depth), so `orthoHalfHeight` must be supplied when the camera is
+ * orthographic or far points get an inflated snap radius and near
+ * points an unusably tight one. (The mesh snap path predates this and
+ * still applies the perspective formula in ortho — a pre-existing
+ * divergence, not one this module introduces.)
+ */
+export interface PointCloudSnapCamera {
+  /** Vertical field of view in RADIANS (`Camera.getFOV()`), perspective only. */
+  fov: number;
+  canvasHeightPx: number;
+  /** `Camera.getOrthoSize()` when the projection is orthographic, else null. */
+  orthoHalfHeight?: number | null;
+}
+
+/**
  * World-space point-cloud snap tolerance at ray depth `t` — the same
  * conversion `queryPointClouds` uses internally, exposed so
  * `pointCloudWinsOverMeshSnap` can apply the identical margin when
@@ -46,8 +65,30 @@ export interface PointCloudRayResult {
  * existing mesh snap, not just a few mm of scan noise nearer (#1860
  * review finding 2).
  */
-export function pointCloudSnapToleranceAt(t: number, cameraFov: number, canvasHeightPx: number): number {
-  return screenToWorldRadius(POINT_CLOUD_SNAP_TOLERANCE_PX, t, cameraFov, canvasHeightPx);
+export function pointCloudSnapToleranceAt(t: number, camera: PointCloudSnapCamera): number {
+  if (camera.orthoHalfHeight !== undefined && camera.orthoHalfHeight !== null) {
+    // Orthographic: a pixel spans the same world distance at every depth.
+    return (POINT_CLOUD_SNAP_TOLERANCE_PX / camera.canvasHeightPx) * (2 * camera.orthoHalfHeight);
+  }
+  return screenToWorldRadius(POINT_CLOUD_SNAP_TOLERANCE_PX, t, camera.fov, camera.canvasHeightPx);
+}
+
+/**
+ * Whether the caller's snap configuration allows point-cloud snapping at
+ * all. Mirrors `SnapDetector`'s defaulting (absent fields mean ON): with
+ * no `snapOptions` every snap kind is enabled; with one, an explicit
+ * `snapToPointClouds` wins, otherwise point snapping follows "is any
+ * mesh snap kind enabled" — so the viewer's snap toggle (which flips
+ * vertices/edges/faces all off) disables scan-point snapping too instead
+ * of the measure tool still magnetically grabbing scan points with
+ * snapping visibly OFF.
+ */
+export function pointCloudSnapEnabled(snapOptions?: Partial<SnapOptions>): boolean {
+  if (!snapOptions) return true;
+  if (snapOptions.snapToPointClouds !== undefined) return snapOptions.snapToPointClouds;
+  return (snapOptions.snapToVertices ?? true)
+    || (snapOptions.snapToEdges ?? true)
+    || (snapOptions.snapToFaces ?? true);
 }
 
 /**
@@ -62,8 +103,7 @@ export function pointCloudSnapToleranceAt(t: number, cameraFov: number, canvasHe
 export function queryPointClouds(
   provider: PointCloudRayProvider | null,
   ray: Ray,
-  cameraFov: number,
-  canvasHeightPx: number,
+  camera: PointCloudSnapCamera,
   maxDistance: number,
   options?: PickOptions,
 ): PointCloudRayResult | null {
@@ -71,7 +111,7 @@ export function queryPointClouds(
   const sources = provider();
   if (sources.length === 0) return null;
 
-  const toleranceAt = (t: number): number => pointCloudSnapToleranceAt(t, cameraFov, canvasHeightPx);
+  const toleranceAt = (t: number): number => pointCloudSnapToleranceAt(t, camera);
 
   let best: PointCloudRayResult | null = null;
   for (const src of sources) {
@@ -104,8 +144,7 @@ export interface PointCloudOverrideDecision {
   /** The raw mesh raycast distance, or null when there was no mesh hit
    *  at all (point-cloud-only scene). */
   meshIntersectionDistance: number | null;
-  cameraFov: number;
-  canvasHeightPx: number;
+  camera: PointCloudSnapCamera;
 }
 
 /**
@@ -131,9 +170,9 @@ export interface PointCloudOverrideDecision {
  * modeled wall), not scan noise on the same surface.
  */
 export function pointCloudWinsOverMeshSnap(decision: PointCloudOverrideDecision): boolean {
-  const { pointHit, meshSnapTarget, meshIntersectionDistance, cameraFov, canvasHeightPx } = decision;
+  const { pointHit, meshSnapTarget, meshIntersectionDistance, camera } = decision;
   if (!meshSnapTarget || meshIntersectionDistance === null) return true;
-  const occlusionMargin = pointCloudSnapToleranceAt(pointHit.distance, cameraFov, canvasHeightPx);
+  const occlusionMargin = pointCloudSnapToleranceAt(pointHit.distance, camera);
   return pointHit.distance < meshIntersectionDistance - occlusionMargin;
 }
 

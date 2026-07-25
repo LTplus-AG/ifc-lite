@@ -228,3 +228,81 @@ describe('PointCloudSpatialIndex — dispose', () => {
     assert.strictEqual(idx.queryRay(FORWARD_RAY.origin, FORWARD_RAY.direction, 100, flatTolerance(0.1)), null);
   });
 });
+
+describe('PointCloudSpatialIndex — georeferenced (huge-coordinate) clouds', () => {
+  // Un-rebased LV95-style coordinates: easting ~2.6e6 m, northing (Y-up
+  // swapped to -Z) ~-1.2e6 m. Cell keys are packed relative to the first
+  // indexed point's cell, so they must stay exact and collision-free at
+  // this magnitude — the pre-fix absolute packing overflowed f64's 53-bit
+  // integer range out here. All values chosen below are exactly
+  // representable in f32 (integers and halves < 2^24), so assertions can
+  // be exact.
+  const E = 2_600_000;
+  const N = -1_200_000;
+
+  it('finds the nearest of two points 1m apart at LV95 magnitude', () => {
+    const idx = new PointCloudSpatialIndex(0.5);
+    idx.insertRange(new Float32Array([E + 10, 400, N, E + 11, 400, N]), 2);
+    const hit = idx.queryRay({ x: E, y: 400, z: N }, { x: 1, y: 0, z: 0 }, 100, flatTolerance(0.05));
+    assert.ok(hit);
+    assert.strictEqual(hit!.distance, 10);
+    assert.strictEqual(hit!.position.x, E + 10);
+    assert.strictEqual(hit!.position.z, N);
+  });
+
+  it('still rejects an out-of-tolerance point at LV95 magnitude', () => {
+    const idx = new PointCloudSpatialIndex(0.5);
+    idx.insertRange(new Float32Array([E + 10, 400.25, N]), 1); // 0.25m off-axis
+    assert.strictEqual(
+      idx.queryRay({ x: E, y: 400, z: N }, { x: 1, y: 0, z: 0 }, 100, flatTolerance(0.05)),
+      null,
+    );
+  });
+
+  it('a point beyond the ±32.7km relative-key window is clamped, not lost', () => {
+    // First point pins the cell origin near 0; the second sits 50km away,
+    // outside the packable relative window. Its cells clamp onto the
+    // window boundary — buckets merge there, but insert and query clamp
+    // identically, so the point must still be found exactly.
+    const idx = new PointCloudSpatialIndex(0.5);
+    idx.insertRange(new Float32Array([0, 0, 0, 50_000, 0, 0]), 2);
+    const hit = idx.queryRay({ x: 49_990, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }, 100, flatTolerance(0.05));
+    assert.ok(hit, 'point past the relative-key window must remain queryable via boundary clamping');
+    assert.strictEqual(hit!.distance, 10);
+    assert.strictEqual(hit!.position.x, 50_000);
+  });
+});
+
+describe('PointCloudSpatialIndex — streaming arrival (#1860)', () => {
+  it('a query after a later chunk arrives sees the new points (no stale-subset snapshot)', () => {
+    const idx = new PointCloudSpatialIndex(0.5);
+    idx.insertRange(new Float32Array([0, 0, 20]), 1);
+    // Query while only the far point is streamed in.
+    let hit = idx.queryRay(FORWARD_RAY.origin, FORWARD_RAY.direction, 100, flatTolerance(0.05));
+    assert.ok(hit);
+    assert.strictEqual(hit!.distance, 20);
+    // A later chunk streams in a NEARER point; the very next query must
+    // prefer it — the index is live, not a build-once snapshot.
+    idx.insertRange(new Float32Array([0, 0, 4]), 1);
+    hit = idx.queryRay(FORWARD_RAY.origin, FORWARD_RAY.direction, 100, flatTolerance(0.05));
+    assert.ok(hit);
+    assert.strictEqual(hit!.distance, 4);
+  });
+
+  it('dense cluster: many in-tolerance candidates resolve to the frontmost point', () => {
+    // 300 points jittered inside the tolerance cylinder between z=5.0
+    // and z=5.6 — a dense-scan cursor position. The chosen point must be
+    // the one nearest along the ray (the visible/occluding one), not an
+    // arbitrary bucket order artifact.
+    const pts: number[] = [];
+    for (let i = 0; i < 300; i++) {
+      const off = ((i % 7) - 3) * 0.01; // ±0.03m off-axis, inside 0.05 tolerance
+      pts.push(off, 0, 5.0 + (i / 299) * 0.6);
+    }
+    const idx = new PointCloudSpatialIndex(0.5);
+    idx.insertRange(new Float32Array(pts), 300);
+    const hit = idx.queryRay(FORWARD_RAY.origin, FORWARD_RAY.direction, 100, flatTolerance(0.05));
+    assert.ok(hit);
+    assert.ok(Math.abs(hit!.distance - 5.0) < 1e-6, `expected frontmost ~5.0, got ${hit!.distance}`);
+  });
+});

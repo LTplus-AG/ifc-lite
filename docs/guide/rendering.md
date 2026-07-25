@@ -239,6 +239,18 @@ Advanced "magnetic" edge snapping for precision measurement and interaction.
 | `edge` | Snap to edge lines | High |
 | `face` | Snap to face surfaces | Medium |
 | `face_center` | Snap to face centroids | Medium |
+| `point_cloud` | Snap to a point-cloud scan point | See below |
+
+Point-cloud snapping is produced by `raycastSceneMagnetic` (not
+`SnapDetector` itself) whenever point-cloud assets are loaded: the nearest
+scan point within a small screen-space tolerance of the cursor ray is
+returned, and a mesh vertex/edge/face snap is only overridden when the scan
+point is meaningfully *in front of* the mesh surface (beyond its own snap
+tolerance), so a scan draped over its as-designed model does not steal
+intended vertex snaps. It follows the same snap options: with
+`snapToVertices`/`snapToEdges`/`snapToFaces` all `false` point snapping is
+off too, and the optional `snapToPointClouds` flag overrides that default
+in either direction.
 
 ### Basic Snap Detection
 

@@ -33,6 +33,14 @@ export interface SnapOptions {
   snapToFaces: boolean;
   snapRadius: number; // In world units
   screenSnapRadius: number; // In pixels
+  /**
+   * Snap to point-cloud scan points (#1860). Consumed by `RaycastEngine`
+   * (SnapDetector itself never produces POINT_CLOUD targets). Optional:
+   * when absent, point snapping follows "is any of the mesh snap kinds
+   * above enabled", so the viewer's single snap toggle governs scan
+   * points too. See `pointCloudSnapEnabled`.
+   */
+  snapToPointClouds?: boolean;
 }
 
 // Edge lock state for magnetic snapping (passed from store)

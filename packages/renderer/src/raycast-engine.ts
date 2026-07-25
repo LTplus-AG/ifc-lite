@@ -17,8 +17,10 @@ import type { PickOptions } from './types.js';
 import {
     queryPointClouds,
     releasedEdgeLock,
+    pointCloudSnapEnabled,
     pointCloudWinsOverMeshSnap,
     type PointCloudRayProvider,
+    type PointCloudSnapCamera,
 } from './raycast-point-cloud-query.js';
 
 export type { PointCloudRaySource, PointCloudRayProvider } from './raycast-point-cloud-query.js';
@@ -376,9 +378,18 @@ export class RaycastEngine {
             // Point-cloud snapping (#1860): search up to whatever the mesh
             // path already found (or the whole scene, if there was no mesh
             // hit at all) — a real mesh surface in front of a scan point
-            // should still win the pick.
+            // should still win the pick. Gated on the caller's snap config
+            // so the measure tool's snap toggle disables scan-point
+            // magnetism exactly like mesh vertex/edge magnetism.
+            const snapCamera: PointCloudSnapCamera = {
+                fov: cameraFov,
+                canvasHeightPx: this.canvas.height,
+                orthoHalfHeight: this.camera.getProjectionMode() === 'orthographic' ? this.camera.getOrthoSize() : null,
+            };
             const maxPointDistance = intersection ? intersection.distance : Infinity;
-            const pointHit = queryPointClouds(this.pointCloudProvider, ray, cameraFov, this.canvas.height, maxPointDistance, options);
+            const pointHit = pointCloudSnapEnabled(options?.snapOptions)
+                ? queryPointClouds(this.pointCloudProvider, ray, snapCamera, maxPointDistance, options)
+                : null;
             if (pointHit) {
                 // A point-cloud hit only OVERRIDES an existing mesh snap
                 // target (vertex/edge/face/...) when it's meaningfully in
@@ -393,8 +404,7 @@ export class RaycastEngine {
                     pointHit,
                     meshSnapTarget: magneticResult.snapTarget,
                     meshIntersectionDistance: intersection ? intersection.distance : null,
-                    cameraFov,
-                    canvasHeightPx: this.canvas.height,
+                    camera: snapCamera,
                 });
                 if (wins) {
                     magneticResult = {

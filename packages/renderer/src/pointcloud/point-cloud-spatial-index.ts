@@ -16,10 +16,11 @@
  *
  * Storage: a coarse uniform voxel grid. Points bucket into
  * `floor(coord / cellSize)` cells, keyed by a single packed integer
- * (`packCellKey`) so the grid is a plain `Map<number, number[]>` — no
+ * (`packKey`) so the grid is a plain `Map<number, number[]>` — no
  * string hashing, and no need to know the cloud's final extent up
- * front (cell coordinates can be negative and unbounded; only a
- * hard-coded +-2^20-cell range per axis is assumed, see `CELL_BIAS`).
+ * front. Keys are packed relative to the FIRST indexed point's cell so
+ * they stay exact f64 integers even for un-rebased georeferenced clouds
+ * (LV95 / UTM eastings in the millions of metres); see `CELL_KEY_BIAS`.
  *
  * Memory: each inserted chunk's `Float32Array` is kept BY REFERENCE
  * (never copied) — it would otherwise be garbage immediately after
@@ -78,17 +79,30 @@ export const DEFAULT_MAX_INDEXED_POINTS = 30_000_000;
  */
 export const MAX_DILATION_RADIUS_CELLS = 4;
 
-/** Non-negative bias so packed cell coordinates never go negative. */
-const CELL_BIAS = 1 << 20; // 1,048,576
-/** Per-axis coordinate range after biasing (< 2^21, safe for f64 exact ints). */
-const CELL_AXIS_RANGE = CELL_BIAS * 2;
+/**
+ * Cell coordinates are packed RELATIVE to the first indexed point's cell
+ * (`cellOrigin*` below), clamped to ±`CELL_KEY_BIAS` cells per axis. The
+ * relative range must be small enough that the packed triple stays an
+ * EXACT f64 integer: with a per-axis range of 2^17 the maximum key is
+ * (2^17)^3 = 2^51 < 2^53, so distinct cells always get distinct keys.
+ * (The previous absolute-coordinate packing used a 2^21 range whose keys
+ * reached ~2^62 — beyond f64's 53-bit integer precision, silently
+ * merging every z-column of cells within ~1024 cells into one bucket,
+ * and additionally aliasing outright for georeferenced clouds beyond
+ * ±524 km. Merged buckets stayed *correct* — `testPoint` re-checks real
+ * positions — but degraded the query from O(cells) toward O(points).)
+ *
+ * ±2^16 relative cells at the default 0.5 m cell size covers ±32.7 km
+ * around the first point — beyond any physically plausible single scan.
+ * Points outside that window clamp onto the boundary cells (they merge
+ * buckets there, degrading gracefully instead of breaking).
+ */
+const CELL_KEY_BIAS = 1 << 16; // 65,536 cells = ±32.7 km at 0.5 m cells
+const CELL_KEY_RANGE = CELL_KEY_BIAS * 2; // 2^17 per axis → max key 2^51, f64-exact
 
-/** Pack a (possibly negative) 3D cell coordinate into one integer key. */
-function packCellKey(cx: number, cy: number, cz: number): number {
-  const ux = cx + CELL_BIAS;
-  const uy = cy + CELL_BIAS;
-  const uz = cz + CELL_BIAS;
-  return (ux * CELL_AXIS_RANGE + uy) * CELL_AXIS_RANGE + uz;
+/** Clamp a relative cell coordinate into the packable per-axis window. */
+function clampRelCell(c: number): number {
+  return c < -CELL_KEY_BIAS ? -CELL_KEY_BIAS : c >= CELL_KEY_BIAS ? CELL_KEY_BIAS - 1 : c;
 }
 
 /** One inserted chunk: a retained position buffer plus its global-id offset. */
@@ -156,6 +170,27 @@ export class PointCloudSpatialIndex {
   private maxY = -Infinity;
   private maxZ = -Infinity;
 
+  /**
+   * Cell coordinates of the first indexed point — the origin every packed
+   * cell key is relative to (see `CELL_KEY_BIAS`). Rebasing per index keeps
+   * keys f64-exact even for un-rebased georeferenced clouds (e.g. Swiss
+   * LV95 eastings ~2.6e6 m → absolute cell ~5.2e6, far outside any
+   * absolute packing window, but within ±2^16 cells of the cloud's own
+   * first point).
+   */
+  private cellOriginX = 0;
+  private cellOriginY = 0;
+  private cellOriginZ = 0;
+  private hasCellOrigin = false;
+
+  /** Pack ABSOLUTE cell coordinates into one exact-integer key. */
+  private packKey(cx: number, cy: number, cz: number): number {
+    const ux = clampRelCell(cx - this.cellOriginX) + CELL_KEY_BIAS;
+    const uy = clampRelCell(cy - this.cellOriginY) + CELL_KEY_BIAS;
+    const uz = clampRelCell(cz - this.cellOriginZ) + CELL_KEY_BIAS;
+    return (ux * CELL_KEY_RANGE + uy) * CELL_KEY_RANGE + uz;
+  }
+
   constructor(
     cellSize: number = DEFAULT_POINTCLOUD_INDEX_CELL_SIZE,
     maxIndexedPoints: number = DEFAULT_MAX_INDEXED_POINTS,
@@ -202,7 +237,13 @@ export class PointCloudSpatialIndex {
       const cx = Math.floor(x / this.cellSize);
       const cy = Math.floor(y / this.cellSize);
       const cz = Math.floor(z / this.cellSize);
-      const key = packCellKey(cx, cy, cz);
+      if (!this.hasCellOrigin) {
+        this.cellOriginX = cx;
+        this.cellOriginY = cy;
+        this.cellOriginZ = cz;
+        this.hasCellOrigin = true;
+      }
+      const key = this.packKey(cx, cy, cz);
       let bucket = this.cells.get(key);
       if (!bucket) {
         bucket = [];
@@ -224,16 +265,22 @@ export class PointCloudSpatialIndex {
 
   /** Resolve a global point id back to its world position. */
   private pointAt(globalId: number): Vec3 {
-    // Most queries touch recently-streamed chunks (the tail of the
-    // array) while a large cloud is still loading, so scan from the
-    // end. A linear scan is fine — chunk counts stay in the tens (chunk
-    // size is in the 10^5-10^6 point range for every supported format).
-    for (let i = this.chunks.length - 1; i >= 0; i--) {
-      const c = this.chunks[i];
-      if (globalId >= c.startId && globalId < c.startId + c.count) {
-        const local = (globalId - c.startId) * 3;
-        return { x: c.positions[local], y: c.positions[local + 1], z: c.positions[local + 2] };
-      }
+    // Chunks are appended in id order, so `startId` is sorted ascending —
+    // binary search for the owning chunk (dense buckets can resolve
+    // thousands of ids per query; a linear chunk scan would multiply
+    // that by the chunk count, ~150 for a 30M-point stream).
+    const chunks = this.chunks;
+    let lo = 0;
+    let hi = chunks.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (chunks[mid].startId <= globalId) lo = mid;
+      else hi = mid - 1;
+    }
+    const c = chunks[lo];
+    if (c && globalId >= c.startId && globalId < c.startId + c.count) {
+      const local = (globalId - c.startId) * 3;
+      return { x: c.positions[local], y: c.positions[local + 1], z: c.positions[local + 2] };
     }
     // Unreachable: every id in `cells` was handed out by this instance.
     return { x: 0, y: 0, z: 0 };
@@ -289,7 +336,7 @@ export class PointCloudSpatialIndex {
     for (let dx = -r; dx <= r; dx++) {
       for (let dy = -r; dy <= r; dy++) {
         for (let dz = -r; dz <= r; dz++) {
-          const key = packCellKey(cx + dx, cy + dy, cz + dz);
+          const key = this.packKey(cx + dx, cy + dy, cz + dz);
           if (visited.has(key)) continue;
           visited.add(key);
           const bucket = this.cells.get(key);
@@ -452,5 +499,7 @@ export class PointCloudSpatialIndex {
     this.total = 0;
     this.minX = this.minY = this.minZ = Infinity;
     this.maxX = this.maxY = this.maxZ = -Infinity;
+    this.cellOriginX = this.cellOriginY = this.cellOriginZ = 0;
+    this.hasCellOrigin = false;
   }
 }

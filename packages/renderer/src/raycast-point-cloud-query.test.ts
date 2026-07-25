@@ -16,12 +16,19 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
-import { pointCloudWinsOverMeshSnap, pointCloudSnapToleranceAt, type PointCloudRayResult } from './raycast-point-cloud-query.js';
+import {
+  pointCloudSnapEnabled,
+  pointCloudSnapToleranceAt,
+  pointCloudWinsOverMeshSnap,
+  type PointCloudRayResult,
+  type PointCloudSnapCamera,
+} from './raycast-point-cloud-query.js';
 import { SnapType, type SnapTarget } from './snap-detector.js';
 
 /** A representative measure-tool camera: ~60deg vertical FOV, 800px-tall canvas. */
 const CAMERA_FOV = 1.0472; // 60 degrees in radians
 const CANVAS_HEIGHT_PX = 800;
+const CAMERA: PointCloudSnapCamera = { fov: CAMERA_FOV, canvasHeightPx: CANVAS_HEIGHT_PX, orthoHalfHeight: null };
 
 const VERTEX_SNAP: SnapTarget = {
   type: SnapType.VERTEX,
@@ -36,8 +43,8 @@ function pointHitAt(distance: number): PointCloudRayResult {
 
 describe('pointCloudSnapToleranceAt', () => {
   it('is positive and grows with depth for a fixed FOV/canvas', () => {
-    const near = pointCloudSnapToleranceAt(1, CAMERA_FOV, CANVAS_HEIGHT_PX);
-    const far = pointCloudSnapToleranceAt(100, CAMERA_FOV, CANVAS_HEIGHT_PX);
+    const near = pointCloudSnapToleranceAt(1, CAMERA);
+    const far = pointCloudSnapToleranceAt(100, CAMERA);
     assert.ok(near > 0);
     assert.ok(far > near);
   });
@@ -52,8 +59,7 @@ describe('pointCloudWinsOverMeshSnap — coincident-surface guard (#1860 review 
       pointHit: pointHitAt(9.995),
       meshSnapTarget: VERTEX_SNAP,
       meshIntersectionDistance: 10.0,
-      cameraFov: CAMERA_FOV,
-      canvasHeightPx: CANVAS_HEIGHT_PX,
+      camera: CAMERA,
     });
     assert.strictEqual(wins, false, 'a scan point coincident with the mesh surface must not steal the vertex snap');
   });
@@ -63,8 +69,7 @@ describe('pointCloudWinsOverMeshSnap — coincident-surface guard (#1860 review 
       pointHit: pointHitAt(8),
       meshSnapTarget: VERTEX_SNAP,
       meshIntersectionDistance: 10.0,
-      cameraFov: CAMERA_FOV,
-      canvasHeightPx: CANVAS_HEIGHT_PX,
+      camera: CAMERA,
     });
     assert.strictEqual(wins, true, 'a point genuinely in front of the mesh surface should win');
   });
@@ -76,8 +81,7 @@ describe('pointCloudWinsOverMeshSnap — coincident-surface guard (#1860 review 
       pointHit: pointHitAt(9.995),
       meshSnapTarget: null,
       meshIntersectionDistance: 10.0,
-      cameraFov: CAMERA_FOV,
-      canvasHeightPx: CANVAS_HEIGHT_PX,
+      camera: CAMERA,
     });
     assert.strictEqual(wins, true);
   });
@@ -87,8 +91,7 @@ describe('pointCloudWinsOverMeshSnap — coincident-surface guard (#1860 review 
       pointHit: pointHitAt(50),
       meshSnapTarget: null,
       meshIntersectionDistance: null,
-      cameraFov: CAMERA_FOV,
-      canvasHeightPx: CANVAS_HEIGHT_PX,
+      camera: CAMERA,
     });
     assert.strictEqual(wins, true);
   });
@@ -102,15 +105,14 @@ describe('pointCloudWinsOverMeshSnap — coincident-surface guard (#1860 review 
     // depth: `toleranceAt` is re-evaluated at the CANDIDATE point's own
     // distance, per the decision's definition, not at the mesh's).
     const meshDistance = 10.0;
-    const c = pointCloudSnapToleranceAt(1, CAMERA_FOV, CANVAS_HEIGHT_PX); // tolerance per unit distance
+    const c = pointCloudSnapToleranceAt(1, CAMERA); // tolerance per unit distance
     const boundary = meshDistance / (1 + c);
 
     const atBoundary = pointCloudWinsOverMeshSnap({
       pointHit: pointHitAt(boundary),
       meshSnapTarget: VERTEX_SNAP,
       meshIntersectionDistance: meshDistance,
-      cameraFov: CAMERA_FOV,
-      canvasHeightPx: CANVAS_HEIGHT_PX,
+      camera: CAMERA,
     });
     assert.strictEqual(atBoundary, false, 'strict inequality: exactly at the threshold must not win');
 
@@ -118,22 +120,76 @@ describe('pointCloudWinsOverMeshSnap — coincident-surface guard (#1860 review 
       pointHit: pointHitAt(boundary - 0.01),
       meshSnapTarget: VERTEX_SNAP,
       meshIntersectionDistance: meshDistance,
-      cameraFov: CAMERA_FOV,
-      canvasHeightPx: CANVAS_HEIGHT_PX,
+      camera: CAMERA,
     });
     assert.strictEqual(justInFront, true, 'a point just past the threshold, further in front, must win');
   });
 
   it('a point well beyond the tolerance margin in front of the mesh wins', () => {
     const meshDistance = 10.0;
-    const margin = pointCloudSnapToleranceAt(meshDistance, CAMERA_FOV, CANVAS_HEIGHT_PX);
+    const margin = pointCloudSnapToleranceAt(meshDistance, CAMERA);
     const wins = pointCloudWinsOverMeshSnap({
       pointHit: pointHitAt(meshDistance - margin - 0.5),
       meshSnapTarget: VERTEX_SNAP,
       meshIntersectionDistance: meshDistance,
-      cameraFov: CAMERA_FOV,
-      canvasHeightPx: CANVAS_HEIGHT_PX,
+      camera: CAMERA,
     });
     assert.strictEqual(wins, true);
+  });
+});
+
+describe('pointCloudSnapToleranceAt — orthographic camera', () => {
+  // In ortho projection a screen pixel spans the same world distance at
+  // every depth, so the snap tolerance must NOT grow with t (the
+  // perspective formula would inflate the snap radius for far points and
+  // starve near ones as the user zooms an ortho view).
+  const ORTHO: PointCloudSnapCamera = { fov: CAMERA_FOV, canvasHeightPx: CANVAS_HEIGHT_PX, orthoHalfHeight: 25 };
+
+  it('is depth-independent', () => {
+    const near = pointCloudSnapToleranceAt(1, ORTHO);
+    const far = pointCloudSnapToleranceAt(500, ORTHO);
+    assert.ok(near > 0);
+    assert.strictEqual(near, far);
+  });
+
+  it('scales with ortho zoom (halfHeight), not with fov', () => {
+    const zoomedIn: PointCloudSnapCamera = { ...ORTHO, orthoHalfHeight: 2.5 };
+    assert.ok(
+      pointCloudSnapToleranceAt(10, zoomedIn) < pointCloudSnapToleranceAt(10, ORTHO),
+      'zooming in (smaller orthoHalfHeight) must tighten the world-space tolerance',
+    );
+    const otherFov: PointCloudSnapCamera = { ...ORTHO, fov: CAMERA_FOV / 2 };
+    assert.strictEqual(pointCloudSnapToleranceAt(10, otherFov), pointCloudSnapToleranceAt(10, ORTHO));
+  });
+});
+
+describe('pointCloudSnapEnabled — snap toggle gating', () => {
+  it('defaults ON when no snap options are supplied (legacy callers)', () => {
+    assert.strictEqual(pointCloudSnapEnabled(undefined), true);
+    assert.strictEqual(pointCloudSnapEnabled({}), true); // absent fields mean ON, mirroring SnapDetector defaults
+  });
+
+  it('follows the viewer snap toggle: all mesh snaps explicitly off disables point snapping', () => {
+    // Exactly what the measure tool passes when the user turns snapping OFF.
+    assert.strictEqual(
+      pointCloudSnapEnabled({ snapToVertices: false, snapToEdges: false, snapToFaces: false, screenSnapRadius: 0 }),
+      false,
+    );
+    // ...and the snap-ON shape keeps it enabled.
+    assert.strictEqual(
+      pointCloudSnapEnabled({ snapToVertices: true, snapToEdges: true, snapToFaces: true, screenSnapRadius: 60 }),
+      true,
+    );
+  });
+
+  it('an explicit snapToPointClouds wins over the derived default in both directions', () => {
+    assert.strictEqual(
+      pointCloudSnapEnabled({ snapToVertices: true, snapToEdges: true, snapToFaces: true, snapToPointClouds: false }),
+      false,
+    );
+    assert.strictEqual(
+      pointCloudSnapEnabled({ snapToVertices: false, snapToEdges: false, snapToFaces: false, snapToPointClouds: true }),
+      true,
+    );
   });
 });

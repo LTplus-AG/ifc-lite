@@ -49,6 +49,9 @@ export {
   type NodeSpec,
   type LeafNodeSpec,
   type CompositeNodeSpec,
+  type AnyNodeSpec,
+  type AnyLeafNodeSpec,
+  type AnyCompositeNodeSpec,
   type RecomputeTelemetry,
 } from './dag-engine.js';
 
@@ -93,6 +96,7 @@ export {
   type CommutationInput,
   type CommutationOutcome,
   type CommutationVerificationResult,
+  type CommutationVerifyOptions,
   type OpConflict,
   type OpSetSummary,
   type ReplayOutcome,

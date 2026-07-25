@@ -193,4 +193,40 @@ describe('verifyCommutationCertificate', () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toBe('written-nodes-mismatch');
   });
+
+  it('verifies client attribution against caller-owned identities, not the certificate itself', async () => {
+    const base = baseState();
+    const outcome = await createCommutationCertificate({
+      base,
+      opsA: [editA],
+      opsB: [editB],
+      clientA: 'alice',
+      clientB: 'bob',
+    });
+    if (!outcome.ok) throw new Error('fixture certificate creation failed');
+    const { certificate } = outcome;
+
+    // A tampered attribution must FAIL when the verifier supplies its own
+    // expected identities -- previously the expectation was derived from the
+    // certificate's own field, making the check a tautology.
+    const tampered = { ...certificate, a: { ...certificate.a, client: 'mallory' } };
+    const caught = await verifyCommutationCertificate(tampered, base, [editA], [editB], {
+      expectedClientA: 'alice',
+      expectedClientB: 'bob',
+    });
+    expect(caught.ok).toBe(false);
+    if (!caught.ok) expect(caught.reason).toBe('client-mismatch');
+
+    // The untampered certificate passes with the same expected identities.
+    const genuine = await verifyCommutationCertificate(certificate, base, [editA], [editB], {
+      expectedClientA: 'alice',
+      expectedClientB: 'bob',
+    });
+    expect(genuine).toEqual({ ok: true });
+
+    // Without caller-supplied identities the labels are unverifiable
+    // metadata: verification still passes, and callers must not trust them.
+    const unchecked = await verifyCommutationCertificate(tampered, base, [editA], [editB]);
+    expect(unchecked).toEqual({ ok: true });
+  });
 });

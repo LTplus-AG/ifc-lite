@@ -32,7 +32,7 @@
  * hits by construction — this file never re-hashes a node it doesn't have to.
  */
 
-import { computeNodeHash, type NodeKind, type PayloadForKind } from './node-hash.js';
+import { hashResolvedNode, type NodeKind, type PayloadForKind, type ResolvedNode } from './node-hash.js';
 
 /** A node whose hash is a literal function of its own payload — no DAG
  *  children. `geometry-mesh` and `property-set` payloads never reference
@@ -63,8 +63,57 @@ export interface CompositeNodeSpec<K extends NodeKind = NodeKind> {
 
 export type NodeSpec<K extends NodeKind = NodeKind> = LeafNodeSpec<K> | CompositeNodeSpec<K>;
 
-function isComposite(spec: NodeSpec): spec is CompositeNodeSpec {
+/** Distributive (per-kind) unions of the spec shapes. These are what
+ *  {@link ProvenanceDag.addNode} accepts: unlike `NodeSpec<NodeKind>` — whose
+ *  payload union is detached from `kind`, so a property-set payload labeled
+ *  `geometry-mesh` type-checks — each member of these unions keeps the
+ *  kind/payload pairing intact, making a mismatched registration a compile
+ *  error. */
+export type AnyLeafNodeSpec = { [K in NodeKind]: LeafNodeSpec<K> }[NodeKind];
+export type AnyCompositeNodeSpec = { [K in NodeKind]: CompositeNodeSpec<K> }[NodeKind];
+export type AnyNodeSpec = AnyLeafNodeSpec | AnyCompositeNodeSpec;
+
+function isComposite<K extends NodeKind>(spec: NodeSpec<K>): spec is CompositeNodeSpec<K> {
   return 'buildPayload' in spec;
+}
+
+/** The stored, still-correlated content of a node: a discriminated
+ *  {@link ResolvedNode} pair for leaves, or a builder producing one for
+ *  composites. Built per kind in {@link ProvenanceDag.addNode} so the
+ *  kind/payload relationship established by {@link AnyNodeSpec} survives
+ *  internal storage and hashing dispatches through {@link hashResolvedNode}
+ *  with no casts. */
+type StoredContent =
+  | { resolved: ResolvedNode; buildResolved?: undefined }
+  | { resolved?: undefined; buildResolved: (childHashes: ReadonlyMap<string, string>) => ResolvedNode };
+
+function storeSpec(spec: AnyNodeSpec): StoredContent {
+  switch (spec.kind) {
+    case 'geometry-mesh':
+      return isComposite(spec)
+        ? { buildResolved: (ch) => ({ kind: 'geometry-mesh', payload: spec.buildPayload(ch) }) }
+        : { resolved: { kind: 'geometry-mesh', payload: spec.payload } };
+    case 'property-set':
+      return isComposite(spec)
+        ? { buildResolved: (ch) => ({ kind: 'property-set', payload: spec.buildPayload(ch) }) }
+        : { resolved: { kind: 'property-set', payload: spec.payload } };
+    case 'relationship':
+      return isComposite(spec)
+        ? { buildResolved: (ch) => ({ kind: 'relationship', payload: spec.buildPayload(ch) }) }
+        : { resolved: { kind: 'relationship', payload: spec.payload } };
+    case 'layer':
+      return isComposite(spec)
+        ? { buildResolved: (ch) => ({ kind: 'layer', payload: spec.buildPayload(ch) }) }
+        : { resolved: { kind: 'layer', payload: spec.payload } };
+    case 'element':
+      return isComposite(spec)
+        ? { buildResolved: (ch) => ({ kind: 'element', payload: spec.buildPayload(ch) }) }
+        : { resolved: { kind: 'element', payload: spec.payload } };
+    default: {
+      const exhaustive: never = spec;
+      throw new Error(`ProvenanceDag: unknown node kind: ${String((exhaustive as AnyNodeSpec).kind)}`);
+    }
+  }
 }
 
 /** Shared frozen empty set returned by {@link ProvenanceDag.getParents} for a
@@ -76,8 +125,10 @@ interface InternalNode {
   id: string;
   kind: NodeKind;
   children: readonly string[];
-  payload?: unknown;
-  buildPayload?: (childHashes: ReadonlyMap<string, string>) => unknown;
+  /** Leaf: the discriminated (kind, payload) pair — see {@link StoredContent}. */
+  resolved?: ResolvedNode;
+  /** Composite: builds the discriminated pair from the child hashes. */
+  buildResolved?: (childHashes: ReadonlyMap<string, string>) => ResolvedNode;
   hash?: string;
 }
 
@@ -125,16 +176,16 @@ export class ProvenanceDag {
    *  calling `build()` again (a structural change, not an edit — this engine
    *  intentionally does not try to incrementally patch the topology itself,
    *  only payload changes on the existing topology). */
-  addNode(spec: NodeSpec): void {
+  addNode(spec: AnyNodeSpec): void {
     if (this.nodes.has(spec.id)) {
       throw new Error(`ProvenanceDag: duplicate node id "${spec.id}"`);
     }
-    const children = isComposite(spec) ? spec.children : [];
+    const children = 'buildPayload' in spec ? spec.children : [];
     const node: InternalNode = {
       id: spec.id,
       kind: spec.kind,
       children,
-      ...(isComposite(spec) ? { buildPayload: spec.buildPayload } : { payload: spec.payload }),
+      ...storeSpec(spec),
     };
     this.nodes.set(spec.id, node);
     for (const childId of children) {
@@ -224,8 +275,8 @@ export class ProvenanceDag {
   private async computeAndStoreHash(id: string): Promise<string> {
     const node = this.nodes.get(id);
     if (!node) throw new Error(`ProvenanceDag: unknown node id "${id}"`);
-    let payload: unknown;
-    if (node.buildPayload) {
+    let resolved: ResolvedNode;
+    if (node.buildResolved) {
       const childHashes = new Map<string, string>();
       for (const childId of node.children) {
         const childHash = this.nodes.get(childId)?.hash;
@@ -237,14 +288,15 @@ export class ProvenanceDag {
         }
         childHashes.set(childId, childHash);
       }
-      payload = node.buildPayload(childHashes);
+      resolved = node.buildResolved(childHashes);
+    } else if (node.resolved) {
+      resolved = node.resolved;
     } else {
-      payload = node.payload;
+      throw new Error(`ProvenanceDag: node "${id}" has neither a payload nor a payload builder`);
     }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- payload's real shape is
-    // PayloadForKind<node.kind>, erased to `unknown` by the internal storage; computeNodeHash's
-    // own overload set re-establishes the kind<->payload pairing at the call site.
-    const hash = await computeNodeHash(node.kind as any, payload as any);
+    // The stored content is a discriminated (kind, payload) pair, so hashing
+    // dispatches through hashResolvedNode with the pairing intact — no casts.
+    const hash = await hashResolvedNode(resolved);
     node.hash = hash;
     return hash;
   }
@@ -264,32 +316,62 @@ export class ProvenanceDag {
 
   /** Replace a leaf node's payload (a node added with `payload`, not
    *  `buildPayload`) and mark it — and every ancestor — dirty. Does not
-   *  recompute anything; call `recompute()` afterward. */
-  setPayload<K extends NodeKind>(nodeId: string, payload: PayloadForKind<K>): void {
+   *  recompute anything; call `recompute()` afterward. The `kind` argument
+   *  pins the kind/payload pairing at the call site (per-kind overloads) and
+   *  is checked against the node's registered kind at runtime, so a payload
+   *  for the wrong kind can neither compile nor slip through dynamically. */
+  setPayload(nodeId: string, kind: 'geometry-mesh', payload: PayloadForKind<'geometry-mesh'>): void;
+  setPayload(nodeId: string, kind: 'property-set', payload: PayloadForKind<'property-set'>): void;
+  setPayload(nodeId: string, kind: 'relationship', payload: PayloadForKind<'relationship'>): void;
+  setPayload(nodeId: string, kind: 'layer', payload: PayloadForKind<'layer'>): void;
+  setPayload(nodeId: string, kind: 'element', payload: PayloadForKind<'element'>): void;
+  setPayload(nodeId: string, kind: NodeKind, payload: PayloadForKind<NodeKind>): void {
     const node = this.nodes.get(nodeId);
     if (!node) throw new Error(`ProvenanceDag: unknown node id "${nodeId}"`);
-    if (node.buildPayload) {
+    if (node.buildResolved) {
       throw new Error(
         `ProvenanceDag: node "${nodeId}" is composite (has children/buildPayload); use setBuildPayload`,
       );
     }
-    node.payload = payload;
+    if (node.kind !== kind) {
+      throw new Error(
+        `ProvenanceDag: setPayload kind mismatch: node "${nodeId}" is "${node.kind}", got "${kind}"`,
+      );
+    }
+    // The overloads above guarantee (kind, payload) arrived correlated; the
+    // impl signature erases that, so this one union-typed cast (NOT `any`)
+    // re-states it for storeSpec's discriminated switch — the same pattern
+    // computeNodeHash uses internally.
+    node.resolved = storeSpec({ id: nodeId, kind, payload } as AnyLeafNodeSpec).resolved;
     this.invalidate([nodeId]);
   }
 
   /** Replace a composite node's `buildPayload` (e.g. its own non-child fields
    *  changed — a relationship's `relType`, a layer's `layerId`). Marks the
-   *  node — and every ancestor — dirty. */
-  setBuildPayload<K extends NodeKind>(
+   *  node — and every ancestor — dirty. Same kind-pinning contract as
+   *  {@link setPayload}. */
+  setBuildPayload(nodeId: string, kind: 'geometry-mesh', buildPayload: (childHashes: ReadonlyMap<string, string>) => PayloadForKind<'geometry-mesh'>): void;
+  setBuildPayload(nodeId: string, kind: 'property-set', buildPayload: (childHashes: ReadonlyMap<string, string>) => PayloadForKind<'property-set'>): void;
+  setBuildPayload(nodeId: string, kind: 'relationship', buildPayload: (childHashes: ReadonlyMap<string, string>) => PayloadForKind<'relationship'>): void;
+  setBuildPayload(nodeId: string, kind: 'layer', buildPayload: (childHashes: ReadonlyMap<string, string>) => PayloadForKind<'layer'>): void;
+  setBuildPayload(nodeId: string, kind: 'element', buildPayload: (childHashes: ReadonlyMap<string, string>) => PayloadForKind<'element'>): void;
+  setBuildPayload(
     nodeId: string,
-    buildPayload: (childHashes: ReadonlyMap<string, string>) => PayloadForKind<K>,
+    kind: NodeKind,
+    buildPayload: (childHashes: ReadonlyMap<string, string>) => PayloadForKind<NodeKind>,
   ): void {
     const node = this.nodes.get(nodeId);
     if (!node) throw new Error(`ProvenanceDag: unknown node id "${nodeId}"`);
-    if (!node.buildPayload) {
+    if (!node.buildResolved) {
       throw new Error(`ProvenanceDag: node "${nodeId}" is a leaf (has a literal payload); use setPayload`);
     }
-    node.buildPayload = buildPayload as (childHashes: ReadonlyMap<string, string>) => unknown;
+    if (node.kind !== kind) {
+      throw new Error(
+        `ProvenanceDag: setBuildPayload kind mismatch: node "${nodeId}" is "${node.kind}", got "${kind}"`,
+      );
+    }
+    const stored = storeSpec({ id: nodeId, kind, children: node.children, buildPayload } as AnyCompositeNodeSpec);
+    node.buildResolved = stored.buildResolved;
     this.invalidate([nodeId]);
   }
 

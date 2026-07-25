@@ -506,3 +506,113 @@ describe('createCertificate structural validation', () => {
   });
 });
 
+
+describe('verifyCertificate: version gate', () => {
+  it('rejects a certificate whose version tag is not the supported v0 tag', async () => {
+    const mesh = wallMesh(1);
+    const hash = await computeNodeHash('geometry-mesh', mesh);
+    const cert = createCertificate({
+      kernelVersion: KERNEL_VERSION,
+      trustRoot: TRUST_ROOT,
+      reads: [{ nodeId: 'a', hash }],
+      writes: [],
+      claims: [],
+    });
+    // Simulate a deserialized artifact from a future/mistagged format: the
+    // remaining fields are perfectly v0-shaped, only the version differs.
+    const foreign = { ...cert, version: 'node-hash-v1' } as unknown as typeof cert;
+    const resolver = resolverFromMap(new Map([['a', { kind: 'geometry-mesh', payload: mesh }]]));
+    const result = await verifyCertificate(foreign, resolver);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('unsupported-version');
+    // The genuine v0 tag still verifies.
+    expect(await verifyCertificate(cert, resolver)).toEqual({ ok: true });
+  });
+});
+
+describe('scalar-delta: non-finite values are rejected', () => {
+  const nonFiniteClaim = (before: number, after: number, delta: number) =>
+    ({
+      type: 'scalar-delta',
+      metric: 'property-numeric',
+      property: 'ThermalTransmittance',
+      before,
+      after,
+      delta,
+      beforeNodeId: 'p#before',
+      afterNodeId: 'p#after',
+    }) as const;
+
+  it('createCertificate throws on NaN / Infinity before, after, or delta', () => {
+    for (const [b, a, d] of [
+      [NaN, NaN, NaN],
+      [Infinity, Infinity, NaN],
+      [0.3, NaN, -0.06],
+      [0.3, 0.24, Infinity],
+      [-Infinity, 0, Infinity],
+    ] as const) {
+      expect(() =>
+        createCertificate({
+          kernelVersion: KERNEL_VERSION,
+          trustRoot: TRUST_ROOT,
+          reads: [],
+          writes: [],
+          claims: [nonFiniteClaim(b, a, d)],
+        }),
+      ).toThrow(/finite/);
+    }
+  });
+
+  it('verifyCertificate fails a deserialized NaN->NaN claim instead of vacuously passing', async () => {
+    // Bypass createCertificate (an external party can hand us any bytes).
+    const cert = {
+      version: 'node-hash-v0',
+      kernelVersion: KERNEL_VERSION,
+      trustRoot: TRUST_ROOT,
+      reads: [],
+      writes: [],
+      claims: [nonFiniteClaim(NaN, NaN, NaN)],
+    } as unknown as Parameters<typeof verifyCertificate>[0];
+    const resolver = resolverFromMap(
+      new Map([
+        ['p#before', { kind: 'property-set', payload: pset(NaN) }],
+        ['p#after', { kind: 'property-set', payload: pset(NaN) }],
+      ]),
+    );
+    const result = await verifyCertificate(cert, resolver);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('claim-scalar-delta-non-finite');
+  });
+
+  it('a non-finite RESOLVED metric value fails the before-mismatch check', async () => {
+    const cert = createCertificate({
+      kernelVersion: KERNEL_VERSION,
+      trustRoot: TRUST_ROOT,
+      reads: [],
+      writes: [],
+      claims: [
+        {
+          type: 'scalar-delta',
+          metric: 'property-numeric',
+          property: 'ThermalTransmittance',
+          before: 0.3,
+          after: 0.24,
+          delta: -0.06,
+          beforeNodeId: 'p#before',
+          afterNodeId: 'p#after',
+        },
+      ],
+    });
+    const resolver = resolverFromMap(
+      new Map([
+        // Resolved payload carries NaN where 0.3 is claimed: must FAIL, not
+        // slide through a NaN comparison.
+        ['p#before', { kind: 'property-set', payload: pset(NaN) }],
+        ['p#after', { kind: 'property-set', payload: pset(0.24) }],
+      ]),
+    );
+    const result = await verifyCertificate(cert, resolver);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('claim-scalar-delta-before-mismatch');
+  });
+});

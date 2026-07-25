@@ -30,7 +30,7 @@
  * the same ids or their regions collide -- exactly the right semantics).
  */
 
-import { ProvenanceDag, type NodeSpec } from './dag-engine.js';
+import { ProvenanceDag, type AnyNodeSpec } from './dag-engine.js';
 import type {
   ElementPayload,
   GeometryMeshPayload,
@@ -272,7 +272,7 @@ export const MERGE_MODEL_ROOT_NODE_ID = 'root';
  */
 export function buildStateDag(state: ModelState): ProvenanceDag {
   const dag = new ProvenanceDag();
-  const specs: NodeSpec[] = [];
+  const specs: AnyNodeSpec[] = [];
   const elementsByStorey = new Map<string, string[]>();
   for (const storeyId of state.storeyIds) elementsByStorey.set(storeyId, []);
 
@@ -351,13 +351,14 @@ export async function hashModelState(state: ModelState): Promise<string> {
 /* ------------------------------------------------------------------ */
 
 function regionOfMeshes(meshes: Iterable<GeometryMeshPayload>): Aabb | undefined {
+  // No silent catch here: a mesh aabbFromMesh cannot box (e.g. zero
+  // vertices) is a malformed input to THIS op model -- every mesh the
+  // merge model authors carries geometry -- and swallowing the throw
+  // would silently shrink an op's spatial footprint, weakening the very
+  // conflict predicate the certificates rely on.
   const boxes: Aabb[] = [];
   for (const mesh of meshes) {
-    try {
-      boxes.push(aabbFromMesh(mesh));
-    } catch {
-      // Degenerate mesh (no vertices): contributes no region.
-    }
+    boxes.push(aabbFromMesh(mesh));
   }
   return boxes.length > 0 ? unionAabb(boxes) : undefined;
 }

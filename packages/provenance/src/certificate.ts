@@ -167,6 +167,17 @@ export function createCertificate(input: CreateCertificateInput): Certificate {
             '(free-floating scalar assertions are not certifiable — decision Q3)',
         );
       }
+      if (
+        !Number.isFinite(claim.before) ||
+        !Number.isFinite(claim.after) ||
+        !Number.isFinite(claim.delta)
+      ) {
+        throw new Error(
+          '@ifc-lite/provenance: scalar-delta before/after/delta must be finite numbers ' +
+            `(got before=${claim.before}, after=${claim.after}, delta=${claim.delta}) — ` +
+            'NaN/Infinity make every tolerance comparison vacuously pass',
+        );
+      }
     }
   }
   return {
@@ -227,7 +238,9 @@ function extractMetric(resolved: ResolvedNode, claim: ScalarDeltaClaim): number 
       : METRIC_PROPERTY_NAME[claim.metric];
   if (!propertyName) return undefined;
   const prop = resolved.payload.properties.find((p) => p.name === propertyName);
-  return typeof prop?.value === 'number' ? prop.value : undefined;
+  // Non-finite resolved values are rejected the same way as non-numeric ones:
+  // a NaN metric would make every |actual - expected| comparison false.
+  return typeof prop?.value === 'number' && Number.isFinite(prop.value) ? prop.value : undefined;
 }
 
 async function verifyClaim(claim: Claim, resolver: NodeResolver): Promise<VerificationFailure | undefined> {
@@ -251,6 +264,21 @@ async function verifyClaim(claim: Claim, resolver: NodeResolver): Promise<Verifi
   }
 
   // scalar-delta
+  // Deserialized certificates bypass createCertificate's validation, so the
+  // verifier re-checks finiteness itself: with NaN (or Infinity - Infinity)
+  // every `> 1e-9` tolerance below evaluates false and a meaningless claim
+  // would verify.
+  if (
+    !Number.isFinite(claim.before) ||
+    !Number.isFinite(claim.after) ||
+    !Number.isFinite(claim.delta)
+  ) {
+    return fail('claim-scalar-delta-non-finite', {
+      before: claim.before,
+      after: claim.after,
+      delta: claim.delta,
+    });
+  }
   const expectedDelta = claim.after - claim.before;
   if (Math.abs(expectedDelta - claim.delta) > 1e-9) {
     return fail('claim-scalar-delta-arithmetic', {
@@ -305,6 +333,16 @@ export async function verifyCertificate(
   resolver: NodeResolver,
   options: VerifyOptions = {},
 ): Promise<VerificationResult> {
+  // A certificate deserialized from an external party can carry any version
+  // tag; interpreting a future or mistagged format under v0 semantics would
+  // be silently wrong, so reject anything but the exact supported version
+  // (the commutation verifier performs the equivalent check).
+  if (certificate.version !== CERTIFICATE_VERSION) {
+    return fail('unsupported-version', {
+      expected: CERTIFICATE_VERSION,
+      actual: certificate.version,
+    });
+  }
   if (options.expectedTrustRoot !== undefined && options.expectedTrustRoot !== certificate.trustRoot) {
     return fail('trust-root-mismatch', {
       expected: options.expectedTrustRoot,

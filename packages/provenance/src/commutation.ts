@@ -244,6 +244,18 @@ export interface CommutationVerificationFailure {
 
 export type CommutationVerificationResult = CommutationVerificationOk | CommutationVerificationFailure;
 
+export interface CommutationVerifyOptions {
+  /** Caller-owned identity for op set A. When supplied, `certificate.a.client`
+   *  must match exactly. The client labels are attribution METADATA: nothing
+   *  in the artifact cryptographically binds them (signing is out of scope
+   *  for v0, spec decision Q5), so the only sound check is against an
+   *  identity the VERIFIER already knows — deriving the expectation from the
+   *  certificate's own field would let a tampered label verify. */
+  expectedClientA?: string;
+  /** Same for op set B / `certificate.b.client`. */
+  expectedClientB?: string;
+}
+
 function fail(reason: string, details?: unknown): CommutationVerificationFailure {
   return { ok: false, reason, details };
 }
@@ -265,7 +277,14 @@ function checkSummary(
   summary: OpSetSummary,
   ops: readonly MergeOp[],
   fps: readonly Footprint[],
+  expectedClient: string | undefined,
 ): CommutationVerificationFailure | undefined {
+  // `client` is never fed back into `summarize` as its own expectation: that
+  // would make the check a tautology. It is only checkable against a
+  // caller-owned identity (see {@link CommutationVerifyOptions}).
+  if (expectedClient !== undefined && summary.client !== expectedClient) {
+    return fail('client-mismatch', { which, expected: expectedClient, actual: summary.client });
+  }
   const expected = summarize(summary.client, ops, fps);
   if (!sameStringArray(summary.opIds, expected.opIds)) {
     return fail('op-ids-mismatch', { which, expected: expected.opIds, actual: summary.opIds });
@@ -286,12 +305,18 @@ function checkSummary(
  * Merkle commitments; any mismatch fails. Never throws for a verification
  * failure -- a failed verification is a normal return value (same contract
  * as certificate.ts).
+ *
+ * The `a.client`/`b.client` labels are attribution metadata: they are only
+ * verified when the caller supplies its own expected identities via
+ * `options` ({@link CommutationVerifyOptions}); without them the labels are
+ * unverifiable and callers must not treat them as trusted.
  */
 export async function verifyCommutationCertificate(
   certificate: CommutationCertificate,
   base: ModelState,
   opsA: readonly MergeOp[],
   opsB: readonly MergeOp[],
+  options: CommutationVerifyOptions = {},
 ): Promise<CommutationVerificationResult> {
   if (certificate.version !== COMMUTATION_CERTIFICATE_VERSION) {
     return fail('version-mismatch', { expected: COMMUTATION_CERTIFICATE_VERSION, actual: certificate.version });
@@ -303,7 +328,9 @@ export async function verifyCommutationCertificate(
   const { fpsA, fpsB, conflicts } = analyzeCrossPairs(base, opsA, opsB, certificate.epsilonMm);
   if (conflicts.length > 0) return fail('conflicting-op-sets', { conflicts });
 
-  const summaryFailure = checkSummary('a', certificate.a, opsA, fpsA) ?? checkSummary('b', certificate.b, opsB, fpsB);
+  const summaryFailure =
+    checkSummary('a', certificate.a, opsA, fpsA, options.expectedClientA) ??
+    checkSummary('b', certificate.b, opsB, fpsB, options.expectedClientB);
   if (summaryFailure) return summaryFailure;
 
   const baseRootHash = await hashModelState(base);

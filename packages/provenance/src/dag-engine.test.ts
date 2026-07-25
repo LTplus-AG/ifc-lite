@@ -13,7 +13,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { ProvenanceDag, type NodeSpec } from './dag-engine.js';
+import { ProvenanceDag, type AnyNodeSpec } from './dag-engine.js';
 import {
   computeNodeHash,
   type ElementPayload,
@@ -47,7 +47,7 @@ function mesh(expressId: number): GeometryMeshPayload {
  *   └─ element3 (element) -> meshC (geometry-mesh)     [direct child of root, unrelated branch]
  */
 function addFixedDag(dag: ProvenanceDag): void {
-  const specs: NodeSpec[] = [
+  const specs: AnyNodeSpec[] = [
     { id: 'meshA', kind: 'geometry-mesh', payload: mesh(100) },
     { id: 'meshB', kind: 'geometry-mesh', payload: mesh(200) },
     { id: 'meshC', kind: 'geometry-mesh', payload: mesh(300) },
@@ -170,7 +170,7 @@ describe('ProvenanceDag: invalidate + recompute telemetry accuracy', () => {
     await dag.build();
     const before = dag.snapshot();
 
-    dag.setPayload('psetX', {
+    dag.setPayload('psetX', 'property-set', {
       name: 'Pset_WallCommon',
       properties: [{ name: 'IsExternal', value: false }],
     } satisfies PropertySetPayload);
@@ -198,7 +198,7 @@ describe('ProvenanceDag: invalidate + recompute telemetry accuracy', () => {
     addFixedDag(dag);
     await dag.build();
 
-    dag.setPayload('meshC', mesh(301));
+    dag.setPayload('meshC', 'geometry-mesh', mesh(301));
     const telemetry = await dag.recompute();
 
     expect(new Set(telemetry.recomputedNodeIds)).toEqual(new Set(['meshC', 'element3', 'root']));
@@ -212,10 +212,10 @@ describe('ProvenanceDag: invalidate + recompute telemetry accuracy', () => {
     addFixedDag(dag);
     await dag.build();
 
-    dag.setPayload('psetX', { name: 'Pset_WallCommon', properties: [{ name: 'IsExternal', value: false }] });
+    dag.setPayload('psetX', 'property-set', { name: 'Pset_WallCommon', properties: [{ name: 'IsExternal', value: false }] });
     // psetX's ancestor chain: element1 -> storeyRel -> root, so invalidate marks 4 total.
     expect(dag.dirtyCount).toBe(4);
-    dag.setPayload('meshC', mesh(302));
+    dag.setPayload('meshC', 'geometry-mesh', mesh(302));
     // meshC's ancestors: element3 -> root (root already dirty, no-op)
     const telemetry = await dag.recompute();
     expect(new Set(telemetry.recomputedNodeIds)).toEqual(
@@ -252,19 +252,19 @@ describe('ProvenanceDag: correctness — incremental result matches a from-scrat
     await dag.build();
 
     // Apply a sequence of edits incrementally.
-    dag.setPayload('psetX', { name: 'Pset_WallCommon', properties: [{ name: 'IsExternal', value: false }] });
+    dag.setPayload('psetX', 'property-set', { name: 'Pset_WallCommon', properties: [{ name: 'IsExternal', value: false }] });
     await dag.recompute();
-    dag.setPayload('meshB', mesh(9999));
+    dag.setPayload('meshB', 'geometry-mesh', mesh(9999));
     await dag.recompute();
-    dag.setPayload('psetY', { name: 'Pset_WallCommon', properties: [{ name: 'IsExternal', value: true }] });
+    dag.setPayload('psetY', 'property-set', { name: 'Pset_WallCommon', properties: [{ name: 'IsExternal', value: true }] });
     await dag.recompute();
-    dag.setPayload('meshC', mesh(8888));
+    dag.setPayload('meshC', 'geometry-mesh', mesh(8888));
     await dag.recompute();
 
     // Build a FRESH dag with the same structure but the FINAL leaf payloads
     // applied from the start (a true from-scratch rebuild).
     const fresh = new ProvenanceDag();
-    const specs: NodeSpec[] = [
+    const specs: AnyNodeSpec[] = [
       { id: 'meshA', kind: 'geometry-mesh', payload: mesh(100) },
       { id: 'meshB', kind: 'geometry-mesh', payload: mesh(9999) },
       { id: 'meshC', kind: 'geometry-mesh', payload: mesh(8888) },
@@ -364,7 +364,7 @@ interface RandomDagShape {
   relIds: string[];
   /** Fixed structural spec builder: given CURRENT leaf payloads, produces the
    *  full NodeSpec[] for either an incremental DAG or a from-scratch rebuild. */
-  buildSpecs: (leafPayloads: Map<string, unknown>) => NodeSpec[];
+  buildSpecs: (leafPayloads: Map<string, unknown>) => AnyNodeSpec[];
 }
 
 /**
@@ -405,7 +405,7 @@ function randomDagShape(rng: () => number, meshCount: number, psetCount: number,
   const relIds = relChildren.map((_, i) => `rel:${i}`);
 
   function buildSpecs(leafPayloads: Map<string, unknown>): NodeSpec[] {
-    const specs: NodeSpec[] = [];
+    const specs: AnyNodeSpec[] = [];
     for (const id of meshIds) {
       specs.push({ id, kind: 'geometry-mesh', payload: leafPayloads.get(id) as GeometryMeshPayload });
     }
@@ -498,7 +498,8 @@ describe('ProvenanceDag: property-test — randomized DAGs and edit sets', () =>
         const isMesh = shape.meshIds.includes(leafId);
         const newPayload = randomLeafPayload(rng, leafId, isMesh);
         leafPayloads.set(leafId, newPayload);
-        dag.setPayload(leafId, newPayload as never);
+        if (isMesh) dag.setPayload(leafId, 'geometry-mesh', newPayload as GeometryMeshPayload);
+        else dag.setPayload(leafId, 'property-set', newPayload as PropertySetPayload);
         const telemetry = await dag.recompute();
         telemetries.push(telemetry);
 
@@ -518,4 +519,47 @@ describe('ProvenanceDag: property-test — randomized DAGs and edit sets', () =>
       expect(dag.getHash('root')).toBe(fresh.getHash('root'));
     });
   }
+});
+
+describe('ProvenanceDag: kind/payload pairing is preserved', () => {
+  it('setPayload rejects a kind that does not match the registered node', async () => {
+    const dag = new ProvenanceDag();
+    addFixedDag(dag);
+    await dag.build();
+    // psetX is registered as property-set; feeding it a mesh payload under
+    // the mesh kind must throw instead of silently hashing the wrong shape.
+    expect(() => dag.setPayload('psetX', 'geometry-mesh', mesh(1))).toThrow(/kind mismatch/);
+    // And the node keeps working after the rejected call.
+    dag.setPayload('psetX', 'property-set', {
+      name: 'Pset_WallCommon',
+      properties: [{ name: 'IsExternal', value: false }],
+    });
+    const telemetry = await dag.recompute();
+    expect(telemetry.recomputed).toBeGreaterThan(0);
+  });
+
+  it('setBuildPayload rejects a kind that does not match the registered node', async () => {
+    const dag = new ProvenanceDag();
+    addFixedDag(dag);
+    await dag.build();
+    expect(() =>
+      dag.setBuildPayload('root', 'relationship', () => ({
+        relType: 'IfcRelContainedInSpatialStructure',
+        roles: [],
+      })),
+    ).toThrow(/kind mismatch/);
+  });
+
+  it('addNode rejects a detached kind/payload pairing at compile time', () => {
+    const dag = new ProvenanceDag();
+    // @ts-expect-error a property-set payload labeled geometry-mesh must not
+    // compile — AnyNodeSpec keeps the kind/payload pairing correlated.
+    const badSpec: AnyNodeSpec = {
+      id: 'bad',
+      kind: 'geometry-mesh',
+      payload: { name: 'Pset_WallCommon', properties: [] },
+    };
+    // (runtime not exercised — the assertion above is the test)
+    expect(dag.size).toBe(0);
+  });
 });

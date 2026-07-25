@@ -178,7 +178,7 @@ describe('DAG: 10-node Merkle structure', () => {
     expect(after.psetY).toBe(before.psetY);
   });
 
-  it('a change to the unrelated element3 branch (meshC) flips only meshC and element3', async () => {
+  it('a change to the unrelated element3 branch (meshC) flips meshC, element3, and layer1', async () => {
     const before = await buildDagHashes(baseDag());
 
     const mutated = baseDag();

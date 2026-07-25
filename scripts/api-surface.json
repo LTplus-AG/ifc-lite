@@ -1347,6 +1347,7 @@
   ],
   "@ifc-lite/encoding": [
     "ParsedPropertyValue: interface",
+    "RandomSource: type",
     "decodeIfcString: function",
     "encodeIfcString: function",
     "generateIfcGuid: function",

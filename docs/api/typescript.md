@@ -728,7 +728,30 @@ interface ProjectParams {
   LengthUnit?: string;  // 'METRE' (default), 'MILLIMETRE', 'FOOT'
   Author?: string;
   Organization?: string;
+  Timestamp?: number | Date;   // fixed creation instant (header + owner history); default: wall clock
+  GuidSource?: () => string;   // deterministic GlobalId source; default: platform CSPRNG
 }
+```
+
+For byte-reproducible output (fixtures, snapshot tests, generated corpora), pin both entropy sources — the timestamp and the GlobalId stream:
+
+```typescript
+import { IfcCreator } from '@ifc-lite/create';
+import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
+
+// Any seeded () => number in [0, 1) works; a tiny LCG shown here.
+let seed = 42;
+const rng: RandomSource = () => {
+  seed = (seed * 1103515245 + 12345) % 2147483648;
+  return seed / 2147483648;
+};
+
+const creator = new IfcCreator({
+  Name: 'My Project',
+  Timestamp: Date.UTC(2024, 0, 1),
+  GuidSource: () => generateIfcGuid(rng),
+});
+// Two runs with the same seed now produce byte-identical .ifc content.
 ```
 
 Parameter interfaces for every element type live in `packages/create/src/types.ts` (e.g. `WallParams` with `Start`, `End`, `Thickness`, `Height`, optional `Openings`).

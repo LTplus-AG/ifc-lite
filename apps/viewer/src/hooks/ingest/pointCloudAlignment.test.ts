@@ -157,37 +157,92 @@ function makeGeoref(overrides: {
   };
 }
 
+/**
+ * Behaviour oracle: full expected chain for one raw scan point, computed
+ * independently of the matrix packing. Simulates the decode-time f64
+ * subtraction + Z-up→Y-up swap the ingest path performs, applies the
+ * aligned matrix, and returns the viewer-space result.
+ */
+function runAlignmentChain(
+  t: NonNullable<ReturnType<typeof computePointCloudAlignment>>,
+  raw: readonly [number, number, number],
+): { x: number; y: number; z: number } {
+  const [oe, on, oh] = t.decodeOriginOffset;
+  const px = raw[0] - oe;
+  const py = raw[2] - oh;
+  const pz = -(raw[1] - on);
+  const m = t.alignedMatrix;
+  return {
+    x: m[0] * px + m[4] * py + m[8] * pz + m[12],
+    y: m[1] * px + m[5] * py + m[9] * pz + m[13],
+    z: m[2] * px + m[6] * py + m[10] * pz + m[14],
+  };
+}
+
 describe('computePointCloudAlignment (issue #1804)', () => {
-  it('maps a scan point at the map-conversion origin to the negated viewer shift', () => {
+  it('lands a scan point at inverse-map-conversion viewer coordinates, shift folded in', () => {
+    // Reference model with a large RTC offset AND an origin shift — the
+    // combined viewer shift (totalYupOffset) must be honoured.
     const georef = makeGeoref({
       coordinateInfo: {
         originShift: { x: 3, y: 0, z: -4 },
         originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } },
         shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } },
         hasLargeCoordinates: false,
-        wasmRtcOffset: { x: 500_000, y: 5_000_000, z: 100 },
+        wasmRtcOffset: { x: 120, y: -75, z: 6 },
       },
     });
     const t = computePointCloudAlignment(georef);
     assert.ok(t);
 
-    // decodeOriginOffset subtracts the map-conversion translation, so a
-    // point AT (eastings, northings, orthogonalHeight) decodes to (0,0,0)
-    // local, then swaps Z-up->Y-up to (px,py,pz) = (0,0,-0) = (0,0,0).
-    assert.deepStrictEqual(
-      [...t.decodeOriginOffset].map((v) => Math.round(v)),
-      [500_000, 5_000_000, 100],
+    // off = originShift + rtcYup = (3+120, 0+6, -4+75) = (123, 6, 71).
+    // Expected viewer position of a raw map point P:
+    //   local = invertMapConversion(P); viewer = (local.x, local.z, -local.y) - off
+    const raw = [500_030, 4_999_980, 105] as const;
+    const local = invertMapConversion(
+      { eastings: 500_000, northings: 5_000_000, orthogonalHeight: 100 },
+      raw[0], raw[1], raw[2],
     );
+    assert.ok(local);
+    const out = runAlignmentChain(t, raw);
+    assertClose(out.x, local.x - 123, 1e-6, 'x');
+    assertClose(out.y, local.z - 6, 1e-6, 'y');
+    assertClose(out.z, -local.y - 71, 1e-6, 'z');
+  });
 
-    // Applying the aligned matrix to the origin (px=py=pz=0) yields just
-    // the translation column: -off, where off = totalYupOffset(coordinateInfo)
-    // combines originShift + wasmRtcOffset (Z-up->Y-up).
-    // rtcYup = { x: 500000, y: 100, z: -5000000 }; off = shift + rtcYup
-    //        = { x: 3+500000, y: 0+100, z: -4-5000000 }
-    const m = t.alignedMatrix;
-    assertClose(m[12], -(3 + 500_000), 1e-3);
-    assertClose(m[13], -(0 + 100), 1e-3);
-    assertClose(m[14], -(-4 - 5_000_000), 1e-3);
+  it('folds the whole viewer shift into decodeOriginOffset: matrix translation is EXACTLY zero', () => {
+    // f32-precision property (the reason for the fold): even with a huge
+    // RTC offset — a file authored directly at Swiss LV95 magnitudes —
+    // the aligned matrix must carry NO translation, because a ~1e6 f32
+    // translation would quantise to ~0.25 m and defeat the feature.
+    const georef = makeGeoref({
+      mapConversion: { eastings: 0, northings: 0, orthogonalHeight: 0 },
+      coordinateInfo: {
+        originShift: { x: 0, y: 0, z: 0 },
+        originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } },
+        shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } },
+        hasLargeCoordinates: true,
+        wasmRtcOffset: { x: 2_600_000, y: 1_200_000, z: 450 },
+      },
+    });
+    const t = computePointCloudAlignment(georef);
+    assert.ok(t);
+    assert.strictEqual(t.alignedMatrix[12], 0);
+    assert.strictEqual(t.alignedMatrix[13], 0);
+    assert.strictEqual(t.alignedMatrix[14], 0);
+    // The magnitude moved into the (f64-consumed) decode offset instead:
+    // the wasm RTC offset is Z-up (E, N, H) = (2.6e6, 1.2e6, 450), and the
+    // map conversion here is identity, so the decode offset IS the RTC
+    // offset expressed in map axes.
+    assertClose(t.decodeOriginOffset[0], 2_600_000, 1e-6);
+    assertClose(t.decodeOriginOffset[1], 1_200_000, 1e-6);
+    assertClose(t.decodeOriginOffset[2], 450, 1e-6);
+    // Sanity via the full chain: a scan point AT the viewer origin's map
+    // position must land at viewer (0,0,0).
+    const atOrigin = runAlignmentChain(t, t.decodeOriginOffset);
+    assertClose(atOrigin.x, 0, 1e-9);
+    assertClose(atOrigin.y, 0, 1e-9);
+    assertClose(atOrigin.z, 0, 1e-9);
   });
 
   it('rotation in the aligned matrix matches a directly-computed inverse-map point', () => {
@@ -201,23 +256,10 @@ describe('computePointCloudAlignment (issue #1804)', () => {
     const t = computePointCloudAlignment(georef);
     assert.ok(t);
 
-    // Pick a raw LAS point away from the map-conversion origin, subtract
-    // decodeOriginOffset (as the decoder would, in f64), swap Z-up->Y-up
-    // (px=dE, py=dH, pz=-dN), then apply the aligned matrix — the result
-    // must match `invertMapConversion` composed with the Y-up axis swap
-    // and zero viewer shift (no coordinateInfo => off=0,0,0).
-    const raw: [number, number, number] = [500_030, 4_999_980, 105];
-    const [oe, on, oh] = t.decodeOriginOffset;
-    const dE = raw[0] - oe;
-    const dN = raw[1] - on;
-    const dH = raw[2] - oh;
-    const px = dE, py = dH, pz = -dN;
-
-    const m = t.alignedMatrix;
-    const outX = m[0] * px + m[4] * py + m[8] * pz + m[12];
-    const outY = m[1] * px + m[5] * py + m[9] * pz + m[13];
-    const outZ = m[2] * px + m[6] * py + m[10] * pz + m[14];
-
+    // No coordinateInfo => viewer shift is zero; the full chain must equal
+    // `invertMapConversion` composed with the Y-up axis swap.
+    const raw = [500_030, 4_999_980, 105] as const;
+    const out = runAlignmentChain(t, raw);
     const expected = invertMapConversion(
       {
         eastings: 500_000, northings: 5_000_000, orthogonalHeight: 100,
@@ -226,9 +268,35 @@ describe('computePointCloudAlignment (issue #1804)', () => {
       raw[0], raw[1], raw[2],
     );
     assert.ok(expected);
-    assertClose(outX, expected.x, 1e-3);
-    assertClose(outY, expected.z, 1e-3);
-    assertClose(outZ, -expected.y, 1e-3);
+    // 1e-4 tolerance: the matrix entries are f32 (GPU uniform), so each
+    // multiply carries ~6e-8 relative error at these magnitudes.
+    assertClose(out.x, expected.x, 1e-4);
+    assertClose(out.y, expected.z, 1e-4);
+    assertClose(out.z, -expected.y, 1e-4);
+  });
+
+  it('converts native map units to viewer metres (foot-based CRS)', () => {
+    // Explicit MapUnit = foot: LAS coordinates are stored in feet, the
+    // viewer frame is metres. mapUnitScale=0.3048, Scale unset(=1) with
+    // mismatched units → getEffectiveHorizontalScale's practical-intent
+    // heuristic yields effectiveScale 1, so k = 0.3048 exactly.
+    const georef = makeGeoref({
+      mapConversion: { eastings: 1_000_000, northings: 2_000_000, orthogonalHeight: 300 },
+      projectedCRS: { mapUnitScale: 0.3048 },
+    });
+    const t = computePointCloudAlignment(georef);
+    assert.ok(t);
+    // decodeOriginOffset stays in NATIVE units (feet) — it is subtracted
+    // from raw native LAS coordinates.
+    assertClose(t.decodeOriginOffset[0], 1_000_000, 1e-6);
+    assertClose(t.decodeOriginOffset[1], 2_000_000, 1e-6);
+    assertClose(t.decodeOriginOffset[2], 300, 1e-6);
+    // A point 100 ft east / 50 ft up of the conversion origin lands at
+    // 30.48 m east / 15.24 m up in the viewer.
+    const out = runAlignmentChain(t, [1_000_100, 2_000_000, 350]);
+    assertClose(out.x, 100 * 0.3048, 1e-4);
+    assertClose(out.y, 50 * 0.3048, 1e-4);
+    assertClose(out.z, 0, 1e-4);
   });
 
   it('the unaligned matrix undoes only the decode-time offset (raw placement)', () => {
@@ -238,6 +306,11 @@ describe('computePointCloudAlignment (issue #1804)', () => {
     const m = t.unalignedMatrix;
     // Pure translation, no rotation/scale.
     assert.strictEqual(m[0], 1); assert.strictEqual(m[5], 1); assert.strictEqual(m[10], 1);
+    // Restores exactly what decode subtracted, in swapped Y-up axes.
+    assertClose(m[12], t.decodeOriginOffset[0]);
+    assertClose(m[13], t.decodeOriginOffset[2]);
+    assertClose(m[14], -t.decodeOriginOffset[1]);
+    // With no coordinateInfo the decode offset is the conversion offsets.
     assertClose(m[12], 500_000);
     assertClose(m[13], 100);
     assertClose(m[14], -5_000_000);

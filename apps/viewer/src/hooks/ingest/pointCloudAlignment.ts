@@ -36,10 +36,26 @@
  * decode narrows straight to f32 (`new Float32Array`), so
  * `decodeOriginOffset` here is threaded through the streaming pipeline
  * (`streamPointCloud` → the decode worker → `decodeLasPoints`) and
- * subtracted in f64 immediately before that narrowing. Only the residual
- * (small, already-local) rotation/scale/viewer-shift then needs to survive
- * in an f32 GPU uniform matrix — safe, since it's applied to already-small
- * per-vertex positions.
+ * subtracted in f64 immediately before that narrowing.
+ *
+ * The GPU uniform matrix is f32, so its TRANSLATION column must stay small
+ * too: a reference model whose IfcMapConversion pairs with large local
+ * coordinates (e.g. a file authored directly at Swiss LV95 eastings
+ * ~2.6e6 m, where the wasm RTC offset absorbs the magnitude) would put
+ * ~1e6-scale values in a `-totalYupOffset` translation, quantising to
+ * ~0.25 m and defeating the feature for exactly the files that need it
+ * most. So `computePointCloudAlignment` folds the ENTIRE viewer shift into
+ * `decodeOriginOffset` — the decode offset is the map-space image
+ * (`applyMapConversion`) of the viewer-frame origin, making the aligned
+ * matrix's translation column exactly zero. The f32 matrix then carries
+ * only rotation + scale, applied to already-small residual positions.
+ *
+ * Units: LAS/LAZ coordinates are in the projected CRS's native unit
+ * (`IfcProjectedCRS.MapUnit`, resolved by `resolveMapUnitToMetreScale`;
+ * metres unless the file explicitly says otherwise). `decodeOriginOffset`
+ * is therefore expressed in that SAME native unit, and the matrix's
+ * linear factor `k = mapUnitScale / effectiveScale` converts residual
+ * native units → viewer metres in one multiply.
  */
 
 import type { ModelGeoref } from './federationAlign.js';
@@ -126,10 +142,13 @@ export function invertMapConversion(
 
 export interface PointCloudAlignmentTransform {
   /**
-   * Native (Easting, Northing, OrthogonalHeight)-axis offset, in the point
-   * cloud's own coordinate space (assumed metres — see module doc), to
-   * subtract from raw decoded LAS/LAZ point coordinates BEFORE narrowing
+   * (Easting, Northing, OrthogonalHeight)-axis offset in the map CRS's
+   * NATIVE unit (the unit LAS/LAZ coordinates are stored in — see module
+   * doc), subtracted from raw decoded point coordinates BEFORE narrowing
    * to f32. Threaded through `streamPointCloud`'s `originOffset` option.
+   * This is the map-space image of the viewer-frame origin (the map
+   * conversion's own offsets PLUS the reference model's RTC/origin
+   * shift), so the aligned matrix needs no f32 translation at all.
    */
   decodeOriginOffset: readonly [number, number, number];
   /**
@@ -163,6 +182,7 @@ export function computePointCloudAlignment(georef: ModelGeoref): PointCloudAlign
   const conv = georef.mapConversion;
   const lengthUnitScale = georef.lengthUnitScale ?? 1;
   const mapUnitScale = resolveMapUnitToMetreScale(georef.projectedCRS.mapUnitScale, lengthUnitScale);
+  if (!(mapUnitScale > 0)) return null;
   const scale = getEffectiveHorizontalScale(conv.scale, mapUnitScale, lengthUnitScale);
   if (Math.abs(scale) < 1e-12) return null;
 
@@ -172,46 +192,75 @@ export function computePointCloudAlignment(georef: ModelGeoref): PointCloudAlign
   if (!axis) return null;
   const { a, b } = axis;
 
-  const eastingsM = conv.eastings * mapUnitScale;
-  const northingsM = conv.northings * mapUnitScale;
-  const heightM = conv.orthogonalHeight * mapUnitScale;
-
   const off = totalYupOffset(georef.coordinateInfo);
-  const m = 1 / scale;
+
+  // Fold the ENTIRE viewer shift into the decode-time offset (see module
+  // doc, "Precision"): the decode offset is the map-space position of the
+  // viewer-frame origin. The viewer origin sits at IFC-local (Z-up,
+  // metres) p0 = (off.x, -off.z, off.y) — the Y-up→Z-up unswap of
+  // `totalYupOffset` — and `applyMapConversion` (metre-space params,
+  // effective scale) is the SAME forward map this module's inverse
+  // mirrors, so decode-shifted residuals transform to viewer space with a
+  // ZERO translation column. Convert the result back to the map CRS's
+  // native unit because that's what LAS/LAZ coordinates are stored in.
+  const originMap = applyMapConversion(
+    {
+      eastings: conv.eastings * mapUnitScale,
+      northings: conv.northings * mapUnitScale,
+      orthogonalHeight: conv.orthogonalHeight * mapUnitScale,
+      xAxisAbscissa: a,
+      xAxisOrdinate: b,
+      scale,
+    },
+    off.x,
+    -off.z,
+    off.y,
+  );
+  if (!originMap) return null; // unreachable: axis validated above
+  const decodeOriginOffset: readonly [number, number, number] = [
+    originMap.e / mapUnitScale,
+    originMap.n / mapUnitScale,
+    originMap.h / mapUnitScale,
+  ];
 
   // Aligned matrix operates on (px,py,pz) — the Z-up→Y-up-swapped,
-  // decode-time-shifted local positions the ingest path uploads (see
-  // `swapZupChunkToYup` in pointCloudIngest.ts: px=dE, py=dH, pz=-dN,
-  // where dE/dN/dH = raw LAS (E,N,H) minus decodeOriginOffset).
+  // decode-time-shifted residual positions the ingest path uploads (see
+  // `swapZupChunkToYup` in pointCloudIngest.ts: px=rE, py=rH, pz=-rN,
+  // where rE/rN/rH = raw LAS (E,N,H) minus decodeOriginOffset, in native
+  // map units).
   //
-  // invertMapConversion gives: ifcX = m*(a*dE + b*dN), ifcY = m*(-b*dE +
-  // a*dN), ifcZ = m*dH. Converting IFC Z-up → viewer Y-up and subtracting
-  // the combined RTC/origin shift (totalYupOffset — the SAME wasmRtcOffset
-  // + originShift combination `ifc-origin.ts`/`federationAlign.ts` use):
-  //   viewer = (ifcX, ifcZ, -ifcY) - off
-  // Substituting dE=px, dN=-pz, dH=py:
-  //   viewerX = m*a*px - m*b*pz - off.x
-  //   viewerY = m*py        - off.y
-  //   viewerZ = m*b*px + m*a*pz - off.z
+  // Map→local in metres (mirrors `invertMapConversion`, with the residual
+  // deltas already taken in f64 at decode time):
+  //   ifcX = k*(a*rE + b*rN),  ifcY = k*(-b*rE + a*rN),  ifcZ = k*rH
+  // where k = mapUnitScale / effectiveScale converts native-unit residuals
+  // straight to viewer metres. Converting IFC Z-up → viewer Y-up:
+  //   viewer = (ifcX, ifcZ, -ifcY)   [translation ≡ 0 by the fold above]
+  // Substituting rE=px, rN=-pz, rH=py:
+  //   viewerX = k*a*px - k*b*pz
+  //   viewerY = k*py
+  //   viewerZ = k*b*px + k*a*pz
+  const k = mapUnitScale / scale;
   const alignedMatrix = new Float32Array([
-    m * a, 0, m * b, 0,
-    0, m, 0, 0,
-    -m * b, 0, m * a, 0,
-    -off.x, -off.y, -off.z, 1,
+    k * a, 0, k * b, 0,
+    0, k, 0, 0,
+    -k * b, 0, k * a, 0,
+    0, 0, 0, 1,
   ]);
 
   // Unaligned matrix: undo ONLY the decode-time subtraction, in the same
-  // swapped Y-up axes (swap(E,N,H) = (E,H,-N)) — no rotation, no viewer
-  // shift. Reproduces the raw native placement (pre-#1804 behaviour).
+  // swapped Y-up axes (swap(E,N,H) = (E,H,-N)) — no rotation, no unit
+  // scaling, no viewer shift. Reproduces the raw native placement
+  // (pre-#1804 behaviour: native coordinates rendered 1:1 as viewer
+  // units, f32-quantised at map magnitude — bug-compatible by design).
   const unalignedMatrix = new Float32Array([
     1, 0, 0, 0,
     0, 1, 0, 0,
     0, 0, 1, 0,
-    eastingsM, heightM, -northingsM, 1,
+    decodeOriginOffset[0], decodeOriginOffset[2], -decodeOriginOffset[1], 1,
   ]);
 
   return {
-    decodeOriginOffset: [eastingsM, northingsM, heightM],
+    decodeOriginOffset,
     alignedMatrix,
     unalignedMatrix,
   };

@@ -118,11 +118,13 @@ export interface PointCloudIngestOptions {
    * its raw native coordinates, exactly as before this feature existed.
    * When present:
    *   - `decodeOriginOffset` is threaded into `streamPointCloud` so the
-   *     LAS/LAZ decoder subtracts it in f64 before narrowing to f32
-   *     (only LAS/LAZ formats consume it; ignored otherwise).
+   *     LAS/LAZ decoder subtracts it in f64 before narrowing to f32.
    *   - the asset defaults to the ALIGNED matrix (alignment ON) and is
    *     registered so the panel's toggle can flip every loaded scan
    *     between aligned/unaligned without re-streaming.
+   * IGNORED entirely for formats other than LAS/LAZ: only those decoders
+   * consume the decode-time offset, and the aligned matrix is only valid
+   * on decode-shifted positions (see the gate below).
    */
   alignment?: PointCloudAlignmentTransform;
   /** Alignment toggle's current value at ingest time. Defaults to `true`
@@ -326,12 +328,20 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
   // IfcMapConversion alignment (issue #1804): register so the panel's
   // global toggle can flip this asset later, and push the initial matrix
   // now (default ON — matches the issue's "apply by default" ask).
-  if (opts.alignment) {
-    registerPointCloudAlignment(handle, opts.alignment);
+  //
+  // LAS/LAZ ONLY: the aligned matrix assumes positions were decode-shifted
+  // by `decodeOriginOffset` (in f64, inside the decoder), and only the
+  // LAS/LAZ sources consume `streamPointCloud`'s `originOffset`. Applying
+  // the matrix to an un-shifted PLY/PCD/E57/PTS/XYZ stream would rotate
+  // and shift ABSOLUTE coordinates — strictly worse than the raw
+  // placement — so those formats ignore any provided alignment entirely.
+  const alignment = (opts.format === 'las' || opts.format === 'laz') ? opts.alignment : undefined;
+  if (alignment) {
+    registerPointCloudAlignment(handle, alignment);
     const enabled = opts.alignmentEnabled ?? true;
     opts.renderer.setPointCloudTransform(
       handle,
-      enabled ? opts.alignment.alignedMatrix : opts.alignment.unalignedMatrix,
+      enabled ? alignment.alignedMatrix : alignment.unalignedMatrix,
     );
   }
 
@@ -375,7 +385,7 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
       maxPointsInMemory: opts.maxPointsInMemory,
       maxFileSize: opts.maxFileSize,
       signal: opts.signal,
-      originOffset: opts.alignment?.decodeOriginOffset,
+      originOffset: alignment?.decodeOriginOffset,
       onOpen: (info) => {
         opts.onProgress?.({
           phase: info.stride > 1

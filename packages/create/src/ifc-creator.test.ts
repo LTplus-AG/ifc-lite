@@ -666,6 +666,10 @@ describe('IfcCreator deterministic output (Timestamp + GuidSource)', () => {
   it('rejects an invalid Timestamp', () => {
     expect(() => new IfcCreator({ Timestamp: Number.NaN })).toThrow(/Timestamp/);
     expect(() => new IfcCreator({ Timestamp: new Date('nonsense') })).toThrow(/Timestamp/);
+    // Finite but past the ±8.64e15 ms Date range: caught here rather than
+    // surfacing as a RangeError from toISOString() while writing the header.
+    expect(() => new IfcCreator({ Timestamp: 1e16 })).toThrow(/Timestamp/);
+    expect(() => new IfcCreator({ Timestamp: -1e16 })).toThrow(/Timestamp/);
   });
 
   it('rejects a GuidSource returning invalid GlobalIds', () => {

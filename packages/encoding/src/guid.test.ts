@@ -67,8 +67,21 @@ describe('guid', () => {
     expect(generateUuid(() => 0)).toBe('00000000-0000-4000-8000-000000000000');
   });
 
-  it('keeps the default path random', () => {
-    expect(generateUuid()).not.toBe(generateUuid());
-    expect(generateIfcGuid()).not.toBe(generateIfcGuid());
+  it('keeps the default path valid and non-repeating', () => {
+    // Assert the CONTRACT (well-formed, distinct across a run) rather than a
+    // single inequality: two draws colliding is astronomically unlikely but is
+    // a property of the generator, not something a pair-wise compare proves.
+    const uuids = new Set<string>();
+    const guids = new Set<string>();
+    for (let i = 0; i < 100; i++) {
+      const u = generateUuid();
+      expect(u).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+      uuids.add(u);
+      const g = generateIfcGuid();
+      expect(isValidIfcGuid(g)).toBe(true);
+      guids.add(g);
+    }
+    expect(uuids.size).toBe(100);
+    expect(guids.size).toBe(100);
   });
 });

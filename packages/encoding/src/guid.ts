@@ -87,7 +87,8 @@ export function ifcGuidToUuid(ifcGuid: string): string {
  * Optional randomness source for GUID generation: a `Math.random`-style
  * function returning floats in `[0, 1)`. Pass a seeded generator to make GUID
  * generation reproducible (e.g. for byte-deterministic file output); omit it
- * for the default platform CSPRNG. A seeded source trades global uniqueness
+ * to use Web Crypto when the runtime provides it, falling back to
+ * `Math.random` when it does not. A seeded source trades global uniqueness
  * for reproducibility - only use one where that is the point.
  */
 export type RandomSource = () => number;

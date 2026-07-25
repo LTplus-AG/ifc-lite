@@ -129,8 +129,13 @@ export class IfcCreator {
     this.fixedTimestampMs = params.Timestamp === undefined
       ? null
       : typeof params.Timestamp === 'number' ? params.Timestamp : params.Timestamp.getTime();
-    if (this.fixedTimestampMs !== null && !Number.isFinite(this.fixedTimestampMs)) {
-      throw new Error('IfcCreator: Timestamp must be a finite epoch-milliseconds number or a valid Date');
+    // Finite is not enough: epoch-ms past ±8.64e15 is outside the Date range,
+    // so it survives `Number.isFinite` and only blows up later in
+    // `toISOString()` while writing the header. Reject it here, where the
+    // message can still name the offending parameter.
+    if (this.fixedTimestampMs !== null
+      && (!Number.isFinite(this.fixedTimestampMs) || Number.isNaN(new Date(this.fixedTimestampMs).getTime()))) {
+      throw new Error('IfcCreator: Timestamp must be a finite epoch-milliseconds number within the Date range, or a valid Date');
     }
     this.guidSource = params.GuidSource ?? null;
     this.buildPreamble(params);

@@ -22,6 +22,8 @@ interface TourRecord {
 
 interface TourStorage {
   inviteDismissedAt?: string;
+  /** One-time UI notices (what-changed lines), by notice id. */
+  notices?: Record<string, string>;
   tours: Record<string, TourRecord>;
 }
 
@@ -31,7 +33,11 @@ function read(): TourStorage {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return { tours: {} };
     const parsed = JSON.parse(raw) as Partial<TourStorage>;
-    return { inviteDismissedAt: parsed.inviteDismissedAt, tours: parsed.tours ?? {} };
+    return {
+      inviteDismissedAt: parsed.inviteDismissedAt,
+      notices: parsed.notices ?? {},
+      tours: parsed.tours ?? {},
+    };
   } catch {
     // Privacy modes throw on localStorage access and malformed JSON is not
     // worth surfacing - both degrade to "no tour history".
@@ -55,6 +61,20 @@ export function isInviteDismissed(): boolean {
 export function dismissInvite(): void {
   const s = read();
   s.inviteDismissedAt = new Date().toISOString();
+  write(s);
+}
+
+/**
+ * One-time notices ("this part of the UI changed"). Same best-effort
+ * contract as the invite: a browser that cannot store just shows it again.
+ */
+export function isNoticeDismissed(id: string): boolean {
+  return Boolean(read().notices?.[id]);
+}
+
+export function dismissNotice(id: string): void {
+  const s = read();
+  s.notices = { ...(s.notices ?? {}), [id]: new Date().toISOString() };
   write(s);
 }
 

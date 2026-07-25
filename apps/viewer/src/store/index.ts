@@ -68,6 +68,7 @@ export type * from './types.js';
 // Explicitly re-export multi-model types that need to be imported by name
 export type { EntityRef, SchemaVersion, FederatedModel, MeasurementConstraintEdge, OrthogonalAxis, SectionCapStyle, SectionCapHatchId, SectionPlane, SectionPlaneAxis } from './types.js';
 export type { HierarchyMode } from './slices/uiSlice.js';
+export type { RibbonTabId, ToolbarStyle } from './constants.js';
 
 // Re-export utility functions for entity references
 export { entityRefToString, stringToEntityRef, entityRefEquals, isIfcxDataStore } from './types.js';

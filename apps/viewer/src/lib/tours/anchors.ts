@@ -95,6 +95,14 @@ export const TOUR_ANCHORS = {
   bcfCaptureViewpoint: 'bcf-capture-viewpoint',
   /** BCFPanel header Export BCF button (disabled until a topic exists). */
   bcfExport: 'bcf-export',
+  /** RibbonToolbar tab strip (ribbon style only; the classic strip has none). */
+  ribbonTabs: 'ribbon-tabs',
+  /** Ribbon collapse/expand chevron in the tab strip. */
+  ribbonCollapse: 'ribbon-collapse',
+  /** ViewTab "Classic bar" button (only while the View tab is open). */
+  ribbonClassicSwitch: 'ribbon-classic-switch',
+  /** ViewTab "Follow work" contextual-tabs toggle (View tab open). */
+  ribbonFollowWork: 'ribbon-follow-work',
 } as const;
 
 /** Activity-bar rail button for a panel (one templated attribute serves

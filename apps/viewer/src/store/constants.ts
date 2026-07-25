@@ -332,16 +332,50 @@ export const TOOLBAR_STYLE_STORAGE_KEY = 'ifc-lite-toolbar-style';
 
 export type ToolbarStyle = 'classic' | 'ribbon';
 
-/** Resolve the initial toolbar style from localStorage; default `classic`. */
-function getInitialToolbarStyle(): ToolbarStyle {
-  if (typeof window === 'undefined') return 'classic';
+/**
+ * Resolve the initial toolbar style from localStorage; default `ribbon`.
+ *
+ * The ribbon is the default toolbar. Only an explicitly stored `classic`
+ * wins, so a user who switched back keeps the classic strip forever while
+ * everyone else (and every new browser) lands on the ribbon. Exported for
+ * the unit test - the module-level `UI_DEFAULTS` is computed once at import
+ * and cannot be re-seeded from a test.
+ */
+export function resolveInitialToolbarStyle(): ToolbarStyle {
+  if (typeof window === 'undefined') return 'ribbon';
   try {
-    return localStorage.getItem(TOOLBAR_STYLE_STORAGE_KEY) === 'ribbon' ? 'ribbon' : 'classic';
+    return localStorage.getItem(TOOLBAR_STYLE_STORAGE_KEY) === 'classic' ? 'classic' : 'ribbon';
   } catch (err) {
     // Blocked storage (Safari private mode): fall back to the default so the
     // toolbar still renders, but say why the preference didn't stick.
-    console.warn('[toolbar-style] storage unavailable; using classic', err);
-    return 'classic';
+    console.warn('[toolbar-style] storage unavailable; using ribbon', err);
+    return 'ribbon';
+  }
+}
+
+/** Ribbon tab strip contexts, in strip order. */
+export type RibbonTabId = 'file' | 'home' | 'view' | 'elements' | 'analyze' | 'author';
+
+/** Home first: it holds the everyday tool and camera loop. */
+export const RIBBON_DEFAULT_TAB: RibbonTabId = 'home';
+
+/**
+ * localStorage key for contextual ribbon tabs (Revit-style: a selection
+ * opens Elements, edit mode opens Author, and clearing the context returns
+ * you to where you were). On by default; the escape hatch lives in the
+ * ribbon's View tab because auto-switching under the cursor is exactly the
+ * kind of help some people want turned off.
+ */
+export const RIBBON_CONTEXTUAL_TABS_STORAGE_KEY = 'ifc-lite-ribbon-contextual-tabs';
+
+/** Resolve contextual tab following from localStorage; default on. */
+function getInitialRibbonContextualTabs(): boolean {
+  if (typeof window === 'undefined') return true;
+  try {
+    return localStorage.getItem(RIBBON_CONTEXTUAL_TABS_STORAGE_KEY) !== 'false';
+  } catch (err) {
+    console.warn('[ribbon-contextual-tabs] storage unavailable; using on', err);
+    return true;
   }
 }
 
@@ -401,13 +435,17 @@ export const UI_DEFAULTS = {
    */
   GEOMETRY_MODE: getInitialGeometryMode(),
   /**
-   * Desktop toolbar style (issue #1686): `classic` single strip or the
-   * tabbed `ribbon`. Read from localStorage on boot so the choice
-   * survives reloads.
+   * Desktop toolbar style (issue #1686): the tabbed `ribbon` (default) or
+   * the original `classic` single strip. Read from localStorage on boot so
+   * the choice survives reloads.
    */
-  TOOLBAR_STYLE: getInitialToolbarStyle(),
+  TOOLBAR_STYLE: resolveInitialToolbarStyle(),
   /** Ribbon band collapsed to the tab strip only. */
   RIBBON_COLLAPSED: getInitialRibbonCollapsed(),
+  /** Ribbon tab open on boot; session-local, never persisted. */
+  RIBBON_TAB: RIBBON_DEFAULT_TAB,
+  /** Ribbon tabs follow the working context (selection, edit mode, model). */
+  RIBBON_CONTEXTUAL_TABS: getInitialRibbonContextualTabs(),
 } as const;
 
 // ============================================================================

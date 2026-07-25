@@ -15,6 +15,7 @@ interface MutableStorage {
 
 const STYLE_KEY = 'ifc-lite-toolbar-style';
 const COLLAPSED_KEY = 'ifc-lite-ribbon-collapsed';
+const CONTEXTUAL_KEY = 'ifc-lite-ribbon-contextual-tabs';
 
 function installLocalStorage(initial: Record<string, string> = {}): MutableStorage {
   const handle: MutableStorage = { store: { ...initial } };
@@ -140,6 +141,38 @@ describe('UISlice — toolbar style (issue #1686)', () => {
     (slice.state.setToolbarStyle as (v: string) => void)('classic');
     assert.strictEqual(slice.state.toolbarStyle, 'classic');
     assert.strictEqual(storage!.store[STYLE_KEY], 'classic');
+  });
+
+  it('defaults to the ribbon, and only an explicit classic wins', async () => {
+    const { resolveInitialToolbarStyle } = await import('../constants.js');
+    // Fresh browser: the ribbon is the default toolbar.
+    assert.strictEqual(resolveInitialToolbarStyle(), 'ribbon');
+    // A user who switched back keeps the classic strip across reloads.
+    storage!.store[STYLE_KEY] = 'classic';
+    assert.strictEqual(resolveInitialToolbarStyle(), 'classic');
+    // Anything else (stale / corrupt value) falls back to the default.
+    storage!.store[STYLE_KEY] = 'ribbon';
+    assert.strictEqual(resolveInitialToolbarStyle(), 'ribbon');
+    storage!.store[STYLE_KEY] = 'nonsense';
+    assert.strictEqual(resolveInitialToolbarStyle(), 'ribbon');
+  });
+
+  it('setRibbonTab opens a tab without touching storage', async () => {
+    const slice = await buildSlice();
+    (slice.state.setRibbonTab as (v: string) => void)('elements');
+    assert.strictEqual(slice.state.ribbonTab, 'elements');
+    // Session-local by design: every session starts on Home again.
+    assert.ok(!Object.keys(storage!.store).some((k) => k.includes('ribbon-tab')));
+  });
+
+  it('setRibbonContextualTabs flips and persists the follow-work opt-out', async () => {
+    const slice = await buildSlice();
+    assert.strictEqual(slice.state.ribbonContextualTabs, true);
+    (slice.state.setRibbonContextualTabs as (v: boolean) => void)(false);
+    assert.strictEqual(slice.state.ribbonContextualTabs, false);
+    assert.strictEqual(storage!.store[CONTEXTUAL_KEY], 'false');
+    (slice.state.setRibbonContextualTabs as (v: boolean) => void)(true);
+    assert.strictEqual(storage!.store[CONTEXTUAL_KEY], 'true');
   });
 
   it('setRibbonCollapsed flips and persists the collapsed flag', async () => {

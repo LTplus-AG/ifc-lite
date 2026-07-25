@@ -11,7 +11,7 @@
  * skippable, so a tour can never trap the user.
  */
 
-import type { ViewerState, EntityRef, CameraViewpoint, SectionPlaneAxis } from '@/store';
+import type { ViewerState, EntityRef, CameraViewpoint, RibbonTabId, SectionPlaneAxis, ToolbarStyle } from '@/store';
 import type { SidebarMode } from '@/store';
 import type { WorkspacePanelId, BottomPanelId } from '@/lib/panels/registry';
 import type { TourAnchorId } from './anchors';
@@ -185,6 +185,13 @@ export interface UiSnapshot {
     custom: ViewerState['sectionPlane']['custom'];
   };
   activeLensId: string | null;
+  /**
+   * Toolbar style + open ribbon tab. Captured because the ribbon tour
+   * switches both to teach them: a classic-toolbar user who starts it from
+   * the Learn hub gets their strip back when it ends.
+   */
+  toolbarStyle: ToolbarStyle;
+  ribbonTab: RibbonTabId;
   /** May be null before the renderer registered camera callbacks. */
   camera: CameraViewpoint | null;
   /** Restore of camera/selection is skipped when this set changed mid-run. */

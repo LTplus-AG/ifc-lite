@@ -7,10 +7,11 @@
  * (Cesium / sun / SpaceMouse), and interface options.
  */
 
-import { Globe2, Move, PanelTop, } from 'lucide-react';
+import { Globe2, MousePointerClick, Move, PanelTop, } from 'lucide-react';
 import { TopView, BottomView, FrontView, BackView, LeftView, RightView, ZoomIn, ZoomOut, IsometricView, Orthographic, Viewpoint, SpaceMouse, Lighting, FitAll, RotateLeft, RotateRight } from '@/icons';
 import { useViewerStore } from '@/store';
 import { goHomeFromStore } from '@/store/homeView';
+import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
 import {
   RibbonGroup,
   RibbonGroupDivider,
@@ -24,6 +25,8 @@ export function ViewTab() {
   const projectionMode = useViewerStore((state) => state.projectionMode);
   const toggleProjectionMode = useViewerStore((state) => state.toggleProjectionMode);
   const setToolbarStyle = useViewerStore((state) => state.setToolbarStyle);
+  const ribbonContextualTabs = useViewerStore((state) => state.ribbonContextualTabs);
+  const setRibbonContextualTabs = useViewerStore((state) => state.setRibbonContextualTabs);
 
   // Cesium 3D overlay state
   const cesiumAvailable = useViewerStore((state) => state.cesiumAvailable);
@@ -198,10 +201,19 @@ export function ViewTab() {
         />
         <RibbonSmallStack>
           <RibbonSmallButton
+            icon={MousePointerClick}
+            label="Follow work"
+            tooltip="Open the Elements tab on selection and Author in edit mode, then hand the tab back"
+            active={ribbonContextualTabs}
+            onClick={() => setRibbonContextualTabs(!ribbonContextualTabs)}
+            {...tourAnchor(TOUR_ANCHORS.ribbonFollowWork)}
+          />
+          <RibbonSmallButton
             icon={PanelTop}
             label="Classic bar"
-            tooltip="Switch back to the classic single-strip toolbar"
+            tooltip="Switch back to the classic single-strip toolbar (remembered on this browser)"
             onClick={() => setToolbarStyle('classic')}
+            {...tourAnchor(TOUR_ANCHORS.ribbonClassicSwitch)}
           />
         </RibbonSmallStack>
       </RibbonGroup>

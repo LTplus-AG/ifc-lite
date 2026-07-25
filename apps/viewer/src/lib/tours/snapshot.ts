@@ -54,6 +54,8 @@ export function captureUiSnapshot(store: ViewerStoreApi): UiSnapshot {
       custom: s.sectionPlane.custom ? structuredClone(s.sectionPlane.custom) : undefined,
     },
     activeLensId: s.activeLensId,
+    toolbarStyle: s.toolbarStyle,
+    ribbonTab: s.ribbonTab,
     camera: s.cameraCallbacks.getViewpoint?.() ?? null,
     modelIdsAtStart: [...s.models.keys()],
   };
@@ -143,6 +145,16 @@ export function restoreUiSnapshot(
 
   if (!keep.has('propertiesActiveTab')) {
     s.setPropertiesActiveTab(snapshot.propertiesActiveTab);
+  }
+
+  // Toolbar: only written when a tour actually moved it. setToolbarStyle
+  // persists, and an unconditional write would silently pin the preference
+  // of every user who ever finished any tour.
+  if (!keep.has('toolbarStyle') && store.getState().toolbarStyle !== snapshot.toolbarStyle) {
+    s.setToolbarStyle(snapshot.toolbarStyle);
+  }
+  if (!keep.has('ribbonTab') && store.getState().ribbonTab !== snapshot.ribbonTab) {
+    s.setRibbonTab(snapshot.ribbonTab);
   }
 
   // Sidebar mode + collapse flags LAST, after showWorkspacePanel and the

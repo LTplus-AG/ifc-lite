@@ -13,8 +13,10 @@ import {
   HIERARCHY_MODE_STORAGE_KEY,
   TOOLBAR_STYLE_STORAGE_KEY,
   RIBBON_COLLAPSED_STORAGE_KEY,
+  RIBBON_CONTEXTUAL_TABS_STORAGE_KEY,
   UI_DEFAULTS,
   type GeometryMode,
+  type RibbonTabId,
   type ToolbarStyle,
 } from '../constants.js';
 import type { ContactShadingQuality, SeparationLinesQuality } from '@ifc-lite/renderer';
@@ -142,13 +144,27 @@ export interface UISlice {
   /** True after the user flipped `geometryMode` while a model was loaded. */
   geometryModePendingReload: boolean;
   /**
-   * Desktop toolbar style (issue #1686): the original `classic` strip
-   * or the tabbed, IFCFlux-style `ribbon`. Persisted preference — the
-   * mobile toolbar is orthogonal (`isMobile` wins on small screens).
+   * Desktop toolbar style (issue #1686): the tabbed, IFCFlux-style
+   * `ribbon` (the default) or the original `classic` strip. Persisted
+   * preference — the mobile toolbar is orthogonal (`isMobile` wins on
+   * small screens).
    */
   toolbarStyle: ToolbarStyle;
   /** Ribbon collapsed to its tab strip (Office-style double-click). */
   ribbonCollapsed: boolean;
+  /**
+   * Ribbon tab showing in the band. Lives in the store rather than the
+   * component so non-React drivers (the ribbon walkthrough, the command
+   * palette) can open a tab; deliberately NOT persisted, so every session
+   * still starts on Home.
+   */
+  ribbonTab: RibbonTabId;
+  /**
+   * Ribbon tabs follow the working context: a selection opens Elements,
+   * edit mode opens Author, an empty scene opens File, and dropping the
+   * context returns the user to the tab they came from. Persisted opt-out.
+   */
+  ribbonContextualTabs: boolean;
 
   // Actions
   setLeftPanelCollapsed: (collapsed: boolean) => void;
@@ -188,6 +204,10 @@ export interface UISlice {
   setToolbarStyle: (style: ToolbarStyle) => void;
   /** Collapse/expand the ribbon band and persist the choice. */
   setRibbonCollapsed: (collapsed: boolean) => void;
+  /** Open a ribbon tab (session-local). */
+  setRibbonTab: (tab: RibbonTabId) => void;
+  /** Turn contextual tab following on/off and persist the choice. */
+  setRibbonContextualTabs: (enabled: boolean) => void;
 }
 
 /** Apply the correct CSS classes on <html> for the given theme */
@@ -236,6 +256,8 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   geometryModePendingReload: false,
   toolbarStyle: UI_DEFAULTS.TOOLBAR_STYLE,
   ribbonCollapsed: UI_DEFAULTS.RIBBON_COLLAPSED,
+  ribbonTab: UI_DEFAULTS.RIBBON_TAB,
+  ribbonContextualTabs: UI_DEFAULTS.RIBBON_CONTEXTUAL_TABS,
 
   // Actions
   setLeftPanelCollapsed: (leftPanelCollapsed) => set({ leftPanelCollapsed }),
@@ -393,7 +415,7 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
 
   setToolbarStyle: (toolbarStyle) => {
     // Persist eagerly so the next page-load boots straight into the chosen
-    // style (constants.ts `getInitialToolbarStyle`). Wrap in try/catch —
+    // style (constants.ts `resolveInitialToolbarStyle`). Wrap in try/catch —
     // Safari private mode / locked storage throws.
     try {
       localStorage.setItem(TOOLBAR_STYLE_STORAGE_KEY, toolbarStyle);
@@ -410,5 +432,16 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
       console.warn('[ribbon-collapsed] persist failed; in-memory only', err);
     }
     set({ ribbonCollapsed });
+  },
+
+  setRibbonTab: (ribbonTab) => set({ ribbonTab }),
+
+  setRibbonContextualTabs: (ribbonContextualTabs) => {
+    try {
+      localStorage.setItem(RIBBON_CONTEXTUAL_TABS_STORAGE_KEY, String(ribbonContextualTabs));
+    } catch (err) {
+      console.warn('[ribbon-contextual-tabs] persist failed; in-memory only', err);
+    }
+    set({ ribbonContextualTabs });
   },
 });

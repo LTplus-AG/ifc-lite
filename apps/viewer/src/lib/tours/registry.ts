@@ -16,12 +16,14 @@ import { IDS_TOUR } from './tours/ids';
 import { LAYERS_TOUR } from './tours/layers';
 import { LENS_TOUR } from './tours/lens';
 import { MEASURE_SECTION_TOUR } from './tours/measure-section';
+import { RIBBON_TOUR } from './tours/ribbon';
 import { SCRIPTING_TOUR } from './tours/scripting';
 import { WELCOME_TOUR } from './tours/welcome';
 import type { TourDefinition, TourId } from './types';
 
 export const TOUR_REGISTRY: readonly TourDefinition[] = [
   WELCOME_TOUR,
+  RIBBON_TOUR,
   MEASURE_SECTION_TOUR,
   IDS_TOUR,
   CLASH_TOUR,

@@ -4,25 +4,28 @@
 
 /**
  * Ribbon toolbar (issue #1686) — the tabbed, IFCFlux/Office-style
- * alternative to the classic single-strip `MainToolbar`. A slim tab
- * strip selects a command context; the band beneath lays the commands
- * out in labeled groups with visible names, trading one strip of
- * vertical space for zero-recall discovery. Selected per user via
- * `uiSlice.toolbarStyle`; both styles drive the same shared command
- * hooks so behaviour can never fork.
+ * alternative to the classic single-strip `MainToolbar`, and the default
+ * toolbar since the ribbon shipped. A slim tab strip selects a command
+ * context; the band beneath lays the commands out in labeled groups with
+ * visible names, trading one strip of vertical space for zero-recall
+ * discovery. Selected per user via `uiSlice.toolbarStyle`; both styles
+ * drive the same shared command hooks so behaviour can never fork.
  *
  * Office conventions kept: double-click the active tab (or the chevron)
  * to collapse the band to the tab strip; the collapsed state persists.
+ * The active tab also follows the working context (see
+ * `useRibbonContextualTab`), which the user can turn off in View.
  */
 
-import React, { useState } from 'react';
+import React from 'react';
 import { ChevronDown, ChevronUp, HelpCircle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { useViewerStore } from '@/store';
+import { useViewerStore, type RibbonTabId } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
 import { cn } from '@/lib/utils';
+import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
 import { ThemeSwitch } from '../ThemeSwitch';
 import { ExportChangesButton } from '../ExportChangesButton';
 import { ExtensionToolbarSlot } from '@/components/extensions/ExtensionToolbarSlot';
@@ -33,8 +36,8 @@ import { ViewTab } from './tabs/ViewTab';
 import { ElementsTab } from './tabs/ElementsTab';
 import { AnalyzeTab } from './tabs/AnalyzeTab';
 import { AuthorTab } from './tabs/AuthorTab';
-
-type RibbonTabId = 'file' | 'home' | 'view' | 'elements' | 'analyze' | 'author';
+import { RibbonSwitchNotice } from './RibbonSwitchNotice';
+import { useRibbonContextualTab } from './useRibbonContextualTab';
 
 const RIBBON_TABS: { id: RibbonTabId; label: string }[] = [
   { id: 'file', label: 'File' },
@@ -50,10 +53,14 @@ interface RibbonToolbarProps {
 }
 
 export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as RibbonToolbarProps) {
-  // Home first: it holds the everyday tool and camera loop.
-  const [activeTab, setActiveTab] = useState<RibbonTabId>('home');
+  // The active tab lives in the store so the contextual driver and the
+  // walkthrough can open one; it starts on Home and is never persisted.
+  const activeTab = useViewerStore((s) => s.ribbonTab);
+  const setActiveTab = useViewerStore((s) => s.setRibbonTab);
   const ribbonCollapsed = useViewerStore((s) => s.ribbonCollapsed);
   const setRibbonCollapsed = useViewerStore((s) => s.setRibbonCollapsed);
+
+  useRibbonContextualTab();
 
   // Shared command surface — registers the global load listeners and the
   // hidden file inputs exactly once for this toolbar style.
@@ -76,7 +83,12 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
 
       {/* ── Tab strip ── */}
       <div className="flex h-10 items-center gap-0.5 border-b border-zinc-200/70 px-2 dark:border-zinc-800/70">
-        <div role="tablist" aria-label="Ribbon tabs" className="flex h-full items-end gap-0.5">
+        <div
+          role="tablist"
+          aria-label="Ribbon tabs"
+          className="flex h-full items-end gap-0.5"
+          {...tourAnchor(TOUR_ANCHORS.ribbonTabs)}
+        >
           {RIBBON_TABS.map((tab) => {
             const isActive = tab.id === activeTab;
             return (
@@ -175,6 +187,7 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
                 aria-label={ribbonCollapsed ? 'Expand the ribbon' : 'Collapse the ribbon'}
                 aria-expanded={!ribbonCollapsed}
                 onClick={() => setRibbonCollapsed(!ribbonCollapsed)}
+                {...tourAnchor(TOUR_ANCHORS.ribbonCollapse)}
               >
                 {ribbonCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
               </Button>
@@ -199,6 +212,10 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
           {activeTab === 'author' && <AuthorTab />}
         </div>
       )}
+
+      {/* One-time "the toolbar changed" line, with the way back. Sits under
+          the band so it never displaces a command the user is reaching for. */}
+      <RibbonSwitchNotice />
     </div>
   );
 }

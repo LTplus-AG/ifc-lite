@@ -56,6 +56,7 @@ export function captureUiSnapshot(store: ViewerStoreApi): UiSnapshot {
     activeLensId: s.activeLensId,
     toolbarStyle: s.toolbarStyle,
     ribbonTab: s.ribbonTab,
+    ribbonCollapsed: s.ribbonCollapsed,
     camera: s.cameraCallbacks.getViewpoint?.() ?? null,
     modelIdsAtStart: [...s.models.keys()],
   };
@@ -158,6 +159,13 @@ export function restoreUiSnapshot(
   }
   if (!keep.has('ribbonTab') && store.getState().ribbonTab !== snapshot.ribbonTab) {
     s.setRibbonTab(snapshot.ribbonTab);
+  }
+  // `setRibbonCollapsed` persists as well, so restore it transiently for the
+  // same reason as the toolbar above — the ribbon tour expands the band to
+  // point at things in it, and that preview must not overwrite the choice of
+  // someone who keeps it collapsed.
+  if (!keep.has('ribbonCollapsed') && store.getState().ribbonCollapsed !== snapshot.ribbonCollapsed) {
+    store.setState({ ribbonCollapsed: snapshot.ribbonCollapsed });
   }
 
   // Sidebar mode + collapse flags LAST, after showWorkspacePanel and the

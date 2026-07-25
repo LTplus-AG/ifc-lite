@@ -186,12 +186,14 @@ export interface UiSnapshot {
   };
   activeLensId: string | null;
   /**
-   * Toolbar style + open ribbon tab. Captured because the ribbon tour
-   * switches both to teach them: a classic-toolbar user who starts it from
-   * the Learn hub gets their strip back when it ends.
+   * Toolbar style, open ribbon tab, and collapsed state. Captured because
+   * the ribbon tour moves all three to teach them: a classic-toolbar user
+   * who starts it from the Learn hub gets their strip back when it ends,
+   * and someone who keeps the band collapsed gets it collapsed again.
    */
   toolbarStyle: ToolbarStyle;
   ribbonTab: RibbonTabId;
+  ribbonCollapsed: boolean;
   /** May be null before the renderer registered camera callbacks. */
   camera: CameraViewpoint | null;
   /** Restore of camera/selection is skipped when this set changed mid-run. */

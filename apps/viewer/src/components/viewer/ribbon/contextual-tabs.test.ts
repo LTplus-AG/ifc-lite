@@ -102,6 +102,27 @@ describe('decideRibbonTab — selection', () => {
   });
 });
 
+describe('decideRibbonTab — edit outranks selection (PR #1880 review)', () => {
+  it('does not hand the tab back when a selection clears while still editing', () => {
+    const editingWithSelection: RibbonContext = {
+      hasModel: true, hasSelection: true, editEnabled: true,
+    };
+    const memory = { autoOpened: 'elements' as const, returnTo: 'home' as const };
+    // Selection goes away but edit mode is still on: Author remains the
+    // context, so nothing may be handed back out from under the user.
+    assert.equal(
+      decideRibbonTab(editingWithSelection, EDITING, 'author', memory),
+      null,
+    );
+  });
+
+  it('still hands back once editing is off', () => {
+    const memory = { autoOpened: 'elements' as const, returnTo: 'home' as const };
+    const d = decideRibbonTab(SELECTED, LOADED, 'elements', memory);
+    assert.deepEqual(d, { tab: 'home', memory: NO_TAB_MEMORY });
+  });
+});
+
 describe('decideRibbonTab — edit mode', () => {
   it('opens Author when edit mode comes on', () => {
     const d = decideRibbonTab(LOADED, EDITING, 'home', NO_TAB_MEMORY);

@@ -128,7 +128,10 @@ export function decideRibbonTab(
   if (!prev.hasSelection && next.hasSelection && !next.editEnabled) {
     return NEUTRAL_TABS.includes(tab) ? takeOver('elements', tab) : null;
   }
-  if (prev.hasSelection && !next.hasSelection) {
+  // Same edit-outranks-selection guard as the opening branch above: while
+  // authoring, Author is the context, so clearing a selection must not hand
+  // the tab back out from under the user mid-edit.
+  if (prev.hasSelection && !next.hasSelection && !next.editEnabled) {
     return handBack('elements', tab, memory);
   }
 

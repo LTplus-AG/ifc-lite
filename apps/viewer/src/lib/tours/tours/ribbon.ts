@@ -36,8 +36,10 @@ export const RIBBON_TOUR: TourDefinition = {
         // stored choice already replaced by a preview they never asked to
         // keep. The tour only needs the ribbon on screen, and the snapshot
         // restores the pre-tour value when it ends.
-        store.setState({ toolbarStyle: 'ribbon' });
-        store.getState().setRibbonCollapsed(false);
+        // Both transient for the same reason: `setRibbonCollapsed` persists
+        // too, so expanding the band to point at things in it would
+        // permanently undo the choice of a user who keeps it collapsed.
+        store.setState({ toolbarStyle: 'ribbon', ribbonCollapsed: false });
         store.getState().setRibbonTab('home');
       },
     },

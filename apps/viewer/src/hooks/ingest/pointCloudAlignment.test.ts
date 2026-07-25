@@ -114,6 +114,16 @@ describe('invertMapConversion / applyMapConversion (issue #1804)', () => {
     assert.strictEqual(applyMapConversion(params, 1, 1, 1), null);
   });
 
+  it('guards a ~zero Scale on the FORWARD map too, instead of collapsing the cloud', () => {
+    // Without the guard the forward map "succeeds" while stacking every
+    // local point onto (Eastings, Northings, OrthogonalHeight).
+    const params: MapConversionParams = {
+      eastings: 7, northings: 8, orthogonalHeight: 9, scale: 0,
+    };
+    assert.strictEqual(applyMapConversion(params, 1000, -2000, 30), null);
+    assert.strictEqual(applyMapConversion({ ...params, scale: 1e-13 }, 1000, -2000, 30), null);
+  });
+
   it('guards a ~zero Scale on the inverse (would otherwise divide by zero)', () => {
     const params: MapConversionParams = {
       eastings: 0,

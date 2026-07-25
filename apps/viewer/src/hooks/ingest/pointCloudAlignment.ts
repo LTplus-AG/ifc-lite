@@ -100,6 +100,12 @@ export function applyMapConversion(
   const axis = normalizeAxis(params.xAxisAbscissa ?? 1, params.xAxisOrdinate ?? 0);
   if (!axis) return null;
   const scale = params.scale ?? 1;
+  // Reject a ~0 Scale the same way the inverse does. Without this the
+  // forward map stays "successful" while collapsing every local point onto
+  // (Eastings, Northings, OrthogonalHeight) — a whole cloud silently
+  // stacked on one spot reads as a placement bug, where a null reads as
+  // the malformed IfcMapConversion it actually is.
+  if (Math.abs(scale) < 1e-12) return null;
   const { a, b } = axis;
   return {
     e: params.eastings + scale * (a * x - b * y),

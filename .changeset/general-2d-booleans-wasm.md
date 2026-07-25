@@ -22,11 +22,13 @@ collapses to the largest shape — correct for the single extrusion profile it
 serves, silent geometry loss for a difference that splits its subject into
 islands (a wall seen past a column is two visible slivers, not one).
 
-Winding is the contract: counter-clockwise rings cover area, clockwise rings
-remove it, the fill rule is always NonZero, and input winding is respected
-rather than normalised. That matches what `meshOutline2d` emits and what SVG
-`fill-rule="nonzero"` renders, so holes survive a round trip. Callers holding
-raw, arbitrarily-wound contours must normalise them CCW first.
+Winding is the contract: the fill rule is always NonZero and input winding is
+respected rather than normalised. Because it is NonZero, winding is relative — a
+counter-clockwise ring covers area, and a clockwise ring creates a hole only
+where it cancels positive winding (a lone clockwise ring still fills). That
+matches what `meshOutline2d` emits and what SVG `fill-rule="nonzero"` renders, so
+holes survive a round trip. Callers holding raw, arbitrarily-wound contours that
+all mean "covered" must normalise them CCW first.
 
 Degenerate input is dropped, not fatal: rings under 3 vertices or carrying any
 non-finite coordinate are discarded, an explicitly repeated closing vertex is

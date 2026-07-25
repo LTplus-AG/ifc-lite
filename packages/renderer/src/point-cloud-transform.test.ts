@@ -92,3 +92,153 @@ describe('writePointCloudUniforms model-matrix packing (issue #1804)', () => {
     assert.deepStrictEqual(Array.from(scratch.subarray(16, 32)), expected);
   });
 });
+
+// ─── transformAabb (world-space bounds under a per-asset matrix) ───────────
+
+import { transformAabb } from './pointcloud/point-cloud-node.js';
+
+describe('transformAabb (issue #1804 world-space point-cloud bounds)', () => {
+  const box = {
+    min: [1, 2, 3] as [number, number, number],
+    max: [2, 3, 4] as [number, number, number],
+  };
+
+  it('passes bounds through unchanged without a matrix (or a malformed one)', () => {
+    assert.strictEqual(transformAabb(box, undefined), box);
+    assert.strictEqual(transformAabb(box, new Float32Array(3)), box);
+  });
+
+  it('applies a pure translation to both corners', () => {
+    const m = new Float32Array([
+      1, 0, 0, 0,
+      0, 1, 0, 0,
+      0, 0, 1, 0,
+      10, -20, 30, 1,
+    ]);
+    const out = transformAabb(box, m);
+    assert.deepStrictEqual(out.min, [11, -18, 33]);
+    assert.deepStrictEqual(out.max, [12, -17, 34]);
+  });
+
+  it('re-axis-aligns a rotated box (90° about Y: point → (z, y, -x))', () => {
+    const m = new Float32Array([
+      0, 0, -1, 0,   // x column
+      0, 1, 0, 0,    // y column
+      1, 0, 0, 0,    // z column
+      0, 0, 0, 1,
+    ]);
+    const out = transformAabb(box, m);
+    // x' = z ∈ [3,4]; y' = y ∈ [2,3]; z' = -x ∈ [-2,-1].
+    assert.deepStrictEqual(out.min, [3, 2, -2]);
+    assert.deepStrictEqual(out.max, [4, 3, -1]);
+  });
+});
+
+// ─── DeviationPipeline: model matrix reaches the compute params ────────────
+
+import { DeviationPipeline } from './deviation/deviation-pipeline.js';
+
+// WebGPU enum globals referenced by the pipeline (not defined in node).
+(globalThis as Record<string, unknown>).GPUShaderStage = { VERTEX: 1, FRAGMENT: 2, COMPUTE: 4 };
+(globalThis as Record<string, unknown>).GPUBufferUsage = {
+  MAP_READ: 1, MAP_WRITE: 2, COPY_SRC: 4, COPY_DST: 8, INDEX: 16,
+  VERTEX: 32, UNIFORM: 64, STORAGE: 128, INDIRECT: 256, QUERY_RESOLVE: 512,
+};
+
+interface CapturedWrite { data: Uint8Array }
+
+function makeComputeDevice(writes: CapturedWrite[]): GPUDevice {
+  const device = {
+    createBindGroupLayout: () => ({}),
+    createPipelineLayout: () => ({}),
+    createShaderModule: () => ({}),
+    createComputePipeline: () => ({}),
+    createBuffer: () => ({ destroy: () => {} }),
+    createBindGroup: () => ({}),
+    queue: {
+      writeBuffer: (
+        _buffer: unknown,
+        _offset: number,
+        data: ArrayBuffer | ArrayBufferView,
+        dataOffset?: number,
+        size?: number,
+      ) => {
+        if (data instanceof ArrayBuffer) {
+          writes.push({ data: new Uint8Array(data.slice(dataOffset ?? 0, (dataOffset ?? 0) + (size ?? data.byteLength))) });
+        }
+      },
+    },
+  };
+  return device as unknown as GPUDevice;
+}
+
+function makeEncoder(): GPUCommandEncoder {
+  const pass = {
+    setPipeline: () => {},
+    setBindGroup: () => {},
+    dispatchWorkgroups: () => {},
+    end: () => {},
+  };
+  return { beginComputePass: () => pass } as unknown as GPUCommandEncoder;
+}
+
+function tinyBvh() {
+  return {
+    nodes: new Float32Array(8),
+    triangles: new Float32Array(12),
+    triangleCount: 1,
+    nodeCount: 1,
+    meshCount: 1,
+    bounds: { min: [0, 0, 0] as [number, number, number], max: [1, 1, 1] as [number, number, number] },
+  };
+}
+
+describe('DeviationPipeline params packing (issue #1804)', () => {
+  it('packs the per-asset model matrix ahead of the scalar params', () => {
+    const writes: CapturedWrite[] = [];
+    const pipeline = new DeviationPipeline(makeComputeDevice(writes));
+    pipeline.uploadBvh(tinyBvh());
+    const model = new Float32Array([
+      2, 0, 0, 0,
+      0, 3, 0, 0,
+      0, 0, 4, 0,
+      10, 20, 30, 1,
+    ]);
+    const ok = pipeline.dispatch(makeEncoder(), {
+      positionsBuffer: {} as GPUBuffer,
+      deviationsBuffer: {} as GPUBuffer,
+      pointCount: 123,
+      maxRange: 0.5,
+      model,
+    });
+    assert.strictEqual(ok, true);
+    assert.strictEqual(writes.length, 1);
+    const bytes = writes[0].data;
+    assert.strictEqual(bytes.byteLength, 80);
+    const f = new Float32Array(bytes.buffer, bytes.byteOffset, 20);
+    const u = new Uint32Array(bytes.buffer, bytes.byteOffset, 20);
+    assert.deepStrictEqual(Array.from(f.subarray(0, 16)), Array.from(model));
+    assert.strictEqual(u[16], 123);          // pointCount
+    assert.strictEqual(u[17], 6);            // pointStrideF32 (24-byte vertex)
+    assert.strictEqual(u[18], 0);            // positionOffsetF32
+    assert.ok(Math.abs(f[19] - 0.5) < 1e-9); // maxRange
+  });
+
+  it('falls back to the identity matrix when no model is provided', () => {
+    const writes: CapturedWrite[] = [];
+    const pipeline = new DeviationPipeline(makeComputeDevice(writes));
+    pipeline.uploadBvh(tinyBvh());
+    pipeline.dispatch(makeEncoder(), {
+      positionsBuffer: {} as GPUBuffer,
+      deviationsBuffer: {} as GPUBuffer,
+      pointCount: 1,
+      maxRange: 0,
+    });
+    const bytes = writes[0].data;
+    const f = new Float32Array(bytes.buffer, bytes.byteOffset, 20);
+    assert.deepStrictEqual(
+      Array.from(f.subarray(0, 16)),
+      [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+    );
+  });
+});

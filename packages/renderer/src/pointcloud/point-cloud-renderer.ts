@@ -21,6 +21,7 @@ import {
   appendChunkToNode,
   createNode,
   destroyNode,
+  transformAabb,
   uploadAssetToGpu,
   type PointCloudChunkInput,
   type PointCloudNode,
@@ -325,12 +326,18 @@ export class PointCloudRenderer {
     for (const node of this.nodes.values()) {
       if (!Number.isFinite(node.bounds.min[0])) continue;
       any = true;
-      if (node.bounds.min[0] < minX) minX = node.bounds.min[0];
-      if (node.bounds.min[1] < minY) minY = node.bounds.min[1];
-      if (node.bounds.min[2] < minZ) minZ = node.bounds.min[2];
-      if (node.bounds.max[0] > maxX) maxX = node.bounds.max[0];
-      if (node.bounds.max[1] > maxY) maxY = node.bounds.max[1];
-      if (node.bounds.max[2] > maxZ) maxZ = node.bounds.max[2];
+      // Report WORLD-space extents: fold the per-asset model matrix
+      // (issue #1804 IfcMapConversion alignment) into the chunk-space
+      // bounds, so the height-ramp min/max and the viewer's scene
+      // bounds/framing agree with where the vertex shader actually
+      // places the points. Identity/no-matrix nodes pass through as-is.
+      const b = transformAabb(node.bounds, node.model);
+      if (b.min[0] < minX) minX = b.min[0];
+      if (b.min[1] < minY) minY = b.min[1];
+      if (b.min[2] < minZ) minZ = b.min[2];
+      if (b.max[0] > maxX) maxX = b.max[0];
+      if (b.max[1] > maxY) maxY = b.max[1];
+      if (b.max[2] > maxZ) maxZ = b.max[2];
     }
     if (!any) return null;
     return { min: [minX, minY, minZ], max: [maxX, maxY, maxZ] };

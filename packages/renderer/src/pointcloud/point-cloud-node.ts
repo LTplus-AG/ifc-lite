@@ -71,6 +71,40 @@ export interface PointCloudNode {
   model?: Float32Array;
 }
 
+/**
+ * Transform an AABB through a column-major 4x4 model matrix and return
+ * the axis-aligned box of the result (standard 8-corner fold). Used so
+ * `PointCloudRenderer.getBounds()` reports WORLD-space extents when a
+ * node carries a per-asset model matrix (issue #1804) — the height-ramp
+ * colour mode and the viewer's scene-bounds/framing consume those
+ * extents and must agree with where the shader actually places points.
+ * Returns the input box unchanged for a missing/malformed matrix
+ * (mirrors `writePointCloudUniforms`' identity fallback).
+ */
+export function transformAabb(
+  bounds: { min: [number, number, number]; max: [number, number, number] },
+  model: Float32Array | undefined,
+): { min: [number, number, number]; max: [number, number, number] } {
+  if (!model || model.length !== 16) return bounds;
+  const min: [number, number, number] = [Infinity, Infinity, Infinity];
+  const max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
+  for (let c = 0; c < 8; c++) {
+    const x = (c & 1) === 0 ? bounds.min[0] : bounds.max[0];
+    const y = (c & 2) === 0 ? bounds.min[1] : bounds.max[1];
+    const z = (c & 4) === 0 ? bounds.min[2] : bounds.max[2];
+    const tx = model[0] * x + model[4] * y + model[8] * z + model[12];
+    const ty = model[1] * x + model[5] * y + model[9] * z + model[13];
+    const tz = model[2] * x + model[6] * y + model[10] * z + model[14];
+    if (tx < min[0]) min[0] = tx;
+    if (ty < min[1]) min[1] = ty;
+    if (tz < min[2]) min[2] = tz;
+    if (tx > max[0]) max[0] = tx;
+    if (ty > max[1]) max[1] = ty;
+    if (tz > max[2]) max[2] = tz;
+  }
+  return { min, max };
+}
+
 /** Build an empty node — chunks are appended via `appendChunkToNode`. */
 export function createNode(
   device: GPUDevice,

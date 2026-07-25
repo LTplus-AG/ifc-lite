@@ -667,6 +667,10 @@ export class Renderer {
         matrix: Float32Array | null,
     ): void {
         this.pointCloudRenderer?.setAssetTransform(handle, matrix);
+        // The asset's world-space extents just moved: re-fold the (now
+        // matrix-aware) point-cloud bounds into the scene bounds so
+        // framing / zoom-to-fit targets where the points actually render.
+        this.recomputeModelBounds();
         this.requestRender();
     }
 
@@ -733,6 +737,12 @@ export class Renderer {
                     deviationsBuffer: chunk.deviationBuffer,
                     pointCount: chunk.pointCount,
                     maxRange,
+                    // #1804: chunk positions are stored in the asset's
+                    // decode-shifted local frame when IfcMapConversion
+                    // alignment is active; the BVH triangles are world
+                    // space, so the compute pass must apply the same
+                    // per-asset matrix the splat shader renders with.
+                    model: node.model,
                 });
                 if (ok) {
                     chunksProcessed++;

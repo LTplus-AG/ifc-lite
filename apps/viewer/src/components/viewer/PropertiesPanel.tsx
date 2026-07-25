@@ -19,6 +19,7 @@ import {
   ArrowUpDown,
   PenLine,
   Crosshair,
+  Box,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { EditToolbar } from './PropertyEditor';
@@ -150,6 +151,8 @@ export function PropertiesPanel() {
   const selectedEntityId = useViewerStore((s) => s.selectedEntityId);
   const selectedEntity = useViewerStore((s) => s.selectedEntity);
   const selectedEntities = useViewerStore((s) => s.selectedEntities);
+  const zoneSets = useViewerStore((s) => s.zoneSets);
+  const zoneAssignments = useViewerStore((s) => s.zoneAssignments);
   const selectedModelId = useViewerStore((s) => s.selectedModelId);
   const cameraCallbacks = useViewerStore((s) => s.cameraCallbacks);
   const toggleEntityVisibility = useViewerStore((s) => s.toggleEntityVisibility);
@@ -971,6 +974,31 @@ export function PropertiesPanel() {
     return stats.length > 0 ? stats : null;
   }, [selectedEntity, model, ifcDataStore]);
 
+  // Location-zone membership (issue #1810): which zone this element falls in
+  // per defined zone set, read straight from the last-computed assignment
+  // (`zoneAssignments`, keyed by the SAME global id the renderer highlight
+  // uses — `selectedEntityId`). Shown for ANY selected element (not gated to
+  // spatial containers like `spatialContainment` above), since zones classify
+  // ordinary building elements.
+  const zoneMembership = useMemo(() => {
+    if (selectedEntityId === null || zoneSets.length === 0) return null;
+    const record = zoneAssignments.get(selectedEntityId);
+    const rows: Array<{ label: string; value: string }> = [];
+    for (const zs of zoneSets) {
+      const assignment = record?.[zs.id];
+      if (!assignment) continue;
+      if (assignment.straddles) {
+        const touched = assignment.touchedZoneIds
+          .map((zoneId) => zs.zones.find((z) => z.id === zoneId)?.name)
+          .filter((n): n is string => !!n);
+        rows.push({ label: zs.name, value: touched.length > 0 ? `${touched.join(', ')} (straddles)` : 'straddles' });
+      } else if (assignment.zoneName) {
+        rows.push({ label: zs.name, value: assignment.zoneName });
+      }
+    }
+    return rows.length > 0 ? rows : null;
+  }, [selectedEntityId, zoneSets, zoneAssignments]);
+
   // Separate occurrence (instance) and inherited type properties.
   // Occurrence properties are displayed first, type properties in a separate section.
   // All type property sets are always shown in the inherited section so users can see
@@ -1485,6 +1513,29 @@ export function PropertiesPanel() {
                 <div key={item.label} className="grid grid-cols-[minmax(80px,1fr)_minmax(0,2fr)] gap-2 px-3 py-1.5 text-sm">
                   <span className="text-muted-foreground truncate" title={item.label}>{item.label}</span>
                   <span className="font-medium font-mono">{item.value}</span>
+                </div>
+              ))}
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+      )}
+
+      {/* Location zones (issue #1810) — which user-defined zone box(es) this
+          element falls in, per zone set. Read-only: editing zones happens in
+          the Zones panel, not here. */}
+      {zoneMembership && (
+        <Collapsible defaultOpen className="border-b">
+          <CollapsibleTrigger className="flex items-center gap-2 w-full p-3 hover:bg-muted/50 text-left">
+            <Box className="h-4 w-4 text-amber-600" />
+            <span className="font-medium text-sm">Zones</span>
+            <span className="text-xs text-muted-foreground ml-auto">{zoneMembership.length}</span>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div className="divide-y border-t">
+              {zoneMembership.map((item) => (
+                <div key={item.label} className="grid grid-cols-[minmax(80px,1fr)_minmax(0,2fr)] gap-2 px-3 py-1.5 text-sm">
+                  <span className="text-muted-foreground truncate" title={item.label}>{item.label}</span>
+                  <span className="font-medium font-mono truncate" title={item.value}>{item.value}</span>
                 </div>
               ))}
             </div>

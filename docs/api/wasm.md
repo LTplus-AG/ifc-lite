@@ -223,7 +223,7 @@ function resolve2d(a: Contours2D): Contours2D;  // self-union a ring soup into s
 
 **Winding is the contract.** The fill rule is always `nonzero`, and input winding is respected — matching `meshOutline2d` output and SVG `fill-rule="nonzero"`, so holes survive a round trip. Because it is NonZero, winding is relative to the rings around a point, not absolute: a counter-clockwise ring covers area, and a clockwise ring subtracts only where it overlaps positive winding — so a CW ring nested inside a CCW ring is a hole, but a *lone* CW ring still fills (it has non-zero winding). Raw contours that all mean "covered" (e.g. projected triangles) must be wound CCW before use.
 
-**Results keep every disjoint shape.** `difference2d` that splits its subject returns one shape per island (grouped via `shapeOffsets()`) — a wall seen past a column is two visible slivers, not one. `difference2d` also takes any number of clip rings; they subtract as their union, so there is no separate "difference against many".
+**Results keep every disjoint shape.** `difference2d` that splits its subject returns one shape per island (grouped via `shapeOffsets()`) — a wall seen past a column is two visible slivers, not one. The `b` contour set may itself hold any number of clip rings; they subtract as their union, so there is no separate "difference against many" overload — collect the clips into one `Contours2D` and pass it as `b`.
 
 **Manual freeing.** Every returned `Contours2D` owns wasm memory and the operations return **new** handles without mutating their operands. An accumulating loop must `free()` the handle it replaces:
 

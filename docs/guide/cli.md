@@ -1028,6 +1028,36 @@ imports), but small parametric models can GROW in bytes, since verbose
 explicit tessellation replaces compact swept solids. Check the reported
 `trianglesBefore`/`trianglesAfter` and output size for your workload.
 
+### `gym` - Reset/Step/Reward Environment Loop
+
+A prototype environment API for RL-style consumers: wrap a model, apply
+data-mutation ops over stdin, and get each step scored against the same
+schema/clash/ids checks that `validate`, `clash`, and `ids` run.
+
+```bash
+ifc-lite gym --model model.ifc --checks schema,clash
+ifc-lite gym --model model.ifc --checks schema,clash,ids --ids rules.ids
+ifc-lite gym --seed 42 --checks schema,clash   # generated episode (repo checkout only)
+```
+
+The protocol is newline-delimited JSON, one object per line in both
+directions: `gym` opens with a `reset` line (observation + baseline reward
+channels), the consumer sends `step` messages with ops
+(`setProperty`/`setAttribute`/`deleteProperty`, mirroring `bim.mutate`'s
+method names), and `gym` replies with a `reward` line per step. `reset`
+reloads the pristine model, `close` exits. Malformed input yields a
+structured `error` line, never a crash. The same model plus the same op
+sequence produces byte-identical reward lines.
+
+`--seed <n>` (plus optional `--family`, `--corrupt`/`--no-corrupt`/
+`--corrupt-rate`) generates a deterministic world-gym episode in-process
+instead of loading a file; mid-session `{"type":"reset","seed":8}` swaps to
+a fresh generated episode. Episode generation dynamically imports
+`tools/world-gym/` from a repo checkout; the published npm package prints a
+clear error for `--seed` while `--model` keeps working. See the
+[`@ifc-lite/cli` README](https://github.com/LTplus-AG/ifc-lite/tree/main/packages/cli#gym)
+for the full protocol reference.
+
 ## Output Modes
 
 Every command supports structured output:
@@ -1167,4 +1197,5 @@ Run `ifc-lite schema` to see the full API before writing eval expressions.
 | `ext` | Manage IFClite extensions (Phase 0 — validate, init) |
 | `layer` | Layered change tracking over a local store (.ifc-lite/) |
 | `ref` | Manage named refs in the layer store |
+| `gym` | reset/step/reward environment loop (JSONL over stdin/stdout) |
 <!-- END GENERATED: cli-commands -->

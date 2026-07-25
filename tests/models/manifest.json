@@ -4,6 +4,11 @@
   "base_url": "https://github.com/LTplus-AG/ifc-lite/releases/download/fixtures-v1",
   "files": [
     {
+      "path": "AB22.ifc",
+      "sha256": "b3665488720f1e4e74710c3e3dc26a0d1f07a56bb691a679751861a3697f76ec",
+      "size": 225508
+    },
+    {
       "path": "ara3d/AC20-FZK-Haus.ifc",
       "sha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d",
       "size": 2526544

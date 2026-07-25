@@ -41,9 +41,35 @@ ifc-lite view model.ifc
 - `view` - interactive 3D viewer in the browser, controllable via REST (`/api/command`)
 - `analyze` - query plus colorize/isolate/heatmap results in the running viewer
 - `mcp` - start an MCP server bound to one or more IFC files (stdio or http)
+- `gym` - reset/step/reward environment loop over the existing schema/clash/ids checks (see below)
 - `schema`, `bsdd`, `diagnose-geometry`, `extract-entities`, `generate-spaces`, `lod`, `ext` - see `ifc-lite --help`
 
 Global flags: `--json`, `--out <file>`, `--verbose`, `--quiet`, `--debug`, `--log-level <level>`.
+
+## gym
+
+`ifc-lite gym` is a prototype reset/step/reward environment API over the existing headless checks: the skeleton of an RLVR environment for buildings (see [`docs/vision/moonshots-tech.md`](../../docs/vision/moonshots-tech.md) M2 and [`docs/vision/moonshots-execution-plan.md`](../../docs/vision/moonshots-execution-plan.md) B0.4). It wraps ONE loaded model (there is no procedural generator yet) and lets an agent apply data-mutation ops, scoring each step against the same schema/clash/ids checks the `validate`, `clash`, and `ids` commands already run.
+
+```bash
+ifc-lite gym --model model.ifc --checks schema,clash
+ifc-lite gym --model model.ifc --checks schema,clash,ids --ids rules.ids
+```
+
+The protocol is newline-delimited JSON: one JSON object per line, in both directions.
+
+- On start, `gym` prints one line: `{"type":"reset","observation":{...},"channels":{...}}`. `observation` has sorted `entityCounts` (by IFC type), `storeyCount`, and `schema` version. `bounds` is always `null` in v0 (a known gap: no geometry pass runs on `reset`, see below).
+- Send `{"type":"step","ops":[...]}` on stdin to apply ops and score the result. `gym` replies `{"type":"reward","channels":{...},"done":false}`.
+- Send `{"type":"reset"}` to reload the pristine model; replies like the initial reset.
+- Send `{"type":"close"}` to exit 0.
+- Malformed JSON or an unknown command/op never crashes the process: it replies `{"type":"error","message":"..."}` and keeps reading.
+
+v0 ops mirror `bim.mutate`'s method names exactly: `setProperty`, `setAttribute`, `deleteProperty` (all keyed by `expressId`). Geometry-creating ops (new walls, slabs, etc.) are out of scope for v0.
+
+```
+{"type":"step","ops":[{"op":"setProperty","expressId":42,"psetName":"Pset_WallCommon","propName":"IsExternal","value":true}]}
+```
+
+Determinism: the same model plus the same op sequence yields byte-identical reward lines (sorted arrays, no timestamps, fixed-precision floats).
 
 ## Links
 

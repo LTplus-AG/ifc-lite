@@ -4,7 +4,8 @@
 
 import { BVH, type AABB, type MeshWithBounds } from '@ifc-lite/spatial';
 import type { Mat4, Vec3 } from '../types.js';
-import { sub, cross, dot } from '../math/vec3.js';
+import { sub, cross, dot, distSq } from '../math/vec3.js';
+import { closestPtPointTriangle } from '../math/triangle-distance.js';
 
 /**
  * Fixed ray direction for point-in-solid tests: `normalize([1, √3, √5])`.
@@ -129,6 +130,53 @@ export class TriMesh {
    * result is bit-identical to the Rust `contains_point`. Only invoked in the
    * rare enclosed-solid branch of the narrow phase, so the O(n) cost is fine.
    */
+  /**
+   * Exact distance from `p` to this mesh's surface: the minimum point-to-
+   * triangle distance over every triangle. Iterated in index order (not the
+   * BVH) so the code shape stays identical to the Rust `distance_to_surface`;
+   * the minimum itself is order-independent. Only invoked from the contained-
+   * pair depth measurement (#1866), so the O(n) scan is fine.
+   */
+  distanceToSurface(p: Vec3): number {
+    let best = Infinity;
+    for (let t = 0; t < this.count; t += 1) {
+      const [a, b, c] = this.tri(t);
+      const q = closestPtPointTriangle(p, a, b, c);
+      const d2 = distSq(p, q);
+      if (d2 < best) best = d2;
+    }
+    return Math.sqrt(best);
+  }
+
+  /**
+   * Mesh-level penetration of this mesh into `other`, measured at the vertices
+   * of the triangles flagged in `crossFlags` (the pairs the narrow phase saw
+   * genuinely crossing `other`): the maximum distance-to-surface of `other`
+   * over those vertices that lie inside `other`. Each vertex is visited once
+   * (deduped by vertex index, in index order — bit-identical to the Rust
+   * `max_penetration_into`). Returns 0 when no flagged vertex is inside, e.g.
+   * a thin member piercing straight through, whose crossing-triangle vertices
+   * all sit outside `other` (#1866).
+   */
+  maxPenetrationInto(other: TriMesh, crossFlags: Uint8Array): number {
+    const seen = new Uint8Array(Math.floor(this.positions.length / 3));
+    let depth = 0;
+    for (let t = 0; t < this.count; t += 1) {
+      if (crossFlags[t] === 0) continue;
+      const o = t * 3;
+      for (let k = 0; k < 3; k += 1) {
+        const vi = this.indices[o + k];
+        if (seen[vi] === 1) continue;
+        seen[vi] = 1;
+        const v = this.vertex(vi);
+        if (!other.containsPoint(v)) continue;
+        const d = other.distanceToSurface(v);
+        if (d > depth) depth = d;
+      }
+    }
+    return depth;
+  }
+
   containsPoint(p: Vec3): boolean {
     let crossings = 0;
     for (let t = 0; t < this.count; t += 1) {

@@ -56,6 +56,14 @@ pub fn test_pair(
         (tri_b, tri_a)
     };
 
+    // One AABB containing the other flags the contained-contact case (#1866):
+    // for such pairs the AABB signed gap measures how deep the small BOX sits in
+    // the big one (its own extent), not how far the MESHES interpenetrate, so
+    // collect the crossing triangles for a mesh-level depth measurement instead.
+    let contained = aabb_contains(aabb_b, aabb_a) || aabb_contains(aabb_a, aabb_b);
+    let mut cross_small: Vec<bool> = if contained { vec![false; small.count] } else { Vec::new() };
+    let mut cross_large: Vec<bool> = if contained { vec![false; large.count] } else { Vec::new() };
+
     let mut intersects = false;
     let mut contact_sum: [f64; 3] = [0.0, 0.0, 0.0];
     let mut contact_n: u32 = 0;
@@ -86,6 +94,10 @@ pub fn test_pair(
             let [l0, l1, l2] = large.tri(tl as usize);
             if tri_tri_intersect(s0, s1, s2, l0, l1, l2) {
                 intersects = true;
+                if contained {
+                    cross_small[ts] = true;
+                    cross_large[tl as usize] = true;
+                }
                 let c = mid(centroid(s0, s1, s2), centroid(l0, l1, l2));
                 contact_sum[0] += c[0];
                 contact_sum[1] += c[1];
@@ -182,8 +194,23 @@ pub fn test_pair(
         } else {
             overlap.center()
         };
-        // Phase-0 penetration estimate from AABB overlap.
-        let penetration = (-signed_gap(aabb_a, aabb_b)).max(0.0);
+        // Penetration estimate from the AABB overlap...
+        let mut penetration = (-signed_gap(aabb_a, aabb_b)).max(0.0);
+        // ...EXCEPT for a contained pair (#1866): there the AABB overlap equals
+        // the small element's own extent, wildly overstating depth for designed
+        // face contacts (e.g. opening fills inset in their host). Measure the
+        // real mesh-level depth instead: the deepest crossing-triangle vertex of
+        // either mesh inside the other solid. Falls back to the AABB estimate
+        // when no such vertex lies inside (thin member piercing straight
+        // through).
+        if contained {
+            let mesh_depth = small
+                .max_penetration_into(large, &cross_small)
+                .max(large.max_penetration_into(small, &cross_large));
+            if mesh_depth > 0.0 {
+                penetration = mesh_depth;
+            }
+        }
         return Some(NarrowResult {
             status: ClashStatus::Hard,
             distance: -penetration,

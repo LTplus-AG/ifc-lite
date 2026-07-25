@@ -10,7 +10,8 @@
 
 use crate::aabb::Aabb;
 use crate::bvh::Bvh;
-use crate::vec3::{cross, dot, sub, Vec3};
+use crate::triangle::closest_pt_point_triangle;
+use crate::vec3::{cross, dist_sq, dot, sub, Vec3};
 
 /// Fixed ray direction for point-in-solid tests: `normalize([1, √3, √5])`.
 /// NON-axis-aligned so the ray never grazes axis-aligned box edges/vertices
@@ -130,6 +131,59 @@ impl TriMesh {
         }
         let nf = n as f64;
         [s[0] / nf, s[1] / nf, s[2] / nf]
+    }
+
+    /// Exact distance from `p` to this mesh's surface: the minimum point-to-
+    /// triangle distance over every triangle. Iterated in index order (not the
+    /// BVH) so the code shape stays identical to the TS `distanceToSurface`;
+    /// the minimum itself is order-independent. Only invoked from the
+    /// contained-pair depth measurement (#1866), so the O(n) scan is fine.
+    pub fn distance_to_surface(&self, p: Vec3) -> f64 {
+        let mut best = f64::INFINITY;
+        for t in 0..self.count {
+            let [a, b, c] = self.tri(t);
+            let q = closest_pt_point_triangle(p, a, b, c);
+            let d2 = dist_sq(p, q);
+            if d2 < best {
+                best = d2;
+            }
+        }
+        best.sqrt()
+    }
+
+    /// Mesh-level penetration of this mesh into `other`, measured at the
+    /// vertices of the triangles flagged in `cross_flags` (the pairs the narrow
+    /// phase saw genuinely crossing `other`): the maximum distance-to-surface
+    /// of `other` over those vertices that lie inside `other`. Each vertex is
+    /// visited once (deduped by vertex index, in index order — bit-identical to
+    /// the TS `maxPenetrationInto`). Returns 0 when no flagged vertex is
+    /// inside, e.g. a thin member piercing straight through, whose crossing-
+    /// triangle vertices all sit outside `other` (#1866).
+    pub fn max_penetration_into(&self, other: &TriMesh, cross_flags: &[bool]) -> f64 {
+        let mut seen = vec![false; self.positions.len() / 3];
+        let mut depth = 0.0f64;
+        for t in 0..self.count {
+            if !cross_flags[t] {
+                continue;
+            }
+            let o = t * 3;
+            for k in 0..3 {
+                let vi = self.indices[o + k] as usize;
+                if seen[vi] {
+                    continue;
+                }
+                seen[vi] = true;
+                let v = self.vertex(vi as u32);
+                if !other.contains_point(v) {
+                    continue;
+                }
+                let d = other.distance_to_surface(v);
+                if d > depth {
+                    depth = d;
+                }
+            }
+        }
+        depth
     }
 
     /// True when `p` is inside this closed mesh. Casts a fixed-direction ray and

@@ -29,7 +29,8 @@
 #      module — V8 has it prototyped behind the (default-off) flag
 #      `--experimental-wasm-wide-arithmetic`. Node ships the same V8, so we
 #      pass that flag to the Node runner `wasm-pack test --node` uses via
-#      `NODE_OPTIONS`, which is the earliest possible in-repo signal that V8
+#      `NODE_ARGS` (a direct node argv, since V8 flags are
+#      rejected inside NODE_OPTIONS), the earliest in-repo signal that V8
 #      accepts the module — well before it is on-by-default in any browser.
 #
 # Until BOTH clear, the "Build pkg-wide" and/or "wasm32 mesh-determinism"
@@ -150,10 +151,11 @@ jobs:
           # ships the same V8 build a browser would, so passing it here is the
           # earliest in-repo signal for when the engine actually accepts the
           # module, independent of when any browser turns the flag on by
-          # default. Best-effort: if a Node/V8 release stops accepting this
-          # flag via NODE_OPTIONS, the diagnostic step below calls that out
-          # rather than reporting it as a determinism failure.
-          NODE_OPTIONS: '--experimental-wasm-wide-arithmetic'
+          # default. NODE_ARGS (honored by wasm-bindgen-test-runner) passes the
+          # flag as a direct node argv: V8 flags are NOT allowed inside
+          # NODE_OPTIONS (Node exits with "not allowed in NODE_OPTIONS"), so
+          # routing it through NODE_OPTIONS would keep this lane red forever.
+          NODE_ARGS: '--experimental-wasm-wide-arithmetic'
         run: wasm-pack test --node rust/wasm-bindings --test mesh_determinism
 
       - name: Diagnose determinism-check failure

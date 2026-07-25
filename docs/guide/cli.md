@@ -781,6 +781,7 @@ Checks:
 - Building storeys existence
 - GlobalId uniqueness
 - Named elements
+- Reference integrity (every `#N` attribute reference must point at an entity that exists in the file; each dangling reference is reported with the referencing entity, attribute slot, and missing target)
 
 Returns exit code 0 (valid) or 1 (errors found).
 

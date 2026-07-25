@@ -1,0 +1,56 @@
+{
+  "description": "FROZEN wire-format golden vectors for node-hash-v0 (spec version node-hash-v0 / 1.0.0, frozen 2026-07-25, docs/vision/spec/node-hash-v0.md). Do NOT regenerate: a hash change here is a wire-format change and requires node-hash-v1 plus a major version bump of @ifc-lite/provenance. Special numbers are encoded as {\"$num\": \"NaN\" | \"Infinity\" | \"-Infinity\" | \"-0\"}.",
+  "vectors": [
+    {
+      "id": "layer-basic",
+      "description": "Layer node embedding the ifcx blake3 layerId as its first payload field (decision Q1, 2026-07-24: embed, don't compete) plus two child hashes.",
+      "kind": "layer",
+      "payload": {
+        "layerId": "blake3:2f6ad9f1c7f3aeb2f6ad9f1c7f3aeb2f6ad9f1c7f3aeb2f6ad9f1c7f3aeb2f6a",
+        "childHashes": [
+          "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        ]
+      },
+      "expectedHash": "sha256:a5ea533b3f6cc3e37985848e06bc901ee25deab09179318d0c039750c5588823"
+    },
+    {
+      "id": "layer-children-permuted",
+      "description": "Same layer with childHashes listed in the opposite order: childHashes are a SET sorted by tagged hash string, so the hash MUST equal layer-basic.",
+      "kind": "layer",
+      "payload": {
+        "layerId": "blake3:2f6ad9f1c7f3aeb2f6ad9f1c7f3aeb2f6ad9f1c7f3aeb2f6ad9f1c7f3aeb2f6a",
+        "childHashes": [
+          "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ]
+      },
+      "expectedHash": "sha256:a5ea533b3f6cc3e37985848e06bc901ee25deab09179318d0c039750c5588823",
+      "expectSameHashAs": "layer-basic"
+    },
+    {
+      "id": "layer-empty-children",
+      "description": "Empty payloads edge case: a layer touching zero nodes (header + layerId + count 0).",
+      "kind": "layer",
+      "payload": {
+        "layerId": "blake3:2f6ad9f1c7f3aeb2f6ad9f1c7f3aeb2f6ad9f1c7f3aeb2f6ad9f1c7f3aeb2f6a",
+        "childHashes": []
+      },
+      "expectedHash": "sha256:ac36d3bef44ecfea007753cc0194928dc78688980dc61e1567b17d71d28e74a1"
+    },
+    {
+      "id": "layer-different-id",
+      "description": "Same children, different embedded layerId: the embedded ifcx identity participates in the node hash (decision Q1), so the hash MUST differ from layer-basic.",
+      "kind": "layer",
+      "payload": {
+        "layerId": "blake3:0000000000000000000000000000000000000000000000000000000000000000",
+        "childHashes": [
+          "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        ]
+      },
+      "expectedHash": "sha256:8e81c098551f0b48f286455cd2dfe7674326d9a9478bde209711159cc501ce18",
+      "expectDifferentHashFrom": "layer-basic"
+    }
+  ]
+}

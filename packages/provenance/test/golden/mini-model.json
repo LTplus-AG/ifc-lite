@@ -1,0 +1,233 @@
+{
+  "description": "Canonical mini-model for the cross-surface freeze pin: one wall element (mesh + pset + qset), one door element (pset), a storey containment relationship, and a root layer. Node hashes and the DAG root are FROZEN (node-hash-v0 / 1.0.0, 2026-07-25); a change requires node-hash-v1 plus a major version bump of @ifc-lite/provenance.",
+  "rootId": "root-layer",
+  "nodes": [
+    {
+      "id": "mesh-wall",
+      "kind": "geometry-mesh",
+      "payload": {
+        "expressId": 501,
+        "geometryClass": 1,
+        "positions": [
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          1,
+          1,
+          0,
+          1,
+          1,
+          1,
+          1,
+          0,
+          1,
+          1
+        ],
+        "normals": [
+          0,
+          0,
+          -1,
+          0,
+          0,
+          -1,
+          0,
+          0,
+          -1,
+          0,
+          0,
+          -1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1
+        ],
+        "indices": [
+          0,
+          1,
+          2,
+          0,
+          2,
+          3,
+          4,
+          6,
+          5,
+          4,
+          7,
+          6,
+          0,
+          4,
+          5,
+          0,
+          5,
+          1,
+          1,
+          5,
+          6,
+          1,
+          6,
+          2,
+          2,
+          6,
+          7,
+          2,
+          7,
+          3,
+          3,
+          7,
+          4,
+          3,
+          4,
+          0
+        ],
+        "origin": [
+          12.5,
+          -3.25,
+          0
+        ]
+      }
+    },
+    {
+      "id": "pset-wall-common",
+      "kind": "property-set",
+      "payload": {
+        "name": "Pset_WallCommon",
+        "properties": [
+          {
+            "name": "IsExternal",
+            "value": true
+          },
+          {
+            "name": "FireRating",
+            "value": "REI60"
+          }
+        ]
+      }
+    },
+    {
+      "id": "qset-wall",
+      "kind": "property-set",
+      "payload": {
+        "name": "Qto_WallBaseQuantities",
+        "properties": [
+          {
+            "name": "NetVolume",
+            "value": 4.375
+          },
+          {
+            "name": "NetSideArea",
+            "value": 17.5
+          }
+        ]
+      }
+    },
+    {
+      "id": "pset-door-common",
+      "kind": "property-set",
+      "payload": {
+        "name": "Pset_DoorCommon",
+        "properties": [
+          {
+            "name": "IsExternal",
+            "value": false
+          },
+          {
+            "name": "Reference",
+            "value": "D-01"
+          }
+        ]
+      }
+    },
+    {
+      "id": "element-wall",
+      "kind": "element",
+      "composite": {
+        "key": "2O2Fr$t4X7Zf8NOew3FLOH",
+        "ifcType": "IFCWALLSTANDARDCASE",
+        "components": [
+          {
+            "componentKey": "geometry-mesh",
+            "child": "mesh-wall"
+          },
+          {
+            "componentKey": "pset:Pset_WallCommon",
+            "child": "pset-wall-common"
+          },
+          {
+            "componentKey": "qset:Qto_WallBaseQuantities",
+            "child": "qset-wall"
+          }
+        ]
+      }
+    },
+    {
+      "id": "element-door",
+      "kind": "element",
+      "composite": {
+        "key": "1kTvXnbbzCWw8lcMd1dR4o",
+        "ifcType": "IFCDOOR",
+        "components": [
+          {
+            "componentKey": "pset:Pset_DoorCommon",
+            "child": "pset-door-common"
+          }
+        ]
+      }
+    },
+    {
+      "id": "storey-rel",
+      "kind": "relationship",
+      "composite": {
+        "relType": "IfcRelContainedInSpatialStructure",
+        "roles": [
+          {
+            "roleName": "RelatedElements",
+            "children": [
+              "element-wall",
+              "element-door"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "root-layer",
+      "kind": "layer",
+      "composite": {
+        "layerId": "blake3:9c1185a5c5e9fc54612808977ee8f548b2258d31aae1b1ee42a5b3f1c7f3aeb2",
+        "children": [
+          "storey-rel"
+        ]
+      }
+    }
+  ],
+  "expectedHashes": {
+    "mesh-wall": "fnv1a64:0xad554deae5fe76e5",
+    "pset-wall-common": "sha256:66b052e3d43da622eb8358db2fa35527b53131eac2a2a50543ea0a110fd6694e",
+    "qset-wall": "sha256:ebfa7049cf1b51d01b9ed6549956bd424c9c9080a6d76f9923ea34314ca1a430",
+    "pset-door-common": "sha256:9d8dbf99bc16f78f006950b17ad277800d1f95de43cc72fbb95f5e200f1228cb",
+    "element-wall": "sha256:f63ae1dcf5565d6e3ca08f225d9dbf59bcf8db679a9705915ad9849be9a3ee47",
+    "element-door": "sha256:d1c1d78664815449693ca61ddee770b242ac7a965be1c6ae920773fbd58bf556",
+    "storey-rel": "sha256:f607ddf4fae21599b6aae6ccbbf5a566a680374ff1c9f9f0e5458ffbca83c115",
+    "root-layer": "sha256:88776993621089ae388d15880be0a87782e1ca7713c63326bab73f297466c7a8"
+  },
+  "expectedRootHash": "sha256:88776993621089ae388d15880be0a87782e1ca7713c63326bab73f297466c7a8"
+}

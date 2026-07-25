@@ -1,0 +1,132 @@
+{
+  "description": "FROZEN wire-format golden vectors for node-hash-v0 (spec version node-hash-v0 / 1.0.0, frozen 2026-07-25, docs/vision/spec/node-hash-v0.md). Do NOT regenerate: a hash change here is a wire-format change and requires node-hash-v1 plus a major version bump of @ifc-lite/provenance. Special numbers are encoded as {\"$num\": \"NaN\" | \"Infinity\" | \"-Infinity\" | \"-0\"}.",
+  "vectors": [
+    {
+      "id": "rel-voids",
+      "description": "IfcRelVoidsElement with two roles: RelatingBuildingElement (one ref) and RelatedOpeningElements (two refs, mixed fnv1a64/sha256 child tags - a parent never cares which algorithm produced a child hash, spec section 3.2).",
+      "kind": "relationship",
+      "payload": {
+        "relType": "IfcRelVoidsElement",
+        "roles": [
+          {
+            "roleName": "RelatingBuildingElement",
+            "refs": [
+              "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ]
+          },
+          {
+            "roleName": "RelatedOpeningElements",
+            "refs": [
+              "fnv1a64:0x0123456789abcdef",
+              "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            ]
+          }
+        ]
+      },
+      "expectedHash": "sha256:aee904f61e2e2cdd72e70b12011d9230cfbde42dd92b0a43afaedba4e6a83f3a"
+    },
+    {
+      "id": "rel-voids-refs-permuted",
+      "description": "Same relationship with a role's refs listed in the opposite order: refs are a SET sorted by tagged hash string, so the hash MUST equal rel-voids.",
+      "kind": "relationship",
+      "payload": {
+        "relType": "IfcRelVoidsElement",
+        "roles": [
+          {
+            "roleName": "RelatingBuildingElement",
+            "refs": [
+              "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ]
+          },
+          {
+            "roleName": "RelatedOpeningElements",
+            "refs": [
+              "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "fnv1a64:0x0123456789abcdef"
+            ]
+          }
+        ]
+      },
+      "expectedHash": "sha256:aee904f61e2e2cdd72e70b12011d9230cfbde42dd92b0a43afaedba4e6a83f3a",
+      "expectSameHashAs": "rel-voids"
+    },
+    {
+      "id": "rel-voids-roles-permuted",
+      "description": "Same relationship with the roles themselves listed in the opposite order: roles are sorted by role name, so the hash MUST equal rel-voids.",
+      "kind": "relationship",
+      "payload": {
+        "relType": "IfcRelVoidsElement",
+        "roles": [
+          {
+            "roleName": "RelatedOpeningElements",
+            "refs": [
+              "fnv1a64:0x0123456789abcdef",
+              "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            ]
+          },
+          {
+            "roleName": "RelatingBuildingElement",
+            "refs": [
+              "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ]
+          }
+        ]
+      },
+      "expectedHash": "sha256:aee904f61e2e2cdd72e70b12011d9230cfbde42dd92b0a43afaedba4e6a83f3a",
+      "expectSameHashAs": "rel-voids"
+    },
+    {
+      "id": "rel-empty-roles",
+      "description": "Empty payloads edge case: a relationship with zero roles (header + relType + count 0).",
+      "kind": "relationship",
+      "payload": {
+        "relType": "IfcRelAggregates",
+        "roles": []
+      },
+      "expectedHash": "sha256:1a891e017fc67b49aa606f6fc794d367a7fd6c60bbbca3da5f79f343ebe1f87c"
+    },
+    {
+      "id": "rel-role-empty-refs",
+      "description": "A role present with an empty ref set - distinct from the role being absent.",
+      "kind": "relationship",
+      "payload": {
+        "relType": "IfcRelAggregates",
+        "roles": [
+          {
+            "roleName": "RelatedObjects",
+            "refs": []
+          }
+        ]
+      },
+      "expectedHash": "sha256:fc4b2977c04acc3bef2bdadf840d3e9b55ee62b04d9642e3d3f1deb48aedef35",
+      "expectDifferentHashFrom": "rel-empty-roles"
+    },
+    {
+      "id": "rel-aggregates-many",
+      "description": "IfcRelAggregates with five unsorted refs including boundary-value sha256 strings; pins the byte-compare set sort.",
+      "kind": "relationship",
+      "payload": {
+        "relType": "IfcRelAggregates",
+        "roles": [
+          {
+            "roleName": "RelatingObject",
+            "refs": [
+              "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ]
+          },
+          {
+            "roleName": "RelatedObjects",
+            "refs": [
+              "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "sha256:0000000000000000000000000000000000000000000000000000000000000001",
+              "fnv1a64:0x0123456789abcdef",
+              "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ]
+          }
+        ]
+      },
+      "expectedHash": "sha256:a5895c2da9a2b489fd6b5f7470636d92f72bd5ecb7dd6849979a75a13a168ec0"
+    }
+  ]
+}

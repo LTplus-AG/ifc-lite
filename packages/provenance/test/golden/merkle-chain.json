@@ -1,0 +1,181 @@
+{
+  "description": "FROZEN wire-format golden vectors for node-hash-v0 (spec version node-hash-v0 / 1.0.0, frozen 2026-07-25, docs/vision/spec/node-hash-v0.md). Do NOT regenerate: a hash change here is a wire-format change and requires node-hash-v1 plus a major version bump of @ifc-lite/provenance. Special numbers are encoded as {\"$num\": \"NaN\" | \"Infinity\" | \"-Infinity\" | \"-0\"}.",
+  "vectors": [
+    {
+      "id": "chain-pset",
+      "description": "Merkle chain level 0: a property-set leaf whose hash is embedded (as a tagged string field) by every level above it.",
+      "kind": "property-set",
+      "payload": {
+        "name": "Pset_ChainLeaf",
+        "properties": [
+          {
+            "name": "Depth",
+            "value": 0
+          }
+        ]
+      },
+      "expectedHash": "sha256:7589d8ee02a783368119b290bcc2e4dbd3628bcfffb89b76b62583ff3da5840c"
+    },
+    {
+      "id": "chain-element",
+      "description": "Merkle chain level 1: an element embedding chain-pset's tagged hash string (spec section 3.5 - parents embed child hash STRINGS, never child payloads).",
+      "kind": "element",
+      "payload": {
+        "key": "chain-element",
+        "ifcType": "IFCWALL",
+        "components": [
+          {
+            "componentKey": "pset:Pset_ChainLeaf",
+            "hash": "sha256:7589d8ee02a783368119b290bcc2e4dbd3628bcfffb89b76b62583ff3da5840c"
+          }
+        ]
+      },
+      "expectedHash": "sha256:dff2b7c95a4a7d96dd9873c9bab0be7e697a45bcc881273c258d298fa51d15f3"
+    },
+    {
+      "id": "chain-relationship",
+      "description": "Merkle chain level 2a: a relationship whose role refs embed chain-element's hash.",
+      "kind": "relationship",
+      "payload": {
+        "relType": "IfcRelContainedInSpatialStructure",
+        "roles": [
+          {
+            "roleName": "RelatedElements",
+            "refs": [
+              "sha256:dff2b7c95a4a7d96dd9873c9bab0be7e697a45bcc881273c258d298fa51d15f3"
+            ]
+          }
+        ]
+      },
+      "expectedHash": "sha256:06659749a3911ad9ba19e6266366ad2b44a212509b331f18a66d31ce94469c75"
+    },
+    {
+      "id": "chain-layer",
+      "description": "Merkle chain level 2b: a layer whose childHashes embed chain-element's hash next to its own embedded ifcx layerId (decision Q1).",
+      "kind": "layer",
+      "payload": {
+        "layerId": "blake3:2f6ad9f1c7f3aeb2f6ad9f1c7f3aeb2f6ad9f1c7f3aeb2f6ad9f1c7f3aeb2f6a",
+        "childHashes": [
+          "sha256:dff2b7c95a4a7d96dd9873c9bab0be7e697a45bcc881273c258d298fa51d15f3"
+        ]
+      },
+      "expectedHash": "sha256:61f51816196860869c93f9f62040a8239bb6a0ce74b4bcd8039db9e10fc73c67"
+    },
+    {
+      "id": "chain-root",
+      "description": "Merkle chain level 3: a root element embedding both branch hashes - transitively commits to every level below (spec section 3.5).",
+      "kind": "element",
+      "payload": {
+        "key": "chain-root",
+        "ifcType": "IFCPROJECT",
+        "components": [
+          {
+            "componentKey": "relationship:IfcRelContainedInSpatialStructure",
+            "hash": "sha256:06659749a3911ad9ba19e6266366ad2b44a212509b331f18a66d31ce94469c75"
+          },
+          {
+            "componentKey": "layer:root",
+            "hash": "sha256:61f51816196860869c93f9f62040a8239bb6a0ce74b4bcd8039db9e10fc73c67"
+          }
+        ]
+      },
+      "expectedHash": "sha256:c9c1a51481badddaf78d6ce21beeac14b966ec2be96148f35e3811fc4e4ea4c8"
+    },
+    {
+      "id": "deep-1",
+      "description": "Deep nesting level 1 of 6: element embedding the level-0 hash; pins Merkle propagation through an 3-node-deep chain.",
+      "kind": "element",
+      "payload": {
+        "key": "deep-1",
+        "ifcType": "IFCELEMENTASSEMBLY",
+        "components": [
+          {
+            "componentKey": "relationship:IfcRelAggregates",
+            "hash": "sha256:dff2b7c95a4a7d96dd9873c9bab0be7e697a45bcc881273c258d298fa51d15f3"
+          }
+        ]
+      },
+      "expectedHash": "sha256:cba40d7fe53fa69330c7d99cdd389e449fcebc7c37fe3a962d1765fd42f24987"
+    },
+    {
+      "id": "deep-2",
+      "description": "Deep nesting level 2 of 6: element embedding the level-1 hash; pins Merkle propagation through an 4-node-deep chain.",
+      "kind": "element",
+      "payload": {
+        "key": "deep-2",
+        "ifcType": "IFCELEMENTASSEMBLY",
+        "components": [
+          {
+            "componentKey": "relationship:IfcRelAggregates",
+            "hash": "sha256:cba40d7fe53fa69330c7d99cdd389e449fcebc7c37fe3a962d1765fd42f24987"
+          }
+        ]
+      },
+      "expectedHash": "sha256:f863a3f7aa49c4c0ed966e253b664b6b0aa40abee2f9bfe300fafa78c4515f57"
+    },
+    {
+      "id": "deep-3",
+      "description": "Deep nesting level 3 of 6: element embedding the level-2 hash; pins Merkle propagation through an 5-node-deep chain.",
+      "kind": "element",
+      "payload": {
+        "key": "deep-3",
+        "ifcType": "IFCELEMENTASSEMBLY",
+        "components": [
+          {
+            "componentKey": "relationship:IfcRelAggregates",
+            "hash": "sha256:f863a3f7aa49c4c0ed966e253b664b6b0aa40abee2f9bfe300fafa78c4515f57"
+          }
+        ]
+      },
+      "expectedHash": "sha256:7f95bd5fba9bdbc8fd896df8a2fc997ba285a66a8d3f6bc388508c6283fb1f29"
+    },
+    {
+      "id": "deep-4",
+      "description": "Deep nesting level 4 of 6: element embedding the level-3 hash; pins Merkle propagation through an 6-node-deep chain.",
+      "kind": "element",
+      "payload": {
+        "key": "deep-4",
+        "ifcType": "IFCELEMENTASSEMBLY",
+        "components": [
+          {
+            "componentKey": "relationship:IfcRelAggregates",
+            "hash": "sha256:7f95bd5fba9bdbc8fd896df8a2fc997ba285a66a8d3f6bc388508c6283fb1f29"
+          }
+        ]
+      },
+      "expectedHash": "sha256:e05be99b51d9a341ce00ccd1a25fc10e019877da53f0950f8ad1cc49fb43b77a"
+    },
+    {
+      "id": "deep-5",
+      "description": "Deep nesting level 5 of 6: element embedding the level-4 hash; pins Merkle propagation through an 7-node-deep chain.",
+      "kind": "element",
+      "payload": {
+        "key": "deep-5",
+        "ifcType": "IFCELEMENTASSEMBLY",
+        "components": [
+          {
+            "componentKey": "relationship:IfcRelAggregates",
+            "hash": "sha256:e05be99b51d9a341ce00ccd1a25fc10e019877da53f0950f8ad1cc49fb43b77a"
+          }
+        ]
+      },
+      "expectedHash": "sha256:fef9c011dd68983495158a886da674d4b7393083220b205f7e67a2ef20dde37d"
+    },
+    {
+      "id": "deep-6",
+      "description": "Deep nesting level 6 of 6: element embedding the level-5 hash; pins Merkle propagation through an 8-node-deep chain.",
+      "kind": "element",
+      "payload": {
+        "key": "deep-6",
+        "ifcType": "IFCELEMENTASSEMBLY",
+        "components": [
+          {
+            "componentKey": "relationship:IfcRelAggregates",
+            "hash": "sha256:fef9c011dd68983495158a886da674d4b7393083220b205f7e67a2ef20dde37d"
+          }
+        ]
+      },
+      "expectedHash": "sha256:ca65a35fa24a0e9ec512609428552ee585f6a954bb86ea69d460d6ae8a4f351e"
+    }
+  ]
+}

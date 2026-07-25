@@ -1,0 +1,105 @@
+{
+  "description": "FROZEN wire-format golden vectors for node-hash-v0 (spec version node-hash-v0 / 1.0.0, frozen 2026-07-25, docs/vision/spec/node-hash-v0.md). Do NOT regenerate: a hash change here is a wire-format change and requires node-hash-v1 plus a major version bump of @ifc-lite/provenance. Special numbers are encoded as {\"$num\": \"NaN\" | \"Infinity\" | \"-Infinity\" | \"-0\"}.",
+  "vectors": [
+    {
+      "id": "el-basic",
+      "description": "Element with the full ComponentKey vocabulary (attr:core, pset:<Name>, qset:<Name>, type-assignment, geometry-mesh, relationship:<RelType>), unsorted on input.",
+      "kind": "element",
+      "payload": {
+        "key": "2O2Fr$t4X7Zf8NOew3FLOH",
+        "ifcType": "IFCWALLSTANDARDCASE",
+        "components": [
+          {
+            "componentKey": "pset:Pset_WallCommon",
+            "hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "componentKey": "attr:core",
+            "hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          {
+            "componentKey": "geometry-mesh",
+            "hash": "fnv1a64:0x0123456789abcdef"
+          },
+          {
+            "componentKey": "relationship:IfcRelVoidsElement",
+            "hash": "sha256:0000000000000000000000000000000000000000000000000000000000000001"
+          },
+          {
+            "componentKey": "type-assignment",
+            "hash": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+          },
+          {
+            "componentKey": "qset:Qto_WallBaseQuantities",
+            "hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        ]
+      },
+      "expectedHash": "sha256:2bfec666696e7c719ef7b1689c32b10c269762aac8964a0871bb17337997b16a"
+    },
+    {
+      "id": "el-components-permuted",
+      "description": "Same components in a different input order: components are sorted by componentKey (ordinal UTF-8), so the hash MUST equal el-basic.",
+      "kind": "element",
+      "payload": {
+        "key": "2O2Fr$t4X7Zf8NOew3FLOH",
+        "ifcType": "IFCWALLSTANDARDCASE",
+        "components": [
+          {
+            "componentKey": "qset:Qto_WallBaseQuantities",
+            "hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "componentKey": "type-assignment",
+            "hash": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+          },
+          {
+            "componentKey": "relationship:IfcRelVoidsElement",
+            "hash": "sha256:0000000000000000000000000000000000000000000000000000000000000001"
+          },
+          {
+            "componentKey": "geometry-mesh",
+            "hash": "fnv1a64:0x0123456789abcdef"
+          },
+          {
+            "componentKey": "attr:core",
+            "hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          {
+            "componentKey": "pset:Pset_WallCommon",
+            "hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        ]
+      },
+      "expectedHash": "sha256:2bfec666696e7c719ef7b1689c32b10c269762aac8964a0871bb17337997b16a",
+      "expectSameHashAs": "el-basic"
+    },
+    {
+      "id": "el-no-components",
+      "description": "Empty payloads edge case: an element with zero components (header + key + ifcType + count 0).",
+      "kind": "element",
+      "payload": {
+        "key": "0AbCdEfGhIjKlMnOpQrStU",
+        "ifcType": "IFCBUILDINGELEMENTPROXY",
+        "components": []
+      },
+      "expectedHash": "sha256:8d4cdfe3b56616bb77355d6e5d5d660fbd20c081ee83c87b3402722224070b66"
+    },
+    {
+      "id": "el-unicode-key",
+      "description": "Unicode element key and lowercase ifcType string: both are plain length-prefixed NFC UTF-8 strings.",
+      "kind": "element",
+      "payload": {
+        "key": "wand-über-tür-梁",
+        "ifcType": "IfcWall",
+        "components": [
+          {
+            "componentKey": "attr:core",
+            "hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        ]
+      },
+      "expectedHash": "sha256:3541606b215bf2d4ec7119587196060d8d712fd2a239e6195b019a17a3194aa0"
+    }
+  ]
+}

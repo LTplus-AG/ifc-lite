@@ -1,0 +1,622 @@
+{
+  "description": "FROZEN wire-format golden vectors for node-hash-v0 (spec version node-hash-v0 / 1.0.0, frozen 2026-07-25, docs/vision/spec/node-hash-v0.md). Do NOT regenerate: a hash change here is a wire-format change and requires node-hash-v1 plus a major version bump of @ifc-lite/provenance. Special numbers are encoded as {\"$num\": \"NaN\" | \"Infinity\" | \"-Infinity\" | \"-0\"}.",
+  "vectors": [
+    {
+      "id": "gm-empty",
+      "description": "Empty payloads edge case: zero positions/normals/indices, expressId 0, geometryClass 0, origin at the exact origin. Pins the three FNV-1a64 offset-basis sub-hashes folded per spec section 3.1.",
+      "kind": "geometry-mesh",
+      "payload": {
+        "expressId": 0,
+        "geometryClass": 0,
+        "positions": [],
+        "normals": [],
+        "indices": [],
+        "origin": [
+          0,
+          0,
+          0
+        ]
+      },
+      "expectedHash": "fnv1a64:0x78cc143d94b407f8"
+    },
+    {
+      "id": "gm-single-tri",
+      "description": "Minimal real mesh: one triangle, expressId 100, geometryClass 1 (spec section 3.1 fold hp/hn/hio).",
+      "kind": "geometry-mesh",
+      "payload": {
+        "expressId": 100,
+        "geometryClass": 1,
+        "positions": [
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        "normals": [
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1
+        ],
+        "indices": [
+          0,
+          1,
+          2
+        ],
+        "origin": [
+          0,
+          0,
+          0
+        ]
+      },
+      "expectedHash": "fnv1a64:0xb343d9514dab6988"
+    },
+    {
+      "id": "gm-single-tri-other-expressid",
+      "description": "Identical bytes to gm-single-tri except expressId 101 - expressId is inside hio, so the node hash MUST differ.",
+      "kind": "geometry-mesh",
+      "payload": {
+        "expressId": 101,
+        "geometryClass": 1,
+        "positions": [
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        "normals": [
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1
+        ],
+        "indices": [
+          0,
+          1,
+          2
+        ],
+        "origin": [
+          0,
+          0,
+          0
+        ]
+      },
+      "expectedHash": "fnv1a64:0x1c00350fe3fbccb9",
+      "expectDifferentHashFrom": "gm-single-tri"
+    },
+    {
+      "id": "gm-class-255",
+      "description": "geometryClass at the u8 upper bound (255) - the class travels as a single byte per spec section 3.1.",
+      "kind": "geometry-mesh",
+      "payload": {
+        "expressId": 100,
+        "geometryClass": 255,
+        "positions": [
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        "normals": [
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1
+        ],
+        "indices": [
+          0,
+          1,
+          2
+        ],
+        "origin": [
+          0,
+          0,
+          0
+        ]
+      },
+      "expectedHash": "fnv1a64:0x1a444826a0264f88",
+      "expectDifferentHashFrom": "gm-single-tri"
+    },
+    {
+      "id": "gm-cube",
+      "description": "Unit cube (8 vertices, 12 triangles), fractional origin - a representative multi-triangle leaf.",
+      "kind": "geometry-mesh",
+      "payload": {
+        "expressId": 4242,
+        "geometryClass": 2,
+        "positions": [
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          1,
+          1,
+          0,
+          1,
+          1,
+          1,
+          1,
+          0,
+          1,
+          1
+        ],
+        "normals": [
+          0,
+          0,
+          -1,
+          0,
+          0,
+          -1,
+          0,
+          0,
+          -1,
+          0,
+          0,
+          -1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1
+        ],
+        "indices": [
+          0,
+          1,
+          2,
+          0,
+          2,
+          3,
+          4,
+          6,
+          5,
+          4,
+          7,
+          6,
+          0,
+          4,
+          5,
+          0,
+          5,
+          1,
+          1,
+          5,
+          6,
+          1,
+          6,
+          2,
+          2,
+          6,
+          7,
+          2,
+          7,
+          3,
+          3,
+          7,
+          4,
+          3,
+          4,
+          0
+        ],
+        "origin": [
+          1.5,
+          -2.25,
+          3.75
+        ]
+      },
+      "expectedHash": "fnv1a64:0xcc6fb5c9eea18971"
+    },
+    {
+      "id": "gm-expressid-u32-max",
+      "description": "expressId at the u32 upper bound (4294967295), encoded little-endian per spec section 3.1.",
+      "kind": "geometry-mesh",
+      "payload": {
+        "expressId": 4294967295,
+        "geometryClass": 0,
+        "positions": [
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        "normals": [
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1
+        ],
+        "indices": [
+          0,
+          1,
+          2
+        ],
+        "origin": [
+          0,
+          0,
+          0
+        ]
+      },
+      "expectedHash": "fnv1a64:0x8419d1380167dd6b"
+    },
+    {
+      "id": "gm-f32-rounding",
+      "description": "Positions 0.1/0.2/0.3 are not exactly representable in f32; the hash pins the IEEE-754 round-to-nearest f32 bit patterns (spec section 3.1: f32 bit pattern, little-endian).",
+      "kind": "geometry-mesh",
+      "payload": {
+        "expressId": 7,
+        "geometryClass": 1,
+        "positions": [
+          0.1,
+          0.2,
+          0.3,
+          1.1,
+          1.2,
+          1.3,
+          2.1,
+          2.2,
+          2.3
+        ],
+        "normals": [
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0
+        ],
+        "indices": [
+          0,
+          1,
+          2
+        ],
+        "origin": [
+          0,
+          0,
+          0
+        ]
+      },
+      "expectedHash": "fnv1a64:0xd7162d2a084fc0f5"
+    },
+    {
+      "id": "gm-origin-extreme",
+      "description": "Origin f64 extremes: near-max double, smallest denormal (5e-324), smallest normal - pins the raw f64 LE bit patterns.",
+      "kind": "geometry-mesh",
+      "payload": {
+        "expressId": 8,
+        "geometryClass": 1,
+        "positions": [
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        "normals": [
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1
+        ],
+        "indices": [
+          0,
+          1,
+          2
+        ],
+        "origin": [
+          1.7976931348623157e+308,
+          5e-324,
+          2.2250738585072014e-308
+        ]
+      },
+      "expectedHash": "fnv1a64:0xf5b48e67b8db486e"
+    },
+    {
+      "id": "gm-origin-poszero",
+      "description": "Origin +0 baseline for the negative-zero pair below.",
+      "kind": "geometry-mesh",
+      "payload": {
+        "expressId": 9,
+        "geometryClass": 1,
+        "positions": [
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        "normals": [
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1
+        ],
+        "indices": [
+          0,
+          1,
+          2
+        ],
+        "origin": [
+          0,
+          0,
+          0
+        ]
+      },
+      "expectedHash": "fnv1a64:0x698fa904232fe675"
+    },
+    {
+      "id": "gm-origin-negzero",
+      "description": "Origin -0: geometry-mesh leaves are BYTE-EXACT (spec section 3.1) - -0 has a different f64 bit pattern than +0, so unlike property values the hash MUST differ.",
+      "kind": "geometry-mesh",
+      "payload": {
+        "expressId": 9,
+        "geometryClass": 1,
+        "positions": [
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        "normals": [
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1
+        ],
+        "indices": [
+          0,
+          1,
+          2
+        ],
+        "origin": [
+          {
+            "$num": "-0"
+          },
+          0,
+          0
+        ]
+      },
+      "expectedHash": "fnv1a64:0xad7f4a349ca65352",
+      "expectDifferentHashFrom": "gm-origin-poszero"
+    },
+    {
+      "id": "gm-position-poszero",
+      "description": "Position +0 baseline for the negative-zero pair below.",
+      "kind": "geometry-mesh",
+      "payload": {
+        "expressId": 10,
+        "geometryClass": 1,
+        "positions": [
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        "normals": [],
+        "indices": [
+          0,
+          1,
+          2
+        ],
+        "origin": [
+          0,
+          0,
+          0
+        ]
+      },
+      "expectedHash": "fnv1a64:0xb66c2bcac8fbc5cc"
+    },
+    {
+      "id": "gm-position-negzero",
+      "description": "Position -0: distinct f32 bit pattern from +0, so the byte-exact leaf hash MUST differ (no -0 folding on the mesh leaf, spec section 3.1).",
+      "kind": "geometry-mesh",
+      "payload": {
+        "expressId": 10,
+        "geometryClass": 1,
+        "positions": [
+          {
+            "$num": "-0"
+          },
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        "normals": [],
+        "indices": [
+          0,
+          1,
+          2
+        ],
+        "origin": [
+          0,
+          0,
+          0
+        ]
+      },
+      "expectedHash": "fnv1a64:0x28a5f3cfc55efd73",
+      "expectDifferentHashFrom": "gm-position-poszero"
+    },
+    {
+      "id": "gm-semantic-none",
+      "description": "Baseline mesh without the optional semanticHash annotation (decision Q2, 2026-07-24).",
+      "kind": "geometry-mesh",
+      "payload": {
+        "expressId": 11,
+        "geometryClass": 3,
+        "positions": [
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        "normals": [
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1
+        ],
+        "indices": [
+          0,
+          1,
+          2
+        ],
+        "origin": [
+          10,
+          20,
+          30
+        ]
+      },
+      "expectedHash": "fnv1a64:0x0541be42b9edf565"
+    },
+    {
+      "id": "gm-semantic-annotated",
+      "description": "Same mesh WITH a semanticHash annotation: per decision Q2 the RTC-invariant annotation is deliberately NOT folded into the node hash, so the hash MUST equal gm-semantic-none.",
+      "kind": "geometry-mesh",
+      "payload": {
+        "expressId": 11,
+        "geometryClass": 3,
+        "positions": [
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        "normals": [
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1
+        ],
+        "indices": [
+          0,
+          1,
+          2
+        ],
+        "origin": [
+          10,
+          20,
+          30
+        ],
+        "semanticHash": "geomhash64:0x5bd1e995deadbeef"
+      },
+      "expectedHash": "fnv1a64:0x0541be42b9edf565",
+      "expectSameHashAs": "gm-semantic-none"
+    }
+  ]
+}

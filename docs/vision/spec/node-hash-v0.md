@@ -1,4 +1,24 @@
-# Node-hash v0 (decisions resolved 2026-07-24, see §6; format not yet frozen)
+# Node-hash v0 (FROZEN 2026-07-25)
+
+> **FROZEN.**
+>
+> - **Spec version:** `node-hash-v0` / **1.0.0**
+> - **Freeze date:** 2026-07-25 (an explicit human act per the ABI-freeze rule,
+>   `docs/vision/moonshots-execution-plan.md` §6 — performed by Louis by merging the freeze PR)
+> - **Change policy:** the wire format defined in this document — the byte encodings in §3, the
+>   tagged-hash string forms, the `NHV0` header, the kind tags, the sort rules, and the Merkle
+>   rule in §3.5 — may no longer change. Any wire-format change, however small, requires a **new
+>   versioned spec file** (`node-hash-v1.md`, with a new magic/version byte) and a **major
+>   version bump of `@ifc-lite/provenance`**. Bug-for-bug behavior of the frozen encoding is the
+>   contract; golden wire-format vectors in `packages/provenance/test/golden/` pin it in CI.
+> - **Additive reserved fields** (already specified, additive-only, do not alter any hash):
+>   - `Certificate.signatures?: {alg: 'ed25519', key, sig}[]` — reserved per §6 Q5 (decision
+>     2026-07-24), ignored by v0 verification; actual signing lands with M4.
+>   - `GeometryMeshPayload.semanticHash?` — the RTC-invariant annotation per §6 Q2, deliberately
+>     NOT folded into the node hash (pinned by test).
+>
+> The five design questions in §6 (now an appendix) were all resolved by Louis on 2026-07-24;
+> this freeze locks the format that implements those decisions.
 
 Bet B0.1 (`docs/vision/moonshots-execution-plan.md` line 232) toward M1 "Proof-carrying
 buildings" (`docs/vision/moonshots-tech.md` §M1). Unifies the repo's existing hash systems into
@@ -6,9 +26,9 @@ one canonical node-hash spec so a certificate can claim, and a verifier can chec
 did not change" across the whole building DAG (mesh → property set → relationship → layer →
 element).
 
-Status 2026-07-24: the five §6 questions were decided by Louis (decisions recorded inline
-below and in §6); the prototype implements them. The v0 FORMAT is still not frozen — freezing
-is an explicit human-calendar act (ABI-freeze rule), separate from deciding the design.
+Status 2026-07-25: FROZEN. The five §6 questions were decided by Louis on 2026-07-24 (decisions
+recorded inline below and in §6); the prototype implements them; the v0 format was frozen on
+2026-07-25 under the change policy in the header block above.
 
 ## 0. Why unify, and why now
 
@@ -304,10 +324,9 @@ disagrees with §3.2's `layer` node kind on both algorithm (blake3 vs SHA-256) a
 (canonical JSON text vs the binary framing above). v0 does **not** attempt to silently reconcile
 this; see §6 Q1. The honest state today: `computeLayerId` hashes *whole layer documents* for
 IFCX content-addressing / registry refs (`packages/merge`), while node-hash-v0's `layer` kind is
-scoped to *this DAG's* Merkle linkage (one node among many, referenced by parents). They may turn
-out to be the same concept wearing two hats, or genuinely different concepts that happen to share
-a name — that's a design call, not an engineering one, and it needs Louis's input before v0
-freezes.
+scoped to *this DAG's* Merkle linkage (one node among many, referenced by parents). Resolved by
+§6 Q1 (2026-07-24, part of the frozen format): the DAG `layer` node EMBEDS the ifcx blake3
+`layerId` as its first payload field and keeps SHA-256 for its own hash — embed, don't compete.
 
 ### 3.5 Merkle rule
 
@@ -355,9 +374,10 @@ walks from any claimed-unchanged ancestor down through the resolver only far eno
 its hash matches — it does not need to re-walk the whole DAG, which is the whole point (cheap
 subtree replay, per the Gate G0 framing in `moonshots-execution-plan.md` line 241-243).
 
-## 6. Decisions (resolved by Louis, 2026-07-24)
+## 6. Appendix: design decisions (ALL RESOLVED by Louis, 2026-07-24)
 
-All five questions below were decided on 2026-07-24; the original question text is preserved
+Historical record. All five questions below were decided on 2026-07-24 and the decisions are
+part of the frozen format (see the FROZEN header block); the original question text is preserved
 for the record, each followed by the decision. Summary:
 
 - **Q1 — Embed, don't compete.** The DAG `layer` node EMBEDS the ifcx blake3 `layerId`

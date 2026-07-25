@@ -1,0 +1,289 @@
+{
+  "description": "FROZEN wire-format golden vectors for node-hash-v0 (spec version node-hash-v0 / 1.0.0, frozen 2026-07-25, docs/vision/spec/node-hash-v0.md). Do NOT regenerate: a hash change here is a wire-format change and requires node-hash-v1 plus a major version bump of @ifc-lite/provenance. Special numbers are encoded as {\"$num\": \"NaN\" | \"Infinity\" | \"-Infinity\" | \"-0\"}.",
+  "vectors": [
+    {
+      "id": "ps-empty",
+      "description": "Empty payloads edge case: named set with zero properties (header + name + count 0).",
+      "kind": "property-set",
+      "payload": {
+        "name": "Pset_Empty",
+        "properties": []
+      },
+      "expectedHash": "sha256:32220998802ddee9ad614a31c7c4db51a1d4dd7d70224e4fd12ba9080aa4ef9a"
+    },
+    {
+      "id": "ps-empty-name",
+      "description": "Empty-string set name with zero properties - a zero-length u32 length prefix, distinct from ps-empty.",
+      "kind": "property-set",
+      "payload": {
+        "name": "",
+        "properties": []
+      },
+      "expectedHash": "sha256:a28923fbb67ffdfc959213f6ada96304f2d6d67d4af73362917d65a9c81c15e8",
+      "expectDifferentHashFrom": "ps-empty"
+    },
+    {
+      "id": "ps-basic",
+      "description": "Representative Pset with all four value kinds: boolean, string, number, null (spec section 3.2 valueKind tags 3/1/2/0).",
+      "kind": "property-set",
+      "payload": {
+        "name": "Pset_WallCommon",
+        "properties": [
+          {
+            "name": "IsExternal",
+            "value": true
+          },
+          {
+            "name": "FireRating",
+            "value": "F30"
+          },
+          {
+            "name": "LoadBearing",
+            "value": false
+          },
+          {
+            "name": "Reference",
+            "value": null
+          },
+          {
+            "name": "ThermalTransmittance",
+            "value": 0.24
+          }
+        ]
+      },
+      "expectedHash": "sha256:d626072bd791dee7fa5829cc772c7de7e3bdc4f7905f213294c90229865b58ae"
+    },
+    {
+      "id": "ps-basic-permuted",
+      "description": "Same properties as ps-basic listed in reverse input order: properties are a SET sorted by name (ordinal UTF-8) before encoding, so the hash MUST equal ps-basic.",
+      "kind": "property-set",
+      "payload": {
+        "name": "Pset_WallCommon",
+        "properties": [
+          {
+            "name": "ThermalTransmittance",
+            "value": 0.24
+          },
+          {
+            "name": "Reference",
+            "value": null
+          },
+          {
+            "name": "LoadBearing",
+            "value": false
+          },
+          {
+            "name": "FireRating",
+            "value": "F30"
+          },
+          {
+            "name": "IsExternal",
+            "value": true
+          }
+        ]
+      },
+      "expectedHash": "sha256:d626072bd791dee7fa5829cc772c7de7e3bdc4f7905f213294c90229865b58ae",
+      "expectSameHashAs": "ps-basic"
+    },
+    {
+      "id": "ps-value-poszero",
+      "description": "Numeric value +0 baseline for the negative-zero folding pair below.",
+      "kind": "property-set",
+      "payload": {
+        "name": "Qto_Zero",
+        "properties": [
+          {
+            "name": "GrossVolume",
+            "value": 0
+          }
+        ]
+      },
+      "expectedHash": "sha256:bb6ff6399af141e5df689e3a1233d4a169bed1e4985f0f21275c5e4e7760c91f"
+    },
+    {
+      "id": "ps-value-negzero",
+      "description": "Numeric value -0 is normalized to +0 before hashing (spec section 3.2 / canonical.ts rationale), so the hash MUST equal ps-value-poszero.",
+      "kind": "property-set",
+      "payload": {
+        "name": "Qto_Zero",
+        "properties": [
+          {
+            "name": "GrossVolume",
+            "value": {
+              "$num": "-0"
+            }
+          }
+        ]
+      },
+      "expectedHash": "sha256:bb6ff6399af141e5df689e3a1233d4a169bed1e4985f0f21275c5e4e7760c91f",
+      "expectSameHashAs": "ps-value-poszero"
+    },
+    {
+      "id": "ps-value-nan",
+      "description": "NaN numeric value: the implementation writes the f64 bit pattern the engine produces for NaN; on V8/Node (the frozen test lane) that is the canonical quiet NaN 0x7ff8000000000000. This vector pins that behavior.",
+      "kind": "property-set",
+      "payload": {
+        "name": "Pset_Odd",
+        "properties": [
+          {
+            "name": "NotANumber",
+            "value": {
+              "$num": "NaN"
+            }
+          }
+        ]
+      },
+      "expectedHash": "sha256:59624361ab5874e87c6ac364ce5d3834e2bd461684dc136c134cc123326d4843"
+    },
+    {
+      "id": "ps-value-infinities",
+      "description": "Positive and negative Infinity values - raw IEEE-754 f64 bit patterns 0x7ff0... / 0xfff0...",
+      "kind": "property-set",
+      "payload": {
+        "name": "Pset_Odd",
+        "properties": [
+          {
+            "name": "PlusInf",
+            "value": {
+              "$num": "Infinity"
+            }
+          },
+          {
+            "name": "MinusInf",
+            "value": {
+              "$num": "-Infinity"
+            }
+          }
+        ]
+      },
+      "expectedHash": "sha256:d39c10abc572040b4179d14b3f916e6bc50173fc227288dca14c2596c1b49aa8"
+    },
+    {
+      "id": "ps-value-extremes",
+      "description": "Extreme finite numerics: MAX_SAFE_INTEGER, smallest denormal (5e-324), largest double, smallest normal, and machine epsilon.",
+      "kind": "property-set",
+      "payload": {
+        "name": "Pset_Extremes",
+        "properties": [
+          {
+            "name": "MaxSafeInteger",
+            "value": 9007199254740991
+          },
+          {
+            "name": "MinDenormal",
+            "value": 5e-324
+          },
+          {
+            "name": "MaxDouble",
+            "value": 1.7976931348623157e+308
+          },
+          {
+            "name": "MinNormal",
+            "value": 2.2250738585072014e-308
+          },
+          {
+            "name": "Epsilon",
+            "value": 2.220446049250313e-16
+          }
+        ]
+      },
+      "expectedHash": "sha256:4d99f12aec1b9b87c628d9763cdf84da8475dcb150bfdc5f0be940a7356ae5d9"
+    },
+    {
+      "id": "ps-unicode-nfc-composed",
+      "description": "Unicode normalization baseline: precomposed U+00E9 (LATIN SMALL LETTER E WITH ACUTE) in name and value.",
+      "kind": "property-set",
+      "payload": {
+        "name": "Pset_Décor",
+        "properties": [
+          {
+            "name": "Matériau",
+            "value": "Béton armé"
+          }
+        ]
+      },
+      "expectedHash": "sha256:9786077be25df24666725c6baccab433aa7bc981460e8b2435e96c70c6f6a355"
+    },
+    {
+      "id": "ps-unicode-nfd-decomposed",
+      "description": "Same strings in decomposed form (e + U+0301 COMBINING ACUTE ACCENT): strings are NFC-normalized before encoding (spec section 3.2), so the hash MUST equal ps-unicode-nfc-composed.",
+      "kind": "property-set",
+      "payload": {
+        "name": "Pset_Décor",
+        "properties": [
+          {
+            "name": "Matériau",
+            "value": "Béton armé"
+          }
+        ]
+      },
+      "expectedHash": "sha256:9786077be25df24666725c6baccab433aa7bc981460e8b2435e96c70c6f6a355",
+      "expectSameHashAs": "ps-unicode-nfc-composed"
+    },
+    {
+      "id": "ps-unicode-strings",
+      "description": "Unicode stress: emoji (astral plane, surrogate pairs in UTF-16 but 4-byte sequences in the hashed UTF-8), CJK, RTL Arabic, and mathematical alphanumerics.",
+      "kind": "property-set",
+      "payload": {
+        "name": "Pset_Unicode",
+        "properties": [
+          {
+            "name": "Emoji",
+            "value": "🏗️ crane"
+          },
+          {
+            "name": "CJK",
+            "value": "梁柱壁"
+          },
+          {
+            "name": "RTL",
+            "value": "جدار"
+          },
+          {
+            "name": "Math",
+            "value": "𝔘𝔫𝔦"
+          }
+        ]
+      },
+      "expectedHash": "sha256:cfb5da10acf80d2ae8c3fe9c2960c6525ee4e31cad89015b2122c44c50fbbc42"
+    },
+    {
+      "id": "ps-ordinal-sort",
+      "description": "Sort order is ordinal UTF-8 byte compare, NOT locale-aware: \"B\" (0x42) < \"Z\" (0x5a) < \"a\" (0x61). A locale-aware sort would interleave case and produce a different byte stream - this vector pins the ordinal rule.",
+      "kind": "property-set",
+      "payload": {
+        "name": "Pset_Sort",
+        "properties": [
+          {
+            "name": "a",
+            "value": 1
+          },
+          {
+            "name": "Z",
+            "value": 2
+          },
+          {
+            "name": "B",
+            "value": 3
+          }
+        ]
+      },
+      "expectedHash": "sha256:a24330ab2ea245bfef1050cc0b2e5e2bfbec2049bd7a0b84e4fc6c1b353c06a4"
+    },
+    {
+      "id": "ps-empty-strings",
+      "description": "Empty-string property name and empty-string value: zero-length u32 prefixes at both positions.",
+      "kind": "property-set",
+      "payload": {
+        "name": "Pset_EmptyStrings",
+        "properties": [
+          {
+            "name": "",
+            "value": ""
+          }
+        ]
+      },
+      "expectedHash": "sha256:d9003aa75a7156ec805bd92c733b6e9e706e71b0a755c941e7329fac52b5bc36"
+    }
+  ]
+}

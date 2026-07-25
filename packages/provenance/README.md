@@ -1,24 +1,33 @@
 # @ifc-lite/provenance
 
-**Experimental research prototype. Private package, not published to npm.**
+**Research prototype with a FROZEN wire format. Private package, not published to npm.**
 
-A prototype certificate library for proof-carrying model changes, built
+A certificate library for proof-carrying model changes, built
 against the node-hash-v0 spec
 ([`docs/vision/spec/node-hash-v0.md`](../../docs/vision/spec/node-hash-v0.md),
 moonshot M1 "Proof-carrying buildings" in
 [`docs/vision/moonshots-tech.md`](../../docs/vision/moonshots-tech.md)).
 
-## Status: 0.0.x, format NOT frozen
+## Status: 0.1.x, format FROZEN (node-hash-v0 / 1.0.0, 2026-07-25)
 
-- The **node-hash-v0 format is NOT FROZEN**. The design decisions in the
-  spec's section 6 are recorded, but freezing the byte format is an explicit,
-  separate human-calendar act (ABI-freeze rule). Hashes produced today may
-  not verify against a future build. Do not persist certificates anywhere
-  that outlives a repo checkout.
-- The package is `private: true` and versioned 0.0.x. Every export may be
-  renamed, reshaped, or deleted without a changeset or deprecation cycle.
-- No other workspace package may depend on it yet; consumers are the
-  research demos under `scripts/moonshot/`.
+- The **node-hash-v0 wire format is FROZEN** as of 2026-07-25 (spec version
+  `node-hash-v0` / 1.0.0, `docs/vision/spec/node-hash-v0.md`). Hashes and
+  certificates produced by this package are stable: the byte encodings, the
+  tagged-hash string forms, the `NHV0` header, the kind tags, and the sort
+  rules may no longer change.
+- **Change policy:** any wire-format change, however small, requires a new
+  versioned spec file (`node-hash-v1.md`, new magic/version byte) and a
+  major version bump of `@ifc-lite/provenance`. Golden wire-format vectors
+  in `test/golden/` pin the frozen encoding in CI; a golden-vector test
+  failure means a wire-format change and must not be "fixed" by regenerating
+  the vectors under the v0 name.
+- Additive reserved fields (do not alter any hash): `Certificate.signatures`
+  (`{alg: 'ed25519', key, sig}`, ignored by v0 verification, spec section 6
+  Q5) and `GeometryMeshPayload.semanticHash` (RTC-invariant annotation,
+  never folded into the node hash, spec section 6 Q2).
+- The package remains `private: true` (not published to npm). API surface
+  (names, types) may still evolve; the WIRE FORMAT may not.
+- Consumers today are the research demos under `scripts/moonshot/`.
 
 ## What it does
 

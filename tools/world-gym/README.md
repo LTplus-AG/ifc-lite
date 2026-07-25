@@ -98,7 +98,7 @@ end to end).
 tools/world-gym/
   lib/
     rng.mjs                   deterministic seeded PRNG (mulberry32 + FNV-1a seed hash)
-    deterministic-runtime.mjs shim that pins Date/crypto.randomUUID for one build (see Gaps)
+    deterministic-create.mjs  seeded Timestamp/GuidSource params for IfcCreator (see Determinism)
     quantities.mjs            wall/slab/column/beam/space quantity math, shared by both families
     corruption.mjs            adversarial defect planner + injector (negative-label half)
     checks.mjs                in-process schema/clash/quantity checks (warm WASM per worker)
@@ -138,7 +138,8 @@ tools/world-gym/
    (GUID duplication, deleted IfcSite, duplicated IfcProject, dangling ref,
    deleted quantity bindings) after it - all drawn from the seed, all
    recorded as ground truth at plant time.
-4. Wraps the build + `toIfc()` in `withDeterministicRuntime(seed, fn)`.
+4. Pins the build to the seed via `IfcCreator`'s `Timestamp` + `GuidSource`
+   params (`deterministicCreateParams(seed)` from `lib/deterministic-create.mjs`).
 
 ## Family parameter spaces
 
@@ -258,29 +259,27 @@ different layers; `computeRewardChannels` stays the corpus/manifest API.
 
 ## Determinism
 
-Two non-obvious entropy leaks live inside `@ifc-lite/create` /
-`@ifc-lite/encoding`, both **outside tools/world-gym's own path** so they are
-documented and worked around here, not patched at the source:
+`IfcCreator` historically had two entropy sources with no seed hook - the
+wall clock (owner-history + STEP header `FILE_NAME` timestamps) and
+`crypto.randomUUID()` for every `IfcGloballyUniqueId` - which world-gym used
+to work around by monkey-patching `globalThis.Date` /
+`crypto.randomUUID` for the duration of each build
+(`lib/deterministic-runtime.mjs`, deleted). PR #1879 added first-class
+`ProjectParams.Timestamp` + `ProjectParams.GuidSource` options, and the
+generator now uses those via `lib/deterministic-create.mjs`.
 
-- `packages/create/src/ifc-creator.ts` calls `Date.now()` (owner-history
-  timestamp) and `new Date().toISOString()` (STEP header `FILE_NAME`
-  timestamp) directly, with no seed hook.
-- `packages/encoding/src/guid.ts#generateUuid()` calls `crypto.randomUUID()`
-  for every `IfcGloballyUniqueId` - the dominant determinism blocker.
-
-`lib/deterministic-runtime.mjs` works around both without touching either
-package: for the duration of one synchronous `build()` + `toIfc()` call, it
-replaces `globalThis.Date` with a subclass pinned to a fixed epoch and
-replaces `globalThis.crypto.randomUUID` (plus `Math.random`, defensively)
-with a seeded generator, then restores both in a `finally`.
+Byte-compat matters: the corpus, benchmark results and the determinism
+re-proofs are all pinned by seed. `seededGuidSource(seed)` therefore replays
+the exact GUID byte stream the old shim produced (32 raw hex nibbles per
+UUID from `Rng('guid:' + seed)`, no v4 version/variant forcing, encoded with
+the canonical `uuidToIfcGuid`), and the pinned instant is unchanged - every
+seed's file is byte-identical to what the shim generated. Do not switch the
+stream to proper v4 UUIDs without re-baselining the whole corpus.
 
 **Result: `node determinism-check.mjs --seeds 20` - 20/20 seeds
 byte-identical across two runs, wall-clock gap included; corrupted models
 verified byte-identical the same way; the 100k channel report re-proved
 10,000 models by regenerate-and-rehash with 0 failures.**
-
-If GlobalId/timestamp seeding is ever added upstream, this shim becomes
-unnecessary and should be deleted - it is a workaround, not a design choice.
 
 ## 100k corpus run - results (this machine, 10 cores, 10 workers)
 

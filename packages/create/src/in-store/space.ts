@@ -165,7 +165,7 @@ export function addSpaceToStore(
   //   (IFC2X3 IfcInternalOrExternalEnum), ElevationWithFlooring
   // INTERNAL is a valid value in both enums, so it makes a safe default.
   const attrs: Array<unknown> = [
-    generateIfcGuid(),
+    generateIfcGuid(anchor.guidRandom),
     ownerHistoryRef(anchor.ownerHistoryId),
     params.Name ?? 'Space',
     params.Description ?? null,
@@ -182,7 +182,7 @@ export function addSpaceToStore(
   // Spatial-structure parents use IfcRelAggregates, not the
   // ContainedInSpatialStructure rel that IfcElement subtypes use.
   const relAggregatesId = editor.addEntity('IfcRelAggregates', [
-    generateIfcGuid(),
+    generateIfcGuid(anchor.guidRandom),
     ownerHistoryRef(anchor.ownerHistoryId),
     null,
     null,
@@ -228,7 +228,7 @@ export function addSpaceToStore(
   const spaceBoundaryIds: number[] = [];
   for (const boundary of params.boundaries ?? []) {
     const boundaryId = editor.addEntity('IfcRelSpaceBoundary', [
-      generateIfcGuid(),
+      generateIfcGuid(anchor.guidRandom),
       ownerHistoryRef(anchor.ownerHistoryId),
       null,
       null,

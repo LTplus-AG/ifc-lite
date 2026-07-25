@@ -16,7 +16,7 @@
  * access, no I/O.
  */
 
-import { generateIfcGuid } from '@ifc-lite/encoding';
+import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
 import type { StoreEditor } from '@ifc-lite/mutations';
 
 const POINT_EPSILON = 1e-6;
@@ -154,15 +154,17 @@ export function ownerHistoryRef(ownerHistoryId: number | null): string | null {
  * Emit a fresh IfcRelContainedInSpatialStructure that anchors a single
  * element to its storey. Easier than mutating an existing rel — STEP
  * importers fold parallel rels back into one container at parse time.
+ * `random` seeds the rel's GlobalId (see `SpatialAnchor.guidRandom`).
  */
 export function emitRelContainedInSpatialStructure(
   editor: StoreEditor,
   ownerHistoryId: number | null,
   elementId: number,
   storeyId: number,
+  random?: RandomSource,
 ): number {
   return editor.addEntity('IfcRelContainedInSpatialStructure', [
-    generateIfcGuid(),
+    generateIfcGuid(random),
     ownerHistoryRef(ownerHistoryId),
     null,
     null,
@@ -176,6 +178,7 @@ export function emitRelContainedInSpatialStructure(
  * (GlobalId → OwnerHistory → Name → Description → ObjectType →
  * ObjectPlacement → Representation → Tag). Callers append their
  * type-specific tail (PredefinedType, OperationType, etc.).
+ * `random` seeds the element's GlobalId (see `SpatialAnchor.guidRandom`).
  */
 export function ifcElementHeader(
   ownerHistoryId: number | null,
@@ -183,9 +186,10 @@ export function ifcElementHeader(
   productShapeId: number,
   params: { Name?: string; Description?: string; ObjectType?: string; Tag?: string },
   defaultName: string,
+  random?: RandomSource,
 ): Array<unknown> {
   return [
-    generateIfcGuid(),
+    generateIfcGuid(random),
     ownerHistoryRef(ownerHistoryId),
     params.Name ?? defaultName,
     params.Description ?? null,

@@ -12,6 +12,8 @@
  * functions in this module operate purely on these resolved ids.
  */
 
+import type { RandomSource } from '@ifc-lite/encoding';
+
 export type SpatialAnchorSchema = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
 
 export interface SpatialAnchor {
@@ -44,6 +46,16 @@ export interface SpatialAnchor {
    * mesh looked right in-session because that one is built in metres).
    */
   lengthUnitScale?: number;
+  /**
+   * Optional seeded randomness for the GlobalIds the builders emit
+   * (`@ifc-lite/encoding`'s `RandomSource`: a `Math.random`-style
+   * `() => number` in `[0, 1)`). Pass a seeded generator to make in-store
+   * builds byte-reproducible - the counterpart of `ProjectParams.GuidSource`
+   * on `IfcCreator`. Omit it for the default platform CSPRNG. A seeded
+   * source trades global uniqueness for reproducibility - only use one
+   * where that is the point.
+   */
+  guidRandom?: RandomSource;
 }
 
 /**

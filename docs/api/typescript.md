@@ -788,8 +788,13 @@ interface SpatialAnchor {
   bodyContextId: number;     // 'Body' subcontext (or parent context fallback)
   storeyId: number;
   storeyPlacementId: number; // the storey's own IfcLocalPlacement
+  guidRandom?: RandomSource; // optional seeded [0,1) source: pins the emitted
+                             // GlobalIds for reproducible in-store builds
+                             // (counterpart of ProjectParams.GuidSource)
 }
 ```
+
+`duplicateInStore` takes the same knob as `options.guidRandom` (it has no anchor), and `generateSpacesFromWalls` / `generateSpaces` forward `options.guidRandom` to the spaces they emit.
 
 ---
 

@@ -135,7 +135,7 @@ export function addBeamToStore(
 
   // `IfcBeam.PredefinedType` only exists from IFC4 onward.
   const beamAttrs: Array<unknown> = [
-    generateIfcGuid(),
+    generateIfcGuid(anchor.guidRandom),
     ownerHistoryRef(ownerHistoryId),
     params.Name ?? 'Beam',
     params.Description ?? null,
@@ -150,7 +150,7 @@ export function addBeamToStore(
   const beamId = editor.addEntity('IfcBeam', beamAttrs as Parameters<StoreEditor['addEntity']>[1]).expressId;
 
   const relContainedId = editor.addEntity('IfcRelContainedInSpatialStructure', [
-    generateIfcGuid(),
+    generateIfcGuid(anchor.guidRandom),
     ownerHistoryRef(ownerHistoryId),
     null,
     null,

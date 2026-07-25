@@ -135,7 +135,7 @@ export function addColumnToStore(
   // onward — IFC2X3 has no such attribute, so emitting `.COLUMN.` there
   // would produce an invalid 9-arg entity record.
   const columnAttrs: Array<unknown> = [
-    generateIfcGuid(),
+    generateIfcGuid(anchor.guidRandom),
     ownerHistoryRef(ownerHistoryId),
     params.Name ?? 'Column',
     params.Description ?? null,
@@ -153,7 +153,7 @@ export function addColumnToStore(
   // Adding a parallel relationship is simpler than mutating the storey's
   // existing one and produces an equivalent result on import.
   const relContainedId = editor.addEntity('IfcRelContainedInSpatialStructure', [
-    generateIfcGuid(),
+    generateIfcGuid(anchor.guidRandom),
     ownerHistoryRef(ownerHistoryId),
     null,
     null,

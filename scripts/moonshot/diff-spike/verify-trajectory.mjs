@@ -47,7 +47,7 @@ import { readFileSync, writeFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { PARAMS, NPARAMS } from './carbon-model.mjs';
 import { meritDual, projectBox } from './optimize.mjs';
-import { buildIfc, REPO_ROOT } from './build-ifc.mjs';
+import { buildIfc, seededBuildOptions, SEEDED_BUILD_SPEC, REPO_ROOT } from './build-ifc.mjs';
 import { kernelVolumes } from './kernel-check.mjs';
 import { CARBON_FACTORS } from './carbon-model.mjs';
 import {
@@ -299,15 +299,32 @@ export async function verifyChain(chain, opts = {}) {
   let kernelMs = 0;
   if (!skipKernel) {
     const tk = performance.now();
-    // Rebuild the IFC from the final parameters and pin it to the CANONICAL
-    // hash (GlobalIds and two header timestamps are run-local randomness a
-    // rebuild cannot reproduce; canonicalIfc() strips exactly those - see
-    // trajectory.mjs. The raw ifcSha256 is the on-disk artifact label and
-    // is not re-derivable, so it is not checked here.)
-    const { content, mapping } = buildIfc(x);
+    // Rebuild the IFC from the final parameters. Seeded endpoints
+    // (ep.ifcBuild) commit the exact build recipe, so the rebuild must
+    // reproduce the RAW file bytes: pin the raw sha256. Unseeded (fallback)
+    // endpoints carry run-local randomness a rebuild cannot reproduce
+    // (GlobalIds + two header timestamps), so only the CANONICAL hash -
+    // canonicalIfc() strips exactly those - is re-derivable there and the
+    // raw ifcSha256 stays a mere on-disk artifact label.
+    const build = ep.ifcBuild ?? null;
+    if (build !== null && (build.mode !== 'seeded' || typeof build.guidSeed !== 'string' || !Number.isFinite(build.timestampMs))) {
+      return fail('endpoint', 'malformed-ifc-build-descriptor', { ifcBuild: build });
+    }
+    if (build !== null && build.spec !== SEEDED_BUILD_SPEC) {
+      return fail('endpoint', 'unsupported-ifc-build-spec', { recorded: build.spec, supported: SEEDED_BUILD_SPEC });
+    }
+    const { content, mapping } = build
+      ? buildIfc(x, seededBuildOptions(build.guidSeed, build.timestampMs))
+      : buildIfc(x);
     const sha = `sha256:${sha256hex(canonicalIfc(content))}`;
     if (sha !== ep.ifcCanonicalSha256 || content.length !== ep.ifcBytes) {
       return fail('endpoint', 'ifc-rebuild-mismatch', { recorded: { canonicalSha: ep.ifcCanonicalSha256, bytes: ep.ifcBytes }, recomputed: { canonicalSha: sha, bytes: content.length } });
+    }
+    if (build) {
+      const rawSha = `sha256:${sha256hex(content)}`;
+      if (rawSha !== ep.ifcSha256) {
+        return fail('endpoint', 'ifc-raw-hash-mismatch', { recorded: ep.ifcSha256, recomputed: rawSha });
+      }
     }
     // Re-run the real kernel and re-measure.
     const { GeometryProcessor } = await import(
@@ -364,7 +381,9 @@ export async function verifyChain(chain, opts = {}) {
     }
     kernelMs = performance.now() - tk;
     log(`endpoint kernel re-measurement: carbon ${kernelCarbon.toFixed(1)} kgCO2e ` +
-      `(rel dev vs bound ${carbonRel.toExponential(2)}), ifc hash pinned, ${(kernelMs / 1000).toFixed(1)}s` +
+      `(rel dev vs bound ${carbonRel.toExponential(2)}), ` +
+      `${build ? 'RAW + canonical ifc hashes pinned (seeded build)' : 'canonical ifc hash pinned'}, ` +
+      `${(kernelMs / 1000).toFixed(1)}s` +
       (recheckCli ? ', validate+clash rechecked' : ''));
   }
 

@@ -191,7 +191,7 @@ export function addSlabToStore(
 
   // `IfcSlab.PredefinedType` only exists from IFC4 onward.
   const slabAttrs: Array<unknown> = [
-    generateIfcGuid(),
+    generateIfcGuid(anchor.guidRandom),
     ownerHistoryRef(ownerHistoryId),
     params.Name ?? 'Slab',
     params.Description ?? null,
@@ -206,7 +206,7 @@ export function addSlabToStore(
   const slabId = editor.addEntity('IfcSlab', slabAttrs as Parameters<StoreEditor['addEntity']>[1]).expressId;
 
   const relContainedId = editor.addEntity('IfcRelContainedInSpatialStructure', [
-    generateIfcGuid(),
+    generateIfcGuid(anchor.guidRandom),
     ownerHistoryRef(ownerHistoryId),
     null,
     null,

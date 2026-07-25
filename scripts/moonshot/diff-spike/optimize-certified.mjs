@@ -24,7 +24,11 @@
  *
  * Usage:
  *   node scripts/moonshot/diff-spike/optimize-certified.mjs \
- *     [--scenario baseline|strict] [--out DIR]
+ *     [--scenario baseline|strict] [--out DIR] [--rounds N] [--max-iter M]
+ *
+ * `--rounds` / `--max-iter` shrink the optimizer budget for a short smoke
+ * run; the chain stays fully verifiable (the verifier replays recorded
+ * events, however many there are).
  */
 
 import path from 'node:path';
@@ -33,6 +37,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { PARAMS, NPARAMS, evaluateNumeric } from './carbon-model.mjs';
 import { optimize, endpointChecks, SCENARIOS, G_SCALE } from './optimize.mjs';
 import { buildChain, attachEndpoint, getKernelIdentity } from './trajectory.mjs';
+import { SEEDED_BUILD_SPEC } from './build-ifc.mjs';
 
 async function main() {
   const argv = process.argv.slice(2);
@@ -53,11 +58,26 @@ async function main() {
 
   console.log(`scenario: ${scenarioName} ${JSON.stringify(scenario)}`);
 
+  const intFlag = (name, def) => {
+    const i = argv.indexOf(name);
+    if (i < 0) return def;
+    const v = Number(argv[i + 1]);
+    if (!Number.isInteger(v) || v <= 0) {
+      console.error(`${name} must be a positive integer`);
+      process.exit(2);
+    }
+    return v;
+  };
+  const rounds = intFlag('--rounds', 12);
+  const maxIter = intFlag('--max-iter', 2000);
+
   // ---- 1. Optimize, recording every accepted step ----
   const events = [];
   const t0 = performance.now();
   const { x, history } = optimize({
     scenario,
+    rounds,
+    maxIter,
     onAccept: (ev) => events.push({ type: 'step', ...ev }),
     onMuRamp: (ev) => events.push({ type: 'mu-ramp', ...ev }),
   });
@@ -98,10 +118,19 @@ async function main() {
   console.log(`  final root: ${chain.finalState.root}`);
 
   // ---- 3. Endpoint grounding: kernel checks bound into the final cert ----
-  const ep = await endpointChecks({ x, outDir, fileBase: 'optimum', scenario });
+  // Seeded build: the optimum IFC's RAW bytes become a pure function of the
+  // final parameters + this descriptor, so the endpoint certificate binds a
+  // re-derivable raw sha256 (canonical hash stays as the fallback pin).
+  const ifcBuild = {
+    mode: 'seeded',
+    spec: SEEDED_BUILD_SPEC,
+    guidSeed: `diff-spike:${scenarioName}`,
+    timestampMs: Date.UTC(2024, 0, 1),
+  };
+  const ep = await endpointChecks({ x, outDir, fileBase: 'optimum', scenario, ifcBuild });
   const endpoint = await attachEndpoint(chain, x, ep);
   console.log(`endpoint certificate: root ${endpoint.endpointRoot}`);
-  console.log(`  ifc ${endpoint.ifcSha256} (${endpoint.ifcBytes} bytes)`);
+  console.log(`  ifc ${endpoint.ifcSha256} (${endpoint.ifcBytes} bytes, seeded build: raw hash re-derivable)`);
 
   // ---- 4. Persist ----
   const chainPath = path.join(outDir, 'trajectory-chain.json');

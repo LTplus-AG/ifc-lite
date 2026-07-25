@@ -115,7 +115,7 @@ export function addDoorToStore(
   const { shapeRepId, productShapeId } = emitBodyRepresentation(editor, anchor.bodyContextId, solidId);
 
   const isIFC2X3 = (anchor.schema ?? 'IFC4') === 'IFC2X3';
-  const attrs = ifcElementHeader(anchor.ownerHistoryId, placementId, productShapeId, params, 'Door');
+  const attrs = ifcElementHeader(anchor.ownerHistoryId, placementId, productShapeId, params, 'Door', anchor.guidRandom);
   // OverallHeight / OverallWidth are present on IfcDoor in both schemas.
   attrs.push(params.Height, params.Width);
   if (!isIFC2X3) {
@@ -134,7 +134,7 @@ export function addDoorToStore(
   }
 
   const doorId = editor.addEntity('IfcDoor', attrs as Parameters<StoreEditor['addEntity']>[1]).expressId;
-  const relContainedId = emitRelContainedInSpatialStructure(editor, anchor.ownerHistoryId, doorId, anchor.storeyId);
+  const relContainedId = emitRelContainedInSpatialStructure(editor, anchor.ownerHistoryId, doorId, anchor.storeyId, anchor.guidRandom);
 
   return { doorId, placementId, profileId, solidId, shapeRepId, productShapeId, relContainedId };
 }

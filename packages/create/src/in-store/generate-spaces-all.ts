@@ -15,6 +15,7 @@
  * Geometry-exact slab/roof undersides are a future refinement.
  */
 
+import type { RandomSource } from '@ifc-lite/encoding';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import {
@@ -58,6 +59,11 @@ export interface GenerateSpacesAllOptions {
    */
   force?: boolean;
   debug?: boolean;
+  /**
+   * Optional seeded randomness for the emitted GlobalIds, forwarded to
+   * `generateSpacesFromWalls`. Omit for the default platform CSPRNG.
+   */
+  guidRandom?: RandomSource;
 }
 
 export interface StoreyInfo {
@@ -143,6 +149,7 @@ export function generateSpaces(
         dryRun: options.dryRun,
         boundaryMode: options.boundaryMode,
         debug: options.debug,
+        guidRandom: options.guidRandom,
         skipFootprints: footprintsByStorey.get(st.id),
       } satisfies GenerateSpacesOptions,
       overlay,

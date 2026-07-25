@@ -107,11 +107,11 @@ echo "   filter:    $FILTER"
 #                         -> https://eu.posthog.com/settings/user-api-keys
 #   POSTHOG_CLI_ENV_ID    PostHog project id (199147)
 #   POSTHOG_CLI_HOST      https://eu.posthog.com   (EU cloud)
-if [ -n "${POSTHOG_CLI_API_KEY:-}" ]; then
+if [ -n "${POSTHOG_CLI_API_KEY:-}" ] && [ -n "${POSTHOG_CLI_ENV_ID:-}" ]; then
   export VITE_SOURCEMAP=1
-  echo "🗺️  Source maps ENABLED (POSTHOG_CLI_API_KEY present) — will upload then delete"
+  echo "🗺️  Source maps ENABLED (POSTHOG_CLI_API_KEY + POSTHOG_CLI_ENV_ID present) — will upload then delete"
 else
-  echo "🗺️  Source maps disabled (no POSTHOG_CLI_API_KEY) — traces stay minified"
+  echo "🗺️  Source maps disabled (need both POSTHOG_CLI_API_KEY and POSTHOG_CLI_ENV_ID) — traces stay minified"
 fi
 
 npx turbo build --filter="$FILTER"
@@ -127,7 +127,7 @@ build_status=$?
 # ALWAYS sweep leftover maps out of the output afterwards — a failed upload must
 # not silently publish them.
 OUT_DIR="apps/viewer/dist"
-if [ $build_status -eq 0 ] && [ -n "${POSTHOG_CLI_API_KEY:-}" ] && [ -d "$OUT_DIR" ]; then
+if [ $build_status -eq 0 ] && [ -n "${POSTHOG_CLI_API_KEY:-}" ] && [ -n "${POSTHOG_CLI_ENV_ID:-}" ] && [ -d "$OUT_DIR" ]; then
   # This repo builds with rolldown-vite, which emits the .map files but NOT the
   # trailing `//# sourceMappingURL=` comment. posthog-cli documents that it
   # locates maps via that comment (see its --public-path-prefix flag: "we need

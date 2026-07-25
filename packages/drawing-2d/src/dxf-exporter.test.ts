@@ -76,10 +76,11 @@ const underlay = (): DxfUnderlay => ({
 });
 
 describe('DXFExporter', () => {
-  it('produces parseable DXF with metre units for an empty drawing', () => {
+  it('produces parseable DXF (R12, no $INSUNITS) stating metres in the leading comment', () => {
     const dxf = exportToDXF(emptyDrawing());
+    expect(dxf).toMatch(/^999\n.*metres/);
+    expect(dxf).toContain('$ACADVER\n1\nAC1009');
     const doc = parseDxf(dxf);
-    expect(doc.insunits).toBe(6);
     expect(doc.entities).toHaveLength(0);
   });
 
@@ -110,7 +111,7 @@ describe('DXFExporter', () => {
     expect(dxf).toMatch(/IFC-HIDDEN\n70\n0\n62\n\d+\n6\nDASHED/);
   });
 
-  it('represents cut polygons as closed LWPOLYLINE boundaries (hatch-as-boundary, no HATCH entity)', () => {
+  it('represents cut polygons as closed POLYLINE boundaries (hatch-as-boundary, no HATCH entity)', () => {
     const drawing = emptyDrawing();
     drawing.cutPolygons = [makePolygon()];
     const dxf = exportToDXF(drawing);

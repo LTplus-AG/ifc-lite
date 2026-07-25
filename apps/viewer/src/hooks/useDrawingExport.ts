@@ -779,16 +779,24 @@ function useDrawingExport({
       flipped: sectionPlane.flipped,
       georeference,
     });
+    const isGeoreferenced = georeference !== null && sectionPlane.axis === 'down' && !isCustomPlane;
+    // R12 has no $INSUNITS (see dxf/writer.ts); state the unit — and the
+    // target CRS when the export is actually map-projected — in the 999
+    // comment every DXF reader shows a human but none need to parse.
+    const metadataComment = isGeoreferenced
+      ? `ifc-lite section export - units: metres, CRS: ${georeference!.projectedCRS.name || 'unknown'}`
+      : undefined;
     const dxf = exportToDXF(drawing, {
       showHiddenLines: displayOptions.showHiddenLines,
       coordinateTransform,
+      metadataComment,
     });
     const stem = `section-${sectionPlane.axis}-${sectionPlane.position}`;
     downloadFile(dxf, `${stem}.dxf`, 'application/dxf');
     posthog.capture('drawing_exported', {
       format: 'dxf',
       axis: sectionPlane.axis,
-      georeferenced: georeference !== null && sectionPlane.axis === 'down' && !isCustomPlane,
+      georeferenced: isGeoreferenced,
     });
   }, [drawing, displayOptions.showHiddenLines, sectionPlane, ifcDataStore, coordinateInfo]);
 

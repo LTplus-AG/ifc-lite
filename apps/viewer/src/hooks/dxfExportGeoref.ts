@@ -74,8 +74,18 @@ export function buildDxfExportTransform(params: DxfExportTransformParams): (p: P
   const { mapConversion, projectedCRS, lengthUnitScale } = georeference;
   const mapUnitScale = resolveMapUnitToMetreScale(projectedCRS.mapUnitScale, lengthUnitScale);
   const scale = getEffectiveHorizontalScale(mapConversion.scale, mapUnitScale, lengthUnitScale);
-  const abscissa = mapConversion.xAxisAbscissa ?? 1;
-  const ordinate = mapConversion.xAxisOrdinate ?? 0;
+  // IfcMapConversion.XAxisAbscissa/XAxisOrdinate form a direction vector, not
+  // necessarily unit length — the IFC spec allows an authoring tool to write
+  // any non-zero (cos, sin)-proportional pair. Used raw, a non-unit vector
+  // scales the whole exported drawing by its magnitude. Normalize exactly
+  // like the Rust source of truth (rust/core/src/georef.rs normalize_axis);
+  // a near-zero vector (both components ~0) falls back to the no-rotation
+  // default (1, 0), matching that function's guard.
+  const rawAbscissa = mapConversion.xAxisAbscissa ?? 1;
+  const rawOrdinate = mapConversion.xAxisOrdinate ?? 0;
+  const axisLen = Math.hypot(rawAbscissa, rawOrdinate);
+  const abscissa = axisLen < 1e-9 ? 1 : rawAbscissa / axisLen;
+  const ordinate = axisLen < 1e-9 ? 0 : rawOrdinate / axisLen;
 
   return (p) => {
     const world = toWorld(p);

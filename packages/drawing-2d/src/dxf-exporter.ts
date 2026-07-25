@@ -11,13 +11,20 @@
  * per-style layer/colour derivation.
  *
  * Unlike SVG, DXF has no "paper" concept — coordinates are written verbatim
- * in the drawing's own unit (metres, `$INSUNITS` = 6) with no scale/padding
- * transform. A `Drawing2D` generated without a render-frame shift (the
- * package-level contract; see `svg-exporter.ts`'s underlay caveat) therefore
- * round-trips through this exporter unchanged. Callers that need real-world
- * or map-projected output (the viewer's georeferenced plan-section export)
+ * in the drawing's own unit (metres) with no scale/padding transform. A
+ * `Drawing2D` generated without a render-frame shift (the package-level
+ * contract; see `svg-exporter.ts`'s underlay caveat) therefore round-trips
+ * through this exporter unchanged. Callers that need real-world or
+ * map-projected output (the viewer's georeferenced plan-section export)
  * supply `coordinateTransform`, applied to every point — drawing and
  * underlay alike — right before it reaches the writer.
+ *
+ * Output targets DXF R12 (AC1009) — see `dxf/writer.ts`'s module docs for
+ * why (handles/subclass markers are mandatory from R13 on; R12 needs
+ * neither and is the universal interop baseline). There is accordingly no
+ * `$INSUNITS` header variable; the unit (always metres) is stated in a
+ * `999` comment at the top of the file instead, optionally naming the
+ * `IfcProjectedCRS` via `metadataComment`.
  */
 
 import type { Drawing2D, DrawingLine, DrawingPolygon, LineCategory, Point2D } from './types.js';
@@ -29,7 +36,7 @@ import { DxfWriter, type DxfLinetype } from './dxf/writer.js';
 export interface DXFExportOptions {
   /** Include lines whose `visibility === 'hidden'` (default true, matching SVG). */
   showHiddenLines?: boolean;
-  /** Include cut-polygon boundaries (hatch regions, represented as closed LWPOLYLINEs — see module docs). Default true. */
+  /** Include cut-polygon boundaries (hatch regions, represented as closed POLYLINE boundaries — see module docs). Default true. */
   showHatching?: boolean;
   /** DXF reference underlays composited alongside the drawing (issue #1782 parity). */
   underlays?: DXFUnderlayOptions[];
@@ -40,6 +47,13 @@ export interface DXFExportOptions {
    * for a plan-view export — see `apps/viewer/src/hooks/dxfExportGeoref.ts`.
    */
   coordinateTransform?: (p: Point2D) => Point2D;
+  /**
+   * `999` comment written at the top of the file (R12 has no `$INSUNITS`
+   * to state the unit instead — see `dxf/writer.ts`). Defaults to a
+   * generic "units: metres" note; pass one naming the `IfcProjectedCRS`
+   * for a georeferenced export.
+   */
+  metadataComment?: string;
 }
 
 /** One DXF reference underlay to embed (mirrors `SVGUnderlayOptions`). */
@@ -70,9 +84,10 @@ export class DXFExporter {
       showHatching = true,
       underlays = [],
       coordinateTransform = (p: Point2D) => p,
+      metadataComment,
     } = options;
 
-    const writer = new DxfWriter();
+    const writer = new DxfWriter({ headerComment: metadataComment });
     const map = (p: Point2D): Point2D => coordinateTransform(p);
 
     // Layer per line category, DASHED linetype for the hidden layer only —
@@ -127,9 +142,9 @@ export class DXFExporter {
     const pattern = getHatchPattern(polygon.ifcType);
     if (pattern.type === 'none') return;
     const outer = polygon.polygon.outer.map(map);
-    writer.addLwPolyline(outer, layer, true, pattern.strokeColor);
+    writer.addPolyline(outer, layer, true, pattern.strokeColor);
     for (const hole of polygon.polygon.holes) {
-      writer.addLwPolyline(hole.map(map), layer, true, pattern.strokeColor);
+      writer.addPolyline(hole.map(map), layer, true, pattern.strokeColor);
     }
   }
 
@@ -152,15 +167,15 @@ export class DXFExporter {
 
       for (const fill of dxfLayer.fills) {
         const outer = fill.polygon.outer.map(mapPoint);
-        writer.addLwPolyline(outer, layer, true, fill.color);
+        writer.addPolyline(outer, layer, true, fill.color);
         for (const hole of fill.polygon.holes) {
-          writer.addLwPolyline(hole.map(mapPoint), layer, true, fill.color);
+          writer.addPolyline(hole.map(mapPoint), layer, true, fill.color);
         }
       }
 
       for (const path of dxfLayer.paths) {
         if (path.points.length < 2) continue;
-        writer.addLwPolyline(path.points.map(mapPoint), layer, path.closed, path.color);
+        writer.addPolyline(path.points.map(mapPoint), layer, path.closed, path.color);
       }
 
       for (const text of dxfLayer.texts) {

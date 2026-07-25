@@ -4,15 +4,36 @@
 
 /**
  * ASCII DXF writer (issue #1861): the counterpart to `parser.ts` (DXF
- * import, #1782). Produces AC1015 (R2000) DXF text — HEADER, TABLES
- * (LTYPE, LAYER), ENTITIES — from generic entities (LWPOLYLINE / LINE /
+ * import, #1782). Produces DXF R12 (AC1009) text — HEADER, TABLES (LTYPE,
+ * LAYER), ENTITIES — from generic entities (POLYLINE/VERTEX/SEQEND, LINE,
  * TEXT) with a layer name and colour, so any CAD/BIM tool that reads plain
  * ASCII DXF can open the result.
  *
+ * R12 is deliberate, not a placeholder: entity handles (group 5) and
+ * subclass markers (group 100, e.g. `AcDbEntity`/`AcDbPolyline`) are
+ * MANDATORY from R13 onward, and a genuinely valid R2000+ file additionally
+ * needs a BLOCK_RECORD table, `*Model_Space`/`*Paper_Space` BLOCKS, and an
+ * OBJECTS section with the root dictionary — none of which this writer
+ * produces. Declaring a later `$ACADVER` while omitting all of that would
+ * make the file reject or force-repair in strict readers (AutoCAD,
+ * ODA/Teigha-based BIM tools). R12 requires none of it and is the universal
+ * interop baseline every DXF-capable tool still reads; a full R2000+
+ * skeleton (handles, subclass markers, BLOCK_RECORD, paper space, OBJECTS)
+ * is a possible follow-up, not this writer's job.
+ *
+ * Consequences of the R12 target:
+ *  - No `$INSUNITS` header variable (introduced in R14) — the exported
+ *    unit (always metres) is instead stated in a `999` comment at the very
+ *    top of the file (valid in every DXF version, ignored by every reader).
+ *  - `LWPOLYLINE` doesn't exist until R14 either; polylines are written as
+ *    classic `POLYLINE` + `VERTEX`* + `SEQEND`.
+ *  - No group 5 (handle) or group 100 (subclass marker) anywhere in this
+ *    file — `writer.test.ts` asserts that invariant so a future edit can't
+ *    reintroduce a half-upgraded, invalid hybrid.
+ *
  * Coordinates are written verbatim in the caller's unit (drawing metres);
- * `$INSUNITS` is fixed to 6 (metres) — see `dxf-exporter.ts` for how the
- * viewer maps its render-frame coordinates into true world/map metres
- * before they reach this writer.
+ * see `dxf-exporter.ts` for how the viewer maps its render-frame
+ * coordinates into true world/map metres before they reach this writer.
  */
 
 import { cssToAci } from './aci-colors.js';
@@ -35,6 +56,9 @@ interface DxfLayerRecord {
 
 const H_ALIGN_CODE: Record<DxfTextHAlign, number> = { left: 0, center: 1, right: 2 };
 const V_ALIGN_CODE: Record<DxfTextVAlign, number> = { baseline: 0, bottom: 1, middle: 2, top: 3 };
+
+/** Default `999` comment prepended to the file (states units — R12 has no `$INSUNITS`). */
+const DEFAULT_HEADER_COMMENT = 'ifc-lite section export - units: metres';
 
 /** DXF §5.7: table/layer names forbid these characters (control codes are stripped separately). */
 const INVALID_LAYER_CHARS = /[<>/\\":;?*|=`]/g;
@@ -77,6 +101,11 @@ function sanitizeDxfText(text: string): string {
   return stripControlChars(text, ' ');
 }
 
+/** Sanitize a `999` comment line: no raw newlines/control characters. */
+function sanitizeDxfComment(text: string): string {
+  return stripControlChars(text, ' ');
+}
+
 function fmt(n: number): string {
   if (!Number.isFinite(n)) return '0.0';
   // Fixed precision keeps output deterministic (stable for golden/round-trip
@@ -88,19 +117,37 @@ interface EntityWrite {
   (): string;
 }
 
+export interface DxfWriterOptions {
+  /**
+   * `999` comment written at the very top of the file, before the HEADER
+   * section (valid DXF in every version; the conventional place to state
+   * metadata a reader should show a human but never needs to parse — here,
+   * the unit R12 can't declare via `$INSUNITS`). Defaults to a generic
+   * "units: metres" note; pass a longer string (e.g. including the
+   * `IfcProjectedCRS` name) for a georeferenced export.
+   */
+  headerComment?: string;
+}
+
 /**
  * Accumulates DXF entities and layer definitions, then assembles the full
- * ASCII DXF document text. One writer instance == one DXF file; layers are
- * registered on first use (`addLwPolyline`/`addLine`/`addText`) via a CSS
- * colour, resolved to the nearest ACI with {@link cssToAci}.
+ * ASCII DXF R12 (AC1009) document text. One writer instance == one DXF
+ * file; layers are registered on first use (`addPolyline`/`addLine`/
+ * `addText`) via a CSS colour, resolved to the nearest ACI with
+ * {@link cssToAci}.
  */
 export class DxfWriter {
   private readonly layers = new Map<string, DxfLayerRecord>();
   private readonly entities: EntityWrite[] = [];
+  private readonly headerComment: string;
   private minX = Infinity;
   private minY = Infinity;
   private maxX = -Infinity;
   private maxY = -Infinity;
+
+  constructor(options: DxfWriterOptions = {}) {
+    this.headerComment = sanitizeDxfComment(options.headerComment ?? DEFAULT_HEADER_COMMENT);
+  }
 
   private extend(p: Point2D): void {
     if (p.x < this.minX) this.minX = p.x;
@@ -111,7 +158,7 @@ export class DxfWriter {
 
   /**
    * Register (or reuse) a layer. Returns the sanitized layer name to pass to
-   * `addLwPolyline`/`addLine`/`addText`. Re-registering an existing name with
+   * `addPolyline`/`addLine`/`addText`. Re-registering an existing name with
    * a different colour/linetype is a no-op (first registration wins) —
    * callers should derive one style per logical layer.
    */
@@ -130,28 +177,31 @@ export class DxfWriter {
 
   /**
    * Add a closed or open polyline (tessellated arcs/circles are pre-sampled
-   * by the caller). `colorOverride` (CSS colour) emits a per-entity ACI
-   * (group 62) instead of inheriting the layer colour — used when several
-   * IFC types share one category layer but render with distinct colours in
-   * the source drawing (matching the SVG exporter's per-entity fill/stroke).
+   * by the caller), written as classic `POLYLINE` + `VERTEX`* + `SEQEND` —
+   * `LWPOLYLINE` does not exist before R14. `colorOverride` (CSS colour)
+   * emits a per-entity ACI (group 62) on the POLYLINE header instead of
+   * inheriting the layer colour — used when several IFC types share one
+   * category layer but render with distinct colours in the source drawing
+   * (matching the SVG exporter's per-entity fill/stroke).
    */
-  addLwPolyline(points: readonly Point2D[], layer: string, closed: boolean, colorOverride?: string): void {
+  addPolyline(points: readonly Point2D[], layer: string, closed: boolean, colorOverride?: string): void {
     if (points.length < 2) return;
     for (const p of points) this.extend(p);
     const pts = points.slice();
     const colorGroup = this.colorOverrideGroup(colorOverride);
     this.entities.push(() => {
       let s =
-        '0\nLWPOLYLINE\n8\n' + layer + '\n' + colorGroup +
-        '90\n' + pts.length + '\n70\n' + (closed ? 1 : 0) + '\n43\n0.0\n';
+        '0\nPOLYLINE\n8\n' + layer + '\n' + colorGroup +
+        '66\n1\n70\n' + (closed ? 1 : 0) + '\n';
       for (const p of pts) {
-        s += '10\n' + fmt(p.x) + '\n20\n' + fmt(p.y) + '\n';
+        s += '0\nVERTEX\n8\n' + layer + '\n10\n' + fmt(p.x) + '\n20\n' + fmt(p.y) + '\n30\n0.0\n';
       }
+      s += '0\nSEQEND\n8\n' + layer + '\n';
       return s;
     });
   }
 
-  /** Add a single straight segment. `colorOverride`: see {@link addLwPolyline}. */
+  /** Add a single straight segment. `colorOverride`: see {@link addPolyline}. */
   addLine(start: Point2D, end: Point2D, layer: string, colorOverride?: string): void {
     this.extend(start);
     this.extend(end);
@@ -168,7 +218,7 @@ export class DxfWriter {
    * Add single-line text. Multiline callers (annotations/MTEXT) should split
    * on `\n` and call this once per line, offsetting `position` themselves
    * (matching the SVG exporter's tspan stacking) — DXF `TEXT` group 1 is a
-   * single line. `colorOverride`: see {@link addLwPolyline}.
+   * single line. `colorOverride`: see {@link addPolyline}.
    */
   addText(
     position: Point2D,
@@ -198,11 +248,11 @@ export class DxfWriter {
         '10\n' + fmt(position.x) + '\n20\n' + fmt(position.y) + '\n30\n0.0\n' +
         '40\n' + fmt(height) + '\n1\n' + clean + '\n' +
         '50\n' + fmt(rotationDeg) + '\n' +
-        '72\n' + hCode + '\n';
+        '72\n' + hCode + '\n' +
+        '73\n' + vCode + '\n';
       if (needsAlignPoint) {
         s += '11\n' + fmt(position.x) + '\n21\n' + fmt(position.y) + '\n31\n0.0\n';
       }
-      s += '73\n' + vCode + '\n';
       return s;
     });
   }
@@ -216,10 +266,11 @@ export class DxfWriter {
     const [minX, minY, maxX, maxY] = this.hasExtents()
       ? [this.minX, this.minY, this.maxX, this.maxY]
       : [0, 0, 0, 0];
+    // R12 (AC1009): no $INSUNITS (introduced R14) — see the `999` comment
+    // this.toString() prepends ahead of this section instead.
     return (
       '0\nSECTION\n2\nHEADER\n' +
-      '9\n$ACADVER\n1\nAC1015\n' +
-      '9\n$INSUNITS\n70\n6\n' +
+      '9\n$ACADVER\n1\nAC1009\n' +
       '9\n$EXTMIN\n10\n' + fmt(minX) + '\n20\n' + fmt(minY) + '\n30\n0.0\n' +
       '9\n$EXTMAX\n10\n' + fmt(maxX) + '\n20\n' + fmt(maxY) + '\n30\n0.0\n' +
       '0\nENDSEC\n'
@@ -257,14 +308,22 @@ export class DxfWriter {
     return s;
   }
 
-  /** Assemble the full ASCII DXF document (HEADER + TABLES + ENTITIES + EOF). */
+  /**
+   * Assemble the full ASCII DXF R12 document: a leading `999` comment
+   * (units — see class docs), then HEADER + TABLES + ENTITIES + EOF. No
+   * BLOCKS/OBJECTS sections and no BLOCK_RECORD table — R12 doesn't require
+   * them (unlike R13+, where their absence would make the file invalid).
+   */
   toString(): string {
-    // Any point written through addLwPolyline/addLine/addText must land on a
+    // Any point written through addPolyline/addLine/addText must land on a
     // registered layer, so ensure at least the "0" default layer exists for
     // callers that add geometry before their first `layer()` call.
     if (!this.layers.has('0')) {
       this.layers.set('0', { name: '0', aci: 7, linetype: 'CONTINUOUS' });
     }
-    return this.buildHeader() + this.buildTables() + this.buildEntities() + '0\nEOF\n';
+    return (
+      '999\n' + this.headerComment + '\n' +
+      this.buildHeader() + this.buildTables() + this.buildEntities() + '0\nEOF\n'
+    );
   }
 }

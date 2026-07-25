@@ -6,6 +6,15 @@
  * DXF writer tests (issue #1861): header/tables/entities structure, layer
  * sanitization, and a round trip of every entity kind through this
  * package's own `parseDxf` (the counterpart parser from #1782).
+ *
+ * The writer targets DXF R12 (AC1009) deliberately (see `writer.ts` module
+ * docs): entity handles (group 5) and subclass markers (group 100) are
+ * mandatory from R13 on, and a real R2000+ file needs a BLOCK_RECORD table
+ * plus a BLOCKS/OBJECTS skeleton this writer doesn't produce. Declaring a
+ * later `$ACADVER` while omitting all of that would make the file invalid
+ * for strict readers (AutoCAD, ODA/Teigha-based tools) even though this
+ * package's own lenient parser would still read it — hence the explicit
+ * "no group 100 / no group 5" guard test below.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -15,13 +24,38 @@ import { parseDxf } from './parser.js';
 import type { DxfLineEntity, DxfPolylineEntity, DxfTextEntity } from './types.js';
 
 describe('DxfWriter structure', () => {
-  it('writes HEADER with AC1015 and INSUNITS=6 (metres)', () => {
+  it('writes HEADER with $ACADVER=AC1009 (R12) and no $INSUNITS', () => {
     const w = new DxfWriter();
     const layer = w.layer('A', '#000000');
     w.addLine({ x: 0, y: 0 }, { x: 1, y: 1 }, layer);
     const dxf = w.toString();
-    expect(dxf).toContain('$ACADVER\n1\nAC1015');
-    expect(dxf).toContain('$INSUNITS\n70\n6');
+    expect(dxf).toContain('$ACADVER\n1\nAC1009');
+    expect(dxf).not.toContain('$INSUNITS');
+  });
+
+  it('states the unit in a leading 999 comment (R12 has no $INSUNITS)', () => {
+    const w = new DxfWriter();
+    const dxf = w.toString();
+    expect(dxf.startsWith('999\n')).toBe(true);
+    expect(dxf).toContain('metres');
+  });
+
+  it('accepts a custom header comment (e.g. naming the IfcProjectedCRS)', () => {
+    const w = new DxfWriter({ headerComment: 'ifc-lite export - units: metres, CRS: EPSG:32632' });
+    const dxf = w.toString();
+    expect(dxf.split('\n')[1]).toBe('ifc-lite export - units: metres, CRS: EPSG:32632');
+  });
+
+  it('never emits group 100 (subclass marker) or group 5 (handle) — R13+-only constructs', () => {
+    const w = new DxfWriter();
+    const layer = w.layer('walls', '#ff0000');
+    w.addLine({ x: 0, y: 0 }, { x: 1, y: 1 }, layer);
+    w.addPolyline([{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }], layer, true);
+    w.addText({ x: 0, y: 0 }, 'hello', 0.2, layer);
+    const dxf = w.toString();
+    const codes = dxf.split('\n').filter((_, i) => i % 2 === 0);
+    expect(codes).not.toContain('100');
+    expect(codes).not.toContain('5');
   });
 
   it('computes $EXTMIN/$EXTMAX from written geometry', () => {
@@ -63,7 +97,9 @@ describe('DxfWriter entity round trip (via this package\'s own parser)', () => {
     const layer = w.layer('walls', '#000000');
     w.addLine({ x: 1.5, y: -2.25 }, { x: 10, y: 20 }, layer);
     const doc = parseDxf(w.toString());
-    expect(doc.insunits).toBe(6);
+    // R12 has no $INSUNITS; the parser's default (0/unitless) is expected —
+    // the writer always emits metres and states so via the 999 comment.
+    expect(doc.insunits).toBe(0);
     expect(doc.entities).toHaveLength(1);
     const line = doc.entities[0] as DxfLineEntity;
     expect(line.kind).toBe('line');
@@ -74,15 +110,20 @@ describe('DxfWriter entity round trip (via this package\'s own parser)', () => {
     expect(line.y2).toBeCloseTo(20);
   });
 
-  it('round-trips a closed LWPOLYLINE', () => {
+  it('round-trips a closed polyline (classic POLYLINE/VERTEX/SEQEND, not LWPOLYLINE)', () => {
     const w = new DxfWriter();
     const layer = w.layer('slab', '#333333');
-    w.addLwPolyline(
+    w.addPolyline(
       [{ x: 0, y: 0 }, { x: 5, y: 0 }, { x: 5, y: 5 }, { x: 0, y: 5 }],
       layer,
       true,
     );
-    const doc = parseDxf(w.toString());
+    const dxf = w.toString();
+    expect(dxf).toContain('0\nPOLYLINE\n');
+    expect(dxf).toContain('0\nVERTEX\n');
+    expect(dxf).toContain('0\nSEQEND\n');
+    expect(dxf).not.toContain('LWPOLYLINE');
+    const doc = parseDxf(dxf);
     expect(doc.entities).toHaveLength(1);
     const poly = doc.entities[0] as DxfPolylineEntity;
     expect(poly.kind).toBe('polyline');
@@ -90,6 +131,16 @@ describe('DxfWriter entity round trip (via this package\'s own parser)', () => {
     expect(poly.vertices).toHaveLength(4);
     expect(poly.vertices[2].x).toBeCloseTo(5);
     expect(poly.vertices[2].y).toBeCloseTo(5);
+  });
+
+  it('round-trips an open polyline unclosed', () => {
+    const w = new DxfWriter();
+    const layer = w.layer('path', '#000000');
+    w.addPolyline([{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 1 }], layer, false);
+    const doc = parseDxf(w.toString());
+    const poly = doc.entities[0] as DxfPolylineEntity;
+    expect(poly.closed).toBe(false);
+    expect(poly.vertices).toHaveLength(3);
   });
 
   it('round-trips a TEXT entity with rotation', () => {
@@ -121,7 +172,7 @@ describe('DxfWriter entity round trip (via this package\'s own parser)', () => {
   it('skips degenerate geometry (single-point polyline, empty/whitespace text)', () => {
     const w = new DxfWriter();
     const layer = w.layer('x', '#000000');
-    w.addLwPolyline([{ x: 0, y: 0 }], layer, false);
+    w.addPolyline([{ x: 0, y: 0 }], layer, false);
     w.addText({ x: 0, y: 0 }, '   ', 0.2, layer);
     w.addText({ x: 0, y: 0 }, 'ok', 0, layer); // zero height also dropped
     const doc = parseDxf(w.toString());

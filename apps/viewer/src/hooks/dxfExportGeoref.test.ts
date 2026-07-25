@@ -110,6 +110,72 @@ describe('buildDxfExportTransform', () => {
     close(out.x, 500_000 - 2001);
     close(out.y, 6_000_000 + 1007);
   });
+
+  it('normalizes a non-unit XAxisAbscissa/XAxisOrdinate direction (IFC allows non-unit vectors)', () => {
+    // Some authoring tools write (abscissa, ordinate) scaled by an arbitrary
+    // magnitude even though the IFC spec models it as a direction. A vector
+    // scaled by 2 must produce the SAME map coordinates as its unit form,
+    // not a drawing scaled by 2x (rust/core/src/georef.rs normalize_axis is
+    // the source of truth this mirrors).
+    const angle = (15 * Math.PI) / 180;
+    const unitCos = Math.cos(angle);
+    const unitSin = Math.sin(angle);
+    const buildTransform = (abscissa: number, ordinate: number) =>
+      buildDxfExportTransform({
+        coordinateInfo,
+        sectionAxis: 'down',
+        isCustomPlane: false,
+        flipped: false,
+        georeference: {
+          mapConversion: {
+            id: 1,
+            sourceCRS: 1,
+            targetCRS: 1,
+            eastings: 500_000,
+            northings: 6_000_000,
+            orthogonalHeight: 0,
+            xAxisAbscissa: abscissa,
+            xAxisOrdinate: ordinate,
+            scale: 1,
+          },
+          projectedCRS: { id: 1, name: 'EPSG:32632', mapUnit: 'METRE', mapUnitScale: 1 },
+          lengthUnitScale: 1,
+        },
+      });
+
+    const unit = buildTransform(unitCos, unitSin)({ x: 4, y: 6 });
+    const nonUnit = buildTransform(2 * unitCos, 2 * unitSin)({ x: 4, y: 6 });
+    close(nonUnit.x, unit.x);
+    close(nonUnit.y, unit.y);
+  });
+
+  it('falls back to the no-rotation default (1, 0) for a near-zero axis vector', () => {
+    const transform = buildDxfExportTransform({
+      coordinateInfo,
+      sectionAxis: 'down',
+      isCustomPlane: false,
+      flipped: false,
+      georeference: {
+        mapConversion: {
+          id: 1,
+          sourceCRS: 1,
+          targetCRS: 1,
+          eastings: 0,
+          northings: 0,
+          orthogonalHeight: 0,
+          xAxisAbscissa: 0,
+          xAxisOrdinate: 0,
+          scale: 1,
+        },
+        projectedCRS: { id: 1, name: 'EPSG:32632', mapUnit: 'METRE', mapUnitScale: 1 },
+        lengthUnitScale: 1,
+      },
+    });
+    // world point is (1007, 2001); with the (1, 0) fallback, easting=world.x, northing=world.y.
+    const out = transform({ x: 4, y: 6 });
+    close(out.x, 1007);
+    close(out.y, 2001);
+  });
 });
 
 function emptyDrawing(): Drawing2D {
@@ -152,8 +218,10 @@ describe('DXF export georeference round trip (through the real writer + parser)'
       flipped: false,
     });
     const dxf = exportToDXF(drawing, { coordinateTransform: transform });
+    // R12 (the writer's target, see dxf/writer.ts) has no $INSUNITS header
+    // var; the unit (always metres) is stated in a leading 999 comment.
+    assert.match(dxf, /^999\n.*metres/);
     const doc = parseDxf(dxf);
-    assert.strictEqual(doc.insunits, 6); // metres
     const line = doc.entities.find((e) => e.kind === 'line');
     assert.ok(line && line.kind === 'line');
     close(line.x1, 4 + 1003);

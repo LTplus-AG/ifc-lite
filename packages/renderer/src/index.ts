@@ -668,9 +668,12 @@ export class Renderer {
     ): void {
         this.pointCloudRenderer?.setAssetTransform(handle, matrix);
         // The asset's world-space extents just moved: re-fold the (now
-        // matrix-aware) point-cloud bounds into the scene bounds so
-        // framing / zoom-to-fit targets where the points actually render.
+        // matrix-aware) point-cloud bounds into the scene bounds and push
+        // them to the camera (matching every other bounds-mutating
+        // point-cloud method) so framing / zoom-to-fit targets where the
+        // points actually render.
         this.recomputeModelBounds();
+        this.camera.setSceneBounds(this.modelBounds);
         this.requestRender();
     }
 

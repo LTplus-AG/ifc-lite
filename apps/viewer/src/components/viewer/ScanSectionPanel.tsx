@@ -47,8 +47,8 @@ export function ScanSectionPanel({
           <ScanLine className="h-5 w-5 text-primary" />
           <h2 className="font-semibold text-sm">Scan Layer</h2>
         </div>
-        <Button variant="ghost" size="icon-sm" onClick={onClose}>
-          <X className="h-4 w-4" />
+        <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close scan layer panel">
+          <X className="h-4 w-4" aria-hidden="true" />
         </Button>
       </div>
 
@@ -73,12 +73,13 @@ export function ScanSectionPanel({
         )}
 
         <div className="flex flex-col gap-1">
-          <Label className="text-[10px] text-muted-foreground">
+          <Label htmlFor="scan-section-thickness" className="text-[10px] text-muted-foreground">
             Band thickness: {scanSectionThickness >= 1
               ? `${scanSectionThickness.toFixed(2)} m`
               : `${Math.round(scanSectionThickness * 1000)} mm`}
           </Label>
           <input
+            id="scan-section-thickness"
             type="range"
             min={SCAN_SECTION_THICKNESS_MIN}
             max={SCAN_SECTION_THICKNESS_MAX}
@@ -91,10 +92,11 @@ export function ScanSectionPanel({
         </div>
 
         <div className="flex flex-col gap-1">
-          <Label className="text-[10px] text-muted-foreground">
+          <Label htmlFor="scan-section-opacity" className="text-[10px] text-muted-foreground">
             Dot opacity: {Math.round(scanSectionOpacity * 100)}%
           </Label>
           <input
+            id="scan-section-opacity"
             type="range"
             min={0.1}
             max={1}

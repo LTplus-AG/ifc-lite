@@ -95,6 +95,34 @@ describe('pointCloudScanCache', () => {
     assert.strictEqual(sample.positions[99_999 * 3], 99_999);
   });
 
+  it('regrows colours and classifications across the growth boundary too', () => {
+    // The growth path reallocates three parallel arrays, not just positions —
+    // a regrow that copied only positions would silently truncate or zero the
+    // colour/class data past the 65_536-slot boundary (CodeRabbit review of
+    // PR #1874). Feed coloured+classified chunks that straddle it and assert
+    // all three survive at the same indices.
+    const total = 100_000;
+    registerPointCloudScanCache(8, 200_000);
+    const positions = new Float32Array(total * 3);
+    const colors = new Float32Array(total * 3);
+    const classifications = new Uint8Array(total);
+    for (let i = 0; i < total; i++) {
+      positions[i * 3] = i;
+      // Red channel ramps 0..1 so a truncated copy reads as 0 where it should not.
+      colors[i * 3] = (i % 256) / 255;
+      classifications[i] = i % 256;
+    }
+    addPointsToScanCache(8, { positions, colors, classifications, pointCount: total });
+
+    const sample = getPointCloudScanSample(8)!;
+    assert.strictEqual(sample.count, total);
+    for (const i of [0, 65_535, 65_536, 99_999]) {
+      assert.strictEqual(sample.positions[i * 3], i, `position at ${i}`);
+      assert.strictEqual(sample.colors![i * 3], i % 256, `colour at ${i}`);
+      assert.strictEqual(sample.classifications![i], i % 256, `class at ${i}`);
+    }
+  });
+
   it('backfills neutral grey for points retained before the first coloured chunk', () => {
     registerPointCloudScanCache(7, 10);
     addPointsToScanCache(7, { positions: new Float32Array([1, 2, 3]), pointCount: 1 });

@@ -14,6 +14,7 @@
 
 import type { DecodedPointChunk } from '../types.js';
 import {
+  bboxInDecodedFrame,
   decodeLasPoints,
   parseLasHeader,
   sampleMaxRgbChannel,
@@ -155,30 +156,11 @@ export class LasStreamingSource implements StreamingPointSource {
 
   private toInfo(header: LasHeader): PointSourceInfo {
     const stride = Math.max(1, this.downsample.stride | 0);
-    // `header.bbox` is in absolute native CRS coordinates, but every point we
-    // emit has `originOffset` subtracted in f64 first (see `decodeLasPoints`).
-    // Reporting the raw header box would leave the bounds and the points they
-    // describe in DIFFERENT frames — off by the full offset, which at map
-    // magnitudes (LV95 easting ~2.6e6) puts framing, culling and the
-    // height-ramp colour range nowhere near the actual geometry. Translate by
-    // the same offset, component-wise on the same x/y/z axes.
-    const bbox = this.originOffset
-      ? {
-        min: [
-          header.bbox.min[0] - this.originOffset[0],
-          header.bbox.min[1] - this.originOffset[1],
-          header.bbox.min[2] - this.originOffset[2],
-        ] as [number, number, number],
-        max: [
-          header.bbox.max[0] - this.originOffset[0],
-          header.bbox.max[1] - this.originOffset[1],
-          header.bbox.max[2] - this.originOffset[2],
-        ] as [number, number, number],
-      }
-      : header.bbox;
     return {
       totalPointCount: stride === 1 ? header.pointCount : Math.ceil(header.pointCount / stride),
-      bbox,
+      // Points are emitted with `originOffset` already subtracted, so the
+      // reported box must be translated to match — see `bboxInDecodedFrame`.
+      bbox: bboxInDecodedFrame(header.bbox, this.originOffset),
       hasColor: header.hasRgb,
       hasClassification: true,
       hasIntensity: true,

@@ -318,6 +318,16 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       compareRunning: false,
       compareError: null,
 
+      // Zones (#1810): keep the user-authored zone SETS (they persist across
+      // model loads, like clash presets), but drop the computed assignments —
+      // they're keyed by the OUTGOING model's global ids, and the single-model
+      // fallback (globalId === expressId) means the incoming model's ids can
+      // collide and read the old model's zone membership until the debounced
+      // recompute fires. Same stale-model-reference class as compareResult
+      // above; `useZoneAssignmentSync` recomputes against the new scene.
+      zoneAssignments: new Map(),
+      zoneAssignmentTiming: null,
+
       // Hover/Context
       hoverState: { entityId: null, screenX: 0, screenY: 0 },
       contextMenu: { isOpen: false, entityId: null, screenX: 0, screenY: 0 },

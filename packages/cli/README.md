@@ -48,24 +48,31 @@ Global flags: `--json`, `--out <file>`, `--verbose`, `--quiet`, `--debug`, `--lo
 
 ## gym
 
-`ifc-lite gym` is a prototype reset/step/reward environment API over the existing headless checks: the skeleton of an RLVR environment for buildings (see [`docs/vision/moonshots-tech.md`](../../docs/vision/moonshots-tech.md) M2 and [`docs/vision/moonshots-execution-plan.md`](../../docs/vision/moonshots-execution-plan.md) B0.4). It wraps ONE loaded model (there is no procedural generator yet) and lets an agent apply data-mutation ops, scoring each step against the same schema/clash/ids checks the `validate`, `clash`, and `ids` commands already run.
+`ifc-lite gym` is a prototype reset/step/reward environment API over the existing headless checks: the skeleton of an RLVR environment for buildings (see [`docs/vision/moonshots-tech.md`](../../docs/vision/moonshots-tech.md) M2 and [`docs/vision/moonshots-execution-plan.md`](../../docs/vision/moonshots-execution-plan.md) B0.4). It wraps a model - either a fixed file (`--model`) or a procedurally generated World Gym episode (`--seed`) - and lets an agent apply data-mutation ops, scoring each step against the same schema/clash/ids checks the `validate`, `clash`, and `ids` commands already run.
 
 ```bash
 ifc-lite gym --model model.ifc --checks schema,clash
 ifc-lite gym --model model.ifc --checks schema,clash,ids --ids rules.ids
+ifc-lite gym --seed 42 --checks schema,clash          # generated episode (repo checkout only)
+ifc-lite gym --seed 8 --family frame --corrupt --checks schema
 ```
 
 The protocol is newline-delimited JSON: one JSON object per line, in both directions.
 
-- On start, `gym` prints one line: `{"type":"reset","observation":{...},"channels":{...}}`. `observation` has sorted `entityCounts` (by IFC type), `storeyCount`, and `schema` version. `bounds` is always `null` in v0 (a known gap: no geometry pass runs on `reset`, see below).
-- Send `{"type":"step","ops":[...]}` on stdin to apply ops and score the result. `gym` replies `{"type":"reward","channels":{...},"done":false}`.
+- On start, `gym` prints one line: `{"type":"reset","observation":{...},"channels":{...}}`. `observation` has sorted `entityCounts` (by IFC type), `storeyCount`, and `schema` version. `bounds` is always `null` in v0 (a known gap: no geometry pass runs on `reset`, see below). Generated episodes add an `episode` field: `{seed, family, corrupted}`.
+- Send `{"type":"step","ops":[...]}` on stdin to apply ops and score the result. `gym` replies `{"type":"reward","channels":{...},"done":false}`. A step batch is atomic: it either fully applies or (on any malformed op or scoring failure) leaves the session unchanged and replies with an error line.
 - Send `{"type":"reset"}` to reload the pristine model; replies like the initial reset.
+- Send `{"type":"reset","seed":8}` (optional `family`, `corrupt` OR `corruptRate`) to swap to a fresh generated episode mid-session.
 - Send `{"type":"close"}` to exit 0.
 - Malformed JSON or an unknown command/op never crashes the process: it replies `{"type":"error","message":"..."}` and keeps reading.
 
+Episode factory: `--seed <n>` generates a deterministic World Gym benchmark model in-process instead of loading a file. `--family frame|office|auto` pins the family; corruption follows the benchmark's deterministic draw at the spec's corrupt rate unless `--corrupt`/`--no-corrupt` forces it or `--corrupt-rate <p>` overrides the rate (forcing and a rate are mutually exclusive). The generator is dynamically imported from a repo checkout (`tools/world-gym/`); the published npm package prints a clear error for `--seed` while `--model` keeps working.
+
+Reward shaping: every channel's `score` is in `[0, 1]` and higher is better. The clash channel scores `1` for a clash-free model and strictly decreases as the clash count grows (the raw count is reported separately as `totalClashes`), so an agent maximizing any channel is never rewarded for making the model worse.
+
 v0 ops mirror `bim.mutate`'s method names exactly: `setProperty`, `setAttribute`, `deleteProperty` (all keyed by `expressId`). Geometry-creating ops (new walls, slabs, etc.) are out of scope for v0.
 
-```
+```json
 {"type":"step","ops":[{"op":"setProperty","expressId":42,"psetName":"Pset_WallCommon","propName":"IsExternal","value":true}]}
 ```
 

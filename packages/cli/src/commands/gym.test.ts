@@ -3,22 +3,114 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, it, expect, afterEach } from 'vitest';
+import { existsSync } from 'node:fs';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Readable, PassThrough } from 'node:stream';
 import { gymCommand } from './gym.js';
+import { clashScoreFromCount } from './gym/channels.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // AB22.ifc is one of the smallest manifest fixtures (~220KB, ~2900 entities,
-// parses in single-digit ms). It is fetched with the rest of the corpus by
-// `pnpm fixtures` (or alone via
-// `node scripts/fixtures/fetch-fixtures.mjs AB22.ifc`).
+// parses in single-digit ms). Fixtures are not committed: the `--model`
+// suites below SKIP (never fail) when it has not been fetched via
+// `pnpm fixtures` (or alone via `node scripts/fixtures/fetch-fixtures.mjs
+// AB22.ifc`). The `--seed` episode-factory suite generates its models
+// in-process and always runs.
 const MODEL = join(__dirname, '../../../../tests/models/AB22.ifc');
+const MODEL_AVAILABLE = existsSync(MODEL);
 
 /** IfcPavement #30 in AB22.ifc ("Pavement"): a stable target for property ops. */
 const PAVEMENT_EXPRESS_ID = 30;
+
+// ---------------------------------------------------------------------------
+// Typed views of the JSONL protocol, so the tests break at compile time when
+// the payload shape changes instead of silently reading undefined fields.
+// ---------------------------------------------------------------------------
+
+interface SchemaChannel {
+  score: number;
+  errors: number;
+  warnings: number;
+  info: number;
+  issues: { severity: string; rule: string; message: string }[];
+}
+
+interface ClashChannel {
+  score: number;
+  totalClashes: number;
+}
+
+interface IdsChannel {
+  score: number | null;
+  totalEntitiesPassed: number;
+  totalEntitiesFailed: number;
+}
+
+interface Channels {
+  schema?: SchemaChannel;
+  clash?: ClashChannel;
+  ids?: IdsChannel;
+}
+
+interface EpisodeInfo {
+  seed: number | string;
+  family: string;
+  corrupted: boolean;
+}
+
+interface Observation {
+  entityCounts: Record<string, number>;
+  storeyCount: number;
+  schema: string | null;
+  bounds: null;
+}
+
+interface ResetLine {
+  type: 'reset';
+  episode?: EpisodeInfo;
+  observation: Observation;
+  channels: Channels;
+}
+
+interface RewardLine {
+  type: 'reward';
+  channels: Channels;
+  done: boolean;
+}
+
+interface ErrorLine {
+  type: 'error';
+  message: string;
+}
+
+type GymLine = ResetLine | RewardLine | ErrorLine;
+
+function isReset(line: GymLine): line is ResetLine {
+  return line.type === 'reset';
+}
+function isReward(line: GymLine): line is RewardLine {
+  return line.type === 'reward';
+}
+function isError(line: GymLine): line is ErrorLine {
+  return line.type === 'error';
+}
+
+/** Assert-and-narrow: fail the test with a clear message on a shape mismatch. */
+function expectReward(line: GymLine | undefined): RewardLine {
+  if (!line || !isReward(line)) throw new Error(`expected a reward line, got ${JSON.stringify(line)}`);
+  return line;
+}
+function expectReset(line: GymLine | undefined): ResetLine {
+  if (!line || !isReset(line)) throw new Error(`expected a reset line, got ${JSON.stringify(line)}`);
+  return line;
+}
+function expectError(line: GymLine | undefined): ErrorLine {
+  if (!line || !isError(line)) throw new Error(`expected an error line, got ${JSON.stringify(line)}`);
+  return line;
+}
 
 const IDS_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <ids:ids xmlns:ids="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd">
@@ -47,10 +139,10 @@ const IDS_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 async function runGym(
   args: string[],
   commands: Record<string, unknown>[],
-): Promise<Record<string, unknown>[]> {
+): Promise<GymLine[]> {
   const input = new Readable({ read() {} });
   const output = new PassThrough();
-  const lines: Record<string, unknown>[] = [];
+  const lines: GymLine[] = [];
   let buffer = '';
   output.on('data', (chunk: Buffer) => {
     buffer += chunk.toString('utf-8');
@@ -58,7 +150,7 @@ async function runGym(
     while ((idx = buffer.indexOf('\n')) >= 0) {
       const line = buffer.slice(0, idx);
       buffer = buffer.slice(idx + 1);
-      if (line.trim()) lines.push(JSON.parse(line));
+      if (line.trim()) lines.push(JSON.parse(line) as GymLine);
     }
   });
 
@@ -76,7 +168,22 @@ async function runGym(
   return lines;
 }
 
-describe('gymCommand', () => {
+describe('clash reward shaping', () => {
+  it('scores 1 for a clash-free model and strictly decreases as clashes grow', () => {
+    expect(clashScoreFromCount(0)).toBe(1);
+    const counts = [0, 1, 2, 5, 10, 100, 10_000];
+    const scores = counts.map(clashScoreFromCount);
+    for (let i = 1; i < scores.length; i++) {
+      expect(scores[i]).toBeLessThan(scores[i - 1]);
+    }
+    for (const s of scores) {
+      expect(s).toBeGreaterThan(0);
+      expect(s).toBeLessThanOrEqual(1);
+    }
+  });
+});
+
+describe.skipIf(!MODEL_AVAILABLE)('gymCommand (fixture: AB22.ifc)', () => {
   const tmpDirs: string[] = [];
 
   afterEach(async () => {
@@ -95,21 +202,18 @@ describe('gymCommand', () => {
     const lines = await runGym(['--model', MODEL, '--checks', 'schema,clash'], [{ type: 'close' }]);
 
     expect(lines.length).toBeGreaterThanOrEqual(1);
-    const reset = lines[0];
-    expect(reset.type).toBe('reset');
-    const observation = reset.observation as Record<string, unknown>;
-    expect(observation.storeyCount).toBe(0); // AB22.ifc is an infra model, no storeys
-    expect(observation.schema).toBe('IFC4X3');
-    const entityCounts = observation.entityCounts as Record<string, number>;
+    const reset = expectReset(lines[0]);
+    expect(reset.observation.storeyCount).toBe(0); // AB22.ifc is an infra model, no storeys
+    expect(reset.observation.schema).toBe('IFC4X3');
+    const entityCounts = reset.observation.entityCounts;
     expect(entityCounts.IFCPAVEMENT).toBe(1);
     expect(entityCounts.IFCPROJECT).toBe(1);
     // Keys must be sorted for determinism.
     expect(Object.keys(entityCounts)).toEqual([...Object.keys(entityCounts)].sort());
 
-    const channels = reset.channels as Record<string, unknown>;
-    expect(channels.schema).toBeDefined();
-    expect(channels.clash).toBeDefined();
-    expect(channels.ids).toBeUndefined(); // not requested
+    expect(reset.channels.schema).toBeDefined();
+    expect(reset.channels.clash).toBeDefined();
+    expect(reset.channels.ids).toBeUndefined(); // not requested
   });
 
   it('a benign property step returns every requested channel', async () => {
@@ -125,21 +229,25 @@ describe('gymCommand', () => {
       ],
     );
 
-    const reward = lines.find(l => l.type === 'reward');
-    expect(reward).toBeDefined();
-    expect(reward!.done).toBe(false);
-    const channels = reward!.channels as Record<string, any>;
-    expect(channels.schema).toBeDefined();
-    expect(channels.clash).toBeDefined();
-    expect(channels.ids).toBeDefined();
+    const reward = expectReward(lines.find(isReward));
+    expect(reward.done).toBe(false);
+    const { schema, clash, ids } = reward.channels;
+    expect(schema).toBeDefined();
+    expect(clash).toBeDefined();
+    expect(ids).toBeDefined();
 
     // The op we applied should make the one IDS spec pass now.
-    expect(channels.ids.score).toBe(1);
-    expect(channels.ids.totalEntitiesPassed).toBe(1);
-    expect(channels.ids.totalEntitiesFailed).toBe(0);
+    expect(ids!.score).toBe(1);
+    expect(ids!.totalEntitiesPassed).toBe(1);
+    expect(ids!.totalEntitiesFailed).toBe(0);
 
-    expect(typeof channels.clash.score).toBe('number');
-    expect(typeof channels.schema.score).toBe('number');
+    // Clash score is shaped higher-is-better in [0, 1]; the raw count is a
+    // separate field so a maximizing agent is never rewarded for clashes.
+    expect(clash!.score).toBeGreaterThan(0);
+    expect(clash!.score).toBeLessThanOrEqual(1);
+    expect(clash!.totalClashes).toBeGreaterThanOrEqual(0);
+    expect(clash!.score).toBe(clashScoreFromCount(clash!.totalClashes));
+    expect(typeof schema!.score).toBe('number');
   });
 
   it('the ids channel fails before the op and passes after it, in the same episode', async () => {
@@ -158,10 +266,43 @@ describe('gymCommand', () => {
       ],
     );
 
-    const rewards = lines.filter(l => l.type === 'reward');
+    const rewards = lines.filter(isReward);
     expect(rewards).toHaveLength(2);
-    expect((rewards[0].channels as any).ids.score).toBe(0);
-    expect((rewards[1].channels as any).ids.score).toBe(1);
+    expect(rewards[0].channels.ids!.score).toBe(0);
+    expect(rewards[1].channels.ids!.score).toBe(1);
+  });
+
+  it('a step batch is atomic: a malformed op mid-batch leaves earlier ops unapplied', async () => {
+    const idsPath = await writeIdsFixture();
+    const lines = await runGym(
+      ['--model', MODEL, '--checks', 'ids', '--ids', idsPath],
+      [
+        // Baseline: no ops applied, the IDS spec fails.
+        { type: 'step', ops: [] },
+        // A batch whose FIRST op would make the IDS spec pass, followed by a
+        // malformed op. The whole batch must be rejected without applying
+        // the first op.
+        {
+          type: 'step',
+          ops: [
+            { op: 'setProperty', expressId: PAVEMENT_EXPRESS_ID, psetName: 'Pset_Gym', propName: 'TestFlag', value: true },
+            { op: 'setProperty', expressId: PAVEMENT_EXPRESS_ID, psetName: 'Pset_Gym', propName: '', value: true },
+          ],
+        },
+        // Post-failure probe: the reward must be byte-identical to the
+        // baseline, proving the valid op did not survive the failed batch.
+        { type: 'step', ops: [] },
+        { type: 'close' },
+      ],
+    );
+
+    const rewards = lines.filter(isReward);
+    const errors = lines.filter(isError);
+    expect(rewards).toHaveLength(2);
+    expect(errors).toHaveLength(1);
+    expect(errors[0].message).toMatch(/propName.*non-empty string/);
+    expect(rewards[0].channels.ids!.score).toBe(0);
+    expect(JSON.stringify(rewards[1])).toBe(JSON.stringify(rewards[0]));
   });
 
   it('produces byte-identical reward lines for the same 3-step episode run twice', async () => {
@@ -175,8 +316,8 @@ describe('gymCommand', () => {
     const run1 = await runGym(['--model', MODEL, '--checks', 'schema,clash'], episode);
     const run2 = await runGym(['--model', MODEL, '--checks', 'schema,clash'], episode);
 
-    const rewards1 = run1.filter(l => l.type === 'reward');
-    const rewards2 = run2.filter(l => l.type === 'reward');
+    const rewards1 = run1.filter(isReward);
+    const rewards2 = run2.filter(isReward);
     expect(rewards1).toHaveLength(3);
     expect(rewards2).toHaveLength(3);
     for (let i = 0; i < rewards1.length; i++) {
@@ -194,7 +335,7 @@ describe('gymCommand', () => {
       ],
     );
 
-    const resets = lines.filter(l => l.type === 'reset');
+    const resets = lines.filter(isReset);
     expect(resets).toHaveLength(2); // initial + mid-session
     // Both resets describe the same pristine model.
     expect(JSON.stringify(resets[0].observation)).toBe(JSON.stringify(resets[1].observation));
@@ -217,8 +358,8 @@ describe('gymCommand', () => {
     input.push(null);
     await done;
 
-    const parsed = raw.join('').split('\n').filter(Boolean).map(l => JSON.parse(l));
-    const errors = parsed.filter(l => l.type === 'error');
+    const parsed = raw.join('').split('\n').filter(Boolean).map(l => JSON.parse(l) as GymLine);
+    const errors = parsed.filter(isError);
     expect(errors.length).toBeGreaterThanOrEqual(2);
     expect(errors[0].message).toMatch(/Malformed JSON/);
     expect(errors[1].message).toMatch(/Unknown command type/);
@@ -232,9 +373,8 @@ describe('gymCommand', () => {
         { type: 'close' },
       ],
     );
-    const error = lines.find(l => l.type === 'error');
-    expect(error).toBeDefined();
-    expect(error!.message).toMatch(/Unsupported op "addWall"/);
+    const error = expectError(lines.find(isError));
+    expect(error.message).toMatch(/Unsupported op "addWall"/);
   });
 });
 
@@ -247,15 +387,13 @@ describe('gymCommand episode factory (--seed, B2.2)', () => {
     const run1 = await runGym(['--seed', '42', '--checks', 'schema'], [{ type: 'close' }]);
     const run2 = await runGym(['--seed', '42', '--checks', 'schema'], [{ type: 'close' }]);
 
-    const reset = run1[0];
-    expect(reset.type).toBe('reset');
+    const reset = expectReset(run1[0]);
     expect(reset.episode).toEqual({ seed: 42, family: 'office', corrupted: false });
-    const observation = reset.observation as Record<string, unknown>;
-    expect(observation.storeyCount).toBe(1);
-    const entityCounts = observation.entityCounts as Record<string, number>;
+    expect(reset.observation.storeyCount).toBe(1);
+    const entityCounts = reset.observation.entityCounts;
     expect(entityCounts.IFCPROJECT).toBe(1);
     expect(entityCounts.IFCSPACE).toBeGreaterThan(0);
-    expect((reset.channels as any).schema.score).toBe(1);
+    expect(reset.channels.schema!.score).toBe(1);
 
     expect(JSON.stringify(run1[0])).toBe(JSON.stringify(run2[0]));
   });
@@ -270,20 +408,20 @@ describe('gymCommand episode factory (--seed, B2.2)', () => {
         { type: 'close' },
       ],
     );
-    const resets = lines.filter(l => l.type === 'reset');
+    const resets = lines.filter(isReset);
     expect(resets).toHaveLength(2);
-    expect((resets[0].episode as any).seed).toBe(42);
-    expect((resets[1].episode as any).seed).toBe(2);
-    expect((resets[1].episode as any).family).toBe('frame');
-    expect((resets[1].episode as any).corrupted).toBe(false);
+    expect(resets[0].episode!.seed).toBe(42);
+    expect(resets[1].episode!.seed).toBe(2);
+    expect(resets[1].episode!.family).toBe('frame');
+    expect(resets[1].episode!.corrupted).toBe(false);
     expect(JSON.stringify(resets[0].observation)).not.toBe(JSON.stringify(resets[1].observation));
   });
 
   it('a forced-corrupt episode surfaces planted schema defects in the reward channel', async () => {
     const lines = await runGym(['--seed', '8', '--corrupt', '--checks', 'schema'], [{ type: 'close' }]);
-    const reset = lines[0];
-    expect((reset.episode as any).corrupted).toBe(true);
-    const schema = (reset.channels as any).schema;
+    const reset = expectReset(lines[0]);
+    expect(reset.episode!.corrupted).toBe(true);
+    const schema = reset.channels.schema!;
     expect(schema.score).toBe(0); // duplicate-globalid + multiple-project are errors
     expect(schema.errors).toBeGreaterThan(0);
   });
@@ -297,9 +435,8 @@ describe('gymCommand episode factory (--seed, B2.2)', () => {
         { type: 'close' },
       ],
     );
-    const reward = lines.find(l => l.type === 'reward');
-    expect(reward).toBeDefined();
-    expect((reward!.channels as any).schema.score).toBe(1);
+    const reward = expectReward(lines.find(isReward));
+    expect(reward.channels.schema!.score).toBe(1);
   });
 
   it('rejects a malformed reset seed with a structured error, keeping the session alive', async () => {
@@ -311,12 +448,27 @@ describe('gymCommand episode factory (--seed, B2.2)', () => {
         { type: 'close' },
       ],
     );
-    const error = lines.find(l => l.type === 'error');
-    expect(error).toBeDefined();
-    expect(error!.message).toMatch(/non-negative integer/);
+    const error = expectError(lines.find(isError));
+    expect(error.message).toMatch(/non-negative integer/);
     // The plain reset afterwards still answers with the original episode.
-    const resets = lines.filter(l => l.type === 'reset');
+    const resets = lines.filter(isReset);
     expect(resets).toHaveLength(2);
-    expect((resets[1].episode as any).seed).toBe(42);
+    expect(resets[1].episode!.seed).toBe(42);
+  });
+
+  it('rejects a reset combining "corrupt" and "corruptRate" with a structured error', async () => {
+    const lines = await runGym(
+      ['--seed', '42', '--checks', 'schema'],
+      [
+        { type: 'reset', seed: 8, corrupt: true, corruptRate: 0.5 },
+        { type: 'close' },
+      ],
+    );
+    const error = expectError(lines.find(isError));
+    expect(error.message).toMatch(/mutually exclusive/);
+    // Session stays on the original episode.
+    const resets = lines.filter(isReset);
+    expect(resets).toHaveLength(1);
+    expect(resets[0].episode!.seed).toBe(42);
   });
 });

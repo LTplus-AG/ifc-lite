@@ -7,11 +7,13 @@
  *
  * A reset/step/reward environment loop over the existing headless checks:
  * the skeleton of an RLVR environment for buildings (docs/vision/moonshots-tech.md
- * M2, docs/vision/moonshots-execution-plan.md B0.4). No procedural generator: the
- * environment wraps ONE loaded model and lets an agent apply data-mutation ops,
- * scoring each step against the same schema/clash/ids checks the `validate`,
- * `clash`, and `ids` commands already run. Geometry-creating ops are out of
- * scope for v0, see the "op vocabulary gaps" note in the class doc below.
+ * M2, docs/vision/moonshots-execution-plan.md B0.4). The environment wraps a
+ * model - either a fixed file (`--model`) or a procedurally generated World
+ * Gym episode (`--seed`, see `gym/episode.ts`) - and lets an agent apply
+ * data-mutation ops, scoring each step against the same schema/clash/ids
+ * checks the `validate`, `clash`, and `ids` commands already run.
+ * Geometry-creating ops are out of scope for v0, see "op vocabulary gaps"
+ * below.
  *
  * Protocol (newline-delimited JSON on stdout, one JSON command per stdin line):
  *
@@ -24,7 +26,10 @@
  *   -> (process exits 0, no reply line)
  *
  * Malformed input never crashes the process: it replies with a structured
- * {"type":"error","message":"..."} line and keeps reading.
+ * {"type":"error","message":"..."} line and keeps reading. A `step` batch is
+ * ATOMIC: it either fully applies (one `reward` line) or leaves the session
+ * exactly as it was (one `error` line) - a malformed op mid-batch never
+ * leaves earlier ops of the same batch applied.
  *
  * Episode factory (B2.2): instead of `--model`, `--seed <n>` generates a
  * World Gym benchmark model in-process (tools/world-gym/generator.mjs,
@@ -34,32 +39,30 @@
  * family; corruption follows the benchmark's deterministic Bernoulli draw at
  * the spec's corrupt rate (tools/world-gym/benchmark/splits.mjs) unless
  * `--corrupt` / `--no-corrupt` forces it or `--corrupt-rate <p>` overrides
- * the rate. Mid-session, `{"type":"reset","seed":8}` (plus optional
- * "family"/"corrupt"/"corruptRate" fields) swaps to a fresh generated
- * episode, so an RL consumer can stream the whole benchmark through one gym
- * process without touching generator internals. Generated-episode reset
- * lines carry an extra `episode` field: {seed, family, corrupted}. (The
- * `corrupted` flag is deliberately exposed: the gym is the TRAINING surface;
- * benchmark ground truth is regenerable from the seed anyway - see
- * tools/world-gym/benchmark/BENCHMARK.md.)
+ * the rate (forcing and a rate are mutually exclusive). Mid-session,
+ * `{"type":"reset","seed":8}` (plus optional "family"/"corrupt"/"corruptRate"
+ * fields) swaps to a fresh generated episode, so an RL consumer can stream
+ * the whole benchmark through one gym process without touching generator
+ * internals. Generated-episode reset lines carry an extra `episode` field:
+ * {seed, family, corrupted}. (The `corrupted` flag is deliberately exposed:
+ * the gym is the TRAINING surface; benchmark ground truth is regenerable
+ * from the seed anyway - see tools/world-gym/benchmark/BENCHMARK.md.)
  *
  * Determinism: the same model plus the same op sequence must yield
- * byte-identical reward lines. Every array the reward payload emits is
- * explicitly sorted (never left in Map/engine iteration order) and every
- * fractional score is rounded to a fixed number of decimals, so a run is
- * reproducible even though property-set overlay creation mints a fresh
- * random GlobalId each time (those GlobalIds are never echoed into the
- * reward payload, only counts are).
+ * byte-identical reward lines - see `gym/channels.ts` for the sorting and
+ * rounding contract. Reward shaping: every channel's `score` is in [0, 1]
+ * with higher-is-better (the clash channel scores 1 for clash-free and
+ * decreases as the clash count grows; the raw count is `totalClashes`).
  *
  * Mutation surface: v0 supports `setProperty` / `setAttribute` /
- * `deleteProperty`, mirroring `bim.mutate`'s method names exactly. Ops are
- * applied via `MutablePropertyView` + `StepExporter` (the same classes
- * `ifc-lite mutate` uses) rather than through `bim.mutate` itself, because
- * `HeadlessBackend.mutate` (packages/cli/src/headless-backend.ts) is
- * currently a no-op stub: `bim.mutate.setProperty()` silently does nothing
- * in headless mode. Wiring that backend up to the same MutablePropertyView
- * this file drives is a mechanical follow-up, not a redesign, since the op
- * vocabulary already matches.
+ * `deleteProperty`, mirroring `bim.mutate`'s method names exactly (see
+ * `gym/ops.ts`). Ops are applied via `MutablePropertyView` + `StepExporter`
+ * (the same classes `ifc-lite mutate` uses) rather than through `bim.mutate`
+ * itself, because `HeadlessBackend.mutate` (packages/cli/src/headless-backend.ts)
+ * is currently a no-op stub: `bim.mutate.setProperty()` silently does
+ * nothing in headless mode. Wiring that backend up to the same
+ * MutablePropertyView this file drives is a mechanical follow-up, not a
+ * redesign, since the op vocabulary already matches.
  *
  * Each step re-exports the accumulated mutation overlay to STEP text and
  * re-parses it into a fresh `IfcDataStore` before running checks. This is
@@ -96,116 +99,28 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { extractPropertiesOnDemand } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { StepExporter } from '@ifc-lite/export';
-import { PropertyValueType } from '@ifc-lite/data';
-import { GeometryProcessor, type MeshData } from '@ifc-lite/geometry';
-import { createClashEngine, type ClashRule, type Clash } from '@ifc-lite/clash';
-import { elementsFromStep } from '@ifc-lite/clash/step';
-import { createDataAccessor } from '@ifc-lite/ids/bridge';
+import { GeometryProcessor } from '@ifc-lite/geometry';
 import { IDSNamespace, type IDSSupportedLocale } from '@ifc-lite/sdk';
-import { computeValidationIssues } from './validate.js';
-
-/** Reward channels this prototype knows how to compute. */
-type GymCheck = 'schema' | 'clash' | 'ids';
-const KNOWN_CHECKS: GymCheck[] = ['schema', 'clash', 'ids'];
-
-/** A single mutation op, applied cumulatively across `step` calls. */
-type GymOp =
-  | { op: 'setProperty'; expressId: number; psetName: string; propName: string; value: string | number | boolean | null }
-  | { op: 'setAttribute'; expressId: number; attrName: string; value: string }
-  | { op: 'deleteProperty'; expressId: number; psetName: string; propName: string };
+import {
+  type GymCheck,
+  KNOWN_CHECKS,
+  computeSchemaChannel,
+  computeClashChannel,
+  computeIdsChannel,
+  computeObservation,
+} from './gym/channels.js';
+import { type GymOp, parseOp, applyOp } from './gym/ops.js';
+import {
+  type EpisodeInfo,
+  type EpisodeSpec,
+  generateEpisode,
+  parseSeed,
+  parseCorruptRate,
+} from './gym/episode.js';
 
 const USAGE = 'Usage: ifc-lite gym (--model <file.ifc> | --seed <n> [--family frame|office|auto] [--corrupt|--no-corrupt|--corrupt-rate <p>]) [--checks schema,clash,ids] [--ids <rules.xml>] [--locale en|de|fr]';
 
-// ============================================================================
-// Episode factory: the World Gym generator, loaded from the repo checkout
-// ============================================================================
-
-interface GeneratedModel {
-  seed: number | string;
-  family: string;
-  corrupted: boolean;
-  content: string;
-}
-
-interface WorldGymGenerator {
-  generateModel: (
-    seed: number | string,
-    family?: string,
-    opts?: { corruptRate?: number; forceCorrupt?: boolean },
-  ) => GeneratedModel;
-}
-
-/** Episode descriptor echoed on generated-episode reset lines. */
-interface EpisodeInfo {
-  seed: number | string;
-  family: string;
-  corrupted: boolean;
-}
-
-interface EpisodeSpec {
-  seed: number | string;
-  family: string;
-  forceCorrupt?: boolean;
-  corruptRate?: number;
-}
-
-/** Benchmark default; overwritten from benchmark/splits.mjs when loadable. */
-let benchmarkCorruptRate = 0.3;
-let generatorModule: WorldGymGenerator | null = null;
-
-async function loadGenerator(): Promise<WorldGymGenerator> {
-  if (generatorModule) return generatorModule;
-  // Both src (vitest) and dist layouts sit 4 levels below the repo root.
-  const generatorUrl = new URL('../../../../tools/world-gym/generator.mjs', import.meta.url);
-  try {
-    generatorModule = (await import(generatorUrl.href)) as WorldGymGenerator;
-  } catch (err) {
-    throw new Error(
-      `the gym episode factory needs the ifc-lite repo checkout (could not load ${generatorUrl.pathname}: ${(err as Error).message}); use --model <file.ifc> instead`,
-    );
-  }
-  try {
-    const splits = (await import(new URL('../../../../tools/world-gym/benchmark/splits.mjs', import.meta.url).href)) as { CORRUPT_RATE?: number };
-    if (typeof splits.CORRUPT_RATE === 'number') benchmarkCorruptRate = splits.CORRUPT_RATE;
-  } catch {
-    // Keep the compiled-in default; the generator itself is what matters.
-  }
-  return generatorModule;
-}
-
-function parseSeed(raw: unknown, source: string): number | string {
-  if (typeof raw === 'number' && Number.isInteger(raw) && raw >= 0) return raw;
-  if (typeof raw === 'string' && raw.length > 0) {
-    const n = Number(raw);
-    return Number.isInteger(n) && n >= 0 ? n : raw;
-  }
-  throw new Error(`${source} must be a non-negative integer (benchmark seed) or a non-empty string`);
-}
-
-function parseCorruptRate(raw: unknown, source: string): number {
-  const n = typeof raw === 'number' ? raw : Number(raw);
-  if (!Number.isFinite(n) || n < 0 || n > 1) {
-    throw new Error(`${source} must be a number in [0, 1]`);
-  }
-  return n;
-}
-
-async function generateEpisode(spec: EpisodeSpec): Promise<{ model: GeneratedModel; episode: EpisodeInfo }> {
-  const generator = await loadGenerator();
-  const opts = spec.forceCorrupt !== undefined
-    ? { forceCorrupt: spec.forceCorrupt }
-    : { corruptRate: spec.corruptRate ?? benchmarkCorruptRate };
-  const model = generator.generateModel(spec.seed, spec.family, opts);
-  return {
-    model,
-    episode: { seed: spec.seed, family: model.family, corrupted: model.corrupted },
-  };
-}
-
-function round(value: number, decimals = 6): number {
-  const factor = 10 ** decimals;
-  return Math.round(value * factor) / factor;
-}
+const SUPPORTED_LOCALES: IDSSupportedLocale[] = ['en', 'de', 'fr'];
 
 function parseChecks(raw: string | undefined, idsPath: string | undefined): Set<GymCheck> {
   if (raw === undefined) {
@@ -221,178 +136,12 @@ function parseChecks(raw: string | undefined, idsPath: string | undefined): Set<
   return result;
 }
 
-function inferValueType(value: unknown): PropertyValueType {
-  if (typeof value === 'boolean') return PropertyValueType.Boolean;
-  if (typeof value === 'number') return Number.isInteger(value) ? PropertyValueType.Integer : PropertyValueType.Real;
-  return PropertyValueType.String;
-}
-
-function isFiniteNumber(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value);
-}
-
-function requireString(value: unknown, field: string): string {
-  if (typeof value !== 'string' || value.length === 0) {
-    throw new Error(`op field "${field}" must be a non-empty string`);
+function parseLocale(raw: string | undefined): IDSSupportedLocale {
+  if (raw === undefined) return 'en';
+  if (!SUPPORTED_LOCALES.includes(raw as IDSSupportedLocale)) {
+    fatal(`Unsupported --locale "${raw}" (supported: ${SUPPORTED_LOCALES.join(', ')})`);
   }
-  return value;
-}
-
-function requireExpressId(value: unknown): number {
-  if (!isFiniteNumber(value) || value <= 0 || !Number.isInteger(value)) {
-    throw new Error('op field "expressId" must be a positive integer');
-  }
-  return value;
-}
-
-/**
- * Apply one gym op to the running mutation overlay. Throws a plain Error on
- * anything malformed; the caller wraps this in a try/catch and turns it into
- * a structured `{type:"error"}` line rather than crashing the process.
- */
-function applyOp(view: MutablePropertyView, raw: unknown): void {
-  if (typeof raw !== 'object' || raw === null || typeof (raw as { op?: unknown }).op !== 'string') {
-    throw new Error('each op needs a string "op" field');
-  }
-  const op = raw as GymOp;
-  switch (op.op) {
-    case 'setProperty': {
-      const expressId = requireExpressId(op.expressId);
-      const psetName = requireString(op.psetName, 'psetName');
-      const propName = requireString(op.propName, 'propName');
-      const value = op.value;
-      if (value !== null && typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') {
-        throw new Error('op field "value" must be a string, number, boolean, or null');
-      }
-      view.setProperty(expressId, psetName, propName, value, inferValueType(value));
-      return;
-    }
-    case 'setAttribute': {
-      const expressId = requireExpressId(op.expressId);
-      const attrName = requireString(op.attrName, 'attrName');
-      const value = requireString(op.value, 'value');
-      view.setAttribute(expressId, attrName, value);
-      return;
-    }
-    case 'deleteProperty': {
-      const expressId = requireExpressId(op.expressId);
-      const psetName = requireString(op.psetName, 'psetName');
-      const propName = requireString(op.propName, 'propName');
-      view.deleteProperty(expressId, psetName, propName);
-      return;
-    }
-    default:
-      throw new Error(`Unsupported op "${(op as { op: string }).op}" (v0 supports setProperty, setAttribute, deleteProperty)`);
-  }
-}
-
-function computeSchemaChannel(store: IfcDataStore): Record<string, unknown> {
-  const issues = computeValidationIssues(store)
-    .slice()
-    .sort((a, b) => (a.rule === b.rule ? a.message.localeCompare(b.message) : a.rule.localeCompare(b.rule)));
-  const errors = issues.filter(i => i.severity === 'error').length;
-  const warnings = issues.filter(i => i.severity === 'warning').length;
-  const info = issues.filter(i => i.severity === 'info').length;
-  const score = errors > 0 ? 0 : warnings > 0 ? 0.5 : 1;
-  return { score, errors, warnings, info, issues };
-}
-
-async function computeClashChannel(store: IfcDataStore, processor: GeometryProcessor, modelId: string): Promise<Record<string, unknown>> {
-  const bytes = store.source;
-  if (!bytes || bytes.byteLength === 0) {
-    return { score: null, error: 'clash check needs source bytes, which the current store did not retain' };
-  }
-  const result = await processor.process(bytes);
-  const meshes: MeshData[] = result.meshes;
-  const { elements, exclusions } = elementsFromStep({ store, meshes, modelId });
-
-  // v0 default: a single self-clash rule across every element, matching
-  // `ifc-lite clash` with no `--matrix`/`--a`/`--b` flags.
-  const rules: ClashRule[] = [{ id: 'gym-self-clash', name: '* self-clash', a: '*', mode: 'hard' }];
-  const engine = createClashEngine({ backend: 'ts' });
-  const clashResult = await engine.run(elements, rules, { exclusions });
-
-  const sorted = clashResult.clashes.slice().sort((a: Clash, b: Clash) => {
-    if (a.a.key !== b.a.key) return a.a.key < b.a.key ? -1 : 1;
-    if (a.b.key !== b.b.key) return a.b.key < b.b.key ? -1 : 1;
-    return a.distance - b.distance;
-  });
-
-  return {
-    score: clashResult.summary.total,
-    bySeverity: clashResult.summary.bySeverity,
-    top: sorted.slice(0, 20).map(c => ({
-      a: c.a.key,
-      aTag: c.a.tag,
-      b: c.b.key,
-      bTag: c.b.tag,
-      severity: c.severity,
-      status: c.status,
-      distance: round(c.distance),
-    })),
-  };
-}
-
-async function computeIdsChannel(
-  store: IfcDataStore,
-  ids: IDSNamespace,
-  idsDoc: unknown,
-  locale: IDSSupportedLocale,
-): Promise<Record<string, unknown>> {
-  if (!idsDoc) {
-    return { score: null, error: 'ids check requested but --ids <rules.xml> was not provided' };
-  }
-  const accessor = createDataAccessor(store);
-  const report = (await ids.validate(idsDoc, {
-    accessor,
-    modelInfo: { schemaVersion: store.schemaVersion },
-    locale,
-    includePassingEntities: false,
-  })) as {
-    summary: {
-      totalSpecifications: number;
-      passedSpecifications: number;
-      failedSpecifications: number;
-      totalEntitiesChecked: number;
-      totalEntitiesPassed: number;
-      totalEntitiesFailed: number;
-    };
-  };
-  const summary = report.summary;
-  const passRatio = summary.totalEntitiesChecked > 0
-    ? round(summary.totalEntitiesPassed / summary.totalEntitiesChecked)
-    : 1;
-  return {
-    score: passRatio,
-    totalSpecifications: summary.totalSpecifications,
-    passedSpecifications: summary.passedSpecifications,
-    failedSpecifications: summary.failedSpecifications,
-    totalEntitiesChecked: summary.totalEntitiesChecked,
-    totalEntitiesPassed: summary.totalEntitiesPassed,
-    totalEntitiesFailed: summary.totalEntitiesFailed,
-  };
-}
-
-function computeObservation(store: IfcDataStore): Record<string, unknown> {
-  const entityCounts: Record<string, number> = {};
-  for (const [type, ids] of store.entityIndex.byType) {
-    if (ids.length > 0) entityCounts[type] = ids.length;
-  }
-  const sortedEntityCounts: Record<string, number> = {};
-  for (const type of Object.keys(entityCounts).sort()) {
-    sortedEntityCounts[type] = entityCounts[type];
-  }
-  const storeyCount = (store.entityIndex.byType.get('IFCBUILDINGSTOREY') ?? []).length;
-  return {
-    entityCounts: sortedEntityCounts,
-    storeyCount,
-    schema: store.schemaVersion ?? null,
-    // v0 gap: no geometry pass runs on reset (only the "clash" channel
-    // meshes, and only for clash detection, not to derive bounds), so
-    // `bounds` is always null for now. See the module doc's "op vocabulary
-    // gaps" note.
-    bounds: null,
-  };
+  return raw as IDSSupportedLocale;
 }
 
 /**
@@ -412,10 +161,10 @@ export async function gymCommand(args: string[], io: GymIO = {}): Promise<void> 
 
   const idsPath = getFlag(args, '--ids');
   const checks = parseChecks(getFlag(args, '--checks'), idsPath);
-  const locale = (getFlag(args, '--locale') ?? 'en') as IDSSupportedLocale;
+  const locale = parseLocale(getFlag(args, '--locale'));
 
-  const output = io.output ?? process.stdout;
-  const input = io.input ?? process.stdin;
+  const output: NodeJS.WritableStream = io.output ?? process.stdout;
+  const input: NodeJS.ReadableStream = io.input ?? process.stdin;
 
   function send(msg: Record<string, unknown>): void {
     output.write(`${JSON.stringify(msg)}\n`);
@@ -438,6 +187,9 @@ export async function gymCommand(args: string[], io: GymIO = {}): Promise<void> 
   } else {
     const forceCorrupt = args.includes('--corrupt') ? true : args.includes('--no-corrupt') ? false : undefined;
     const corruptRateFlag = getFlag(args, '--corrupt-rate');
+    if (forceCorrupt !== undefined && corruptRateFlag !== undefined) {
+      fatal(`--corrupt/--no-corrupt and --corrupt-rate are mutually exclusive\n${USAGE}`);
+    }
     await loadEpisode({
       seed: parseSeed(seedFlag, '--seed'),
       family: getFlag(args, '--family') ?? 'auto',
@@ -464,12 +216,25 @@ export async function gymCommand(args: string[], io: GymIO = {}): Promise<void> 
     return processor;
   }
 
-  let mutationView = createMutationView();
-
   function createMutationView(): MutablePropertyView {
     const view = new MutablePropertyView(null, 'default');
     view.setOnDemandExtractor((entityId: number) => extractPropertiesOnDemand(originalStore, entityId));
     return view;
+  }
+
+  /**
+   * The committed op journal: every op of every successfully rewarded step,
+   * in order. `step` batches are atomic - a failing batch (malformed op,
+   * export/parse failure, channel failure) must leave the session exactly as
+   * it was - so the journal is the single source of truth and the view is
+   * rebuilt from it whenever a batch fails partway through.
+   */
+  let journal: GymOp[] = [];
+  let mutationView = createMutationView();
+
+  function rebuildViewFromJournal(): void {
+    mutationView = createMutationView();
+    for (const op of journal) applyOp(mutationView, op);
   }
 
   /**
@@ -495,7 +260,25 @@ export async function gymCommand(args: string[], io: GymIO = {}): Promise<void> 
     return channels;
   }
 
+  /** Apply a step batch atomically: on ANY failure, restore the pre-batch state. */
+  async function stepBatch(rawOps: unknown[]): Promise<Record<string, unknown>> {
+    // Phase 1: validate the whole batch before anything is applied.
+    const ops = rawOps.map(raw => parseOp(raw));
+    // Phase 2: apply + materialize + score; roll back to the journal on failure.
+    try {
+      for (const op of ops) applyOp(mutationView, op);
+      const store = await materializeStore();
+      const channels = await computeChannels(store);
+      journal.push(...ops);
+      return channels;
+    } catch (err) {
+      rebuildViewFromJournal();
+      throw err;
+    }
+  }
+
   async function emitReset(): Promise<void> {
+    journal = [];
     mutationView = createMutationView();
     const observation = computeObservation(originalStore);
     const channels = await computeChannels(originalStore);
@@ -507,6 +290,14 @@ export async function gymCommand(args: string[], io: GymIO = {}): Promise<void> 
   await emitReset();
 
   const rl = createInterface({ input, terminal: false, crlfDelay: Infinity });
+  // A broken pipe on stdout or a stdin failure must end the loop cleanly,
+  // not take the process down with an uncaught 'error' emitter event.
+  const onStreamError = (): void => {
+    rl.close();
+  };
+  input.on('error', onStreamError);
+  output.on('error', onStreamError);
+
   for await (const line of rl) {
     const trimmed = line.trim();
     if (!trimmed) continue;
@@ -524,9 +315,7 @@ export async function gymCommand(args: string[], io: GymIO = {}): Promise<void> 
       if (type === 'step') {
         const ops = (msg as { ops?: unknown }).ops;
         if (!Array.isArray(ops)) throw new Error('"step" command needs an "ops" array');
-        for (const op of ops) applyOp(mutationView, op);
-        const store = await materializeStore();
-        const channels = await computeChannels(store);
+        const channels = await stepBatch(ops);
         send({ type: 'reward', channels, done: false });
       } else if (type === 'reset') {
         const m = msg as { seed?: unknown; family?: unknown; corrupt?: unknown; corruptRate?: unknown };
@@ -537,6 +326,9 @@ export async function gymCommand(args: string[], io: GymIO = {}): Promise<void> 
           }
           if (m.corrupt !== undefined && typeof m.corrupt !== 'boolean') {
             throw new Error('reset field "corrupt" must be a boolean');
+          }
+          if (m.corrupt !== undefined && m.corruptRate !== undefined) {
+            throw new Error('reset fields "corrupt" and "corruptRate" are mutually exclusive');
           }
           await loadEpisode({
             seed: parseSeed(m.seed, 'reset field "seed"'),

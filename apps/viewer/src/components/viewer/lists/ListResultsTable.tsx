@@ -33,9 +33,10 @@ import { columnToAutoColor } from '@/lib/lists/columnToAutoColor';
 import { AUTO_COLOR_FROM_LIST_ID } from '@/store/slices/lensSlice';
 import { ColumnHeaderMenu } from './ColumnHeaderMenu';
 import { ListGroupingBar } from './ListGroupingBar';
+import { ListScheduleTable } from './ListScheduleTable';
 import {
   formatCellValue, compareCells, detectNumericColumns, autoColumnWidth,
-  buildGroupedView, flatTotals, buildScheduleRows, blankRepeatedPathValues, rebuildGrouping,
+  buildGroupedView, flatTotals, buildScheduleRows, rebuildGrouping,
   type DisplayItem, type Totals, type ScheduleRow,
 } from './list-table-utils';
 
@@ -168,38 +169,8 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
       sort,
     );
   }, [scheduleMode, displayRows, columns, groupColumnIds, sumColumnIds, sortCol, sortDir]);
-  // Bonsai-style blank-on-repeat: display sugar ONLY — export keeps full values.
-  const scheduleDisplayPaths = useMemo(() => blankRepeatedPathValues(scheduleRows), [scheduleRows]);
-  // Header for the pivot table: one column per grouping level, a first-class
-  // Count column, then the configured sum columns.
-  //
-  // "Group by" and "Sum" are independent menu actions, so the SAME column can
-  // be both a grouping key and a summed column. Keying these entries by `id`
-  // alone then emits duplicate React keys across header/body/footer, and every
-  // `sumColumnIds.includes(col.id)` test matches the group-role cell too — it
-  // grows a stray Σ marker and renders the grand total that belongs to the
-  // sum-role cell (PR #1867 review). Each entry therefore carries a
-  // role-qualified `key` for rendering, while `id` stays the original column
-  // id that widths, sorting and `totals.sums` address columns by.
-  const scheduleColumns = useMemo(
-    () => [
-      ...groupChips.map((c) => ({ ...c, key: `group:${c.id}`, role: 'group' as const })),
-      { id: '__count', label: 'Count', key: '__count', role: 'count' as const },
-      ...sumChips.map((c) => ({ ...c, key: `sum:${c.id}`, role: 'sum' as const })),
-    ],
-    [groupChips, sumChips]);
-  const scheduleColumnWidths = useMemo(() => scheduleColumns.map((c, i) => {
-    if (widthOverrides[c.id] !== undefined) return widthOverrides[c.id];
-    if (i >= groupChips.length) return c.role === 'count' ? 90 : 130; // Count / sum columns
-    // Group-value columns: size to the widest value actually shown.
-    let maxLen = c.label.length;
-    for (const row of scheduleRows) {
-      const len = (row.path[i] ?? '').length;
-      if (len > maxLen) maxLen = len;
-    }
-    return Math.max(90, Math.min(320, maxLen * 7 + 34));
-  }), [scheduleColumns, groupChips.length, scheduleRows, widthOverrides]);
-  const scheduleTotalWidth = useMemo(() => scheduleColumnWidths.reduce((a, b) => a + b, 0), [scheduleColumnWidths]);
+  // The pivot header/body/footer live in `ListScheduleTable` — see the note
+  // there on role-qualified column keys.
 
   const handleViewChange = useCallback((next: 'nested' | 'schedule') => {
     if (!onGroupingChange || !grouping) return;
@@ -421,103 +392,20 @@ export function ListResultsTable({ result, listName, grouping, onGroupingChange,
       {/* Table */}
       <div ref={parentRef} className="flex-1 overflow-auto min-h-0">
       {scheduleMode ? (
-        <div style={{ minWidth: scheduleTotalWidth }}>
-          {/* Schedule (pivot) header: grouping columns, then a first-class
-              Count column, then any configured sums (issue #1790 round 2). */}
-          <div className="flex sticky top-0 z-10 bg-muted/80 backdrop-blur-sm border-b">
-            {scheduleColumns.map((col, colIdx) => {
-              const isCount = col.role === 'count';
-              const isSum = col.role === 'sum';
-              // Sort state rides the ORIGINAL column index space (shared with
-              // the nested view), so toggling between views keeps the same
-              // sort. Count has no original column — it IS the null-sort
-              // default (count-descending), so it's shown but not clickable.
-              const originalIdx = isCount ? -1 : columns.findIndex((c) => c.id === col.id);
-              return (
-                <div
-                  key={col.key}
-                  className={cn(
-                    'relative flex items-center gap-0.5 border-r border-border/50 px-2 py-1.5 text-xs font-medium shrink-0',
-                    (isCount || isSum) ? 'text-foreground' : 'text-muted-foreground',
-                  )}
-                  style={{ width: scheduleColumnWidths[colIdx] }}
-                >
-                  {originalIdx >= 0 ? (
-                    <button className="flex min-w-0 flex-1 items-center gap-1 hover:text-foreground" onClick={() => handleHeaderClick(originalIdx)}>
-                      <span className="truncate">{col.label}</span>
-                      {isSum && <span className="text-primary">Σ</span>}
-                      {sortCol === originalIdx && (sortDir === 'asc' ? <ArrowUp className="h-3 w-3 shrink-0" /> : <ArrowDown className="h-3 w-3 shrink-0" />)}
-                    </button>
-                  ) : (
-                    <span className="truncate flex-1" title="Count aggregate — the default sort order">{col.label}</span>
-                  )}
-                  <div
-                    onMouseDown={(e) => startResize(e, col.id, scheduleColumnWidths[colIdx])}
-                    onDoubleClick={() => setWidthOverrides((p) => { const n = { ...p }; delete n[col.id]; return n; })}
-                    className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-primary/40"
-                    title="Drag to resize · double-click to auto-fit"
-                  />
-                </div>
-              );
-            })}
-          </div>
-
-          {/* One row per group-value tuple — no per-element detail rows. */}
-          <div style={{ height: `${virtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}>
-            {virtualizer.getVirtualItems().map((vRow) => {
-              const row = scheduleRows[vRow.index];
-              if (!row) return null;
-              const displayPath = scheduleDisplayPaths[vRow.index];
-              const transform = `translateY(${vRow.start}px)`;
-              return (
-                <div
-                  key={vRow.key}
-                  className="absolute left-0 top-0 flex w-full border-b border-border/30 hover:bg-muted/40"
-                  style={{ transform }}
-                >
-                  {groupChips.map((c, i) => (
-                    <div
-                      key={`group:${c.id}`}
-                      className="border-r border-border/20 px-2 py-1 text-xs truncate shrink-0"
-                      style={{ width: scheduleColumnWidths[i] }}
-                      title={row.path[i]}
-                    >
-                      {displayPath[i]}
-                    </div>
-                  ))}
-                  <div
-                    className="border-r border-border/20 px-2 py-1 text-xs text-right font-mono tabular-nums shrink-0"
-                    style={{ width: scheduleColumnWidths[groupChips.length] }}
-                  >
-                    {row.count.toLocaleString()}
-                  </div>
-                  {sumChips.map((s, i) => (
-                    <div
-                      key={`sum:${s.id}`}
-                      className="border-r border-border/20 px-2 py-1 text-xs text-right font-mono tabular-nums shrink-0"
-                      style={{ width: scheduleColumnWidths[groupChips.length + 1 + i] }}
-                    >
-                      {formatCellValue(row.sums[s.id])}
-                    </div>
-                  ))}
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Grand-totals footer (sticky, aligned under columns) */}
-          <div className="flex sticky bottom-0 z-10 border-t-2 border-border bg-muted/90 backdrop-blur-sm">
-            {scheduleColumns.map((col, colIdx) => (
-              <div key={col.key} className="flex items-center border-r border-border/30 px-2 py-1 text-xs font-semibold shrink-0" style={{ width: scheduleColumnWidths[colIdx] }}>
-                {colIdx === 0 && <span className="text-muted-foreground">Total · {scheduleRows.length.toLocaleString()} group{scheduleRows.length === 1 ? '' : 's'}</span>}
-                {col.role === 'count' && <span className="ml-auto font-mono tabular-nums text-foreground">{totals.count.toLocaleString()}</span>}
-                {col.role === 'sum' && (
-                  <span className="ml-auto font-mono tabular-nums text-foreground">{formatCellValue(totals.sums[col.id])}</span>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
+        <ListScheduleTable
+          scheduleRows={scheduleRows}
+          groupChips={groupChips}
+          sumChips={sumChips}
+          columns={columns}
+          sortCol={sortCol}
+          sortDir={sortDir}
+          totals={totals}
+          widthOverrides={widthOverrides}
+          setWidthOverrides={setWidthOverrides}
+          startResize={startResize}
+          onHeaderClick={handleHeaderClick}
+          virtualizer={virtualizer}
+        />
       ) : (
         <div style={{ minWidth: totalWidth }}>
           {/* Header */}

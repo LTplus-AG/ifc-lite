@@ -124,6 +124,24 @@ export interface ListDataProvider {
    * when absent, callers fall back to the type-sampled `discoverColumns()`.
    */
   discoverAllColumns?(): DiscoveredColumns;
+
+  /**
+   * Location-zone assignment (issue #1810) for `zoneSetId` — a viewer-side
+   * classification computed from 3D boxes the user draws, not from IFC pset
+   * data. `null` when no assignment has been computed yet (e.g. no zones
+   * defined) or `zoneSetId` doesn't resolve. `touchedZoneNames` lists every
+   * zone the element's bounds overlap, in the same order the assignment
+   * engine found them — non-empty only when `straddles` is true. Optional:
+   * providers built before zones existed simply have no `zone` column data.
+   */
+  getZoneAssignment?(expressId: number, zoneSetId: string): {
+    zoneName: string | null;
+    straddles: boolean;
+    touchedZoneNames: string[];
+  } | null;
+  /** Every zone set currently defined, for the column/condition picker to
+   *  offer by name while storing the durable id. */
+  getZoneSetNames?(): Array<{ id: string; name: string }>;
 }
 
 /** A classification reference exposed to the list engine (code + name). */
@@ -197,12 +215,17 @@ export interface PropertyCondition {
    * - `spatial` — a spatial-container name; `propertyName` selects the level
    *   (`Container`, `Storey` (default), `Building`, `Site`, or `Project`)
    * - `model` — the source model / file name (federation identity)
+   * - `zone` — a location-zone assignment (issue #1810); `psetName` holds the
+   *   zone-SET id, `propertyName` selects `Zone` (default, the zone name —
+   *   or the straddled zones joined when the element crosses a boundary) or
+   *   `Straddles` (boolean)
    */
-  source: 'attribute' | 'property' | 'quantity' | 'material' | 'classification' | 'spatial' | 'model';
-  /** Property set name (for property/quantity sources) */
+  source: 'attribute' | 'property' | 'quantity' | 'material' | 'classification' | 'spatial' | 'model' | 'zone';
+  /** Property set name (for property/quantity sources); the zone-SET id for `zone`. */
   psetName?: string;
-  /** Attribute / property / quantity name, or the spatial level for `spatial`
-   *  (`Container` | `Storey` | `Building` | `Site` | `Project`). Ignored for
+  /** Attribute / property / quantity name, the spatial level for `spatial`
+   *  (`Container` | `Storey` | `Building` | `Site` | `Project`), or the zone
+   *  display mode for `zone` (`Zone` (default) | `Straddles`). Ignored for
    *  material/classification/model. */
   propertyName: string;
   operator: ConditionOperator;
@@ -230,13 +253,16 @@ export interface ColumnDefinition {
    * multi-valued (joined with ", "); `spatial` is a spatial-container name at
    * the level named by `propertyName` (`Container` | `Storey` (default) |
    * `Building` | `Site` | `Project`); `model` is the source model / file name
-   * (federation identity).
+   * (federation identity); `zone` is a location-zone assignment (issue
+   * #1810) — see `PropertyCondition.source` for the exact `psetName`/
+   * `propertyName` contract, shared verbatim between conditions and columns.
    */
-  source: 'attribute' | 'property' | 'quantity' | 'material' | 'classification' | 'spatial' | 'model';
-  /** For property: pset name. For quantity: qset name. */
+  source: 'attribute' | 'property' | 'quantity' | 'material' | 'classification' | 'spatial' | 'model' | 'zone';
+  /** For property: pset name. For quantity: qset name. For zone: the zone-SET id. */
   psetName?: string;
-  /** Attribute / property / quantity name, or the spatial level for `spatial`
-   *  (`Container` | `Storey` | `Building` | `Site` | `Project`). Ignored for
+  /** Attribute / property / quantity name, the spatial level for `spatial`
+   *  (`Container` | `Storey` | `Building` | `Site` | `Project`), or the zone
+   *  display mode for `zone` (`Zone` (default) | `Straddles`). Ignored for
    *  material/classification/model. */
   propertyName: string;
   /** Display label override */

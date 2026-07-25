@@ -27,6 +27,21 @@ import { ENTITY_ATTRIBUTES } from '@ifc-lite/lists';
 import type { ListDataProvider, ListClassificationRef, DiscoveredColumns } from '@ifc-lite/lists';
 import { resolveEntityPredefinedType } from '../entity-predefined-type.js';
 import { buildSpatialAncestryIndex, type SpatialAncestryIndex } from '../../utils/spatialHierarchy.js';
+import type { ZoneSet, ZoneAssignmentsByElement } from '../zones/index.js';
+
+/**
+ * Zone assignment data (issue #1810), threaded in from the store so the
+ * `zone` column/condition source can resolve without the adapter knowing
+ * anything about how zones are authored. `toGlobalId` converts THIS model's
+ * local express id to the federated global id `zoneAssignments` is keyed by
+ * (single-model fallback: `globalId === expressId`, same contract as
+ * `FederationRegistry`).
+ */
+export interface ZoneListContext {
+  zoneSets: ZoneSet[];
+  zoneAssignments: ZoneAssignmentsByElement;
+  toGlobalId: (expressId: number) => number;
+}
 
 /** Collect every material-name string an element exposes — top-level
  *  material plus layer / constituent / profile names and list members. */
@@ -50,8 +65,17 @@ function materialNamesOf(info: MaterialInfo | null): string[] {
  * federation-identity column; pass the `FederatedModel.name` so a list over
  * several models can tell which file each row came from. Defaults to '' for the
  * single-model legacy path where there's nothing to disambiguate.
+ *
+ * `zoneContext`, when supplied, enables the `zone` column/condition source
+ * (issue #1810). Omit it (the default) and every `zone` column simply
+ * resolves to `null` — the same graceful-degradation contract every other
+ * optional `ListDataProvider` accessor follows.
  */
-export function createListDataProvider(store: IfcDataStore, modelName = ''): ListDataProvider {
+export function createListDataProvider(
+  store: IfcDataStore,
+  modelName = '',
+  zoneContext?: ZoneListContext,
+): ListDataProvider {
   // Cache for on-demand attribute extraction (description, objectType, tag)
   // These are not stored during initial parse to keep load times fast,
   // but are needed for list display. Cache avoids re-parsing per column.
@@ -343,5 +367,21 @@ export function createListDataProvider(store: IfcDataStore, modelName = ''): Lis
       };
       return columnsCache;
     },
+
+    ...(zoneContext ? {
+      getZoneAssignment(expressId: number, zoneSetId: string) {
+        const globalId = zoneContext.toGlobalId(expressId);
+        const assignment = zoneContext.zoneAssignments.get(globalId)?.[zoneSetId];
+        if (!assignment) return null;
+        const zoneSet = zoneContext.zoneSets.find((zs) => zs.id === zoneSetId);
+        const touchedZoneNames = assignment.touchedZoneIds
+          .map((zoneId) => zoneSet?.zones.find((z) => z.id === zoneId)?.name)
+          .filter((n): n is string => !!n);
+        return { zoneName: assignment.zoneName, straddles: assignment.straddles, touchedZoneNames };
+      },
+      getZoneSetNames() {
+        return zoneContext.zoneSets.map((zs) => ({ id: zs.id, name: zs.name }));
+      },
+    } : {}),
   };
 }

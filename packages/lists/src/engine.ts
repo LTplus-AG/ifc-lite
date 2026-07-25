@@ -317,9 +317,35 @@ function getConditionValue(
       return getSpatialValue(entityId, condition.propertyName, provider);
     case 'model':
       return provider.getModelName?.() || null;
+    case 'zone':
+      return getZoneValue(entityId, condition.psetName ?? '', condition.propertyName, provider);
     default:
       return null;
   }
+}
+
+/**
+ * Resolve a `zone` column/condition (issue #1810): `zoneSetId` identifies
+ * which zone set (durable id, not display name — sets can be renamed);
+ * `mode` selects `Zone` (default — the zone name, or every straddled zone's
+ * name joined when the element crosses a boundary) or `Straddles` (boolean),
+ * matched case-insensitively like `spatial`'s level selector. `null` when the
+ * provider has no zone data (no zones defined, or this element was never
+ * classified).
+ */
+function getZoneValue(
+  entityId: number,
+  zoneSetId: string,
+  mode: string,
+  provider: ListDataProvider,
+): CellValue {
+  const assignment = provider.getZoneAssignment?.(entityId, zoneSetId);
+  if (!assignment) return null;
+  if (mode.toLowerCase() === 'straddles') return assignment.straddles;
+  if (assignment.straddles && assignment.touchedZoneNames.length > 0) {
+    return uniqueJoin(assignment.touchedZoneNames);
+  }
+  return assignment.zoneName;
 }
 
 /**
@@ -475,6 +501,9 @@ function extractColumnValues(
         break;
       case 'model':
         values[i] = provider.getModelName?.() || null;
+        break;
+      case 'zone':
+        values[i] = getZoneValue(entityId, col.psetName ?? '', col.propertyName, provider);
         break;
       default:
         values[i] = null;

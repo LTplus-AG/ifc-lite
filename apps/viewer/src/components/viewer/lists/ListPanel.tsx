@@ -81,6 +81,13 @@ export function ListPanel({ onClose }: ListPanelProps) {
 
   const importInputRef = React.useRef<HTMLInputElement>(null);
 
+  // Zone assignment (issue #1810) is shared across every model's provider —
+  // `zoneAssignments` is already keyed by federated global id, so each
+  // model's provider just needs ITS OWN `toGlobalId` closure.
+  const zoneSets = useViewerStore((s) => s.zoneSets);
+  const zoneAssignments = useViewerStore((s) => s.zoneAssignments);
+  const toGlobalId = useViewerStore((s) => s.toGlobalId);
+
   // Build the {modelId, provider} pairs in a single pass so the two
   // arrays can never drift out of alignment (skipping a model without
   // an ifcDataStore must not shift every later model's provider index).
@@ -91,13 +98,15 @@ export function ListPanel({ onClose }: ListPanelProps) {
         // Skip native-metadata models — they don't have a parsed
         // IfcDataStore, so the list provider can't query them.
         if (!model.ifcDataStore) continue;
-        pairs.push({ modelId, provider: createListDataProvider(model.ifcDataStore, model.name), store: model.ifcDataStore });
+        const zoneContext = { zoneSets, zoneAssignments, toGlobalId: (expressId: number) => toGlobalId(modelId, expressId) };
+        pairs.push({ modelId, provider: createListDataProvider(model.ifcDataStore, model.name, zoneContext), store: model.ifcDataStore });
       }
     } else if (ifcDataStore) {
-      pairs.push({ modelId: 'default', provider: createListDataProvider(ifcDataStore), store: ifcDataStore });
+      const zoneContext = { zoneSets, zoneAssignments, toGlobalId: (expressId: number) => toGlobalId('default', expressId) };
+      pairs.push({ modelId: 'default', provider: createListDataProvider(ifcDataStore, '', zoneContext), store: ifcDataStore });
     }
     return pairs;
-  }, [models, ifcDataStore]);
+  }, [models, ifcDataStore, zoneSets, zoneAssignments, toGlobalId]);
 
   const allProviders = useMemo(() => modelProviderPairs.map((p) => p.provider), [modelProviderPairs]);
   const allStores = useMemo(() => modelProviderPairs.map((p) => p.store), [modelProviderPairs]);

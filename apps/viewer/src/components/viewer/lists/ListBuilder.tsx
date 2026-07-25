@@ -37,6 +37,8 @@ import type {
   ConditionOperator,
 } from '@ifc-lite/lists';
 import { discoverColumns, ENTITY_ATTRIBUTES, groupingColumnIds } from '@ifc-lite/lists';
+import { useViewerStore } from '@/store';
+import type { ZoneSet } from '@/lib/zones';
 import { collectScopeTypes } from '@/lib/lists/scope-types';
 import {
   isEditableColumn,
@@ -90,7 +92,14 @@ function discoverConditionValues(stores: IfcDataStore[]): ListConditionValues {
 }
 
 /** Column descriptor shared by the quick-add grid. */
-interface CommonColumn { id: string; source: ColumnDefinition['source']; propertyName: string; label: string }
+interface CommonColumn {
+  id: string;
+  source: ColumnDefinition['source'];
+  /** Zone-SET id for `source: 'zone'` columns; unused otherwise. */
+  psetName?: string;
+  propertyName: string;
+  label: string;
+}
 
 /** Spatial-container levels a `spatial` column / filter can target, fine to
  *  coarse: Container is the element's IMMEDIATE container (any level); Storey
@@ -222,6 +231,12 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
     for (const p of providers) { const n = p.getModelName?.(); if (n) set.add(n); }
     return Array.from(set).sort();
   }, [providers]);
+
+  // Location zones (issue #1810): every currently-defined zone set, for the
+  // quick-add column chips and the `zone` filter's set-picker + value
+  // suggestions. Read directly from the store rather than round-tripping
+  // through a provider — zone sets are viewer state, not IFC-model data.
+  const zoneSets = useViewerStore((s) => s.zoneSets);
   // Ordered group-by columns, outermost first (multi-criteria grouping #1790).
   const [groupByColumnIds, setGroupByColumnIds] = useState<string[]>(
     () => groupingColumnIds(initial?.grouping)
@@ -462,6 +477,7 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
               values={conditionValues}
               spatialNames={spatialNamesByLevel}
               modelNames={modelNames}
+              zoneSets={zoneSets}
               onAdd={addCondition}
               onUpdate={updateCondition}
               onRemove={removeCondition}
@@ -482,6 +498,7 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
             )}
             <ColumnPicker
               discovered={discovered}
+              zoneSets={zoneSets}
               selectedIds={selectedColumnIds}
               onAdd={addColumn}
               onToggle={toggleColumn}
@@ -681,12 +698,15 @@ const SOURCE_TAG: Record<ColumnDefinition['source'], string> = {
   classification: 'cls',
   spatial: 'storey',
   model: 'model',
+  zone: 'zone',
 };
 
 /** A `spatial` column's tag reflects its level (storey / building / site /
- *  project); everything else uses the flat per-source tag. */
+ *  project); a `zone` column's tag reflects its display mode (zone /
+ *  straddles); everything else uses the flat per-source tag. */
 function colSourceTag(col: ColumnDefinition): string {
   if (col.source === 'spatial') return (col.propertyName || 'Storey').toLowerCase();
+  if (col.source === 'zone') return (col.propertyName || 'Zone').toLowerCase();
   return SOURCE_TAG[col.source];
 }
 
@@ -704,13 +724,16 @@ function ColSourceTag({ col }: { col: ColumnDefinition }) {
 
 interface ColumnPickerProps {
   discovered: DiscoveredColumns;
+  /** Every currently-defined zone set (issue #1810) — one quick-add chip per
+   *  set, so "Zone: Sections" is as reachable as Material / Storey. */
+  zoneSets: ZoneSet[];
   selectedIds: Set<string>;
   onAdd: (col: ColumnDefinition) => void;
   onToggle: (col: ColumnDefinition) => void;
   isDuplicate: (draft: ColumnDraft, excludeId?: string) => boolean;
 }
 
-function ColumnPicker({ discovered, selectedIds, onAdd, onToggle, isDuplicate }: ColumnPickerProps) {
+function ColumnPicker({ discovered, zoneSets, selectedIds, onAdd, onToggle, isDuplicate }: ColumnPickerProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const toggleSection = (id: string) =>
     setExpanded(prev => {
@@ -729,17 +752,30 @@ function ColumnPicker({ discovered, selectedIds, onAdd, onToggle, isDuplicate }:
     [discovered.quantities],
   );
 
+  // One quick-add column per zone set (issue #1810), appended after the
+  // static first-class columns since zone sets are user-defined + dynamic.
+  const zoneColumns = useMemo<CommonColumn[]>(
+    () => zoneSets.map((zs) => ({
+      id: `col-zone-${zs.id}`,
+      source: 'zone' as const,
+      psetName: zs.id,
+      propertyName: 'Zone',
+      label: `Zone: ${zs.name}`,
+    })),
+    [zoneSets],
+  );
+
   return (
     <div className="space-y-2">
       {/* Quick-add grid of the first-class columns */}
       <div className="flex flex-wrap gap-1.5">
-        {COMMON_COLUMNS.map(({ id, source, propertyName, label }) => {
+        {[...COMMON_COLUMNS, ...zoneColumns].map(({ id, source, psetName, propertyName, label }) => {
           const selected = selectedIds.has(id);
           return (
             <Chip
               key={id}
               selected={selected}
-              onClick={() => onToggle({ id, source, propertyName, label })}
+              onClick={() => onToggle({ id, source, psetName, propertyName, label })}
             >
               {selected && <Check className="h-3 w-3" />}
               {label}
@@ -1112,6 +1148,7 @@ const CONDITION_SOURCES: { source: ConditionSource; label: string }[] = [
   { source: 'classification', label: 'Classification' },
   { source: 'spatial', label: 'Spatial' },
   { source: 'model', label: 'Model' },
+  { source: 'zone', label: 'Zone' },
 ];
 
 const OPERATOR_LABEL: Record<ConditionOperator, string> = {
@@ -1137,7 +1174,10 @@ function operatorsFor(source: ConditionSource): ConditionOperator[] {
   }
 }
 
-function defaultConditionFor(source: ConditionSource): PropertyCondition {
+/** `zoneSets` supplies the default zone-SET id for a fresh `zone` condition
+ *  (the first defined set, so switching the source dropdown to Zone lands
+ *  on something usable rather than an empty set-picker). */
+function defaultConditionFor(source: ConditionSource, zoneSets: ZoneSet[] = []): PropertyCondition {
   switch (source) {
     case 'property':
       return { source, psetName: '', propertyName: '', operator: 'equals', value: '' };
@@ -1151,6 +1191,8 @@ function defaultConditionFor(source: ConditionSource): PropertyCondition {
       return { source, propertyName: 'Storey', operator: 'equals', value: '' };
     case 'model':
       return { source, propertyName: 'Model', operator: 'equals', value: '' };
+    case 'zone':
+      return { source, psetName: zoneSets[0]?.id ?? '', propertyName: 'Zone', operator: 'equals', value: '' };
     case 'attribute':
     default:
       return { source: 'attribute', propertyName: 'Name', operator: 'contains', value: '' };
@@ -1166,6 +1208,7 @@ function ConditionsBody({
   values,
   spatialNames,
   modelNames,
+  zoneSets,
   onAdd,
   onUpdate,
   onRemove,
@@ -1175,6 +1218,7 @@ function ConditionsBody({
   values: ListConditionValues | null;
   spatialNames: Record<string, string[]>;
   modelNames: string[];
+  zoneSets: ZoneSet[];
   onAdd: (condition: PropertyCondition) => void;
   onUpdate: (idx: number, condition: PropertyCondition) => void;
   onRemove: (idx: number) => void;
@@ -1189,6 +1233,7 @@ function ConditionsBody({
           values={values}
           spatialNames={spatialNames}
           modelNames={modelNames}
+          zoneSets={zoneSets}
           onChange={(next) => onUpdate(idx, next)}
           onRemove={() => onRemove(idx)}
         />
@@ -1209,6 +1254,7 @@ function ConditionRow({
   values,
   spatialNames,
   modelNames,
+  zoneSets,
   onChange,
   onRemove,
 }: {
@@ -1217,6 +1263,7 @@ function ConditionRow({
   values: ListConditionValues | null;
   spatialNames: Record<string, string[]>;
   modelNames: string[];
+  zoneSets: ZoneSet[];
   onChange: (next: PropertyCondition) => void;
   onRemove: () => void;
 }) {
@@ -1225,6 +1272,7 @@ function ConditionRow({
   const isProperty = condition.source === 'property';
   const isQuantity = condition.source === 'quantity';
   const isSpatial = condition.source === 'spatial';
+  const isZone = condition.source === 'zone';
   const showSetFields = isProperty || isQuantity;
 
   const setNameOptions = useMemo<string[]>(() => {
@@ -1240,6 +1288,12 @@ function ConditionRow({
     return [];
   }, [discovered, condition.psetName, isProperty, isQuantity]);
 
+  const zoneNameOptions = useMemo<string[]>(() => {
+    if (!isZone) return [];
+    const set = zoneSets.find((zs) => zs.id === condition.psetName);
+    return set ? set.zones.map((z) => z.name) : [];
+  }, [isZone, zoneSets, condition.psetName]);
+
   const valueOptions = useMemo<readonly string[]>(() => {
     switch (condition.source) {
       case 'property':
@@ -1248,22 +1302,24 @@ function ConditionRow({
       case 'classification': return values?.classifications ?? NO_OPTIONS;
       case 'spatial': return spatialNames[condition.propertyName] ?? spatialNames.Storey ?? NO_OPTIONS;
       case 'model': return modelNames;
+      case 'zone': return condition.propertyName === 'Straddles' ? ['true', 'false'] : zoneNameOptions;
       default: return NO_OPTIONS;
     }
-  }, [condition.source, condition.psetName, condition.propertyName, values, spatialNames, modelNames]);
+  }, [condition.source, condition.psetName, condition.propertyName, values, spatialNames, modelNames, zoneNameOptions]);
 
   const valuePlaceholder =
     condition.source === 'spatial' ? `${(condition.propertyName || 'Storey').toLowerCase()} name`
       : condition.source === 'model' ? 'model / file'
         : condition.source === 'material' ? 'material'
           : condition.source === 'classification' ? 'code or name'
-            : 'value';
+            : condition.source === 'zone' ? (condition.propertyName === 'Straddles' ? 'true / false' : 'zone name')
+              : 'value';
 
   return (
     <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-border/60 bg-card px-2 py-1.5 text-xs">
       <select
         value={condition.source}
-        onChange={(e) => onChange(defaultConditionFor(e.target.value as ConditionSource))}
+        onChange={(e) => onChange(defaultConditionFor(e.target.value as ConditionSource, zoneSets))}
         className={SELECT_CLASS}
         aria-label="Filter dimension"
       >
@@ -1296,6 +1352,31 @@ function ConditionRow({
             <option key={level} value={level}>{level}</option>
           ))}
         </select>
+      )}
+
+      {isZone && (
+        <>
+          <select
+            value={condition.psetName ?? ''}
+            onChange={(e) => onChange({ ...condition, psetName: e.target.value, value: '' })}
+            className={SELECT_CLASS}
+            aria-label="Zone set"
+          >
+            {zoneSets.length === 0 && <option value="">(no zone sets)</option>}
+            {zoneSets.map((zs) => (
+              <option key={zs.id} value={zs.id}>{zs.name}</option>
+            ))}
+          </select>
+          <select
+            value={condition.propertyName || 'Zone'}
+            onChange={(e) => onChange({ ...condition, propertyName: e.target.value, value: '' })}
+            className={SELECT_CLASS}
+            aria-label="Zone display mode"
+          >
+            <option value="Zone">Zone</option>
+            <option value="Straddles">Straddles</option>
+          </select>
+        </>
       )}
 
       {showSetFields && (

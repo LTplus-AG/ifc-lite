@@ -143,6 +143,20 @@ function validateModelLine(obj, tasks, err, lineNo, lines, expectedSplit) {
     return;
   }
 
+  // Strict top-level shape: only the fields for the DECLARED tasks are
+  // allowed. Payloads for unselected tasks (or arbitrary extra fields) are
+  // rejected rather than silently ignored - a submitter who sends "triage"
+  // without declaring validity-triage should hear about it, not lose it.
+  const allowedKeys = new Set(['seed']);
+  if (tasks.includes('defect-detection')) allowedKeys.add('defects');
+  if (tasks.includes('quantity-estimation')) allowedKeys.add('quantities');
+  if (tasks.includes('validity-triage')) allowedKeys.add('triage');
+  const unknownKeys = Object.keys(obj).filter((k) => !allowedKeys.has(k));
+  if (unknownKeys.length > 0) {
+    err(`line ${lineNo}: seed ${seed}: field(s) not declared by header.tasks: ${unknownKeys.join(', ')} (allowed: ${[...allowedKeys].join(', ')})`);
+    return;
+  }
+
   if (tasks.includes('defect-detection')) {
     const d = obj.defects;
     if (d === null || typeof d !== 'object' || Array.isArray(d)) {

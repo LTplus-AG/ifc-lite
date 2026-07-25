@@ -71,6 +71,7 @@ class WorkerPool {
     this.idle = [];
     this.pending = new Map(); // seed -> { resolve, reject }
     this.inFlight = new Map(); // child -> seed currently being processed
+    this.readyRejects = new Map(); // child -> reject fn for its readiness promise
     this.shuttingDown = false;
   }
 
@@ -78,10 +79,15 @@ class WorkerPool {
     const readyPromises = [];
     for (let i = 0; i < this.size; i++) {
       const child = fork(WORKER_PATH, { stdio: ['ignore', 'ignore', 'inherit', 'ipc'] });
-      const readyPromise = new Promise((resolveReady) => {
+      const readyPromise = new Promise((resolveReady, rejectReady) => {
+        // Kept so _handleWorkerDeath can reject a worker that dies BEFORE
+        // sending 'ready' - otherwise Promise.all(readyPromises) would wait
+        // forever. Rejecting after resolution is a harmless no-op.
+        this.readyRejects.set(child, rejectReady);
         const onMessage = (msg) => {
           if (msg.type === 'ready') {
             child.off('message', onMessage);
+            this.readyRejects.delete(child);
             resolveReady();
           }
         };
@@ -113,6 +119,12 @@ class WorkerPool {
 
   _handleMessage(child, msg) {
     if (msg.type === 'ready') return;
+    if (msg.type === 'init-error') {
+      // The worker reports why init failed and then exits; the exit handler
+      // (via _handleWorkerDeath) rejects its readiness promise.
+      process.stderr.write(`worker init failed: ${msg.error}\n`);
+      return;
+    }
     const job = this.pending.get(msg.seed);
     this.inFlight.delete(child);
     this.idle.push(child);
@@ -129,6 +141,11 @@ class WorkerPool {
   _handleWorkerDeath(child, why) {
     this.workers = this.workers.filter((w) => w !== child);
     this.idle = this.idle.filter((w) => w !== child);
+    const rejectReady = this.readyRejects.get(child);
+    if (rejectReady) {
+      this.readyRejects.delete(child);
+      rejectReady(new Error(`${why} before becoming ready`));
+    }
     const seed = this.inFlight.get(child);
     this.inFlight.delete(child);
     if (seed !== undefined && this.pending.has(seed)) {
@@ -223,6 +240,13 @@ async function main() {
   // Stream manifest lines to disk as they arrive: at 100k models the
   // manifest is hundreds of MB and must not accumulate in this process.
   const manifestStream = createWriteStream(manifestPath, { encoding: 'utf-8' });
+  // A manifest write failure (disk full, permissions) must fail the run with
+  // a diagnostic, not surface as an uncaught 'error' emitter event.
+  let manifestStreamError = null;
+  manifestStream.on('error', (err) => {
+    manifestStreamError = err;
+    process.stderr.write(`manifest write failed: ${err.message}\n`);
+  });
   let manifestCount = 0;
   const shaSeeds = new Map(); // sha256 -> [seed, ...]
   const errors = [];
@@ -294,6 +318,9 @@ async function main() {
   await pool.shutdown();
 
   await new Promise((res, rej) => manifestStream.end((err) => (err ? rej(err) : res())));
+  if (manifestStreamError) {
+    throw new Error(`manifest is incomplete, stream write failed: ${manifestStreamError.message}`);
+  }
 
   const sortedEntities = [...entityCounts].sort((a, b) => a - b);
   const sortedGen = [...genTimesMs].sort((a, b) => a - b);

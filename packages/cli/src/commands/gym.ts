@@ -210,8 +210,13 @@ export async function gymCommand(args: string[], io: GymIO = {}): Promise<void> 
   let processor: GeometryProcessor | null = null;
   async function getProcessor(): Promise<GeometryProcessor> {
     if (!processor) {
-      processor = new GeometryProcessor();
-      await processor.init();
+      // Assign only after init() succeeds: caching the instance before a
+      // failed init would hand every later call an uninitialized processor
+      // instead of retrying (the init throw itself surfaces as a structured
+      // error line on the step that requested the clash channel).
+      const p = new GeometryProcessor();
+      await p.init();
+      processor = p;
     }
     return processor;
   }

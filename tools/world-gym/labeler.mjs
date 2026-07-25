@@ -229,7 +229,8 @@ async function main() {
   const hasFlag = (name) => args.includes(name);
 
   if (getFlag(args, '--seed') === undefined) {
-    process.stderr.write('Usage: node labeler.mjs --seed <n> [--family frame|office|auto] [--corrupt | --corrupt-rate 0.3] [--engine in-process|subprocess] --model-dir <dir> [--skip-checks] [--json]\n');
+    // No [--json] here: the labeler's output is unconditionally one JSON line.
+    process.stderr.write('Usage: node labeler.mjs --seed <n> [--family frame|office|auto] [--corrupt | --corrupt-rate 0.3] [--engine in-process|subprocess] --model-dir <dir> [--skip-checks]\n');
     process.exit(1);
   }
   const seed = seedFlag(args, '--seed');
@@ -237,6 +238,10 @@ async function main() {
   const modelDir = getFlag(args, '--model-dir') ?? '.';
   const skipChecks = hasFlag('--skip-checks');
   const engine = getFlag(args, '--engine') ?? 'in-process';
+  if (engine !== 'in-process' && engine !== 'subprocess') {
+    process.stderr.write(`error: --engine must be in-process or subprocess, got ${JSON.stringify(engine)}\n`);
+    process.exit(2);
+  }
   const forceCorrupt = hasFlag('--corrupt') ? true : undefined;
   if (forceCorrupt !== undefined && getFlag(args, '--corrupt-rate') !== undefined) {
     process.stderr.write('error: --corrupt and --corrupt-rate are mutually exclusive\n');

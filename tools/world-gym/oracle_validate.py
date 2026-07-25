@@ -49,7 +49,7 @@ ABS_TOL_OVERLAP = 1e-3
 GEOM_SETTINGS = ifcopenshell.geom.settings()
 try:
     GEOM_SETTINGS.set("use-world-coords", True)
-except Exception:  # older settings API
+except Exception:  # noqa: BLE001 - older settings API
     GEOM_SETTINGS.set(GEOM_SETTINGS.USE_WORLD_COORDS, True)
 
 
@@ -93,7 +93,8 @@ def rel_close(a, b, tol):
 
 
 def defect_types(entry):
-    return {d["type"] for d in entry.get("defects", [])}
+    # Records flagged skipped were planned but never applied to the bytes.
+    return {d["type"] for d in entry.get("defects", []) if not d.get("skipped")}
 
 
 def check_model(entry):

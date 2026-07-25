@@ -57,7 +57,10 @@ async function main() {
     const line = JSON.parse(raw);
     if (typeof line.seed !== 'number' || line.seed % every !== 0) continue;
 
-    const model = generateModel(line.seed, line.family, { forceCorrupt: line.corrupted });
+    // Normalize: manifests without a `corrupted` field regenerate the CLEAN
+    // model (forceCorrupt: undefined would otherwise depend on generator
+    // defaults and produce false mismatches).
+    const model = generateModel(line.seed, line.family, { forceCorrupt: line.corrupted === true });
     const sha = createHash('sha256').update(model.content, 'utf-8').digest('hex');
     if (sha !== line.sha256) {
       regenMismatches++;
@@ -101,6 +104,13 @@ async function main() {
     // Non-zero exit = oracle found disagreements; still print its report.
     if (err.stdout) process.stdout.write(err.stdout);
     if (err.stderr) process.stderr.write(err.stderr);
+    process.exitCode = 1;
+  }
+  if (regenMismatches > 0) {
+    // A manifest whose bytes cannot be regenerated from its own seed is a
+    // determinism failure - the run must not report success just because
+    // the mismatching models were excluded from the oracle sample.
+    process.stderr.write(`FAIL: ${regenMismatches} manifest line(s) did not regenerate to their recorded sha256\n`);
     process.exitCode = 1;
   }
 }

@@ -33,15 +33,24 @@ let ready = false;
 
 process.on('message', async (msg) => {
   if (msg.type === 'init') {
-    modelDir = msg.modelDir;
-    skipChecks = !!msg.skipChecks;
-    engine = msg.engine ?? 'in-process';
-    corruptRate = msg.corruptRate ?? 0;
-    keepFiles = msg.keepFiles !== false;
-    if (keepFiles) await mkdir(modelDir, { recursive: true });
-    if (engine === 'in-process' && !skipChecks) await initChecks();
-    ready = true;
-    process.send({ type: 'ready' });
+    try {
+      modelDir = msg.modelDir;
+      skipChecks = !!msg.skipChecks;
+      engine = msg.engine ?? 'in-process';
+      corruptRate = msg.corruptRate ?? 0;
+      keepFiles = msg.keepFiles !== false;
+      if (keepFiles) await mkdir(modelDir, { recursive: true });
+      if (engine === 'in-process' && !skipChecks) await initChecks();
+      ready = true;
+      process.send({ type: 'ready' });
+    } catch (err) {
+      // A failed init (missing dist build, unwritable modelDir, wasm init
+      // failure) must not leave the parent waiting on 'ready' forever:
+      // report the reason, then exit so the pool's death handler rejects
+      // this worker's readiness promise.
+      process.send({ type: 'init-error', error: err?.stack ?? String(err) });
+      process.exit(1);
+    }
     return;
   }
 

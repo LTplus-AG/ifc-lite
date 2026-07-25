@@ -170,11 +170,20 @@ export function applyTextDefects(content, plan) {
         for (let i = 0; i < lines.length && wallIdx.length < 2; i++) {
           if (/^#\d+=IFCWALL\(/.test(lines[i])) wallIdx.push(i);
         }
-        if (wallIdx.length < 2) break; // cannot apply; recorded as skipped below
+        // Skipped applications are RECORDED (skipped: true) so the plan vs
+        // outcome is auditable; expectationsFromRecords and the oracle both
+        // ignore skipped records when deriving ground truth.
+        if (wallIdx.length < 2) {
+          records.push({ type: 'duplicate-globalid', skipped: true, reason: 'fewer than two single-line IFCWALL entities' });
+          break;
+        }
         const guidOf = (line) => /\('([^']+)'/.exec(line)?.[1];
         const sourceGuid = guidOf(lines[wallIdx[0]]);
         const targetGuid = guidOf(lines[wallIdx[1]]);
-        if (!sourceGuid || !targetGuid) break;
+        if (!sourceGuid || !targetGuid) {
+          records.push({ type: 'duplicate-globalid', skipped: true, reason: 'wall GlobalId not found' });
+          break;
+        }
         // Replacer FUNCTION, not a replacement string: IFC GlobalIds use a
         // base64 alphabet that includes '$', which String.replace treats as
         // a substitution pattern in replacement strings ("$'" = portion
@@ -285,7 +294,10 @@ export function applyTextDefects(content, plan) {
  * Derive the label-side expectations from the applied defect records - the
  * independent ground truth every reward channel is validated against.
  */
-export function expectationsFromRecords(records) {
+export function expectationsFromRecords(allRecords) {
+  // Records flagged skipped describe defects that were planned but could
+  // NOT be applied; they must not enter the ground truth.
+  const records = allRecords.filter((r) => !r.skipped);
   const types = records.map((r) => r.type);
   const clashPairs = records
     .filter((r) => r.type === 'clash-pair')

@@ -232,7 +232,7 @@ manifest line in, five scalars in [0, 1] out:
 | Channel | Definition | 100k distribution (clean / corrupted mean) |
 |---|---|---|
 | `schemaValidity` | 1 valid no warnings, 0.5 valid with warnings, 0 invalid | 1.0 / ~0.33 |
-| `clashScore` | `1 / (1 + detected clashes)` | 1.0 / ~0.84 |
+| `clashScore` | `1 / (1 + detected clashes)` | 1.0 / ~0.82 |
 | `determinismHashMatch` | candidate sha256 == manifest sha256 (no candidate = regenerate from seed) | 1.0 self-eval; 0 on every tampered candidate |
 | `quantityAccuracy` | 1 - mean relative error, re-extracted totals vs ground truth | 1.0 / <1 when quantities were removed |
 | `defectDetection` | planted defect types detected / planted (clean: 1 unless phantom detection) | 1.0 / <1 (dangling-ref is invisible - real gap, surfaced not hidden) |

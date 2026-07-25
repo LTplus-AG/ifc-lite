@@ -65,7 +65,9 @@ class ChannelStats {
       min: this.count ? this.min : null,
       max: this.count ? this.max : null,
       mean: this.count ? Number((this.sum / this.count).toFixed(6)) : null,
-      constant: this.valueCounts.size <= 1,
+      // Only a channel that was actually evaluated can be "constant"; a
+      // zero-evaluated (all-null) channel must not read as flat.
+      constant: this.count > 0 && this.valueCounts.size <= 1,
       histogram: Object.fromEntries(top.map(([v, c]) => [String(v), c])),
       histogramTruncated: values.length > top.length,
     };

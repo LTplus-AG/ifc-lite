@@ -194,12 +194,15 @@ export function build(creator, params) {
     }
   }
 
-  // Roof slab on top of the top storey.
+  // Roof slab on top of the top storey. The slab's Position is RELATIVE to
+  // the storey placement, which already sits at the top storey's elevation
+  // ((storeys - 1) * storeyHeight), so the local z offset is exactly one
+  // storeyHeight - using the absolute roof elevation here double-counted
+  // the storey offsets and floated the roof on multi-storey models.
   const topStoreyId = storeyIds[storeyIds.length - 1];
-  const roofElevation = round3(storeys * storeyHeight);
   const roofSlabId = creator.addIfcSlab(topStoreyId, {
     Name: 'Roof Slab',
-    Position: [0, 0, roofElevation],
+    Position: [0, 0, storeyHeight],
     Width: width,
     Depth: depth,
     Thickness: slabThickness,

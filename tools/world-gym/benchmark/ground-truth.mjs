@@ -31,7 +31,8 @@ import { CORRUPT_RATE, FAMILY, DEFECT_TYPES, QUANTITY_KEYS } from './splits.mjs'
 
 /** Map plant records to the canonical per-type boolean verdict object. */
 export function defectTruthFromModel(model) {
-  const planted = new Set((model.defects ?? []).map((d) => d.type));
+  // Records flagged skipped were planned but never applied to the bytes.
+  const planted = new Set((model.defects ?? []).filter((d) => !d.skipped).map((d) => d.type));
   const truth = {};
   for (const type of DEFECT_TYPES) truth[type] = planted.has(type);
   return truth;
@@ -50,7 +51,7 @@ export function quantityTruthFromModel(model) {
 
 /** Ordinal severity: distinct planted defect types (0..3). */
 export function severityFromModel(model) {
-  return new Set((model.defects ?? []).map((d) => d.type)).size;
+  return new Set((model.defects ?? []).filter((d) => !d.skipped).map((d) => d.type)).size;
 }
 
 /**

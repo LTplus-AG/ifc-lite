@@ -113,7 +113,8 @@ function detectedDefectTypes(line) {
 
 function defectDetectionChannel(line) {
   if (!line.schemaCheck || line.schemaCheck.skipped || line.schemaCheck.ok === false) return null;
-  const planted = [...new Set((line.defects ?? []).map((d) => d.type))];
+  // Records flagged skipped were planned but never applied to the bytes.
+  const planted = [...new Set((line.defects ?? []).filter((d) => !d.skipped).map((d) => d.type))];
   if (planted.length === 0) {
     // Clean model: reward seeing nothing; punish phantom detections.
     const phantom = line.schemaCheck.valid === false || (line.clash?.total ?? 0) > 0;

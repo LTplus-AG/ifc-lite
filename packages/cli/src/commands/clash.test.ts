@@ -5,10 +5,11 @@
 /**
  * `ifc-lite clash --json` must emit exactly one JSON document on stdout.
  *
- * Regression test: the geometry/opening pipeline (including wasm print
- * bindings) used to write "[IFC-LITE] ..." diagnostic lines to stdout via
- * console.log/info, interleaving with the JSON payload and forcing consumers
- * to scrape the trailing JSON. Diagnostics now go to stderr.
+ * Regression test for PR #1872: the geometry/opening pipeline (including
+ * wasm print bindings) used to write "[IFC-LITE] ..." diagnostic lines to
+ * stdout via console.log/info, interleaving with the JSON payload and
+ * forcing consumers to scrape the trailing JSON (see the world-gym
+ * labeler's extractTrailingJson workaround). Diagnostics now go to stderr.
  *
  * Runs the real built CLI as a subprocess on a synthetic wall+door model.
  * The hosted door guarantees the opening pipeline emits its "[IFC-LITE]"

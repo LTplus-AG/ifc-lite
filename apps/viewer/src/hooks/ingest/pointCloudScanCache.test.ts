@@ -75,6 +75,40 @@ describe('pointCloudScanCache', () => {
     assert.strictEqual(getPointCloudScanSample(4), null);
   });
 
+  it('grows buffers geometrically instead of allocating full capacity up front', () => {
+    // Capacity above the initial 65_536-slot allocation: the positions
+    // buffer must start small and still retain every point across the
+    // growth boundary with values intact.
+    registerPointCloudScanCache(6, 200_000);
+    const before = getPointCloudScanSample(6)!;
+    assert.ok(
+      before.positions.length <= 65_536 * 3,
+      `expected initial allocation <= 65536 slots, got ${before.positions.length / 3}`,
+    );
+    addPointsToScanCache(6, makeChunk(100_000));
+    const sample = getPointCloudScanSample(6)!;
+    assert.strictEqual(sample.count, 100_000);
+    assert.ok(sample.positions.length >= sample.count * 3);
+    // Spot-check values across the growth boundary (points are x = index).
+    assert.strictEqual(sample.positions[0], 0);
+    assert.strictEqual(sample.positions[65_536 * 3], 65_536);
+    assert.strictEqual(sample.positions[99_999 * 3], 99_999);
+  });
+
+  it('backfills neutral grey for points retained before the first coloured chunk', () => {
+    registerPointCloudScanCache(7, 10);
+    addPointsToScanCache(7, { positions: new Float32Array([1, 2, 3]), pointCount: 1 });
+    addPointsToScanCache(7, {
+      positions: new Float32Array([4, 5, 6]),
+      colors: new Float32Array([1, 0, 0]),
+      pointCount: 1,
+    });
+    const sample = getPointCloudScanSample(7)!;
+    // Pre-colour point reads neutral grey (200), not zero-filled black.
+    assert.deepStrictEqual(Array.from(sample.colors!.slice(0, 3)), [200, 200, 200]);
+    assert.deepStrictEqual(Array.from(sample.colors!.slice(3, 6)), [255, 0, 0]);
+  });
+
   it('re-registering the same handle resets the reservoir', () => {
     registerPointCloudScanCache(5, 10);
     addPointsToScanCache(5, makeChunk(10));

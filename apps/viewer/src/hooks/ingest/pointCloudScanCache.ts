@@ -44,13 +44,26 @@ export interface RetainedPointCloudSample {
 interface ReservoirCache extends RetainedPointCloudSample {
   hasColor: boolean;
   hasClassifications: boolean;
+  /** Slots currently backed by the typed arrays (grows geometrically toward `capacity`). */
+  allocated: number;
 }
 
 const caches = new Map<number, ReservoirCache>();
 
+/**
+ * Initial slot allocation. Buffers grow geometrically (double, clamped to
+ * `capacity`) as points arrive — allocating the full default capacity up
+ * front would pin ~24 MB of positions per asset even for a 50k-point PLY.
+ */
+const INITIAL_SCAN_CACHE_ALLOC = 65_536;
+
+/** Neutral grey written for colorless points once any chunk carries colour. */
+const NEUTRAL_COLOR_BYTE = 200;
+
 function createReservoir(capacity: number): ReservoirCache {
+  const allocated = Math.min(capacity, INITIAL_SCAN_CACHE_ALLOC);
   return {
-    positions: new Float32Array(capacity * 3),
+    positions: new Float32Array(allocated * 3),
     colors: null,
     classifications: null,
     count: 0,
@@ -58,7 +71,34 @@ function createReservoir(capacity: number): ReservoirCache {
     capacity,
     hasColor: false,
     hasClassifications: false,
+    allocated,
   };
+}
+
+/**
+ * Make sure `slot` is backed. Fill-phase writes are sequential
+ * (`slot === count`), so one doubling always reaches the target;
+ * replacement-phase writes only start once `count === capacity`, by which
+ * point the buffers are fully grown.
+ */
+function ensureSlotCapacity(cache: ReservoirCache, slot: number): void {
+  if (slot < cache.allocated) return;
+  const next = Math.min(cache.capacity, Math.max(cache.allocated * 2, slot + 1));
+  const positions = new Float32Array(next * 3);
+  positions.set(cache.positions);
+  cache.positions = positions;
+  if (cache.colors) {
+    const colors = new Uint8Array(next * 3);
+    colors.fill(NEUTRAL_COLOR_BYTE);
+    colors.set(cache.colors);
+    cache.colors = colors;
+  }
+  if (cache.classifications) {
+    const classes = new Uint8Array(next);
+    classes.set(cache.classifications);
+    cache.classifications = classes;
+  }
+  cache.allocated = next;
 }
 
 /** Start (or restart) retention for a streamed asset keyed by its renderer handle id. */
@@ -70,13 +110,19 @@ export function registerPointCloudScanCache(
 }
 
 function ensureColorBuffer(cache: ReservoirCache): Uint8Array {
-  if (!cache.colors) cache.colors = new Uint8Array(cache.capacity * 3);
+  if (!cache.colors) {
+    cache.colors = new Uint8Array(cache.allocated * 3);
+    // Backfill points retained BEFORE the first coloured chunk with the
+    // same neutral grey colorless points get going forward — a zero-filled
+    // buffer would render them black.
+    cache.colors.fill(NEUTRAL_COLOR_BYTE);
+  }
   cache.hasColor = true;
   return cache.colors;
 }
 
 function ensureClassBuffer(cache: ReservoirCache): Uint8Array {
-  if (!cache.classifications) cache.classifications = new Uint8Array(cache.capacity);
+  if (!cache.classifications) cache.classifications = new Uint8Array(cache.allocated);
   cache.hasClassifications = true;
   return cache.classifications;
 }
@@ -87,6 +133,7 @@ function writePoint(
   chunk: { positions: Float32Array; colors?: Float32Array; classifications?: Uint8Array },
   srcIndex: number,
 ): void {
+  ensureSlotCapacity(cache, slot);
   cache.positions[slot * 3] = chunk.positions[srcIndex * 3];
   cache.positions[slot * 3 + 1] = chunk.positions[srcIndex * 3 + 1];
   cache.positions[slot * 3 + 2] = chunk.positions[srcIndex * 3 + 2];

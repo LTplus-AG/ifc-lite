@@ -100,7 +100,7 @@ const csv = listResultToCSV(result);
 
 ## The Data Provider
 
-`executeList` reads model data through the `ListDataProvider` interface, so the package has no hard dependency on how you parsed the model. Required methods include `getEntitiesByType`, `getEntityName`, `getEntityGlobalId`, `getPropertySets`, and `getQuantitySets`; optional methods (`getMaterialNames`, `getClassifications`, `getStoreyName`, `getProjectName`, `getZoneAssignment`, ...) unlock the `material`, `classification`, `spatial`, `model`, and `zone` column sources, and the engine degrades gracefully when they are absent (a `zone` column simply resolves to `null` on a provider without zone data).
+`executeList` reads model data through the `ListDataProvider` interface, so the package has no hard dependency on how you parsed the model. Required methods include `getEntitiesByType`, `getEntityName`, `getEntityGlobalId`, `getPropertySets`, and `getQuantitySets`; optional methods (`getMaterialNames`, `getClassifications`, `getStoreyName`, `getProjectName`, `getZoneAssignment`, `getZoneSetNames`, ...) unlock the `material`, `classification`, `spatial`, `model`, and `zone` column sources, and the engine degrades gracefully when they are absent (a `zone` column simply resolves to `null` on a provider without zone data).
 
 ## Discovering Columns
 

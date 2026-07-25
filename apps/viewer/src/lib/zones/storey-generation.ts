@@ -3,8 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Generate one zone per building storey, spanning the model's XY bounds
- * (issue #1810 v1, generation path (b)). Pure — callers gather the storey
+ * Generate one zone per building storey, spanning the model's horizontal X-Z
+ * footprint bounds — the viewer frame is Y-up — (issue #1810 v1, generation path (b)). Pure — callers gather the storey
  * list + bounds from the loaded model(s) (see the store slice for how that
  * uses `@ifc-lite/data`'s canonical storey-elevation contract, PR #1857) and
  * hand them in here.

@@ -4,7 +4,8 @@
 
 /**
  * "Generate a zone set from storeys" (issue #1810 generation path (b)):
- * one zone per building storey, spanning the model's XY bounds.
+ * one zone per building storey, spanning the model's horizontal X-Z
+ * footprint bounds (the viewer is Y-up).
  *
  * Storey collection reuses `elevationKey`/`compareStoreyEntries` from the
  * hierarchy tree builder — the SAME 0.5m-tolerance elevation-matching
@@ -61,7 +62,8 @@ function collectStoreysAcrossModels(): StoreyInfo[] {
 
 /**
  * Generate one zone per distinct storey elevation, spanning the union of
- * every loaded model's XY bounds (from the renderer's `Scene`, so it
+ * every loaded model's horizontal X-Z footprint bounds (from the renderer's
+ * Y-up `Scene`, so it
  * reflects everything currently loaded, federated or legacy single-model).
  */
 export function generateZonesFromStoreys(): GenerateStoreyZonesResult {

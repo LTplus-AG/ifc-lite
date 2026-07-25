@@ -223,7 +223,12 @@ export function toScheduleRows(groups: ListGroup[] | undefined, levelCount: numb
   if (!groups || levelCount <= 0) return [];
   const leafLevel = levelCount - 1;
   return groups
-    .filter((g) => (g.level ?? 0) === leafLevel)
+    // `level` is optional on ListGroup. Defaulting a missing one to 0 would
+    // put EVERY group at level 0, so a hand-built multi-level set (the public
+    // API allows one — `summariseListRows` always fills `level` in) would
+    // match no leaf at all and pivot to nothing. Fall back to the depth its
+    // own `path` implies before assuming the outermost level.
+    .filter((g) => (g.level ?? (g.path ? g.path.length - 1 : 0)) === leafLevel)
     .map((g) => ({ key: g.key, path: g.path ?? [g.label], count: g.count, sums: g.sums }));
 }
 

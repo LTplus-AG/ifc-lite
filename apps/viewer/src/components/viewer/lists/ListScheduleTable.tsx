@@ -17,7 +17,7 @@
  * as a prop, already counting `scheduleRows`.
  */
 
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import type { Virtualizer } from '@tanstack/react-virtual';
 import { ArrowUp, ArrowDown } from 'lucide-react';
 import type { ColumnDefinition } from '@ifc-lite/lists';
@@ -83,8 +83,19 @@ export function ListScheduleTable({
     ],
     [groupChips, sumChips]);
 
+  // Width-override key. Normally the ORIGINAL column id, so a resize carries
+  // across the schedule/nested view toggle. A column that is BOTH grouped and
+  // summed appears twice though, and sharing one key there would make dragging
+  // the sigma column silently resize the group column too — so only that
+  // second, sum-role instance gets its own key (PR #1867 review).
+  const widthKey = useCallback(
+    (col: { id: string; role: 'group' | 'count' | 'sum' }) =>
+      col.role === 'sum' && groupChips.some((g) => g.id === col.id) ? `sum:${col.id}` : col.id,
+    [groupChips]);
+
   const scheduleColumnWidths = useMemo(() => scheduleColumns.map((c, i) => {
-    if (widthOverrides[c.id] !== undefined) return widthOverrides[c.id];
+    const wk = c.role === 'sum' && groupChips.some((g) => g.id === c.id) ? `sum:${c.id}` : c.id;
+    if (widthOverrides[wk] !== undefined) return widthOverrides[wk];
     if (i >= groupChips.length) return c.role === 'count' ? 90 : 130; // Count / sum columns
     // Group-value columns: size to the widest value actually shown.
     let maxLen = c.label.length;
@@ -130,8 +141,8 @@ export function ListScheduleTable({
                 <span className="truncate flex-1" title="Count aggregate — the default sort order">{col.label}</span>
               )}
               <div
-                onMouseDown={(e) => startResize(e, col.id, scheduleColumnWidths[colIdx])}
-                onDoubleClick={() => setWidthOverrides((p) => { const n = { ...p }; delete n[col.id]; return n; })}
+                onMouseDown={(e) => startResize(e, widthKey(col), scheduleColumnWidths[colIdx])}
+                onDoubleClick={() => setWidthOverrides((p) => { const n = { ...p }; delete n[widthKey(col)]; return n; })}
                 className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-primary/40"
                 title="Drag to resize · double-click to auto-fit"
               />

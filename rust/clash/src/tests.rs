@@ -224,7 +224,7 @@ fn l_prism() -> TriMesh {
     ];
     let indices: Vec<u32> = vec![
         // bottom cap (fan from 0)
-        0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 5, // top cap (fan from 6)
+        0, 2, 1, 0, 3, 2, 0, 4, 3, 0, 5, 4, // top cap (fan from 6)
         6, 7, 8, 6, 8, 9, 6, 9, 10, 6, 10, 11, // sides (one quad per footprint edge)
         0, 1, 7, 0, 7, 6, 1, 2, 8, 1, 8, 7, 2, 3, 9, 2, 9, 8, 3, 4, 10, 3, 10, 9, 4, 5, 11, 4, 11,
         10, 5, 0, 6, 5, 6, 11,
@@ -242,7 +242,7 @@ fn l_part() -> (Vec<f32>, Vec<u32>, Vec<f32>) {
     ];
     let indices: Vec<u32> = vec![
         // bottom cap (fan from 0), top cap (fan from 6)
-        0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 5, 6, 7, 8, 6, 8, 9, 6, 9, 10, 6, 10, 11,
+        0, 2, 1, 0, 3, 2, 0, 4, 3, 0, 5, 4, 6, 7, 8, 6, 8, 9, 6, 9, 10, 6, 10, 11,
         // sides (one quad per footprint edge)
         0, 1, 7, 0, 7, 6, 1, 2, 8, 1, 8, 7, 2, 3, 9, 2, 9, 8, 3, 4, 10, 3, 10, 9, 4, 5, 11, 4, 11,
         10, 5, 0, 6, 5, 6, 11,

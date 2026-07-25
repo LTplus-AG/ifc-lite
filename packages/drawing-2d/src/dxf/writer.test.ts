@@ -229,6 +229,18 @@ describe('cssToAci / aciToCss', () => {
   it('falls back to black (ACI 7) for unparseable colour strings', () => {
     expect(cssToAci('not-a-color')).toBe(7);
   });
+
+  it('parses well-formed rgb()/rgba() and rejects malformed function strings (PR #1871 review)', () => {
+    expect(cssToAci('rgb(255, 0, 0)')).toBe(1);
+    expect(cssToAci('rgba(255, 0, 0, 0.5)')).toBe(1);
+    // Unclosed, trailing garbage, or wrong arity must NOT half-parse into a
+    // non-default colour; they take the ACI-7 fallback.
+    expect(cssToAci('rgb(255, 0, 0')).toBe(7);
+    expect(cssToAci('rgb(255, 0, 0)junk')).toBe(7);
+    expect(cssToAci('rgb(255, 0, 0, 0.5)')).toBe(7); // alpha on rgb()
+    expect(cssToAci('rgba(255, 0, 0)')).toBe(7); // missing alpha on rgba()
+    expect(cssToAci('bogus rgb(255, 0, 0)')).toBe(7); // leading garbage
+  });
 });
 
 describe('DxfWriter non-finite coordinate handling (PR #1871 review)', () => {

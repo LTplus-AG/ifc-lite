@@ -195,12 +195,27 @@ export class DXFExporter {
         const anchor = mapPoint(text.position);
         const tip = mapPoint({ x: text.position.x + text.dirX, y: text.position.y + text.dirY });
         const angle = (Math.atan2(tip.y - anchor.y, tip.x - anchor.x) * 180) / Math.PI;
+        // Placement scales the geometry through mapPoint; the glyph height
+        // must follow or labels detach from their linework (same rule as
+        // SVGExporter's underlay text).
+        const height = text.height * placement.scale;
         const lines = text.text.split('\n');
         for (let i = 0; i < lines.length; i++) {
+          // Stack subsequent lines by offsetting in LOCAL space, then map:
+          // the stacking direction must rotate with the text when
+          // placement.rotationDeg is non-zero or coordinateTransform itself
+          // rotates (georeferenced rotated grid) — exactly like
+          // SVGExporter's rotate() wrapper around its tspan stack. An
+          // output-space `anchor.y - offset` would shift lines straight
+          // down regardless of the text's actual direction (PR #1871
+          // review).
+          const lineAnchor = i === 0
+            ? anchor
+            : mapPoint({ x: text.position.x, y: text.position.y - i * text.height * 1.3 });
           writer.addText(
-            { x: anchor.x, y: anchor.y - i * text.height * 1.3 },
+            lineAnchor,
             lines[i],
-            text.height,
+            height,
             layer,
             { rotationDeg: angle, hAlign: text.align, vAlign: text.valign, colorOverride: text.color },
           );

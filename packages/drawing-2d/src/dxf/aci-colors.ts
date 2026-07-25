@@ -107,7 +107,14 @@ export function cssToAci(css: string): number {
   return best;
 }
 
-/** Parse `#rgb`, `#rrggbb`, or `rgb(r,g,b)` into a 24-bit integer; null on failure. */
+/**
+ * Parse `#rgb`, `#rrggbb`, `rgb(r,g,b)`, or `rgba(r,g,b,a)` into a 24-bit
+ * integer; null on failure. The function form is fully anchored (closing
+ * paren required, nothing before/after) and arity-checked — `rgb(...)` takes
+ * exactly three components and `rgba(...)` exactly four — so malformed
+ * strings (`rgb(1,2,3`, `rgb(1,2,3)junk`, `rgba(1,2,3)`) fall back to the
+ * caller's ACI-7 default instead of silently half-parsing (PR #1871 review).
+ */
 function parseCssColor(css: string): number | null {
   const s = css.trim();
   const hex3 = /^#([0-9a-f])([0-9a-f])([0-9a-f])$/i.exec(s);
@@ -119,11 +126,13 @@ function parseCssColor(css: string): number | null {
   }
   const hex6 = /^#([0-9a-f]{6})$/i.exec(s);
   if (hex6) return parseInt(hex6[1], 16);
-  const rgbFn = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i.exec(s);
+  const rgbFn = /^(rgb|rgba)\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*(?:,\s*(\d*\.?\d+)\s*)?\)$/i.exec(s);
   if (rgbFn) {
-    const r = Math.min(255, parseInt(rgbFn[1], 10));
-    const g = Math.min(255, parseInt(rgbFn[2], 10));
-    const b = Math.min(255, parseInt(rgbFn[3], 10));
+    const hasAlpha = rgbFn[5] !== undefined;
+    if ((rgbFn[1].length === 3) === hasAlpha) return null; // rgb: 3 args; rgba: 4 args
+    const r = Math.min(255, parseInt(rgbFn[2], 10));
+    const g = Math.min(255, parseInt(rgbFn[3], 10));
+    const b = Math.min(255, parseInt(rgbFn[4], 10));
     return (r << 16) | (g << 8) | b;
   }
   return null;

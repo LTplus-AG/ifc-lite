@@ -173,6 +173,38 @@ describe('DXFExporter', () => {
     expect(polylines[0].vertices[1].x).toBeCloseTo(10);
   });
 
+  it('stacks multi-line underlay text along the rotated text direction, with placement-scaled height (PR #1871 review)', () => {
+    // Under a rotated placement the second line must follow the text's own
+    // "down" direction (local -Y mapped through the placement), not shift
+    // straight down in output space — mirroring SVGExporter's rotate()
+    // wrapper around its tspan stack.
+    const multi = underlay();
+    multi.layers[0].texts = [
+      { position: { x: 0, y: 0 }, text: 'A\nB', height: 2, dirX: 1, dirY: 0, align: 'left', valign: 'baseline' },
+    ];
+    const dxf = exportToDXF(emptyDrawing(), {
+      underlays: [{
+        underlay: multi,
+        placement: { offsetX: 0, offsetY: 0, rotationDeg: 90, scale: 2 },
+      }],
+    });
+    const texts = parseDxf(dxf).entities.filter((e): e is DxfTextEntity => e.kind === 'text');
+    expect(texts).toHaveLength(2);
+    expect(texts[0].text).toBe('A');
+    expect(texts[0].x).toBeCloseTo(0);
+    expect(texts[0].y).toBeCloseTo(0);
+    // Local second-line anchor (0, -2.6), scaled by 2 then rotated 90deg
+    // clockwise (applyDxfPlacement: x' = x c + y s, y' = -x s + y c):
+    // (0, -5.2) -> (-5.2, 0). The old output-space offset would have put it
+    // at (0, -2.6).
+    expect(texts[1].text).toBe('B');
+    expect(texts[1].x).toBeCloseTo(-5.2);
+    expect(texts[1].y).toBeCloseTo(0);
+    // Glyph height follows the placement scale, like the SVG exporter.
+    expect(texts[0].height).toBeCloseTo(4);
+    expect(texts[1].height).toBeCloseTo(4);
+  });
+
   it('honours underlay per-layer visibility overrides', () => {
     const dxf = exportToDXF(emptyDrawing(), {
       underlays: [{ underlay: underlay(), layerVisibility: { ANNO: false } }],

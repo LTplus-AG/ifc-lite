@@ -141,7 +141,15 @@ export const createZonesSlice: StateCreator<ZonesSlice, [], [], ZonesSlice> = (s
   replaceZonesInSet: (setId, zones) => set((state) => {
     const zoneSets = state.zoneSets.map((zs) => (zs.id === setId ? { ...zs, zones, updatedAt: Date.now() } : zs));
     savePersistedZoneSets(zoneSets);
-    return { zoneSets };
+    // Replacing a set's zones wholesale (e.g. "generate from storeys") can
+    // remove the zone an edit session points at — same invariant as
+    // `removeZone`: never leave `editingZone` dangling on a zone that no
+    // longer exists (CodeRabbit review of PR #1869).
+    const editing = state.editingZone;
+    const editingZone = editing?.setId === setId && !zones.some((z) => z.id === editing.zoneId)
+      ? null
+      : editing;
+    return { zoneSets, editingZone };
   }),
 
   addZone: (setId, zone) => {
@@ -197,9 +205,19 @@ export const createZonesSlice: StateCreator<ZonesSlice, [], [], ZonesSlice> = (s
     }
     const result = parseZoneSetFile(parsed);
     if (!result.ok) return { ok: false, error: result.error };
-    set(() => {
+    set((state) => {
       savePersistedZoneSets(result.zoneSets);
-      return { zoneSets: result.zoneSets };
+      // Import replaces every set — clear an edit session unless the imported
+      // data still contains the exact set + zone it points at (CodeRabbit
+      // review of PR #1869; same dangling-`editingZone` invariant as
+      // `removeZoneSet`/`removeZone`).
+      const editing = state.editingZone;
+      const editingZone = editing !== null && result.zoneSets.some(
+        (zs) => zs.id === editing.setId && zs.zones.some((z) => z.id === editing.zoneId),
+      )
+        ? editing
+        : null;
+      return { zoneSets: result.zoneSets, editingZone };
     });
     return { ok: true };
   },

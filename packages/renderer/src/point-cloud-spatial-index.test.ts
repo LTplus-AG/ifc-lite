@@ -69,6 +69,33 @@ describe('PointCloudSpatialIndex — depth / occlusion semantics', () => {
     assert.strictEqual(hit, null);
   });
 
+  it('maxDistance = Infinity (no mesh hit on the ray) returns the nearest point and terminates', () => {
+    // This is the real production path when the scene has no mesh under
+    // the cursor: RaycastEngine passes `Infinity` as the bound. queryRay
+    // must clamp the march to the index's bounding-box exit (tMax is the
+    // box exit, not Infinity) and still return the nearest-along-ray point.
+    const idx = new PointCloudSpatialIndex(0.5);
+    idx.insertRange(new Float32Array([0, 0, 5, 0, 0, 250]), 2);
+    const hit = idx.queryRay(FORWARD_RAY.origin, FORWARD_RAY.direction, Infinity, flatTolerance(0.05));
+    assert.ok(hit);
+    assert.strictEqual(hit!.distance, 5);
+  });
+
+  it('maxDistance = Infinity with a total miss across a huge (50km) cloud terminates with null', () => {
+    // Degenerate-but-reachable: point-cloud-only scene, cursor over empty
+    // space, un-rebased georeferenced extents. The DDA's step cap must
+    // bound the walk (finite box exit → finite maxSteps), not hang.
+    const idx = new PointCloudSpatialIndex(0.5);
+    idx.insertRange(new Float32Array([0, 0, 0, 50_000, 0, 50_000]), 2);
+    const hit = idx.queryRay(
+      { x: 0, y: 100, z: 0 },
+      { x: Math.SQRT1_2, y: 0, z: Math.SQRT1_2 },
+      Infinity,
+      flatTolerance(0.05),
+    );
+    assert.strictEqual(hit, null);
+  });
+
   it('excludes points beyond maxDistance', () => {
     const idx = new PointCloudSpatialIndex(0.5);
     idx.insertRange(new Float32Array([0, 0, 50]), 1);
@@ -256,6 +283,29 @@ describe('PointCloudSpatialIndex — georeferenced (huge-coordinate) clouds', ()
     assert.strictEqual(
       idx.queryRay({ x: E, y: 400, z: N }, { x: 1, y: 0, z: 0 }, 100, flatTolerance(0.05)),
       null,
+    );
+  });
+
+  it('a clamped boundary mega-bucket can never produce a false-positive hit', () => {
+    // Beyond the ±2^16-cell window, insert clamps points onto boundary
+    // cells, merging distinct cells into one bucket. That must degrade
+    // PERFORMANCE only — never correctness: every candidate is re-checked
+    // against its real position (`testPoint`), so a bucket-mate that is
+    // out of reach (or out of tolerance) must not be returned. Here the
+    // ray's marched cells and the 50km-away point share the clamped
+    // boundary bucket, but the point is 9.9km past maxDistance.
+    const idx = new PointCloudSpatialIndex(0.5);
+    idx.insertRange(new Float32Array([0, 0, 0, 50_000, 0, 0]), 2);
+    assert.strictEqual(
+      idx.queryRay({ x: 40_000, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }, 100, flatTolerance(0.05)),
+      null,
+      'an out-of-reach point sharing a clamped bucket must not be returned',
+    );
+    // Same bucket-merge, point 5m off-axis vs 0.05m tolerance: rejected.
+    assert.strictEqual(
+      idx.queryRay({ x: 49_990, y: 5, z: 0 }, { x: 1, y: 0, z: 0 }, 1000, flatTolerance(0.05)),
+      null,
+      'an out-of-tolerance point sharing a clamped bucket must not be returned',
     );
   });
 

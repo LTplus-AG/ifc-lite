@@ -91,7 +91,9 @@ export class DXFExporter {
     const map = (p: Point2D): Point2D => coordinateTransform(p);
 
     // Layer per line category, DASHED linetype for the hidden layer only —
-    // matches how SVGExporter groups its <g> layers.
+    // matches how SVGExporter groups its <g> layers. Lines whose
+    // `visibility` is 'hidden' are routed onto the hidden layer regardless
+    // of category — see writeLine.
     const categoryLayers = new Map<LineCategory, string>();
     for (const [category, name] of Object.entries(CATEGORY_LAYER) as [LineCategory, string][]) {
       const linetype: DxfLinetype = category === 'hidden' ? 'DASHED' : 'CONTINUOUS';
@@ -125,9 +127,19 @@ export class DXFExporter {
     categoryLayers: Map<LineCategory, string>,
     map: (p: Point2D) => Point2D,
   ): void {
-    const layer = categoryLayers.get(line.category);
+    // Visibility wins over category (PR #1871 review, P2): hidden-line
+    // removal / construction projection can mark e.g. a `projection` line
+    // `visibility: 'hidden'`. Mapping by category alone would land it on the
+    // CONTINUOUS `IFC-PROJECTION` layer and occluded/overhead edges would
+    // read as solid in CAD. Mirror `exportToSVG`'s hidden-lines grouping
+    // (and the viewer canvas's dashed override): every `visibility ===
+    // 'hidden'` line joins the DASHED `IFC-HIDDEN` layer with the hidden
+    // line style. No new layer/LTYPE names — `IFC-HIDDEN` and `DASHED` are
+    // already declared in TABLES, so the output stays R12-legal.
+    const styleCategory: LineCategory = line.visibility === 'hidden' ? 'hidden' : line.category;
+    const layer = categoryLayers.get(styleCategory);
     if (!layer) return;
-    const style = getLineStyle(line.category, line.ifcType);
+    const style = getLineStyle(styleCategory, line.ifcType);
     const start = map(line.line.start);
     const end = map(line.line.end);
     writer.addLine(start, end, layer, style.color);

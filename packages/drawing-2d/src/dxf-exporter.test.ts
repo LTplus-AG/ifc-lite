@@ -103,6 +103,37 @@ describe('DXFExporter', () => {
     expect(doc.entities).toHaveLength(0);
   });
 
+  it('routes visibility-hidden lines onto the dashed IFC-HIDDEN layer regardless of category (PR #1871 review)', () => {
+    // Hidden-line removal / construction projection can mark a projection or
+    // silhouette edge `visibility: 'hidden'` without changing its category.
+    // The canvas and SVG exporters render every such line dashed; the DXF
+    // export must not leave them solid on the CONTINUOUS category layer.
+    const drawing = emptyDrawing();
+    drawing.lines = [
+      makeLine({ category: 'projection', visibility: 'hidden', line: { start: { x: 0, y: 0 }, end: { x: 1, y: 0 } } }),
+      makeLine({ category: 'silhouette', visibility: 'hidden', line: { start: { x: 0, y: 1 }, end: { x: 1, y: 1 } } }),
+      makeLine({ category: 'projection', visibility: 'visible', line: { start: { x: 0, y: 2 }, end: { x: 1, y: 2 } } }),
+    ];
+    const dxf = exportToDXF(drawing);
+    const doc = parseDxf(dxf);
+    const lines = doc.entities.filter((e): e is DxfLineEntity => e.kind === 'line');
+    expect(lines.map((l) => l.layer).sort()).toEqual(['IFC-HIDDEN', 'IFC-HIDDEN', 'IFC-PROJECTION']);
+    // The layer they land on must actually be dashed, and the DASHED LTYPE
+    // referenced must be declared in TABLES (R12 readers reject a layer
+    // referencing an undeclared linetype).
+    expect(dxf).toMatch(/IFC-HIDDEN\n70\n0\n62\n\d+\n6\nDASHED/);
+    expect(dxf).toMatch(/0\nLTYPE\n2\nDASHED\n/);
+    // The category layer the hidden lines were diverted from stays CONTINUOUS.
+    expect(dxf).toMatch(/IFC-PROJECTION\n70\n0\n62\n\d+\n6\nCONTINUOUS/);
+  });
+
+  it('still omits visibility-hidden non-hidden-category lines when showHiddenLines is false', () => {
+    const drawing = emptyDrawing();
+    drawing.lines = [makeLine({ category: 'projection', visibility: 'hidden' })];
+    const doc = parseDxf(exportToDXF(drawing, { showHiddenLines: false }));
+    expect(doc.entities).toHaveLength(0);
+  });
+
   it('writes the DASHED linetype for the hidden layer', () => {
     const drawing = emptyDrawing();
     drawing.lines = [makeLine({ category: 'hidden', visibility: 'hidden' })];

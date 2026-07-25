@@ -95,4 +95,47 @@ describe('zones/persistence', () => {
     const result = parseZoneSetFile(bad);
     assert.strictEqual(result.ok, false);
   });
+
+  // PR #1869 review: object spreads left center/size/color aliased to live
+  // Zustand state, so mutating the serialized result mutated the store
+  // outside an action.
+  it('serializeZoneSets deep-copies vector tuples so mutating the result cannot touch the input', () => {
+    const original = [makeZoneSet()];
+    const file = serializeZoneSets(original);
+    file.zoneSets[0].zones[0].center[0] = 999;
+    file.zoneSets[0].zones[0].size[1] = 999;
+    file.zoneSets[0].zones[0].color![2] = 999;
+    assert.deepStrictEqual(original[0].zones[0].center, [1, 2, 3]);
+    assert.deepStrictEqual(original[0].zones[0].size, [4, 5, 6]);
+    assert.deepStrictEqual(original[0].zones[0].color, [0.1, 0.2, 0.3]);
+  });
+
+  // PR #1869 review: duplicate ids in an imported file made id-addressed
+  // store actions (removeZoneSet/renameZoneSet/updateZone/removeZone)
+  // silently affect multiple entries.
+  describe('duplicate-id rejection on import', () => {
+    it('rejects duplicate zone-set ids', () => {
+      const file = serializeZoneSets([makeZoneSet(), makeZoneSet()]); // both id 'set-1'
+      const result = parseZoneSetFile(JSON.parse(JSON.stringify(file)));
+      assert.strictEqual(result.ok, false);
+      if (!result.ok) assert.match(result.error, /duplicate zone-set id/);
+    });
+
+    it('rejects duplicate zone ids within one set', () => {
+      const set = makeZoneSet();
+      set.zones[1].id = set.zones[0].id; // 'zone-1' twice in the same set
+      const result = parseZoneSetFile(JSON.parse(JSON.stringify(serializeZoneSets([set]))));
+      assert.strictEqual(result.ok, false);
+      if (!result.ok) assert.match(result.error, /duplicate zone id/);
+    });
+
+    it('accepts the same zone id in two DIFFERENT sets (ids are per-set for zones)', () => {
+      const a = makeZoneSet();
+      const b = { ...makeZoneSet(), id: 'set-2' };
+      // zone ids are identical across a and b — updateZone is scoped by
+      // setId, so this is unambiguous and must import fine.
+      const result = parseZoneSetFile(JSON.parse(JSON.stringify(serializeZoneSets([a, b]))));
+      assert.strictEqual(result.ok, true);
+    });
+  });
 });

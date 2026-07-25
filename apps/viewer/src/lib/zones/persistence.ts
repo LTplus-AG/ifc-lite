@@ -16,15 +16,28 @@ export type ParseZoneSetFileResult =
   | { ok: true; zoneSets: ZoneSet[] }
   | { ok: false; error: string };
 
+function copyVec3(v: readonly [number, number, number]): [number, number, number] {
+  return [v[0], v[1], v[2]];
+}
+
 /** Build the on-disk file shape from live zone sets. Pure — no clock/DOM
- *  side effect except reading `Date.now()` for the informational timestamp. */
+ *  side effect except reading `Date.now()` for the informational timestamp.
+ *  The vector tuples are deep-copied too: a shallow spread would leave
+ *  `center`/`size`/`color` aliased to live Zustand state, so a caller
+ *  mutating the serialized result would mutate the store outside an action
+ *  (PR #1869 review). */
 export function serializeZoneSets(zoneSets: readonly ZoneSet[]): ZoneSetFile {
   return {
     version: ZONE_SET_FILE_VERSION,
     exportedAt: new Date().toISOString(),
     zoneSets: zoneSets.map((zs) => ({
       ...zs,
-      zones: zs.zones.map((z) => ({ ...z })),
+      zones: zs.zones.map((z) => ({
+        ...z,
+        center: copyVec3(z.center),
+        size: copyVec3(z.size),
+        ...(z.color !== undefined ? { color: copyVec3(z.color) } : {}),
+      })),
     })),
   };
 }
@@ -82,5 +95,24 @@ export function parseZoneSetFile(json: unknown): ParseZoneSetFileResult {
   if (!Array.isArray(obj.zoneSets) || !obj.zoneSets.every(isValidZoneSet)) {
     return { ok: false, error: 'Malformed zone-set file: `zoneSets` is missing or invalid.' };
   }
-  return { ok: true, zoneSets: obj.zoneSets as ZoneSet[] };
+  const zoneSets = obj.zoneSets as ZoneSet[];
+  // Ids must be unique (set ids globally, zone ids within their set): the
+  // store actions (`removeZoneSet`/`renameZoneSet`/`updateZone`/`removeZone`)
+  // address by id, so importing duplicates would make a single edit silently
+  // affect multiple entries (PR #1869 review).
+  const setIds = new Set<string>();
+  for (const zs of zoneSets) {
+    if (setIds.has(zs.id)) {
+      return { ok: false, error: `Malformed zone-set file: duplicate zone-set id "${zs.id}".` };
+    }
+    setIds.add(zs.id);
+    const zoneIds = new Set<string>();
+    for (const zone of zs.zones) {
+      if (zoneIds.has(zone.id)) {
+        return { ok: false, error: `Malformed zone-set file: duplicate zone id "${zone.id}" in set "${zs.name}".` };
+      }
+      zoneIds.add(zone.id);
+    }
+  }
+  return { ok: true, zoneSets };
 }

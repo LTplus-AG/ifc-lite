@@ -189,7 +189,10 @@ export const createZonesSlice: StateCreator<ZonesSlice, [], [], ZonesSlice> = (s
     let parsed: unknown;
     try {
       parsed = JSON.parse(json);
-    } catch {
+    } catch (error) {
+      // Keep the structured user-facing error, but never swallow silently
+      // (house rule): the console carries the actual parse failure.
+      console.warn('[zones] failed to parse imported zone-set JSON', error);
       return { ok: false, error: 'Not valid JSON.' };
     }
     const result = parseZoneSetFile(parsed);

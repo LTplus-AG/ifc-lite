@@ -112,7 +112,17 @@ export async function measureModel(content) {
   let slabBox = null;
   let windowArea = 0;
   let wallGrossArea = 0;
+  const windowAreas = [];
   const spaceAreas = [];
+  // Per-type element boxes in the IFC frame (x east, y north, z up), for
+  // placement-intent criteria (grid regularity, opening overlaps). Folded
+  // from the right-handed Y-up viewer frame: IFC x = mesh x,
+  // IFC y = -mesh z, IFC z = mesh y (verified against golden column grids).
+  const KIND_BY_TYPE = {
+    IfcWall: 'walls', IfcWindow: 'windows', IfcDoor: 'doors',
+    IfcColumn: 'columns', IfcBeam: 'beams', IfcSlab: 'slabs', IfcSpace: 'spaces',
+  };
+  const boxes = { walls: [], windows: [], doors: [], columns: [], beams: [], slabs: [], spaces: [] };
 
   const merge = (acc, b) => {
     if (!acc) return { min: [...b.min], max: [...b.max] };
@@ -136,12 +146,22 @@ export async function measureModel(content) {
     if (type === 'IfcWindow') {
       const sorted = [...d].sort((a, b) => b - a);
       windowArea += sorted[0] * sorted[1];
+      windowAreas.push(sorted[0] * sorted[1]);
     }
     if (type === 'IfcWall') {
       wallGrossArea += Math.max(d[0], d[2]) * d[1];
     }
     if (type === 'IfcSpace') {
       spaceAreas.push(d[0] * d[2]);
+    }
+    const kind = KIND_BY_TYPE[type];
+    if (kind) {
+      const min = [box.min[0], -box.max[2], box.min[1]];
+      const max = [box.max[0], -box.min[2], box.max[1]];
+      boxes[kind].push({
+        min, max,
+        center: [(min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2],
+      });
     }
   }
 
@@ -168,9 +188,11 @@ export async function measureModel(content) {
     footprint: dims(slabBox),
     overall: dims(all),
     windowArea,
+    windowAreas: windowAreas.sort((a, b) => a - b),
     wallGrossArea,
     spaceAreas: spaceAreas.sort((a, b) => a - b),
     spaceArea: spaceAreas.reduce((a, b) => a + b, 0),
+    boxes,
     meshedElements: meshResult.meshes.length,
     schema: { valid: schema.valid, errors: schema.errors, warnings: schema.warnings },
     clash: clash.ok ? { total: clash.total } : { total: null, error: clash.error },

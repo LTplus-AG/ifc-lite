@@ -18,7 +18,9 @@ export const MODEL = 'claude-haiku-4-5-20251001';
 // Overridable: raw-IFC emission is token-heavy and can exceed the default
 // (a full STEP file is thousands of output tokens vs tens of ops).
 export const CALL_TIMEOUT_MS = Number(process.env.M5_CALL_TIMEOUT_MS ?? 120_000);
-export const MAX_CALLS = 120;
+// Overridable for the tier-2 exam (three arms + headroom probe need more
+// than the tier-1 two-arm budget; the hard cap still guards runaway loops).
+export const MAX_CALLS = Number(process.env.M5_MAX_CALLS ?? 120);
 
 let callCount = 0;
 let rawDir = null;

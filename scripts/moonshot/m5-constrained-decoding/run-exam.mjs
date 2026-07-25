@@ -40,7 +40,7 @@ const MAX_REPAIRS = 3;
 
 const log = (...a) => process.stderr.write(`[m5] ${a.join(' ')}\n`);
 
-function genPrompt(task) {
+export function genPrompt(task) {
   return [
     'You translate natural-language building briefs into IFC-OPS programs.',
     '',
@@ -52,7 +52,7 @@ function genPrompt(task) {
   ].join('\n');
 }
 
-function repairPrompt(task, accepted, state, failure) {
+export function repairPrompt(task, accepted, state, failure) {
   const parts = [
     'You are completing an IFC-OPS program that is being validated op by op.',
     '',
@@ -98,7 +98,7 @@ function rebuildState(ops) {
 
 /** Validate + kernel-gate ops sequentially, extending `accepted` in place.
  *  Returns null when every op was accepted, else { op, error }. */
-async function acceptOps(accepted, stateRef, ops) {
+export async function acceptOps(accepted, stateRef, ops) {
   for (const op of ops) {
     const v = validateOp(stateRef.state, op);
     if (!v.ok) return { op, error: v.error };
@@ -121,7 +121,7 @@ async function acceptOps(accepted, stateRef, ops) {
   return null;
 }
 
-async function runConstrained(task) {
+export async function runConstrained(task) {
   const accepted = [];
   const stateRef = { state: newState() };
   let repairs = 0;
@@ -152,7 +152,7 @@ async function runConstrained(task) {
   return { accepted, repairs, exhausted, errors };
 }
 
-function lenientSalvage(ops) {
+export function lenientSalvage(ops) {
   const state = newState();
   const kept = [];
   let skipped = 0;
@@ -168,7 +168,7 @@ function lenientSalvage(ops) {
   return { kept, skipped };
 }
 
-async function finishArm(task, arm, ops, extra) {
+export async function finishArm(task, arm, ops, extra) {
   const record = { task: task.id, difficulty: task.difficulty, arm, ...extra, opsCount: ops.length };
   if (ops.length === 0) {
     return { ...record, emitted: false, compileOk: false, quality: 0, criteria: [] };
@@ -353,7 +353,13 @@ async function main() {
   log('DONE ' + JSON.stringify(summary));
 }
 
-main().then(() => process.exit(0)).catch((e) => {
-  log(`FATAL: ${e.stack}`);
-  process.exit(1);
-});
+// Only run the exam when this file is the CLI entry point; run-tier2.mjs
+// imports the helpers above without triggering a tier-1 run.
+const isCliEntry = process.argv[1]
+  && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isCliEntry) {
+  main().then(() => process.exit(0)).catch((e) => {
+    log(`FATAL: ${e.stack}`);
+    process.exit(1);
+  });
+}

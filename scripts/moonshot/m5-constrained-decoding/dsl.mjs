@@ -102,6 +102,12 @@ function wallLength(w) {
 }
 
 /** Fit + overlap rules for a hosted opening (window/door). */
+// Numerical tolerance so boundary-exact placements are accepted: without
+// it, 0.7 - 0.65 = 0.04999999999999993 < 0.05 rejects a door placed
+// EXACTLY on the margin the error message asked for (seen live in the
+// tier-2 exam, T2-18 repair loop).
+const FIT_EPS = 1e-9;
+
 function checkOpeningFit(state, op, base) {
   const wall = state.walls.get(op.wall);
   if (!wall) {
@@ -112,11 +118,11 @@ function checkOpeningFit(state, op, base) {
   const m = LIMITS.edgeMargin;
   const lo = op.along - op.width / 2;
   const hi = op.along + op.width / 2;
-  if (!(lo >= m && hi <= L - m)) {
+  if (!(lo >= m - FIT_EPS && hi <= L - m + FIT_EPS)) {
     return err(`opening does not fit along wall "${op.wall}": centre ${op.along} +- ${op.width / 2} must lie within [${m}, ${(L - m).toFixed(3)}] (wall length ${L.toFixed(3)} m)`);
   }
   const top = base + op.height;
-  if (!(base >= 0 && top <= wall.height - m)) {
+  if (!(base >= -FIT_EPS && top <= wall.height - m + FIT_EPS)) {
     return err(`opening does not fit vertically in wall "${op.wall}": base ${base} + height ${op.height} must lie within [0, ${(wall.height - m).toFixed(3)}] (wall height ${wall.height} m)`);
   }
   for (const o of wall.openings) {

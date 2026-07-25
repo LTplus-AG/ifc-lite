@@ -178,6 +178,20 @@ function scoreValue(measured, target) {
 }
 
 /**
+ * Tight value criterion (tier-2): full credit only within 1 percent
+ * relative error, linear to zero at 20 percent. Used where the arithmetic
+ * itself is the point (area sums, ratios) so near-misses cost score -
+ * addresses the tier-1 review finding that 5 percent dead zones let wrong
+ * outputs saturate.
+ */
+function scoreTight(measured, target) {
+  if (typeof measured !== 'number' || !Number.isFinite(measured)) return 0;
+  const re = Math.abs(measured - target) / target;
+  if (re <= 0.01) return 1;
+  return Math.max(0, 1 - (re - 0.01) / 0.19);
+}
+
+/**
  * Score one task against a measurement record from kernel.measureModel.
  * Returns { quality, gate, schemaFactor, clashFactor, criteria: [...] }.
  */
@@ -197,6 +211,9 @@ export function scoreTask(task, m) {
     } else if (c.type === 'value') {
       measured = c.get(m);
       score = scoreValue(measured, c.target);
+    } else if (c.type === 'tight') {
+      measured = c.get(m);
+      score = scoreTight(measured, c.target);
     } else {
       measured = c.eval(m);
       score = typeof measured === 'number' ? measured : 0;

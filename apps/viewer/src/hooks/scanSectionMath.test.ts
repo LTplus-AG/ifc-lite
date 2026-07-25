@@ -147,6 +147,25 @@ describe('signedBandDistance (custom plane)', () => {
     close(signedBandDistance({ x: 5, y: 5, z: 2 }, plane), 0);
     close(signedBandDistance({ x: 5, y: 5, z: 2.5 }, plane), 0.5);
   });
+
+  it('a degenerate zero normal excludes every point instead of admitting all', () => {
+    // `dot(p, n) - d` is 0 for every point when n is zero-length, which
+    // without a guard drops the WHOLE cloud into the band (PR #1874 review).
+    const degenerate: ScanSectionPlane = {
+      axis: 'y',
+      position: 0,
+      flipped: false,
+      custom: {
+        normal: [0, 0, 0],
+        distance: 0,
+        origin: [0, 0, 0],
+        tangent: [1, 0, 0],
+        bitangent: [0, 0, 1],
+      },
+    };
+    assert.equal(signedBandDistance({ x: 100, y: 100, z: 100 }, degenerate), Infinity);
+    assert.equal(isPointInBand({ x: 0, y: 0, z: 0 }, degenerate, 10), false);
+  });
 });
 
 describe('projectScanPoint (cardinal)', () => {

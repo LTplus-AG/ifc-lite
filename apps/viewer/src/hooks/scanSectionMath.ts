@@ -208,6 +208,11 @@ export function resolveScanSectionPosition(
 export function signedBandDistance(p: Vec3, plane: ScanSectionPlane): number {
   if (plane.custom) {
     const n: Vec3 = { x: plane.custom.normal[0], y: plane.custom.normal[1], z: plane.custom.normal[2] };
+    // A degenerate (zero-length) normal makes `dot(p, n) - d` evaluate to 0
+    // for EVERY point, which would silently drop the entire cloud into the
+    // band instead of cutting it. The normal arrives straight from the
+    // store, so guard here: infinitely far is never in any slab.
+    if (Math.hypot(n.x, n.y, n.z) < 1e-12) return Infinity;
     return signedDistanceToPlane(p, n, plane.custom.distance);
   }
   return signedDistanceToPlane(p, getAxisNormal(plane.axis, false), plane.position);

@@ -16,6 +16,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { exportToDXF, parseDxf, DEFAULT_SECTION_CONFIG, type Drawing2D } from '@ifc-lite/drawing-2d';
 import { buildDxfExportTransform } from './dxfExportGeoref.js';
+import { dxfWorldShift, dxfUnderlayToDrawing } from './dxfUnderlayMath.js';
+import type { DxfUnderlayState } from '@/store/slices/drawing2DSlice';
 import type { GeometryResult } from '@ifc-lite/geometry';
 
 const close = (a: number, b: number, eps = 1e-6) =>
@@ -68,16 +70,51 @@ describe('buildDxfExportTransform', () => {
     close(world.y, 2007 - 6);
   });
 
-  it('mirrors X for a flipped plan section before adding the shift', () => {
+  it('un-mirrors a flipped-section pre-mirrored input back to the true world X', () => {
+    // Drawing2D arrives PRE-MIRRORED on a flipped section: both cutters
+    // (CPU projectTo2D, GPU flipU) already write `drawing_x = -u` for a
+    // true render-frame X of `u`. So a flipped section's drawing point
+    // { x: -4, y: 6 } represents the SAME physical point as an unflipped
+    // section's { x: 4, y: 6 } — both must un-mirror to the same world X.
     const transform = buildDxfExportTransform({
       coordinateInfo,
       sectionAxis: 'down',
       isCustomPlane: false,
       flipped: true,
     });
-    const world = transform({ x: 4, y: 6 });
-    close(world.x, -4 + 1003);
+    const world = transform({ x: -4, y: 6 });
+    close(world.x, 4 + 1003);
     close(world.y, 2007 - 6);
+  });
+
+  it('is flip-invariant: the same physical point exports to the same world coordinate whether the section is flipped or not', () => {
+    // `flipped` is a display convention (which way the plan reads on
+    // screen), not a change in where the model sits. The cutter bakes the
+    // mirror into Drawing2D before this code runs, so un-mirroring here
+    // must cancel it out exactly — flipped and unflipped exports of the
+    // same physical point are byte-identical. This looks like a no-op bug
+    // in isolation; it's the correct, intended behaviour for a
+    // georeferenced CAD file (see the module docstring).
+    const unflipped = buildDxfExportTransform({
+      coordinateInfo,
+      sectionAxis: 'down',
+      isCustomPlane: false,
+      flipped: false,
+    });
+    const flipped = buildDxfExportTransform({
+      coordinateInfo,
+      sectionAxis: 'down',
+      isCustomPlane: false,
+      flipped: true,
+    });
+    // Same physical point, as it would arrive from each cutter variant:
+    // unflipped sees drawing_x = u; flipped sees drawing_x = -u.
+    const u = 4;
+    const drawingY = 6;
+    const unflippedOut = unflipped({ x: u, y: drawingY });
+    const flippedOut = flipped({ x: -u, y: drawingY });
+    close(flippedOut.x, unflippedOut.x);
+    close(flippedOut.y, unflippedOut.y);
   });
 
   it('applies IfcMapConversion (translation + rotation + scale) on top of the world coordinate', () => {
@@ -147,6 +184,88 @@ describe('buildDxfExportTransform', () => {
     const nonUnit = buildTransform(2 * unitCos, 2 * unitSin)({ x: 4, y: 6 });
     close(nonUnit.x, unit.x);
     close(nonUnit.y, unit.y);
+  });
+
+  it('is the exact inverse of the DXF-underlay IMPORT mapping, flipped and unflipped (world -> drawing -> world = identity)', () => {
+    // The contract that actually pins the flip question: `dxfUnderlayToDrawing`
+    // (the REAL import code from issue #1782, not a re-derivation) maps world
+    // plan coordinates into drawing space exactly the way the section cutters
+    // build Drawing2D — render-frame shift, Y flip, and the U mirror on a
+    // flipped section. Export must invert it exactly, for BOTH flip states.
+    const world = { x: 1234.5, y: 2345.25 };
+    const shift = dxfWorldShift(coordinateInfo);
+    const entry: DxfUnderlayState = {
+      id: 'u1',
+      name: 'roundtrip.dxf',
+      visible: true,
+      opacity: 1,
+      layerVisibility: {},
+      placement: { offsetX: 0, offsetY: 0, rotationDeg: 0, scale: 1 },
+      underlay: {
+        name: 'roundtrip.dxf',
+        unitScale: 1,
+        skipped: {},
+        warnings: [],
+        bounds: { min: world, max: world },
+        layers: [
+          {
+            name: 'L',
+            color: '#000000',
+            visible: true,
+            fills: [],
+            texts: [],
+            paths: [{ points: [world, { x: world.x + 1, y: world.y + 1 }], closed: false }],
+          },
+        ],
+      },
+    };
+    for (const flipped of [false, true]) {
+      const drawingPoint = dxfUnderlayToDrawing(entry, shift, flipped).lines[0].points[0];
+      const transform = buildDxfExportTransform({
+        coordinateInfo,
+        sectionAxis: 'down',
+        isCustomPlane: false,
+        flipped,
+      });
+      const back = transform(drawingPoint);
+      close(back.x, world.x, 1e-9);
+      close(back.y, world.y, 1e-9);
+    }
+  });
+
+  it('guards a pathological IfcMapConversion.Scale of 0 (exports unscaled instead of collapsing to a point)', () => {
+    const buildTransform = (scale: number) =>
+      buildDxfExportTransform({
+        coordinateInfo,
+        sectionAxis: 'down',
+        isCustomPlane: false,
+        flipped: false,
+        georeference: {
+          mapConversion: {
+            id: 1,
+            sourceCRS: 1,
+            targetCRS: 1,
+            eastings: 500_000,
+            northings: 6_000_000,
+            orthogonalHeight: 0,
+            xAxisAbscissa: 1,
+            xAxisOrdinate: 0,
+            scale,
+          },
+          projectedCRS: { id: 1, name: 'EPSG:32632', mapUnit: 'METRE', mapUnitScale: 1 },
+          lengthUnitScale: 1,
+        },
+      });
+    const zeroed = buildTransform(0);
+    const unit = buildTransform(1);
+    const a = zeroed({ x: 4, y: 6 });
+    const b = zeroed({ x: 40, y: 60 });
+    // Distinct drawing points must stay distinct (no collapse to the origin)…
+    assert.ok(Math.abs(a.x - b.x) > 1, 'points collapsed under Scale=0');
+    // …and behave exactly like Scale=1.
+    const u = unit({ x: 4, y: 6 });
+    close(a.x, u.x);
+    close(a.y, u.y);
   });
 
   it('falls back to the no-rotation default (1, 0) for a near-zero axis vector', () => {

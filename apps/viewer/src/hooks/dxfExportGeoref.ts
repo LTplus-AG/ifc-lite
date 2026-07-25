@@ -3,16 +3,35 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * DXF export coordinate mapping (issue #1861): the drawing-space →
- * world/map-space inverse of `dxfUnderlayMath.ts`'s `worldToDrawing`.
+ * DXF export coordinate mapping (issue #1861): recovers true IFC world (and,
+ * when georeferenced, map/CRS) coordinates from `Drawing2D`'s render-frame
+ * drawing space, for a plan ('down') section.
  *
- * `useDxfUnderlaysForDrawing` maps a DXF underlay's world plan coordinates
- * (metres, IFC XY, +Y = north) INTO drawing space by subtracting the
- * render-frame shift (`dxfWorldShift`) and mirroring X on a flipped
- * section. `Drawing2D` itself (the generated section/plan) is built in
- * that same drawing space (`projectTo2D` for a 'down' section: `x_d =
- * renderX`, `y_d = renderZ = -ifcY_local`), so exporting it as a
- * georeferenced DXF is the exact inverse of that mapping:
+ * `Drawing2D` arrives PRE-MIRRORED on a flipped section: both cutters apply
+ * the same U-axis flip before this code ever sees a point — the CPU path via
+ * `projectTo2D(point, axis, flipped)` in `math.ts` (`x: flipped ? -u : u`),
+ * the GPU path via `gpu-section-cutter.ts`'s `flipU` uniform, which
+ * multiplies the projected U coordinate by -1 in the shader before it's
+ * written out (`createPlaneData`: `data[6] = config.flipped ? -1.0 : 1.0`).
+ * So for a flipped section, `drawing_x = -u` where `u` is the point's true
+ * (unflipped) render-frame X; for an unflipped section, `drawing_x = u`.
+ *
+ * `flipped` exists purely as a *display* convention (which way the plan
+ * reads on screen) — it is not a change in where the model actually sits.
+ * A georeferenced CAD export must therefore report the SAME world/map
+ * coordinate for the same physical point regardless of how the user had the
+ * viewer's flip toggle set when they hit "Download DXF". The `(flipped ?
+ * -p.x : p.x)` term below is exactly `u = flipped ? -drawing_x :
+ * drawing_x)` — it UNDOES the cutter's pre-mirror, not adds a new one. The
+ * net effect, by design, is that `buildDxfExportTransform`'s output is
+ * flip-invariant: flipped and unflipped exports of the same section produce
+ * byte-identical DXF coordinates. (This looks like a bug in isolation — a
+ * flip that appears to do nothing — until you know the input was already
+ * mirrored; see `dxfExportGeoref.test.ts`'s invariance test.)
+ *
+ * The render-frame shift (`dxfWorldShift`, shared with the DXF-underlay
+ * import path in `dxfUnderlayMath.ts`) is unrelated to the flip and is
+ * always undone the same way:
  *
  *   world_x = (flipped ? -drawing_x : drawing_x) + shift.x
  *   world_y = shift.y - drawing_y     // IFC Y (north), metres
@@ -73,7 +92,13 @@ export function buildDxfExportTransform(params: DxfExportTransformParams): (p: P
 
   const { mapConversion, projectedCRS, lengthUnitScale } = georeference;
   const mapUnitScale = resolveMapUnitToMetreScale(projectedCRS.mapUnitScale, lengthUnitScale);
-  const scale = getEffectiveHorizontalScale(mapConversion.scale, mapUnitScale, lengthUnitScale);
+  // Guard the pathological IfcMapConversion.Scale = 0 (or negative/NaN):
+  // getEffectiveHorizontalScale passes an explicit 0 through, which would
+  // collapse every exported point onto the eastings/northings origin.
+  // Exporting unscaled (1) keeps the geometry intact, which is strictly
+  // less wrong than a single-point file.
+  const rawEffectiveScale = getEffectiveHorizontalScale(mapConversion.scale, mapUnitScale, lengthUnitScale);
+  const scale = Number.isFinite(rawEffectiveScale) && rawEffectiveScale > 0 ? rawEffectiveScale : 1;
   // IfcMapConversion.XAxisAbscissa/XAxisOrdinate form a direction vector, not
   // necessarily unit length — the IFC spec allows an authoring tool to write
   // any non-zero (cos, sin)-proportional pair. Used raw, a non-unit vector

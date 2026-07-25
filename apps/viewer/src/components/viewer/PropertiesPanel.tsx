@@ -983,7 +983,11 @@ export function PropertiesPanel() {
   const zoneMembership = useMemo(() => {
     if (selectedEntityId === null || zoneSets.length === 0) return null;
     const record = zoneAssignments.get(selectedEntityId);
-    const rows: Array<{ label: string; value: string }> = [];
+    // `setId` (durable, unique) keys the rendered rows — `label` is the set's
+    // display NAME, which is "unique-by-convention but not enforced" (see
+    // `ZoneSet.name`), so two same-named sets would collide as React keys
+    // (CodeRabbit review of PR #1869).
+    const rows: Array<{ setId: string; label: string; value: string }> = [];
     for (const zs of zoneSets) {
       const assignment = record?.[zs.id];
       if (!assignment) continue;
@@ -991,9 +995,9 @@ export function PropertiesPanel() {
         const touched = assignment.touchedZoneIds
           .map((zoneId) => zs.zones.find((z) => z.id === zoneId)?.name)
           .filter((n): n is string => !!n);
-        rows.push({ label: zs.name, value: touched.length > 0 ? `${touched.join(', ')} (straddles)` : 'straddles' });
+        rows.push({ setId: zs.id, label: zs.name, value: touched.length > 0 ? `${touched.join(', ')} (straddles)` : 'straddles' });
       } else if (assignment.zoneName) {
-        rows.push({ label: zs.name, value: assignment.zoneName });
+        rows.push({ setId: zs.id, label: zs.name, value: assignment.zoneName });
       }
     }
     return rows.length > 0 ? rows : null;
@@ -1533,7 +1537,7 @@ export function PropertiesPanel() {
           <CollapsibleContent>
             <div className="divide-y border-t">
               {zoneMembership.map((item) => (
-                <div key={item.label} className="grid grid-cols-[minmax(80px,1fr)_minmax(0,2fr)] gap-2 px-3 py-1.5 text-sm">
+                <div key={item.setId} className="grid grid-cols-[minmax(80px,1fr)_minmax(0,2fr)] gap-2 px-3 py-1.5 text-sm">
                   <span className="text-muted-foreground truncate" title={item.label}>{item.label}</span>
                   <span className="font-medium font-mono truncate" title={item.value}>{item.value}</span>
                 </div>

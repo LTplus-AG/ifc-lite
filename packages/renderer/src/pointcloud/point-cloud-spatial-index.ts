@@ -100,6 +100,26 @@ export const MAX_DILATION_RADIUS_CELLS = 4;
 const CELL_KEY_BIAS = 1 << 16; // 65,536 cells = ±32.7 km at 0.5 m cells
 const CELL_KEY_RANGE = CELL_KEY_BIAS * 2; // 2^17 per axis → max key 2^51, f64-exact
 
+/**
+ * Absolute cap on DDA march steps per query (CodeRabbit CLI review,
+ * PR #1875). `maxSteps` otherwise scales with the ray's traversal of the
+ * cloud's bounding box, and `maxDistance` is `Infinity` whenever the
+ * cursor has no mesh under it — so a total-miss march across an
+ * un-rebased site-scale aerial cloud (50 km box) walked ~200k cells with
+ * up-to-729-cell neighborhoods on EVERY pointer move (measured 0.2-4.4 s
+ * per query). 8192 steps cover ≥2.4 km of ray travel from the box entry
+ * (≥ cellSize/√3 of t per step; ~4 km axis-aligned at 0.5 m cells) —
+ * far beyond snapping's useful range: the effective snap radius already
+ * clamps at `MAX_DILATION_RADIUS_CELLS * cellSize` (2 m), which is
+ * sub-pixel past ~1 km at any practical zoom, so points beyond the cap
+ * were unsnappable in practice anyway. Bounds worst-case query work
+ * independent of the cloud's geographic extent.
+ */
+const MAX_MARCH_CELLS = 8192;
+
+/** √3 — a cube cell's diagonal in units of its edge length. */
+const CELL_DIAGONAL = Math.sqrt(3);
+
 /** Clamp a relative cell coordinate into the packable per-axis window. */
 function clampRelCell(c: number): number {
   return c < -CELL_KEY_BIAS ? -CELL_KEY_BIAS : c >= CELL_KEY_BIAS ? CELL_KEY_BIAS - 1 : c;
@@ -484,8 +504,12 @@ export class PointCloudSpatialIndex {
     let maxRadiusUsed = 1;
 
     // Safety cap: bounds the loop even if DDA step math misbehaves at a
-    // grazing angle (near-zero direction components with fp error).
-    const maxSteps = 8 + Math.ceil((tMax - tMin) / cs) * 3;
+    // grazing angle (near-zero direction components with fp error), AND
+    // bounds worst-case work per query via the absolute `MAX_MARCH_CELLS`
+    // ceiling — without it a total-miss march across a site-scale cloud
+    // with `maxDistance = Infinity` (no mesh under the cursor) walked the
+    // whole bounding box on every pointer move (see MAX_MARCH_CELLS docs).
+    const maxSteps = Math.min(MAX_MARCH_CELLS, 8 + Math.ceil((tMax - tMin) / cs) * 3);
     for (let step = 0; step < maxSteps && t <= tMax; step++) {
       // Dilation radius covering toleranceAt(t) at THIS cell's ray
       // parameter — toleranceAt grows with depth, so a fixed +-1 cell
@@ -501,13 +525,20 @@ export class PointCloudSpatialIndex {
       this.testCellNeighborhood(cx, cy, cz, radius, origin, dir, tMax, toleranceAt, classMask, visited, best);
 
       // DDA visits cells in non-decreasing t order, so once we have a
-      // hit and have advanced `maxRadiusUsed` full cells past it, no
-      // later cell can hold a nearer point — stop early instead of
-      // walking to tMax. Using the largest radius seen so far (rather
-      // than the current step's) is conservative: a hit found under a
-      // wide dilation could still have a nearer point just beyond a
-      // narrower later step's smaller neighborhood.
-      if (best.hit && t > best.hit.distance + maxRadiusUsed * cs) break;
+      // hit and have advanced well past it, no later cell can hold a
+      // nearer point — stop early instead of walking to tMax. Using the
+      // largest radius seen so far (rather than the current step's) is
+      // conservative: a hit found under a wide dilation could still have
+      // a nearer point just beyond a narrower later step's smaller
+      // neighborhood. The margin accounts for the dilated block's full
+      // diagonal (CodeRabbit CLI review, PR #1875): a cell at offset
+      // (±r,±r,±r) is never on the march path itself, so a point inside
+      // it can project onto the ray up to (r + 1) * cs * √3 BEHIND this
+      // step's `t` — a straight `maxRadiusUsed * cs` margin could break
+      // before the off-axis corner cell holding the true nearest point
+      // was ever dilated into view.
+      const breakMargin = (maxRadiusUsed + 1) * cs * CELL_DIAGONAL;
+      if (best.hit && t > best.hit.distance + breakMargin) break;
 
       if (tMaxX < tMaxY) {
         if (tMaxX < tMaxZ) {

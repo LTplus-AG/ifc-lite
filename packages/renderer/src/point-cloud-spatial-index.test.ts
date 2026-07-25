@@ -83,17 +83,42 @@ describe('PointCloudSpatialIndex — depth / occlusion semantics', () => {
 
   it('maxDistance = Infinity with a total miss across a huge (50km) cloud terminates with null', () => {
     // Degenerate-but-reachable: point-cloud-only scene, cursor over empty
-    // space, un-rebased georeferenced extents. The DDA's step cap must
-    // bound the walk (finite box exit → finite maxSteps), not hang.
+    // space, un-rebased georeferenced extents. The ray starts INSIDE the
+    // cloud's bounding box (so the bbox pre-cull cannot reject it — the
+    // DDA genuinely marches) and misses every point; MAX_MARCH_CELLS must
+    // bound the walk (without it this marched ~200k cells, 0.2-4.4s per
+    // query — CodeRabbit CLI review, PR #1875), returning null promptly.
     const idx = new PointCloudSpatialIndex(0.5);
-    idx.insertRange(new Float32Array([0, 0, 0, 50_000, 0, 50_000]), 2);
+    idx.insertRange(new Float32Array([0, 0, 0, 50_000, 1, 50_000]), 2);
     const hit = idx.queryRay(
-      { x: 0, y: 100, z: 0 },
+      { x: 10, y: 0.5, z: 0 },
       { x: Math.SQRT1_2, y: 0, z: Math.SQRT1_2 },
       Infinity,
       flatTolerance(0.05),
     );
     assert.strictEqual(hit, null);
+  });
+
+  it('the march-step cap preserves practical-range snaps and cuts off only beyond-useful depths', () => {
+    // MAX_MARCH_CELLS (8192) bounds per-query work independent of cloud
+    // extent. At 0.5m cells an axis-aligned march covers ~4km of ray
+    // travel from the box entry — a snap 1km deep must still work, while
+    // a point 10km deep (sub-pixel snap zone at any practical zoom, see
+    // MAX_MARCH_CELLS docs) is unreachable by design.
+    const anchor = [0, 5, 0]; // pins the box near the origin; 5m off-axis, never in tolerance
+    const within = new PointCloudSpatialIndex(0.5);
+    within.insertRange(new Float32Array([...anchor, 1_000, 0, 0]), 2);
+    const hitWithin = within.queryRay({ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }, Infinity, flatTolerance(0.05));
+    assert.ok(hitWithin, 'a 1km-deep point (well within the march cap) must still snap');
+    assert.strictEqual(hitWithin!.position.x, 1_000);
+
+    const beyond = new PointCloudSpatialIndex(0.5);
+    beyond.insertRange(new Float32Array([...anchor, 10_000, 0, 0]), 2);
+    assert.strictEqual(
+      beyond.queryRay({ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }, Infinity, flatTolerance(0.05)),
+      null,
+      'a 10km-deep point is beyond the bounded march (and beyond any usable snap zone)',
+    );
   });
 
   it('excludes points beyond maxDistance', () => {

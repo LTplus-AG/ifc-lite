@@ -52,6 +52,10 @@ import type { GeometryResult } from '@ifc-lite/geometry';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import { dxfWorldShift } from './dxfUnderlayMath';
 import { getEffectiveHorizontalScale, resolveMapUnitToMetreScale } from '@/lib/geo/geo-scale';
+import {
+  selectAnchorGeoref,
+  type SelectAnchorGeorefParams,
+} from '@/lib/geo/useAnchorGeoreference';
 
 /** The subset of `EffectiveGeoreference` the DXF export transform needs. */
 export interface DxfExportGeoreference {
@@ -59,6 +63,29 @@ export interface DxfExportGeoreference {
   projectedCRS: ProjectedCRS;
   /** IFC project length-unit → metres (from `IfcUnitAssignment`). */
   lengthUnitScale: number;
+}
+
+/**
+ * Resolve the georeference a DXF export should target: the federation
+ * *anchor* model's effective georef — the file's IfcMapConversion /
+ * IfcProjectedCRS merged with any user placement edits. Placement changes
+ * applied in `CesiumPlacementEditor` land in the store's `georefMutations`
+ * map (keyed by model id, `'__legacy__'` for the single-model store), NOT
+ * in `ifcDataStore`, so reading the data store alone exports the original
+ * file coordinates while the viewer displays the edited placement (PR
+ * #1871 review, P1). Delegates to {@link selectAnchorGeoref} — the exact
+ * pinned-anchor / earliest-loaded / legacy-fallback rule ViewportContainer's
+ * Cesium georef memo and the measure readout use — so the exported DXF
+ * always agrees with the placement the viewer shows, and a georef the user
+ * ADDED entirely via the editor (no file georef) is exported too.
+ */
+export function resolveDxfExportGeoreference(
+  params: SelectAnchorGeorefParams,
+): DxfExportGeoreference | null {
+  const selection = selectAnchorGeoref(params);
+  if (!selection) return null;
+  const { mapConversion, projectedCRS, lengthUnitScale } = selection.eff;
+  return { mapConversion, projectedCRS, lengthUnitScale };
 }
 
 export interface DxfExportTransformParams {

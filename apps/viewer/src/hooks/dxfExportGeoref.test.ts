@@ -15,9 +15,12 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { exportToDXF, parseDxf, DEFAULT_SECTION_CONFIG, type Drawing2D } from '@ifc-lite/drawing-2d';
-import { buildDxfExportTransform } from './dxfExportGeoref.js';
+import { IfcParser } from '@ifc-lite/parser';
+import { buildDxfExportTransform, resolveDxfExportGeoreference } from './dxfExportGeoref.js';
 import { dxfWorldShift, dxfUnderlayToDrawing } from './dxfUnderlayMath.js';
 import type { DxfUnderlayState } from '@/store/slices/drawing2DSlice';
+import type { GeorefMutationDataLike } from '@/lib/geo/effective-georef';
+import type { FederatedModel } from '@/store/types';
 import type { GeometryResult } from '@ifc-lite/geometry';
 
 const close = (a: number, b: number, eps = 1e-6) =>
@@ -345,5 +348,178 @@ describe('DXF export georeference round trip (through the real writer + parser)'
     assert.ok(line && line.kind === 'line');
     close(line.x1, 4 + 1003);
     close(line.y1, 2007 - 6);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// resolveDxfExportGeoreference (PR #1871 review, P1): placement edits applied
+// in CesiumPlacementEditor land in the store's `georefMutations` map, not in
+// the IfcDataStore. The DXF export must resolve the same anchor-model
+// mutation entry ViewportContainer's Cesium georef memo uses, or the export
+// silently ships the ORIGINAL file placement while the viewer displays the
+// edited one. These tests parse a real minimal IFC (IfcMapConversion +
+// IfcProjectedCRS) and assert that a mutation entry actually changes the
+// coordinates written into the exported DXF.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const GEOREF_FIXTURE = `ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'P',$,$,$,$,(#10),#20);
+#10=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#11,$);
+#11=IFCAXIS2PLACEMENT3D(#12,$,$);
+#12=IFCCARTESIANPOINT((0.,0.,0.));
+#20=IFCUNITASSIGNMENT((#21));
+#21=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#30=IFCPROJECTEDCRS('EPSG:2056','CH1903+ / LV95','CH1903+','LN02',$,$,#21);
+#31=IFCMAPCONVERSION(#10,#30,2600000.,1200000.,400.,1.,0.,1.);
+ENDSEC;
+END-ISO-10303-21;
+`;
+
+/** Same model, no georeferencing entities at all. */
+const UNGEOREFERENCED_FIXTURE = GEOREF_FIXTURE
+  .split('\n')
+  .filter((l) => !l.startsWith('#30=') && !l.startsWith('#31='))
+  .join('\n');
+
+async function parseStore(source: string) {
+  const bytes = new TextEncoder().encode(source);
+  return new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer, { disableWorkerScan: true });
+}
+
+function federatedModel(id: string, ifcDataStore: unknown, loadedAt: number): FederatedModel {
+  return { id, ifcDataStore, loadedAt } as unknown as FederatedModel;
+}
+
+/** Export the fixed drawing point (4, 6) through `georeference` and read back the DXF line. */
+function exportPoint(georeference: ReturnType<typeof resolveDxfExportGeoreference>) {
+  const drawing = emptyDrawing();
+  drawing.lines = [
+    {
+      line: { start: { x: 4, y: 6 }, end: { x: 4, y: 6 } },
+      category: 'cut',
+      visibility: 'visible',
+      entityId: 1,
+      ifcType: 'IfcWall',
+      modelIndex: 0,
+      depth: 0,
+    },
+  ];
+  const transform = buildDxfExportTransform({
+    coordinateInfo: undefined, // no render-frame shift: world == drawing (x, -y)
+    sectionAxis: 'down',
+    isCustomPlane: false,
+    flipped: false,
+    georeference,
+  });
+  const doc = parseDxf(exportToDXF(drawing, { coordinateTransform: transform }));
+  const line = doc.entities.find((e) => e.kind === 'line');
+  assert.ok(line && line.kind === 'line');
+  return { x: line.x1, y: line.y1 };
+}
+
+describe('resolveDxfExportGeoreference (PR #1871 review: edited georeferencing must reach the DXF export)', () => {
+  it('resolves the file georeference when no mutations exist', async () => {
+    const store = await parseStore(GEOREF_FIXTURE);
+    const georef = resolveDxfExportGeoreference({
+      models: new Map(),
+      legacyDataStore: store,
+      georefMutations: new Map(),
+    });
+    assert.ok(georef);
+    close(georef.mapConversion.eastings, 2_600_000);
+    close(georef.mapConversion.northings, 1_200_000);
+    assert.strictEqual(georef.projectedCRS.name, 'EPSG:2056');
+    close(georef.lengthUnitScale, 1);
+    // World point (4, -6), no rotation: easting = E + 4, northing = N - 6.
+    const out = exportPoint(georef);
+    close(out.x, 2_600_004);
+    close(out.y, 1_199_994);
+  });
+
+  it('an applied placement edit (georefMutations) changes the exported DXF coordinates', async () => {
+    const store = await parseStore(GEOREF_FIXTURE);
+    const mutations = new Map<string, GeorefMutationDataLike>([
+      // '__legacy__' is the mutation key for the single-model store — the
+      // same key ViewportContainer passes for its legacy fallback.
+      ['__legacy__', {
+        mapConversion: {
+          eastings: 2_600_100,
+          northings: 1_199_950,
+          // 90 deg grid rotation: XAxisAbscissa 0, XAxisOrdinate 1.
+          xAxisAbscissa: 0,
+          xAxisOrdinate: 1,
+        },
+      }],
+    ]);
+    const georef = resolveDxfExportGeoreference({
+      models: new Map(),
+      legacyDataStore: store,
+      georefMutations: mutations,
+    });
+    assert.ok(georef);
+    close(georef.mapConversion.eastings, 2_600_100);
+    // World point (4, -6) rotated by +90 deg then offset:
+    //   easting  = E' + (0*4 - 1*(-6)) = E' + 6
+    //   northing = N' + (1*4 + 0*(-6)) = N' + 4
+    const out = exportPoint(georef);
+    close(out.x, 2_600_106);
+    close(out.y, 1_199_954);
+    // And it genuinely differs from the unmutated export of the same point.
+    const base = resolveDxfExportGeoreference({
+      models: new Map(),
+      legacyDataStore: store,
+      georefMutations: new Map(),
+    });
+    const baseOut = exportPoint(base);
+    assert.notStrictEqual(out.x, baseOut.x);
+    assert.notStrictEqual(out.y, baseOut.y);
+  });
+
+  it('resolves the federated anchor model mutation entry by model id (not the legacy key)', async () => {
+    const store = await parseStore(GEOREF_FIXTURE);
+    const models = new Map<string, FederatedModel>([
+      ['m1', federatedModel('m1', store, 5)],
+    ]);
+    const mutations = new Map<string, GeorefMutationDataLike>([
+      ['m1', { mapConversion: { eastings: 2_600_250 } }],
+      // A stale legacy entry must NOT leak onto the federated anchor.
+      ['__legacy__', { mapConversion: { eastings: 9_999_999 } }],
+    ]);
+    const georef = resolveDxfExportGeoreference({
+      models,
+      legacyDataStore: null,
+      georefMutations: mutations,
+    });
+    assert.ok(georef);
+    close(georef.mapConversion.eastings, 2_600_250);
+    close(georef.mapConversion.northings, 1_200_000); // unmutated field keeps the file value
+  });
+
+  it('exports a georef the user ADDED entirely via the placement editor (no file georef)', async () => {
+    const store = await parseStore(UNGEOREFERENCED_FIXTURE);
+    assert.strictEqual(
+      resolveDxfExportGeoreference({ models: new Map(), legacyDataStore: store, georefMutations: new Map() }),
+      null,
+      'ungeoreferenced fixture must not resolve without mutations',
+    );
+    const georef = resolveDxfExportGeoreference({
+      models: new Map(),
+      legacyDataStore: store,
+      georefMutations: new Map<string, GeorefMutationDataLike>([
+        ['__legacy__', {
+          projectedCRS: { name: 'EPSG:2056' },
+          mapConversion: { eastings: 2_600_500, northings: 1_200_500 },
+        }],
+      ]),
+    });
+    assert.ok(georef);
+    assert.strictEqual(georef.projectedCRS.name, 'EPSG:2056');
+    const out = exportPoint(georef);
+    close(out.x, 2_600_504);
+    close(out.y, 1_200_494);
   });
 });

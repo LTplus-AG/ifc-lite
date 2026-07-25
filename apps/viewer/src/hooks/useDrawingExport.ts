@@ -24,8 +24,8 @@ import type { PolygonArea2DResult, TextAnnotation2D, CloudAnnotation2D } from '@
 import type { DxfUnderlayRenderData } from '@/hooks/useDxfUnderlay';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { getEffectiveGeoreference } from '@/lib/geo/effective-georef';
-import { buildDxfExportTransform } from '@/hooks/dxfExportGeoref';
+import { useViewerStore } from '@/store';
+import { buildDxfExportTransform, resolveDxfExportGeoreference } from '@/hooks/dxfExportGeoref';
 
 /** Map a DXF vertical justification onto an SVG dominant-baseline. */
 function dxfValignToBaseline(valign: 'baseline' | 'bottom' | 'middle' | 'top'): string {
@@ -122,7 +122,7 @@ interface UseDrawingExportParams {
   activeSheet: DrawingSheet | null;
   /** DXF underlays pre-mapped to drawing space, rendered beneath the drawing (issue #1782) */
   dxfUnderlays: readonly DxfUnderlayRenderData[];
-  /** Source IFC data store, for IfcMapConversion/IfcProjectedCRS lookup (issue #1861 DXF georeferencing). */
+  /** Legacy single-model data store — the anchor-selection fallback for the DXF georeference lookup (issue #1861); federated models come from the store's `models` map. */
   ifcDataStore: IfcDataStore | null;
   /** Geometry coordinate info (RTC offset + origin shift), for the DXF world-coordinate re-derivation (issue #1861). */
   coordinateInfo: GeometryResult['coordinateInfo'] | undefined;
@@ -153,6 +153,18 @@ function useDrawingExport({
   ifcDataStore,
   coordinateInfo,
 }: UseDrawingExportParams): UseDrawingExportResult {
+  // Georef inputs for the DXF export (PR #1871 review, P1): placement edits
+  // applied in CesiumPlacementEditor live in `georefMutations` (per model
+  // id), not in `ifcDataStore`, and in a federation the georef frame is the
+  // ANCHOR model's, not necessarily the legacy store's. Subscribe to the
+  // same store fields ViewportContainer's Cesium georef memo reads so
+  // `resolveDxfExportGeoreference` sees the identical inputs.
+  const storeModels = useViewerStore((s) => s.models);
+  const anchorModelIdOverride = useViewerStore((s) => s.anchorModelIdOverride);
+  const georefMutations = useViewerStore((s) => s.georefMutations);
+  // Georef edits replace the map, but subscribe to mutationVersion too so the
+  // dependency is explicit (matches ViewportContainer / useAnchorGeoreference).
+  const mutationVersion = useViewerStore((s) => s.mutationVersion);
 
   // Generate SVG that matches the canvas rendering exactly
   const generateExportSVG = useCallback((): string | null => {
@@ -762,16 +774,18 @@ function useDrawingExport({
   const handleExportDXF = useCallback(() => {
     if (!drawing) return;
     const isCustomPlane = sectionPlane.custom !== undefined;
-    const georeference = (() => {
-      if (!ifcDataStore) return null;
-      const effective = getEffectiveGeoreference(ifcDataStore, coordinateInfo);
-      if (!effective?.mapConversion || !effective?.projectedCRS) return null;
-      return {
-        mapConversion: effective.mapConversion,
-        projectedCRS: effective.projectedCRS,
-        lengthUnitScale: effective.lengthUnitScale,
-      };
-    })();
+    // Anchor-model effective georef, INCLUDING user placement edits
+    // (georefMutations) — see resolveDxfExportGeoreference's docs. The
+    // drawing-frame `coordinateInfo` below is unrelated: it undoes the
+    // render-frame shift and stays the merged drawing's regardless of which
+    // model anchors the georef.
+    const georeference = resolveDxfExportGeoreference({
+      models: storeModels,
+      legacyDataStore: ifcDataStore,
+      legacyCoordinateInfo: coordinateInfo,
+      anchorModelIdOverride,
+      georefMutations,
+    });
     const coordinateTransform = buildDxfExportTransform({
       coordinateInfo,
       sectionAxis: sectionPlane.axis,
@@ -798,7 +812,10 @@ function useDrawingExport({
       axis: sectionPlane.axis,
       georeferenced: isGeoreferenced,
     });
-  }, [drawing, displayOptions.showHiddenLines, sectionPlane, ifcDataStore, coordinateInfo]);
+  }, [
+    drawing, displayOptions.showHiddenLines, sectionPlane, ifcDataStore, coordinateInfo,
+    storeModels, anchorModelIdOverride, georefMutations, mutationVersion,
+  ]);
 
   // Print handler
   const handlePrint = useCallback(() => {

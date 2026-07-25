@@ -46,7 +46,7 @@ describe('DxfWriter structure', () => {
     expect(dxf.split('\n')[1]).toBe('ifc-lite export - units: metres, CRS: EPSG:32632');
   });
 
-  it('never emits group 100 (subclass marker) or group 5 (handle) — R13+-only constructs', () => {
+  it('never emits group 100 (subclass marker), group 5 (handle), or LTYPE group 74 — R13+-only constructs', () => {
     const w = new DxfWriter();
     const layer = w.layer('walls', '#ff0000');
     w.addLine({ x: 0, y: 0 }, { x: 1, y: 1 }, layer);
@@ -56,6 +56,20 @@ describe('DxfWriter structure', () => {
     const codes = dxf.split('\n').filter((_, i) => i % 2 === 0);
     expect(codes).not.toContain('100');
     expect(codes).not.toContain('5');
+    expect(codes).not.toContain('74');
+  });
+
+  it('emits the R12 POLYLINE dummy point (10/20/30 = 0) ahead of the VERTEX chain', () => {
+    const w = new DxfWriter();
+    const layer = w.layer('slab', '#333333');
+    w.addPolyline([{ x: 2, y: 3 }, { x: 4, y: 5 }], layer, false);
+    expect(w.toString()).toContain('0\nPOLYLINE\n8\n' + layer + '\n66\n1\n10\n0.0\n20\n0.0\n30\n0.0\n70\n0');
+  });
+
+  it('declares the STANDARD text style in a STYLE table (TEXT references it implicitly)', () => {
+    const dxf = new DxfWriter().toString();
+    expect(dxf).toContain('TABLE\n2\nSTYLE');
+    expect(dxf).toContain('0\nSTYLE\n2\nSTANDARD');
   });
 
   it('computes $EXTMIN/$EXTMAX from written geometry', () => {
@@ -84,10 +98,28 @@ describe('DxfWriter structure', () => {
     expect(dxf).toContain('2\nCut_Lines\n70\n0\n62\n1\n6\nCONTINUOUS'); // ACI 1 = red
   });
 
-  it('sanitizes layer names (spaces and DXF-illegal characters)', () => {
+  it('sanitizes layer names to the R12 symbol charset and 31-character limit', () => {
     expect(sanitizeDxfLayerName('A/B:C')).toBe('A_B_C');
     expect(sanitizeDxfLayerName('Cut Lines')).toBe('Cut_Lines');
     expect(sanitizeDxfLayerName('')).toBe('LAYER');
+    // R12 allows only A-Z a-z 0-9 $ - _ : unicode and punctuation collapse to _.
+    expect(sanitizeDxfLayerName('Wände (EG)')).toBe('W_nde_EG');
+    expect(sanitizeDxfLayerName('a$b-c_d')).toBe('a$b-c_d');
+    // 31-character R12 symbol-name limit (255 is R2000+).
+    expect(sanitizeDxfLayerName('X'.repeat(40))).toBe('X'.repeat(31));
+  });
+
+  it('disambiguates distinct source names that collide after sanitizing (no silent layer merge)', () => {
+    const w = new DxfWriter();
+    const a = w.layer('Wände', '#ff0000');
+    const b = w.layer('Wønde', '#00ff00');
+    const aAgain = w.layer('Wände', '#0000ff');
+    expect(a).toBe('W_nde');
+    expect(b).toBe('W_nde_2');
+    expect(aAgain).toBe(a); // same source name keeps its assigned layer
+    const dxf = w.toString();
+    expect(dxf).toContain('2\nW_nde\n70\n0\n62\n1\n'); // first registration wins the colour
+    expect(dxf).toContain('2\nW_nde_2\n70\n0\n62\n3\n');
   });
 });
 

@@ -5,9 +5,9 @@
 /**
  * ASCII DXF writer (issue #1861): the counterpart to `parser.ts` (DXF
  * import, #1782). Produces DXF R12 (AC1009) text — HEADER, TABLES (LTYPE,
- * LAYER), ENTITIES — from generic entities (POLYLINE/VERTEX/SEQEND, LINE,
- * TEXT) with a layer name and colour, so any CAD/BIM tool that reads plain
- * ASCII DXF can open the result.
+ * STYLE, LAYER), ENTITIES — from generic entities (POLYLINE/VERTEX/SEQEND,
+ * LINE, TEXT) with a layer name and colour, so any CAD/BIM tool that reads
+ * plain ASCII DXF can open the result.
  *
  * R12 is deliberate, not a placeholder: entity handles (group 5) and
  * subclass markers (group 100, e.g. `AcDbEntity`/`AcDbPolyline`) are
@@ -29,7 +29,17 @@
  *    classic `POLYLINE` + `VERTEX`* + `SEQEND`.
  *  - No group 5 (handle) or group 100 (subclass marker) anywhere in this
  *    file — `writer.test.ts` asserts that invariant so a future edit can't
- *    reintroduce a half-upgraded, invalid hybrid.
+ *    reintroduce a half-upgraded, invalid hybrid. The same goes for LTYPE
+ *    group 74 (complex-linetype element type, R13+): R12 linetype patterns
+ *    are plain `49` dash lengths only.
+ *  - Symbol (layer) names follow the R12 rules: at most 31 characters from
+ *    `A-Z a-z 0-9 $ - _` — see {@link sanitizeDxfLayerName}. Distinct
+ *    source names that collide after sanitizing get a numeric suffix so
+ *    they never silently merge into one layer.
+ *  - TABLES carries LTYPE, STYLE (the `STANDARD` text style every TEXT
+ *    entity implicitly references), and LAYER. VPORT/VIEW/UCS/APPID/
+ *    DIMSTYLE are optional in R12 (readers create defaults) and are
+ *    omitted.
  *
  * Coordinates are written verbatim in the caller's unit (drawing metres);
  * see `dxf-exporter.ts` for how the viewer maps its render-frame
@@ -60,8 +70,16 @@ const V_ALIGN_CODE: Record<DxfTextVAlign, number> = { baseline: 0, bottom: 1, mi
 /** Default `999` comment prepended to the file (states units — R12 has no `$INSUNITS`). */
 const DEFAULT_HEADER_COMMENT = 'ifc-lite section export - units: metres';
 
-/** DXF §5.7: table/layer names forbid these characters (control codes are stripped separately). */
-const INVALID_LAYER_CHARS = /[<>/\\":;?*|=`]/g;
+/**
+ * R12 symbol (table-entry) names allow only letters, digits, `$`, `-` and
+ * `_` — anything else (unicode, spaces, punctuation) must be replaced.
+ * Later DXF versions relax this, but this writer targets R12 (see module
+ * docs), so it enforces the strict R12 set.
+ */
+const INVALID_LAYER_CHARS = /[^A-Za-z0-9$_-]/g;
+
+/** R12 symbol names are limited to 31 characters (255 is an R2000+ limit). */
+const MAX_LAYER_NAME_LENGTH = 31;
 
 /**
  * True for an ASCII control character (C0 range or DEL) — these are never
@@ -82,18 +100,21 @@ function stripControlChars(text: string, replacement: string): string {
 }
 
 /**
- * Sanitize a free-text label into a valid DXF LAYER name: strips characters
- * the DXF spec forbids in table names, replaces whitespace with `_` (spaces
- * are technically legal in a DXF name but trip up some CAD tools' layer
- * pickers), collapses the result to something non-empty, and truncates to
- * the 255-byte symbol name limit.
+ * Sanitize a free-text label into a valid DXF R12 LAYER name: every
+ * character outside the R12 symbol-name set (`A-Z a-z 0-9 $ - _` — spaces,
+ * unicode and punctuation included) becomes `_`, runs of `_` produced by
+ * adjacent replacements are collapsed, the result is made non-empty, and
+ * truncated to the R12 31-character symbol-name limit.
+ *
+ * Distinct inputs can collide after this mapping (`Wände`/`Wønde` →
+ * `W_nde`); {@link DxfWriter.layer} disambiguates with a numeric suffix so
+ * two source layers never silently merge.
  */
 export function sanitizeDxfLayerName(name: string): string {
-  const stripped = stripControlChars(name.replace(INVALID_LAYER_CHARS, '_'), '_')
-    .trim()
-    .replace(/\s+/g, '_');
-  const safe = stripped.length > 0 ? stripped : 'LAYER';
-  return safe.slice(0, 255);
+  const stripped = name.replace(INVALID_LAYER_CHARS, '_').replace(/_{2,}/g, '_');
+  const trimmed = stripped.replace(/^_+|_+$/g, '') || stripped;
+  const safe = trimmed.length > 0 ? trimmed : 'LAYER';
+  return safe.slice(0, MAX_LAYER_NAME_LENGTH);
 }
 
 /** Sanitize a single line of DXF TEXT content: strip control characters (no raw newlines). */
@@ -138,6 +159,8 @@ export interface DxfWriterOptions {
  */
 export class DxfWriter {
   private readonly layers = new Map<string, DxfLayerRecord>();
+  /** Raw (pre-sanitization) name → assigned safe name, for stable reuse + collision disambiguation. */
+  private readonly layerNameBySource = new Map<string, string>();
   private readonly entities: EntityWrite[] = [];
   private readonly headerComment: string;
   private minX = Infinity;
@@ -158,15 +181,24 @@ export class DxfWriter {
 
   /**
    * Register (or reuse) a layer. Returns the sanitized layer name to pass to
-   * `addPolyline`/`addLine`/`addText`. Re-registering an existing name with
-   * a different colour/linetype is a no-op (first registration wins) —
-   * callers should derive one style per logical layer.
+   * `addPolyline`/`addLine`/`addText`. Re-registering the same source name
+   * with a different colour/linetype is a no-op (first registration wins) —
+   * callers should derive one style per logical layer. DIFFERENT source
+   * names whose sanitized forms collide (`Wände`/`Wønde` → `W_nde`) get a
+   * numeric suffix (`W_nde`, `W_nde_2`, …) instead of silently merging onto
+   * one layer.
    */
   layer(name: string, cssColor: string, linetype: DxfLinetype = 'CONTINUOUS'): string {
-    const safe = sanitizeDxfLayerName(name);
-    if (!this.layers.has(safe)) {
-      this.layers.set(safe, { name: safe, aci: cssToAci(cssColor), linetype });
+    const assigned = this.layerNameBySource.get(name);
+    if (assigned !== undefined) return assigned;
+    const base = sanitizeDxfLayerName(name);
+    let safe = base;
+    for (let n = 2; this.layers.has(safe); n++) {
+      const suffix = `_${n}`;
+      safe = base.slice(0, MAX_LAYER_NAME_LENGTH - suffix.length) + suffix;
     }
+    this.layers.set(safe, { name: safe, aci: cssToAci(cssColor), linetype });
+    this.layerNameBySource.set(name, safe);
     return safe;
   }
 
@@ -190,9 +222,11 @@ export class DxfWriter {
     const pts = points.slice();
     const colorGroup = this.colorOverrideGroup(colorOverride);
     this.entities.push(() => {
+      // The 10/20/30 "dummy point" (always 0) is part of the R12 POLYLINE
+      // entity — the real coordinates live on the VERTEX chain.
       let s =
         '0\nPOLYLINE\n8\n' + layer + '\n' + colorGroup +
-        '66\n1\n70\n' + (closed ? 1 : 0) + '\n';
+        '66\n1\n10\n0.0\n20\n0.0\n30\n0.0\n70\n' + (closed ? 1 : 0) + '\n';
       for (const p of pts) {
         s += '0\nVERTEX\n8\n' + layer + '\n10\n' + fmt(p.x) + '\n20\n' + fmt(p.y) + '\n30\n0.0\n';
       }
@@ -280,12 +314,30 @@ export class DxfWriter {
   private buildLtypeTable(): string {
     let s = '0\nTABLE\n2\nLTYPE\n70\n2\n';
     s += '0\nLTYPE\n2\nCONTINUOUS\n70\n0\n3\nSolid line\n72\n65\n73\n0\n40\n0.0\n';
-    // Dash 0.2, gap 0.1 (metres) — a reasonable default at typical drawing scale.
+    // Dash 0.2, gap 0.1 (metres) — a reasonable default at typical drawing
+    // scale. R12 pattern elements are plain `49` lengths; group 74
+    // (complex-linetype element type) is an R13+ construct and must NOT
+    // appear here.
     s +=
       '0\nLTYPE\n2\nDASHED\n70\n0\n3\nDashed line\n72\n65\n73\n2\n40\n0.3\n' +
-      '49\n0.2\n74\n0\n49\n-0.1\n74\n0\n';
+      '49\n0.2\n49\n-0.1\n';
     s += '0\nENDTAB\n';
     return s;
+  }
+
+  /**
+   * STYLE table with the single `STANDARD` text style. Every TEXT entity
+   * this writer emits carries no group 7 and therefore implicitly
+   * references STANDARD; defining it keeps strict R12 readers from having
+   * to invent it. (Fixed-height 0, width factor 1, `txt` font — the
+   * classic defaults.)
+   */
+  private buildStyleTable(): string {
+    return (
+      '0\nTABLE\n2\nSTYLE\n70\n1\n' +
+      '0\nSTYLE\n2\nSTANDARD\n70\n0\n40\n0.0\n41\n1.0\n50\n0.0\n71\n0\n42\n0.2\n3\ntxt\n4\n\n' +
+      '0\nENDTAB\n'
+    );
   }
 
   private buildLayerTable(): string {
@@ -298,7 +350,16 @@ export class DxfWriter {
   }
 
   private buildTables(): string {
-    return '0\nSECTION\n2\nTABLES\n' + this.buildLtypeTable() + this.buildLayerTable() + '0\nENDSEC\n';
+    // LTYPE before LAYER (layers reference linetypes by name); STYLE for
+    // the implicit STANDARD text style. VPORT/VIEW/UCS/APPID/DIMSTYLE are
+    // optional in R12 — readers supply defaults — and are omitted.
+    return (
+      '0\nSECTION\n2\nTABLES\n' +
+      this.buildLtypeTable() +
+      this.buildStyleTable() +
+      this.buildLayerTable() +
+      '0\nENDSEC\n'
+    );
   }
 
   private buildEntities(): string {

@@ -128,6 +128,8 @@ function sanitizeDxfComment(text: string): string {
 }
 
 function fmt(n: number): string {
+  // Non-finite input stays deterministic ('0.0'); the condition is surfaced
+  // to the caller via DxfWriter.extend()'s once-per-document console.warn.
   if (!Number.isFinite(n)) return '0.0';
   // Fixed precision keeps output deterministic (stable for golden/round-trip
   // tests) while giving sub-micrometre resolution at metre scale.
@@ -167,12 +169,29 @@ export class DxfWriter {
   private minY = Infinity;
   private maxX = -Infinity;
   private maxY = -Infinity;
+  /** One warning per document for non-finite input coordinates — see extend(). */
+  private warnedNonFinite = false;
 
   constructor(options: DxfWriterOptions = {}) {
     this.headerComment = sanitizeDxfComment(options.headerComment ?? DEFAULT_HEADER_COMMENT);
   }
 
   private extend(p: Point2D): void {
+    if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) {
+      // A bad upstream coordinate (e.g. a pathological georeference scale)
+      // would otherwise vanish silently: NaN fails every comparison below, so
+      // it never extends $EXTMIN/$EXTMAX, and fmt() writes it as a
+      // deterministic 0.0. Keep both behaviours (the file stays valid and
+      // reproducible) but surface the problem — once per document, not per
+      // vertex, so a fully-degenerate polyline can't spam the console.
+      if (!this.warnedNonFinite) {
+        this.warnedNonFinite = true;
+        console.warn(
+          `[DxfWriter] non-finite coordinate (${p.x}, ${p.y}) — written as 0.0 and excluded from $EXTMIN/$EXTMAX (further occurrences in this document are not logged)`,
+        );
+      }
+      return;
+    }
     if (p.x < this.minX) this.minX = p.x;
     if (p.x > this.maxX) this.maxX = p.x;
     if (p.y < this.minY) this.minY = p.y;

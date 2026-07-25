@@ -178,11 +178,12 @@ export type { SVGExportOptions } from './svg-exporter.js';
 // DXF EXPORT (issue #1861)
 // ═══════════════════════════════════════════════════════════════════════════
 
+// Only the exporter facade is public. The low-level writer internals
+// (DxfWriter, sanitizeDxfLayerName, cssToAci, the linetype/justification
+// types) stay package-private: no external consumer exists, and an unused
+// public export is permanent semver liability (PR #1871 review).
 export { DXFExporter, exportToDXF } from './dxf-exporter.js';
 export type { DXFExportOptions, DXFUnderlayOptions } from './dxf-exporter.js';
-export { DxfWriter, sanitizeDxfLayerName } from './dxf/writer.js';
-export type { DxfLinetype, DxfTextHAlign, DxfTextVAlign } from './dxf/writer.js';
-export { cssToAci } from './dxf/aci-colors.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // GPU ACCELERATION

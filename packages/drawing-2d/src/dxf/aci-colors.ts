@@ -73,8 +73,10 @@ export function aciToCss(index: number): string {
 }
 
 /**
- * Resolve a CSS colour (`#rrggbb`/`#rgb`, `rgb(...)`, or a bare colour
- * keyword) to the nearest AutoCAD Color Index (1-255), for the DXF writer
+ * Resolve a CSS colour (`#rrggbb`/`#rgb` hex, or an `rgb(...)`/`rgba(...)`
+ * function — the only formats {@link parseCssColor} handles; bare colour
+ * keywords are NOT parsed and take the ACI-7 fallback) to the nearest
+ * AutoCAD Color Index (1-255), for the DXF writer
  * (issue #1861): DXF LAYER/entity colour is always an ACI, so an exported
  * layer's CSS style colour needs a reverse lookup against the same table
  * {@link aciToCss} reads forward. Ties break toward the lowest index (the

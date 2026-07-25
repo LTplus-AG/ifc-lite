@@ -151,6 +151,42 @@ describe('buildDxfExportTransform', () => {
     close(out.y, 6_000_000 + 1007);
   });
 
+  it('bridges a non-metre CRS map unit: offsets authored in US survey feet land as metres (PR #1871 review)', () => {
+    // All other georef tests use mapUnitScale = 1, leaving the
+    // eastings/northings unit bridging unexercised. IfcMapConversion offsets
+    // are authored in IfcProjectedCRS.MapUnit — here US survey feet — and
+    // the exported DXF is always metres, so the offsets must be scaled by
+    // mapUnitScale while the (already metre) geometry passes through at 1:1
+    // via the spec-compliant Scale (= lengthUnitScale / mapUnitScale).
+    const FT_US = 0.3048006096;
+    const transform = buildDxfExportTransform({
+      coordinateInfo,
+      sectionAxis: 'down',
+      isCustomPlane: false,
+      flipped: false,
+      georeference: {
+        mapConversion: {
+          id: 1,
+          sourceCRS: 1,
+          targetCRS: 1,
+          eastings: 500_000, // authored in ftUS
+          northings: 6_000_000, // authored in ftUS
+          orthogonalHeight: 0,
+          xAxisAbscissa: 1,
+          xAxisOrdinate: 0,
+          scale: 1 / FT_US, // spec unit bridge: metre project -> ftUS map
+        },
+        projectedCRS: { id: 1, name: 'EPSG:2230', mapUnit: 'USSURVEYFOOT', mapUnitScale: FT_US },
+        lengthUnitScale: 1,
+      },
+    });
+    // world point (after un-shift) is (1007, 2001); effective horizontal
+    // scale = (1/FT_US) * FT_US / 1 = 1, offsets bridge ftUS -> metres.
+    const out = transform({ x: 4, y: 6 });
+    close(out.x, 500_000 * FT_US + 1007);
+    close(out.y, 6_000_000 * FT_US + 2001);
+  });
+
   it('normalizes a non-unit XAxisAbscissa/XAxisOrdinate direction (IFC allows non-unit vectors)', () => {
     // Some authoring tools write (abscissa, ordinate) scaled by an arbitrary
     // magnitude even though the IFC spec models it as a direction. A vector

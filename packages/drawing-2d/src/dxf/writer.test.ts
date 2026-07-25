@@ -17,7 +17,7 @@
  * "no group 100 / no group 5" guard test below.
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { DxfWriter, sanitizeDxfLayerName } from './writer.js';
 import { cssToAci, aciToCss } from './aci-colors.js';
 import { parseDxf } from './parser.js';
@@ -228,5 +228,32 @@ describe('cssToAci / aciToCss', () => {
 
   it('falls back to black (ACI 7) for unparseable colour strings', () => {
     expect(cssToAci('not-a-color')).toBe(7);
+  });
+});
+
+describe('DxfWriter non-finite coordinate handling (PR #1871 review)', () => {
+  it('warns once per document, keeps deterministic 0.0 output, and leaves $EXTMIN/$EXTMAX finite', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const w = new DxfWriter();
+      const layer = w.layer('A', '#000000');
+      w.addLine({ x: NaN, y: 0 }, { x: Infinity, y: NaN }, layer);
+      w.addLine({ x: 2, y: 3 }, { x: 4, y: 5 }, layer);
+      const dxf = w.toString();
+      // One warning for the whole document, not one per bad vertex.
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0][0])).toContain('non-finite');
+      // Output stays deterministic and parseable: the bad point is 0.0.
+      const doc = parseDxf(dxf);
+      const lines = doc.entities.filter((e): e is DxfLineEntity => e.kind === 'line');
+      expect(lines).toHaveLength(2);
+      expect(lines[0].x1).toBe(0);
+      expect(lines[0].y1).toBe(0);
+      // Extents come from the finite geometry only (never NaN/Infinity).
+      expect(dxf).toContain('$EXTMIN\n10\n2.000000\n20\n3.000000');
+      expect(dxf).toContain('$EXTMAX\n10\n4.000000\n20\n5.000000');
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

@@ -108,6 +108,39 @@ describe('transformAabb (issue #1804 world-space point-cloud bounds)', () => {
     assert.strictEqual(transformAabb(box, new Float32Array(3)), box);
   });
 
+  it('falls back to identity on a non-finite matrix, in BOTH consumers', () => {
+    // A single NaN propagates to every corner of the box and to every point
+    // on the GPU, so a degenerate matrix must fall back rather than poison
+    // the result. Critically, the AABB fold and the uniform write must agree:
+    // if one accepted a matrix the other rejected, the reported bounds would
+    // sit in a different frame from the rendered points — the exact failure
+    // this transform exists to prevent (CodeRabbit review of PR #1878).
+    const nan = new Float32Array(16);
+    nan.set([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+    nan[12] = Number.NaN;
+    const inf = new Float32Array(nan);
+    inf[12] = Number.POSITIVE_INFINITY;
+
+    for (const bad of [nan, inf]) {
+      // Consumer 1: bounds fold returns the input box untouched.
+      assert.strictEqual(transformAabb(box, bad), box);
+
+      // Consumer 2: uniform write falls back to identity at floats 16..31.
+      const scratch = new Float32Array(POINT_UNIFORM_SIZE / 4);
+      const scratchU32 = new Uint32Array(scratch.buffer);
+      const node = {
+        meta: { expressId: 1 },
+        uniformBuffer: {} as GPUBuffer,
+        model: bad,
+      } as unknown as PointCloudNode;
+      writePointCloudUniforms(makeDevice(), scratch, scratchU32, node, makeInputs());
+      assert.deepStrictEqual(
+        Array.from(scratch.subarray(16, 32)),
+        [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+      );
+    }
+  });
+
   it('applies a pure translation to both corners', () => {
     const m = new Float32Array([
       1, 0, 0, 0,

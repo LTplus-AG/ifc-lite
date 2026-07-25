@@ -327,6 +327,10 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       // above; `useZoneAssignmentSync` recomputes against the new scene.
       zoneAssignments: new Map(),
       zoneAssignmentTiming: null,
+      // ... and drop any in-flight zone-edit session: leaving `editingZone`
+      // set would hand the incoming model live gizmo handles + picking for
+      // a zone the user was editing against the outgoing model.
+      editingZone: null,
 
       // Hover/Context
       hoverState: { entityId: null, screenX: 0, screenY: 0 },

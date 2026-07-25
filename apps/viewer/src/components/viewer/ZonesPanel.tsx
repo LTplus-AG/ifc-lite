@@ -14,7 +14,7 @@
  * `zonesSlice` already does).
  */
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Box,
   Plus,
@@ -181,6 +181,20 @@ export function ZonesPanel({ onClose }: ZonesPanelProps) {
   const [newSetName, setNewSetName] = useState('');
   const importInputRef = useRef<HTMLInputElement>(null);
 
+  // `ZoneOverlay` is mounted independently at the viewport root, so an edit
+  // session left behind when this panel goes away would keep live gizmo
+  // handles intercepting pointer events with no UI left to stop them
+  // (PR #1869 review, P2). Clear on unmount (panel switch) — the explicit
+  // close button below clears eagerly too.
+  useEffect(() => () => {
+    useViewerStore.getState().setEditingZone(null);
+  }, []);
+
+  const handleClose = useCallback(() => {
+    setEditingZone(null);
+    onClose?.();
+  }, [setEditingZone, onClose]);
+
   const handleAddSet = useCallback(() => {
     const name = newSetName.trim() || 'Untitled set';
     createZoneSet(name);
@@ -226,7 +240,7 @@ export function ZonesPanel({ onClose }: ZonesPanelProps) {
         <Box className="h-4 w-4 text-amber-600" />
         <span className="font-medium text-sm flex-1">Location zones</span>
         {onClose && (
-          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onClose}>
+          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={handleClose}>
             <X className="h-3.5 w-3.5" />
           </Button>
         )}

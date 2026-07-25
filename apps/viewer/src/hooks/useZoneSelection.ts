@@ -18,6 +18,49 @@
 
 import { useViewerStore } from '@/store';
 import type { EntityRef } from '@/store/types';
+import type { ZoneAssignmentsByElement } from '@/lib/zones/types';
+
+export interface ZoneSelectionResolution {
+  /** Global ids that matched AND resolved through `fromGlobalId` — feeds
+   *  `setSelectedEntityIds` (the channel that drives highlight and
+   *  frameSelection). */
+  globalIds: number[];
+  /** The same elements as `globalIds`, as model-aware refs for
+   *  `addEntitiesToSelection`. Always the same length as `globalIds`. */
+  refs: EntityRef[];
+}
+
+/**
+ * Pure core of {@link selectElementsInZone}, extracted for unit tests.
+ *
+ * A matched assignment whose global id no longer resolves through
+ * `fromGlobalId` (e.g. the model was unloaded between the last assignment
+ * recompute and this call) is dropped from BOTH outputs — the two selection
+ * channels must never diverge, and the caller's "Selected N element(s)"
+ * toast must count what was actually selected (PR #1869 review).
+ */
+export function resolveZoneSelection(
+  zoneAssignments: ZoneAssignmentsByElement,
+  setId: string,
+  zoneId: string | null,
+  fromGlobalId: (globalId: number) => { modelId: string; expressId: number } | null | undefined,
+): ZoneSelectionResolution {
+  const globalIds: number[] = [];
+  const refs: EntityRef[] = [];
+  for (const [globalId, record] of zoneAssignments) {
+    const assignment = record[setId];
+    if (!assignment) continue;
+    const matches = zoneId === null
+      ? assignment.touchedZoneIds.length === 0
+      : assignment.zoneId === zoneId || assignment.touchedZoneIds.includes(zoneId);
+    if (!matches) continue;
+    const lookup = fromGlobalId(globalId);
+    if (!lookup) continue;
+    globalIds.push(globalId);
+    refs.push({ modelId: lookup.modelId, expressId: lookup.expressId });
+  }
+  return { globalIds, refs };
+}
 
 /**
  * Select every element assigned to `zoneId` within zone set `setId`.
@@ -28,28 +71,19 @@ import type { EntityRef } from '@/store/types';
  * elements straddling A and B, matching what the Lists `zone` column shows
  * for that row).
  *
- * Returns the number of elements selected.
+ * Returns the number of elements actually selected (matched AND resolved).
  */
 export function selectElementsInZone(setId: string, zoneId: string | null): number {
   const state = useViewerStore.getState();
-  const globalIds: number[] = [];
-  for (const [globalId, record] of state.zoneAssignments) {
-    const assignment = record[setId];
-    if (!assignment) continue;
-    const matches = zoneId === null
-      ? assignment.touchedZoneIds.length === 0
-      : assignment.zoneId === zoneId || assignment.touchedZoneIds.includes(zoneId);
-    if (matches) globalIds.push(globalId);
-  }
+  const { globalIds, refs } = resolveZoneSelection(
+    state.zoneAssignments,
+    setId,
+    zoneId,
+    (globalId) => state.fromGlobalId(globalId),
+  );
 
   state.clearEntitySelection();
   if (globalIds.length === 0) return 0;
-
-  const refs: EntityRef[] = [];
-  for (const globalId of globalIds) {
-    const lookup = state.fromGlobalId(globalId);
-    if (lookup) refs.push({ modelId: lookup.modelId, expressId: lookup.expressId });
-  }
 
   state.setSelectedEntityIds(globalIds);
   state.addEntitiesToSelection(refs);

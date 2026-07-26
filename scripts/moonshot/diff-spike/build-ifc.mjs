@@ -24,14 +24,73 @@ export const REPO_ROOT = path.resolve(__dirname, '../../..');
 const { IfcCreator } = await import(
   path.join(REPO_ROOT, 'packages/create/dist/index.js')
 );
+const { generateIfcGuid } = await import(
+  path.join(REPO_ROOT, 'packages/encoding/dist/index.js')
+);
 
 const BEAM_GAP = 0.05;
 
+// ============================================================================
+// Seeded deterministic builds (certified-optimization raw-hash commitment)
+// ============================================================================
+
+/**
+ * Names the exact seeded-build recipe below. A verifier that sees this spec
+ * in a chain's endpoint reproduces the RAW file bytes from
+ * (finalParams, guidSeed, timestampMs) alone; any change to the recipe
+ * (PRNG, seed hashing, GUID derivation) must mint a new spec name so old
+ * chains fail fast instead of mis-verifying.
+ */
+export const SEEDED_BUILD_SPEC = 'diff-spike-ifc-seeded-v1';
+
+/** FNV-1a hash of a string seed to a uint32 (same construction as tools/world-gym/lib/rng.mjs). */
+function hashSeed(input) {
+  let h = 0x811c9dc5;
+  const s = String(input);
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}
+
+/** mulberry32 PRNG - `() => float in [0,1)`. */
+function mulberry32(seedUint32) {
+  let a = seedUint32 >>> 0;
+  return function next() {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/**
+ * The `buildIfc` determinism argument for a seeded certified build:
+ * GlobalIds drawn from `@ifc-lite/encoding`'s `generateIfcGuid(random)`
+ * over a mulberry32 stream seeded from `guidSeed`, header/owner-history
+ * pinned to `timestampMs`. Pure function of its inputs - the raw file
+ * bytes of `buildIfc(x, seededBuildOptions(...))` are re-derivable by any
+ * verifier holding (x, guidSeed, timestampMs).
+ */
+export function seededBuildOptions(guidSeed, timestampMs) {
+  const random = mulberry32(hashSeed(guidSeed));
+  return {
+    Timestamp: timestampMs,
+    GuidSource: () => generateIfcGuid(random),
+  };
+}
+
 /**
  * @param {number[]} x design vector in PARAMS order
+ * @param {{ Timestamp?: number, GuidSource?: () => string }} [determinism]
+ *   optional IfcCreator determinism pins (ProjectParams.Timestamp /
+ *   ProjectParams.GuidSource) - pass both to make the output bytes a pure
+ *   function of `x`; omit for wall-clock/CSPRNG defaults.
  * @returns {{ content: string, mapping: Array<{expressId:number,key:string,ifcType:string,material:string}> }}
  */
-export function buildIfc(x) {
+export function buildIfc(x, determinism = {}) {
   const [Lx, Ly, h1, h2, h3, tw, ts, tr, wwL, wh, sill, dw, dh,
     cw, cd, bw, bh, tp, wwS, gt, fw, fd, fh, dt] = x;
 
@@ -39,6 +98,8 @@ export function buildIfc(x) {
     Name: 'diff-spike parametric building',
     Schema: 'IFC4',
     Author: 'M3 differentiability spike',
+    ...(determinism.Timestamp !== undefined ? { Timestamp: determinism.Timestamp } : {}),
+    ...(determinism.GuidSource !== undefined ? { GuidSource: determinism.GuidSource } : {}),
   });
 
   const mapping = [];

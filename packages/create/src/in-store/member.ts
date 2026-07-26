@@ -86,12 +86,12 @@ export function addMemberToStore(
   const solidId = emitExtrudedSolid(editor, profileId, memberLen);
   const { shapeRepId, productShapeId } = emitBodyRepresentation(editor, anchor.bodyContextId, solidId);
 
-  const attrs = ifcElementHeader(anchor.ownerHistoryId, placementId, productShapeId, params, 'Member');
+  const attrs = ifcElementHeader(anchor.ownerHistoryId, placementId, productShapeId, params, 'Member', anchor.guidRandom);
   if ((anchor.schema ?? 'IFC4') !== 'IFC2X3') {
     attrs.push(`.${params.PredefinedType ?? 'NOTDEFINED'}.`);
   }
   const memberId = editor.addEntity('IfcMember', attrs as Parameters<StoreEditor['addEntity']>[1]).expressId;
-  const relContainedId = emitRelContainedInSpatialStructure(editor, anchor.ownerHistoryId, memberId, anchor.storeyId);
+  const relContainedId = emitRelContainedInSpatialStructure(editor, anchor.ownerHistoryId, memberId, anchor.storeyId, anchor.guidRandom);
 
   return { memberId, placementId, profileId, solidId, shapeRepId, productShapeId, relContainedId };
 }

@@ -81,11 +81,33 @@ export interface PointCloudNode {
  * Returns the input box unchanged for a missing/malformed matrix
  * (mirrors `writePointCloudUniforms`' identity fallback).
  */
+/**
+ * True when `model` is a usable 4x4: exactly 16 entries, all finite.
+ *
+ * Single-sourced so the two consumers of `PointCloudNode.model` — the AABB
+ * fold below and `writePointCloudUniforms`' GPU write — accept exactly the
+ * same matrices. When they disagree, a matrix one accepts and the other
+ * rejects puts the reported bounds in a different frame from the rendered
+ * points, which is the precise failure this transform exists to prevent.
+ * The finiteness check matters because a single NaN propagates to every
+ * corner of the box (and to every point on the GPU), so a degenerate matrix
+ * must fall back to identity rather than poison the result.
+ */
+export function isUsableModelMatrix(
+  model: Float32Array | undefined,
+): model is Float32Array {
+  if (!model || model.length !== 16) return false;
+  for (let i = 0; i < 16; i++) {
+    if (!Number.isFinite(model[i])) return false;
+  }
+  return true;
+}
+
 export function transformAabb(
   bounds: { min: [number, number, number]; max: [number, number, number] },
   model: Float32Array | undefined,
 ): { min: [number, number, number]; max: [number, number, number] } {
-  if (!model || model.length !== 16) return bounds;
+  if (!isUsableModelMatrix(model)) return bounds;
   const min: [number, number, number] = [Infinity, Infinity, Infinity];
   const max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
   for (let c = 0; c < 8; c++) {

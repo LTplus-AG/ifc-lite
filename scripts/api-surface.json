@@ -1289,6 +1289,7 @@
     "projectPointOnLine: function",
     "projectProfiles: function",
     "projectTo2D: function",
+    "projectTo2DBasis: function",
     "propertyCriterion: function",
     "renderFrame: function",
     "renderNorthArrow: function",

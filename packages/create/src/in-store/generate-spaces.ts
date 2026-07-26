@@ -15,6 +15,7 @@
  * plus a richer per-region summary (area, outline) for UI feedback.
  */
 
+import type { RandomSource } from '@ifc-lite/encoding';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import { resolveSpatialAnchor } from './resolve-anchor.js';
@@ -82,6 +83,12 @@ export interface GenerateSpacesOptions {
   skipFootprints?: Vec2[][];
   /** Where the space boundary sits relative to its walls. Default 'inner'. */
   boundaryMode?: BoundaryMode;
+  /**
+   * Optional seeded randomness for the emitted GlobalIds (spaces + rels),
+   * forwarded to the builders via `SpatialAnchor.guidRandom`. Omit for the
+   * default platform CSPRNG.
+   */
+  guidRandom?: RandomSource;
 }
 
 export interface GenerateSpacesResult {
@@ -177,6 +184,7 @@ export function generateSpacesFromWalls(
   if (!anchor) {
     throw new Error(`generateSpacesFromWalls: no resolvable spatial anchor for storey #${storeyExpressId}`);
   }
+  if (options.guidRandom !== undefined) anchor.guidRandom = options.guidRandom;
 
   const allOutlines = rooms.map((r) => r.outline);
   rooms.forEach((region, i) => {

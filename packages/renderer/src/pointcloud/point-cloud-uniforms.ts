@@ -12,6 +12,7 @@
 
 import { POINT_UNIFORM_SIZE } from './point-pipeline.js';
 import type { PointCloudNode } from './point-cloud-node.js';
+import { isUsableModelMatrix } from './point-cloud-node.js';
 
 export type PointColorMode =
   | 'rgb'
@@ -111,7 +112,7 @@ export function writePointCloudUniforms(
   // model — floats 16..31. Per-asset transform (issue #1804: point-cloud
   // ↔ IfcMapConversion alignment); defaults to identity when the node
   // carries none.
-  if (node.model && node.model.length === 16) {
+  if (isUsableModelMatrix(node.model)) {
     u.set(node.model, 16);
   } else {
     u.fill(0, 16, 32);

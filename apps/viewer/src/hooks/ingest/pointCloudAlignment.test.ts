@@ -8,7 +8,10 @@ import assert from 'node:assert';
 import {
   applyMapConversion,
   computePointCloudAlignment,
+  getPointCloudAlignmentMatrix,
   invertMapConversion,
+  registerPointCloudAlignment,
+  unregisterPointCloudAlignment,
   type MapConversionParams,
 } from './pointCloudAlignment.js';
 import type { ModelGeoref } from './federationAlign.js';
@@ -334,5 +337,59 @@ describe('computePointCloudAlignment (issue #1804)', () => {
   it('returns null when the effective scale is ~zero', () => {
     const georef = makeGeoref({ mapConversion: { scale: 0 } });
     assert.strictEqual(computePointCloudAlignment(georef), null);
+  });
+});
+
+/**
+ * `getPointCloudAlignmentMatrix` feeds CPU consumers (the 2D scan overlay)
+ * the matrix the GPU is currently drawing through, so they place raw
+ * cached points where the user actually sees them.
+ */
+describe('getPointCloudAlignmentMatrix', () => {
+  const georef: ModelGeoref = {
+    mapConversion: {
+      eastings: 2_600_000, northings: 1_200_000, orthogonalHeight: 450,
+      xAxisAbscissa: 1, xAxisOrdinate: 0, scale: 1,
+    } as MapConversion,
+    projectedCRS: {} as ProjectedCRS,
+    coordinateInfo: undefined,
+  } as unknown as ModelGeoref;
+
+  it('returns undefined for a handle with no alignment registered', () => {
+    assert.strictEqual(getPointCloudAlignmentMatrix(4242, true), undefined);
+  });
+
+  it('returns the UNALIGNED matrix when the toggle is off — not undefined', () => {
+    // Regression guard for a CodeRabbit suggestion on PR #1889 (issue
+    // #1804 follow-up) that would have broken this: it proposed returning
+    // undefined here so callers could take the no-matrix fast path.
+    // `unalignedMatrix` is NOT identity: it restores the f64 decode-time
+    // origin subtraction, a translation of map magnitude (~2.6e6). Handing
+    // callers `undefined` here would leave them on raw decode coordinates
+    // while the GPU renders with that offset restored — reintroducing, for
+    // the toggle-off case, exactly the frame mismatch this API exists to
+    // remove.
+    const transform = computePointCloudAlignment(georef);
+    assert.ok(transform, 'fixture must produce an alignment');
+    registerPointCloudAlignment({ id: 91 }, transform!);
+    try {
+      const off = getPointCloudAlignmentMatrix(91, false);
+      assert.ok(off, 'a registered asset must still report a matrix when unaligned');
+      assert.strictEqual(off!.matrix, transform!.unalignedMatrix);
+      const isIdentity = off!.matrix[12] === 0 && off!.matrix[13] === 0 && off!.matrix[14] === 0;
+      assert.ok(!isIdentity, 'unalignedMatrix carries the decode offset; it is not a no-op');
+      // It restores ABSOLUTE native coordinates, so the caller must still
+      // apply the world -> render-frame shift.
+      assert.strictEqual(off!.outputsRenderFrame, false);
+
+      const on = getPointCloudAlignmentMatrix(91, true);
+      assert.strictEqual(on!.matrix, transform!.alignedMatrix);
+      // The aligned matrix folds the whole viewer shift into its decode
+      // offset (zero translation column), so it is ALREADY render-frame —
+      // shifting it again would displace the overlay by the full offset.
+      assert.strictEqual(on!.outputsRenderFrame, true);
+    } finally {
+      unregisterPointCloudAlignment(91);
+    }
   });
 });

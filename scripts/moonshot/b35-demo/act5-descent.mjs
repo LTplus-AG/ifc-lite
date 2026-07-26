@@ -15,7 +15,9 @@
  *
  * The optimum is then made REAL and validated by the kernel:
  *   - buildIfc() authors the optimum as IFC (deterministic bytes via
- *     world-gym's runtime shim, so the file hash is seed-stable);
+ *     IfcCreator's Timestamp/GuidSource options, seeded through
+ *     world-gym's deterministic-create helpers so the file hash is
+ *     seed-stable and byte-compatible with the old runtime-shim output);
  *   - the geometry kernel meshes it and per-element mesh volumes are
  *     compared against the parametric model's claimed volumes;
  *   - the world-gym schema check (the literal `ifc-lite validate` code
@@ -32,7 +34,7 @@ import {
 } from '../diff-spike/carbon-model.mjs';
 import { buildIfc } from '../diff-spike/build-ifc.mjs';
 import { kernelVolumes } from '../diff-spike/kernel-check.mjs';
-import { withDeterministicRuntime } from '../../../tools/world-gym/lib/deterministic-runtime.mjs';
+import { FIXED_EPOCH_MS, seededGuidSource } from '../../../tools/world-gym/lib/deterministic-create.mjs';
 import { initChecks, parseStore, schemaCheckInProcess } from '../../../tools/world-gym/lib/checks.mjs';
 import { OUT_DIR, banner, round, say, sha256, short } from './util.mjs';
 
@@ -121,7 +123,10 @@ export async function runAct5({ seed, rounds = 6, maxIter = 400 }) {
     `(${residuals.length} constraint(s) not yet fully tight -- the full spike run drives this below 1e-6; the demo keeps the descent short)`);
 
   // Materialize the optimum deterministically and validate with the kernel.
-  const { content, mapping } = withDeterministicRuntime(`b35-act5:${seed}`, () => buildIfc(x));
+  const { content, mapping } = buildIfc(x, {
+    Timestamp: FIXED_EPOCH_MS,
+    GuidSource: seededGuidSource(`b35-act5:${seed}`),
+  });
   const contentSha = sha256(content);
   const ifcPath = path.join(OUT_DIR, 'act5-optimum.ifc');
   await writeFile(ifcPath, content, 'utf-8');

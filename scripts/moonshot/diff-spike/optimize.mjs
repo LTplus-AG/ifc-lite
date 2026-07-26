@@ -33,7 +33,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { setDim, variable, value, grad, konst, add, mul, relu, scale } from './dual.mjs';
 import { PARAMS, NPARAMS, evaluateModel, constraints, evaluateNumeric, CARBON_FACTORS } from './carbon-model.mjs';
-import { buildIfc, REPO_ROOT } from './build-ifc.mjs';
+import { buildIfc, seededBuildOptions, REPO_ROOT } from './build-ifc.mjs';
 import { kernelVolumes } from './kernel-check.mjs';
 
 const { GeometryProcessor } = await import(
@@ -140,13 +140,16 @@ export function pgd(x0, mu, opts = {}) {
 }
 
 export function optimize(opts = {}) {
-  const { scenario = {}, onAccept, onMuRamp, maxIterPerRound = 2000 } = opts;
+  // `rounds` / `maxIter` shrink the budget for short certified smoke runs
+  // (the verifier replays recorded events, so a shorter trajectory is just
+  // as verifiable); defaults are the spike's full run.
+  const { scenario = {}, onAccept, onMuRamp, rounds = 12, maxIter = 2000 } = opts;
   // Start from the box centre.
   let x = PARAMS.map((p) => (p.lo + p.hi) / 2);
   const history = [];
   let mu = 10;
-  for (let round = 0; round < 12; round++) {
-    const r = pgd(x, mu, { scenario, onAccept, maxIter: maxIterPerRound });
+  for (let round = 0; round < rounds; round++) {
+    const r = pgd(x, mu, { scenario, onAccept, maxIter });
     x = r.x;
     const n = evaluateNumeric(x, scenario);
     const maxViol = Math.max(0, ...n.constraints.map((c) => c.g / (G_SCALE[c.name] ?? 1)));
@@ -187,10 +190,20 @@ export function parseCliJson(stdout) {
  *
  * Returns a structured summary; prints the same lines main() always printed
  * via `log` (pass a no-op to silence).
+ *
+ * `ifcBuild` (optional): a seeded-build descriptor
+ * `{ mode: 'seeded', spec, guidSeed, timestampMs }` - when present, the IFC
+ * is built with `seededBuildOptions(guidSeed, timestampMs)` so its RAW bytes
+ * are a pure function of `x` and the descriptor, and the descriptor is
+ * echoed in the result for the endpoint certificate to bind. Omitted =
+ * wall-clock/CSPRNG build (uncontrolled creator; only the canonical form is
+ * re-derivable).
  */
-export async function endpointChecks({ x, outDir, fileBase = 'optimum', scenario = {}, log = console.log }) {
+export async function endpointChecks({ x, outDir, fileBase = 'optimum', scenario = {}, ifcBuild, log = console.log }) {
   const n = evaluateNumeric(x, scenario);
-  const { content, mapping } = buildIfc(x);
+  const { content, mapping } = ifcBuild
+    ? buildIfc(x, seededBuildOptions(ifcBuild.guidSeed, ifcBuild.timestampMs))
+    : buildIfc(x);
   const ifcPath = path.join(outDir, `${fileBase}.ifc`);
   writeFileSync(ifcPath, content);
   log('---');
@@ -264,6 +277,7 @@ export async function endpointChecks({ x, outDir, fileBase = 'optimum', scenario
     content,
     mapping,
     numeric: n,
+    ifcBuild: ifcBuild ?? null,
     kernel: { carbon: kernelCarbon, worstRelDev: worstRel, worstKey, missingMeshes: missing, meshedElements: mapping.length - missing },
     validate,
     clash,

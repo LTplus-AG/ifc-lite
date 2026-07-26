@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, it, expect } from 'vitest';
-import { decodeLasPoints, parseLasHeader, sampleMaxRgbChannel } from './las.js';
+import { bboxInDecodedFrame, decodeLasPoints, parseLasHeader, sampleMaxRgbChannel } from './las.js';
 
 function buildHeader(overrides: Partial<{
   versionMinor: number;
@@ -233,5 +233,33 @@ describe('decodeLasPoints', () => {
     const chunk = decodeLasPoints(records, h, 1, 34, 65535 / 255);
     expect(chunk.colors![0]).toBeCloseTo(1.0, 2);
     expect(chunk.colors![1]).toBeCloseTo(128 / 255, 2);
+  });
+});
+
+describe('bboxInDecodedFrame (issue #1804)', () => {
+  const bbox = { min: [-5, -10, -15] as [number, number, number], max: [10, 20, 30] as [number, number, number] };
+
+  it('returns the box unchanged when there is no origin offset', () => {
+    expect(bboxInDecodedFrame(bbox, undefined)).toBe(bbox);
+  });
+
+  it('translates both corners onto the same axes decodeLasPoints subtracts', () => {
+    // decodeLasPoints computes x - offX, y - offY, z - offZ, so the reported
+    // box must move by exactly the same vector or bounds and points end up in
+    // different frames.
+    expect(bboxInDecodedFrame(bbox, [100, 200, 300])).toEqual({
+      min: [-105, -210, -315],
+      max: [-90, -180, -270],
+    });
+  });
+
+  it('stays exact at map magnitudes', () => {
+    // The whole point of the f64 offset: a LV95-scale coordinate must not
+    // lose precision when the box is translated.
+    const swiss = { min: [2_600_000, 1_200_000, 450] as [number, number, number], max: [2_600_100, 1_200_050, 470] as [number, number, number] };
+    expect(bboxInDecodedFrame(swiss, [2_600_000, 1_200_000, 450])).toEqual({
+      min: [0, 0, 0],
+      max: [100, 50, 20],
+    });
   });
 });

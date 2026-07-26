@@ -788,8 +788,15 @@ interface SpatialAnchor {
   bodyContextId: number;     // 'Body' subcontext (or parent context fallback)
   storeyId: number;
   storeyPlacementId: number; // the storey's own IfcLocalPlacement
+  guidRandom?: RandomSource; // optional seeded [0,1) source: pins the emitted
+                             // GlobalIds for reproducible in-store builds
+                             // (counterpart of ProjectParams.GuidSource)
 }
 ```
+
+`duplicateInStore` takes the same knob as `options.guidRandom` (it has no anchor), and `generateSpacesFromWalls` / `generateSpaces` forward `options.guidRandom` to the spaces they emit.
+
+For byte-reproducible **exported files**, seed the exporter too: builders that attach property or quantity sets (e.g. `addSpaceToStore`) park them in the mutation overlay, and `StepExporter` mints the `IfcPropertySet` / `IfcElementQuantity` / `IfcRelDefinesByProperties` GlobalIds itself at export time. Pass the same source as `StepExportOptions.guidRandom`, plus `timeStamp` to pin the STEP header instant.
 
 ---
 

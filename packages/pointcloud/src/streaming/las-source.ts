@@ -14,6 +14,7 @@
 
 import type { DecodedPointChunk } from '../types.js';
 import {
+  bboxInDecodedFrame,
   decodeLasPoints,
   parseLasHeader,
   sampleMaxRgbChannel,
@@ -157,7 +158,9 @@ export class LasStreamingSource implements StreamingPointSource {
     const stride = Math.max(1, this.downsample.stride | 0);
     return {
       totalPointCount: stride === 1 ? header.pointCount : Math.ceil(header.pointCount / stride),
-      bbox: header.bbox,
+      // Points are emitted with `originOffset` already subtracted, so the
+      // reported box must be translated to match — see `bboxInDecodedFrame`.
+      bbox: bboxInDecodedFrame(header.bbox, this.originOffset),
       hasColor: header.hasRgb,
       hasClassification: true,
       hasIntensity: true,

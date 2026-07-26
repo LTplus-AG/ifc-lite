@@ -25,7 +25,7 @@ import { createMeasurementSlice, type MeasurementSlice } from './slices/measurem
 import { createDataSlice, type DataSlice } from './slices/dataSlice.js';
 import { createModelSlice, type ModelSlice } from './slices/modelSlice.js';
 import { createMutationSlice, type MutationSlice } from './slices/mutationSlice.js';
-import { createDrawing2DSlice, type Drawing2DSlice } from './slices/drawing2DSlice.js';
+import { createDrawing2DSlice, getDefaultDisplayOptions, type Drawing2DSlice } from './slices/drawing2DSlice.js';
 import { createSheetSlice, type SheetSlice } from './slices/sheetSlice.js';
 import { createBcfSlice, type BCFSlice } from './slices/bcfSlice.js';
 import { createIdsSlice, type IDSSlice } from './slices/idsSlice.js';
@@ -417,16 +417,7 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       drawing2DPanelVisible: false,
       suppressNextSection2DPanelAutoOpen: false,
       drawing2DSvgContent: null,
-      drawing2DDisplayOptions: {
-        showHiddenLines: true,
-        showHatching: true,
-        showAnnotations: true,
-        show3DOverlay: true,
-        scale: 100,
-        useSymbolicRepresentations: false,
-        showIfcAnnotations: true,
-        showConstructionProjection: false,
-      },
+      drawing2DDisplayOptions: getDefaultDisplayOptions(),
       // Graphic overrides (keep presets, reset active and custom)
       activePresetId: 'preset-3d-colors',
       customOverrideRules: [],

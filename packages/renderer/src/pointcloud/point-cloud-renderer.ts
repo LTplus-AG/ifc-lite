@@ -28,6 +28,7 @@ import {
   type PointCloudNodeMeta,
 } from './point-cloud-node.js';
 import type { PointCloudSpatialIndex } from './point-cloud-spatial-index.js';
+import { buildRayQuerySources } from './point-cloud-ray-transform.js';
 import {
   normalizeClassMask,
   writePointCloudUniforms,
@@ -467,19 +468,10 @@ export class PointCloudRenderer {
     modelIndex?: number;
     index: PointCloudSpatialIndex;
     classMask: Uint32Array;
+    model?: Float32Array;
   }> {
-    const out: Array<{ expressId: number; modelIndex?: number; index: PointCloudSpatialIndex; classMask: Uint32Array }> = [];
-    for (const node of this.nodes.values()) {
-      if (node.spatialIndex.pointCount === 0) continue;
-      out.push({
-        expressId: node.meta.expressId,
-        modelIndex: node.meta.modelIndex,
-        index: node.spatialIndex,
-        // Live reference — read synchronously within one query, and
-        // `setOptions` replaces (never mutates in place) the array.
-        classMask: this.options.classMask,
-      });
-    }
-    return out;
+    // `classMask` is a live reference — read synchronously within one
+    // query, and `setOptions` replaces (never mutates in place) the array.
+    return buildRayQuerySources(this.nodes.values(), this.options.classMask);
   }
 }

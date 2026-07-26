@@ -137,7 +137,7 @@ export function addWallToStore(
 
   // `IfcWall.PredefinedType` only exists from IFC4 onward.
   const wallAttrs: Array<unknown> = [
-    generateIfcGuid(),
+    generateIfcGuid(anchor.guidRandom),
     ownerHistoryRef(ownerHistoryId),
     params.Name ?? 'Wall',
     params.Description ?? null,
@@ -155,7 +155,7 @@ export function addWallToStore(
   const wallId = editor.addEntity('IfcWall', wallAttrs as Parameters<StoreEditor['addEntity']>[1]).expressId;
 
   const relContainedId = editor.addEntity('IfcRelContainedInSpatialStructure', [
-    generateIfcGuid(),
+    generateIfcGuid(anchor.guidRandom),
     ownerHistoryRef(ownerHistoryId),
     null,
     null,

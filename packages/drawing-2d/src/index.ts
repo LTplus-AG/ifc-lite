@@ -257,6 +257,7 @@ export {
   getAxisNormal,
   getProjectionAxes,
   projectTo2D,
+  projectTo2DBasis,
 
   // Polygon operations
   polygonSignedArea,

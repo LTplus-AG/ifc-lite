@@ -49,18 +49,22 @@ export function sha256hex(data) {
 }
 
 /**
- * Canonical form of an @ifc-lite/create STEP file for hash commitment.
+ * Canonical form of an @ifc-lite/create STEP file for hash commitment -
+ * the FALLBACK path for uncontrolled creators.
  *
- * IfcCreator output is deterministic in everything derived from the design
- * vector, but carries three run-local artifacts a rebuild cannot reproduce:
- * random 22-char GlobalIds (crypto.randomUUID), the FILE_NAME header
- * timestamp, and the IfcOwnerHistory unix timestamp. Canonicalization
- * replaces exactly those three (verified: two same-x builds differ ONLY on
- * these) so `sha256(canonicalIfc(content))` commits every quantity-bearing
- * byte - geometry, placements, materials, relationships, names - while a
- * verifier can re-derive it from the parameters alone. The RAW file hash is
- * additionally recorded as the on-disk artifact id, but it is a label, not
- * a re-derivable commitment.
+ * A default (unseeded) IfcCreator build carries three run-local artifacts a
+ * rebuild cannot reproduce: random 22-char GlobalIds (crypto.randomUUID),
+ * the FILE_NAME header timestamp, and the IfcOwnerHistory unix timestamp.
+ * Canonicalization replaces exactly those three (verified: two same-x
+ * builds differ ONLY on these) so `sha256(canonicalIfc(content))` commits
+ * every quantity-bearing byte - geometry, placements, materials,
+ * relationships, names - while a verifier can re-derive it from the
+ * parameters alone.
+ *
+ * Certified runs no longer need the fallback: they build with
+ * `seededBuildOptions` (build-ifc.mjs) so the RAW file bytes are a pure
+ * function of the final parameters plus the `ifcBuild` descriptor bound in
+ * the endpoint certificate, and the verifier checks the RAW sha256 too.
  */
 export function canonicalIfc(content) {
   return content
@@ -254,25 +258,37 @@ export async function buildChain({ scenarioName, scenario, startX, events, optim
   };
 }
 
-/** The endpoint kernel-validation property-set payload (exact recorded values). */
+/**
+ * The endpoint kernel-validation property-set payload (exact recorded
+ * values). Seeded builds additionally commit the `ifcBuild` descriptor -
+ * the recipe that makes the RAW `IfcSha256` re-derivable; the fields are
+ * appended conditionally so chains from unseeded (fallback) builds keep
+ * hashing exactly as before.
+ */
 export function endpointKernelPayload(endpoint) {
-  return {
-    name: 'KernelValidation',
-    properties: [
-      { name: 'KernelCarbon', value: endpoint.kernel.carbon },
-      { name: 'WorstElementRelDev', value: endpoint.kernel.worstRelDev },
-      { name: 'MissingMeshes', value: endpoint.kernel.missingMeshes },
-      { name: 'MeshedElements', value: endpoint.kernel.meshedElements },
-      { name: 'IfcCanonicalSha256', value: endpoint.ifcCanonicalSha256 },
-      { name: 'IfcSha256', value: endpoint.ifcSha256 },
-      { name: 'IfcBytes', value: endpoint.ifcBytes },
-      { name: 'ValidateErrors', value: endpoint.validate.errors },
-      { name: 'ValidateIssues', value: endpoint.validate.issues },
-      { name: 'ClashRealHard', value: endpoint.clash.real },
-      { name: 'ClashContacts', value: endpoint.clash.contacts },
-      { name: 'ClashWorstDepth', value: endpoint.clash.worstDepth },
-    ],
-  };
+  const properties = [
+    { name: 'KernelCarbon', value: endpoint.kernel.carbon },
+    { name: 'WorstElementRelDev', value: endpoint.kernel.worstRelDev },
+    { name: 'MissingMeshes', value: endpoint.kernel.missingMeshes },
+    { name: 'MeshedElements', value: endpoint.kernel.meshedElements },
+    { name: 'IfcCanonicalSha256', value: endpoint.ifcCanonicalSha256 },
+    { name: 'IfcSha256', value: endpoint.ifcSha256 },
+    { name: 'IfcBytes', value: endpoint.ifcBytes },
+    { name: 'ValidateErrors', value: endpoint.validate.errors },
+    { name: 'ValidateIssues', value: endpoint.validate.issues },
+    { name: 'ClashRealHard', value: endpoint.clash.real },
+    { name: 'ClashContacts', value: endpoint.clash.contacts },
+    { name: 'ClashWorstDepth', value: endpoint.clash.worstDepth },
+  ];
+  if (endpoint.ifcBuild) {
+    properties.push(
+      { name: 'IfcBuildMode', value: endpoint.ifcBuild.mode },
+      { name: 'IfcBuildSpec', value: endpoint.ifcBuild.spec },
+      { name: 'IfcBuildGuidSeed', value: endpoint.ifcBuild.guidSeed },
+      { name: 'IfcBuildTimestampMs', value: endpoint.ifcBuild.timestampMs },
+    );
+  }
+  return { name: 'KernelValidation', properties };
 }
 
 export function endpointRootPayload(stateRoot, kernelHash) {
@@ -315,10 +331,23 @@ export async function attachEndpoint(chain, finalX, ep) {
   if (finalState.root !== chain.finalState.root) {
     throw new Error('attachEndpoint: finalX does not match the chain final state');
   }
+  // Only null/undefined mean "absent". A falsy-but-present value (false, 0,
+  // '') must not slip past the guard via short-circuit and then be stored by
+  // `?? null` as if it were a descriptor.
+  if (ep.ifcBuild != null && (typeof ep.ifcBuild !== 'object'
+    || ep.ifcBuild.mode !== 'seeded'
+    || typeof ep.ifcBuild.spec !== 'string'
+    || typeof ep.ifcBuild.guidSeed !== 'string'
+    || !Number.isFinite(ep.ifcBuild.timestampMs))) {
+    throw new Error('attachEndpoint: malformed ifcBuild descriptor - refusing to certify an unre-derivable raw-hash claim');
+  }
   const endpoint = {
     kind: 'endpoint',
     stateIndex: k,
     stateRoot: finalState.root,
+    // Seeded builds: the raw IfcSha256 is re-derivable from finalX +
+    // ifcBuild; the canonical hash stays as the creator-agnostic fallback.
+    ifcBuild: ep.ifcBuild ?? null,
     ifcCanonicalSha256: `sha256:${sha256hex(canonicalIfc(ep.content))}`,
     ifcSha256: `sha256:${sha256hex(ep.content)}`,
     ifcBytes: ep.content.length,

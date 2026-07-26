@@ -23,7 +23,7 @@
  * already-extracted source attributes and does the bookkeeping.
  */
 
-import { generateIfcGuid } from '@ifc-lite/encoding';
+import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcAttributeValue } from '@ifc-lite/mutations';
 
@@ -111,6 +111,12 @@ export interface DuplicateInStoreOptions {
   offset?: Vec3;
   /** Optional override for the duplicate's Name attribute. Defaults to source.Name + ' (copy)'. */
   name?: string;
+  /**
+   * Optional seeded randomness for the emitted GlobalIds (duplicate root +
+   * fresh rels) - the counterpart of `SpatialAnchor.guidRandom` for this
+   * anchor-less builder. Omit for the default platform CSPRNG.
+   */
+  guidRandom?: RandomSource;
 }
 
 export interface DuplicateBuildResult {
@@ -193,7 +199,7 @@ export function duplicateInStore(
         : sourceName);
 
   const cloned = source.attributes.slice();
-  cloned[0] = generateIfcGuid();                                  // GlobalId
+  cloned[0] = generateIfcGuid(options.guidRandom);                                  // GlobalId
   cloned[1] = source.ownerHistoryId !== null
     ? `#${source.ownerHistoryId}`
     : null;                                                       // OwnerHistory (preserved; null when source omitted it)
@@ -210,7 +216,7 @@ export function duplicateInStore(
   let relContainedId: number | null = null;
   if (source.storeyId !== null) {
     const rel = editor.addEntity('IfcRelContainedInSpatialStructure', [
-      generateIfcGuid(),                                            // GlobalId
+      generateIfcGuid(options.guidRandom),                            // GlobalId
       source.ownerHistoryId !== null ? `#${source.ownerHistoryId}` : null, // OwnerHistory
       null,                                                         // Name
       null,                                                         // Description
@@ -230,7 +236,7 @@ export function duplicateInStore(
   if (source.associations && source.associations.length > 0) {
     for (const assoc of source.associations) {
       const rel = editor.addEntity(assoc.relType, [
-        generateIfcGuid(),                                                  // GlobalId
+        generateIfcGuid(options.guidRandom),                                // GlobalId
         assoc.ownerHistoryId !== null ? `#${assoc.ownerHistoryId}` : null,  // OwnerHistory
         assoc.name,                                                         // Name (parsed; may be null)
         assoc.description,                                                  // Description

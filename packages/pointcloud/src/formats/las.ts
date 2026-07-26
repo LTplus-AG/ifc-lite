@@ -144,6 +144,33 @@ export function parseLasHeader(buffer: ArrayBuffer | Uint8Array): LasHeader {
  * `stride` should equal `header.pointRecordLength`. We honour any extra
  * bytes the producer tacked on by skipping them.
  */
+/**
+ * Translate a header bounding box into the same frame `decodeLasPoints`
+ * emits points in (issue #1804).
+ *
+ * `header.bbox` is in absolute native CRS coordinates, but when an
+ * `originOffset` is in play every decoded point has it subtracted in f64
+ * first. Reporting the raw header box would leave the bounds and the points
+ * they describe off by the full offset — at map magnitudes (LV95 easting
+ * ~2.6e6) that puts scene framing, culling and the height-ramp colour range
+ * nowhere near the geometry.
+ *
+ * Shared by BOTH streaming sources on purpose: LAS and LAZ decode through the
+ * same `decodeLasPoints`, so a per-source copy of this translation is exactly
+ * how one of them ends up fixed and the other left behind.
+ */
+export function bboxInDecodedFrame(
+  bbox: PointCloudBBox,
+  originOffset: readonly [number, number, number] | undefined,
+): PointCloudBBox {
+  if (!originOffset) return bbox;
+  const [ox, oy, oz] = originOffset;
+  return {
+    min: [bbox.min[0] - ox, bbox.min[1] - oy, bbox.min[2] - oz],
+    max: [bbox.max[0] - ox, bbox.max[1] - oy, bbox.max[2] - oz],
+  };
+}
+
 export function decodeLasPoints(
   bytes: Uint8Array,
   header: LasHeader,

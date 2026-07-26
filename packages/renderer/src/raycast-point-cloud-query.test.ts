@@ -26,6 +26,7 @@ import {
   type PointCloudSnapCamera,
 } from './raycast-point-cloud-query.js';
 import { PointCloudSpatialIndex } from './pointcloud/point-cloud-spatial-index.js';
+import { buildRayQuerySources } from './pointcloud/point-cloud-ray-transform.js';
 import { SnapType, type SnapTarget } from './snap-detector.js';
 
 /** A representative measure-tool camera: ~60deg vertical FOV, 800px-tall canvas. */
@@ -263,5 +264,161 @@ describe('pointCloudSnapEnabled — snap toggle gating', () => {
       pointCloudSnapEnabled({ snapToVertices: false, snapToEdges: false, snapToFaces: false, snapToPointClouds: true }),
       true,
     );
+  });
+});
+
+/**
+ * Aligned-scan reconciliation (#1804 x #1860).
+ *
+ * The spatial index stores RAW decoder positions while the shader draws
+ * points through the node's `model` matrix. Without folding that matrix
+ * into the query, a measurement on a georeferenced scan snaps to where the
+ * point sat BEFORE alignment — visibly off from the dot the user clicked.
+ * Neither feature's own tests could catch this; it only exists in their
+ * composition.
+ */
+describe('queryPointClouds with an aligned point cloud', () => {
+  /** Index holding a single raw point, cell size 0.5m. */
+  function indexWithPointAt(x: number, y: number, z: number): PointCloudSpatialIndex {
+    const index = new PointCloudSpatialIndex(0.5);
+    index.insertRange(new Float32Array([x, y, z]), 1);
+    return index;
+  }
+
+  /** Column-major 4x4: uniform scale `k`, rotation `deg` about Y, translation `t`. */
+  function makeModel(k: number, deg: number, t: [number, number, number]): Float32Array {
+    const r = (deg * Math.PI) / 180;
+    const a = Math.cos(r);
+    const b = Math.sin(r);
+    return new Float32Array([
+      k * a, 0, k * b, 0,
+      0, k, 0, 0,
+      -k * b, 0, k * a, 0,
+      t[0], t[1], t[2], 1,
+    ]);
+  }
+
+  function sourceWith(index: PointCloudSpatialIndex, model?: Float32Array): PointCloudRaySource[] {
+    return [{ expressId: 7, index, model }];
+  }
+
+  /** Ray straight down -Z from the origin, which is how these fixtures are aimed. */
+  function rayToward(x: number, y: number) {
+    return { origin: { x, y, z: 0 }, direction: { x: 0, y: 0, z: -1 } };
+  }
+
+  it('snaps to the RENDERED position, not the raw indexed one (pure translation)', () => {
+    // Raw point at (0,0,-10); model shifts it +3 in x. The user sees a dot
+    // at x=3, so a ray down x=3 must find it and report x=3.
+    const index = indexWithPointAt(0, 0, -10);
+    const model = makeModel(1, 0, [3, 0, 0]);
+    const hit = queryPointClouds(() => sourceWith(index, model), rayToward(3, 0), CAMERA, 100);
+    assert.ok(hit, 'ray aimed at the rendered position must hit');
+    assert.ok(Math.abs(hit!.position.x - 3) < 1e-3, `expected world x=3, got ${hit!.position.x}`);
+    assert.ok(Math.abs(hit!.distance - 10) < 1e-3, `expected world distance 10, got ${hit!.distance}`);
+  });
+
+  it('does not snap at the raw position once the cloud is aligned', () => {
+    // The mirror of the above: a ray down the RAW x=0 must now MISS,
+    // because nothing is rendered there any more.
+    const index = indexWithPointAt(0, 0, -10);
+    const model = makeModel(1, 0, [3, 0, 0]);
+    const hit = queryPointClouds(() => sourceWith(index, model), rayToward(0, 0), CAMERA, 100);
+    assert.strictEqual(hit, null, 'stale raw position must not be snappable');
+  });
+
+  it('handles rotation + translation', () => {
+    // 90deg about Y: the matrix maps pz onto column 2 = (-1, 0, 0), so raw
+    // (0,0,-10) contributes -10 * (-1,0,0) = (10,0,0), plus the [5,0,0]
+    // translation => rendered at (15,0,0).
+    const index = indexWithPointAt(0, 0, -10);
+    const model = makeModel(1, 90, [5, 0, 0]);
+    const hit = queryPointClouds(
+      () => sourceWith(index, model),
+      { origin: { x: 15, y: 0, z: 5 }, direction: { x: 0, y: 0, z: -1 } },
+      CAMERA,
+      100,
+    );
+    assert.ok(hit, 'rotated+translated point must be found at its rendered position');
+    assert.ok(Math.abs(hit!.position.x - 15) < 1e-2, `expected world x=15, got ${hit!.position.x}`);
+    assert.ok(Math.abs(hit!.position.z - 0) < 1e-2, `expected world z=0, got ${hit!.position.z}`);
+  });
+
+  it('reports distance in WORLD units under a scaled matrix', () => {
+    // k=2 doubles every distance: a raw point 10 local units away renders
+    // 20 world units away, and `distance` feeds the measure tool directly.
+    const index = indexWithPointAt(0, 0, -10);
+    const model = makeModel(2, 0, [0, 0, 0]);
+    const hit = queryPointClouds(() => sourceWith(index, model), rayToward(0, 0), CAMERA, 100);
+    assert.ok(hit, 'scaled point must be found');
+    assert.ok(Math.abs(hit!.position.z - -20) < 1e-2, `expected world z=-20, got ${hit!.position.z}`);
+    assert.ok(Math.abs(hit!.distance - 20) < 1e-2, `expected world distance 20, got ${hit!.distance}`);
+  });
+
+  it('stays exact at georeferenced magnitudes (LV95)', () => {
+    // The f32 precision case #1804 exists for: a Swiss-scale translation
+    // must not smear the snapped position.
+    const index = indexWithPointAt(0, 0, -10);
+    const model = makeModel(1, 0, [2_600_000, 1_200_000, 450]);
+    const hit = queryPointClouds(
+      () => sourceWith(index, model),
+      { origin: { x: 2_600_000, y: 1_200_000, z: 450 }, direction: { x: 0, y: 0, z: -1 } },
+      CAMERA,
+      100,
+    );
+    assert.ok(hit, 'point must still be found at LV95 magnitude');
+    assert.ok(Math.abs(hit!.position.x - 2_600_000) < 0.5, `x drifted: ${hit!.position.x}`);
+    assert.ok(Math.abs(hit!.distance - 10) < 0.5, `distance drifted: ${hit!.distance}`);
+  });
+
+  it('is unchanged for an absent or identity matrix', () => {
+    const index = indexWithPointAt(0, 0, -10);
+    const bare = queryPointClouds(() => sourceWith(index, undefined), rayToward(0, 0), CAMERA, 100);
+    const identity = queryPointClouds(
+      () => sourceWith(index, makeModel(1, 0, [0, 0, 0])),
+      rayToward(0, 0),
+      CAMERA,
+      100,
+    );
+    assert.ok(bare, 'unaligned cloud must still snap');
+    assert.ok(identity, 'identity matrix must behave like no matrix');
+    assert.deepStrictEqual(identity!.position, bare!.position);
+    assert.strictEqual(identity!.distance, bare!.distance);
+  });
+});
+
+/**
+ * Renderer -> query wiring (#1804 x #1860).
+ *
+ * The reconciliation is only real if the renderer actually HANDS the
+ * matrix to the query. The original gap survived precisely because nothing
+ * exercised this seam — `getRayQuerySources` needs a GPUDevice, so the
+ * source-building is extracted as a pure function to make it testable.
+ */
+describe('buildRayQuerySources', () => {
+  const MASK = new Uint32Array(8).fill(0xffffffff);
+  const model = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 7, 8, 9, 1]);
+
+  function node(expressId: number, pointCount: number, m?: Float32Array) {
+    return { meta: { expressId, modelIndex: 3 }, spatialIndex: { pointCount }, model: m };
+  }
+
+  it('forwards each node\'s model matrix to the query', () => {
+    const [src] = buildRayQuerySources([node(1, 5, model)], MASK);
+    assert.strictEqual(src.model, model, 'the alignment matrix must reach the snap query');
+    assert.strictEqual(src.expressId, 1);
+    assert.strictEqual(src.modelIndex, 3);
+    assert.strictEqual(src.classMask, MASK);
+  });
+
+  it('leaves model undefined for an unaligned node', () => {
+    const [src] = buildRayQuerySources([node(2, 5, undefined)], MASK);
+    assert.strictEqual(src.model, undefined);
+  });
+
+  it('skips empty nodes', () => {
+    const out = buildRayQuerySources([node(1, 0, model), node(2, 4, model)], MASK);
+    assert.strictEqual(out.length, 1);
+    assert.strictEqual(out[0].expressId, 2);
   });
 });

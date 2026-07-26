@@ -12,6 +12,7 @@
 import type { StateCreator } from 'zustand';
 import type { Drawing2D, DxfPlacement, DxfUnderlay, GraphicOverrideRule, GraphicOverridePreset } from '@ifc-lite/drawing-2d';
 import { BUILT_IN_PRESETS, DEFAULT_DXF_PLACEMENT } from '@ifc-lite/drawing-2d';
+import { DEFAULT_SCAN_SECTION_THICKNESS } from '@/hooks/scanSectionMath';
 
 export type Drawing2DStatus = 'idle' | 'generating' | 'ready' | 'error';
 
@@ -122,6 +123,20 @@ export interface Drawing2DState {
      * Off by default; the section view stays cut-only until enabled.
      */
     showConstructionProjection: boolean;
+    /**
+     * Point-cloud "scan" overlay on the 2D section view (issue #1805): a
+     * thin band of loaded scan points around the cut plane, projected into
+     * drawing space and drawn as dots. Default on — with no point cloud
+     * loaded the layer contributes nothing, so the toggle only matters
+     * once a scan is present.
+     */
+    showScanSection: boolean;
+    /** Full slab thickness (metres) around the section plane. */
+    scanSectionThickness: number;
+    /** Dot opacity, 0..1. */
+    scanSectionOpacity: number;
+    /** Include the scan layer's dots in SVG export/print. */
+    scanSectionIncludeInExport: boolean;
   };
   /** Available graphic override presets */
   graphicOverridePresets: GraphicOverridePreset[];
@@ -275,7 +290,12 @@ export interface Drawing2DSlice extends Drawing2DState {
   clearDxfUnderlays: () => void;
 }
 
-const getDefaultDisplayOptions = (): Drawing2DState['drawing2DDisplayOptions'] => ({
+/**
+ * Single source of truth for `drawing2DDisplayOptions` defaults. Both the
+ * slice initializer and `resetViewerState` (`store/index.ts`) call this so
+ * the two paths can't drift — the same pattern `POINT_CLOUD_DEFAULTS` uses.
+ */
+export const getDefaultDisplayOptions = (): Drawing2DState['drawing2DDisplayOptions'] => ({
   showHiddenLines: true,
   showHatching: true,
   showAnnotations: true,
@@ -284,6 +304,10 @@ const getDefaultDisplayOptions = (): Drawing2DState['drawing2DDisplayOptions'] =
   useSymbolicRepresentations: false, // Default to section cut (Body geometry)
   showIfcAnnotations: true, // Mirror the 3D Class Visibility default
   showConstructionProjection: false, // Optional reference projection (issue #979), off by default
+  showScanSection: true, // Scan overlay (issue #1805) — on by default, no-op without a loaded point cloud
+  scanSectionThickness: DEFAULT_SCAN_SECTION_THICKNESS,
+  scanSectionOpacity: 0.9,
+  scanSectionIncludeInExport: true,
 });
 
 const getDefaultState = (): Drawing2DState => ({

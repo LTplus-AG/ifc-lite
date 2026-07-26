@@ -14,6 +14,7 @@ import type { MagneticSnapResult, SnapOptions, SnapTarget } from './snap-detecto
 import { screenToWorldRadius } from './snap-geometry-utils.js';
 import type { PickOptions } from './types.js';
 import type { PointCloudSpatialIndex } from './pointcloud/point-cloud-spatial-index.js';
+import { toLocalFrameRay } from './pointcloud/point-cloud-ray-transform.js';
 
 /** Source the RaycastEngine queries for point-cloud ray snapping (#1860). */
 export interface PointCloudRaySource {
@@ -23,6 +24,14 @@ export interface PointCloudRaySource {
   /** Current LAS class visibility bitmask (#1783); hidden-class points
    *  are not snappable. Omit for "everything visible". */
   classMask?: Uint32Array | null;
+  /**
+   * The node's per-asset render transform (#1804), or undefined when the
+   * asset is unaligned. The index holds RAW decoder positions, so without
+   * this the query would snap to where a georeferenced point sat BEFORE
+   * alignment while the shader draws it somewhere else — see
+   * `point-cloud-ray-transform.ts`.
+   */
+  model?: Float32Array;
 }
 
 /** Supplied by the renderer once point clouds are loaded; empty/null disables point snapping. */
@@ -129,9 +138,40 @@ export function queryPointClouds(
     // Never search past the current best (or the caller's bound) — keeps
     // the "nearest across assets" search itself O(assets).
     const bound = best ? Math.min(maxDistance, best.distance) : maxDistance;
-    const hit = src.index.queryRay(ray.origin, ray.direction, bound, toleranceAt, src.classMask);
-    if (hit && (!best || hit.distance < best.distance)) {
-      best = { position: hit.position, expressId: src.expressId, modelIndex: src.modelIndex, distance: hit.distance };
+
+    // An aligned asset (#1804) renders through `model` while its index
+    // holds raw decoder positions, so the ray has to be rewritten into the
+    // node's local frame — and every distance-valued quantity converted
+    // with it, or the screen-space tolerance quietly changes meaning under
+    // a non-metre CRS. `null` means "no transform needed", which is both
+    // the unaligned fast path and the safe fallback for a singular matrix.
+    const local = toLocalFrameRay(ray.origin, ray.direction, src.model);
+    if (!local) {
+      const hit = src.index.queryRay(ray.origin, ray.direction, bound, toleranceAt, src.classMask);
+      if (hit && (!best || hit.distance < best.distance)) {
+        best = { position: hit.position, expressId: src.expressId, modelIndex: src.modelIndex, distance: hit.distance };
+      }
+      continue;
+    }
+
+    const s = local.distanceScale;
+    const hit = src.index.queryRay(
+      local.origin,
+      local.direction,
+      bound / s,
+      (tLocal: number) => toleranceAt(tLocal * s) / s,
+      src.classMask,
+    );
+    if (hit) {
+      const worldDistance = hit.distance * s;
+      if (!best || worldDistance < best.distance) {
+        best = {
+          position: local.toWorld(hit.position),
+          expressId: src.expressId,
+          modelIndex: src.modelIndex,
+          distance: worldDistance,
+        };
+      }
     }
   }
   return best;

@@ -37,7 +37,9 @@ export async function verifyChain(chain, opts = {}) {
   const optz = chain.optimizer ?? {};
   const stepInit = optz.stepInit ?? 0.1;
   const armijoC = optz.armijoC ?? 1e-4;
-  const btMax = Number.isInteger(optz.btMax) && optz.btMax > 0 ? optz.btMax : 60;
+  // An explicit 0 is a meaningful value (no backtracking allowed), so only
+  // absent/invalid falls back to the default.
+  const btMax = Number.isInteger(optz.btMax) && optz.btMax >= 0 ? optz.btMax : 60;
   let currentMu = optz.startMu ?? 10;
   const muFactor = optz.muFactor ?? 4;
 
@@ -55,7 +57,13 @@ export async function verifyChain(chain, opts = {}) {
   let k = 0;
   let certMs = 0;
 
+  if (!Array.isArray(chain.records)) {
+    return fail('header', 'malformed-chain-records', { type: typeof chain.records });
+  }
   for (const rec of chain.records) {
+    if (typeof rec !== 'object' || rec === null) {
+      return fail(`record[after step ${k}]`, 'malformed-record', { type: rec === null ? 'null' : typeof rec });
+    }
     if (rec.kind === 'mu-ramp') {
       const where = `record[after step ${k}]:mu-ramp`;
       if (rec.root !== cur.root) {

@@ -10,9 +10,17 @@ import path from 'node:path';
 import { endpointKernelPayload, endpointRootPayload } from './trajectory.mjs';
 import { REPO_ROOT } from './build-ifc.mjs';
 
-const { computeNodeHash, createCertificate } = await import(
-  path.join(REPO_ROOT, 'packages/provenance/dist/index.js')
-);
+let computeNodeHash;
+let createCertificate;
+try {
+  ({ computeNodeHash, createCertificate } = await import(
+    path.join(REPO_ROOT, 'packages/provenance/dist/index.js')
+  ));
+} catch (err) {
+  throw new Error(
+    `tamper battery needs the built provenance package (packages/provenance/dist). Run 'pnpm --filter @ifc-lite/provenance build' first. Underlying error: ${err.message}`,
+  );
+}
 
 /** The hard case: fake the kernel numbers and recompute every hash and the
  *  endpoint certificate honestly. Only re-measurement can catch this. */

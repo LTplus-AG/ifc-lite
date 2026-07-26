@@ -106,10 +106,18 @@ export async function verifyEndpointSection(chain, x, cur, k, { skipKernel, rech
     let kernelCarbon = 0;
     let worstRel = 0;
     let missing = 0;
+    const unmatched = [];
     for (const row of rows) {
       if (row.kernelVolume === undefined) { missing += 1; continue; }
       kernelCarbon += row.kernelVolume * CARBON_FACTORS[row.material];
       const pv = paramVols.get(row.key);
+      // A kernel row with no parametric counterpart cannot be compared; NaN
+      // here would silently vanish from the worstRel max and let an
+      // unmatched element pass as agreement.
+      if (pv === undefined || !Number.isFinite(pv)) {
+        unmatched.push(row.key);
+        continue;
+      }
       const rel = Math.abs(row.kernelVolume - pv) / Math.max(pv, 1e-12);
       if (rel > worstRel) worstRel = rel;
     }
@@ -117,6 +125,11 @@ export async function verifyEndpointSection(chain, x, cur, k, { skipKernel, rech
     // not contractually stable, so float accumulation of per-mesh volumes
     // can differ in the last ulps between runs. 1e-9 relative is ~5 orders
     // looser than ulp noise and ~2 orders tighter than the f32 mesh floor.
+    // Unmatched kernel rows mean the parametric and kernel models disagree on
+    // which elements exist, which invalidates the comparison itself.
+    if (unmatched.length > 0) {
+      return fail('endpoint', 'kernel-element-unmatched', { keys: unmatched.slice(0, 10), count: unmatched.length });
+    }
     const carbonRel = Math.abs(kernelCarbon - ep.kernel.carbon) / Math.max(ep.kernel.carbon, 1e-12);
     if (carbonRel > 1e-9) {
       return fail('endpoint', 'kernel-carbon-mismatch', { recorded: ep.kernel.carbon, remeasured: kernelCarbon, rel: carbonRel });

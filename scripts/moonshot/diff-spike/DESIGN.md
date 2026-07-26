@@ -476,7 +476,7 @@ as a number to track.
   errors, 0 real hard clashes)
 - Exact commands:
 
-```
+```bash
 node scripts/moonshot/diff-spike/optimize-certified.mjs --scenario baseline --out /tmp/b33/v2 --max-iter 450 --emit-v1
 node scripts/moonshot/diff-spike/verify-trajectory.mjs /tmp/b33/v2/trajectory-chain.json
 node scripts/moonshot/diff-spike/verify-trajectory.mjs /tmp/b33/v2/trajectory-chain-v2.json

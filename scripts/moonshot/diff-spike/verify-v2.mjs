@@ -60,9 +60,23 @@ export async function verifyChainV2(chain, opts = {}) {
   }
   const scenario = chain.scenario;
   const optz = chain.optimizer ?? {};
+  // Chain-supplied optimizer values drive the replay: a non-finite or absurd
+  // value from an untrusted chain must be rejected outright rather than
+  // silently steering the reconstruction (or poisoning it with NaN).
+  const posFinite = (v) => typeof v === 'number' && Number.isFinite(v) && v > 0;
+  for (const [key, ok] of [
+    ['stepInit', optz.stepInit === undefined || posFinite(optz.stepInit)],
+    ['armijoC', optz.armijoC === undefined || posFinite(optz.armijoC)],
+    ['muFactor', optz.muFactor === undefined || posFinite(optz.muFactor)],
+    ['startMu', optz.startMu === undefined || posFinite(optz.startMu)],
+    ['btMax', optz.btMax === undefined || (Number.isInteger(optz.btMax) && optz.btMax >= 0)],
+  ]) {
+    if (!ok) return fail('header', 'bad-optimizer-value', { key, value: optz[key] });
+  }
   const stepInit = optz.stepInit ?? 0.1;
   const armijoC = optz.armijoC ?? 1e-4;
-  const btMax = Number.isInteger(optz.btMax) && optz.btMax > 0 ? optz.btMax : 60;
+  // An explicit 0 means "no backtracking allowed" and must survive.
+  const btMax = Number.isInteger(optz.btMax) && optz.btMax >= 0 ? optz.btMax : 60;
   const muFactor = optz.muFactor ?? 4;
   const startMu = optz.startMu ?? 10;
 
@@ -90,6 +104,9 @@ export async function verifyChainV2(chain, opts = {}) {
   }
 
   // ---- state 0 ----
+  if (!Array.isArray(chain.startParams) || chain.startParams.some((v) => !Number.isFinite(v))) {
+    return fail('state-0', 'bad-start-params', { startParams: chain.startParams });
+  }
   const startCommitted = await commitState(chain.startParams, scenario);
   if (startCommitted.root !== chain.startRoot) {
     return fail('state-0', 'start-root-mismatch', { expected: chain.startRoot, recomputed: startCommitted.root });
@@ -111,9 +128,15 @@ export async function verifyChainV2(chain, opts = {}) {
     committed: startCommitted,
   };
   const boundary = [{ endRoot: prevEnd.endRoot, endParams: prevEnd.endParams }];
+  if (!Array.isArray(chain.segments) || chain.segments.length === 0) {
+    return fail('chain', 'malformed-segments', { type: typeof chain.segments });
+  }
   for (let s = 0; s < chain.segments.length; s++) {
     const seg = chain.segments[s];
     const where = `segment ${s}`;
+    if (typeof seg !== 'object' || seg === null) {
+      return fail(where, 'malformed-segment', { type: seg === null ? 'null' : typeof seg });
+    }
     if (seg.index !== s) return fail(where, 'segment-index-mismatch', { recorded: seg.index });
     if (seg.stepStart !== prevEnd.stepEnd || seg.recordStart !== prevEnd.recordEnd) {
       return fail(where, 'segment-range-broken', { stepStart: seg.stepStart, recordStart: seg.recordStart, expected: { stepStart: prevEnd.stepEnd, recordStart: prevEnd.recordEnd } });
@@ -207,6 +230,9 @@ export async function verifyChainV2(chain, opts = {}) {
   }
   if (lastSeg.recordEnd !== sidecar.length) {
     return fail('chain', 'record-count-mismatch', { recorded: sidecar.length, segments: lastSeg.recordEnd });
+  }
+  if (typeof chain.finalState !== 'object' || chain.finalState === null) {
+    return fail('chain', 'malformed-final-state', { type: chain.finalState === null ? 'null' : typeof chain.finalState });
   }
   if (chain.finalState.root !== lastSeg.endRoot) {
     return fail('chain', 'final-root-mismatch', { recorded: chain.finalState.root, recomputed: lastSeg.endRoot });

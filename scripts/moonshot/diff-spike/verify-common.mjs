@@ -32,6 +32,11 @@ export function fail(where, reason, details) {
 /** Shared header checks: chain format version, kernel identity pins, start
  *  parameters finite and inside the box. Returns a failure or null. */
 export function checkHeader(chain, expectedVersion) {
+  // Externally supplied chains are untrusted input: a non-object must fail
+  // with a reason, not a TypeError on property access.
+  if (typeof chain !== 'object' || chain === null || Array.isArray(chain)) {
+    return fail('header', 'malformed-chain', { type: chain === null ? 'null' : Array.isArray(chain) ? 'array' : typeof chain });
+  }
   if (chain.version !== expectedVersion) {
     return fail('header', 'unsupported-chain-version', { version: chain.version, expected: expectedVersion });
   }

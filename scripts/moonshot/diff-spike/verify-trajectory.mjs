@@ -39,7 +39,16 @@ export { verifyChain, verifyChainV2, sampleSegments };
 
 function argValue(argv, flag) {
   const i = argv.indexOf(flag);
-  return i >= 0 && i + 1 < argv.length ? argv[i + 1] : undefined;
+  if (i < 0) return undefined;
+  const v = argv[i + 1];
+  // A flag that is present must carry a real value. Without this, a trailing
+  // `--spot-k`, an empty string, or `--spot-k --seed 1` reads as "absent" and
+  // silently falls back to the default while still printing VERIFIED.
+  if (v === undefined || v === '' || v.startsWith('--')) {
+    console.error(`${flag} needs a value`);
+    process.exit(2);
+  }
+  return v;
 }
 
 const VALUE_FLAGS = new Set(['--mode', '--spot-k', '--seed', '--sidecar']);

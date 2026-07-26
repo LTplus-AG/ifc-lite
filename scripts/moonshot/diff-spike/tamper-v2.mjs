@@ -229,7 +229,18 @@ export async function runV2Battery(original, sidecarLines, full) {
 
   for (const tamper of TAMPERS_V2) {
     const ctx = makeCtx();
+    const snapshot = () => `${JSON.stringify(ctx.chain)} ${ctx.lines.join('\n')}`;
+    const before = snapshot();
     const desc = tamper.apply(ctx);
+    // A forgery that mutates nothing cannot be "not detected", and scoring it
+    // as a failure is misleading. On short chains some cases collapse into
+    // no-ops - e.g. replacing the *last* segment's endRoot with the final
+    // state root, which it already equals on a 2-segment chain. Report the
+    // vacuity instead of a false failure.
+    if (snapshot() === before) {
+      console.log(`${tamper.name}: SKIPPED - vacuous on this chain (${desc}); needs more segments to be meaningful`);
+      continue;
+    }
     const res = await verify(ctx, tamper.mode);
     if (res.ok) {
       failures += 1;

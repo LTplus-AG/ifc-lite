@@ -1,5 +1,5 @@
 {
-  "description": "FROZEN wire-format golden vectors for node-hash-v0 (spec version node-hash-v0 / 1.0.0, frozen 2026-07-25, docs/vision/spec/node-hash-v0.md). Do NOT regenerate: a hash change here is a wire-format change and requires node-hash-v1 plus a major version bump of @ifc-lite/provenance. Special numbers are encoded as {\"$num\": \"NaN\" | \"Infinity\" | \"-Infinity\" | \"-0\"}.",
+  "description": "FROZEN wire-format golden vectors for node-hash-v0 (spec version node-hash-v0 / 1.0.0, frozen 2026-07-25, docs/vision/spec/node-hash-v0.md). Do NOT regenerate: a hash change here is a wire-format change and requires node-hash-v1 plus a major version bump of @ifc-lite/provenance. IFC identifiers follow the schema exactly (AGENTS.md \"IFC schema fidelity\"): relationship role names are the real EXPRESS attribute names of the named relationship, and element ifcType values are the exact EXPRESS PascalCase names the canonical load path produces (store.entities.getTypeName), never the uppercase STEP storage spelling. Special numbers are encoded as {\"$num\": \"NaN\" | \"Infinity\" | \"-Infinity\" | \"-0\"}.",
   "vectors": [
     {
       "id": "chain-pset",
@@ -22,7 +22,7 @@
       "kind": "element",
       "payload": {
         "key": "chain-element",
-        "ifcType": "IFCWALL",
+        "ifcType": "IfcWall",
         "components": [
           {
             "componentKey": "pset:Pset_ChainLeaf",
@@ -30,11 +30,11 @@
           }
         ]
       },
-      "expectedHash": "sha256:dff2b7c95a4a7d96dd9873c9bab0be7e697a45bcc881273c258d298fa51d15f3"
+      "expectedHash": "sha256:12bf360440806d874bf815631d0676a34f4e7ef1b2ff01ce88e212336da4b95b"
     },
     {
       "id": "chain-relationship",
-      "description": "Merkle chain level 2a: a relationship whose role refs embed chain-element's hash.",
+      "description": "Merkle chain level 2a: a relationship whose role refs embed chain-element's hash. Role name is the exact IFC EXPRESS attribute RelatedElements (a SET on IfcRelContainedInSpatialStructure); a payload commits only the roles its producer chose to include.",
       "kind": "relationship",
       "payload": {
         "relType": "IfcRelContainedInSpatialStructure",
@@ -42,12 +42,12 @@
           {
             "roleName": "RelatedElements",
             "refs": [
-              "sha256:dff2b7c95a4a7d96dd9873c9bab0be7e697a45bcc881273c258d298fa51d15f3"
+              "sha256:12bf360440806d874bf815631d0676a34f4e7ef1b2ff01ce88e212336da4b95b"
             ]
           }
         ]
       },
-      "expectedHash": "sha256:06659749a3911ad9ba19e6266366ad2b44a212509b331f18a66d31ce94469c75"
+      "expectedHash": "sha256:4a69c2f18bef2833f4899ea8fde2ae48c4f827dfb3de6fc68bd8546dbee13e47"
     },
     {
       "id": "chain-layer",
@@ -56,10 +56,10 @@
       "payload": {
         "layerId": "blake3:2f6ad9f1c7f3aeb2f6ad9f1c7f3aeb2f6ad9f1c7f3aeb2f6ad9f1c7f3aeb2f6a",
         "childHashes": [
-          "sha256:dff2b7c95a4a7d96dd9873c9bab0be7e697a45bcc881273c258d298fa51d15f3"
+          "sha256:12bf360440806d874bf815631d0676a34f4e7ef1b2ff01ce88e212336da4b95b"
         ]
       },
-      "expectedHash": "sha256:61f51816196860869c93f9f62040a8239bb6a0ce74b4bcd8039db9e10fc73c67"
+      "expectedHash": "sha256:7fb7fa65a28ae4470e0022a31fe1c4bd1cae928198ef4ae9abbc91d9dcb639f5"
     },
     {
       "id": "chain-root",
@@ -67,19 +67,19 @@
       "kind": "element",
       "payload": {
         "key": "chain-root",
-        "ifcType": "IFCPROJECT",
+        "ifcType": "IfcProject",
         "components": [
           {
             "componentKey": "relationship:IfcRelContainedInSpatialStructure",
-            "hash": "sha256:06659749a3911ad9ba19e6266366ad2b44a212509b331f18a66d31ce94469c75"
+            "hash": "sha256:4a69c2f18bef2833f4899ea8fde2ae48c4f827dfb3de6fc68bd8546dbee13e47"
           },
           {
             "componentKey": "layer:root",
-            "hash": "sha256:61f51816196860869c93f9f62040a8239bb6a0ce74b4bcd8039db9e10fc73c67"
+            "hash": "sha256:7fb7fa65a28ae4470e0022a31fe1c4bd1cae928198ef4ae9abbc91d9dcb639f5"
           }
         ]
       },
-      "expectedHash": "sha256:c9c1a51481badddaf78d6ce21beeac14b966ec2be96148f35e3811fc4e4ea4c8"
+      "expectedHash": "sha256:5295eb4bb0b476e281810aa6081adb85007990befa95d52ced4eae10888d46a3"
     },
     {
       "id": "deep-1",
@@ -87,15 +87,15 @@
       "kind": "element",
       "payload": {
         "key": "deep-1",
-        "ifcType": "IFCELEMENTASSEMBLY",
+        "ifcType": "IfcElementAssembly",
         "components": [
           {
             "componentKey": "relationship:IfcRelAggregates",
-            "hash": "sha256:dff2b7c95a4a7d96dd9873c9bab0be7e697a45bcc881273c258d298fa51d15f3"
+            "hash": "sha256:12bf360440806d874bf815631d0676a34f4e7ef1b2ff01ce88e212336da4b95b"
           }
         ]
       },
-      "expectedHash": "sha256:cba40d7fe53fa69330c7d99cdd389e449fcebc7c37fe3a962d1765fd42f24987"
+      "expectedHash": "sha256:f0119bb8d7d8420a39312e484b1d26fc6e887b68f623a650b03baa9c4f84120f"
     },
     {
       "id": "deep-2",
@@ -103,15 +103,15 @@
       "kind": "element",
       "payload": {
         "key": "deep-2",
-        "ifcType": "IFCELEMENTASSEMBLY",
+        "ifcType": "IfcElementAssembly",
         "components": [
           {
             "componentKey": "relationship:IfcRelAggregates",
-            "hash": "sha256:cba40d7fe53fa69330c7d99cdd389e449fcebc7c37fe3a962d1765fd42f24987"
+            "hash": "sha256:f0119bb8d7d8420a39312e484b1d26fc6e887b68f623a650b03baa9c4f84120f"
           }
         ]
       },
-      "expectedHash": "sha256:f863a3f7aa49c4c0ed966e253b664b6b0aa40abee2f9bfe300fafa78c4515f57"
+      "expectedHash": "sha256:fedac2fead1d6bceb0b0cc22549f26558c153686dd869cf527395f8c4273d9e5"
     },
     {
       "id": "deep-3",
@@ -119,15 +119,15 @@
       "kind": "element",
       "payload": {
         "key": "deep-3",
-        "ifcType": "IFCELEMENTASSEMBLY",
+        "ifcType": "IfcElementAssembly",
         "components": [
           {
             "componentKey": "relationship:IfcRelAggregates",
-            "hash": "sha256:f863a3f7aa49c4c0ed966e253b664b6b0aa40abee2f9bfe300fafa78c4515f57"
+            "hash": "sha256:fedac2fead1d6bceb0b0cc22549f26558c153686dd869cf527395f8c4273d9e5"
           }
         ]
       },
-      "expectedHash": "sha256:7f95bd5fba9bdbc8fd896df8a2fc997ba285a66a8d3f6bc388508c6283fb1f29"
+      "expectedHash": "sha256:5cffc7a4e36f12ea275a582c34b810bda4173d0ad3a89a1ec27c8608921250e4"
     },
     {
       "id": "deep-4",
@@ -135,15 +135,15 @@
       "kind": "element",
       "payload": {
         "key": "deep-4",
-        "ifcType": "IFCELEMENTASSEMBLY",
+        "ifcType": "IfcElementAssembly",
         "components": [
           {
             "componentKey": "relationship:IfcRelAggregates",
-            "hash": "sha256:7f95bd5fba9bdbc8fd896df8a2fc997ba285a66a8d3f6bc388508c6283fb1f29"
+            "hash": "sha256:5cffc7a4e36f12ea275a582c34b810bda4173d0ad3a89a1ec27c8608921250e4"
           }
         ]
       },
-      "expectedHash": "sha256:e05be99b51d9a341ce00ccd1a25fc10e019877da53f0950f8ad1cc49fb43b77a"
+      "expectedHash": "sha256:ad37e8786f51571fc3e1f6f08a65bed1f1bdac9fca432557af459c23b704ef1d"
     },
     {
       "id": "deep-5",
@@ -151,15 +151,15 @@
       "kind": "element",
       "payload": {
         "key": "deep-5",
-        "ifcType": "IFCELEMENTASSEMBLY",
+        "ifcType": "IfcElementAssembly",
         "components": [
           {
             "componentKey": "relationship:IfcRelAggregates",
-            "hash": "sha256:e05be99b51d9a341ce00ccd1a25fc10e019877da53f0950f8ad1cc49fb43b77a"
+            "hash": "sha256:ad37e8786f51571fc3e1f6f08a65bed1f1bdac9fca432557af459c23b704ef1d"
           }
         ]
       },
-      "expectedHash": "sha256:fef9c011dd68983495158a886da674d4b7393083220b205f7e67a2ef20dde37d"
+      "expectedHash": "sha256:1e1c99b0057e68a06128e11f577df8223d6e05d3fe7a9bb0951da3843c8ca34d"
     },
     {
       "id": "deep-6",
@@ -167,15 +167,15 @@
       "kind": "element",
       "payload": {
         "key": "deep-6",
-        "ifcType": "IFCELEMENTASSEMBLY",
+        "ifcType": "IfcElementAssembly",
         "components": [
           {
             "componentKey": "relationship:IfcRelAggregates",
-            "hash": "sha256:fef9c011dd68983495158a886da674d4b7393083220b205f7e67a2ef20dde37d"
+            "hash": "sha256:1e1c99b0057e68a06128e11f577df8223d6e05d3fe7a9bb0951da3843c8ca34d"
           }
         ]
       },
-      "expectedHash": "sha256:ca65a35fa24a0e9ec512609428552ee585f6a954bb86ea69d460d6ae8a4f351e"
+      "expectedHash": "sha256:2698b10d849dd185b3c0284ca2207a67ae5c294d24128a4d1bc4d9f8cd3dcd70"
     }
   ]
 }

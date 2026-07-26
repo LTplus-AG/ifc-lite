@@ -83,7 +83,7 @@ const GOLDEN_FILES = [
 
 /** Pinned at freeze time. If this fails because vectors were removed, that is
  *  a hole in the frozen contract's coverage — restore them. */
-const FROZEN_VECTOR_COUNT = 53;
+const FROZEN_VECTOR_COUNT = 55;
 
 const allVectors = GOLDEN_FILES.map((file) => ({ file, vectors: loadGolden(file) }));
 

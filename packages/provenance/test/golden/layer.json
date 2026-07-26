@@ -1,5 +1,5 @@
 {
-  "description": "FROZEN wire-format golden vectors for node-hash-v0 (spec version node-hash-v0 / 1.0.0, frozen 2026-07-25, docs/vision/spec/node-hash-v0.md). Do NOT regenerate: a hash change here is a wire-format change and requires node-hash-v1 plus a major version bump of @ifc-lite/provenance. Special numbers are encoded as {\"$num\": \"NaN\" | \"Infinity\" | \"-Infinity\" | \"-0\"}.",
+  "description": "FROZEN wire-format golden vectors for node-hash-v0 (spec version node-hash-v0 / 1.0.0, frozen 2026-07-25, docs/vision/spec/node-hash-v0.md). Do NOT regenerate: a hash change here is a wire-format change and requires node-hash-v1 plus a major version bump of @ifc-lite/provenance. IFC identifiers follow the schema exactly (AGENTS.md \"IFC schema fidelity\"): relationship role names are the real EXPRESS attribute names of the named relationship, and element ifcType values are the exact EXPRESS PascalCase names the canonical load path produces (store.entities.getTypeName), never the uppercase STEP storage spelling. Special numbers are encoded as {\"$num\": \"NaN\" | \"Infinity\" | \"-Infinity\" | \"-0\"}.",
   "vectors": [
     {
       "id": "layer-basic",

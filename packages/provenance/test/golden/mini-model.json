@@ -1,5 +1,5 @@
 {
-  "description": "Canonical mini-model for the cross-surface freeze pin: one wall element (mesh + pset + qset), one door element (pset), a storey containment relationship, and a root layer. Node hashes and the DAG root are FROZEN (node-hash-v0 / 1.0.0, 2026-07-25); a change requires node-hash-v1 plus a major version bump of @ifc-lite/provenance.",
+  "description": "Canonical mini-model for the cross-surface freeze pin: one wall element (mesh + pset + qset), one door element (pset), a storey containment relationship, and a root layer. IFC type names are the exact EXPRESS PascalCase forms (IfcWallStandardCase, IfcDoor) and role names are exact EXPRESS attributes (RelatedElements), matching the canonical load path (store.entities.getTypeName). Node hashes and the DAG root are FROZEN (node-hash-v0 / 1.0.0, 2026-07-25); a change requires node-hash-v1 plus a major version bump of @ifc-lite/provenance.",
   "rootId": "root-layer",
   "nodes": [
     {
@@ -161,7 +161,7 @@
       "kind": "element",
       "composite": {
         "key": "2O2Fr$t4X7Zf8NOew3FLOH",
-        "ifcType": "IFCWALLSTANDARDCASE",
+        "ifcType": "IfcWallStandardCase",
         "components": [
           {
             "componentKey": "geometry-mesh",
@@ -183,7 +183,7 @@
       "kind": "element",
       "composite": {
         "key": "1kTvXnbbzCWw8lcMd1dR4o",
-        "ifcType": "IFCDOOR",
+        "ifcType": "IfcDoor",
         "components": [
           {
             "componentKey": "pset:Pset_DoorCommon",
@@ -224,10 +224,10 @@
     "pset-wall-common": "sha256:66b052e3d43da622eb8358db2fa35527b53131eac2a2a50543ea0a110fd6694e",
     "qset-wall": "sha256:ebfa7049cf1b51d01b9ed6549956bd424c9c9080a6d76f9923ea34314ca1a430",
     "pset-door-common": "sha256:9d8dbf99bc16f78f006950b17ad277800d1f95de43cc72fbb95f5e200f1228cb",
-    "element-wall": "sha256:f63ae1dcf5565d6e3ca08f225d9dbf59bcf8db679a9705915ad9849be9a3ee47",
-    "element-door": "sha256:d1c1d78664815449693ca61ddee770b242ac7a965be1c6ae920773fbd58bf556",
-    "storey-rel": "sha256:f607ddf4fae21599b6aae6ccbbf5a566a680374ff1c9f9f0e5458ffbca83c115",
-    "root-layer": "sha256:88776993621089ae388d15880be0a87782e1ca7713c63326bab73f297466c7a8"
+    "element-wall": "sha256:8ed0cde8c41a63ee76ea5b9387dd08604eecc6627fdf5ae5435704f6c4e648af",
+    "element-door": "sha256:7a72776f1ae370a0ece84271e6d2f3160422abd37df6a96e174d52b16271a2d7",
+    "storey-rel": "sha256:ceb4907d0639db866715521512aa5500e976bf8c4c90d23eb56a1a2527320ef7",
+    "root-layer": "sha256:6a3462643fdd9bf3a54d491128a01de4e83f94eab1beccb83024ef2ba5e4b738"
   },
-  "expectedRootHash": "sha256:88776993621089ae388d15880be0a87782e1ca7713c63326bab73f297466c7a8"
+  "expectedRootHash": "sha256:6a3462643fdd9bf3a54d491128a01de4e83f94eab1beccb83024ef2ba5e4b738"
 }

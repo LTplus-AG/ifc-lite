@@ -25,6 +25,20 @@ moonshot M1 "Proof-carrying buildings" in
   (`{alg: 'ed25519', key, sig}`, ignored by v0 verification, spec section 6
   Q5) and `GeometryMeshPayload.semanticHash` (RTC-invariant annotation,
   never folded into the node hash, spec section 6 Q2).
+- **Identifier conventions are frozen too** (spec section 3.2.1): IFC names
+  are hashed verbatim, with no case folding or aliasing, so the spelling is
+  part of the contract. Relationship `relType`/`roleName` use exact IFC
+  EXPRESS names (`IfcRelVoidsElement` carries the singular
+  `RelatedOpeningElement`), and `element.ifcType` uses the exact EXPRESS
+  PascalCase name from `store.entities.getTypeName` (`IfcWallStandardCase`),
+  not the uppercase STEP storage spelling.
+- **The commutation certificate versions independently.**
+  `commutation-v0` (`src/commutation.ts`) is a separate schema layered on top
+  of node hashes, not part of the node-hash-v0 wire format. It may advance to
+  `commutation-v1` on its own - that does NOT require node-hash-v1 or a
+  wire-format change here (and a future node-hash-v1 does not by itself rev
+  the commutation schema). The two version pins are asserted separately in
+  `test/frozen-surface.test.ts`.
 - The package remains `private: true` (not published to npm). API surface
   (names, types) may still evolve; the WIRE FORMAT may not.
 - Consumers today are the research demos under `scripts/moonshot/`.

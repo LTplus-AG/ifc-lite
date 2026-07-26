@@ -6,18 +6,27 @@
  * Cross-surface freeze pin for node-hash-v0 (FROZEN 2026-07-25, spec version
  * node-hash-v0 / 1.0.0, docs/vision/spec/node-hash-v0.md).
  *
- * Two things beyond the per-kind golden vectors must stay byte-stable:
+ * Two things beyond the per-kind golden vectors must stay byte-stable under
+ * the node-hash-v0 freeze:
  *
- * 1. The certificate serialization version strings (`node-hash-v0`,
- *    `commutation-v0`) — a serialized certificate's `version` field is part
- *    of the frozen wire surface; verifiers hard-reject anything else.
+ * 1. `CERTIFICATE_VERSION` — the `version` string a serialized node-hash-v0
+ *    certificate carries; verifiers hard-reject anything else, so it is part
+ *    of the frozen wire surface.
  * 2. The DAG root (and every node hash) of one canonical mini-model
  *    (`test/golden/mini-model.json`), built through the real `ProvenanceDag`
  *    engine — this pins the whole composed surface (leaf encodings, child-hash
  *    embedding, Merkle propagation, engine dispatch) in one number.
  *
- * A mismatch here means the wire format changed; if intentional it requires
- * node-hash-v1 plus a major version bump of @ifc-lite/provenance.
+ * A mismatch in either means the node-hash wire format changed; if intentional
+ * it requires node-hash-v1 plus a major version bump of @ifc-lite/provenance.
+ *
+ * `COMMUTATION_CERTIFICATE_VERSION` (`commutation-v0`, `src/commutation.ts`)
+ * is pinned SEPARATELY below, under its own change rule. The commutation
+ * certificate is a different artifact — a merge-model/epsilon/op-set schema
+ * layered on top of node hashes, not part of the node-hash-v0 wire format —
+ * so it may advance to `commutation-v1` on its own, WITHOUT requiring
+ * node-hash-v1. Its pin exists to make that step deliberate, not to couple the
+ * two formats.
  */
 
 import { readFileSync } from 'node:fs';
@@ -35,6 +44,15 @@ const FREEZE_POLICY =
   'node-hash-v0 wire format is FROZEN (1.0.0, 2026-07-25 — docs/vision/spec/node-hash-v0.md). ' +
   'If this change is intentional it requires node-hash-v1: a new versioned spec file plus a ' +
   'major version bump of @ifc-lite/provenance.';
+
+/** The commutation certificate versions independently of node-hash: it is a
+ *  separate schema (merge model, epsilon, op sets) layered ON TOP of node
+ *  hashes, so advancing it must never drag the node-hash format with it. */
+const COMMUTATION_POLICY =
+  'commutation-v0 is the pinned commutation-certificate schema version ' +
+  '(packages/provenance/src/commutation.ts). It versions INDEPENDENTLY of node-hash-v0: ' +
+  'evolving it means introducing commutation-v1 and updating this pin — it does NOT require ' +
+  'node-hash-v1, and it does not by itself change the node-hash wire format.';
 
 interface MiniModelComponentRef {
   componentKey: string;
@@ -139,9 +157,8 @@ function loadMiniModel(): MiniModelFixture {
 }
 
 describe('node-hash-v0 frozen cross-surface pin', () => {
-  it('pins the certificate serialization version strings', () => {
+  it('pins the node-hash certificate serialization version string', () => {
     expect(CERTIFICATE_VERSION, FREEZE_POLICY).toBe('node-hash-v0');
-    expect(COMMUTATION_CERTIFICATE_VERSION, FREEZE_POLICY).toBe('commutation-v0');
 
     // The version constant is what actually lands in a serialized certificate.
     const certificate = createCertificate({
@@ -172,5 +189,11 @@ describe('node-hash-v0 frozen cross-surface pin', () => {
       dag.getHash(fixture.rootId),
       `Mini-model DAG root drifted. ${FREEZE_POLICY}`,
     ).toBe(fixture.expectedRootHash);
+  });
+});
+
+describe('commutation certificate version pin (independent of node-hash-v0)', () => {
+  it('pins commutation-v0 under its own change rule', () => {
+    expect(COMMUTATION_CERTIFICATE_VERSION, COMMUTATION_POLICY).toBe('commutation-v0');
   });
 });

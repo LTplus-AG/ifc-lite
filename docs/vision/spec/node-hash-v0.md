@@ -16,6 +16,13 @@
 >     2026-07-24), ignored by v0 verification; actual signing lands with M4.
 >   - `GeometryMeshPayload.semanticHash?` — the RTC-invariant annotation per §6 Q2, deliberately
 >     NOT folded into the node hash (pinned by test).
+> - **Scope: this freeze covers the node-hash wire format only.** The commutation certificate
+>   (`commutation-v0`, `packages/provenance/src/commutation.ts`) is a *separate* artifact — a
+>   merge-model / epsilon / op-set schema layered on top of node hashes — with its **own version
+>   string and its own change rule**: it may advance to `commutation-v1` independently, without
+>   requiring node-hash-v1 and without a wire-format change here. The reverse also holds: a
+>   node-hash-v1 does not by itself rev the commutation schema. Each format's version pin is
+>   asserted separately in `packages/provenance/test/frozen-surface.test.ts`.
 >
 > The five design questions in §6 (now an appendix) were all resolved by Louis on 2026-07-24;
 > this freeze locks the format that implements those decisions.
@@ -284,7 +291,10 @@ boolean: 1 byte; null: no payload). Mirrors `buildComponentFingerprints`'s per-p
 
 **`relationship`**: header, `relType` (string, e.g. `"IfcRelVoidsElement"`), `roleCount` (u32),
 then roles **sorted by role name**, each: `roleName` (string), `refCount` (u32), then child-hash
-references **sorted by tagged hash string** (the role's members are a set).
+references **sorted by tagged hash string** (a role's members are encoded as a set; a role whose
+IFC attribute is singular simply carries one reference). A payload commits only the roles its
+producer includes — omitting a role and carrying it with zero refs are different byte streams and
+therefore different hashes.
 
 **`layer`**: header, `layerId` (string — the ifcx layer identity, see §6 Q1), `opCount` (u32),
 then child-hash references (the element/entity hashes this
@@ -298,6 +308,29 @@ existing `ComponentKey` vocabulary from `packages/diff/src/fingerprint.ts:162` /
 `02-layer-format.md` §2.2: `attr:core`, `pset:<Name>`, `qset:<Name>`, `type-assignment`,
 `geometry-mesh`, `relationship:<RelType>`), each: `componentKey` (string), child-hash reference
 (string).
+
+### 3.2.1 Identifier conventions (normative, frozen)
+
+Every IFC identifier that reaches a hash — `relationship.relType`, `relationship.roleName`,
+`element.ifcType`, and the `<RelType>` / `<Name>` parts of a `componentKey` — is encoded
+**verbatim** as an ordinary NFC UTF-8 string field. The hasher applies **no case folding, no
+aliasing, and no schema lookup**: it commits to exactly the string the producer supplied, so two
+producers only agree if they spell identifiers the same way. The freeze therefore pins the
+spelling, not just the bytes:
+
+- **Relationship type and role names are the exact IFC EXPRESS names** of the relationship
+  (AGENTS.md "IFC schema fidelity": full names, never invented aliases). `IfcRelVoidsElement`
+  carries `RelatingBuildingElement` and the **singular** `RelatedOpeningElement`;
+  `IfcRelAggregates` carries `RelatingObject` and `RelatedObjects`;
+  `IfcRelContainedInSpatialStructure` carries `RelatingStructure` and `RelatedElements`. A
+  pluralized or otherwise invented role name is a non-conforming payload: its hash is
+  well-defined but no schema-faithful implementation can reproduce it.
+- **`element.ifcType` is the exact IFC EXPRESS PascalCase type name** (`IfcWallStandardCase`) —
+  what the canonical load path yields via `store.entities.getTypeName(id)` — **not** the
+  uppercase STEP storage spelling (`IFCWALLSTANDARDCASE`). Both are technically hashable strings,
+  and the uppercase form deliberately hashes differently; the golden vectors pin that difference
+  (`el-basic` vs `el-step-uppercase-name`) so the mismatch surfaces as a distinct hash rather
+  than as a silent interoperability failure.
 
 ### 3.3 Why two algorithms, not one
 

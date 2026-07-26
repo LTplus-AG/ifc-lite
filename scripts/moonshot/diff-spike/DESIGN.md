@@ -425,13 +425,63 @@ and v1 chains still verify (the verifier dispatches on the version tag).
   S (e.g. 60% for t=1, S=20, K=8; the miss probability decays as
   (1-K/S)^t for small t). The sample is only meaningful if the prover
   cannot predict the seed: the CLI draws a fresh random seed per run and
-  prints it; `--seed` exists to reproduce, not to delegate the choice.
-  Both modes verify the endpoint exactly as v1 (kernel re-measurement
-  included unless `--skip-kernel`).
+  prints it; `--seed` exists to reproduce, not to delegate the choice. A
+  nonpositive, fractional or NaN sample count is REFUSED
+  (`invalid-spot-k`, CLI exit 2) rather than silently sampling nothing and
+  still reporting VERIFIED. Both modes verify the endpoint exactly as v1
+  (kernel re-measurement included unless `--skip-kernel`).
 
-Measured on a fresh 4,950-step baseline run (`--max-iter 450` to cap the
-per-round iteration count; same optimizer mathematics, endpoint fully
-kernel-valid), Apple Silicon, Node 22:
+Externally supplied chains are held to the v2 CONTRACT before any hash is
+recomputed. `verifyCertificate` is a faithful checker of whatever a
+certificate asserts, and an emptied certificate asserts almost nothing:
+`reads: []`, `claims: []` plus one honest end-root write would pass on its
+own terms. So `checkSegmentCertificateShape` requires each segment
+certificate to carry the entry state's three node refs, the exit state's
+three node refs, and exactly one scalar-delta claim on `EmbodiedCarbon`
+bound to the entry/exit quantities nodes with before/after equal to the
+segment record's own carbon endpoints - and every access is defensive, so
+a malformed chain fails with a reason (`segment-certificate-missing` /
+`-malformed` / `-incomplete` / `-detached` / `-claim-mismatch`) instead of
+a TypeError.
+
+Module layout (the security-sensitive paths are separately auditable):
+`verify-trajectory.mjs` is a thin CLI entry that dispatches on the chain's
+version tag; `verify-common.mjs` holds the failure shape and header/kernel
+pins; `verify-v1.mjs` the frozen per-step verifier; `verify-v2.mjs` the
+segment skeleton pass; `verify-v2-segment.mjs` the sampling, certificate
+shape contract and per-segment replay; `verify-endpoint.mjs` the endpoint
+grounding shared by both formats. The v2 builder lives in `chain-v2.mjs`
+(`trajectory.mjs` keeps the v1 state-commitment primitives it reuses), and
+the tamper battery splits the same way (`tamper-test.mjs` v1 + CLI,
+`tamper-v2.mjs`, `tamper-common.mjs`).
+
+#### Dated experiment record (not a live performance claim)
+
+The figures below are a one-off research measurement of ONE experimental
+run of these spike scripts, recorded here the way every other moonshot
+DESIGN/REPORT doc records its own. They are not derived from
+`tests/benchmark/baseline.json` and are not stamped into the generated
+`perf-numbers` region of `docs/guide/performance.md`, which is reserved
+for product performance numbers; nothing regenerates or refreshes the
+table below, so read it as dated evidence for the v2 format decision, not
+as a number to track.
+
+- Date: 2026-07-25
+- Machine: Apple M4, macOS 26.5.2, Node v22.14.0, single process, idle
+  machine, timings are `/usr/bin/time -p` wall clock (median of 2 runs,
+  interleaved v1/v2; spread < 3%)
+- Chain under test: `--scenario baseline --max-iter 450`, giving 4,950
+  accepted steps / 4,960 records; identical optimizer mathematics to the
+  full runs above, endpoint fully kernel-valid (0 CSG failures, validate 0
+  errors, 0 real hard clashes)
+- Exact commands:
+
+```
+node scripts/moonshot/diff-spike/optimize-certified.mjs --scenario baseline --out /tmp/b33/v2 --max-iter 450 --emit-v1
+node scripts/moonshot/diff-spike/verify-trajectory.mjs /tmp/b33/v2/trajectory-chain.json
+node scripts/moonshot/diff-spike/verify-trajectory.mjs /tmp/b33/v2/trajectory-chain-v2.json
+node scripts/moonshot/diff-spike/verify-trajectory.mjs /tmp/b33/v2/trajectory-chain-v2.json --mode spot --spot-k 8 --seed 20260725
+```
 
 | | v1 (per-step) | v2 (checkpointed, N=256) |
 |---|---|---|
@@ -451,7 +501,11 @@ segment replays + the endpoint kernel re-measurement.
 The v2 tamper battery (`tamper-test.mjs`, dispatches on the version tag)
 re-tests every mode on the real chain: a flipped boundary parameter,
 faked segment carbon (claim adjusted), broken segment linkage, forged end
-root, and a tampered sidecar are all caught by the SPOT skeleton alone; a
+root, a tampered sidecar, a hollowed certificate (`reads: []`,
+`claims: []`, one honest write), a shifted-but-internally-consistent
+aggregate claim, a non-array `reads`, and a missing certificate are all
+caught by the SPOT skeleton alone (the last four by the shape contract);
+degenerate `spotK` values (0, -1, 1.5, NaN) are refused; a
 consistently resealed sidecar flip and a forged Merkle root are caught by
 FULL replay; the endpoint tampers behave as in v1 (including the
 consistent forgery caught only by kernel re-measurement). The SPOT

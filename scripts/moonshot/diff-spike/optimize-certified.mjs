@@ -37,8 +37,9 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { PARAMS, NPARAMS, evaluateNumeric } from './carbon-model.mjs';
 import { optimize, endpointChecks, SCENARIOS, G_SCALE } from './optimize.mjs';
 import {
-  buildChain, attachEndpoint, getKernelIdentity, chainToV2, DEFAULT_SEGMENT_SIZE,
+  buildChain, attachEndpoint, getKernelIdentity,
 } from './trajectory.mjs';
+import { chainToV2, DEFAULT_SEGMENT_SIZE } from './chain-v2.mjs';
 
 function intFlag(argv, flag, fallback) {
   const i = argv.indexOf(flag);

@@ -83,7 +83,7 @@ const EMPTY_SELECTION: ScanBandSelection = {
  * (non-streamed) assets have no renderer handle and therefore no
  * alignment registration, so they carry no matrix.
  */
-type ScanSource = ScanPointSample & { model?: Float32Array };
+type ScanSource = ScanPointSample & { model?: Float32Array; modelOutputsRenderFrame?: boolean };
 
 function collectScanSources(
   models: ReadonlyMap<string, FederatedModel>,
@@ -114,7 +114,10 @@ function collectScanSources(
             colors: cached.colors ?? undefined,
             classifications: cached.classifications ?? undefined,
             count: cached.count,
-            model: getPointCloudAlignmentMatrix(model.pointCloudHandleId, alignmentEnabled),
+            ...(() => {
+              const t = getPointCloudAlignmentMatrix(model.pointCloudHandleId, alignmentEnabled);
+              return t ? { model: t.matrix, modelOutputsRenderFrame: t.outputsRenderFrame } : {};
+            })(),
           });
         }
       }
@@ -213,6 +216,7 @@ export function useScanSectionLayer(params: UseScanSectionLayerParams): UseScanS
       const selections = sources.map((sample) => selectScanBand({
         sample, coordinateInfo, plane, thickness, classMask, maxRendered,
         model: sample.model,
+        modelOutputsRenderFrame: sample.modelOutputsRenderFrame,
       }));
       // Re-apply the render cap to the MERGED result: each asset caps its
       // own selection, but several dense scans would otherwise concatenate

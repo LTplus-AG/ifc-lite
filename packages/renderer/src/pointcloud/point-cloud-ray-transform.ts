@@ -55,6 +55,25 @@
  * so a single scalar `s` is exact. `matrixUniformScale` falls back to the
  * mean column length for anything else, which keeps a non-uniform matrix
  * approximately right rather than wildly wrong.
+ *
+ * ## Known limit: long-range reach under a sub-unit scale
+ *
+ * `PointCloudSpatialIndex` caps its per-step dilation at
+ * `MAX_DILATION_RADIUS_CELLS * cellSize` = 2 LOCAL units, a deliberate
+ * bound on march cost. Because the tolerance is converted into local
+ * units, a matrix with `s < 1` tightens that cap in world terms: a
+ * foot-based CRS (`s = 0.3048`) caps the effective snap radius at
+ * `2 * 0.3048 = 0.61 m` rather than 2 m, so at long range a point inside
+ * the nominal ~8px tolerance can sit outside the searched cells and be
+ * missed.
+ *
+ * This is a reach limit, not a wrong answer: whatever the query returns is
+ * correctly placed, and near-to-mid range (where measuring actually
+ * happens) is unaffected. Restoring the full world-space reach means
+ * scaling the cap to `MAX_DILATION_RADIUS_CELLS / s` (~14 cells at
+ * s = 0.3048), which re-inflates the per-step probe cost that the
+ * leading-slab bound exists to contain — a perf trade that should be made
+ * deliberately, with a benchmark, rather than folded into this fix.
  */
 
 import { MathUtils } from '../math.js';

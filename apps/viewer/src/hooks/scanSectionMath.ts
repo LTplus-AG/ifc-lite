@@ -137,6 +137,15 @@ export interface SelectScanBandParams {
    * an unaligned asset.
    */
   model?: Float32Array;
+  /**
+   * Whether `model` already lands in the viewer render frame. The aligned
+   * matrix does (the whole viewer shift is folded into its decode offset,
+   * leaving a zero translation column), so applying the render-frame shift
+   * on top of it would subtract that shift TWICE and displace the overlay
+   * by the model's full RTC/origin offset. The unaligned matrix restores
+   * absolute native coordinates and still needs the shift.
+   */
+  modelOutputsRenderFrame?: boolean;
   /** Cap on rendered (post-decimation) point count. */
   maxRendered?: number;
 }
@@ -273,7 +282,10 @@ function readColor(
  * (debounced on section-plane changes), not per frame.
  */
 export function selectScanBand(params: SelectScanBandParams): ScanBandSelection {
-  const { sample, coordinateInfo, plane, thickness, classMask, model, maxRendered = DEFAULT_SCAN_RENDER_CAP } = params;
+  const {
+    sample, coordinateInfo, plane, thickness, classMask, model,
+    modelOutputsRenderFrame = false, maxRendered = DEFAULT_SCAN_RENDER_CAP,
+  } = params;
   const { positions, colors, classifications, count } = sample;
   const shift = pointCloudRenderFrameShift(coordinateInfo);
   const halfThickness = Math.max(thickness, 0) / 2;
@@ -283,6 +295,9 @@ export function selectScanBand(params: SelectScanBandParams): ScanBandSelection 
   // aligned to the building. Skipped entirely when absent (the common
   // unaligned case) so nothing pays matrix cost for nothing.
   const useModel = model !== undefined && model.length === 16;
+  // Skip the render-frame shift when the matrix already produced
+  // render-frame coordinates — otherwise it is subtracted twice.
+  const shiftAfterModel = !(useModel && modelOutputsRenderFrame);
 
   const passesClassMask = (i: number): boolean => {
     if (!classMask || !classifications) return true;
@@ -302,7 +317,7 @@ export function selectScanBand(params: SelectScanBandParams): ScanBandSelection 
         z: model[2] * x + model[6] * y + model[10] * z + model[14],
       }
       : { x, y, z };
-    return toRenderFrame(p, shift);
+    return shiftAfterModel ? toRenderFrame(p, shift) : p;
   };
   const inBand = (i: number): boolean => {
     return Math.abs(signedBandDistance(readPoint(i), plane)) <= halfThickness;

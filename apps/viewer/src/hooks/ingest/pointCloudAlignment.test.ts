@@ -373,12 +373,19 @@ describe('getPointCloudAlignmentMatrix', () => {
     try {
       const off = getPointCloudAlignmentMatrix(91, false);
       assert.ok(off, 'a registered asset must still report a matrix when unaligned');
-      assert.strictEqual(off, transform!.unalignedMatrix);
-      const isIdentity = off![12] === 0 && off![13] === 0 && off![14] === 0;
+      assert.strictEqual(off!.matrix, transform!.unalignedMatrix);
+      const isIdentity = off!.matrix[12] === 0 && off!.matrix[13] === 0 && off!.matrix[14] === 0;
       assert.ok(!isIdentity, 'unalignedMatrix carries the decode offset; it is not a no-op');
+      // It restores ABSOLUTE native coordinates, so the caller must still
+      // apply the world -> render-frame shift.
+      assert.strictEqual(off!.outputsRenderFrame, false);
 
       const on = getPointCloudAlignmentMatrix(91, true);
-      assert.strictEqual(on, transform!.alignedMatrix);
+      assert.strictEqual(on!.matrix, transform!.alignedMatrix);
+      // The aligned matrix folds the whole viewer shift into its decode
+      // offset (zero translation column), so it is ALREADY render-frame —
+      // shifting it again would displace the overlay by the full offset.
+      assert.strictEqual(on!.outputsRenderFrame, true);
     } finally {
       unregisterPointCloudAlignment(91);
     }

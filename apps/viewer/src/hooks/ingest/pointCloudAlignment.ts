@@ -305,26 +305,47 @@ export function hasRegisteredPointCloudAlignment(): boolean {
 }
 
 /**
- * The matrix currently being applied to `handleId` on the GPU, or
- * undefined when that asset has no alignment registered.
+ * The transform currently applied to `handleId` on the GPU, or undefined
+ * when that asset has no alignment registered.
  *
- * `enabled` must be the live `pointCloudAlignmentEnabled` store flag —
- * the registry deliberately does not cache it, since
+ * `enabled` must be the live `pointCloudAlignmentEnabled` store flag — the
+ * registry deliberately does not cache it, since
  * `applyPointCloudAlignmentToggle` is the single writer that pushes the
  * choice to the renderer.
  *
  * Exists so CPU-side consumers of raw cached scan points (the 2D section
  * scan layer, #1805) can place them where the GPU actually draws them.
  * Without it those consumers read pre-alignment coordinates while the 3D
- * view shows aligned ones — the same class of gap the snap query had.
+ * view shows aligned ones.
+ *
+ * **`outputsRenderFrame` is the part callers get wrong.** The two matrices
+ * do not land in the same space:
+ *
+ * - `alignedMatrix` consumes decode-shifted residuals and, because the
+ *   whole viewer shift was folded into `decodeOriginOffset` (zero
+ *   translation column), lands DIRECTLY in the viewer render frame. A
+ *   caller that then also applies the render-frame shift subtracts it
+ *   twice and displaces the result by the model's full RTC/origin offset.
+ * - `unalignedMatrix` restores the raw native placement instead, so its
+ *   output is absolute and still needs the usual world -> render-frame
+ *   shift.
  */
+export interface AppliedPointCloudTransform {
+  matrix: Float32Array;
+  /** True when `matrix` already lands in the viewer render frame, so no
+   *  further render-frame shift may be applied. */
+  outputsRenderFrame: boolean;
+}
+
 export function getPointCloudAlignmentMatrix(
   handleId: number,
   enabled: boolean,
-): Float32Array | undefined {
+): AppliedPointCloudTransform | undefined {
   const entry = registry.get(handleId);
   if (!entry) return undefined;
-  return enabled ? entry.transform.alignedMatrix : entry.transform.unalignedMatrix;
+  return enabled
+    ? { matrix: entry.transform.alignedMatrix, outputsRenderFrame: true }
+    : { matrix: entry.transform.unalignedMatrix, outputsRenderFrame: false };
 }
 
 /** Renderer surface this module needs — matches `@ifc-lite/renderer`'s

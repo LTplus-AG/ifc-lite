@@ -8,6 +8,14 @@
  * runs must emit identical GlobalIds; without one, the platform CSPRNG
  * path stays random. Counterpart of the `IfcCreator` Timestamp/GuidSource
  * tests in ../ifc-creator.test.ts for the anchored builder path.
+ *
+ * The last suite closes the loop at the only level that actually matters to
+ * a caller: the FINAL exported STEP bytes. Builders that attach psets or
+ * qsets (`addSpaceToStore`) park them in the mutation overlay; they only
+ * become `IfcPropertySet` / `IfcElementQuantity` / `IfcRelDefinesByProperties`
+ * roots inside `StepExporter`, which mints those four GlobalIds itself - so
+ * seeding the builders alone left the exported file non-reproducible until
+ * `StepExportOptions.guidRandom` existed.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -18,7 +26,10 @@ import {
   type MutationEntityRef,
   type MutationStoreShape,
 } from '@ifc-lite/mutations';
+import { IfcParser, extractPropertiesOnDemand } from '@ifc-lite/parser';
+import { StepExporter } from '@ifc-lite/export';
 import type { SpatialAnchor } from './anchor.js';
+import { resolveSpatialAnchor } from './resolve-anchor.js';
 import { addWallToStore } from './wall.js';
 import { addSlabToStore } from './slab.js';
 import { addDoorToStore } from './door.js';
@@ -120,5 +131,96 @@ describe('in-store builders with a seeded RandomSource', () => {
     expect(a.length).toBeGreaterThanOrEqual(2); // duplicate root + containment rel
     expect(b).toEqual(a);
     expect(run(seeded(8))).not.toEqual(a);
+  });
+});
+
+// ============================================================================
+// End-to-end: the exported STEP bytes, including StepExporter's own roots
+// ============================================================================
+
+/** Minimal IFC4 model with one storey - enough for `resolveSpatialAnchor`. */
+const STOREY_MODEL = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('t.ifc','',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0proj00000000000000000',$,'P',$,$,$,$,(#7),#9);
+#5=IFCCARTESIANPOINT((0.,0.,0.));
+#6=IFCAXIS2PLACEMENT3D(#5,$,$);
+#7=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#6,$);
+#8=IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body','Model',*,*,*,*,#7,$,.MODEL_VIEW.,$);
+#9=IFCUNITASSIGNMENT((#91));
+#91=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#20=IFCLOCALPLACEMENT($,#6);
+#30=IFCBUILDINGSTOREY('0storey000000000000000',$,'Level 0',$,$,#20,$,$,.ELEMENT.,0.);
+ENDSEC;
+END-ISO-10303-21;`;
+
+/**
+ * Build a space (which attaches Qto_SpaceBaseQuantities + Pset_SpaceCommon
+ * through the overlay) on a freshly parsed store, then export to STEP.
+ * `random`/`timeStamp` are the determinism pins under test.
+ */
+async function exportSpaceModel(random: RandomSource | undefined, timeStamp: string | undefined): Promise<string> {
+  const store = await new IfcParser().parseColumnar(
+    new TextEncoder().encode(STOREY_MODEL).buffer as ArrayBuffer,
+    { disableWorkerScan: true },
+  );
+  const view = new MutablePropertyView(null, 'm1');
+  view.setOnDemandExtractor((entityId: number) => extractPropertiesOnDemand(store, entityId));
+  const editor = new StoreEditor(store, view);
+  const anchor = resolveSpatialAnchor(store, 30);
+  anchor.guidRandom = random;
+  addSpaceToStore(editor, anchor, {
+    Profile: 'rectangle', Position: [0, 0, 0], Width: 4, Depth: 3, Height: 2.8, Name: 'Room 1',
+  });
+  const result = new StepExporter(store, view).export({
+    schema: 'IFC4',
+    applyMutations: true,
+    guidRandom: random,
+    timeStamp,
+  });
+  return new TextDecoder().decode(result.content);
+}
+
+describe('seeded in-store build -> StepExporter, final STEP bytes', () => {
+  const TS = '20240101T000000';
+
+  it('emits the four StepExporter-synthesized roots (pset, qset, two rels)', async () => {
+    const out = await exportSpaceModel(seeded(11), TS);
+    // These GlobalIds are minted by StepExporter, not by the builder: the
+    // overlay only carries the pset/qset payloads.
+    expect(out).toMatch(/=IFCPROPERTYSET\('.{22}',.+,'Pset_SpaceCommon'/);
+    expect(out).toMatch(/=IFCELEMENTQUANTITY\('.{22}',.+,'Qto_SpaceBaseQuantities'/);
+    expect((out.match(/=IFCRELDEFINESBYPROPERTIES\('.{22}'/g) ?? []).length).toBe(2);
+  });
+
+  it('same seed twice => byte-identical exported file', async () => {
+    const a = await exportSpaceModel(seeded(11), TS);
+    const b = await exportSpaceModel(seeded(11), TS);
+    expect(b).toBe(a);
+  });
+
+  it('a different seed changes the exported bytes', async () => {
+    const a = await exportSpaceModel(seeded(11), TS);
+    const b = await exportSpaceModel(seeded(12), TS);
+    expect(b).not.toBe(a);
+  });
+
+  it('without a seed the synthesized roots stay random (default path unchanged)', async () => {
+    const a = await exportSpaceModel(undefined, TS);
+    const b = await exportSpaceModel(undefined, TS);
+    expect(b).not.toBe(a);
+    // The divergence is in the GlobalIds, not the structure: same line count.
+    expect(b.split('\n').length).toBe(a.split('\n').length);
+  });
+
+  it('an unpinned timeStamp leaves the header instant on the wall clock', async () => {
+    const pinned = await exportSpaceModel(seeded(11), TS);
+    expect(pinned).toContain(`'${TS}'`);
+    const unpinned = await exportSpaceModel(seeded(11), undefined);
+    expect(unpinned).not.toContain(`'${TS}'`);
   });
 });

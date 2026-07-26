@@ -23,6 +23,7 @@
     "@ifc-lite/parser": "workspace:^"
   },
   "devDependencies": {
+    "@ifc-lite/export": "workspace:^",
     "typescript": "^6.0.3",
     "vitest": "^4.1.10"
   },

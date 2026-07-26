@@ -198,8 +198,11 @@ says which gate tripped:
    plus that script's own `wasm-tools`-verified litmus check that the bundle
    actually contains wide ops). This is **blocker 1** (wasm-bindgen/walrus):
    it fails today because `rust/wasm-bindings/Cargo.toml` still pins
-   `wasm-bindgen = "=0.2.106"`, whose bundled `walrus` predates the parser fix
-   (walrus 0.26.0 / wasm-bindgen >=0.2.126). Turning this step green requires
+   `wasm-bindgen = "=0.2.106"`, whose bundled `walrus` predates the parser fix.
+   `wasm-bindgen-cli` first depends on `walrus ^0.26.0` in **0.2.115** (0.2.114
+   and earlier are still on `walrus ^0.25.1`; verified against the crates.io
+   dependency data per release), so 0.2.115 is the floor for a bump that can
+   clear this gate. Turning this step green requires
    an actual version-bump PR — out of scope for the CI lane itself, by design:
    a green run here is proof the bump landed, not a workaround for it not
    having landed.
@@ -208,11 +211,16 @@ says which gate tripped:
    (`wasm-pack test --node rust/wasm-bindings --test mesh_determinism` against
    the pinned `rust/processing/tests/manifests/mesh_determinism.wasm32.json`),
    compiled with the same wide-arithmetic RUSTFLAGS and run under Node started
-   with `NODE_OPTIONS=--experimental-wasm-wide-arithmetic` — the earliest
-   in-repo signal for **blocker 2** (V8/engine support), since Node ships the
-   same V8 a browser would, well before any browser turns the flag on by
-   default. `if: always()` keeps this independent of step 1's outcome, so
-   each blocker's status is legible on its own.
+   with `NODE_ARGS=--experimental-wasm-wide-arithmetic` (a direct node argv —
+   V8 flags are rejected inside `NODE_OPTIONS`, where Node refuses to start at
+   all). Treat a green run here as an **experimental compatibility signal**:
+   it says a flagged V8 accepts and correctly executes the module, which is an
+   early proxy for **blocker 2**, not evidence that any browser ships the
+   feature. Default availability in Chrome, Firefox, Safari and Edge is gated
+   separately by the shipping-engine validation in the flip-the-flag checklist
+   below, which remains the authoritative bar. `if: always()` keeps this
+   independent of step 1's outcome, so each blocker's status is legible on its
+   own.
 3. **Wide-op emission count** — informational only (`continue-on-error`),
    counts `mul_wide`/`add128`/`sub128` in the built bundle via `wasm-tools
    print`. Confirms the mechanism is present, not a timing measurement —
@@ -220,14 +228,25 @@ says which gate tripped:
    above live in a separate profiling repo), so this is deliberately not a
    perf regression gate.
 
-**What a real failure looks like:** the *only* failure mode that is not one
-of the two expected/tracked blockers above is step 2 failing with a manifest
-diff report (naming `positions_hash` / `indices_origin_hash` / `normals_hash`
-etc.) rather than a parse/instantiate error. That means both gates cleared
-far enough to execute the kernel under wide-arithmetic and the emitted bytes
-diverged from the pinned wasm32 manifest — a real determinism regression that
-must block flipping `BUILD_WIDE` on, regardless of the workflow's
-weekly/non-blocking schedule.
+**Reading a failure.** Three categories, and only the first is a determinism
+regression:
+
+1. **Manifest diff** — step 2 fails with a report naming `positions_hash` /
+   `indices_origin_hash` / `normals_hash` rather than a parse/instantiate
+   error. Both gates cleared far enough to execute the kernel under
+   wide-arithmetic and the emitted bytes diverged from the pinned wasm32
+   manifest. This is a real determinism regression and blocks flipping
+   `BUILD_WIDE` on.
+2. **Expected blocker** — a walrus/parse error (blocker 1) or a
+   validate/instantiate/invalid-opcode error from Node (blocker 2). Status
+   quo, not a regression; the lane exists to watch these flip.
+3. **Unclassified** — anything else: compilation errors unrelated to walrus,
+   the test binary failing to run, Node refusing to start, script or
+   toolchain breakage, dependency resolution failures, runner/infrastructure
+   errors. These are *not* determinism regressions, but they also are *not*
+   passes: an unclassified failure means the lane did not actually exercise
+   the kernel, so it leaves `BUILD_WIDE` blocked exactly as a category-1
+   failure does. Diagnose the lane before reading anything into its colour.
 
 **Flip-the-flag shipping checklist**, once this workflow is green end to end:
 

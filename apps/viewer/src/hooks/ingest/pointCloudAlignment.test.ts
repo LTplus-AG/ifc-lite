@@ -360,7 +360,9 @@ describe('getPointCloudAlignmentMatrix', () => {
   });
 
   it('returns the UNALIGNED matrix when the toggle is off — not undefined', () => {
-    // Regression guard for a review suggestion that would have broken this.
+    // Regression guard for a CodeRabbit suggestion on PR #1889 (issue
+    // #1804 follow-up) that would have broken this: it proposed returning
+    // undefined here so callers could take the no-matrix fast path.
     // `unalignedMatrix` is NOT identity: it restores the f64 decode-time
     // origin subtraction, a translation of map magnitude (~2.6e6). Handing
     // callers `undefined` here would leave them on raw decode coordinates

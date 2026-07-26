@@ -129,6 +129,14 @@ export interface SelectScanBandParams {
   thickness: number;
   /** 8-word LAS class-visibility mask (see `pointCloudSlice.ts`). Omitted = all visible. */
   classMask?: readonly number[];
+  /**
+   * The asset's current GPU transform (#1804), from
+   * `getPointCloudAlignmentMatrix`. Cached scan points are raw decoder
+   * output, so without this an ALIGNED scan's 2D overlay lands at
+   * pre-alignment coordinates while the 3D view draws it aligned. Omit for
+   * an unaligned asset.
+   */
+  model?: Float32Array;
   /** Cap on rendered (post-decimation) point count. */
   maxRendered?: number;
 }
@@ -265,19 +273,39 @@ function readColor(
  * (debounced on section-plane changes), not per frame.
  */
 export function selectScanBand(params: SelectScanBandParams): ScanBandSelection {
-  const { sample, coordinateInfo, plane, thickness, classMask, maxRendered = DEFAULT_SCAN_RENDER_CAP } = params;
+  const { sample, coordinateInfo, plane, thickness, classMask, model, maxRendered = DEFAULT_SCAN_RENDER_CAP } = params;
   const { positions, colors, classifications, count } = sample;
   const shift = pointCloudRenderFrameShift(coordinateInfo);
   const halfThickness = Math.max(thickness, 0) / 2;
+  // Cached scan points are RAW decoder output; an aligned asset (#1804) is
+  // drawn through `model` on the GPU. Fold it in here or the 2D overlay
+  // sits at pre-alignment coordinates while the 3D view shows the scan
+  // aligned to the building. Skipped entirely when absent (the common
+  // unaligned case) so nothing pays matrix cost for nothing.
+  const useModel = model !== undefined && model.length === 16;
 
   const passesClassMask = (i: number): boolean => {
     if (!classMask || !classifications) return true;
     return isPointCloudClassVisible(classMask, classifications[i]);
   };
+  // Single reader for both passes below — the band test and the collect
+  // loop MUST agree on where a point is, so there is deliberately only one
+  // place that turns an index into a render-frame position.
+  const readPoint = (i: number): Vec3 => {
+    const x = positions[i * 3];
+    const y = positions[i * 3 + 1];
+    const z = positions[i * 3 + 2];
+    const p: Vec3 = useModel
+      ? {
+        x: model[0] * x + model[4] * y + model[8] * z + model[12],
+        y: model[1] * x + model[5] * y + model[9] * z + model[13],
+        z: model[2] * x + model[6] * y + model[10] * z + model[14],
+      }
+      : { x, y, z };
+    return toRenderFrame(p, shift);
+  };
   const inBand = (i: number): boolean => {
-    const p: Vec3 = { x: positions[i * 3], y: positions[i * 3 + 1], z: positions[i * 3 + 2] };
-    const rp = toRenderFrame(p, shift);
-    return Math.abs(signedBandDistance(rp, plane)) <= halfThickness;
+    return Math.abs(signedBandDistance(readPoint(i), plane)) <= halfThickness;
   };
 
   let totalInBand = 0;
@@ -294,8 +322,7 @@ export function selectScanBand(params: SelectScanBandParams): ScanBandSelection 
   let matchIndex = -1;
   for (let i = 0; i < count; i++) {
     if (!passesClassMask(i)) continue;
-    const p: Vec3 = { x: positions[i * 3], y: positions[i * 3 + 1], z: positions[i * 3 + 2] };
-    const rp = toRenderFrame(p, shift);
+    const rp = readPoint(i);
     if (Math.abs(signedBandDistance(rp, plane)) > halfThickness) continue;
     matchIndex++;
     if (matchIndex % stride !== 0) continue;

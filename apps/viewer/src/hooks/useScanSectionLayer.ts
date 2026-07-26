@@ -24,8 +24,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { GeometryResult, PointCloudAsset } from '@ifc-lite/geometry';
 import type { FederatedModel, SectionPlane } from '@/store/types';
-import { customPlaneCenter } from '@/store';
+import { customPlaneCenter, useViewerStore } from '@/store';
 import { getPointCloudScanSample } from './ingest/pointCloudScanCache.js';
+import { getPointCloudAlignmentMatrix } from './ingest/pointCloudAlignment.js';
 import {
   selectScanBand,
   mergeScanBandSelections,
@@ -75,12 +76,21 @@ const EMPTY_SELECTION: ScanBandSelection = {
   stride: 1,
 };
 
-/** Gather every currently-loaded point cloud as a flat `ScanPointSample[]`. */
+/**
+ * Gather every currently-loaded point cloud, each paired with the GPU
+ * transform it is currently drawn through (#1804) so the 2D overlay can
+ * place raw cached points where the 3D view actually shows them. Inline
+ * (non-streamed) assets have no renderer handle and therefore no
+ * alignment registration, so they carry no matrix.
+ */
+type ScanSource = ScanPointSample & { model?: Float32Array };
+
 function collectScanSources(
   models: ReadonlyMap<string, FederatedModel>,
   legacyPointClouds: readonly PointCloudAsset[] | undefined,
-): ScanPointSample[] {
-  const sources: ScanPointSample[] = [];
+  alignmentEnabled: boolean,
+): ScanSource[] {
+  const sources: ScanSource[] = [];
 
   const pushInlineAsset = (asset: PointCloudAsset) => {
     if (asset.chunk.pointCount > 0 && asset.chunk.positions.length > 0) {
@@ -104,6 +114,7 @@ function collectScanSources(
             colors: cached.colors ?? undefined,
             classifications: cached.classifications ?? undefined,
             count: cached.count,
+            model: getPointCloudAlignmentMatrix(model.pointCloudHandleId, alignmentEnabled),
           });
         }
       }
@@ -156,6 +167,10 @@ export function useScanSectionLayer(params: UseScanSectionLayerParams): UseScanS
 
   const [selection, setSelection] = useState<ScanBandSelection>(EMPTY_SELECTION);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Which matrix each streamed asset is currently drawn through (#1804).
+  // Flipping the toggle must move the 2D overlay with the 3D view, so this
+  // is a real dependency of the recompute below, not a one-shot read.
+  const alignmentEnabled = useViewerStore((st) => st.pointCloudAlignmentEnabled);
 
   // Fold every dependency the computation reads into one key so the
   // debounce timer restarts exactly when something relevant changed —
@@ -174,10 +189,10 @@ export function useScanSectionLayer(params: UseScanSectionLayerParams): UseScanS
   // Cheap presence check (map lookups, no O(n) point scan) — independent of
   // `enabled` so the UI can report "a scan is loaded, just hidden".
   const hasPointCloud = useMemo(
-    () => collectScanSources(models, legacyPointClouds).length > 0,
+    () => collectScanSources(models, legacyPointClouds, alignmentEnabled).length > 0,
     // Keyed on `modelsKey` (a stable string), not `models` identity, since
     // the Map reference can change without any visible-content change.
-    [modelsKey, legacyPointClouds],
+    [modelsKey, legacyPointClouds, alignmentEnabled],
   );
 
   useEffect(() => {
@@ -189,7 +204,7 @@ export function useScanSectionLayer(params: UseScanSectionLayerParams): UseScanS
     }
 
     timerRef.current = setTimeout(() => {
-      const sources = collectScanSources(models, legacyPointClouds);
+      const sources = collectScanSources(models, legacyPointClouds, alignmentEnabled);
       if (sources.length === 0) {
         setSelection(EMPTY_SELECTION);
         return;
@@ -197,6 +212,7 @@ export function useScanSectionLayer(params: UseScanSectionLayerParams): UseScanS
       const plane = toScanSectionPlane(sectionPlane, coordinateInfo);
       const selections = sources.map((sample) => selectScanBand({
         sample, coordinateInfo, plane, thickness, classMask, maxRendered,
+        model: sample.model,
       }));
       // Re-apply the render cap to the MERGED result: each asset caps its
       // own selection, but several dense scans would otherwise concatenate
@@ -219,6 +235,7 @@ export function useScanSectionLayer(params: UseScanSectionLayerParams): UseScanS
     modelsKey,
     legacyPointClouds,
     maxRendered,
+    alignmentEnabled,
   ]);
 
   // Stable result identity: consumers put this object in dependency arrays

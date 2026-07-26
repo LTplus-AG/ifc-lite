@@ -304,6 +304,29 @@ export function hasRegisteredPointCloudAlignment(): boolean {
   return registry.size > 0;
 }
 
+/**
+ * The matrix currently being applied to `handleId` on the GPU, or
+ * undefined when that asset has no alignment registered.
+ *
+ * `enabled` must be the live `pointCloudAlignmentEnabled` store flag —
+ * the registry deliberately does not cache it, since
+ * `applyPointCloudAlignmentToggle` is the single writer that pushes the
+ * choice to the renderer.
+ *
+ * Exists so CPU-side consumers of raw cached scan points (the 2D section
+ * scan layer, #1805) can place them where the GPU actually draws them.
+ * Without it those consumers read pre-alignment coordinates while the 3D
+ * view shows aligned ones — the same class of gap the snap query had.
+ */
+export function getPointCloudAlignmentMatrix(
+  handleId: number,
+  enabled: boolean,
+): Float32Array | undefined {
+  const entry = registry.get(handleId);
+  if (!entry) return undefined;
+  return enabled ? entry.transform.alignedMatrix : entry.transform.unalignedMatrix;
+}
+
 /** Renderer surface this module needs — matches `@ifc-lite/renderer`'s
  *  `Renderer.setPointCloudTransform`. Typed narrowly here so this module
  *  doesn't need to import the whole `Renderer` class. */

@@ -387,3 +387,69 @@ describe('mergeScanBandSelections', () => {
     assert.strictEqual(merged.points.length, 6);
   });
 });
+
+/**
+ * Aligned-scan reconciliation for the 2D overlay (#1804 x #1805).
+ *
+ * The scan cache holds RAW decoder points; an aligned asset is drawn
+ * through its GPU matrix. Without folding that matrix in here, the 2D
+ * section overlay selects a band around pre-alignment coordinates while
+ * the 3D view shows the scan aligned to the building — the two views
+ * disagree about where the same scan is.
+ */
+describe('selectScanBand with an aligned point cloud', () => {
+  /** Column-major 4x4: identity rotation/scale, translation only. */
+  function translation(x: number, y: number, z: number): Float32Array {
+    return new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, y, z, 1]);
+  }
+
+  const plane: ScanSectionPlane = { axis: 'y', position: 5, flipped: false };
+
+  it('selects the band around the RENDERED position, not the raw one', () => {
+    // Raw point at y=0. The asset is drawn +5 in y, so it renders at y=5
+    // and must fall inside a band centred on y=5.
+    const sample: ScanPointSample = { positions: new Float32Array([0, 0, 0]), count: 1 };
+    const aligned = selectScanBand({
+      sample, coordinateInfo: undefined, plane, thickness: 0.2, model: translation(0, 5, 0),
+    });
+    assert.strictEqual(aligned.totalInBand, 1, 'aligned point must be in band at its rendered height');
+  });
+
+  it('does not select the stale raw position once aligned', () => {
+    // Same asset, but the band sits at the RAW height (y=0). Nothing is
+    // rendered there any more, so nothing should be selected.
+    const sample: ScanPointSample = { positions: new Float32Array([0, 0, 0]), count: 1 };
+    const atRaw = selectScanBand({
+      sample,
+      coordinateInfo: undefined,
+      plane: { axis: 'y', position: 0, flipped: false },
+      thickness: 0.2,
+      model: translation(0, 5, 0),
+    });
+    assert.strictEqual(atRaw.totalInBand, 0, 'pre-alignment position must no longer be selected');
+  });
+
+  it('is unchanged when no matrix is supplied (unaligned fast path)', () => {
+    const sample: ScanPointSample = { positions: new Float32Array([0, 5, 0]), count: 1 };
+    const bare = selectScanBand({ sample, coordinateInfo: undefined, plane, thickness: 0.2 });
+    const identity = selectScanBand({
+      sample, coordinateInfo: undefined, plane, thickness: 0.2, model: translation(0, 0, 0),
+    });
+    assert.strictEqual(bare.totalInBand, 1);
+    assert.strictEqual(identity.totalInBand, 1);
+    assert.deepStrictEqual(identity.points[0].point, bare.points[0].point);
+  });
+
+  it('emits the transformed point, so the count pass and the collect pass agree', () => {
+    // Both passes must read the point through the same transform; if only
+    // the band test were transformed, totalInBand and points.length would
+    // disagree (or the drawn dot would be at the untransformed spot).
+    const sample: ScanPointSample = { positions: new Float32Array([3, 0, 0]), count: 1 };
+    const out = selectScanBand({
+      sample, coordinateInfo: undefined, plane, thickness: 0.2, model: translation(0, 5, 0),
+    });
+    assert.strictEqual(out.totalInBand, 1);
+    assert.strictEqual(out.points.length, 1);
+    close(out.points[0].point.x, 3);
+  });
+});

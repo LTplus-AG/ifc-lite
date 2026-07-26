@@ -331,7 +331,11 @@ export async function attachEndpoint(chain, finalX, ep) {
   if (finalState.root !== chain.finalState.root) {
     throw new Error('attachEndpoint: finalX does not match the chain final state');
   }
-  if (ep.ifcBuild && (ep.ifcBuild.mode !== 'seeded'
+  // Only null/undefined mean "absent". A falsy-but-present value (false, 0,
+  // '') must not slip past the guard via short-circuit and then be stored by
+  // `?? null` as if it were a descriptor.
+  if (ep.ifcBuild != null && (typeof ep.ifcBuild !== 'object'
+    || ep.ifcBuild.mode !== 'seeded'
     || typeof ep.ifcBuild.spec !== 'string'
     || typeof ep.ifcBuild.guidSeed !== 'string'
     || !Number.isFinite(ep.ifcBuild.timestampMs))) {

@@ -22,8 +22,19 @@
  * version/variant bits): that changes every GlobalId in the corpus.
  */
 
-import { uuidToIfcGuid } from '../../../packages/encoding/dist/index.js';
 import { Rng } from './rng.mjs';
+
+// Guarded like checks.mjs: a static import of a workspace dist turns a missing
+// build into an opaque module-not-found at load time, which is a confusing
+// first experience in a fresh worktree. Fail with the fix instead.
+let uuidToIfcGuid;
+try {
+  ({ uuidToIfcGuid } = await import('../../../packages/encoding/dist/index.js'));
+} catch (err) {
+  throw new Error(
+    `world-gym seeded generation needs the built workspace artifacts (packages/encoding/dist). Run 'pnpm build' at the repo root first. Underlying error: ${err.message}`,
+  );
+}
 
 /** Arbitrary fixed instant baked into every generated file's header/owner-history. */
 export const FIXED_EPOCH_MS = Date.UTC(2024, 0, 1, 0, 0, 0);

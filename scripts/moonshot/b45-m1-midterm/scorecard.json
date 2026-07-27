@@ -1,0 +1,88 @@
+{
+  "bet": "B4.5",
+  "exam": "M1 midterm as literally worded, one run, mesh leaves present",
+  "fixture": "tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+  "fixtureBytes": 177465622,
+  "entities": 2807815,
+  "dagShape": "contained+aggregated",
+  "nodesTotal": 250582,
+  "nodesMeshLeaves": 109632,
+  "nodesPropertySetLeaves": 80104,
+  "nodesElements": 60795,
+  "nodesElementsViaAggregates": 39028,
+  "nodesStoreys": 50,
+  "meshDataEntries": 110632,
+  "meshDataExcludedClass2": 0,
+  "meshDataUnattached": 1000,
+  "triangles": 2934427,
+  "vertices": 4593788,
+  "nodesResolvedDuringVerify": 60,
+  "uniqueNodesResolvedDuringVerify": 60,
+  "nodesResolvedPct": 0.023944,
+  "nodesResolvedPctIfMeshLeavesExcludedFromDenominator": 0.042568,
+  "verifyMedianMs": 56.494,
+  "verifyAllMs": [
+    56.494,
+    58.522,
+    56.266,
+    56.266,
+    58.485
+  ],
+  "verifyBundleParseMedianMs": 2.24,
+  "verifyWholeProcessWallMedianMs": 85.4,
+  "verifierMaxRssBytes": 71450624,
+  "bundleBytes": 1683001,
+  "examA_propertyOnlyWallEdit": {
+    "element": 44657,
+    "ifcType": "IfcWallStandardCase",
+    "recomputed": 4,
+    "cacheHits": 250578,
+    "hitRate": 0.99998404,
+    "recomputeMs": 5.547
+  },
+  "examB_propertyPlusGeometryWallEdit": {
+    "element": 4688035,
+    "ifcType": "IfcWallStandardCase",
+    "globalId": "0ESPGzG0jFdeRZTuWZfLQk",
+    "meshLeavesEdited": 7,
+    "verticesMoved": 1106,
+    "recomputed": 11,
+    "cacheHits": 250571,
+    "hitRate": 0.9999561,
+    "recomputeMs": 7.593
+  },
+  "parseMs": 2867,
+  "meshMs": 8604,
+  "dagStructureMs": 1104,
+  "dagBuildMs": 10703,
+  "crossCheckRebuildMs": 10343,
+  "correctnessCrossCheck": true,
+  "tamper": [
+    {
+      "case": "geometry-mesh-float-flip",
+      "caught": true,
+      "reason": "hash-mismatch"
+    },
+    {
+      "case": "untouched-storey-child-hash-flip",
+      "caught": true,
+      "reason": "hash-mismatch"
+    }
+  ],
+  "sensitivityElementGranularityClaim": {
+    "claimGranularity": "element",
+    "claimNodes": 60794,
+    "nodesResolved": 60805,
+    "nodesResolvedPct": 24.2655,
+    "verifyMs": 907.6,
+    "bundleBytes": 36536090,
+    "wouldPassClause1": false,
+    "wouldPassClause2": false
+  },
+  "peakRssBytes": 2204286976,
+  "clause1_verifyUnder500msInSecondProcess": true,
+  "clause2_under5PctOfDagNodesResolved": true,
+  "clause3_over90PctCacheHitsOnSingleWallRecompute": true,
+  "meshLeavesGenuinelyPresent": true,
+  "verdict": "PASS"
+}

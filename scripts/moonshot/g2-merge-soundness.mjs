@@ -23,10 +23,25 @@
  * converge byte-identically was a false conflict. Denominator: every
  * schedule whose ground truth is "commutes" (auto-merged + false conflicts).
  *
+ * Since Bet B4.2 the report also carries the SPATIAL DECOMPOSITION that the
+ * G2 red-team review (docs/vision/reviews/g2-red-team-2026-07-24.md section 4)
+ * had to compute by hand: flagged schedules split by which half of the
+ * predicate fired, with ground truth per class. Two numbers matter there --
+ * the false-conflict rate restricted to schedules where the spatial rule
+ * fired, and the count of conflicts that ONLY the spatial rule caught. The
+ * second one is a kill number: under the v0 per-node op model it was provably
+ * zero (node-disjoint ops always commuted), which made the spatial rule
+ * unfalsifiable; if coupled semantics leave it at zero, the rule is deleted.
+ *
  * Usage: node scripts/moonshot/g2-merge-soundness.mjs [schedules] [seed] [epsilonMm]
  * Exit code 0 iff the exam passes (zero unsound auto-merges, zero
  * certificate verification failures) AND the kill criterion holds
- * (false-conflict rate < 20%).
+ * (false-conflict rate < 20%). The restricted spatial rate is REPORTED
+ * against the same 20% bar but deliberately does not gate the exit: the
+ * plan's kill criterion is stated over the whole distribution, and turning a
+ * sub-population measurement into a gate would change the exam under itself.
+ * It is printed with an explicit PASS/FAIL so a red number cannot pass
+ * unnoticed, and it is byte-compared by the B4.1 standing-evidence lane.
  */
 
 import { fileURLToPath } from 'node:url';
@@ -79,6 +94,27 @@ async function main() {
   console.error(
     `false-conflict rate:   ${pct(report.falseConflictRate)} of ${report.groundTruthConvergent} ground-truth-commuting schedules (kill criterion: < 20%)`,
   );
+  console.error('');
+  console.error('---- spatial decomposition (B4.2) ----');
+  const { structuralOnly, spatialOnly, both } = report.byRule;
+  const row = (label, t) =>
+    `${label.padEnd(18)} flagged ${String(t.flagged).padStart(4)}  true ${String(t.trueConflicts).padStart(4)}` +
+    ` (apply-failed ${t.trueApplyFailed}, diverged ${t.trueDiverged})  false ${String(t.falseConflicts).padStart(4)}`;
+  console.error(row('structural-only:', structuralOnly));
+  console.error(row('spatial-only:', spatialOnly));
+  console.error(row('both rules:', both));
+  console.error(
+    `restricted false-conflict rate: ${pct(report.spatialFiredFalseConflictRate)} of ${report.spatialFiredFlagged} schedules where the spatial rule fired` +
+      ` -- ${report.spatialKillCriterionPass ? 'PASS' : 'FAIL'} against the < 20% bar (reported, not gating)`,
+  );
+  console.error(
+    `spatial-ONLY true conflicts:    ${report.spatialOnlyTrueConflicts}  (v0 op model: provably 0 -- the spatial rule could not be right about anything)`,
+  );
+  console.error(
+    `spatial rule verdict:  ${report.spatialRuleContributes ? 'KEEP -- it catches conflicts nothing else does' : 'DELETE -- a predicate that never fires truthfully is not a contribution'}`,
+  );
+  console.error('--------------------------------------');
+  console.error('');
   console.error(
     `certificates:          ${report.certificatesIssued} issued, ${report.certificatesVerified} independently verified, ${report.certificateFailures} failures`,
   );

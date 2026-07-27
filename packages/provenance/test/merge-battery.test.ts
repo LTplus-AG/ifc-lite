@@ -15,7 +15,11 @@ import { describe, expect, it } from 'vitest';
 import { buildBaseModel, generateClientOps, mulberry32, runMergeBattery } from '../src/merge-battery.js';
 import { applyOps } from '../src/merge-model.js';
 
-const SCHEDULES = 150;
+/** 400, not 150: under the B4.2 coupled semantics the battery must show the
+ *  spatial rule producing TRUE conflicts on its own, and spatial-only true
+ *  conflicts are rare enough (~1% of schedules) that 150 can draw zero. The
+ *  run is ~1 s, so the extra schedules are free. */
+const SCHEDULES = 400;
 const SEED = 20260724;
 
 describe('runMergeBattery', () => {
@@ -40,6 +44,39 @@ describe('runMergeBattery', () => {
     expect(report.conflictRate).toBeCloseTo(report.flaggedConflicts / SCHEDULES, 12);
     expect(report.falseConflictRate).toBeGreaterThanOrEqual(0);
     expect(report.falseConflictRate).toBeLessThanOrEqual(1);
+  }, 120_000);
+
+  it('decomposes flagged schedules by which rule fired, exhaustively', async () => {
+    const report = await runMergeBattery({ schedules: SCHEDULES, seed: SEED, verifyEvery: 0 });
+    const { structuralOnly, spatialOnly, both } = report.byRule;
+    expect(structuralOnly.flagged + spatialOnly.flagged + both.flagged).toBe(report.flaggedConflicts);
+    for (const tally of [structuralOnly, spatialOnly, both]) {
+      expect(tally.trueConflicts + tally.falseConflicts).toBe(tally.flagged);
+      expect(tally.trueApplyFailed + tally.trueDiverged).toBe(tally.trueConflicts);
+    }
+    expect(spatialOnly.trueConflicts + both.trueConflicts + structuralOnly.trueConflicts).toBe(report.trueConflicts);
+    expect(report.spatialFiredFlagged).toBe(spatialOnly.flagged + both.flagged);
+    expect(report.spatialFiredFalseConflictRate).toBeCloseTo(
+      report.spatialFiredFalseConflicts / report.spatialFiredFlagged,
+      12,
+    );
+  }, 120_000);
+
+  it('the SPATIAL rule produces true conflicts on its own (the B4.2 finding, closed)', async () => {
+    // The G2 red-team review measured 0 spatial-only true conflicts in 1,000
+    // schedules: under the v0 per-node op model the spatial half of the
+    // predicate could not be right about anything. Under the coupled
+    // semantics it can be, and is -- both by rejection (an order that fails
+    // to apply) and by divergence (a stale void cut). A regression to zero
+    // here means the coupling has been lost and the rule is unfalsifiable
+    // again, which per the plan's pre-committed consequence means deleting
+    // it.
+    const report = await runMergeBattery({ schedules: SCHEDULES, seed: SEED, verifyEvery: 0 });
+    expect(report.spatialOnlyTrueConflicts).toBeGreaterThan(0);
+    expect(report.spatialRuleContributes).toBe(true);
+    const spatial = report.byRule.spatialOnly;
+    expect(spatial.trueDiverged).toBeGreaterThan(0);
+    expect(report.byRule.both.trueApplyFailed).toBeGreaterThan(0);
   }, 120_000);
 
   it('is deterministic: the same seed reproduces the same counts', async () => {

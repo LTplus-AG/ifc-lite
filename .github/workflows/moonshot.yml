@@ -1,0 +1,404 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# Moonshot standing evidence (bet B4.1).
+#
+# Every headline number in docs/vision/ came out of a script under
+# scripts/moonshot/ or tools/world-gym/ that, until this workflow existed, ran
+# exactly once, on one laptop, with nothing watching it. Thirteen other CI
+# workflows and not one of them touched that tree: the only automated
+# protection was @ifc-lite/provenance's own vitest suite. A kernel change
+# could silently invalidate eight months of published claims and CI would stay
+# green.
+#
+# This lane re-runs the exams and asserts them. Every step is named after the
+# claim it defends, so a failure notification alone says which act broke
+# without opening the log -- the same diagnostic style as
+# .github/workflows/wide-arithmetic.yml.
+#
+#   E1  provenance unit suite        node-hash-v0 + certificates + merge battery
+#   E2  the four gate demos          G0 / G1 / G2-footprint / G2-merge
+#   E3  B3.5 five-act demo           asserted BYTE-FOR-BYTE against a seeded golden
+#   E4  certified optimization       short run -> v1 + v2 certificate chains
+#   E5  chain verification           --mode full AND --mode spot
+#   E6  tamper batteries             v1 (5 cases) + v2 (18 cases)
+#   E7  gradient battery             analytic-vs-finite-difference, 1000 points
+#   E8  world-gym determinism        20/20 seeds byte-identical
+#
+# E3 is the densest signal in the program. `scripts/moonshot/b35-demo/run.mjs`
+# writes a report whose entire `deterministic` subtree is a pure function of
+# master seed 20260724 (wall clocks and the timestamp live ONLY under
+# `volatile`), so one number moving anywhere across world-gym,
+# @ifc-lite/create, @ifc-lite/provenance, the benchmark scorer or the geometry
+# kernel surfaces as a named path diff. See scripts/moonshot/ci/assert-b35-golden.mjs.
+#
+# COST. This is deliberately a cheap, non-blocking lane and MUST NOT become a
+# required check:
+#   - weekly `schedule` + on-demand `workflow_dispatch`, same profile as
+#     determinism.yml / wide-arithmetic.yml;
+#   - `push`/`pull_request` ONLY on the paths that can actually invalidate the
+#     results (the geometry/processing kernel, the packages the demos import,
+#     the wasm bundle, world-gym, and the moonshot scripts themselves). A
+#     docs-only or viewer-only PR never sees this job at all.
+#   - free `ubuntu-latest` runners (public repo), never Depot.
+# The measurable work is ~30 s; everything else is toolchain. Nearly all the
+# wall clock is the wasm32 build, which the shared Swatinem cargo cache makes
+# cheap once warm.
+#
+# FIXTURE GATE. G0's exam and G1's data-plane scale run both hard-code the
+# 169 MB Holter Tower fixture (tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc).
+# Runtime is not the problem (G0 ~7 s, G1 ~6 s once the file is on disk) -- the
+# 177 MB pull plus its entry in the repo's shared 10 GB Actions cache is. So
+# the scheduled/dispatched runs fetch it and run both; `push`/`pull_request`
+# runs fetch only duplex.ifc (2.4 MB) and SKIP those two steps with an
+# explicit "skipped: fixture-gated" line in the log AND the step summary --
+# never a silent pass. Kernel coverage on the push path is not lost: E2c, E3
+# (act 5), E5 and E6 all re-measure through the wasm geometry kernel.
+
+name: Moonshot standing evidence
+
+on:
+  schedule:
+    # Weekly, Sunday 06:41 UTC. Deliberately a different day and minute from
+    # determinism.yml (Mon 03:17) and wide-arithmetic.yml (Wed 04:29) so the
+    # three weekly lanes never share a scheduler slot.
+    - cron: '41 6 * * 0'
+  workflow_dispatch:
+    inputs:
+      holter:
+        description: 'Fetch the 169 MB Holter fixture and run the G0 / G1 scale exams'
+        type: boolean
+        default: true
+  # NOTE: the two path lists below are duplicated verbatim. GitHub Actions does
+  # not support YAML anchors/aliases in workflow files, so they cannot be
+  # shared -- keep them in lockstep by hand.
+  push:
+    branches: [main]
+    paths:
+      # The exact-CSG kernel and the meshing pipeline: E2c, E3 act 5, E5 and
+      # E6 all re-measure real geometry through the wasm bundle, so a kernel
+      # change is exactly what must re-run these.
+      - 'rust/geometry/**'
+      - 'rust/processing/**'
+      # Authoring path used by the diff-spike's seeded IFC builds (raw-hash
+      # commitments in the endpoint certificates depend on it byte-for-byte).
+      - 'packages/create/**'
+      # node-hash-v0, certificates, the merge battery: E1 through E3 rest on it.
+      - 'packages/provenance/**'
+      # The wasm bundle every kernel re-measurement goes through.
+      - 'packages/wasm/**'
+      # Seeded world generation, labeling, reward channels and the benchmark
+      # scorer: E3 acts 1/3/4 and E8.
+      - 'tools/world-gym/**'
+      # The exams themselves.
+      - 'scripts/moonshot/**'
+      - '.github/workflows/moonshot.yml'
+  pull_request:
+    branches: [main]
+    # Same list as `push` above. NOTE: path-filtered, non-blocking, and NOT to
+    # be added to branch protection -- this lane exists to be looked at, not to
+    # gate merges.
+    paths:
+      - 'rust/geometry/**'
+      - 'rust/processing/**'
+      - 'packages/create/**'
+      - 'packages/provenance/**'
+      - 'packages/wasm/**'
+      - 'tools/world-gym/**'
+      - 'scripts/moonshot/**'
+      - '.github/workflows/moonshot.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # Cancel superseded PR pushes; never cancel a scheduled evidence run.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  # Same early opt-in as the other workflows: GitHub deprecated Node 20 for
+  # JavaScript actions, and some pinned actions here have no Node-24 release.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  # Short certified-optimization budget shared by E4/E5/E6. `--segment 96`
+  # over the 480 recorded steps yields 5 segments, which is what keeps the v2
+  # tamper battery at its full 18 cases: with the default 256-step segments the
+  # same run collapses to 2 segments, where `v2-forge-endroot` becomes vacuous
+  # (the middle segment IS the last one, so its endRoot already equals the
+  # final state root -> reported SKIPPED) and `v2-spot-sampling-miss` cannot
+  # run at all (it needs segments > spotK = min(4, segments)). Shrinking the
+  # segment size rather than growing --rounds/--max-iter buys that coverage for
+  # free: the optimizer budget, and therefore the runtime, is unchanged.
+  CERT_ARGS: '--rounds 4 --max-iter 120 --segment 96 --emit-v1'
+  # Gradient battery point count. The published M3 gate protocol is 1000
+  # points and the whole battery costs ~1.2 s, so there is nothing to save by
+  # reducing it -- running the real protocol keeps this step's PASS/FAIL
+  # identical to the number quoted in docs/vision/.
+  BATTERY_POINTS: '1000'
+
+jobs:
+  standing-evidence:
+    name: Moonshot exams (provenance, gates, B3.5 golden, certificates, determinism)
+    # Free GitHub-hosted runner -- this lane is weekly + non-blocking, so a cold
+    # cargo build is acceptable and costs nothing but wall clock.
+    runs-on: ubuntu-latest
+    # The exams themselves take ~30 s. The budget is the wasm32 build: ~3-5 min
+    # with a warm Swatinem cache, up to ~15 min cold. 30 gives cold builds room
+    # without letting a hang sit forever.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          # Fixtures live in a GitHub Release (tests/models/manifest.json,
+          # AGENTS.md section 9); the repo does not use Git LFS.
+          lfs: false
+          persist-credentials: false
+
+      - name: Setup pnpm
+        # v6 reads the version from package.json's `packageManager` field;
+        # passing `with.version` here would error with ERR_PNPM_BAD_PM_VERSION.
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          # PINNED to an exact patch, not the 22.x line. The B3.5 golden is a
+          # byte-comparison of an optimizer's output: act 5 runs projected
+          # gradient descent, and while IEEE arithmetic and JSON.stringify are
+          # spec-fixed, V8's Math.exp/log/pow are NOT - a V8 update inside the
+          # same Node major could shift a last-ulp result and turn this lane red
+          # for a reason that is not a kernel regression. The golden was blessed
+          # on v22.14.0; re-blessing is a deliberate act (assert-b35-golden.mjs
+          # --update), so the runtime that produces it is pinned too.
+          node-version: 22.14.0
+          cache: pnpm
+
+      # Rust nightly (pinned by rust-toolchain.toml) + wasm-pack + cargo cache,
+      # single-sourced with test.yml / release.yml / sdk-canary.yml /
+      # benchmark.yml so the toolchain never drifts between lanes.
+      - name: Setup WASM build toolchain
+        uses: ./.github/actions/setup-wasm-build
+        with:
+          cache-prefix: ci-moonshot
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Built from source on purpose -- no prebuilt fast path here. A published
+      # bundle would defeat the entire lane: the point is to catch a kernel
+      # change that invalidates a published number, and that change is in the
+      # Rust source by definition.
+      - name: Build WASM bindings from source
+        run: bash scripts/build-wasm.sh
+
+      # The demos import sibling packages' built `dist/` by relative path
+      # (@ifc-lite/cli, clash, create, data, encoding, geometry, provenance,
+      # query and their transitive deps). Filtered rather than a bare
+      # `pnpm build` so the viewer/landing/embed bundles -- which nothing here
+      # imports -- are never built: 28 turbo tasks instead of 40.
+      - name: Build workspace packages the exams import
+        run: |
+          pnpm turbo build \
+            --filter=@ifc-lite/cli \
+            --filter=@ifc-lite/clash \
+            --filter=@ifc-lite/create \
+            --filter=@ifc-lite/query \
+            --filter=@ifc-lite/provenance
+
+      # --- Fixtures ------------------------------------------------------
+      - name: Decide fixture scope
+        id: fixtures
+        shell: bash
+        run: |
+          scope=minimal
+          case "${{ github.event_name }}" in
+            schedule) scope=full ;;
+            workflow_dispatch) [ "${{ inputs.holter }}" = "false" ] || scope=full ;;
+          esac
+          echo "scope=${scope}" >> "$GITHUB_OUTPUT"
+          if [ "$scope" = full ]; then
+            echo "fixture scope: FULL (duplex.ifc + the 169 MB Holter Tower) -- G0 and G1 will run."
+          else
+            echo "fixture scope: MINIMAL (duplex.ifc only) -- G0 and G1 are fixture-gated on this trigger."
+          fi
+
+      - name: Cache moonshot fixtures
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: tests/models
+          # Namespaced away from test.yml's `ci-fixtures-...` key, which holds
+          # the FULL ~994 MiB tree. This lane needs two files; restoring the
+          # whole tree would cost more than re-downloading them. The scope is
+          # part of the key so a minimal cache is never mistaken for a full one.
+          key: ci-moonshot-fixtures-${{ runner.os }}-${{ steps.fixtures.outputs.scope }}-${{ hashFiles('tests/models/manifest.json') }}
+
+      # Run unconditionally, cache hit or not: fetch-fixtures.mjs hashes what is
+      # already on disk and downloads only what is missing or wrong, so this is
+      # simultaneously the fetch and the integrity check, and a corrupt cache
+      # entry can never be used silently. FIXTURE_TIMEOUT_MS is raised from its
+      # 60 s default because that is a per-attempt budget covering the whole
+      # body: 177 MB on a slow link genuinely exceeds it and burns the retry
+      # budget on one stalled object (observed locally).
+      - name: Fetch fixtures (selective)
+        shell: bash
+        env:
+          FIXTURE_TIMEOUT_MS: '600000'
+        run: |
+          files=(ara3d/duplex.ifc)
+          if [ "${{ steps.fixtures.outputs.scope }}" = full ]; then
+            files+=(ara3d/ISSUE_053_20181220Holter_Tower_10.ifc)
+          fi
+          echo "fetching: ${files[*]}"
+          node scripts/fixtures/fetch-fixtures.mjs "${files[@]}"
+
+      # --- E1: the one thing that already had automated protection ---------
+      - name: E1 provenance unit suite (node-hash-v0, certificates, merge battery)
+        run: pnpm --filter @ifc-lite/provenance test
+
+      # --- E2: the four gate demos, each asserted on exit code -------------
+      # G0 and G1 are the Holter-gated pair; see the FIXTURE GATE note above.
+      - name: E2a gate G0 certificate demo (169 MB model, verify < 500 ms)
+        shell: bash
+        run: |
+          if [ "${{ steps.fixtures.outputs.scope }}" != full ]; then
+            echo "::notice title=E2a G0::skipped: fixture-gated (needs the 169 MB Holter Tower; fetched on schedule/workflow_dispatch only)"
+            echo '- **E2a gate G0** -- skipped: fixture-gated (Holter 169 MB)' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          node scripts/moonshot/g0-certificate-demo.mjs
+          echo '- **E2a gate G0** -- PASS' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: E2b gate G1 memoized recompute (mesh run + 100k-node scale run)
+        shell: bash
+        run: |
+          if [ "${{ steps.fixtures.outputs.scope }}" != full ]; then
+            echo "::notice title=E2b G1::skipped: fixture-gated (its data-plane scale run hard-codes the 169 MB Holter Tower; the mesh-bearing run alone cannot be selected)"
+            echo '- **E2b gate G1** -- skipped: fixture-gated (Holter 169 MB)' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          node scripts/moonshot/g1-memoized-recompute.mjs
+          echo '- **E2b gate G1** -- PASS' >> "$GITHUB_STEP_SUMMARY"
+
+      # Meshes duplex.ifc through the wasm kernel, so this one runs on every
+      # trigger and is the push path's primary geometry tripwire alongside E3/E5.
+      - name: E2c gate G2 footprint tightness (kernel-meshed conflict predicate)
+        shell: bash
+        run: |
+          node scripts/moonshot/g2-footprint-tightness.mjs
+          echo '- **E2c gate G2 footprint tightness** -- PASS' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: E2d gate G2 merge soundness (1000-schedule property battery)
+        shell: bash
+        run: |
+          node scripts/moonshot/g2-merge-soundness.mjs
+          echo '- **E2d gate G2 merge soundness** -- PASS' >> "$GITHUB_STEP_SUMMARY"
+
+      # --- E3: the five-act demo, byte-for-byte against its seeded golden ---
+      # Split in two on purpose: a red "run" step means an act threw; a red
+      # "golden" step means every act completed but a measured number moved.
+      # Those are different investigations and must not share a step name.
+      - name: E3a B3.5 five-act demo (run, master seed 20260724)
+        run: node scripts/moonshot/b35-demo/run.mjs
+
+      - name: E3b B3.5 deterministic subtree vs committed golden
+        shell: bash
+        run: |
+          node scripts/moonshot/ci/assert-b35-golden.mjs
+          echo '- **E3 B3.5 five-act demo** -- deterministic subtree matches golden' >> "$GITHUB_STEP_SUMMARY"
+
+      # --- E4/E5/E6: proof-carrying optimization ---------------------------
+      # Scope, honestly: E4 builds the chain and E5/E6 verify it IN THE SAME
+      # RUN, so the endpoint certificate binds a kernel measurement taken by
+      # the same binary that E5's re-measurement uses. That makes these steps a
+      # forgery test (can a tampered chain pass?), not a drift test (did the
+      # kernel change?) -- verified: a 1e-6 extrusion-depth perturbation in
+      # rust/geometry leaves all of E4/E5/E6 green because the chain and the
+      # verifier move together. The standing regression signal against kernel
+      # drift is E3b, whose golden is committed and therefore does NOT move.
+      - name: E4 certified optimization run (short budget, v1 + v2 chains)
+        shell: bash
+        run: |
+          # CERT_ARGS is a flag list, not one word -- split it into an array
+          # rather than relying on unquoted expansion.
+          read -r -a cert_args <<< "$CERT_ARGS"
+          node scripts/moonshot/diff-spike/optimize-certified.mjs \
+            "${cert_args[@]}" --out "$RUNNER_TEMP/certified"
+
+      - name: E5a chain verification --mode full (every segment replayed)
+        run: node scripts/moonshot/diff-spike/verify-trajectory.mjs "$RUNNER_TEMP/certified/trajectory-chain-v2.json" --mode full
+
+      - name: E5b chain verification --mode spot (sampled segments)
+        run: node scripts/moonshot/diff-spike/verify-trajectory.mjs "$RUNNER_TEMP/certified/trajectory-chain-v2.json" --mode spot
+
+      - name: E6a tamper battery v1 (per-step chain, 5 forgeries)
+        shell: bash
+        run: |
+          node scripts/moonshot/diff-spike/tamper-test.mjs "$RUNNER_TEMP/certified/trajectory-chain.json" | tee "$RUNNER_TEMP/tamper-v1.log"
+          grep -q 'tamper test PASS: control verified, 5 tampers detected' "$RUNNER_TEMP/tamper-v1.log" || {
+            echo "::error title=E6a::v1 battery exited 0 but did not report the expected 5 detected forgeries."
+            exit 1
+          }
+
+      # The count assertion is the point: a v2 case that silently turns vacuous
+      # still exits 0 (it reports SKIPPED, not FAIL), so a green exit code alone
+      # would quietly hide lost coverage. 18 = 12 forgeries + 4 spot-k guards +
+      # the sampling hit/miss pair, which is what `--segment 96` buys.
+      - name: E6b tamper battery v2 (checkpointed chain + sidecar, 18 cases)
+        shell: bash
+        run: |
+          node scripts/moonshot/diff-spike/tamper-test.mjs "$RUNNER_TEMP/certified/trajectory-chain-v2.json" | tee "$RUNNER_TEMP/tamper-v2.log"
+          grep -q 'tamper test PASS (v2): controls verified, 18 tamper cases behaved as specified' "$RUNNER_TEMP/tamper-v2.log" || {
+            echo "::error title=E6b::v2 battery did not report the full 18-case coverage."
+            echo "A case reported SKIPPED (vacuous on this chain) or the case count changed."
+            grep -n 'SKIPPED' "$RUNNER_TEMP/tamper-v2.log" || true
+            echo "Coverage depends on the chain having > 4 segments AND a middle segment that is not the"
+            echo "last one; CERT_ARGS in this workflow pins --segment 96 over 480 steps to guarantee both."
+            exit 1
+          }
+          if grep -q 'SKIPPED' "$RUNNER_TEMP/tamper-v2.log"; then
+            echo "::error title=E6b::a v2 tamper case reported SKIPPED -- coverage silently dropped."
+            grep -n 'SKIPPED' "$RUNNER_TEMP/tamper-v2.log"
+            exit 1
+          fi
+          echo '- **E4/E5/E6 proof-carrying optimization** -- chain verified (full + spot), 5 v1 + 18 v2 forgeries detected' >> "$GITHUB_STEP_SUMMARY"
+
+      # --- E7: the differentiability claim ---------------------------------
+      - name: E7 gradient battery (analytic vs central finite differences)
+        shell: bash
+        run: |
+          node scripts/moonshot/diff-spike/battery.mjs "$BATTERY_POINTS"
+          echo "- **E7 gradient battery** -- PASS at ${BATTERY_POINTS} points" >> "$GITHUB_STEP_SUMMARY"
+
+      # --- E8: the seeded-world determinism claim --------------------------
+      - name: E8 world-gym determinism (20/20 seeds byte-identical)
+        shell: bash
+        run: |
+          node tools/world-gym/determinism-check.mjs
+          echo '- **E8 world-gym determinism** -- 20/20 seeds byte-identical' >> "$GITHUB_STEP_SUMMARY"
+
+      # Runs even when something above failed, so the summary always records
+      # which trigger this was and whether the Holter-gated exams were part of
+      # the evidence. `if: always()` deliberately, but with no `continue-on-error`
+      # anywhere above -- any red step still fails the job.
+      - name: Evidence summary
+        if: always()
+        shell: bash
+        env:
+          SCOPE: ${{ steps.fixtures.outputs.scope }}
+        run: |
+          {
+            echo "### Moonshot standing evidence"
+            echo ""
+            echo "trigger: \`${{ github.event_name }}\` | fixture scope: \`${SCOPE:-not-reached}\` | commit: \`${{ github.sha }}\`"
+            echo ""
+            if [ -z "$SCOPE" ]; then
+              echo "> The job failed before the fixture scope was decided -- the failure is in setup"
+              echo "> (checkout / toolchain / wasm build / package build), not in an exam."
+              echo ""
+            elif [ "$SCOPE" != full ]; then
+              echo "> G0 and G1 were **fixture-gated** on this trigger (the 169 MB Holter Tower is fetched"
+              echo "> on \`schedule\` / \`workflow_dispatch\` only). Run this workflow manually to include them."
+              echo ""
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

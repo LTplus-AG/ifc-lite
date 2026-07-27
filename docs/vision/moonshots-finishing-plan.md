@@ -288,6 +288,33 @@ or `packages/wasm`.
 *Exam:* green in under 20 minutes; a deliberate one-bit kernel perturbation
 turns it red and names which act broke.
 
+*Result and a correction to this bet's own premise (2026-07-27).* The lane is
+built and both halves of the exam are met: 33-36 s of assertions, ~1m45s
+end to end locally, and a real kernel perturbation (`depth * 1.000001` inside
+`extrude_profile`, wasm rebuilt) turns it red naming act 5 and the three
+kernel-validation fields that moved. Two things learned by building it that
+this plan had wrong:
+
+1. **The tamper batteries are a forgery test, not a drift test.** The lane
+   builds a certified chain and verifies it *in the same run*, so the endpoint
+   certificate binds a measurement taken by the same binary the verifier uses:
+   chain and verifier move together and a kernel change cannot make them
+   disagree. Confirmed empirically - under the kernel perturbation above, every
+   chain and tamper step stayed green. **The only standing regression signal
+   against kernel drift is the committed B3.5 golden**, because it is the one
+   assertion whose reference does not move. A green tamper battery is evidence
+   about forgery resistance and says nothing about stability.
+2. **The tripwire's floor is the report's rounding, not machine epsilon.** A
+   one-ULP carbon-factor perturbation stays green (the demo report rounds carbon
+   to 3 decimals, parameters to 6); 3e-9 relative is caught. "One-bit
+   perturbation" in this exam should be read as "a perturbation that survives
+   rounding", which is the honest bar.
+
+Consequence for instrument 5: the certificate and tamper results are held by
+the lane in the *forgery* sense only. Holding them against drift would need a
+committed golden chain verified by a current binary, which is a bet, not a
+line in this one.
+
 **B4.2 Spatially coupled merge semantics (closes the B2.1 finding).**
 Give the op model semantics that can fail: hosted openings must remain inside
 their host wall, `geometry-replace` triggers a re-cut, ops can be rejected on

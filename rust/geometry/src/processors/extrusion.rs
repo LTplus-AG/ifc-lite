@@ -14,6 +14,83 @@ use nalgebra::Matrix4;
 
 use super::helpers::parse_axis2_placement_3d;
 use crate::router::GeometryProcessor;
+use crate::scalar::{magnitude_squared3, GeomScalar};
+
+/// Local (pre-`Position`) transform an `IfcExtrudedAreaSolid` needs for its
+/// `ExtrudedDirection`, generic over the scalar (B4.4).
+///
+/// `direction` is the raw (unnormalised) ratio triple; callers reject the
+/// zero-length case before calling.
+///
+/// ExtrudedDirection is in the LOCAL coordinate system (before Position transform).
+/// We need to determine when to add an extrusion rotation vs. letting Position handle it.
+///
+/// Two key cases:
+/// 1. Opening: local_direction=(0,0,-1), Position rotates local Z to world Y
+///    -> local_direction IS along Z, so no rotation needed; Position handles orientation
+/// 2. Roof slab: local_direction=(0,-0.5,0.866), Position tilts the profile
+///    -> world_direction = Position.rotation * local_direction = (0,0,1) (along world Z!)
+///    -> No extra rotation needed; Position handles the tilt
+#[inline]
+pub(crate) fn extrusion_local_transform<S: GeomScalar>(
+    direction: &Vector3<S>,
+    depth: S,
+) -> Option<Matrix4<S>> {
+    let zero = S::from_f64(0.0);
+    let one = S::from_f64(1.0);
+    // `Vector3::normalize` == `unscale(norm())`.
+    let norm = magnitude_squared3(direction).sqrt();
+    let local_direction = Vector3::new(
+        direction.x / norm,
+        direction.y / norm,
+        direction.z / norm,
+    );
+
+    // Check if local direction is along Z axis
+    // Note: We only check local direction because extrusion happens in LOCAL coordinates
+    // before the Position transform is applied. What the direction becomes in world
+    // space is irrelevant to the extrusion operation.
+    let is_local_z_aligned =
+        local_direction.x.abs().value() < 0.001 && local_direction.y.abs().value() < 0.001;
+
+    if is_local_z_aligned {
+        // Local direction is along Z - no extra rotation needed.
+        // Position transform will handle the correct orientation.
+        // Only need translation if extruding in negative direction.
+        if local_direction.z.value() < 0.0 {
+            // Downward extrusion: shift the extrusion down by depth
+            #[rustfmt::skip]
+            let m = Matrix4::new(
+                one,  zero, zero, zero,
+                zero, one,  zero, zero,
+                zero, zero, one,  -depth,
+                zero, zero, zero, one,
+            );
+            Some(m)
+        } else {
+            None
+        }
+    } else {
+        // Local direction is NOT along Z - use SHEAR matrix (not rotation!)
+        // A shear preserves the profile plane orientation while redirecting extrusion.
+        //
+        // For ExtrudedDirection (dx, dy, dz), the shear matrix is:
+        // | 1    0    dx |
+        // | 0    1    dy |
+        // | 0    0    dz |
+        //
+        // This transforms (x, y, depth) to (x + dx*depth, y + dy*depth, dz*depth)
+        // while keeping (x, y, 0) unchanged.
+        #[rustfmt::skip]
+        let shear_mat = Matrix4::new(
+            one,  zero, local_direction.x, zero,
+            zero, one,  local_direction.y, zero,
+            zero, zero, local_direction.z, zero,
+            zero, zero, zero,              one,
+        );
+        Some(shear_mat)
+    }
+}
 
 /// ExtrudedAreaSolid processor (P0)
 /// Handles IfcExtrudedAreaSolid - extrusion of 2D profiles
@@ -106,7 +183,6 @@ impl GeometryProcessor for ExtrudedAreaSolidProcessor {
                 "ExtrudedAreaSolid has zero-length ExtrudedDirection".to_string(),
             ));
         }
-        let local_direction = direction.normalize();
 
         // Get depth
         let depth = entity
@@ -133,50 +209,7 @@ impl GeometryProcessor for ExtrudedAreaSolidProcessor {
             None
         };
 
-        // ExtrudedDirection is in the LOCAL coordinate system (before Position transform).
-        // We need to determine when to add an extrusion rotation vs. letting Position handle it.
-        //
-        // Two key cases:
-        // 1. Opening: local_direction=(0,0,-1), Position rotates local Z to world Y
-        //    -> local_direction IS along Z, so no rotation needed; Position handles orientation
-        // 2. Roof slab: local_direction=(0,-0.5,0.866), Position tilts the profile
-        //    -> world_direction = Position.rotation * local_direction = (0,0,1) (along world Z!)
-        //    -> No extra rotation needed; Position handles the tilt
-        //
-        // Check if local direction is along Z axis
-        // Note: We only check local direction because extrusion happens in LOCAL coordinates
-        // before the Position transform is applied. What the direction becomes in world
-        // space is irrelevant to the extrusion operation.
-        let is_local_z_aligned = local_direction.x.abs() < 0.001 && local_direction.y.abs() < 0.001;
-
-        let transform = if is_local_z_aligned {
-            // Local direction is along Z - no extra rotation needed.
-            // Position transform will handle the correct orientation.
-            // Only need translation if extruding in negative direction.
-            if local_direction.z < 0.0 {
-                // Downward extrusion: shift the extrusion down by depth
-                Some(Matrix4::new_translation(&Vector3::new(0.0, 0.0, -depth)))
-            } else {
-                None
-            }
-        } else {
-            // Local direction is NOT along Z - use SHEAR matrix (not rotation!)
-            // A shear preserves the profile plane orientation while redirecting extrusion.
-            //
-            // For ExtrudedDirection (dx, dy, dz), the shear matrix is:
-            // | 1    0    dx |
-            // | 0    1    dy |
-            // | 0    0    dz |
-            //
-            // This transforms (x, y, depth) to (x + dx*depth, y + dy*depth, dz*depth)
-            // while keeping (x, y, 0) unchanged.
-            let mut shear_mat = Matrix4::identity();
-            shear_mat[(0, 2)] = local_direction.x; // X shear from Z
-            shear_mat[(1, 2)] = local_direction.y; // Y shear from Z
-            shear_mat[(2, 2)] = local_direction.z; // Z scale
-
-            Some(shear_mat)
-        };
+        let transform = extrusion_local_transform(&direction, depth);
 
         // Extrude the profile
         let mut mesh = extrude_profile(&profile, depth, transform)?;

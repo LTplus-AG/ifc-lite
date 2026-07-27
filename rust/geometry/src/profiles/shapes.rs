@@ -23,17 +23,9 @@ impl ProfileProcessor {
             .ok_or_else(|| Error::geometry("Rectangle missing YDim".to_string()))?;
 
         // Create rectangle centered at origin
-        let half_x = x_dim / 2.0;
-        let half_y = y_dim / 2.0;
-
-        let points = vec![
-            Point2::new(-half_x, -half_y),
-            Point2::new(half_x, -half_y),
-            Point2::new(half_x, half_y),
-            Point2::new(-half_x, half_y),
-        ];
-
-        Ok(Profile2D::new(points))
+        Ok(Profile2D::new(crate::profile::rectangle_ring(
+            x_dim, y_dim,
+        )))
     }
 
     /// Process rounded rectangle profile.

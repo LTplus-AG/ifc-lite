@@ -122,6 +122,21 @@ pub mod projection_outline;
 pub mod rect_fast;
 #[cfg(feature = "triangulation-alt")]
 pub use triangulation::alt_oracle::set_alt_triangulator;
+/// Scalar abstraction the extrusion mesher is generic over (`f64` in
+/// production, a forward-mode dual number in the B4.4 kernel-adjoint spike).
+pub(crate) mod scalar;
+/// The extrusion mesher, generic over the scalar. `extrusion`'s public
+/// functions are its `f64` instantiations.
+pub(crate) mod extrusion_generic;
+/// Profile triangulation / ring builders, generic over the scalar.
+pub(crate) mod profile_generic;
+
+/// B4.4 - the M3 kernel-adjoint spike (test-only). Runs the production
+/// extrusion mesher with a forward-mode dual scalar and grades its adjoints
+/// against central finite differences.
+#[cfg(test)]
+#[path = "b44_kernel_adjoint_tests.rs"]
+mod b44_kernel_adjoint;
 pub use rect_fast::RectFastStats;
 pub(crate) mod router;
 /// Per-element mesh simplification for the demesher (cavity removal, grid

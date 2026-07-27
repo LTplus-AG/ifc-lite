@@ -1,0 +1,224 @@
+{
+  "points": 24,
+  "missing": 0,
+  "worstRelVsInstrumented": 0.0000010815143437884797,
+  "worstRelVsProductionInProcess": 2.3963794909510378e-8,
+  "rows": [
+    {
+      "point": 0,
+      "meshes": 1,
+      "wasmVolume": 1.7805855676939035,
+      "instrumentedVolume": 1.780587493424818,
+      "productionF32Volume": 1.7805855598876026,
+      "relVsInstrumented": 0.0000010815143437884797,
+      "relVsProductionInProcess": 4.38412009782209e-9
+    },
+    {
+      "point": 1,
+      "meshes": 1,
+      "wasmVolume": 87.49035994286868,
+      "instrumentedVolume": 87.49039379402932,
+      "productionF32Volume": 87.49035994286866,
+      "relVsInstrumented": 3.8691288459562335e-7,
+      "relVsProductionInProcess": 1.624276631674817e-16
+    },
+    {
+      "point": 2,
+      "meshes": 1,
+      "wasmVolume": 24.593517427903706,
+      "instrumentedVolume": 24.593535374280595,
+      "productionF32Volume": 24.59351742790371,
+      "relVsInstrumented": 7.297192785150744e-7,
+      "relVsProductionInProcess": 1.444573225125417e-16
+    },
+    {
+      "point": 3,
+      "meshes": 1,
+      "wasmVolume": 62.30569857554704,
+      "instrumentedVolume": 62.30570393383719,
+      "productionF32Volume": 62.305698575547034,
+      "relVsInstrumented": 8.599999370037025e-8,
+      "relVsProductionInProcess": 1.1404137213846522e-16
+    },
+    {
+      "point": 4,
+      "meshes": 1,
+      "wasmVolume": 3.584838676328618,
+      "instrumentedVolume": 3.5848378134341323,
+      "productionF32Volume": 3.5848386763286384,
+      "relVsInstrumented": 2.407067015441812e-7,
+      "relVsProductionInProcess": 5.698472231956623e-15
+    },
+    {
+      "point": 5,
+      "meshes": 1,
+      "wasmVolume": 4.327821390943517,
+      "instrumentedVolume": 4.327823682272115,
+      "productionF32Volume": 4.327821390943505,
+      "relVsInstrumented": 5.294413003366197e-7,
+      "relVsProductionInProcess": 2.6679288291017996e-15
+    },
+    {
+      "point": 6,
+      "meshes": 1,
+      "wasmVolume": 3.970693386182465,
+      "instrumentedVolume": 3.970692628009489,
+      "productionF32Volume": 3.970693377023428,
+      "relVsInstrumented": 1.9094224786081122e-7,
+      "relVsProductionInProcess": 2.3066593702035893e-9
+    },
+    {
+      "point": 7,
+      "meshes": 1,
+      "wasmVolume": 4.349974590176195,
+      "instrumentedVolume": 4.349974017198792,
+      "productionF32Volume": 4.349974652676483,
+      "relVsInstrumented": 1.3171972985305743e-7,
+      "relVsProductionInProcess": 1.436796613555747e-8
+    },
+    {
+      "point": 8,
+      "meshes": 1,
+      "wasmVolume": 69.88753789418242,
+      "instrumentedVolume": 69.88752097008872,
+      "productionF32Volume": 69.88753789418247,
+      "relVsInstrumented": 2.4216188333597905e-7,
+      "relVsProductionInProcess": 8.133555791717157e-16
+    },
+    {
+      "point": 9,
+      "meshes": 1,
+      "wasmVolume": 15.63223648174745,
+      "instrumentedVolume": 15.632242681479156,
+      "productionF32Volume": 15.63223648174742,
+      "relVsInstrumented": 3.9659899299906127e-7,
+      "relVsProductionInProcess": 1.9317815659367906e-15
+    },
+    {
+      "point": 10,
+      "meshes": 1,
+      "wasmVolume": 33.30617979945597,
+      "instrumentedVolume": 33.30617180945871,
+      "productionF32Volume": 33.306179694778756,
+      "relVsInstrumented": 2.3989539546321436e-7,
+      "relVsProductionInProcess": 3.142876596321449e-9
+    },
+    {
+      "point": 11,
+      "meshes": 1,
+      "wasmVolume": 12.13424117647454,
+      "instrumentedVolume": 12.1342390939519,
+      "productionF32Volume": 12.134241176474552,
+      "relVsInstrumented": 1.7162366948135418e-7,
+      "relVsProductionInProcess": 1.0247445798184174e-15
+    },
+    {
+      "point": 12,
+      "meshes": 1,
+      "wasmVolume": 41.36898679623884,
+      "instrumentedVolume": 41.36897487629722,
+      "productionF32Volume": 41.36898585325621,
+      "relVsInstrumented": 2.881372249629831e-7,
+      "relVsProductionInProcess": 2.279443431347906e-8
+    },
+    {
+      "point": 13,
+      "meshes": 1,
+      "wasmVolume": 37.701701547612984,
+      "instrumentedVolume": 37.701693844189194,
+      "productionF32Volume": 37.70170140096139,
+      "relVsInstrumented": 2.0432566829101541e-7,
+      "relVsProductionInProcess": 3.889787158939763e-9
+    },
+    {
+      "point": 14,
+      "meshes": 1,
+      "wasmVolume": 142.85578771439177,
+      "instrumentedVolume": 142.85578580539334,
+      "productionF32Volume": 142.85578759943692,
+      "relVsInstrumented": 1.3363115935537662e-8,
+      "relVsProductionInProcess": 8.046915410138915e-10
+    },
+    {
+      "point": 15,
+      "meshes": 1,
+      "wasmVolume": 38.97735127690657,
+      "instrumentedVolume": 38.97735516227741,
+      "productionF32Volume": 38.97735132356105,
+      "relVsInstrumented": 9.968277294438738e-8,
+      "relVsProductionInProcess": 1.1969639581888153e-9
+    },
+    {
+      "point": 16,
+      "meshes": 1,
+      "wasmVolume": 13.657551511017735,
+      "instrumentedVolume": 13.65754693804755,
+      "productionF32Volume": 13.65755159174949,
+      "relVsInstrumented": 3.348310062269426e-7,
+      "relVsProductionInProcess": 5.9111440993353815e-9
+    },
+    {
+      "point": 17,
+      "meshes": 1,
+      "wasmVolume": 36.32646889149337,
+      "instrumentedVolume": 36.32646999662196,
+      "productionF32Volume": 36.3264695233898,
+      "relVsInstrumented": 3.0422129913309104e-8,
+      "relVsProductionInProcess": 1.73949308873098e-8
+    },
+    {
+      "point": 18,
+      "meshes": 1,
+      "wasmVolume": 4.09776902328464,
+      "instrumentedVolume": 4.097768655075744,
+      "productionF32Volume": 4.097769023284643,
+      "relVsInstrumented": 8.985595021473558e-8,
+      "relVsProductionInProcess": 6.502404708415136e-16
+    },
+    {
+      "point": 19,
+      "meshes": 1,
+      "wasmVolume": 52.45409977621975,
+      "instrumentedVolume": 52.4541007283805,
+      "productionF32Volume": 52.454099776219756,
+      "relVsInstrumented": 1.8152265324844283e-8,
+      "relVsProductionInProcess": 1.3545990471506046e-16
+    },
+    {
+      "point": 20,
+      "meshes": 1,
+      "wasmVolume": 103.39327920253508,
+      "instrumentedVolume": 103.3932556303048,
+      "productionF32Volume": 103.39327920253504,
+      "relVsInstrumented": 2.2798615003143895e-7,
+      "relVsProductionInProcess": 4.1233399766820364e-16
+    },
+    {
+      "point": 21,
+      "meshes": 1,
+      "wasmVolume": 18.01077296937162,
+      "instrumentedVolume": 18.01077350878889,
+      "productionF32Volume": 18.01077296937162,
+      "relVsInstrumented": 2.994970046542199e-8,
+      "relVsProductionInProcess": 0
+    },
+    {
+      "point": 22,
+      "meshes": 1,
+      "wasmVolume": 9.575058421937934,
+      "instrumentedVolume": 9.575048232105482,
+      "productionF32Volume": 9.575058192483203,
+      "relVsInstrumented": 0.000001064206905761013,
+      "relVsProductionInProcess": 2.3963794909510378e-8
+    },
+    {
+      "point": 23,
+      "meshes": 1,
+      "wasmVolume": 41.18695281408687,
+      "instrumentedVolume": 41.186957279873475,
+      "productionF32Volume": 41.18695348871834,
+      "relVsInstrumented": 1.0842720360211475e-7,
+      "relVsProductionInProcess": 1.63797369849916e-8
+    }
+  ]
+}

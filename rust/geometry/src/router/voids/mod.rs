@@ -16,7 +16,7 @@ mod aabb_clip;
 mod bool2d_path;
 mod coaxial_union;
 mod geom;
-mod prism_cut;
+pub(crate) mod prism_cut;
 mod probe;
 mod synthesis;
 
@@ -964,6 +964,10 @@ impl GeometryRouter {
             let prism_bounds = world_host_bounds(&mesh);
             let prism_tris_before = mesh.triangle_count();
             if let Some((cut, residual)) = self.try_prism_cut(&mesh, ctx) {
+                // Two host faces sharing an edge compute the same new crossing
+                // point through different arithmetic; unify them at ulp scale so
+                // the split face's halves share their seam.
+                let cut = prism_cut::dedup_cut_vertices(&cut, &mesh);
                 return match residual {
                     None => {
                         // Same per-host cut-effect snapshot the exact path

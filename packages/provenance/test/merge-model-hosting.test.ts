@@ -273,6 +273,60 @@ describe('node-disjoint ops that genuinely do NOT commute (the B4.2 headline)', 
   });
 });
 
+describe('the ablation, at unit scale (G4 review item 6)', () => {
+  it('with the spatial rule DISABLED the predicate clears the headline non-commuting pair', async () => {
+    const base = hostedState();
+    const hostOp = moveHost('a0', 0.1, 0.1);
+    const openingOp = moveOpening('b0', 0.5, 0.5);
+
+    // Same pair as the B4.2 headline above: disjoint writtenNodes, divergent
+    // bytes. With the rule off, nothing in the predicate can see it.
+    const dag = buildStateDag(base);
+    const ablated = conflictPredicate(
+      computeMergeOpFootprint(dag, base, hostOp),
+      computeMergeOpFootprint(dag, base, openingOp),
+      { spatialRule: 'disabled' },
+    );
+    expect(ablated.conflict).toBe(false);
+
+    // What stops it is then ONLY createCommutationCertificate's own replay of
+    // both orders -- the backstop, not the predicate. That distinction is the
+    // whole content of the ablation number: no unsound certificate is emitted
+    // in either mode; the PREDICATE is what was wrong.
+    const outcome = await createCommutationCertificate({
+      base,
+      opsA: [hostOp],
+      opsB: [openingOp],
+      spatialRule: 'disabled',
+    });
+    expect(outcome.ok).toBe(false);
+    expect(outcome.ok === false && outcome.reason).toBe('non-commutative');
+  });
+
+  it('...and the order-dependent REJECTION case behaves the same way', async () => {
+    const base = hostedState();
+    const hostOp = moveHost('a0', 0.3);
+    const openingOp = moveOpening('b0', 1.05, 0.4);
+    const outcome = await createCommutationCertificate({
+      base,
+      opsA: [hostOp],
+      opsB: [openingOp],
+      spatialRule: 'disabled',
+    });
+    expect(outcome.ok).toBe(false);
+    expect(outcome.ok === false && outcome.reason).toBe('apply-failed');
+  });
+
+  it('the ablation does not weaken the STRUCTURAL half: same-node writes are still refused', async () => {
+    const base = hostedState();
+    const a: MergeOp = { opId: 'a0', type: 'attr-set', psetNodeId: 'pset:wall', property: 'IsExternal', value: true };
+    const b: MergeOp = { opId: 'b0', type: 'attr-set', psetNodeId: 'pset:wall', property: 'IsExternal', value: false };
+    const outcome = await createCommutationCertificate({ base, opsA: [a], opsB: [b], spatialRule: 'disabled' });
+    expect(outcome.ok).toBe(false);
+    expect(outcome.ok === false && outcome.reason).toBe('conflict');
+  });
+});
+
 describe('wire format: node-hash-v0 is untouched', () => {
   it('hosting is NOT part of any node payload, so it cannot perturb a node hash', async () => {
     // node-hash-v0 is frozen at 1.0.0 with golden vectors (PR #1886); B4.2 is

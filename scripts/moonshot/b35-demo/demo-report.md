@@ -67,8 +67,13 @@ Merkle root `sha256:1d335793b20bc580ce16ba7eafbb3a0a9c48b0786a9e0444cff42eba58c5
 - colliding edits (both write the same wall pset): blocked=true, 1 conflicting cross pair(s) -- no certificate, no silent overwrite
 - property battery (1000 schedules, seed 20260724): 873 auto-merged,
   **0 unsound auto-merges**, 127 flagged (12.70%),
-  false-conflict rate 8.78%, certificates 873 issued / 34 verified / 0 failures;
+  false-conflict rate 8.78% = 84 false / 957 ground-truth-COMMUTING
+  schedules (the denominator the plan's < 20% kill criterion is defined over -- not the 127 flagged),
+  certificates 873 issued / 34 verified / 0 failures;
   exam PASS, kill criterion PASS
+  (the full decomposition, the spatial-restricted rate with its Wilson interval and the
+  spatial-rule ablation live in `scripts/moonshot/g2-merge-soundness.mjs`, which runs the
+  same battery at gate scale)
 
 ## Act 5 -- DESCENT (M3 differentiable carbon, kernel-validated)
 
@@ -85,8 +90,8 @@ differentiable building with exact dual-number gradients:
 
 Wall clocks and the timestamp below change run to run; nothing above does.
 
-- generated at: 2026-07-27T07:28:47.235Z (node v22.14.0)
+- generated at: 2026-07-29T13:14:53.301Z (node v22.14.0)
 - total wall clock: 6.5s
-- per act: act1=0.0s, act2=0.1s, act3=0.3s, act4=2.3s, act5=3.8s
+- per act: act1=0.0s, act2=0.1s, act3=0.3s, act4=2.3s, act5=3.9s
 - artifacts (outside the repo): /var/folders/n2/jkb39p_x4md9jdv5hhzny6jc0000gn/T/ifc-lite-b35-demo
 

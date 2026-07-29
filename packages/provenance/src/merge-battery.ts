@@ -58,6 +58,51 @@
  * and {@link MergeBatteryReport.spatialOnlyTrueConflicts} (conflicts that
  * ONLY the spatial rule caught -- if that is zero, the rule earns nothing and
  * the pre-committed consequence is to delete it).
+ *
+ * ## The ablation (G4 review item 6)
+ *
+ * The G4 red-team review (docs/vision/reviews/g4-red-team-2026-07-29.md §2,
+ * §7 item 6) pointed out that the whole soundness argument for the coupled
+ * semantics *depends* on the spatial rule, and that an argument of that shape
+ * should be tested by removing the rule rather than by counting what it
+ * caught. {@link runSpatialAblation} does exactly that: the SAME 1,000
+ * schedules (same seed, same generator, same op model), the predicate reduced
+ * to structural overlap only, counting the cross pairs the reduced predicate
+ * CLEARS that do not actually commute --
+ * {@link SpatialAblationReport.unsoundAutoMerges}.
+ *
+ * Precisely what that count is, since the distinction matters and is easy to
+ * overstate: no unsound certificate is ever emitted, in either mode.
+ * `createCommutationCertificate` replays both orders itself and refuses on
+ * `apply-failed` / `non-commutative` regardless of what the predicate said.
+ * The count is the number of times the PREDICATE -- the part of the scheme
+ * that decides, and the part this bet is about -- was wrong in the unsafe
+ * direction, which is exactly the quantity the M4 exam's "zero unsound
+ * auto-merges" bar is stated over (see the head of this docstring). The
+ * ablation is measured in the same units as the exam so the two are
+ * comparable: 0 with the rule, N without it.
+ *
+ * Read the result honestly, in either direction:
+ *
+ * - **non-zero** -- the rule is load-bearing for SOUNDNESS, not merely a
+ *   conflict counter. This is what upgrades the KEEP verdict: the plan's
+ *   pre-committed rule "delete iff zero spatial-only true conflicts" reads
+ *   like a trivial bar (1 in 1,000 would have kept it), but every spatial-only
+ *   true conflict IS an unsound auto-merge without the rule, so "delete iff
+ *   zero" is exactly "delete iff the rule is not load-bearing".
+ * - **zero** -- the soundness argument does not need the spatial rule under
+ *   this op model. That is a real negative result that materially weakens
+ *   KEEP, and it must be reported as one.
+ *
+ * The identity `unsoundAutoMerges(ablated) == spatialOnlyTrueConflicts` holds
+ * BY CONSTRUCTION and is asserted, not hoped for: a schedule classified
+ * `spatialOnly` has no structurally-conflicting cross pair at all (a
+ * structural conflict would have been flagged), so the ablated predicate
+ * certifies it, and if its ground truth is "does not commute" the certificate
+ * is unsound. The ablation is therefore a RE-DERIVATION of that count through
+ * the certificate-issuing path, not independent evidence -- which is the point
+ * (it is the same fact stated in the units that matter), and it is stated that
+ * way rather than presented as a second, corroborating measurement.
  */
 
 import { aabbFromMesh, unionAabb, DEFAULT_EPSILON_MM, type Aabb } from './footprint.js';
@@ -74,6 +119,7 @@ import {
 import {
   attemptBothOrders,
   createCommutationCertificate,
+  findCrossConflicts,
   verifyCommutationCertificate,
 } from './commutation.js';
 
@@ -547,13 +593,38 @@ export interface MergeBatteryReport {
   elapsedMs: number;
 }
 
+/** One generated schedule: a base model and both clients' op sets. */
+interface Schedule {
+  index: number;
+  base: ModelState;
+  opsA: MergeOp[];
+  opsB: MergeOp[];
+}
+
+/**
+ * The schedule stream, shared by {@link runMergeBattery} and
+ * {@link runSpatialAblation}. Generation reads ONLY the seeded PRNG and the op
+ * model -- never the conflict predicate -- so the same seed yields
+ * byte-identical schedules in both modes. That is what makes the ablation an
+ * ablation (one variable changed) rather than a second experiment; a test
+ * pins it.
+ */
+function* enumerateSchedules(schedules: number, seed: number): Generator<Schedule> {
+  const rng = mulberry32(seed);
+  for (let index = 0; index < schedules; index++) {
+    const base = buildBaseModel(rng);
+    const opsA = generateClientOps(base, { client: 'a', scheduleIndex: index, rng });
+    const opsB = generateClientOps(base, { client: 'b', scheduleIndex: index, rng });
+    yield { index, base, opsA, opsB };
+  }
+}
+
 export async function runMergeBattery(options: MergeBatteryOptions = {}): Promise<MergeBatteryReport> {
   const schedules = options.schedules ?? 1000;
   const seed = options.seed ?? 20260724;
   const epsilonMm = options.epsilonMm ?? DEFAULT_EPSILON_MM;
   const verifyEvery = options.verifyEvery ?? 25;
 
-  const rng = mulberry32(seed);
   const start = performance.now();
 
   let autoMerged = 0;
@@ -574,11 +645,7 @@ export async function runMergeBattery(options: MergeBatteryOptions = {}): Promis
   });
   const byRule = { structuralOnly: emptyTally(), spatialOnly: emptyTally(), both: emptyTally() };
 
-  for (let s = 0; s < schedules; s++) {
-    const base = buildBaseModel(rng);
-    const opsA = generateClientOps(base, { client: 'a', scheduleIndex: s, rng });
-    const opsB = generateClientOps(base, { client: 'b', scheduleIndex: s, rng });
-
+  for (const { index: s, base, opsA, opsB } of enumerateSchedules(schedules, seed)) {
     const outcome = await createCommutationCertificate({
       base,
       opsA,
@@ -659,4 +726,213 @@ export async function runMergeBattery(options: MergeBatteryOptions = {}): Promis
     killCriterionPass: falseConflictRate < 0.2,
     elapsedMs,
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* The ablation: the same battery with the spatial rule switched off     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Result of {@link runSpatialAblation}. Deliberately NOT a
+ * {@link MergeBatteryReport}: an ablated run is not an exam, and a report that
+ * carried `examPass: false` for a run that is SUPPOSED to produce unsound
+ * merges would be read as a failure of the system rather than a measurement of
+ * it. Nothing here gates anything.
+ */
+export interface SpatialAblationReport {
+  schedules: number;
+  seed: number;
+  epsilonMm: number;
+  /** Always `'disabled'` -- present so a stray JSON blob is self-describing
+   *  and can never be mistaken for a real battery report. */
+  spatialRule: 'disabled';
+  /** Schedules the structural-only predicate cleared AND whose replay then
+   *  converged: sound auto-merges that never needed the spatial rule. */
+  autoMerged: number;
+  /** Schedules the structural-only predicate still refused (structural
+   *  overlap alone was enough). */
+  flaggedConflicts: number;
+  /**
+   * THE ablation number, in the same units as the M4 exam's "zero unsound
+   * auto-merges" bar: schedules where the structural-only predicate said
+   * "safe" and the replay then FAILED or DIVERGED. No certificate is emitted
+   * for these -- `createCommutationCertificate` replays both orders itself and
+   * refuses -- so this counts the PREDICATE being wrong in the unsafe
+   * direction, not certificates that shipped. See the module docstring's
+   * ablation section.
+   */
+  unsoundAutoMerges: number;
+  /** Of {@link unsoundAutoMerges}: an order threw (a containment rejection
+   *  reading state the op does not write). */
+  unsoundApplyFailed: number;
+  /** Of {@link unsoundAutoMerges}: both orders applied and produced different
+   *  canonical bytes (a stale lazy void cut). */
+  unsoundDiverged: number;
+  unsoundScheduleIndices: readonly number[];
+  /**
+   * Of `unsoundAutoMerges`, how many the FULL predicate refuses. Since the
+   * ablated predicate cleared them, they have no structural conflict at all,
+   * so any refusal by the full predicate is the spatial rule and nothing
+   * else. Anything less than `unsoundAutoMerges` would mean the SHIPPING
+   * predicate is unsound too -- a cross-check on the main battery's
+   * `unsoundAutoMerges === 0`, from the opposite direction.
+   */
+  unsoundCaughtBySpatialRule: number;
+  /** `unsoundCaughtBySpatialRule === unsoundAutoMerges`: every merge the
+   *  ablation broke is one the spatial rule was standing in front of. */
+  spatialRuleCatchesAll: boolean;
+  /**
+   * `unsoundAutoMerges > 0`. When true, the spatial rule is load-bearing for
+   * SOUNDNESS under this op model and KEEP is justified on those grounds
+   * rather than by a count of flagged conflicts. When FALSE, the soundness
+   * argument in merge-model.ts does not need the rule and the KEEP verdict
+   * rests only on the 9-conflicts-in-1,000 threshold -- a materially weaker
+   * position that must be reported, not buried.
+   */
+  spatialRuleIsLoadBearing: boolean;
+  certificatesIssued: number;
+  certificatesVerified: number;
+  certificateFailures: number;
+  elapsedMs: number;
+}
+
+/**
+ * The B4.2 ablation (G4 review item 6): {@link runMergeBattery}'s schedules,
+ * generator, seed and op model, with ONE variable changed -- the conflict
+ * predicate's spatial half is switched off, so a cross pair conflicts only if
+ * its `writtenNodes` intersect.
+ *
+ * The op model is untouched: hosts still reject openings that escape them and
+ * still re-cut lazily. So this measures precisely what the module docstring
+ * claims the spatial rule buys -- see the "ablation" section there for how to
+ * read a zero as well as a non-zero.
+ *
+ * Certificate sampling re-verifies under the SAME ablated predicate
+ * (`spatialRule: 'disabled'` on the verify options), because a certificate
+ * issued under one predicate and re-checked under a stricter one would fail
+ * for a reason that has nothing to do with the certificate.
+ */
+export async function runSpatialAblation(options: MergeBatteryOptions = {}): Promise<SpatialAblationReport> {
+  const schedules = options.schedules ?? 1000;
+  const seed = options.seed ?? 20260724;
+  const epsilonMm = options.epsilonMm ?? DEFAULT_EPSILON_MM;
+  const verifyEvery = options.verifyEvery ?? 25;
+
+  const start = performance.now();
+
+  let autoMerged = 0;
+  let flaggedConflicts = 0;
+  let unsoundApplyFailed = 0;
+  let unsoundDiverged = 0;
+  let unsoundCaughtBySpatialRule = 0;
+  const unsoundScheduleIndices: number[] = [];
+  let certificatesIssued = 0;
+  let certificatesVerified = 0;
+  let certificateFailures = 0;
+
+  for (const { index: s, base, opsA, opsB } of enumerateSchedules(schedules, seed)) {
+    const outcome = await createCommutationCertificate({
+      base,
+      opsA,
+      opsB,
+      epsilonMm,
+      clientA: 'client-a',
+      clientB: 'client-b',
+      spatialRule: 'disabled',
+    });
+
+    if (outcome.ok) {
+      autoMerged++;
+      certificatesIssued++;
+      if (verifyEvery > 0 && certificatesIssued % verifyEvery === 0) {
+        const verification = await verifyCommutationCertificate(outcome.certificate, base, opsA, opsB, {
+          spatialRule: 'disabled',
+        });
+        certificatesVerified++;
+        if (!verification.ok) certificateFailures++;
+      }
+      continue;
+    }
+
+    if (outcome.reason === 'conflict') {
+      flaggedConflicts++;
+      continue;
+    }
+
+    // The predicate approved a pair whose replay failed or diverged. The
+    // replay backstop still refuses to emit a certificate; what this counts is
+    // the PREDICATE being wrong in the unsafe direction (module docstring).
+    unsoundScheduleIndices.push(s);
+    if (outcome.reason === 'apply-failed') unsoundApplyFailed++;
+    else unsoundDiverged++;
+    // Would the SHIPPING predicate have caught it? Only asked on the handful
+    // of unsound schedules, so the extra footprint pass costs nothing.
+    if (findCrossConflicts(base, opsA, opsB, epsilonMm).length > 0) unsoundCaughtBySpatialRule++;
+  }
+
+  const elapsedMs = performance.now() - start;
+  const unsoundAutoMerges = unsoundScheduleIndices.length;
+
+  return {
+    schedules,
+    seed,
+    epsilonMm,
+    spatialRule: 'disabled',
+    autoMerged,
+    flaggedConflicts,
+    unsoundAutoMerges,
+    unsoundApplyFailed,
+    unsoundDiverged,
+    unsoundScheduleIndices,
+    unsoundCaughtBySpatialRule,
+    spatialRuleCatchesAll: unsoundCaughtBySpatialRule === unsoundAutoMerges,
+    spatialRuleIsLoadBearing: unsoundAutoMerges > 0,
+    certificatesIssued,
+    certificatesVerified,
+    certificateFailures,
+    elapsedMs,
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* Wilson score interval (G4 review item 5)                              */
+/* ------------------------------------------------------------------ */
+
+/** z for a two-sided 95% normal interval. */
+export const Z_95 = 1.959963984540054;
+
+export interface WilsonInterval {
+  low: number;
+  high: number;
+}
+
+/**
+ * Wilson score interval for a binomial proportion -- the interval to quote on
+ * the restricted false-conflict rate, whose denominator (schedules where the
+ * spatial rule fired) is small enough that the normal approximation is
+ * misleading and small enough that a bare point estimate oversells its own
+ * precision. The G4 red-team review computed [28.2%, 54.7%] for 20/49; this
+ * function is what the gate script quotes, and a test pins that value so the
+ * number in the report is derived rather than transcribed.
+ *
+ * Wilson rather than Wald: Wald's interval on 20/49 would be symmetric about
+ * the point estimate and can leave [0, 1] entirely for extreme proportions,
+ * which is exactly the regime a "zero unsound merges" style claim lives in.
+ */
+export function wilsonInterval(successes: number, trials: number, z: number = Z_95): WilsonInterval {
+  if (!Number.isFinite(successes) || !Number.isFinite(trials) || successes < 0 || trials < 0) {
+    throw new Error('@ifc-lite/provenance: wilsonInterval: successes and trials must be non-negative finite numbers');
+  }
+  if (successes > trials) {
+    throw new Error(`@ifc-lite/provenance: wilsonInterval: successes (${successes}) exceeds trials (${trials})`);
+  }
+  // No trials, no information: the honest interval is the whole range, not a
+  // point at zero.
+  if (trials === 0) return { low: 0, high: 1 };
+  const p = successes / trials;
+  const z2 = z * z;
+  const denominator = 1 + z2 / trials;
+  const centre = (p + z2 / (2 * trials)) / denominator;
+  const margin = (z / denominator) * Math.sqrt((p * (1 - p)) / trials + z2 / (4 * trials * trials));
+  return { low: Math.max(0, centre - margin), high: Math.min(1, centre + margin) };
 }

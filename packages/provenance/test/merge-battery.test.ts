@@ -12,7 +12,15 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { buildBaseModel, generateClientOps, mulberry32, runMergeBattery } from '../src/merge-battery.js';
+import {
+  buildBaseModel,
+  generateClientOps,
+  mulberry32,
+  runMergeBattery,
+  runSpatialAblation,
+  wilsonInterval,
+  Z_95,
+} from '../src/merge-battery.js';
 import { applyOps } from '../src/merge-model.js';
 
 /** 400, not 150: under the B4.2 coupled semantics the battery must show the
@@ -94,6 +102,141 @@ describe('runMergeBattery', () => {
     const opsA = generateClientOps(baseA, { client: 'a', scheduleIndex: 0, rng: rngA });
     const opsB = generateClientOps(baseB, { client: 'a', scheduleIndex: 0, rng: rngB });
     expect(JSON.stringify(opsA)).not.toBe(JSON.stringify(opsB));
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* The ablation (G4 red-team review item 6)                              */
+/* ------------------------------------------------------------------ */
+
+describe('runSpatialAblation: the same schedules with the spatial rule DISABLED', () => {
+  it('produces UNSOUND auto-merges -- the spatial rule is load-bearing for soundness', async () => {
+    // The decisive experiment the G4 review asked for. If this ever reads 0,
+    // the soundness argument in merge-model.ts's docstring does not need the
+    // spatial rule under this op model, and the KEEP verdict rests only on the
+    // "delete iff zero spatial-only true conflicts" threshold -- a materially
+    // weaker position. A 0 here is a REAL RESULT to report, not a test to
+    // relax: it would mean this expectation, and the docstring's claim, are
+    // the things that were wrong.
+    const ablation = await runSpatialAblation({ schedules: SCHEDULES, seed: SEED, verifyEvery: 0 });
+    expect(ablation.unsoundAutoMerges).toBeGreaterThan(0);
+    expect(ablation.spatialRuleIsLoadBearing).toBe(true);
+    // Both failure modes of the coupling show up: a containment rejection in
+    // one order, and a stale lazy cut that diverges.
+    expect(ablation.unsoundApplyFailed).toBeGreaterThan(0);
+    expect(ablation.unsoundDiverged).toBeGreaterThan(0);
+    expect(ablation.unsoundApplyFailed + ablation.unsoundDiverged).toBe(ablation.unsoundAutoMerges);
+    expect(ablation.unsoundScheduleIndices).toHaveLength(ablation.unsoundAutoMerges);
+    // Exhaustive: every schedule lands in exactly one bucket.
+    expect(ablation.autoMerged + ablation.flaggedConflicts + ablation.unsoundAutoMerges).toBe(SCHEDULES);
+    expect(ablation.spatialRule).toBe('disabled');
+  }, 120_000);
+
+  it('every unsound merge it produces is one the SHIPPING predicate refuses', async () => {
+    // The cross-check that runs in the opposite direction to the main
+    // battery's `unsoundAutoMerges === 0`: if the full predicate missed even
+    // one of these, it would be unsound too.
+    const ablation = await runSpatialAblation({ schedules: SCHEDULES, seed: SEED, verifyEvery: 0 });
+    expect(ablation.unsoundCaughtBySpatialRule).toBe(ablation.unsoundAutoMerges);
+    expect(ablation.spatialRuleCatchesAll).toBe(true);
+  }, 120_000);
+
+  it('the ablation count IS the spatial-only true-conflict count (the identity, by construction)', async () => {
+    // A schedule that only the spatial rule flags has no structurally
+    // conflicting cross pair at all, so the ablated predicate certifies it;
+    // if its ground truth is "does not commute", the predicate was wrong in
+    // the unsafe direction. Hence: ablated unsound == spatialOnlyTrueConflicts.
+    // This is why the plan's "delete iff zero" threshold is not the trivial
+    // bar it looks like -- it is exactly "delete iff the rule is not
+    // load-bearing for soundness". Pinned so nobody can later present the
+    // ablation as an INDEPENDENT corroborating measurement: it is a
+    // re-derivation of the same count through the certificate-issuing path.
+    const [battery, ablation] = await Promise.all([
+      runMergeBattery({ schedules: SCHEDULES, seed: SEED, verifyEvery: 0 }),
+      runSpatialAblation({ schedules: SCHEDULES, seed: SEED, verifyEvery: 0 }),
+    ]);
+    expect(ablation.unsoundAutoMerges).toBe(battery.spatialOnlyTrueConflicts);
+  }, 120_000);
+
+  it('sees exactly the schedules the battery sees (one variable changed, not two)', async () => {
+    // The generator reads only the seeded PRNG and the op model, never the
+    // predicate -- so switching the rule off must move schedules between
+    // buckets and never create or destroy one. Turning the rule off can only
+    // un-flag the schedules where it fired ALONE: those become auto-merges if
+    // they commute and unsound ones if they do not.
+    const [battery, ablation] = await Promise.all([
+      runMergeBattery({ schedules: SCHEDULES, seed: SEED, verifyEvery: 0 }),
+      runSpatialAblation({ schedules: SCHEDULES, seed: SEED, verifyEvery: 0 }),
+    ]);
+    const spatialOnly = battery.byRule.spatialOnly;
+    expect(ablation.flaggedConflicts).toBe(battery.flaggedConflicts - spatialOnly.flagged);
+    expect(ablation.autoMerged).toBe(battery.autoMerged + spatialOnly.falseConflicts);
+    expect(ablation.unsoundAutoMerges).toBe(spatialOnly.trueConflicts);
+  }, 120_000);
+
+  it('is deterministic under a fixed seed', async () => {
+    const first = await runSpatialAblation({ schedules: 40, seed: 7, verifyEvery: 0 });
+    const second = await runSpatialAblation({ schedules: 40, seed: 7, verifyEvery: 0 });
+    const strip = ({ elapsedMs: _elapsed, ...rest }: Awaited<ReturnType<typeof runSpatialAblation>>) => rest;
+    expect(strip(second)).toEqual(strip(first));
+  }, 120_000);
+
+  it('certificates it issues re-verify under the same ablated predicate', async () => {
+    const ablation = await runSpatialAblation({ schedules: 100, seed: SEED });
+    expect(ablation.certificatesVerified).toBeGreaterThan(0);
+    expect(ablation.certificateFailures).toBe(0);
+  }, 120_000);
+});
+
+/* ------------------------------------------------------------------ */
+/* Wilson interval (G4 red-team review item 5)                           */
+/* ------------------------------------------------------------------ */
+
+describe('wilsonInterval', () => {
+  it('reproduces the G4 review\'s interval for the restricted rate, 20/49', () => {
+    // The review quotes [28.2%, 54.7%] for 20 false conflicts out of 49
+    // schedules where the spatial rule fired. Verified here rather than
+    // trusted, and derived rather than transcribed into the gate's output.
+    const { low, high } = wilsonInterval(20, 49);
+    expect(low).toBeCloseTo(0.28215238520386865, 12);
+    expect(high).toBeCloseTo(0.5475268060815286, 12);
+    // The claim that carries the FAIL: the interval excludes the 20% bar.
+    expect(low).toBeGreaterThan(0.2);
+  });
+
+  it('brackets the point estimate and stays inside [0, 1]', () => {
+    for (const [successes, trials] of [[0, 10], [1, 3], [7, 7], [20, 49], [3, 1000]] as const) {
+      const { low, high } = wilsonInterval(successes, trials);
+      const p = successes / trials;
+      expect(low).toBeGreaterThanOrEqual(0);
+      expect(high).toBeLessThanOrEqual(1);
+      expect(low).toBeLessThanOrEqual(p);
+      expect(high).toBeGreaterThanOrEqual(p);
+    }
+  });
+
+  it('does not collapse to a point at the boundaries (the reason it is Wilson, not Wald)', () => {
+    // Wald would give [0, 0] for 0/50 and [1, 1] for 50/50 -- an interval that
+    // claims certainty from 50 samples.
+    expect(wilsonInterval(0, 50).high).toBeGreaterThan(0);
+    expect(wilsonInterval(50, 50).low).toBeLessThan(1);
+  });
+
+  it('reports total ignorance for zero trials rather than a point at zero', () => {
+    expect(wilsonInterval(0, 0)).toEqual({ low: 0, high: 1 });
+  });
+
+  it('rejects impossible inputs', () => {
+    expect(() => wilsonInterval(5, 4)).toThrow(/exceeds trials/);
+    expect(() => wilsonInterval(-1, 4)).toThrow(/non-negative/);
+    expect(() => wilsonInterval(1, Number.NaN)).toThrow(/non-negative finite/);
+  });
+
+  it('a wider z gives a wider interval', () => {
+    const at95 = wilsonInterval(20, 49, Z_95);
+    const at99 = wilsonInterval(20, 49, 2.5758293035489004);
+    expect(at99.low).toBeLessThan(at95.low);
+    expect(at99.high).toBeGreaterThan(at95.high);
   });
 });
 

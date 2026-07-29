@@ -39,6 +39,7 @@ import {
   type Aabb,
   type ConflictResult,
   type Footprint,
+  type SpatialRuleMode,
 } from './footprint.js';
 import {
   applyOps,
@@ -103,6 +104,16 @@ export interface CommutationInput {
   epsilonMm?: number;
   clientA?: string;
   clientB?: string;
+  /**
+   * Default `'enabled'`. `'disabled'` runs the cross-pair scan with the
+   * SPATIAL half of the predicate switched off — the B4.2 ablation. A
+   * certificate issued under `'disabled'` is an experimental artifact and
+   * says nothing about the shipping predicate: the certificate carries no
+   * field recording the mode, deliberately, because the mode is not a wire
+   * concept and a certificate must never be interpretable as "issued under a
+   * weaker rule". Callers that ablate own that context.
+   */
+  spatialRule?: SpatialRuleMode;
 }
 
 interface CrossAnalysis {
@@ -120,6 +131,7 @@ function analyzeCrossPairs(
   opsA: readonly MergeOp[],
   opsB: readonly MergeOp[],
   epsilonMm: number,
+  spatialRule: SpatialRuleMode,
 ): CrossAnalysis {
   const dag = buildStateDag(base);
   const fpsA = opsA.map((op) => computeMergeOpFootprint(dag, base, op));
@@ -127,21 +139,24 @@ function analyzeCrossPairs(
   const conflicts: OpConflict[] = [];
   for (const fpA of fpsA) {
     for (const fpB of fpsB) {
-      const result = conflictPredicate(fpA, fpB, { epsilonMm });
+      const result = conflictPredicate(fpA, fpB, { epsilonMm, spatialRule });
       if (result.conflict) conflicts.push({ aOpId: fpA.opId, bOpId: fpB.opId, result });
     }
   }
   return { fpsA, fpsB, conflicts };
 }
 
-/** Cross-pair conflict scan (see {@link analyzeCrossPairs}), conflicts only. */
+/** Cross-pair conflict scan (see {@link analyzeCrossPairs}), conflicts only.
+ *  `spatialRule` defaults to `'enabled'`; `'disabled'` is the B4.2 ablation
+ *  (structural overlap only). */
 export function findCrossConflicts(
   base: ModelState,
   opsA: readonly MergeOp[],
   opsB: readonly MergeOp[],
   epsilonMm: number = DEFAULT_EPSILON_MM,
+  spatialRule: SpatialRuleMode = 'enabled',
 ): OpConflict[] {
-  return analyzeCrossPairs(base, opsA, opsB, epsilonMm).conflicts;
+  return analyzeCrossPairs(base, opsA, opsB, epsilonMm, spatialRule).conflicts;
 }
 
 export type ReplayOutcome =
@@ -198,7 +213,8 @@ function summarize(client: string, ops: readonly MergeOp[], fps: readonly Footpr
  */
 export async function createCommutationCertificate(input: CommutationInput): Promise<CommutationOutcome> {
   const epsilonMm = input.epsilonMm ?? DEFAULT_EPSILON_MM;
-  const { fpsA, fpsB, conflicts } = analyzeCrossPairs(input.base, input.opsA, input.opsB, epsilonMm);
+  const spatialRule = input.spatialRule ?? 'enabled';
+  const { fpsA, fpsB, conflicts } = analyzeCrossPairs(input.base, input.opsA, input.opsB, epsilonMm, spatialRule);
   if (conflicts.length > 0) return { ok: false, reason: 'conflict', conflicts };
 
   const replay = attemptBothOrders(input.base, input.opsA, input.opsB);
@@ -254,6 +270,16 @@ export interface CommutationVerifyOptions {
   expectedClientA?: string;
   /** Same for op set B / `certificate.b.client`. */
   expectedClientB?: string;
+  /**
+   * Predicate configuration to re-check under. Default `'enabled'`, which is
+   * the only sound choice for a real certificate. It is verifier-supplied for
+   * the same reason the client labels are: the certificate does not record it
+   * (see {@link CommutationInput.spatialRule}), so deriving it from the
+   * artifact would let the artifact choose its own weaker rule. Only the B4.2
+   * ablation harness passes `'disabled'`, to re-check certificates it
+   * knowingly issued under the ablated predicate.
+   */
+  spatialRule?: SpatialRuleMode;
 }
 
 function fail(reason: string, details?: unknown): CommutationVerificationFailure {
@@ -325,7 +351,13 @@ export async function verifyCommutationCertificate(
     return fail('model-mismatch', { actual: certificate.model });
   }
 
-  const { fpsA, fpsB, conflicts } = analyzeCrossPairs(base, opsA, opsB, certificate.epsilonMm);
+  const { fpsA, fpsB, conflicts } = analyzeCrossPairs(
+    base,
+    opsA,
+    opsB,
+    certificate.epsilonMm,
+    options.spatialRule ?? 'enabled',
+  );
   if (conflicts.length > 0) return fail('conflicting-op-sets', { conflicts });
 
   const summaryFailure =

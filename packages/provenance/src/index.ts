@@ -68,6 +68,7 @@ export {
   type Footprint,
   type ConflictResult,
   type ConflictOptions,
+  type SpatialRuleMode,
 } from './footprint.js';
 
 export {
@@ -110,7 +111,12 @@ export {
   generateClientOps,
   mulberry32,
   runMergeBattery,
+  runSpatialAblation,
+  wilsonInterval,
+  Z_95,
   type MergeBatteryOptions,
   type MergeBatteryReport,
   type Rng,
+  type SpatialAblationReport,
+  type WilsonInterval,
 } from './merge-battery.js';

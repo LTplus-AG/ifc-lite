@@ -44,16 +44,30 @@
  *   predicate cleared a pair that does not commute. No unsound CERTIFICATE is
  *   emitted in either mode (the certificate function replays both orders and
  *   refuses); the count measures the predicate, which is the thing the bet is
- *   about. Non-zero means the rule is load-bearing for SOUNDNESS (a
- *   categorically stronger reason to keep it than a count of flagged
- *   conflicts); zero means the argument does not need the rule, which is a
- *   real negative result and is printed as one.
+ *   about. Non-zero means the rule is load-bearing for the PREDICATE; zero
+ *   means the predicate does not need it, which is a real negative result and
+ *   is printed as one.
  * - **The two ratios, with their denominators named.** The headline rate and
  *   the spatial-restricted rate are DIFFERENT RATIOS (a false-positive rate
  *   over commuting schedules vs a precision-complement over flagged
  *   schedules). They are printed side by side with denominators spelled out,
  *   the restricted one with its Wilson 95% interval, and with an explicit
  *   statement of which one the plan's < 20% bar is defined over.
+ *
+ * And one thing the adversarial RE-review of G4 required (item 7), also a
+ * standing number here:
+ *
+ * - **The ablation's headline never appears without its sensitivity.** The 9
+ *   is not 9 independent findings; it is a property of two modelling choices
+ *   in merge-model.ts, neither of which is IFC. `runDerivedCutSensitivity`
+ *   re-scores the same schedules across the 2x2 of {cuts: lazy | derived} x
+ *   {containment: enforced | off} and this script prints that grid in the same
+ *   block as the 9, so the two cannot be separated in a quotation. It also
+ *   restates what the rule buys in the only terms the artifact supports:
+ *   replay-cost avoidance on the schedules the spatial rule alone refuses, at
+ *   the price of the false refusals among them. It does NOT buy soundness of
+ *   the certificate -- `createCommutationCertificate` replays both orders
+ *   regardless of the predicate, in both modes.
  *
  * Usage: node scripts/moonshot/g2-merge-soundness.mjs [schedules] [seed] [epsilonMm]
  * Exit code 0 iff the exam passes (zero unsound auto-merges, zero
@@ -74,9 +88,8 @@ import path from 'node:path';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '../..');
 
-const { runMergeBattery, runSpatialAblation, wilsonInterval, DEFAULT_EPSILON_MM } = await import(
-  path.join(REPO_ROOT, 'packages/provenance/dist/index.js')
-);
+const { runMergeBattery, runSpatialAblation, runDerivedCutSensitivity, wilsonInterval, DEFAULT_EPSILON_MM } =
+  await import(path.join(REPO_ROOT, 'packages/provenance/dist/index.js'));
 
 /**
  * The PRE-B4.2 headline, quoted here only so the distribution-change note can
@@ -235,8 +248,9 @@ async function main() {
     );
   }
   if (ablation.spatialRuleIsLoadBearing) {
-    console.error('verdict: the spatial rule is LOAD-BEARING FOR SOUNDNESS under this op model.');
-    console.error('  KEEP is justified by soundness, not by "it flagged N things that were true".');
+    console.error('verdict: the spatial rule is LOAD-BEARING FOR THE PREDICATE under this op model.');
+    console.error('  NOT for the certificate: the replay backstop refuses these pairs in both modes,');
+    console.error(`  and this ablated run issued ${ablation.certificatesIssued} certificates with ${ablation.certificateFailures} failures.`);
     console.error(
       `  identity, by construction and pinned by a test: ablated unsound (${ablation.unsoundAutoMerges})` +
         ` == spatial-ONLY true conflicts (${report.spatialOnlyTrueConflicts}).`,
@@ -250,27 +264,128 @@ async function main() {
     console.error('  that way rather than presented as corroboration.');
   } else {
     console.error('verdict: NEGATIVE RESULT -- removing the spatial rule produced ZERO unsound');
-    console.error('  auto-merges. The soundness argument in merge-model.ts does not need the rule');
-    console.error('  under this op model, and the KEEP verdict rests only on the count of');
-    console.error('  spatial-only true conflicts against a "delete iff zero" threshold. That is a');
-    console.error('  materially weaker position than the module docstring claims. Do not bury it.');
+    console.error('  auto-merges. The predicate does not need its spatial half under this op model,');
+    console.error('  and the KEEP verdict rests only on the count of spatial-only true conflicts');
+    console.error('  against a "delete iff zero" threshold. That is a materially weaker position');
+    console.error('  than the module docstring claims. Do not bury it.');
   }
   console.error(
     `ablation certificates:   ${ablation.certificatesIssued} issued, ${ablation.certificatesVerified} re-verified (under the ablated predicate), ${ablation.certificateFailures} failures`,
   );
   console.error(`ablation elapsed:        ${(ablation.elapsedMs / 1000).toFixed(1)}s`);
   console.error('---------------------------------------------------------------------');
+
+  /* ---- G4 item 7: what the rule buys, and what the 9 decomposes into -- */
+
+  console.error('');
+  console.error('---- WHAT THE SPATIAL RULE BUYS: replay-cost avoidance, priced (G4 item 7) ----');
+  console.error('the ablation number above is NOT "the certificate would be unsound without the');
+  console.error('rule". createCommutationCertificate replays BOTH orders and refuses on');
+  console.error('apply-failed / non-commutative whatever the predicate said, in both modes, so');
+  console.error(`zero unsound certificates ship either way (ablated failures: ${ablation.certificateFailures}).`);
+  console.error('what the rule buys is that the predicate refuses these schedules BEFORE the');
+  console.error('replay, so the expensive exact check never runs on them:');
+  console.error('');
+  console.error(
+    `  replay-cost avoidance on ${spatialOnly.flagged} schedules (the spatial rule fired ALONE), of which` ,
+  );
+  console.error(
+    `    ${spatialOnly.trueConflicts} the replay would have had to catch (${spatialOnly.trueApplyFailed} apply-failed, ${spatialOnly.trueDiverged} diverged), and`,
+  );
+  console.error(
+    `    ${spatialOnly.falseConflicts} the replay would have CERTIFIED -- FALSE REFUSALS, the price paid.`,
+  );
+  console.error('');
+  console.error(
+    `THE CONCLUSION, as the artifact supports it: replay-cost avoidance on ${spatialOnly.flagged} schedules`,
+  );
+  console.error(
+    `at the price of ${spatialOnly.falseConflicts} false refusals, with the derived-cut sensitivity below.`,
+  );
+  console.error('');
+
+  console.error(
+    `[g2-merge] sensitivity: re-scoring the same ${SCHEDULES} schedules across the semantics 2x2...`,
+  );
+  const sensitivity = await runDerivedCutSensitivity({ schedules: SCHEDULES, seed: SEED, epsilonMm: EPSILON_MM });
+  const cell = (v) =>
+    `${String(v.unsoundAutoMerges).padStart(3)} (apply-failed ${v.unsoundApplyFailed}, diverged ${v.unsoundDiverged})`;
+  const m = sensitivity.matched;
+  const r = sensitivity.regenerated;
+  console.error('');
+  console.error(`the ${ablation.unsoundAutoMerges} above is a property of TWO modelling choices in merge-model.ts, and`);
+  console.error('neither of them is IFC. IfcRelVoidsElement imposes no containment (this repo\'s own');
+  console.error('kernel clips overhanging cutters -- rust/geometry/src/router/voids/), and the cut is');
+  console.error('DERIVED at load time from the uncut Body (rust/geometry/src/void_index.rs), never');
+  console.error('stored. Re-scored across the 2x2, schedule stream pinned to the baseline so each');
+  console.error('cell is an attribution of the SAME events:');
+  console.error('');
+  const rowLabel = (label) => `  ${label.padEnd(26)}`;
+  console.error(`${rowLabel('cuts \\ containment')}enforced                        off`);
+  console.error(`${rowLabel('lazy   (B4.2 default)')}${cell(m.lazyEnforced).padEnd(32)}${cell(m.lazyNoContainment)}`);
+  console.error(`${rowLabel('derived (IFC + this repo)')}${cell(m.derivedEnforced).padEnd(32)}${cell(m.derivedNoContainment)}`);
+  console.error('');
+  console.error('  regenerating the stream under each variant\'s own semantics instead:');
+  console.error(
+    `    derived/enforced ${cell(r.derivedEnforced)}   lazy/off ${cell(r.lazyNoContainment)}   derived/off ${cell(r.derivedNoContainment)}`,
+  );
+  console.error('');
+  console.error(
+    `HOW TO READ IT: derived cuts alone take ${m.lazyEnforced.unsoundAutoMerges} -> ${m.derivedEnforced.unsoundAutoMerges};` +
+      ` dropping containment as well takes it to ${m.derivedNoContainment.unsoundAutoMerges}`,
+  );
+  console.error(
+    `(schedule-matched) or ${r.derivedNoContainment.unsoundAutoMerges} (regenerated).`,
+  );
+  // The mechanism reading is DERIVED from the cells, not asserted: at other
+  // schedule counts or seeds the grid can decompose differently, and a
+  // hard-coded sentence would then be a false claim printed by the artifact
+  // that refutes it.
+  if (m.lazyNoContainment.unsoundAutoMerges >= m.lazyEnforced.unsoundAutoMerges) {
+    console.error('The decomposition is NOT a partition: dropping containment ALONE leaves the count');
+    console.error(
+      `at ${m.lazyNoContainment.unsoundAutoMerges} (apply-failed ${m.lazyNoContainment.unsoundApplyFailed}, diverged ${m.lazyNoContainment.unsoundDiverged}) --` +
+        ' the containment rejections simply become divergences of',
+    );
+    console.error('the stale cut. The stored lazy cut is the dominant mechanism and sustains the whole');
+    console.error('count on its own; containment is load-bearing only once the cut is derived.');
+  } else {
+    console.error(
+      `Dropping containment alone takes it to ${m.lazyNoContainment.unsoundAutoMerges}, so at this schedule count and seed the two`,
+    );
+    console.error('mechanisms do decompose additively. That is NOT what the gate defaults measure --');
+    console.error('re-read the grid before quoting either mechanism as independent.');
+  }
+  console.error('Neither number may be quoted without the other.');
+  if (r.derivedNoContainment.unsoundAutoMerges > 0) {
+    console.error('');
+    console.error(
+      `${r.derivedNoContainment.unsoundAutoMerges} case(s) survive every correction (regenerated derived/off, schedule index` +
+        ` ${r.derivedNoContainment.unsoundScheduleIndices.join(', ')}).`,
+    );
+    console.error('At the gate defaults that is the one case with an IFC basis: one client adds an');
+    console.error('opening hosted in an element the other client removes, so one order applies and');
+    console.error('the other cannot. That is IfcRelVoidsElement referential integrity, which IFC DOES');
+    console.error("impose, and only the spatial half of the predicate catches it -- the add's");
+    console.error('writtenNodes are fresh ids, structurally disjoint from the remove.');
+  }
+  console.error(`sensitivity elapsed:     ${(sensitivity.elapsedMs / 1000).toFixed(1)}s`);
+  console.error('---------------------------------------------------------------------------');
   console.error('');
   console.error(
     `spatial rule verdict:  ${report.spatialRuleContributes ? 'KEEP' : 'DELETE'}` +
       ` -- ${
         report.spatialRuleContributes
-          ? ablation.spatialRuleIsLoadBearing
-            ? `without it the predicate clears ${ablation.unsoundAutoMerges} pair(s) that do not commute`
-            : 'it catches conflicts nothing else does (but the ablation says soundness does not depend on it)'
+          ? `it avoids ${spatialOnly.flagged} replays for ${spatialOnly.falseConflicts} false refusals; the ${ablation.unsoundAutoMerges} pairs the reduced`
           : 'a predicate that never fires truthfully is not a contribution'
       }`,
   );
+  if (report.spatialRuleContributes) {
+    console.error(
+      `                       predicate clears fall to ${m.derivedEnforced.unsoundAutoMerges} under derived cuts, and to ${m.derivedNoContainment.unsoundAutoMerges} (schedule-matched) /` +
+        ` ${r.derivedNoContainment.unsoundAutoMerges} (regenerated)\n                       with the containment invariant removed too`,
+    );
+  }
   console.error('');
   console.error(
     `certificates:          ${report.certificatesIssued} issued, ${report.certificatesVerified} independently verified, ${report.certificateFailures} failures`,
@@ -325,6 +440,29 @@ async function main() {
         },
       },
       ablation,
+      /**
+       * G4 item 7. The conclusion the artifact supports, emitted as data so it
+       * cannot be paraphrased into something stronger, plus the sensitivity
+       * grid that must travel with the ablation's headline.
+       */
+      whatTheSpatialRuleBuys: {
+        replayCostAvoidedSchedules: spatialOnly.flagged,
+        ofWhichReplayWouldHaveCaught: spatialOnly.trueConflicts,
+        falseRefusals: spatialOnly.falseConflicts,
+        buysCertificateSoundness: false,
+        certificateSoundnessNote:
+          'createCommutationCertificate replays both orders and refuses on apply-failed / ' +
+          'non-commutative regardless of the predicate, so zero unsound certificates are ' +
+          'emitted with or without the spatial rule. The rule buys replay-cost avoidance, ' +
+          'not soundness of the certificate.',
+        conclusion:
+          `replay-cost avoidance on ${spatialOnly.flagged} schedules at the price of ` +
+          `${spatialOnly.falseConflicts} false refusals, with the derived-cut sensitivity ` +
+          `(${m.lazyEnforced.unsoundAutoMerges} -> ${m.derivedEnforced.unsoundAutoMerges}, and ` +
+          `${m.derivedNoContainment.unsoundAutoMerges} schedule-matched / ` +
+          `${r.derivedNoContainment.unsoundAutoMerges} regenerated with the containment invariant removed).`,
+      },
+      sensitivity,
     }),
   );
   if (!report.examPass || !report.killCriterionPass) {

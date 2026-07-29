@@ -46,31 +46,59 @@
  * terms). Three consequences, all of which can make an op FAIL or make two
  * node-disjoint ops diverge:
  *
- * 1. **Containment is an invariant, not a convention.** An opening must stay
- *    inside its host's bounds. An op that would move/resize a host so that a
- *    hosted opening escapes it, or that would move an opening out of its
- *    host, is REJECTED ({@link SpatialRejectionError}). Rejection reads state
- *    the op does not write -- the host reads its openings' geometry, an
- *    opening reads its host's -- so whether an op applies at all can depend
- *    on an edit to a completely different node.
+ * 1. **Containment is enforced as an invariant.** An opening must stay inside
+ *    its host's bounds. An op that would move/resize a host so that a hosted
+ *    opening escapes it, or that would move an opening out of its host, is
+ *    REJECTED ({@link SpatialRejectionError}). Rejection reads state the op
+ *    does not write -- the host reads its openings' geometry, an opening reads
+ *    its host's -- so whether an op applies at all can depend on an edit to a
+ *    completely different node.
  * 2. **`geometry-replace` on a host re-cuts its openings.** The host's stored
  *    mesh becomes `proposed base geometry` + a deterministic record of the
  *    voids actually subtracted (each hosted opening's bounds clipped to the
  *    host's, appended to the mesh's vertex list -- see
  *    {@link stripVoidMarkers}). The cut is therefore a function of BOTH the
  *    host's new geometry and the openings' geometry *at re-cut time*.
- * 3. **Cuts are lazy, exactly as in every BIM authoring kernel.** Moving,
- *    adding or removing an opening does NOT re-cut the host; the host's
- *    recorded cut goes stale until the host is next edited. So `move host`
- *    then `move opening` records `cut(host_new, opening_old)`, while
- *    `move opening` then `move host` records `cut(host_new, opening_new)`:
- *    two ops with disjoint `writtenNodes` that genuinely do not commute.
+ * 3. **Cuts are lazy.** Moving, adding or removing an opening does NOT re-cut
+ *    the host; the host's recorded cut goes stale until the host is next
+ *    edited. So `move host` then `move opening` records
+ *    `cut(host_new, opening_old)`, while `move opening` then `move host`
+ *    records `cut(host_new, opening_new)`: two ops with disjoint
+ *    `writtenNodes` that genuinely do not commute.
  *
  * The conflict predicate stays sound because a host and its openings always
  * overlap spatially by construction (an opening lies inside its host), so any
  * host-op/opening-op cross pair intersects and is refused a certificate. That
  * is the whole point: the SPATIAL half of the predicate is now the only thing
  * standing between the certificate and a real divergence.
+ *
+ * ### Both couplings are MODELLING CHOICES, and neither is IFC (G4 item 7)
+ *
+ * An earlier version of this docstring called lazy cuts "exactly as in every
+ * BIM authoring kernel" and containment "an invariant, not a convention".
+ * Neither survives contact with the schema or with this repository, and the
+ * G4 red-team review (docs/vision/reviews/g4-red-team-2026-07-29.md section 2)
+ * was right to say so. The claims are withdrawn:
+ *
+ * - **IFC does not impose containment.** `IfcRelVoidsElement` relates a
+ *   `RelatingBuildingElement` to a `RelatedOpeningElement` with no constraint
+ *   that the opening lie inside the host. Openings that overhang their host
+ *   are ordinary practice, and this repository's own kernel is built for them:
+ *   `rust/geometry/src/router/voids/mod.rs` imports `drop_faces_outside_host`
+ *   and clips cutters to the host AABB precisely because a cutter routinely
+ *   sticks out. A rule the production code works AROUND is not an invariant.
+ * - **This codebase does not store cuts; it derives them.** The IFC file holds
+ *   the host's UNCUT `Body`, plus `IfcRelVoidsElement`. At load time
+ *   `rust/geometry/src/void_index.rs` builds host -> openings and
+ *   `rust/geometry/src/router/voids/` subtracts, every time. There is no
+ *   stored cut to go stale, so the divergence in point 3 has no counterpart in
+ *   the shipping pipeline.
+ *
+ * The couplings are kept as the DEFAULT of this model, because a model in
+ * which nothing couples is the v0 model the G2 review already refuted -- but
+ * they are now switchable ({@link MergeSemantics}), and the sensitivity of the
+ * B4.2 headline to switching them is measured and published rather than
+ * argued. See `merge-battery.ts`'s `runDerivedCutSensitivity`.
  *
  * Wire format: nothing here changes node-hash-v0 serialization. Hosting lives
  * in the model state and in {@link canonicalStateBytes}; the cut is recorded
@@ -98,6 +126,57 @@ import {
   type EditOp,
   type Footprint,
 } from './footprint.js';
+
+/* ------------------------------------------------------------------ */
+/* Semantics knobs (G4 item 7: the sensitivity of the B4.2 headline)     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * How a host's void cut is maintained.
+ *
+ * - `'lazy'` -- the B4.2 default. The cut is STORED in the host's mesh and is
+ *   only refreshed when the host itself is edited, so an opening edit leaves
+ *   it stale. This is what makes a host edit and an opening edit fail to
+ *   commute.
+ * - `'derived'` -- the cut is a pure function of the current state: after
+ *   every op, every host's mesh is re-materialized as `uncut geometry +
+ *   markers(its openings, as they are now)`. This is how IFC works (the file
+ *   stores the uncut `Body` plus `IfcRelVoidsElement`) and how this repository
+ *   works (`rust/geometry/src/void_index.rs` -> `router/voids/`, at load time,
+ *   every load).
+ *
+ * `'derived'` also subsumes EAGER re-cutting (re-cut the host on every op that
+ * touches it or one of its openings): both make the cut a function of the
+ * current logical state alone, so both are order-independent, and in this
+ * model they produce identical bytes. One mode covers the reviewers' "make the
+ * cut eager or derived" because there is nothing to distinguish.
+ */
+export type CutSemantics = 'lazy' | 'derived';
+
+/**
+ * Whether the host-containment invariant is enforced.
+ *
+ * - `'enforced'` -- the B4.2 default: an op that would let an opening escape
+ *   its host is rejected.
+ * - `'off'` -- openings may overhang their hosts, which is what
+ *   `IfcRelVoidsElement` actually permits and what production kernels
+ *   (including this one) handle by clipping the cutter rather than refusing
+ *   the edit.
+ */
+export type ContainmentSemantics = 'enforced' | 'off';
+
+/** The two switchable modelling choices behind the B4.2 numbers. */
+export interface MergeSemantics {
+  cuts: CutSemantics;
+  containment: ContainmentSemantics;
+}
+
+/** The B4.2 semantics: everything the bet's published numbers were measured
+ *  under. Changing this changes the headline, so it does not change. */
+export const DEFAULT_MERGE_SEMANTICS: MergeSemantics = Object.freeze({
+  cuts: 'lazy',
+  containment: 'enforced',
+});
 
 /* ------------------------------------------------------------------ */
 /* Model state                                                          */
@@ -308,6 +387,50 @@ function recutHost(host: EntityState, openings: readonly [string, EntityState][]
   }
 }
 
+/** True when any of `entity`'s meshes carries a void marker appended by
+ *  {@link recutHost} (i.e. a stored cut). */
+function hasStoredCut(entity: EntityState): boolean {
+  for (const mesh of entity.meshes.values()) {
+    if (baseVertexFloatCount(mesh) !== mesh.positions.length) return true;
+  }
+  return false;
+}
+
+/**
+ * Re-materialize EVERY host's cut from the current state -- the `'derived'`
+ * cut semantics ({@link CutSemantics}). Called after each op, so the stored
+ * bytes are always `cut(host_now, openings_now)` and never a stale record.
+ *
+ * Equivalent to deriving the cut at read time (the shipping pipeline's
+ * behaviour: uncut `Body` in the file, subtraction at load), and equivalent to
+ * eager re-cutting, since all three make the cut a pure function of the
+ * current logical state. Idempotent -- {@link recutHost} strips the previous
+ * cut first -- so applying it after every op is safe and order-independent.
+ */
+function deriveAllCuts(state: ModelState): void {
+  const openingsByHost = new Map<string, [string, EntityState][]>();
+  for (const [id, entity] of state.entities) {
+    if (entity.hostId === undefined) continue;
+    let list = openingsByHost.get(entity.hostId);
+    if (!list) {
+      list = [];
+      openingsByHost.set(entity.hostId, list);
+    }
+    list.push([id, entity]);
+  }
+  for (const list of openingsByHost.values()) {
+    list.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+  }
+  for (const [id, entity] of state.entities) {
+    if (entity.hostId !== undefined) continue;
+    const openings = openingsByHost.get(id);
+    // Nothing to cut and nothing stale to strip: leave the mesh objects
+    // untouched so identity-comparisons upstream stay meaningful.
+    if (!openings && !hasStoredCut(entity)) continue;
+    recutHost(entity, openings ?? []);
+  }
+}
+
 /** Throw unless every opening hosted in `hostEntityId` is inside the host's
  *  (uncut) bounds. The host's read set: an edit to ANY of these openings can
  *  flip this verdict, which is what makes host and opening edits fail to
@@ -392,10 +515,23 @@ export function cloneState(state: ModelState): ModelState {
   return { storeyIds: [...state.storeyIds], entities };
 }
 
-/** Apply one op, returning a NEW state (the input is never mutated). Throws
- *  {@link OpApplicationError} when the op does not apply. */
-export function applyOp(state: ModelState, op: MergeOp): ModelState {
+/**
+ * Apply one op, returning a NEW state (the input is never mutated). Throws
+ * {@link OpApplicationError} when the op does not apply.
+ *
+ * `semantics` selects the two switchable modelling choices
+ * ({@link MergeSemantics}); it defaults to {@link DEFAULT_MERGE_SEMANTICS},
+ * which is what every published B4.2 number was measured under. Anything other
+ * than the default is a SENSITIVITY VARIANT, not a change of behaviour.
+ */
+export function applyOp(
+  state: ModelState,
+  op: MergeOp,
+  semantics: MergeSemantics = DEFAULT_MERGE_SEMANTICS,
+): ModelState {
   const next = cloneState(state);
+  const enforceContainment = semantics.containment === 'enforced';
+  const deriveCuts = semantics.cuts === 'derived';
   switch (op.type) {
     case 'entity-add': {
       const init = op.entity;
@@ -424,9 +560,12 @@ export function applyOp(state: ModelState, op: MergeOp): ModelState {
       }
       next.entities.set(init.entityNodeId, entity);
       // Containment is checked AFTER insertion so the opening sees the state
-      // it will actually live in. Adding an opening deliberately does NOT
-      // re-cut the host: voids are lazy (module docstring, point 3).
-      assertInsideHost(next, op.opId, init.entityNodeId, entity);
+      // it will actually live in. Under LAZY cuts, adding an opening
+      // deliberately does NOT re-cut the host (module docstring, point 3);
+      // under DERIVED cuts it does, because the cut is a function of the
+      // state and the state just changed.
+      if (enforceContainment) assertInsideHost(next, op.opId, init.entityNodeId, entity);
+      if (deriveCuts) deriveAllCuts(next);
       return next;
     }
     case 'entity-remove': {
@@ -441,6 +580,9 @@ export function applyOp(state: ModelState, op: MergeOp): ModelState {
       for (const [openingId] of hostedOpenings(next, op.entityNodeId)) {
         next.entities.delete(openingId);
       }
+      // Removing an OPENING leaves a stale cut in its host under lazy
+      // semantics; under derived semantics the host loses that void here.
+      if (deriveCuts) deriveAllCuts(next);
       return next;
     }
     case 'attr-set': {
@@ -463,16 +605,17 @@ export function applyOp(state: ModelState, op: MergeOp): ModelState {
       const [ownerId, entity] = owner;
       entity.meshes.set(op.meshNodeId, op.payload);
       // Moving/resizing a hosted opening: it must still fit its host.
-      assertInsideHost(next, op.opId, ownerId, entity);
+      if (enforceContainment) assertInsideHost(next, op.opId, ownerId, entity);
       // Moving/resizing a HOST: every opening it carries must still fit, and
       // the host is re-cut against the openings AS THEY ARE NOW. Both halves
       // read nodes this op does not write -- the coupling B4.2 exists to make
       // measurable.
       const openings = hostedOpenings(next, ownerId);
       if (openings.length > 0) {
-        assertOpeningsContained(op.opId, ownerId, entity, openings);
-        recutHost(entity, openings);
+        if (enforceContainment) assertOpeningsContained(op.opId, ownerId, entity, openings);
+        if (!deriveCuts) recutHost(entity, openings);
       }
+      if (deriveCuts) deriveAllCuts(next);
       return next;
     }
     default: {
@@ -483,9 +626,13 @@ export function applyOp(state: ModelState, op: MergeOp): ModelState {
 }
 
 /** Apply a client's op set in order. */
-export function applyOps(state: ModelState, ops: readonly MergeOp[]): ModelState {
+export function applyOps(
+  state: ModelState,
+  ops: readonly MergeOp[],
+  semantics: MergeSemantics = DEFAULT_MERGE_SEMANTICS,
+): ModelState {
   let current = state;
-  for (const op of ops) current = applyOp(current, op);
+  for (const op of ops) current = applyOp(current, op, semantics);
   return current;
 }
 

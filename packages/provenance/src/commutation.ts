@@ -46,9 +46,11 @@ import {
   buildStateDag,
   canonicalStateBytes,
   computeMergeOpFootprint,
+  DEFAULT_MERGE_SEMANTICS,
   hashModelState,
   OpApplicationError,
   type MergeOp,
+  type MergeSemantics,
   type ModelState,
 } from './merge-model.js';
 
@@ -114,6 +116,16 @@ export interface CommutationInput {
    * weaker rule". Callers that ablate own that context.
    */
   spatialRule?: SpatialRuleMode;
+  /**
+   * Op-model semantics to replay under. Defaults to
+   * {@link DEFAULT_MERGE_SEMANTICS} -- the B4.2 semantics every published
+   * number was measured under. Non-default values are the G4 item 7
+   * sensitivity variants (derived cuts, containment off); like `spatialRule`
+   * the certificate does NOT record the mode, for the same reason, so a
+   * certificate issued under a variant is an experimental artifact whose
+   * context the caller owns.
+   */
+  semantics?: MergeSemantics;
 }
 
 interface CrossAnalysis {
@@ -165,22 +177,26 @@ export type ReplayOutcome =
   | { status: 'apply-failed'; order: 'ab' | 'ba'; message: string };
 
 /** Replay base+A+B and base+B+A; report convergence. This is the computable
- *  ground truth the battery scores false conflicts against. */
+ *  ground truth the battery scores false conflicts against. `semantics`
+ *  selects the op model (default {@link DEFAULT_MERGE_SEMANTICS}); the G4
+ *  item 7 sensitivity variants replay the SAME schedules under a different
+ *  one. */
 export function attemptBothOrders(
   base: ModelState,
   opsA: readonly MergeOp[],
   opsB: readonly MergeOp[],
+  semantics: MergeSemantics = DEFAULT_MERGE_SEMANTICS,
 ): ReplayOutcome {
   let ab: ModelState;
   try {
-    ab = applyOps(applyOps(base, opsA), opsB);
+    ab = applyOps(applyOps(base, opsA, semantics), opsB, semantics);
   } catch (err) {
     if (err instanceof OpApplicationError) return { status: 'apply-failed', order: 'ab', message: err.message };
     throw err;
   }
   let ba: ModelState;
   try {
-    ba = applyOps(applyOps(base, opsB), opsA);
+    ba = applyOps(applyOps(base, opsB, semantics), opsA, semantics);
   } catch (err) {
     if (err instanceof OpApplicationError) return { status: 'apply-failed', order: 'ba', message: err.message };
     throw err;
@@ -217,7 +233,12 @@ export async function createCommutationCertificate(input: CommutationInput): Pro
   const { fpsA, fpsB, conflicts } = analyzeCrossPairs(input.base, input.opsA, input.opsB, epsilonMm, spatialRule);
   if (conflicts.length > 0) return { ok: false, reason: 'conflict', conflicts };
 
-  const replay = attemptBothOrders(input.base, input.opsA, input.opsB);
+  const replay = attemptBothOrders(
+    input.base,
+    input.opsA,
+    input.opsB,
+    input.semantics ?? DEFAULT_MERGE_SEMANTICS,
+  );
   if (replay.status === 'apply-failed') {
     return { ok: false, reason: 'apply-failed', details: { order: replay.order, message: replay.message } };
   }
@@ -280,6 +301,13 @@ export interface CommutationVerifyOptions {
    * knowingly issued under the ablated predicate.
    */
   spatialRule?: SpatialRuleMode;
+  /**
+   * Op-model semantics to re-replay under. Verifier-supplied for the same
+   * reason as {@link CommutationVerifyOptions.spatialRule}: the certificate
+   * does not record it, so deriving it from the artifact would let the
+   * artifact choose its own model. Default {@link DEFAULT_MERGE_SEMANTICS}.
+   */
+  semantics?: MergeSemantics;
 }
 
 function fail(reason: string, details?: unknown): CommutationVerificationFailure {
@@ -370,7 +398,7 @@ export async function verifyCommutationCertificate(
     return fail('base-root-mismatch', { expected: certificate.baseRootHash, actual: baseRootHash });
   }
 
-  const replay = attemptBothOrders(base, opsA, opsB);
+  const replay = attemptBothOrders(base, opsA, opsB, options.semantics ?? DEFAULT_MERGE_SEMANTICS);
   if (replay.status === 'apply-failed') {
     return fail('replay-apply-failed', { order: replay.order, message: replay.message });
   }

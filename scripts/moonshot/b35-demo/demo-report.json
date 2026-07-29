@@ -391,23 +391,23 @@
   },
   "volatile": {
     "note": "ONLY this block differs between runs: wall clocks and the timestamp. Everything under `deterministic` is a pure function of the master seed.",
-    "generatedAt": "2026-07-29T13:14:53.301Z",
+    "generatedAt": "2026-07-29T17:44:18.805Z",
     "nodeVersion": "v22.14.0",
-    "totalWallClockMs": 6537,
+    "totalWallClockMs": 7499,
     "actWallClockMs": {
       "act1": 35,
-      "act2": 64,
-      "act3": 268,
-      "act4": 2308,
-      "act5": 3863
+      "act2": 67,
+      "act3": 281,
+      "act4": 2401,
+      "act5": 4715
     },
     "actVolatile": {
       "act2": {
-        "verifyMs": 3.202,
-        "tamperVerifyMs": 2.895
+        "verifyMs": 3.029,
+        "tamperVerifyMs": 2.341
       },
       "act4": {
-        "batteryElapsedMs": 2299.3157920000003
+        "batteryElapsedMs": 2391.59325
       }
     },
     "artifactDir": "/var/folders/n2/jkb39p_x4md9jdv5hhzny6jc0000gn/T/ifc-lite-b35-demo"

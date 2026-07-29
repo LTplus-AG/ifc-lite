@@ -16,12 +16,13 @@ import {
   buildBaseModel,
   generateClientOps,
   mulberry32,
+  runDerivedCutSensitivity,
   runMergeBattery,
   runSpatialAblation,
   wilsonInterval,
   Z_95,
 } from '../src/merge-battery.js';
-import { applyOps } from '../src/merge-model.js';
+import { applyOps, DEFAULT_MERGE_SEMANTICS, type MergeSemantics } from '../src/merge-model.js';
 
 /** 400, not 150: under the B4.2 coupled semantics the battery must show the
  *  spatial rule producing TRUE conflicts on its own, and spatial-only true
@@ -186,6 +187,140 @@ describe('runSpatialAblation: the same schedules with the spatial rule DISABLED'
     expect(ablation.certificatesVerified).toBeGreaterThan(0);
     expect(ablation.certificateFailures).toBe(0);
   }, 120_000);
+});
+
+/* ------------------------------------------------------------------ */
+/* Derived-cut sensitivity (G4 item 7)                                   */
+/* ------------------------------------------------------------------ */
+
+/** The gate defaults. The sensitivity grid is pinned at exactly these,
+ *  because the numbers it produces are the ones quoted in prose. */
+const GATE_SCHEDULES = 1000;
+
+describe('what the spatial rule buys, and what the ablation count decomposes into', () => {
+  it('the rule does NOT buy soundness of the certificate -- the replay backstop does', async () => {
+    // The load-bearing correction. "Zero unsound auto-merges" survives
+    // deleting the spatial rule entirely, because createCommutationCertificate
+    // replays both orders and refuses whatever the predicate said. If this
+    // ever fails, the restatement in the module docstring is wrong and the
+    // stronger claim it replaced was right.
+    const ablation = await runSpatialAblation({ schedules: SCHEDULES, seed: SEED });
+    expect(ablation.certificatesIssued).toBeGreaterThan(0);
+    expect(ablation.certificateFailures).toBe(0);
+  }, 180_000);
+
+  it('the full predicate stays sound under every one of the four semantics', async () => {
+    // Same point from the other side: the certificate is protected by replay,
+    // not by the op model, so no choice of coupling can make the SHIPPING
+    // path emit an unsound merge.
+    for (const semantics of [
+      { cuts: 'lazy', containment: 'enforced' },
+      { cuts: 'derived', containment: 'enforced' },
+      { cuts: 'lazy', containment: 'off' },
+      { cuts: 'derived', containment: 'off' },
+    ] as const satisfies readonly MergeSemantics[]) {
+      const report = await runMergeBattery({
+        schedules: SCHEDULES,
+        seed: SEED,
+        verifyEvery: 25,
+        semantics,
+        generatorSemantics: semantics,
+      });
+      expect({ semantics, unsound: report.unsoundAutoMerges, failures: report.certificateFailures }).toEqual({
+        semantics,
+        unsound: 0,
+        failures: 0,
+      });
+    }
+  }, 300_000);
+
+  it('prices the rule: replay-cost avoidance on 28 schedules for 19 false refusals (gate defaults)', async () => {
+    // The restated conclusion, pinned to the artifact that produces it. These
+    // are `byRule.spatialOnly` -- schedules the SPATIAL rule refused alone, so
+    // the replay never ran on them: 9 it would have had to catch, 19 it would
+    // have certified.
+    const report = await runMergeBattery({ schedules: GATE_SCHEDULES, seed: SEED, verifyEvery: 0 });
+    const spatialOnly = report.byRule.spatialOnly;
+    expect(spatialOnly.flagged).toBe(28);
+    expect(spatialOnly.falseConflicts).toBe(19);
+    expect(spatialOnly.trueConflicts).toBe(9);
+    expect(spatialOnly.falseConflicts + spatialOnly.trueConflicts).toBe(spatialOnly.flagged);
+  }, 180_000);
+
+  it('reproduces the sensitivity grid to the digit (gate defaults, seed 20260724)', async () => {
+    // THE pin. The G4 reviewers claimed 9 -> 3 -> 1; measured here:
+    //   9 -> 3 holds exactly, by both methods.
+    //   3 -> 1 is 3 -> 0 schedule-matched, 3 -> 1 regenerated.
+    // And their mechanism split ("3 from containment, 6 from the lazy cut")
+    // is NOT a partition: containment off ALONE still reads 9, because the
+    // three rejections become three divergences of the stale cut.
+    const s = await runDerivedCutSensitivity({ schedules: GATE_SCHEDULES, seed: SEED });
+    const cell = (v: { unsoundAutoMerges: number; unsoundApplyFailed: number; unsoundDiverged: number }) => [
+      v.unsoundAutoMerges,
+      v.unsoundApplyFailed,
+      v.unsoundDiverged,
+    ];
+    expect({
+      matchedLazyEnforced: cell(s.matched.lazyEnforced),
+      matchedDerivedEnforced: cell(s.matched.derivedEnforced),
+      matchedLazyNoContainment: cell(s.matched.lazyNoContainment),
+      matchedDerivedNoContainment: cell(s.matched.derivedNoContainment),
+      regeneratedDerivedEnforced: cell(s.regenerated.derivedEnforced),
+      regeneratedLazyNoContainment: cell(s.regenerated.lazyNoContainment),
+      regeneratedDerivedNoContainment: cell(s.regenerated.derivedNoContainment),
+    }).toEqual({
+      matchedLazyEnforced: [9, 3, 6],
+      matchedDerivedEnforced: [3, 3, 0],
+      matchedLazyNoContainment: [9, 0, 9],
+      matchedDerivedNoContainment: [0, 0, 0],
+      regeneratedDerivedEnforced: [3, 3, 0],
+      regeneratedLazyNoContainment: [13, 1, 12],
+      regeneratedDerivedNoContainment: [1, 1, 0],
+    });
+    // Derived cuts remove EVERY divergence, in both methods: the stale stored
+    // cut is the only thing in this model that makes two applied orders
+    // disagree. That is the mechanism claim, not a coincidence of counts.
+    expect(s.matched.derivedEnforced.unsoundDiverged).toBe(0);
+    expect(s.matched.derivedNoContainment.unsoundDiverged).toBe(0);
+    expect(s.regenerated.derivedEnforced.unsoundDiverged).toBe(0);
+    expect(s.regenerated.derivedNoContainment.unsoundDiverged).toBe(0);
+    // The three that survive derived cuts are exactly the three the baseline
+    // recorded as apply-failures, on the same schedules.
+    expect(s.matched.derivedEnforced.unsoundScheduleIndices).toEqual([258, 401, 599]);
+    expect(s.matched.lazyEnforced.unsoundScheduleIndices).toEqual(
+      expect.arrayContaining([...s.matched.derivedEnforced.unsoundScheduleIndices]),
+    );
+  }, 300_000);
+
+  it('the matched grid changes ONE variable: its baseline cell IS the published ablation', async () => {
+    // If the schedule stream moved, the cells would not be an attribution of
+    // the same events and the whole grid would be uninterpretable.
+    const [s, ablation] = await Promise.all([
+      runDerivedCutSensitivity({ schedules: SCHEDULES, seed: SEED }),
+      runSpatialAblation({ schedules: SCHEDULES, seed: SEED, verifyEvery: 0 }),
+    ]);
+    expect(s.matched.lazyEnforced.unsoundAutoMerges).toBe(ablation.unsoundAutoMerges);
+    expect(s.matched.lazyEnforced.unsoundScheduleIndices).toEqual(ablation.unsoundScheduleIndices);
+    expect(s.matched.lazyEnforced.autoMerged).toBe(ablation.autoMerged);
+    for (const key of ['derivedEnforced', 'lazyNoContainment', 'derivedNoContainment'] as const) {
+      expect(s.matched[key].generatorSemantics).toEqual(DEFAULT_MERGE_SEMANTICS);
+      expect(s.matched[key].schedulesRegenerated).toBe(false);
+      expect(s.regenerated[key].schedulesRegenerated).toBe(true);
+      expect(s.regenerated[key].generatorSemantics).toEqual(s.regenerated[key].semantics);
+    }
+  }, 300_000);
+
+  it('is deterministic under a fixed seed', async () => {
+    const strip = (r: Awaited<ReturnType<typeof runDerivedCutSensitivity>>) => {
+      const { elapsedMs: _e, ...rest } = r;
+      return rest;
+    };
+    const [first, second] = await Promise.all([
+      runDerivedCutSensitivity({ schedules: 40, seed: 7 }),
+      runDerivedCutSensitivity({ schedules: 40, seed: 7 }),
+    ]);
+    expect(strip(second)).toEqual(strip(first));
+  }, 180_000);
 });
 
 /* ------------------------------------------------------------------ */

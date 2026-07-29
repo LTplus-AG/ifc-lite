@@ -90,8 +90,8 @@ differentiable building with exact dual-number gradients:
 
 Wall clocks and the timestamp below change run to run; nothing above does.
 
-- generated at: 2026-07-29T13:14:53.301Z (node v22.14.0)
-- total wall clock: 6.5s
-- per act: act1=0.0s, act2=0.1s, act3=0.3s, act4=2.3s, act5=3.9s
+- generated at: 2026-07-29T17:44:18.805Z (node v22.14.0)
+- total wall clock: 7.5s
+- per act: act1=0.0s, act2=0.1s, act3=0.3s, act4=2.4s, act5=4.7s
 - artifacts (outside the repo): /var/folders/n2/jkb39p_x4md9jdv5hhzny6jc0000gn/T/ifc-lite-b35-demo
 

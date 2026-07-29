@@ -21,19 +21,25 @@
 
 import { describe, expect, it } from 'vitest';
 import { conflictPredicate } from '../src/footprint.js';
-import { attemptBothOrders, createCommutationCertificate } from '../src/commutation.js';
+import {
+  attemptBothOrders,
+  createCommutationCertificate,
+  verifyCommutationCertificate,
+} from '../src/commutation.js';
 import type { GeometryMeshPayload } from '../src/node-hash.js';
 import {
   applyOp,
   buildStateDag,
   canonicalStateBytes,
   computeMergeOpFootprint,
+  DEFAULT_MERGE_SEMANTICS,
   hashModelState,
   OpApplicationError,
   SpatialRejectionError,
   stripVoidMarkers,
   type EntityState,
   type MergeOp,
+  type MergeSemantics,
   type ModelState,
 } from '../src/merge-model.js';
 
@@ -359,5 +365,118 @@ describe('wire format: node-hash-v0 is untouched', () => {
     };
     // Same placement, no recorded cut -> different mesh -> different root.
     expect(await hashModelState(recut)).not.toBe(await hashModelState(movedOnly));
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Switchable semantics (G4 item 7)                                     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The two couplings above are MODELLING CHOICES, not IFC. `IfcRelVoidsElement`
+ * imposes no containment, and this repository derives the cut at load time
+ * (`rust/geometry/src/void_index.rs` -> `rust/geometry/src/router/voids/`)
+ * from the host's uncut `Body` rather than storing it. These tests pin the
+ * switches that let the B4.2 headline be re-measured under the semantics the
+ * production pipeline actually implements.
+ */
+describe('MergeSemantics: the couplings are switchable, and switching them is observable', () => {
+  const DERIVED: MergeSemantics = { cuts: 'derived', containment: 'enforced' };
+  const NO_CONTAINMENT: MergeSemantics = { cuts: 'lazy', containment: 'off' };
+  const DERIVED_NO_CONTAINMENT: MergeSemantics = { cuts: 'derived', containment: 'off' };
+
+  it('the default is the B4.2 semantics -- nothing published moves under it', () => {
+    expect(DEFAULT_MERGE_SEMANTICS).toEqual({ cuts: 'lazy', containment: 'enforced' });
+    const base = hostedState();
+    expect(canonicalStateBytes(applyOp(base, moveHost('a', 0.1)))).toBe(
+      canonicalStateBytes(applyOp(base, moveHost('a', 0.1), DEFAULT_MERGE_SEMANTICS)),
+    );
+  });
+
+  it('LAZY cuts: a host move then an opening move does NOT commute (the B4.2 divergence)', () => {
+    const base = hostedState();
+    const host = moveHost('a', 0.1, 0.1);
+    const opening = moveOpening('b', 0.5, 0.5);
+    const ab = canonicalStateBytes(applyOp(applyOp(base, host), opening));
+    const ba = canonicalStateBytes(applyOp(applyOp(base, opening), host));
+    expect(ab).not.toBe(ba);
+  });
+
+  it('DERIVED cuts: the same pair commutes -- the divergence was the stored cut', () => {
+    // The whole of the "6 divergences" mechanism, in one case. Nothing about
+    // the ops changed; only whether the cut is a record or a function of the
+    // current state.
+    const base = hostedState();
+    const host = moveHost('a', 0.1, 0.1);
+    const opening = moveOpening('b', 0.5, 0.5);
+    const ab = canonicalStateBytes(applyOp(applyOp(base, host, DERIVED), opening, DERIVED));
+    const ba = canonicalStateBytes(applyOp(applyOp(base, opening, DERIVED), host, DERIVED));
+    expect(ab).toBe(ba);
+    expect(attemptBothOrders(base, [host], [opening], DERIVED).status).toBe('converged');
+    expect(attemptBothOrders(base, [host], [opening]).status).toBe('diverged');
+  });
+
+  it('DERIVED cuts materialize the cut without any op touching the host', () => {
+    // Under lazy semantics, moving the opening leaves the host's mesh alone;
+    // under derived semantics the host's cut follows the opening, because it
+    // is not a record of anything.
+    const base = hostedState();
+    const opening = moveOpening('b', 0.5, 0.5);
+    const lazyHostMesh = applyOp(base, opening).entities.get(HOST_ID)!.meshes.get(HOST_MESH)!;
+    const derivedHostMesh = applyOp(base, opening, DERIVED).entities.get(HOST_ID)!.meshes.get(HOST_MESH)!;
+    expect(lazyHostMesh.positions.length).toBe(9);
+    expect(derivedHostMesh.positions.length).toBeGreaterThan(9);
+    // ...and it is idempotent: re-deriving reproduces the same bytes.
+    const twice = applyOp(applyOp(base, opening, DERIVED), moveOpening('c', 0.5, 0.5), DERIVED);
+    expect(canonicalStateBytes(twice)).toBe(canonicalStateBytes(applyOp(base, opening, DERIVED)));
+  });
+
+  it('containment OFF: an opening may leave its host, as IfcRelVoidsElement permits', () => {
+    const base = hostedState();
+    expect(() => applyOp(base, moveOpening('b', 0.9, 0.4))).toThrow(SpatialRejectionError);
+    const escaped = applyOp(base, moveOpening('b', 0.9, 0.4), NO_CONTAINMENT);
+    expect(stripVoidMarkers(escaped.entities.get(VOID_ID)!.meshes.get(VOID_MESH)!).origin).toEqual([0.9, 0.4, 0]);
+    // Same for the host side.
+    expect(() => applyOp(base, moveHost('a', 0.5))).toThrow(SpatialRejectionError);
+    expect(applyOp(base, moveHost('a', 0.5), NO_CONTAINMENT)).toBeTruthy();
+  });
+
+  it('containment OFF alone converts a rejection into a DIVERGENCE, it does not remove the conflict', () => {
+    // The reason the mechanism decomposition is not a partition: with the cut
+    // still stored, the pair that used to fail to apply now applies in both
+    // orders and produces different bytes instead.
+    const base = hostedState();
+    const host = moveHost('a', 0.5);
+    const opening = moveOpening('b', 0.5, 0.5);
+    expect(attemptBothOrders(base, [host], [opening]).status).toBe('apply-failed');
+    expect(attemptBothOrders(base, [host], [opening], NO_CONTAINMENT).status).toBe('diverged');
+    // Both switches together: it finally commutes.
+    expect(attemptBothOrders(base, [host], [opening], DERIVED_NO_CONTAINMENT).status).toBe('converged');
+  });
+
+  it('a certificate issued under a variant re-verifies only under the same variant', async () => {
+    // The mode is not recorded in the artifact, deliberately (same reason as
+    // spatialRule), so a verifier that assumes the default must reject.
+    const base = hostedState();
+    const host = moveHost('a', 0.1, 0.1);
+    const opening = moveOpening('b', 0.5, 0.5);
+    const outcome = await createCommutationCertificate({
+      base,
+      opsA: [host],
+      opsB: [opening],
+      spatialRule: 'disabled',
+      semantics: DERIVED,
+    });
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    const sameMode = await verifyCommutationCertificate(outcome.certificate, base, [host], [opening], {
+      spatialRule: 'disabled',
+      semantics: DERIVED,
+    });
+    expect(sameMode.ok).toBe(true);
+    const defaultMode = await verifyCommutationCertificate(outcome.certificate, base, [host], [opening], {
+      spatialRule: 'disabled',
+    });
+    expect(defaultMode.ok).toBe(false);
   });
 });

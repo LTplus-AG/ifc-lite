@@ -84,15 +84,15 @@
  *
  * Read the result honestly, in either direction:
  *
- * - **non-zero** -- the rule is load-bearing for SOUNDNESS, not merely a
- *   conflict counter. This is what upgrades the KEEP verdict: the plan's
- *   pre-committed rule "delete iff zero spatial-only true conflicts" reads
- *   like a trivial bar (1 in 1,000 would have kept it), but every spatial-only
- *   true conflict IS an unsound auto-merge without the rule, so "delete iff
- *   zero" is exactly "delete iff the rule is not load-bearing".
- * - **zero** -- the soundness argument does not need the spatial rule under
- *   this op model. That is a real negative result that materially weakens
- *   KEEP, and it must be reported as one.
+ * - **non-zero** -- the rule is load-bearing for the PREDICATE, not merely a
+ *   conflict counter: every spatial-only true conflict is a pair the reduced
+ *   predicate would have waved through. It is NOT load-bearing for the
+ *   certificate, which the replay backstop protects either way -- see "What
+ *   the spatial rule actually buys" below, which is the statement that should
+ *   be quoted.
+ * - **zero** -- the predicate needs no spatial half under this op model, and
+ *   the rule buys nothing but replay-cost avoidance on schedules that all
+ *   commute. That is a real negative result and must be reported as one.
  *
  * The identity `unsoundAutoMerges(ablated) == spatialOnlyTrueConflicts` holds
  * BY CONSTRUCTION and is asserted, not hoped for: a schedule classified
@@ -103,17 +103,71 @@
  * the certificate-issuing path, not independent evidence -- which is the point
  * (it is the same fact stated in the units that matter), and it is stated that
  * way rather than presented as a second, corroborating measurement.
+ *
+ * ## What the spatial rule actually buys (G4 item 7)
+ *
+ * The sentence above -- "without the rule the predicate clears 9 pairs that do
+ * not commute" -- overclaims, and the adversarial re-review of G4 was right to
+ * say so. Two corrections, both measured here rather than argued.
+ *
+ * **1. The rule does not buy soundness of the certificate.** "Zero unsound
+ * auto-merges" is guaranteed by {@link createCommutationCertificate}, which
+ * replays BOTH orders and refuses on `apply-failed` / `non-commutative`
+ * whatever the predicate said. Delete the spatial rule entirely and no unsound
+ * certificate is emitted; the ablation's own `certificateFailures: 0` says so.
+ * What the rule buys is that the predicate refuses those schedules BEFORE the
+ * replay, so the replay backstop never has to run on them:
+ * **replay-cost avoidance on 28 schedules, at the price of 19 false
+ * refusals** (seed 20260724, 1,000 schedules; `byRule.spatialOnly.flagged` and
+ * `byRule.spatialOnly.falseConflicts`). Of the 28, 9 are pairs the replay
+ * would have had to catch and 19 are pairs the replay would have certified.
+ * That is the honest statement of the trade: a cheap conservative filter in
+ * front of an expensive exact check, priced at a 19-in-28 false-refusal rate.
+ *
+ * **2. The 9 is a property of two modelling choices, and its sensitivity is
+ * published with it.** {@link runDerivedCutSensitivity} re-scores the same
+ * 1,000 schedules under the 2x2 of {@link MergeSemantics}. Measured, seed
+ * 20260724:
+ *
+ * | cuts / containment | enforced | off |
+ * |---|---|---|
+ * | lazy (B4.2 default) | **9** (3 apply-failed, 6 diverged) | 9 (0, 9) |
+ * | derived (IFC + this repo) | **3** (3, 0) | **0** |
+ *
+ * (schedule stream pinned to the baseline, so each cell is an attribution of
+ * the SAME 9 events. Regenerating the stream under each variant's own
+ * semantics gives 3 / 13 / **1**.)
+ *
+ * So: the G4 reviewers' 9 -> 3 REPRODUCES exactly, by both methods, and their
+ * final 1 reproduces under the regenerating method (0 under the
+ * schedule-matched one). But their *decomposition* -- "3 from containment, 6
+ * from the lazy cut" -- does not hold as a partition. Turning containment off
+ * ALONE leaves the count at 9: the three containment rejections become three
+ * divergences of the stale cut instead. The stored lazy cut is the dominant
+ * mechanism and sustains all 9 on its own; containment is load-bearing only
+ * once the cut is derived. Neither number may be quoted without the other.
+ *
+ * The residual 1 in the regenerated derived/off cell is worth naming because
+ * it is the only one of the 9 that survives every correction: client A adds an
+ * opening hosted in `element:1-8` while client B removes `element:1-8`, so one
+ * order applies and the other cannot. That is `IfcRelVoidsElement` referential
+ * integrity, which IFC really does impose, and the spatial rule is the only
+ * half of the predicate that catches it (the add's `writtenNodes` are fresh
+ * ids, structurally disjoint from the remove; only the host-region union in
+ * `computeMergeOpFootprint` intersects it).
  */
 
 import { aabbFromMesh, unionAabb, DEFAULT_EPSILON_MM, type Aabb } from './footprint.js';
 import type { GeometryMeshPayload, PropertySetPayload, PropertyValue } from './node-hash.js';
 import {
   applyOp,
+  DEFAULT_MERGE_SEMANTICS,
   OpApplicationError,
   stripVoidMarkers,
   type EntityInit,
   type EntityState,
   type MergeOp,
+  type MergeSemantics,
   type ModelState,
 } from './merge-model.js';
 import {
@@ -460,7 +514,11 @@ function buildCandidateOp(base: ModelState, local: ModelState, ctx: CandidateCon
  * come from a tiny shared pool so genuine add/add id collisions occur across
  * clients and exercise the structural predicate.
  */
-export function generateClientOps(base: ModelState, ctx: ClientContext): MergeOp[] {
+export function generateClientOps(
+  base: ModelState,
+  ctx: ClientContext,
+  semantics: MergeSemantics = DEFAULT_MERGE_SEMANTICS,
+): MergeOp[] {
   const { rng, client, scheduleIndex } = ctx;
   const ops: MergeOp[] = [];
   const addedTags = new Set<string>();
@@ -482,7 +540,7 @@ export function generateClientOps(base: ModelState, ctx: ClientContext): MergeOp
     });
     if (!candidate) continue;
     try {
-      local = applyOp(local, candidate);
+      local = applyOp(local, candidate, semantics);
     } catch (err) {
       // Rejected against the client's own replica (spatial or structural):
       // a real client would never have sent it.
@@ -508,6 +566,26 @@ export interface MergeBatteryOptions {
   /** Verify every N-th issued certificate end to end (0 disables).
    *  Default 25. */
   verifyEvery?: number;
+  /**
+   * Op-model semantics the schedules are SCORED under -- applied, replayed,
+   * certified. Default {@link DEFAULT_MERGE_SEMANTICS} (the B4.2 semantics
+   * every published number was measured under). The G4 item 7 sensitivity
+   * variants pass `{ cuts: 'derived' }` and/or `{ containment: 'off' }` here.
+   */
+  semantics?: MergeSemantics;
+  /**
+   * Op-model semantics the SCHEDULE STREAM is generated under. Deliberately
+   * separate from {@link MergeBatteryOptions.semantics} and defaulting to
+   * {@link DEFAULT_MERGE_SEMANTICS} in both cases, because a sensitivity
+   * variant that changes generation AND scoring changes two variables: the
+   * generator drops candidates its own replica rejects, so containment-off
+   * generation yields different op sets and the resulting count could not be
+   * attributed to the schedules the headline was measured on. Set it equal to
+   * `semantics` to ask the other question (what the world looks like if the
+   * model had always worked that way); `runDerivedCutSensitivity` reports
+   * both.
+   */
+  generatorSemantics?: MergeSemantics;
 }
 
 /** Ground-truth tally for one class of flagged schedule (B4.2). */
@@ -609,12 +687,16 @@ interface Schedule {
  * ablation (one variable changed) rather than a second experiment; a test
  * pins it.
  */
-function* enumerateSchedules(schedules: number, seed: number): Generator<Schedule> {
+function* enumerateSchedules(
+  schedules: number,
+  seed: number,
+  semantics: MergeSemantics = DEFAULT_MERGE_SEMANTICS,
+): Generator<Schedule> {
   const rng = mulberry32(seed);
   for (let index = 0; index < schedules; index++) {
     const base = buildBaseModel(rng);
-    const opsA = generateClientOps(base, { client: 'a', scheduleIndex: index, rng });
-    const opsB = generateClientOps(base, { client: 'b', scheduleIndex: index, rng });
+    const opsA = generateClientOps(base, { client: 'a', scheduleIndex: index, rng }, semantics);
+    const opsB = generateClientOps(base, { client: 'b', scheduleIndex: index, rng }, semantics);
     yield { index, base, opsA, opsB };
   }
 }
@@ -624,6 +706,8 @@ export async function runMergeBattery(options: MergeBatteryOptions = {}): Promis
   const seed = options.seed ?? 20260724;
   const epsilonMm = options.epsilonMm ?? DEFAULT_EPSILON_MM;
   const verifyEvery = options.verifyEvery ?? 25;
+  const semantics = options.semantics ?? DEFAULT_MERGE_SEMANTICS;
+  const generatorSemantics = options.generatorSemantics ?? DEFAULT_MERGE_SEMANTICS;
 
   const start = performance.now();
 
@@ -645,7 +729,7 @@ export async function runMergeBattery(options: MergeBatteryOptions = {}): Promis
   });
   const byRule = { structuralOnly: emptyTally(), spatialOnly: emptyTally(), both: emptyTally() };
 
-  for (const { index: s, base, opsA, opsB } of enumerateSchedules(schedules, seed)) {
+  for (const { index: s, base, opsA, opsB } of enumerateSchedules(schedules, seed, generatorSemantics)) {
     const outcome = await createCommutationCertificate({
       base,
       opsA,
@@ -653,13 +737,14 @@ export async function runMergeBattery(options: MergeBatteryOptions = {}): Promis
       epsilonMm,
       clientA: 'client-a',
       clientB: 'client-b',
+      semantics,
     });
 
     if (outcome.ok) {
       autoMerged++;
       certificatesIssued++;
       if (verifyEvery > 0 && certificatesIssued % verifyEvery === 0) {
-        const verification = await verifyCommutationCertificate(outcome.certificate, base, opsA, opsB);
+        const verification = await verifyCommutationCertificate(outcome.certificate, base, opsA, opsB, { semantics });
         certificatesVerified++;
         if (!verification.ok) certificateFailures++;
       }
@@ -669,7 +754,7 @@ export async function runMergeBattery(options: MergeBatteryOptions = {}): Promis
       const anySpatial = outcome.conflicts.some((c) => c.result.spatial);
       const tally = anyStructural && anySpatial ? byRule.both : anySpatial ? byRule.spatialOnly : byRule.structuralOnly;
       tally.flagged++;
-      const truth = attemptBothOrders(base, opsA, opsB);
+      const truth = attemptBothOrders(base, opsA, opsB, semantics);
       if (truth.status === 'converged') {
         falseConflicts++;
         tally.falseConflicts++;
@@ -746,6 +831,14 @@ export interface SpatialAblationReport {
   /** Always `'disabled'` -- present so a stray JSON blob is self-describing
    *  and can never be mistaken for a real battery report. */
   spatialRule: 'disabled';
+  /** Op-model semantics the schedules were SCORED under. Anything other than
+   *  {@link DEFAULT_MERGE_SEMANTICS} is a G4 item 7 sensitivity variant, not
+   *  the B4.2 headline. */
+  semantics: MergeSemantics;
+  /** Op-model semantics the schedule STREAM was generated under. Equal to
+   *  {@link DEFAULT_MERGE_SEMANTICS} for the primary (schedule-matched)
+   *  sensitivity variants. */
+  generatorSemantics: MergeSemantics;
   /** Schedules the structural-only predicate cleared AND whose replay then
    *  converged: sound auto-merges that never needed the spatial rule. */
   autoMerged: number;
@@ -782,12 +875,14 @@ export interface SpatialAblationReport {
    *  ablation broke is one the spatial rule was standing in front of. */
   spatialRuleCatchesAll: boolean;
   /**
-   * `unsoundAutoMerges > 0`. When true, the spatial rule is load-bearing for
-   * SOUNDNESS under this op model and KEEP is justified on those grounds
-   * rather than by a count of flagged conflicts. When FALSE, the soundness
-   * argument in merge-model.ts does not need the rule and the KEEP verdict
-   * rests only on the 9-conflicts-in-1,000 threshold -- a materially weaker
-   * position that must be reported, not buried.
+   * `unsoundAutoMerges > 0`: the reduced predicate clears at least one pair
+   * that does not commute, so the spatial rule is load-bearing FOR THE
+   * PREDICATE. It is never load-bearing for the certificate -- the replay
+   * backstop refuses those pairs in both modes, and this run's
+   * `certificateFailures` is 0 either way. Quote it as replay-cost avoidance
+   * (module docstring, "What the spatial rule actually buys"), never as "the
+   * certificate would be unsound without it", and never without the
+   * derived-cut sensitivity from {@link runDerivedCutSensitivity}.
    */
   spatialRuleIsLoadBearing: boolean;
   certificatesIssued: number;
@@ -817,6 +912,8 @@ export async function runSpatialAblation(options: MergeBatteryOptions = {}): Pro
   const seed = options.seed ?? 20260724;
   const epsilonMm = options.epsilonMm ?? DEFAULT_EPSILON_MM;
   const verifyEvery = options.verifyEvery ?? 25;
+  const semantics = options.semantics ?? DEFAULT_MERGE_SEMANTICS;
+  const generatorSemantics = options.generatorSemantics ?? DEFAULT_MERGE_SEMANTICS;
 
   const start = performance.now();
 
@@ -830,7 +927,7 @@ export async function runSpatialAblation(options: MergeBatteryOptions = {}): Pro
   let certificatesVerified = 0;
   let certificateFailures = 0;
 
-  for (const { index: s, base, opsA, opsB } of enumerateSchedules(schedules, seed)) {
+  for (const { index: s, base, opsA, opsB } of enumerateSchedules(schedules, seed, generatorSemantics)) {
     const outcome = await createCommutationCertificate({
       base,
       opsA,
@@ -839,6 +936,7 @@ export async function runSpatialAblation(options: MergeBatteryOptions = {}): Pro
       clientA: 'client-a',
       clientB: 'client-b',
       spatialRule: 'disabled',
+      semantics,
     });
 
     if (outcome.ok) {
@@ -847,6 +945,7 @@ export async function runSpatialAblation(options: MergeBatteryOptions = {}): Pro
       if (verifyEvery > 0 && certificatesIssued % verifyEvery === 0) {
         const verification = await verifyCommutationCertificate(outcome.certificate, base, opsA, opsB, {
           spatialRule: 'disabled',
+          semantics,
         });
         certificatesVerified++;
         if (!verification.ok) certificateFailures++;
@@ -878,6 +977,8 @@ export async function runSpatialAblation(options: MergeBatteryOptions = {}): Pro
     seed,
     epsilonMm,
     spatialRule: 'disabled',
+    semantics,
+    generatorSemantics,
     autoMerged,
     flaggedConflicts,
     unsoundAutoMerges,
@@ -891,6 +992,152 @@ export async function runSpatialAblation(options: MergeBatteryOptions = {}): Pro
     certificatesVerified,
     certificateFailures,
     elapsedMs,
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* Derived-cut sensitivity: what the 9 decomposes into (G4 item 7)       */
+/* ------------------------------------------------------------------ */
+
+/** One cell of the sensitivity grid: the ablation re-scored under one choice
+ *  of {@link MergeSemantics}. */
+export interface SensitivityVariant {
+  /** Short human label, e.g. `'derived cuts + containment off'`. */
+  label: string;
+  /** Semantics the schedules were scored under. */
+  semantics: MergeSemantics;
+  /** Semantics the schedule STREAM was generated under. When this differs
+   *  from `semantics`, the variant is schedule-MATCHED to the baseline: one
+   *  variable changed, and the count is a per-schedule attribution of the
+   *  baseline's unsound merges. When it equals `semantics`, the variant is
+   *  self-consistent: a different world, not an attribution. */
+  generatorSemantics: MergeSemantics;
+  /** True when `generatorSemantics` equals `semantics` (see above). */
+  schedulesRegenerated: boolean;
+  autoMerged: number;
+  flaggedConflicts: number;
+  /** The number under study: unsound auto-merges with the spatial rule
+   *  ablated, under these semantics. */
+  unsoundAutoMerges: number;
+  unsoundApplyFailed: number;
+  unsoundDiverged: number;
+  unsoundScheduleIndices: readonly number[];
+}
+
+/**
+ * The G4 item 7 sensitivity: how much of B4.2's headline "9 unsound
+ * auto-merges without the spatial rule" is a property of the two modelling
+ * choices in merge-model.ts rather than of the merge problem.
+ *
+ * The G4 red-team review's claim, stated precisely so it can be right or
+ * wrong: the 9 decompose by mechanism into 3 apply-failures from the invented
+ * containment invariant and 6 divergences from the stored (lazy) cut, and so
+ * "make the cut eager or derived, as IFC and this codebase do" drops the 9 to
+ * 3, and dropping containment as well takes it to 1.
+ *
+ * Method. The **primary** grid ({@link DerivedCutSensitivityReport.matched})
+ * holds the SCHEDULE STREAM at the baseline semantics and changes only the
+ * semantics the schedules are scored under. That is what makes the numbers an
+ * attribution of the SAME 9 events: `generateClientOps` drops candidates its
+ * own replica rejects, so regenerating under containment-off would produce
+ * different op sets and a count that cannot be lined up against the baseline's
+ * schedule indices. The **secondary** grid
+ * ({@link DerivedCutSensitivityReport.regenerated}) does regenerate, which
+ * answers the different and also fair question "what would the bet have
+ * measured if the model had always worked that way". Both are reported,
+ * because quoting only the flattering one is the failure mode this whole
+ * exercise exists to correct.
+ *
+ * Nothing here gates: it is a measurement of how load-bearing two modelling
+ * choices are, and a sensitivity analysis that could fail an exam would just
+ * be an exam.
+ */
+export interface DerivedCutSensitivityReport {
+  schedules: number;
+  seed: number;
+  epsilonMm: number;
+  /** Schedule stream pinned to {@link DEFAULT_MERGE_SEMANTICS}; only the
+   *  scoring semantics change. `lazyEnforced` IS the published ablation. */
+  matched: {
+    lazyEnforced: SensitivityVariant;
+    derivedEnforced: SensitivityVariant;
+    lazyNoContainment: SensitivityVariant;
+    derivedNoContainment: SensitivityVariant;
+  };
+  /** Schedule stream regenerated under each variant's own semantics. */
+  regenerated: {
+    derivedEnforced: SensitivityVariant;
+    lazyNoContainment: SensitivityVariant;
+    derivedNoContainment: SensitivityVariant;
+  };
+  elapsedMs: number;
+}
+
+const SENSITIVITY_CELLS = [
+  { key: 'lazyEnforced', label: 'lazy cuts + containment enforced (B4.2 baseline)', cuts: 'lazy', containment: 'enforced' },
+  { key: 'derivedEnforced', label: 'derived cuts + containment enforced', cuts: 'derived', containment: 'enforced' },
+  { key: 'lazyNoContainment', label: 'lazy cuts + containment off', cuts: 'lazy', containment: 'off' },
+  { key: 'derivedNoContainment', label: 'derived cuts + containment off', cuts: 'derived', containment: 'off' },
+] as const;
+
+async function runSensitivityCell(
+  label: string,
+  semantics: MergeSemantics,
+  generatorSemantics: MergeSemantics,
+  options: { schedules: number; seed: number; epsilonMm: number },
+): Promise<SensitivityVariant> {
+  const ablation = await runSpatialAblation({
+    schedules: options.schedules,
+    seed: options.seed,
+    epsilonMm: options.epsilonMm,
+    // Certificate sampling is off: this run measures the predicate, and
+    // re-verifying certificates issued under an ablated predicate AND a
+    // variant op model would only re-derive what the run already knows.
+    verifyEvery: 0,
+    semantics,
+    generatorSemantics,
+  });
+  return {
+    label,
+    semantics,
+    generatorSemantics,
+    schedulesRegenerated:
+      semantics.cuts === generatorSemantics.cuts && semantics.containment === generatorSemantics.containment,
+    autoMerged: ablation.autoMerged,
+    flaggedConflicts: ablation.flaggedConflicts,
+    unsoundAutoMerges: ablation.unsoundAutoMerges,
+    unsoundApplyFailed: ablation.unsoundApplyFailed,
+    unsoundDiverged: ablation.unsoundDiverged,
+    unsoundScheduleIndices: ablation.unsoundScheduleIndices,
+  };
+}
+
+/** Run the {@link DerivedCutSensitivityReport} grid. */
+export async function runDerivedCutSensitivity(
+  options: MergeBatteryOptions = {},
+): Promise<DerivedCutSensitivityReport> {
+  const schedules = options.schedules ?? 1000;
+  const seed = options.seed ?? 20260724;
+  const epsilonMm = options.epsilonMm ?? DEFAULT_EPSILON_MM;
+  const shared = { schedules, seed, epsilonMm };
+  const start = performance.now();
+
+  const matched: Record<string, SensitivityVariant> = {};
+  const regenerated: Record<string, SensitivityVariant> = {};
+  for (const cell of SENSITIVITY_CELLS) {
+    const semantics: MergeSemantics = { cuts: cell.cuts, containment: cell.containment };
+    matched[cell.key] = await runSensitivityCell(cell.label, semantics, DEFAULT_MERGE_SEMANTICS, shared);
+    if (cell.key === 'lazyEnforced') continue;
+    regenerated[cell.key] = await runSensitivityCell(cell.label, semantics, semantics, shared);
+  }
+
+  return {
+    schedules,
+    seed,
+    epsilonMm,
+    matched: matched as DerivedCutSensitivityReport['matched'],
+    regenerated: regenerated as DerivedCutSensitivityReport['regenerated'],
+    elapsedMs: performance.now() - start,
   };
 }
 

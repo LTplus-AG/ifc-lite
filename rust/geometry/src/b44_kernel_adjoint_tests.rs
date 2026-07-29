@@ -500,7 +500,10 @@ struct Stats {
 /// Family A (solid): `det(shear) * xdim * ydim * depth`, i.e. the true volume.
 /// Family B (with a void): `det(shear) * depth * (A_outer + A_hole / 3)`.
 /// The `+ A_hole/3` is **not** a typo and not the solid's volume: see DESIGN.md
-/// section "the hole-wall orientation finding". Verified below to 1e-13.
+/// section "the hole-wall orientation finding". Battery-wide worst deviation
+/// against this oracle is 1.358479e-12 (see battery.json); an earlier version
+/// of this comment claimed 1e-13, which is false by ~13.6x and was never
+/// asserted anywhere. Corrected 2026-07-29 by the G4 re-attestation.
 fn oracle(x: &[f64], with_hole: bool) -> f64 {
     let dirn = (x[3] * x[3] + x[4] * x[4] + x[5] * x[5]).sqrt();
     let det = (x[5] / dirn).abs();

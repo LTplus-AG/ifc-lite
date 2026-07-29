@@ -144,8 +144,14 @@ its own: the f32 vertex store is a larger error source than anything in the
 gradient, by two orders of magnitude.
 
 A fifth check pins the forward value to an independent closed form:
-`det(shear) * xdim * ydim * depth`, matched to **2e-13** relative across all
-1,200 family-A points.
+`det(shear) * xdim * ydim * depth`, matched to **2.188857e-13** relative worst
+case across the **600 family-A points** (corrected 2026-07-29 by the G4
+re-attestation: this sentence previously read "2e-13 across all 1,200 family-A
+points", which was wrong twice - the battery's 1,200 points are 600 family A
+plus 600 family B, and family B has a DIFFERENT oracle,
+`det * depth * (A_outer + A_hole/3)`, whose battery-wide worst deviation is
+**1.358479e-12**, 6x larger). The smoothness conclusion is unchanged and holds
+for both families; only the point count and the tolerance were misstated.
 
 ---
 

@@ -310,6 +310,21 @@ this plan had wrong:
    perturbation" in this exam should be read as "a perturbation that survives
    rounding", which is the honest bar.
 
+*G4 review note (2026-07-29): both halves of this exam are attested rather than
+evidenced and the bet does NOT yet pass.* The only observed run is 5m27s but was
+a `pull_request` event, i.e. the configuration in which the two Holter-gated
+steps skip - so "green in under 20 minutes" has not been demonstrated in the
+configuration the exam describes. The perturbation half has **no committed
+artifact**: it exists as prose in a commit message. The plan states B4.1 may not
+roll over, so this must be closed with a committed red-run log or a `--self-test`
+mode plus one `workflow_dispatch` run with the Holter fixture. The review also
+audited all 17 assertion steps and found **1 genuine drift tripwire, 8
+self-consistent, 8 that never touch the kernel** - the blind spot is broader
+than the tamper batteries alone, and the smallest detectable regression is
+~3e-9 relative on a volume-derived scalar over one 74-element synthetic model
+(a winding or orientation regression whose volume integral is unchanged passes
+green).
+
 Consequence for instrument 5: the certificate and tamper results are held by
 the lane in the *forgery* sense only. Holding them against drift would need a
 committed golden chain verified by a current binary, which is a bet, not a
@@ -345,6 +360,14 @@ more than one cycle to reach a verdict, that is itself the answer.
 
 **B4.5 The M1 midterm as worded.**
 Mesh-bearing DAG at 169 MB scale, both halves in one run.
+*G4 review note:* delivered and reproduced, but **only clause 1 (<500 ms) had a
+real failure mode**. Clause 2 resolves O(storeys) nodes regardless of model
+size, so a bigger model makes it easier; clause 3 would need one wall edit to
+recompute >25,058 nodes to fail. Do not quote "PASS on all three clauses" as
+three independent results. The pass also holds only for a **storey-granularity**
+claim: at element granularity, which is the shape the M1 *final* exam's
+region-scoped permission actually needs, both clauses FAIL (24.27%, 907 ms).
+That row belongs in B6.1's risk register.
 *Exam:* under 500 ms verification, under 5% of nodes resolved, over 90% cache
 hits on single-wall recompute, with real mesh leaves present throughout.
 
@@ -528,6 +551,44 @@ criteria, and only in writing in that file:
    verdict, the benchmark integrity break, and the M5 feasible-quality null.
 5. **Calendar:** replace the Phase 3 dates with actuals and this document's
    Phase 4 to 6 targets.
+
+**Added 2026-07-29 after the G4 adversarial review failed the gate**
+(`reviews/g4-red-team-2026-07-29.md`). These three are the review's required
+item 1, entered here because the plan's own rule is that gate criteria are
+amendable only in writing in this file - and the re-scope below was not.
+
+6. **M3's Phase 4 exam was re-scoped, and the re-scope is recorded here rather
+   than assumed.** `moonshots-execution-plan.md` names M3's kill risk as the
+   **CSG/void path** being only piecewise-differentiable. B4.4's exam, written
+   in section 5 of this document, targets the **extrusion mesher**. The bet's
+   own oracle then proved that path's emitted volume is exactly
+   `det*xdim*ydim*depth` to 2.19e-13 at every one of 1,200 sampled points - a
+   functional containing no piecewise-differentiability risk. **B4.4's PASS
+   therefore does NOT retire M3's kill risk and does not trigger or clear the
+   binary gate as originally stated.** M3's status is amended to: *adjoints
+   reach the real mesher on a smooth family, verified byte-identical to
+   production on the native build; adjoints through CSG remain entirely
+   unmeasured.* The CSG-adjoint bet is scheduled first in Phase 5, ahead of
+   B5.5, per the review's required item 2; `scripts/moonshot/b44-kernel-adjoint/DESIGN.md`
+   section 6.1 already scopes it at two cycles and names the obstruction (the
+   exact-predicate tier is a fixed-width integer type with no derivative slot).
+7. **B4.4's grading metric amends the exam's finite-difference wording.** The
+   exam reads "matching central finite differences to 1e-6 relative on 95% of a
+   200-point seeded battery". The delivered result matches central finite
+   differences on **60% of components**; the other 40% (rigid motions, void
+   translation) are graded against a theoretical zero, because a relative
+   metric cannot adjudicate a zero derivative at any tolerance. The partition
+   is mathematically sound and the review confirmed no parameter is
+   misclassified - but it is an amendment and is recorded as one. Note also
+   that the accompanying "0/200 on the old metric" figure is partly a property
+   of the U(-30, 30) m placement box, not of the metric alone.
+8. **Phase 4 is recorded as a FAILED phase under pre-mortem entry 4**, on the
+   review's decisive ground: the antidote ("B4.4 and B5.5 are scheduled first
+   within their phases") was applied to the schedule and not to the content.
+   Scheduling a bet first de-risks nothing if its exam has been moved to the
+   safe side beforehand. Three of four delivered bets nonetheless volunteered
+   the case against themselves, which is instruments 5 and 7 working; the
+   review found errors of framing rather than errors of fact.
 
 ---
 

@@ -147,10 +147,16 @@
  * mechanism and sustains all 9 on its own; containment is load-bearing only
  * once the cut is derived. Neither number may be quoted without the other.
  *
- * The residual 1 in the regenerated derived/off cell is worth naming because
- * it is the only one of the 9 that survives every correction: client A adds an
- * opening hosted in `element:1-8` while client B removes `element:1-8`, so one
- * order applies and the other cannot. That is `IfcRelVoidsElement` referential
+ * The residual 1 in the regenerated derived/off cell is worth naming, but NOT
+ * as a survivor of the 9: the schedule-matched derived/off cell is 0, so none
+ * of the original 9 survives both corrections. This one comes from a stream
+ * regenerated under derived/off semantics, i.e. it is a different schedule that
+ * the baseline never drew. (Corrected 2026-07-29 by the G4 re-attestation,
+ * which caught the earlier "the only one of the 9" phrasing as false.) It is
+ * worth naming because it is the only conflict in the whole grid with an IFC
+ * basis: client A adds an opening hosted in `element:1-8` while client B
+ * removes `element:1-8`, so one order applies and the other cannot. That is
+ * `IfcRelVoidsElement` referential
  * integrity, which IFC really does impose, and the spatial rule is the only
  * half of the predicate that catches it (the add's `writtenNodes` are fresh
  * ids, structurally disjoint from the remove; only the host-region union in

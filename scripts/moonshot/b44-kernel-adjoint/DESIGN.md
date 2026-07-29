@@ -126,7 +126,7 @@ harness:
 | 1 | dual instantiation's primal positions vs the `f64` instantiation's positions, bit-for-bit, 400 seeded cases | **identical**, and the volume deviation over the whole battery is **exactly 0.000e0** |
 | 2 | instrumented forward volume vs `extrude_profile` + `apply_transform` -> production `Mesh` (f32) volume, world placement, 1200 points | max rel dev **3.0e-6** (family A) / **4.6e-6** (family B) |
 | 3 | same, with the element in its local frame (placement zeroed) | max rel dev **1.7e-7** / **1.6e-7** |
-| 4 | the whole shipping pipeline: an IFC4 STEP file with `IfcRectangleProfileDef` + `IfcExtrudedAreaSolid`, decoded and meshed by the wasm `GeometryProcessor` that the viewer and the clash CLI use, 24 points | vs in-process production f32: max rel dev **2.4e-8** (bit-identical volume at 8 of 24 points); vs the instrumented f64 value: max rel dev **1.1e-6** |
+| 4 | the whole shipping pipeline: an IFC4 STEP file with `IfcRectangleProfileDef` + `IfcExtrudedAreaSolid`, decoded and meshed by the wasm `GeometryProcessor` that the viewer and the clash CLI use, 24 points | vs in-process production f32: max rel dev **2.4e-8** (volume agrees to <= 1e-15 relative at 8 of 24 points; **exactly 1** point is bit-identical - corrected 2026-07-29 per the G4 review, the artifact is `kernel-cross-check.json`). Note this gap is **wasm-vs-native codegen**, not correct-vs-incorrect: both sides run the same Rust mesher. The byte-identity guarantee below is therefore established for the **native** build; the artifact users run is wasm; vs the instrumented f64 value: max rel dev **1.1e-6** |
 
 Check 1 is the load-bearing one: it says the dual arithmetic *is* the mesher's
 `f64` arithmetic, not an approximation of it.

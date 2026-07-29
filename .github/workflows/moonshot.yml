@@ -20,6 +20,7 @@
 #   E1  provenance unit suite        node-hash-v0 + certificates + merge battery
 #   E2  the four gate demos          G0 / G1 / G2-footprint / G2-merge
 #   E3  B3.5 five-act demo           asserted BYTE-FOR-BYTE against a seeded golden
+#   E3c the tripwire's own exam      E3b must go RED on a seeded perturbation
 #   E4  certified optimization       short run -> v1 + v2 certificate chains
 #   E5  chain verification           --mode full AND --mode spot
 #   E6  tamper batteries             v1 (5 cases) + v2 (18 cases)
@@ -306,6 +307,31 @@ jobs:
         run: |
           node scripts/moonshot/ci/assert-b35-golden.mjs
           echo '- **E3 B3.5 five-act demo** -- deterministic subtree matches golden' >> "$GITHUB_STEP_SUMMARY"
+
+      # E3c is the only step in this lane that tests the LANE rather than the
+      # program. Every other step asserts that something is still true; this one
+      # asserts that E3b -- the single genuine drift tripwire in the whole
+      # workflow, per the G4 review's audit of all 17 assertion steps -- would
+      # actually notice if it were not. It perturbs a carbon factor by 1e-6
+      # relative, re-runs the demo, requires E3b to go red naming act 5 and
+      # `kernelValidation/kernelCarbonKg`, then restores the tree and requires
+      # E3b to go green again. It exits NON-ZERO if the tripwire stays green,
+      # which is the failure the exam is really about: an assertion that cannot
+      # fail is not evidence.
+      #
+      # Cost is ~12 s (two extra demo runs). It rewrites and restores three
+      # files under try/finally plus SIGINT/SIGTERM handlers and verifies with
+      # `git status` that it put them back, so a cancelled run cannot leave a
+      # perturbed checkout behind. It tolerates E3a's fresh `volatile`
+      # timestamps in demo-report.{json,md} -- what it requires is that the
+      # status is IDENTICAL afterwards, not that it was pristine before.
+      #
+      # The committed output of this step is scripts/moonshot/ci/self-test-evidence.txt.
+      - name: E3c B3.5 tripwire self-test (the golden must be able to fail)
+        shell: bash
+        run: |
+          node scripts/moonshot/ci/assert-b35-golden.mjs --self-test
+          echo '- **E3c B3.5 tripwire self-test** -- the golden goes red on a 1e-6 perturbation and green on restore' >> "$GITHUB_STEP_SUMMARY"
 
       # --- E4/E5/E6: proof-carrying optimization ---------------------------
       # Scope, honestly: E4 builds the chain and E5/E6 verify it IN THE SAME

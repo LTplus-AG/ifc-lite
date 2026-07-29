@@ -674,10 +674,20 @@ amendable only in writing in this file - and the re-scope below was not.
    binary gate as originally stated.** M3's status is amended to: *adjoints
    reach the real mesher on a smooth family, verified byte-identical to
    production on the native build; adjoints through CSG remain entirely
-   unmeasured.* The CSG-adjoint bet is scheduled first in Phase 5, ahead of
-   B5.5, per the review's required item 2; `scripts/moonshot/b44-kernel-adjoint/DESIGN.md`
-   section 6.1 already scopes it at two cycles and names the obstruction (the
-   exact-predicate tier is a fixed-width integer type with no derivative slot).
+   unmeasured.*
+
+   **The CSG-adjoint bet is NOT yet scheduled** (corrected 2026-07-29 by the G4
+   re-attestation, which caught this sentence asserting the opposite while the
+   commit that wrote it declared option (b)). This amendment takes the
+   re-review's **option (b)**: the scheduling claim is withdrawn and M3's status
+   is recorded as UNADJUDICATED pending Phase 5, dated. Entering the bet is a
+   betting-table act, not a sentence in an amendment: it needs a number, an
+   exam, a kill clause, a statement of which of B5.1-B5.5 it displaces against
+   the five-bet cap, and a cycle-budget update. None of those exist yet.
+   `scripts/moonshot/b44-kernel-adjoint/DESIGN.md` section 6.1 scopes the work
+   at two cycles and names the obstruction (the exact-predicate tier is a
+   fixed-width integer type with no derivative slot), which is the input to
+   that decision, not the decision.
 7. **B4.4's grading metric amends the exam's finite-difference wording.** The
    exam reads "matching central finite differences to 1e-6 relative on 95% of a
    200-point seeded battery". The delivered result matches central finite

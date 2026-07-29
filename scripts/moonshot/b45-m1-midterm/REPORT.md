@@ -100,12 +100,21 @@ Measured counterfactual, same edit and same reads/writes, with
 | Claim granularity | Nodes resolved | % | Verify | Clause 1 | Clause 2 |
 |---|---|---|---|---|---|
 | storey (the exam) | 60 | 0.0239% | 56.5 ms | PASS | PASS |
-| g0/g1 narrower shape | 21,777 | 12.62% | 465.4 ms | scrapes | **FAIL** |
 | element | 60,805 | 24.27% | 907.6 ms | **FAIL** | **FAIL** |
 
 Any future quote of "under 500 ms, under 5%" must carry the qualifier
 **"for a storey-granularity claim"**. Without it the number is not reproducible
 and is arguably not honest.
+
+*Correction, 2026-07-29 (G4 review).* An earlier revision of this table carried
+a third row - "g0/g1 narrower shape, 21,777 nodes, 12.62%, 465.4 ms, FAIL" -
+which **no artifact produces**. `run.mjs` implements exactly two claim
+granularities (storey and element), `scorecard.json` contains no such figures,
+and the row contradicted caveat 3 below, which measures the g0/g1 *DAG shape*
+(`--no-aggregates`) at 172,526 nodes / 0.0348% / 56.1 ms / **PASS**. The row was
+transcribed from the building run's summary message, which conflated claim
+granularity with DAG shape, and neither the transcription nor the verification
+caught it. Removed. Only two claim granularities have ever been measured.
 
 ### 3. g0/g1's DAG shape silently drops 36% of this model's geometry
 

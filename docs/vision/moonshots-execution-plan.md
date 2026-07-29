@@ -66,6 +66,10 @@ research that consume everything before them.
 | M6b threaded CSG | validated, not wired | 5 | docs/architecture/csg-threading-design.md: 2.9-4.2x CSG-step |
 | M6c exact predicates on GPU | untested principle | 1 | predicate cascade well-factored in kernel/predicates.rs; nothing on GPU |
 
+<!-- numeral-ok: 1.71x :: the wasm wide-arithmetic end-to-end speedup, measured by
+     docs/architecture/wasm-wide-arithmetic.md and its benchmark, not by any
+     scripts/moonshot artifact. Cited here, produced elsewhere. -->
+
 ## 2. Heilmeier catechism per moonshot
 
 Format: the eight answers, compressed. Costs are in agent-cycles (one focused Shape Up bet by
@@ -242,6 +246,13 @@ an agent team) plus named human time, because that is the actual currency here.
    identifying it requires running the filter anyway). Per-op dispatch, the batch shape
    the current kernel structure produces, sinks to 0.8x-1.1x on three of five models.
    Remaining M6c exam is retargeted to publication (B6.3), not a speedup. Consequence:
+
+<!-- numeral-ok: 0.20x, 194 :: 0.20x is the endpoint of a RANGE measured against the
+     production adaptive-Shewchuk path; report.b25.throughput.json emits speedups against
+     the exact BigInt CPU baseline (4.4x / 19.5x / 102x) and holds no production-path
+     comparison, so the ratio is computed outside the artifact. 194 is the size of the
+     fidelity-gated job corpus extracted from the production CSG benchmark, which lives
+     under benchmark/, not under scripts/moonshot. -->
    M3's per-step projection budget re-plans around CPU threading only, which puts M6b on
    the critical path. See scripts/moonshot/b34-kernel-stage/REPORT.md.
 
@@ -418,6 +429,9 @@ whose realized arithmetic is genuinely exact-dominated (the escalated LPI/TPI ti
 the named candidate, ~5000x per call) or a consumer with no adaptive filter. Do not
 re-spike the classification stage.
 
+<!-- numeral-ok: 5000x :: order-of-magnitude cost of an escalated LPI/TPI exact tier per
+     call, from the kernel's own predicate profiling, not from a b25 report. -->
+
 **N2. M2 benchmark v1.0 integrity is broken by construction (2026-07-25).** Believed:
 forbidding access to the label fields was sufficient to protect the answer key. Measured:
 `benchmark/attacks/clean-twin-diff.mjs` regenerates each seed's clean twin
@@ -428,6 +442,10 @@ defect families does NOT fix this: any defect on an independent stream is isolat
 same diff. Reviving a public launch requires denying the adversary the clean twin
 (hosted bytes, secret per-split salt, or a real-model substrate), not a longer defect
 list. The attack stays committed as a regression.
+
+<!-- numeral-ok: 0.931, 0.993 :: aggregate scores of the kernel oracle and the text
+     heuristic through the real benchmark scorer. Emitted by the benchmark harness under
+     benchmark/, not by any scripts/moonshot artifact. -->
 
 **N3. M5 feasible-brief quality margin is null (2026-07-25, replicated).** Believed:
 per-op kernel feedback would produce better programs than the same model generating

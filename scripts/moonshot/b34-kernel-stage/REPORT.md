@@ -89,6 +89,19 @@ cargo run --release --manifest-path extractor/Cargo.toml -- \
 node harness-b34.mjs --dir=<scratch> --models=duplex,advanced,holter,c20,i129
 ```
 
+<!-- Numeral provenance, added 2026-07-29 for the numeral gate
+     (scripts/moonshot/ci/check-report-numerals.mjs). No figure in this report is
+     changed; these comments record which numbers report.b34.json emits and which
+     it does not. -->
+<!-- numeral-ok: 640, 96, 96B :: format constants of the path-C encoding, not
+     measurements: a 640-bit exact integer accumulator over 96-byte tuples. Fixed
+     by the kernel's design and stated in the WGSL, not emitted by any report. -->
+<!-- numeral-ok: 194 :: the fidelity-gated job corpus size, summed over the
+     per-model `meta.jobs` fields of report.b34.json. The artifact stores the
+     addends, not the total. -->
+<!-- numeral-ok: 82% :: the void-CSG share of load time, from the repo's separate
+     CSG performance investigation, not from this bet. -->
+
 ## 2. What the real workload actually looks like
 
 First honest finding: on typical models the mesh-kernel void stage is far
@@ -123,6 +136,14 @@ grazing contacts), nothing like random inputs; per-tuple those cost the CPU
 adaptive path ~6x more (~65 ns vs ~10 ns native), and up to 68% of the
 stage's CPU time (duplex).
 
+<!-- numeral-ok: 20.8%, 35.8%, 18.1%, 25.8%, 4.4%, 6.4%, 8.3% :: shares computed
+     in the table row from two counts printed in that same row, both of which come
+     from report.b34.json (`meta.totalPairs`, `meta.nearCoplanarPairs`,
+     `meta.tuples`, `meta.signCounts.zero`). Arithmetic the reader can check on
+     the line; the artifact stores the operands, not the ratio. -->
+<!-- numeral-ok: 108k :: rounded tuple count of the single largest i129 element,
+     a per-element figure the model-level report does not break out. -->
+
 ## 3. Manifest parity (the exam's correctness bar): EXACT - PASS
 
 Every extracted tuple was evaluated three independent ways: (a) Rust
@@ -139,6 +160,14 @@ in-page BigInt exact oracle.
 - The x8-tiled i129 run (2,194,032 tuples) is also 0-mismatch.
 
 Sign-for-sign, the stage's GPU result is byte-identical to the CPU path.
+
+<!-- numeral-ok: 302,490 :: the exact sum of report.b34.json's five per-model
+     `meta.tuples` values (4,116 + 4,656 + 5,448 + 14,016 + 274,254). The artifact
+     stores the addends, not the total. -->
+<!-- numeral-ok: 2,194,032 :: tuple count of the x8-tiled i129 SYNTHETIC run,
+     which was produced by amplifying the corpus at run time
+     (report.b34.json's `amplify` is null for the committed run) and whose own
+     report was not committed. -->
 
 ## 4. Stage speedup vs the >=5x exam bar: split verdict
 
@@ -192,6 +221,11 @@ before any of the GPU's batching constraints. The B2.5 library beats every
 *exact-tier* CPU evaluation it is put against; it does not beat a
 well-engineered adaptive filter at this stage's realized arithmetic.
 
+<!-- numeral-ok: 0.6ms, 34.8ms, 175.8ms, 0.20x :: 0.1-0.6 ms is the observed
+     per-dispatch floor range, an envelope rather than a stored field; the
+     34.8/175.8 ms row is the x8-tiled i129 SYNTHETIC run described above, whose
+     report was not committed, and 0.20x is that row's ratio. -->
+
 ## 5. Integration plan for the real Rust/wasm path - and whether the win survives
 
 **Where the seam is.** `arrangement::arrange` (and `arrange_many`): step 1
@@ -230,6 +264,11 @@ lever for the arrangement's explicit-predicate stage is refuted by the
 measured workload, and honestly so: the predicates are not the bottleneck the
 moonshot framing assumed at this stage; the adaptive filter already deleted
 the cost the GPU was supposed to delete.
+
+<!-- numeral-ok: 5000x, 135x :: 5000x is the escalated interval/exact tier cost
+     per call from the kernel's own budget.rs profiling (the #1109 stall family);
+     135x is the best exact-CPU-tier speedup quoted from B2.5's DESIGN.md, a
+     different bet's run. Neither is emitted by report.b34.json. -->
 
 ## 6. Files
 

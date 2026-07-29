@@ -38,25 +38,50 @@
  * The floor is the report's own rounding, and act 5's kernel-validation
  * block is the most sensitive part of it.
  *
- * SELF-TEST. `--self-test` tests the test: it injects a known perturbation,
- * proves this script goes red and names act 5 and the moved paths, restores
- * the tree and proves it goes green again. See selfTest() below for the
- * mechanics and for why the perturbation has the magnitude it has. It exists
- * because the G4 review (docs/vision/reviews/g4-red-team-2026-07-29.md
- * section 4) found that the perturbation half of B4.1's exam was attested in
- * prose and had no committed artifact: a tripwire nobody ever fires is
- * indistinguishable from a tripwire that cannot fire.
+ * TWO SELF-TESTS, AND THEY PROVE DIFFERENT THINGS. Both exist because the G4
+ * review (docs/vision/reviews/g4-red-team-2026-07-29.md section 4) found that
+ * the perturbation half of B4.1's exam was attested in prose with no committed
+ * artifact: a tripwire nobody ever fires is indistinguishable from a tripwire
+ * that cannot fire. Do not read either one as the other.
+ *
+ *   --self-test  MODEL-CONSTANT self-test. Perturbs a JavaScript constant
+ *                (`CARBON_FACTORS.Concrete` in the diff-spike's carbon model),
+ *                re-runs the demo, requires this script to go red naming act 5,
+ *                restores and requires green. ~12 s, no toolchain, runs in the
+ *                CI lane on every execution.
+ *                IT IS NOT A KERNEL PERTURBATION. The G4 re-review proved the
+ *                distinction is not pedantic: you can disconnect the wasm
+ *                geometry kernel from act 5 entirely and this mode still
+ *                passes, because its only kernel-flavoured assertion is that
+ *                `kernelValidation/kernelCarbonKg` moved -- and that field is a
+ *                product with the perturbed JS constant, so it moves either
+ *                way. What a green run establishes is: the golden is wired to
+ *                act 5's data and can distinguish a >=1e-6 relative change in
+ *                it from no change. What it does NOT establish is that any
+ *                kernel measurement is still reaching that data.
+ *
+ *   --kernel     KERNEL perturbation. Applies `depth *= 1.000001` to
+ *                `extrude_profile` in rust/geometry, REBUILDS THE WASM BUNDLE
+ *                FROM SOURCE, re-runs the demo, requires this script to go red
+ *                naming ONLY `acts/act5/data/kernelValidation/*`, then reverts,
+ *                rebuilds and requires green. Minutes, and needs a rust
+ *                toolchain plus wasm-pack, so it is opt-in and out-of-lane.
+ *                This is the mode that proves rust/geometry -> wasm -> act 5 ->
+ *                golden is intact end to end. Its committed output is
+ *                scripts/moonshot/ci/kernel-perturbation-evidence.txt.
  *
  * Usage:
  *   node scripts/moonshot/ci/assert-b35-golden.mjs             # assert
  *   node scripts/moonshot/ci/assert-b35-golden.mjs --update    # re-bless
- *   node scripts/moonshot/ci/assert-b35-golden.mjs --self-test # prove it fires
+ *   node scripts/moonshot/ci/assert-b35-golden.mjs --self-test # JS-constant tripwire test
+ *   node scripts/moonshot/ci/assert-b35-golden.mjs --kernel    # real kernel perturbation
  *
  * Exit codes: 0 match, 1 drift, 2 usage/IO problem.
- * Under --self-test: 0 the tripwire fired and recovered, 1 it did not (or the
- * tree was not restored), 2 usage/IO problem.
+ * Under --self-test / --kernel: 0 the tripwire fired and recovered, 1 it did
+ * not (or the tree was not restored), 2 usage/IO problem.
  */
 
+import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -69,10 +94,16 @@ const GOLDEN_PATH = path.join(HERE, 'b35-golden.json');
 
 const UPDATE = process.argv.includes('--update');
 const SELF_TEST = process.argv.includes('--self-test');
+const KERNEL_TEST = process.argv.includes('--kernel');
 
-if (UPDATE && SELF_TEST) {
-  console.error('::error::--update and --self-test are mutually exclusive.');
-  console.error('--self-test asserts the CURRENT golden is the right reference; --update replaces it.');
+if (UPDATE && (SELF_TEST || KERNEL_TEST)) {
+  console.error('::error::--update and the self-test modes are mutually exclusive.');
+  console.error('The self-tests assert the CURRENT golden is the right reference; --update replaces it.');
+  process.exit(2);
+}
+if (SELF_TEST && KERNEL_TEST) {
+  console.error('::error::--self-test and --kernel are separate modes; run them one at a time.');
+  console.error('--self-test perturbs a JS model constant; --kernel perturbs rust/geometry and rebuilds wasm.');
   process.exit(2);
 }
 
@@ -134,18 +165,26 @@ const CARBON_MODEL_PATH = path.join(REPO_ROOT, 'scripts/moonshot/diff-spike/carb
  * The injection site and its magnitude.
  *
  * WHERE. `CARBON_FACTORS.Concrete` in scripts/moonshot/diff-spike/carbon-model.mjs.
- * It reaches the golden's kernel-validation block by a path that is provable
- * by reading two lines rather than by trusting a measurement:
- * scripts/moonshot/b35-demo/act5-descent.mjs imports CARBON_FACTORS and
- * accumulates `kernelCarbon += row.kernelVolume * factor` over the volumes the
- * wasm geometry kernel re-measured, then emits it as
+ * scripts/moonshot/b35-demo/act5-descent.mjs imports CARBON_FACTORS, uses it as
+ * the objective the optimizer descends, and also accumulates
+ * `kernelCarbon += row.kernelVolume * factor` over the volumes the wasm
+ * geometry kernel re-measured, emitting that sum as
  * `acts/act5/data/kernelValidation/kernelCarbonKg` (and, via
- * `|kernelCarbon - n.carbon| / n.carbon`, as `carbonRelDev`). So a change to
- * this constant MUST move the kernel-validation fields unless the pipeline
- * from the kernel to the golden is broken -- which is exactly the failure the
- * self-test is here to detect. It is also the same constant the bet's own
- * prose claims was perturbed, so this script now evidences that claim rather
- * than restating it.
+ * `|kernelCarbon - n.carbon| / n.carbon`, as `carbonRelDev`).
+ *
+ * WHAT A GREEN STAGE A DOES AND DOES NOT ESTABLISH. It establishes that a
+ * >=1e-6 relative change to act 5's inputs reaches pinned leaves of the golden
+ * and is named there -- i.e. the golden is wired to act 5's data and this
+ * script can tell a perturbed run from an unperturbed one. It does NOT
+ * establish that a kernel measurement is still reaching the golden. The G4
+ * re-review demonstrated the gap concretely: disconnect the wasm geometry
+ * kernel from act 5 entirely and this mode still passes, because
+ * `kernelCarbonKg` is a PRODUCT with the perturbed constant and moves whether
+ * or not `row.kernelVolume` came from the kernel. So the assertion below that
+ * `kernelCarbonKg` moved is a wiring check on act 5, not a kernel check. The
+ * kernel check is `--kernel`, which perturbs rust/geometry and rebuilds the
+ * wasm bundle; its committed output is
+ * scripts/moonshot/ci/kernel-perturbation-evidence.txt.
  *
  * WHY 1e-6 RELATIVE (315 -> 315.000315). The tripwire's floor is the report's
  * own rounding, not machine epsilon. `kernelCarbonKg` is rounded to 3 decimals
@@ -232,7 +271,10 @@ function selfTest() {
     console.error(s);
   };
 
-  say('B3.5 golden tripwire --self-test');
+  say('B3.5 golden tripwire --self-test (JS MODEL CONSTANT, not a kernel perturbation)');
+  say('  scope: proves the golden is wired to act 5 and can fail. For the kernel');
+  say('         path (rust/geometry -> wasm -> act 5) run --kernel; its committed');
+  say('         output is scripts/moonshot/ci/kernel-perturbation-evidence.txt.');
   say(`  perturbation: ${PERTURB_DESC}`);
   say(`  assert under test: ${path.relative(REPO_ROOT, fileURLToPath(import.meta.url))}`);
   say('');
@@ -322,8 +364,8 @@ function selfTest() {
       if (assertA.code === 0) {
         problems.push(
           'THE TRIPWIRE DID NOT FIRE: the golden check passed with a perturbed carbon factor. ' +
-            'A >=1e-6 relative change reached no pinned field -- the golden no longer covers ' +
-            "act 5's kernel-validation block, or the demo is not reading the perturbed source.",
+            'A >=1e-6 relative change to act 5 reached no pinned field -- the golden no longer ' +
+            'covers act 5, or the demo is not reading the perturbed source.',
         );
       } else if (assertA.code !== 1) {
         problems.push(
@@ -344,10 +386,15 @@ function selfTest() {
         problems.push('the failure names no acts/act5/* path -- "names which act broke" is not met');
       }
       if (!kernel.includes('acts/act5/data/kernelValidation/kernelCarbonKg')) {
+        // A WIRING check on act 5, deliberately not described as a kernel
+        // check: the perturbed constant is multiplied into kernelCarbonKg by
+        // act5-descent.mjs, so this fires if the kernel-validation block has
+        // stopped being emitted or stopped being pinned -- not if the kernel
+        // has stopped feeding it. See --kernel for the latter.
         problems.push(
           'acts/act5/data/kernelValidation/kernelCarbonKg did not move, although the perturbed ' +
-            'constant is multiplied into it by act5-descent.mjs -- the kernel measurement is no ' +
-            'longer reaching the golden',
+            'constant is multiplied into it by act5-descent.mjs -- the kernel-validation block is ' +
+            'no longer emitted, or no longer pinned by the golden',
         );
       }
       if (other.length > 0) {
@@ -415,6 +462,9 @@ function selfTest() {
   say('SELF-TEST PASS: the B3.5 golden tripwire fires on a 1e-6 relative carbon-factor');
   say('perturbation, names act 5 and its kernel-validation fields, and returns to green');
   say('when the perturbation is reverted.');
+  say('SCOPE: this is a JS model constant. It proves the golden is wired to act 5 and');
+  say('can fail; it does NOT prove a kernel measurement still reaches it. That is');
+  say('--kernel / kernel-perturbation-evidence.txt.');
   say('');
   say('--- captured failure output (stage A) ---');
   const captured = capturedFailure.trimEnd();
@@ -434,7 +484,286 @@ function selfTest() {
   process.exit(0);
 }
 
+// ---------------------------------------------------------------------------
+// --kernel: the real thing. Perturb rust/geometry, rebuild wasm, prove red.
+// ---------------------------------------------------------------------------
+
+const EXTRUSION_PATH = path.join(REPO_ROOT, 'rust/geometry/src/extrusion.rs');
+const WASM_PATH = path.join(REPO_ROOT, 'packages/wasm/pkg/ifc-lite_bg.wasm');
+const BUILD_WASM = path.join(REPO_ROOT, 'scripts/build-wasm.sh');
+
+/**
+ * The kernel injection site.
+ *
+ * `extrude_profile` is the swept-solid path the b35 demo's walls, slabs and
+ * columns go through, so scaling its depth changes every emitted volume in the
+ * model by the same relative amount. The anchor is the whole signature plus the
+ * opening brace, which is unique in the file and cannot silently drift onto
+ * `extrude_profile_watertight` (the bool2d path, which this demo does not use).
+ *
+ * 1e-6 relative rather than one ULP for the same reason the model-constant mode
+ * uses 1e-6: demo-report.json rounds carbon to 3 decimals on a ~73,459 kg
+ * total, so ~7e-9 relative is the smallest change that can survive being
+ * serialized at all. See kernel-perturbation-evidence.txt.
+ */
+const KERNEL_ANCHOR = `pub fn extrude_profile(
+    profile: &Profile2D,
+    depth: f64,
+    transform: Option<Matrix4<f64>>,
+) -> Result<Mesh> {
+`;
+const KERNEL_INJECT = '    let depth = depth * 1.000001;\n';
+const KERNEL_DESC =
+  'extrude_profile depth *= 1.000001 (+1e-6 relative) in rust/geometry/src/extrusion.rs';
+
+/** Files --kernel rewrites. Every one of them is restored byte-for-byte. */
+const KERNEL_TOUCHED = [
+  'rust/geometry/src/extrusion.rs',
+  'scripts/moonshot/b35-demo/demo-report.json',
+  'scripts/moonshot/b35-demo/demo-report.md',
+];
+
+function sha256File(file) {
+  try {
+    return createHash('sha256').update(readFileSync(file)).digest('hex');
+  } catch {
+    return null;
+  }
+}
+
+function buildWasm(label) {
+  const started = Date.now();
+  const r = spawnSync('bash', [BUILD_WASM], {
+    cwd: REPO_ROOT,
+    encoding: 'utf-8',
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  const ms = Date.now() - started;
+  console.log(`  ${label}: bash scripts/build-wasm.sh exited ${r.status} in ${(ms / 1000).toFixed(0)}s`);
+  return { code: r.status, stdout: r.stdout ?? '', stderr: r.stderr ?? '', ms };
+}
+
+function kernelTest() {
+  const say = (s = '') => console.log(s);
+  const fail = (s) => console.error(s);
+
+  say('B3.5 golden tripwire --kernel (REAL kernel perturbation, rebuilds wasm from source)');
+  say(`  perturbation: ${KERNEL_DESC}`);
+  say('  cost: two full wasm rebuilds. Minutes, not seconds -- this is why it is opt-in');
+  say('        and why the CI lane runs --self-test instead. Needs rust + wasm-pack.');
+  say('');
+
+  const before = git(['status', '--porcelain', '--', ...KERNEL_TOUCHED]);
+  if (before.code !== 0) {
+    console.error('::error::--kernel needs a git checkout: it verifies the tree is restored with `git status`.');
+    process.exit(2);
+  }
+  if (before.out !== '') {
+    say('NOTE: these files were already modified before this run started; they are');
+    say('      snapshotted and put back exactly as found:');
+    for (const line of before.out.split('\n')) say(`      ${line}`);
+    say('');
+  }
+
+  const snapshot = new Map();
+  for (const rel of KERNEL_TOUCHED) {
+    const abs = path.join(REPO_ROOT, rel);
+    try {
+      snapshot.set(abs, readFileSync(abs));
+    } catch (err) {
+      console.error(`::error::cannot snapshot ${rel}: ${err.message}`);
+      process.exit(2);
+    }
+  }
+  const restore = () => {
+    for (const [abs, bytes] of snapshot) writeFileSync(abs, bytes);
+  };
+  const onSignal = (sig) => {
+    restore();
+    console.error('');
+    console.error('INTERRUPTED. rust/geometry/src/extrusion.rs was restored, but the wasm bundle in');
+    console.error('packages/wasm/pkg/ is whatever the last completed build produced. Re-run');
+    console.error('`bash scripts/build-wasm.sh` before trusting any local geometry measurement.');
+    process.exit(sig === 'SIGINT' ? 130 : 143);
+  };
+  process.on('SIGINT', onSignal);
+  process.on('SIGTERM', onSignal);
+
+  const problems = [];
+  let capturedFailure = '';
+  const wasmBefore = sha256File(WASM_PATH);
+
+  try {
+    // --- Stage 0: the baseline has to be green, or stage A proves nothing ---
+    say('stage 0 -- baseline (the golden must already match before we perturb anything)');
+    const demo0 = runNode(DEMO_RUN);
+    if (demo0.code !== 0) {
+      fail(`::error::stage 0: the demo exited ${demo0.code} on an unperturbed tree.`);
+      fail(demo0.stderr.split('\n').slice(-25).join('\n'));
+      restore();
+      process.exit(2);
+    }
+    const assert0 = runNode(fileURLToPath(import.meta.url));
+    say(`  golden check exited ${assert0.code} (expected 0 = match)`);
+    if (assert0.code !== 0) {
+      fail('::error::stage 0: the golden is ALREADY red before the perturbation.');
+      fail('A red stage A would then prove nothing. Fix the drift first, or re-bless.');
+      fail(assert0.stderr.split('\n').slice(0, 30).join('\n'));
+      restore();
+      process.exit(2);
+    }
+
+    // --- Stage A: perturb the kernel, rebuild, expect red -------------------
+    const original = readFileSync(EXTRUSION_PATH, 'utf-8');
+    const hits = original.split(KERNEL_ANCHOR).length - 1;
+    if (hits !== 1) {
+      fail(`::error::the extrude_profile signature anchor occurs ${hits} time(s) in`);
+      fail(`  ${path.relative(REPO_ROOT, EXTRUSION_PATH)} -- expected exactly 1.`);
+      fail('  The kernel moved; re-point KERNEL_ANCHOR rather than weakening the match.');
+      restore();
+      process.exit(2);
+    }
+    writeFileSync(EXTRUSION_PATH, original.replace(KERNEL_ANCHOR, KERNEL_ANCHOR + KERNEL_INJECT), 'utf-8');
+    say('');
+    say('stage A -- kernel perturbed, rebuilding the wasm bundle from source');
+    const buildA = buildWasm('stage A');
+    if (buildA.code !== 0) {
+      fail('::error::stage A: the wasm build failed under the perturbation.');
+      fail(buildA.stderr.split('\n').slice(-30).join('\n'));
+      problems.push('stage A: wasm build failed');
+    } else {
+      const wasmAfter = sha256File(WASM_PATH);
+      say(`  bundle sha256 ${String(wasmBefore).slice(0, 16)} -> ${String(wasmAfter).slice(0, 16)}`);
+      if (wasmAfter !== null && wasmAfter === wasmBefore) {
+        // scripts/build-wasm.sh exits 0 on a stale on-disk bundle when
+        // wasm-pack is missing -- the G4 review's structural gap (d). Catch it
+        // here rather than reporting "the tripwire did not fire".
+        problems.push(
+          'the wasm bundle did NOT change after a kernel edit + rebuild. The build did not ' +
+            'actually rebuild (is wasm-pack installed? scripts/build-wasm.sh can exit 0 on a ' +
+            'stale on-disk bundle) -- nothing below this line is evidence about the kernel.',
+        );
+      }
+      const demoA = runNode(DEMO_RUN);
+      if (demoA.code !== 0) {
+        fail(`::error::stage A: the demo exited ${demoA.code} under the perturbation instead of completing.`);
+        fail(demoA.stderr.split('\n').slice(-25).join('\n'));
+        problems.push('stage A: demo did not complete under the perturbation');
+      } else {
+        const assertA = runNode(fileURLToPath(import.meta.url));
+        capturedFailure = assertA.stderr;
+        say(`  golden check exited ${assertA.code} (expected 1 = drift)`);
+        if (assertA.code === 0) {
+          problems.push(
+            'THE TRIPWIRE DID NOT FIRE: the golden check passed with a perturbed geometry ' +
+              'kernel. A 1e-6 relative change to every extruded depth reached no pinned field, ' +
+              'so no kernel measurement is reaching the golden -- which is exactly the failure ' +
+              'the model-constant --self-test cannot see.',
+          );
+        } else if (assertA.code !== 1) {
+          problems.push(`the golden check exited ${assertA.code} (usage/IO), not 1 (drift)`);
+        }
+        if (!assertA.stderr.includes('B3.5 DETERMINISTIC DRIFT')) {
+          problems.push('the failure output does not carry the "B3.5 DETERMINISTIC DRIFT" banner');
+        }
+        const paths = parseDiffPaths(assertA.stderr);
+        const kernel = paths.filter((p) => p.startsWith('acts/act5/data/kernelValidation/'));
+        const other = paths.filter((p) => !p.startsWith('acts/act5/data/kernelValidation/'));
+        say(`  differing paths named: ${paths.length} (kernel-validation: ${kernel.length})`);
+        for (const p of paths) say(`    ${p}`);
+        if (!kernel.includes('acts/act5/data/kernelValidation/kernelCarbonKg')) {
+          problems.push(
+            'acts/act5/data/kernelValidation/kernelCarbonKg did not move under a kernel ' +
+              'perturbation -- the wasm re-measurement is not reaching the golden',
+          );
+        }
+        if (other.length > 0) {
+          // Expected to be empty and worth asserting: the JS model is untouched,
+          // so the optimizer's own parameters must NOT move. If they do, act 5
+          // is reading geometry somewhere it should not be, or the demo is not
+          // deterministic under a rebuild.
+          problems.push(
+            `${other.length} path(s) outside acts/act5/data/kernelValidation moved under a ` +
+              `kernel-only perturbation: ${other.join(', ')}`,
+          );
+        }
+      }
+    }
+
+    // --- Stage B: revert, rebuild, expect green again -----------------------
+    say('');
+    say('stage B -- kernel reverted, rebuilding the wasm bundle again to prove recovery');
+    restore();
+    const buildB = buildWasm('stage B');
+    if (buildB.code !== 0) {
+      fail('::error::stage B: the wasm build failed after the revert. The bundle on disk is now');
+      fail('whatever stage A produced -- re-run `bash scripts/build-wasm.sh` before trusting it.');
+      fail(buildB.stderr.split('\n').slice(-30).join('\n'));
+      problems.push('stage B: wasm build failed after revert');
+    } else {
+      const demoB = runNode(DEMO_RUN);
+      if (demoB.code !== 0) {
+        fail(`::error::stage B: the demo exited ${demoB.code} after restore.`);
+        problems.push('stage B: demo did not complete after restore');
+      } else {
+        const assertB = runNode(fileURLToPath(import.meta.url));
+        say(`  golden check exited ${assertB.code} (expected 0 = match)`);
+        if (assertB.code !== 0) {
+          problems.push(
+            'the golden check is still red after the kernel perturbation was reverted -- the ' +
+              'revert or the rebuild is incomplete',
+          );
+          fail(assertB.stderr.split('\n').slice(0, 30).join('\n'));
+        }
+      }
+    }
+  } finally {
+    restore();
+    process.off('SIGINT', onSignal);
+    process.off('SIGTERM', onSignal);
+  }
+
+  const after = git(['status', '--porcelain', '--', ...KERNEL_TOUCHED]);
+  say('');
+  if (after.code !== 0) {
+    problems.push('could not run `git status` to verify the tree was restored');
+  } else if (after.out !== before.out) {
+    problems.push(
+      `the tree was NOT restored to its starting state.\n  before: ${JSON.stringify(before.out)}\n  after:  ${JSON.stringify(after.out)}`,
+    );
+  } else {
+    say(`tree restored: \`git status --porcelain\` identical to the pre-run baseline over all ${KERNEL_TOUCHED.length} touched files.`);
+    say('(packages/wasm/pkg/ifc-lite_bg.wasm is gitignored; stage B rebuilt it from the');
+    say(' restored source, so it measures the same as it did before this run.)');
+  }
+
+  say('');
+  if (problems.length > 0) {
+    console.error('::error::B3.5 GOLDEN --kernel TEST FAILED.');
+    for (const p of problems) console.error(`  - ${p}`);
+    process.exit(1);
+  }
+
+  say('KERNEL TEST PASS: a 1e-6 relative change to extrude_profile in rust/geometry,');
+  say('compiled into the wasm bundle, turns the B3.5 golden red naming act 5 and ONLY');
+  say('its kernel-validation fields, and it returns to green when reverted and rebuilt.');
+  say('The path rust/geometry -> wasm -> act 5 -> golden is intact end to end.');
+  say('');
+  say('--- captured failure output (stage A) ---');
+  console.log(capturedFailure.trimEnd());
+  say('');
+  say(
+    `summary: ${JSON.stringify({
+      perturbation: KERNEL_DESC,
+      node: process.version,
+      platform: `${process.platform}-${process.arch}`,
+    })}`,
+  );
+  process.exit(0);
+}
+
 if (SELF_TEST) selfTest();
+if (KERNEL_TEST) kernelTest();
 
 const report = readJson(REPORT_PATH, 'B3.5 demo report').value;
 if (!report || typeof report !== 'object' || typeof report.deterministic !== 'object' || report.deterministic === null) {

@@ -7,6 +7,9 @@ including the jaws of people who fund frontier infrastructure?
 
 ## 1. What six months actually built
 
+<!-- numeral-ok: 1,376 :: repository commit count on the day this section was
+     written, from `git rev-list --count`. A fact about the repo, not a bet
+     measurement; no artifact emits it and none should. -->
 The repo is 1,376 commits old (first commit 2026-01-12). The commit rate tripled from ~120/month
 in Jan-Apr to 368 in June. Underneath the viewer, the following assets now exist and are verified
 in CI, and together they form something no other codebase in AEC has:
@@ -43,6 +46,10 @@ in CI, and together they form something no other codebase in AEC has:
 8. **Two de-risked engine levers already measured and documented:** wasm wide-arithmetic
    (1.9-3.1x on predicates, 1.71x end-to-end CSG, blocked only on browser flags) and threaded
    CSG via wasm-bindgen-rayon (2.9-4.2x on the CSG step, architecture validated).
+
+<!-- numeral-ok: 1.71x, 3.1x :: wasm wide-arithmetic speedups, measured by
+     docs/architecture/wasm-wide-arithmetic.md and its benchmark. Cited here,
+     produced elsewhere; no scripts/moonshot artifact emits them. -->
 
 Compressed to one sentence: **this is the only geometry system in the built-world domain that
 is simultaneously exact, deterministic to the byte, content-addressable, browser-native,

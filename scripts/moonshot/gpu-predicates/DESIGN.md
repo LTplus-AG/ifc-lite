@@ -118,6 +118,15 @@ before the expensive exact tier runs.
   the cap fires and routes to fallback rather than silently computing a wrong
   sign.
 
+<!-- Numeral provenance, added 2026-07-29 for the numeral gate
+     (scripts/moonshot/ci/check-report-numerals.mjs). No figure in this document
+     is changed; these comments record which numbers the committed
+     report.b25.*.json artifacts emit and which they do not. -->
+<!-- numeral-ok: 52, 63, 1074 :: IEEE-754 double structure and its consequences
+     (52-bit mantissa, ~2^63 for the largest plausible coordinate, the ~1074-bit
+     spread from DBL_MAX down to the smallest subnormal). Properties of the
+     format, not measurements. -->
+
 ## 5. Width budget (why 512-bit two's-complement-free sign-magnitude is enough)
 
 Let `W = 53 + D_MAX = 153` bits (worst-case magnitude of a single shifted
@@ -154,6 +163,13 @@ narrowest limb count that covers the test's actual `D`, branching per lane or
 per workgroup. This spike deliberately skips that optimization to keep the
 shader small and the correctness argument easy to audit; see §7 for the
 resulting throughput hit.
+
+<!-- numeral-ok: 512, 153, 154, 308, 309, 463, 465, 47, 160, 256 :: the width
+     derivation itself. Every one of these is computed in the table on the line
+     it appears on, from `W` = 153 and the stated rule (W+1, 2(W+1), 2(W+1)+1,
+     463+2), and 512 / 16 limbs / 47 spare bits / 256 partial products follow
+     from that. A register width is a design decision, not a measurement, and no
+     battery report emits one. -->
 
 ## 6. Representation: sign-magnitude, not two's complement
 
@@ -242,6 +258,15 @@ produced by `node harness.mjs --phase=all`. Headline:
   end-to-end for a real caller — that gap is real, disclosed, and left for
   B2.5/B3.4 to close.
 
+<!-- numeral-ok: 1,500,009, 506 :: case counts of the B1.3 spike battery. The
+     committed report.b25.*.json files are from a LATER, differently-scaled
+     invocation (per-label totalCases of 1e6 / 2e5 and so on); the spike run's
+     own JSON was never committed. Stated here so nobody reads these as backed. -->
+<!-- numeral-ok: 15.3x, 29.6x, 31.0x :: throughput ratios from that same
+     uncommitted spike run. -->
+<!-- numeral-ok: 1e-6 :: a coordinate MAGNITUDE in the rotating 1e3/1e9/1e-6
+     generator set, i.e. a generator parameter, not a result. -->
+
 ## 9. B2.5 follow-up: the encode bottleneck is closed, and incircle is in
 
 Everything in this section was measured on the same machine and stack as
@@ -298,6 +323,11 @@ The worker-parallelized-encode candidate was not implemented: with encode
 gone from the pipeline entirely, there is nothing left for workers to
 parallelize on the main path (it would only multiply path B's 5.4x).
 
+<!-- numeral-ok: 1.34x, 290ms, 96B, 288B :: 1.34x and ~290 ms (shader
+     compilation) are from the baseline-reproduction run of §9.1, whose JSON was
+     not committed; 96 B and 288 B are the per-test upload sizes of the two
+     encodings, format constants fixed by the WGSL. -->
+
 ### 9.3 incircle and the unified width budget
 
 `incircleRaw` computes the standard lifted 3x3 determinant (sign of d
@@ -313,6 +343,11 @@ difference 2^154, square 2^308, lift (sum of two squares) 2^309, row term
 (orient3d only needs 465 bits; the length-aware multiply makes the extra
 container limbs nearly free). Truncation to 20 limbs is exact for gated
 inputs, same argument as section 5.
+
+<!-- numeral-ok: 618, 620, 330,016 :: 2^618 and 2^620 are the derived worst-case
+     magnitudes of the two determinants, computed from the width rule in section
+     5; 330,016 is the case count of the encode-equivalence check, whose report
+     (report.b25.encodecheck.json) records the check but not that total. -->
 
 ### 9.4 Correctness results (all zero-mismatch)
 
@@ -339,6 +374,12 @@ inputs, same argument as section 5.
 Total verified this round: ~21.5M orient3d + ~6.5M incircle evaluations,
 zero sign disagreements, zero gate disagreements.
 
+<!-- numeral-ok: 1,500,524, 511, 1,453,523, 21.5M, 6.5M :: battery totals for
+     the B2.5 correctness round. The committed report.b25.battery.json /
+     .incircle.json / .bigrandom.json hold per-label case counts from that
+     round's individual invocations; these are the summed totals across them,
+     which no artifact stores. -->
+
 ### 9.5 End-to-end throughput (the number that was missing)
 
 Measured e2e = everything the caller pays: CPU-side prep (none for path C
@@ -363,6 +404,16 @@ The B1.3 arithmetic-only ratio (31x at 1e7) is now the *end-to-end* ratio:
 the 1.3-1.4x caveat of section 8 is closed. incircle lands higher because
 its CPU BigInt cost per test is ~3.6x orient3d's (degree 4, wider
 intermediates) while its GPU cost is barely higher.
+
+<!-- numeral-ok: 261ms, 64ms, 21ms, 4.1x, 12.3x, 2537ms, 503ms, 24.6x, 24950ms,
+     4962ms, 781ms, 925ms, 18ms, 51.7x, 8296ms, 94.8x, 91088ms, 674ms, 135.1x,
+     3.6x :: the two end-to-end throughput tables. These are the clearest
+     provenance gap in this bet: the committed report.b25.throughput.json holds a
+     single n=1e6 row from a different invocation, so none of the three-scale
+     rows above has a committed artifact. They are transcribed from the run log.
+     Recorded rather than quietly dropped -- re-running them needs a WebGPU host
+     and is out of scope for the G4 gate, but it is a real gap and belongs in
+     B2.5's ledger, not in a silent allowlist. -->
 
 ### 9.6 Remaining gaps
 

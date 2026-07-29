@@ -83,6 +83,11 @@ rather than left inside a bet directory:
   against 15 ns native, and shipping only the degenerate subset cannot win
   (65 ns versus 80 ns) because you cannot identify the subset without running
   the filter anyway.
+
+  <!-- numeral-ok: 0.20x :: endpoint of a RANGE measured against the production
+       adaptive-Shewchuk path. report.b25.throughput.json emits speedups against
+       the exact BigInt CPU baseline only, so this ratio is computed outside the
+       artifact. -->
 - Per-op dispatch, which is the batch shape today's kernel structure naturally
   produces, sinks to 0.8x to 1.1x on three of five models.
 
@@ -203,6 +208,10 @@ unchanged, the original stands.
   present**, certificate verified in a second process in under 500 ms while
   resolving under 5% of DAG nodes.
 
+<!-- numeral-ok: 169MB :: the on-disk size of the Holter Tower fixture
+     (tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc). A fact about a
+     file, recorded in tests/models/manifest.json; no bet artifact emits it. -->
+
 ### M2 world gym
 
 - **How is it done today (revised):** by us, and broken by us. The benchmark's
@@ -290,7 +299,10 @@ verified in both FULL and SPOT mode, and world-gym `determinism-check`. Weekly,
 plus on any change to `rust/geometry`, `packages/create`, `packages/provenance`
 or `packages/wasm`.
 *Exam:* green in under 20 minutes; a deliberate one-bit kernel perturbation
-turns it red and names which act broke.
+turns it red and names which act broke. *Read "one-bit" as "the smallest change
+the artifact can represent": the committed report rounds carbon to 3 decimals,
+so a literal one-ULP nudge is below its serialization floor. The attested
+perturbation is 1e-6 relative, ~300x above the measured ~3e-9 floor.*
 
 *Result and a correction to this bet's own premise (2026-07-27).* The lane is
 built and both halves of the exam are met: 33-36 s of assertions, ~1m45s
@@ -314,6 +326,12 @@ this plan had wrong:
    perturbation" in this exam should be read as "a perturbation that survives
    rounding", which is the honest bar.
 
+<!-- numeral-ok: 3e-9 :: the measured sensitivity FLOOR of the B3.5 golden, i.e. a
+     property of the tripwire established by injection and transcribed in
+     scripts/moonshot/ci/self-test-evidence.txt. It is not a value any report
+     emits, and it must not be: the golden pins measurements, not its own
+     resolution. -->
+
 *G4 review note (2026-07-29): both halves of this exam are attested rather than
 evidenced and the bet does NOT yet pass.* The only observed run is 5m27s but was
 a `pull_request` event, i.e. the configuration in which the two Holter-gated
@@ -328,6 +346,31 @@ than the tamper batteries alone, and the smallest detectable regression is
 ~3e-9 relative on a volume-derived scalar over one 74-element synthetic model
 (a winding or orientation regression whose volume integral is unchanged passes
 green).
+
+*Closed 2026-07-29, and the record now says which perturbation was used.* Both
+halves are evidenced, and the two artifacts are deliberately not the same thing:
+
+- **Timing.** One `workflow_dispatch` run with the Holter fixture,
+  run 30441941453: **10m 01s** whole job with both Holter-gated exams running,
+  against a 20-minute bar. Transcribed in
+  `scripts/moonshot/ci/self-test-evidence.txt`.
+- **Kernel perturbation, the real one.**
+  `scripts/moonshot/ci/kernel-perturbation-evidence.txt` is the verbatim red run
+  of a **one-line change to `extrude_profile` in `rust/geometry/src/extrusion.rs`**
+  (`let depth = depth * 1.000001;`, +1e-6 relative on every extruded depth),
+  **with the wasm bundle rebuilt from source**. The golden goes red naming act 5
+  and exactly three paths, all under `acts/act5/data/kernelValidation/`; reverting
+  and rebuilding returns it to green. Reproduce with
+  `node scripts/moonshot/ci/assert-b35-golden.mjs --kernel`.
+- **What runs in the lane is NOT that.** Step E3c
+  (`assert-b35-golden.mjs --self-test`, ~12 s) perturbs a **JavaScript** carbon
+  constant, because two wasm rebuilds cannot sit in a lane whose whole budget is
+  20 minutes. The G4 re-review showed the two are not interchangeable: the JS
+  self-test still passes if the wasm kernel is disconnected from act 5 entirely,
+  since its only kernel-flavoured assertion is that `kernelCarbonKg` moved and
+  that field is a product with the perturbed constant. So E3c is the in-lane
+  tripwire-can-fire check; the kernel artifact is the end-to-end proof; and this
+  plan now says which is which rather than letting one stand in for the other.
 
 Consequence for instrument 5: the certificate and tamper results are held by
 the lane in the *forgery* sense only. Holding them against drift would need a
@@ -378,8 +421,48 @@ size, so a bigger model makes it easier; clause 3 would need one wall edit to
 recompute >25,058 nodes to fail. Do not quote "PASS on all three clauses" as
 three independent results. The pass also holds only for a **storey-granularity**
 claim: at element granularity, which is the shape the M1 *final* exam's
-region-scoped permission actually needs, both clauses FAIL (24.27%, 907 ms).
+region-scoped permission actually needs, both clauses FAIL (24.27%, 899 ms).
 That row belongs in B6.1's risk register.
+
+*Addendum 2026-07-29, and it cuts against the review.* The review's other B4.5
+catch - a table row "21,777 nodes / 12.62% / 465.4 ms / FAIL" that **no artifact
+produces** - was half right. Committing the bet's `--no-aggregates` run as
+`scripts/moonshot/b45-m1-midterm/scorecard-no-aggregates.json` shows the row is
+the element-granularity claim measured on the **g0/g1 DAG shape**: that
+artifact's `sensitivityElementGranularityClaim` reads `nodesResolved` 21,777 and
+`nodesResolvedPct` 12.6224, matching the row to the digit. Only the timing was a
+different run's. So the row was a real measurement in the wrong table (it varied
+two axes in a table that varies one), not an invented one, and the underlying
+defect in both directions is the same: a figure whose run was never committed.
+It is committed now. Recorded here rather than by editing the dated review.
+
+<!-- numeral-ok: 21,777, 12.62%, 12.6224, 465.4ms :: B4.5's g0/g1-shape
+     element-granularity figures. 21,777 and 12.6224 are
+     sensitivityElementGranularityClaim.nodesResolved / .nodesResolvedPct in
+     scorecard-no-aggregates.json on branch feat/b45-m1-midterm and become
+     backed once that shares this tree; 12.62% is the same value written to two
+     decimals; 465.4 ms is the uncommitted run's timing, quoted here only to
+     show it does NOT match the committed 453.5 ms, and must stay unbacked. -->
+
+<!-- numeral-ok: 25,058, 24.27% :: B4.5's figures. 25,058 is a bound the G4
+     reviewer derived from the scorecard's clause-3 headroom, not a measurement;
+     24.27% is scorecard.sensitivityElementGranularityClaim.nodesResolvedPct =
+     24.2655, and it will read as backed here once
+     scripts/moonshot/b45-m1-midterm/ is in the same tree as this document -
+     today it lives on branch feat/b45-m1-midterm. -->
+
+*(Corrected 2026-07-29: this sentence read "907 ms" against a committed
+`scripts/moonshot/b45-m1-midterm/scorecard.json` whose
+`sensitivityElementGranularityClaim.verifyMs` is 899. The wrong figure was
+introduced by the commit remediating the previous round of wrong figures, in a
+document the numeral checker could not then see - which is why its search root
+now covers `docs/vision/**`.)*
+
+<!-- numeral-ok: 899ms, 899, 907ms :: 899 is
+     scorecard.sensitivityElementGranularityClaim.verifyMs and reads as backed
+     once scripts/moonshot/b45-m1-midterm/ shares this tree (branch
+     feat/b45-m1-midterm today). 907 ms is quoted only in order to retract it -
+     it is the figure this correction removes, and it must stay unbacked. -->
 *Exam:* under 500 ms verification, under 5% of nodes resolved, over 90% cache
 hits on single-wall recompute, with real mesh leaves present throughout.
 
@@ -582,7 +665,11 @@ amendable only in writing in this file - and the re-scope below was not.
    closed form covers (corrected 2026-07-29: the battery's other 600 points are
    family B, which has a distinct oracle and a battery-wide worst deviation of
    1.358479e-12). The conclusion is unchanged and the smoothness holds for both
-   families - a functional containing no piecewise-differentiability risk. **B4.4's PASS
+   families - a functional containing no piecewise-differentiability risk.
+   <!-- numeral-ok: 2.19e-13, 1.358479e-12 :: B4.4's oracle-versus-forward-value
+        worst deviations, emitted by that bet's battery.json on branch
+        wip/b44-kernel-adjoints; not yet in this tree. -->
+   **B4.4's PASS
    therefore does NOT retire M3's kill risk and does not trigger or clear the
    binary gate as originally stated.** M3's status is amended to: *adjoints
    reach the real mesher on a smooth family, verified byte-identical to

@@ -16,17 +16,29 @@
  * or DESIGN emit from the scorecard JSON, and add a check that every numeral
  * in the prose appears in the artifact."
  *
- * REPORT, NOT GATE -- and that is a deliberate choice, not a shortcut.
- * Prose legitimately contains numbers no artifact emits: bars from the plan,
- * figures re-quoted from another bet's run, arithmetic done in the sentence
- * ("43.7% of the DAG"), and counts from a variant run whose output was never
- * committed. A checker strict enough to catch a stale transcription is
- * therefore also loud enough to flag a dozen honest lines per document, and a
- * red gate that is wrong a dozen times per document gets `|| true`-d within a
- * week. So the default is exit 0 with a RANKED list, ordered by how much it
- * looks like a transcription error rather than by how loudly it fails to
- * match. `--gate` turns it into exit 1 for a directory that has been curated
- * to zero findings and wants to stay there.
+ * IT GATES, AND HERE IS WHAT THAT COST. The first revision of this script was
+ * report-only, on the argument that prose legitimately contains numbers no
+ * artifact emits -- bars from the plan, figures re-quoted from another bet's
+ * run, arithmetic done in the sentence ("43.7% of the DAG"), counts from a
+ * variant run whose output was never committed -- so a strict checker would
+ * flag a dozen honest lines per document and get `|| true`-d within a week.
+ * That argument was right about the noise and wrong about the conclusion: a
+ * report nobody is obliged to act on is how the fourth bad figure reached the
+ * finishing plan. The fix was to make each of those honest lines say WHY, once,
+ * next to itself (see MARKER_RE below), and then gate on the remainder. The
+ * whole tree is curated to zero, `--gate` is wired into
+ * .github/workflows/moonshot.yml as step E9, and the default run is still a
+ * ranked report so a human can look without failing anything.
+ *
+ * WHAT IT SEES. Two kinds of prose set: every bet directory under
+ * scripts/moonshot/ against its own artifacts, and every .md under
+ * docs/vision/ -- the plans, the reviews and the spec, i.e. the gate record
+ * itself -- against the union of every moonshot artifact in the tree. The
+ * second kind exists because the first revision hard-coded its root to
+ * scripts/moonshot and therefore structurally could not see the documents where
+ * the gate record lives, which is how a wrong B4.5 figure (907 ms against a
+ * committed 899) got into amendment 6 of the finishing plan in the very commit
+ * that was remediating wrong figures.
  *
  * WHAT COUNTS AS BACKED. For a numeral written as `N` in the prose, the
  * tolerance is the half-ULP of its own last written digit -- 56.5 admits
@@ -54,7 +66,10 @@
  *   - a numeral whose immediately preceding word is structural: section, act,
  *     clause, phase, gate, bet, step, line, item, instrument, table, figure,
  *     version, round, tier, note, page, appendix, cycle, chapter, milestone,
- *     entry, footnote, or a leading `#`.
+ *     entry, footnote, run, commit, see, a month name, or a leading `#` / `§`;
+ *     and the far end of such a range (`lines 148-171`, `line 241-243`).
+ *   - a numeral hyphen-joined to a preceding word and carrying no unit, the
+ *     mirror of the trailing-identifier rule: IEEE-754, mid-2027.
  * Everything else is checked. The suppressions are deliberately about SHAPE
  * (this token is not a measurement) and never about VALUE, so no rule here
  * can hide a wrong number.
@@ -70,26 +85,39 @@
  *
  * DIMENSIONLESS numerals that are only explicable as a ratio over two artifact
  * values (a/b, a/b*100, percent change) get their own lower tier. It is always
- * printed, never folded into "backed": over a 50-number scorecard those
- * pairings match by coincidence often enough that a hit is a hint, not a
- * clearance. Read that tier as "a reader could plausibly have computed this in
- * the sentence", not as "this is correct".
+ * printed, never folded into "backed", and it FAILS --gate: over a scorecard
+ * with a hundred numbers those pairings land by coincidence often enough to be
+ * worthless as a clearance (B4.5's genuine `8.9x` margin "explains" as the
+ * percent change between two unrelated verify medians). Read that tier as "a
+ * reader could plausibly have computed this in the sentence, and the checker
+ * cannot tell whether they did", which is a reason to mark it, not to clear
+ * it.
  *
- * KNOWN FALSE-POSITIVE CLASSES, so nobody has to rediscover them:
+ * KNOWN LEGITIMATE-BUT-UNBACKED CLASSES, i.e. what a `numeral-ok` marker is
+ * for. None can be suppressed by a rule without also suppressing a real catch,
+ * which is why each one is annotated by hand instead:
  *   - a number the prose itself is quoting in order to RETRACT it (B4.5's
- *     correction paragraph quotes the removed row's figures verbatim);
+ *     correction paragraph quotes the removed row's figures verbatim, and if
+ *     they ever became backed that paragraph would be wrong);
  *   - prose that truncates rather than rounds a unit conversion (`36 MB` from
- *     36,536,090 B is 36.5, outside the half-ULP of "36");
- *   - a bar, budget or target from the plan (`< 500 ms`, `< 5%`, `> 90%`);
- *   - a figure re-quoted from a DIFFERENT bet's run, whose artifact is not in
- *     this directory.
- * All four are cheap for a human to dismiss and none can be removed without
- * also removing a real catch, which is the whole reason this is a report.
+ *     36,536,090 B is 36.5, outside the half-ULP of "36") -- prefer fixing the
+ *     prose;
+ *   - a bar, budget, target or tolerance (`< 500 ms`, `< 5%`, `1e-6`);
+ *   - a figure re-quoted from a DIFFERENT bet's run, or from a bet whose branch
+ *     is not yet in this tree -- these self-heal, because the marker goes STALE
+ *     when the artifact arrives;
+ *   - a format constant or a derivation done in the document (`96 B/tuple`, the
+ *     512-bit width budget);
+ *   - session bookkeeping (model calls, timeouts) that no results file stores.
+ * Where a number could instead be EMITTED, emit it: that is strictly better
+ * than a marker, and it is what was done for B4.5's g0/g1 DAG shape rather than
+ * leaving three figures excused.
  *
  * Usage:
  *   node scripts/moonshot/ci/check-report-numerals.mjs
  *   node scripts/moonshot/ci/check-report-numerals.mjs <dir-or-repo-root> ...
  *   node scripts/moonshot/ci/check-report-numerals.mjs --gate      # exit 1 on findings
+ *                                                                 (CI: step E9)
  *   node scripts/moonshot/ci/check-report-numerals.mjs --json
  *
  * Exit codes: 0 report produced (default, whatever it found), 1 findings with
@@ -114,6 +142,8 @@ const PROSE_NAMES = new Set(['REPORT.md', 'DESIGN.md']);
 const JSON_IGNORE = /^(package(-lock)?|tsconfig.*|jsconfig|\.eslintrc)\.json$/;
 /** Beyond this many artifact numbers the O(n^2) derived pass is skipped. */
 const DERIVED_LIMIT = 600;
+/** The gate record itself. Every .md here is prose this checker must see. */
+const VISION_DIR = 'docs/vision';
 
 // ---------------------------------------------------------------------------
 // Discovery
@@ -140,30 +170,65 @@ function walk(dir, depth = 2, out = []) {
   return out;
 }
 
+const isArtifact = (f) => f.endsWith('.json') && !JSON_IGNORE.test(path.basename(f));
+
 /**
- * A "bet directory" is any directory holding at least one prose doc AND at
- * least one non-config .json. Deliberately broader than the review's literal
- * list (`scorecard.json`, `battery.json`, `results*.json`, `report*.json`):
- * B4.4's contradicted figure lives in `kernel-cross-check.json`, which none of
- * those globs match, and a checker that cannot see the artifact holding the
- * error is not worth running.
+ * A "prose set" is a group of documents plus the artifact index they are
+ * checked against. There are two kinds, and the second one only exists because
+ * the G4 re-review found the first one structurally blind.
+ *
+ * BET SETS. Any directory under `scripts/moonshot/` holding at least one prose
+ * doc AND at least one non-config .json, checked against its OWN artifacts.
+ * Deliberately broader than the review's literal list (`scorecard.json`,
+ * `battery.json`, `results*.json`, `report*.json`): B4.4's contradicted figure
+ * lives in `kernel-cross-check.json`, which none of those globs match, and a
+ * checker that cannot see the artifact holding the error is not worth running.
+ *
+ * THE GATE RECORD. `docs/vision/**` -- the finishing plan, the execution plan,
+ * the tech doc, the reviews and the spec. The first revision of this script
+ * hard-coded its root to `scripts/moonshot` and therefore could not see a
+ * single one of them, which is exactly how a wrong B4.5 figure (907 ms against
+ * a committed 899.0 ms) reached amendment 6 of the finishing plan *in the
+ * commit that was supposed to remediate wrong figures*. These documents quote
+ * numbers from every bet in the program, so the artifact index they are checked
+ * against is the UNION of every moonshot artifact in the tree, not any one
+ * bet's. That union is large enough that the DERIVED pass is skipped and the
+ * decoy calibration is poor -- both are printed, and neither weakens the only
+ * thing this set is for: catching a figure that contradicts the artifact it
+ * claims to come from.
  */
-function findBetDirs(root) {
+function findProseSets(root) {
   const base = path.join(root, 'scripts/moonshot');
-  const roots = [];
-  if (statSafe(base)?.isDirectory()) {
-    for (const e of listDir(base)) if (e.isDirectory()) roots.push(path.join(base, e.name));
-  } else if (statSafe(root)?.isDirectory()) {
-    roots.push(root);
-  }
   const found = [];
-  for (const dir of roots) {
-    const files = walk(dir);
-    const prose = files.filter((f) => PROSE_NAMES.has(path.basename(f)));
-    const artifacts = files.filter(
-      (f) => f.endsWith('.json') && !JSON_IGNORE.test(path.basename(f)),
-    );
-    if (prose.length > 0 && artifacts.length > 0) found.push({ dir, prose, artifacts });
+  const unionArtifacts = [];
+
+  if (statSafe(base)?.isDirectory()) {
+    for (const e of listDir(base)) {
+      if (!e.isDirectory()) continue;
+      const dir = path.join(base, e.name);
+      const files = walk(dir);
+      const prose = files.filter((f) => PROSE_NAMES.has(path.basename(f)));
+      const artifacts = files.filter(isArtifact);
+      unionArtifacts.push(...artifacts);
+      if (prose.length > 0 && artifacts.length > 0) found.push({ dir, prose, artifacts });
+    }
+  }
+
+  const vision = path.join(root, VISION_DIR);
+  if (statSafe(vision)?.isDirectory()) {
+    const prose = walk(vision, 3).filter((f) => f.endsWith('.md'));
+    if (prose.length > 0 && unionArtifacts.length > 0) {
+      found.push({ dir: vision, prose, artifacts: unionArtifacts, union: true });
+    }
+  }
+
+  // An explicit directory target that is neither of the above (e.g. a single
+  // bet directory passed on the command line) is checked against itself.
+  if (found.length === 0 && statSafe(root)?.isDirectory()) {
+    const files = walk(root);
+    const prose = files.filter((f) => PROSE_NAMES.has(path.basename(f)) || f.endsWith('.md'));
+    const artifacts = files.filter(isArtifact);
+    if (prose.length > 0 && artifacts.length > 0) found.push({ dir: root, prose, artifacts });
   }
   return found;
 }
@@ -232,6 +297,74 @@ function indexArtifacts(files) {
 // Prose extraction
 // ---------------------------------------------------------------------------
 
+/**
+ * INLINE MARKERS -- how a legitimately-unbacked numeral is cleared.
+ *
+ *   <!-- numeral-ok: 500ms, 16GB :: a bar from the plan; a machine spec -->
+ *
+ * The token list is written exactly as this report prints a finding
+ * (`raw + unit`, thousands separators included: `1,376`, `24.27%`, `2.19e-13`,
+ * `907ms`). A marker is FILE-SCOPED: it clears those tokens anywhere in the
+ * document it appears in, which matches this checker's own unit of finding --
+ * numerals are grouped by (raw, unit) across the file, not by line.
+ *
+ * WHY IN THE FILE AND NOT IN AN ALLOWLIST FILE. The defect this whole script
+ * exists to catch is prose drifting away from the thing that justifies it. An
+ * allowlist in a sibling directory is that defect wearing a different hat: it
+ * is edited in a different commit from the sentence it excuses, it is keyed on
+ * something (a line, a path) that moves, and nobody reading the claim ever sees
+ * it. A marker three lines from the number appears in the same diff hunk as the
+ * number, so a reviewer changing the sentence is shown the reason it was
+ * excused. Markers live inside HTML comments, which maskProse() already blanks,
+ * so they cannot themselves smuggle a numeral into the document.
+ *
+ * ANTI-ROT. An excuse must not outlive its reason, so markers are checked in
+ * both directions. A marker naming a token that is now BACKED, or that no
+ * longer appears in the document at all, is reported as STALE and fails
+ * --gate. That is deliberate friction: when another bet's artifact lands in the
+ * tree and its figures become checkable, the gate says so instead of leaving a
+ * permanent hole where the check used to be.
+ */
+const MARKER_RE = /<!--\s*numeral-ok:\s*([\s\S]*?)\s*-->/g;
+
+function parseMarkers(rawText) {
+  const out = new Map(); // token -> reason
+  const bad = [];
+  // Blank code first, so a document that DOCUMENTS the marker syntax inside a
+  // code span (`<!-- numeral-ok: <token> :: <reason> -->`) does not register
+  // `<token>` as a real marker. Found by this checker reporting exactly that
+  // stale marker against B4.5's own explanation of the mechanism.
+  const text = rawText
+    .replace(/```[\s\S]*?```/g, (m2) => m2.replace(/[^\n]/g, ' '))
+    .replace(/~~~[\s\S]*?~~~/g, (m2) => m2.replace(/[^\n]/g, ' '))
+    .replace(/`[^`\n]*`/g, (m2) => m2.replace(/[^\n]/g, ' '));
+  for (const m of text.matchAll(MARKER_RE)) {
+    const body = m[1];
+    // `::` rather than `--` as the separator: a literal `--` inside an HTML
+    // comment is invalid per the HTML spec and some markdown pipelines choke
+    // on it, which is a silly way to break a documentation build.
+    const split = body.indexOf('::');
+    if (split === -1) {
+      bad.push(`numeral-ok marker without a " :: <reason>": ${JSON.stringify(body.slice(0, 80))}`);
+      continue;
+    }
+    // Split on ", " and not on ",": `25,058` is one token, and a thousands
+    // separator is never followed by a space.
+    const tokens = body.slice(0, split).split(/,\s+/).map((t) => t.trim()).filter(Boolean);
+    const reason = body.slice(split + 2).trim();
+    if (tokens.length === 0) {
+      bad.push(`numeral-ok marker lists no numerals: ${JSON.stringify(body.slice(0, 80))}`);
+      continue;
+    }
+    if (reason === '') {
+      bad.push(`numeral-ok marker has an empty reason: ${JSON.stringify(body.slice(0, 80))}`);
+      continue;
+    }
+    for (const t of tokens) out.set(t, reason);
+  }
+  return { markers: out, bad };
+}
+
 const SPACES = (n) => ' '.repeat(n);
 
 /** Blank out a region while preserving length AND newlines, so offsets hold. */
@@ -269,14 +402,23 @@ const UNIT_SUFFIX = new Set([
   'b', 'kb', 'mb', 'gb', 'tb', 'kib', 'mib', 'gib', 'k', 'M',
 ]);
 
-/** Words that make the following number a reference, not a measurement. */
+/**
+ * Words that make the following number a reference, not a measurement.
+ * The month names are here for the same reason as the rest: `Mar 2027` and
+ * `Dec 2026` are calendar references, and the finishing plan's schedule
+ * section is full of them.
+ */
 const STRUCTURAL_WORD = new Set([
   'section', 'sections', 'act', 'acts', 'clause', 'clauses', 'phase', 'phases',
   'gate', 'gates', 'bet', 'bets', 'step', 'steps', 'line', 'lines', 'item',
   'items', 'instrument', 'instruments', 'table', 'figure', 'appendix', 'page',
   'version', 'round', 'rounds', 'tier', 'note', 'notes', 'cycle', 'cycles',
   'chapter', 'milestone', 'entry', 'footnote', 'v', 'no', 'nr', 'issue', 'pr',
-  'case', 'cases', 'point', 'points',
+  'case', 'cases', 'point', 'points', 'run', 'runs', 'workflow', 'commit',
+  'see', 'per',
+  'jan', 'january', 'feb', 'february', 'mar', 'march', 'apr', 'april', 'may',
+  'jun', 'june', 'jul', 'july', 'aug', 'august', 'sep', 'sept', 'september',
+  'oct', 'october', 'nov', 'november', 'dec', 'december',
 ]);
 
 const NUM_RE = /(?<![\w.$])(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?([eE][+-]?\d+)?/g;
@@ -319,9 +461,23 @@ function extractNumerals(rawText) {
 
     // Preceding word: structural references are not measurements.
     const beforeText = masked.slice(Math.max(0, start - 24), start);
-    if (/#\s?$/.test(beforeText)) continue;
+    // A leading `#` or `§` makes it a cross-reference, not a quantity.
+    if (/[#§]\s?$/.test(beforeText)) continue;
     const pw = /([A-Za-z]+)[\s]+$/.exec(beforeText);
     if (pw && STRUCTURAL_WORD.has(pw[1].toLowerCase())) continue;
+
+    // The FAR end of a structural range: "lines 148-171", "line 241-243".
+    // The rule above only reaches the near end, which left the node-hash-v0
+    // spec reporting its own source-line citations as unbacked measurements.
+    const rangeTail = /([A-Za-z]+)\s+\d[\d,.]*\s*[-–]\s*$/.exec(beforeText);
+    if (rangeTail && STRUCTURAL_WORD.has(rangeTail[1].toLowerCase())) continue;
+
+    // A numeral hyphen-joined to a preceding WORD is part of a compound name,
+    // the mirror of the trailing-identifier rule: IEEE-754, mid-2027, IFC4X3.
+    // Gated on the numeral carrying no unit, so a genuine bar written as
+    // "sub-500 ms" stays checkable -- the suppression is about token shape and
+    // never about value.
+    if (unit === '' && /[A-Za-z]-$/.test(beforeText)) continue;
 
     const value = Number(raw.replace(/,/g, ''));
     if (!Number.isFinite(value)) continue;
@@ -492,10 +648,10 @@ function calibrate(groups, index) {
 
 const roots = targets.length > 0 ? targets.map((t) => path.resolve(t)) : [REPO_ROOT];
 const bets = [];
-for (const r of roots) bets.push(...findBetDirs(r));
+for (const r of roots) bets.push(...findProseSets(r));
 
 if (bets.length === 0) {
-  console.error(`::error::no bet directory found under ${roots.join(', ')}`);
+  console.error(`::error::no prose set found under ${roots.join(', ')}`);
   console.error('A bet directory needs at least one of REPORT.md / DESIGN.md and one non-config .json.');
   process.exit(2);
 }
@@ -513,11 +669,15 @@ for (const bet of bets) {
   };
 
   for (const doc of bet.prose) {
-    const nums = extractNumerals(readFileSync(doc, 'utf-8'));
+    const rawText = readFileSync(doc, 'utf-8');
+    const { markers, bad: badMarkers } = parseMarkers(rawText);
+    const usedMarkers = new Set();
+    const nums = extractNumerals(rawText);
     const backed = [];
     const nearMiss = [];
     const noTrace = [];
     const derived = [];
+    const excused = [];
 
     // Group identical (value, unit) pairs so a number quoted five times is one
     // finding with five line numbers, not five findings.
@@ -529,10 +689,19 @@ for (const bet of bets) {
     }
 
     for (const g of groups.values()) {
+      const token = `${g.raw}${g.unit}`;
       const tol = writtenTolerance(g.raw);
       const direct = matchDirect(g.value, tol, g.unit, index);
       if (direct.kind) {
+        // A marker on a numeral the artifact now backs is an excuse that has
+        // outlived its reason: record it so the STALE list can report it.
+        if (markers.has(token)) usedMarkers.add(`${token} backed`);
         backed.push({ ...g, via: direct.kind, scale: direct.scale, src: direct.entry.src });
+        continue;
+      }
+      if (markers.has(token)) {
+        usedMarkers.add(token);
+        excused.push({ ...g, reason: markers.get(token) });
         continue;
       }
       const der = matchDerived(g.value, tol, g.unit, index);
@@ -544,17 +713,34 @@ for (const bet of bets) {
       else noTrace.push({ ...g, crowding: direct.crowding });
     }
 
+    // Anti-rot: every marker must still be doing work.
+    const staleMarkers = [];
+    for (const [token, reason] of markers) {
+      if (usedMarkers.has(token)) continue;
+      staleMarkers.push({
+        token,
+        reason,
+        why: usedMarkers.has(`${token} backed`)
+          ? 'the artifact now BACKS this numeral -- delete the marker, the check covers it'
+          : 'no unbacked numeral in this document matches this token -- the prose moved, delete the marker',
+      });
+    }
+
     nearMiss.sort((a, b) => a.near.rel - b.near.rel);
     noTrace.sort((a, b) => a.lines[0] - b.lines[0]);
     derived.sort((a, b) => a.lines[0] - b.lines[0]);
+    excused.sort((a, b) => a.lines[0] - b.lines[0]);
 
     betOut.docs.push({
-      doc: path.basename(doc),
+      doc: path.relative(REPO_ROOT, doc) || path.basename(doc),
       total: groups.size,
       backed: backed.length,
       nearMiss,
       noTrace,
       derived,
+      excused,
+      staleMarkers,
+      badMarkers,
       decoy: calibrate([...groups.values()], index),
     });
   }
@@ -581,10 +767,15 @@ for (const bet of results) {
   );
   for (const d of bet.docs) {
     const unbacked = d.nearMiss.length + d.noTrace.length;
-    findings += unbacked;
+    // Derived-only counts as a finding. The DERIVED tier is explicitly "a hint,
+    // not a clearance" -- over a scorecard with a hundred numbers those pairings
+    // land by coincidence (this bet's 8.9x "explains" as a percent change
+    // between two unrelated verify medians), so letting them pass --gate silently
+    // would be the one place the checker clears a number it has not checked.
+    findings += unbacked + d.derived.length + d.staleMarkers.length + d.badMarkers.length;
     console.log(
-      `   ${d.doc}: ${d.total} numerals -- ${d.backed} backed, ${d.derived.length} derived-only, ` +
-        `${unbacked} UNBACKED`,
+      `   ${d.doc}: ${d.total} numerals -- ${d.backed} backed, ${d.excused.length} marked, ` +
+        `${d.derived.length} derived-only, ${unbacked} UNBACKED`,
     );
     console.log(
       `   calibration: ${(d.decoy.rate * 100).toFixed(1)}% of ${d.decoy.decoys} ` +
@@ -632,22 +823,44 @@ for (const bet of results) {
         );
       }
     }
+    if (d.badMarkers.length > 0) {
+      console.log('');
+      console.log(`   MALFORMED numeral-ok MARKERS:`);
+      for (const b of d.badMarkers) console.log(`     ${b}`);
+    }
+    if (d.staleMarkers.length > 0) {
+      console.log('');
+      console.log(`   STALE numeral-ok MARKERS (an excuse must not outlive its reason):`);
+      for (const s of d.staleMarkers) {
+        console.log(`     ${s.token.padEnd(14)} ${s.why}`);
+        console.log(`     ${''.padEnd(14)} reason on file: ${s.reason}`);
+      }
+    }
+    if (d.excused.length > 0) {
+      console.log('');
+      console.log(`   MARKED as legitimately unbacked (\`<!-- numeral-ok: ... :: reason -->\`):`);
+      for (const n of d.excused) {
+        console.log(`     ${fmtLines(n.lines).padEnd(14)} ${(n.raw + n.unit).padEnd(14)} ${n.reason}`);
+      }
+    }
     console.log('');
   }
 }
 
 console.log('------------------------------------');
-console.log(`${findings} unbacked numeral(s) across ${results.length} bet director(ies).`);
+console.log(`${findings} finding(s) across ${results.length} prose set(s).`);
 console.log('');
 console.log('Reading this: an UNBACKED numeral is a QUESTION, not a defect. The three');
-console.log('legitimate answers are (a) it is a bar or a figure from elsewhere -- fine;');
-console.log('(b) it is arithmetic the reader can do -- consider emitting it; (c) it does');
-console.log('not match the artifact -- that is the catch this exists for. The near-miss');
-console.log('list is where (c) lives: a number sitting 1% from the committed value is');
-console.log('almost always prose left behind by a re-run.');
+console.log('legitimate answers are (a) it is a bar or a figure from elsewhere -- mark it');
+console.log('with `<!-- numeral-ok: <token> :: <reason> -->`; (b) it is arithmetic the');
+console.log('reader can do -- prefer emitting it into the artifact; (c) it does not match');
+console.log('the artifact -- that is the catch this exists for. The near-miss list is where');
+console.log('(c) lives: a number sitting 1% from the committed value is almost always prose');
+console.log('left behind by a re-run. STALE/MALFORMED markers count as findings too: an');
+console.log('excuse that no longer applies is the same defect one level up.');
 
 if (GATE && findings > 0) {
-  console.error(`::error::${findings} unbacked numeral(s) and --gate was requested.`);
+  console.error(`::error::${findings} finding(s) and --gate was requested.`);
   process.exit(1);
 }
 process.exit(0);

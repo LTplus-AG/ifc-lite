@@ -298,6 +298,18 @@ rectangular-extrusion family. The pre-committed kill criterion for M3 is not
 triggered; the pre-committed downgrade to derivative-free optimization is not
 invoked; "differentiable buildings" survives the exam it was given.
 
+> **CORRECTION 2026-07-29 (G4 adversarial review, amendment 6 of the finishing
+> plan, signed off by the gate-holder).** The sentence above is true and
+> misleading, and this file is the one a reader on this branch sees. The exam
+> B4.4 was given targets the **extrusion mesher**; M3's binary kill risk is the
+> **CSG/void path**, which this bet did not attack (see section 6.1, which
+> scopes it at two cycles). Section 3's own oracle shows the extrusion volume is
+> a smooth closed form, so this exam could not have failed. **B4.4's PASS
+> therefore neither triggers nor clears M3's binary gate. M3 is UNADJUDICATED**
+> pending the Phase 5 CSG-adjoint bet. Nothing about the engineering result
+> changes: the adjoints are real, they flow through the shipping mesher, and the
+> byte-identity guard holds on the native build.
+
 **Not licensed.**
 
 1. **CSG.** The widened G2 finding was "adjoints through the CSG path". This

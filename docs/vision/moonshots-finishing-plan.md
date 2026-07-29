@@ -230,6 +230,10 @@ unchanged, the original stands.
   respect to design parameters, matching central finite differences to 1e-6
   relative on 95% of a 200-point seeded battery. Pass means M3 is a moonshot.
   Fail means invoke the pre-committed downgrade.
+  **RETRACTED 2026-07-29 (amendment 6, signed off by Louis Truempler).** This
+  exam was run and passed, but against the extrusion mesher rather than the CSG
+  path M3's kill risk names, so "pass means M3 is a moonshot" does not hold.
+  M3 is UNADJUDICATED pending the Phase 5 CSG-adjoint bet.
 
 ### M4 provable merges
 
@@ -357,6 +361,14 @@ A dual-number scalar type through the mesher for the rectangular-extrusion
 family, differentiating divergence-theorem volumes.
 *Exam:* as section 4. Two cycles' worth of risk compressed into one; if it needs
 more than one cycle to reach a verdict, that is itself the answer.
+*G4 review note (2026-07-29), the note this entry should have carried from the
+start:* delivered and reproduced at 200/200, with production behaviour proved
+byte-identical over 4,000 cases on the native build - but **against the
+extrusion mesher, not the CSG/void path M3's kill risk names.** The bet's own
+oracle shows that path's volume is a smooth closed form, so the exam could not
+have failed. This entry does **not** adjudicate M3's binary gate; see amendment
+6. The 40% of components graded against a theoretical zero rather than against
+finite differences are covered by amendment 7.
 
 **B4.5 The M1 midterm as worded.**
 Mesh-bearing DAG at 169 MB scale, both halves in one run.
@@ -500,7 +512,11 @@ Pre-committed; ledger entry mandatory; resurrection requires new evidence.
 - **M2:** unchanged on realism transfer, plus: if B4.3's integrity model still
   falls to a clean-twin-class attack at G5, retire the word "benchmark" and call
   it an internal eval harness.
-- **M3:** B4.4 is binary. Fail means the pre-committed downgrade to
+- **M3:** B4.4 is binary. **Superseded 2026-07-29 by amendment 6:** B4.4 was
+  re-scoped to the extrusion mesher, so it does not trigger or clear this
+  criterion; M3 is unadjudicated pending the Phase 5 CSG-adjoint bet. The
+  downgrade clause below stands, unfired, and applies to that bet's outcome.
+  Fail means the pre-committed downgrade to
   derivative-free optimization over the same objectives, with the B3.3
   certificate machinery retained (it is genuinely good and format-independent)
   and the "differentiable buildings" claim withdrawn.
@@ -562,8 +578,11 @@ amendable only in writing in this file - and the re-scope below was not.
    **CSG/void path** being only piecewise-differentiable. B4.4's exam, written
    in section 5 of this document, targets the **extrusion mesher**. The bet's
    own oracle then proved that path's emitted volume is exactly
-   `det*xdim*ydim*depth` to 2.19e-13 at every one of 1,200 sampled points - a
-   functional containing no piecewise-differentiability risk. **B4.4's PASS
+   `det*xdim*ydim*depth` to 2.19e-13 across the **600 family-A points** that
+   closed form covers (corrected 2026-07-29: the battery's other 600 points are
+   family B, which has a distinct oracle and a battery-wide worst deviation of
+   1.358479e-12). The conclusion is unchanged and the smoothness holds for both
+   families - a functional containing no piecewise-differentiability risk. **B4.4's PASS
    therefore does NOT retire M3's kill risk and does not trigger or clear the
    binary gate as originally stated.** M3's status is amended to: *adjoints
    reach the real mesher on a smooth family, verified byte-identical to

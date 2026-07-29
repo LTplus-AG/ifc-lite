@@ -342,6 +342,16 @@ Pre-committed kill conditions (ledger entry mandatory, resurrection requires new
   held-out tasks by G2, the realism gap is structural; pivot corpus to augmented-real and
   re-gate once.
 - **M3:** spike gate is binary. No adjoint battery pass, no differentiable moonshot.
+  **AMENDED 2026-07-29 (betting table, amendment 6 of moonshots-finishing-plan.md
+  section 9; signed off by Louis Truempler as gate-holder, not by the bet's
+  author).** The Phase 4 spike (B4.4) was run against the **extrusion mesher**,
+  not the CSG/void path this criterion was written about (see the kill risk at
+  section 2, M3, risk 6). Its own oracle then showed the extrusion volume is a
+  smooth closed form, so that exam could not have failed. **B4.4's PASS therefore
+  neither passes nor fails this criterion.** M3's status is
+  **UNADJUDICATED pending the CSG-adjoint bet in Phase 5**; the obstruction is
+  scoped at two cycles in `scripts/moonshot/b44-kernel-adjoint/DESIGN.md`
+  section 6.1.
 - **M4:** if footprint tightening cannot get false-conflict rate below 20% on real traces,
   provable merging is technically true but practically annoying; keep the theorem, drop the
   auto-merge product claim.

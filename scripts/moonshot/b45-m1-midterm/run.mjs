@@ -54,22 +54,33 @@
  * nothing under packages/ or the g0/g1 scripts is touched.
  *
  * Usage:
- *   node scripts/moonshot/b45-m1-midterm/run.mjs [--probe] [--no-aggregates] [fixture.ifc]
+ *   node scripts/moonshot/b45-m1-midterm/run.mjs [--probe] [--no-aggregates]
+ *        [--write-scorecard | --scorecard-out <path>] [fixture.ifc]
  *
- *   --probe           stop after parse + mesh + structure and print an
- *                     extrapolated cost for the full mesh-leaf hash pass.
- *   --no-aggregates   use g0/g1's narrower DAG shape (storey containment only,
- *                     no IfcRelAggregates expansion) for a like-for-like
- *                     comparison against those runs.
+ *   --probe             stop after parse + mesh + structure and print an
+ *                       extrapolated cost for the full mesh-leaf hash pass.
+ *   --no-aggregates     use g0/g1's narrower DAG shape (storey containment only,
+ *                       no IfcRelAggregates expansion) for a like-for-like
+ *                       comparison against those runs.
+ *   --write-scorecard   re-bless: overwrite the COMMITTED scorecard next to this
+ *                       script (`scorecard.json`, or `scorecard-no-aggregates.json`
+ *                       under --no-aggregates).
+ *   --scorecard-out <p> write the scorecard to an explicit path.
  * Env:
  *   B45_SKIP_CROSSCHECK=1   skip the from-scratch rebuild cross-check
  *   B45_KEEP_BUNDLES=1      keep the working bundles instead of deleting them
  *   B45_OUT=<dir>           where bundles go (default: a temp dir)
  *   B45_HEAP_MB=<n>         old-space limit for the re-exec (default 12288)
  *
- * `scorecard.json` is always written next to this script. The script re-execs
- * itself once with a raised old-space limit; a mesh-bearing DAG at this scale
- * does not fit in Node's default heap.
+ * THE PLAIN RUN DOES NOT TOUCH THE COMMITTED SCORECARD. It writes to a temp
+ * path and prints where. An earlier revision always wrote `scorecard.json` next
+ * to this script, which meant the documented reproduction command destroyed the
+ * source of truth it was supposed to be checked against -- and `--no-aggregates`
+ * destroyed it with figures from a DIFFERENT DAG shape. Re-blessing is now an
+ * explicit act (`--write-scorecard`), which is what a source of truth deserves.
+ *
+ * The script re-execs itself once with a raised old-space limit; a mesh-bearing
+ * DAG at this scale does not fit in Node's default heap.
  */
 
 import { fileURLToPath } from 'node:url';
@@ -110,7 +121,21 @@ const PROBE = argv.includes('--probe');
 // IfcRelContainedInSpatialStructure only). Default is the wider shape that
 // also follows IfcRelAggregates — see buildDagStructure's docstring.
 const EXPAND_AGGREGATES = !argv.includes('--no-aggregates');
-const positional = argv.filter((a) => !a.startsWith('--'));
+const WRITE_SCORECARD = argv.includes('--write-scorecard');
+const scorecardOutIdx = argv.indexOf('--scorecard-out');
+const SCORECARD_OUT_ARG = scorecardOutIdx === -1 ? null : argv[scorecardOutIdx + 1];
+if (scorecardOutIdx !== -1 && (!SCORECARD_OUT_ARG || SCORECARD_OUT_ARG.startsWith('--'))) {
+  console.error('--scorecard-out needs a path argument.');
+  process.exit(2);
+}
+if (WRITE_SCORECARD && SCORECARD_OUT_ARG) {
+  console.error('--write-scorecard and --scorecard-out are mutually exclusive: one re-blesses the');
+  console.error('committed scorecard, the other writes somewhere else. Pick one.');
+  process.exit(2);
+}
+const positional = argv.filter(
+  (a, i) => !a.startsWith('--') && !(scorecardOutIdx !== -1 && i === scorecardOutIdx + 1),
+);
 const FIXTURE = path.resolve(
   REPO_ROOT,
   positional[0] ?? 'tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc',
@@ -122,7 +147,20 @@ const FIXTURE = path.resolve(
 const OUT_DIR = process.env.B45_OUT
   ? path.resolve(process.env.B45_OUT)
   : path.join(os.tmpdir(), 'ifc-lite-b45-m1-midterm');
-const SCORECARD_DIR = __dirname;
+
+/**
+ * Where the scorecard goes. The two DAG shapes get two different committed
+ * names on purpose: `--no-aggregates` measures a different graph, and letting it
+ * overwrite `scorecard.json` is how a documented reproduction command silently
+ * replaces the exam's own record with a counterfactual's.
+ */
+const SCORECARD_NAME = EXPAND_AGGREGATES ? 'scorecard.json' : 'scorecard-no-aggregates.json';
+const COMMITTED_SCORECARD = path.join(__dirname, SCORECARD_NAME);
+const SCORECARD_PATH = SCORECARD_OUT_ARG
+  ? path.resolve(SCORECARD_OUT_ARG)
+  : WRITE_SCORECARD
+    ? COMMITTED_SCORECARD
+    : path.join(os.tmpdir(), `ifc-lite-b45-${SCORECARD_NAME}`);
 
 const KERNEL_VERSION = 'b45-m1-midterm-kernel-v0';
 const TRUST_ROOT = 'b45-m1-midterm-trust-root-v0';
@@ -1008,7 +1046,8 @@ async function main() {
     verdict: clause1 && clause2 && clause3 && meshLeavesPresent ? 'PASS' : 'FAIL',
   };
 
-  writeFileSync(path.join(SCORECARD_DIR, 'scorecard.json'), `${JSON.stringify(scorecard, null, 2)}\n`);
+  mkdirSync(path.dirname(SCORECARD_PATH), { recursive: true });
+  writeFileSync(SCORECARD_PATH, `${JSON.stringify(scorecard, null, 2)}\n`);
   if (process.env.B45_KEEP_BUNDLES !== '1') rmSync(OUT_DIR, { recursive: true, force: true });
   console.log(JSON.stringify(scorecard));
 
@@ -1017,6 +1056,14 @@ async function main() {
   log(`CLAUSE 3 (> 90% cache hits, single-wall):         ${clause3 ? 'PASS' : 'FAIL'} (A ${(telemetryA.hitRate * 100).toFixed(4)}%, B ${(telemetryB.hitRate * 100).toFixed(4)}%)`);
   log(`MESH LEAVES PRESENT:                              ${meshLeavesPresent ? 'YES' : 'NO'} (${struct.meshLeafCount} leaves, ${touchedMeshes.length} edited)`);
   log(`VERDICT: ${scorecard.verdict}`);
+  if (SCORECARD_PATH === COMMITTED_SCORECARD) {
+    log(`scorecard RE-BLESSED in place: ${path.relative(REPO_ROOT, SCORECARD_PATH)}`);
+    log('Re-transcribe REPORT.md against it and re-run scripts/moonshot/ci/check-report-numerals.mjs.');
+  } else {
+    log(`scorecard written to ${SCORECARD_PATH}`);
+    log(`committed source of truth left untouched: ${path.relative(REPO_ROOT, COMMITTED_SCORECARD)}`);
+    log('Re-bless it deliberately with --write-scorecard.');
+  }
 }
 
 await main().catch((err) => {

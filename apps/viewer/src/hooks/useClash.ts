@@ -37,6 +37,7 @@ import { getGlobalRenderer } from '@/hooks/useBCF';
 import { buildClashPairColors, CLASH_COLOR_A, CLASH_COLOR_OVERLAP } from '@/lib/clash/clash-colors';
 import { clashFramingBounds } from '@/lib/clash/clash-framing';
 import { posthog } from '@/lib/analytics';
+import { errorCaptureProps } from '@/lib/load-errors';
 import { downloadBlob } from '@/lib/export/download';
 
 interface SelectionRef {
@@ -220,7 +221,7 @@ export function useClash() {
       } catch (err) {
         console.error('[clash] detection run failed', err);
         state.setClashError(err instanceof Error ? err.message : String(err));
-        posthog.captureException(err, { context: 'clash_detection' });
+        posthog.captureException(err, { context: 'clash_detection', ...errorCaptureProps(err) });
       } finally {
         state.setClashRunning(false);
         state.setClashProgress(null);
@@ -302,7 +303,7 @@ export function useClash() {
     } catch (err) {
       console.error('[clash] duplicate scan failed', err);
       state.setClashError(err instanceof Error ? err.message : String(err));
-      posthog.captureException(err, { context: 'clash_duplicates' });
+      posthog.captureException(err, { context: 'clash_duplicates', ...errorCaptureProps(err) });
     } finally {
       state.setClashRunning(false);
       state.setClashProgress(null);

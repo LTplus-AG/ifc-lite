@@ -59,6 +59,15 @@ export type LoadErrorKind =
   | 'wasm_runtime_crashed'
   /** The user (or a superseding load) cancelled the operation. */
   | 'cancelled'
+  /**
+   * A fetch failed at the transport layer and the browser told us nothing else
+   * — WebKit says `Load failed`, Chromium `Failed to fetch`, Gecko
+   * `NetworkError when attempting to fetch resource`. The connection dropped,
+   * went offline, or was killed mid-flight. Nothing in the app is broken and
+   * nothing about the model is wrong, so this is deliberately the LAST bucket
+   * checked: any failure that identified itself keeps its own kind.
+   */
+  | 'network_unavailable'
   /** Anything else. */
   | 'unknown';
 
@@ -196,6 +205,29 @@ function isCancelledError(message: string): boolean {
   return /\bcancel(?:led|ed)?\b|aborterror|the operation was aborted/i.test(message);
 }
 
+/**
+ * A bare transport failure: the request never completed and the browser gave
+ * us nothing but its two-word house phrasing. Because these strings originate
+ * inside `fetch()` rather than in our frames, they arrive with an EMPTY stack —
+ * which is exactly how #1903 reached error tracking as an unattributable
+ * `TypeError: Load failed`.
+ *
+ * Matched on the engine-specific wording only, and checked LAST, so a failure
+ * that named itself (the engine binary, the file, a worker) keeps its own,
+ * more actionable kind.
+ */
+function isNetworkUnavailableError(message: string): boolean {
+  return (
+    // WebKit/Safari, Chromium, Gecko — the generic "fetch rejected" strings.
+    /\bload failed\b|failed to fetch|networkerror when attempting to fetch/i.test(message) ||
+    // Darwin's CFNetwork wording, surfaced verbatim by Safari/WebKit when the
+    // connection drops, the device is offline, or DNS cannot resolve the host.
+    /the network connection was lost|internet connection appears to be offline|a server with the specified hostname could not be found/i.test(
+      message,
+    )
+  );
+}
+
 /** Classify a load failure into a stable analytics bucket. */
 export function classifyLoadError(err: unknown): LoadErrorKind {
   const message = messageOf(err);
@@ -205,9 +237,15 @@ export function classifyLoadError(err: unknown): LoadErrorKind {
   // The `.name` check catches the live DOMException regardless of how the
   // browser worded `.message`; the message match covers the analytics path,
   // where all we have is the already-stringified value.
-  if (errorNameOf(err) === 'NotReadableError' || isFileUnreadableError(message)) {
+  const name = errorNameOf(err);
+  if (name === 'NotReadableError' || isFileUnreadableError(message)) {
     return 'file_unreadable';
   }
+  // Same stable-`.name` argument as NotReadableError above: an aborted fetch
+  // rejects with a DOMException whose `.message` is engine-specific prose that
+  // need not contain the word "abort" at all (WebKit: "Fetch is aborted",
+  // Chromium: "The user aborted a request."). Only `.name` is guaranteed.
+  if (name === 'AbortError') return 'cancelled';
   if (isWasmEngineLoadError(message)) return 'wasm_engine_load';
   // Explicit memory-exhaustion signals win over the worker-crash bucket so a
   // worker that died with a clear OOM message is grouped as out_of_memory.
@@ -216,7 +254,43 @@ export function classifyLoadError(err: unknown): LoadErrorKind {
   if (isGeometryWorkerCrashError(message)) return 'geometry_worker_crash';
   if (isWasmRuntimeCrashError(err, message)) return 'wasm_runtime_crashed';
   if (isCancelledError(message)) return 'cancelled';
+  // Last of the recognised buckets — see `network_unavailable`'s doc comment.
+  if (isNetworkUnavailableError(message)) return 'network_unavailable';
   return 'unknown';
+}
+
+/**
+ * The discriminating properties every `captureException` call site should send
+ * alongside its `context` (issue #1903).
+ *
+ * SPREAD FLAT onto the event — posthog-js takes the second argument as the
+ * event's properties, so nesting these under a wrapper key would bury them in
+ * a blob that cannot be filtered or broken down on.
+ *
+ * Key naming is load-bearing: `scrubProperties` in ./analytics-scrub.ts deletes
+ * any key containing a `_`-delimited `name`, `url`, `path`, `message`, … word,
+ * so this is `error_type`, never `error_name`, and no URL is ever attached.
+ *
+ * - `error_kind`  the classified family (see {@link classifyLoadError}); drives
+ *                 `$exception_fingerprint` grouping and the severity downgrade.
+ * - `error_type`  the throwable's own identity — a DOMException's stable
+ *                 `.name`, else the constructor name. The one property that
+ *                 survives when the message is two words and the stack empty.
+ * - `online`      `navigator.onLine` at capture time, so a user-side outage can
+ *                 be told apart from a failure of ours. Omitted where the
+ *                 browser doesn't expose it (Node tests).
+ */
+export function errorCaptureProps(err: unknown): Record<string, unknown> {
+  const name = errorNameOf(err);
+  const props: Record<string, unknown> = {
+    error_kind: classifyLoadError(err),
+    // `name` is set on every Error and DOMException; the constructor fallback
+    // covers a thrown non-Error (posthog stringifies those, losing even this).
+    error_type: name || (err as { constructor?: { name?: string } })?.constructor?.name || typeof err,
+  };
+  const nav = (globalThis as { navigator?: { onLine?: unknown } }).navigator;
+  if (typeof nav?.onLine === 'boolean') props.online = nav.onLine;
+  return props;
 }
 
 /**
@@ -279,6 +353,11 @@ export function formatLoadError(err: unknown, fileName?: string): string {
         );
     case 'cancelled':
       return `Loading ${subject} was cancelled.`;
+    case 'network_unavailable':
+      return (
+        `Couldn't load ${subject}: the connection dropped while downloading. ` +
+        `Check your network and try again. Nothing was lost, so loading the same file again is safe.`
+      );
     default:
       return `Failed to load ${subject}: ${messageOf(err)}`;
   }

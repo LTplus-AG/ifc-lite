@@ -326,6 +326,44 @@ const stampFingerprint = (
   event.properties.$exception_fingerprint = `ifc-lite:${kind}`;
 };
 
+// ── Benign-vs-real severity ─────────────────────────────────────────────────
+// posthog-js stamps every captured exception `$exception_level: 'error'`, which
+// says "the app is broken". Two of our recognised families are not: a dropped
+// connection and a cancellation are user-side and transient — issue #1903 was
+// one user's cold-cache first visit whose engine download blipped, and whose
+// session went on to load a model successfully 22 s later.
+//
+// They are DOWNGRADED, not dropped, so they stay queryable (a spike in
+// `network_unavailable` is a real signal about a CDN or a region) while no
+// longer competing with genuine breakage on an error-level issue list. Only a
+// level of `error` is rewritten, so a capture site that deliberately chose
+// `fatal` / `warning` / `info` is never clobbered. `wasm_engine_load` is
+// pointedly NOT in this set: a rotated or 404ing engine binary means the deploy
+// is broken for everyone and must stay loud.
+const BENIGN_ERROR_KINDS = new Set<string>(['network_unavailable', 'cancelled']);
+
+const downgradeBenignExceptions = (
+  event: { event?: string; properties?: Record<string, unknown> },
+): void => {
+  if (event.event !== '$exception' || !event.properties) return;
+  const kind = event.properties.error_kind;
+  if (typeof kind !== 'string' || !BENIGN_ERROR_KINDS.has(kind)) return;
+  if (event.properties.$exception_level !== 'error') return;
+  event.properties.$exception_level = 'warning';
+};
+
+// The browser told us it was offline when the fetch failed, so the failure is
+// definitionally user-side and there is nothing on our end to act on. Requires
+// BOTH signals: `online === false` alone could accompany an unrelated bug, and
+// `network_unavailable` alone may well be ours (a dead CDN edge reads the same
+// to an online client). Capture sites set `online` from `navigator.onLine`.
+const isOfflineNetworkFailure = (
+  event: { event?: string; properties?: Record<string, unknown> },
+): boolean =>
+  event.event === '$exception' &&
+  event.properties?.error_kind === 'network_unavailable' &&
+  event.properties?.online === false;
+
 // `before_send` shape: (event | null) => (event | null). Returning null drops
 // the event (noise filter above); otherwise we mutate properties in place,
 // which keeps PostHog's event intact. Generic so it satisfies posthog-js's
@@ -344,6 +382,10 @@ export const scrubEvent = <
   // still rely on the original wording.
   tagErrorKind(event);
   stampFingerprint(event);
+  // After tagging (both read `error_kind`) and before the property walk, which
+  // may delete keys these read.
+  if (isOfflineNetworkFailure(event)) return null;
+  downgradeBenignExceptions(event);
   scrubExceptionMessages(event.properties);
   scrubProperties(event.properties);
   return event;

@@ -16,6 +16,7 @@ import {
   notifyWasmRuntimeUnrecoverable,
   wasmRuntimeUnrecoverableError,
 } from './wasm-runtime-trap.js';
+import { initWasmWithRetry } from './wasm-init-retry.js';
 import init, {
   IfcAPI,
   SymbolicRepresentationCollection,
@@ -164,8 +165,20 @@ export class IfcLiteBridge {
       // Browser: init() with no arg fetches from import.meta.url. Node: pass the
       // bytes via the modern object form ({ module_or_path }) to avoid the
       // deprecated positional-bytes signature.
+      //
+      // Wrapped in `initWasmWithRetry` (issue #1903) so one blip on the ~1.3 MB
+      // (brotli) engine download no longer kills the whole load. This was the
+      // only self-fetching `init()` in the app WITHOUT the retry both workers
+      // already use, and it is the one a first-time visitor hits first — a
+      // returning visitor has the binary in the immutable `/assets/*` cache.
+      // `isTransientWasmLoadError` gates the retry, so a corrupt/invalid module
+      // still fails fast; the shared-module and Node paths pass a prebuilt
+      // `Module`/bytes and cannot be transient, so they never retry.
       const initArg = wasmInitArg ?? sharedModule ?? undefined;
-      await init(initArg ? { module_or_path: initArg } : undefined);
+      await initWasmWithRetry(
+        () => init(initArg ? { module_or_path: initArg } : undefined),
+        { label: 'ifc-lite-bridge' },
+      );
 
       // The WASM bundle has no in-WASM thread pool; rayon `par_iter()`
       // (e.g. FacetedBrep preprocessing) runs sequentially on the main

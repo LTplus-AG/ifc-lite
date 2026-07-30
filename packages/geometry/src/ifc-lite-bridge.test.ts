@@ -117,6 +117,35 @@ describe('IfcLiteBridge', () => {
     expect(wasmMocks.free).not.toHaveBeenCalled();
   });
 
+  // Issue #1903. The two workers have wrapped their `init()` in
+  // `initWasmWithRetry` since #1363; the MAIN-THREAD bridge did not, so a
+  // single blip on the ~1.3 MB engine-binary download killed the whole load —
+  // and it is the first-visit (cold-cache) user who pays that download.
+  it('retries a transient engine-binary download failure exactly once', async () => {
+    // Safari's wording for a failed fetch. Empty stack, two words, no context.
+    wasmMocks.init.mockRejectedValueOnce(new TypeError('Load failed'));
+
+    const bridge = new IfcLiteBridge();
+    await expect(bridge.init()).resolves.toBeUndefined();
+    expect(bridge.isInitialized()).toBe(true);
+    expect(wasmMocks.init).toHaveBeenCalledTimes(2);
+    bridge.dispose();
+  }, 10_000);
+
+  it('attributes a persistent transport failure to the engine binary', async () => {
+    wasmMocks.init
+      .mockRejectedValueOnce(new TypeError('Load failed'))
+      .mockRejectedValueOnce(new TypeError('Load failed'));
+
+    const bridge = new IfcLiteBridge();
+    // Self-identifying end-to-end: the viewer's `classifyLoadError` buckets on
+    // `ifc-lite_bg.wasm`, so this reaches the user as the actionable
+    // "reload the page" guidance and error tracking as `wasm_engine_load`,
+    // with zero stack frames needed.
+    await expect(bridge.init()).rejects.toThrow(/ifc-lite_bg\.wasm/);
+    expect(bridge.isInitialized()).toBe(false);
+  }, 10_000);
+
   // ── #1898: a wasm trap must not brick the whole document ────────────────
   //
   // Production sequence (PostHog 019fa277): a GLB export trapped the engine,

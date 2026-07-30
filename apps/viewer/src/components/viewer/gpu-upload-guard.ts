@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { posthog } from '@/lib/analytics';
-import { classifyLoadError } from '@/lib/load-errors';
+import { errorCaptureProps } from '@/lib/load-errors';
 
 /**
  * Containment for GPU upload work (`createBuffer` and friends).
@@ -70,7 +70,7 @@ export function runGpuUpload<T>(label: string, run: () => T): T | undefined {
       posthog.captureException(err, {
         context: 'gpu_upload',
         gpu_upload_site: label,
-        error_kind: classifyLoadError(err),
+        ...errorCaptureProps(err),
       });
       // Tell the user once. Containment keeps the session alive, but a lost
       // device does not come back on its own and the affected batches will not

@@ -62,7 +62,7 @@ import { computePointCloudAlignment, unregisterPointCloudAlignment, hasRegistere
 import { toast } from '../components/ui/toast.js';
 import { posthog } from '../lib/analytics.js';
 import { reportRenderStats } from '../utils/renderStatsReport.js';
-import { classifyLoadError, formatLoadError, type LoadErrorKind } from '../lib/load-errors.js';
+import { classifyLoadError, errorCaptureProps, formatLoadError, type LoadErrorKind } from '../lib/load-errors.js';
 
 /**
  * The skip-tiny-cuts flag is no longer a hard constant: it is derived per-load
@@ -290,6 +290,21 @@ export function useIfcLoader() {
     let attemptedTessellationTier: TessellationQuality | null | undefined = null;
 
     /**
+     * Which phase of the load was in flight, for the captured exception (#1903).
+     *
+     * A failure inside `loadFile` — 1400 lines with a single outer catch — used
+     * to reach error tracking tagged only `context: 'ifc_model_load'`. When the
+     * throwable is a bare `TypeError: Load failed` with an EMPTY stack (a fetch
+     * rejection carries no frames of ours), that context narrows nothing: it is
+     * the whole function. This is a coarse, deliberately file-name-free marker —
+     * a fixed vocabulary, never user data — so a stackless failure is still
+     * attributable to a phase.
+     */
+    let loadStage:
+      | 'read-file' | 'cache-lookup' | 'server-fetch' | 'engine-init'
+      | 'parse' | 'geometry-stream' | 'finalize' = 'read-file';
+
+    /**
      * Resource-limit recovery, shared by BOTH failure paths.
      *
      * The geometry-streaming loop has its own inner catch (it must close the
@@ -315,7 +330,13 @@ export function useIfcLoader() {
       if (retryTier === null) return false;
       // Still report the original failure so the memory wall stays visible in
       // analytics — the retry only gives the user a shot at a result first.
-      posthog.captureException(err, { context, error_kind: kind, resource_retry: retryTier });
+      posthog.captureException(err, {
+        context,
+        ...errorCaptureProps(err),
+        load_stage: loadStage,
+        is_retry: options?.isResourceRetry === true,
+        resource_retry: retryTier,
+      });
       void import('@/components/ui/toast')
         .then((m) => {
           m.toast.info(
@@ -905,6 +926,7 @@ export function useIfcLoader() {
       // permanently untextured. Mirrors the cache-write skip below.
       if (target.kind === 'primary' && cachePlan.shouldCache && !textureBitmaps) {
         setProgress({ phase: 'Checking cache', percent: 5 });
+        loadStage = 'cache-lookup';
         const cacheResult = await getCached(cacheKey);
         if (cacheResult) {
           // A source-decoupled (mesh-only) entry persisted NO source, so it will
@@ -992,6 +1014,7 @@ export function useIfcLoader() {
       // silently render the model untextured — route those through local WASM.
       if (target.kind === 'primary' && format === 'ifc' && !mergeLayersAtLoad && !textureBitmaps && USE_SERVER && SERVER_URL && SERVER_URL !== '') {
         // Pass buffer directly - server uses File object for parsing, buffer is only for size checks
+        loadStage = 'server-fetch';
         const serverSuccess = await loadFromServer(file, buffer, () => loadSessionRef.current !== currentSession);
         if (serverSuccess) {
           const state = useViewerStore.getState();
@@ -1042,7 +1065,12 @@ export function useIfcLoader() {
         // doesn't consume and silently dropped.
         enableInstancing: target.kind === 'primary',
       });
+      // The engine binary's own download lives here (wasm-bindgen fetches
+      // `ifc-lite_bg.wasm` from `import.meta.url`), so this is the one stage a
+      // first-visit user can fail in before a single IFC byte is touched.
+      loadStage = 'engine-init';
       await geometryProcessor.init();
+      loadStage = 'parse';
       // Issue #924: enable RTC-invariant per-entity geometry fingerprints so
       // the model-compare feature can detect geometry changes. The hash rides
       // on each MeshData.geometryHash (and through the worker pool); cost is
@@ -1262,6 +1290,7 @@ export function useIfcLoader() {
       let finalizePromise: Promise<void> | null = null;
 
       try {
+        loadStage = 'geometry-stream';
         // Use dynamic batch sizing for optimal throughput
         const dynamicBatchConfig = getDynamicBatchConfig(fileSizeMB);
         memoryAccounting.beginPhase('geometry');
@@ -1700,7 +1729,12 @@ export function useIfcLoader() {
         setError(formatLoadError(err, file.name));
         // Flat properties: posthog-js spreads this object onto the event, so a
         // wrapper key would bury `error_kind` in an unfilterable nested blob.
-        posthog.captureException(err, { context: 'geometry_processing', error_kind: kind });
+        posthog.captureException(err, {
+          context: 'geometry_processing',
+          ...errorCaptureProps(err),
+          load_stage: loadStage,
+          is_retry: options?.isResourceRetry === true,
+        });
         setLoading(false);
         setGeometryStreamingActive(false);
         return;
@@ -1715,6 +1749,7 @@ export function useIfcLoader() {
       // → id offset → spatial index → addModel). Await it so loadFile resolves
       // only AFTER the model is in the map — loadFilesSequentially loads the
       // next file serially and relies on this ordering for id-offset assignment.
+      loadStage = 'finalize';
       if (target.kind === 'federated' && finalizePromise) {
         await finalizePromise;
       }
@@ -1798,7 +1833,16 @@ export function useIfcLoader() {
         loadError: friendly,
       });
       setError(friendly);
-      posthog.captureException(err, { context: 'ifc_model_load', error_kind: kind });
+      // Flat, and enough to identify the failure WITHOUT a stack: a fetch
+      // rejection ("Load failed" / "Failed to fetch") carries no frames of
+      // ours, so `load_stage` + `error_type` + `online` are all the triage
+      // signal there is. See errorCaptureProps in ../lib/load-errors.ts.
+      posthog.captureException(err, {
+        context: 'ifc_model_load',
+        ...errorCaptureProps(err),
+        load_stage: loadStage,
+        is_retry: options?.isResourceRetry === true,
+      });
       setLoading(false);
       setGeometryStreamingActive(false);
     }

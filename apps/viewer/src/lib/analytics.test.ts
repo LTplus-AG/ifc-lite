@@ -425,3 +425,86 @@ describe('scrubEvent — nested + message redaction', () => {
     assert.equal(out?.properties?.thing, null);
   });
 });
+
+// Issue #1903. A transient user-side network drop reached error tracking at
+// `$exception_level: 'error'` with `error_kind: 'unknown'` and no fingerprint —
+// indistinguishable from the app being broken. These pin the new contract:
+// recognise it, group it, downgrade it, and drop only the provably-offline case.
+describe('scrubEvent — benign network failures (#1903)', () => {
+  // The exact event shape captured in production: bare WebKit phrasing, no
+  // `stacktrace` key at all (a fetch rejection has no frames of ours).
+  const safariLoadFailed = (extraProps: Record<string, unknown> = {}): CaptureEvent => ({
+    event: '$exception',
+    properties: {
+      $exception_list: [{ type: 'TypeError', value: 'Load failed', mechanism: { handled: true } }],
+      $exception_level: 'error',
+      context: 'ifc_model_load',
+      ...extraProps,
+    },
+  });
+
+  it('recognises and fingerprints a bare transport failure', () => {
+    const out = scrubEvent(safariLoadFailed());
+    assert.equal(out?.properties?.error_kind, 'network_unavailable');
+    assert.equal(out?.properties?.$exception_fingerprint, 'ifc-lite:network_unavailable');
+  });
+
+  it('downgrades it from error to warning', () => {
+    const out = scrubEvent(safariLoadFailed());
+    assert.equal(out?.properties?.$exception_level, 'warning');
+  });
+
+  it('downgrades a cancellation too', () => {
+    const out = scrubEvent(exceptionEvent('The operation was aborted', {
+      $exception_level: 'error',
+    }));
+    assert.equal(out?.properties?.error_kind, 'cancelled');
+    assert.equal(out?.properties?.$exception_level, 'warning');
+  });
+
+  it('drops the event entirely when the browser reported the user offline', () => {
+    assert.equal(scrubEvent(safariLoadFailed({ online: false })), null);
+    // Online is kept: a dead CDN edge reads identically to a client, and that
+    // one IS ours to fix.
+    assert.notEqual(scrubEvent(safariLoadFailed({ online: true })), null);
+  });
+
+  it('keeps a real engine-binary failure LOUD (a broken deploy must not be muted)', () => {
+    const out = scrubEvent(exceptionEvent(
+      'Failed to load the WASM engine binary (ifc-lite_bg.wasm) in ifc-lite-bridge: Load failed',
+      { $exception_level: 'error', online: false },
+    ));
+    assert.notEqual(out, null);
+    assert.equal(out?.properties?.error_kind, 'wasm_engine_load');
+    assert.equal(out?.properties?.$exception_level, 'error');
+    // `wasm` is not a model extension, so the privacy scrub leaves the binary
+    // name — which is the whole point of the attribution — intact.
+    assert.match(
+      (out?.properties?.$exception_list as { value: string }[])[0].value,
+      /ifc-lite_bg\.wasm/,
+    );
+  });
+
+  it('never clobbers a level deliberately chosen at the capture site', () => {
+    const out = scrubEvent(safariLoadFailed({ $exception_level: 'fatal' }));
+    assert.equal(out?.properties?.$exception_level, 'fatal');
+  });
+
+  it('keeps every discriminating capture-site property (key-naming contract)', () => {
+    const out = scrubEvent(safariLoadFailed({
+      error_type: 'TypeError',
+      load_stage: 'engine-init',
+      is_retry: false,
+      online: true,
+    }));
+    assert.equal(out?.properties?.context, 'ifc_model_load');
+    assert.equal(out?.properties?.error_type, 'TypeError');
+    assert.equal(out?.properties?.load_stage, 'engine-init');
+    assert.equal(out?.properties?.is_retry, false);
+    assert.equal(out?.properties?.online, true);
+    // …whereas `error_name` would be deleted outright. This is why the property
+    // is `error_type`. Do not rename it.
+    const named = scrubEvent(safariLoadFailed({ error_name: 'TypeError' }));
+    assert.equal(named?.properties?.error_name, undefined);
+  });
+});

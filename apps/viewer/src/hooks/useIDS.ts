@@ -51,6 +51,7 @@ import {
 import type { ColorTuple } from './ids/idsColorSystem';
 import { downloadReportJSON, downloadReportHTML } from './ids/idsExportService';
 import { posthog } from '../lib/analytics';
+import { errorCaptureProps } from '../lib/load-errors';
 
 // ============================================================================
 // Types
@@ -444,7 +445,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Validation failed';
       setIdsError(message);
-      posthog.captureException(err, { context: 'ids_validation' });
+      posthog.captureException(err, { context: 'ids_validation', ...errorCaptureProps(err) });
       console.error('[IDS] Validation error:', err);
       return null;
     } finally {

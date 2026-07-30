@@ -5,6 +5,7 @@
 import { describe, it, mock } from 'node:test';
 import assert from 'node:assert';
 import { Renderer } from './index.js';
+import { Picker } from './picker.js';
 import type { MeshData, RenderOptions, BatchedMesh } from './types.js';
 
 /**
@@ -12,9 +13,11 @@ import type { MeshData, RenderOptions, BatchedMesh } from './types.js';
  * fixes are exercised end to end without a browser: error-scope push/pop
  * balance on every exit path, destroy() idempotency, content-based
  * visibility epochs reaching the batched draw path, partial-cache
- * drop/rebuild on hide/isolate toggling, and hydrated-mesh disposal across
- * selections and federated models. The stub records buffer creates/destroys
- * and draw calls; everything else (Scene, Camera, batching, caches) is real.
+ * drop/rebuild on hide/isolate toggling, hydrated-mesh disposal across
+ * selections and federated models, and the pick path's device-liveness
+ * guard. The stub records buffer creates/destroys, draw calls and
+ * `mapAsync` readbacks; everything else (Scene, Camera, batching, caches,
+ * Picker, PickingManager) is real.
  */
 
 // WebGPU enum globals used by Scene buffer creation (not defined in node).
@@ -26,10 +29,19 @@ import type { MeshData, RenderOptions, BatchedMesh } from './types.js';
     COPY_SRC: 1, COPY_DST: 2, TEXTURE_BINDING: 4, STORAGE_BINDING: 8, RENDER_ATTACHMENT: 16,
 };
 
+/**
+ * Verbatim Chromium/Dawn wording when a pending (or newly issued) buffer map
+ * is completed by wire-client shutdown — i.e. the GPU device behind it is
+ * destroyed or lost. This is the exact string reported in #1901.
+ */
+const MAP_ASYNC_ABORT =
+    "Failed to execute 'mapAsync' on 'GPUBuffer': A valid external Instance reference no longer exists.";
+
 interface FakeBuffer {
     size: number;
     destroyed: number;
     getMappedRange(): ArrayBuffer;
+    mapAsync(mode: number): Promise<void>;
     unmap(): void;
     destroy(): void;
 }
@@ -42,6 +54,8 @@ interface Harness {
         /** vertex buffer bound at slot 0 when each drawIndexed fired */
         draws: unknown[];
         createdBuffers: FakeBuffer[];
+        /** how many times a readback buffer was actually mapped */
+        mapAsync: number;
     };
     knobs: {
         /** 'texture' = getCurrentTexture succeeds; 'null' = returns null */
@@ -50,6 +64,13 @@ interface Harness {
         encodeThrows: boolean;
         /** make popErrorScope() reject (device lost while scope pending) */
         popRejects: boolean;
+        /**
+         * The GPU device behind the stub is gone (destroyed by us, or lost to a
+         * driver reset / GPU-process crash). Set automatically by
+         * `device.destroy()`; set by hand to model an involuntary loss, where
+         * the device object stays wired up but every map rejects.
+         */
+        gpuDead: boolean;
     };
     render(options?: RenderOptions): void;
     /** flush the popErrorScope() promise chains */
@@ -57,8 +78,10 @@ interface Harness {
 }
 
 function makeHarness(): Harness {
-    const stats: Harness['stats'] = { push: 0, pop: 0, draws: [], createdBuffers: [] };
-    const knobs: Harness['knobs'] = { textureMode: 'texture', encodeThrows: false, popRejects: false };
+    const stats: Harness['stats'] = { push: 0, pop: 0, draws: [], createdBuffers: [], mapAsync: 0 };
+    const knobs: Harness['knobs'] = {
+        textureMode: 'texture', encodeThrows: false, popRejects: false, gpuDead: false,
+    };
 
     const makeBuffer = (desc: { size: number }): FakeBuffer => {
         const buf: FakeBuffer & { _ab: ArrayBuffer } = {
@@ -66,6 +89,14 @@ function makeHarness(): Harness {
             destroyed: 0,
             _ab: new ArrayBuffer(desc.size),
             getMappedRange() { return this._ab; },
+            mapAsync() {
+                stats.mapAsync++;
+                // Same failure mode as the browser: a map issued against a dead
+                // device rejects rather than resolving.
+                return knobs.gpuDead
+                    ? Promise.reject(new DOMException(MAP_ASYNC_ABORT, 'AbortError'))
+                    : Promise.resolve();
+            },
             unmap() { /* no-op */ },
             destroy() { this.destroyed++; },
         };
@@ -119,7 +150,17 @@ function makeHarness(): Harness {
                 case 'createCommandEncoder': return () => encoder;
                 case 'createBuffer': return (desc: { size: number }) => makeBuffer(desc);
                 case 'createBindGroup': return () => ({});
-                case 'createTexture': return () => ({ createView: () => ({}), destroy() { /* no-op */ } });
+                case 'createTexture': return (desc: { size: { width: number; height: number } }) => ({
+                    width: desc.size.width,
+                    height: desc.size.height,
+                    createView: () => ({}),
+                    destroy() { /* no-op */ },
+                });
+                // Picker builds real pipelines in its constructor and binds
+                // through the auto layout, so both arms must return objects.
+                case 'createShaderModule': return () => ({});
+                case 'createRenderPipeline': return () => ({ getBindGroupLayout: () => ({}) });
+                case 'destroy': return () => { knobs.gpuDead = true; };
                 default: return () => undefined;
             }
         },
@@ -446,5 +487,111 @@ describe('hydrated selection meshes across renders', () => {
 
         h.render({});
         assert.strictEqual(scene.getMeshes().filter((m) => m.hydrated).length, 0);
+    });
+});
+
+/**
+ * Regression for #1901: an unhandled `AbortError` from `mapAsync` on every
+ * click after the GPU device went away.
+ *
+ * `render()` has always early-returned on a destroyed/lost device; the pick
+ * path did not. A pick is a full GPU round trip ending in a `mapAsync`
+ * readback, so once the device is gone that readback rejects — and the DOM
+ * click/contextmenu handlers that reach here are `async` listeners whose
+ * promise nobody awaits, so the rejection escapes unhandled. Not a one-shot
+ * teardown race: the picker stays dead, so it fired once per click (three
+ * aborts 0.8 s apart in one production session).
+ *
+ * Every assertion below is on `stats.mapAsync`, not just on the returned
+ * value: the fix must short-circuit BEFORE the GPU call. A try/catch around
+ * the readback would still report a non-zero count and fail these.
+ */
+describe('pick path survives a dead GPU device (#1901)', () => {
+    /** Wire a REAL Picker into the renderer (init() needs a browser). */
+    function installPicker(h: Harness): Picker {
+        const picker = new Picker(h.renderer['device'], 256, 256);
+        (h.renderer as unknown as Record<string, unknown>)['picker'] = picker;
+        h.renderer['pickingManager'].setPicker(picker);
+        return picker;
+    }
+
+    /** Model an involuntary loss (driver reset / GPU-process crash). */
+    function loseDevice(h: Harness): void {
+        h.knobs.gpuDead = true;
+        h.renderer['handleDeviceLost']({ message: 'device lost', reason: 'unknown' });
+    }
+
+    it('positive control: a healthy pick really does reach the mapAsync readback', async () => {
+        const h = makeHarness();
+        installPicker(h);
+        // Resolves null because the stub reads back a zeroed sample (no hit);
+        // the readback COUNT is what proves the pass ran, not the value.
+        assert.strictEqual(await h.renderer.pick(10, 10), null);
+        assert.strictEqual(h.stats.mapAsync, 2, 'pick() maps the colour + depth readbacks');
+
+        h.stats.mapAsync = 0;
+        assert.deepStrictEqual(await h.renderer.pickRect(0, 0, 8, 8), new Set());
+        assert.strictEqual(h.stats.mapAsync, 1, 'pickRect() maps the rect readback');
+    });
+
+    it('pick() after destroy() resolves null instead of rejecting with AbortError', async () => {
+        const h = makeHarness();
+        installPicker(h);
+        h.renderer.destroy();
+
+        h.stats.mapAsync = 0;
+        assert.strictEqual(await h.renderer.pick(10, 10), null);
+        assert.strictEqual(h.stats.mapAsync, 0, 'guard must fire before the GPU readback');
+    });
+
+    it('pick() after an involuntary device loss resolves null instead of rejecting', async () => {
+        const h = makeHarness();
+        installPicker(h);
+        // The production shape: renderer still mounted, canvas frozen, user
+        // keeps clicking. Every click used to mint an unhandled rejection.
+        loseDevice(h);
+
+        h.stats.mapAsync = 0;
+        for (let i = 0; i < 3; i++) {
+            assert.strictEqual(await h.renderer.pick(10, 10), null);
+        }
+        assert.strictEqual(h.stats.mapAsync, 0, 'no click may reach the GPU readback');
+    });
+
+    it('pickRect() resolves an empty set after destroy() and after device loss', async () => {
+        const destroyed = makeHarness();
+        installPicker(destroyed);
+        destroyed.renderer.destroy();
+        destroyed.stats.mapAsync = 0;
+        assert.deepStrictEqual(await destroyed.renderer.pickRect(0, 0, 8, 8), new Set());
+        assert.strictEqual(destroyed.stats.mapAsync, 0);
+
+        const lost = makeHarness();
+        installPicker(lost);
+        loseDevice(lost);
+        lost.stats.mapAsync = 0;
+        assert.deepStrictEqual(await lost.renderer.pickRect(0, 0, 8, 8), new Set());
+        assert.strictEqual(lost.stats.mapAsync, 0);
+    });
+
+    it('Picker itself is inert after destroy() (it is a public export, usable standalone)', async () => {
+        const h = makeHarness();
+        const picker = installPicker(h);
+        const viewProj = new Float32Array(16);
+        picker.destroy();
+        h.knobs.gpuDead = true;
+
+        h.stats.mapAsync = 0;
+        assert.strictEqual(await picker.pick(10, 10, 256, 256, [], viewProj), null);
+        assert.deepStrictEqual(await picker.pickRect(0, 0, 8, 8, 256, 256, [], viewProj), new Set());
+        assert.strictEqual(h.stats.mapAsync, 0);
+    });
+
+    it('destroy() clears the picker the PickingManager holds, not just the renderer\'s', () => {
+        const h = makeHarness();
+        installPicker(h);
+        h.renderer.destroy();
+        assert.strictEqual(h.renderer['pickingManager']['picker'], null,
+            'a dangling manager reference keeps driving destroyed GPU resources');
     });
 });

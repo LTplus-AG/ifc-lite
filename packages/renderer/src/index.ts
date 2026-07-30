@@ -2985,9 +2985,34 @@ export class Renderer {
      *
      * Note: x, y are CSS pixel coordinates relative to the canvas element.
      * These are scaled internally to match the actual canvas pixel dimensions.
+     *
+     * Resolves null once the device is gone — see `pickPathAlive()`.
      */
     async pick(x: number, y: number, options?: PickOptions): Promise<PickResult | null> {
+        if (!this.pickPathAlive()) return null;
         return this.pickingManager.pick(x, y, options, this.activePickClip());
+    }
+
+    /**
+     * Whether the GPU pick path can still run — the same liveness contract
+     * `render()` and `getGPUDevice()` apply, which the pick path used to skip.
+     *
+     * A pick is a full GPU round trip (render pass, `copyTextureToBuffer`,
+     * `mapAsync` readback). Once the device is destroyed or lost, that readback
+     * never completes: Chromium rejects the pending map with an AbortError
+     * ("A valid external Instance reference no longer exists"). Nothing on the
+     * pick path is in a position to handle it — the DOM click/contextmenu
+     * handlers that reach here are `async` listeners whose promise nobody
+     * awaits — so it escapes as an unhandled rejection, once per click, for as
+     * long as the user keeps clicking a frozen viewport (#1901).
+     *
+     * Callers therefore degrade to "no hit" instead of throwing, matching how
+     * `render()` degrades to "skip the frame". This is not a swallow: the GPU
+     * call is never issued, so no error is being hidden. Consumers that want to
+     * react to the loss subscribe to `onDeviceLost()`.
+     */
+    private pickPathAlive(): boolean {
+        return !this.deviceLost && this.device.isInitialized();
     }
 
     /**
@@ -3006,6 +3031,8 @@ export class Renderer {
      *
      * See `PickingManager.pickRect` for the visibility-filter +
      * limitation notes.
+     *
+     * Resolves an empty set once the device is gone — see `pickPathAlive()`.
      */
     async pickRect(
         x0: number,
@@ -3014,6 +3041,7 @@ export class Renderer {
         y1: number,
         options?: PickOptions,
     ): Promise<Set<number>> {
+        if (!this.pickPathAlive()) return new Set();
         return this.pickingManager.pickRect(x0, y0, x1, y1, options, this.activePickClip());
     }
 
@@ -3513,9 +3541,13 @@ export class Renderer {
         this.pipeline?.destroy();
         this.pipeline = null;
 
-        // Picker GPU resources
+        // Picker GPU resources. The manager holds its own reference, so clear
+        // that too — otherwise its `if (!this.picker) return null` guard keeps
+        // pointing at a destroyed picker and a stray click still drives dead
+        // GPU resources (#1901).
         this.picker?.destroy();
         this.picker = null;
+        this.pickingManager.setPicker(null);
 
         // Post-processor uniform buffer
         this.postProcessor?.destroy();

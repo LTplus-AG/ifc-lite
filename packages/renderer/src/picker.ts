@@ -62,6 +62,7 @@ export class Picker {
   private expressIdBuffer: GPUBuffer;
   private bindGroup: GPUBindGroup;
   private maxMeshes: number = 100000; // Support up to 100K meshes (was 10K)
+  /** Set by `destroy()`; makes it idempotent and turns `pick`/`pickRect` into no-ops. */
   private destroyed = false;
   private pointPicker: PointPicker | null = null;
   // Reused scratch for the 32-float (128-byte) uniform block: viewProj +
@@ -338,6 +339,9 @@ export class Picker {
    * Returns `PickResult` with `{expressId, modelIndex}` for both kinds.
    * For point hits, expressId is the federated globalId of the asset
    * (already correct for hover/selection plumbing — no remapping needed).
+   *
+   * Returns null once `destroy()` has run — every texture and buffer below is
+   * already freed, so the `mapAsync` readback could only reject.
    */
   async pick(
     x: number,
@@ -351,6 +355,7 @@ export class Picker {
     instancedTemplates?: readonly InstancedTemplateGPU[],
     clip?: PickClipState | null,
   ): Promise<PickResult | null> {
+    if (this.destroyed) return null;
     const encoder = this.renderPickPass(width, height, meshes, viewProj, pointNodes, pointSizing, instancedTemplates, clip);
 
     // Clamp the texel origin to the texture bounds. Math.floor(x/y) can
@@ -477,6 +482,9 @@ export class Picker {
    * sustained use because the readback grows with rect area. A 800×600
    * rect = 480k pixels = ~2 MB transfer, fine for one-shot but we'd
    * want a GPU-side dedupe for sustained marquee selection.
+   *
+   * Returns an empty set once `destroy()` has run, for the same reason
+   * {@link Picker.pick} returns null.
    */
   async pickRect(
     x0: number,
@@ -492,6 +500,7 @@ export class Picker {
     instancedTemplates?: readonly InstancedTemplateGPU[],
     clip?: PickClipState | null,
   ): Promise<Set<number>> {
+    if (this.destroyed) return new Set();
     // Normalise + clip rect to texture bounds.
     const lx = Math.max(0, Math.floor(Math.min(x0, x1)));
     const ly = Math.max(0, Math.floor(Math.min(y0, y1)));

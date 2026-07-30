@@ -77,7 +77,7 @@ fn discover_models() -> Vec<PathBuf> {
 /// with `Closed = .T.` is a solid. Treating the whole bucket as open is a
 /// simplification that UNDER-counts defects; revisit when the 209 is worked
 /// down.
-const BASELINE_NON_INVARIANT: usize = 136;
+const BASELINE_NON_INVARIANT: usize = 133;
 const BASELINE_TORN_SOLID: usize = 41;
 /// Total torn void hosts across the corpus, and hosts carrying at least one
 /// snap-collapsed triangle. Gated so the µm-scatter fix in
@@ -94,11 +94,26 @@ const BASELINE_COLLAPSED: usize = 51;
 /// a fix cannot trade many small tears for a few catastrophic ones.
 const BASELINE_OPEN_EDGE_TOTAL: usize = 17_792;
 
+/// Corpus floor. The ceilings above are all upper bounds, so without this a tree
+/// with no fixtures passes every one of them while measuring nothing.
+const MIN_MODELS: usize = 100;
+const MIN_VOID_HOSTS: usize = 1300;
+
 /// Representation types that describe a CLOSED solid and are therefore
 /// legitimately expected to produce watertight geometry.
 fn is_closed_solid(rep: &str) -> bool {
     matches!(rep, "SweptSolid" | "CSG" | "Clipping" | "Brep" | "AdvancedBrep")
 }
+
+/// Arm/disarm the differential oracle. A no-op without the feature, so this file
+/// still compiles in the default `cargo test --workspace` run, where the test body
+/// early-returns anyway.
+#[cfg(feature = "triangulation-alt")]
+fn set_alt(on: bool) {
+    ifc_lite_geometry::set_alt_triangulator(on);
+}
+#[cfg(not(feature = "triangulation-alt"))]
+fn set_alt(_on: bool) {}
 
 fn void_index(content: &str) -> FxHashMap<u32, Vec<u32>> {
     let mut idx: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
@@ -298,7 +313,7 @@ fn representation_type(content: &str, id: u32) -> String {
 /// preserve millimetre topology, and seams crack for reasons that have nothing to
 /// do with the boolean.
 /// Magnitude below which f32 comfortably carries the 1 mm topology this metric
-/// measures. The f32 step is `2^-23 * magnitude`, so at 1e4 it is already 1.2 mm
+/// measures. The f32 step is `2^-23 * magnitude`, so at 1e4 it would already be 1.2 mm
 /// — coarser than the snap bucket, which means f32 merge artifacts would still be
 /// counted as tears. 1e3 gives a 0.12 mm step, a 10x margin.
 const F32_SAFE_MAGNITUDE: f64 = 1.0e3;
@@ -357,13 +372,13 @@ fn watertightness_is_invariant_to_the_triangulator() {
         hosts.sort_unstable();
 
         for id in hosts {
-            std::env::remove_var("IFCLITE_TRIANGULATION_ALT");
+            set_alt(false);
             let Some(base) = process(&content, id, &voids) else {
                 continue;
             };
-            std::env::set_var("IFCLITE_TRIANGULATION_ALT", "1");
+            set_alt(true);
             let alt = process(&content, id, &voids);
-            std::env::remove_var("IFCLITE_TRIANGULATION_ALT");
+            set_alt(false);
 
             swept += 1;
             let bo = open_boundary_edges(&base);
@@ -521,8 +536,18 @@ fn watertightness_is_invariant_to_the_triangulator() {
     println!("far-field (below RTC, f32 cannot hold mm): {} not gated", far.0 + far.1);
     println!("non-invariant total: {} (baseline {BASELINE_NON_INVARIANT})", divergences.len());
 
+    // FLOOR. Every other assertion here is an upper bound, so a missing or partial
+    // `tests/models` tree (shallow clone, fixtures not fetched, path drift) yields
+    // zeros and a green run that certifies nothing. Pin the corpus size too.
     assert!(
-        BASELINE_OPEN_EDGE_TOTAL == 0 || open_edge_total <= BASELINE_OPEN_EDGE_TOTAL,
+        models_seen >= MIN_MODELS && swept >= MIN_VOID_HOSTS,
+        "corpus under-populated: {models_seen} models / {swept} void hosts, expected \
+         at least {MIN_MODELS} / {MIN_VOID_HOSTS} — fixtures missing, so the ceilings \
+         below would pass vacuously"
+    );
+
+    assert!(
+        open_edge_total <= BASELINE_OPEN_EDGE_TOTAL,
         "total unmatched edges grew: {open_edge_total} > {BASELINE_OPEN_EDGE_TOTAL}"
     );
     assert!(

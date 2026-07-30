@@ -74,12 +74,20 @@ pub(super) fn closed_or_hairline(mesh: &Mesh) -> bool {
         return false;
     }
     // Canonicalize to undirected segments with a net sign.
+    //
+    // Sorted by endpoint key, NOT left in `edges` iteration order: `FxHashMap`
+    // iterates target-dependently, and the length sort below is not a total order,
+    // so equal-length segments would seed the line grouping in an arbitrary order
+    // that differs between native and wasm32. The grouping is greedy, so a
+    // different seed can reach a different verdict. (Pre-existing; surfaced when
+    // this moved out of `prism_cut.rs`.)
     let mut bad: Vec<(K, K, i64)> = Vec::new();
     for (&(a, b), &c) in edges.iter() {
         if c > 0 {
             bad.push((a, b, c));
         }
     }
+    bad.sort_unstable_by_key(|&(a, b, _)| (a, b));
     if bad.is_empty() {
         return true;
     }
@@ -140,7 +148,9 @@ pub(super) fn closed_or_hairline(mesh: &Mesh) -> bool {
     order.sort_by(|&i, &j| {
         let li = dot(sub(segs[i].b, segs[i].a), sub(segs[i].b, segs[i].a));
         let lj = dot(sub(segs[j].b, segs[j].a), sub(segs[j].b, segs[j].a));
-        lj.partial_cmp(&li).unwrap()
+        // `total_cmp` + index tie-break: a total order, so the seed sequence is a
+        // pure function of `bad` (already canonically sorted above).
+        lj.total_cmp(&li).then(i.cmp(&j))
     });
     let mut lines: Vec<Line> = Vec::new();
     'seg: for si in order {

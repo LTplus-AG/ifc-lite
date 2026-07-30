@@ -84,6 +84,18 @@ pub(super) struct SeamVert {
 
 pub(super) type SeamMap = std::collections::BTreeMap<(i64, i64, i64), SeamVert>;
 
+/// Inclusive range bounds on the 0.1 mm lattice `SeamMap` is keyed by. Widened by
+/// one cell on each side so the range is a strict SUPERSET of the box — the plane
+/// and AABB tests inside `conform_plans` still reject everything spurious, this only
+/// stops each bucket walking the whole map.
+fn seam_bounds(lo: [f64; 3], hi: [f64; 3]) -> ((i64, i64, i64), (i64, i64, i64)) {
+    let q = |v: f64| (v * 1.0e4).round() as i64;
+    (
+        (q(lo[0]) - 1, i64::MIN, i64::MIN),
+        (q(hi[0]) + 1, i64::MAX, i64::MAX),
+    )
+}
+
 /// Record `p` as kept by bucket `bid`. Buckets are visited in order, so `last`
 /// dedupes repeats inside one bucket without a per-position set. BTreeMap keeps the
 /// whole pass target-independent (native == wasm), like the bucket map itself.
@@ -185,6 +197,13 @@ pub(super) struct PlanRegion {
     pub(super) holes: Vec<Vec<nalgebra::Point2<f64>>>,
     pub(super) outer_conformed: Vec<nalgebra::Point2<f64>>,
     pub(super) holes_conformed: Vec<Vec<nalgebra::Point2<f64>>>,
+    /// Did phase B actually change this region's rings?
+    pub(super) changed: bool,
+    /// Pass-1 CDT result, reused verbatim by the conformed pass for every region
+    /// phase B left alone. The quality CDT with Ruppert refinement is the dominant
+    /// cost of a consolidate, and re-running it on untouched regions is what made
+    /// the second emit a +61% geometry regression on ISSUE_129.
+    pub(super) cached: Option<(Vec<nalgebra::Point2<f64>>, Vec<usize>)>,
 }
 
 /// One plane bucket after phase A: its 2D basis, the triangles that bypass the
@@ -197,6 +216,32 @@ pub(super) struct PlanBucket {
     pub(super) v_axis: Vector3<f64>,
     pub(super) raw: Vec<[Point3<f64>; 3]>,
     pub(super) regions: Vec<PlanRegion>,
+}
+
+/// Build the seam map from finished plans: every kept corner of every bucket, in
+/// bucket order, keyed at 0.1 mm.
+///
+/// Deferred rather than recorded inline during phase A because ~85% of hosts are
+/// already watertight and never consult it, and paying a BTreeMap insert per ring
+/// vertex on all of them cost +61% geometry time on the ISSUE_129 fixture.
+/// Bucket-ordered iteration keeps it target-independent, exactly as the inline
+/// version was.
+pub(super) fn build_seam_map(plans: &[PlanBucket]) -> SeamMap {
+    let mut seam = SeamMap::new();
+    for plan in plans {
+        for tri in &plan.raw {
+            for p in tri {
+                record_seam_vert(&mut seam, plan.bid, *p);
+            }
+        }
+        for region in &plan.regions {
+            for p in region.outer.iter().chain(region.holes.iter().flatten()) {
+                let lifted = plan.origin + plan.u_axis * p.x + plan.v_axis * p.y;
+                record_seam_vert(&mut seam, plan.bid, lifted);
+            }
+        }
+    }
+    seam
 }
 
 /// Phase B — for every bucket, insert into its rings the seam vertices that some
@@ -222,8 +267,23 @@ pub(super) fn conform_plans(plans: &mut [PlanBucket], seam: &SeamMap) -> bool {
                 maxy = maxy.max(p.y);
             }
         }
+        // 3D AABB of this bucket's rings, so the grid query below only visits cells
+        // that can contain a candidate. Without it every bucket scanned the whole
+        // seam map — O(buckets x seam), which on a 300-bucket host was the bulk of a
+        // +61% geometry regression on ISSUE_129.
+        let (mut lo, mut hi) = ([f64::MAX; 3], [f64::MIN; 3]);
+        for r in &plan.regions {
+            for p in r.outer.iter().chain(r.holes.iter().flatten()) {
+                let w = plan.origin + plan.u_axis * p.x + plan.v_axis * p.y;
+                for k in 0..3 {
+                    lo[k] = lo[k].min(w[k]);
+                    hi[k] = hi[k].max(w[k]);
+                }
+            }
+        }
         let mut cands: Vec<nalgebra::Point2<f64>> = Vec::new();
-        for sv in seam.values() {
+        let (klo, khi) = seam_bounds(lo, hi);
+        for sv in seam.range(klo..=khi).map(|(_, v)| v) {
             // "kept by some bucket OTHER than this one" — the asymmetry signal.
             if sv.buckets < 2 && sv.first == plan.bid {
                 continue;
@@ -245,6 +305,7 @@ pub(super) fn conform_plans(plans: &mut [PlanBucket], seam: &SeamMap) -> bool {
         if cands.is_empty() {
             continue;
         }
+        let basis = (plan.origin, plan.u_axis, plan.v_axis, plan.normal);
         for region in plan.regions.iter_mut() {
             // A candidate this region ALREADY carries must not be re-inserted: a
             // duplicate ring vertex fails the CDT and would drop the whole region.
@@ -264,24 +325,27 @@ pub(super) fn conform_plans(plans: &mut [PlanBucket], seam: &SeamMap) -> bool {
             if local.is_empty() {
                 continue;
             }
-            changed |= conform_ring(&mut region.outer_conformed, &local);
+            let mut this = conform_ring(&mut region.outer_conformed, &local);
             for hole in region.holes_conformed.iter_mut() {
-                changed |= conform_ring(hole, &local);
+                this |= conform_ring(hole, &local);
             }
+            region.changed = this;
+            changed |= this;
         }
     }
     changed
 }
 
 /// Phase C — triangulate the (optionally conformed) rings and emit, in bucket order.
-pub(super) fn emit_plans(plans: &[PlanBucket], conformed: bool) -> Mesh {
+pub(super) fn emit_plans(plans: &mut [PlanBucket], conformed: bool) -> Mesh {
     use crate::triangulation::triangulate_polygon_with_holes_refined;
     let mut output = Mesh::new();
-    for plan in plans {
+    for plan in plans.iter_mut() {
         for t in &plan.raw {
             emit_triangle(&mut output, t, &plan.normal);
         }
-        for region in &plan.regions {
+        let basis = (plan.origin, plan.u_axis, plan.v_axis, plan.normal);
+        for region in plan.regions.iter_mut() {
             let (outer, holes) = if conformed {
                 (&region.outer_conformed, &region.holes_conformed)
             } else {
@@ -297,36 +361,68 @@ pub(super) fn emit_plans(plans: &[PlanBucket], conformed: bool) -> Mesh {
             // independently; a boundary Steiner point would tear that seam
             // (open edges / T-junctions). Interior-only refinement keeps the
             // seam watertight while still removing the rim-corner slivers.
+            // Reuse pass 1's CDT wherever phase B left the rings alone. Stored by
+            // MOVE on pass 1 and borrowed here — cloning it instead cost more than
+            // the CDT it saves. The quality CDT with Ruppert refinement dominates a
+            // consolidate, and re-running it on untouched regions is what made the
+            // second emit a +61% geometry regression on ISSUE_129.
+            if conformed && !region.changed {
+                match &region.cached {
+                    Some((pts, idx)) => {
+                        emit_region(&mut output, basis, pts, idx);
+                        continue;
+                    }
+                    None => continue,
+                }
+            }
             let (all_2d, indices) = match triangulate_polygon_with_holes_refined(outer, holes) {
                 Ok((pts, idx)) => (pts, idx),
                 Err(_) => continue,
             };
-            let verts_3d: Vec<Point3<f64>> = all_2d
-                .iter()
-                .map(|p| plan.origin + plan.u_axis * p.x + plan.v_axis * p.y)
-                .collect();
-            let base = output.vertex_count() as u32;
-            for vp in &verts_3d {
-                output.add_vertex(*vp, plan.normal);
+            if !conformed {
+                region.cached = Some((all_2d, indices));
+                let (pts, idx) = region.cached.as_ref().expect("just stored");
+                emit_region(&mut output, basis, pts, idx);
+                continue;
             }
-            for tri in indices.chunks_exact(3) {
-                // Needle backstop: drop any residual sub-weld degenerate sliver
-                // ([`tri_is_needle`], the same scale-relative power-of-two rule
-                // as the single-triangle path). Cannot open a real gap — the
-                // hole/seam is framed by its non-degenerate neighbours.
-                let v = [verts_3d[tri[0]], verts_3d[tri[1]], verts_3d[tri[2]]];
-                if tri_is_needle(&v) {
-                    continue;
-                }
-                output.add_triangle(
-                    base + tri[0] as u32,
-                    base + tri[1] as u32,
-                    base + tri[2] as u32,
-                );
-            }
+            emit_region(&mut output, basis, &all_2d, &indices);
         }
     }
     output
+}
+
+/// Lift one region's 2D CDT back to 3D and append it. Shared by the fresh and the
+/// cached paths so both emit byte-identically.
+fn emit_region(
+    output: &mut Mesh,
+    basis: (Point3<f64>, Vector3<f64>, Vector3<f64>, Vector3<f64>),
+    all_2d: &[nalgebra::Point2<f64>],
+    indices: &[usize],
+) {
+    let (origin, u_axis, v_axis, normal) = basis;
+    let verts_3d: Vec<Point3<f64>> = all_2d
+        .iter()
+        .map(|p| origin + u_axis * p.x + v_axis * p.y)
+        .collect();
+    let base = output.vertex_count() as u32;
+    for vp in &verts_3d {
+        output.add_vertex(*vp, normal);
+    }
+    for tri in indices.chunks_exact(3) {
+        // Needle backstop: drop any residual sub-weld degenerate sliver
+        // ([`tri_is_needle`], the same scale-relative power-of-two rule as the
+        // single-triangle path). Cannot open a real gap — the hole/seam is framed
+        // by its non-degenerate neighbours.
+        let v = [verts_3d[tri[0]], verts_3d[tri[1]], verts_3d[tri[2]]];
+        if tri_is_needle(&v) {
+            continue;
+        }
+        output.add_triangle(
+            base + tri[0] as u32,
+            base + tri[1] as u32,
+            base + tri[2] as u32,
+        );
+    }
 }
 
 #[cfg(test)]

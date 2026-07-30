@@ -12,7 +12,7 @@
 //! contract.
 
 #[cfg(feature = "triangulation-alt")]
-mod alt_oracle;
+pub(crate) mod alt_oracle;
 mod ring_geom;
 use ring_geom::{point_in_ring, ring_bbox};
 
@@ -45,6 +45,17 @@ use crate::{Error, Point2, Point3, Result, Vector3};
 ///
 /// Returned indices are remapped to the CALLER's original vertex order, so
 /// call sites keep indexing their own arrays.
+/// Ear-clip one sanitised ring group. The ONLY place `safe_earcut` reaches a
+/// triangulator, so the test-only oracle can stand in here and see byte-identical
+/// input to the production path.
+fn ear_clip(data: &[f64], hole_indices: &[usize]) -> std::result::Result<Vec<usize>, String> {
+    #[cfg(feature = "triangulation-alt")]
+    if let Some(alt) = alt_oracle::maybe_earcut(data, hole_indices) {
+        return Ok(alt);
+    }
+    earcutr::earcut(data, hole_indices, 2).map_err(|e| format!("{e:?}"))
+}
+
 pub(crate) fn safe_earcut(
     data: &[f64],
     hole_indices: &[usize],
@@ -61,18 +72,13 @@ pub(crate) fn safe_earcut(
     // consecutive/closing duplicates needs no sanitisation, no classification,
     // and no index remap — hand it straight to earcutr, zero-copy. Profile
     // triangulation sits on the hot path for EVERY face in the pipeline.
-    #[cfg(feature = "triangulation-alt")]
-    if let Some(alt) = alt_oracle::maybe_earcut(data, hole_indices) {
-        return Ok(alt);
-    }
-
     if hole_indices.is_empty() {
         let has_dup = n >= 2
             && ((0..n - 1).any(|v| {
                 data[v * 2] == data[v * 2 + 2] && data[v * 2 + 1] == data[v * 2 + 3]
             }) || (data[0] == data[(n - 1) * 2] && data[1] == data[(n - 1) * 2 + 1]));
         if !has_dup {
-            return earcutr::earcut(data, &[], 2).map_err(|e| format!("{:?}", e));
+            return ear_clip(data, &[]);
         }
     }
 
@@ -170,14 +176,14 @@ pub(crate) fn safe_earcut(
             coords.extend_from_slice(&rings[ring_no].0);
             orig.extend_from_slice(&rings[ring_no].1);
         }
-        let indices = earcutr::earcut(&coords, &holes, 2).map_err(|e| format!("{:?}", e))?;
+        let indices = ear_clip(&coords, &holes)?;
         out.extend(indices.into_iter().map(|i| orig[i]));
     }
 
     // Disjoint "holes" render as their own hole-less polygons.
     for &ring_no in &separate_polys {
         let (coords, orig) = &rings[ring_no];
-        let indices = earcutr::earcut(coords, &[], 2).map_err(|e| format!("{:?}", e))?;
+        let indices = ear_clip(coords, &[])?;
         out.extend(indices.into_iter().map(|i| orig[i]));
     }
 

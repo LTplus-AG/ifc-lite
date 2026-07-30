@@ -8,7 +8,7 @@ mod conform;
 mod ring_ops;
 
 use super::ClippingProcessor;
-use conform::{conform_plans, count_open_boundary_edges_at, emit_plans, record_seam_vert, PlanBucket, PlanRegion, SeamMap};
+use conform::{build_seam_map, conform_plans, count_open_boundary_edges_at, emit_plans, PlanBucket, PlanRegion};
 use ring_ops::{floor_pow2, simplify_2d_collinear, weld_near_coincident_2d};
 
 /// Is `v` a degenerate NEEDLE — its shortest edge a hairline relative to its
@@ -210,7 +210,6 @@ impl ClippingProcessor {
         // Conforming by ADDITION uses the same asymmetry as a source instead of a
         // veto, so the phantom removal is untouched: a phantom is near-collinear in
         // every bucket, is kept nowhere, and is never re-inserted.
-        let mut seam: SeamMap = SeamMap::new();
         let mut plans: Vec<PlanBucket> = Vec::with_capacity(buckets.len());
 
         // Phase A.
@@ -252,10 +251,8 @@ impl ClippingProcessor {
             if tris.len() == 1 {
                 // Single triangle — skip the union round-trip entirely. Its three
                 // corners are hard corners by definition, so they are valid
-                // insertion sources for the buckets that abut them.
-                for p in tris[0].v {
-                    record_seam_vert(&mut seam, bid, p);
-                }
+                // insertion sources for the buckets that abut them (recorded
+                // lazily, in `build_seam_map`).
                 plan.raw.push(tris[0].v);
                 plans.push(plan);
                 continue;
@@ -287,9 +284,6 @@ impl ClippingProcessor {
             if shapes.is_empty() {
                 // Union collapsed everything — emit originals to avoid loss.
                 for t in tris {
-                    for p in t.v {
-                        record_seam_vert(&mut seam, bid, p);
-                    }
                     plan.raw.push(t.v);
                 }
                 plans.push(plan);
@@ -365,16 +359,9 @@ impl ClippingProcessor {
                     })
                     .collect();
 
-                // Every surviving ring vertex of this bucket is a kept corner —
-                // record it (in 3D) as a possible insertion source for the buckets
-                // that abut this plane.
-                let lift = |p: &nalgebra::Point2<f64>| -> Point3<f64> {
-                    origin + u_axis * p.x + v_axis * p.y
-                };
-                for p in outer_simplified.iter().chain(holes_simplified.iter().flatten()) {
-                    record_seam_vert(&mut seam, bid, lift(p));
-                }
                 plan.regions.push(PlanRegion {
+                    changed: false,
+                    cached: None,
                     outer_conformed: outer_simplified.clone(),
                     holes_conformed: holes_simplified.clone(),
                     outer: outer_simplified,
@@ -401,11 +388,17 @@ impl ClippingProcessor {
         // Measured on the 0.1 mm grid, not the 1 mm default: a chorded seam deviates by
         // ~µm, merges away at 1 mm, and would read as "closed" — which accepts a
         // conform that is in fact still torn (that is exactly the 282 above).
-        let mut output = emit_plans(&plans, false);
-        if count_open_boundary_edges_at(&output, 1.0e4) > 0 && conform_plans(&mut plans, &seam) {
-            let candidate = emit_plans(&plans, true);
-            if !candidate.is_empty() && count_open_boundary_edges_at(&candidate, 1.0e4) == 0 {
-                output = candidate;
+        // The seam map is built ONLY when today's output is torn. Recording every
+        // bucket's kept corners unconditionally cost +61% geometry time on
+        // ISSUE_129 (1014 -> 1634 ms) for a map that ~85% of hosts never consult.
+        let mut output = emit_plans(&mut plans, false);
+        if count_open_boundary_edges_at(&output, 1.0e4) > 0 {
+            let seam = build_seam_map(&plans);
+            if conform_plans(&mut plans, &seam) {
+                let candidate = emit_plans(&mut plans, true);
+                if !candidate.is_empty() && count_open_boundary_edges_at(&candidate, 1.0e4) == 0 {
+                    output = candidate;
+                }
             }
         }
 

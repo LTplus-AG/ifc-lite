@@ -120,6 +120,8 @@ pub(crate) mod profile_extractor;
 pub(crate) mod profiles;
 pub mod projection_outline;
 pub mod rect_fast;
+#[cfg(feature = "triangulation-alt")]
+pub use triangulation::alt_oracle::set_alt_triangulator;
 pub use rect_fast::RectFastStats;
 pub(crate) mod router;
 /// Per-element mesh simplification for the demesher (cavity removal, grid

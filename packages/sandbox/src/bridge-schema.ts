@@ -218,32 +218,41 @@ function buildNamespace(
   schema: NamespaceSchema,
   context: BridgeCallContext,
 ): void {
+  // try/finally, not a bare sequence: a throw anywhere in the registration
+  // loop would otherwise orphan `nsHandle` (and the in-flight `fn`), and an
+  // orphaned handle makes the runtime's own dispose() abort the WASM module
+  // — see disposeOrphan() below for the full mechanism (#1905).
   const nsHandle = vm.newObject();
-
-  for (const method of schema.methods) {
-    const fn = vm.newFunction(method.name, (...handles: QuickJSHandle[]) => {
-      // Host-side errors (capability denials, SDK exceptions, type
-      // errors) MUST be re-thrown as a plain `Error` with a string
-      // message. Throwing a custom Error subclass — or any non-plain
-      // object — across the QuickJS native-callback boundary leaves
-      // the realm in a corrupt state: a subsequent handle access
-      // throws "Lifetime not alive". Normalising to a plain Error
-      // here keeps the failure a clean, catchable script exception.
+  try {
+    for (const method of schema.methods) {
+      const fn = vm.newFunction(method.name, (...handles: QuickJSHandle[]) => {
+        // Host-side errors (capability denials, SDK exceptions, type
+        // errors) MUST be re-thrown as a plain `Error` with a string
+        // message. Throwing a custom Error subclass — or any non-plain
+        // object — across the QuickJS native-callback boundary leaves
+        // the realm in a corrupt state: a subsequent handle access
+        // throws "Lifetime not alive". Normalising to a plain Error
+        // here keeps the failure a clean, catchable script exception.
+        try {
+          const nativeArgs = unmarshalArgs(vm, handles, method.args);
+          const result = method.call(sdk, nativeArgs, context);
+          return marshalReturn(vm, result, method.returns);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          throw new Error(`bim.${schema.name}.${method.name}: ${msg}`);
+        }
+      });
       try {
-        const nativeArgs = unmarshalArgs(vm, handles, method.args);
-        const result = method.call(sdk, nativeArgs, context);
-        return marshalReturn(vm, result, method.returns);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        throw new Error(`bim.${schema.name}.${method.name}: ${msg}`);
+        vm.setProp(nsHandle, method.name, fn);
+      } finally {
+        fn.dispose();
       }
-    });
-    vm.setProp(nsHandle, method.name, fn);
-    fn.dispose();
-  }
+    }
 
-  vm.setProp(bimHandle, schema.name, nsHandle);
-  nsHandle.dispose();
+    vm.setProp(bimHandle, schema.name, nsHandle);
+  } finally {
+    nsHandle.dispose();
+  }
 }
 
 export function disposeSchemaNamespaceSession(context: BridgeCallContext): void {
@@ -310,6 +319,25 @@ function marshalReturn(vm: QuickJSContext, value: unknown, type: ReturnType): Qu
  */
 const MARSHAL_MAX_DEPTH = 64;
 
+/**
+ * Free a container handle that is being abandoned because marshalling threw.
+ *
+ * A handle created through the context is an *unmanaged* Lifetime —
+ * `QuickJSContext.dispose()` does NOT free it. An orphaned handle therefore
+ * keeps its JSObject on the runtime's `gc_obj_list`, and `JS_FreeRuntime`
+ * asserts `list_empty(&rt->gc_obj_list)` — an emscripten `abort()` that kills
+ * the WASM module for the rest of the document lifetime (#1905).
+ *
+ * The caller re-throws the original error afterwards: a failing `.dispose()`
+ * here only means the handle is already dead, which is the outcome we wanted,
+ * and it must not mask the real cause.
+ */
+function disposeOrphan(handle: QuickJSHandle): void {
+  try {
+    handle.dispose();
+  } catch { /* handle already dead — nothing to free */ }
+}
+
 /** Recursively convert a native JS value to a QuickJS handle */
 export function marshalValue(vm: QuickJSContext, value: unknown): QuickJSHandle {
   return marshalValueWithGuard(vm, value, 0, new WeakSet());
@@ -339,19 +367,37 @@ function marshalValueWithGuard(
   try {
     if (Array.isArray(value)) {
       const arr = vm.newArray();
-      for (let i = 0; i < value.length; i++) {
-        const item = marshalValueWithGuard(vm, value[i], depth + 1, stack);
-        vm.setProp(arr, i, item);
-        item.dispose();
+      try {
+        for (let i = 0; i < value.length; i++) {
+          const item = marshalValueWithGuard(vm, value[i], depth + 1, stack);
+          try {
+            vm.setProp(arr, i, item);
+          } finally {
+            item.dispose();
+          }
+        }
+      } catch (err) {
+        disposeOrphan(arr);
+        throw err;
       }
       return arr;
     }
 
     const out = vm.newObject();
-    for (const [k, v] of Object.entries(obj)) {
-      const handle = marshalValueWithGuard(vm, v, depth + 1, stack);
-      vm.setProp(out, k, handle);
-      handle.dispose();
+    try {
+      // Object.entries invokes getters, and a value in the graph may be a
+      // revoked Proxy — both throw from host code we do not control.
+      for (const [k, v] of Object.entries(obj)) {
+        const handle = marshalValueWithGuard(vm, v, depth + 1, stack);
+        try {
+          vm.setProp(out, k, handle);
+        } finally {
+          handle.dispose();
+        }
+      }
+    } catch (err) {
+      disposeOrphan(out);
+      throw err;
     }
     return out;
   } finally {

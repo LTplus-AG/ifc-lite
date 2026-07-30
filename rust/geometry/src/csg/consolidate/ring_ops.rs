@@ -32,13 +32,14 @@
 /// genuine 1 mm chamfer on a long steel member. This runs in the already-
 /// non-exact consolidation post-pass; it does NOT touch the exact kernel's
 /// interner/predicates (no float weld in the determinism path).
-pub(super) fn weld_near_coincident_2d(ring: &[nalgebra::Point2<f64>]) -> Vec<nalgebra::Point2<f64>> {
+pub(super) fn weld_near_coincident_2d(
+    ring: &[nalgebra::Point2<f64>],
+) -> Vec<nalgebra::Point2<f64>> {
     let n = ring.len();
     if n < 4 {
         return ring.to_vec();
     }
-    let (mut minx, mut miny, mut maxx, mut maxy) =
-        (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+    let (mut minx, mut miny, mut maxx, mut maxy) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
     for p in ring {
         minx = minx.min(p.x);
         miny = miny.min(p.y);
@@ -79,7 +80,6 @@ pub(super) fn weld_near_coincident_2d(ring: &[nalgebra::Point2<f64>]) -> Vec<nal
         ring.to_vec()
     }
 }
-
 
 /// Drop 2D contour vertices that are collinear with both neighbours. The
 /// i_overlay union of many small fragments often leaves "phantom"
@@ -142,4 +142,3 @@ pub(super) fn floor_pow2(x: f64) -> f64 {
     // representable exponent range we hit (|coords| ≲ 1e7 ⇒ exponent ≲ 24).
     2.0_f64.powi(unbiased as i32)
 }
-

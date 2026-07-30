@@ -20,10 +20,10 @@
 //!
 //! Split out of `consolidate.rs` to keep both files under the module-size ratchet.
 
+use super::{emit_triangle, tri_is_needle};
 use crate::mesh::Mesh;
 use nalgebra::{Point3, Vector3};
 use rustc_hash::FxHashMap;
-use super::{emit_triangle, tri_is_needle};
 
 /// [`count_open_boundary_edges`] on an explicit merge grid. The 1 mm default hides
 /// the T-junction the cross-bucket conform targets (a 0.1 mm-scale chord deviation
@@ -58,7 +58,6 @@ pub(super) fn count_open_boundary_edges_at(mesh: &Mesh, scale: f64) -> usize {
     }
     bal.values().filter(|&&v| v != 0).count()
 }
-
 
 /// Perpendicular / endpoint tolerance for the cross-bucket conform (0.1 mm) — the
 /// same 0.1 mm as the seam-vertex quantisation, and two orders below the smallest
@@ -122,7 +121,10 @@ pub(super) fn record_seam_vert(map: &mut SeamMap, bid: u32, p: Point3<f64>) {
 /// Conforming by ADDITION is the point: it cannot defeat the phantom merge
 /// `simplify_2d_collinear` exists to perform (blanket retention did), it only puts
 /// back the boundary vertices an abutting bucket still has.
-pub(super) fn conform_ring(ring: &mut Vec<nalgebra::Point2<f64>>, cands: &[nalgebra::Point2<f64>]) -> bool {
+pub(super) fn conform_ring(
+    ring: &mut Vec<nalgebra::Point2<f64>>,
+    cands: &[nalgebra::Point2<f64>],
+) -> bool {
     let n = ring.len();
     if n < 3 || cands.is_empty() {
         return false;

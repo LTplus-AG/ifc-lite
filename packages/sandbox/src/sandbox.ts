@@ -124,7 +124,11 @@ export class Sandbox {
     // through instead of being masked by a teardown failure.
     const safeDispose = (h: { dispose(): void } | undefined): void => {
       if (!h) return;
-      try { h.dispose(); } catch { /* handle already dead — nothing to free */ }
+      try {
+        h.dispose();
+      } catch (err) {
+        console.warn('[ifc-lite/sandbox] eval-result handle could not be disposed', err);
+      }
     };
 
     this.evalStartTime = Date.now();

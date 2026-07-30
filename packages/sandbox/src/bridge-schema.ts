@@ -335,7 +335,12 @@ const MARSHAL_MAX_DEPTH = 64;
 function disposeOrphan(handle: QuickJSHandle): void {
   try {
     handle.dispose();
-  } catch { /* handle already dead — nothing to free */ }
+  } catch (err) {
+    // Already-dead handle: the outcome we wanted. Surfaced rather than
+    // swallowed, because a burst of these is the signature of the very
+    // ownership bug this function exists to prevent.
+    console.warn('[ifc-lite/sandbox] abandoned QuickJS handle could not be disposed', err);
+  }
 }
 
 /** Recursively convert a native JS value to a QuickJS handle */

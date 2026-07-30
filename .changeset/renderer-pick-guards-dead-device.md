@@ -20,6 +20,14 @@ race: it fired again on every subsequent click at a frozen viewport.
 error is being hidden — consumers that want to react to the loss still
 subscribe to `onDeviceLost()`.
 
+The entry guard cannot close the window between `queue.submit()` and the map
+settling: a pick that was legal when it started is still aborted if the canvas
+unmounts, the model reloads (`Renderer.destroy()` ends in `device.destroy()`)
+or the driver resets while the readback is in flight — same `AbortError`, same
+escaping rejection. `Picker` now treats an `AbortError` from its own readback
+as "the device went away" and degrades to no hit. Only `AbortError` is caught:
+a validation fault rejects with `OperationError` and still propagates.
+
 Two supporting leaks are closed: `Renderer.destroy()` now also clears the
 picker reference held by the internal picking manager (it previously nulled
 only its own, leaving the manager pointing at a destroyed picker), and `Picker`

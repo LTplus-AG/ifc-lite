@@ -71,17 +71,29 @@ interface Harness {
          * the device object stays wired up but every map rejects.
          */
         gpuDead: boolean;
+        /**
+         * Park every `mapAsync` instead of resolving it, so a test can land a
+         * teardown *while a readback is in flight* — the window no entry guard
+         * can close. `settlePendingMaps()` decides how each parked map ends.
+         */
+        deferMaps: boolean;
     };
     render(options?: RenderOptions): void;
     /** flush the popErrorScope() promise chains */
     settle(): Promise<void>;
+    /** number of `mapAsync` calls currently parked (deferMaps) */
+    pendingMaps(): number;
+    /** complete every parked map: resolve it, or reject it with `reason` */
+    settlePendingMaps(reason?: unknown): void;
 }
 
 function makeHarness(): Harness {
     const stats: Harness['stats'] = { push: 0, pop: 0, draws: [], createdBuffers: [], mapAsync: 0 };
     const knobs: Harness['knobs'] = {
         textureMode: 'texture', encodeThrows: false, popRejects: false, gpuDead: false,
+        deferMaps: false,
     };
+    const parkedMaps: { resolve: () => void; reject: (e: unknown) => void }[] = [];
 
     const makeBuffer = (desc: { size: number }): FakeBuffer => {
         const buf: FakeBuffer & { _ab: ArrayBuffer } = {
@@ -93,9 +105,13 @@ function makeHarness(): Harness {
                 stats.mapAsync++;
                 // Same failure mode as the browser: a map issued against a dead
                 // device rejects rather than resolving.
-                return knobs.gpuDead
-                    ? Promise.reject(new DOMException(MAP_ASYNC_ABORT, 'AbortError'))
-                    : Promise.resolve();
+                if (knobs.gpuDead) {
+                    return Promise.reject(new DOMException(MAP_ASYNC_ABORT, 'AbortError'));
+                }
+                if (knobs.deferMaps) {
+                    return new Promise<void>((resolve, reject) => { parkedMaps.push({ resolve, reject }); });
+                }
+                return Promise.resolve();
             },
             unmap() { /* no-op */ },
             destroy() { this.destroyed++; },
@@ -160,7 +176,14 @@ function makeHarness(): Harness {
                 // through the auto layout, so both arms must return objects.
                 case 'createShaderModule': return () => ({});
                 case 'createRenderPipeline': return () => ({ getBindGroupLayout: () => ({}) });
-                case 'destroy': return () => { knobs.gpuDead = true; };
+                // Destroying a device also completes every map still pending
+                // against it — with an AbortError, exactly as Chromium does.
+                case 'destroy': return () => {
+                    knobs.gpuDead = true;
+                    for (const m of parkedMaps.splice(0)) {
+                        m.reject(new DOMException(MAP_ASYNC_ABORT, 'AbortError'));
+                    }
+                };
                 default: return () => undefined;
             }
         },
@@ -220,6 +243,12 @@ function makeHarness(): Harness {
             await Promise.resolve();
             await Promise.resolve();
             await Promise.resolve();
+        },
+        pendingMaps() { return parkedMaps.length; },
+        settlePendingMaps(reason?: unknown) {
+            for (const m of parkedMaps.splice(0)) {
+                if (reason === undefined) m.resolve(); else m.reject(reason);
+            }
         },
     };
 }
@@ -593,5 +622,97 @@ describe('pick path survives a dead GPU device (#1901)', () => {
         h.renderer.destroy();
         assert.strictEqual(h.renderer['pickingManager']['picker'], null,
             'a dangling manager reference keeps driving destroyed GPU resources');
+    });
+});
+
+/**
+ * Second half of #1901: the window the entry guards CANNOT close.
+ *
+ * A pick that was perfectly legal when it started is still aborted if the
+ * device dies between `queue.submit()` and the `mapAsync` settling — the
+ * canvas unmounts, the model reloads (`Renderer.destroy()` ends in
+ * `device.destroy()`), or the driver resets. Same `AbortError`, same async
+ * stack (the awaiting `pick` frames are preserved), same unhandled rejection,
+ * because the DOM listeners that reach here are `async` functions nobody
+ * awaits.
+ *
+ * These tests deliberately let the readback RUN (`stats.mapAsync > 0`) — that
+ * is the whole point, the guard already fired for everything it can see.
+ */
+describe('pick path survives the device dying mid-readback (#1901)', () => {
+    function installPicker(h: Harness): Picker {
+        const picker = new Picker(h.renderer['device'], 256, 256);
+        (h.renderer as unknown as Record<string, unknown>)['picker'] = picker;
+        h.renderer['pickingManager'].setPicker(picker);
+        return picker;
+    }
+
+    /**
+     * Run the pick up to the point where it is parked on `mapAsync`. Boxed in
+     * an object because `await` unwraps a promise-of-a-promise — returning the
+     * in-flight promise directly would await the very thing we want to keep
+     * parked.
+     */
+    async function park(h: Harness, start: () => Promise<unknown>): Promise<{ inflight: Promise<unknown> }> {
+        h.knobs.deferMaps = true;
+        const inflight = start();
+        for (let i = 0; i < 5; i++) await Promise.resolve();
+        assert.ok(h.pendingMaps() > 0, 'pick should be parked on the mapAsync readback');
+        return { inflight };
+    }
+
+    it('pick() parked on mapAsync when destroy() lands resolves null, not AbortError', async () => {
+        const h = makeHarness();
+        installPicker(h);
+        const { inflight } = await park(h, () => h.renderer.pick(10, 10));
+        h.renderer.destroy();
+        assert.strictEqual(await inflight, null);
+        assert.ok(h.stats.mapAsync > 0, 'the readback really was in flight');
+    });
+
+    it('pickRect() parked on mapAsync when destroy() lands resolves empty, not AbortError', async () => {
+        const h = makeHarness();
+        installPicker(h);
+        const { inflight } = await park(h, () => h.renderer.pickRect(0, 0, 8, 8));
+        h.renderer.destroy();
+        assert.deepStrictEqual(await inflight, new Set());
+    });
+
+    it('an involuntary loss mid-readback degrades the same way', async () => {
+        const h = makeHarness();
+        installPicker(h);
+        const { inflight } = await park(h, () => h.renderer.pick(10, 10));
+        h.knobs.gpuDead = true;
+        h.renderer['handleDeviceLost']({ message: 'device lost', reason: 'unknown' });
+        h.settlePendingMaps(new DOMException(MAP_ASYNC_ABORT, 'AbortError'));
+        assert.strictEqual(await inflight, null);
+    });
+
+    it('overlapping picks are all released, not just the newest', async () => {
+        const h = makeHarness();
+        installPicker(h);
+        h.knobs.deferMaps = true;
+        const first = h.renderer.pick(10, 10);
+        for (let i = 0; i < 3; i++) await Promise.resolve();
+        const second = h.renderer.pick(20, 20);
+        for (let i = 0; i < 3; i++) await Promise.resolve();
+        h.renderer.destroy();
+        const settled = await Promise.allSettled([first, second]);
+        assert.deepStrictEqual(settled.map((s) => s.status), ['fulfilled', 'fulfilled']);
+    });
+
+    it('a REAL readback fault still propagates — the catch is not a blanket swallow', async () => {
+        const h = makeHarness();
+        installPicker(h);
+        const { inflight } = await park(h, () => h.renderer.pick(10, 10));
+        // Validation failures reject with OperationError, never AbortError.
+        h.settlePendingMaps(new DOMException('Buffer is already mapped', 'OperationError'));
+        await assert.rejects(inflight, /already mapped/);
+
+        const rect = makeHarness();
+        installPicker(rect);
+        const rectInflight = await park(rect, () => rect.renderer.pickRect(0, 0, 8, 8));
+        rect.settlePendingMaps(new DOMException('Buffer is already mapped', 'OperationError'));
+        await assert.rejects(rectInflight.inflight, /already mapped/);
     });
 });

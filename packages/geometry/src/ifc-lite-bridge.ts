@@ -11,6 +11,11 @@ import { createLogger } from '@ifc-lite/data';
 import type { KmzAltitudeMode, TessellationQuality } from './types.js';
 import type { GeometryDiagnostics } from './diagnostics.js';
 import { getStartedSharedWasmModule } from './wasm-shared-module.js';
+import {
+  isWasmRuntimeTrap,
+  notifyWasmRuntimeUnrecoverable,
+  wasmRuntimeUnrecoverableError,
+} from './wasm-runtime-trap.js';
 import init, {
   IfcAPI,
   SymbolicRepresentationCollection,
@@ -32,8 +37,6 @@ export type {
 };
 
 const log = createLogger('Geometry');
-const FATAL_WASM_RELOAD_REQUIRED_MESSAGE = 'IFC-Lite WASM cannot recover from a fatal runtime error within the same document lifetime. Reload the page or recreate the worker process before calling init() again.';
-let fatalWasmRuntimeError: Error | null = null;
 
 /**
  * Typed wrapper for the IFC-Lite WASM API including the optional
@@ -89,12 +92,34 @@ export class IfcLiteBridge {
   private skipSmallCuts: boolean = false;
 
   private isWasmRuntimeError(error: unknown): boolean {
-    return error instanceof WebAssembly.RuntimeError;
+    return isWasmRuntimeTrap(error);
   }
 
-  private markFatalWasmRuntimeError(): void {
-    fatalWasmRuntimeError = new Error(FATAL_WASM_RELOAD_REQUIRED_MESSAGE);
-    this.reset();
+  /**
+   * An operation on THIS bridge's engine took a WebAssembly runtime trap
+   * (#1898). Everything a trap can wedge lives on the `IfcAPI` handle — the
+   * per-load pre-pass / entity / style caches behind its mutexes — so the
+   * recovery is to drop that handle. The next `init()` (on this bridge or any
+   * other) builds a clean one and works; the trap itself propagates to the
+   * caller unchanged, so the failing operation still fails loudly with its own
+   * stack.
+   *
+   * This deliberately does NOT latch any realm-wide state. The previous
+   * behaviour stored one Error in a module global and refused every later
+   * `init()` in the document, which bricked every unrelated main-thread
+   * consumer (model load, grid / drawing meshers, the other exporters) after a
+   * single failed export — while bridges that happened to be initialized
+   * already kept running, so the "unrecoverable" claim contradicted itself.
+   */
+  private recordWasmRuntimeTrap(): void {
+    try {
+      this.dispose();
+    } catch {
+      // `free()` runs Rust code. If the allocator is what trapped, freeing can
+      // trap again — drop the reference anyway. A secondary failure here must
+      // never replace the original trap on its way to the caller.
+      this.reset();
+    }
   }
 
   /**
@@ -103,9 +128,6 @@ export class IfcLiteBridge {
    */
   async init(): Promise<void> {
     if (this.initialized) return;
-    if (fatalWasmRuntimeError) {
-      throw fatalWasmRuntimeError;
-    }
 
     try {
       // Initialize WASM module. In the browser/worker, wasm-bindgen resolves the
@@ -168,10 +190,18 @@ export class IfcLiteBridge {
       log.error('Failed to initialize WASM geometry engine', error, {
         operation: 'init',
       });
+      this.reset();
       if (this.isWasmRuntimeError(error)) {
-        this.markFatalWasmRuntimeError();
-      } else {
-        this.reset();
+        // The one genuinely unrecoverable case: the engine trapped while
+        // standing itself up, so there is no `IfcAPI` to drop and this realm
+        // has no working engine to fall back on. Report it as such — freshly
+        // constructed so the stack is this throw site, carrying the trap as
+        // `cause` — and tell the host, which offers the user a reload. The
+        // verdict is advisory, not a latch: a later `init()` still tries, so no
+        // unrelated consumer is disabled by it. (#1898)
+        const fatal = wasmRuntimeUnrecoverableError(error, 'init');
+        notifyWasmRuntimeUnrecoverable(fatal);
+        throw fatal;
       }
       throw error;
     }
@@ -231,7 +261,7 @@ export class IfcLiteBridge {
         data: { contentLength: content.length },
       });
       if (this.isWasmRuntimeError(error)) {
-        this.markFatalWasmRuntimeError();
+        this.recordWasmRuntimeTrap();
       }
       throw error;
     }
@@ -257,7 +287,7 @@ export class IfcLiteBridge {
         data: { contentLength: content.length },
       });
       if (this.isWasmRuntimeError(error)) {
-        this.markFatalWasmRuntimeError();
+        this.recordWasmRuntimeTrap();
       }
       throw error;
     }
@@ -285,7 +315,7 @@ export class IfcLiteBridge {
         data: { contentLength: content.length },
       });
       if (this.isWasmRuntimeError(error)) {
-        this.markFatalWasmRuntimeError();
+        this.recordWasmRuntimeTrap();
       }
       throw error;
     }
@@ -311,7 +341,7 @@ export class IfcLiteBridge {
         data: { contentLength: content.length },
       });
       if (this.isWasmRuntimeError(error)) {
-        this.markFatalWasmRuntimeError();
+        this.recordWasmRuntimeTrap();
       }
       throw error;
     }
@@ -340,7 +370,7 @@ export class IfcLiteBridge {
         data: { contentLength: content.length },
       });
       if (this.isWasmRuntimeError(error)) {
-        this.markFatalWasmRuntimeError();
+        this.recordWasmRuntimeTrap();
       }
       throw error;
     }
@@ -377,7 +407,7 @@ export class IfcLiteBridge {
     } catch (error) {
       log.error('Failed to diagnose geometry', error, { operation: 'diagnoseGeometry' });
       if (this.isWasmRuntimeError(error)) {
-        this.markFatalWasmRuntimeError();
+        this.recordWasmRuntimeTrap();
       }
       throw error;
     }
@@ -456,7 +486,7 @@ export class IfcLiteBridge {
     } catch (error) {
       log.error('Failed to exportMerged', error, { operation: 'exportMerged' });
       if (this.isWasmRuntimeError(error)) {
-        this.markFatalWasmRuntimeError();
+        this.recordWasmRuntimeTrap();
       }
       throw error;
     }
@@ -514,7 +544,7 @@ export class IfcLiteBridge {
     } catch (error) {
       log.error('Failed to exportGlbFromMeshes', error, { operation: 'exportGlbFromMeshes' });
       if (this.isWasmRuntimeError(error)) {
-        this.markFatalWasmRuntimeError();
+        this.recordWasmRuntimeTrap();
       }
       throw error;
     }
@@ -554,7 +584,7 @@ export class IfcLiteBridge {
     } catch (error) {
       log.error('Failed to simplifyMeshes', error, { operation: 'simplifyMeshes' });
       if (this.isWasmRuntimeError(error)) {
-        this.markFatalWasmRuntimeError();
+        this.recordWasmRuntimeTrap();
       }
       throw error;
     }
@@ -582,7 +612,7 @@ export class IfcLiteBridge {
     } catch (error) {
       log.error('Failed to exportKmz', error, { operation: 'exportKmz' });
       if (this.isWasmRuntimeError(error)) {
-        this.markFatalWasmRuntimeError();
+        this.recordWasmRuntimeTrap();
       }
       throw error;
     }
@@ -624,7 +654,7 @@ export class IfcLiteBridge {
     } catch (error) {
       log.error('Failed to exportKmzFromMeshes', error, { operation: 'exportKmzFromMeshes' });
       if (this.isWasmRuntimeError(error)) {
-        this.markFatalWasmRuntimeError();
+        this.recordWasmRuntimeTrap();
       }
       throw error;
     }
@@ -652,7 +682,7 @@ export class IfcLiteBridge {
     } catch (error) {
       log.error(`Failed to ${op}`, error, { operation: op, data: { contentLength: content.length } });
       if (this.isWasmRuntimeError(error)) {
-        this.markFatalWasmRuntimeError();
+        this.recordWasmRuntimeTrap();
       }
       throw error;
     }

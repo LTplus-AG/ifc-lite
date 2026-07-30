@@ -44,6 +44,7 @@ import { buildHiddenIfcTypes } from '@/store/typeVisibilityFilter';
 import { posthog } from '@/lib/analytics';
 import { toast } from '@/components/ui/toast';
 import { GeometryProcessor, isNoRenderGeometryError, type MeshData } from '@ifc-lite/geometry';
+import { classifyLoadError, formatLoadError } from '@/lib/load-errors';
 import { exportGlbFromGeometry } from '@/lib/export/glb';
 import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
 import { withInstancedMeshes } from '../../utils/instancedExport.js';
@@ -196,6 +197,12 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
     setIsExporting(true);
     setExportResult(null);
 
+    // Which of the two assemblers ran, recorded outside the try so a failure
+    // report can say which one trapped (they have very different memory
+    // profiles: from-bytes re-meshes the whole model in wasm, from-meshes
+    // copies what the GPU already holds).
+    let fromSourceBytes = false;
+
     try {
       // Assemble the GLB in Rust over the meshes the viewer already holds (no
       // re-meshing). Visibility + colour-source selection is applied here because
@@ -232,6 +239,8 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
         idOffset === 0 &&
         !!sourceFile &&
         /\.ifc$/i.test(sourceFile.name);
+
+      fromSourceBytes = canUseSource;
 
       let glb: Uint8Array;
       if (canUseSource) {
@@ -308,13 +317,30 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
       });
     } catch (err) {
       console.error('Export failed:', err);
+      const kind = classifyLoadError(err);
       // The Rust boundary fails closed on an empty visible set; translate the
       // typed error into the operator-friendly message.
       const errMsg = isNoRenderGeometryError(err)
         ? 'GLB export produced 0 meshes — nothing visible to export with the current filters.'
-        : `GLB export failed: ${err instanceof Error ? err.message : 'Unknown error'}`;
+        // A wasm trap here used to reach the user as raw engine text (or, once
+        // it had poisoned the module, as an internal sentence about recreating
+        // a worker process). Hand it to the shared humaniser instead, which
+        // explains the crash and offers a reload when the engine can't restart
+        // (#1898).
+        : kind === 'wasm_runtime_crashed'
+          ? formatLoadError(err, selectedModel.name)
+          : `GLB export failed: ${err instanceof Error ? err.message : 'Unknown error'}`;
       setExportResult({ success: false, message: errMsg });
       toast.error(errMsg);
+      // This export failed silently in production: the catch only logged +
+      // toasted, so PostHog saw nothing and the trap that started the whole
+      // chain was never recorded anywhere but the user's console (#1898).
+      posthog.capture('export_failed', {
+        format: 'glb',
+        error_kind: kind,
+        from_source_bytes: fromSourceBytes,
+      });
+      posthog.captureException(err, { context: 'export_glb', error_kind: kind });
     } finally {
       setIsExporting(false);
     }

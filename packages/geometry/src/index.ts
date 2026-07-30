@@ -53,6 +53,18 @@ export {
   isWasmAssetUnavailableError,
   WASM_ASSET_UNAVAILABLE_EVENT,
 } from './wasm-asset-error.js';
+// WebAssembly runtime-trap contract (#1898). A trap taken by an operation
+// drops only the engine handle that took it and propagates unchanged, so the
+// host can report it; a trap taken while INITIALIZING cannot be recovered in
+// this document and is reported as `WASM_RUNTIME_UNRECOVERABLE` + the event,
+// which the host answers by offering a reload (never automatically — a crash
+// mid-session would discard the user's work).
+export {
+  isWasmRuntimeTrap,
+  isWasmRuntimeUnrecoverableError,
+  WASM_RUNTIME_UNRECOVERABLE_CODE,
+  WASM_RUNTIME_UNRECOVERABLE_EVENT,
+} from './wasm-runtime-trap.js';
 export {
   // `isInstancedShard` / `INSTANCED_SHARD_MAGIC` / `INSTANCED_SHARD_VERSION`
   // are intentionally NOT re-exported — they have no consumer outside the

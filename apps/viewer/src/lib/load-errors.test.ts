@@ -219,3 +219,80 @@ describe('formatLoadError', () => {
     assert.match(msg, /the model/);
   });
 });
+
+// ── #1898: wasm runtime traps must be a bucket of their own ────────────────
+//
+// The reported occurrence was recorded as `error_kind: unknown` with an
+// internal sentence ("…recreate the worker process before calling init()
+// again") shown to the user, because a bare wasm trap matched none of the
+// buckets above.
+describe('wasm runtime traps (#1898)', () => {
+  it('classifies a bare WebAssembly trap as wasm_runtime_crashed', () => {
+    assert.equal(
+      classifyLoadError(new WebAssembly.RuntimeError('unreachable')),
+      'wasm_runtime_crashed',
+    );
+  });
+
+  it('classifies a cross-realm trap by its stable .name', () => {
+    // Re-raised out of a worker: `instanceof` fails, `.name` survives.
+    const crossRealm = new Error('unreachable');
+    crossRealm.name = 'RuntimeError';
+    assert.equal(classifyLoadError(crossRealm), 'wasm_runtime_crashed');
+  });
+
+  it('keeps a stringified trap unknown, so #1196 stays settled', () => {
+    // The analytics path only ever sees text. Matching trap phrasing there
+    // would sweep other viewer wasm (space-plate, parquet) into this family's
+    // single issue fingerprint — the exact mis-bucketing #1196 forbids.
+    assert.equal(classifyLoadError('RuntimeError: unreachable executed'), 'unknown');
+    assert.equal(classifyLoadError(new Error('unreachable')), 'unknown');
+  });
+
+  it('classifies the engine unrecoverable marker', () => {
+    assert.equal(
+      classifyLoadError(
+        new Error('WASM_RUNTIME_UNRECOVERABLE: … (underlying wasm trap: unreachable)'),
+      ),
+      'wasm_runtime_crashed',
+    );
+  });
+
+  it('does not steal a worker-attributed trap from the worker bucket', () => {
+    assert.equal(
+      classifyLoadError(new Error('Geometry worker error: unreachable')),
+      'geometry_worker_crash',
+    );
+  });
+
+  it('does not steal an explicit OOM from the memory bucket', () => {
+    assert.equal(
+      classifyLoadError(new WebAssembly.RuntimeError('memory access out of bounds')),
+      'out_of_memory',
+    );
+  });
+
+  it('offers a reload for an unrecoverable engine crash, without the internal text', () => {
+    const msg = formatLoadError(
+      new Error(
+        'WASM_RUNTIME_UNRECOVERABLE: the IFC-Lite WebAssembly geometry engine trapped during ' +
+          'init, so this document has no working engine instance. Reload the page to get a ' +
+          'fresh one. (underlying wasm trap: unreachable)',
+      ),
+      'tower.ifc',
+    );
+    assert.match(msg, /reload the page/i);
+    // The user must never see the engine's internal prose — no diagnostic code,
+    // no raw trap text, no "call init() again"/"recreate the worker process".
+    assert.doesNotMatch(msg, /WASM_RUNTIME_UNRECOVERABLE|underlying wasm trap|unreachable/i);
+    assert.doesNotMatch(msg, /wasm-bindgen|init\(\)|worker process/i);
+  });
+
+  it('explains a recoverable operation trap without demanding a reload first', () => {
+    const msg = formatLoadError(new WebAssembly.RuntimeError('unreachable'), 'tower.ifc');
+    assert.match(msg, /"tower\.ifc"/);
+    assert.match(msg, /geometry engine crashed/i);
+    assert.match(msg, /memory/i);
+    assert.doesNotMatch(msg, /unreachable/);
+  });
+});

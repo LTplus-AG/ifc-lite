@@ -1808,6 +1808,8 @@
     "TessellationQuality: type",
     "Vec3: interface",
     "WASM_ASSET_UNAVAILABLE_EVENT: const",
+    "WASM_RUNTIME_UNRECOVERABLE_CODE: const",
+    "WASM_RUNTIME_UNRECOVERABLE_EVENT: const",
     "WatchdogInputs: interface",
     "WorkerCountInputs: interface",
     "WorkerCountResult: interface",
@@ -1818,6 +1820,8 @@
     "isNoRenderGeometryError: function",
     "isTauri: function",
     "isWasmAssetUnavailableError: function",
+    "isWasmRuntimeTrap: function",
+    "isWasmRuntimeUnrecoverableError: function",
     "mergeGeometryDiagnostics: function",
     "pickWorkerCount: function",
     "prewarmSharedWasmModule: function"

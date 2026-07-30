@@ -46,6 +46,17 @@ export type LoadErrorKind =
    * the user just needs to pick the file again.
    */
   | 'file_unreadable'
+  /**
+   * The WebAssembly geometry engine trapped at runtime on THIS thread — a Rust
+   * panic, a failed `assert!` or an allocator abort, all of which reach JS
+   * identically as `RuntimeError: unreachable` (`panic = "abort"`). Distinct
+   * from `geometry_worker_crash`, which is the same class of failure inside a
+   * worker: there the worker dies and is replaced, here the trap surfaces
+   * straight to the caller. Also covers the `WASM_RUNTIME_UNRECOVERABLE`
+   * marker, which the engine raises when it trapped while initializing and
+   * therefore cannot be rebuilt without a page reload (#1898).
+   */
+  | 'wasm_runtime_crashed'
   /** The user (or a superseding load) cancelled the operation. */
   | 'cancelled'
   /** Anything else. */
@@ -155,6 +166,32 @@ function isGeometryWorkerCrashError(message: string): boolean {
   return /geometry worker (?:failed|error|crashed|terminated)/i.test(message);
 }
 
+/**
+ * A bare WebAssembly trap that reached us on this thread (#1898). Before this
+ * bucket existed such a trap fell through to `unknown`, so the user was shown
+ * the raw engine text and error tracking could not group the family at all —
+ * which is exactly how the reported occurrence was recorded (`error_kind:
+ * unknown`, message = an internal sentence about recreating a worker process).
+ *
+ * Matched ONLY on hard identity: the error's `.name`, which the spec fixes to
+ * `RuntimeError` for every wasm trap and which survives a cross-realm hop where
+ * `instanceof` does not, or the engine's explicit unrecoverable marker.
+ *
+ * Deliberately NOT matched on trap phrasing in the message. Issue #1196 settled
+ * that a bare "unreachable" / "RuntimeError: …" *string* must stay `unknown`:
+ * on the analytics path (`analytics-scrub`) all we ever have is stringified
+ * text, and the viewer runs other wasm (space-plate, parquet) whose traps would
+ * then be swept into this family's single issue fingerprint. A live error
+ * object carries its `.name`, so nothing real is lost. Checked AFTER the worker
+ * bucket so a worker-attributed trap keeps its own bucket.
+ */
+const WASM_RUNTIME_UNRECOVERABLE_MARKER = 'WASM_RUNTIME_UNRECOVERABLE'; // == @ifc-lite/geometry's WASM_RUNTIME_UNRECOVERABLE_CODE
+function isWasmRuntimeCrashError(err: unknown, message: string): boolean {
+  return (
+    errorNameOf(err) === 'RuntimeError' || message.includes(WASM_RUNTIME_UNRECOVERABLE_MARKER)
+  );
+}
+
 function isCancelledError(message: string): boolean {
   return /\bcancel(?:led|ed)?\b|aborterror|the operation was aborted/i.test(message);
 }
@@ -177,6 +214,7 @@ export function classifyLoadError(err: unknown): LoadErrorKind {
   if (isOutOfMemoryError(message)) return 'out_of_memory';
   if (isStreamStalledError(message)) return 'geometry_stream_stalled';
   if (isGeometryWorkerCrashError(message)) return 'geometry_worker_crash';
+  if (isWasmRuntimeCrashError(err, message)) return 'wasm_runtime_crashed';
   if (isCancelledError(message)) return 'cancelled';
   return 'unknown';
 }
@@ -221,6 +259,24 @@ export function formatLoadError(err: unknown, fileName?: string): string {
         `It may have been moved, renamed, deleted, or unloaded by a cloud-sync client ` +
         `(OneDrive/Dropbox/iCloud) since you picked it. Please select the file again.`
       );
+    case 'wasm_runtime_crashed':
+      // Two sub-cases, and the difference matters to the user: a trap taken by
+      // one operation costs only that operation (the engine rebuilds itself on
+      // the next one), while a trap taken while the engine was starting cannot
+      // be undone without a new document. Never show the raw engine text here —
+      // the reported occurrence put an internal sentence about "recreating the
+      // worker process" in front of a user (#1898).
+      return messageOf(err).includes(WASM_RUNTIME_UNRECOVERABLE_MARKER)
+        ? (
+          `The 3D geometry engine crashed and can't restart in this tab. ` +
+          `Please reload the page (Ctrl/Cmd+R) — your work in other tabs is unaffected. ` +
+          `If it happens again on the same model, it is likely too large for this device's memory.`
+        )
+        : (
+          `The 3D geometry engine crashed while processing ${subject} and the operation was stopped. ` +
+          `This is usually memory pressure on a large or complex model — try closing other tabs, ` +
+          `or exporting/loading a smaller selection. Reload the page if it keeps happening.`
+        );
     case 'cancelled':
       return `Loading ${subject} was cancelled.`;
     default:

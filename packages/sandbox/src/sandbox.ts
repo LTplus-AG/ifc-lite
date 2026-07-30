@@ -190,6 +190,11 @@ export class Sandbox {
         durationMs,
       };
     } finally {
+      // Belt-and-braces: the success path already zeroed this before the dumps,
+      // but an unexpected throw from job draining would otherwise leave the CPU
+      // interrupt armed against a stale start time, so the next VM code to run
+      // in this realm (including teardown) would be cut short as a timeout.
+      this.evalStartTime = 0;
       safeDispose(resultHandle);
     }
   }

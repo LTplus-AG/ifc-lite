@@ -61,7 +61,10 @@
 //! constrained-Delaunay, still watertight) — quality is best-effort, validity
 //! is not.
 
+mod predicates;
+
 use crate::Point2;
+use predicates::{dist2, rings_to_pslg, segments_properly_cross, strictly_between};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 /// Target minimum angle for refinement, expressed as `cos(angle)` so the
@@ -149,11 +152,31 @@ impl Tri {
 }
 
 struct Cdt {
+    /// `[0, n_real)` = input then Steiner points; `[n_real, super_base)` = the
+    /// PRE-RESERVED Steiner slots (placeholders, never referenced by a triangle);
+    /// `[super_base, super_base+3)` = the super triangle.
     points: Vec<P2>,
     tris: Vec<Tri>,
     /// Constraint segments (canonical edge keys); never flipped, never crossed.
+    /// Ord-keyed so the recovery ORDER in [`Cdt::enforce_constraints`] is
+    /// target-independent.
     constraints: BTreeSet<(usize, usize)>,
+    /// Membership-only mirror of `constraints`. The cavity BFS, legalization
+    /// and the depth-parity flood probe it millions of times per model and only
+    /// ever ask "is this edge pinned?", where a tree walk is pure overhead;
+    /// every mutation of `constraints` updates both.
+    cset: rustc_hash::FxHashSet<(usize, usize)>,
+    /// Index of the first super-triangle vertex. FIXED at build time (the
+    /// Steiner budget is reserved below it), so a refinement insertion never
+    /// renumbers vertices — see [`Cdt::insert_steiner`].
     super_base: usize,
+    /// Count of REAL points in use (input + Steiner emitted so far).
+    n_real: usize,
+    /// Walk-locate hint: a triangle incident to the last inserted point.
+    last_loc: usize,
+    /// Broad-phase for [`Cdt::is_encroached`], (re)built at
+    /// [`Cdt::start_refinement`] and invalidated by a constraint split.
+    enc: EncGrid,
     /// Per-triangle inside-domain flag, parallel to `tris`. Maintained
     /// incrementally during NO-SPLIT refinement (after [`Cdt::start_refinement`]):
     /// a flip reuses its two slots within one region (a flipped edge is never a
@@ -178,12 +201,33 @@ struct Cdt {
     failed: bool,
 }
 
+/// Broad-phase over the constraint segments' diametral circles, for the
+/// per-candidate encroachment test. CSR uniform grid + an "oversized disk"
+/// list; `nx == 0` = not built.
+#[derive(Default)]
+struct EncGrid {
+    mid: Vec<P2>,
+    r2: Vec<f64>,
+    minx: f64,
+    miny: f64,
+    inv: f64,
+    nx: usize,
+    ny: usize,
+    starts: Vec<u32>,
+    items: Vec<u32>,
+    big: Vec<u32>,
+}
+
 impl Cdt {
     /// Build a CDT from an explicit point list + constraint segment list. The
     /// segment list is the source of truth for constraints (so refinement can
     /// add Steiner points and replace a segment with its two halves, then
     /// rebuild cleanly from scratch — no fragile in-place mutation).
-    fn build_from(mut points: Vec<P2>, segments: &[(usize, usize)]) -> Option<Cdt> {
+    fn build_from(
+        mut points: Vec<P2>,
+        segments: &[(usize, usize)],
+        steiner_cap: usize,
+    ) -> Option<Cdt> {
         let n_input = points.len();
         if n_input < 3 {
             return None;
@@ -214,6 +258,15 @@ impl Cdt {
         let cx = (minx + maxx) * 0.5;
         let cy = (miny + maxy) * 0.5;
         let big = span * 32.0;
+        // Reserve the whole Steiner budget BELOW the super vertices. Splicing a
+        // Steiner point in at `super_base` used to renumber every triangle's
+        // vertex ids (an O(T) pass per point — 1.07e9 index touches on
+        // ISSUE_129, the single largest cost in the consolidate path). With the
+        // slots pre-reserved the super ids are constant, so nothing renumbers.
+        // Ids stay in the SAME relative order as before (super still above every
+        // real vertex), which is what the index-ordered tie-breaks
+        // (`boundary.sort_unstable`, `ekey`) depend on ⇒ output-identical.
+        points.resize(n_input + steiner_cap, [0.0, 0.0]);
         let super_base = points.len();
         points.push([cx - big, cy - big]);
         points.push([cx + big, cy - big]);
@@ -222,8 +275,12 @@ impl Cdt {
         let mut cdt = Cdt {
             points,
             tris: Vec::new(),
+            cset: constraints.iter().copied().collect(),
             constraints,
             super_base,
+            n_real: n_input,
+            last_loc: 0,
+            enc: EncGrid::default(),
             inside: Vec::new(),
             skinny: BTreeSet::new(),
             track: false,
@@ -255,8 +312,12 @@ impl Cdt {
 
     fn insert_point(&mut self, vi: usize) {
         let p = self.points[vi];
-        let Some(start) = self.locate(p) else {
-            return;
+        let start = match self.walk_strict(self.last_loc, p) {
+            Some(t) => t,
+            None => match self.locate(p) {
+                Some(t) => t,
+                None => return,
+            },
         };
         self.insert_point_at(vi, start);
     }
@@ -297,7 +358,7 @@ impl Cdt {
                 for e in 0..3 {
                     let a = v[e];
                     let b = v[(e + 1) % 3];
-                    if self.constraints.contains(&ekey(a, b)) {
+                    if self.cset.contains(&ekey(a, b)) {
                         continue; // do not let the cavity swallow a constraint
                     }
                     let nb = self.tris[ti].n[e];
@@ -316,6 +377,7 @@ impl Cdt {
             // T-junction with the far triangle still linked to the dead
             // parent. Genuinely interior points take the 3-way split.
             self.split_at(start, vi);
+            self.last_loc = self.tris.len() - 1;
             return;
         }
 
@@ -371,6 +433,7 @@ impl Cdt {
         for t in new_tris {
             self.track_tri(t);
         }
+        self.last_loc = self.tris.len() - 1;
     }
 
     /// Wire adjacency for an internal cavity edge once both owners are known.
@@ -484,6 +547,10 @@ impl Cdt {
         if self.constraints.remove(&ekey(a, b)) {
             self.constraints.insert(ekey(a, vi));
             self.constraints.insert(ekey(vi, b));
+            self.cset.remove(&ekey(a, b));
+            self.cset.insert(ekey(a, vi));
+            self.cset.insert(ekey(vi, b));
+            self.enc = EncGrid::default(); // stale broad-phase → linear fallback
         }
 
         self.tris[t].alive = false;
@@ -583,7 +650,7 @@ impl Cdt {
             let a = self.tris[ti].v[e];
             let b = self.tris[ti].v[(e + 1) % 3];
             let apex = self.tris[ti].v[(e + 2) % 3];
-            if self.constraints.contains(&ekey(a, b)) {
+            if self.cset.contains(&ekey(a, b)) {
                 continue;
             }
             let opp = self.tris[ti].n[e];
@@ -743,6 +810,7 @@ impl Cdt {
     /// paths) keep both maintained under [`Cdt::insert_steiner`] mutations.
     fn start_refinement(&mut self, cos_min_angle: f64) {
         self.inside = self.inside_flags();
+        self.build_enc_grid();
         self.cos_min_angle = cos_min_angle;
         self.track = true;
         self.skinny.clear();
@@ -811,6 +879,49 @@ impl Cdt {
         self.locate(p)
     }
 
+    /// Walk-locate that is EXACTLY [`Cdt::locate`] whenever it answers: it only
+    /// returns a triangle that STRICTLY contains `p`, and a strictly-containing
+    /// triangle is unique, so the canonical lowest-index scan must return the
+    /// same one. Every other outcome — `p` on an edge/vertex (the one case
+    /// where `locate`'s lowest-index tie-break is observable), a dead start, a
+    /// hull exit, a step-cap hit — answers `None` and the caller falls back to
+    /// the scan. That is what makes the walk a pure speedup and not a behaviour
+    /// change.
+    fn walk_strict(&self, start: usize, p: P2) -> Option<usize> {
+        if !self.tris.get(start).is_some_and(|t| t.alive) {
+            return None;
+        }
+        let mut cur = start;
+        // Any cap is safe (a miss just takes the scan); this one bounds the
+        // pathological "first negative edge" cycle without being O(T) in
+        // practice.
+        let cap = self.tris.len().min(4096) + 16;
+        for _ in 0..cap {
+            let v = self.tris[cur].v;
+            let o0 = orient(self.points[v[0]], self.points[v[1]], p);
+            let o1 = orient(self.points[v[1]], self.points[v[2]], p);
+            let o2 = orient(self.points[v[2]], self.points[v[0]], p);
+            if o0 > 0 && o1 > 0 && o2 > 0 {
+                return Some(cur);
+            }
+            let e = if o0 < 0 {
+                0
+            } else if o1 < 0 {
+                1
+            } else if o2 < 0 {
+                2
+            } else {
+                return None; // on the closed boundary — let `locate` tie-break
+            };
+            let nb = self.tris[cur].n[e];
+            if nb == NONE || !self.tris[nb].alive {
+                return None;
+            }
+            cur = nb;
+        }
+        None
+    }
+
     // ─────────────────────── constraint recovery ──────────────────────────
 
     /// Ensure every constraint segment appears as an edge of the triangulation.
@@ -818,9 +929,20 @@ impl Cdt {
     /// exist; any missing one is recovered by flipping the diagonals that cross
     /// it. Returns false if a segment can't be recovered (caller falls back).
     fn enforce_constraints(&mut self) -> bool {
+        // Materialise the alive edge set ONCE instead of re-scanning every
+        // triangle per `edge_exists` probe (4.7e8 slot visits on ISSUE_129 —
+        // the second-largest cost in the consolidate path). Recovery's only
+        // topology mutation is the explicit `flip` below, whose edge delta is
+        // exactly "drop u-w, add apex-q", so the set stays exact.
+        let mut edges: rustc_hash::FxHashSet<(usize, usize)> = rustc_hash::FxHashSet::default();
+        for t in self.tris.iter().filter(|t| t.alive) {
+            for e in 0..3 {
+                edges.insert(ekey(t.v[e], t.v[(e + 1) % 3]));
+            }
+        }
         let segs: Vec<(usize, usize)> = self.constraints.iter().copied().collect();
         for (a, b) in segs {
-            if !self.recover_segment(a, b) {
+            if !self.recover_segment(a, b, &mut edges) {
                 return false;
             }
         }
@@ -830,8 +952,13 @@ impl Cdt {
     /// Recover a single constraint segment `a-b` by repeatedly flipping the
     /// triangulation edge that crosses it. Deterministic: always processes the
     /// crossing edge nearest `a`.
-    fn recover_segment(&mut self, a: usize, b: usize) -> bool {
-        if self.edge_exists(a, b) {
+    fn recover_segment(
+        &mut self,
+        a: usize,
+        b: usize,
+        edges: &mut rustc_hash::FxHashSet<(usize, usize)>,
+    ) -> bool {
+        if edges.contains(&ekey(a, b)) {
             return true;
         }
         let pa = self.points[a];
@@ -842,7 +969,7 @@ impl Cdt {
             if guard > 100_000 {
                 return false;
             }
-            if self.edge_exists(a, b) {
+            if edges.contains(&ekey(a, b)) {
                 return true;
             }
             // Find an edge (u,v) strictly crossing segment a-b whose flip is
@@ -860,7 +987,7 @@ impl Cdt {
                     if u == a || u == b || w == a || w == b {
                         continue;
                     }
-                    if self.constraints.contains(&ekey(u, w)) {
+                    if self.cset.contains(&ekey(u, w)) {
                         continue;
                     }
                     if !segments_properly_cross(pa, pb, self.points[u], self.points[w]) {
@@ -895,6 +1022,8 @@ impl Cdt {
                     }
                     let mut tmp = Vec::new();
                     self.flip(ti, opp, u, w, apex, q, &mut tmp);
+                    edges.remove(&ekey(u, w));
+                    edges.insert(ekey(apex, q));
                     // Do NOT legalize here — constraint recovery must not
                     // re-introduce the crossing edge. Re-Delaunay happens after
                     // all constraints are in (constrained edges stay pinned).
@@ -905,22 +1034,18 @@ impl Cdt {
             if !flipped {
                 // No flippable crossing edge found — segment already present or
                 // unrecoverable. Re-check existence at loop top.
-                if self.edge_exists(a, b) {
-                    return true;
-                }
-                return false;
+                return edges.contains(&ekey(a, b));
             }
         }
     }
 
-    #[inline]
+    /// Does an alive triangle carry undirected edge `a-b`? Test-only since the
+    /// recovery loop reads the maintained edge set instead.
+    #[cfg(test)]
     fn edge_exists(&self, a: usize, b: usize) -> bool {
-        for ti in 0..self.tris.len() {
-            if self.tris[ti].alive && self.tris[ti].edge_of(a, b).is_some() {
-                return true;
-            }
-        }
-        false
+        self.tris
+            .iter()
+            .any(|t| t.alive && t.edge_of(a, b).is_some())
     }
 
     /// Restore the Delaunay property everywhere EXCEPT across constraint edges
@@ -979,7 +1104,7 @@ impl Cdt {
                     }
                     let a = self.tris[ti].v[e];
                     let b = self.tris[ti].v[(e + 1) % 3];
-                    let nd = if self.constraints.contains(&ekey(a, b)) {
+                    let nd = if self.cset.contains(&ekey(a, b)) {
                         d + 1
                     } else {
                         d
@@ -1034,7 +1159,7 @@ impl Cdt {
                 self.skinny.remove(&ti);
                 continue;
             };
-            if self.encroached_by_point(cc).is_some() {
+            if self.is_encroached(cc) {
                 self.skinny.remove(&ti); // no-split mode: leave it (permanent)
                 continue;
             }
@@ -1055,39 +1180,163 @@ impl Cdt {
 
     /// Incrementally insert Steiner point `p` (known to lie in alive triangle
     /// `loc`, per [`Cdt::next_steiner`]) into the LIVE CDT — the no-rebuild
-    /// refinement step. The point is spliced in just below the super-triangle
-    /// vertices so every index invariant holds unchanged (`< n_input` = input /
-    /// constraint vertex, `>= super_base` = super vertex, emit keeps
-    /// `< super_base`); triangle vertex ids at or above the splice point shift
-    /// up by one (an O(T) integer pass, no predicates).
+    /// refinement step. The point takes the next PRE-RESERVED slot below the
+    /// super-triangle vertices, so every index invariant holds unchanged
+    /// (`< n_input` = input / constraint vertex, `>= super_base` = super vertex,
+    /// emit keeps `< n_real`) and no triangle is renumbered. Reserving the whole
+    /// budget up front is what removes the old per-point O(T) renumbering pass.
     fn insert_steiner(&mut self, p: P2, loc: usize) {
-        let vi = self.super_base;
-        self.points.insert(vi, p);
-        self.super_base += 1;
-        for t in &mut self.tris {
-            for v in &mut t.v {
-                if *v >= vi {
-                    *v += 1;
-                }
-            }
+        let vi = self.n_real;
+        if vi >= self.super_base {
+            self.failed = true; // budget exhausted — caller ear-clips (unreachable: the driver caps first)
+            return;
         }
+        self.points[vi] = p;
+        self.n_real += 1;
         // Constraints reference input vertices only (< n_input <= vi): unchanged.
         self.insert_point_at(vi, loc);
     }
 
     /// Does point `p` lie inside the diametral circle of any constraint
-    /// segment? Returns the lowest-key such segment.
-    fn encroached_by_point(&self, p: P2) -> Option<(usize, usize)> {
+    /// segment?
+    ///
+    /// Existence only — the refinement driver never looks at WHICH segment — so
+    /// the answer is order-independent and a broad-phase is exact rather than
+    /// approximate. Every skinny candidate used to test every constraint
+    /// (5.9e7 disk tests on ISSUE_129); the grid built once per refinement
+    /// answers from one cell plus the few oversized disks.
+    fn is_encroached(&self, p: P2) -> bool {
+        let hit = |i: u32| {
+            let i = i as usize;
+            dist2(p, self.enc.mid[i]) < self.enc.r2[i] * (1.0 - 1e-12)
+        };
+        if self.enc.nx == 0 {
+            // No grid (constraints mutated mid-refinement, or none at all).
+            return self.constraints.iter().any(|&(a, b)| {
+                let (pa, pb) = (self.points[a], self.points[b]);
+                let mid = [(pa[0] + pb[0]) * 0.5, (pa[1] + pb[1]) * 0.5];
+                dist2(p, mid) < dist2(pa, pb) * 0.25 * (1.0 - 1e-12)
+            });
+        }
+        if self.enc.big.iter().copied().any(hit) {
+            return true;
+        }
+        let gx = (p[0] - self.enc.minx) * self.enc.inv;
+        let gy = (p[1] - self.enc.miny) * self.enc.inv;
+        if !(gx >= 0.0 && gy >= 0.0) {
+            return false;
+        }
+        let (gx, gy) = (gx as usize, gy as usize);
+        if gx >= self.enc.nx || gy >= self.enc.ny {
+            return false;
+        }
+        let c = gy * self.enc.nx + gx;
+        let (s, e) = (
+            self.enc.starts[c] as usize,
+            self.enc.starts[c + 1] as usize,
+        );
+        self.enc.items[s..e].iter().copied().any(hit)
+    }
+
+    /// Rebuild [`Cdt::enc`] from the current constraint set. `nx == 0` means
+    /// "no grid" and [`Cdt::is_encroached`] falls back to the linear scan.
+    fn build_enc_grid(&mut self) {
+        let mut mid: Vec<P2> = Vec::with_capacity(self.constraints.len());
+        let mut r2: Vec<f64> = Vec::with_capacity(self.constraints.len());
+        let mut rad: Vec<f64> = Vec::with_capacity(self.constraints.len());
         for &(a, b) in &self.constraints {
-            let pa = self.points[a];
-            let pb = self.points[b];
-            let mid = [(pa[0] + pb[0]) * 0.5, (pa[1] + pb[1]) * 0.5];
-            let r2 = dist2(pa, pb) * 0.25;
-            if dist2(p, mid) < r2 * (1.0 - 1e-12) {
-                return Some((a, b));
+            let (pa, pb) = (self.points[a], self.points[b]);
+            mid.push([(pa[0] + pb[0]) * 0.5, (pa[1] + pb[1]) * 0.5]);
+            let d2 = dist2(pa, pb) * 0.25;
+            r2.push(d2);
+            rad.push(d2.sqrt());
+        }
+        self.enc = EncGrid {
+            mid,
+            r2,
+            ..EncGrid::default()
+        };
+        let n = self.enc.mid.len();
+        if n == 0 {
+            return;
+        }
+        let (mut minx, mut miny, mut maxx, mut maxy) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+        for (m, r) in self.enc.mid.iter().zip(rad.iter()) {
+            minx = minx.min(m[0] - r);
+            miny = miny.min(m[1] - r);
+            maxx = maxx.max(m[0] + r);
+            maxy = maxy.max(m[1] + r);
+        }
+        let span = (maxx - minx).max(maxy - miny);
+        if !(span > 0.0) || !span.is_finite() {
+            return;
+        }
+        // ~1 cell per constraint, capped so the CSR stays small.
+        let side = ((n as f64).sqrt().ceil() as usize).clamp(1, 64);
+        let cell = span / side as f64;
+        let inv = 1.0 / cell;
+        let (nx, ny) = (side, side);
+        let cellrange = |m: P2, r: f64| -> (usize, usize, usize, usize) {
+            let c = |v: f64, lo: f64, hi: usize| {
+                let g = ((v - lo) * inv).floor();
+                if g < 0.0 {
+                    0
+                } else if g >= hi as f64 {
+                    hi - 1
+                } else {
+                    g as usize
+                }
+            };
+            (
+                c(m[0] - r, minx, nx),
+                c(m[0] + r, minx, nx),
+                c(m[1] - r, miny, ny),
+                c(m[1] + r, miny, ny),
+            )
+        };
+        let mut counts = vec![0u32; nx * ny + 1];
+        let mut big: Vec<u32> = Vec::new();
+        let mut is_big = vec![false; n];
+        for i in 0..n {
+            let (x0, x1, y0, y1) = cellrange(self.enc.mid[i], rad[i]);
+            if (x1 - x0 + 1) * (y1 - y0 + 1) > 32 {
+                big.push(i as u32);
+                is_big[i] = true;
+                continue;
+            }
+            for gy in y0..=y1 {
+                for gx in x0..=x1 {
+                    counts[gy * nx + gx + 1] += 1;
+                }
             }
         }
-        None
+        for i in 1..counts.len() {
+            counts[i] += counts[i - 1];
+        }
+        let total = counts[nx * ny] as usize;
+        let mut items = vec![0u32; total];
+        let mut cursor = counts.clone();
+        for i in 0..n {
+            if is_big[i] {
+                continue;
+            }
+            let (x0, x1, y0, y1) = cellrange(self.enc.mid[i], rad[i]);
+            for gy in y0..=y1 {
+                for gx in x0..=x1 {
+                    let c = gy * nx + gx;
+                    items[cursor[c] as usize] = i as u32;
+                    cursor[c] += 1;
+                }
+            }
+        }
+        self.enc.minx = minx;
+        self.enc.miny = miny;
+        self.enc.inv = inv;
+        self.enc.nx = nx;
+        self.enc.ny = ny;
+        self.enc.starts = counts;
+        self.enc.items = items;
+        self.enc.big = big;
     }
 
     /// Is interior triangle `ti` skinny (smallest angle < the min-angle target)
@@ -1163,11 +1412,13 @@ impl Cdt {
 
     /// Emit the interior triangulation as a vertex list + index list. The
     /// vertex list is `points[0..n_input]` followed by every Steiner point
-    /// (`points[n_input..super_base]`); the super-triangle vertices are dropped.
+    /// (`points[n_input..n_real]`); the unused reserved slots and the
+    /// super-triangle vertices are dropped.
     fn emit(&self) -> (Vec<P2>, Vec<usize>) {
         let inside = self.inside_flags();
-        // Compact vertex set: keep input + Steiner (drop super verts).
-        let keep_upto = self.super_base; // points below super_base are real
+        // Compact vertex set: keep input + Steiner (drop super verts AND the
+        // unused tail of the reserved Steiner region).
+        let keep_upto = self.n_real;
         let out_points: Vec<P2> = self.points[..keep_upto].to_vec();
         let mut indices: Vec<usize> = Vec::new();
         for ti in 0..self.tris.len() {
@@ -1192,55 +1443,6 @@ impl Cdt {
         }
         (out_points, indices)
     }
-}
-
-#[inline]
-fn dist2(a: P2, b: P2) -> f64 {
-    let dx = a[0] - b[0];
-    let dy = a[1] - b[1];
-    dx * dx + dy * dy
-}
-
-/// For `p` known EXACTLY collinear with `a`-`b` (exact `orient == 0`): does it
-/// lie strictly between them? Pure lexicographic comparison — no arithmetic,
-/// no rounding, and `false` when `p` coincides with an endpoint.
-#[inline]
-fn strictly_between(a: P2, b: P2, p: P2) -> bool {
-    let lt = |u: P2, w: P2| u[0] < w[0] || (u[0] == w[0] && u[1] < w[1]);
-    (lt(a, p) && lt(p, b)) || (lt(b, p) && lt(p, a))
-}
-
-/// Do open segments `p1-p2` and `p3-p4` strictly cross (proper intersection,
-/// not merely touching at an endpoint)? Exact via `orient`.
-fn segments_properly_cross(p1: P2, p2: P2, p3: P2, p4: P2) -> bool {
-    let d1 = orient(p3, p4, p1);
-    let d2 = orient(p3, p4, p2);
-    let d3 = orient(p1, p2, p3);
-    let d4 = orient(p1, p2, p4);
-    (d1 > 0 && d2 < 0 || d1 < 0 && d2 > 0) && (d3 > 0 && d4 < 0 || d3 < 0 && d4 > 0)
-}
-
-/// Build the initial (Steiner-free) constraint set + point list from rings.
-/// `rings[0]` = outer, `rings[1..]` = holes. Returns `(points, segments)`.
-fn rings_to_pslg(rings: &[Vec<P2>]) -> (Vec<P2>, Vec<(usize, usize)>) {
-    let mut points: Vec<P2> = Vec::new();
-    let mut segments: Vec<(usize, usize)> = Vec::new();
-    for ring in rings {
-        if ring.len() < 3 {
-            continue;
-        }
-        let base = points.len();
-        points.extend_from_slice(ring);
-        let m = ring.len();
-        for i in 0..m {
-            let a = base + i;
-            let b = base + (i + 1) % m;
-            if a != b {
-                segments.push(ekey(a, b));
-            }
-        }
-    }
-    (points, segments)
 }
 
 /// Run bounded, INTERIOR-ONLY Ruppert/Chew refinement on a planar
@@ -1269,7 +1471,7 @@ fn refine_to_fixpoint(points: Vec<P2>, segments: Vec<(usize, usize)>) -> Option<
     let n_input = points.len();
     let max_steiner = (n_input * 3).max(32);
     let mut steiner = 0usize;
-    let mut cdt = Cdt::build_from(points, &segments)?;
+    let mut cdt = Cdt::build_from(points, &segments, max_steiner.min(MAX_REFINE_ITERS))?;
 
     cdt.start_refinement(COS_MIN_ANGLE);
     while steiner < max_steiner.min(MAX_REFINE_ITERS) {
@@ -1343,7 +1545,7 @@ pub(crate) fn triangulate_constrained(
         }
     }
     let (points, segments) = rings_to_pslg(&rings);
-    let cdt = Cdt::build_from(points, &segments)?;
+    let cdt = Cdt::build_from(points, &segments, 0)?;
     let (pts, idx) = cdt.emit();
     if idx.is_empty() {
         return None;
@@ -1370,7 +1572,7 @@ pub(crate) fn triangulate_pslg(
     segments: &[(usize, usize)],
 ) -> Option<(Vec<Point2<f64>>, Vec<usize>)> {
     let pts: Vec<P2> = points.iter().map(p2).collect();
-    let cdt = Cdt::build_from(pts, segments)?;
+    let cdt = Cdt::build_from(pts, segments, 0)?;
     let keep_upto = cdt.super_base;
     let mut indices: Vec<usize> = Vec::new();
     for tri in &cdt.tris {
@@ -1401,217 +1603,5 @@ pub(crate) fn triangulate_pslg(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn pt(x: f64, y: f64) -> Point2<f64> {
-        Point2::new(x, y)
-    }
-
-    fn area_of(points: &[Point2<f64>], idx: &[usize]) -> f64 {
-        let mut a = 0.0;
-        for t in idx.chunks_exact(3) {
-            let p0 = points[t[0]];
-            let p1 = points[t[1]];
-            let p2 = points[t[2]];
-            a += ((p1.x - p0.x) * (p2.y - p0.y) - (p2.x - p0.x) * (p1.y - p0.y)).abs() * 0.5;
-        }
-        a
-    }
-
-    /// Many-void CDT-cliff regression (advanced_model.ifc IFCSLAB #798926): the no-split
-    /// (consolidate_coplanar) refinement of a many-hole slab face. The old
-    /// rebuild-per-Steiner-point driver was O(P³) — 13.8 s in RELEASE for ONE
-    /// 582-vertex/16-hole face, ×2 faces ×16 re-consolidates = a 155 s element.
-    /// The incremental driver does the same face in ~10 ms. The shape below
-    /// reproduces that face: a 134-vertex outer ring + 16 28-gon holes.
-    ///
-    /// Guards three things: (1) wall-time in release — bound 2 s, ~200× above
-    /// the fixed cost, ~7× below the regressed cost, so scheduler jitter can't
-    /// trip it but the O(P³) driver always does; (2) refinement actually ran
-    /// (Steiner points were added); (3) the result is still area-exact and
-    /// run-to-run deterministic (the incremental path must stay bit-stable).
-    #[test]
-    fn no_split_many_hole_refinement_is_fast_and_valid() {
-        // Outer ring: 12 m × 10 m rectangle subdivided to 132 boundary verts.
-        let (w, h, step) = (12.0_f64, 10.0_f64, 1.0 / 3.0);
-        let mut outer: Vec<Point2<f64>> = Vec::new();
-        let n_x = (w / step).round() as usize;
-        let n_y = (h / step).round() as usize;
-        for i in 0..n_x {
-            outer.push(pt(i as f64 * step, 0.0));
-        }
-        for j in 0..n_y {
-            outer.push(pt(w, j as f64 * step));
-        }
-        for i in (1..=n_x).rev() {
-            outer.push(pt(i as f64 * step, h));
-        }
-        for j in (1..=n_y).rev() {
-            outer.push(pt(0.0, j as f64 * step));
-        }
-        // 16 small 28-gon holes on a 4×4 grid (the slab's round penetrations).
-        let mut holes: Vec<Vec<Point2<f64>>> = Vec::new();
-        let r = 0.1_f64;
-        for gx in 0..4 {
-            for gy in 0..4 {
-                let (cx, cy) = (1.5 + 3.0 * gx as f64, 2.0 + 2.0 * gy as f64);
-                let ring: Vec<Point2<f64>> = (0..28)
-                    .map(|k| {
-                        let a = k as f64 / 28.0 * std::f64::consts::TAU;
-                        pt(cx + r * a.cos(), cy + r * a.sin())
-                    })
-                    .collect();
-                holes.push(ring);
-            }
-        }
-        let n_input = outer.len() + holes.iter().map(|h| h.len()).sum::<usize>();
-
-        let t0 = std::time::Instant::now();
-        let (pts, idx) = triangulate_refined(&outer, &holes).expect("no-split refinement");
-        let dt = t0.elapsed();
-
-        // Refinement ran (Steiner points beyond the input rings) and the domain
-        // is exact: outer area minus the 16 polygonal holes.
-        assert!(
-            pts.len() > n_input,
-            "expected Steiner points (got {} verts for {n_input} inputs)",
-            pts.len()
-        );
-        let hole_area: f64 = holes.iter().map(|h| {
-            let mut s = 0.0;
-            for i in 0..h.len() {
-                let j = (i + 1) % h.len();
-                s += h[i].x * h[j].y - h[j].x * h[i].y;
-            }
-            (s * 0.5).abs()
-        }).sum();
-        let area = area_of(&pts, &idx);
-        let expected = 12.0 * 10.0 - hole_area;
-        assert!(
-            (area - expected).abs() < 1e-6,
-            "area {area} != {expected} (outer minus 16 holes)"
-        );
-        // Bit-stable run-to-run (the incremental driver is deterministic).
-        let (pts2, idx2) = triangulate_refined(&outer, &holes).unwrap();
-        assert_eq!(idx, idx2, "index lists must be identical run-to-run");
-        assert_eq!(pts.len(), pts2.len());
-        for (a, b) in pts.iter().zip(pts2.iter()) {
-            assert_eq!(a.x.to_bits(), b.x.to_bits());
-            assert_eq!(a.y.to_bits(), b.y.to_bits());
-        }
-        // Perf bound — release only (debug predicate cost is ~10× and CI debug
-        // boxes jitter; the regressed driver fails this by ~7× even on slow HW).
-        #[cfg(not(debug_assertions))]
-        assert!(
-            dt < std::time::Duration::from_secs(2),
-            "no-split many-hole refinement took {dt:?} — the O(P³) rebuild-per-point driver is back"
-        );
-        let _ = dt;
-    }
-
-    /// Structural validity over ALIVE triangles: (1) every undirected edge is
-    /// shared by at most 2 alive triangles; (2) neighbour links are mutually
-    /// consistent (`t.n[e] = u` across edge `{a,b}` ⇒ `u` is alive, has edge
-    /// `{a,b}`, and links back to `t` across it); (3) no alive triangle has
-    /// zero area.
-    fn assert_structurally_valid(cdt: &Cdt) {
-        let mut edge_count: BTreeMap<(usize, usize), u32> = BTreeMap::new();
-        for ti in 0..cdt.tris.len() {
-            let t = &cdt.tris[ti];
-            if !t.alive {
-                continue;
-            }
-            assert_ne!(
-                orient(cdt.points[t.v[0]], cdt.points[t.v[1]], cdt.points[t.v[2]]),
-                0,
-                "alive triangle {ti} {:?} has zero area",
-                t.v
-            );
-            for e in 0..3 {
-                let a = t.v[e];
-                let b = t.v[(e + 1) % 3];
-                *edge_count.entry(ekey(a, b)).or_insert(0) += 1;
-                let nb = t.n[e];
-                if nb != NONE {
-                    assert!(
-                        cdt.tris[nb].alive,
-                        "triangle {ti} edge {a}-{b} points at dead triangle {nb}"
-                    );
-                    let back = cdt.tris[nb].edge_of(a, b).unwrap_or_else(|| {
-                        panic!("neighbour {nb} of triangle {ti} lacks edge {a}-{b}")
-                    });
-                    assert_eq!(
-                        cdt.tris[nb].n[back], ti,
-                        "adjacency {ti} <-> {nb} over edge {a}-{b} is not mutual"
-                    );
-                }
-            }
-        }
-        for (&(a, b), &c) in &edge_count {
-            assert!(c <= 2, "edge {a}-{b} is used by {c} alive triangles");
-        }
-    }
-
-    /// A1 regression (T-junction on a shared NON-constraint edge): a point
-    /// inserted EXACTLY on the diagonal of a unit square (the diagonal is a
-    /// shared interior edge, NOT a constraint) must split BOTH incident
-    /// triangles. The old empty-cavity fallback (`split_in_triangle`) skipped
-    /// the degenerate child on the collinear edge and re-filled only one side:
-    /// the far triangle kept its neighbour link to the dead parent and the new
-    /// vertex was left hanging mid-edge — a T-junction with broken adjacency.
-    #[test]
-    fn on_shared_edge_insertion_splits_both_sides() {
-        // Unit square, all 4 boundary edges constrained, diagonal free.
-        let points: Vec<P2> = vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
-        let segments = vec![(0usize, 1usize), (1, 2), (2, 3), (3, 0)];
-        let mut cdt = Cdt::build_from(points, &segments).expect("square CDT");
-        assert_structurally_valid(&cdt);
-
-        // The square interior is triangulated by ONE of its diagonals.
-        let (d0, d1) = if cdt.edge_exists(0, 2) { (0, 2) } else { (1, 3) };
-        assert!(cdt.edge_exists(d0, d1), "expected a diagonal edge");
-
-        // Splice the EXACT diagonal midpoint in as a Steiner-style vertex
-        // (same index discipline as `insert_steiner`: below the super verts).
-        let vi = cdt.super_base;
-        cdt.points.insert(vi, [0.5, 0.5]);
-        cdt.super_base += 1;
-        for t in &mut cdt.tris {
-            for v in &mut t.v {
-                if *v >= vi {
-                    *v += 1;
-                }
-            }
-        }
-        // Internal insertion via the empty-cavity fallback at a triangle
-        // incident to the diagonal — must split BOTH sides in lockstep.
-        let start = (0..cdt.tris.len())
-            .find(|&ti| cdt.tris[ti].alive && cdt.tris[ti].edge_of(d0, d1).is_some())
-            .expect("a triangle incident to the diagonal");
-        cdt.split_at(start, vi);
-
-        // The midpoint must be a REAL shared vertex fanned on both sides of
-        // the old diagonal: exactly 4 alive triangles reference it (all four
-        // square edges are constraints, so legalization cannot flip further).
-        let refs = (0..cdt.tris.len())
-            .filter(|&ti| cdt.tris[ti].alive && cdt.tris[ti].v.contains(&vi))
-            .count();
-        assert_eq!(refs, 4, "midpoint must be fanned by 4 triangles (both sides), got {refs}");
-        assert_structurally_valid(&cdt);
-    }
-
-    /// The unrefined constrained triangulation EXCLUDES hole interiors (returns
-    /// only the material region) and adds no Steiner points — the properties the
-    /// 2D opening-subtraction re-extrude relies on for a manifold, minimal cap.
-    #[test]
-    fn constrained_excludes_holes_no_steiner() {
-        let outer = vec![pt(0.0, 0.0), pt(10.0, 0.0), pt(10.0, 10.0), pt(0.0, 10.0)];
-        let holes = vec![vec![pt(4.0, 4.0), pt(4.0, 6.0), pt(6.0, 6.0), pt(6.0, 4.0)]];
-        let (pts, idx) = super::triangulate_constrained(&outer, &holes).unwrap();
-        // No Steiner points: the vertex list is exactly outer ++ holes.
-        assert_eq!(pts.len(), 8);
-        // Material area = 100 − 4 (the hole is excluded).
-        assert!((area_of(&pts, &idx) - 96.0).abs() < 1e-9);
-    }
-}
+#[path = "cdt_tests.rs"]
+mod tests;

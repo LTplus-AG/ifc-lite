@@ -112,6 +112,32 @@ WASM-specific structural cost (not in the native probe, by design):
 Encoded so a spike does not re-walk a dead end. History lives in the PRs cited.
 
 ### Shipped wins
+- **CDT: kill the three O(T)-per-item scans**: ISSUE_129 geometry 1568 -> 646 ms
+  (main, pre-seam-conform, is 979), **byte-identical output** on 8 fixtures incl.
+  advanced_model (FNV over every mesh). The quality CDT — not the seam conform —
+  was the whole cost of `consolidate_coplanar`; the conform's own work
+  (`build_seam_map` + `conform_plans`) measures 20 of 1400 CDT cpu-ms, so
+  "the conform is slow" was a mis-frame. What was actually slow, per instrumented
+  slot-visit counts on one ISSUE_129 load:
+  (1) `insert_steiner` renumbered every triangle to splice each Steiner point in
+  below the super vertices — **1.07e9** index touches. Fixed by reserving the
+  Steiner budget below the super verts at build time, so ids never move.
+  (2) `edge_exists` re-scanned every triangle per constraint probe — **4.7e8**
+  slot visits. Fixed by materialising the alive-edge set once in
+  `enforce_constraints` and applying the flip delta (drop `u-w`, add `apex-q`).
+  (3) `locate` was an O(T) canonical scan per inserted point — **2.2e8** slot
+  visits. Fixed by a walk from the previous insertion that only answers when the
+  triangle STRICTLY contains the point (unique ⇒ same answer as the scan) and
+  falls back to the scan on the on-edge tie-break.
+  Two smaller ones with the same shape: the encroachment test scanned all
+  constraints per skinny candidate (5.9e7 disk tests -> a CSR grid built once per
+  refinement), and `constraints` served millions of membership probes from a
+  BTreeSet (now an FxHashSet mirror; the BTreeSet stays for the recovery ORDER,
+  which is target-independence-critical).
+  **Lesson:** all five are output-identical by construction, so the fix is
+  measurement, not risk-taking — but only after instrumenting. The prior
+  hypothesis chain (lazy seam map, x-range prune, CDT caching by clone/move) all
+  measured ~zero because they targeted the 20 ms, not the 1400.
 - **Fast first-geometry** (#1185): ship index/styles/first-wave at scan-complete;
   22s -> 11.8s wall to first paint. Overlap parse + geometry.
 - **Faceted-brep dedup** (#1184) + **CartesianPoint cache hoist** (#1568/#1572):

@@ -62,13 +62,17 @@ fn discover_models() -> Vec<PathBuf> {
         .map(|files| {
             files
                 .iter()
-                .filter(|f| {
-                    f["path"].as_str().is_some_and(|p| p.ends_with(".ifc"))
-                        && f["size"].as_u64().is_some_and(|s| s <= MAX_FIXTURE_BYTES)
-                })
+                .filter(|f| f["path"].as_str().is_some_and(|p| p.ends_with(".ifc")))
                 .filter_map(|f| f["path"].as_str())
                 .map(|rel| models.join(rel))
-                .filter(|p| p.is_file())
+                // Size checked against the file ON DISK, not the manifest's recorded
+                // `size`: a stale manifest or a replaced fetch would otherwise let an
+                // oversized fixture through and silently change the swept population.
+                .filter(|p| {
+                    std::fs::metadata(p)
+                        .map(|m| m.is_file() && m.len() <= MAX_FIXTURE_BYTES)
+                        .unwrap_or(false)
+                })
                 .collect()
         })
         .unwrap_or_default();
@@ -491,7 +495,8 @@ fn watertightness_is_invariant_to_the_triangulator() {
     }
     // Is the tear population explained by coordinate magnitude rather than by
     // the boolean? f32 cannot carry mm topology far from the origin.
-    let mut near = (0usize, 0usize); // (pre-broken, csg-broke) with |coord| < 1e4
+    // (pre-broken, csg-broke), split at `F32_SAFE_MAGNITUDE`.
+    let mut near = (0usize, 0usize);
     let mut far = (0usize, 0usize);
     for (i, (rep, _, _, _)) in torn.iter().enumerate() {
         if !is_closed_solid(rep) {

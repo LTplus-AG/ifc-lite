@@ -391,7 +391,14 @@ impl ClippingProcessor {
         // The seam map is built ONLY when today's output is torn. Recording every
         // bucket's kept corners unconditionally cost +61% geometry time on
         // ISSUE_129 (1014 -> 1634 ms) for a map that ~85% of hosts never consult.
-        let (mut output, _) = emit_plans(&mut plans, false);
+        let (mut output, base_complete) = emit_plans(&mut plans, false);
+        // A region that failed to triangulate is skipped, so an incomplete baseline
+        // can be missing a whole closed component while still reading as watertight.
+        // Consolidation's standing contract is "never worse than the raw kernel
+        // output", so hand back the raw mesh rather than a known-lossy consolidation.
+        if !base_complete {
+            return mesh;
+        }
         if count_open_boundary_edges_at(&output, 1.0e4) > 0 {
             let seam = build_seam_map(&plans);
             if conform_plans(&mut plans, &seam) {

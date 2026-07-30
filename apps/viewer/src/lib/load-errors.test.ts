@@ -190,6 +190,33 @@ describe('classifyLoadError', () => {
 
   // A failure that named itself must keep its own, more actionable kind — the
   // network bucket is checked last precisely so it cannot swallow them.
+  // A rotated JS chunk after a redeploy is OUR breakage, not the user's
+  // connection. Its Chromium wording contains "Failed to fetch", so without an
+  // explicit exclusion `network_unavailable` claims it — which both fingerprints
+  // it together with genuine offline blips AND hands it to the benign-severity
+  // downgrade in analytics-scrub.ts, silencing a real deploy failure that
+  // survived main.tsx's one-shot chunk-reload budget.
+  it('never buckets a failed module import as network_unavailable', () => {
+    for (const message of [
+      'Failed to fetch dynamically imported module: https://example.test/assets/Viewport-Bq3x.js',
+      'error loading dynamically imported module: https://example.test/assets/Viewport-Bq3x.js',
+      'Importing a module script failed.', // WebKit
+    ]) {
+      assert.notEqual(classifyLoadError(new TypeError(message)), 'network_unavailable');
+      assert.notEqual(classifyLoadError(new TypeError(message)), 'cancelled');
+    }
+    // …but the ENGINE BINARY's own dynamic-import failure still self-identifies,
+    // because isWasmEngineLoadError claims `.wasm` messages before this bucket.
+    assert.equal(
+      classifyLoadError(
+        new TypeError(
+          'Failed to fetch dynamically imported module: https://example.test/assets/ifc-lite_bg-Bq3x.wasm',
+        ),
+      ),
+      'wasm_engine_load',
+    );
+  });
+
   it('does not let network_unavailable outrank a self-identifying failure', () => {
     assert.equal(
       classifyLoadError(

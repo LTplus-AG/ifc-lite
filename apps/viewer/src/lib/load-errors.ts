@@ -215,8 +215,22 @@ function isCancelledError(message: string): boolean {
  * Matched on the engine-specific wording only, and checked LAST, so a failure
  * that named itself (the engine binary, the file, a worker) keeps its own,
  * more actionable kind.
+ *
+ * A failed *module import* is excluded for the same reason `wasm-init-retry.ts`
+ * excludes it from the engine-binary attribution: Chromium words a rotated JS
+ * chunk `Failed to fetch dynamically imported module: …/assets/Foo-<hash>.js`,
+ * which contains "failed to fetch" but is NOT the user's connection dropping —
+ * it is our deployment having rotated an asset under a still-open tab. Bucketing
+ * it here would fingerprint it with genuine offline blips AND hand it to the
+ * benign-severity downgrade in ./analytics-scrub.ts, silencing a breakage that
+ * is ours and that survived `main.tsx`'s one-shot chunk-reload budget. The
+ * engine binary's own dynamic-import failure is unaffected: `.wasm` messages are
+ * claimed by `isWasmEngineLoadError` above, which runs first.
  */
 function isNetworkUnavailableError(message: string): boolean {
+  if (/dynamically imported module|importing a module script failed|module script/i.test(message)) {
+    return false;
+  }
   return (
     // WebKit/Safari, Chromium, Gecko — the generic "fetch rejected" strings.
     /\bload failed\b|failed to fetch|networkerror when attempting to fetch/i.test(message) ||

@@ -391,12 +391,19 @@ impl ClippingProcessor {
         // The seam map is built ONLY when today's output is torn. Recording every
         // bucket's kept corners unconditionally cost +61% geometry time on
         // ISSUE_129 (1014 -> 1634 ms) for a map that ~85% of hosts never consult.
-        let mut output = emit_plans(&mut plans, false);
+        let (mut output, _) = emit_plans(&mut plans, false);
         if count_open_boundary_edges_at(&output, 1.0e4) > 0 {
             let seam = build_seam_map(&plans);
             if conform_plans(&mut plans, &seam) {
-                let candidate = emit_plans(&mut plans, true);
-                if !candidate.is_empty() && count_open_boundary_edges_at(&candidate, 1.0e4) == 0 {
+                // `complete` is part of the bar, not a detail: a region that fails
+                // to triangulate is skipped, and if it was its own closed component
+                // the remainder still balances — so a watertight-LOOKING candidate
+                // can be missing a whole surface. Reject unless every region landed.
+                let (candidate, complete) = emit_plans(&mut plans, true);
+                if complete
+                    && !candidate.is_empty()
+                    && count_open_boundary_edges_at(&candidate, 1.0e4) == 0
+                {
                     output = candidate;
                 }
             }

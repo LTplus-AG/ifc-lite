@@ -13,7 +13,19 @@ use crate::mesh::Mesh;
 use nalgebra::{Point3, Vector3};
 
 /// Phase C — triangulate the (optionally conformed) rings and emit, in bucket order.
-pub(in crate::csg::consolidate) fn emit_plans(plans: &mut [PlanBucket], conformed: bool) -> Mesh {
+/// Returns the emitted mesh and whether EVERY region triangulated.
+///
+/// The flag matters only for the conformed pass. A region whose CDT fails is
+/// skipped, and on the conformed candidate that is not survivable: the accept bar
+/// tests watertightness, and a dropped region that happened to be its own closed
+/// component leaves the remainder edge-balanced, so a candidate missing a whole
+/// surface component would be accepted. The caller rejects the candidate outright
+/// rather than trying to reason about which drops are benign.
+pub(in crate::csg::consolidate) fn emit_plans(
+    plans: &mut [PlanBucket],
+    conformed: bool,
+) -> (Mesh, bool) {
+    let mut complete = true;
     use crate::triangulation::triangulate_polygon_with_holes_refined;
     let mut output = Mesh::new();
     for plan in plans.iter_mut() {
@@ -48,12 +60,18 @@ pub(in crate::csg::consolidate) fn emit_plans(plans: &mut [PlanBucket], conforme
                         emit_region(&mut output, basis, pts, idx);
                         continue;
                     }
-                    None => continue,
+                    None => {
+                        complete = false;
+                        continue;
+                    }
                 }
             }
             let (all_2d, indices) = match triangulate_polygon_with_holes_refined(outer, holes) {
                 Ok((pts, idx)) => (pts, idx),
-                Err(_) => continue,
+                Err(_) => {
+                    complete = false;
+                    continue;
+                }
             };
             if !conformed {
                 region.cached = Some((all_2d, indices));
@@ -64,7 +82,7 @@ pub(in crate::csg::consolidate) fn emit_plans(plans: &mut [PlanBucket], conforme
             emit_region(&mut output, basis, &all_2d, &indices);
         }
     }
-    output
+    (output, complete)
 }
 
 /// Lift one region's 2D CDT back to 3D and append it. Shared by the fresh and the

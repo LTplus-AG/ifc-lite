@@ -462,16 +462,48 @@ jobs:
         run: cargo clippy --workspace --exclude ifc-lite-wasm --all-targets -- -D warnings
       - name: Rust tests
         run: cargo test --workspace --exclude ifc-lite-wasm
-      # The geometry watertightness/invariance census is feature-gated because it
-      # links a second ear-clipper as a differential oracle and sweeps the whole
-      # fixture manifest, so `--workspace` above skips it. Without this step the
-      # suite early-returns and its pinned baselines gate nothing.
-      #
-      # Narrowed to `geometry` rather than `rust`: the sweep costs ~20 min, and only
-      # rust/geometry, rust/processing or the fixture manifest can move its numbers.
-      - name: Geometry watertightness census (differential oracle)
-        if: needs.changes.outputs.geometry == 'true'
-        run: cargo test -p ifc-lite-geometry --features triangulation-alt --test triangulation_invariance
+
+  # Geometry watertightness / triangulation-invariance census.
+  #
+  # Its own job, not a step in `rust-tests`: the sweep runs the whole fixture
+  # manifest and takes ~20 min, which pushed that lane past its 28-minute timeout
+  # and cancelled it. Here it runs concurrently instead of serially, so neither
+  # lane's wall-clock depends on the other.
+  #
+  # Feature-gated because it links a second ear-clipper as a differential oracle,
+  # so `cargo test --workspace` does not run it — without this job the suite
+  # early-returns and its pinned baselines gate nothing.
+  #
+  # `geometry`, not `rust`: only rust/geometry, rust/processing or the fixture
+  # manifest can move its numbers.
+  geometry-census:
+    name: Geometry watertightness census
+    needs: changes
+    if: needs.changes.outputs.geometry == 'true'
+    runs-on: depot-ubuntu-24.04-4
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          lfs: false
+          persist-credentials: false
+      - name: Setup Rust (pinned by rust-toolchain.toml)
+        run: rustup show
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          prefix-key: ci-rust-census
+      - name: Cache test fixtures
+        id: fixtures-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: tests/models
+          key: ci-fixtures-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json') }}
+      - name: Fetch fixtures
+        if: steps.fixtures-cache.outputs.cache-hit != 'true'
+        run: node scripts/fixtures/fetch-fixtures.mjs
+      - name: Census
+        run: cargo test -p ifc-lite-geometry --features triangulation-alt --test triangulation_invariance -- --nocapture
 
   # Plato clash-math single-source freshness gate. The clash narrow-phase math
   # is written once in Plato and transpiled to Rust + TypeScript; the committed
@@ -558,7 +590,7 @@ jobs:
   # out); fails the moment any dependency fails or is cancelled.
   test:
     name: Build + WASM + Rust + Node
-    needs: [changes, build, typecheck, lint, node-tests, viewer-e2e, rust-tests, plato-check, docs-checks]
+    needs: [changes, build, typecheck, lint, node-tests, viewer-e2e, rust-tests, geometry-census, plato-check, docs-checks]
     if: always()
     # Free runner — the gate just inspects upstream job results.
     runs-on: ubuntu-latest
@@ -572,6 +604,7 @@ jobs:
             [node-tests]="${{ needs.node-tests.result }}"
             [viewer-e2e]="${{ needs.viewer-e2e.result }}"
             [rust-tests]="${{ needs.rust-tests.result }}"
+            [geometry-census]="${{ needs.geometry-census.result }}"
             [plato-check]="${{ needs.plato-check.result }}"
             [docs-checks]="${{ needs.docs-checks.result }}"
           )

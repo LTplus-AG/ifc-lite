@@ -33,32 +33,45 @@ use ifc_lite_geometry::{propagate_voids_to_parts, GeometryRouter, Mesh};
 use rustc_hash::FxHashMap;
 use std::path::PathBuf;
 
-/// Every `.ifc` under `tests/models` up to `MAX_FIXTURE_BYTES`, discovered at
-/// run time so new fixtures widen coverage without touching this file.
+/// The gated corpus: every `.ifc` in `tests/models/manifest.json` up to
+/// `MAX_FIXTURE_BYTES`, resolved on disk.
+///
+/// Driven by the MANIFEST, not by walking the filesystem. No fixture is tracked in
+/// git — they are all fetched by `scripts/fixtures/fetch-fixtures.mjs` — so a
+/// filesystem walk measures whatever a given machine happens to have accumulated.
+/// That is how the pinned baselines first ended up calibrated to one developer's
+/// disk (116 models / 1355 void hosts) while CI swept a different population (111 /
+/// 1165), which made the ceilings meaningless on CI. The manifest is the same
+/// everywhere, so the population is too, and adding a fixture to it still widens
+/// coverage for free.
 const MAX_FIXTURE_BYTES: u64 = 50 * 1024 * 1024;
 
 fn discover_models() -> Vec<PathBuf> {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    let models = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..")
         .join("tests/models");
-    let mut out = Vec::new();
-    let mut stack = vec![root];
-    while let Some(dir) = stack.pop() {
-        let Ok(entries) = std::fs::read_dir(&dir) else {
-            continue;
-        };
-        for e in entries.flatten() {
-            let p = e.path();
-            if p.is_dir() {
-                stack.push(p);
-            } else if p.extension().is_some_and(|x| x.eq_ignore_ascii_case("ifc"))
-                && e.metadata().map(|m| m.len() <= MAX_FIXTURE_BYTES).unwrap_or(false)
-            {
-                out.push(p);
-            }
-        }
-    }
+    let Ok(raw) = std::fs::read_to_string(models.join("manifest.json")) else {
+        return Vec::new();
+    };
+    let Ok(json) = serde_json::from_str::<serde_json::Value>(&raw) else {
+        return Vec::new();
+    };
+    let mut out: Vec<PathBuf> = json["files"]
+        .as_array()
+        .map(|files| {
+            files
+                .iter()
+                .filter(|f| {
+                    f["path"].as_str().is_some_and(|p| p.ends_with(".ifc"))
+                        && f["size"].as_u64().is_some_and(|s| s <= MAX_FIXTURE_BYTES)
+                })
+                .filter_map(|f| f["path"].as_str())
+                .map(|rel| models.join(rel))
+                .filter(|p| p.is_file())
+                .collect()
+        })
+        .unwrap_or_default();
     out.sort();
     out
 }
@@ -96,9 +109,11 @@ const BASELINE_COLLAPSED: usize = 51;
 const BASELINE_OPEN_EDGE_TOTAL: usize = 17_792;
 
 /// Corpus floor. The ceilings above are all upper bounds, so without this a tree
-/// with no fixtures passes every one of them while measuring nothing.
-const MIN_MODELS: usize = 100;
-const MIN_VOID_HOSTS: usize = 1300;
+/// with no fixtures passes every one of them while measuring nothing. Set just under
+/// the manifest's full population (111 models / 1165 void hosts) so a single failed
+/// fixture fetch does not red the build, but an unpopulated tree cannot pass.
+const MIN_MODELS: usize = 105;
+const MIN_VOID_HOSTS: usize = 1100;
 
 /// Representation types that describe a CLOSED solid and are therefore
 /// legitimately expected to produce watertight geometry.

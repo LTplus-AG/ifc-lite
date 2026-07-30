@@ -23,9 +23,10 @@
 //! Without the feature the test reports that it was skipped and passes, so the
 //! default `cargo test` stays fast.
 //!
-//! `KNOWN_NON_INVARIANT` records elements already known to depend on diagonal
-//! choice. It is a defect ledger to drive to zero, not a permanent allowance:
-//! anything NOT on it that starts differing fails the test.
+//! The pinned `BASELINE_*` constants are ceilings, not an allow-list: each is a
+//! defect count to drive DOWN, and the test fails if any grows. `MIN_MODELS` /
+//! `MIN_VOID_HOSTS` are the matching floor, so a corpus that failed to load cannot
+//! satisfy the ceilings vacuously.
 
 use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
 use ifc_lite_geometry::{propagate_voids_to_parts, GeometryRouter, Mesh};
@@ -75,8 +76,8 @@ fn discover_models() -> Vec<PathBuf> {
 ///
 /// NB: `Tessellation` is only conditionally open — an `IfcTriangulatedFaceSet`
 /// with `Closed = .T.` is a solid. Treating the whole bucket as open is a
-/// simplification that UNDER-counts defects; revisit when the 209 is worked
-/// down.
+/// simplification that UNDER-counts defects; revisit once `BASELINE_TORN_SOLID` is
+/// worked down.
 const BASELINE_NON_INVARIANT: usize = 133;
 const BASELINE_TORN_SOLID: usize = 41;
 /// Total torn void hosts across the corpus, and hosts carrying at least one

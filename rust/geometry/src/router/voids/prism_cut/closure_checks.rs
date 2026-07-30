@@ -199,7 +199,9 @@ pub(super) fn closed_or_hairline(mesh: &Mesh) -> bool {
             breaks.push(ta);
             breaks.push(tb);
         }
-        breaks.sort_by(|x, y| x.partial_cmp(y).unwrap());
+        // `total_cmp`, matching the seed sort above: a non-finite coordinate here
+        // must reject the cut, not abort the process.
+        breaks.sort_by(|x, y| x.total_cmp(y));
         let mut run = 0.0_f64;
         for w in breaks.windows(2) {
             let (lo, hi) = (w[0], w[1]);

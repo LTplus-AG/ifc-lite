@@ -132,7 +132,7 @@ describe('IfcLiteBridge', () => {
     bridge.dispose();
   }, 10_000);
 
-  it('attributes a persistent transport failure to the engine binary', async () => {
+  it('attributes a persistent transport failure to the engine binary (#1903)', async () => {
     wasmMocks.init
       .mockRejectedValueOnce(new TypeError('Load failed'))
       .mockRejectedValueOnce(new TypeError('Load failed'));

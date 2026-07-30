@@ -241,7 +241,7 @@ describe('classifyLoadError', () => {
     );
   });
 
-  // Only `.name` is stable on an aborted fetch: WebKit words the message
+  // #1903: only `.name` is stable on an aborted fetch: WebKit words the message
   // "Fetch is aborted", Chromium "The user aborted a request." — neither of
   // which the message matcher can be keyed on.
   it('classifies an AbortError by its stable name as cancelled', () => {
@@ -253,8 +253,9 @@ describe('classifyLoadError', () => {
 });
 
 describe('errorCaptureProps', () => {
-  // The properties that make a STACKLESS exception triageable. Flat by
-  // contract: posthog-js takes them as the event's own properties.
+  // #1903: the properties that make a STACKLESS exception triageable — the
+  // reported event had no `stacktrace` key at all. Flat by contract:
+  // posthog-js takes them as the event's own properties.
   it('reports the throwable identity even when the message says nothing', () => {
     const props = errorCaptureProps(new TypeError('Load failed'));
     assert.equal(props.error_kind, 'network_unavailable');

@@ -97,13 +97,20 @@ describe('initWasmWithRetry', () => {
     const mime =
       "WebAssembly: Response has unsupported MIME type 'text/plain; charset=utf-8' expected 'application/wasm'";
     const status = "Failed to execute 'compile' on 'WebAssembly': HTTP status code is not ok";
-    for (const message of [mime, status]) {
+    // #1903: assert the RETRY COUNT too. Preserving the message passes either
+    // way, so without these counts a regression that stopped retrying the
+    // transient `status` error would sail through this case unnoticed.
+    // `mime` is not transient (no transport phrase) so it never even retries;
+    // `status` is, and must survive the retry unchanged.
+    for (const [message, expectedCalls] of [
+      [mime, 1],
+      [status, 2],
+    ] as const) {
       const init = vi.fn().mockRejectedValue(new TypeError(message));
-      // `mime` is not transient (no transport phrase) so it never even retries;
-      // `status` is, and must survive the retry unchanged.
       const err = await initWasmWithRetry(init, { sleep: instantSleep, warn: noop })
         .then(() => null, (e: Error) => e);
       expect(err?.message).toBe(message);
+      expect(init).toHaveBeenCalledTimes(expectedCalls);
     }
   });
 
@@ -122,14 +129,18 @@ describe('initWasmWithRetry', () => {
   // The attribution must never re-type a throwable the bridge discriminates on
   // (`error instanceof WebAssembly.RuntimeError` marks the fatal, unrecoverable
   // panic state).
-  it('preserves the throwable identity of a non-transient second failure', async () => {
+  it('preserves the throwable identity of a non-transient second failure (#1903)', async () => {
+    // Assert the EXACT instance, not just the class: `toBeInstanceOf` would
+    // also accept a freshly constructed RuntimeError, which is precisely the
+    // re-typing this case exists to forbid.
+    const runtimeError = new WebAssembly.RuntimeError('unreachable');
     const init = vi
       .fn()
       .mockRejectedValueOnce(new TypeError('Load failed'))
-      .mockRejectedValueOnce(new WebAssembly.RuntimeError('unreachable'));
+      .mockRejectedValueOnce(runtimeError);
     await expect(
       initWasmWithRetry(init, { sleep: instantSleep, warn: noop }),
-    ).rejects.toBeInstanceOf(WebAssembly.RuntimeError);
+    ).rejects.toBe(runtimeError);
   });
 
   it('waits the configured delay before retrying', async () => {

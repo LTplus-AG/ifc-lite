@@ -340,7 +340,14 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
         error_kind: kind,
         from_source_bytes: fromSourceBytes,
       });
-      posthog.captureException(err, { context: 'export_glb', error_kind: kind });
+      // …but only the *unexpected* failures belong in error tracking. An empty
+      // visible set is a typed, expected outcome of the user's own filters, and
+      // it classifies as `unknown`, so capturing it would mint a fresh PostHog
+      // issue per filter mistake and bury the trap signal this capture exists
+      // to surface.
+      if (!isNoRenderGeometryError(err)) {
+        posthog.captureException(err, { context: 'export_glb', error_kind: kind });
+      }
     } finally {
       setIsExporting(false);
     }

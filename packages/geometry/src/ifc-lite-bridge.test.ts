@@ -177,6 +177,35 @@ describe('IfcLiteBridge', () => {
     expect(wasmMocks.free).toHaveBeenCalledTimes(1);
   });
 
+  it('survives a SECOND trap raised by free() while recovering from the first (#1898)', async () => {
+    const bridge = new IfcLiteBridge();
+    await bridge.init();
+
+    const trap = new WebAssembly.RuntimeError('unreachable');
+    wasmMocks.exportGlb.mockImplementationOnce(() => {
+      throw trap;
+    });
+    // `free()` runs Rust: if the allocator is what aborted, releasing the
+    // handle aborts again. The double fault must not escape the recovery path
+    // and replace the original trap on its way to the caller.
+    wasmMocks.free.mockImplementationOnce(() => {
+      throw new WebAssembly.RuntimeError('unreachable');
+    });
+
+    let caught: unknown;
+    try {
+      bridge.exportGlb(new Uint8Array([1]));
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBe(trap);
+
+    // …and the handle is dropped anyway, so the bridge still rebuilds.
+    expect(bridge.isInitialized()).toBe(false);
+    await expect(bridge.init()).resolves.toBeUndefined();
+    expect(() => bridge.getApi()).not.toThrow();
+  });
+
   it('propagates the ORIGINAL trap from an operation, not a stored guard error (#1898)', async () => {
     const bridge = new IfcLiteBridge();
     await bridge.init();

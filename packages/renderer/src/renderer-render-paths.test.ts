@@ -696,6 +696,12 @@ describe('pick path survives the device dying mid-readback (#1901)', () => {
         for (let i = 0; i < 3; i++) await Promise.resolve();
         const second = h.renderer.pick(20, 20);
         for (let i = 0; i < 3; i++) await Promise.resolve();
+        // Without this the case can pass vacuously: if the picks need more
+        // microtask turns to reach mapAsync than we spun, destroy() lands
+        // before submit and both settle via the ENTRY guard, never exercising
+        // the overlapping-in-flight release this case exists to cover.
+        // Two picks x (colour + depth) = 4 parked readbacks.
+        assert.strictEqual(h.pendingMaps(), 4, 'both picks must be parked on their readbacks');
         h.renderer.destroy();
         const settled = await Promise.allSettled([first, second]);
         assert.deepStrictEqual(settled.map((s) => s.status), ['fulfilled', 'fulfilled']);

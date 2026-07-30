@@ -134,6 +134,86 @@ describe('scrubEvent — noise filter + PII guard (regression)', () => {
     assert.notEqual(scrubEvent(exceptionEvent('Failed to load Script error handler module')), null);
     assert.notEqual(scrubEvent(exceptionEvent('Object Not Found in scene graph')), null);
   });
+
+  // ── MapLibre "no WebGL context" (issue #1914) ─────────────────────────────
+  // Both strings are verbatim from error tracking: one user, one session, two
+  // DIFFERENT driver messages, both recorded as UNCAUGHT. The LocationMap now
+  // catches these at the source; this is the net under the one path that can
+  // still escape — MapLibre re-running `_setupPainter()` from a DOM listener
+  // while restoring a lost context.
+  const WEBGL_MISSING_EXTENSION = JSON.stringify({
+    requestedAttributes: {
+      antialias: false, preserveDrawingBuffer: false,
+      powerPreference: 'high-performance', failIfMajorPerformanceCaveat: false,
+      desynchronized: false, alpha: true, depth: true, stencil: true,
+      premultipliedAlpha: true,
+    },
+    statusMessage: 'OES_packed_depth_stencil support is required.',
+    type: 'webglcontextcreationerror',
+    message: 'Failed to initialize WebGL',
+  });
+
+  const WEBGL_GPU_CONTENTION = JSON.stringify({
+    requestedAttributes: {
+      antialias: false, preserveDrawingBuffer: false,
+      powerPreference: 'high-performance', failIfMajorPerformanceCaveat: false,
+      desynchronized: false, alpha: true, depth: true, stencil: true,
+      premultipliedAlpha: true,
+    },
+    statusMessage:
+      'Could not create a WebGL context, VENDOR = 0x1002, DEVICE = 0x1638, '
+      + 'GL_VENDOR = Google Inc. (AMD), GL_RENDERER = ANGLE (AMD, AMD Radeon(TM) '
+      + 'Graphics, D3D11), Sandboxed = yes, ErrorMessage = BindToCurrentSequence failed: .',
+    type: 'webglcontextcreationerror',
+    message: 'Failed to initialize WebGL',
+  });
+
+  /** As posthog-js records an autocaptured (uncaught) exception. */
+  const uncaught = (value: string): CaptureEvent => ({
+    event: '$exception',
+    properties: {
+      $exception_list: [{
+        type: 'Error',
+        value,
+        mechanism: { handled: false, synthetic: false, type: 'generic' },
+      }],
+    },
+  });
+
+  it('drops the UNCAUGHT MapLibre WebGL-unavailable exception (both driver messages)', () => {
+    assert.equal(scrubEvent(uncaught(WEBGL_MISSING_EXTENSION)), null);
+    assert.equal(scrubEvent(uncaught(WEBGL_GPU_CONTENTION)), null);
+    // MapLibre's other shape: no detail object, so it throws the bare message.
+    assert.equal(scrubEvent(uncaught('Failed to initialize WebGL')), null);
+  });
+
+  it('KEEPS the LocationMap\'s own handled report of the same condition', () => {
+    // The whole point of the fix is to convert this failure from an uncaught
+    // error into a deliberate, once-per-session handled report. If the drop
+    // rule above also swallowed that, we would be blind to the condition.
+    const handled: CaptureEvent = {
+      event: '$exception',
+      properties: {
+        $exception_list: [{
+          type: 'Error',
+          value: WEBGL_MISSING_EXTENSION,
+          mechanism: { handled: true, type: 'generic' },
+        }],
+        context: 'location_map_webgl',
+        map_unavailable_reason: 'map_construction_failed',
+      },
+    };
+    const out = scrubEvent(handled);
+    assert.notEqual(out, null);
+    assert.equal(out?.properties?.context, 'location_map_webgl');
+    assert.equal(out?.properties?.map_unavailable_reason, 'map_construction_failed');
+  });
+
+  it('keeps an unrelated WebGL failure that merely mentions the words', () => {
+    // Narrowness guard: an actionable WebGL bug of ours must not be dropped.
+    assert.notEqual(scrubEvent(uncaught('Failed to initialize WebGPU adapter')), null);
+    assert.notEqual(scrubEvent(uncaught('WebGL warning: drawArrays: no program bound')), null);
+  });
 });
 
 describe('scrubEvent — issue grouping', () => {

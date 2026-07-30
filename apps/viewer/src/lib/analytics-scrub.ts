@@ -193,6 +193,24 @@ const CESIUM_REQUEST_ERROR =
 const OUTLOOK_SAFELINK_NOISE =
   /Object Not Found Matching Id:\s*\d+,\s*MethodName:/i;
 
+// MapLibre cannot get a WebGL context: `_setupPainter()` throws either a bare
+// "Failed to initialize WebGL" or that message wrapped in a JSON blob carrying
+// the driver's `statusMessage` and `type: 'webglcontextcreationerror'`. The
+// LocationMap now probes first, catches the construction, and reports the
+// condition ONCE as a handled exception (see lib/geo/map-webgl-support.ts), so
+// this is not the fix — it is the net under the one path we genuinely cannot
+// catch: MapLibre restoring a lost context calls `_setupPainter()` again from
+// inside a DOM event listener, where no try/catch of ours is on the stack.
+//
+// The condition is a property of the user's GPU (missing OES_packed_depth_
+// stencil, or a GPU process that could not serve a context), unactionable in
+// our code and unfixable by the user beyond reloading. Matched on MapLibre's
+// stable message + the `webglcontextcreationerror` token, never on a minified
+// name — the same discipline as the Cesium matcher above. Deliberately narrow:
+// a WebGL failure that is ever actionable must not be silently dropped.
+const MAPLIBRE_WEBGL_UNAVAILABLE =
+  /Failed to initialize WebGL|"type":\s*"webglcontextcreationerror"/;
+
 // The browser's opaque cross-origin error: `window.onerror` reports literally
 // "Script error." with no file, line, or stack when a script from another
 // origin throws (an extension, a translated page, an ISP-injected script). It
@@ -207,6 +225,14 @@ const frameCount = (e: unknown): number => {
   return Array.isArray(frames) ? frames.length : 0;
 };
 
+// posthog-js stamps `mechanism.handled: false` on anything it autocaptured from
+// `onerror` / `onunhandledrejection`, and `true` on an explicit
+// `captureException`. Only the autocaptured ones are "nobody is dealing with
+// this"; a deliberate capture is a report we asked for and must never be
+// dropped by a message matcher aimed at the uncaught form of the same failure.
+const isUnhandled = (e: unknown): boolean =>
+  (e as { mechanism?: { handled?: unknown } } | null)?.mechanism?.handled === false;
+
 const isUnactionableThirdPartyException = (
   event: { event?: string; properties?: Record<string, unknown> },
 ): boolean => {
@@ -218,6 +244,10 @@ const isUnactionableThirdPartyException = (
     if (typeof value !== 'string') return false;
     if (CESIUM_REQUEST_ERROR.test(value)) return true;
     if (OUTLOOK_SAFELINK_NOISE.test(value)) return true;
+    // Scoped to the UNCAUGHT form only: the LocationMap's own once-per-session
+    // handled report carries the same message and has to survive, otherwise
+    // this rule would blind us to the very condition it exists to de-noise.
+    if (MAPLIBRE_WEBGL_UNAVAILABLE.test(value) && isUnhandled(entry)) return true;
     if (OPAQUE_CROSS_ORIGIN.test(value.trim()) && frameCount(entry) === 0) return true;
     return false;
   });

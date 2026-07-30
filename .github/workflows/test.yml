@@ -83,6 +83,9 @@ jobs:
               - 'apps/server/Cargo.toml'
               - 'Cargo.lock'
               - '.github/workflows/test.yml'
+              # The watertightness census sweeps the fixture set named here, so a
+              # corpus change moves its pinned counts even with no code change.
+              - 'tests/models/manifest.json'
             plato:
               - 'tools/plato/**'
               - 'rust/clash/src/generated/**'
@@ -460,10 +463,14 @@ jobs:
       - name: Rust tests
         run: cargo test --workspace --exclude ifc-lite-wasm
       # The geometry watertightness/invariance census is feature-gated because it
-      # links a second ear-clipper as a differential oracle and sweeps every fixture
-      # (~6 min), so `--workspace` above skips it. Without this step the whole suite
-      # early-returns and its pinned baselines gate nothing.
+      # links a second ear-clipper as a differential oracle and sweeps the whole
+      # fixture manifest, so `--workspace` above skips it. Without this step the
+      # suite early-returns and its pinned baselines gate nothing.
+      #
+      # Narrowed to `geometry` rather than `rust`: the sweep costs ~20 min, and only
+      # rust/geometry, rust/processing or the fixture manifest can move its numbers.
       - name: Geometry watertightness census (differential oracle)
+        if: needs.changes.outputs.geometry == 'true'
         run: cargo test -p ifc-lite-geometry --features triangulation-alt --test triangulation_invariance
 
   # Plato clash-math single-source freshness gate. The clash narrow-phase math

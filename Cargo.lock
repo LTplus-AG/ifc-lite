@@ -935,6 +935,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "earcut"
+version = "0.4.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9f03dd5350900133e14471c90d513eb5ba264004cd833adecab7dfa5fb5a2974"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
 name = "earcutr"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1519,6 +1528,7 @@ version = "4.1.4"
 dependencies = [
  "approx",
  "bnum",
+ "earcut",
  "earcutr",
  "geometry-predicates",
  "i_overlay",

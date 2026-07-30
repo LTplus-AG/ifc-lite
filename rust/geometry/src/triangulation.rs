@@ -56,6 +56,22 @@ pub(crate) fn safe_earcut(
     // consecutive/closing duplicates needs no sanitisation, no classification,
     // and no index remap — hand it straight to earcutr, zero-copy. Profile
     // triangulation sits on the hot path for EVERY face in the pipeline.
+    // DIFFERENTIAL ORACLE (test builds with `triangulation-alt` only): hand the
+    // same polygon to a second, independent ear-clipper. Both give valid
+    // triangulations with the same boundary and area; only interior diagonals
+    // differ, and nothing downstream may depend on that choice.
+    #[cfg(feature = "triangulation-alt")]
+    if std::env::var_os("IFCLITE_TRIANGULATION_ALT").is_some() {
+        let mut out: Vec<usize> = Vec::new();
+        let mut ec = earcut::Earcut::new();
+        ec.earcut(
+            data.chunks_exact(2).map(|c| [c[0], c[1]]),
+            hole_indices,
+            &mut out,
+        );
+        return Ok(out);
+    }
+
     if hole_indices.is_empty() {
         let has_dup = n >= 2
             && ((0..n - 1).any(|v| {

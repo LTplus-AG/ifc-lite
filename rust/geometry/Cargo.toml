@@ -29,11 +29,19 @@ csg_capture = []
 # geometry-crate diagnostics land in its existing tracing subscriber.
 # See src/diag.rs for the warn-vs-debug gating policy.
 observability = ["dep:tracing"]
+# Test-only differential oracle: makes the deprecated `earcutr` available as a
+# SECOND, independent triangulator so `tests/triangulation_invariance.rs` can feed
+# the pipeline two equally valid triangulations of the same polygons. Never
+# enabled in a shipping build.
+triangulation-alt = ["dep:earcut"]
 
 [dependencies]
 
 # Triangulation
 earcutr = "0.5"
+# Differential oracle only, behind `triangulation-alt`. Present to be DIFFERENT
+# from earcutr, not to be depended on.
+earcut = { version = "0.4", optional = true }
 
 # 2D polygon boolean operations for profile-level void subtraction
 i_overlay = "7.0"

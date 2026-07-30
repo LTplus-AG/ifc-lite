@@ -78,8 +78,11 @@ function releaseReadbacks(...buffers: GPUBuffer[]): void {
   for (const buffer of buffers) {
     try {
       buffer.destroy();
-    } catch {
-      /* device already gone; the buffer died with it */
+    } catch (err) {
+      // Non-fatal: the device is already gone and the buffer died with it.
+      // Surfaced rather than swallowed, per the no-silent-catch house rule —
+      // this firing on a LIVE device would mean a real teardown bug.
+      console.warn('[Picker] failed to release a readback buffer during teardown', err);
     }
   }
 }
@@ -452,9 +455,13 @@ export class Picker {
     try {
       await Promise.all([readBuffer.mapAsync(1), depthBuffer.mapAsync(1)]);
     } catch (err) {
+      // Free BOTH readbacks on every failure path, not just the aborted one.
+      // `Promise.all` rejects the moment one map fails, so the other may have
+      // succeeded and still be holding its mapped GPU allocation — rethrowing
+      // without this leaks it for the life of the device.
+      releaseReadbacks(readBuffer, depthBuffer);
       // The device died between submit and readback — see isReadbackAbort.
       if (!isReadbackAbort(err)) throw err;
-      releaseReadbacks(readBuffer, depthBuffer);
       return null;
     }
     const sample = new Uint32Array(readBuffer.getMappedRange())[0];
@@ -584,9 +591,11 @@ export class Picker {
     try {
       await readBuffer.mapAsync(1);
     } catch (err) {
+      // Released on every failure path, not just the aborted one — a real
+      // fault must not leak the readback's GPU allocation on its way out.
+      releaseReadbacks(readBuffer);
       // The device died between submit and readback — see isReadbackAbort.
       if (!isReadbackAbort(err)) throw err;
-      releaseReadbacks(readBuffer);
       return new Set();
     }
     const view = new Uint32Array(readBuffer.getMappedRange());

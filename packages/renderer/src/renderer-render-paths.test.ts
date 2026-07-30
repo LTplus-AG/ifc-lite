@@ -721,4 +721,23 @@ describe('pick path survives the device dying mid-readback (#1901)', () => {
         rect.settlePendingMaps(new DOMException('Buffer is already mapped', 'OperationError'));
         await assert.rejects(rectInflight.inflight, /already mapped/);
     });
+
+    it('a REAL readback fault still frees the readback buffers on its way out', async () => {
+        // #1901: the abort path released the readbacks but the rethrow path did
+        // not, so every real fault leaked its GPU allocation for the life of the
+        // device. Promise.all rejects the moment ONE map fails, so the other
+        // buffer can be mapped and live at that point — both must be freed.
+        const h = makeHarness();
+        installPicker(h);
+        const before = h.stats.createdBuffers.length;
+        const { inflight } = await park(h, () => h.renderer.pick(10, 10));
+        h.settlePendingMaps(new DOMException('Buffer is already mapped', 'OperationError'));
+        await assert.rejects(inflight, /already mapped/);
+
+        const readbacks = h.stats.createdBuffers.slice(before);
+        assert.strictEqual(readbacks.length, 2, 'pick() allocates the colour + depth readbacks');
+        for (const buf of readbacks) {
+            assert.ok(buf.destroyed > 0, 'a readback buffer survived the rethrow — leaked');
+        }
+    });
 });

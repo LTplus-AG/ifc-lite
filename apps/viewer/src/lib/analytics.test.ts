@@ -187,6 +187,21 @@ describe('scrubEvent — noise filter + PII guard (regression)', () => {
     assert.equal(scrubEvent(uncaught('Failed to initialize WebGL')), null);
   });
 
+  it('KEEPS an unrelated error that merely MENTIONS the WebGL phrase', () => {
+    // #1914: the bare-message arm is anchored, not a substring test. Dropping
+    // is irreversible, so a matcher loose enough to eat someone else's WebGL
+    // failure would blind us exactly where it matters. Neither of these is
+    // MapLibre's refusal and both must survive.
+    assert.notEqual(
+      scrubEvent(uncaught('Failed to initialize WebGL renderer for the section overlay')),
+      null,
+    );
+    assert.notEqual(
+      scrubEvent(uncaught('SectionOverlay: Failed to initialize WebGL')),
+      null,
+    );
+  });
+
   it('KEEPS the LocationMap\'s own handled report of the same condition', () => {
     // The whole point of the fix is to convert this failure from an uncaught
     // error into a deliberate, once-per-session handled report. If the drop

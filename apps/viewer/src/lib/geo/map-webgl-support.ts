@@ -175,15 +175,20 @@ export function probeMapWebglSupport(
     if (!canvas) return (verdict = SUPPORTED);
     gl = canvas.getContext('webgl2', MAP_CONTEXT_ATTRIBUTES)
       ?? canvas.getContext('webgl', MAP_CONTEXT_ATTRIBUTES);
-  } catch {
+  } catch (err) {
     // `getContext` is not specified to throw, but a wedged GPU process has been
-    // seen to. Treat a throw exactly like a refusal.
+    // seen to. Treat a throw exactly like a refusal — and say so, because this
+    // branch firing is itself the interesting signal.
+    console.warn('[ifc-lite] WebGL probe threw; treating as unsupported', err);
     gl = null;
   } finally {
     // Hand the context straight back, on every path including the failure one.
     try {
       gl?.getExtension('WEBGL_lose_context')?.loseContext?.();
-    } catch { /* releasing is best-effort; never mask the verdict */ }
+    } catch (err) {
+      // Best-effort: never mask the verdict we already have.
+      console.warn('[ifc-lite] could not release the WebGL probe context', err);
+    }
   }
 
   verdict = gl ? SUPPORTED : { supported: false, reason: 'probe_no_context' };

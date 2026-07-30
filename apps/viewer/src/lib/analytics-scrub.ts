@@ -208,8 +208,13 @@ const OUTLOOK_SAFELINK_NOISE =
 // stable message + the `webglcontextcreationerror` token, never on a minified
 // name — the same discipline as the Cesium matcher above. Deliberately narrow:
 // a WebGL failure that is ever actionable must not be silently dropped.
+// The bare case is ANCHORED, not a substring test: MapLibre throws exactly
+// this message and nothing else, so an unrelated error that merely mentions
+// the phrase ("Failed to initialize WebGL renderer for the ...") must still
+// reach us. Dropping is irreversible — a matcher that is loose here goes
+// blind exactly where it matters.
 const MAPLIBRE_WEBGL_UNAVAILABLE =
-  /Failed to initialize WebGL|"type":\s*"webglcontextcreationerror"/;
+  /^\s*Failed to initialize WebGL\s*$|"type":\s*"webglcontextcreationerror"/;
 
 // The browser's opaque cross-origin error: `window.onerror` reports literally
 // "Script error." with no file, line, or stack when a script from another

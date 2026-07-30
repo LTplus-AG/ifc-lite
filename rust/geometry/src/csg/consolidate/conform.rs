@@ -305,7 +305,6 @@ pub(super) fn conform_plans(plans: &mut [PlanBucket], seam: &SeamMap) -> bool {
         if cands.is_empty() {
             continue;
         }
-        let basis = (plan.origin, plan.u_axis, plan.v_axis, plan.normal);
         for region in plan.regions.iter_mut() {
             // A candidate this region ALREADY carries must not be re-inserted: a
             // duplicate ring vertex fails the CDT and would drop the whole region.

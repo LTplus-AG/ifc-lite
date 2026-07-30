@@ -70,96 +70,10 @@ use rustc_hash::FxHashMap;
 
 /// `IFC_LITE_PRISM_CUT=0` disables the analytic prism-subtraction path (exact
 /// kernel for every host). Default ON; read once.
-/// Make the analytic cut's NEW vertices unique at ulp scale.
-///
-/// The cut derives a crossing point once per (host face, cutter plane) pair. Two
-/// host faces that share an edge therefore compute the SAME geometric point
-/// through different arithmetic and can land a float ulp apart. The two halves of
-/// the split face then fail to share their seam, which is an unmatched half-edge
-/// pair and renders as a hairline crack.
-///
-/// `dental_clinic #217` is the minimal case. The host arriving here is clean: 12
-/// triangles, a single `x = -20.29`. The cut emits the mid-height seam at both
-/// `x = -20.289999008` and `x = -20.290000916` — exactly 2^-19 apart — giving 8
-/// unmatched edges.
-///
-/// Deliberately narrow, because a general weld is what broke this before: merging
-/// at 1e-4 m collapsed real geometry and took corpus defects from 76 to 90. Here
-/// the tolerance is 4 f32 ulps of the coordinate magnitude, which is below any
-/// real feature and above the reconstruction scatter. Vertices that coincide with
-/// a HOST vertex are pinned to the host value exactly, so the cut cannot move a
-/// vertex it did not create; the rest are merged only with each other.
-pub(crate) fn dedup_cut_vertices(cut: &Mesh, host: &Mesh) -> Mesh {
-    let cn = cut.positions.len() / 3;
-    if cn == 0 {
-        return cut.clone();
-    }
-    let mut mag = 1.0f32;
-    for &c in host.positions.iter().chain(cut.positions.iter()) {
-        mag = mag.max(c.abs());
-    }
-    let tol = (mag as f64) * (4.0 / 8_388_608.0);
-    let tol2 = tol * tol;
-    let cell = (tol * 4.0).max(f64::MIN_POSITIVE);
-    let key = |p: [f64; 3]| {
-        [
-            (p[0] / cell).floor() as i64,
-            (p[1] / cell).floor() as i64,
-            (p[2] / cell).floor() as i64,
-        ]
-    };
-    let d2 = |a: [f64; 3], b: [f64; 3]| {
-        let d = [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
-        d[0] * d[0] + d[1] * d[1] + d[2] * d[2]
-    };
-
-    // Host vertices seed the pool, so any cut vertex within tolerance of one is
-    // pinned to the host's exact value rather than becoming its own
-    // representative.
-    let mut pool: FxHashMap<[i64; 3], Vec<[f64; 3]>> = FxHashMap::default();
-    for i in 0..host.positions.len() / 3 {
-        let p = [
-            host.positions[i * 3] as f64,
-            host.positions[i * 3 + 1] as f64,
-            host.positions[i * 3 + 2] as f64,
-        ];
-        pool.entry(key(p)).or_default().push(p);
-    }
-
-    let mut out = cut.clone();
-    for i in 0..cn {
-        let p = [
-            out.positions[i * 3] as f64,
-            out.positions[i * 3 + 1] as f64,
-            out.positions[i * 3 + 2] as f64,
-        ];
-        let base = key(p);
-        let mut best: Option<(f64, [f64; 3])> = None;
-        for dx in -1..=1 {
-            for dy in -1..=1 {
-                for dz in -1..=1 {
-                    if let Some(b) = pool.get(&[base[0] + dx, base[1] + dy, base[2] + dz]) {
-                        for q in b {
-                            let dd = d2(p, *q);
-                            if dd <= tol2 && best.map(|(x, _)| dd < x).unwrap_or(true) {
-                                best = Some((dd, *q));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        match best {
-            Some((_, q)) => {
-                out.positions[i * 3] = q[0] as f32;
-                out.positions[i * 3 + 1] = q[1] as f32;
-                out.positions[i * 3 + 2] = q[2] as f32;
-            }
-            None => pool.entry(base).or_default().push(p),
-        }
-    }
-    out
-}
+mod closure_checks;
+mod vertex_dedup;
+use closure_checks::{closed_or_hairline, directed_closed};
+pub(crate) use vertex_dedup::dedup_cut_vertices;
 
 pub(super) fn enabled() -> bool {
     static ON: OnceLock<bool> = OnceLock::new();
@@ -269,27 +183,27 @@ pub use diag::{take_prism_defers, take_prism_stats};
 // Explicit component arithmetic (no nalgebra matrix products) so no FMA can
 // sneak in and break native==wasm byte identity.
 
-type V3 = [f64; 3];
+pub(super) type V3 = [f64; 3];
 type V2 = [f64; 2];
 
 #[inline]
-fn dot(a: V3, b: V3) -> f64 {
+pub(super) fn dot(a: V3, b: V3) -> f64 {
     a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
 #[inline]
-fn sub(a: V3, b: V3) -> V3 {
+pub(super) fn sub(a: V3, b: V3) -> V3 {
     [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
 }
 #[inline]
-fn add(a: V3, b: V3) -> V3 {
+pub(super) fn add(a: V3, b: V3) -> V3 {
     [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
 }
 #[inline]
-fn scale(a: V3, s: f64) -> V3 {
+pub(super) fn scale(a: V3, s: f64) -> V3 {
     [a[0] * s, a[1] * s, a[2] * s]
 }
 #[inline]
-fn cross(a: V3, b: V3) -> V3 {
+pub(super) fn cross(a: V3, b: V3) -> V3 {
     [
         a[1] * b[2] - a[2] * b[1],
         a[2] * b[0] - a[0] * b[2],
@@ -297,11 +211,11 @@ fn cross(a: V3, b: V3) -> V3 {
     ]
 }
 #[inline]
-fn norm(a: V3) -> f64 {
+pub(super) fn norm(a: V3) -> f64 {
     dot(a, a).sqrt()
 }
 #[inline]
-fn normalize(a: V3) -> Option<V3> {
+pub(super) fn normalize(a: V3) -> Option<V3> {
     let n = norm(a);
     if !n.is_finite() || n < 1.0e-12 {
         None
@@ -310,7 +224,7 @@ fn normalize(a: V3) -> Option<V3> {
     }
 }
 #[inline]
-fn lerp(a: V3, b: V3, t: f64) -> V3 {
+pub(super) fn lerp(a: V3, b: V3, t: f64) -> V3 {
     [
         a[0] + (b[0] - a[0]) * t,
         a[1] + (b[1] - a[1]) * t,
@@ -318,7 +232,7 @@ fn lerp(a: V3, b: V3, t: f64) -> V3 {
     ]
 }
 #[inline]
-fn bits(p: V3) -> [u64; 3] {
+pub(super) fn bits(p: V3) -> [u64; 3] {
     [p[0].to_bits(), p[1].to_bits(), p[2].to_bits()]
 }
 
@@ -362,213 +276,6 @@ fn seg_cross_param(p: V2, q: V2, a: V2, b: V2) -> Option<f64> {
     } else {
         None
     }
-}
-
-/// DIRECTED quantized closed-surface audit (0.1 mm grid): every directed edge
-/// must be cancelled by its reverse. Strictly stronger than the undirected
-/// 2-manifold check — it catches inconsistent winding and doubled coincident
-/// surfaces (two triangles sharing an edge in the SAME direction), not just
-/// cracks. Triangles that collapse to a degenerate key on the grid are skipped
-/// (their edges net to zero).
-fn directed_closed(mesh: &Mesh) -> bool {
-    let key = |i: u32| -> (i64, i64, i64) {
-        let b = i as usize * 3;
-        let q = |v: f32| (v as f64 / 1.0e-4).round() as i64;
-        (
-            q(mesh.positions[b]),
-            q(mesh.positions[b + 1]),
-            q(mesh.positions[b + 2]),
-        )
-    };
-    let mut edges: FxHashMap<((i64, i64, i64), (i64, i64, i64)), i64> = FxHashMap::default();
-    for tri in mesh.indices.chunks_exact(3) {
-        let (ka, kb, kc) = (key(tri[0]), key(tri[1]), key(tri[2]));
-        if ka == kb || kb == kc || kc == ka {
-            continue;
-        }
-        for (x, y) in [(ka, kb), (kb, kc), (kc, ka)] {
-            *edges.entry((x, y)).or_insert(0) += 1;
-            *edges.entry((y, x)).or_insert(0) -= 1;
-        }
-    }
-    !edges.is_empty() && edges.values().all(|&c| c == 0)
-}
-
-/// Closed-surface audit with a HAIRLINE tolerance: the surface passes when
-/// every unpaired directed edge (0.1 mm grid) is collinearly COVERED by
-/// unpaired edges of the opposite net sign — the signature of two adjacent
-/// faces subdividing a shared boundary line differently (a T-junction chain,
-/// invisible sub-grid gap), NOT of a missing surface. A genuine hole leaves a
-/// boundary loop whose edges have nothing opposite along them and fails. The
-/// exact kernel's own output is routinely NOT even undirected-watertight on
-/// these hosts, so this gate is still far stricter than the status quo.
-fn closed_or_hairline(mesh: &Mesh) -> bool {
-    type K = (i64, i64, i64);
-    let key = |i: u32| -> K {
-        let b = i as usize * 3;
-        let q = |v: f32| (v as f64 / 1.0e-4).round() as i64;
-        (
-            q(mesh.positions[b]),
-            q(mesh.positions[b + 1]),
-            q(mesh.positions[b + 2]),
-        )
-    };
-    let mut edges: FxHashMap<(K, K), i64> = FxHashMap::default();
-    for tri in mesh.indices.chunks_exact(3) {
-        let (ka, kb, kc) = (key(tri[0]), key(tri[1]), key(tri[2]));
-        if ka == kb || kb == kc || kc == ka {
-            continue;
-        }
-        for (x, y) in [(ka, kb), (kb, kc), (kc, ka)] {
-            *edges.entry((x, y)).or_insert(0) += 1;
-            *edges.entry((y, x)).or_insert(0) -= 1;
-        }
-    }
-    if edges.is_empty() {
-        return false;
-    }
-    // Canonicalize to undirected segments with a net sign.
-    let mut bad: Vec<(K, K, i64)> = Vec::new();
-    for (&(a, b), &c) in edges.iter() {
-        if c > 0 {
-            bad.push((a, b, c));
-        }
-    }
-    if bad.is_empty() {
-        return true;
-    }
-    if bad.len() > 64 {
-        return false; // way past hairline territory
-    }
-    let p = |k: K| [k.0 as f64, k.1 as f64, k.2 as f64]; // grid units (0.1 mm)
-
-    // Rigorous hairline test. A hairline (T-junction) boundary is one where the
-    // uncancelled directed edges, viewed as a 1-D SIGNED measure along each
-    // supporting line, net to ZERO everywhere: every stretch covered by an edge
-    // running one way is covered the SAME number of times by edges running the
-    // other way (two adjacent faces subdividing a shared line differently). A
-    // genuine hole — or a boundary edge only PARTIALLY covered, or covered the
-    // wrong number of times — leaves a stretch with nonzero net coverage and
-    // fails. This is strictly stronger than the old midpoint-proximity test,
-    // which a LONG unmatched edge could spoof merely by having a SHORT reverse
-    // edge sit near its midpoint (the short edge "covered" a single point, never
-    // the whole interval, and multiplicity was ignored entirely).
-    const COLLINEAR_TOL: f64 = 2.0; // grid units (~0.2 mm) perpendicular slack
-    const T_EPS: f64 = 1.0e-6; // grid units: ignore sub-interval slivers
-
-    struct Seg {
-        a: V3,
-        b: V3,
-        m: i64,
-    }
-    let segs: Vec<Seg> = bad
-        .iter()
-        .map(|&(a, b, c)| Seg {
-            a: p(a),
-            b: p(b),
-            m: c,
-        })
-        .collect();
-
-    // Perpendicular distance from point `x` to the infinite line `(o, dir)`
-    // (`dir` unit). Perp distance is convex along a segment, so if BOTH
-    // endpoints of a segment are within tol of a line, the whole segment is —
-    // that is our collinearity-coincidence test (no separate parallel check
-    // needed, and it correctly rejects a segment that merely crosses the line).
-    let perp = |x: V3, o: V3, dir: V3| -> f64 {
-        let w = sub(x, o);
-        let along = dot(w, dir);
-        norm(sub(w, scale(dir, along)))
-    };
-
-    struct Line {
-        o: V3,
-        dir: V3,
-        members: Vec<usize>,
-    }
-    // Seed lines from the LONGEST segments first: a long edge fixes a stable
-    // direction, so its collinear short neighbours join it rather than each
-    // spawning a slightly-rotated line of its own (greedy fragmentation would
-    // split a genuinely-covered boundary across groups and report phantom gaps).
-    let mut order: Vec<usize> = (0..segs.len()).collect();
-    order.sort_by(|&i, &j| {
-        let li = dot(sub(segs[i].b, segs[i].a), sub(segs[i].b, segs[i].a));
-        let lj = dot(sub(segs[j].b, segs[j].a), sub(segs[j].b, segs[j].a));
-        lj.partial_cmp(&li).unwrap()
-    });
-    let mut lines: Vec<Line> = Vec::new();
-    'seg: for si in order {
-        let s = &segs[si];
-        let Some(sdir) = normalize(sub(s.b, s.a)) else {
-            // Degenerate (zero-length) bad edge: cannot seal anything → defer.
-            return false;
-        };
-        for line in lines.iter_mut() {
-            if perp(s.a, line.o, line.dir) <= COLLINEAR_TOL
-                && perp(s.b, line.o, line.dir) <= COLLINEAR_TOL
-            {
-                line.members.push(si);
-                continue 'seg;
-            }
-        }
-        lines.push(Line {
-            o: s.a,
-            dir: sdir,
-            members: vec![si],
-        });
-    }
-
-    // Sweep each line's signed multiplicity coverage. At every point along the
-    // line the signed count of covering edges (this line's `+dir` edges minus
-    // its `-dir` edges, weighted by multiplicity) must net to ZERO — the exact
-    // T-junction signature. We track the longest CONTIGUOUS mis-covered run and
-    // reject once it exceeds `GAP_TOL`: a hole, a partially-covered long edge,
-    // or a multiply-covered stretch leaves a macroscopic run, whereas the ≤0.2mm
-    // sub-grid jitter of a genuine hairline stays inside the same quantization
-    // slack the collinearity grouping already allows. (This deliberately still
-    // admits the hosts whose exact-kernel meshing is itself not undirected-
-    // watertight — the documented reason the hairline gate exists — while the
-    // old midpoint test's spoof, a long edge grazed only near its midpoint by a
-    // short reverse edge, leaves a run of nearly the whole edge and is rejected.)
-    const GAP_TOL: f64 = COLLINEAR_TOL; // 2 grid units (~0.2 mm)
-    for line in &lines {
-        let mut ints: Vec<(f64, f64, i64)> = Vec::with_capacity(line.members.len());
-        let mut breaks: Vec<f64> = Vec::with_capacity(line.members.len() * 2);
-        for &si in &line.members {
-            let s = &segs[si];
-            let ta = dot(sub(s.a, line.o), line.dir);
-            let tb = dot(sub(s.b, line.o), line.dir);
-            let sign = if tb >= ta { 1 } else { -1 };
-            ints.push((ta.min(tb), ta.max(tb), sign * s.m));
-            breaks.push(ta);
-            breaks.push(tb);
-        }
-        breaks.sort_by(|x, y| x.partial_cmp(y).unwrap());
-        let mut run = 0.0_f64;
-        for w in breaks.windows(2) {
-            let (lo, hi) = (w[0], w[1]);
-            let len = hi - lo;
-            if len <= T_EPS {
-                continue;
-            }
-            let mid = 0.5 * (lo + hi);
-            let mut sum = 0i64;
-            for &(ilo, ihi, sm) in &ints {
-                if ilo - T_EPS <= mid && mid <= ihi + T_EPS {
-                    sum += sm;
-                }
-            }
-            if sum != 0 {
-                run += len;
-                if run > GAP_TOL {
-                    return false;
-                }
-            } else {
-                run = 0.0;
-            }
-        }
-    }
-    true
 }
 
 /// One host triangle in f64 (positions + per-vertex normals), host-local frame.

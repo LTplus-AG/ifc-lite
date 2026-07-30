@@ -11,6 +11,11 @@
 //! `crate::cdt` for the determinism / watertightness / bounded-refinement
 //! contract.
 
+#[cfg(feature = "triangulation-alt")]
+mod alt_oracle;
+mod ring_geom;
+use ring_geom::{point_in_ring, ring_bbox};
+
 use crate::{Error, Point2, Point3, Result, Vector3};
 
 /// Guarded ear-clipping — the ONLY sanctioned way to call `earcutr` in this
@@ -56,20 +61,9 @@ pub(crate) fn safe_earcut(
     // consecutive/closing duplicates needs no sanitisation, no classification,
     // and no index remap — hand it straight to earcutr, zero-copy. Profile
     // triangulation sits on the hot path for EVERY face in the pipeline.
-    // DIFFERENTIAL ORACLE (test builds with `triangulation-alt` only): hand the
-    // same polygon to a second, independent ear-clipper. Both give valid
-    // triangulations with the same boundary and area; only interior diagonals
-    // differ, and nothing downstream may depend on that choice.
     #[cfg(feature = "triangulation-alt")]
-    if std::env::var_os("IFCLITE_TRIANGULATION_ALT").is_some() {
-        let mut out: Vec<usize> = Vec::new();
-        let mut ec = earcut::Earcut::new();
-        ec.earcut(
-            data.chunks_exact(2).map(|c| [c[0], c[1]]),
-            hole_indices,
-            &mut out,
-        );
-        return Ok(out);
+    if let Some(alt) = alt_oracle::maybe_earcut(data, hole_indices) {
+        return Ok(alt);
     }
 
     if hole_indices.is_empty() {
@@ -188,35 +182,6 @@ pub(crate) fn safe_earcut(
     }
 
     Ok(out)
-}
-
-/// Axis-aligned bbox of a flat `[x0,y0,x1,y1,…]` ring: `(min_x, min_y, max_x, max_y)`.
-fn ring_bbox(coords: &[f64]) -> (f64, f64, f64, f64) {
-    let (mut min_x, mut min_y) = (f64::INFINITY, f64::INFINITY);
-    let (mut max_x, mut max_y) = (f64::NEG_INFINITY, f64::NEG_INFINITY);
-    for p in coords.chunks_exact(2) {
-        min_x = min_x.min(p[0]);
-        min_y = min_y.min(p[1]);
-        max_x = max_x.max(p[0]);
-        max_y = max_y.max(p[1]);
-    }
-    (min_x, min_y, max_x, max_y)
-}
-
-/// Even-odd ray cast of `(x, y)` against a flat `[x0,y0,…]` ring.
-fn point_in_ring(x: f64, y: f64, ring: &[f64]) -> bool {
-    let n = ring.len() / 2;
-    let mut inside = false;
-    let mut j = n - 1;
-    for i in 0..n {
-        let (xi, yi) = (ring[i * 2], ring[i * 2 + 1]);
-        let (xj, yj) = (ring[j * 2], ring[j * 2 + 1]);
-        if ((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi) {
-            inside = !inside;
-        }
-        j = i;
-    }
-    inside
 }
 
 /// Check if a polygon is convex (all cross products have same sign)

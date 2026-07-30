@@ -77,14 +77,14 @@ fn discover_models() -> Vec<PathBuf> {
 /// with `Closed = .T.` is a solid. Treating the whole bucket as open is a
 /// simplification that UNDER-counts defects; revisit when the 209 is worked
 /// down.
-const BASELINE_NON_INVARIANT: usize = 139;
-const BASELINE_TORN_SOLID: usize = 80;
+const BASELINE_NON_INVARIANT: usize = 136;
+const BASELINE_TORN_SOLID: usize = 41;
 /// Total torn void hosts across the corpus, and hosts carrying at least one
 /// snap-collapsed triangle. Gated so the µm-scatter fix in
 /// `prism_cut::dedup_cut_vertices` cannot silently regress: it took these from
 /// 257 and 61 respectively.
-const BASELINE_TORN_TOTAL: usize = 238;
-const BASELINE_COLLAPSED: usize = 55;
+const BASELINE_TORN_TOTAL: usize = 199;
+const BASELINE_COLLAPSED: usize = 51;
 /// TOTAL unmatched edges across the corpus, not just the COUNT of torn elements.
 ///
 /// Element counts alone are severity-blind, and that nearly shipped a bad fix: a
@@ -92,7 +92,7 @@ const BASELINE_COLLAPSED: usize = 55;
 /// driving one reveal wall from 42 unpaired edges to 324. Both readings are "one
 /// torn element", so the element gate saw only the improvement. Gate the total so
 /// a fix cannot trade many small tears for a few catastrophic ones.
-const BASELINE_OPEN_EDGE_TOTAL: usize = 18_252;
+const BASELINE_OPEN_EDGE_TOTAL: usize = 17_792;
 
 /// Representation types that describe a CLOSED solid and are therefore
 /// legitimately expected to produce watertight geometry.

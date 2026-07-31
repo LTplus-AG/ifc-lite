@@ -97,9 +97,16 @@ verdict assumed the bump carried a real cost; measured, it did not:
 - `serde-wasm-bindgen 0.6.5` and `wasm-bindgen-rayon 1.3.0` needed no change.
 
 Blocker 2 is untouched and still gates SHIPPING. What the bump buys is a
-tripwire that isolates one variable: gate 1 can no longer fail, so any future
-red run means the V8 side moved — which is the signal the workflow exists to
-give. Do not read this as wide-arithmetic being shippable.
+tripwire whose two gates now mean different things, so a red run is
+self-diagnosing:
+
+- **gate 1 red** = a TOOLCHAIN regression, not the old known-blocked state: the
+  pin moved below 0.2.115, a wasm-bindgen release lost wide-arith parsing, or a
+  nightly bump changed the required link flags (see the caveat below).
+- **gate 2 red** = engine support, the expected state until V8 stages the flag.
+
+Only the parser blocker is cleared. Do not read any of this as wide-arithmetic
+being shippable.
 
 **Nightly caveat for the next toolchain bump:** since wasm-bindgen 0.2.122,
 threaded builds on nightlies dated 2026-05-06 or later additionally require

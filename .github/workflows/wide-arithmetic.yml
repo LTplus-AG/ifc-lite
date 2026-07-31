@@ -154,6 +154,14 @@ jobs:
         id: engine_probe
         if: always() && !cancelled()
         run: |
+          # Fail closed: without node the probe cannot classify anything, and
+          # reporting "unsupported" would turn that into a quiet green run —
+          # the exact pathology this step exists to remove.
+          if ! node --version >/dev/null 2>&1; then
+            echo "::error::node unavailable — cannot classify engine support. This is a runner/environment fault, not a wide-arithmetic status."
+            exit 1
+          fi
+
           # (module (func (export "f") (param i64 i64 i64 i64) (result i64 i64)
           #   local.get 0 local.get 1 local.get 2 local.get 3 i64.add128))
           mod='AGFzbQEAAAABCgFgBH5+fn4Cfn4DAgEABwUBAWYAAAoOAQwAIAAgASACIAP8Ews='
@@ -188,7 +196,8 @@ jobs:
       # execute the module — otherwise it measures nothing about determinism.
       - name: wasm32 mesh-determinism vs pinned manifest (wide-arithmetic bundle)
         id: determinism_check
-        if: always() && !cancelled() && steps.engine_probe.outputs.support != 'unsupported'
+        if: always() && !cancelled() && (steps.engine_probe.outputs.support == 'default'
+          || steps.engine_probe.outputs.support == 'flag')
         env:
           RUSTFLAGS: ${{ env.WIDE_ARITH_RUSTFLAGS }}
           # NODE_ARGS (honored by wasm-bindgen-test-runner) passes V8 flags as
@@ -222,8 +231,13 @@ jobs:
       # a lane that is permanently red teaches everyone to ignore it, which is
       # how the bogus-flag bug above survived. Red here means the state MOVED
       # and someone should look.
+      #
+      # Accepted trade-off: once an engine does ship the feature, every run here
+      # is red until someone flips BUILD_WIDE or updates this lane. That is
+      # deliberate — it is a standing demand for a decision, not a status light.
       - name: Tripwire — engine support changed
-        if: always() && !cancelled() && steps.engine_probe.outputs.support != 'unsupported'
+        if: always() && !cancelled() && (steps.engine_probe.outputs.support == 'default'
+          || steps.engine_probe.outputs.support == 'flag')
         run: |
           echo "::error::wide-arithmetic is now ENGINE-SUPPORTED on this runner (${{ steps.engine_probe.outputs.support }}) — this lane is red on purpose."
           echo ""

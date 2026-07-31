@@ -58,6 +58,105 @@ export class PickingManager {
     }
 
     /**
+     * Prepare batched geometry for a GPU pick pass, shared by `pick()` and
+     * `pickRect()`.
+     *
+     * Returns `'cpu'` when the caller must fall back to a CPU test — either JS
+     * geometry data was released, or hydrating an individual mesh per visible
+     * piece would exceed the pick-mesh budget. Returns `'gpu'` after hydrating
+     * whatever was missing, so a following `scene.getMeshes()` covers every
+     * visible entity.
+     *
+     * Both pick paths MUST route through this. `pickRect` used to read
+     * `scene.getMeshes()` directly, which on a batched model is empty or
+     * partial, so rectangle select returned an empty set no matter how many
+     * elements the rect covered (#1904).
+     */
+    private prepareBatchedPick(options?: PickOptions): 'cpu' | 'gpu' {
+        const batchedMeshes = this.scene.getBatchedMeshes();
+        // Nothing batched: every mesh is already individually hydrated.
+        if (batchedMeshes.length === 0) return 'gpu';
+
+        if (this.scene.isGeometryDataReleased()) return 'cpu';
+
+        // Collect every pickable expressId. We use the scene's authoritative
+        // mesh-data id set rather than each batch's `expressIds`, because a batch
+        // only records the PRIMARY expressId of each merged piece. When a door or
+        // window is colour-fused into a batch keyed by its host wall / opening,
+        // the filler's id lives only in the per-vertex entityIds (registered in
+        // meshDataMap by Scene.addMeshData). Reading batch.expressIds alone would
+        // skip the filler, so under isolation its mesh is never hydrated and
+        // pick() returns null (#1358).
+        const expressIds = new Set<number>(this.scene.getAllMeshDataExpressIds());
+
+        // Track how many individual mesh pieces already exist for each (expressId:modelIndex).
+        // Multi-piece elements (windows/doors with submeshes) need all pieces for reliable picking.
+        const existingPieceCounts = new Map<string, number>();
+        for (const mesh of this.scene.getMeshes()) {
+            const key = `${mesh.expressId}:${mesh.modelIndex ?? 'any'}`;
+            existingPieceCounts.set(key, (existingPieceCounts.get(key) ?? 0) + 1);
+        }
+
+        // Build required piece counts from MeshData for all visible entities.
+        const requiredPieceCounts = new Map<string, number>();
+        const visibleExpressIds: number[] = [];
+        for (const expressId of expressIds) {
+            if (options?.hiddenIds?.has(expressId)) continue;
+            if (options?.isolatedIds !== null && options?.isolatedIds !== undefined && !options.isolatedIds.has(expressId)) continue;
+            visibleExpressIds.push(expressId);
+
+            const pieces = this.scene.getMeshDataPieces(expressId);
+            if (!pieces) continue;
+            for (const piece of pieces) {
+                const key = `${piece.expressId}:${piece.modelIndex ?? 'any'}`;
+                requiredPieceCounts.set(key, (requiredPieceCounts.get(key) ?? 0) + 1);
+            }
+        }
+
+        // Count how many meshes we'd need to create for full GPU picking
+        // For multi-model and multi-piece elements, count missing piece instances per key.
+        let toCreate = 0;
+        for (const [key, requiredCount] of requiredPieceCounts) {
+            const existingCount = existingPieceCounts.get(key) ?? 0;
+            if (requiredCount > existingCount) {
+                toCreate += requiredCount - existingCount;
+            }
+        }
+
+        // PERFORMANCE: fall back to CPU for large models instead of creating GPU meshes.
+        // GPU picking requires individual mesh buffers; for 60K+ elements this is too slow.
+        // The CPU paths use bounding boxes - no GPU buffers needed.
+        const MAX_PICK_MESH_CREATION = 500;
+        if (toCreate > MAX_PICK_MESH_CREATION || (visibleExpressIds.length > 0 && requiredPieceCounts.size === 0)) {
+            return 'cpu';
+        }
+
+        // For smaller models, create GPU meshes for picking
+        // Only create meshes for VISIBLE elements (not hidden, and either no isolation or in isolated set)
+        // For multi-model support: create meshes for ALL (expressId, modelIndex) pairs
+        const baselineExistingCounts = new Map(existingPieceCounts);
+        const seenOrdinalsByKey = new Map<string, number>();
+        for (const expressId of visibleExpressIds) {
+            const pieces = this.scene.getMeshDataPieces(expressId);
+            if (pieces) {
+                for (const piece of pieces) {
+                    const meshKey = `${piece.expressId}:${piece.modelIndex ?? 'any'}`;
+                    const ordinal = seenOrdinalsByKey.get(meshKey) ?? 0;
+                    seenOrdinalsByKey.set(meshKey, ordinal + 1);
+                    const baselineExisting = baselineExistingCounts.get(meshKey) ?? 0;
+
+                    // Assume existing pieces correspond to the first N pieces in stable order.
+                    if (ordinal < baselineExisting) continue;
+
+                    this.createMeshFromDataFn(piece);
+                }
+            }
+        }
+
+        return 'gpu';
+    }
+
+    /**
      * Pick object at screen coordinates
      * Respects visibility filtering so users can only select visible elements
      * Returns PickResult with expressId and modelIndex for multi-model support
@@ -87,108 +186,18 @@ export class PickingManager {
             return null;
         }
 
-        let meshes = this.scene.getMeshes();
-        const batchedMeshes = this.scene.getBatchedMeshes();
-
-        // If we have batched meshes, check if we need CPU raycasting
-        // This handles the case where we have SOME individual meshes (e.g., from highlighting)
-        // but not enough for full GPU picking coverage
-        if (batchedMeshes.length > 0) {
-            if (this.scene.isGeometryDataReleased()) {
-                const ray = this.camera.unprojectToRay(scaledX, scaledY, this.canvas.width, this.canvas.height);
-                const hit = this.scene.raycast(ray.origin, ray.direction, options?.hiddenIds, options?.isolatedIds, clip);
-                if (!hit) return null;
-                return {
-                    expressId: hit.expressId,
-                    modelIndex: hit.modelIndex,
-                };
-            }
-
-            // Collect every pickable expressId. We use the scene's authoritative
-            // mesh-data id set rather than each batch's `expressIds`, because a batch
-            // only records the PRIMARY expressId of each merged piece. When a door or
-            // window is colour-fused into a batch keyed by its host wall / opening,
-            // the filler's id lives only in the per-vertex entityIds (registered in
-            // meshDataMap by Scene.addMeshData). Reading batch.expressIds alone would
-            // skip the filler, so under isolation its mesh is never hydrated and
-            // pick() returns null (#1358).
-            const expressIds = new Set<number>(this.scene.getAllMeshDataExpressIds());
-
-            // Track how many individual mesh pieces already exist for each (expressId:modelIndex).
-            // Multi-piece elements (windows/doors with submeshes) need all pieces for reliable picking.
-            const existingPieceCounts = new Map<string, number>();
-            for (const mesh of meshes) {
-                const key = `${mesh.expressId}:${mesh.modelIndex ?? 'any'}`;
-                existingPieceCounts.set(key, (existingPieceCounts.get(key) ?? 0) + 1);
-            }
-
-            // Build required piece counts from MeshData for all visible entities.
-            const requiredPieceCounts = new Map<string, number>();
-            const visibleExpressIds: number[] = [];
-            for (const expressId of expressIds) {
-                if (options?.hiddenIds?.has(expressId)) continue;
-                if (options?.isolatedIds !== null && options?.isolatedIds !== undefined && !options.isolatedIds.has(expressId)) continue;
-                visibleExpressIds.push(expressId);
-
-                const pieces = this.scene.getMeshDataPieces(expressId);
-                if (!pieces) continue;
-                for (const piece of pieces) {
-                    const key = `${piece.expressId}:${piece.modelIndex ?? 'any'}`;
-                    requiredPieceCounts.set(key, (requiredPieceCounts.get(key) ?? 0) + 1);
-                }
-            }
-
-            // Count how many meshes we'd need to create for full GPU picking
-            // For multi-model and multi-piece elements, count missing piece instances per key.
-            let toCreate = 0;
-            for (const [key, requiredCount] of requiredPieceCounts) {
-                const existingCount = existingPieceCounts.get(key) ?? 0;
-                if (requiredCount > existingCount) {
-                    toCreate += requiredCount - existingCount;
-                }
-            }
-
-            // PERFORMANCE FIX: Use CPU raycasting for large models instead of creating GPU meshes
-            // GPU picking requires individual mesh buffers; for 60K+ elements this is too slow
-            // CPU raycasting uses bounding box filtering + triangle tests - no GPU buffers needed
-            const MAX_PICK_MESH_CREATION = 500;
-            if (toCreate > MAX_PICK_MESH_CREATION || (visibleExpressIds.length > 0 && requiredPieceCounts.size === 0)) {
-                // Use CPU raycasting fallback - works regardless of how many individual meshes exist
-                const ray = this.camera.unprojectToRay(scaledX, scaledY, this.canvas.width, this.canvas.height);
-                const hit = this.scene.raycast(ray.origin, ray.direction, options?.hiddenIds, options?.isolatedIds, clip);
-                if (!hit) return null;
-                // CPU raycasting returns expressId and modelIndex
-                return {
-                    expressId: hit.expressId,
-                    modelIndex: hit.modelIndex,
-                };
-            }
-
-            // For smaller models, create GPU meshes for picking
-            // Only create meshes for VISIBLE elements (not hidden, and either no isolation or in isolated set)
-            // For multi-model support: create meshes for ALL (expressId, modelIndex) pairs
-            const baselineExistingCounts = new Map(existingPieceCounts);
-            const seenOrdinalsByKey = new Map<string, number>();
-            for (const expressId of visibleExpressIds) {
-                const pieces = this.scene.getMeshDataPieces(expressId);
-                if (pieces) {
-                    for (const piece of pieces) {
-                        const meshKey = `${piece.expressId}:${piece.modelIndex ?? 'any'}`;
-                        const ordinal = seenOrdinalsByKey.get(meshKey) ?? 0;
-                        seenOrdinalsByKey.set(meshKey, ordinal + 1);
-                        const baselineExisting = baselineExistingCounts.get(meshKey) ?? 0;
-
-                        // Assume existing pieces correspond to the first N pieces in stable order.
-                        if (ordinal < baselineExisting) continue;
-
-                        this.createMeshFromDataFn(piece);
-                    }
-                }
-            }
-
-            // Get updated meshes list (includes newly created ones)
-            meshes = this.scene.getMeshes();
+        if (this.prepareBatchedPick(options) === 'cpu') {
+            const ray = this.camera.unprojectToRay(scaledX, scaledY, this.canvas.width, this.canvas.height);
+            const hit = this.scene.raycast(ray.origin, ray.direction, options?.hiddenIds, options?.isolatedIds, clip);
+            if (!hit) return null;
+            // CPU raycasting returns expressId and modelIndex
+            return {
+                expressId: hit.expressId,
+                modelIndex: hit.modelIndex,
+            };
         }
+
+        let meshes = this.scene.getMeshes();
 
         // Apply visibility filtering to meshes before picking
         // This ensures users can only select elements that are actually visible
@@ -233,11 +242,12 @@ export class PickingManager {
      * filtered (per-asset visibility is binary and the asset count is
      * tiny).
      *
-     * Limitations: skips the CPU-raycast and dynamic-mesh-creation
-     * fallbacks that `pick()` uses for very large batched models, so
-     * rect pick may miss entities whose individual meshes haven't been
-     * hydrated. Acceptable for an MVP — rect select is a power-user
-     * tool and the user can fall back to single-click pick.
+     * Batched models take the same route as `pick()`: hydrate the
+     * missing individual meshes when that is affordable, otherwise fall
+     * back to `Scene.selectRect` (bounding-box granularity, so slightly
+     * over-selective versus the pixel-exact GPU pass). Reading
+     * `scene.getMeshes()` unconditionally is what made this return an
+     * empty set on every batched model (#1904).
      */
     async pickRect(
         x0: number,
@@ -255,6 +265,17 @@ export class PickingManager {
         const sx0 = x0 * scaleX, sy0 = y0 * scaleY;
         const sx1 = x1 * scaleX, sy1 = y1 * scaleY;
         if (options?.isStreaming) return new Set();
+
+        if (this.prepareBatchedPick(options) === 'cpu') {
+            return this.scene.selectRect(
+                sx0, sy0, sx1, sy1,
+                this.canvas.width, this.canvas.height,
+                this.camera.getViewProjMatrix().m,
+                options?.hiddenIds,
+                options?.isolatedIds,
+                clip,
+            );
+        }
 
         let meshes = this.scene.getMeshes();
         if (options?.hiddenIds && options.hiddenIds.size > 0) {

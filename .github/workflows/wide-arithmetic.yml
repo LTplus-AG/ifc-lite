@@ -204,9 +204,15 @@ jobs:
       # rust/processing/tests/manifests/mesh_determinism.wasm32.json), just
       # compiled with +wide-arithmetic. Only runs once the engine can actually
       # execute the module — otherwise it measures nothing about determinism.
+      # Gated on the build too: this compiles the test crate with the same
+      # toolchain, so if pkg-wide could not build, this can only fail for the
+      # same reason — two red steps, one cause. Gate 2 no longer needs `always()`
+      # to stay independent; the probe step provides that, and it does not
+      # depend on the build at all.
       - name: wasm32 mesh-determinism vs pinned manifest (wide-arithmetic bundle)
         id: determinism_check
-        if: always() && !cancelled() && (steps.engine_probe.outputs.support == 'default'
+        if: always() && !cancelled() && steps.build_wide.outcome == 'success'
+          && (steps.engine_probe.outputs.support == 'default'
           || steps.engine_probe.outputs.support == 'flag')
         env:
           RUSTFLAGS: ${{ env.WIDE_ARITH_RUSTFLAGS }}
@@ -222,20 +228,22 @@ jobs:
         run: |
           echo "::error::wasm32 mesh-determinism check failed — read which gate this is before treating it as a regression."
           echo ""
-          echo "Failure mentions a code-section parse error / walrus / \"wide arithmetic support is not"
-          echo "enabled\" -> gate 1 (build-toolchain): same cause as the pkg-wide build step above,"
-          echo "this compile of the TEST crate hit the same wasm-bindgen/walrus limitation."
+          echo "This step only runs once the build succeeded AND the probe found engine support,"
+          echo "so the usual excuses are already ruled out. Most likely cause first:"
           echo ""
           echo "Failure is an assertion/panic naming mesh_determinism.wasm32.json (a manifest diff"
           echo "report, e.g. positions_hash/indices_origin_hash/normals_hash mismatch) -> REAL"
-          echo "regression: wide-arithmetic changed the kernel's emitted bytes. The engine probe and"
-          echo "the build must both have cleared for this to even be reachable, so treat it as"
+          echo "regression: wide-arithmetic changed the kernel's emitted bytes. Treat it as"
           echo "high-priority regardless of the weekly/non-blocking schedule -> do NOT flip"
           echo "BUILD_WIDE on by default until fixed."
           echo ""
           echo "A WebAssembly.validate / instantiate / \"invalid opcode\" error should NOT appear here:"
-          echo "the probe step gates this on the engine accepting i64.add128. If one does, the probe"
-          echo "and the real module disagree -> suspect the probe, not the kernel."
+          echo "the probe gates this on the engine accepting i64.add128. If one does, the probe and"
+          echo "the real module disagree -> suspect the probe, not the kernel."
+          echo ""
+          echo "A walrus / \"wide arithmetic support is not enabled\" parse error should not appear"
+          echo "either, since pkg-wide built. If one does, this compile of the TEST crate differs"
+          echo "from the bundle build -> compare their features/flags, not the kernel."
 
       # The actual tripwire. Blocked-on-V8 is the known state, so it is GREEN:
       # a lane that is permanently red teaches everyone to ignore it, which is

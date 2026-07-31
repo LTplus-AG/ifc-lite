@@ -28,8 +28,9 @@
 #   2. Engine-support gate: STILL BLOCKING. Measured on V8 (Chrome/Edge);
 #      SpiderMonkey and JavaScriptCore were not tested, so treat Firefox/Safari
 #      as unverified rather than assumed.
-#      Measured 2026-07-31 on Node 22, i.e. V8: a module whose
-#      only body is `i64.add128` is rejected outright —
+#      Measured 2026-07-31 on V8 (Node 22 / V8 12.4 locally, Node 26.5.1 /
+#      V8 14.6 in this lane): a module using every wide op the bundle emits
+#      is rejected outright —
 #      "invalid numeric opcode: 0xfc13" — and `--v8-options` lists no
 #      wide-arithmetic flag whatsoever. An earlier revision of this file assumed
 #      a `--experimental-wasm-wide-arithmetic` flag and passed it unconditionally

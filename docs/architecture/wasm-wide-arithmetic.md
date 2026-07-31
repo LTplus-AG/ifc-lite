@@ -112,9 +112,13 @@ experimental flag, so on the day wide-arithmetic lands the hard-coded flag would
 still be `bad option` and the lane would stay red exactly when it should turn
 actionable.
 
-Measured directly instead, on Node 22 — i.e. **V8**, so this speaks for
-Chrome/Edge and says nothing about SpiderMonkey or JavaScriptCore — with a
-47-byte module whose only body is `i64.add128`:
+Measured directly instead, with a 102-byte module using **every** wide op the
+bundle emits (`i64.add128`, `i64.sub128`, `i64.mul_wide_s`, `i64.mul_wide_u`),
+on two V8 versions: locally on Node 22 (V8 12.4) and in CI on Node 26.5.1
+(V8 14.6.202.34) — the lane deliberately runs the newest Node so the verdict
+reflects current V8 rather than a frozen LTS line. Chrome and Edge ship V8 in
+that range but were **not themselves measured**; SpiderMonkey and
+JavaScriptCore are unrelated engines and say nothing about this result:
 
 - `WebAssembly.validate` -> `false`; compiling it throws
   `invalid numeric opcode: 0xfc13`,
@@ -245,7 +249,7 @@ This reuses the exact pattern already in place for the threaded second bundle
    threaded bundle). The JS glue is identical between bundles; only the `.wasm`
    differs, so the JS is shared and only the chosen `.wasm` is fetched.
 
-Net: one extra `.wasm` artifact + a ~40-byte feature probe + a one-line URL
+Net: one extra `.wasm` artifact + a ~102-byte feature probe + a one-line URL
 choice. Users on engines with wide-arithmetic transparently get ~1.7x faster
 in-browser CSG; everyone else is unaffected.
 
@@ -300,8 +304,8 @@ says which gate tripped:
    (`wasm-pack test --node rust/wasm-bindings --test mesh_determinism` against
    the pinned `rust/processing/tests/manifests/mesh_determinism.wasm32.json`),
    compiled with the same wide-arithmetic RUSTFLAGS. It runs **only** when the
-   probe step reports the engine can execute `i64.add128` — otherwise it would
-   measure engine support, not determinism. When the probe does find support
+   probe step reports the engine can execute every wide op the bundle emits —
+   otherwise it would measure engine support, not determinism. When the probe does find support
    behind a flag, that flag is passed via `NODE_ARGS` (a direct node argv — V8
    flags are rejected inside `NODE_OPTIONS`, where Node refuses to start at
    all); when the feature is on by default, `NODE_ARGS` is empty. Treat a green
@@ -309,8 +313,9 @@ says which gate tripped:
    accepts and correctly executes the module, which is an early proxy for
    **blocker 2**, not evidence that any browser ships the feature. Default availability in Chrome, Firefox, Safari and Edge is gated
    separately by the shipping-engine validation in the flip-the-flag checklist
-   below, which remains the authoritative bar. It is additionally gated on the
-   pkg-wide build succeeding: it compiles the test crate with the same
+   below, which remains the authoritative bar. This determinism step is
+   additionally gated on the pkg-wide build succeeding, so it is skipped — not
+   failed — when gate 1 is red: it compiles the test crate with the same
    toolchain, so after a build failure it could only fail for the same reason.
    Gate 2 stays independently legible regardless — that is the probe step's job,
    and the probe does not depend on the build at all.

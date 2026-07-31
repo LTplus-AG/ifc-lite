@@ -228,9 +228,10 @@ SHIPPED (landed with a PR), or RE-REFUTED / NOT SHIPPABLE. Do not read the secti
   where the next real speedup lives.
 - **Wide-arithmetic exact-CSG bundle** (~1.7x on a real void cut — NOT SHIPPABLE TODAY):
   built by `BUILD_WIDE=1 scripts/build-wasm.sh`, but **V8 does not run it**. Measured
-  2026-07-31 on Node 22: a module whose only body is `i64.add128` fails
-  `WebAssembly.validate`, compiling it throws `invalid numeric opcode: 0xfc13`, and
-  `node --v8-options` lists **no** wide-arithmetic flag under any name. An earlier
+  2026-07-31 on V8 (Node 22 / V8 12.4 and Node 26.5.1 / V8 14.6): a module using
+  every wide op the bundle emits fails `WebAssembly.validate`, compiling it throws
+  `invalid numeric opcode: 0xfc13`, and `node --v8-options` lists **no**
+  wide-arithmetic flag under any name. An earlier
   entry here claimed V8 had it behind a default-off
   `--experimental-wasm-wide-arithmetic`; that flag has never existed, so do NOT wait
   for it to be "staged" — there is nothing to stage. Firefox (SpiderMonkey) and Safari

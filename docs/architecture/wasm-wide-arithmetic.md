@@ -147,11 +147,12 @@ that, so `BUILD_THREADED=1` works today without it. Whoever bumps the nightly
 must add that flag in `scripts/build-wasm.sh` and `rust/csg-thread-bench/`.
 
 Net: the lever is proven and worth tracking, but **not shippable now**. The plan
-below is the design to wire once BOTH clear. The runtime feature-detect makes it
-a safe, zero-cost no-op for every user until then — the wide `.wasm` is never
-fetched while the probe returns false, which it does on V8 today. The probe is
-per-engine by construction, so any engine that does implement the opcodes
-upgrades itself without further work here.
+below is the design to wire once BOTH clear. Once wired, the runtime
+feature-detect will make this a safe, zero-cost no-op for every user: the wide
+`.wasm` would never be fetched while the probe returns false, which it does on
+V8 today. The probe is per-engine by design, so any engine that does implement
+the opcodes would upgrade itself without further work here. None of this is
+wired yet — see the delivery plan below.
 
 ## When might it ship, and can we work around it?
 
@@ -202,16 +203,27 @@ This reuses the exact pattern already in place for the threaded second bundle
    build it alongside `pkg` once we flip it on.
 
 2. **Feature-detect at runtime** with a tiny `WebAssembly.validate()` probe of a
-   40-byte module containing an `i64.add128` (opcode `0xFC 0x13`). Returns true
-   only on engines that accept the proposal. Drop this into
+   102-byte module exercising **every** wide op the bundle emits — `i64.add128`,
+   `i64.sub128`, `i64.mul_wide_s`, `i64.mul_wide_u`. It must be all four, not
+   just `add128`: an engine shipping a partial implementation would otherwise
+   pass the probe and then fail on a bundle it cannot run. This is the same
+   module `.github/workflows/wide-arithmetic.yml` probes with, so CI and runtime
+   agree by construction. Drop this into
    `packages/geometry/src/wasm-features.ts` when wiring selection:
 
    ```ts
-   // module: (func (param i64 i64 i64 i64) (result i64 i64)
-   //           local.get 0..3  i64.add128)  -- generated via `wasm-tools parse`
+   // (module
+   //   (func (param i64 i64 i64 i64) (result i64 i64) local.get 0..3 i64.add128)
+   //   (func (param i64 i64 i64 i64) (result i64 i64) local.get 0..3 i64.sub128)
+   //   (func (param i64 i64) (result i64 i64) local.get 0..1 i64.mul_wide_s)
+   //   (func (param i64 i64) (result i64 i64) local.get 0..1 i64.mul_wide_u))
+   // generated via `wasm-tools parse`
    const PROBE = new Uint8Array([
-     0,97,115,109,1,0,0,0,1,10,1,96,4,126,126,126,126,2,126,126,3,2,1,0,
-     10,14,1,12,0,32,0,32,1,32,2,32,3,252,19,11,
+     0,97,115,109,1,0,0,0,1,17,2,96,4,126,126,126,126,2,126,126,96,2,126,
+     126,2,126,126,3,5,4,0,0,1,1,7,19,4,1,97,0,0,1,115,0,1,2,109,115,0,2,
+     2,109,117,0,3,10,45,4,12,0,32,0,32,1,32,2,32,3,252,19,11,12,0,32,0,
+     32,1,32,2,32,3,252,20,11,8,0,32,0,32,1,252,21,11,8,0,32,0,32,1,252,
+     22,11,
    ]);
    let cached: boolean | undefined;
    export function supportsWideArithmetic(): boolean {

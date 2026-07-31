@@ -187,7 +187,8 @@ fi
 # (+wide-arithmetic), which maps the exact-CSG kernel's bnum 64x64->128 limb
 # products to i64.mul_wide / i64.add128 instead of __multi3 libcalls. Measured
 # ~1.7x on a real void cut (docs/architecture/wasm-wide-arithmetic.md). Selected
-# at runtime via a WebAssembly.validate() probe (packages/geometry/src/wasm-features.ts);
+# at runtime via a WebAssembly.validate() probe (packages/geometry/src/wasm-features.ts,
+# NOT yet created — see docs/architecture/wasm-wide-arithmetic.md delivery plan);
 # engines without the proposal load the `pkg` bundle and are unaffected.
 if [ "${BUILD_WIDE:-}" = "1" ]; then
   WIDE_OUT="../../packages/wasm/pkg-wide"

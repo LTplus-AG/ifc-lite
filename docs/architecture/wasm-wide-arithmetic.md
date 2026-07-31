@@ -76,7 +76,8 @@ cleared; blocker 2 still gates shipping.
 merged wide-arith parsing (wasm-bindgen/walrus#306, released in walrus 0.26.0,
 2026-03-25) and current `wasm-bindgen` 0.2.126 depends on walrus 0.26.1, so
 bumping our pinned `=0.2.106` would let `pkg-wide` build. Blocker 2 still
-stands: no stable browser runs the module. (This entry also recorded that V8
+stands: V8 rejects the module (Firefox and Safari unverified — see the
+2026-07-31 measurement below). (This entry also recorded that V8
 had the implementation behind a default-off
 `--experimental-wasm-wide-arithmetic` flag. That was wrong — see the 2026-07-31
 measurement below; no such flag exists.) Verdict at the time:

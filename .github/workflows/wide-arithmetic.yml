@@ -176,8 +176,16 @@ jobs:
             exit 0
           fi
 
-          for f in $(node --v8-options 2>/dev/null \
-                     | grep -oE -- '--experimental-wasm-[a-z0-9-]+' | sort -u); do
+          # Fail closed again: if flag enumeration itself breaks, an empty list
+          # is indistinguishable from "no such flag" and would report
+          # unsupported on incomplete information — a silent green.
+          if ! v8opts=$(node --v8-options 2>/dev/null); then
+            echo "::error::node --v8-options failed — cannot enumerate feature flags, so 'unsupported' would be a guess."
+            exit 1
+          fi
+
+          for f in $(printf '%s\n' "$v8opts" \
+                     | grep -oE -- '--experimental-wasm-[a-z0-9-]+' | sort -u || true); do
             case "$f" in *wide*|*arith*|*128*) ;; *) continue ;; esac
             if node "$f" -e "$probe" "$mod" 2>/dev/null; then
               echo "support=flag" >> "$GITHUB_OUTPUT"

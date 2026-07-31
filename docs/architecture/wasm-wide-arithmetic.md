@@ -76,9 +76,10 @@ cleared; blocker 2 still gates shipping.
 merged wide-arith parsing (wasm-bindgen/walrus#306, released in walrus 0.26.0,
 2026-03-25) and current `wasm-bindgen` 0.2.126 depends on walrus 0.26.1, so
 bumping our pinned `=0.2.106` would let `pkg-wide` build. Blocker 2 still
-stands: V8 has the implementation but behind
-`--experimental-wasm-wide-arithmetic` (default **off**, pre-staged tier in
-`wasm-feature-flags.h`); no stable browser ships it. Verdict at the time:
+stands: no stable browser runs the module. (This entry also recorded that V8
+had the implementation behind a default-off
+`--experimental-wasm-wide-arithmetic` flag. That was wrong — see the 2026-07-31
+measurement below; no such flag exists.) Verdict at the time:
 track-and-adopt — do NOT pay a wasm-bindgen major-pin bump for a bundle no
 browser can run; re-check when V8 stages/ships the flag on by default.
 
@@ -96,14 +97,39 @@ verdict assumed the bump carried a real cost; measured, it did not:
   two passing their own litmus checks,
 - `serde-wasm-bindgen 0.6.5` and `wasm-bindgen-rayon 1.3.0` needed no change.
 
-Blocker 2 is untouched and still gates SHIPPING. What the bump buys is a
-tripwire whose two gates now mean different things, so a red run is
-self-diagnosing:
+Blocker 2 is untouched and still gates SHIPPING.
 
-- **gate 1 red** = a TOOLCHAIN regression, not the old known-blocked state: the
+**Blocker 2, measured (2026-07-31).** Clearing blocker 1 let the workflow reach
+gate 2 for the first time, which exposed the gate as broken. It passed
+`NODE_ARGS=--experimental-wasm-wide-arithmetic` unconditionally; **that flag has
+never existed in any Node**, so node exited with `bad option: ...` during argv
+parsing, before loading any wasm. Gate 2 had therefore never measured engine
+support at all. The signal was also inverted: a shipped V8 feature *drops* its
+experimental flag, so on the day wide-arithmetic lands the hard-coded flag would
+still be `bad option` and the lane would stay red exactly when it should turn
+actionable.
+
+Measured directly instead, on Node 22 (the same V8 a browser ships), with a
+47-byte module whose only body is `i64.add128`:
+
+- `WebAssembly.validate` -> `false`; compiling it throws
+  `invalid numeric opcode: 0xfc13`,
+- `node --v8-options` lists **no** wide-arithmetic flag of any name.
+
+So blocker 2 is real and unambiguous, just not for the reason previously
+recorded: V8 does not implement the opcodes here, staged or otherwise. The
+workflow now probes the engine at runtime rather than assuming a flag, and
+treats blocked-on-engine as the expected, GREEN state — a permanently red lane
+is one nobody reads, which is how the bogus flag survived in the first place.
+Red now means the state moved:
+
+- **build red** = a TOOLCHAIN regression, not the old known-blocked state: the
   pin moved below 0.2.115, a wasm-bindgen release lost wide-arith parsing, or a
   nightly bump changed the required link flags (see the caveat below).
-- **gate 2 red** = engine support, the expected state until V8 stages the flag.
+- **tripwire red** = the engine now ACCEPTS wide-arithmetic. Good news, and the
+  signal the workflow exists to deliver.
+- **determinism red** = wide-arithmetic changed the kernel's exact-predicate
+  output. Must not ship. Only reachable once the engine runs the module.
 
 Only the parser blocker is cleared. Do not read any of this as wide-arithmetic
 being shippable.
@@ -245,13 +271,15 @@ says which gate tripped:
    reuses the exact check `determinism.yml`'s wasm32 job already runs
    (`wasm-pack test --node rust/wasm-bindings --test mesh_determinism` against
    the pinned `rust/processing/tests/manifests/mesh_determinism.wasm32.json`),
-   compiled with the same wide-arithmetic RUSTFLAGS and run under Node started
-   with `NODE_ARGS=--experimental-wasm-wide-arithmetic` (a direct node argv —
-   V8 flags are rejected inside `NODE_OPTIONS`, where Node refuses to start at
-   all). Treat a green run here as an **experimental compatibility signal**:
-   it says a flagged V8 accepts and correctly executes the module, which is an
-   early proxy for **blocker 2**, not evidence that any browser ships the
-   feature. Default availability in Chrome, Firefox, Safari and Edge is gated
+   compiled with the same wide-arithmetic RUSTFLAGS. It runs **only** when the
+   probe step reports the engine can execute `i64.add128` — otherwise it would
+   measure engine support, not determinism. When the probe does find support
+   behind a flag, that flag is passed via `NODE_ARGS` (a direct node argv — V8
+   flags are rejected inside `NODE_OPTIONS`, where Node refuses to start at
+   all); when the feature is on by default, `NODE_ARGS` is empty. Treat a green
+   run here as an **experimental compatibility signal**: it says some V8
+   accepts and correctly executes the module, which is an early proxy for
+   **blocker 2**, not evidence that any browser ships the feature. Default availability in Chrome, Firefox, Safari and Edge is gated
    separately by the shipping-engine validation in the flip-the-flag checklist
    below, which remains the authoritative bar. `if: always()` keeps this
    independent of step 1's outcome, so each blocker's status is legible on its
@@ -272,9 +300,13 @@ regression:
    wide-arithmetic and the emitted bytes diverged from the pinned wasm32
    manifest. This is a real determinism regression and blocks flipping
    `BUILD_WIDE` on.
-2. **Expected blocker** — a walrus/parse error (blocker 1) or a
-   validate/instantiate/invalid-opcode error from Node (blocker 2). Status
-   quo, not a regression; the lane exists to watch these flip.
+2. **Expected blocker** — a walrus/parse error (blocker 1). Status quo, not a
+   regression; the lane exists to watch it flip. Blocker 2 no longer shows up
+   as a failure at all: the probe step detects it and records it in the step
+   summary while the job stays green, so the lane is quiet until something
+   actually changes. A validate/instantiate/invalid-opcode error reaching the
+   determinism step would mean the probe and the real module disagree — suspect
+   the probe, not the kernel.
 3. **Unclassified** — anything else: compilation errors unrelated to walrus,
    the test binary failing to run, Node refusing to start, script or
    toolchain breakage, dependency resolution failures, runner/infrastructure
@@ -295,8 +327,10 @@ regression:
       least the two engines the viewer must support without a fallback path
       (Chrome/Edge + Firefox at minimum; confirm Safari's status explicitly
       rather than assuming parity).
-- [ ] This workflow green: pkg-wide builds, and step 2's determinism check
-      passes with **no manifest diff** — not just "the step ran."
+- [ ] This workflow's determinism check actually **ran and passed** with no
+      manifest diff — not just "the job was green." The job is green while
+      blocked on the engine, so its colour alone is not the bar; confirm the
+      probe reported support and the determinism step executed.
 - [ ] Wire the runtime probe + `pkg-wide` bundle selection (Delivery plan
       steps 2-4 above) and re-run the viewer's own benchmark/E2E suite before
       flipping `BUILD_WIDE=1` on by default in `scripts/build-wasm.sh` /

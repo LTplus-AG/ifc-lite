@@ -24,22 +24,26 @@
 #      2026-03-25) fixed it; wasm-bindgen >=0.2.115 is the floor that depends on
 #      it. The bump was taken in its own PR, as this workflow always intended —
 #      a green run here is proof the pin moved, never a workaround for it.
-#   2. Engine-support gate: even once (1) clears, no stable browser runs the
-#      module — V8 has it prototyped behind the (default-off) flag
-#      `--experimental-wasm-wide-arithmetic`. Node ships the same V8, so we
-#      pass that flag to the Node runner `wasm-pack test --node` uses via
-#      `NODE_ARGS` (a direct node argv, since V8 flags are
-#      rejected inside NODE_OPTIONS), the earliest in-repo signal that V8
-#      accepts the module — well before it is on-by-default in any browser.
+#   2. Engine-support gate: STILL BLOCKING. No stable engine runs the module.
+#      Measured 2026-07-31 on Node 22 (same V8 a browser ships): a module whose
+#      only body is `i64.add128` is rejected outright —
+#      "invalid numeric opcode: 0xfc13" — and `--v8-options` lists no
+#      wide-arithmetic flag whatsoever. An earlier revision of this file assumed
+#      a `--experimental-wasm-wide-arithmetic` flag and passed it unconditionally
+#      via NODE_ARGS; that flag has never existed, so node exited with
+#      "bad option" before loading any wasm and this gate measured nothing. It is
+#      now probed at runtime (see the probe step) instead of assumed.
 #
-# Until BOTH clear, the "Build pkg-wide" and/or "wasm32 mesh-determinism"
-# steps below are EXPECTED to fail — that is the tripwire working, not a bug
-# in this workflow. What must never happen quietly is a determinism
-# divergence: if both gates clear (build succeeds, Node/V8 runs the module)
-# but the pinned wasm32 manifest no longer matches, wide-arithmetic changed
-# the kernel's exact-predicate output and it must not ship. The three step
-# names below are deliberately distinct so a failure notification alone says
-# which of the three happened without opening the log.
+# Gate 2 being blocked is the KNOWN state, so it is green — a permanently red
+# lane is one nobody reads, which is exactly how the bogus flag survived. Red
+# means the state moved and someone should look:
+#
+#   * build step red      -> toolchain regression (gate 1 came back)
+#   * tripwire step red   -> the engine now ACCEPTS wide-arithmetic. Good news,
+#                            and the signal this workflow exists to deliver.
+#   * determinism red     -> wide-arithmetic changed the kernel's exact-predicate
+#                            output. Must not ship. Only reachable once the
+#                            engine runs the module at all.
 #
 # Cost: weekly + on-demand only, same profile as determinism.yml, and
 # deliberately NOT a `pull_request` trigger — this must never become a
@@ -131,30 +135,67 @@ jobs:
           echo "If the error instead mentions a missing wasm-tools/wasm-pack binary, that is an"
           echo "environment problem with this job, not a toolchain-support gap."
 
-      # --- Gate 2 + the real check: engine support + byte-determinism ------
+      # --- Gate 2: does this engine actually accept wide-arithmetic? -------
+      # Probe FIRST, then decide how to run the determinism test.
+      #
+      # The previous shape hard-coded `NODE_ARGS: --experimental-wasm-wide-arithmetic`
+      # and could never work: no Node exposes that flag (V8 has no wide-arithmetic
+      # entry in `--v8-options` at all), so node exited with "bad option" during
+      # argv parsing, before loading any wasm. Gate 2 was never measured. The
+      # signal was also inverted: a shipped V8 feature DROPS its experimental
+      # flag, so on the day wide-arithmetic lands, a hard-coded flag would still
+      # be "bad option" and this lane would stay red exactly when it should turn
+      # actionable.
+      #
+      # So ask the engine directly, with a 47-byte module whose only body is
+      # `i64.add128` (opcode 0xfc13). Order matters: try no flags first (the
+      # shipped case), then only flags this V8 actually lists.
+      - name: Probe engine support for wide-arithmetic (gate 2)
+        id: engine_probe
+        if: always() && !cancelled()
+        run: |
+          # (module (func (export "f") (param i64 i64 i64 i64) (result i64 i64)
+          #   local.get 0 local.get 1 local.get 2 local.get 3 i64.add128))
+          mod='AGFzbQEAAAABCgFgBH5+fn4Cfn4DAgEABwUBAWYAAAoOAQwAIAAgASACIAP8Ews='
+          probe='process.exit(WebAssembly.validate(Buffer.from(process.argv[1],"base64")) ? 0 : 1)'
+
+          if node -e "$probe" "$mod" 2>/dev/null; then
+            echo "support=default" >> "$GITHUB_OUTPUT"
+            echo "node_args=" >> "$GITHUB_OUTPUT"
+            echo "engine accepts i64.add128 with no flags -> wide-arithmetic is shipped here"
+            exit 0
+          fi
+
+          for f in $(node --v8-options 2>/dev/null \
+                     | grep -oE -- '--experimental-wasm-[a-z0-9-]+' | sort -u); do
+            case "$f" in *wide*|*arith*|*128*) ;; *) continue ;; esac
+            if node "$f" -e "$probe" "$mod" 2>/dev/null; then
+              echo "support=flag" >> "$GITHUB_OUTPUT"
+              echo "node_args=$f" >> "$GITHUB_OUTPUT"
+              echo "engine accepts i64.add128 under $f"
+              exit 0
+            fi
+          done
+
+          echo "support=unsupported" >> "$GITHUB_OUTPUT"
+          echo "node_args=" >> "$GITHUB_OUTPUT"
+          echo "engine rejects i64.add128 and exposes no flag that enables it"
+
       # Reuses the SAME wasm32 determinism manifest check determinism.yml runs
       # (rust/wasm-bindings/tests/mesh_determinism.rs against the pinned
       # rust/processing/tests/manifests/mesh_determinism.wasm32.json), just
-      # compiled with +wide-arithmetic and run under a Node started with V8's
-      # experimental flag for it. `if: always()` so this gate's own signal
-      # never gets swallowed by gate 1 failing above — a future world where
-      # wasm-bindgen is bumped but Node still rejects the module (or vice
-      # versa) should still show up as exactly one red step, not zero.
+      # compiled with +wide-arithmetic. Only runs once the engine can actually
+      # execute the module — otherwise it measures nothing about determinism.
       - name: wasm32 mesh-determinism vs pinned manifest (wide-arithmetic bundle)
         id: determinism_check
-        if: always() && !cancelled()
+        if: always() && !cancelled() && steps.engine_probe.outputs.support != 'unsupported'
         env:
           RUSTFLAGS: ${{ env.WIDE_ARITH_RUSTFLAGS }}
-          # V8's implementation is staged behind this flag (default off) — see
-          # docs/architecture/wasm-wide-arithmetic.md "Delivery status". Node
-          # ships the same V8 build a browser would, so passing it here is the
-          # earliest in-repo signal for when the engine actually accepts the
-          # module, independent of when any browser turns the flag on by
-          # default. NODE_ARGS (honored by wasm-bindgen-test-runner) passes the
-          # flag as a direct node argv: V8 flags are NOT allowed inside
-          # NODE_OPTIONS (Node exits with "not allowed in NODE_OPTIONS"), so
-          # routing it through NODE_OPTIONS would keep this lane red forever.
-          NODE_ARGS: '--experimental-wasm-wide-arithmetic'
+          # NODE_ARGS (honored by wasm-bindgen-test-runner) passes V8 flags as
+          # direct node argv: they are NOT allowed inside NODE_OPTIONS (node
+          # exits with "not allowed in NODE_OPTIONS"). Empty when the feature
+          # is on by default.
+          NODE_ARGS: ${{ steps.engine_probe.outputs.node_args }}
         run: wasm-pack test --node rust/wasm-bindings --test mesh_determinism
 
       - name: Diagnose determinism-check failure
@@ -166,16 +207,45 @@ jobs:
           echo "enabled\" -> gate 1 (build-toolchain): same cause as the pkg-wide build step above,"
           echo "this compile of the TEST crate hit the same wasm-bindgen/walrus limitation."
           echo ""
-          echo "Failure mentions WebAssembly.validate / instantiate / \"invalid opcode\" / RuntimeError"
-          echo "from Node -> gate 2 (engine support): this runner's Node/V8 build still rejects"
-          echo "wide-arithmetic even with --experimental-wasm-wide-arithmetic set. Expected until V8"
-          echo "stages the feature on by default (docs/architecture/wasm-wide-arithmetic.md)."
-          echo ""
           echo "Failure is an assertion/panic naming mesh_determinism.wasm32.json (a manifest diff"
           echo "report, e.g. positions_hash/indices_origin_hash/normals_hash mismatch) -> REAL"
-          echo "regression: wide-arithmetic changed the kernel's emitted bytes. Both gates above must"
-          echo "have cleared for this to even be reachable, so treat it as high-priority regardless of"
-          echo "the weekly/non-blocking schedule -> do NOT flip BUILD_WIDE on by default until fixed."
+          echo "regression: wide-arithmetic changed the kernel's emitted bytes. The engine probe and"
+          echo "the build must both have cleared for this to even be reachable, so treat it as"
+          echo "high-priority regardless of the weekly/non-blocking schedule -> do NOT flip"
+          echo "BUILD_WIDE on by default until fixed."
+          echo ""
+          echo "A WebAssembly.validate / instantiate / \"invalid opcode\" error should NOT appear here:"
+          echo "the probe step gates this on the engine accepting i64.add128. If one does, the probe"
+          echo "and the real module disagree -> suspect the probe, not the kernel."
+
+      # The actual tripwire. Blocked-on-V8 is the known state, so it is GREEN:
+      # a lane that is permanently red teaches everyone to ignore it, which is
+      # how the bogus-flag bug above survived. Red here means the state MOVED
+      # and someone should look.
+      - name: Tripwire — engine support changed
+        if: always() && !cancelled() && steps.engine_probe.outputs.support != 'unsupported'
+        run: |
+          echo "::error::wide-arithmetic is now ENGINE-SUPPORTED on this runner (${{ steps.engine_probe.outputs.support }}) — this lane is red on purpose."
+          echo ""
+          echo "This is the signal the tripwire exists to give, not a regression."
+          echo "Next steps: confirm the determinism step above passed, then re-evaluate"
+          echo "flipping BUILD_WIDE and update docs/architecture/wasm-wide-arithmetic.md"
+          echo "(blocker 2) plus the expected state encoded in this workflow."
+          exit 1
+
+      - name: Record blocked-on-engine state (expected)
+        if: always() && !cancelled() && steps.engine_probe.outputs.support == 'unsupported'
+        run: |
+          {
+            echo "### Gate 2: engine support — still blocked (expected)"
+            echo ""
+            echo "This runner's V8 rejects \`i64.add128\` (opcode \`0xfc13\`) and exposes no flag"
+            echo "that enables it, so the wasm32 determinism check was skipped: it would have"
+            echo "measured engine support, not determinism."
+            echo ""
+            echo "This is the known state (blocker 2 in docs/architecture/wasm-wide-arithmetic.md)"
+            echo "and is intentionally **not** a failure. The lane turns red when it changes."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # --- Informational only: NOT a timing benchmark ----------------------
       # There is no in-repo wasm timing harness for this — the predicate and

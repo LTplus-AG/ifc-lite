@@ -1,5 +1,45 @@
 # @ifc-lite/data
 
+## 3.0.0
+
+### Major Changes
+
+- [#1864](https://github.com/LTplus-AG/ifc-lite/pull/1864) [`6792dd1`](https://github.com/LTplus-AG/ifc-lite/commit/6792dd11ad7049acb7329221ea8809d6333aefb7) Thanks [@louistrue](https://github.com/louistrue)! - Remove `EntityTable.getGlobalIdMap()`.
+
+  It was added alongside `getExpressIdByGlobalId()` for BCF integration and never
+  used — the BCF lookup, tier-0 scan, export adapter, embed handler and CLI
+  diagnostics all call `getExpressIdByGlobalId()` (point lookups). No caller ever
+  needed the materialized map.
+
+  Carrying it had a real cost: every implementation returned
+  `new Map(globalIdToExpressId)`, a full defensive copy that would have doubled the
+  peak memory of the largest string-keyed structure in the table the moment anyone
+  called it, and it froze a `Map` return type into the canonical interface that
+  three builders had to keep satisfying in lockstep.
+
+  Migration: use `getExpressIdByGlobalId(globalId)` for GlobalId → expressId, and
+  the existing `getGlobalId(expressId)` column accessor for the reverse. Both are
+  unchanged.
+
+### Minor Changes
+
+- [#1857](https://github.com/LTplus-AG/ifc-lite/pull/1857) [`205a136`](https://github.com/LTplus-AG/ifc-lite/commit/205a136ee69e378ea01cd0d0a8a6dc81cf2fb08f) Thanks [@louistrue](https://github.com/louistrue)! - Add the canonical storey-elevation definitions (`findStoreyByElevation`, `STOREY_ELEVATION_MATCH_TOLERANCE_M`, `IFC_BUILDING_STOREY_ELEVATION_INDEX`, `IFC_BUILDING_STOREY_PLACEMENT_INDEX`) next to the `SpatialHierarchy` interface they implement, so every path resolves a storey from a Z the same way (issue [#1841](https://github.com/LTplus-AG/ifc-lite/issues/1841)).
+
+  `getStoreyByElevation` had four implementations and three of them disagreed with the fourth: `SpatialHierarchyBuilder` returned `null` beyond a 1m band, while the worker-transport rehydration in `@ifc-lite/parser`, the IFCX hierarchy builder, and the viewer's server-loaded path all snapped to the nearest storey unconditionally. The same Z could therefore resolve to a different storey depending on entry path, and even on which side of the worker boundary the store was read. All four now call the shared resolver; behaviour follows the tolerance-bounded rule.
+
+### Patch Changes
+
+- [#1850](https://github.com/LTplus-AG/ifc-lite/pull/1850) [`22bffac`](https://github.com/LTplus-AG/ifc-lite/commit/22bffac737efa9bdd6ca583518f637593cb4d4bc) Thanks [@louistrue](https://github.com/louistrue)! - Type-qualify SELECT-typed and IfcValue-family STEP attributes on export. A
+  defined-type SELECT member (a boolean in an `IfcTranslationalStiffnessSelect`
+  slot, a length in `IfcSizeSelect`) now serializes as the ISO 10303-21 required
+  `IFCBOOLEAN(.T.)` / `IFCLENGTHMEASURE(3.)` rather than a bare `.T.` / `3` that
+  strict validators reject and that loses the member type on round-trip. The
+  exporter auto-qualifies unambiguous slots from the schema registry with no
+  caller change; a new write-only `{ typed: { type, value } }` marker on
+  `IfcAttributeValue` pins the type for ambiguous selects and the `IfcValue`
+  family (`NominalValue`, quantity values) and subsumes `{ real }`. Completes the
+  `setPositionalAttribute` / `addEntity` follow-up to [#1839](https://github.com/LTplus-AG/ifc-lite/issues/1839).
+
 ## 2.8.0
 
 ### Minor Changes

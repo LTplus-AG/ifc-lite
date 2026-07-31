@@ -1,5 +1,80 @@
 # @ifc-lite/wasm
 
+## 4.2.0
+
+### Minor Changes
+
+- [#1865](https://github.com/LTplus-AG/ifc-lite/pull/1865) [`35c157d`](https://github.com/LTplus-AG/ifc-lite/commit/35c157d9a0513f368e83c4884465b5ad162c6ba0) Thanks [@louistrue](https://github.com/louistrue)! - Expose general 2D boolean operations over contour sets: `union2d`,
+  `difference2d`, `intersection2d`, `resolve2d` and the `Contours2D` handle they
+  operate on.
+
+  Until now the only `i_overlay` capability crossing the wasm boundary was the
+  fixed-purpose `meshOutline2d`, which unions one mesh's projected triangles into
+  a silhouette. Anything that needed to combine two silhouettes — analytic
+  hidden-surface removal, screen tiling, footprint overlap — had to bolt a second
+  2D geometry engine onto the same pipeline, with different winding, precision and
+  robustness semantics than the outlines it was consuming.
+
+  `Contours2D.fromMeshOutline(outline)` adopts a `meshOutline2d` result directly,
+  so an outline round-trips through a boolean without leaving the library.
+
+  The results keep **every** disjoint output shape with its holes, grouped via
+  `shapeOffsets()`. That is the difference from the internal `subtract_2d`, which
+  collapses to the largest shape — correct for the single extrusion profile it
+  serves, silent geometry loss for a difference that splits its subject into
+  islands (a wall seen past a column is two visible slivers, not one).
+
+  Winding is the contract: the fill rule is always NonZero and input winding is
+  respected rather than normalised. Because it is NonZero, winding is relative — a
+  counter-clockwise ring covers area, and a clockwise ring creates a hole only
+  where it cancels positive winding (a lone clockwise ring still fills). That
+  matches what `meshOutline2d` emits and what SVG `fill-rule="nonzero"` renders, so
+  holes survive a round trip. Callers holding raw, arbitrarily-wound contours that
+  all mean "covered" must normalise them CCW first.
+
+  Degenerate input is dropped, not fatal: rings under 3 vertices or carrying any
+  non-finite coordinate are discarded, an explicitly repeated closing vertex is
+  tolerated, and every empty-operand combination has a defined answer.
+
+  Resolves [#1863](https://github.com/LTplus-AG/ifc-lite/issues/1863).
+
+### Patch Changes
+
+- [#1877](https://github.com/LTplus-AG/ifc-lite/pull/1877) [`0cfb88b`](https://github.com/LTplus-AG/ifc-lite/commit/0cfb88b3ac3e5615c7e125c5076ea75cf2039a09) Thanks [@louistrue](https://github.com/louistrue)! - Report mesh-level penetration depth for contained contact pairs. When one element's AABB is contained in the other's, hard-clash findings previously reported the AABB signed gap (how deep the small box sits inside the big one) as the penetration depth, overstating depth for designed face contacts such as opening fills. Both the TS and WASM kernels now measure the depth at the crossing triangles' vertices (max point-to-surface inside the other solid), falling back to the AABB estimate only when no such vertex lies inside.
+
+- [#1916](https://github.com/LTplus-AG/ifc-lite/pull/1916) [`401ab18`](https://github.com/LTplus-AG/ifc-lite/commit/401ab1842662c4e8ca26eae01b879f0290962b6d) Thanks [@louistrue](https://github.com/louistrue)! - Fix hairline cracks in void-cut geometry. `consolidate_coplanar` re-triangulates each
+  coplanar plane bucket independently, and its collinear simplify could drop a boundary
+  vertex that the abutting bucket keeps — leaving the shared edge spanned by one long
+  edge on one side and two short ones on the other. That T-junction renders as a
+  hairline crack under DoubleSide.
+
+  The pass now conforms seams across buckets. What separates a genuine seam vertex from
+  an `i_overlay` phantom is the simplify's own judgment read across buckets: a real seam
+  vertex is a hard corner in the abutting bucket, so it survives that bucket's simplify;
+  a phantom is near-collinear in every bucket that touches it and is dropped everywhere.
+  Today's output is emitted first and the conformed mesh is taken only when it is fully
+  watertight, so a host can never come out worse than before.
+
+  Measured over 116 fixtures and 1355 void-hosting elements: total unmatched boundary
+  edges 18252 to 17792, elements with any tear 238 to 199, and elements whose body is a
+  closed solid yet not watertight 80 to 41. Also unifies the analytic prism cut's new
+  crossing vertices at ulp scale, which fixes the case where two host faces sharing an
+  edge computed the same point one float step apart.
+
+- [#1925](https://github.com/LTplus-AG/ifc-lite/pull/1925) [`b716fd7`](https://github.com/LTplus-AG/ifc-lite/commit/b716fd7b045c918dc1bd2ecc1da6fed21e59f110) Thanks [@louistrue](https://github.com/louistrue)! - Bump the pinned wasm-bindgen family to 0.2.126 (js-sys/web-sys 0.3.103,
+  wasm-bindgen-futures 0.4.76, wasm-bindgen-test 0.3.76). They move together because
+  js-sys and web-sys pin wasm-bindgen exactly.
+
+  This unblocks gate 1 of the WASM wide-arithmetic tripwire: wasm-bindgen 0.2.106's
+  bundled `walrus` parser could not read a wide-arithmetic code section, so the
+  `pkg-wide` bundle failed to build at all. It builds now.
+
+  No API or behaviour change for consumers. The generated TypeScript surface is
+  unchanged — 557 normalised signature units, identical before and after; the large
+  `ifc-lite.d.ts` diff is indentation, member ordering and newly emitted doc comments.
+  The pinned wasm32 mesh-determinism manifest still matches, so emitted mesh bytes are
+  unchanged. Default, threaded and wide bundles all build and pass their litmus checks.
+
 ## 4.1.4
 
 ### Patch Changes

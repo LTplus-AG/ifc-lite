@@ -1,5 +1,44 @@
 # @ifc-lite/lists
 
+## 1.22.0
+
+### Minor Changes
+
+- [#1867](https://github.com/LTplus-AG/ifc-lite/pull/1867) [`8492e51`](https://github.com/LTplus-AG/ifc-lite/commit/8492e516f23775930e55a192abe526ff507d79bc) Thanks [@louistrue](https://github.com/louistrue)! - Add `toScheduleRows()`: project a grouped `ListResult` down to a Bonsai-style
+  schedule / pivot presentation — one row per group-value tuple (leaf group),
+  carrying its Count aggregate and configured sums as first-class fields,
+  instead of the nested tree `ListGroup[]` already returned.
+
+  Follow-up to the multi-criteria grouping added for issue [#1790](https://github.com/LTplus-AG/ifc-lite/issues/1790): the reporter
+  came back asking for Count as its own column (not a badge next to the group
+  label) and a pivot/schedule table (grouping columns become leading columns,
+  one row per combination) matching Bonsai's own output — plus a CSV export
+  that mirrors that arrangement.
+
+  `ListGrouping` gains an optional `view?: 'nested' | 'schedule'` field
+  (`undefined` keeps the existing nested-tree behaviour, so persisted lists are
+  unaffected) and a new `ListScheduleRow` type describes each schedule row.
+  The viewer's Lists panel and its CSV/XLSX/PDF export now offer a schedule
+  (pivot) view alongside the existing nested tree.
+
+- [#1869](https://github.com/LTplus-AG/ifc-lite/pull/1869) [`f8a3f39`](https://github.com/LTplus-AG/ifc-lite/commit/f8a3f3970844edf266ae6887884ed3be4293ff8c) Thanks [@louistrue](https://github.com/louistrue)! - Add a `zone` column/condition source (issue [#1810](https://github.com/LTplus-AG/ifc-lite/issues/1810)): location-zone
+  classification (which user-defined 3D zone box an element falls into, plus a
+  "straddles" flag when its bounds cross a zone boundary) can now be surfaced as
+  a list column, grouped/sorted/exported, and used as a filter condition.
+
+  `ColumnDefinition.source` / `PropertyCondition.source` gain a `'zone'` variant
+  (`psetName` holds the zone-SET id, `propertyName` selects `Zone` (default) or
+  `Straddles`). `ListDataProvider` gains two new OPTIONAL accessors,
+  `getZoneAssignment` and `getZoneSetNames` — providers built before this change
+  simply resolve every `zone` column to `null`, so this is purely additive and
+  backward compatible.
+
+### Patch Changes
+
+- Updated dependencies [[`382fa7c`](https://github.com/LTplus-AG/ifc-lite/commit/382fa7cf97c04bad07963e25052cbaeb6c2ba7e3), [`6792dd1`](https://github.com/LTplus-AG/ifc-lite/commit/6792dd11ad7049acb7329221ea8809d6333aefb7), [`8799484`](https://github.com/LTplus-AG/ifc-lite/commit/87994844a5edb66404fa12b0719c89f5ec026c4d), [`22bffac`](https://github.com/LTplus-AG/ifc-lite/commit/22bffac737efa9bdd6ca583518f637593cb4d4bc), [`205a136`](https://github.com/LTplus-AG/ifc-lite/commit/205a136ee69e378ea01cd0d0a8a6dc81cf2fb08f)]:
+  - @ifc-lite/encoding@1.15.0
+  - @ifc-lite/data@3.0.0
+
 ## 1.21.0
 
 ### Minor Changes

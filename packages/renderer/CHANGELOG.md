@@ -1,5 +1,128 @@
 # @ifc-lite/renderer
 
+## 1.40.0
+
+### Minor Changes
+
+- [#1878](https://github.com/LTplus-AG/ifc-lite/pull/1878) [`653a685`](https://github.com/LTplus-AG/ifc-lite/commit/653a685625bda0c983a3123dda73e0d009529f4b) Thanks [@louistrue](https://github.com/louistrue)! - Add IfcMapConversion alignment support for georeferenced point clouds (issue [#1804](https://github.com/LTplus-AG/ifc-lite/issues/1804)).
+
+  `@ifc-lite/pointcloud`: `decodeLasPoints`, `LasStreamingSource`, `LazStreamingSource`, `streamPointCloud`, and the decode-worker protocol all gain an optional `originOffset` (native X/Y/Z) that is subtracted from each decoded LAS/LAZ coordinate in f64, before it is narrowed to f32. Georeferenced scans carry absolute map coordinates (~1e6-1e7 m); narrowing those to f32 first quantises to ~0.5-1 m before any alignment math sees them, defeating sub-metre alignment with an IFC model. All new fields are optional and additive — omitting them reproduces prior behaviour byte-for-byte.
+
+  `@ifc-lite/renderer`: `PointCloudNode` gains an optional per-asset `model` matrix (column-major, 16 floats), consumed by `writePointCloudUniforms` and settable via `PointCloudRenderer.setAssetTransform` / `Renderer.setPointCloudTransform`. Defaults to identity when absent, so existing point-cloud rendering is unchanged; this is the hook the viewer uses to toggle `IfcMapConversion` alignment on/off without re-streaming the scan. The matrix is honoured consistently across the whole point-cloud surface: `PointCloudRenderer.getBounds()` reports world-space (matrix-folded) extents (height-ramp colouring and scene framing agree with where points render), `Renderer.setPointCloudTransform` re-derives the scene bounds, and the BIM↔scan deviation compute pass transforms each point by the same matrix before its closest-triangle query, so deviations are measured in the frame the user sees.
+
+- [#1875](https://github.com/LTplus-AG/ifc-lite/pull/1875) [`33a83dc`](https://github.com/LTplus-AG/ifc-lite/commit/33a83dc61ce6ba1fc3a75869c96ed7afbeb1340f) Thanks [@louistrue](https://github.com/louistrue)! - Measure tool now snaps to real point-cloud (LAS/LAZ/E57/PLY/PCD, streamed or
+  inline IFCx) points, not just IFC mesh geometry ([#1860](https://github.com/LTplus-AG/ifc-lite/issues/1860)).
+
+  Each point-cloud asset builds a CPU spatial index (`PointCloudSpatialIndex`,
+  internal) incrementally as chunks stream in, since the GPU vertex buffer
+  upload otherwise discards positions. `RaycastEngine.raycastSceneMagnetic`
+  (used by the measure tool) now queries this index alongside the existing
+  mesh raycast. A scan point never hides behind a mesh surface in front of
+  it, and it only overrides an existing mesh vertex/edge/face snap when it
+  is meaningfully in front of that surface (beyond its own screen-space
+  tolerance) — so a scan draped over its as-designed model cannot steal
+  intended vertex snaps via capture noise, while a cloud on its own (no
+  mesh loaded at all) is fully pickable. Points of LAS classes hidden via
+  the class visibility mask are not snappable. The index is disposed with
+  its owning `PointCloudNode`, mirroring the existing GPU-buffer teardown.
+
+  Point snapping respects the caller's snap configuration: with every mesh
+  snap kind disabled (the viewer's snap toggle OFF) scan points are not
+  grabbed either, and an explicit `SnapOptions.snapToPointClouds` overrides
+  that default in either direction. The snap tolerance is camera-aware —
+  linear in ray depth under perspective, constant under orthographic
+  projection.
+
+  Additive API: `SnapType.POINT_CLOUD` on the exported `SnapType` enum, and
+  the optional `SnapOptions.snapToPointClouds` flag.
+
+### Patch Changes
+
+- [#1889](https://github.com/LTplus-AG/ifc-lite/pull/1889) [`a58feb3`](https://github.com/LTplus-AG/ifc-lite/commit/a58feb3d193106e79598f764deb01e6559bf2e61) Thanks [@louistrue](https://github.com/louistrue)! - Fold each point cloud's render transform into ray snap queries.
+
+  The spatial index behind measure-tool point snapping stores raw decoder
+  positions, while an aligned (georeferenced) asset is drawn through its
+  per-asset model matrix. Snapping therefore returned pre-alignment
+  coordinates: a measurement landed where the point used to be, not where it
+  is drawn. The query now rewrites the ray into each node's local frame and
+  converts distances and hit positions back to world space, so snapping
+  agrees with the rendering. Unaligned clouds take an unchanged fast path.
+
+- [#1883](https://github.com/LTplus-AG/ifc-lite/pull/1883) [`b23a173`](https://github.com/LTplus-AG/ifc-lite/commit/b23a173775785eea179d7c243948bb86401920f4) Thanks [@louistrue](https://github.com/louistrue)! - Report LAS/LAZ streaming bounds in the frame the points are actually emitted
+  in, and single-source the point-cloud model-matrix guard.
+
+  `LasStreamingSource`/`LazStreamingSource` returned the raw `header.bbox` while
+  every decoded point has `originOffset` subtracted first, leaving bounds and
+  points off by the full offset — at map magnitudes that misdirects scene
+  framing, culling and the height-ramp colour range. Both sources now translate
+  through the shared `bboxInDecodedFrame` helper.
+
+  `transformAabb` and `writePointCloudUniforms` also carried separate 4x4
+  validity checks, neither rejecting non-finite entries; both now share
+  `isUsableModelMatrix`, so a degenerate matrix falls back to identity in both
+  consumers rather than in only one.
+
+- [#1856](https://github.com/LTplus-AG/ifc-lite/pull/1856) [`319486c`](https://github.com/LTplus-AG/ifc-lite/commit/319486c1ca4fccf7ad3d5ea8187af5c361201131) Thanks [@louistrue](https://github.com/louistrue)! - `Renderer.getGPUDevice()` now returns `null` once the GPU device has been lost,
+  instead of handing back a zombie device.
+
+  A lost device is not torn down: `WebGPUDevice.destroy()` is the only thing that
+  nulls the handle, and it is never called for an involuntary loss (Windows TDR,
+  GPU-process crash, driver reset). `isInitialized()` therefore stayed `true` and
+  the accessor kept returning the dead `GPUDevice`, so callers went on calling
+  `createBuffer()` on it — throwing a `RangeError`, and bypassing both
+  `render()`'s own `deviceLost` guard and every `onDeviceLost` listener.
+
+  Returning `null` routes into the `if (!device) return` check that call sites
+  already have, so a lost device degrades to "stop uploading" rather than an
+  uncaught throw. `isDeviceLost()` / `onDeviceLost()` are unchanged and remain the
+  recovery contract.
+
+  `finalizeStreaming()` is now rollback-safe. It detaches the old fragments and
+  batches before the replacement GPU buffers exist, so a `createBuffer` failure
+  part-way through the rebuild left the scene rendering a half-built — often
+  empty — array. Callers that contain the throw to keep the canvas alive would
+  therefore have turned a crash into a silently blank model. On failure the
+  previous drawables are restored (their GPU resources are still live, since the
+  destroy step never runs) and the error is rethrown for the caller to handle.
+  Batches the failed attempt had already created are freed, while anything that
+  predates it — including cold shells aliased into both the old and the new array
+  — is left alone.
+
+- [#1917](https://github.com/LTplus-AG/ifc-lite/pull/1917) [`19dc013`](https://github.com/LTplus-AG/ifc-lite/commit/19dc013d66bd96a8ad7b7a01f9c495c829d4ba8b) Thanks [@louistrue](https://github.com/louistrue)! - `Renderer.pick()` / `pickRect()` no longer drive a destroyed or lost GPU device.
+
+  `render()` and `getGPUDevice()` both early-return once the device is gone; the
+  pick path skipped that contract entirely. A pick is a full GPU round trip that
+  ends in a `mapAsync` readback, so on a dead device the readback rejects with
+  `AbortError: Failed to execute 'mapAsync' on 'GPUBuffer': A valid external
+Instance reference no longer exists.` Nothing on the pick path is in a position
+  to handle it — the DOM click/contextmenu listeners that reach it are `async`
+  functions whose promise nobody awaits — so it escaped as an unhandled
+  rejection. And because the picker stayed dead, this was not a one-shot teardown
+  race: it fired again on every subsequent click at a frozen viewport.
+
+  `pick()` now resolves `null` and `pickRect()` an empty set once
+  `isDeviceLost()` is true or the device is uninitialised, mirroring how
+  `render()` degrades to skipping the frame. The GPU call is never issued, so no
+  error is being hidden — consumers that want to react to the loss still
+  subscribe to `onDeviceLost()`.
+
+  The entry guard cannot close the window between `queue.submit()` and the map
+  settling: a pick that was legal when it started is still aborted if the canvas
+  unmounts, the model reloads (`Renderer.destroy()` ends in `device.destroy()`)
+  or the driver resets while the readback is in flight — same `AbortError`, same
+  escaping rejection. `Picker` now treats an `AbortError` from its own readback
+  as "the device went away" and degrades to no hit. Only `AbortError` is caught:
+  a validation fault rejects with `OperationError` and still propagates.
+
+  Two supporting leaks are closed: `Renderer.destroy()` now also clears the
+  picker reference held by the internal picking manager (it previously nulled
+  only its own, leaving the manager pointing at a destroyed picker), and `Picker`
+  — a public export usable standalone — now honours its own `destroyed` flag in
+  `pick()` / `pickRect()` instead of only in `destroy()`.
+
+- Updated dependencies [[`428c5ae`](https://github.com/LTplus-AG/ifc-lite/commit/428c5ae54bac236a3950f451ee12a0dc23226336), [`3dc3eb5`](https://github.com/LTplus-AG/ifc-lite/commit/3dc3eb56bd372ddd0e317347db1cad888dffd609)]:
+  - @ifc-lite/geometry@3.5.0
+
 ## 1.39.0
 
 ### Minor Changes

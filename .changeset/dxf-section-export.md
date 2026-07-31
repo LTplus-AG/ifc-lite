@@ -1,7 +1,0 @@
----
-'@ifc-lite/drawing-2d': minor
----
-
-Add a DXF exporter (`DXFExporter` / `exportToDXF`) alongside the existing SVG exporter. The underlying ASCII DXF R12 writer stays package-internal; only the exporter facade (and its `DXFExportOptions` / `DXFUnderlayOptions` types) is public API.
-
-`exportToDXF` mirrors `exportToSVG`'s `Drawing2D` + reference-underlay input contract (same polylines/edges, hatch-boundary polygons, text/annotations, and per-style layers) and writes ASCII DXF R12 (`$ACADVER` = `AC1009`): HEADER, TABLES (LTYPE, STYLE, LAYER), ENTITIES (classic POLYLINE/VERTEX/SEQEND, LINE, TEXT). Layer names follow the strict R12 symbol rules (31 characters, `A-Z a-z 0-9 $ - _`), with numeric-suffix disambiguation when distinct source names collide after sanitizing. R12 is deliberate — entity handles and subclass markers are mandatory from R13 on and this writer emits neither, so declaring a later version would produce an invalid hybrid file that strict readers (AutoCAD, ODA/Teigha-based tools) reject or force-repair. R12 has no `$INSUNITS`; the unit (always metres) and, when known, the target CRS are stated in a leading `999` comment instead. Hatched cut polygons are represented as closed POLYLINE boundaries on a dedicated layer rather than a HATCH entity. An optional `coordinateTransform` lets a caller re-derive world/map coordinates before points reach the writer (used by the viewer's "Download DXF" section-panel export, issue #1861, to georeference plan sections).

@@ -1,5 +1,27 @@
 # @ifc-lite/drawing-2d
 
+## 1.20.0
+
+### Minor Changes
+
+- [#1871](https://github.com/LTplus-AG/ifc-lite/pull/1871) [`0f15d56`](https://github.com/LTplus-AG/ifc-lite/commit/0f15d5629c532a9ae6b8d79586e6b16613000498) Thanks [@louistrue](https://github.com/louistrue)! - Add a DXF exporter (`DXFExporter` / `exportToDXF`) alongside the existing SVG exporter. The underlying ASCII DXF R12 writer stays package-internal; only the exporter facade (and its `DXFExportOptions` / `DXFUnderlayOptions` types) is public API.
+
+  `exportToDXF` mirrors `exportToSVG`'s `Drawing2D` + reference-underlay input contract (same polylines/edges, hatch-boundary polygons, text/annotations, and per-style layers) and writes ASCII DXF R12 (`$ACADVER` = `AC1009`): HEADER, TABLES (LTYPE, STYLE, LAYER), ENTITIES (classic POLYLINE/VERTEX/SEQEND, LINE, TEXT). Layer names follow the strict R12 symbol rules (31 characters, `A-Z a-z 0-9 $ - _`), with numeric-suffix disambiguation when distinct source names collide after sanitizing. R12 is deliberate — entity handles and subclass markers are mandatory from R13 on and this writer emits neither, so declaring a later version would produce an invalid hybrid file that strict readers (AutoCAD, ODA/Teigha-based tools) reject or force-repair. R12 has no `$INSUNITS`; the unit (always metres) and, when known, the target CRS are stated in a leading `999` comment instead. Hatched cut polygons are represented as closed POLYLINE boundaries on a dedicated layer rather than a HATCH entity. An optional `coordinateTransform` lets a caller re-derive world/map coordinates before points reach the writer (used by the viewer's "Download DXF" section-panel export, issue [#1861](https://github.com/LTplus-AG/ifc-lite/issues/1861), to georeference plan sections).
+
+- [#1874](https://github.com/LTplus-AG/ifc-lite/pull/1874) [`ae0498a`](https://github.com/LTplus-AG/ifc-lite/commit/ae0498a23d61dd63baede3df86cd2f9ec74b1203) Thanks [@louistrue](https://github.com/louistrue)! - Export `projectTo2DBasis` from the package root.
+
+  It already existed in `math.ts` and is used internally by `section-cutter.ts`
+  for face-picked custom-plane sections, but was never re-exported. The new
+  point-cloud "scan" layer on the 2D section view (issue [#1805](https://github.com/LTplus-AG/ifc-lite/issues/1805)) needs it as a
+  consumer outside the package, to project retained scan points into the same
+  drawing-space coordinates the section cutter produces for custom (non-cardinal)
+  cut planes.
+
+### Patch Changes
+
+- Updated dependencies [[`428c5ae`](https://github.com/LTplus-AG/ifc-lite/commit/428c5ae54bac236a3950f451ee12a0dc23226336), [`3dc3eb5`](https://github.com/LTplus-AG/ifc-lite/commit/3dc3eb56bd372ddd0e317347db1cad888dffd609)]:
+  - @ifc-lite/geometry@3.5.0
+
 ## 1.19.0
 
 ### Minor Changes

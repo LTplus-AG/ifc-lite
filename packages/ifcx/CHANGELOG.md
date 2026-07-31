@@ -1,5 +1,18 @@
 # @ifc-lite/ifcx
 
+## 2.3.2
+
+### Patch Changes
+
+- [#1857](https://github.com/LTplus-AG/ifc-lite/pull/1857) [`205a136`](https://github.com/LTplus-AG/ifc-lite/commit/205a136ee69e378ea01cd0d0a8a6dc81cf2fb08f) Thanks [@louistrue](https://github.com/louistrue)! - Route `getStoreyByElevation` through the shared `findStoreyByElevation` resolver from `@ifc-lite/data` (issue [#1841](https://github.com/LTplus-AG/ifc-lite/issues/1841)).
+
+  Both packages previously shipped their own always-snap-to-nearest implementations: the worker-transport rehydration in `@ifc-lite/parser` (`data-store-transport.ts`) and the IFCX hierarchy builder (`hierarchy-builder.ts`). Both now apply the same 1m tolerance and deterministic tie-break as the fresh-parse path, so a Z resolves to the same storey regardless of entry path or which side of the worker boundary the store was read from.
+
+- Updated dependencies [[`6792dd1`](https://github.com/LTplus-AG/ifc-lite/commit/6792dd11ad7049acb7329221ea8809d6333aefb7), [`b23a173`](https://github.com/LTplus-AG/ifc-lite/commit/b23a173775785eea179d7c243948bb86401920f4), [`653a685`](https://github.com/LTplus-AG/ifc-lite/commit/653a685625bda0c983a3123dda73e0d009529f4b), [`6869d5c`](https://github.com/LTplus-AG/ifc-lite/commit/6869d5ced2d19ac4ab8b2591847f3ffd52236d14), [`22bffac`](https://github.com/LTplus-AG/ifc-lite/commit/22bffac737efa9bdd6ca583518f637593cb4d4bc), [`205a136`](https://github.com/LTplus-AG/ifc-lite/commit/205a136ee69e378ea01cd0d0a8a6dc81cf2fb08f)]:
+  - @ifc-lite/data@3.0.0
+  - @ifc-lite/pointcloud@0.5.0
+  - @ifc-lite/mutations@1.21.1
+
 ## 2.3.1
 
 ### Patch Changes

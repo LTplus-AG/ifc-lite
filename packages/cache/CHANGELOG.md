@@ -1,5 +1,32 @@
 # @ifc-lite/cache
 
+## 3.0.0
+
+### Major Changes
+
+- [#1864](https://github.com/LTplus-AG/ifc-lite/pull/1864) [`6792dd1`](https://github.com/LTplus-AG/ifc-lite/commit/6792dd11ad7049acb7329221ea8809d6333aefb7) Thanks [@louistrue](https://github.com/louistrue)! - Remove `EntityTable.getGlobalIdMap()`.
+
+  It was added alongside `getExpressIdByGlobalId()` for BCF integration and never
+  used — the BCF lookup, tier-0 scan, export adapter, embed handler and CLI
+  diagnostics all call `getExpressIdByGlobalId()` (point lookups). No caller ever
+  needed the materialized map.
+
+  Carrying it had a real cost: every implementation returned
+  `new Map(globalIdToExpressId)`, a full defensive copy that would have doubled the
+  peak memory of the largest string-keyed structure in the table the moment anyone
+  called it, and it froze a `Map` return type into the canonical interface that
+  three builders had to keep satisfying in lockstep.
+
+  Migration: use `getExpressIdByGlobalId(globalId)` for GlobalId → expressId, and
+  the existing `getGlobalId(expressId)` column accessor for the reverse. Both are
+  unchanged.
+
+### Patch Changes
+
+- Updated dependencies [[`6792dd1`](https://github.com/LTplus-AG/ifc-lite/commit/6792dd11ad7049acb7329221ea8809d6333aefb7), [`22bffac`](https://github.com/LTplus-AG/ifc-lite/commit/22bffac737efa9bdd6ca583518f637593cb4d4bc), [`205a136`](https://github.com/LTplus-AG/ifc-lite/commit/205a136ee69e378ea01cd0d0a8a6dc81cf2fb08f), [`428c5ae`](https://github.com/LTplus-AG/ifc-lite/commit/428c5ae54bac236a3950f451ee12a0dc23226336), [`3dc3eb5`](https://github.com/LTplus-AG/ifc-lite/commit/3dc3eb56bd372ddd0e317347db1cad888dffd609)]:
+  - @ifc-lite/data@3.0.0
+  - @ifc-lite/geometry@3.5.0
+
 ## 2.2.1
 
 ### Patch Changes

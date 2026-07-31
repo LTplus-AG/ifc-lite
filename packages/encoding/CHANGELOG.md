@@ -1,5 +1,15 @@
 # @ifc-lite/encoding
 
+## 1.15.0
+
+### Minor Changes
+
+- [#1879](https://github.com/LTplus-AG/ifc-lite/pull/1879) [`8799484`](https://github.com/LTplus-AG/ifc-lite/commit/87994844a5edb66404fa12b0719c89f5ec026c4d) Thanks [@louistrue](https://github.com/louistrue)! - Opt-in determinism hooks for reproducible IFC generation. `generateUuid` and `generateIfcGuid` accept an optional `RandomSource` (a `() => number` in `[0, 1)`) so GUIDs can be drawn from a seeded generator, and `IfcCreator` gains `ProjectParams.Timestamp` (fixed creation instant for the STEP header, IfcOwnerHistory and work-schedule defaults) and `ProjectParams.GuidSource` (deterministic GlobalId source). Same options twice yields byte-identical output; defaults are unchanged (wall clock + platform CSPRNG).
+
+### Patch Changes
+
+- [#1882](https://github.com/LTplus-AG/ifc-lite/pull/1882) [`382fa7c`](https://github.com/LTplus-AG/ifc-lite/commit/382fa7cf97c04bad07963e25052cbaeb6c2ba7e3) Thanks [@louistrue](https://github.com/louistrue)! - Reject `IfcCreator` `Timestamp` values that are finite but outside the ±8.64e15 ms Date range. They previously cleared the `Number.isFinite` guard and failed much later as a `RangeError` from `toISOString()` while writing the file header; they are now rejected in the constructor, where the error can still name the parameter. Also corrects the `RandomSource` documentation: the unseeded path uses Web Crypto when the runtime provides it and falls back to `Math.random` when it does not, rather than guaranteeing a platform CSPRNG.
+
 ## 1.14.11
 
 ### Patch Changes

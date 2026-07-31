@@ -1,5 +1,33 @@
 # @ifc-lite/mutations
 
+## 1.21.1
+
+### Patch Changes
+
+- [#1844](https://github.com/LTplus-AG/ifc-lite/pull/1844) [`6869d5c`](https://github.com/LTplus-AG/ifc-lite/commit/6869d5ced2d19ac4ab8b2591847f3ffd52236d14) Thanks [@louistrue](https://github.com/louistrue)! - Serialize whole numbers on REAL-typed STEP attributes with a decimal point.
+  `setPositionalAttribute`, `addEntity`, and the in-store builders' own emitted
+  geometry now consult the schema registry, so an integral value in a REAL-backed
+  slot (`IfcLengthMeasure` coordinates, profile dimensions, extrusion depth, …)
+  exports as `450.` rather than a bare `450` INTEGER literal that strict
+  validators (`ifcopenshell.validate`) reject. Integer-typed slots are left
+  untouched; the `{ real }` marker still works for genuinely ambiguous selects.
+  Positional names resolve across the schema union so IFC4X3-only alignment/civil
+  entities are covered too. Exposes `getAttributeNamesAcrossSchemas` from
+  `@ifc-lite/parser`.
+
+- [#1850](https://github.com/LTplus-AG/ifc-lite/pull/1850) [`22bffac`](https://github.com/LTplus-AG/ifc-lite/commit/22bffac737efa9bdd6ca583518f637593cb4d4bc) Thanks [@louistrue](https://github.com/louistrue)! - Type-qualify SELECT-typed and IfcValue-family STEP attributes on export. A
+  defined-type SELECT member (a boolean in an `IfcTranslationalStiffnessSelect`
+  slot, a length in `IfcSizeSelect`) now serializes as the ISO 10303-21 required
+  `IFCBOOLEAN(.T.)` / `IFCLENGTHMEASURE(3.)` rather than a bare `.T.` / `3` that
+  strict validators reject and that loses the member type on round-trip. The
+  exporter auto-qualifies unambiguous slots from the schema registry with no
+  caller change; a new write-only `{ typed: { type, value } }` marker on
+  `IfcAttributeValue` pins the type for ambiguous selects and the `IfcValue`
+  family (`NominalValue`, quantity values) and subsumes `{ real }`. Completes the
+  `setPositionalAttribute` / `addEntity` follow-up to [#1839](https://github.com/LTplus-AG/ifc-lite/issues/1839).
+- Updated dependencies [[`6792dd1`](https://github.com/LTplus-AG/ifc-lite/commit/6792dd11ad7049acb7329221ea8809d6333aefb7), [`22bffac`](https://github.com/LTplus-AG/ifc-lite/commit/22bffac737efa9bdd6ca583518f637593cb4d4bc), [`205a136`](https://github.com/LTplus-AG/ifc-lite/commit/205a136ee69e378ea01cd0d0a8a6dc81cf2fb08f)]:
+  - @ifc-lite/data@3.0.0
+
 ## 1.21.0
 
 ### Minor Changes

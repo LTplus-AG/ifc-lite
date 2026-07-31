@@ -1,5 +1,26 @@
 # @ifc-lite/server-client
 
+## 1.21.0
+
+### Minor Changes
+
+- [#1848](https://github.com/LTplus-AG/ifc-lite/pull/1848) [`2738f9b`](https://github.com/LTplus-AG/ifc-lite/commit/2738f9b51efd3795259bd4c8870cf13016a989ba) Thanks [@louistrue](https://github.com/louistrue)! - Issue [#1841](https://github.com/LTplus-AG/ifc-lite/issues/1841): decode the server entity table into a compact columnar index (`ServerEntityIndex`) instead of a giant `Map<number, EntityMetadata>`, avoiding the V8 2^24 Map ceiling and reusing the canonical `CompactEntityIndex` for `entityIndex.byId`. `DataModel.entities` is now a `ServerEntityIndex` rather than a `Map` (minor bump): it keeps the raw decoded columns (`columns`) for indexed consumption and exposes a Map-compatible read surface (`size`/`get`/`has`/iteration/`keys`/`values`/`entries`/`forEach`), materializing `EntityMetadata` rows lazily via binary search over a sorted expressId view.
+
+### Patch Changes
+
+- [#1848](https://github.com/LTplus-AG/ifc-lite/pull/1848) [`2738f9b`](https://github.com/LTplus-AG/ifc-lite/commit/2738f9b51efd3795259bd4c8870cf13016a989ba) Thanks [@louistrue](https://github.com/louistrue)! - Carry the canonical per-mesh `origin` and `geometry_class` through the server
+  geometry wire contract (issue [#1841](https://github.com/LTplus-AG/ifc-lite/issues/1841)). The server parquet serializers previously
+  dropped both, so origin-relative geometry collapsed onto the world origin and
+  deduplicated (instanced) elements — e.g. repeated slabs — rendered every
+  occurrence at the shared template coordinates ("N slabs collapse to one"). Both
+  the standard and the optimized (instanced) parquet paths now emit the origin (in
+  the same Y-up frame as positions; the optimized path carries it per instance so
+  deduplicated templates place correctly) and `geometry_class`, and the decoders
+  populate `MeshData.origin` / `MeshData.geometry_class` — matching the canonical
+  `@ifc-lite/geometry` `MeshData`. Additive and backward-compatible: absent
+  columns decode as origin `[0,0,0]` / class `0`, so world-baked payloads and
+  caches from older servers are unaffected.
+
 ## 1.20.0
 
 ### Minor Changes

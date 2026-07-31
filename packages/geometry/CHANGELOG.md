@@ -1,5 +1,34 @@
 # @ifc-lite/geometry
 
+## 3.5.0
+
+### Minor Changes
+
+- [#1920](https://github.com/LTplus-AG/ifc-lite/pull/1920) [`3dc3eb5`](https://github.com/LTplus-AG/ifc-lite/commit/3dc3eb56bd372ddd0e317347db1cad888dffd609) Thanks [@louistrue](https://github.com/louistrue)! - A WebAssembly runtime trap no longer bricks every geometry consumer in the document.
+
+  `IfcLiteBridge` used to store one `Error` in a module-level global the first time any operation trapped, and then throw that same object from every subsequent `init()` for the rest of the page's life. Because the global is per-realm, a trap in one consumer (a GLB export, say) disabled every other main-thread consumer — the next model load, the grid and drawing meshers, all the other exporters — even though the trap could only ever have damaged the engine handle that took it. The stored object also carried the stack of the call that first trapped, so the error reported later, from an unrelated call, was undiagnosable.
+
+  Now:
+
+  - A trap taken by an _operation_ drops (and `free()`s — it used to leak) only the `IfcAPI` handle that took it, and propagates unchanged to the caller. Any later `init()`, on that bridge or another, builds a fresh handle and works.
+  - A trap taken while _initializing_ is the one unrecoverable case: this realm has no working engine, and neither half is retryable in practice (a trap in `new IfcAPI()` leaves the module singleton already built, a trap in instantiation is deterministic). It is reported as a freshly constructed error whose message carries the stable `WASM_RUNTIME_UNRECOVERABLE` marker and the underlying trap verbatim, with the trap as `cause`, and it dispatches `WASM_RUNTIME_UNRECOVERABLE_EVENT` on `globalThis` so the host can offer the user a reload. The library never reloads the page itself.
+
+  New exports: `isWasmRuntimeTrap`, `isWasmRuntimeUnrecoverableError`, `WASM_RUNTIME_UNRECOVERABLE_CODE`, `WASM_RUNTIME_UNRECOVERABLE_EVENT`.
+
+### Patch Changes
+
+- [#1921](https://github.com/LTplus-AG/ifc-lite/pull/1921) [`428c5ae`](https://github.com/LTplus-AG/ifc-lite/commit/428c5ae54bac236a3950f451ee12a0dc23226336) Thanks [@louistrue](https://github.com/louistrue)! - The WASM engine binary (`ifc-lite_bg.wasm`) is now downloaded resiliently and identifiably from every entry point.
+
+  `IfcLiteBridge.init()` — the main-thread initialisation, and the only self-fetching `init()` in the codebase that still lacked one — now runs through `initWasmWithRetry`, the same one-shot retry both the geometry and parser workers have used since [#1363](https://github.com/LTplus-AG/ifc-lite/issues/1363). A single blip on the ~1.3 MB engine download no longer fails the whole model load; a first-time visitor pulling the binary cold is the case this protects.
+
+  `initWasmWithRetry` also names the binary when the final failure names nothing. A network-level rejection propagates raw out of wasm-bindgen's loader — WebKit words it `TypeError: Load failed`, Chromium `TypeError: Failed to fetch` — with an empty stack, so neither the user-facing message nor error tracking could tell what had failed to load. Such a failure is now rethrown as `Failed to load the WASM engine binary (ifc-lite_bg.wasm) in <label>: <original>`, with the original preserved as `.cause`. Messages that already identify themselves (any `wasm` / `WebAssembly` phrasing, and failed module imports) are passed through byte-for-byte so the stale-deployment matchers keep working.
+
+  No public API surface changed.
+
+- Updated dependencies [[`0cfb88b`](https://github.com/LTplus-AG/ifc-lite/commit/0cfb88b3ac3e5615c7e125c5076ea75cf2039a09), [`6792dd1`](https://github.com/LTplus-AG/ifc-lite/commit/6792dd11ad7049acb7329221ea8809d6333aefb7), [`35c157d`](https://github.com/LTplus-AG/ifc-lite/commit/35c157d9a0513f368e83c4884465b5ad162c6ba0), [`401ab18`](https://github.com/LTplus-AG/ifc-lite/commit/401ab1842662c4e8ca26eae01b879f0290962b6d), [`22bffac`](https://github.com/LTplus-AG/ifc-lite/commit/22bffac737efa9bdd6ca583518f637593cb4d4bc), [`205a136`](https://github.com/LTplus-AG/ifc-lite/commit/205a136ee69e378ea01cd0d0a8a6dc81cf2fb08f), [`b716fd7`](https://github.com/LTplus-AG/ifc-lite/commit/b716fd7b045c918dc1bd2ecc1da6fed21e59f110)]:
+  - @ifc-lite/wasm@4.2.0
+  - @ifc-lite/data@3.0.0
+
 ## 3.4.0
 
 ### Minor Changes

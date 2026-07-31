@@ -1,5 +1,50 @@
 # @ifc-lite/parser
 
+## 3.11.0
+
+### Minor Changes
+
+- [#1844](https://github.com/LTplus-AG/ifc-lite/pull/1844) [`6869d5c`](https://github.com/LTplus-AG/ifc-lite/commit/6869d5ced2d19ac4ab8b2591847f3ffd52236d14) Thanks [@louistrue](https://github.com/louistrue)! - Serialize whole numbers on REAL-typed STEP attributes with a decimal point.
+  `setPositionalAttribute`, `addEntity`, and the in-store builders' own emitted
+  geometry now consult the schema registry, so an integral value in a REAL-backed
+  slot (`IfcLengthMeasure` coordinates, profile dimensions, extrusion depth, …)
+  exports as `450.` rather than a bare `450` INTEGER literal that strict
+  validators (`ifcopenshell.validate`) reject. Integer-typed slots are left
+  untouched; the `{ real }` marker still works for genuinely ambiguous selects.
+  Positional names resolve across the schema union so IFC4X3-only alignment/civil
+  entities are covered too. Exposes `getAttributeNamesAcrossSchemas` from
+  `@ifc-lite/parser`.
+
+### Patch Changes
+
+- [#1851](https://github.com/LTplus-AG/ifc-lite/pull/1851) [`6842c56`](https://github.com/LTplus-AG/ifc-lite/commit/6842c56c72065fd9f43ac282cacb766b7808c282) Thanks [@louistrue](https://github.com/louistrue)! - Parser worker: skip the ~3.9 MB WASM scanner compile on the streaming cold-load
+  path where it is never used. When the host promises an entity-index handoff
+  (`waitForEntityIndex`, gated on files ≥2 MB), the geometry pre-pass builds the
+  index and the entity scanner resolves from it, short-circuiting before the WASM
+  scan ever runs — so eager-compiling the engine binary there only stole a core
+  from the concurrent pre-pass. The compile is now deferred: eager on the
+  no-handoff path, and lazy on the fallback branch if the promised index never
+  arrives. Behaviour is unchanged (a new test pins that a pre-scanned index
+  resolves with no `wasmApi`).
+
+- [#1857](https://github.com/LTplus-AG/ifc-lite/pull/1857) [`205a136`](https://github.com/LTplus-AG/ifc-lite/commit/205a136ee69e378ea01cd0d0a8a6dc81cf2fb08f) Thanks [@louistrue](https://github.com/louistrue)! - Route `getStoreyByElevation` through the shared `findStoreyByElevation` resolver from `@ifc-lite/data` (issue [#1841](https://github.com/LTplus-AG/ifc-lite/issues/1841)).
+
+  Both packages previously shipped their own always-snap-to-nearest implementations: the worker-transport rehydration in `@ifc-lite/parser` (`data-store-transport.ts`) and the IFCX hierarchy builder (`hierarchy-builder.ts`). Both now apply the same 1m tolerance and deterministic tie-break as the fresh-parse path, so a Z resolves to the same storey regardless of entry path or which side of the worker boundary the store was read from.
+
+- [#1921](https://github.com/LTplus-AG/ifc-lite/pull/1921) [`428c5ae`](https://github.com/LTplus-AG/ifc-lite/commit/428c5ae54bac236a3950f451ee12a0dc23226336) Thanks [@louistrue](https://github.com/louistrue)! - The WASM engine binary (`ifc-lite_bg.wasm`) is now downloaded resiliently and identifiably from every entry point.
+
+  `IfcLiteBridge.init()` — the main-thread initialisation, and the only self-fetching `init()` in the codebase that still lacked one — now runs through `initWasmWithRetry`, the same one-shot retry both the geometry and parser workers have used since [#1363](https://github.com/LTplus-AG/ifc-lite/issues/1363). A single blip on the ~1.3 MB engine download no longer fails the whole model load; a first-time visitor pulling the binary cold is the case this protects.
+
+  `initWasmWithRetry` also names the binary when the final failure names nothing. A network-level rejection propagates raw out of wasm-bindgen's loader — WebKit words it `TypeError: Load failed`, Chromium `TypeError: Failed to fetch` — with an empty stack, so neither the user-facing message nor error tracking could tell what had failed to load. Such a failure is now rethrown as `Failed to load the WASM engine binary (ifc-lite_bg.wasm) in <label>: <original>`, with the original preserved as `.cause`. Messages that already identify themselves (any `wasm` / `WebAssembly` phrasing, and failed module imports) are passed through byte-for-byte so the stale-deployment matchers keep working.
+
+  No public API surface changed.
+
+- Updated dependencies [[`0cfb88b`](https://github.com/LTplus-AG/ifc-lite/commit/0cfb88b3ac3e5615c7e125c5076ea75cf2039a09), [`382fa7c`](https://github.com/LTplus-AG/ifc-lite/commit/382fa7cf97c04bad07963e25052cbaeb6c2ba7e3), [`6792dd1`](https://github.com/LTplus-AG/ifc-lite/commit/6792dd11ad7049acb7329221ea8809d6333aefb7), [`35c157d`](https://github.com/LTplus-AG/ifc-lite/commit/35c157d9a0513f368e83c4884465b5ad162c6ba0), [`401ab18`](https://github.com/LTplus-AG/ifc-lite/commit/401ab1842662c4e8ca26eae01b879f0290962b6d), [`8799484`](https://github.com/LTplus-AG/ifc-lite/commit/87994844a5edb66404fa12b0719c89f5ec026c4d), [`22bffac`](https://github.com/LTplus-AG/ifc-lite/commit/22bffac737efa9bdd6ca583518f637593cb4d4bc), [`205a136`](https://github.com/LTplus-AG/ifc-lite/commit/205a136ee69e378ea01cd0d0a8a6dc81cf2fb08f), [`205a136`](https://github.com/LTplus-AG/ifc-lite/commit/205a136ee69e378ea01cd0d0a8a6dc81cf2fb08f), [`b716fd7`](https://github.com/LTplus-AG/ifc-lite/commit/b716fd7b045c918dc1bd2ecc1da6fed21e59f110)]:
+  - @ifc-lite/wasm@4.2.0
+  - @ifc-lite/encoding@1.15.0
+  - @ifc-lite/data@3.0.0
+  - @ifc-lite/ifcx@2.3.2
+
 ## 3.10.1
 
 ### Patch Changes

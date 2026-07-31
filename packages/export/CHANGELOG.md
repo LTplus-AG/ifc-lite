@@ -1,5 +1,41 @@
 # @ifc-lite/export
 
+## 2.7.0
+
+### Minor Changes
+
+- [#1887](https://github.com/LTplus-AG/ifc-lite/pull/1887) [`87f3507`](https://github.com/LTplus-AG/ifc-lite/commit/87f3507f6fb67a3fd834a190737ea33d7e9ad661) Thanks [@louistrue](https://github.com/louistrue)! - `StepExportOptions.guidRandom` seeds the GlobalIds `StepExporter` synthesizes at export time - the `IfcPropertySet` / `IfcElementQuantity` roots it regenerates for mutated or overlay-created property and quantity sets, their `IfcRelDefinesByProperties` links, and any `IFCPROXY` placeholder minted by schema conversion (`convertStepLine` gained a matching optional `random` argument). Without it those four roots came from the platform CSPRNG, so a seeded in-store build that used `addPropertySet` / `addQuantitySet` still exported different bytes on every run. `StepExportOptions.timeStamp` additionally pins the STEP header `FILE_NAME` instant, so a fully seeded export is byte-identical run to run. Both are optional; omitting them keeps the previous random / wall-clock behaviour exactly.
+
+### Patch Changes
+
+- [#1844](https://github.com/LTplus-AG/ifc-lite/pull/1844) [`6869d5c`](https://github.com/LTplus-AG/ifc-lite/commit/6869d5ced2d19ac4ab8b2591847f3ffd52236d14) Thanks [@louistrue](https://github.com/louistrue)! - Serialize whole numbers on REAL-typed STEP attributes with a decimal point.
+  `setPositionalAttribute`, `addEntity`, and the in-store builders' own emitted
+  geometry now consult the schema registry, so an integral value in a REAL-backed
+  slot (`IfcLengthMeasure` coordinates, profile dimensions, extrusion depth, …)
+  exports as `450.` rather than a bare `450` INTEGER literal that strict
+  validators (`ifcopenshell.validate`) reject. Integer-typed slots are left
+  untouched; the `{ real }` marker still works for genuinely ambiguous selects.
+  Positional names resolve across the schema union so IFC4X3-only alignment/civil
+  entities are covered too. Exposes `getAttributeNamesAcrossSchemas` from
+  `@ifc-lite/parser`.
+
+- [#1850](https://github.com/LTplus-AG/ifc-lite/pull/1850) [`22bffac`](https://github.com/LTplus-AG/ifc-lite/commit/22bffac737efa9bdd6ca583518f637593cb4d4bc) Thanks [@louistrue](https://github.com/louistrue)! - Type-qualify SELECT-typed and IfcValue-family STEP attributes on export. A
+  defined-type SELECT member (a boolean in an `IfcTranslationalStiffnessSelect`
+  slot, a length in `IfcSizeSelect`) now serializes as the ISO 10303-21 required
+  `IFCBOOLEAN(.T.)` / `IFCLENGTHMEASURE(3.)` rather than a bare `.T.` / `3` that
+  strict validators reject and that loses the member type on round-trip. The
+  exporter auto-qualifies unambiguous slots from the schema registry with no
+  caller change; a new write-only `{ typed: { type, value } }` marker on
+  `IfcAttributeValue` pins the type for ambiguous selects and the `IfcValue`
+  family (`NominalValue`, quantity values) and subsumes `{ real }`. Completes the
+  `setPositionalAttribute` / `addEntity` follow-up to [#1839](https://github.com/LTplus-AG/ifc-lite/issues/1839).
+- Updated dependencies [[`382fa7c`](https://github.com/LTplus-AG/ifc-lite/commit/382fa7cf97c04bad07963e25052cbaeb6c2ba7e3), [`6792dd1`](https://github.com/LTplus-AG/ifc-lite/commit/6792dd11ad7049acb7329221ea8809d6333aefb7), [`6842c56`](https://github.com/LTplus-AG/ifc-lite/commit/6842c56c72065fd9f43ac282cacb766b7808c282), [`6869d5c`](https://github.com/LTplus-AG/ifc-lite/commit/6869d5ced2d19ac4ab8b2591847f3ffd52236d14), [`8799484`](https://github.com/LTplus-AG/ifc-lite/commit/87994844a5edb66404fa12b0719c89f5ec026c4d), [`22bffac`](https://github.com/LTplus-AG/ifc-lite/commit/22bffac737efa9bdd6ca583518f637593cb4d4bc), [`205a136`](https://github.com/LTplus-AG/ifc-lite/commit/205a136ee69e378ea01cd0d0a8a6dc81cf2fb08f), [`205a136`](https://github.com/LTplus-AG/ifc-lite/commit/205a136ee69e378ea01cd0d0a8a6dc81cf2fb08f), [`428c5ae`](https://github.com/LTplus-AG/ifc-lite/commit/428c5ae54bac236a3950f451ee12a0dc23226336), [`3dc3eb5`](https://github.com/LTplus-AG/ifc-lite/commit/3dc3eb56bd372ddd0e317347db1cad888dffd609)]:
+  - @ifc-lite/encoding@1.15.0
+  - @ifc-lite/data@3.0.0
+  - @ifc-lite/parser@3.11.0
+  - @ifc-lite/mutations@1.21.1
+  - @ifc-lite/geometry@3.5.0
+
 ## 2.6.0
 
 ### Minor Changes

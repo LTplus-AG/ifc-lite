@@ -184,9 +184,13 @@ jobs:
             exit 1
           fi
 
-          # Attribution: a verdict is only meaningful next to the engine that produced it.
+          # Attribution: a verdict is only meaningful next to the engine that produced it,
+          # so a missing version is a broken probe, not a cosmetic loss. Captured
+          # before the tr pipeline, which would otherwise mask the failure.
+          nodever=$(node --version) || { echo "::error::node --version failed after succeeding moments earlier — unstable runner, refusing to report a verdict."; exit 1; }
+          v8ver=$(node -p 'process.versions.v8') || { echo "::error::could not read process.versions.v8 — a verdict without an engine to attribute it to is not worth recording."; exit 1; }
           # Flattened: a newline here would forge extra lines in $GITHUB_OUTPUT.
-          engine=$(printf '%s' "node $(node --version) / V8 $(node -p 'process.versions.v8')" | tr -d '\n\r')
+          engine=$(printf '%s' "node $nodever / V8 $v8ver" | tr -d '\n\r')
           echo "engine=$engine" >> "$GITHUB_OUTPUT"
           echo "probing $engine"
 
@@ -268,8 +272,9 @@ jobs:
       # Reuses the SAME wasm32 determinism manifest check determinism.yml runs
       # (rust/wasm-bindings/tests/mesh_determinism.rs against the pinned
       # rust/processing/tests/manifests/mesh_determinism.wasm32.json), just
-      # compiled with +wide-arithmetic. Only runs once the engine can actually
-      # execute the module — otherwise it measures nothing about determinism.
+      # compiled with +wide-arithmetic. Only runs once the probe says the engine
+      # ACCEPTS the module (validate, not execute — this step is the execution
+      # check); otherwise it measures nothing about determinism.
       # Gated on the build too: this compiles the test crate with the same
       # toolchain, so if pkg-wide could not build, this can only fail for the
       # same reason — two red steps, one cause. Gate 2 no longer needs `always()`

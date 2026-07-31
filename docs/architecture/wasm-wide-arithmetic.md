@@ -68,11 +68,13 @@ cleared; blocker 2 still gates shipping.
    `=0.2.126` and `pkg-wide` builds; see the bump note below. (The benches always
    sidestepped this: plain `cdylib`, no bindgen — which is why they built and ran
    throughout.)
-2. **V8 does not support it.** Node 22's V8 rejects the module
-   (`WebAssembly.validate()` -> false, "invalid numeric opcode 0xfc13"), so
-   Chrome and Edge cannot run it. Firefox (SpiderMonkey) and Safari
-   (JavaScriptCore) were NOT measured — treat them as unverified rather than
-   assuming parity, and see the per-engine bar in the checklist below.
+2. **The V8 builds we tested do not support it.** V8 12.4 (Node 22) and V8 14.6
+   (Node 26.5.1) both reject the module (`WebAssembly.validate()` -> false,
+   "invalid numeric opcode 0xfc13"). No browser release was measured directly:
+   Chrome and Edge ship their own V8 builds, and Firefox (SpiderMonkey) and
+   Safari (JavaScriptCore) are different engines entirely. Treat every browser
+   as unverified rather than inferring from these numbers, and see the
+   per-engine bar in the checklist below.
 
 **Status re-check (2026-07-16):** blocker 1 is CLEARED upstream — `walrus`
 merged wide-arith parsing (wasm-bindgen/walrus#306, released in walrus 0.26.0,

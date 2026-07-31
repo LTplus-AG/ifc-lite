@@ -134,6 +134,11 @@ if [ "${BUILD_THREADED:-}" = "1" ]; then
   # fully replaces .cargo/config.toml's target rustflags, so the base flags
   # (max-memory, stack-size, simd128) are repeated here. build-std stays in
   # .cargo/config.toml [unstable] and rebuilds std WITH atomics.
+  # NOTE for whoever bumps rust-toolchain.toml: since wasm-bindgen 0.2.122, threaded
+  # builds on nightlies dated 2026-05-06 or later ALSO need
+  # `-C link-arg=--export=__heap_base`. The pinned nightly-2025-11-15 predates that,
+  # so it is deliberately absent here; add it with the nightly bump or the threaded
+  # bundle breaks at link time.
   RUSTFLAGS="-C link-arg=--max-memory=4294967296 -C link-arg=-zstack-size=8388608 -C target-feature=+simd128,+atomics,+bulk-memory,+mutable-globals -C link-arg=--shared-memory -C link-arg=--import-memory -C link-arg=--export=__wasm_init_tls -C link-arg=--export=__tls_size -C link-arg=--export=__tls_align -C link-arg=--export=__tls_base" \
   rustup run nightly-2025-11-15 "$WASM_PACK" build rust/wasm-bindings \
     --target web \

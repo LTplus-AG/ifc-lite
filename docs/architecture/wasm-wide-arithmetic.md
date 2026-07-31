@@ -60,7 +60,8 @@ ThatOpen wins today.
 Shipping it to browser users is blocked on TWO upstream items, both confirmed here:
 
 1. **wasm-bindgen cannot process a wide-arithmetic module.** The production wasm
-   goes through `wasm-bindgen` (pinned `=0.2.106`) for the `IfcAPI` glue. Building
+   goes through `wasm-bindgen` (pinned `=0.2.126` since the bump below; `=0.2.106`
+   when this was written) for the `IfcAPI` glue. Building
    `pkg-wide` fails in the bindgen step: `failed to parse code section: wide
    arithmetic support is not enabled` — its `walrus` parser rejects the new
    opcodes. We cannot build the production bundle until a wasm-bindgen / `walrus`
@@ -76,9 +77,34 @@ merged wide-arith parsing (wasm-bindgen/walrus#306, released in walrus 0.26.0,
 bumping our pinned `=0.2.106` would let `pkg-wide` build. Blocker 2 still
 stands: V8 has the implementation but behind
 `--experimental-wasm-wide-arithmetic` (default **off**, pre-staged tier in
-`wasm-feature-flags.h`); no stable browser ships it. Verdict unchanged:
+`wasm-feature-flags.h`); no stable browser ships it. Verdict at the time:
 track-and-adopt — do NOT pay a wasm-bindgen major-pin bump for a bundle no
 browser can run; re-check when V8 stages/ships the flag on by default.
+
+**Bump taken (2026-07-31):** the pin moved to `=0.2.126` (with js-sys/web-sys
+`=0.3.103`, wasm-bindgen-futures `=0.4.76`, wasm-bindgen-test `=0.3.76`, which
+move in lockstep because js-sys/web-sys pin wasm-bindgen exactly). The earlier
+verdict assumed the bump carried a real cost; measured, it did not:
+
+- exported `.d.ts` API is unchanged — 557 normalised signature units, identical
+  before and after; the 3.2k-line file diff is indentation, member ordering and
+  doc comments,
+- the pinned `mesh_determinism.wasm32.json` still matches, so emitted mesh bytes
+  did not move,
+- default, `BUILD_THREADED=1` and `BUILD_WIDE=1` bundles all build, the latter
+  two passing their own litmus checks,
+- `serde-wasm-bindgen 0.6.5` and `wasm-bindgen-rayon 1.3.0` needed no change.
+
+Blocker 2 is untouched and still gates SHIPPING. What the bump buys is a
+tripwire that isolates one variable: gate 1 can no longer fail, so any future
+red run means the V8 side moved — which is the signal the workflow exists to
+give. Do not read this as wide-arithmetic being shippable.
+
+**Nightly caveat for the next toolchain bump:** since wasm-bindgen 0.2.122,
+threaded builds on nightlies dated 2026-05-06 or later additionally require
+`-C link-arg=--export=__heap_base`. The pinned `nightly-2025-11-15` predates
+that, so `BUILD_THREADED=1` works today without it. Whoever bumps the nightly
+must add that flag in `scripts/build-wasm.sh` and `rust/csg-thread-bench/`.
 
 Net: the lever is proven and worth tracking, but **not shippable now**. The plan
 below is the design to wire once BOTH clear. The runtime feature-detect makes it
@@ -197,8 +223,9 @@ says which gate tripped:
    `-C target-feature=+simd128,+wide-arithmetic` RUSTFLAGS documented above,
    plus that script's own `wasm-tools`-verified litmus check that the bundle
    actually contains wide ops). This is **blocker 1** (wasm-bindgen/walrus):
-   it fails today because `rust/wasm-bindings/Cargo.toml` still pins
-   `wasm-bindgen = "=0.2.106"`, whose bundled `walrus` predates the parser fix.
+   it failed until 2026-07-31 because `rust/wasm-bindings/Cargo.toml` pinned
+   `wasm-bindgen = "=0.2.106"`, whose bundled `walrus` predates the parser fix;
+   the pin is now `=0.2.126` and this gate passes.
    `wasm-bindgen-cli` first depends on `walrus ^0.26.0` in **0.2.115** (0.2.114
    and earlier are still on `walrus ^0.25.1`; verified against the crates.io
    dependency data per release), so 0.2.115 is the floor for a bump that can

@@ -15,16 +15,15 @@
 # with `wasm-tools print | grep` for the actual wide ops. Two things gate
 # shipping it, and this workflow is built to name which one is failing:
 #
-#   1. Build-toolchain gate: `rust/wasm-bindings` pins `wasm-bindgen = "=0.2.106"`.
-#      That version's bundled `walrus` parser rejects a wide-arithmetic code
+#   1. Build-toolchain gate: CLEARED 2026-07-31 by bumping the pin to
+#      `wasm-bindgen = "=0.2.126"`. Kept as a gate so a future pin regression or a
+#      wasm-bindgen release that loses wide-arith parsing is caught. History: the
+#      pin was `=0.2.106`, whose bundled `walrus` rejects a wide-arithmetic code
 #      section ("failed to parse code section: wide arithmetic support is not
 #      enabled"). Upstream `walrus` 0.26.0 (wasm-bindgen/walrus#306, merged
-#      2026-03-25) fixed this, and wasm-bindgen >=0.2.126 depends on it — but
-#      OUR pin hasn't moved, so `wasm-pack build`/`wasm-pack test` still hit
-#      the old parser today. This is a real Cargo.toml version bump belonging
-#      to its own PR (out of scope here — this workflow only builds/tests with
-#      the toolchain as pinned in the repo right now, deliberately, so a green
-#      run here is proof the pin has actually moved, not a workaround for it).
+#      2026-03-25) fixed it; wasm-bindgen >=0.2.115 is the floor that depends on
+#      it. The bump was taken in its own PR, as this workflow always intended —
+#      a green run here is proof the pin moved, never a workaround for it.
 #   2. Engine-support gate: even once (1) clears, no stable browser runs the
 #      module — V8 has it prototyped behind the (default-off) flag
 #      `--experimental-wasm-wide-arithmetic`. Node ships the same V8, so we
@@ -123,12 +122,12 @@ jobs:
         if: failure() && steps.build_wide.outcome == 'failure'
         run: |
           echo "::error::pkg-wide build failed — this is gate 1 (build-toolchain), not a determinism regression."
-          echo "Most likely cause: rust/wasm-bindings/Cargo.toml still pins wasm-bindgen = \"=0.2.106\","
+          echo "This gate was cleared on 2026-07-31 by pinning wasm-bindgen = \"=0.2.126\", so a"
+          echo "failure here is a REGRESSION, not the known-blocked state. Check whether the pin in"
+          echo "rust/wasm-bindings/Cargo.toml moved below 0.2.115 (the floor for walrus >=0.26.0),"
           echo "whose bundled walrus parser rejects the wide-arithmetic code section"
           echo "(\"failed to parse code section: wide arithmetic support is not enabled\")."
-          echo "Upstream fix landed in walrus 0.26.0 / wasm-bindgen >=0.2.126 (2026-03-25); this repo's"
-          echo "pin has not moved yet. Bumping it is a real Cargo.toml change in its own PR — see"
-          echo "docs/architecture/wasm-wide-arithmetic.md blocker 1 for the exact version chain."
+          echo "See docs/architecture/wasm-wide-arithmetic.md blocker 1 for the exact version chain."
           echo "If the error instead mentions a missing wasm-tools/wasm-pack binary, that is an"
           echo "environment problem with this job, not a toolchain-support gap."
 

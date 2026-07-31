@@ -227,12 +227,19 @@ SHIPPED (landed with a PR), or RE-REFUTED / NOT SHIPPABLE. Do not read the secti
   which gates time-to-first-geometry and hits every model — that, not CSG threading, is
   where the next real speedup lives.
 - **Wide-arithmetic exact-CSG bundle** (~1.7x on a real void cut — NOT SHIPPABLE TODAY):
-  built by `BUILD_WIDE=1 scripts/build-wasm.sh`, but **no stable browser runs it** — V8
-  has it behind `--experimental-wasm-wide-arithmetic` (default off); `WebAssembly.validate`
-  returns false on every shipping engine. Track-and-adopt only; the runtime feature-probe
+  built by `BUILD_WIDE=1 scripts/build-wasm.sh`, but **V8 does not run it**. Measured
+  2026-07-31 on Node 22: a module whose only body is `i64.add128` fails
+  `WebAssembly.validate`, compiling it throws `invalid numeric opcode: 0xfc13`, and
+  `node --v8-options` lists **no** wide-arithmetic flag under any name. An earlier
+  entry here claimed V8 had it behind a default-off
+  `--experimental-wasm-wide-arithmetic`; that flag has never existed, so do NOT wait
+  for it to be "staged" — there is nothing to stage. Firefox (SpiderMonkey) and Safari
+  (JavaScriptCore) were not measured; treat them as unverified, not as rejecting.
+  Track-and-adopt only; the runtime feature-probe
   (`packages/geometry/src/wasm-features.ts`, not yet created) would auto-upgrade per engine
-  as each ships. Re-check when V8 stages the flag on by default. See
-  `docs/architecture/wasm-wide-arithmetic.md` (delivery status verified 2026-07-16).
+  as each ships. The CI tripwire (`.github/workflows/wide-arithmetic.yml`) probes the
+  engine every week and turns red when this changes. See
+  `docs/architecture/wasm-wide-arithmetic.md` (delivery status verified 2026-07-31).
 
 ### Standing constraints
 - Geometry is **client-side only** (no server meshing).

@@ -285,9 +285,11 @@ says which gate tripped:
    accepts and correctly executes the module, which is an early proxy for
    **blocker 2**, not evidence that any browser ships the feature. Default availability in Chrome, Firefox, Safari and Edge is gated
    separately by the shipping-engine validation in the flip-the-flag checklist
-   below, which remains the authoritative bar. `if: always()` keeps this
-   independent of step 1's outcome, so each blocker's status is legible on its
-   own.
+   below, which remains the authoritative bar. It is additionally gated on the
+   pkg-wide build succeeding: it compiles the test crate with the same
+   toolchain, so after a build failure it could only fail for the same reason.
+   Gate 2 stays independently legible regardless — that is the probe step's job,
+   and the probe does not depend on the build at all.
 3. **Wide-op emission count** — informational only (`continue-on-error`),
    counts `mul_wide`/`add128`/`sub128` in the built bundle via `wasm-tools
    print`. Confirms the mechanism is present, not a timing measurement —

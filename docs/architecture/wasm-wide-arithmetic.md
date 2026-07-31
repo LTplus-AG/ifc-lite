@@ -158,8 +158,9 @@ upgrades itself without further work here.
 **Timeline (researched 2026-06):** wide-arithmetic is **Phase 3** (implementation
 phase, not yet a finished standard = Phase 4). A 2026 runtime survey found only
 **Wasmtime and Wasmer** run a full wide-arith build in stable releases; **no
-stable browser ships it** (V8 has only prototyped it; it is flag/experimental at
-best). Realistically: per-engine shipping through 2026-2027, "Baseline" (all
+stable browser ships it**. Measured 2026-07-31: V8 rejects the opcodes outright
+and exposes no flag to enable them, so the earlier "prototyped behind a flag"
+reading of V8 was wrong. Firefox and Safari were not measured. Realistically: per-engine shipping through 2026-2027, "Baseline" (all
 three engines, safe to rely on) later still. So this is a track-and-adopt lever,
 not a near-term one.
 
@@ -250,12 +251,18 @@ wasmtime run -W wide-arithmetic=y --invoke <fn> target-wide/.../*.wasm <args>
 
 ## CI tripwire (`.github/workflows/wide-arithmetic.yml`)
 
-Both blockers above are external (an upstream crate version, a V8 flag) — the
-kind of thing that silently goes stale if the only record of it is this doc.
-`wide-arithmetic.yml` turns them into a monitored, weekly-scheduled +
-`workflow_dispatch` CI lane (never on `pull_request` — this must not become a
-required or noisy check) so a status change on either blocker shows up as a
-step going from red to green, not as something we have to remember to re-check.
+Both blockers above are external (an upstream crate version, engine support for
+the opcodes) — the kind of thing that silently goes stale if the only record of
+it is this doc. `wide-arithmetic.yml` turns them into a monitored,
+weekly-scheduled + `workflow_dispatch` CI lane (never on `pull_request` — this
+must not become a required or noisy check), so a status change shows up as a
+colour change rather than as something we have to remember to re-check.
+
+Note the direction, which is not the obvious one: the known-blocked state is
+**green**, so the lane is quiet until reality moves. A change turns it **red** —
+including the good news that an engine now runs the module. A permanently red
+lane is one nobody reads, which is exactly how a bogus flag name survived in
+this workflow undetected until 2026-07-31.
 
 **What it does**, in three named steps so a failure alone (no log-diving)
 says which gate tripped:
@@ -328,7 +335,9 @@ regression:
    the kernel, so it leaves `BUILD_WIDE` blocked exactly as a category-1
    failure does. Diagnose the lane before reading anything into its colour.
 
-**Flip-the-flag shipping checklist**, once this workflow is green end to end:
+**Flip-the-flag shipping checklist.** Note that the lane being green is *not*
+the trigger — green is the blocked state. The trigger is the lane turning red
+with the engine-support tripwire firing:
 
 - [x] Blocker 1 cleared (2026-07-31): `rust/wasm-bindings/Cargo.toml`'s
       `wasm-bindgen` pin bumped to `=0.2.126`, past the walrus-0.26 release, in

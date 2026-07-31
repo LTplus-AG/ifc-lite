@@ -48,7 +48,8 @@ M1 (hashes, certificates) ──► M4 (provable merges)
 ```
 
 M1 is the root and goes first. M6 is a background thread that starts immediately because its
-cheapest lever is blocked on external timing (browser flags), its middle lever is wiring work,
+cheapest lever is blocked on external timing (browser engines implementing the opcodes),
+its middle lever is wiring work,
 and its research lever (GPU predicates) has the longest lead time. M2 starts as soon as M1's
 hash spec is stable, because rewards are certificates. M4 follows M1. M3 and M5 are Phase 2+
 research that consume everything before them.
@@ -203,8 +204,8 @@ an agent team) plus named human time, because that is the actual currency here.
 4. **Who cares:** every other moonshot; the computational geometry community (a WGSL exact
    predicate library is a paper and a first); every wasm-heavy geometry product watching
    wide-arithmetic.
-5. **Risks:** V8 flag timing is outside our control (accept; keep the CI lane green so
-   shipping is a flag flip); threading must not break byte-determinism (mitigate: parallelism
+5. **Risks:** V8 implementing the opcodes is outside our control, and there is no flag
+   to wait for (accept; the CI lane watches for it and turns red when it lands); threading must not break byte-determinism (mitigate: parallelism
    stays at element granularity where outputs are independent, deterministic reduction order,
    determinism manifest gates the PR); GPU predicate speedup eaten by divergence and
    escalation traffic (see kill criteria).

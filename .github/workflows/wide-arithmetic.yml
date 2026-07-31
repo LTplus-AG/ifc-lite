@@ -153,6 +153,17 @@ jobs:
       # So ask the engine directly, with a 47-byte module whose only body is
       # `i64.add128` (opcode 0xfc13). Order matters: try no flags first (the
       # shipped case), then only flags this V8 actually lists.
+      # Deliberately NOT the repo's Node 22. That V8 line is frozen and will
+      # never gain these opcodes, so pinning the probe to it would make this lane
+      # permanently blind — the opposite of a tripwire. Ride the newest Node so
+      # support is detected as early as possible, and record which engine produced
+      # the verdict so a state change is attributable to V8 rather than to an
+      # image bump.
+      - name: Install newest Node for the engine probe
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: latest
+
       - name: Probe engine support for wide-arithmetic (gate 2)
         id: engine_probe
         if: always() && !cancelled()
@@ -164,6 +175,11 @@ jobs:
             echo "::error::node unavailable — cannot classify engine support. This is a runner/environment fault, not a wide-arithmetic status."
             exit 1
           fi
+
+          # Attribution: a verdict is only meaningful next to the engine that produced it.
+          engine="node $(node --version) / V8 $(node -p 'process.versions.v8')"
+          echo "engine=$engine" >> "$GITHUB_OUTPUT"
+          echo "probing $engine"
 
           # (module (func (export "f") (param i64 i64 i64 i64) (result i64 i64)
           #   local.get 0 local.get 1 local.get 2 local.get 3 i64.add128))
@@ -259,8 +275,9 @@ jobs:
           || steps.engine_probe.outputs.support == 'flag')
         env:
           ENGINE_SUPPORT: ${{ steps.engine_probe.outputs.support }}
+          ENGINE: ${{ steps.engine_probe.outputs.engine }}
         run: |
-          echo "::error::wide-arithmetic is now ENGINE-SUPPORTED on this runner (${ENGINE_SUPPORT}) — this lane is red on purpose."
+          echo "::error::wide-arithmetic is now ENGINE-SUPPORTED on ${ENGINE} (${ENGINE_SUPPORT}) — this lane is red on purpose."
           echo ""
           echo "This is the signal the tripwire exists to give, not a regression."
           echo "Next steps: confirm the determinism step above passed, then re-evaluate"
@@ -270,11 +287,15 @@ jobs:
 
       - name: Record blocked-on-engine state (expected)
         if: always() && !cancelled() && steps.engine_probe.outputs.support == 'unsupported'
+        env:
+          ENGINE: ${{ steps.engine_probe.outputs.engine }}
         run: |
           {
             echo "### Gate 2: engine support — still blocked (expected)"
             echo ""
-            echo "This runner's V8 rejects \`i64.add128\` (opcode \`0xfc13\`) and exposes no flag"
+            echo "Measured on **${ENGINE}**."
+            echo ""
+            echo "This V8 rejects \`i64.add128\` (opcode \`0xfc13\`) and exposes no flag"
             echo "that enables it, so the wasm32 determinism check was skipped: it would have"
             echo "measured engine support, not determinism."
             echo ""

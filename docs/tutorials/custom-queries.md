@@ -86,7 +86,7 @@ function quantityValue(q: IfcQuery, expressId: number, name: string): number | n
 const largeWalls = query
   .walls()
   .execute()
-  .filter(w => (quantityValue(query, w.expressId, 'NetArea') ?? 0) > 20);
+  .filter(w => (quantityValue(query, w.expressId, 'NetSideArea') ?? 0) > 20);
 
 // Thick slabs (>= 300mm)
 const thickSlabs = query

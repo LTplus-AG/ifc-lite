@@ -37,7 +37,7 @@ Each `ColumnDefinition` has a `source` that says where the value comes from:
 |--------|-------------|---------|
 | `attribute` | Direct IFC attribute | `Name`, `GlobalId`, `ObjectType`, `Class` |
 | `property` | Property from a pset | `Pset_WallCommon.FireRating` |
-| `quantity` | Quantity from a qset | `Qto_WallBaseQuantities.NetArea` |
+| `quantity` | Quantity from a qset | `Qto_WallBaseQuantities.NetSideArea` |
 | `material` | Associated material names (joined with `", "`) | `Concrete, Insulation` |
 | `classification` | Classification references (joined with `", "`) | `Uniclass Ss_25_10` |
 | `spatial` | Containing spatial element name; `propertyName` picks the level (`Storey` (default), `Building`, `Site`, `Project`) | `Level 2` |

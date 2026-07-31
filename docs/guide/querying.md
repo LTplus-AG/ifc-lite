@@ -106,7 +106,7 @@ const walls = query
   .walls()
   .whereProperty('Pset_WallCommon', 'IsExternal', '=', true)
   .whereProperty('Pset_WallCommon', 'FireRating', '>=', 60)
-  .whereProperty('Qto_WallBaseQuantities', 'NetArea', '>', 10)
+  .whereProperty('Qto_WallBaseQuantities', 'NetSideArea', '>', 10)
   .execute();
 
 // execute() returns QueryResultEntity[]; project the fields you need

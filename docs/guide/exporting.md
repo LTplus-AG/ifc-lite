@@ -256,7 +256,7 @@ wall_areas = (
     entities
     .filter(pl.col('Type').str.contains('IfcWall'))
     .join(quantities, left_on='ExpressId', right_on='EntityId')
-    .filter(pl.col('QuantityName') == 'NetArea')
+    .filter(pl.col('QuantityName') == 'NetSideArea')
     .group_by('Type')
     .agg([
         pl.count('ExpressId').alias('count'),

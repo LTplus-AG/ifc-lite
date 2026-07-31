@@ -62,7 +62,7 @@ research that consume everything before them.
 | M3 Differentiable buildings | idea + columnar substrate | 1-2 | TypedArray data plane, parametric create path; no adjoints anywhere |
 | M4 Provable merges | strong engineering base, no soundness contract | 3 | packages/merge three-way/rebase/inverse + real-model fuzz, CSG-op CRDT array, E2E encryption |
 | M5 Grounding compiler | prior art validated externally, nothing local | 2 | MCP/SDK give the kernel-in-the-loop surface; Zero-to-CAD/GIFT prove the recipe elsewhere |
-| M6a wasm wide-arithmetic | measured, blocked on V8 flag | 6 | docs/architecture/wasm-wide-arithmetic.md: 1.71x e2e measured |
+| M6a wasm wide-arithmetic | measured, blocked on V8 opcode support | 6 | docs/architecture/wasm-wide-arithmetic.md: 1.71x e2e measured |
 | M6b threaded CSG | validated, not wired | 5 | docs/architecture/csg-threading-design.md: 2.9-4.2x CSG-step |
 | M6c exact predicates on GPU | untested principle | 1 | predicate cascade well-factored in kernel/predicates.rs; nothing on GPU |
 

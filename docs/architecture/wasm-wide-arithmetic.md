@@ -68,9 +68,11 @@ cleared; blocker 2 still gates shipping.
    `=0.2.126` and `pkg-wide` builds; see the bump note below. (The benches always
    sidestepped this: plain `cdylib`, no bindgen — which is why they built and ran
    throughout.)
-2. **No shipping browser engine supports it yet.** Node 22's V8 rejects the
-   module (`WebAssembly.validate()` -> false, "invalid numeric opcode 0xfc13");
-   stable Chrome/Safari are not expected to differ today.
+2. **V8 does not support it.** Node 22's V8 rejects the module
+   (`WebAssembly.validate()` -> false, "invalid numeric opcode 0xfc13"), so
+   Chrome and Edge cannot run it. Firefox (SpiderMonkey) and Safari
+   (JavaScriptCore) were NOT measured — treat them as unverified rather than
+   assuming parity, and see the per-engine bar in the checklist below.
 
 **Status re-check (2026-07-16):** blocker 1 is CLEARED upstream — `walrus`
 merged wide-arith parsing (wasm-bindgen/walrus#306, released in walrus 0.26.0,
@@ -147,7 +149,9 @@ must add that flag in `scripts/build-wasm.sh` and `rust/csg-thread-bench/`.
 Net: the lever is proven and worth tracking, but **not shippable now**. The plan
 below is the design to wire once BOTH clear. The runtime feature-detect makes it
 a safe, zero-cost no-op for every user until then — the wide `.wasm` is never
-fetched while the probe returns false, which it does on every engine today.
+fetched while the probe returns false, which it does on V8 today. The probe is
+per-engine by construction, so any engine that does implement the opcodes
+upgrades itself without further work here.
 
 ## When might it ship, and can we work around it?
 

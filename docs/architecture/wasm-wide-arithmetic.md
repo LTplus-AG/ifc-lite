@@ -155,7 +155,8 @@ upgrades itself without further work here.
 
 ## When might it ship, and can we work around it?
 
-**Timeline (researched 2026-06):** wide-arithmetic is **Phase 3** (implementation
+**Timeline (engine survey researched 2026-06; V8 re-measured 2026-07-31):**
+wide-arithmetic is **Phase 3** (implementation
 phase, not yet a finished standard = Phase 4). A 2026 runtime survey found only
 **Wasmtime and Wasmer** run a full wide-arith build in stable releases; **no
 stable browser ships it**. Measured 2026-07-31: V8 rejects the opcodes outright
@@ -343,12 +344,15 @@ with the engine-support tripwire firing:
       `wasm-bindgen` pin bumped to `=0.2.126`, past the walrus-0.26 release, in
       its own reviewed PR, with `wasm-bindgen-futures` / `wasm-bindgen-test` /
       `js-sys` / `web-sys` moved in lockstep as required.
-- [ ] Blocker 2 cleared: `WebAssembly.validate()` of the 40-byte probe in
+- [ ] Blocker 2 cleared: `WebAssembly.validate()` of the probe in
       `packages/geometry/src/wasm-features.ts` (see the Delivery plan above)
-      returns `true` on a genuinely shipping (non-flagged) release of at
-      least the two engines the viewer must support without a fallback path
-      (Chrome/Edge + Firefox at minimum; confirm Safari's status explicitly
-      rather than assuming parity).
+      returns `true` on a genuinely shipping release — **no experimental flags
+      enabled** — of both Chrome/Edge and Firefox, the two engines the viewer
+      must support without a fallback path. Confirm Safari explicitly rather
+      than assuming parity. The probe must exercise every wide op the bundle
+      emits (`i64.add128`, `i64.sub128`, `i64.mul_wide_s`, `i64.mul_wide_u`),
+      not just one, so a partial implementation cannot read as support — the
+      CI probe in `wide-arithmetic.yml` uses exactly such a module.
 - [ ] This workflow's determinism check actually **ran and passed** with no
       manifest diff — not just "the job was green." The job is green while
       blocked on the engine, so its colour alone is not the bar; confirm the

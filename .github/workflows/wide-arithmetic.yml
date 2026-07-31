@@ -150,9 +150,9 @@ jobs:
       # be "bad option" and this lane would stay red exactly when it should turn
       # actionable.
       #
-      # So ask the engine directly, with a 47-byte module whose only body is
-      # `i64.add128` (opcode 0xfc13). Order matters: try no flags first (the
-      # shipped case), then only flags this V8 actually lists.
+      # So ask the engine directly, with a 102-byte module that uses every wide
+      # op the bundle emits. Order matters: try no flags first (the shipped
+      # case), then only flags this V8 actually lists.
       # Deliberately NOT the repo's Node 22. That V8 line is frozen and will
       # never gain these opcodes, so pinning the probe to it would make this lane
       # permanently blind — the opposite of a tripwire. Ride the newest Node so
@@ -188,15 +188,29 @@ jobs:
           echo "engine=$engine" >> "$GITHUB_OUTPUT"
           echo "probing $engine"
 
-          # (module (func (export "f") (param i64 i64 i64 i64) (result i64 i64)
-          #   local.get 0 local.get 1 local.get 2 local.get 3 i64.add128))
-          mod='AGFzbQEAAAABCgFgBH5+fn4Cfn4DAgEABwUBAWYAAAoOAQwAIAAgASACIAP8Ews='
+          # Covers EVERY wide op the bundle can emit — i64.add128, i64.sub128,
+          # i64.mul_wide_s, i64.mul_wide_u — not just one of them. A probe that
+          # tested add128 alone would call a partial implementation "supported"
+          # and hand the determinism step a module the engine cannot run.
+          # Assembled from:
+          #   (module
+          #     (func (export "a") (param i64 i64 i64 i64) (result i64 i64)
+          #       local.get 0 local.get 1 local.get 2 local.get 3 i64.add128)
+          #     (func (export "s") (param i64 i64 i64 i64) (result i64 i64)
+          #       local.get 0 local.get 1 local.get 2 local.get 3 i64.sub128)
+          #     (func (export "ms") (param i64 i64) (result i64 i64)
+          #       local.get 0 local.get 1 i64.mul_wide_s)
+          #     (func (export "mu") (param i64 i64) (result i64 i64)
+          #       local.get 0 local.get 1 i64.mul_wide_u))
+          # `wasm-tools validate` rejects it without --features wide-arithmetic
+          # and accepts it with, so a false verdict isolates to feature support.
+          mod='AGFzbQEAAAABEQJgBH5+fn4Cfn5gAn5+An5+AwUEAAABAQcTBAFhAAABcwABAm1zAAICbXUAAwotBAwAIAAgASACIAP8EwsMACAAIAEgAiAD/BQLCAAgACAB/BULCAAgACAB/BYL'
           probe='process.exit(WebAssembly.validate(Buffer.from(process.argv[1],"base64")) ? 0 : 1)'
 
           if node -e "$probe" "$mod" 2>/dev/null; then
             echo "support=default" >> "$GITHUB_OUTPUT"
             echo "node_args=" >> "$GITHUB_OUTPUT"
-            echo "engine accepts i64.add128 with no flags -> wide-arithmetic is shipped here"
+            echo "engine accepts all wide-arithmetic opcodes with no flags -> shipped here"
             exit 0
           fi
 
@@ -214,14 +228,14 @@ jobs:
             if node "$f" -e "$probe" "$mod" 2>/dev/null; then
               echo "support=flag" >> "$GITHUB_OUTPUT"
               echo "node_args=$f" >> "$GITHUB_OUTPUT"
-              echo "engine accepts i64.add128 under $f"
+              echo "engine accepts all wide-arithmetic opcodes under $f"
               exit 0
             fi
           done
 
           echo "support=unsupported" >> "$GITHUB_OUTPUT"
           echo "node_args=" >> "$GITHUB_OUTPUT"
-          echo "engine rejects i64.add128 and exposes no flag that enables it"
+          echo "engine rejects the wide-arithmetic opcodes and exposes no flag that enables them"
 
       # Reuses the SAME wasm32 determinism manifest check determinism.yml runs
       # (rust/wasm-bindings/tests/mesh_determinism.rs against the pinned
@@ -302,7 +316,8 @@ jobs:
             echo ""
             echo "Measured on **${ENGINE}**."
             echo ""
-            echo "This V8 rejects \`i64.add128\` (opcode \`0xfc13\`) and exposes no flag"
+            echo "This V8 rejects the wide-arithmetic opcodes (\`i64.add128\` fails first, at"
+            echo "opcode \`0xfc13\`) and exposes no flag"
             echo "that enables it, so the wasm32 determinism check was skipped: it would have"
             echo "measured engine support, not determinism."
             echo ""

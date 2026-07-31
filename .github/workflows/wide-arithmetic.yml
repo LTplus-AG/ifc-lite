@@ -3,8 +3,9 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # WASM wide-arithmetic tripwire. Turns an external dependency (upstream
-# wasm-bindgen/walrus support + a V8 flag no stable browser ships yet) into a
-# monitored condition instead of something we have to remember to re-check.
+# wasm-bindgen/walrus support + engine support for the opcodes, which V8 does
+# not yet implement) into a monitored condition instead of something we have to
+# remember to re-check.
 #
 # Full context: docs/architecture/wasm-wide-arithmetic.md. Short version: the
 # exact-CSG kernel's `bnum` limb arithmetic maps to the WASM wide-arithmetic

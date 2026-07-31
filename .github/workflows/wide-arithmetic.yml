@@ -237,7 +237,7 @@ jobs:
             case "$out" in
               PROBE_YES) echo yes ;;
               PROBE_NO)  echo no ;;
-              *) echo "::error::probe returned no verdict (got: '${out:-<nothing>}'). Refusing to guess — this is a broken probe, not an engine answer." >&2
+              *) echo "probe returned no verdict (got: '${out:-<nothing>}')" >&2
                  return 1 ;;
             esac
           }
@@ -245,7 +245,10 @@ jobs:
           # 30s each: a flag that makes node hang would otherwise burn the job timeout.
           TIMEOUT=""; command -v timeout >/dev/null 2>&1 && TIMEOUT="timeout 30"
 
-          verdict=$(classify) || exit 1
+          if ! verdict=$(classify); then
+            echo "::error::the flagless probe could not be evaluated. Refusing to guess — this is a broken probe, not an engine answer."
+            exit 1
+          fi
           if [ "$verdict" = yes ]; then
             echo "support=default" >> "$GITHUB_OUTPUT"
             echo "node_args=" >> "$GITHUB_OUTPUT"
@@ -272,15 +275,30 @@ jobs:
           # GitHub's `shell: bash` means. That would silently stop probing
           # staging — blind in exactly the rollout this lane watches for — from
           # nothing more than someone adding a `defaults: run: shell: bash`.
-          candidates=$(grep -oE -- '--experimental-wasm-[a-z0-9-]+' <<<"$v8opts" | sort -u || true)
-          if grep -qE -- '--wasm-staging(\s|$|\))' <<<"$v8opts"; then
-            candidates=$(printf '%s\n%s' '--wasm-staging' "$candidates")
+          # V8 accepts --foo-bar and --foo_bar interchangeably. Today `--v8-options`
+          # prints the hyphen form, but we parse what it prints, so a printer that
+          # ever switched to underscores would yield zero candidates and a silent
+          # "unsupported". Match both, and take staging's spelling from the listing
+          # rather than hardcoding it.
+          candidates=$(grep -oE -- '--experimental[-_]wasm[-_][a-z0-9_-]+' <<<"$v8opts" | sort -u || true)
+          staging=$(grep -oE -- '--wasm[-_]staging' <<<"$v8opts" | head -1 || true)
+          if [ -n "$staging" ]; then
+            candidates=$(printf '%s\n%s' "$staging" "$candidates")
           fi
 
+          # One unusable flag must not hide a working one: a candidate that cannot
+          # be evaluated is skipped, not fatal. But the search is then incomplete,
+          # so it must not end in a confident "unsupported" either — that is
+          # tracked and turned into an error below.
+          unevaluated=0
           for f in $candidates; do
             # staging is a catch-all, so it bypasses the proposal-name filter
-            case "$f" in --wasm-staging) ;; *wide*|*arith*|*128*) ;; *) continue ;; esac
-            verdict=$(classify "$f") || exit 1
+            case "$f" in --wasm[-_]staging) ;; *wide*|*arith*|*128*) ;; *) continue ;; esac
+            if ! verdict=$(classify "$f"); then
+              echo "::warning::could not evaluate $f — skipping it and continuing with the remaining candidates."
+              unevaluated=$((unevaluated + 1))
+              continue
+            fi
             if [ "$verdict" = yes ]; then
               echo "support=flag" >> "$GITHUB_OUTPUT"
               echo "node_args=$f" >> "$GITHUB_OUTPUT"
@@ -288,6 +306,11 @@ jobs:
               exit 0
             fi
           done
+
+          if [ "$unevaluated" -gt 0 ]; then
+            echo "::error::$unevaluated candidate flag(s) could not be evaluated, so no flag enabled the opcodes but the search was incomplete. Reporting 'unsupported' here would be a guess."
+            exit 1
+          fi
 
           echo "support=unsupported" >> "$GITHUB_OUTPUT"
           echo "node_args=" >> "$GITHUB_OUTPUT"

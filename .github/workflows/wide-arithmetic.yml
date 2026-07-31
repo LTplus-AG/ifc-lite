@@ -219,8 +219,16 @@ jobs:
           # mangled-constant case specifically: Buffer.from tolerates bad base64
           # silently, and a truncated module fails validation for the wrong
           # reason.
+          # Digest, not length: substituting a base64 character (rather than
+          # dropping one) still decodes to 102 bytes, so a length check passes
+          # while the module is malformed — validate would say no, the lane would
+          # record "unsupported", and it would stay green forever even after the
+          # engine shipped support. The digest pins the exact bytes.
+          #   printf %s "$mod" | base64 -d | sha256sum
           probe='const b=Buffer.from(process.argv[1],"base64");
-                 if(b.length!==102){console.log("PROBE_ERR:module is "+b.length+" bytes, expected 102");process.exit(9)}
+                 const d=require("crypto").createHash("sha256").update(b).digest("hex");
+                 if(d!=="d83c3e467c96f8a8bc62e05f63efa8184f52bed0029011180705cad77c083503"){
+                   console.log("PROBE_ERR:module digest "+d+" ("+b.length+" bytes) is not the pinned probe module");process.exit(9)}
                  console.log(WebAssembly.validate(b)?"PROBE_YES":"PROBE_NO")'
 
           classify() {  # $@ = node argv prefix; echoes yes|no, or returns 1 on a broken probe
@@ -253,9 +261,19 @@ jobs:
             exit 1
           fi
 
-          for f in $(printf '%s\n' "$v8opts" \
-                     | grep -oE -- '--experimental-wasm-[a-z0-9-]+' | sort -u || true); do
-            case "$f" in *wide*|*arith*|*128*) ;; *) continue ;; esac
+          # `--wasm-staging` turns on every staged feature at once, and V8 has
+          # historically exposed a proposal through it before giving it a
+          # dedicated flag. Without it the early-warning lane would report
+          # "unsupported" through exactly the rollout phase it exists to catch.
+          candidates=$(printf '%s\n' "$v8opts" \
+                       | grep -oE -- '--experimental-wasm-[a-z0-9-]+' | sort -u || true)
+          if printf '%s\n' "$v8opts" | grep -qE -- '--wasm-staging(\s|$|\))'; then
+            candidates=$(printf '%s\n%s' '--wasm-staging' "$candidates")
+          fi
+
+          for f in $candidates; do
+            # staging is a catch-all, so it bypasses the proposal-name filter
+            case "$f" in --wasm-staging) ;; *wide*|*arith*|*128*) ;; *) continue ;; esac
             verdict=$(classify "$f") || exit 1
             if [ "$verdict" = yes ]; then
               echo "support=flag" >> "$GITHUB_OUTPUT"

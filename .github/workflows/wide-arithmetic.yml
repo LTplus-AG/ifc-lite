@@ -159,7 +159,14 @@ jobs:
       # support is detected as early as possible, and record which engine produced
       # the verdict so a state change is attributable to V8 rather than to an
       # image bump.
+      #
+      # `always()` for the same reason the probe has it: gate 2 must stay
+      # measurable when gate 1 is red. Without it this step inherits the implicit
+      # success() and gets skipped on a build failure, while the probe below runs
+      # anyway — silently measuring the image's preinstalled Node and recording it
+      # as the newest.
       - name: Install newest Node for the engine probe
+        if: always() && !cancelled()
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: latest

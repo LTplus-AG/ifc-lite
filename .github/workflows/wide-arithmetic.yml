@@ -24,8 +24,10 @@
 #      2026-03-25) fixed it; wasm-bindgen >=0.2.115 is the floor that depends on
 #      it. The bump was taken in its own PR, as this workflow always intended —
 #      a green run here is proof the pin moved, never a workaround for it.
-#   2. Engine-support gate: STILL BLOCKING. No stable engine runs the module.
-#      Measured 2026-07-31 on Node 22 (same V8 a browser ships): a module whose
+#   2. Engine-support gate: STILL BLOCKING. Measured on V8 (Chrome/Edge);
+#      SpiderMonkey and JavaScriptCore were not tested, so treat Firefox/Safari
+#      as unverified rather than assumed.
+#      Measured 2026-07-31 on Node 22, i.e. V8: a module whose
 #      only body is `i64.add128` is rejected outright —
 #      "invalid numeric opcode: 0xfc13" — and `--v8-options` lists no
 #      wide-arithmetic flag whatsoever. An earlier revision of this file assumed
@@ -238,8 +240,10 @@ jobs:
       - name: Tripwire — engine support changed
         if: always() && !cancelled() && (steps.engine_probe.outputs.support == 'default'
           || steps.engine_probe.outputs.support == 'flag')
+        env:
+          ENGINE_SUPPORT: ${{ steps.engine_probe.outputs.support }}
         run: |
-          echo "::error::wide-arithmetic is now ENGINE-SUPPORTED on this runner (${{ steps.engine_probe.outputs.support }}) — this lane is red on purpose."
+          echo "::error::wide-arithmetic is now ENGINE-SUPPORTED on this runner (${ENGINE_SUPPORT}) — this lane is red on purpose."
           echo ""
           echo "This is the signal the tripwire exists to give, not a regression."
           echo "Next steps: confirm the determinism step above passed, then re-evaluate"

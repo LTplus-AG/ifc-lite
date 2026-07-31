@@ -109,15 +109,18 @@ experimental flag, so on the day wide-arithmetic lands the hard-coded flag would
 still be `bad option` and the lane would stay red exactly when it should turn
 actionable.
 
-Measured directly instead, on Node 22 (the same V8 a browser ships), with a
+Measured directly instead, on Node 22 — i.e. **V8**, so this speaks for
+Chrome/Edge and says nothing about SpiderMonkey or JavaScriptCore — with a
 47-byte module whose only body is `i64.add128`:
 
 - `WebAssembly.validate` -> `false`; compiling it throws
   `invalid numeric opcode: 0xfc13`,
 - `node --v8-options` lists **no** wide-arithmetic flag of any name.
 
-So blocker 2 is real and unambiguous, just not for the reason previously
-recorded: V8 does not implement the opcodes here, staged or otherwise. The
+So blocker 2 is real and unambiguous on V8, just not for the reason previously
+recorded: V8 does not implement the opcodes here, staged or otherwise. Firefox
+and Safari were not measured; the flip-the-flag checklist below still requires
+confirming each shipping engine on its own rather than inferring parity. The
 workflow now probes the engine at runtime rather than assuming a flag, and
 treats blocked-on-engine as the expected, GREEN state — a permanently red lane
 is one nobody reads, which is how the bogus flag survived in the first place.
@@ -300,11 +303,14 @@ regression:
    wide-arithmetic and the emitted bytes diverged from the pinned wasm32
    manifest. This is a real determinism regression and blocks flipping
    `BUILD_WIDE` on.
-2. **Expected blocker** — a walrus/parse error (blocker 1). Status quo, not a
-   regression; the lane exists to watch it flip. Blocker 2 no longer shows up
-   as a failure at all: the probe step detects it and records it in the step
-   summary while the job stays green, so the lane is quiet until something
-   actually changes. A validate/instantiate/invalid-opcode error reaching the
+2. **Build regression** — a walrus/parse error. This used to be the status quo
+   (blocker 1) but is not any more: since the `=0.2.126` pin the toolchain can
+   parse a wide-arithmetic code section, so a parse failure now means the pin
+   regressed or a wasm-bindgen release lost that support. It keeps `BUILD_WIDE`
+   blocked and needs fixing, it is not something to wait out. Blocker 2, by
+   contrast, no longer shows up as a failure at all: the probe step detects it
+   and records it in the step summary while the job stays green, so the lane is
+   quiet until something actually changes. A validate/instantiate/invalid-opcode error reaching the
    determinism step would mean the probe and the real module disagree — suspect
    the probe, not the kernel.
 3. **Unclassified** — anything else: compilation errors unrelated to walrus,

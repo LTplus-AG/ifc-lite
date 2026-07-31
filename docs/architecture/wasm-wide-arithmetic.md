@@ -306,11 +306,16 @@ says which gate tripped:
    (`wasm-pack test --node rust/wasm-bindings --test mesh_determinism` against
    the pinned `rust/processing/tests/manifests/mesh_determinism.wasm32.json`),
    compiled with the same wide-arithmetic RUSTFLAGS. It runs **only** when the
-   probe step reports the engine can execute every wide op the bundle emits —
-   otherwise it would measure engine support, not determinism. When the probe does find support
-   behind a flag, that flag is passed via `NODE_ARGS` (a direct node argv — V8
-   flags are rejected inside `NODE_OPTIONS`, where Node refuses to start at
-   all); when the feature is on by default, `NODE_ARGS` is empty. Treat a green
+   probe step reports the engine *accepts* every wide op the bundle emits —
+   `WebAssembly.validate()` validates, it does not execute, so the probe is a
+   validation check and this determinism step is the execution check. Without
+   that gate it would measure engine support rather than determinism. When the probe does find support
+   behind a flag, that flag is passed via `NODE_ARGS` (a direct node argv:
+   `NODE_OPTIONS` only honours an allowlisted subset of Node/V8 options and
+   Node refuses to start when given one outside it, whereas arguments passed
+   directly on the command line bypass that allowlist); when the feature is on
+   by default — which is what the lane's `node-version: latest` probe would
+   report first — `NODE_ARGS` is empty. Treat a green
    run here as an **experimental compatibility signal**: it says some V8
    accepts and correctly executes the module, which is an early proxy for
    **blocker 2**, not evidence that any browser ships the feature. Default availability in Chrome, Firefox, Safari and Edge is gated

@@ -55,18 +55,19 @@ ThatOpen wins today.
 - At the kernel level there is no blocker: the win is real today on a plain
   `cdylib` (the benches above).
 
-## Delivery status: blocked upstream (verified 2026-06-27)
+## Delivery status: blocker 1 CLEARED, blocker 2 still blocks (updated 2026-07-31)
 
-Shipping it to browser users is blocked on TWO upstream items, both confirmed here:
+Shipping it to browser users was blocked on TWO upstream items. Blocker 1 is now
+cleared; blocker 2 still gates shipping.
 
-1. **wasm-bindgen cannot process a wide-arithmetic module.** The production wasm
-   goes through `wasm-bindgen` (pinned `=0.2.126` since the bump below; `=0.2.106`
-   when this was written) for the `IfcAPI` glue. Building
-   `pkg-wide` fails in the bindgen step: `failed to parse code section: wide
-   arithmetic support is not enabled` — its `walrus` parser rejects the new
-   opcodes. We cannot build the production bundle until a wasm-bindgen / `walrus`
-   release enables wide-arith parsing. (The benches sidestep this: plain
-   `cdylib`, no bindgen — which is why they build and run.)
+1. **~~wasm-bindgen cannot process a wide-arithmetic module.~~ CLEARED
+   2026-07-31.** The production wasm goes through `wasm-bindgen` for the `IfcAPI`
+   glue. At `=0.2.106` (the pin when this was written) building `pkg-wide` failed
+   in the bindgen step — `failed to parse code section: wide arithmetic support is
+   not enabled`, its `walrus` parser rejecting the new opcodes. The pin is now
+   `=0.2.126` and `pkg-wide` builds; see the bump note below. (The benches always
+   sidestepped this: plain `cdylib`, no bindgen — which is why they built and ran
+   throughout.)
 2. **No shipping browser engine supports it yet.** Node 22's V8 rejects the
    module (`WebAssembly.validate()` -> false, "invalid numeric opcode 0xfc13");
    stable Chrome/Safari are not expected to differ today.
@@ -277,10 +278,10 @@ regression:
 
 **Flip-the-flag shipping checklist**, once this workflow is green end to end:
 
-- [ ] Blocker 1 cleared: `rust/wasm-bindings/Cargo.toml`'s `wasm-bindgen` pin
-      bumped past a walrus-0.26+ release (its own reviewed PR — check
-      `wasm-bindgen-futures` / `wasm-bindgen-test` / `js-sys` / `web-sys`
-      companion pins move in lockstep).
+- [x] Blocker 1 cleared (2026-07-31): `rust/wasm-bindings/Cargo.toml`'s
+      `wasm-bindgen` pin bumped to `=0.2.126`, past the walrus-0.26 release, in
+      its own reviewed PR, with `wasm-bindgen-futures` / `wasm-bindgen-test` /
+      `js-sys` / `web-sys` moved in lockstep as required.
 - [ ] Blocker 2 cleared: `WebAssembly.validate()` of the 40-byte probe in
       `packages/geometry/src/wasm-features.ts` (see the Delivery plan above)
       returns `true` on a genuinely shipping (non-flagged) release of at

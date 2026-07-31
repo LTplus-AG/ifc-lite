@@ -265,9 +265,15 @@ jobs:
           # historically exposed a proposal through it before giving it a
           # dedicated flag. Without it the early-warning lane would report
           # "unsupported" through exactly the rollout phase it exists to catch.
-          candidates=$(printf '%s\n' "$v8opts" \
-                       | grep -oE -- '--experimental-wasm-[a-z0-9-]+' | sort -u || true)
-          if printf '%s\n' "$v8opts" | grep -qE -- '--wasm-staging(\s|$|\))'; then
+          # Here-strings, not pipes. `--v8-options` is ~108 KB, and `grep -q`
+          # exits on first match, so a pipe leaves the producer writing into a
+          # closed pipe: harmless under plain `bash -e` (the pipeline takes
+          # grep's status) but SIGPIPE=141 under `-o pipefail`, which is what
+          # GitHub's `shell: bash` means. That would silently stop probing
+          # staging — blind in exactly the rollout this lane watches for — from
+          # nothing more than someone adding a `defaults: run: shell: bash`.
+          candidates=$(grep -oE -- '--experimental-wasm-[a-z0-9-]+' <<<"$v8opts" | sort -u || true)
+          if grep -qE -- '--wasm-staging(\s|$|\))' <<<"$v8opts"; then
             candidates=$(printf '%s\n%s' '--wasm-staging' "$candidates")
           fi
 

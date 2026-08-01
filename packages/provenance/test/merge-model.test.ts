@@ -11,7 +11,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import type { GeometryMeshPayload, PropertySetPayload } from '../src/node-hash.js';
+import { computeNodeHash, type GeometryMeshPayload, type PropertySetPayload } from '../src/node-hash.js';
 import { conflictPredicate } from '../src/footprint.js';
 import {
   applyOp,
@@ -195,6 +195,85 @@ describe('buildStateDag / hashModelState', () => {
     const bad = baseState();
     (bad.entities.get('element:a') as EntityState).storeyId = 'S9';
     expect(() => buildStateDag(bad)).toThrow(/unknown storey/);
+  });
+
+  it('throws when an entity references an unknown host', () => {
+    const bad = baseState();
+    (bad.entities.get('element:a') as EntityState).hostId = 'element:ghost';
+    expect(() => buildStateDag(bad)).toThrow(/unknown host/);
+  });
+});
+
+/**
+ * Regression guards for the three producer bindings the DAG must commit to.
+ * Each of these passes ONLY because `buildStateDag` emits both EXPRESS roles
+ * of `IfcRelContainedInSpatialStructure` and a real `IfcRelVoidsElement` node
+ * per hosted element. Drop either and the model changes while the root hash
+ * does not -- which is exactly a second preimage a certificate would accept.
+ */
+describe('the root hash binds the model relationships, not just its contents', () => {
+  /** Re-parent an element with ORDINARY ops (no bespoke move op exists in
+   *  this vocabulary): drop it, re-add it under a different storey. */
+  function reparent(state: ModelState, tag: string, storeyId: string, origin: readonly [number, number, number]): ModelState {
+    return applyOps(state, [
+      { opId: `rm-${tag}`, type: 'entity-remove', entityNodeId: `element:${tag}` },
+      { opId: `add-${tag}`, type: 'entity-add', entity: { ...addInit(tag, storeyId, origin), ifcType: 'IfcWall' } },
+    ]);
+  }
+
+  it('moving one element from S0 to S1 changes the root', async () => {
+    // Built with the SAME EntityInit the move re-adds, so the only difference
+    // between the two states is the storey -- nothing else can move the root.
+    const empty: ModelState = { storeyIds: ['S0', 'S1'], entities: new Map() };
+    const base = applyOp(empty, {
+      opId: 'add-a',
+      type: 'entity-add',
+      entity: { ...addInit('a', 'S0', [0, 0, 0]), ifcType: 'IfcWall' },
+    });
+    const moved = reparent(base, 'a', 'S1', [0, 0, 0]);
+
+    // The states genuinely differ (the convergence oracle says so)...
+    expect(canonicalStateBytes(moved)).not.toBe(canonicalStateBytes(base));
+    // ...so the Merkle commitment must differ too. Without RelatingStructure
+    // the two storey nodes merely SWAP hashes and the root layer, which sorts
+    // its children, is byte-identical.
+    expect(await hashModelState(moved)).not.toBe(await hashModelState(base));
+  });
+
+  it('two elements swapping storeys changes the root', async () => {
+    const base: ModelState = {
+      storeyIds: ['S0', 'S1'],
+      entities: new Map([
+        ['element:a', entity('a', 'S0', [0, 0, 0])],
+        ['element:b', entity('b', 'S1', [50, 50, 3])],
+      ]),
+    };
+    const swapped: ModelState = {
+      storeyIds: ['S0', 'S1'],
+      entities: new Map([
+        ['element:a', entity('a', 'S1', [0, 0, 0])],
+        ['element:b', entity('b', 'S0', [50, 50, 3])],
+      ]),
+    };
+    expect(canonicalStateBytes(swapped)).not.toBe(canonicalStateBytes(base));
+    expect(await hashModelState(swapped)).not.toBe(await hashModelState(base));
+  });
+
+  it('the storey containment node carries BOTH EXPRESS roles', async () => {
+    const dag = buildStateDag(baseState());
+    expect(dag.getKind('storey:S0')).toBe('element'); // the storey itself is a node
+    await dag.build();
+    // Pin the payload by re-deriving the node hash from it: RelatingStructure
+    // (singular in IFC -- exactly one ref, the storey node) plus
+    // RelatedElements. Any other role set produces a different hash.
+    const expected = await computeNodeHash('relationship', {
+      relType: 'IfcRelContainedInSpatialStructure',
+      roles: [
+        { roleName: 'RelatingStructure', refs: [dag.getHash('storey:S0') as string] },
+        { roleName: 'RelatedElements', refs: [dag.getHash('element:a') as string] },
+      ],
+    });
+    expect(dag.getHash('storey-rel:S0')).toBe(expected);
   });
 });
 

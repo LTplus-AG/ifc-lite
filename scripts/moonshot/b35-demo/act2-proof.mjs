@@ -65,6 +65,26 @@ function psetPayloadsFor(store, expressId) {
   return payloads;
 }
 
+/**
+ * One storey's `IfcRelContainedInSpatialStructure` payload with BOTH EXPRESS
+ * roles (node-hash-v0 spec section 3.2.1, golden vector rel-contained-many):
+ * `RelatingStructure` (the storey's own `element` node hash) and
+ * `RelatedElements`. With only `RelatedElements` a storey node is a bare
+ * set-of-children hash, so two storeys that swap their elements swap their
+ * node hashes and the root `layer` -- which sorts its children -- comes out
+ * unchanged: re-parenting an element between levels would not move the root.
+ */
+function storeyRelPayload(dagHashes, storey) {
+  const refs = storey.elementIds.map((id) => dagHashes.get(`element:${id}`)).filter((h) => h !== undefined);
+  return {
+    relType: 'IfcRelContainedInSpatialStructure',
+    roles: [
+      { roleName: 'RelatingStructure', refs: [dagHashes.get(`storey-entity:${storey.expressId}`)] },
+      { roleName: 'RelatedElements', refs },
+    ],
+  };
+}
+
 /** g0's buildDag, on a parsed world-gym store (see module doc). */
 export async function buildDag(store) {
   const dagNodes = new Map();
@@ -74,6 +94,7 @@ export async function buildDag(store) {
     .map((s) => ({
       expressId: s.expressId,
       name: store.entities.getName(s.expressId) || `Storey #${s.expressId}`,
+      globalId: store.entities.getGlobalId(s.expressId) || String(s.expressId),
       elementIds: store.relationships.getRelated(s.expressId, RelationshipType.ContainsElements, 'forward'),
     }))
     .sort((a, b) => a.expressId - b.expressId);
@@ -113,8 +134,13 @@ export async function buildDag(store) {
   }
 
   for (const storey of storeys) {
-    const refs = storey.elementIds.map((id) => dagHashes.get(`element:${id}`)).filter((h) => h !== undefined);
-    const payload = { relType: 'IfcRelContainedInSpatialStructure', roles: [{ roleName: 'RelatedElements', refs }] };
+    const storeyNodeId = `storey-entity:${storey.expressId}`;
+    const storeyPayload = { key: storey.globalId, ifcType: 'IfcBuildingStorey', components: [] };
+    const storeyHash = await computeNodeHash('element', storeyPayload);
+    dagNodes.set(storeyNodeId, { kind: 'element', payload: storeyPayload });
+    dagHashes.set(storeyNodeId, storeyHash);
+
+    const payload = storeyRelPayload(dagHashes, storey);
     const hash = await computeNodeHash('relationship', payload);
     dagNodes.set(`storey:${storey.expressId}`, { kind: 'relationship', payload });
     dagHashes.set(`storey:${storey.expressId}`, hash);
@@ -167,8 +193,7 @@ async function mutateAndCascade(dag, expressId, propName, newValue, { skipRoot =
 
   if (!skipStorey) {
     const storey = dag.storeys.find((s) => s.expressId === meta.storeyId);
-    const refs = storey.elementIds.map((id) => dag.dagHashes.get(`element:${id}`)).filter((h) => h !== undefined);
-    const storeyPayload = { relType: 'IfcRelContainedInSpatialStructure', roles: [{ roleName: 'RelatedElements', refs }] };
+    const storeyPayload = storeyRelPayload(dag.dagHashes, storey);
     const storeyHash = await computeNodeHash('relationship', storeyPayload);
     dag.dagNodes.set(`storey:${meta.storeyId}`, { kind: 'relationship', payload: storeyPayload });
     dag.dagHashes.set(`storey:${meta.storeyId}`, storeyHash);

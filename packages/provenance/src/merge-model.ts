@@ -100,13 +100,23 @@
  * B4.2 headline to switching them is measured and published rather than
  * argued. See `merge-battery.ts`'s `runDerivedCutSensitivity`.
  *
- * Wire format: nothing here changes node-hash-v0 serialization. Hosting lives
- * in the model state and in {@link canonicalStateBytes}; the cut is recorded
- * inside the existing `GeometryMeshPayload` vertex arrays, so the frozen
- * `geometry-mesh` encoding hashes it unchanged (a different cut is a
- * different mesh, which is correct). A v1 spec would model hosting as its own
- * `IfcRelVoidsElement` `relationship` node; that is a spec question, not a
- * change this module is allowed to make.
+ * Wire format: nothing here changes node-hash-v0 serialization. The cut is
+ * recorded inside the existing `GeometryMeshPayload` vertex arrays, so the
+ * frozen `geometry-mesh` encoding hashes it unchanged (a different cut is a
+ * different mesh, which is correct).
+ *
+ * Hosting lives in the model state, in {@link canonicalStateBytes}, AND in
+ * the DAG: {@link buildStateDag} emits one `IfcRelVoidsElement`
+ * `relationship` node per hosted element, carrying both of that
+ * relationship's singular EXPRESS roles. An earlier draft of this module
+ * deferred that to "a v1 spec question"; it is not one. node-hash-v0 already
+ * has a `relationship` kind, the frozen golden vector `rel-voids` already
+ * pins this exact two-role shape, and the spec names both roles -- so
+ * omitting the node was a PRODUCER bug, not a format limitation. Leaving it
+ * out meant `hostId` moved `canonicalStateBytes` but not the Merkle root, so
+ * two genuinely different buildings (same opening, different host) committed
+ * to the same root and a commutation certificate issued over one verified
+ * against the other.
  */
 
 import { ProvenanceDag, type AnyNodeSpec } from './dag-engine.js';
@@ -712,19 +722,61 @@ export function canonicalStateBytes(state: ModelState): string {
 /* DAG construction and Merkle root                                      */
 /* ------------------------------------------------------------------ */
 
-function storeyNodeId(storeyId: string): string {
+function storeyRelNodeId(storeyId: string): string {
   return `storey-rel:${storeyId}`;
+}
+
+/** The storey ITSELF as a DAG node (an `IfcBuildingStorey` is an ordinary IFC
+ *  product), so the containment relationship's `RelatingStructure` role has a
+ *  real child hash to reference. Without it the relationship node commits to
+ *  the elements it contains but not to WHICH storey contains them, and the
+ *  root layer -- which sorts its children -- cannot tell "move e from L0 to
+ *  L1" apart from "do nothing". */
+function storeyEntityNodeId(storeyId: string): string {
+  return `storey:${storeyId}`;
+}
+
+/** One `IfcRelVoidsElement` node per hosted entity. Both of that
+ *  relationship's IFC roles are SINGULAR, so one node per opening is exactly
+ *  the IFC cardinality. */
+function voidsRelNodeId(openingEntityId: string): string {
+  return `voids-rel:${openingEntityId}`;
 }
 
 export const MERGE_MODEL_ROOT_NODE_ID = 'root';
 
 /**
  * Build the (unhashed) node-hash-v0 DAG for a state: mesh/pset leaves ->
- * element nodes -> one `relationship` node per storey -> one root `layer`
- * node. Same shape and kinds as g1/g2 and the fixed test fixture, so
- * footprint.ts's container-kind crux rule applies unchanged. Call
- * `await dag.build()` to hash it; structure-only uses (footprints) don't
- * need to.
+ * element nodes -> one `relationship` node per storey (plus one
+ * `IfcRelVoidsElement` node per hosted element) -> one root `layer` node.
+ * Same shape and kinds as g1/g2 and the fixed test fixture, so footprint.ts's
+ * container-kind crux rule applies unchanged. Call `await dag.build()` to
+ * hash it; structure-only uses (footprints) don't need to.
+ *
+ * Two bindings this DAG commits to that a naive fan-in would drop:
+ *
+ * - **Which storey.** Each containment relationship carries BOTH of
+ *   `IfcRelContainedInSpatialStructure`'s EXPRESS roles (spec §3.2.1, golden
+ *   vector `rel-contained-many`): `RelatingStructure` (the storey's own node
+ *   hash) and `RelatedElements`. Emitting only `RelatedElements` makes every
+ *   storey node a bare set-of-children hash, so two storeys that swap their
+ *   contents swap their node hashes -- and the root `layer`, which sorts its
+ *   children, comes out IDENTICAL even though the model genuinely changed.
+ * - **Which host.** {@link EntityState.hostId} becomes a real
+ *   `IfcRelVoidsElement` node (both roles singular, per the schema), hung off
+ *   the root layer. Without it, "this opening is cut into wall A" and "into
+ *   wall B" -- two different, both spatially valid buildings -- hash to the
+ *   same root. Under LAZY cut semantics that is a genuine second preimage:
+ *   the host meshes are identical, so nothing else in the DAG separates them.
+ *   (Under DERIVED semantics the re-cut host mesh usually separates them
+ *   anyway, but "usually" is not a commitment, and the cut-semantics knob is
+ *   configurable per {@link MergeSemantics}.)
+ *
+ * Both additions are content, not format: the node kinds, role names and
+ * encodings are exactly the ones node-hash-v0 already froze, and the
+ * `rel-voids` / `rel-contained-many` golden vectors already pin both shapes.
+ * This is a producer fix, NOT the v0 -> v1 spec change an earlier draft of
+ * this module assumed it would need.
  */
 export function buildStateDag(state: ModelState): ProvenanceDag {
   const dag = new ProvenanceDag();
@@ -765,27 +817,67 @@ export function buildStateDag(state: ModelState): ProvenanceDag {
     });
   }
 
-  for (const storeyId of state.storeyIds) {
-    const elementIds = elementsByStorey.get(storeyId) as string[];
+  // One IfcRelVoidsElement per hosted entity, both roles singular per the
+  // schema. Hung off the root layer: the opening's own element node cannot
+  // carry it as a component (the relationship references that very node, and
+  // the DAG is acyclic), and the host's cannot either without inverting the
+  // same edge.
+  const voidsRelNodeIds: string[] = [];
+  for (const entityId of entityIds) {
+    const entity = state.entities.get(entityId) as EntityState;
+    if (entity.hostId === undefined) continue;
+    if (!state.entities.has(entity.hostId)) {
+      throw new Error(
+        `@ifc-lite/provenance: buildStateDag: entity "${entityId}" references unknown host "${entity.hostId}"`,
+      );
+    }
+    const nodeId = voidsRelNodeId(entityId);
+    const hostId = entity.hostId;
+    voidsRelNodeIds.push(nodeId);
     specs.push({
-      id: storeyNodeId(storeyId),
+      id: nodeId,
       kind: 'relationship',
-      children: elementIds,
+      children: [hostId, entityId],
       buildPayload: (h): RelationshipPayload => ({
-        relType: 'IfcRelContainedInSpatialStructure',
-        roles: [{ roleName: 'RelatedElements', refs: elementIds.map((id) => h.get(id) as string) }],
+        relType: 'IfcRelVoidsElement',
+        roles: [
+          { roleName: 'RelatingBuildingElement', refs: [h.get(hostId) as string] },
+          { roleName: 'RelatedOpeningElement', refs: [h.get(entityId) as string] },
+        ],
       }),
     });
   }
 
-  const storeyNodeIds = state.storeyIds.map(storeyNodeId);
+  for (const storeyId of state.storeyIds) {
+    const elementIds = elementsByStorey.get(storeyId) as string[];
+    const storeyNode = storeyEntityNodeId(storeyId);
+    specs.push({
+      id: storeyNode,
+      kind: 'element',
+      payload: { key: storeyId, ifcType: 'IfcBuildingStorey', components: [] },
+    });
+    specs.push({
+      id: storeyRelNodeId(storeyId),
+      kind: 'relationship',
+      children: [storeyNode, ...elementIds],
+      buildPayload: (h): RelationshipPayload => ({
+        relType: 'IfcRelContainedInSpatialStructure',
+        roles: [
+          { roleName: 'RelatingStructure', refs: [h.get(storeyNode) as string] },
+          { roleName: 'RelatedElements', refs: elementIds.map((id) => h.get(id) as string) },
+        ],
+      }),
+    });
+  }
+
+  const rootChildIds = [...state.storeyIds.map(storeyRelNodeId), ...voidsRelNodeIds];
   specs.push({
     id: MERGE_MODEL_ROOT_NODE_ID,
     kind: 'layer',
-    children: storeyNodeIds,
+    children: rootChildIds,
     buildPayload: (h): LayerPayload => ({
       layerId: 'blake3:merge-model-v0-root',
-      childHashes: storeyNodeIds.map((id) => h.get(id) as string),
+      childHashes: rootChildIds.map((id) => h.get(id) as string),
     }),
   });
 

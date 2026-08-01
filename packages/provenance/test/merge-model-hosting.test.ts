@@ -26,7 +26,7 @@ import {
   createCommutationCertificate,
   verifyCommutationCertificate,
 } from '../src/commutation.js';
-import type { GeometryMeshPayload } from '../src/node-hash.js';
+import { computeNodeHash, type GeometryMeshPayload } from '../src/node-hash.js';
 import {
   applyOp,
   buildStateDag,
@@ -453,13 +453,19 @@ describe('the ablation, at unit scale (G4 review item 6)', () => {
   });
 });
 
-describe('wire format: node-hash-v0 is untouched', () => {
-  it('hosting is NOT part of any node payload, so it cannot perturb a node hash', async () => {
-    // node-hash-v0 is frozen at 1.0.0 with golden vectors (PR #1886); B4.2 is
-    // allowed to change the OP MODEL, never the serialization. `hostId` lives
-    // in the model state and in the convergence oracle only -- a v1 spec would
-    // model it as an `IfcRelVoidsElement` relationship node, which is a spec
-    // question, not a change this package may make unilaterally.
+describe('wire format: node-hash-v0 is untouched, but the DAG binds hosting', () => {
+  it('hosting DOES move the root, via an IfcRelVoidsElement node in the frozen vocabulary', async () => {
+    // node-hash-v0 is frozen at 1.0.0 with golden vectors (PR #1886), and this
+    // change does not touch the serialization: `relationship` is an existing
+    // node kind, `RelatingBuildingElement`/`RelatedOpeningElement` are the
+    // schema's own singular role names, and the frozen golden vector
+    // `rel-voids` already pins this exact two-role shape. Emitting the node is
+    // therefore a PRODUCER obligation, not the v1 spec change an earlier draft
+    // of this file assumed. Leaving it out was a real defect: `hostId` moved
+    // canonicalStateBytes but not the Merkle root, so two genuinely different
+    // buildings committed to the same root -- and because commutation
+    // certificates bind to the base only through that root, a certificate
+    // issued over one verified `ok: true` against the other.
     const withHost = hostedState();
     const withoutHost: ModelState = {
       storeyIds: ['S0'],
@@ -468,9 +474,58 @@ describe('wire format: node-hash-v0 is untouched', () => {
         [VOID_ID, entity('void', 'IfcOpeningElement', tri(2, [0.4, 0.4, 0], 0.2))],
       ]),
     };
-    expect(await hashModelState(withHost)).toBe(await hashModelState(withoutHost));
-    // ...but the logical states differ, and the convergence oracle says so.
+    // The logical states differ -- the convergence oracle says so...
     expect(canonicalStateBytes(withHost)).not.toBe(canonicalStateBytes(withoutHost));
+    // ...and now the Merkle commitment says so too.
+    expect(await hashModelState(withHost)).not.toBe(await hashModelState(withoutHost));
+
+    // The node itself: one per hosted element, both roles singular.
+    const dag = buildStateDag(withHost);
+    expect(dag.getKind(`voids-rel:${VOID_ID}`)).toBe('relationship');
+    await dag.build();
+    const expected = await computeNodeHash('relationship', {
+      relType: 'IfcRelVoidsElement',
+      roles: [
+        { roleName: 'RelatingBuildingElement', refs: [dag.getHash(HOST_ID) as string] },
+        { roleName: 'RelatedOpeningElement', refs: [dag.getHash(VOID_ID) as string] },
+      ],
+    });
+    expect(dag.getHash(`voids-rel:${VOID_ID}`)).toBe(expected);
+  });
+
+  it('re-hosting one opening between two coincident walls moves the root', async () => {
+    // The reachable second preimage the G4 review constructed. Both walls are
+    // legal hosts for the same opening, both states are spatially valid, and
+    // under LAZY cut semantics the host meshes are byte-identical -- so the
+    // IfcRelVoidsElement node is the ONLY thing separating them.
+    const twoWalls = (host: string): ModelState => ({
+      storeyIds: ['S0'],
+      entities: new Map([
+        ['element:wallA', entity('wallA', 'IfcWall', tri(1, [0, 0, 0], 1))],
+        ['element:wallB', entity('wallB', 'IfcWall', tri(2, [0, 0, 0], 1))],
+        [VOID_ID, entity('void', 'IfcOpeningElement', tri(3, [0.4, 0.4, 0], 0.2), host)],
+      ]),
+    });
+    const inA = twoWalls('element:wallA');
+    const inB = twoWalls('element:wallB');
+    expect(canonicalStateBytes(inA)).not.toBe(canonicalStateBytes(inB));
+    expect(await hashModelState(inA)).not.toBe(await hashModelState(inB));
+
+    // ...and a certificate issued over one is REFUSED against the other.
+    const edit: MergeOp = {
+      opId: 'a0',
+      type: 'attr-set',
+      psetNodeId: 'pset:wallA',
+      property: 'FireRating',
+      value: 'EI60',
+    };
+    const outcome = await createCommutationCertificate({ base: inA, opsA: [edit], opsB: [] });
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    const cross = await verifyCommutationCertificate(outcome.certificate, inB, [edit], []);
+    expect(cross.ok).toBe(false);
+    if (!cross.ok) expect(cross.reason).toBe('base-root-mismatch');
+    expect(await verifyCommutationCertificate(outcome.certificate, inA, [edit], [])).toEqual({ ok: true });
   });
 
   it('a re-cut DOES change the host mesh hash, through the existing geometry-mesh encoding', async () => {

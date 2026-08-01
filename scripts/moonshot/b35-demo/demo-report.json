@@ -49,12 +49,12 @@
       "act2": {
         "status": "ok",
         "data": {
-          "totalNodes": 56,
+          "totalNodes": 57,
           "elements": 27,
           "psetLeaves": 27,
           "storeys": 1,
-          "rootHashBefore": "sha256:771cb465932d61e5607a251de8af33a35e721a4eac442787f9974ede79105f0d",
-          "rootHashAfter": "sha256:aa00d60d3f10503c221f09d61b141577fdfac1b8cf012de9ecc7df7f4b170012",
+          "rootHashBefore": "sha256:3abc104a6b505c5c7574c8a032e91b9de2af528eeb69f29b78ad703bda0f41cc",
+          "rootHashAfter": "sha256:a4cfcd2b860dc7db4f7afef0234f43d92e2d5d5e7c3038703b9e3f00c84c5dff",
           "edit": {
             "expressId": 58,
             "ifcType": "IfcWall",
@@ -68,7 +68,7 @@
           "untouchedClaimRefs": 26,
           "secondProcessVerifyOk": true,
           "nodesResolved": 30,
-          "nodesResolvedPct": 53.5714,
+          "nodesResolvedPct": 52.6316,
           "tamper": {
             "expressId": 41,
             "ifcType": "IfcSlab",
@@ -199,9 +199,9 @@
         "status": "ok",
         "data": {
           "baseEntities": 27,
-          "baseRootHash": "sha256:1d335793b20bc580ce16ba7eafbb3a0a9c48b0786a9e0444cff42eba58c52ebc",
-          "mergedRootHash": "sha256:bff4e3213591febc02e084fdbaf4cc84fadd4ae5382748535d685247bb9cf4ed",
-          "certificateBaseRootHash": "sha256:1d335793b20bc580ce16ba7eafbb3a0a9c48b0786a9e0444cff42eba58c52ebc",
+          "baseRootHash": "sha256:19b941358ddb17af4f6198f5be7c079393c8faf470e7a8958819eae645423d62",
+          "mergedRootHash": "sha256:17e853b04fd84c40368fba45eec0243f8ad98a94f0e26f476cc9ccf004f45059",
+          "certificateBaseRootHash": "sha256:19b941358ddb17af4f6198f5be7c079393c8faf470e7a8958819eae645423d62",
           "autoMerge": {
             "clients": [
               "alice",
@@ -391,23 +391,23 @@
   },
   "volatile": {
     "note": "ONLY this block differs between runs: wall clocks and the timestamp. Everything under `deterministic` is a pure function of the master seed.",
-    "generatedAt": "2026-07-29T17:44:18.805Z",
+    "generatedAt": "2026-08-01T05:51:47.272Z",
     "nodeVersion": "v22.14.0",
-    "totalWallClockMs": 7499,
+    "totalWallClockMs": 6856,
     "actWallClockMs": {
-      "act1": 35,
-      "act2": 67,
-      "act3": 281,
-      "act4": 2401,
-      "act5": 4715
+      "act1": 31,
+      "act2": 59,
+      "act3": 267,
+      "act4": 2646,
+      "act5": 3854
     },
     "actVolatile": {
       "act2": {
-        "verifyMs": 3.029,
-        "tamperVerifyMs": 2.341
+        "verifyMs": 2.961,
+        "tamperVerifyMs": 2.201
       },
       "act4": {
-        "batteryElapsedMs": 2391.59325
+        "batteryElapsedMs": 2633.724375
       }
     },
     "artifactDir": "/var/folders/n2/jkb39p_x4md9jdv5hhzny6jc0000gn/T/ifc-lite-b35-demo"

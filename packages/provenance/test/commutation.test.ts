@@ -230,3 +230,48 @@ describe('verifyCommutationCertificate', () => {
     expect(unchecked).toEqual({ ok: true });
   });
 });
+
+/**
+ * A certificate's only tie to the model it was issued for is `baseRootHash`,
+ * so that root has to separate models that genuinely differ. These are the
+ * end-to-end guards for that: a certificate issued over base B1 must be
+ * REFUSED against a base B2 that differs only in a relationship -- which is
+ * exactly the case a root that ignores storey/host bindings cannot see.
+ */
+describe('a certificate binds to the base it was issued for', () => {
+  async function issueOver(base: ModelState) {
+    const outcome = await createCommutationCertificate({ base, opsA: [editA], opsB: [editB] });
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) throw new Error(`expected a certificate, got ${outcome.reason}`);
+    return outcome.certificate;
+  }
+
+  async function expectRefused(certificate: CommutationCertificate, other: ModelState, self: ModelState) {
+    // The two bases are genuinely different models.
+    expect(canonicalStateBytes(other)).not.toBe(canonicalStateBytes(self));
+    const cross = await verifyCommutationCertificate(certificate, other, [editA], [editB]);
+    expect(cross.ok).toBe(false);
+    if (!cross.ok) expect(cross.reason).toBe('base-root-mismatch');
+    // Control: it still verifies against its own base.
+    expect(await verifyCommutationCertificate(certificate, self, [editA], [editB])).toEqual({ ok: true });
+  }
+
+  it('refuses a certificate issued over B1 against a B2 that differs only by storey containment', async () => {
+    const b1: ModelState = {
+      storeyIds: ['S0', 'S1'],
+      entities: new Map([
+        ['element:a', entity('a', 'S0', [0, 0, 0])],
+        ['element:b', entity('b', 'S1', [50, 50, 0])],
+      ]),
+    };
+    // Same elements, same bytes per element -- the two storeys swapped.
+    const b2: ModelState = {
+      storeyIds: ['S0', 'S1'],
+      entities: new Map([
+        ['element:a', entity('a', 'S1', [0, 0, 0])],
+        ['element:b', entity('b', 'S0', [50, 50, 0])],
+      ]),
+    };
+    await expectRefused(await issueOver(b1), b2, b1);
+  });
+});

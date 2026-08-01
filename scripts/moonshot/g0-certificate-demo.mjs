@@ -19,8 +19,10 @@
  *   2. Build a node-hash-v0 DAG with @ifc-lite/provenance:
  *        element (one per IFC product entity)
  *          -> property-set (one per Pset/Qset-like set the entity carries)
- *        storey (`relationship`, IfcRelContainedInSpatialStructure) groups the
- *          elements a storey directly contains
+ *        storey (`relationship`, IfcRelContainedInSpatialStructure) binds the
+ *          storey's own `element` node (RelatingStructure) to the elements it
+ *          directly contains (RelatedElements) — both EXPRESS roles, so the
+ *          node commits to WHICH storey, not just to a set of children
  *        root (`layer`) groups every storey
  *      This is an allowed use of the v0 node-kind vocabulary (spec 2): the
  *      only kinds available are geometry-mesh / property-set / relationship /
@@ -106,6 +108,29 @@ function mutatedValue(value) {
 /* ------------------------------------------------------------------ */
 
 /**
+ * One storey's `IfcRelContainedInSpatialStructure` payload, carrying BOTH of
+ * that relationship's EXPRESS roles (node-hash-v0 spec §3.2.1, golden vector
+ * `rel-contained-many`): `RelatingStructure` — the storey's OWN node hash —
+ * and `RelatedElements`. Emitting only `RelatedElements` would leave every
+ * storey node a bare set-of-children hash, so two storeys that swap their
+ * elements would swap their node hashes and the root `layer` (which sorts its
+ * children) would come out unchanged: re-parenting an element between levels
+ * would not move the model's root hash at all.
+ */
+function storeyRelPayload(dagHashes, storey) {
+  const refs = storey.elementIds
+    .map((id) => dagHashes.get(`element:${id}`))
+    .filter((h) => h !== undefined);
+  return {
+    relType: 'IfcRelContainedInSpatialStructure',
+    roles: [
+      { roleName: 'RelatingStructure', refs: [dagHashes.get(`storey-entity:${storey.expressId}`)] },
+      { roleName: 'RelatedElements', refs },
+    ],
+  };
+}
+
+/**
  * Build the full node-hash-v0 DAG in one bottom-up pass: property-sets,
  * then elements (folding in their property-set hashes), then per-storey
  * `relationship` nodes (folding in their contained elements' hashes), then
@@ -126,6 +151,7 @@ async function buildDag(store) {
   const storeys = storeyEntities.map((s) => ({
     expressId: s.expressId,
     name: store.entities.getName(s.expressId) || `Storey #${s.expressId}`,
+    globalId: store.entities.getGlobalId(s.expressId) || String(s.expressId),
     elementIds: store.relationships.getRelated(
       s.expressId,
       RelationshipType.ContainsElements,
@@ -177,14 +203,17 @@ async function buildDag(store) {
   }
 
   for (const storey of storeys) {
+    // The storey itself is an ordinary IFC product, so it gets its own
+    // `element` node — that is what the containment relationship's
+    // RelatingStructure role references (see storeyRelPayload).
+    const storeyNodeId = `storey-entity:${storey.expressId}`;
+    const storeyPayload = { key: storey.globalId, ifcType: 'IfcBuildingStorey', components: [] };
+    const storeyHash = await computeNodeHash('element', storeyPayload);
+    dagNodes.set(storeyNodeId, { kind: 'element', payload: storeyPayload });
+    dagHashes.set(storeyNodeId, storeyHash);
+
     const nodeId = `storey:${storey.expressId}`;
-    const refs = storey.elementIds
-      .map((id) => dagHashes.get(`element:${id}`))
-      .filter((h) => h !== undefined);
-    const payload = {
-      relType: 'IfcRelContainedInSpatialStructure',
-      roles: [{ roleName: 'RelatedElements', refs }],
-    };
+    const payload = storeyRelPayload(dagHashes, storey);
     const hash = await computeNodeHash('relationship', payload);
     dagNodes.set(nodeId, { kind: 'relationship', payload });
     dagHashes.set(nodeId, hash);
@@ -211,13 +240,7 @@ async function buildDag(store) {
 function propagateStoreyAndRoot(dag, storeyExpressId) {
   const storey = dag.storeys.find((s) => s.expressId === storeyExpressId);
   const storeyNodeId = `storey:${storeyExpressId}`;
-  const refs = storey.elementIds
-    .map((id) => dag.dagHashes.get(`element:${id}`))
-    .filter((h) => h !== undefined);
-  const payload = {
-    relType: 'IfcRelContainedInSpatialStructure',
-    roles: [{ roleName: 'RelatedElements', refs }],
-  };
+  const payload = storeyRelPayload(dag.dagHashes, storey);
   return computeNodeHash('relationship', payload).then((hash) => {
     dag.dagNodes.set(storeyNodeId, { kind: 'relationship', payload });
     dag.dagHashes.set(storeyNodeId, hash);
@@ -322,8 +345,7 @@ async function applySiblingTamper(dag, expressId) {
 
   // Cascade to the storey only (not root) — see docstring.
   const storey = dag.storeys.find((s) => s.expressId === meta.storeyId);
-  const refs = storey.elementIds.map((id) => dag.dagHashes.get(`element:${id}`)).filter((h) => h !== undefined);
-  const payload = { relType: 'IfcRelContainedInSpatialStructure', roles: [{ roleName: 'RelatedElements', refs }] };
+  const payload = storeyRelPayload(dag.dagHashes, storey);
   const hash = await computeNodeHash('relationship', payload);
   dag.dagNodes.set(`storey:${meta.storeyId}`, { kind: 'relationship', payload });
   dag.dagHashes.set(`storey:${meta.storeyId}`, hash);

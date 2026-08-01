@@ -9,7 +9,7 @@ seed: rerun the command and the hashes, scores and counts reproduce exactly.
 | Act | Story | Status | Headline |
 |-----|-------|--------|----------|
 | 1 BIRTH | world-gym births a seeded building; reward channels score it | ok | 548 entities, 5/5 reward channels = 1.0 |
-| 2 PROOF | provenance certificate verified in a second process; tamper refused | ok | verified reading 53.5714% of 56 nodes; tamper caught=true |
+| 2 PROOF | provenance certificate verified in a second process; tamper refused | ok | verified reading 52.6316% of 57 nodes; tamper caught=true |
 | 3 SABOTAGE | planted defects hunted; benchmark oracle scores the detector | ok | spotlight 1/1 caught; macro-F1 0.857143 |
 | 4 CONVERGENCE | certified auto-merge + blocked conflict + property battery | ok | 873/1000 auto-merged, 0 unsound; conflict blocked=true |
 | 5 DESCENT | differentiable carbon descent, kernel-validated optimum | ok | carbon -58.5%, kernel rel dev 1.54e-7 |
@@ -26,15 +26,15 @@ entities, 1 storey(s), 28004 bytes.
 
 ## Act 2 -- PROOF (M1 proof-carrying edit, the G0 story on a fresh model)
 
-The parsed building becomes a 56-node node-hash-v0 DAG
+The parsed building becomes a 57-node node-hash-v0 DAG
 (27 elements, 27 pset/qset leaves, 1 storeys, 1 root).
 One edit -- IfcWall #58 GrossVolume: 8.136439344000001 -> 9.136439344000001 --
 yields a certificate carrying the changed path, the untouched sibling reads and a
 subtree-untouched claim over 26 untouched sibling element subtree(s).
 
-- root hash before: `sha256:771cb465932d61e5607a251de8af33a35e721a4eac442787f9974ede79105f0d`
-- root hash after:  `sha256:aa00d60d3f10503c221f09d61b141577fdfac1b8cf012de9ecc7df7f4b170012`
-- second-process verification: ok=true, resolving 30/56 nodes (53.5714%)
+- root hash before: `sha256:3abc104a6b505c5c7574c8a032e91b9de2af528eeb69f29b78ad703bda0f41cc`
+- root hash after:  `sha256:a4cfcd2b860dc7db4f7afef0234f43d92e2d5d5e7c3038703b9e3f00c84c5dff`
+- second-process verification: ok=true, resolving 30/57 nodes (52.6316%)
   (single-storey building, so the claim is per sibling element; on multi-storey models the claim
   coarsens to whole storey subtrees and the verifier reads under 5% of the DAG -- the G0 gate shape)
 - tampered copy (silent IfcSlab #41 mutation inside claimed-untouched territory): caught=true, reason: `hash-mismatch`
@@ -59,10 +59,10 @@ official dev-split seeds (17 corrupted; truth regenerated from seeds, no stored 
 ## Act 4 -- CONVERGENCE (M4/B2.1 commutation certificates)
 
 The proven act-1 building (27 entities) becomes the shared base state,
-Merkle root `sha256:1d335793b20bc580ce16ba7eafbb3a0a9c48b0786a9e0444cff42eba58c52ebc`.
+Merkle root `sha256:19b941358ddb17af4f6198f5be7c079393c8faf470e7a8958819eae645423d62`.
 
 - disjoint concurrent edits (alice: wall FireRating, bob: other element Status):
-  certificate issued, both orders replay to merged root `sha256:bff4e3213591febc02e084fdbaf4cc84fadd4ae5382748535d685247bb9cf4ed`;
+  certificate issued, both orders replay to merged root `sha256:17e853b04fd84c40368fba45eec0243f8ad98a94f0e26f476cc9ccf004f45059`;
   independent re-verification: ok=true
 - colliding edits (both write the same wall pset): blocked=true, 1 conflicting cross pair(s) -- no certificate, no silent overwrite
 - property battery (1000 schedules, seed 20260724): 873 auto-merged,
@@ -90,8 +90,8 @@ differentiable building with exact dual-number gradients:
 
 Wall clocks and the timestamp below change run to run; nothing above does.
 
-- generated at: 2026-07-29T17:44:18.805Z (node v22.14.0)
-- total wall clock: 7.5s
-- per act: act1=0.0s, act2=0.1s, act3=0.3s, act4=2.4s, act5=4.7s
+- generated at: 2026-08-01T05:51:47.272Z (node v22.14.0)
+- total wall clock: 6.9s
+- per act: act1=0.0s, act2=0.1s, act3=0.3s, act4=2.6s, act5=3.9s
 - artifacts (outside the repo): /var/folders/n2/jkb39p_x4md9jdv5hhzny6jc0000gn/T/ifc-lite-b35-demo
 

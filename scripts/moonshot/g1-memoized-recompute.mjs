@@ -116,6 +116,7 @@ async function buildDagStructure(store, meshes) {
   const storeyEntities = store.getEntitiesByType('IfcBuildingStorey');
   const storeys = storeyEntities.map((s) => ({
     expressId: s.expressId,
+    globalId: store.entities.getGlobalId(s.expressId) || String(s.expressId),
     elementIds: store.relationships.getRelated(s.expressId, RelationshipType.ContainsElements, 'forward'),
   }));
 
@@ -196,13 +197,30 @@ async function buildDagStructure(store, meshes) {
     }
     for (const storey of storeys) {
       const elementIds = storey.elementIds.filter((id) => elementMeta.has(id)).map((id) => `element:${id}`);
+      // The storey is an ordinary IFC product, so it gets its own `element`
+      // node — the referent of the containment relationship's
+      // RelatingStructure role. Without that role the storey node is a bare
+      // set-of-children hash: two storeys that swap their elements swap their
+      // node hashes, and the root `layer` (which sorts its children) comes out
+      // unchanged, so re-parenting an element between levels would not move
+      // the model root at all. Both EXPRESS roles, per node-hash-v0 spec
+      // section 3.2.1 / golden vector rel-contained-many.
+      const storeyNodeId = `storey-entity:${storey.expressId}`;
+      specs.push({
+        id: storeyNodeId,
+        kind: 'element',
+        payload: { key: storey.globalId, ifcType: 'IfcBuildingStorey', components: [] },
+      });
       specs.push({
         id: `storey:${storey.expressId}`,
         kind: 'relationship',
-        children: elementIds,
+        children: [storeyNodeId, ...elementIds],
         buildPayload: (h) => ({
           relType: 'IfcRelContainedInSpatialStructure',
-          roles: [{ roleName: 'RelatedElements', refs: elementIds.map((id) => h.get(id)) }],
+          roles: [
+            { roleName: 'RelatingStructure', refs: [h.get(storeyNodeId)] },
+            { roleName: 'RelatedElements', refs: elementIds.map((id) => h.get(id)) },
+          ],
         }),
       });
     }

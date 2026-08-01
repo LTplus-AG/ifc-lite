@@ -20,6 +20,12 @@ import {
   Search, Mountain, MapPin, X, Check,
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+// maplibre-gl v5 pulled `@types/geojson` in transitively, which put a global
+// `GeoJSON` namespace in scope. v6 dropped that dependency, so the type is
+// imported explicitly and `@types/geojson` is a direct devDependency.
+import type { Feature } from 'geojson';
+// See `loadMaplibre` below for why the worker URL is threaded in by hand.
+import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo, GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { downloadBlob } from '@/lib/export/download';
@@ -45,6 +51,28 @@ function loadMaplibre() {
       // instead of throwing a bare "Cannot read properties of undefined
       // (reading 'Map')" that the WebGL try/catch misreads as a dead GPU.
       if (!ml) throw new Error('Failed to load the maplibre-gl module');
+      // v6 ships its tile-parsing worker as a SIBLING FILE and resolves it as
+      // `new URL('./maplibre-gl-worker.mjs', import.meta.url)`. Neither end of
+      // our pipeline satisfies that on its own: the dev server rewrites the
+      // module into node_modules/.vite/deps (handled by `optimizeDeps.exclude`
+      // in vite.config.ts), and the production build emits the chunk under
+      // /assets without ever emitting that sibling, because the filename is
+      // computed at runtime and so is invisible to static analysis.
+      //
+      // The failure is silent and looks like data rather than breakage: the
+      // style, sprite and TileJSON are all fetched on the main thread, so the
+      // canvas, the marker and the attribution all appear, and only the vector
+      // tiles never arrive. In the production build the request would have
+      // resolved to the SPA's index.html with a 200, so even a network panel
+      // reads as healthy. v5 inlined the worker as a blob and had no such seam.
+      //
+      // `?worker&url` makes Vite bundle the worker (following its own import of
+      // `maplibre-gl-shared.mjs`) and hand back a real, hashed URL, in dev and
+      // in the build alike. `setWorkerUrl` then keeps MapLibre from ever
+      // computing the sibling path. It must run after the guard above: on the
+      // undefined namespace this call is what would throw first, and it would
+      // throw the wrong thing.
+      ml.setWorkerUrl(maplibreWorkerUrl);
       return ml;
     });
     // A rejected promise stays rejected, so memoising one would make a single
@@ -115,6 +143,20 @@ function disposeMap(map: InstanceType<typeof import('maplibre-gl').Map>) {
   }
 }
 
+/**
+ * Undo what MapLibre's `_setupContainer` did to our div.
+ *
+ * It adds its class and builds the canvas plus control containers BEFORE the
+ * context is requested, so both failure paths (v5 threw, v6 leaves `painter`
+ * undefined) leave that debris behind with `mapRef` never assigned, which puts
+ * it out of reach of the unmount cleanup. Purging before the fallback renders
+ * keeps any frame from showing a dead canvas.
+ */
+function purgeMapContainer(container: HTMLElement) {
+  container.replaceChildren();
+  container.classList.remove('maplibregl-map');
+}
+
 // Debounce helper
 function useDebouncedValue<T>(value: T, delayMs: number): T {
   const [debounced, setDebounced] = useState(value);
@@ -148,7 +190,7 @@ async function geocodeSearch(query: string): Promise<Array<{ lat: number; lon: n
 
 /** Add or update the building footprint GeoJSON polygon on a MapLibre map */
 function addFootprintToMap(map: InstanceType<typeof import('maplibre-gl').Map>, ring: [number, number][]) {
-  const geojson: GeoJSON.Feature = {
+  const geojson: Feature = {
     type: 'Feature',
     properties: {},
     geometry: {
@@ -499,9 +541,32 @@ export function LocationMap({
         // containers to our div. `mapRef` was never assigned, so the unmount
         // cleanup cannot reach them — purge them here, before the fallback
         // renders, so no frame shows a dead canvas.
-        container.replaceChildren();
-        container.classList.remove('maplibregl-map');
+        purgeMapContainer(container);
         degradeMap('map_construction_failed', err);
+        return;
+      }
+
+      // v6 stopped THROWING this failure, so the try/catch above no longer
+      // sees it. `_setupPainter` now asks for `webgl2`, and on refusal fires an
+      // `error` event carrying a `GPUInitializationError` and returns, leaving
+      // `painter` undefined. Two things make that worse than a throw: the event
+      // fires from inside the constructor, before any `map.on('error')` of ours
+      // could be attached, and v6 has no console fallback for an unlistened
+      // error event, so nothing is logged. The map object then looks fine until
+      // the first call that touches the painter throws somewhere unrelated.
+      //
+      // `painter` is on the public class surface, so testing it is a supported
+      // read rather than a reach into internals.
+      if (!map.painter) {
+        // No painter means nothing will ever render, but the constructor still
+        // built the canvas and control containers into our div. Same cleanup as
+        // the throwing path, for the same reason.
+        queueMicrotask(() => disposeMap(map));
+        purgeMapContainer(container);
+        degradeMap(
+          'map_construction_failed',
+          new Error('WebGL2 is required to display this map (no painter after construction)'),
+        );
         return;
       }
 

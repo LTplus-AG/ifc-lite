@@ -46,12 +46,47 @@ const GPU_PROCESS_CONTENTION = JSON.stringify({
 /** MapLibre's other shape: no detail object, so it throws the bare message. */
 const BARE_MESSAGE = 'Failed to initialize WebGL';
 
+/**
+ * maplibre-gl v6's replacement for all of the above.
+ *
+ * v6 no longer throws: `_setupPainter` fires an `error` event carrying a
+ * `GPUInitializationError` and returns with `painter` undefined. The
+ * diagnostics moved off the message and onto real properties, and the class is
+ * exported, so the shape is stable to construct here.
+ */
+function gpuInitializationError(statusMessage: string | null) {
+  const err = new Error(
+    'WebGL2 is required to display this map. We are sorry, but it seems that your '
+    + 'browser does not support WebGL2, a technology for rendering 3D graphics on the web.',
+  ) as Error & { statusMessage: string | null };
+  err.name = 'GPUInitializationError';
+  err.statusMessage = statusMessage;
+  return err;
+}
+
 /** A canvas whose `getContext` always refuses — the unsupported device. */
 function refusingCanvas(calls: string[]) {
   return {
     getContext(type: string) {
       calls.push(type);
       return null;
+    },
+  };
+}
+
+/**
+ * A device that serves WebGL1 but not WebGL2.
+ *
+ * This is the case the v6 bump turns from "works" into "cannot work": v6
+ * dropped WebGL1 entirely, so a probe that accepted a `webgl` context would
+ * report supported and then MapLibre would refuse to start.
+ */
+function webgl1OnlyCanvas(calls: string[]) {
+  return {
+    getContext(type: string) {
+      calls.push(type);
+      if (type !== 'webgl') return null;
+      return { getExtension: () => null };
     },
   };
 }
@@ -89,6 +124,34 @@ describe('isWebglContextCreationError', () => {
     assert.equal(isWebglContextCreationError(new Error(BARE_MESSAGE)), true);
   });
 
+  it('recognises the v6 GPUInitializationError by name alone', () => {
+    // The shape that actually reaches us on the pinned version. Matching on
+    // `.name` and not on `instanceof` keeps maplibre-gl out of this module.
+    //
+    // The message here is deliberately NOT MapLibre's: with the real wording
+    // the message branch would match too and this would pass even with the
+    // name check deleted. A reworded message in some future 6.x is exactly the
+    // drift the name is here to survive.
+    const renamed = new Error('the GPU said no') as Error & { statusMessage: string | null };
+    renamed.name = 'GPUInitializationError';
+    renamed.statusMessage = null;
+    assert.equal(isWebglContextCreationError(renamed), true);
+  });
+
+  it('recognises the real v6 error as shipped', () => {
+    assert.equal(isWebglContextCreationError(gpuInitializationError(null)), true);
+  });
+
+  it('recognises the v6 wording even if the name is lost', () => {
+    // A re-thrown or structured-cloned error can arrive with `name` reset to
+    // 'Error' while the message survives.
+    const stripped = new Error(
+      'WebGL2 is required to display this map. We are sorry, but it seems that your '
+      + 'browser does not support WebGL2, a technology for rendering 3D graphics on the web.',
+    );
+    assert.equal(isWebglContextCreationError(stripped), true);
+  });
+
   it('does not over-match an unrelated error', () => {
     // Guards the narrowness that keeps a real map bug from being swallowed.
     assert.equal(isWebglContextCreationError(new Error('boom')), false);
@@ -118,6 +181,21 @@ describe('describeMapInitFailure', () => {
   it('survives a message that starts like JSON but is not', () => {
     assert.deepEqual(describeMapInitFailure(new Error('{not json')), {});
   });
+
+  it('reads the driver status off the v6 error property', () => {
+    // v6 moved the diagnostics from the JSON message onto the error itself.
+    // Losing this would turn every v6 map failure into one unactionable bucket.
+    const detail = describeMapInitFailure(
+      gpuInitializationError('OES_packed_depth_stencil support is required.'),
+    );
+    assert.equal(detail.status, 'OES_packed_depth_stencil support is required.');
+    assert.equal(detail.eventType, 'webglcontextcreationerror');
+  });
+
+  it('returns nothing extractable when v6 had no creation event to quote', () => {
+    // `statusMessage` is null unless a `webglcontextcreationerror` supplied one.
+    assert.deepEqual(describeMapInitFailure(gpuInitializationError(null)), {});
+  });
 });
 
 describe('probeMapWebglSupport', () => {
@@ -126,8 +204,8 @@ describe('probeMapWebglSupport', () => {
     const result = probeMapWebglSupport(() => refusingCanvas(calls));
     assert.equal(result.supported, false);
     assert.equal(result.reason, 'probe_no_context');
-    // MapLibre's own order: webgl2 first, then webgl.
-    assert.deepEqual(calls, ['webgl2', 'webgl']);
+    // v6 is WebGL2-only, so the probe asks for exactly one context type.
+    assert.deepEqual(calls, ['webgl2']);
   });
 
   it('reports supported and RELEASES the probe context', () => {
@@ -139,6 +217,18 @@ describe('probeMapWebglSupport', () => {
     assert.equal(result.supported, true);
     assert.deepEqual(calls, ['webgl2']);
     assert.equal(released.count, 1);
+  });
+
+  it('reports a WebGL1-only device as unsupported and never asks for webgl', () => {
+    // THE v6 regression assertion. Before the bump the probe fell back to
+    // `getContext('webgl')`, so this device passed and MapLibre v5 ran on it.
+    // v6 requires WebGL2, so accepting a WebGL1 context here would report
+    // "supported" and hand the user a map that cannot start.
+    const calls: string[] = [];
+    const result = probeMapWebglSupport(() => webgl1OnlyCanvas(calls));
+    assert.equal(result.supported, false);
+    assert.equal(result.reason, 'probe_no_context');
+    assert.deepEqual(calls, ['webgl2']);
   });
 
   it('treats a throwing getContext as a refusal rather than propagating', () => {
@@ -162,7 +252,7 @@ describe('probeMapWebglSupport', () => {
     const calls: string[] = [];
     const first = probeMapWebglSupport(() => refusingCanvas(calls));
     assert.equal(first.supported, false);
-    assert.deepEqual(calls, ['webgl2', 'webgl']);
+    assert.deepEqual(calls, ['webgl2']);
 
     for (let i = 0; i < 20; i++) {
       const again = probeMapWebglSupport(() => refusingCanvas(calls));
@@ -170,7 +260,7 @@ describe('probeMapWebglSupport', () => {
       assert.equal(again.reason, 'probe_no_context');
     }
     // Zero further getContext calls: the verdict is a property of the device.
-    assert.deepEqual(calls, ['webgl2', 'webgl']);
+    assert.deepEqual(calls, ['webgl2']);
   });
 
   it('latches success too, so the probe costs one context per session', () => {

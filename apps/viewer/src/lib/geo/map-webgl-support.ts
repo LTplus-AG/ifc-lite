@@ -144,10 +144,11 @@ const defaultCanvasFactory = (): ProbeCanvas | null =>
 /**
  * Decide whether MapLibre can be constructed, without constructing it.
  *
- * Cheap: a detached 1x1 canvas, `webgl2` then `webgl` (MapLibre's own order),
- * and the context is released immediately via `WEBGL_lose_context`. Releasing
- * is load-bearing, not tidiness — a browser allows only ~16 live WebGL contexts
- * per page, so a probe that leaked one could *cause* the failure it screens for.
+ * Cheap: a detached 1x1 canvas, `webgl2` only (MapLibre v6 dropped WebGL1, so
+ * a WebGL1 context is not something it can be constructed with), and the
+ * context is released immediately via `WEBGL_lose_context`. Releasing is
+ * load-bearing, not tidiness: a browser allows only ~16 live WebGL contexts per
+ * page, so a probe that leaked one could *cause* the failure it screens for.
  *
  * The probe is an optimisation, never the sole gate: it lets the fallback be
  * the user's first paint instead of a caught throw, and it keeps MapLibre from
@@ -173,8 +174,7 @@ export function probeMapWebglSupport(
     canvas = createCanvas();
     // No DOM to probe with: stay optimistic and let the `try/catch` decide.
     if (!canvas) return (verdict = SUPPORTED);
-    gl = canvas.getContext('webgl2', MAP_CONTEXT_ATTRIBUTES)
-      ?? canvas.getContext('webgl', MAP_CONTEXT_ATTRIBUTES);
+    gl = canvas.getContext('webgl2', MAP_CONTEXT_ATTRIBUTES);
   } catch (err) {
     // `getContext` is not specified to throw, but a wedged GPU process has been
     // seen to. Treat a throw exactly like a refusal — and say so, because this
@@ -197,22 +197,47 @@ export function probeMapWebglSupport(
 
 // ── Failure-shape recognition ───────────────────────────────────────────────
 
-/** MapLibre's message when it cannot get a context, both shapes share it. */
+/**
+ * MapLibre v6's own name for the failure.
+ *
+ * `GPUInitializationError` is an exported class, so `instanceof` would be the
+ * stronger test, but reaching for it would mean importing maplibre-gl here and
+ * this module stays free of that import on purpose (see the file header). The
+ * name is a stable, authored string on the class, not a minified identifier:
+ * the bundler cannot rename a string literal assigned to `.name`.
+ */
+const MAP_GPU_INIT_ERROR_NAME = 'GPUInitializationError';
+
+/** v6's wording. Kept as a second key in case a subclass renames itself. */
+const MAP_WEBGL2_REQUIRED_MESSAGE = 'WebGL2 is required to display this map';
+
+/**
+ * v5's wording, retained deliberately.
+ *
+ * v5 threw `new Error(JSON.stringify({requestedAttributes, statusMessage, type,
+ * message: 'Failed to initialize WebGL'}))`. v6 does not produce this shape at
+ * all, so this line is dead against the pinned version. It stays because the
+ * cost is one string comparison and the alternative, if maplibre-gl is ever
+ * rolled back, is this module silently failing open on the exact failure it
+ * exists to catch.
+ */
 const MAP_WEBGL_INIT_MESSAGE = 'Failed to initialize WebGL';
 
 /**
  * Is this the MapLibre "no WebGL context" failure?
  *
- * Deliberately narrow. It matches MapLibre's own wording and its
+ * Deliberately narrow. It matches MapLibre's own authored wording and its
  * `webglcontextcreationerror` detail token — never a minified class name, which
  * changes every build (the same discipline the Cesium matcher in
  * `analytics-scrub.ts` spells out). Over-matching here would silently swallow
  * an actionable map bug.
  */
 export function isWebglContextCreationError(err: unknown): boolean {
+  if (err instanceof Error && err.name === MAP_GPU_INIT_ERROR_NAME) return true;
   const message = err instanceof Error ? err.message : typeof err === 'string' ? err : '';
   if (!message) return false;
-  return message.includes(MAP_WEBGL_INIT_MESSAGE)
+  return message.includes(MAP_WEBGL2_REQUIRED_MESSAGE)
+    || message.includes(MAP_WEBGL_INIT_MESSAGE)
     || message.includes('"type":"webglcontextcreationerror"');
 }
 
@@ -227,15 +252,33 @@ export interface MapInitFailureDetail {
 }
 
 /**
- * Pull the diagnostic fields out of MapLibre's JSON-stringified error.
+ * Pull the diagnostic fields off MapLibre's error.
  *
- * This is the difference between an unactionable "Failed to initialize WebGL"
+ * This is the difference between an unactionable "could not start the map"
  * bucket and knowing whether a device is missing an extension or merely lost a
  * race with the GPU process. `requestedAttributes` is deliberately NOT
  * extracted — it is a constant (see `MAP_CONTEXT_ATTRIBUTES`) and would only
  * add payload.
+ *
+ * Two shapes, because v6 moved the diagnostics from the message to the error:
+ *
+ *   v6  `GPUInitializationError` carries a real `statusMessage` property (null
+ *       when no `webglcontextcreationerror` event supplied one) and a fixed
+ *       human message. No event type is exposed, so `eventType` is implied by
+ *       a status being present at all.
+ *   v5  a single `Error` whose message was the JSON blob parsed below.
  */
 export function describeMapInitFailure(err: unknown): MapInitFailureDetail {
+  if (err instanceof Error && err.name === MAP_GPU_INIT_ERROR_NAME) {
+    const { statusMessage } = err as Error & { statusMessage?: unknown };
+    const detail: MapInitFailureDetail = {};
+    if (typeof statusMessage === 'string' && statusMessage) {
+      detail.status = statusMessage;
+      detail.eventType = 'webglcontextcreationerror';
+    }
+    return detail;
+  }
+
   const message = err instanceof Error ? err.message : typeof err === 'string' ? err : '';
   if (!message.startsWith('{')) return {};
   try {

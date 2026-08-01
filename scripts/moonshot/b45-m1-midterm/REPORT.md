@@ -8,20 +8,29 @@ committed artifact in this directory** - `scorecard.json` for the exam's own
 run, `scorecard-no-aggregates.json` for the g0/g1 DAG shape. Everything else
 carries an inline `<!-- numeral-ok: <token> :: <reason> -->` saying what it is
 instead: a bar from the exam, a ratio computed in the sentence, or a figure
-re-quoted from g0/g1's own separate runs. Figures worth naming a field for
-carry the stronger `<!-- numeral-src: <token> :: <artifact>#<json.path> -->`
-binding instead, because a mere "the artifacts hold this number somewhere"
-clears them for the wrong reason - see the note under caveat 3 - and figures
-this document quotes only in order to retract them carry the negative form
-`<!-- numeral-src: <token> :: none - <why> -->`, which blocks that clearance
-outright.
+re-quoted from g0/g1's own separate runs. Every measured figure carries the
+stronger `<!-- numeral-src: <token> :: <artifact>#<json.path> -->` binding,
+naming the one field it comes from, because a mere "the artifacts hold this
+number somewhere" clears it for the wrong reason - see the note under caveat 3
+- and figures this document quotes only in order to retract them carry the
+negative form `<!-- numeral-src: <token> :: none - <why> -->`, which blocks
+that clearance outright.
 
 `scripts/moonshot/ci/check-report-numerals.mjs --gate` is what holds this
 directory at zero numerals that are neither. That checker arrived on `main`
 with the finishing-plan branch that introduced it and is now in this tree, so
 the paragraph above is machine-checked here rather than promised: the gate runs
 green over this document, with every superseded figure bound negatively so no
-coincidental hit in the artifacts can vindicate it.
+coincidental hit in the artifacts can vindicate it. As of the third code
+review, no numeral here is cleared by the artifact index at all: the checker
+reports none backed, every one of them either bound to a named field or
+asserted unbacked with a reason. That distinction is the whole point of the
+instrument - being "backed" by an index of both scorecards clears a
+deliberately-wrong number nearly a tenth of the time, and it was clearing six
+of the counts below - the resolved count, the property-set leaves, the storeys,
+the MeshData entries, the triangles and the vertices - against the OTHER DAG
+shape's artifact rather than this run's; per-field
+binding clears a wrong number in well under one case in a hundred.
 
 *Correction history.* **2026-07-29 (a):** an earlier revision quoted numbers
 from the original build run while the committed scorecard had been regenerated
@@ -64,6 +73,30 @@ claim hash, so if that re-derivation ever broke it would come back green on
 reason it requires. Again no published figure moved: the caps are far above
 anything this bet produces and are never reached on an honest run, and the
 reason assertion tightened a check without changing what is measured.
+**2026-08-01 (third code review).** The CLI ran a third time, returned a third
+largely disjoint set, and found the same class of defect in the same file for
+the third time. The bundle cap was checked against `statSync(path).size` and
+the file was then read again by path with `readFileSync`, which bounds a number
+that DESCRIBES the file rather than the bytes a read will yield. For any path
+where those differ - a FIFO, a character device, or a regular file swapped
+between the two syscalls - the cap did not apply at all. Shown by construction
+rather than argued: a bundle streamed through a FIFO cleared a cap set far
+below its size and was parsed and verified in full, and at a larger stream the
+worker's peak RSS tracked what the producer chose to send rather than the cap -
+which is the unbounded-allocation failure the previous round's fix was supposed
+to have closed, still open through a different door. The worker now reads
+through one opened descriptor and stops one byte past the cap, so an oversized
+bundle is rejected as `bundle-too-large` having never been held. The same pass
+also moved every measured figure in this document from "backed by the artifact
+index" to bound to the one field it comes from, which is where the note at the
+top about the index clearing the wrong artifact comes from. Two of its prose
+findings were refuted rather than fixed: sanitising the fixture census away
+would delete measurements of a public open-source test model, which is what
+this document exists to publish, and the `~35 s` note in the Reproducing block
+sits inside a fenced code block that the checker ignores by design and is a
+runtime hint rather than a measured claim. Once again no published figure
+moved: nothing was re-run, nothing was re-blessed, and the caps are never
+reached on an honest run.
 
 `scorecard.json` WAS re-blessed (`--write-scorecard`), deliberately and at a
 cost worth stating. Leaving it alone would have been cheaper: the committed
@@ -100,6 +133,24 @@ silently refreshed to numbers no artifact backs.
      produced by scripts/moonshot/ci/check-report-numerals.mjs against that
      revision. A measurement of the prose, not of the bet. -->
 <!-- numeral-ok: 16GB :: the host machine's RAM. No scorecard field records it. -->
+
+<!-- Every figure the re-bless moved, bound to the field it was re-derived
+     from. All of them already read as "backed" before this, but only against
+     the index of both scorecards together, where a deliberately-wrong number is
+     cleared 9.3% of the time - and where six of this document's own counts were
+     being cleared by the OTHER DAG shape's artifact, which is the wrong source
+     for a sentence about this one. A named field is a haystack of
+     one, so each of these now fails the gate if the artifact moves under it. -->
+<!-- numeral-src: 55.53ms :: b45-m1-midterm/scorecard.json#verifyMedianMs -->
+<!-- numeral-src: 82.3ms :: b45-m1-midterm/scorecard.json#verifyWholeProcessWallMedianMs -->
+<!-- numeral-src: 2.93s :: b45-m1-midterm/scorecard.json#parseMs -->
+<!-- numeral-src: 8.00s :: b45-m1-midterm/scorecard.json#meshMs -->
+<!-- numeral-src: 1.04s :: b45-m1-midterm/scorecard.json#dagStructureMs -->
+<!-- numeral-src: 9.51s :: b45-m1-midterm/scorecard.json#dagBuildMs -->
+<!-- numeral-src: 6.29ms :: b45-m1-midterm/scorecard.json#examA_propertyOnlyWallEdit.recomputeMs -->
+<!-- numeral-src: 7.69ms :: b45-m1-midterm/scorecard.json#examB_propertyPlusGeometryWallEdit.recomputeMs -->
+<!-- numeral-src: 71.7MB :: b45-m1-midterm/scorecard.json#verifierMaxRssBytes -->
+<!-- numeral-src: 2.77GB :: b45-m1-midterm/scorecard.json#peakRssBytes -->
 
 ## Why this bet existed
 
@@ -143,6 +194,23 @@ all three clauses at once, with mesh leaves present throughout.
      9.0x is the 500 ms bar over verifyMedianMs 55.532, 43.8% is nodesMeshLeaves
      109,632 over nodesTotal 250,582. The scorecard stores the operands; the
      ratio is the row's own arithmetic. -->
+<!-- numeral-src: 0.0239% :: b45-m1-midterm/scorecard.json#nodesResolvedPct -->
+<!-- numeral-src: 60 :: b45-m1-midterm/scorecard.json#nodesResolvedDuringVerify -->
+<!-- numeral-src: 250,582 :: b45-m1-midterm/scorecard.json#nodesTotal -->
+<!-- numeral-src: 109,632 :: b45-m1-midterm/scorecard.json#nodesMeshLeaves -->
+<!-- numeral-src: 99.9956% :: b45-m1-midterm/scorecard.json#examB_propertyPlusGeometryWallEdit.hitRate -->
+<!-- numeral-src: 99.9984% :: b45-m1-midterm/scorecard.json#examA_propertyOnlyWallEdit.hitRate -->
+<!-- numeral-src: 1 :: none - the DAG's single root in the census below, and the
+     "1." that numbers clause 1 in the table above. No field stores either, and
+     the artifact index was clearing this token against a digit embedded in the
+     scorecard's own "exam" STRING. -->
+<!-- numeral-src: 2, 3, 5, 2x :: none - ordinals and structural counts, not
+     measurements: the clause numbers, the caveat number, the count of verify
+     spawns ("median of 5 spawns" - the scorecard stores the five samples in
+     verifyAllMs, not their count), and the "2x2" of claim granularity by DAG
+     shape. Each was being cleared by an unrelated field - 5 against a 453.5 ms
+     verify timing scaled by 1/100, 2x against a bundle-parse median - which is
+     the union-haystack pathology reaching inside a single bet's own index. -->
 
 Fixture: `tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc`,
 177,465,622 bytes, 2,807,815 entities.
@@ -170,6 +238,13 @@ nothing about what share of the model's triangles they carry.
 <!-- numeral-ok: 99.1% :: nodesMeshLeaves 109,632 over meshDataEntries 110,632,
      computed in the sentence from two committed fields. -->
 <!-- numeral-src: 1,000 :: b45-m1-midterm/scorecard.json#meshDataUnattached -->
+<!-- numeral-src: 80,104 :: b45-m1-midterm/scorecard.json#nodesPropertySetLeaves -->
+<!-- numeral-src: 60,795 :: b45-m1-midterm/scorecard.json#nodesElements -->
+<!-- numeral-src: 39,028 :: b45-m1-midterm/scorecard.json#nodesElementsViaAggregates -->
+<!-- numeral-src: 50 :: b45-m1-midterm/scorecard.json#nodesStoreys -->
+<!-- numeral-src: 110,632 :: b45-m1-midterm/scorecard.json#meshDataEntries -->
+<!-- numeral-src: 2,934,427 :: b45-m1-midterm/scorecard.json#triangles -->
+<!-- numeral-src: 4,593,788 :: b45-m1-midterm/scorecard.json#vertices -->
 
 ### Construction versus verification
 
@@ -191,6 +266,7 @@ Peak RSS: builder 2.77 GB, **verifier 71.7 MB**. The asymmetry is the point of
 M1: constructing the proof is expensive and happens once; checking it is cheap
 and happens everywhere.
 
+<!-- numeral-src: 2.16ms :: b45-m1-midterm/scorecard.json#verifyBundleParseMedianMs -->
 <!-- numeral-ok: 21s :: the sum of the four stage timings in the table above
      (parseMs 2,925 + meshMs 7,997 + dagStructureMs 1,039 + dagBuildMs 9,508 =
      21.47 s), written as "~21 s". The scorecard stores the addends. -->
@@ -258,6 +334,7 @@ for reasons that have nothing to do with the system getting better. **The
 invariant worth quoting is the count: 60 nodes.** Against the hardest honest
 denominator (mesh leaves excluded) the figure is 0.0426%.
 
+<!-- numeral-src: 0.0426% :: b45-m1-midterm/scorecard.json#nodesResolvedPctIfMeshLeavesExcludedFromDenominator -->
 <!-- numeral-src: 101,922, 0.052%, 53 :: none - g0/g1's own no-mesh node count,
      resolved share and resolved count. Those demos write no scorecard, so all
      three are quoted from their published runs and no artifact in this
@@ -312,6 +389,9 @@ one of them. It remains removed from that table because it does not belong
 there, and its verify figure was in any case a different run's (453.5 ms in the
 committed artifact against the 465.4 ms the row carried).
 
+<!-- numeral-src: 21,777 :: b45-m1-midterm/scorecard-no-aggregates.json#sensitivityElementGranularityClaim.nodesResolved -->
+<!-- numeral-src: 12.62%, 12.6224 :: b45-m1-midterm/scorecard-no-aggregates.json#sensitivityElementGranularityClaim.nodesResolvedPct -->
+<!-- numeral-src: 453.5, 453.5ms :: b45-m1-midterm/scorecard-no-aggregates.json#sensitivityElementGranularityClaim.verifyMs -->
 <!-- numeral-ok: 465.4ms :: the verify timing the removed row carried, quoted
      only to show that it does NOT match the committed 453.5 ms. From an
      uncommitted run; it must stay unbacked. -->
@@ -338,6 +418,10 @@ ran both shapes:
      a per-ifcType census, and 38,896 is their sum, added in the sentence. -->
 <!-- numeral-ok: 36% :: 40,028 over 110,632, computed in the heading and in this
      sentence from two committed fields. -->
+<!-- numeral-src: 40,028 :: b45-m1-midterm/scorecard-no-aggregates.json#meshDataUnattached -->
+<!-- numeral-src: 172,526 :: b45-m1-midterm/scorecard-no-aggregates.json#nodesTotal -->
+<!-- numeral-src: 0.0348% :: b45-m1-midterm/scorecard-no-aggregates.json#nodesResolvedPct -->
+<!-- numeral-src: 60.86ms :: b45-m1-midterm/scorecard-no-aggregates.json#verifyMedianMs -->
 
 | Shape | Nodes | Resolved % | Verify | Verdict | Artifact |
 |---|---|---|---|---|---|

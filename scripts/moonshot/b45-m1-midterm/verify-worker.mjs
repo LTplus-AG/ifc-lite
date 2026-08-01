@@ -48,7 +48,7 @@
  * mesh pass, or the other ~1e6 DAG nodes.
  */
 
-import { readFileSync, statSync } from 'node:fs';
+import { closeSync, openSync, readSync } from 'node:fs';
 import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -69,10 +69,21 @@ const REPO_ROOT = path.resolve(__dirname, '../../..');
  * verifier that dies on bad input drops that bundle out of the count instead of
  * counting it as rejected.
  *
- * Both caps come from the parent, like the anchor, and both are checked BEFORE
- * the allocation they bound rather than after:
- *   - the file size is stat'd before `readFileSync`, so an oversized bundle is
- *     never read into a string;
+ * Both caps come from the parent, like the anchor, and both bound the
+ * allocation itself rather than a number that describes it:
+ *   - the bundle is read through ONE opened descriptor and the reads stop at
+ *     `MAX_BUNDLE_BYTES + 1` bytes, so an oversized bundle is never held. The
+ *     first revision instead did `statSync(path).size` and then
+ *     `readFileSync(path)`, which bounds a DIFFERENT thing: `st_size` is not
+ *     the number of bytes a read will yield. A FIFO, a character device
+ *     (`/dev/zero`) or a socket stats as size 0, passes the check trivially,
+ *     and then hands the reader as many bytes as its producer feels like -
+ *     measured, an 8 MiB bundle streamed through a FIFO cleared a 1 MiB cap
+ *     and was parsed and verified in full, and 512 MiB under the same 1 MiB
+ *     cap took the worker to 1,072 MiB peak RSS. The cap was not loose there;
+ *     it was inapplicable. Two syscalls against a path are also two chances
+ *     for the path to mean two different files, so the size that was checked
+ *     need not be the size that is read;
  *   - each payload's decoded size is computed from its base64 LENGTH before
  *     `Buffer.from` runs, and charged against a running total, so an oversized
  *     payload is never decoded.
@@ -111,6 +122,58 @@ class BundleError extends Error {
     super(reason);
     this.reason = reason;
     this.details = details;
+  }
+}
+
+/** Chunk size for the bounded read below. Small enough that an honest 1.6 MB
+ *  bundle costs a couple of allocations, large enough that the 36.5 MB
+ *  sensitivity bundle costs ~37 reads. */
+const READ_CHUNK_BYTES = 1 * MiB;
+
+/**
+ * Read the whole bundle, or as much of it as the cap allows, through ONE
+ * opened descriptor.
+ *
+ * The cap is enforced by not reading past it: at most `MAX_BUNDLE_BYTES + 1`
+ * bytes ever leave the kernel, and the +1 is what distinguishes "exactly at the
+ * cap" from "over it". Nothing here consults `st_size`, so the guarantee does
+ * not depend on the path naming a regular file, or on it naming the same file
+ * twice. Peak cost is bounded at ~2x the bytes actually read (the chunk list
+ * plus the concatenation), and the string is only materialised for a bundle
+ * that already passed.
+ */
+function readBundleBounded(bundlePath) {
+  let fd;
+  try {
+    fd = openSync(bundlePath, 'r');
+  } catch (err) {
+    throw new BundleError('unreadable-bundle', { message: String(err?.message ?? err) });
+  }
+  try {
+    const limit = MAX_BUNDLE_BYTES + 1;
+    const scratch = Buffer.allocUnsafe(Math.min(READ_CHUNK_BYTES, limit));
+    const chunks = [];
+    let total = 0;
+    while (total < limit) {
+      let n;
+      try {
+        n = readSync(fd, scratch, 0, Math.min(scratch.length, limit - total), null);
+      } catch (err) {
+        throw new BundleError('unreadable-bundle', { message: String(err?.message ?? err) });
+      }
+      if (n === 0) break; // EOF
+      chunks.push(Buffer.from(scratch.subarray(0, n)));
+      total += n;
+    }
+    if (total > MAX_BUNDLE_BYTES) {
+      throw new BundleError('bundle-too-large', {
+        bundleBytesAtLeast: total,
+        maxBundleBytes: MAX_BUNDLE_BYTES,
+      });
+    }
+    return Buffer.concat(chunks, total).toString('utf-8');
+  } finally {
+    closeSync(fd);
   }
 }
 
@@ -243,24 +306,12 @@ async function run() {
     path.join(REPO_ROOT, 'packages/provenance/dist/index.js')
   );
 
-  /* --- The size cap, before the file is read rather than after --- */
-  let declaredBundleBytes;
-  try {
-    declaredBundleBytes = statSync(bundlePath).size;
-  } catch (err) {
-    throw new BundleError('unreadable-bundle', { message: String(err?.message ?? err) });
-  }
-  if (declaredBundleBytes > MAX_BUNDLE_BYTES) {
-    throw new BundleError('bundle-too-large', {
-      bundleBytes: declaredBundleBytes,
-      maxBundleBytes: MAX_BUNDLE_BYTES,
-    });
-  }
-
+  /* --- The size cap, enforced on the bytes read rather than on st_size --- */
   const parseStart = performance.now();
+  const text = readBundleBounded(bundlePath);
   let bundle;
   try {
-    bundle = JSON.parse(readFileSync(bundlePath, 'utf-8'));
+    bundle = JSON.parse(text);
   } catch (err) {
     throw new BundleError('unreadable-bundle', { message: String(err?.message ?? err) });
   }

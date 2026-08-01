@@ -11,11 +11,25 @@ see section 1a before quoting a test score.
 
 Version: `1.1.0` (`specVersion` in every submission and leaderboard row).
 Any change to the constants, the generator's byte output, the task set, or
-the scoring math bumps the version; rows across versions are not comparable.
-v1.1.0 changes no constant, no byte output, no task and no scoring math -- it
-withdraws a false integrity claim and states the real one (section 1a). v1.0
-rows remain numerically comparable to v1.1 rows; what changed is what a test
-row is worth, which was never as much as v1.0 said.
+the scoring math bumps the version, and rows produced under versions that
+differ in any of those are not numerically comparable. A version may also bump
+without touching any of them, and v1.1.0 is exactly that case: it changes no
+constant, no byte output, no task and no scoring math, only what the spec
+claims a test row is worth - it withdraws a false integrity claim and states
+the real one (section 1a). So comparability splits in two here, and the two
+halves must not be conflated:
+
+- **numerically comparable: yes.** Same seed universe, same bytes, same tasks,
+  same scoring math, so a v1.0 score and a v1.1 score measure the same thing
+  and may be read side by side.
+- **comparable in trust: no.** A v1.0 *test* row was reported under a claimed
+  integrity property that did not exist (section 1a); a v1.1 test row is
+  reported as self-reported, with no integrity property claimed at all. The
+  numbers line up; what they are worth does not, and no later version can
+  retroactively give a v1.0 test row the trust its version asserted.
+
+Dev rows are untouched by the second point: dev carried no integrity claim
+under either version and still carries none.
 
 ## 1. Model universe and splits
 
@@ -37,16 +51,20 @@ Splits are defined by seed arithmetic, nothing else:
 There is no dataset download. A model, its bytes, its planted defects, its
 quantities - all are pure functions of the seed (see the determinism section
 of `../README.md`). We do not publish an answer-key file for any split,
-because with an open generator such a file would be security theater - anyone
-can regenerate it.
+because while the generator is unsalted - which is every split today, see
+section 1a - such a file would be security theater: anyone can regenerate it.
+Read "anyone can regenerate it" as scoped to that unsalted state. Once the
+reporting split is salted its answer key stops being regenerable by anyone,
+and it stays unpublished for the opposite reason: it is then held by the
+hosted scorer and publishing it would destroy the property.
 
 ### 1a. Integrity model (v1.1). Read this before quoting a score.
 
 **v1.0 claimed the test split was "hidden-by-hosting". That claim was false and
 is withdrawn.** `attacks/clean-twin-diff.mjs` scores an exact **1.000 aggregate**
-through the real scorer, above both anchors, while reading only `model.content`
-and touching no answer-key field. The attack is not a rule violation; it is a
-consequence of the design:
+through the real scorer, above all three committed anchors, while reading only
+`model.content` and touching no answer-key field. The attack is not a rule
+violation; it is a consequence of the design:
 
 - splits are defined by seed arithmetic alone (`seed % 10`), so **every test
   seed is public** - there is no seed list to withhold;
@@ -175,10 +193,16 @@ submission in, byte-identical row out.
    the `oracle-kernel` baseline does, and beating it is the point.
 2. Training/tuning on `train` seeds is expected; any use of dev/test seed
    ground truth during training is contamination.
-3. Report the spec version with every row. Rows across versions never share
-   a leaderboard.
-4. Self-reported test rows must state "self-reported"; hosted scoring
-   (human track) is the trusted channel.
+3. Report the spec version with every row. Rows never share a leaderboard
+   across versions that differ in seed universe, byte output, task set or
+   scoring math. v1.0 and v1.1 differ in none of those and are the one
+   documented exception (see the version note at the top of this file) -
+   which is why the committed anchor rows still read `1.0.0`. The integrity
+   claim never carries across a version, exception or not.
+4. Self-reported test rows must state "self-reported", and today every test
+   row is one. The trusted channel is hosted scoring over a SALTED split
+   (human track); it does not exist yet, and hosting without the salt would
+   not be one - see section 1a.
 
 ## 5. Reference baselines (leaderboard anchors)
 
@@ -192,6 +216,14 @@ external numbers interpretable:
   geometry kernel, no schema engine.
 - **oracle-kernel**: the kernel's own in-process schema/clash/quantity
   checks mapped to verdicts - the oracle-ish upper bound.
+
+The committed rows under `results/` carry `"specVersion": "1.0.0"` and keep
+it. That is the version they were produced and scored under, and rewriting the
+field would assert a scoring run that never happened. They remain the valid
+anchors for a v1.1 number: the only non-comment change v1.1 makes to any file
+under `benchmark/` is the `SPEC_VERSION` constant itself, so re-running
+`baselines.mjs` emits the same values with `1.1.0` in that field. They are dev
+rows, so nothing about the withdrawn test-split claim attaches to them.
 
 Two honest and load-bearing observations from the dev-split anchors
 (numbers in `results/leaderboard-dev.json`):

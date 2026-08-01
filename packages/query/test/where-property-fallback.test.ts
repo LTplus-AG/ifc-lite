@@ -493,7 +493,14 @@ describe('whereProperty on a store whose tables are populated (IFCX / cache shap
  */
 describe('whereProperty on duck-typed stores that omit the optional table members', () => {
   /** A store implementing the required members only, plus what the flags add. */
-  function createMinimalStore(opts: { withCount: boolean; withFindByQuantity?: boolean }): IfcStoreBase {
+  function createMinimalStore(opts: {
+    withCount: boolean;
+    withFindByQuantity?: boolean;
+    /** Overrides the quantity table's own row count, so the two tables can disagree. */
+    quantityCount?: number;
+    /** Makes `findByQuantity` answer like a genuinely empty index: always `[]`. */
+    emptyQuantityIndex?: boolean;
+  }): IfcStoreBase {
     const rows: Array<{ id: number; pset: string; prop: string; value: PropertyValue }> = [
       { id: 1, pset: 'Pset_WallCommon', prop: 'IsExternal', value: true },
       { id: 2, pset: 'Pset_WallCommon', prop: 'IsExternal', value: false },
@@ -517,13 +524,14 @@ describe('whereProperty on duck-typed stores that omit the optional table member
           .filter((r) => r.prop === prop && (pset === undefined || r.pset === pset) && op === '=' && r.value === value)
           .map((r) => r.id),
     };
+    const quantityCount = opts.quantityCount ?? (opts.withCount ? 2 : undefined);
     const quantities = {
-      ...(opts.withCount ? { count: 2 } : {}),
+      ...(quantityCount === undefined ? {} : { count: quantityCount }),
       getForEntity: (id: number) => qsets.get(id) ?? [],
       ...(opts.withFindByQuantity
         ? {
             findByQuantity: (name: string, op: string, value: PropertyValue, qset?: string) =>
-              [...qsets.entries()]
+              opts.emptyQuantityIndex ? [] : [...qsets.entries()]
                 .filter(([, sets]) =>
                   sets.some(
                     (s) =>
@@ -593,5 +601,40 @@ describe('whereProperty on duck-typed stores that omit the optional table member
     expect(await runFilters(withIndex, IfcTypeEnum.IfcWall, [{ pset: 'Qto_WallBaseQuantities', prop: 'Length', op: '>', value: 3 }])).toEqual([1]);
     expect(spy2).not.toHaveBeenCalled();
     spy2.mockRestore();
+  });
+
+  // The two tables choose their strategy independently. A store can materialise
+  // one and not the other, and deriving both from `properties.count` gets the
+  // other one wrong in whichever direction it disagrees.
+  it('resolves quantities per candidate when only the QUANTITY table is empty', async () => {
+    // Populated property table beside an empty quantity index that still has
+    // on-demand quantity data. Gating on `properties.count` would query the
+    // empty index and match nothing.
+    const store = createMinimalStore({
+      withCount: true,
+      withFindByQuantity: true,
+      quantityCount: 0,
+      emptyQuantityIndex: true,
+    });
+    const spy = vi.spyOn(store, 'getQuantities');
+
+    expect(
+      await runFilters(store, IfcTypeEnum.IfcWall, [{ pset: 'Qto_WallBaseQuantities', prop: 'Length', op: '>', value: 3 }]),
+    ).toEqual([1]);
+    expect(spy, 'an empty quantity index must not be trusted just because the property table is populated').toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it('still uses the quantity index when only the PROPERTY table is empty', async () => {
+    // The inverse: an empty property table must not drag a populated quantity
+    // index onto the per-candidate path.
+    const store = createMinimalStore({ withCount: false, withFindByQuantity: true, quantityCount: 2 });
+    const spy = vi.spyOn(store, 'getQuantities');
+
+    expect(
+      await runFilters(store, IfcTypeEnum.IfcWall, [{ pset: 'Qto_WallBaseQuantities', prop: 'Length', op: '>', value: 3 }]),
+    ).toEqual([1]);
+    expect(spy, 'a populated quantity index must still answer even when the property table is empty').not.toHaveBeenCalled();
+    spy.mockRestore();
   });
 });

@@ -181,7 +181,10 @@ export class EntityQuery {
    *
    * The fallback is candidate-scoped, never store-wide: only the ids that
    * survived the type/id filter are resolved, and each is resolved at most once
-   * across all filters. It is still O(candidates x source extraction), so scope
+   * *per source* across all filters — `psetCache` and `qsetCache` are separate,
+   * so an entity reached by both sides costs one `getProperties` and one
+   * `getQuantities`, never one per filter. It is still O(candidates x source
+   * extraction), so scope
    * with `ofType(...)` before `whereProperty(...)` on large models — the note in
    * `docs/guide/querying.md` says the same thing to callers.
    *
@@ -202,6 +205,13 @@ export class EntityQuery {
     // Explicit zero only — see the doc comment above and the `count` contract
     // on `IfcStoreBase`'s property table.
     const useTable = properties.count !== 0;
+    // The two tables choose independently. Gating the quantity side off
+    // `properties.count` would mean a store that materialised one table but not
+    // the other got the wrong strategy for the other: a populated property table
+    // beside an empty quantity table would query an empty `findByQuantity` and
+    // match no quantities at all, and the inverse would resolve candidates one
+    // at a time while a populated quantity index sat unused.
+    const useQuantityTable = quantities.count !== 0;
     // `quantities` and `getQuantities` are both REQUIRED on `IfcStoreBase`, so
     // neither is guarded here: a store missing either is already out of
     // contract, and half-guarding it (optional-chaining the table but calling
@@ -209,7 +219,7 @@ export class EntityQuery {
     // TypeError, not prevent it. `findByQuantity` is the one genuinely optional
     // member, so that is the only existence check.
     // Bound to the table so the optional method keeps its receiver.
-    const findByQuantity = useTable && quantities.findByQuantity
+    const findByQuantity = useQuantityTable && quantities.findByQuantity
       ? quantities.findByQuantity.bind(quantities)
       : undefined;
     // Shared across all filters: resolving a pset/qset costs a source

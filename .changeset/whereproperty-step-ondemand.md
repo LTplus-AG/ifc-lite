@@ -23,7 +23,10 @@ uses; otherwise it answers off the table's name indices as before. Only an
 explicit zero selects the fallback — a duck-typed store whose table omits the
 optional `count` keeps the indexed path, because every store written before
 `count` existed implements `findByProperty` for real. The fallback is
-candidate-scoped and each entity is resolved at most once across all filters.
+candidate-scoped, and each entity is resolved at most once *per source* across
+all filters: property sets and quantity sets have separate caches, so an entity
+reached by both sides costs one `getProperties` and one `getQuantities`, never
+one per filter.
 Nothing is materialised onto `store.properties`, so IDS keeps reading the richer
 on-demand property shape.
 

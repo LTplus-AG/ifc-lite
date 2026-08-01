@@ -1420,15 +1420,15 @@ dependencies = [
 
 [[package]]
 name = "i_key_sort"
-version = "0.10.3"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d73d122b937fca067feb0ad74f62388920272b27c356d4df2d0cfdd59e044cf0"
+checksum = "7c6c58d0c60705e66264ce0f788a69a2f21472aeb8188559e7c8c619dbdc10fa"
 
 [[package]]
 name = "i_overlay"
-version = "7.0.2"
+version = "7.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf284de04038af713dad8b4a88d2bc97f1c8c0a87fc1f43e28e3b965d0136d9e"
+checksum = "f81c420ea4051810d3efb8d4ec5198ff3e018a236ba43173dd768830e02fa2df"
 dependencies = [
  "i_float",
  "i_key_sort",

@@ -1,5 +1,5 @@
 {
-  "description": "Canonical mini-model for the cross-surface freeze pin: one wall element (mesh + pset + qset), one door element (pset), a storey containment relationship, and a root layer. IFC type names are the exact EXPRESS PascalCase forms (IfcWallStandardCase, IfcDoor) and role names are exact EXPRESS attributes (RelatedElements), matching the canonical load path (store.entities.getTypeName). Node hashes and the DAG root are FROZEN (node-hash-v0 / 1.0.0, 2026-07-25); a change requires node-hash-v1 plus a major version bump of @ifc-lite/provenance.",
+  "description": "Canonical mini-model for the cross-surface freeze pin: one wall element (mesh + pset + qset), one door element (pset), the storey itself as an element node, a storey containment relationship carrying BOTH IFC EXPRESS roles (RelatingStructure -> the storey node, RelatedElements -> the contained elements), and a root layer. IFC type names are the exact EXPRESS PascalCase forms (IfcWallStandardCase, IfcDoor, IfcBuildingStorey) and role names are exact EXPRESS attributes, matching the canonical load path (store.entities.getTypeName). A containment node that carried only RelatedElements would not commit to WHICH storey contains the elements, so re-parenting an element between levels would leave the root layer (which sorts its children) unchanged. Node hashes and the DAG root are FROZEN (node-hash-v0 / 1.0.0); the wire FORMAT is unchanged by this fixture edit - only the modelled content is.",
   "rootId": "root-layer",
   "nodes": [
     {
@@ -193,11 +193,26 @@
       }
     },
     {
+      "id": "storey-level0",
+      "kind": "element",
+      "composite": {
+        "key": "3fVw7$t4X7Zf8NOew3FLQ2",
+        "ifcType": "IfcBuildingStorey",
+        "components": []
+      }
+    },
+    {
       "id": "storey-rel",
       "kind": "relationship",
       "composite": {
         "relType": "IfcRelContainedInSpatialStructure",
         "roles": [
+          {
+            "roleName": "RelatingStructure",
+            "children": [
+              "storey-level0"
+            ]
+          },
           {
             "roleName": "RelatedElements",
             "children": [
@@ -226,8 +241,9 @@
     "pset-door-common": "sha256:9d8dbf99bc16f78f006950b17ad277800d1f95de43cc72fbb95f5e200f1228cb",
     "element-wall": "sha256:8ed0cde8c41a63ee76ea5b9387dd08604eecc6627fdf5ae5435704f6c4e648af",
     "element-door": "sha256:7a72776f1ae370a0ece84271e6d2f3160422abd37df6a96e174d52b16271a2d7",
-    "storey-rel": "sha256:ceb4907d0639db866715521512aa5500e976bf8c4c90d23eb56a1a2527320ef7",
-    "root-layer": "sha256:6a3462643fdd9bf3a54d491128a01de4e83f94eab1beccb83024ef2ba5e4b738"
+    "storey-level0": "sha256:5de6c7c52a9f085de0c45d148f1bd4b5acf60bc35baa1353301585a10e382120",
+    "storey-rel": "sha256:eaa75d7dc0c071093598efa38bb0eb19fcd0e0aef7b072e5092897484cc5cf42",
+    "root-layer": "sha256:9e4c7cf153950055cb2229306ece0f75bfcf2c804721ae11b41ff510b285320b"
   },
-  "expectedRootHash": "sha256:6a3462643fdd9bf3a54d491128a01de4e83f94eab1beccb83024ef2ba5e4b738"
+  "expectedRootHash": "sha256:9e4c7cf153950055cb2229306ece0f75bfcf2c804721ae11b41ff510b285320b"
 }

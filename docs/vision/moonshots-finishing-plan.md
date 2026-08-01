@@ -226,9 +226,7 @@ unchanged, the original stands.
   present**, certificate verified in a second process in under 500 ms while
   resolving under 5% of DAG nodes.
 
-<!-- numeral-ok: 169MB :: the on-disk size of the Holter Tower fixture
-     (tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc). A fact about a
-     file, recorded in tests/models/manifest.json; no bet artifact emits it. -->
+<!-- numeral-src: 169MB :: b45-m1-midterm/scorecard.json#fixtureBytes -->
 
 ### M2 world gym
 
@@ -427,7 +425,7 @@ reason.
 
 *The fix is per-claim binding, not a bigger haystack.* A second marker form
 names the artifact and JSON path a figure came from -
-`<!-- numeral-src: 899 :: b45-m1-midterm/scorecard.json#sensitivityElementGranularityClaim.verifyMs -->` -
+`<!-- numeral-src: 845.6ms :: b45-m1-midterm/scorecard.json#sensitivityElementGranularityClaim.verifyMs -->` -
 so that figure's haystack is one value and its decoy pass rate is zero. A
 binding that resolves and disagrees is a hard gate failure, and it is the only
 check in the program that can say *this sentence contradicts the field it claims
@@ -643,7 +641,7 @@ size, so a bigger model makes it easier; clause 3 would need one wall edit to
 recompute >25,058 nodes to fail. Do not quote "PASS on all three clauses" as
 three independent results. The pass also holds only for a **storey-granularity**
 claim: at element granularity, which is the shape the M1 *final* exam's
-region-scoped permission actually needs, both clauses FAIL (24.27%, 899 ms).
+region-scoped permission actually needs, both clauses FAIL (24.27%, 845.6 ms).
 That row belongs in B6.1's risk register.
 
 *Addendum 2026-07-29, and it cuts against the review.* The review's other B4.5
@@ -670,17 +668,23 @@ It is committed now. Recorded here rather than by editing the dated review.
 
 *(Corrected 2026-07-29: this sentence read "907 ms" against a committed
 `scripts/moonshot/b45-m1-midterm/scorecard.json` whose
-`sensitivityElementGranularityClaim.verifyMs` is 899. The wrong figure was
+`sensitivityElementGranularityClaim.verifyMs` was then 899. The wrong figure was
 introduced by the commit remediating the previous round of wrong figures, in a
 document the numeral checker could not then see - which is why its search root
-now covers `docs/vision/**`. What that gate is and is not worth is quoted with
-the lane's step E9 above; the figure below is bound per-claim to the field it
-comes from rather than left to the union index.)*
+now covers `docs/vision/**`. Corrected again 2026-08-01: B4.5 re-blessed that
+scorecard when its verifier was fixed, moving the field to 845.6, and the
+binding below is what caught the entry above still quoting the old value. What
+that gate is and is not worth is quoted with the lane's step E9 above; the
+figure is bound per-claim to the field it comes from rather than left to the
+union index, which is the only reason a re-bless three days later could not
+leave this sentence quietly wrong.)*
 
-<!-- numeral-src: 899ms, 899 :: b45-m1-midterm/scorecard.json#sensitivityElementGranularityClaim.verifyMs -->
-<!-- numeral-src: 907ms :: none - quoted only in order to retract it. It is the
-     figure this correction removes, and a coincidental hit in the union index
-     must not be allowed to vindicate it. -->
+<!-- numeral-src: 845.6ms :: b45-m1-midterm/scorecard.json#sensitivityElementGranularityClaim.verifyMs -->
+<!-- numeral-src: 907ms, 899 :: none - quoted only in order to retract them: 907
+     is the figure this correction removed, and 899 is what the bound field held
+     before the 2026-08-01 re-bless moved it to 845.6. Neither is emitted by
+     anything in this tree, and a coincidental hit in the union index must not
+     be allowed to vindicate either. -->
 
 *Exam:* under 500 ms verification, under 5% of nodes resolved, over 90% cache
 hits on single-wall recompute, with real mesh leaves present throughout.

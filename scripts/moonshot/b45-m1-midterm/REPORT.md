@@ -8,19 +8,20 @@ committed artifact in this directory** - `scorecard.json` for the exam's own
 run, `scorecard-no-aggregates.json` for the g0/g1 DAG shape. Everything else
 carries an inline `<!-- numeral-ok: <token> :: <reason> -->` saying what it is
 instead: a bar from the exam, a ratio computed in the sentence, or a figure
-re-quoted from g0/g1's own separate runs. Three figures carry the stronger
-`<!-- numeral-src: <token> :: <artifact>#<json.path> -->` binding instead,
-because a mere "the artifacts hold this number somewhere" clears them for the
-wrong reason - see the note under caveat 3.
+re-quoted from g0/g1's own separate runs. Figures worth naming a field for
+carry the stronger `<!-- numeral-src: <token> :: <artifact>#<json.path> -->`
+binding instead, because a mere "the artifacts hold this number somewhere"
+clears them for the wrong reason - see the note under caveat 3 - and figures
+this document quotes only in order to retract them carry the negative form
+`<!-- numeral-src: <token> :: none - <why> -->`, which blocks that clearance
+outright.
 
 `scripts/moonshot/ci/check-report-numerals.mjs --gate` is what holds this
-directory at zero numerals that are neither. **That checker is not on this
-branch**: it arrives with the finishing-plan branch that introduced it, and
-until the two land together the sentence above is checked by running the gate
-over a tree that has both. On such a tree this document reports zero unbacked
-numerals and zero stale markers today. Stating it this way rather than as
-"machine-checked" is the point of the whole section: a gate you name but do not
-ship is a promise, which is the thing this report keeps getting reviewed for.
+directory at zero numerals that are neither. That checker arrived on `main`
+with the finishing-plan branch that introduced it and is now in this tree, so
+the paragraph above is machine-checked here rather than promised: the gate runs
+green over this document, with every superseded figure bound negatively so no
+coincidental hit in the artifacts can vindicate it.
 
 *Correction history.* **2026-07-29 (a):** an earlier revision quoted numbers
 from the original build run while the committed scorecard had been regenerated
@@ -53,12 +54,13 @@ longer exists. That is the same artifact-versus-code gap this document's
 for tidiness. The price is that the wall-clock figures moved with it, and every
 one of them has been re-derived from the new artifact rather than adjusted by
 hand: verify median 55.97 -> 55.53 ms (clause-1 margin 8.9x -> 9.0x), whole
-process 83.2 -> 82.3 ms, stage timings 2.80/8.08/1.11/9.46 -> 2.92/8.00/1.04/9.51 s,
-single-wall recompute 5.39/8.45 -> 6.29/7.69 ms, verifier RSS 71.5 -> 71.7 MB,
-builder RSS 2.47 -> 2.77 GB, and the g0 comparison +11.5% -> +10.6%. Node
-counts, percentages, hit rates, the verified count and all three clause
-verdicts are unchanged, which is the point: nothing the exam is judged on
-depends on which minute the run happened.
+process 83.2 -> 82.3 ms, parse 2.80 -> 2.93 s, mesh 8.08 -> 8.00 s, DAG
+structure 1.11 -> 1.04 s, DAG build 9.46 -> 9.51 s, single-wall recompute
+5.39 -> 6.29 ms (property) and 8.45 -> 7.69 ms (geometry+property), verifier
+RSS 71.5 -> 71.7 MB, builder RSS 2.47 -> 2.77 GB, and the g0 comparison
++11.5% -> +10.6%. Node counts, percentages, hit rates, the verified count and
+all three clause verdicts are unchanged, which is the point: nothing the exam
+is judged on depends on which minute the run happened.
 
 The one pair NOT re-derived is the 53.9 -> 56.0 ms geometry-inflation
 measurement. The scorecard stores no pre-inflation field, so those two come
@@ -66,6 +68,14 @@ from a separate instrumented run and cannot be recomputed from the committed
 artifact; they are labelled as such where they appear rather than being
 silently refreshed to numbers no artifact backs.
 
+<!-- numeral-src: 55.97, 55.97ms, 8.9x, 83.2, 2.80, 8.08, 1.11, 9.46, 5.39,
+     8.45, 71.5, 2.47, +11.5% :: none - the pre-re-bless figures, quoted in
+     this document only to record what the re-bless moved. Each was emitted by
+     the superseded scorecard and is emitted by nothing in this tree now, so
+     they are bound negatively rather than left to the artifact index: the
+     sentences carrying them are true only while they read as unbacked, and a
+     coincidental hit would make each of them say the opposite of what it
+     says. -->
 <!-- numeral-ok: 19, 73 :: counts OF this document at its previous revision,
      produced by scripts/moonshot/ci/check-report-numerals.mjs against that
      revision. A measurement of the prose, not of the bet. -->
@@ -135,7 +145,7 @@ These are different quantities and only the second is what the exam bounds.
 
 | Stage | Time |
 |---|---|
-| Parse | 2.92 s |
+| Parse | 2.93 s |
 | Mesh | 8.00 s |
 | DAG structure | 1.04 s |
 | DAG build + full hash | 9.51 s |
@@ -187,13 +197,18 @@ comparison they support is a ratio, and it is unaffected). The reason is structu
 verification cost is dominated by re-hashing the 49 untouched-storey
 `relationship` nodes, not by geometry payload size.
 
-<!-- numeral-ok: 50.21ms, 10.6% :: 50.21 ms is g0's data-plane-only verify median
-     re-run on this machine; g0 writes no scorecard, so it has no artifact here,
-     and 10.6% is this paragraph's own comparison of it against 55.53 ms. -->
-<!-- numeral-ok: 46x, 53.9, 49 :: 46x is examB's verticesMoved 1,106 over the
-     wall's original 24, 53.9 ms is the pre-inflation verify median from the same
-     variant run, and 49 is nodesStoreys 50 minus the one storey the edit
-     touches. All three are computed in the sentence. -->
+<!-- numeral-ok: 50.21ms, +10.6% :: 50.21 ms is g0's data-plane-only verify
+     median re-run on this machine; g0 writes no scorecard, so it has no
+     artifact here, and +10.6% is this paragraph's own comparison of it against
+     55.53 ms. -->
+<!-- numeral-ok: 46x, 49 :: 46x is examB's verticesMoved 1,106 over the wall's
+     original 24, and 49 is nodesStoreys 50 minus the one storey the edit
+     touches. Both are computed in the sentence. -->
+<!-- numeral-src: 53.9, 56.0ms :: none - the pre- and post-inflation verify
+     medians, from a separate instrumented run predating the 2026-08-01
+     re-bless. The scorecard stores no pre-inflation field, so neither is
+     re-derivable from it and neither was refreshed with the rest; they support
+     a ratio, and they must stay unbacked for the sentence to be true. -->
 
 ## Three caveats, including one that cuts against the headline
 
@@ -218,7 +233,17 @@ Measured counterfactual, same edit and same reads/writes, with
 | Claim granularity | Nodes resolved | % | Verify | Clause 1 | Clause 2 |
 |---|---|---|---|---|---|
 | storey (the exam) | 60 | 0.0239% | 55.53 ms | PASS | PASS |
-| element | 60,805 | 24.27% | 899.0 ms | **FAIL** | **FAIL** |
+| element | 60,805 | 24.27% | 845.6 ms | **FAIL** | **FAIL** |
+
+<!-- numeral-src: 60,805 :: b45-m1-midterm/scorecard.json#sensitivityElementGranularityClaim.nodesResolved -->
+<!-- numeral-src: 24.27% :: b45-m1-midterm/scorecard.json#sensitivityElementGranularityClaim.nodesResolvedPct -->
+<!-- numeral-src: 845.6ms :: b45-m1-midterm/scorecard.json#sensitivityElementGranularityClaim.verifyMs -->
+
+Every cell of that row is bound to the field it comes from rather than left to
+the artifact index. It is the row this document has now got wrong twice - once
+by quoting a verify timing no artifact held, and once by carrying the previous
+one through a re-bless that moved the field under it - and a per-claim binding
+is the only check that can say a sentence contradicts the field it quotes.
 
 Any future quote of "under 500 ms, under 5%" must carry the qualifier
 **"for a storey-granularity claim"**. Without it the number is not reproducible
@@ -288,7 +313,7 @@ table here quoted the *median*, 55.97 ms in that revision. Corrected: the
 median is what `scorecard.json` stores and what clause 1 is judged on. Both of
 those figures belong to the pre-re-bless run; the current median is 55.53 ms.)
 
-<!-- numeral-src: 56.2ms :: none - a RETRACTED figure, quoted only to say it was
+<!-- numeral-src: 56.2ms, 56.2 :: none - a RETRACTED figure, quoted only to say it was
      wrong, and it must stay retracted. The union index clears it against
      scorecard.json's verifyAllMs[2] = 56.164 - one of the five spawn samples,
      not the mean this sentence is disowning - so leaving it unbound would have
@@ -308,6 +333,10 @@ in M1.
   g0/g1/b35.
 - Class-2 instanced templates excluded per g1 (zero on this fixture).
 - Single machine, single fixture, warm cache.
+
+<!-- numeral-ok: 9 :: the read count g1 reports on duplex, quoted from that
+     demo's own run. Neither scorecard here stores a read census, and this
+     bet's fixture produces none at all. -->
 
 ## Reproducing
 

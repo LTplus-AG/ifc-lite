@@ -13,6 +13,7 @@
 
 import { lazy, Suspense, type ReactNode } from 'react';
 import type { WorkspacePanelId } from './registry';
+import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary';
 import { HierarchyPanel } from '@/components/viewer/HierarchyPanel';
 import { PropertiesPanel } from '@/components/viewer/PropertiesPanel';
 import { ComparePanel } from '@/components/viewer/ComparePanel';
@@ -55,9 +56,11 @@ export function renderPanelBody(id: WorkspacePanelId, onClose: () => void): Reac
     case 'collab': return <RoomPanel onClose={onClose} />;
     case 'zones': return <ZonesPanel onClose={onClose} />;
     case 'layers': return (
-      <Suspense fallback={null}>
-        <LayersPanel onClose={onClose} />
-      </Suspense>
+      <ChunkErrorBoundary label="Layers panel">
+        <Suspense fallback={null}>
+          <LayersPanel onClose={onClose} />
+        </Suspense>
+      </ChunkErrorBoundary>
     );
   }
 }

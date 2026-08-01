@@ -154,8 +154,18 @@ export function BasketPresentationDock() {
   }, []);
 
   const activateSavedView = useCallback(async (viewId: string) => {
-    const { activateBasketViewFromStore } = await import('@/store/basket/basketViewActivator');
-    activateBasketViewFromStore(viewId);
+    try {
+      const { activateBasketViewFromStore } = await import('@/store/basket/basketViewActivator');
+      activateBasketViewFromStore(viewId);
+    } catch (err) {
+      // Contained here so BOTH call sites are covered: the `void` in the
+      // thumbnail's onClick below, and `startPlayAll`, whose try/finally has no
+      // catch - either would otherwise become an unhandled rejection when a
+      // deploy rotates this chunk's hash under an open tab (see
+      // lib/chunk-version-skew.ts). Play-all keeps cycling rather than aborting;
+      // the skew handler's reload is the real recovery.
+      console.warn('[basket-dock] could not load the basket-view activator', err);
+    }
   }, []);
 
   const startPlayAll = useCallback(async (loop = false) => {

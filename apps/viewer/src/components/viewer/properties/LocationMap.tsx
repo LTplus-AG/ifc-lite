@@ -35,7 +35,26 @@ import { posthog } from '@/lib/analytics';
 let maplibrePromise: Promise<typeof import('maplibre-gl')> | null = null;
 function loadMaplibre() {
   if (!maplibrePromise) {
-    maplibrePromise = import('maplibre-gl');
+    const pending = import('maplibre-gl').then(ml => {
+      // Defence in depth against a namespace that resolves without throwing.
+      // Vite's preload helper returns `undefined` from a failed import whenever
+      // a `vite:preloadError` listener calls `preventDefault()` (ours no longer
+      // does - see lib/chunk-version-skew.ts), and every consumer below reads
+      // `.Map` / `.Marker` off this value. Failing here routes the problem into
+      // the `.catch` backstop, which degrades the panel with the right reason,
+      // instead of throwing a bare "Cannot read properties of undefined
+      // (reading 'Map')" that the WebGL try/catch misreads as a dead GPU.
+      if (!ml) throw new Error('Failed to load the maplibre-gl module');
+      return ml;
+    });
+    // A rejected promise stays rejected, so memoising one would make a single
+    // transient chunk failure permanent for the rest of the session - every
+    // later remount would degrade instantly without retrying. Drop the memo on
+    // failure so the next mount gets a real attempt.
+    maplibrePromise = pending;
+    void pending.catch(() => {
+      if (maplibrePromise === pending) maplibrePromise = null;
+    });
   }
   return maplibrePromise;
 }

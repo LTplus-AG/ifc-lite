@@ -16,6 +16,7 @@ import { ViewerLayout } from './components/viewer/ViewerLayout';
 import { BimProvider } from './sdk/BimProvider';
 import { ExtensionHostProvider } from './sdk/ExtensionHostProvider';
 import { Toaster } from './components/ui/toast';
+import { ChunkErrorBoundary } from './components/ChunkErrorBoundary';
 import { Suspense, lazy, useEffect, useState } from 'react';
 import { Analytics } from '@vercel/analytics/react';
 
@@ -65,9 +66,11 @@ export function App() {
   if (normalizedPath === '/mcp/playground') {
     return (
       <>
-        <Suspense fallback={<RouteFallback />}>
-          <McpPlayground />
-        </Suspense>
+        <ChunkErrorBoundary label="MCP playground">
+          <Suspense fallback={<RouteFallback />}>
+            <McpPlayground />
+          </Suspense>
+        </ChunkErrorBoundary>
         <Toaster />
         <Analytics />
       </>
@@ -76,9 +79,11 @@ export function App() {
   if (normalizedPath === '/mcp' || normalizedPath.startsWith('/mcp/')) {
     return (
       <>
-        <Suspense fallback={<RouteFallback />}>
-          <McpLanding />
-        </Suspense>
+        <ChunkErrorBoundary label="MCP page">
+          <Suspense fallback={<RouteFallback />}>
+            <McpLanding />
+          </Suspense>
+        </ChunkErrorBoundary>
         <Toaster />
         <Analytics />
       </>

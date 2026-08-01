@@ -5,17 +5,23 @@
 import posthogClient from 'posthog-js';
 import { scrubEvent } from './analytics-scrub.js';
 import { shouldSuppressWasmSkewNoise } from './wasm-version-skew.js';
+import { shouldSuppressChunkSkewNoise } from './chunk-version-skew.js';
 
-// `before_send` gate: drop the noise from an auto-recovered wasm version-skew
-// (the tab reloads onto fresh assets, so the captured exception describes a
-// failure the user never actually hits — see shouldSuppressWasmSkewNoise),
-// then run the privacy/tagging scrub on everything that remains. Kept here
-// rather than inside scrubEvent so analytics-scrub.ts stays dependency-free
-// (no @ifc-lite/geometry import) and independently unit-testable.
+// `before_send` gate: drop the noise from an auto-recovered version skew - the
+// tab reloads onto fresh assets, so the captured exception describes a failure
+// the user never actually hits. Two sibling gates, because the two skews are
+// detected differently: the wasm one by the error's own signature
+// (shouldSuppressWasmSkewNoise), the JS/CSS chunk one by the reload we have
+// already committed to (shouldSuppressChunkSkewNoise) - a failed chunk's
+// collateral shares no vocabulary with its cause. Then run the privacy/tagging
+// scrub on everything that remains. Kept here rather than inside scrubEvent so
+// analytics-scrub.ts stays dependency-free (no @ifc-lite/geometry import) and
+// independently unit-testable.
 const beforeSend = <
   T extends { event?: string; properties?: Record<string, unknown> } | null,
 >(event: T): T | null => {
   if (shouldSuppressWasmSkewNoise(event)) return null;
+  if (shouldSuppressChunkSkewNoise(event)) return null;
   return scrubEvent(event);
 };
 

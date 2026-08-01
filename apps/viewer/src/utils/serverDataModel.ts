@@ -19,6 +19,7 @@ import {
   type CompactEntityIndex,
 } from '@ifc-lite/parser';
 import {
+  comparePropertyValues,
   findStoreyByElevation,
   IfcTypeEnum,
   RelationshipType,
@@ -664,20 +665,24 @@ export function convertServerDataModel(
     },
     findByProperty: (
       propName: string,
-      _operator: string,
+      operator: string,
       value: PropertyValue,
       psetName?: string,
     ): number[] => {
       // Server-converted data: search psets for matching property name + value.
       // When a pset is named, restrict to it so a same-named property in
-      // another pset does not match.
+      // another pset does not match. The comparison must go through
+      // `comparePropertyValues` (the same function the columnar
+      // `PropertyTable.findByProperty` uses) — a bare `===` here silently
+      // degraded every relational operator to equality, so `'>' 10` answered
+      // `= 10`.
       const matchingEntityIds: number[] = [];
       for (const [entityId, psets] of entityToPsets) {
         let found = false;
         for (const pset of psets) {
           if (psetName !== undefined && pset.pset_name !== psetName) continue;
           for (const prop of pset.properties) {
-            if (prop.property_name === propName && materializeValue(prop) === value) {
+            if (prop.property_name === propName && comparePropertyValues(materializeValue(prop), operator, value)) {
               matchingEntityIds.push(entityId);
               found = true;
               break;

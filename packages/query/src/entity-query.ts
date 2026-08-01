@@ -6,9 +6,10 @@
  * Fluent query builder for entities
  */
 
-import type { IfcStoreBase as IfcDataStore } from '@ifc-lite/data';
+import type { IfcStoreBase as IfcDataStore, PropertySet, QuantitySet } from '@ifc-lite/data';
 import { IfcTypeEnum } from '@ifc-lite/data';
 import { QueryResultEntity } from './query-result-entity.js';
+import { matchesPsetFilter, matchesQsetFilter } from './property-filter.js';
 
 export type ComparisonOperator = '=' | '!=' | '>' | '>=' | '<' | '<=' | 'contains' | 'startsWith';
 
@@ -143,22 +144,127 @@ export class EntityQuery {
     return allIds;
   }
   
+  /**
+   * Narrow `ids` to those satisfying every registered property filter.
+   *
+   * A filter's first argument names either a property set or a quantity set,
+   * so both tables are consulted and their matches unioned. Two strategies,
+   * picked per store:
+   *
+   * - **Indexed** whenever `store.properties` does not report an explicit zero
+   *   row count. It is the store that decides this, not the file format:
+   *   `@ifc-lite/ifcx` builds real rows via `PropertyTableBuilder`, so an IFCX
+   *   file carrying properties lands here (one carrying none still reports zero
+   *   rows and takes the branch below), as does a cache written from such an
+   *   already materialised store. `findByProperty` and `findByQuantity` answer off the
+   *   name indices, so cost scales with the number of rows carrying that name,
+   *   not with the candidate count.
+   * - **Resolved sets** when the property table reports `count === 0`. A STEP
+   *   parse deliberately leaves the property/quantity tables at zero rows and
+   *   routes reads through the on-demand maps (issue #577), so `findByProperty`
+   *   there can only ever return `[]` — which is what made `whereProperty`
+   *   silently match nothing on every `.ifc` file. This also covers a
+   *   **cache restored from a STEP parse**: the writer serialises
+   *   `dataStore.properties` verbatim, so an empty table round-trips empty
+   *   (`findByProperty` survives as a method but indexes nothing) and the
+   *   viewer rebuilds the on-demand maps on restore. Since the viewer only
+   *   writes caches on the `.ifc` load path, cache-restored models take this
+   *   branch in practice. The server-converted viewer store also reports
+   *   `count: 0` and lands here. The filter then resolves the candidates
+   *   through `store.getProperties` / `store.getQuantities`, the same
+   *   accessors the read path (`EntityNode.property`,
+   *   `QueryResultEntity.getProperty`) uses.
+   *
+   * Only an *explicit* zero selects the fallback: a store whose table omits
+   * `count` altogether keeps the indexed path, because every store predating
+   * `count` on `IfcStoreBase` implements `findByProperty` for real.
+   *
+   * The fallback is candidate-scoped, never store-wide: only the ids that
+   * survived the type/id filter are resolved, and each is resolved at most once
+   * across all filters. It is still O(candidates x source extraction), so scope
+   * with `ofType(...)` before `whereProperty(...)` on large models — the note in
+   * `docs/guide/querying.md` says the same thing to callers.
+   *
+   * Matching is ANY-match: an entity passes when *any* property of that name in
+   * *any* set of that name satisfies the operator. That is what
+   * `PropertyTable.findByProperty` does (it walks every row of that property
+   * name), so the two strategies agree with each other. It deliberately does
+   * *not* agree with the single-value read path (`EntityNode.property` and
+   * `QueryResultEntity.getProperty` return the *first* match), which differs
+   * only for an entity carrying the same property name twice; that divergence
+   * is pinned by a test in `where-property-fallback.test.ts`.
+   */
   private applyPropertyFilters(ids: number[]): number[] {
     if (this.propertyFilters.length === 0) return ids;
-    
+
+    const properties = this.store.properties;
+    const quantities = this.store.quantities;
+    // Explicit zero only — see the doc comment above and the `count` contract
+    // on `IfcStoreBase`'s property table.
+    const useTable = properties.count !== 0;
+    // `quantities` and `getQuantities` are both REQUIRED on `IfcStoreBase`, so
+    // neither is guarded here: a store missing either is already out of
+    // contract, and half-guarding it (optional-chaining the table but calling
+    // `getQuantities` unconditionally two branches down) would only move the
+    // TypeError, not prevent it. `findByQuantity` is the one genuinely optional
+    // member, so that is the only existence check.
+    // Bound to the table so the optional method keeps its receiver.
+    const findByQuantity = useTable && quantities.findByQuantity
+      ? quantities.findByQuantity.bind(quantities)
+      : undefined;
+    // Shared across all filters: resolving a pset/qset costs a source
+    // extraction on the on-demand path, so never resolve the same entity twice.
+    const psetCache = new Map<number, PropertySet[]>();
+    const qsetCache = new Map<number, QuantitySet[]>();
+
     let filteredIds = ids;
-    
+
     for (const filter of this.propertyFilters) {
-      const matchingIds = this.store.properties.findByProperty(
-        filter.prop,
-        filter.op,
-        filter.value,
-        filter.pset,
-      );
-      const matchingSet = new Set(matchingIds);
-      filteredIds = filteredIds.filter(id => matchingSet.has(id));
+      const matches = new Set<number>();
+
+      if (useTable) {
+        for (const id of properties.findByProperty(filter.prop, filter.op, filter.value, filter.pset)) {
+          matches.add(id);
+        }
+      } else {
+        for (const id of filteredIds) {
+          let psets = psetCache.get(id);
+          if (!psets) {
+            psets = this.store.getProperties(id);
+            psetCache.set(id, psets);
+          }
+          if (matchesPsetFilter(psets, filter.pset, filter.prop, filter.op, filter.value)) matches.add(id);
+        }
+      }
+
+      // Quantity side: `whereProperty('Qto_WallBaseQuantities', 'NetArea', '>', 10)`
+      // is documented (docs/guide/querying.md, packages/query/README.md) but
+      // quantities live in a separate table, so a Qto_ filter matched nothing on
+      // every path. Union rather than "only when the property side came back
+      // empty" — a conditional would drop entities matched via quantities as
+      // soon as any other entity matched via properties.
+      if (findByQuantity) {
+        for (const id of findByQuantity(filter.prop, filter.op, filter.value, filter.pset)) {
+          matches.add(id);
+        }
+      } else {
+        // No index available: the on-demand path (where the columnar quantity
+        // table is empty by construction), or a duck-typed table that does not
+        // implement `findByQuantity`.
+        for (const id of filteredIds) {
+          if (matches.has(id)) continue;
+          let qsets = qsetCache.get(id);
+          if (!qsets) {
+            qsets = this.store.getQuantities(id);
+            qsetCache.set(id, qsets);
+          }
+          if (matchesQsetFilter(qsets, filter.pset, filter.prop, filter.op, filter.value)) matches.add(id);
+        }
+      }
+
+      filteredIds = filteredIds.filter(id => matches.has(id));
     }
-    
+
     return filteredIds;
   }
 }

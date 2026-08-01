@@ -7,6 +7,7 @@
  */
 
 import type { QuantityTable, QuantitySet, StringTable } from '@ifc-lite/data';
+import { comparePropertyValues } from '@ifc-lite/data';
 import { BufferWriter, BufferReader } from '../utils/buffer-utils.js';
 
 /**
@@ -102,6 +103,31 @@ export function readQuantities(reader: BufferReader, strings: StringTable): Quan
       }
 
       return null;
+    },
+
+    // Mirrors the columnar implementation in `@ifc-lite/data`'s
+    // `quantityTableFromColumns`. A restored table that omitted this would
+    // still answer `whereProperty` correctly, but only by resolving every
+    // candidate through `getForEntity` — see the note on `findByQuantity` in
+    // `quantity-table.ts`.
+    findByQuantity: (quantName, operator, filterValue, qset) => {
+      const quantIdx = strings.indexOf(quantName);
+      if (quantIdx < 0) return [];
+
+      const qsetIdx = qset === undefined ? -1 : strings.indexOf(qset);
+      if (qset !== undefined && qsetIdx < 0) return [];
+
+      const rowIndices = quantityIndex.get(quantIdx) || [];
+      const results: number[] = [];
+
+      for (const idx of rowIndices) {
+        if (qsetIdx >= 0 && qsetName[idx] !== qsetIdx) continue;
+        if (comparePropertyValues(value[idx], operator, filterValue)) {
+          results.push(entityId[idx]);
+        }
+      }
+
+      return results;
     },
 
     sumByType: (quantName) => {

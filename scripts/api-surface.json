@@ -962,6 +962,7 @@
     "StepValue: type",
     "StringTable: class",
     "buildCSR: function",
+    "comparePropertyValues: function",
     "createLogger: function",
     "entityTableFromColumns: function",
     "entityTableToColumns: function",

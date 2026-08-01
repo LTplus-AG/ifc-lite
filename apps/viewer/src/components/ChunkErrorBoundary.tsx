@@ -25,9 +25,25 @@ import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { posthog } from '@/lib/analytics';
 
+/**
+ * Which surface the fallback paints on.
+ *
+ * `panel` (default) sits inside the viewer chrome and uses its theme tokens.
+ * `night` is for the `/mcp` routes, which render OUTSIDE `ViewerLayout` on their
+ * own near-black stage (`NIGHT` = #0a0a0c in McpLanding) while the document root
+ * may still be on the light or colorful theme. There, `text-muted-foreground`
+ * resolves to a dark grey and the message is effectively invisible, so those
+ * routes borrow the MCP palette instead.
+ */
+type ChunkErrorTone = 'panel' | 'night';
+
+/** McpLanding's `PAPER` / `PAPER_DIM`, kept in sync by eye: this is one message. */
+const NIGHT_TONE = { fg: '#ede4d3', dim: '#9c9486' } as const;
+
 interface ChunkErrorBoundaryProps {
   /** What failed, in the user's words: "Layers panel", "MCP playground". */
   label: string;
+  tone?: ChunkErrorTone;
   children: ReactNode;
 }
 
@@ -65,18 +81,33 @@ export class ChunkErrorBoundary extends Component<
   render(): ReactNode {
     const { error } = this.state;
     if (!error) return this.props.children;
+    const night = this.props.tone === 'night';
     return (
-      <div className="flex h-full min-h-[160px] w-full flex-col items-center justify-center gap-2 px-4 text-center">
-        <span className="text-xs text-muted-foreground">
+      <div
+        className="flex h-full min-h-[160px] w-full flex-col items-center justify-center gap-2 px-4 text-center"
+        style={night ? { background: '#0a0a0c' } : undefined}
+      >
+        <span
+          className={night ? 'text-xs' : 'text-xs text-muted-foreground'}
+          style={night ? { color: NIGHT_TONE.fg } : undefined}
+        >
           {this.props.label} could not be loaded
         </span>
-        <span className="max-w-[280px] text-[11px] text-muted-foreground/70">
+        <span
+          className={night ? 'max-w-[280px] text-[11px]' : 'max-w-[280px] text-[11px] text-muted-foreground/70'}
+          style={night ? { color: NIGHT_TONE.dim } : undefined}
+        >
           This usually means the app was updated while your tab was open.
         </span>
         <button
           type="button"
           onClick={() => window.location.reload()}
-          className="mt-1 inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] transition-colors hover:bg-accent"
+          className={
+            night
+              ? 'mt-1 inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] transition-opacity hover:opacity-80'
+              : 'mt-1 inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] transition-colors hover:bg-accent'
+          }
+          style={night ? { borderColor: NIGHT_TONE.dim, color: NIGHT_TONE.fg } : undefined}
         >
           <RefreshCw className="h-3 w-3" />
           Reload

@@ -138,7 +138,14 @@ const defaultDeps: ChunkSkewDeps = {
       const raw = sessionStorage.getItem(RELOAD_TS_KEY);
       if (raw == null) return false;
       const ts = Number(raw);
-      return Number.isFinite(ts) && now - ts < RELOAD_DEBOUNCE_MS;
+      // `elapsed >= 0` is not pedantry: a stored timestamp in the FUTURE (an NTP
+      // correction, a VM resume, a user changing the clock) makes `elapsed`
+      // negative, which satisfies the `<` on its own and would pin this tab at
+      // "recently reloaded" until wall time caught up - disabling skew recovery
+      // for hours. Treat a future stamp as stale and allow the reload. Matches
+      // the same guard in shouldSuppressChunkSkewNoise below.
+      const elapsed = now - ts;
+      return Number.isFinite(ts) && elapsed >= 0 && elapsed < RELOAD_DEBOUNCE_MS;
     } catch (err) {
       // Private mode / sandboxed frame / "block all cookies". Treated as
       // "recently reloaded" so the reload is refused: rememberReload would fail

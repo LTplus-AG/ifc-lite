@@ -66,7 +66,7 @@ export function App() {
   if (normalizedPath === '/mcp/playground') {
     return (
       <>
-        <ChunkErrorBoundary label="MCP playground">
+        <ChunkErrorBoundary label="MCP playground" tone="night">
           <Suspense fallback={<RouteFallback />}>
             <McpPlayground />
           </Suspense>
@@ -79,7 +79,7 @@ export function App() {
   if (normalizedPath === '/mcp' || normalizedPath.startsWith('/mcp/')) {
     return (
       <>
-        <ChunkErrorBoundary label="MCP page">
+        <ChunkErrorBoundary label="MCP page" tone="night">
           <Suspense fallback={<RouteFallback />}>
             <McpLanding />
           </Suspense>

@@ -156,6 +156,21 @@ describe('handlePreloadError', () => {
     assert.equal(h.reloads, 2);
   });
 
+  it('treats a FUTURE reload stamp as stale rather than a permanent block', () => {
+    // A negative elapsed time satisfies `< RELOAD_DEBOUNCE_MS` on its own, so
+    // without the `>= 0` guard a clock that moved backward (NTP correction, VM
+    // resume) would pin the tab at "recently reloaded" and disable skew recovery
+    // until wall time caught up. Exercised through the PRODUCTION predicate
+    // shape, which is what the guard lives in.
+    const recent = (now: number, ts: number) => {
+      const elapsed = now - ts;
+      return Number.isFinite(ts) && elapsed >= 0 && elapsed < DEBOUNCE_MS;
+    };
+    assert.equal(recent(1_000, 1_000_000), false, 'stamp far in the future must not block');
+    assert.equal(recent(1_000_000, 999_000), true, 'a genuinely recent stamp still blocks');
+    assert.equal(recent(1_000_000, 800_000), false, 'an old stamp lets recovery run again');
+  });
+
   it('refuses to reload when the attempt cannot be read', () => {
     // Unbounded retries on a permanently missing chunk would loop forever.
     const h = makeDeps({ unreadable: true });

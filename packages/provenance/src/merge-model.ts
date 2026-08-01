@@ -880,8 +880,29 @@ function withHostRegion(state: ModelState, hostId: string | undefined, own: Aabb
  *   additional targets, because applying it deletes them (the cascade in
  *   {@link applyOp}). A write is never left undeclared.
  *
- * ### Scope of the soundness argument: `containment: 'enforced'` only
+ * ### Scope of the soundness argument: `cuts: 'lazy'` + `containment: 'enforced'`
  *
+ * TWO independent preconditions, and each fails for its own reason. Both are
+ * stated because the sensitivity grid deliberately runs outside them, and a
+ * cell of that grid must never be read as a soundness measurement of the
+ * shipping predicate.
+ *
+ * FIRST, `cuts: 'lazy'`. Under `cuts: 'derived'` {@link applyOp} calls
+ * {@link deriveAllCuts} after `entity-add`, `entity-remove` and
+ * `geometry-replace`, and that walks EVERY host in the state and rewrites its
+ * meshes. So an `entity-add` -- whose footprint declares only the fresh ids
+ * the op mints -- writes host mesh nodes it never names, and two adds against
+ * different hosts can be judged structurally disjoint while both rewrite
+ * geometry. The write set and the declared set part company for the whole
+ * state, not for one host, which is why this is a precondition rather than a
+ * rule that could be patched the way the `geometry-replace` region was: making
+ * `derived` sound would mean every op declaring every host, i.e. abandoning
+ * the footprint predicate. `lazy` has no such call, so a write is never left
+ * undeclared under the shipping semantics. The grid's `derived` cells score 3
+ * unsound auto-merges (matched) against 0 for the lazy baseline, which is this
+ * precondition being visible in the data rather than a defect in the bet.
+ *
+ * SECOND, `containment: 'enforced'`.
  * The argument above leans on the containment invariant in one specific place:
  * "the opening's CURRENT bounds are inside its host", which is what makes an
  * opening op's region necessarily meet a host op's region. That is true under
@@ -897,10 +918,11 @@ function withHostRegion(state: ModelState, hostId: string | undefined, own: Aabb
  * under.
  *
  * So: the footprint rules here are claimed sound for `cuts: 'lazy'` +
- * `containment: 'enforced'`. The `containment: 'off'` cells of
- * `runDerivedCutSensitivity`'s grid are measurements of the OP MODEL under a
- * predicate that is not sound for it, and must not be read as soundness
- * measurements of the shipping predicate -- the committed data says as much
+ * `containment: 'enforced'`, and for nothing else. Every OTHER cell of
+ * `runDerivedCutSensitivity`'s grid -- `derived` by the first precondition,
+ * `containment: 'off'` by the second -- is a measurement of the OP MODEL under
+ * a predicate that is not sound for it, and must not be read as a soundness
+ * measurement of the shipping predicate -- the committed data says as much
  * (`lazyNoContainment` scores 9 unsound auto-merges with the spatial rule
  * ablated, 13 when the schedules are regenerated, against 0 for the enforced
  * baseline).

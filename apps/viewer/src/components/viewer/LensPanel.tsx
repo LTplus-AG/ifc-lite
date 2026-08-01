@@ -78,11 +78,35 @@ interface SearchableSelectAnchor {
 }
 
 /**
+ * Resolve the `Window` that owns `el`, for viewport-relative measurements
+ * and scroll/resize listeners. A panel popped out into its own OS / PiP
+ * window (#1208) renders `SearchableSelect`'s trigger in *that* window's
+ * document, not the main tab's — using the global `window` there computes
+ * the flip decision against the wrong viewport height and attaches
+ * scroll/resize listeners to the wrong window, so the popup never
+ * repositions when the child window scrolls or resizes.
+ *
+ * `ownerDocument.defaultView` is the standard way to recover an element's
+ * window; it is `null` only for a document detached from any window (e.g.
+ * one created via `DOMParser` or `document.implementation.createDocument`,
+ * never attached to a `<iframe>`/window). A mounted, visible trigger can't
+ * be in a detached document, but we fall back to the global `window` rather
+ * than asserting, since a stale ref during teardown is a more plausible way
+ * to hit this than a truly detached document.
+ */
+export function resolveTriggerWindow(el: HTMLElement): Window {
+  return el.ownerDocument.defaultView ?? window;
+}
+
+/**
  * Pure positioning math for `SearchableSelect`'s portaled popup (#1924): given
  * the trigger's viewport rect and the viewport height, decide whether the
  * popup opens down (default) or flips up, and return the `position: fixed`
  * coordinates for either case. Extracted so the flip decision is unit
  * testable without a DOM (`LensPanel.searchable-select-anchor.test.ts`).
+ * Takes `viewportHeight` as a parameter rather than reading `window` itself
+ * so callers can pass the *trigger's* window (`resolveTriggerWindow`) —
+ * necessary for popped-out panel windows, see above.
  */
 export function computeSearchableSelectAnchor(
   triggerRect: { left: number; width: number; top: number; bottom: number },
@@ -139,7 +163,8 @@ export function SearchableSelect({
   const reposition = useCallback(() => {
     const el = triggerRef.current;
     if (!el) return;
-    setAnchor(computeSearchableSelectAnchor(el.getBoundingClientRect(), window.innerHeight));
+    const win = resolveTriggerWindow(el);
+    setAnchor(computeSearchableSelectAnchor(el.getBoundingClientRect(), win.innerHeight));
   }, []);
 
   // The popup is portaled straight to <body> (or the popped-out panel
@@ -148,16 +173,23 @@ export function SearchableSelect({
   // scroll container, the floating-panel chrome, the docked-panel host (#1924).
   // Track the trigger's position while open (capture = also catch ancestor
   // scrolls, e.g. the panel's own scroll container) and flip up near the
-  // bottom of the viewport instead of overflowing off-screen.
+  // bottom of the viewport instead of overflowing off-screen. Both the
+  // viewport height above and these listeners must use the trigger's OWN
+  // window (`resolveTriggerWindow`), not the global — in a popped-out panel
+  // window the global `window` is still the main tab's, which has the wrong
+  // viewport height and never fires scroll/resize for the child window.
   useLayoutEffect(() => {
     if (!open) return;
+    const el = triggerRef.current;
+    if (!el) return;
+    const win = resolveTriggerWindow(el);
     reposition();
     const onScroll = () => reposition();
-    window.addEventListener('scroll', onScroll, true);
-    window.addEventListener('resize', onScroll);
+    win.addEventListener('scroll', onScroll, true);
+    win.addEventListener('resize', onScroll);
     return () => {
-      window.removeEventListener('scroll', onScroll, true);
-      window.removeEventListener('resize', onScroll);
+      win.removeEventListener('scroll', onScroll, true);
+      win.removeEventListener('resize', onScroll);
     };
   }, [open, reposition]);
 

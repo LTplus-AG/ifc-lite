@@ -30,6 +30,33 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { SearchableSelect } from './LensPanel.js';
 
+/** Records `addEventListener`/`removeEventListener` calls made on a fake
+ *  "other window" object, so a test can assert listeners land on the
+ *  trigger's own window rather than the global `window` (#1958 follow-up:
+ *  right portal target, wrong coordinate space — see LensPanel.tsx's
+ *  `resolveTriggerWindow`). */
+function createFakeTriggerWindow(innerHeight: number) {
+  const calls: Array<{ method: 'add' | 'remove'; type: string }> = [];
+  const fakeWindow = {
+    innerHeight,
+    addEventListener: (type: string) => { calls.push({ method: 'add', type }); },
+    removeEventListener: (type: string) => { calls.push({ method: 'remove', type }); },
+  };
+  return { fakeWindow, calls };
+}
+
+/** Makes `el.ownerDocument.defaultView` resolve to `fakeWindow`, mimicking a
+ *  trigger rendered in a popped-out panel window whose document belongs to a
+ *  different `Window` than the main tab's global. Shadows only this
+ *  element's own `ownerDocument` property, leaving the real global
+ *  `document`/`window` (and every other node in the test) untouched. */
+function stubOwnerWindow(el: HTMLElement, fakeWindow: unknown): void {
+  Object.defineProperty(el, 'ownerDocument', {
+    value: { defaultView: fakeWindow },
+    configurable: true,
+  });
+}
+
 const mounted: Array<{ root: Root; container: HTMLElement }> = [];
 
 /** Mounts `SearchableSelect` inside a clipping ancestor, mimicking the real
@@ -157,5 +184,92 @@ describe('SearchableSelect popup portal (#1924)', () => {
     });
 
     assert.equal(findPopupInDocument(), null, 'outside click closes the portaled popup');
+  });
+
+  it('measures the flip decision against the trigger\'s own window, not the global one (#1958 follow-up)', () => {
+    const { trigger } = renderInClippingAncestor({
+      value: '',
+      options: ['Alpha', 'Beta'],
+      onChange: () => {},
+    });
+
+    // Trigger sits at y=[500, 530]. Against the real global window
+    // (innerHeight 768 under happy-dom), there's 238px below — plenty of
+    // room, so it should open DOWN. Against a fake "own window" only 540px
+    // tall, there's just 10px below and 500px above, so it should flip UP.
+    // The two windows disagree on purpose: if the component reads the
+    // global instead of the trigger's own window, this assertion fails.
+    Object.defineProperty(trigger, 'getBoundingClientRect', {
+      value: () => ({ left: 10, width: 120, top: 500, bottom: 530, right: 130, height: 30, x: 10, y: 500, toJSON: () => ({}) }),
+      configurable: true,
+    });
+    const { fakeWindow } = createFakeTriggerWindow(540);
+    stubOwnerWindow(trigger, fakeWindow);
+
+    openPopup(trigger);
+
+    const popup = findPopupInDocument();
+    assert.ok(popup, 'popup renders when open');
+    assert.equal(popup?.style.top, '', 'flips up, so no top offset is set');
+    assert.notEqual(popup?.style.bottom, '', 'flips up against the fake (short) window, anchoring from the bottom');
+  });
+
+  it('attaches and removes scroll/resize listeners on the trigger\'s own window, not the global one (#1958 follow-up)', () => {
+    const { trigger } = renderInClippingAncestor({
+      value: '',
+      options: ['Alpha', 'Beta'],
+      onChange: () => {},
+    });
+    Object.defineProperty(trigger, 'getBoundingClientRect', {
+      value: () => ({ left: 10, width: 120, top: 500, bottom: 530, right: 130, height: 30, x: 10, y: 500, toJSON: () => ({}) }),
+      configurable: true,
+    });
+    const { fakeWindow, calls } = createFakeTriggerWindow(540);
+    stubOwnerWindow(trigger, fakeWindow);
+
+    const globalCalls: Array<{ method: 'add' | 'remove'; type: string }> = [];
+    const realAdd = window.addEventListener.bind(window);
+    const realRemove = window.removeEventListener.bind(window);
+    window.addEventListener = ((type: string, ...rest: [unknown, unknown?]) => {
+      if (type === 'scroll' || type === 'resize') globalCalls.push({ method: 'add', type });
+      return realAdd(type, ...rest as [EventListenerOrEventListenerObject, (boolean | AddEventListenerOptions)?]);
+    }) as typeof window.addEventListener;
+    window.removeEventListener = ((type: string, ...rest: [unknown, unknown?]) => {
+      if (type === 'scroll' || type === 'resize') globalCalls.push({ method: 'remove', type });
+      return realRemove(type, ...rest as [EventListenerOrEventListenerObject, (boolean | EventListenerOptions)?]);
+    }) as typeof window.removeEventListener;
+
+    try {
+      openPopup(trigger);
+      assert.ok(
+        calls.some((c) => c.method === 'add' && c.type === 'scroll') &&
+          calls.some((c) => c.method === 'add' && c.type === 'resize'),
+        `expected scroll+resize listeners on the trigger's own window, got ${JSON.stringify(calls)}`,
+      );
+      assert.equal(
+        globalCalls.filter((c) => c.method === 'add').length,
+        0,
+        `expected no scroll/resize listeners on the global window, got ${JSON.stringify(globalCalls)}`,
+      );
+
+      // Closing (outside click) must remove the listeners from the SAME
+      // (trigger's own) window, not leak them or remove from the global one.
+      act(() => {
+        document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+      });
+      assert.ok(
+        calls.some((c) => c.method === 'remove' && c.type === 'scroll') &&
+          calls.some((c) => c.method === 'remove' && c.type === 'resize'),
+        `expected scroll+resize listener removal on the trigger's own window, got ${JSON.stringify(calls)}`,
+      );
+      assert.equal(
+        globalCalls.filter((c) => c.method === 'remove').length,
+        0,
+        `expected no scroll/resize listener removal on the global window, got ${JSON.stringify(globalCalls)}`,
+      );
+    } finally {
+      window.addEventListener = realAdd;
+      window.removeEventListener = realRemove;
+    }
   });
 });

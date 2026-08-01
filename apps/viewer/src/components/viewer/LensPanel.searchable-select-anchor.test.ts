@@ -19,7 +19,28 @@ import '@/test/setup-dom.js';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { computeSearchableSelectAnchor } from './LensPanel.js';
+import { computeSearchableSelectAnchor, resolveTriggerWindow } from './LensPanel.js';
+
+describe('resolveTriggerWindow (#1958 follow-up)', () => {
+  it('resolves the element\'s own window via ownerDocument.defaultView', () => {
+    const el = document.createElement('div');
+    const fakeWindow = { innerHeight: 42 };
+    Object.defineProperty(el, 'ownerDocument', {
+      value: { defaultView: fakeWindow },
+      configurable: true,
+    });
+    assert.equal(resolveTriggerWindow(el), fakeWindow);
+  });
+
+  it('falls back to the global window when ownerDocument.defaultView is null (detached document)', () => {
+    const el = document.createElement('div');
+    Object.defineProperty(el, 'ownerDocument', {
+      value: { defaultView: null },
+      configurable: true,
+    });
+    assert.equal(resolveTriggerWindow(el), window);
+  });
+});
 
 describe('computeSearchableSelectAnchor (#1924)', () => {
   it('opens down when there is plenty of room below the trigger', () => {

@@ -227,7 +227,7 @@ export class ExportNamespace {
     // The trigger is looked for past any leading INVISIBLE characters. A BOM,
     // zero-width space, left-to-right mark or non-breaking space in front of
     // `=` does not stop a spreadsheet reading the cell as a formula, but it
-    // does stop an anchored regex matching, so `﻿=HYPERLINK(...)` used to
+    // does stop an anchored regex matching, so `\uFEFF=HYPERLINK(...)`, a BOM then `=`, used to
     // sail through. IFC text properties are attacker-controllable and can
     // carry any of them.
     //

@@ -55,14 +55,14 @@ describe('ExportNamespace.csv formula-injection guard', () => {
 
   // The regression. An anchored regex does not match a trigger sitting behind
   // an invisible character, but a spreadsheet still evaluates the cell, so
-  // `﻿=HYPERLINK(...)` used to be exported unguarded. Raised on PR #1944.
+  // `\uFEFF=HYPERLINK(...)` used to be exported unguarded. Raised on PR #1944.
   it('prefixes a trigger hidden behind an invisible character (#1944)', () => {
     const hidden = [
-      ['BOM', '﻿'],
-      ['zero-width space', '​'],
-      ['left-to-right mark', '‎'],
-      ['right-to-left override', '‮'],
-      ['non-breaking space', ' '],
+      ['BOM', '\u{FEFF}'],
+      ['zero-width space', '\u{200B}'],
+      ['left-to-right mark', '\u{200E}'],
+      ['right-to-left override', '\u{202E}'],
+      ['non-breaking space', '\u{00A0}'],
     ] as const;
 
     for (const [label, prefix] of hidden) {
@@ -81,7 +81,7 @@ describe('ExportNamespace.csv formula-injection guard', () => {
 
   it('leaves ordinary values alone, including invisible characters before text', () => {
     expect(nameCell('Wall-001')).toBe('Wall-001');
-    expect(nameCell('﻿Wall-001')).toBe('﻿Wall-001');
+    expect(nameCell('\u{FEFF}Wall-001')).toBe('\u{FEFF}Wall-001');
     expect(nameCell(' Wall-001')).toBe(' Wall-001');
   });
 });

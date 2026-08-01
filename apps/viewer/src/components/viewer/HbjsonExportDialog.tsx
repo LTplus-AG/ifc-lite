@@ -5,11 +5,21 @@
 /**
  * Export Dialog for HBJSON (Honeybee / Ladybug Tools energy & daylight model).
  *
- * HBJSON is built analytically from the original IFC bytes (rooms from IfcSpace
+ * HBJSON is built analytically from IFC STEP bytes (rooms from IfcSpace
  * volumes, windows/doors as apertures/doors, railings as shades, and material
- * layer sets as opaque constructions) — so it needs the model's `sourceFile`,
- * not the tessellated geometry. There are no per-export settings beyond the
- * model name, so the dialog is just a picker + a short description.
+ * layer sets as opaque constructions). When the model's mutation view carries
+ * actual edits (e.g. spaces drawn with the Space Sketch tool), those bytes
+ * are regenerated through `StepExporter` first — the same mutation-view
+ * application STEP export already uses (see `ExportDialog.tsx`) — so
+ * anything authored in the editor is visible to the analytic exporter. Falls
+ * back to the model's `sourceFile` bytes verbatim otherwise, which is the
+ * common case: a mutation view with zero edits is register-on-open, not
+ * edit-on-open (the Properties panel, `BulkPropertyEditor`, `DataConnector`,
+ * and `ExportDialog` all construct and register one just by being opened),
+ * so gating on mere existence would route every export through a redundant
+ * regeneration the moment any of those panels had been touched. There are no
+ * per-export settings beyond the model name, so the dialog is just a picker
+ * + a short description.
  */
 
 import { useState, useCallback, useMemo, useEffect } from 'react';
@@ -41,7 +51,9 @@ import {
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
 import { GeometryProcessor } from '@ifc-lite/geometry';
+import { StepExporter } from '@ifc-lite/export';
 import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
+import { resolveHbjsonMutationSource } from './hbjson-export-source';
 
 interface HbjsonExportDialogProps {
   trigger?: React.ReactNode;
@@ -49,6 +61,7 @@ interface HbjsonExportDialogProps {
 
 export function HbjsonExportDialog({ trigger }: HbjsonExportDialogProps) {
   const models = useViewerStore((s) => s.models);
+  const getMutationView = useViewerStore((s) => s.getMutationView);
 
   const [open, setOpen] = useState(false);
   const [selectedModelId, setSelectedModelId] = useState<string>('');
@@ -63,7 +76,13 @@ export function HbjsonExportDialog({ trigger }: HbjsonExportDialogProps) {
     () =>
       Array.from(models.values())
         .filter((m) => m.sourceFile && /\.(ifc|ifcx|ifczip)$/i.test(m.sourceFile.name))
-        .map((m) => ({ id: m.id, name: m.name, sourceFile: m.sourceFile as File })),
+        .map((m) => ({
+          id: m.id,
+          name: m.name,
+          sourceFile: m.sourceFile as File,
+          ifcDataStore: m.ifcDataStore,
+          schemaVersion: m.schemaVersion,
+        })),
     [models],
   );
 
@@ -85,7 +104,28 @@ export function HbjsonExportDialog({ trigger }: HbjsonExportDialogProps) {
     setExportResult(null);
 
     try {
-      const bytes = new Uint8Array(await selectedModel.sourceFile.arrayBuffer());
+      // Regenerate STEP bytes through the mutation view when it carries actual
+      // edits, so anything authored in-editor (e.g. Space Sketch rooms) is
+      // visible to the analytic exporter — mirrors how full STEP export
+      // applies `getMutationView` (see ExportDialog.tsx). IFC5/IFCX models
+      // have no STEP representation to regenerate, and a mutation view with
+      // no pending changes (the common case — see the module doc comment)
+      // falls straight through to the original file bytes, unchanged from
+      // before this fix.
+      const mutationView = getMutationView(selectedModel.id);
+      const dataStore = selectedModel.ifcDataStore;
+      const mutationSource = resolveHbjsonMutationSource({
+        mutationView,
+        dataStore,
+        schemaVersion: selectedModel.schemaVersion,
+      });
+      let bytes: Uint8Array;
+      if (mutationSource) {
+        const exporter = new StepExporter(mutationSource.dataStore, mutationSource.mutationView);
+        bytes = exporter.export({ schema: mutationSource.dataStore.schemaVersion }).content;
+      } else {
+        bytes = new Uint8Array(await selectedModel.sourceFile.arrayBuffer());
+      }
       const baseName = selectedModel.name.replace(/\.[^.]+$/, '');
 
       // A fresh processor is cheap: wasm-bindgen shares one module singleton,
@@ -111,7 +151,7 @@ export function HbjsonExportDialog({ trigger }: HbjsonExportDialogProps) {
     } finally {
       setIsExporting(false);
     }
-  }, [selectedModel]);
+  }, [selectedModel, getMutationView]);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

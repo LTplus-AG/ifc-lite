@@ -745,6 +745,29 @@ function voidsRelNodeId(openingEntityId: string): string {
 
 export const MERGE_MODEL_ROOT_NODE_ID = 'root';
 
+/** Node-id prefixes {@link buildStateDag} MINTS. A caller-supplied entity,
+ *  pset or mesh id in one of these namespaces (or equal to the root id) would
+ *  collide with a synthetic node and surface as ProvenanceDag's generic
+ *  "duplicate node id" from deep inside the build. Checked up front so the
+ *  error names the actual problem, and so the reserved namespace is stated
+ *  once rather than implied by three separate template literals. */
+const RESERVED_NODE_ID_PREFIXES = ['storey:', 'storey-rel:', 'voids-rel:'] as const;
+
+function assertNotReserved(kind: string, nodeId: string): void {
+  if (nodeId === MERGE_MODEL_ROOT_NODE_ID) {
+    throw new Error(
+      `@ifc-lite/provenance: buildStateDag: ${kind} id "${nodeId}" is reserved (the root layer node)`,
+    );
+  }
+  for (const prefix of RESERVED_NODE_ID_PREFIXES) {
+    if (nodeId.startsWith(prefix)) {
+      throw new Error(
+        `@ifc-lite/provenance: buildStateDag: ${kind} id "${nodeId}" uses the reserved "${prefix}" namespace, which this builder mints for spatial-structure and voids nodes`,
+      );
+    }
+  }
+}
+
 /**
  * Build the (unhashed) node-hash-v0 DAG for a state: mesh/pset leaves ->
  * element nodes -> one `relationship` node per storey (plus one
@@ -787,6 +810,9 @@ export function buildStateDag(state: ModelState): ProvenanceDag {
   const entityIds = [...state.entities.keys()].sort();
   for (const entityId of entityIds) {
     const entity = state.entities.get(entityId) as EntityState;
+    assertNotReserved('entity', entityId);
+    for (const pid of entity.psets.keys()) assertNotReserved('property-set', pid);
+    for (const mid of entity.meshes.keys()) assertNotReserved('geometry-mesh', mid);
     const byStorey = elementsByStorey.get(entity.storeyId);
     if (!byStorey) {
       throw new Error(`@ifc-lite/provenance: buildStateDag: entity "${entityId}" references unknown storey "${entity.storeyId}"`);

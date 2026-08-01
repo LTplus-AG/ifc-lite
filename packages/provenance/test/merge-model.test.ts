@@ -197,6 +197,23 @@ describe('buildStateDag / hashModelState', () => {
     expect(() => buildStateDag(bad)).toThrow(/unknown storey/);
   });
 
+  it('rejects caller ids that collide with the node ids this builder mints', () => {
+    // Without this the collision surfaces as ProvenanceDag's generic
+    // "duplicate node id" from deep inside the build, naming neither the
+    // reserved namespace nor the offending entity.
+    for (const bad of ['storey:S0', 'storey-rel:S0', 'voids-rel:x', MERGE_MODEL_ROOT_NODE_ID]) {
+      const state: ModelState = {
+        storeyIds: ['S0'],
+        entities: new Map([[bad, entity('a', 'S0', [0, 0, 0])]]),
+      };
+      expect(() => buildStateDag(state), bad).toThrow(/reserved/);
+    }
+    // Pset and mesh ids are checked too, not just entity ids.
+    const withBadPset = baseState();
+    (withBadPset.entities.get('element:a') as EntityState).psets = new Map([['storey:S0', wallPset()]]);
+    expect(() => buildStateDag(withBadPset)).toThrow(/reserved/);
+  });
+
   it('throws when an entity references an unknown host', () => {
     const bad = baseState();
     (bad.entities.get('element:a') as EntityState).hostId = 'element:ghost';

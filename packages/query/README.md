@@ -47,27 +47,12 @@ query.spaces().execute();
 ```typescript
 query
   .ofType('IfcWall')
-  .whereProperty('Pset_WallCommon', 'ThermalTransmittance', '>', 0.3)
+  .whereProperty('Qto_WallBaseQuantities', 'NetVolume', '>', 5.0)
   .whereProperty('Pset_WallCommon', 'FireRating', '!=', null)
   .execute();
 ```
 
 Supported: `=`, `!=`, `>`, `<`, `>=`, `<=`, `contains`, `startsWith`.
-
-Quantities (`Qto_*`) live in a separate table from properties, so they are
-not reachable via `whereProperty()`. Filter by quantity value after
-`execute()` instead:
-
-```typescript
-const largeWalls = query
-  .walls()
-  .execute()
-  .filter(w => {
-    const qset = w.quantities.find(q => q.name === 'Qto_WallBaseQuantities');
-    const netVolume = qset?.quantities.find(q => q.name === 'NetVolume')?.value;
-    return typeof netVolume === 'number' && netVolume > 5.0;
-  });
-```
 
 ## Graph traversal
 

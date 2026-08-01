@@ -142,7 +142,16 @@ const LFS_HOOKS = ['pre-push', 'post-checkout', 'post-commit', 'post-merge'];
 
 /** Read-only git call, always against this script's own repo. */
 function git(args, opts = {}) {
-  const r = spawnSync('git', args, { cwd: ROOT, encoding: 'utf-8', ...opts });
+  // 64 MiB by default, not node's 1 MiB: `ls-files` over a big checkout can
+  // exceed that, and spawnSync truncates silently rather than erroring, which
+  // would make a repo look like it has fewer paths than it does. Callers can
+  // still override.
+  const r = spawnSync('git', args, {
+    cwd: ROOT,
+    encoding: 'utf-8',
+    maxBuffer: 64 * 1024 * 1024,
+    ...opts,
+  });
   // `raw` is for NUL-separated output, where trimming could eat a leading
   // space in the first path.
   return { ok: r.status === 0, status: r.status, stdout: (r.stdout || '').trim(), raw: r.stdout || '' };
@@ -386,10 +395,14 @@ objects on push, and it will not tell you.
 
 Remedies, least invasive first.
 
-1. Change nothing, get this push out:
+1. Change nothing on disk, get this push out. Note this skips EVERY
+   pre-push hook, not only the Git LFS one, so run whatever else your
+   clone checks at push time yourself:
       git push --no-verify <remote> <branch>
 
-2. Narrowest fix, this hook only, no config touched:
+2. Narrowest fix, this hook only, no config touched. Read the file first:
+   if it runs anything besides git-lfs's guard and dispatch, delete only
+   the git-lfs lines instead of the whole file:
       rm ${pushHook ? pushHook.path : join(hooksDir, 'pre-push')}
 
 3. Whole-clone fix, only once you are sure no other checkout shares the

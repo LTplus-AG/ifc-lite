@@ -349,15 +349,27 @@ that may not be the one you think, so read
 before picking either.
 
 ```bash
-# 1. Change nothing, get this one push out.
+# 1. Change nothing on disk, get this one push out.
+#    Skips EVERY pre-push hook, not just the Git LFS one.
 git push --no-verify <remote> <branch>
 
 # 2. Narrowest lasting fix: this hook only, no config touched.
+#    Read it first (see below) and delete only if it is git-lfs's.
 rm "$(git rev-parse --path-format=absolute --git-path hooks)/pre-push"
 
 # 3. Whole-clone fix: removes the hooks and this clone's lfs filters.
 git lfs uninstall --local
 ```
+
+Two cautions on the first two.
+
+`--no-verify` skips **all** pre-push hooks. If your clone runs anything else at
+push time, run those checks yourself before leaning on it.
+
+Before running the `rm`, read the file. A hook git-lfs wrote is a shebang, an
+optional "is git-lfs installed" guard, and `git lfs pre-push "$@"`, and dropping
+it costs nothing here because this repo has no LFS content. If yours also runs
+your own commands, delete only the git-lfs lines and keep the rest.
 
 `--local` is clone-scoped in its **config** effect. Per
 `git lfs uninstall --help` it removes the lfs smudge and clean filters from

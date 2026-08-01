@@ -54,12 +54,28 @@ function sanitize(text) {
     .replace(/\/(Users|home)\/[^/\s"'):]+/g, '/$1/<user>');
 }
 
+/**
+ * Run one battery filter under the REPO-ROOT toolchain.
+ *
+ * The `cwd` matters and is the whole reason this is a named function. rustup
+ * resolves `rust-toolchain.toml` from the working directory upward and takes
+ * the FIRST one it finds, and this repo has two:
+ *
+ *   /rust-toolchain.toml       channel = "nightly-2025-11-15"   <- pinned, what CI uses
+ *   /rust/rust-toolchain.toml  channel = "nightly"              <- floating
+ *
+ * Running from `rust/` therefore selected the floating channel, so this bet's
+ * battery could compile under a different rustc than CI and drift silently as
+ * nightly advanced -- for a measurement whose entire claim is reproducible
+ * gradients graded at 1e-6, that is a reproducibility hole, not a nitpick.
+ * `--manifest-path` from REPO_ROOT keeps the pin and reaches the same crate.
+ */
 function cargoTest(filter) {
-  const argv = ['test', '-p', 'ifc-lite-geometry', '--lib'];
+  const argv = ['test', '--manifest-path', path.join(REPO_ROOT, 'Cargo.toml'), '-p', 'ifc-lite-geometry', '--lib'];
   if (RELEASE) argv.push('--release');
   argv.push(filter, '--', '--nocapture');
   const r = spawnSync('cargo', argv, {
-    cwd: path.join(REPO_ROOT, 'rust'),
+    cwd: REPO_ROOT,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
   });

@@ -63,13 +63,17 @@ export async function exportHbjson(
   }
 
   const processor = new GeometryProcessor();
-  await processor.init();
-  const baseName = name.replace(/\.[^.]+$/, '');
-  const result = processor.exportHbjson(bytes, baseName);
-  if (result === null) {
-    throw new Error('Geometry engine unavailable for HBJSON export.');
+  try {
+    await processor.init();
+    const baseName = name.replace(/\.[^.]+$/, '');
+    const result = processor.exportHbjson(bytes, baseName);
+    if (result === null) {
+      throw new Error('Geometry engine unavailable for HBJSON export.');
+    }
+    // The lens contract carries a string; HBJSON payloads are far below the
+    // V8 string ceiling, so decoding here is safe.
+    return new TextDecoder().decode(result);
+  } finally {
+    processor.dispose();
   }
-  // The lens contract carries a string; HBJSON payloads are far below the
-  // V8 string ceiling, so decoding here is safe.
-  return new TextDecoder().decode(result);
 }

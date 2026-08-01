@@ -14,11 +14,13 @@
  * headless/CLI export path, not just the viewer dialog.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { addSpaceToStore, resolveSpatialAnchor } from '@ifc-lite/create';
+import { StepExporter } from '@ifc-lite/export';
+import { GeometryProcessor } from '@ifc-lite/geometry';
 import { createHeadlessContext } from './loader.js';
 import { exportHbjson } from './hbjson-export.js';
 
@@ -89,8 +91,19 @@ describe('HeadlessBackend hbjson export (#1908)', () => {
     const removed = bim.store.removeEntity({ modelId, expressId: 999_999_999 });
     expect(removed).toBe(false);
 
-    const hbjson = await bim.export.hbjson({ name: 'registered-but-empty' });
-    expect(roomCount(hbjson)).toBe(0);
+    // roomCount alone would stay 0 whether or not the StepExporter regen
+    // path runs (re-serializing an unedited overlay reproduces the same
+    // rooms), so it would not catch a regression that drops the
+    // `hasPendingChanges()` gate. Spy on `StepExporter.export` directly to
+    // pin that the gate actually skips the regeneration.
+    const exportSpy = vi.spyOn(StepExporter.prototype, 'export');
+    try {
+      const hbjson = await bim.export.hbjson({ name: 'registered-but-empty' });
+      expect(roomCount(hbjson)).toBe(0);
+      expect(exportSpy).not.toHaveBeenCalled();
+    } finally {
+      exportSpy.mockRestore();
+    }
   }, 30_000);
 
   it('a space restored via restoreNewEntity (not freshly authored) is still present in the output', async () => {
@@ -143,5 +156,35 @@ describe('HeadlessBackend hbjson export (#1908)', () => {
 
     const hbjson = await bim.export.hbjson({ name: 'renamed-wall' });
     expect(roomCount(hbjson)).toBe(0);
+  }, 30_000);
+
+  it('disposes the GeometryProcessor WASM handle on the success path (#1956 review fix)', async () => {
+    const { store } = await createHeadlessContext(SAMPLE_IFC);
+    const disposeSpy = vi.spyOn(GeometryProcessor.prototype, 'dispose');
+    try {
+      await exportHbjson(store, null, 'dispose-success');
+      expect(disposeSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      disposeSpy.mockRestore();
+    }
+  }, 30_000);
+
+  it('disposes the GeometryProcessor WASM handle even when exportHbjson throws (#1956 review fix)', async () => {
+    // `GeometryProcessor.exportHbjson` returning null (engine unavailable)
+    // makes `exportHbjson` in hbjson-export.ts throw. Stub the prototype
+    // method to force that path deterministically — this is the early-return
+    // the fix's try/finally must cover, not just the happy path.
+    const { store } = await createHeadlessContext(SAMPLE_IFC);
+    const disposeSpy = vi.spyOn(GeometryProcessor.prototype, 'dispose');
+    const exportSpy = vi.spyOn(GeometryProcessor.prototype, 'exportHbjson').mockReturnValue(null);
+    try {
+      await expect(exportHbjson(store, null, 'dispose-throw')).rejects.toThrow(
+        'Geometry engine unavailable for HBJSON export.',
+      );
+      expect(disposeSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      exportSpy.mockRestore();
+      disposeSpy.mockRestore();
+    }
   }, 30_000);
 });

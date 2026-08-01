@@ -71,7 +71,15 @@ describe('resolveHbjsonMutationSource', () => {
   });
 
   it('returns null when there is no data store', () => {
+    // Must carry real edits so hasPendingChanges() is true and execution
+    // actually reaches the `!dataStore` branch — otherwise the earlier
+    // hasPendingChanges() short-circuit returns null regardless of the
+    // `!dataStore` check, and this test would pass even if that guard were
+    // deleted entirely.
     const view = new MutablePropertyView(null, 'm1');
+    const editor = new StoreEditor(makeMutationStore(40), view);
+    editor.addEntity('IfcSpace', ['guid', null, 'New Space']);
+    assert.strictEqual(view.hasPendingChanges(), true);
     const result = resolveHbjsonMutationSource({ mutationView: view, dataStore: null, schemaVersion: 'IFC4' });
     assert.strictEqual(result, null);
   });

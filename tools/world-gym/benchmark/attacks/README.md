@@ -117,8 +117,8 @@ actually deny this attack; each has a cost.
 
 | Option | How it denies clean-twin-diff | Cost / trade-off |
 |---|---|---|
-| **Secret per-split generation salt** | Corruption (and ideally family/param) streams keyed by `hash(seed, SECRET_SALT)` known only to the hosted scorer. The adversary cannot regenerate the clean twin or the corrupted bytes without the salt. | Kills local self-scoring on dev/test (contradicts "score yourself locally as often as you like"); dev would need hosted scoring too, or a published dev-only salt (which re-opens dev). Breaks the "regenerable by anyone" design premise. |
-| **Hosted episode bytes** | The scorer distributes only the corrupted bytes for evaluated seeds and never the generator; the clean twin is not reconstructable because `generateModel` / the salt is server-side. Matches the spec's already-stated "hidden-by-hosting" test posture, extended to remove the local generator path. | Requires the hosted leaderboard to actually exist (spec says human track "not yet live"). Dev loses local iteration unless a separate open dev corpus is accepted as sacrificial. |
+| **Secret per-split generation salt** | Corruption (and ideally family/param) streams keyed by `hash(seed, SECRET_SALT)` known only to the hosted scorer. The adversary cannot regenerate the clean twin or the corrupted bytes without the salt. | Kills local self-scoring on the SALTED split only. v1.1 accepts that by leaving dev unsalted and explicitly attackable-by-design, so "score yourself locally as often as you like" survives where it matters and the "regenerable by anyone" premise holds everywhere except the reporting split. Requires hosting to deliver the salted bytes, and a rotation plus leak-response procedure written BEFORE the salt is minted -- a leaked salt is silent and retroactive, which is this option's real risk. |
+| **Hosted episode bytes ALONE** | **It does not deny the attack.** This row was wrong and is corrected: it claimed the clean twin is unreconstructable "because `generateModel` / the salt is server-side", which quietly assumes a salt. Hosting without one withholds nothing -- the generator is public, `generateModel` takes no secret, and every test seed is known by arithmetic (`seed % 10 == 9`), so the adversary regenerates BOTH twins locally and never requests the served bytes. | Real cost, no benefit on its own. Hosting is the DELIVERY channel a salt needs (a submitter who cannot regenerate the split must receive it), not an integrity mechanism. See BENCHMARK.md section 1a. |
 | **Real-model substrate** | Replace procedural corruption with defects mined from real / hand-authored IFC where no clean twin exists and no closed-form regeneration is possible. | Loses known-by-construction ground truth and byte-determinism; labeling cost and answer-key drift return; the reward-channel determinism proofs no longer hold. |
 
 Orthogonal hardening that shrinks the attack surface but does **not** close it:
@@ -127,9 +127,18 @@ errors, off-by-storey placement) that text scans cannot see - already noted in
 BENCHMARK.md section 5. These raise the bar for the *heuristic-text* anchor but
 not for clean-twin-diff, which diffs against a perfect twin regardless of defect
 kind. Any organic defect on an independent RNG stream is still isolated by the
-twin diff. The only structural fix is denying the adversary the clean twin
-(salt or hosting), i.e. breaking the "clean twin is regenerable" premise the
-attack rests on.
+twin diff. The only structural fix is denying the adversary the clean twin, i.e. breaking
+the "clean twin is regenerable" premise the attack rests on. Note the wording
+above used to read "salt or hosting"; that OR is the error this page has now
+corrected twice. Only a secret that enters generation breaks the premise.
+Hosting delivers the result; it does not produce it.
+
+**v1.1 chose: per-split salt across every RNG stream, delivered by the hosted
+scorer.** Salting only the `corrupt` stream would not be enough -- the clean
+twin stays computable from the unsalted family/param streams and diffs against
+the served bytes. Neither half is implemented yet; see BENCHMARK.md section 1a
+for the status, which is that the reporting split currently has no integrity
+property at all.
 
 ## Reproduce
 

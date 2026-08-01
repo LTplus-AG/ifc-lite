@@ -1,15 +1,21 @@
-# World Gym Benchmark - spec v1.0.0
+# World Gym Benchmark - spec v1.1.0
 
 The public benchmark face of the M2 World Gym (docs/vision/moonshots-execution-plan.md,
 B2.2). One sentence: given procedurally generated IFC building models with
 known-by-construction ground truth, score a system on detecting planted
 defects, estimating quantities, and triaging models by severity - with the
 answer key regenerable by anyone from seed arithmetic, and reference
-baselines anchoring the leaderboard.
+baselines anchoring the leaderboard. That regenerability is the benchmark's
+design premise and also, on the reporting split, its open integrity problem --
+see section 1a before quoting a test score.
 
-Version: `1.0.0` (`specVersion` in every submission and leaderboard row).
+Version: `1.1.0` (`specVersion` in every submission and leaderboard row).
 Any change to the constants, the generator's byte output, the task set, or
 the scoring math bumps the version; rows across versions are not comparable.
+v1.1.0 changes no constant, no byte output, no task and no scoring math -- it
+withdraws a false integrity claim and states the real one (section 1a). v1.0
+rows remain numerically comparable to v1.1 rows; what changed is what a test
+row is worth, which was never as much as v1.0 said.
 
 ## 1. Model universe and splits
 
@@ -30,20 +36,59 @@ Splits are defined by seed arithmetic, nothing else:
 
 There is no dataset download. A model, its bytes, its planted defects, its
 quantities - all are pure functions of the seed (see the determinism section
-of `../README.md`). **Test labels are regenerable-by-seed, not distributed:**
-we do not publish an answer-key file for any split, because with an open
-generator such a file would be security theater - anyone can regenerate it.
-The test split's integrity model is therefore explicitly *hidden-by-hosting*,
-not hidden-by-secrecy:
+of `../README.md`). We do not publish an answer-key file for any split,
+because with an open generator such a file would be security theater - anyone
+can regenerate it.
 
-- dev is the public iteration split: score yourself locally as often as you
-  like (`score.mjs --split dev`).
-- test is the reporting split: honest actors run `score.mjs --split test`
-  once and report; a hosted leaderboard (human track, not yet live) scores
-  test submissions server-side and is the only test channel that carries
-  trust against adversaries. Until it exists, test rows are self-reported and
-  the leaderboard says so.
-- train is where systems may learn; training on dev/test seeds is
+### 1a. Integrity model (v1.1). Read this before quoting a score.
+
+**v1.0 claimed the test split was "hidden-by-hosting". That claim was false and
+is withdrawn.** `attacks/clean-twin-diff.mjs` scores an exact **1.000 aggregate**
+through the real scorer, above both anchors, while reading only `model.content`
+and touching no answer-key field. The attack is not a rule violation; it is a
+consequence of the design:
+
+- splits are defined by seed arithmetic alone (`seed % 10`), so **every test
+  seed is public** - there is no seed list to withhold;
+- `generateModel(seed, family, opts)` takes **no secret**, so anyone can
+  regenerate any model;
+- corruption is drawn from its own `${seed}:corrupt` RNG stream, independent of
+  the family and param streams, so `corruptRate: 0` yields a byte-identical
+  **clean twin** and a line diff isolates every planted defect exactly.
+
+Hosting the episode bytes does not fix this, and it is worth being explicit
+about why, because it is the intuitive fix: the attacker never needed the bytes.
+Knowing the seed and owning the generator, they produce both twins locally. A
+hosted server withholds only what is freely reconstructible.
+
+**What actually closes it is a secret that enters generation.** v1.1 therefore
+declares the reporting split's integrity model as *hidden-by-secret-salt,
+delivered by hosting*, and the two halves are not alternatives:
+
+1. a per-split salt, held only by the scoring service, mixed into **every** RNG
+   stream - `family`, `params` and `corrupt`. Salting only the corruption stream
+   is insufficient: the clean twin stays computable and diffs against the served
+   bytes. The salt is rotatable per split, so a leak is a dated, recoverable
+   event rather than a silent permanent one;
+2. a hosted scorer to deliver the salted bytes, since a submitter who cannot
+   regenerate the split must receive it. This is the same server B6.2 requires,
+   not a second mechanism.
+
+**Status, stated so no reader has to infer it: neither half is implemented.**
+Until the scorer exists, the reporting split has *no* integrity property, test
+rows are self-reported, and the leaderboard says so. `clean-twin-diff` stays
+committed as a regression and the exam clause is that it scores at or below the
+always-clean anchor on the reporting split - a clause that can only be run once
+hosting exists.
+
+- **dev is open and attackable by design.** Score yourself locally as often as
+  you like (`score.mjs --split dev`). `clean-twin-diff` works on dev and will
+  keep working; that is deliberate, and dev numbers carry no integrity claim
+  whatsoever.
+- **test is the reporting split.** Today: self-reported, no integrity property,
+  see above. After the scorer: salted and server-side, the only channel that
+  carries trust against an adversary.
+- **train is where systems may learn**; training on dev/test seeds is
   contamination and disqualifies a row (enforceable only for hosted rows).
 
 ## 2. Tasks
@@ -101,7 +146,7 @@ One JSONL file. First line is a header, then one line per seed of the split
 (any order, every seed exactly once):
 
 ```jsonl
-{"type":"header","benchmark":"ifc-lite-world-gym","specVersion":"1.0.0","split":"dev","name":"my-method","tasks":["defect-detection","quantity-estimation","validity-triage"]}
+{"type":"header","benchmark":"ifc-lite-world-gym","specVersion":"1.1.0","split":"dev","name":"my-method","tasks":["defect-detection","quantity-estimation","validity-triage"]}
 {"seed":8,"defects":{"clash-pair":false,"degenerate-geometry":false,"duplicate-globalid":false,"missing-site":false,"multiple-project":false,"dangling-ref":false,"missing-quantities":false},"quantities":{"wallGrossVolume":44.7,"slabGrossVolume":35.2,"columnGrossVolume":0,"beamGrossVolume":0,"roomNetFloorArea":122.1},"triage":0}
 ```
 

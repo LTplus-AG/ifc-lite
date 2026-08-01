@@ -313,10 +313,10 @@ const KIND_TAG: Record<Exclude<NodeKind, 'geometry-mesh'>, number> = {
  * for a verifier than a collision — it makes "recompute and compare" fail on
  * honest data. Sort key and encoding must agree; they are the same bytes here.
  *
- * Ties (distinct raw spellings that normalize to the same NFC form) are left to
- * the caller's `Array.prototype.sort`, which is stable per ES2019 — and their
- * encoded key bytes are identical by construction, so the byte stream does not
- * depend on which of the two the sort happens to place first.
+ * Ties — two entries of one set whose keys normalize to the SAME NFC form — are
+ * not resolved here and must not be: see {@link assertUniqueSetKeys}. Equal keys
+ * have no defined order, so a keyed set containing them has no canonical form,
+ * and such payloads are rejected before anything is encoded.
  */
 function compareUtf8(a: string, b: string): number {
   const ea = textEncoder.encode(a.normalize('NFC'));
@@ -329,6 +329,94 @@ function compareUtf8(a: string, b: string): number {
 }
 
 const textEncoder = new TextEncoder();
+
+/**
+ * Thrown when a keyed set (property-set properties, relationship roles, element
+ * components) carries two entries whose keys are EQUAL under the canonical
+ * comparison — either the same string twice, or two different spellings with
+ * the same NFC form (`"Ä"` vs `"Ä"`).
+ *
+ * Such a payload has no canonical form, which in a hash-based identity scheme
+ * is a second preimage. Both halves are real and both were observed on the
+ * pre-freeze encoder (see spec §3.2):
+ *
+ * - **Ambiguity.** Equal keys have no defined order, so which of the two the
+ *   sort emits first is unspecified — but each entry carries a VALUE beyond its
+ *   key, so the two orders write different value bytes and hash differently.
+ *   One logical set, two roots: "recompute and compare" fails on honest data.
+ * - **Second preimage.** Because the sort key and the encoded key are the same
+ *   NFC bytes, two genuinely different payloads — `{"Ä": A, "Ä": B}`
+ *   and `{"Ä": A, "Ä": B}`, which disagree about which spelling
+ *   holds which value — produce byte-identical encodings and therefore one
+ *   hash. A certificate would happily verify the wrong model.
+ *
+ * Rejecting is the right resolution rather than inventing a tiebreak (e.g.
+ * falling back to raw-byte order): a tiebreak makes the hash deterministic
+ * again, but it does so by blessing two distinct models as one — it keeps the
+ * second preimage and only hides the ambiguity. Refusing to hash keeps the
+ * hash total on the payloads it does accept.
+ *
+ * Like the geometry-mesh domain checks, this is a **conformance rule, not part
+ * of the wire format**: it changes no accepted payload's bytes, and no golden
+ * vector can pin it, because a vector fixes how an accepted payload encodes
+ * while this fixes which payloads are accepted at all.
+ */
+export class AmbiguousSetKeyError extends Error {
+  /** The set-valued field that carried the duplicate, e.g. `'property-set.properties'`. */
+  readonly field: string;
+  /** The shared NFC-normalized key the two entries collapse onto. */
+  readonly normalizedKey: string;
+  /** The two raw spellings, in producer order. */
+  readonly rawKeys: readonly [string, string];
+
+  constructor(field: string, rawA: string, rawB: string) {
+    const normalized = rawA.normalize('NFC');
+    const escape = (s: string) =>
+      [...s].map((c) => (c.codePointAt(0)! < 0x7f ? c : `\\u{${c.codePointAt(0)!.toString(16)}}`)).join('');
+    super(
+      `@ifc-lite/provenance: ${field} has two entries with the same key after NFC ` +
+        `normalization: "${escape(rawA)}" and "${escape(rawB)}" both normalize to ` +
+        `"${escape(normalized)}". A set with duplicate keys has no canonical form — the ` +
+        'entries carry different values, so the order the sort happens to pick decides the ' +
+        'bytes (one model, two hashes), and swapping which spelling holds which value ' +
+        'produces the SAME bytes (two models, one hash — a second preimage a certificate ' +
+        'would verify). node-hash-v0 REJECTS these payloads rather than picking a tiebreak, ' +
+        'which would only hide the ambiguity while keeping the collision (spec §3.2). ' +
+        'Deduplicate or re-spell the keys before hashing.',
+    );
+    this.name = 'AmbiguousSetKeyError';
+    this.field = field;
+    this.normalizedKey = normalized;
+    this.rawKeys = [rawA, rawB];
+  }
+}
+
+/**
+ * Reject a keyed set whose keys are not unique under the canonical comparison.
+ *
+ * Runs on the ALREADY-SORTED array: {@link compareUtf8} returns 0 exactly for
+ * keys that collapse to the same NFC bytes, so all such entries form one
+ * contiguous run after sorting and an adjacent-pair scan is complete in O(n).
+ *
+ * Deliberately NOT applied to the bare child-hash sets (`relationship` role
+ * refs, `layer.childHashes`). There an entry IS its key: it carries no payload
+ * beyond the string that was sorted, so equal entries encode to identical bytes
+ * and the byte stream genuinely does not depend on their relative order. No
+ * ambiguity exists there, so rejecting would refuse payloads that hash
+ * unambiguously today — an unforced narrowing of the frozen format's accepted
+ * input set.
+ */
+function assertUniqueSetKeys<T>(
+  sorted: readonly T[],
+  keyOf: (entry: T) => string,
+  field: string,
+): void {
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = keyOf(sorted[i - 1]);
+    const cur = keyOf(sorted[i]);
+    if (compareUtf8(prev, cur) === 0) throw new AmbiguousSetKeyError(field, prev, cur);
+  }
+}
 
 /** Growable little-endian byte writer implementing the common framing rules
  *  from spec §3.2 (magic header, length-prefixed strings, LE integers/floats). */
@@ -397,6 +485,7 @@ function encodePropertySet(payload: PropertySetPayload): Uint8Array {
   w.header('property-set');
   w.str(payload.name);
   const sorted = [...payload.properties].sort((a, b) => compareUtf8(a.name, b.name));
+  assertUniqueSetKeys(sorted, (p) => p.name, 'property-set.properties');
   w.u32(sorted.length);
   for (const p of sorted) {
     w.str(p.name);
@@ -410,6 +499,7 @@ function encodeRelationship(payload: RelationshipPayload): Uint8Array {
   w.header('relationship');
   w.str(payload.relType);
   const roles = [...payload.roles].sort((a, b) => compareUtf8(a.roleName, b.roleName));
+  assertUniqueSetKeys(roles, (r) => r.roleName, 'relationship.roles');
   w.u32(roles.length);
   for (const role of roles) {
     w.str(role.roleName);
@@ -436,6 +526,7 @@ function encodeElement(payload: ElementPayload): Uint8Array {
   w.str(payload.key);
   w.str(payload.ifcType);
   const comps = [...payload.components].sort((a, b) => compareUtf8(a.componentKey, b.componentKey));
+  assertUniqueSetKeys(comps, (c) => c.componentKey, 'element.components');
   w.u32(comps.length);
   for (const c of comps) {
     w.str(c.componentKey);

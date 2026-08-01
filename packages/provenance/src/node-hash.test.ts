@@ -4,6 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  AmbiguousSetKeyError,
   computeNodeHash,
   hashResolvedNode,
   type ElementPayload,
@@ -264,6 +265,148 @@ describe('set ordering is NFC-normalized (sort key and encoded key are the same 
     expect(await computeNodeHash('layer', layer(NFD))).toBe(
       await computeNodeHash('layer', layer(NFC)),
     );
+  });
+});
+
+describe('keys that collide under NFC are REJECTED, not sorted (PR #1886, spec section 3.2)', () => {
+  /* The direct consequence of the F4 fix above. Once `compareUtf8` normalizes
+   * before comparing, two DISTINCT raw keys with the same NFC form compare
+   * EQUAL — and equal keys have no defined order, so a keyed set holding both
+   * has no canonical form. Measured on the pre-rejection encoder, that was two
+   * live defects at once, which is why a tiebreak is not an acceptable fix:
+   *
+   *   one model, two hashes  — the entries carry different VALUES, so whichever
+   *     order the sort emits decides the bytes ("recompute and compare" fails
+   *     on honest data);
+   *   two models, one hash   — swapping which spelling holds which value gives
+   *     a BYTE-IDENTICAL encoding, i.e. a second preimage a certificate would
+   *     verify. (Observed: both orders hashed to
+   *     sha256:db3ed747b88cd4483ea141da6f4baa0c387eda4608dd8f32a971efe54bfc1e79.)
+   *
+   * A tiebreak would make the hash deterministic again while KEEPING the second
+   * preimage; only refusing the payload closes both. */
+  // Built from code points so no editor or formatter can renormalize the test
+  // into passing vacuously (same guard as the NFC sort block above).
+  const PRE = String.fromCharCode(0x00c4); // Ä  (U+00C4)
+  const DEC = `A${String.fromCharCode(0x0308)}`; // A + U+0308 COMBINING DIAERESIS
+
+  it('the two spellings really are distinct strings with the same NFC form', () => {
+    expect(PRE).not.toBe(DEC);
+    expect(DEC.normalize('NFC')).toBe(PRE);
+  });
+
+  it('property-set: rejects two property names that collide under NFC', async () => {
+    await expect(
+      computeNodeHash('property-set', {
+        name: 'Pset_Test',
+        properties: [
+          { name: PRE, value: 'ALPHA' },
+          { name: DEC, value: 'BETA' },
+        ],
+      }),
+    ).rejects.toThrow(AmbiguousSetKeyError);
+  });
+
+  it('property-set: rejects BOTH members of the second-preimage pair', async () => {
+    // These two payloads are different models (they disagree about which
+    // spelling holds ALPHA) yet encoded to identical bytes before the fix.
+    // Neither may hash now — rejecting only one would leave the collision.
+    const swap = (a: string, b: string) =>
+      computeNodeHash('property-set', {
+        name: 'Pset_Test',
+        properties: [
+          { name: a, value: 'ALPHA' },
+          { name: b, value: 'BETA' },
+        ],
+      });
+    await expect(swap(PRE, DEC)).rejects.toThrow(AmbiguousSetKeyError);
+    await expect(swap(DEC, PRE)).rejects.toThrow(AmbiguousSetKeyError);
+  });
+
+  it('relationship: rejects two role names that collide under NFC', async () => {
+    await expect(
+      computeNodeHash('relationship', {
+        relType: 'IfcRelAggregates',
+        roles: [
+          { roleName: PRE, refs: ['sha256:aaa'] },
+          { roleName: DEC, refs: ['sha256:bbb'] },
+        ],
+      }),
+    ).rejects.toThrow(AmbiguousSetKeyError);
+  });
+
+  it('element: rejects two componentKeys that collide under NFC', async () => {
+    await expect(
+      computeNodeHash('element', {
+        key: '0GlobalId000000000001',
+        ifcType: 'IfcWall',
+        components: [
+          { componentKey: `pset:${PRE}`, hash: 'sha256:aaa' },
+          { componentKey: `pset:${DEC}`, hash: 'sha256:bbb' },
+        ],
+      }),
+    ).rejects.toThrow(AmbiguousSetKeyError);
+  });
+
+  it('rejects the degenerate case: the very same key string twice', async () => {
+    // {Height: 1, Height: 2} and {Height: 2, Height: 1} also hashed differently
+    // before the fix — the same ambiguity, without any Unicode involved.
+    await expect(
+      computeNodeHash('property-set', {
+        name: 'Pset_Test',
+        properties: [
+          { name: 'Height', value: 1 },
+          { name: 'Height', value: 2 },
+        ],
+      }),
+    ).rejects.toThrow(AmbiguousSetKeyError);
+  });
+
+  it('the error names the field and the shared normalized key', async () => {
+    const err = await computeNodeHash('property-set', {
+      name: 'Pset_Test',
+      properties: [
+        { name: DEC, value: 1 },
+        { name: PRE, value: 2 },
+      ],
+    }).then(
+      () => null,
+      (e: unknown) => e as AmbiguousSetKeyError,
+    );
+    expect(err).toBeInstanceOf(AmbiguousSetKeyError);
+    expect(err!.field).toBe('property-set.properties');
+    expect(err!.normalizedKey).toBe(PRE);
+    expect(err!.rawKeys).toHaveLength(2);
+  });
+
+  it('the rule does NOT extend to bare child-hash sets (an entry is its own key)', async () => {
+    // Role refs and layer childHashes carry no value beyond the sorted string,
+    // so equal entries encode identically and order cannot matter. Narrowing
+    // those would refuse payloads that hash unambiguously today.
+    await expect(
+      computeNodeHash('relationship', {
+        relType: 'IfcRelAggregates',
+        roles: [{ roleName: 'RelatedObjects', refs: ['sha256:aaa', 'sha256:aaa'] }],
+      }),
+    ).resolves.toMatch(/^sha256:/);
+    await expect(
+      computeNodeHash('layer', {
+        layerId: 'blake3:testlayer',
+        childHashes: ['sha256:aaa', 'sha256:aaa'],
+      }),
+    ).resolves.toMatch(/^sha256:/);
+  });
+
+  it('distinct keys that merely SHARE a prefix are unaffected', async () => {
+    await expect(
+      computeNodeHash('property-set', {
+        name: 'Pset_Test',
+        properties: [
+          { name: 'Height', value: 1 },
+          { name: 'HeightAboveFloor', value: 2 },
+        ],
+      }),
+    ).resolves.toMatch(/^sha256:/);
   });
 });
 

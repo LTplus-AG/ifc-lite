@@ -13,6 +13,7 @@
  */
 
 export {
+  AmbiguousSetKeyError,
   computeNodeHash,
   hashResolvedNode,
   type NodeKind,

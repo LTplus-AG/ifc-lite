@@ -1,5 +1,5 @@
 {
-  "description": "FROZEN wire-format golden vectors for node-hash-v0 (spec version node-hash-v0 / 1.0.0, frozen 2026-07-25, docs/vision/spec/node-hash-v0.md). Do NOT regenerate: a hash change here is a wire-format change and requires node-hash-v1 plus a major version bump of @ifc-lite/provenance. IFC identifiers follow the schema exactly (AGENTS.md \"IFC schema fidelity\"): relationship role names are the real EXPRESS attribute names of the named relationship, and element ifcType values are the exact EXPRESS PascalCase names the canonical load path produces (store.entities.getTypeName), never the uppercase STEP storage spelling. Special numbers are encoded as {\"$num\": \"NaN\" | \"Infinity\" | \"-Infinity\" | \"-0\"}.",
+  "description": "FROZEN wire-format golden vectors for node-hash-v0 (spec version node-hash-v0 / 1.0.0, frozen 2026-07-25, docs/vision/spec/node-hash-v0.md). Do NOT regenerate: a hash change here is a wire-format change and requires node-hash-v1 plus a major version bump of @ifc-lite/provenance. IFC identifiers follow the schema exactly (AGENTS.md \"IFC schema fidelity\"): relationship role names are the real EXPRESS attribute names of the named relationship, and element ifcType values are the exact EXPRESS PascalCase names the canonical load path produces (store.entities.getTypeName), never the uppercase STEP storage spelling. Special numbers are encoded as {\"$num\": \"NaN\" | \"Infinity\" | \"-Infinity\" | \"-0\"}. Every componentKey here is frozen ComponentKey vocabulary (spec section 3.2: attr:core, pset:<Name>, qset:<Name>, type-assignment, geometry-mesh, relationship:<RelType>) and references a child of the node kind that key denotes - a fixture for a frozen surface must not exercise vocabulary the spec does not define, or it pins something no implementation is obliged to reproduce.",
   "vectors": [
     {
       "id": "chain-pset",
@@ -63,7 +63,7 @@
     },
     {
       "id": "chain-root",
-      "description": "Merkle chain level 3: a root element embedding both branch hashes - transitively commits to every level below (spec section 3.5).",
+      "description": "Merkle chain level 3: a root element committing to two branches at once - the chain-relationship subtree and, directly, the chain-pset leaf - so it transitively commits to every level below (spec section 3.5). Both componentKeys are frozen ComponentKey vocabulary (spec section 3.2); the components are listed relationship-first and must sort pset-first, so this vector also pins the component sort.",
       "kind": "element",
       "payload": {
         "key": "chain-root",
@@ -74,32 +74,33 @@
             "hash": "sha256:4a69c2f18bef2833f4899ea8fde2ae48c4f827dfb3de6fc68bd8546dbee13e47"
           },
           {
-            "componentKey": "layer:root",
-            "hash": "sha256:7fb7fa65a28ae4470e0022a31fe1c4bd1cae928198ef4ae9abbc91d9dcb639f5"
+            "componentKey": "pset:Pset_ChainLeaf",
+            "hash": "sha256:7589d8ee02a783368119b290bcc2e4dbd3628bcfffb89b76b62583ff3da5840c"
           }
         ]
       },
-      "expectedHash": "sha256:5295eb4bb0b476e281810aa6081adb85007990befa95d52ced4eae10888d46a3"
+      "expectedHash": "sha256:581082b9bf9decded07de26827a8e5cccc76743bc94c0d4c6d19fc58de7f48ec"
     },
     {
       "id": "deep-1",
-      "description": "Deep nesting level 1 of 6: element embedding the level-0 hash; pins Merkle propagation through an 3-node-deep chain.",
-      "kind": "element",
+      "description": "Deep nesting level 1 of 6: an IfcRelAggregates relationship whose RelatedObjects role embeds the level-0 element hash; pins Merkle propagation through a 3-node-deep chain. Odd levels are relationships and even levels are elements so that every element's `relationship:IfcRelAggregates` component references a RELATIONSHIP node hash, as the ComponentKey vocabulary intends (spec section 3.2).",
+      "kind": "relationship",
       "payload": {
-        "key": "deep-1",
-        "ifcType": "IfcElementAssembly",
-        "components": [
+        "relType": "IfcRelAggregates",
+        "roles": [
           {
-            "componentKey": "relationship:IfcRelAggregates",
-            "hash": "sha256:12bf360440806d874bf815631d0676a34f4e7ef1b2ff01ce88e212336da4b95b"
+            "roleName": "RelatedObjects",
+            "refs": [
+              "sha256:12bf360440806d874bf815631d0676a34f4e7ef1b2ff01ce88e212336da4b95b"
+            ]
           }
         ]
       },
-      "expectedHash": "sha256:f0119bb8d7d8420a39312e484b1d26fc6e887b68f623a650b03baa9c4f84120f"
+      "expectedHash": "sha256:10f48cba703ff3b1b7199718e74c3ec2aa07a166cc476c8ece720ffa5cae3e28"
     },
     {
       "id": "deep-2",
-      "description": "Deep nesting level 2 of 6: element embedding the level-1 hash; pins Merkle propagation through an 4-node-deep chain.",
+      "description": "Deep nesting level 2 of 6: an element whose relationship:IfcRelAggregates component embeds the level-1 relationship hash; pins Merkle propagation through a 4-node-deep chain.",
       "kind": "element",
       "payload": {
         "key": "deep-2",
@@ -107,31 +108,32 @@
         "components": [
           {
             "componentKey": "relationship:IfcRelAggregates",
-            "hash": "sha256:f0119bb8d7d8420a39312e484b1d26fc6e887b68f623a650b03baa9c4f84120f"
+            "hash": "sha256:10f48cba703ff3b1b7199718e74c3ec2aa07a166cc476c8ece720ffa5cae3e28"
           }
         ]
       },
-      "expectedHash": "sha256:fedac2fead1d6bceb0b0cc22549f26558c153686dd869cf527395f8c4273d9e5"
+      "expectedHash": "sha256:220addf0c551294057e77934bc6c4649e6f97f9c238a36aa93ad5118c870ece8"
     },
     {
       "id": "deep-3",
-      "description": "Deep nesting level 3 of 6: element embedding the level-2 hash; pins Merkle propagation through an 5-node-deep chain.",
-      "kind": "element",
+      "description": "Deep nesting level 3 of 6: an IfcRelAggregates relationship whose RelatedObjects role embeds the level-2 element hash; pins Merkle propagation through a 5-node-deep chain. Odd levels are relationships and even levels are elements so that every element's `relationship:IfcRelAggregates` component references a RELATIONSHIP node hash, as the ComponentKey vocabulary intends (spec section 3.2).",
+      "kind": "relationship",
       "payload": {
-        "key": "deep-3",
-        "ifcType": "IfcElementAssembly",
-        "components": [
+        "relType": "IfcRelAggregates",
+        "roles": [
           {
-            "componentKey": "relationship:IfcRelAggregates",
-            "hash": "sha256:fedac2fead1d6bceb0b0cc22549f26558c153686dd869cf527395f8c4273d9e5"
+            "roleName": "RelatedObjects",
+            "refs": [
+              "sha256:220addf0c551294057e77934bc6c4649e6f97f9c238a36aa93ad5118c870ece8"
+            ]
           }
         ]
       },
-      "expectedHash": "sha256:5cffc7a4e36f12ea275a582c34b810bda4173d0ad3a89a1ec27c8608921250e4"
+      "expectedHash": "sha256:fa54bef3c49ac4c950d31d2e0a478ead1238687048037ecf151038be1dbf6829"
     },
     {
       "id": "deep-4",
-      "description": "Deep nesting level 4 of 6: element embedding the level-3 hash; pins Merkle propagation through an 6-node-deep chain.",
+      "description": "Deep nesting level 4 of 6: an element whose relationship:IfcRelAggregates component embeds the level-3 relationship hash; pins Merkle propagation through a 6-node-deep chain.",
       "kind": "element",
       "payload": {
         "key": "deep-4",
@@ -139,31 +141,32 @@
         "components": [
           {
             "componentKey": "relationship:IfcRelAggregates",
-            "hash": "sha256:5cffc7a4e36f12ea275a582c34b810bda4173d0ad3a89a1ec27c8608921250e4"
+            "hash": "sha256:fa54bef3c49ac4c950d31d2e0a478ead1238687048037ecf151038be1dbf6829"
           }
         ]
       },
-      "expectedHash": "sha256:ad37e8786f51571fc3e1f6f08a65bed1f1bdac9fca432557af459c23b704ef1d"
+      "expectedHash": "sha256:7b918d53bd45d74a4318f758f2339831dcbaedfd272b89fa38d3f8eddbf3ccb4"
     },
     {
       "id": "deep-5",
-      "description": "Deep nesting level 5 of 6: element embedding the level-4 hash; pins Merkle propagation through an 7-node-deep chain.",
-      "kind": "element",
+      "description": "Deep nesting level 5 of 6: an IfcRelAggregates relationship whose RelatedObjects role embeds the level-4 element hash; pins Merkle propagation through a 7-node-deep chain. Odd levels are relationships and even levels are elements so that every element's `relationship:IfcRelAggregates` component references a RELATIONSHIP node hash, as the ComponentKey vocabulary intends (spec section 3.2).",
+      "kind": "relationship",
       "payload": {
-        "key": "deep-5",
-        "ifcType": "IfcElementAssembly",
-        "components": [
+        "relType": "IfcRelAggregates",
+        "roles": [
           {
-            "componentKey": "relationship:IfcRelAggregates",
-            "hash": "sha256:ad37e8786f51571fc3e1f6f08a65bed1f1bdac9fca432557af459c23b704ef1d"
+            "roleName": "RelatedObjects",
+            "refs": [
+              "sha256:7b918d53bd45d74a4318f758f2339831dcbaedfd272b89fa38d3f8eddbf3ccb4"
+            ]
           }
         ]
       },
-      "expectedHash": "sha256:1e1c99b0057e68a06128e11f577df8223d6e05d3fe7a9bb0951da3843c8ca34d"
+      "expectedHash": "sha256:a0800201c26f1c4316dd0cb282a59eb7d59eb9a8b51734da1f2632ff3df61128"
     },
     {
       "id": "deep-6",
-      "description": "Deep nesting level 6 of 6: element embedding the level-5 hash; pins Merkle propagation through an 8-node-deep chain.",
+      "description": "Deep nesting level 6 of 6: an element whose relationship:IfcRelAggregates component embeds the level-5 relationship hash; pins Merkle propagation through a 8-node-deep chain.",
       "kind": "element",
       "payload": {
         "key": "deep-6",
@@ -171,11 +174,11 @@
         "components": [
           {
             "componentKey": "relationship:IfcRelAggregates",
-            "hash": "sha256:1e1c99b0057e68a06128e11f577df8223d6e05d3fe7a9bb0951da3843c8ca34d"
+            "hash": "sha256:a0800201c26f1c4316dd0cb282a59eb7d59eb9a8b51734da1f2632ff3df61128"
           }
         ]
       },
-      "expectedHash": "sha256:2698b10d849dd185b3c0284ca2207a67ae5c294d24128a4d1bc4d9f8cd3dcd70"
+      "expectedHash": "sha256:dfd2c816e7f74513066ccd9c20f9e8d06c1bac15d708f03330e80e60708b70bc"
     }
   ]
 }

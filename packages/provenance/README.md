@@ -11,10 +11,15 @@ moonshot M1 "Proof-carrying buildings" in
 ## Status: 0.1.x, format FROZEN (node-hash-v0 / 1.0.0, 2026-07-25)
 
 - The **node-hash-v0 wire format is FROZEN** as of 2026-07-25 (spec version
-  `node-hash-v0` / 1.0.0, `docs/vision/spec/node-hash-v0.md`). Hashes and
-  certificates produced by this package are stable: the byte encodings, the
-  tagged-hash string forms, the `NHV0` header, the kind tags, and the sort
-  rules may no longer change.
+  `node-hash-v0` / 1.0.0, `docs/vision/spec/node-hash-v0.md`). **The freeze
+  covers the node-hash wire-format bytes and the v0 verification rules, and
+  nothing else** (spec header, "Scope"): the byte encodings, the tagged-hash
+  string forms, the `NHV0` header, the kind tags, the sort rules, the
+  `node-hash-v0` version string verifiers match on, and the rule that v0
+  verification ignores the reserved `signatures` field may no longer change.
+  Everything else in this package - including the rest of the `Certificate`
+  object's shape, `commutation-v0` (below), and every API name and type - is
+  outside the freeze and may still evolve.
 - **Change policy:** any wire-format change, however small, requires a new
   versioned spec file (`node-hash-v1.md`, new magic/version byte) and a
   major version bump of `@ifc-lite/provenance`. Golden wire-format vectors
@@ -32,6 +37,14 @@ moonshot M1 "Proof-carrying buildings" in
   `RelatedOpeningElement`), and `element.ifcType` uses the exact EXPRESS
   PascalCase name from `store.entities.getTypeName` (`IfcWallStandardCase`),
   not the uppercase STEP storage spelling.
+- **Conformance rules reject payloads the format cannot canonically
+  represent** (they move no accepted payload's bytes, so they are not part of
+  the frozen encoding): out-of-domain `geometry-mesh` fields (spec section
+  3.1), and keyed-set keys that are not unique after NFC normalization -
+  duplicate property names, role names, or component keys, including two
+  spellings such as `Ä` and `Ä` that share one NFC form. Those
+  payloads have no canonical form, so `computeNodeHash` throws
+  `AmbiguousSetKeyError` rather than picking an order (spec section 3.2).
 - **The commutation certificate versions independently.**
   `commutation-v0` (`src/commutation.ts`) is a separate schema layered on top
   of node hashes, not part of the node-hash-v0 wire format. It may advance to

@@ -318,10 +318,37 @@ shared across all four composite kinds so the encoding rules are stated once:
   would let the *spelling* pick the order: `{"é"(NFD), "z"}` and `{"é"(NFC), "z"}` are one and the
   same set after NFC, but raw-byte order puts NFD `é` (`0x65 0xcc 0x81`) before `z` and NFC `é`
   (`0xc3 0xa9`) after it, so one canonical input would produce two different hashes. That dual is
-  worse than a collision for a verifier: "recompute and compare" would fail on honest data. Two
-  entries whose spellings differ but whose NFC forms are equal compare equal; the sort is **stable**
-  (producer order is kept), and since their encoded key bytes are identical by construction the
-  byte stream does not depend on which of the two the sort places first.
+  worse than a collision for a verifier: "recompute and compare" would fail on honest data.
+- **Keys of a keyed set MUST be unique after NFC normalization; a payload that violates this is
+  invalid and MUST be rejected, not sorted.** This applies to the three sets whose entries are
+  keyed and carry a value beyond the key: `property-set` properties (keyed by `name`),
+  `relationship` roles (keyed by `roleName`), and `element` components (keyed by `componentKey`).
+  Two entries whose spellings differ but whose NFC forms are equal — `"Ä"` (U+00C4) and `"Ä"`
+  (U+0041 U+0308) — compare equal under the rule above, and equal keys have no defined order, so
+  the set has **no canonical form**. Both failure directions are real:
+  - *One model, two hashes.* The entries carry different values, so whichever order the sort emits
+    decides the value bytes. `{"Ä"(pre): 1, "Ä"(dec): 2}` and the same set listed the other way
+    round hash differently. Relying on the host's sort being stable does not fix this — stability
+    of a particular runtime's `Array.prototype.sort` is not a property this spec may assume, and
+    even a perfectly stable sort only makes the ambiguity reproducible per producer, not canonical.
+  - *Two models, one hash.* Because the sort key and the encoded key are the same NFC bytes,
+    `{"Ä"(pre): A, "Ä"(dec): B}` and `{"Ä"(dec): A, "Ä"(pre): B}` — which disagree about which
+    spelling holds which value — encode to **byte-identical** streams. That is a second preimage,
+    and a certificate would verify the wrong model against it.
+
+  Rejection is normative rather than a tiebreak (e.g. falling back to raw pre-normalization byte
+  order). A tiebreak would restore determinism, but it does so by blessing two distinct models as
+  one: it keeps the second preimage and only hides the ambiguity. Like the `geometry-mesh` domain
+  checks of §3.1, this is a **conformance rule, not part of the wire format** — it changes no
+  accepted payload's bytes, and no golden vector can pin it, because a vector fixes how an accepted
+  payload encodes while this fixes which payloads are accepted at all. Exactly-repeated keys
+  (the same string twice) are the degenerate case of the same rule and are rejected identically.
+
+  The rule deliberately does **not** extend to the bare child-hash sets (a relationship role's
+  `refs`, a layer's `childHashes`). There an entry *is* its key: it carries no payload beyond the
+  string that was sorted, so entries that compare equal also encode to identical bytes and the byte
+  stream genuinely does not depend on their relative order. No ambiguity exists there, so extending
+  the rejection would narrow the set of accepted inputs without closing any defect.
 
 Per kind:
 

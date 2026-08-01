@@ -82,8 +82,13 @@ const GOLDEN_FILES = [
 ] as const;
 
 /** Pinned at freeze time (55), plus the two `ps-unicode-*-multi-prop` vectors
- *  added pre-merge for the sort/encode normalization split (see
- *  `compareUtf8`). Adding coverage never changes the format — every one of the
+ *  added pre-merge for the sort/encode normalization split (see `compareUtf8`)
+ *  — finding F4 of the pre-freeze adversarial attack on node-hash-v0,
+ *  commissioned because a freeze makes bug-for-bug behaviour the contract.
+ *  Both the attack and its fix landed in PR #1886, the freeze PR (see the
+ *  `harden(provenance): close the NFC sort/encode split ... (F4/F5/F11)`
+ *  commit for the full finding write-up). Adding coverage never changes the
+ *  format — every one of the
  *  original 55 hashes is byte-identical — but REMOVING a vector is a hole in
  *  the frozen contract's coverage: restore it rather than lowering this count. */
 const FROZEN_VECTOR_COUNT = 57;

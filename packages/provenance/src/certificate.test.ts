@@ -516,8 +516,12 @@ describe('createCertificate structural validation', () => {
     const withSignatures = (signatures: unknown) =>
       createCertificate({ ...base, signatures: signatures as never });
 
-    // The exact payload an adversarial review minted and got a clean `ok: true`
-    // for: a wrong algorithm, an empty object, and a null, all waved through.
+    // Regression for finding F11 of the pre-freeze adversarial attack on
+    // node-hash-v0; both the attack and this fix landed in PR #1886, the freeze
+    // PR (see the `harden(provenance): close the NFC sort/encode split ...
+    // (F4/F5/F11)` commit). The exact payload that review minted and got a
+    // clean `ok: true` for: a wrong algorithm, an empty object, and a null,
+    // all waved through.
     expect(() => withSignatures([{ alg: 'not-ed25519' }, {}, null])).toThrow(/must be "ed25519"/);
     expect(() => withSignatures([{}])).toThrow(/must be "ed25519"/);
     expect(() => withSignatures([null])).toThrow(/must be an object/);

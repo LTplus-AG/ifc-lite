@@ -1,11 +1,16 @@
 # B4.4 - the M3 kernel-adjoint spike
 
-Run 2026-07-27, off `origin/main` at `40b4eabb`.
+Run 2026-07-27, off `origin/main` at `40b4eabb`. Re-run in full on 2026-08-01
+after the rebase and after the review fixes below; `battery.json` came back
+byte-identical, so every figure in sections 3 and 4 is a figure from both runs.
 
-**Verdict: PASS.** 200/200 points (100.00%) on the pre-committed
-rectangular-extrusion battery, against a 95% bar. Replicated at two further
-seeds (200/200, 200/200) and on a harder second family that adds a rectangular
-void (200/200, 200/200, 199/200).
+**Verdict: PASS on the extrusion-mesher exam.** 200/200 points (100.00%) on the
+pre-committed rectangular-extrusion battery, against a 95% bar. Replicated at two
+further seeds (200/200, 200/200) and on a harder second family that adds a
+rectangular void (200/200, 200/200, 199/200).
+
+**This PASS neither triggers nor clears the M3 kill criterion, which is about the
+CSG/void path and was not attacked here. M3 remains UNADJUDICATED** (section 6).
 
 The exam, as pre-committed in
 [`docs/vision/moonshots-finishing-plan.md`](../../../docs/vision/moonshots-finishing-plan.md)
@@ -33,7 +38,7 @@ complex-step; declare it intractable). **Option 1 was taken.** The extrusion
 mesher is now generic over a scalar trait, with `f64` as the production
 instantiation and a forward-mode dual number as the spike's:
 
-```
+```text
 rust/geometry/src/scalar.rs             GeomScalar + MeshSink traits, f64 impls
 rust/geometry/src/extrusion_generic.rs  the mesher body, generic over the scalar
 rust/geometry/src/profile_generic.rs    profile ring + triangulation, generic
@@ -67,6 +72,7 @@ of `f64` constants for `S::from_f64(...)`. Six nalgebra calls that need
 equivalents in `scalar.rs`, each **asserted bit-identical to nalgebra's** over
 2,000-4,000 random inputs (`scalar::tests`). Two production files were split to
 stay inside the module-size ratchet; that is a pure move.
+<!-- numeral-ok: 4,000 :: a case count asserted in rust/geometry/src/extrusion_byte_identity_tests.rs and scalar.rs, not a measurement any JSON emits -->
 
 ### 1.3 What is *not* differentiated, and why that is correct
 
@@ -111,7 +117,7 @@ is on the **raw `f32` bits** of every position and normal plus the index buffer,
 and on error-message equality for the rejection paths.
 
 Result: **4,000/4,000 bit-identical.** `cargo test -p ifc-lite-geometry --lib`
-is 542/542 green.
+is green (see section 8 for the count on the current base).
 
 ---
 
@@ -143,6 +149,21 @@ subsystem (`Mesh::origin`, #1114), and it is worth reading into the M3 record on
 its own: the f32 vertex store is a larger error source than anything in the
 gradient, by two orders of magnitude.
 
+**What check 4 has to beat, and what happens if it does not.** Until 2026-08-01
+the end-to-end script computed those two deviations, printed them and exited 0
+whatever they were - its only failure mode was "no mesh came out at all" - so
+"cross-check PASS" asserted the pipeline produced *a* mesh and nothing about the
+numbers. It now grades them, and `kernel-cross-check.json` records the bars next
+to the figures:
+
+| deviation | bar | why that bar |
+|---|---|---|
+| wasm mesh volume vs the instrumented f64 forward value | 1e-5 | a bar on the KNOWN error source, the f32 vertex store at a <= 30 m placement, whose worst in-process figure over 1,200 points is 4.6e-6 |
+| wasm mesh volume vs the same mesher in-process, native | 1e-6 | same source, same f32 storage, differing only in wasm-vs-native codegen; two orders below the quantisation floor above, so it cannot be satisfied by "it rounded the same way" and fails if wasm is running a different function |
+
+A point fails if either deviation is non-finite or over its bar, or if the
+pipeline emits no mesh; any failing point fails the run.
+
 A fifth check pins the forward value to an independent closed form:
 `det(shear) * xdim * ydim * depth`, matched to **2.188857e-13** relative worst
 case across the **600 family-A points** (corrected 2026-07-29 by the G4
@@ -172,9 +193,11 @@ Seeded xorshift64\*, primary seed `20260727`, replications at seeds `7` and
 | 0 | `xdim` | U(0.2, 6.0) m |
 | 1 | `ydim` | U(0.2, 6.0) m |
 | 2 | `depth` | U(0.2, 8.0) m |
-| 3-5 | `dirx, diry, dirz` | half the draws axis-aligned (`0,0,±1`, including the negative-Z opening case that adds the `-depth` translation); half sheared, `|dirx|,|diry| ~ U(0.05, 0.6)`, `dirz ~ U(0.4, 1.2)`, clear of the mesher's `|d| < 0.001` axis-alignment threshold |
+| 3-5 | `dirx, diry, dirz` | half the draws axis-aligned (`0,0,±1`, including the negative-Z opening case that adds the `-depth` translation); half sheared, `abs(dirx), abs(diry) ~ U(0.05, 0.6)`, `dirz ~ U(0.4, 1.2)`, clear of the mesher's `abs(d) < 0.001` axis-alignment threshold |
 | 6-8 | `px, py, pz` | U(-30, 30), U(-30, 30), U(-10, 10) m |
 | 9 | `theta` | U(-pi, pi) |
+
+<!-- numeral-ok: -30 :: a parameter-box bound from the protocol, fixed before the run; the battery emits the drawn points, not their box -->
 
 Both sides of the mesher's axis-alignment branch are exercised by construction.
 
@@ -203,6 +226,8 @@ Parameters are partitioned **a priori, from the mathematics**, into:
 
 A point passes iff every component passes its test.
 
+<!-- numeral-ok: 97.7% :: a figure from a DIFFERENT bet's run (scripts/moonshot/diff-spike), quoted here for contrast -->
+
 **Why the partition, stated plainly.** `diff-spike/battery.mjs` scored 97.7% and
 22 of its 23 failures were FD cancellation noise on components whose analytic
 gradient was exactly zero; that analysis was done post hoc. **A relative
@@ -229,7 +254,7 @@ zero test.
 
 Primary run, family A, seed 20260727 (the pre-committed exam):
 
-```
+```text
 200 points x 10 params = 2000 components (1200 active, 800 invariant)
 POINTS PASSED: 200/200 = 100.00%   [bar 95%]  -> PASS
   active components:    1200/1200 passed, max rel err 6.282e-8 (point 62 / dirx)
@@ -256,6 +281,8 @@ All runs:
 
 The single failing component in 8,400 (B / seed 2026, point 102, `dirx`):
 `ad = -1.669700836e-2`, `fd = -1.669702943e-2`, absolute disagreement 2.1e-8.
+<!-- numeral-ok: 8,400 :: the sum of the six runs' activeComponents in battery.json (3 x 1200 + 3 x 1600), added up in the sentence -->
+<!-- numeral-ok: 2.1e-8 :: arithmetic in the sentence, |ad - fd| for the two values quoted beside it -->
 The FD cancellation floor at that point is `~eps * C / h` with
 `C ~ 1.6e5` and `h = 1e-5`, i.e. `~1e-6` absolute - fifty times the observed
 disagreement. The finite difference is the side that is wrong, and the protocol
@@ -276,7 +303,7 @@ the loop's signed area, so a hole's walls face into the solid instead of into
 the void. Neither winding of the hole ring fixes it, because the sign flips with
 the loop. The divergence functional of the raw mesh is therefore
 
-```
+```text
 depth * det(shear) * (A_outer + A_hole / 3)      not      depth * det(shear) * (A_outer - A_hole)
 ```
 
@@ -299,22 +326,20 @@ it is that function's gradient the battery grades.
 
 ## 6. What this does and does not license
 
-**Licensed.** M3's adjoints reach the real geometry kernel for the
-rectangular-extrusion family. The pre-committed kill criterion for M3 is not
-triggered; the pre-committed downgrade to derivative-free optimization is not
-invoked; "differentiable buildings" survives the exam it was given.
+**Licensed.** B4.4 passed the **extrusion-mesher** exam: M3's adjoints reach the
+real geometry kernel for the rectangular-extrusion family, and they flow through
+the bytes of the shipping mesher rather than through a mirror of it.
 
-> **CORRECTION 2026-07-29 (G4 adversarial review, amendment 6 of the finishing
-> plan, signed off by the gate-holder).** The sentence above is true and
-> misleading, and this file is the one a reader on this branch sees. The exam
-> B4.4 was given targets the **extrusion mesher**; M3's binary kill risk is the
-> **CSG/void path**, which this bet did not attack (see section 6.1, which
-> scopes it at two cycles). Section 3's own oracle shows the extrusion volume is
-> a smooth closed form, so this exam could not have failed. **B4.4's PASS
-> therefore neither triggers nor clears M3's binary gate. M3 is UNADJUDICATED**
-> pending the Phase 5 CSG-adjoint bet. Nothing about the engineering result
-> changes: the adjoints are real, they flow through the shipping mesher, and the
-> byte-identity guard holds on the native build.
+**That PASS neither triggers nor clears the M3 kill criterion.** The exam B4.4
+was given targets the extrusion mesher; M3's binary kill risk is the **CSG/void
+path**, which this bet did not attack. Section 2's own oracle shows the extrusion
+volume is a smooth closed form, so this exam could not have failed. **M3 is
+therefore UNADJUDICATED.** Adjudicating it needs a CSG-adjoint bet, and no such
+bet is scheduled: there is no exam for it, no kill clause and no cycle budget.
+Section 6.1 below is an obstruction analysis and a cost estimate, not a plan of
+record. Nothing about the engineering result changes: the adjoints are real, they
+flow through the shipping mesher, and the byte-identity guard holds on the native
+build.
 
 **Not licensed.**
 
@@ -329,10 +354,11 @@ invoked; "differentiable buildings" survives the exam it was given.
    quantities. A dual number would carry the coordinate derivative correctly,
    but the exact predicate tier operates on a fixed-width integer type that has
    no derivative slot, so the generic-over-scalar move does not transfer.
-   Estimated cost: one cycle to determine whether the arrangement's derived
-   points can be given derivatives without touching the predicate tier
-   (plausible: predicates only need the primal), and a second to make the
-   subtraction/union output stable enough that FD is meaningful across a cut.
+   Rough cost if it is ever scoped - an estimate, not a budget, and nothing here
+   schedules it: one cycle to determine whether the arrangement's derived points
+   can be given derivatives without touching the predicate tier (plausible:
+   predicates only need the primal), and a second to make the subtraction/union
+   output stable enough that FD is meaningful across a cut.
 2. **The rest of the mesher.** Faceted BREPs, swept disks, revolutions,
    tessellated face sets and the tapered/lofted extrusion path are untouched.
    The `GeomScalar`/`MeshSink` seam generalises to them mechanically, but
@@ -353,9 +379,9 @@ node scripts/moonshot/b44-kernel-adjoint/run.mjs
 # battery only (no wasm build needed)
 node scripts/moonshot/b44-kernel-adjoint/run.mjs --no-wasm
 
-# or directly
-cd rust && cargo test -p ifc-lite-geometry --lib b44 -- --nocapture
-cd rust && cargo test -p ifc-lite-geometry --lib byte_identity
+# or directly (runnable as-is from the repo root; the crates live under rust/)
+cargo test --manifest-path rust/Cargo.toml -p ifc-lite-geometry --lib b44 -- --nocapture
+cargo test --manifest-path rust/Cargo.toml -p ifc-lite-geometry --lib byte_identity
 ```
 
 The wasm leg needs `pnpm --filter @ifc-lite/geometry... build` first (it builds
@@ -363,7 +389,9 @@ The wasm leg needs `pnpm --filter @ifc-lite/geometry... build` first (it builds
 wasm compiled from the instrumented mesher, not a stale artifact).
 
 Runtime: the battery is ~0.15 s in debug for all six runs (8,400 gradient
-components, ~180,000 mesher evaluations). It runs inside
+components, ~180,000 mesher evaluations).
+<!-- numeral-ok: 180,000 :: an order-of-magnitude count of mesher calls (2 FD evaluations per component plus one AD pass per point); nothing counts them at runtime -->
+It runs inside
 `cargo test --workspace` as a standing assertion, and its `assert!` against the
 95% bar means a future kernel change that breaks the adjoints turns the required
 `rust-tests` lane red - which is more than the B4.1 lane can currently say for
@@ -375,9 +403,16 @@ any other moonshot result (see B4.1's own correction note).
 
 **Green.**
 
-- `cargo test -p ifc-lite-geometry --lib`: **542 passed, 0 failed** (was 536
-  before; +6 from the byte-identity guard, the battery, the dual-primal
-  bit-identity check and the winding pin).
+- `cargo test -p ifc-lite-geometry --no-fail-fast` (the whole package, not one
+  binary): green. The lib binary is **544 passed, 0 failed, 1 ignored** on this
+  branch's current base, of which **10** tests are this bet's: 5 under
+  `b44_kernel_adjoint`, 3 under `extrusion::byte_identity_tests`, 2 under
+  `scalar::tests`. (Re-measured 2026-08-01 after the rebase. The first run of
+  this bet reported 542 off `40b4eabb`, where the base was 536; the base has
+  moved since, so the delta is stated as the module counts, which do not.)
+  <!-- numeral-ok: 544, 542, 536 :: test-suite counts; no artifact stores them, and the two from the earlier base are quoted here in order to retract them -->
+- `cargo test -p ifc-lite-geometry --lib b44_dual_sqrt_at_zero_is_finite`: green;
+  pins the `sqrt` branch-point convention (shortcut 7).
 - `cargo test --workspace --no-fail-fast`: green once fixtures are present.
   The one run that mattered most - `wall_opening_cut_regression` (7/7) and
   `csg_quality_regression` - drives real IFC walls with openings through
@@ -387,6 +422,7 @@ any other moonshot result (see B4.1's own correction note).
   production modules are 388 and 94 lines, both under the 400 limit. No
   allowlist row was added or raised (the allowlist lives in `rust/processing`,
   outside this bet's writable domain, and was deliberately not touched).
+  <!-- numeral-ok: 1078, 777, 431, 372, 388 :: module line counts from the ratchet lane; the ratchet asserts them, no JSON artifact stores them -->
 - `pnpm --filter @ifc-lite/geometry test`: **146 passed, 16 files**.
 
 **Shortcuts, stated so nobody has to find them.**
@@ -409,7 +445,20 @@ any other moonshot result (see B4.1's own correction note).
    rather than assumed.
 6. **Family B's oracle is the winding-inconsistent closed form**, not the solid
    volume (section 5). The underlying mesher behaviour was **not** fixed.
-7. **`cargo clippy --workspace ... -- -D warnings`** (the CI command) fails in
+7. **`Dual::sqrt` defines its derivative at `v == 0` to be zero.** `1/(2 sqrt(v))`
+   is unbounded there, and every call site that can reach zero also arrives with
+   a zero derivative seed, so the natural form computes `0 * inf = NaN` and
+   poisons the whole gradient vector silently. The mesher can genuinely reach
+   that boundary - a zero-length `IfcDirection`, a profile vertex sitting on the
+   centroid, or the radius standard deviation of a regular polygon, which is
+   exactly zero for the discretised circles the circularity heuristic exists to
+   detect. No battery point reaches it (both families draw a non-null direction,
+   and both profiles are far below the 20-vertex gate on that heuristic), so no
+   figure in this document depends on the convention; `b44_dual_sqrt_at_zero_is_finite`
+   pins it anyway. The convention is a choice among finite values, not a
+   derivative: the one-sided derivative does not exist there, and a point that
+   depended on it would fail its finite-difference test rather than pass quietly.
+8. **`cargo clippy --workspace ... -- -D warnings`** (the CI command) fails in
    this worktree on `rust/core/src/georef.rs` and `rust/core/src/parser/
    scanner.rs` under the pinned nightly - files this bet never touched, and lint
    classes (`chunks_exact_to_as_chunks`, `collapsible_match`,
@@ -417,4 +466,4 @@ any other moonshot result (see B4.1's own correction note).
    new code, `scalar.rs`'s `chunks_exact_mut(3)`, is a verbatim-moved line from
    `extrusion.rs`. Nothing here changes that lane's state either way, but it was
    not verified green and should not be claimed as such.
-8. **Foreign data: none.** See section 6.4.
+9. **Foreign data: none.** See section 6.4.

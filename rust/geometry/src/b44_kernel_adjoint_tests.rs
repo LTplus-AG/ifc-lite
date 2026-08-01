@@ -120,9 +120,42 @@ impl<const N: usize> GeomScalar for Dual<N> {
     fn value(self) -> f64 {
         self.v
     }
+    /// `sqrt`, with an explicit convention at the branch point `v == 0`.
+    ///
+    /// `d/dv sqrt(v) = 1/(2 sqrt(v))` is unbounded as `v -> 0+`, so the naive
+    /// form returns `inf` there and, because every argument that reaches zero
+    /// under this mesher also has a zero derivative seed (see below), computes
+    /// `0 * inf = NaN` and poisons the whole gradient vector silently.
+    ///
+    /// This is a boundary the mesher can genuinely reach on degenerate input:
+    ///
+    /// - `processors::extrusion::extrusion_local_transform` takes the norm of
+    ///   the extruded direction, which is zero for a zero-length `IfcDirection`;
+    /// - `scalar::try_normalize3` takes the norm of an arbitrary vector;
+    /// - `extrusion_generic::is_approximately_circular_profile` takes the radius
+    ///   of every boundary vertex about the centroid (zero for a vertex sitting
+    ///   on the centroid) and then the standard deviation of those radii, which
+    ///   is **exactly** zero for a regular polygon - i.e. for precisely the
+    ///   discretised-circle profiles that heuristic exists to detect.
+    ///
+    /// **Convention: the derivative at `v == 0` is defined to be 0.** The primal
+    /// is unaffected (`sqrt(0) == 0` either way), and every one of the call
+    /// sites above consumes the result through a `.value()` comparison, so the
+    /// dual pass keeps taking the same branch the `f64` mesher takes instead of
+    /// flipping it on a `NaN` compare. Zero is the honest choice among the
+    /// finite ones: the true one-sided derivative does not exist, and returning
+    /// a large finite number would pretend it does. A gradient that is wrong
+    /// only at a measure-zero set of degenerate inputs is graded like any other
+    /// point by the battery - it would fail its finite-difference test loudly
+    /// rather than turn every component into `NaN`.
+    ///
+    /// No battery point reaches `v == 0`: family A/B draw `dirz >= 0.4` or
+    /// `+/-1` so the direction is never null, and both profiles have 4 (or 4+4)
+    /// boundary vertices, below the >= 20 gate on the circularity heuristic.
+    /// `b44_dual_sqrt_at_zero_is_finite` pins the convention regardless.
     fn sqrt(self) -> Self {
         let s = self.v.sqrt();
-        let k = 0.5 / s;
+        let k = if s > 0.0 { 0.5 / s } else { 0.0 };
         let mut d = [0.0; N];
         for i in 0..N {
             d[i] = self.d[i] * k;
@@ -802,6 +835,54 @@ fn b44_dual_primal_is_bit_identical_to_f64_mesher() {
                 assert_eq!(p.y.to_bits(), q.y.value().to_bits(), "vertex {i}.y");
                 assert_eq!(p.z.to_bits(), q.z.value().to_bits(), "vertex {i}.z");
             }
+        }
+    }
+}
+
+/// `sqrt` at the branch point: the primal is 0, the derivative is defined to be
+/// 0 by convention (see [`GeomScalar::sqrt`] for `Dual`), and nothing downstream
+/// sees a `NaN`. The three call sites this protects are named there; the one a
+/// real model reaches is a zero-length `IfcDirection` on an `IfcExtrudedAreaSolid`.
+#[test]
+fn b44_dual_sqrt_at_zero_is_finite() {
+    // A zero-length direction: the norm's primal AND its derivative seed are 0,
+    // which is exactly the `0 * inf` case.
+    let z = Dual::<3>::variable(0.0, 0) * Dual::<3>::variable(0.0, 0);
+    let r = z.sqrt();
+    assert_eq!(r.value(), 0.0);
+    for (i, d) in r.d.iter().enumerate() {
+        assert!(d.is_finite(), "sqrt(0) derivative component {i} is {d}");
+        assert_eq!(*d, 0.0);
+    }
+
+    // A non-zero derivative seed at v == 0 takes the same convention rather than
+    // returning +/-inf.
+    let seeded = Dual::<3> {
+        v: 0.0,
+        d: [1.0, -2.0, 3.0],
+    };
+    for d in seeded.sqrt().d.iter() {
+        assert_eq!(*d, 0.0);
+    }
+
+    // Away from zero the exact rule is unchanged.
+    let p = Dual::<3>::variable(4.0, 1).sqrt();
+    assert_eq!(p.value(), 2.0);
+    assert_eq!(p.d[1], 0.25);
+
+    // The zero-length direction really does reach it, through production code.
+    let zero_dir = Vector3::new(
+        Dual::<3>::variable(0.0, 0),
+        Dual::<3>::variable(0.0, 1),
+        Dual::<3>::variable(0.0, 2),
+    );
+    let t = extrusion_local_transform(&zero_dir, Dual::<3>::from_f64(1.0));
+    if let Some(m) = t {
+        for e in m.iter() {
+            assert!(
+                e.value().is_nan() || e.d.iter().all(|d| d.is_finite()),
+                "a NaN primal is the f64 mesher's own behaviour; a NaN derivative is not",
+            );
         }
     }
 }

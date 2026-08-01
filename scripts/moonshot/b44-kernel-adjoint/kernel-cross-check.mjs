@@ -18,14 +18,110 @@
  *
  * Usage:
  *   node scripts/moonshot/b44-kernel-adjoint/kernel-cross-check.mjs --points pts.json
+ *                                                                  [--allow-stale-build]
+ *
+ * ACCEPTANCE CRITERIA. See ACCEPTANCE below: this script FAILS (non-zero exit)
+ * when a point emits no mesh, when a deviation is not finite, or when either
+ * relative deviation exceeds its documented bar.
  */
 
 import path from 'node:path';
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '../../..');
+const ARGV = process.argv.slice(2);
+
+/**
+ * The bars this check is graded against, and why each is the number it is.
+ *
+ * Without these two constants the loop below computed deviations, printed them
+ * and exited 0 no matter how large they were: the only failure it could produce
+ * was "no mesh came out at all". A cross-check that cannot fail on the quantity
+ * it measures is not evidence, so the deviations are now graded.
+ *
+ * `vsInstrumented` - the wasm pipeline's f32 mesh volume against the
+ * instrumented f64 forward value. These two differ by one thing that is not a
+ * defect: `Mesh` stores positions as `f32`, and at the battery's world
+ * placements (up to 30 m from the origin) that quantisation is worth ~3e-6
+ * relative. The in-process legs of the same comparison measured 2.968e-6
+ * (family A) and 4.603e-6 (family B) worst-case over 1,200 points; 1e-5 is the
+ * next round number above the largest figure this quantisation has ever
+ * produced here. It is a bar on a KNOWN error source, not on the gradient.
+ *
+ * `vsProductionInProcess` - the wasm pipeline against the native in-process
+ * production mesher, i.e. the same Rust source through two code generators on
+ * the same f32 storage. Nothing but codegen (fused multiply-add, libm) can
+ * differ, and the committed run's worst case is 2.4e-8. 1e-6 sits two orders
+ * below the f32 quantisation floor above, so this bar cannot be satisfied by
+ * "it rounded the same way": it fails if wasm is running a different function,
+ * which is the question this leg exists to answer.
+ *
+ * Both bars are recorded in kernel-cross-check.json next to the figures they
+ * graded, so a reader of the artifact sees the criterion, not just the result.
+ */
+const ACCEPTANCE = {
+  vsInstrumented: 1e-5,
+  vsProductionInProcess: 1e-6,
+};
+
+/**
+ * The dynamic import below loads a BUILD ARTIFACT, not source. If it is missing
+ * the bare module-not-found is unhelpful; worse, if it is stale the check
+ * silently compares this revision's instrumented forward values against a mesher
+ * compiled from some other revision, and reports agreement. So the provenance is
+ * asserted here: the built bundle and the wasm binary must both exist and must
+ * both be newer than every source file that feeds them.
+ */
+function assertBuildIsCurrent() {
+  const dist = path.join(REPO_ROOT, 'packages/geometry/dist/index.js');
+  const wasm = path.join(REPO_ROOT, 'packages/wasm/pkg/ifc-lite_bg.wasm');
+  const BUILD_CMD = 'pnpm --filter @ifc-lite/geometry... build';
+  for (const [what, p] of [['@ifc-lite/geometry build output', dist], ['the wasm binary', wasm]]) {
+    if (!existsSync(p)) {
+      console.error(
+        `cross-check cannot run: ${what} is missing (${path.relative(REPO_ROOT, p)}).\n` +
+          `Build it from this working tree first:\n  ${BUILD_CMD}`,
+      );
+      process.exit(1);
+    }
+  }
+  const builtAt = Math.min(statSync(dist).mtimeMs, statSync(wasm).mtimeMs);
+  const sourceDirs = [
+    'packages/geometry/src',
+    'rust/geometry/src',
+    'rust/wasm-bindings/src',
+  ];
+  let newest = { at: 0, file: null };
+  const walk = (dir) => {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (e.isFile()) {
+        const at = statSync(p).mtimeMs;
+        if (at > newest.at) newest = { at, file: p };
+      }
+    }
+  };
+  for (const d of sourceDirs) {
+    const abs = path.join(REPO_ROOT, d);
+    if (existsSync(abs)) walk(abs);
+  }
+  if (newest.file && newest.at > builtAt) {
+    const msg =
+      `cross-check build is STALE: ${path.relative(REPO_ROOT, newest.file)} is newer than the ` +
+      'built artifacts, so the wasm under test was not compiled from this working tree.\n' +
+      `Rebuild:\n  ${BUILD_CMD}`;
+    if (!ARGV.includes('--allow-stale-build')) {
+      console.error(`${msg}\n(pass --allow-stale-build to run anyway; the result is then not evidence)`);
+      process.exit(1);
+    }
+    console.warn(`WARNING: ${msg}\nContinuing because --allow-stale-build was passed.`);
+  }
+}
+
+assertBuildIsCurrent();
 
 const { GeometryProcessor } = await import(
   path.join(REPO_ROOT, 'packages/geometry/dist/index.js')
@@ -127,7 +223,7 @@ DATA;
 }
 
 async function main() {
-  const args = process.argv.slice(2);
+  const args = ARGV;
   const pi = args.indexOf('--points');
   const raw = pi >= 0 ? readFileSync(args[pi + 1], 'utf8') : readFileSync(0, 'utf8');
   const body = raw.includes('B44_XCHECK_BEGIN')
@@ -142,6 +238,9 @@ async function main() {
   let worstVsInstrumented = 0;
   let worstVsProductionInProcess = 0;
   let missing = 0;
+  let failed = 0;
+  /** A deviation is acceptable only if it is a finite number at or under its bar. */
+  const grade = (dev, limit) => Number.isFinite(dev) && dev <= limit;
   for (const [k, pt] of points.entries()) {
     const { content } = buildIfc(pt.x);
     const result = await processor.process(new TextEncoder().encode(content));
@@ -153,12 +252,17 @@ async function main() {
     }
     if (meshes === 0) {
       missing += 1;
-      rows.push({ point: k, meshes, note: 'no mesh emitted' });
+      failed += 1;
+      rows.push({ point: k, meshes, passed: false, note: 'no mesh emitted' });
       continue;
     }
     const relInstrumented = Math.abs(vol - pt.instrumentedVolume) / pt.instrumentedVolume;
     const relProduction =
       Math.abs(vol - pt.productionF32Volume) / pt.productionF32Volume;
+    const okInstrumented = grade(relInstrumented, ACCEPTANCE.vsInstrumented);
+    const okProduction = grade(relProduction, ACCEPTANCE.vsProductionInProcess);
+    const passed = okInstrumented && okProduction;
+    if (!passed) failed += 1;
     worstVsInstrumented = Math.max(worstVsInstrumented, relInstrumented);
     worstVsProductionInProcess = Math.max(worstVsProductionInProcess, relProduction);
     rows.push({
@@ -169,20 +273,27 @@ async function main() {
       productionF32Volume: pt.productionF32Volume,
       relVsInstrumented: relInstrumented,
       relVsProductionInProcess: relProduction,
+      passed,
     });
     console.log(
       `point ${String(k).padStart(2)}: wasm ${vol.toFixed(9)}  instrumented ${pt.instrumentedVolume.toFixed(9)}  ` +
-        `rel ${relInstrumented.toExponential(3)}  (vs in-process production f32: ${relProduction.toExponential(3)})`,
+        `rel ${relInstrumented.toExponential(3)}  (vs in-process production f32: ${relProduction.toExponential(3)})` +
+        (passed
+          ? ''
+          : `  FAIL${okInstrumented ? '' : ` [vs instrumented > ${ACCEPTANCE.vsInstrumented}]`}` +
+            `${okProduction ? '' : ` [vs in-process production > ${ACCEPTANCE.vsProductionInProcess}]`}`),
     );
   }
 
   console.log('---');
-  console.log(`points: ${points.length}, meshes missing: ${missing}`);
+  console.log(`points: ${points.length}, meshes missing: ${missing}, points failed: ${failed}`);
   console.log(
-    `worst relative deviation, wasm pipeline vs instrumented forward value: ${worstVsInstrumented.toExponential(3)}`,
+    `worst relative deviation, wasm pipeline vs instrumented forward value: ${worstVsInstrumented.toExponential(3)} ` +
+      `[bar ${ACCEPTANCE.vsInstrumented}]`,
   );
   console.log(
-    `worst relative deviation, wasm pipeline vs in-process production f32:  ${worstVsProductionInProcess.toExponential(3)}`,
+    `worst relative deviation, wasm pipeline vs in-process production f32:  ${worstVsProductionInProcess.toExponential(3)} ` +
+      `[bar ${ACCEPTANCE.vsProductionInProcess}]`,
   );
 
   const out = path.join(__dirname, 'kernel-cross-check.json');
@@ -193,6 +304,9 @@ async function main() {
       {
         points: points.length,
         missing,
+        failed,
+        verdict: failed === 0 ? 'PASS' : 'FAIL',
+        acceptance: ACCEPTANCE,
         worstRelVsInstrumented: worstVsInstrumented,
         worstRelVsProductionInProcess: worstVsProductionInProcess,
         rows,
@@ -202,7 +316,8 @@ async function main() {
     )}\n`,
   );
   console.log(`wrote ${out}`);
-  if (missing > 0) process.exitCode = 1;
+  console.log(failed === 0 ? 'cross-check PASS' : `cross-check FAIL (${failed} of ${points.length} points)`);
+  if (failed > 0) process.exitCode = 1;
 }
 
 main().catch((err) => {

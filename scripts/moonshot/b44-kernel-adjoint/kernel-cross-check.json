@@ -1,6 +1,12 @@
 {
   "points": 24,
   "missing": 0,
+  "failed": 0,
+  "verdict": "PASS",
+  "acceptance": {
+    "vsInstrumented": 0.00001,
+    "vsProductionInProcess": 0.000001
+  },
   "worstRelVsInstrumented": 0.0000010815143437884797,
   "worstRelVsProductionInProcess": 2.3963794909510378e-8,
   "rows": [
@@ -11,7 +17,8 @@
       "instrumentedVolume": 1.780587493424818,
       "productionF32Volume": 1.7805855598876026,
       "relVsInstrumented": 0.0000010815143437884797,
-      "relVsProductionInProcess": 4.38412009782209e-9
+      "relVsProductionInProcess": 4.38412009782209e-9,
+      "passed": true
     },
     {
       "point": 1,
@@ -20,7 +27,8 @@
       "instrumentedVolume": 87.49039379402932,
       "productionF32Volume": 87.49035994286866,
       "relVsInstrumented": 3.8691288459562335e-7,
-      "relVsProductionInProcess": 1.624276631674817e-16
+      "relVsProductionInProcess": 1.624276631674817e-16,
+      "passed": true
     },
     {
       "point": 2,
@@ -29,7 +37,8 @@
       "instrumentedVolume": 24.593535374280595,
       "productionF32Volume": 24.59351742790371,
       "relVsInstrumented": 7.297192785150744e-7,
-      "relVsProductionInProcess": 1.444573225125417e-16
+      "relVsProductionInProcess": 1.444573225125417e-16,
+      "passed": true
     },
     {
       "point": 3,
@@ -38,7 +47,8 @@
       "instrumentedVolume": 62.30570393383719,
       "productionF32Volume": 62.305698575547034,
       "relVsInstrumented": 8.599999370037025e-8,
-      "relVsProductionInProcess": 1.1404137213846522e-16
+      "relVsProductionInProcess": 1.1404137213846522e-16,
+      "passed": true
     },
     {
       "point": 4,
@@ -47,7 +57,8 @@
       "instrumentedVolume": 3.5848378134341323,
       "productionF32Volume": 3.5848386763286384,
       "relVsInstrumented": 2.407067015441812e-7,
-      "relVsProductionInProcess": 5.698472231956623e-15
+      "relVsProductionInProcess": 5.698472231956623e-15,
+      "passed": true
     },
     {
       "point": 5,
@@ -56,7 +67,8 @@
       "instrumentedVolume": 4.327823682272115,
       "productionF32Volume": 4.327821390943505,
       "relVsInstrumented": 5.294413003366197e-7,
-      "relVsProductionInProcess": 2.6679288291017996e-15
+      "relVsProductionInProcess": 2.6679288291017996e-15,
+      "passed": true
     },
     {
       "point": 6,
@@ -65,7 +77,8 @@
       "instrumentedVolume": 3.970692628009489,
       "productionF32Volume": 3.970693377023428,
       "relVsInstrumented": 1.9094224786081122e-7,
-      "relVsProductionInProcess": 2.3066593702035893e-9
+      "relVsProductionInProcess": 2.3066593702035893e-9,
+      "passed": true
     },
     {
       "point": 7,
@@ -74,7 +87,8 @@
       "instrumentedVolume": 4.349974017198792,
       "productionF32Volume": 4.349974652676483,
       "relVsInstrumented": 1.3171972985305743e-7,
-      "relVsProductionInProcess": 1.436796613555747e-8
+      "relVsProductionInProcess": 1.436796613555747e-8,
+      "passed": true
     },
     {
       "point": 8,
@@ -83,7 +97,8 @@
       "instrumentedVolume": 69.88752097008872,
       "productionF32Volume": 69.88753789418247,
       "relVsInstrumented": 2.4216188333597905e-7,
-      "relVsProductionInProcess": 8.133555791717157e-16
+      "relVsProductionInProcess": 8.133555791717157e-16,
+      "passed": true
     },
     {
       "point": 9,
@@ -92,7 +107,8 @@
       "instrumentedVolume": 15.632242681479156,
       "productionF32Volume": 15.63223648174742,
       "relVsInstrumented": 3.9659899299906127e-7,
-      "relVsProductionInProcess": 1.9317815659367906e-15
+      "relVsProductionInProcess": 1.9317815659367906e-15,
+      "passed": true
     },
     {
       "point": 10,
@@ -101,7 +117,8 @@
       "instrumentedVolume": 33.30617180945871,
       "productionF32Volume": 33.306179694778756,
       "relVsInstrumented": 2.3989539546321436e-7,
-      "relVsProductionInProcess": 3.142876596321449e-9
+      "relVsProductionInProcess": 3.142876596321449e-9,
+      "passed": true
     },
     {
       "point": 11,
@@ -110,7 +127,8 @@
       "instrumentedVolume": 12.1342390939519,
       "productionF32Volume": 12.134241176474552,
       "relVsInstrumented": 1.7162366948135418e-7,
-      "relVsProductionInProcess": 1.0247445798184174e-15
+      "relVsProductionInProcess": 1.0247445798184174e-15,
+      "passed": true
     },
     {
       "point": 12,
@@ -119,7 +137,8 @@
       "instrumentedVolume": 41.36897487629722,
       "productionF32Volume": 41.36898585325621,
       "relVsInstrumented": 2.881372249629831e-7,
-      "relVsProductionInProcess": 2.279443431347906e-8
+      "relVsProductionInProcess": 2.279443431347906e-8,
+      "passed": true
     },
     {
       "point": 13,
@@ -128,7 +147,8 @@
       "instrumentedVolume": 37.701693844189194,
       "productionF32Volume": 37.70170140096139,
       "relVsInstrumented": 2.0432566829101541e-7,
-      "relVsProductionInProcess": 3.889787158939763e-9
+      "relVsProductionInProcess": 3.889787158939763e-9,
+      "passed": true
     },
     {
       "point": 14,
@@ -137,7 +157,8 @@
       "instrumentedVolume": 142.85578580539334,
       "productionF32Volume": 142.85578759943692,
       "relVsInstrumented": 1.3363115935537662e-8,
-      "relVsProductionInProcess": 8.046915410138915e-10
+      "relVsProductionInProcess": 8.046915410138915e-10,
+      "passed": true
     },
     {
       "point": 15,
@@ -146,7 +167,8 @@
       "instrumentedVolume": 38.97735516227741,
       "productionF32Volume": 38.97735132356105,
       "relVsInstrumented": 9.968277294438738e-8,
-      "relVsProductionInProcess": 1.1969639581888153e-9
+      "relVsProductionInProcess": 1.1969639581888153e-9,
+      "passed": true
     },
     {
       "point": 16,
@@ -155,7 +177,8 @@
       "instrumentedVolume": 13.65754693804755,
       "productionF32Volume": 13.65755159174949,
       "relVsInstrumented": 3.348310062269426e-7,
-      "relVsProductionInProcess": 5.9111440993353815e-9
+      "relVsProductionInProcess": 5.9111440993353815e-9,
+      "passed": true
     },
     {
       "point": 17,
@@ -164,7 +187,8 @@
       "instrumentedVolume": 36.32646999662196,
       "productionF32Volume": 36.3264695233898,
       "relVsInstrumented": 3.0422129913309104e-8,
-      "relVsProductionInProcess": 1.73949308873098e-8
+      "relVsProductionInProcess": 1.73949308873098e-8,
+      "passed": true
     },
     {
       "point": 18,
@@ -173,7 +197,8 @@
       "instrumentedVolume": 4.097768655075744,
       "productionF32Volume": 4.097769023284643,
       "relVsInstrumented": 8.985595021473558e-8,
-      "relVsProductionInProcess": 6.502404708415136e-16
+      "relVsProductionInProcess": 6.502404708415136e-16,
+      "passed": true
     },
     {
       "point": 19,
@@ -182,7 +207,8 @@
       "instrumentedVolume": 52.4541007283805,
       "productionF32Volume": 52.454099776219756,
       "relVsInstrumented": 1.8152265324844283e-8,
-      "relVsProductionInProcess": 1.3545990471506046e-16
+      "relVsProductionInProcess": 1.3545990471506046e-16,
+      "passed": true
     },
     {
       "point": 20,
@@ -191,7 +217,8 @@
       "instrumentedVolume": 103.3932556303048,
       "productionF32Volume": 103.39327920253504,
       "relVsInstrumented": 2.2798615003143895e-7,
-      "relVsProductionInProcess": 4.1233399766820364e-16
+      "relVsProductionInProcess": 4.1233399766820364e-16,
+      "passed": true
     },
     {
       "point": 21,
@@ -200,7 +227,8 @@
       "instrumentedVolume": 18.01077350878889,
       "productionF32Volume": 18.01077296937162,
       "relVsInstrumented": 2.994970046542199e-8,
-      "relVsProductionInProcess": 0
+      "relVsProductionInProcess": 0,
+      "passed": true
     },
     {
       "point": 22,
@@ -209,7 +237,8 @@
       "instrumentedVolume": 9.575048232105482,
       "productionF32Volume": 9.575058192483203,
       "relVsInstrumented": 0.000001064206905761013,
-      "relVsProductionInProcess": 2.3963794909510378e-8
+      "relVsProductionInProcess": 2.3963794909510378e-8,
+      "passed": true
     },
     {
       "point": 23,
@@ -218,7 +247,8 @@
       "instrumentedVolume": 41.186957279873475,
       "productionF32Volume": 41.18695348871834,
       "relVsInstrumented": 1.0842720360211475e-7,
-      "relVsProductionInProcess": 1.63797369849916e-8
+      "relVsProductionInProcess": 1.63797369849916e-8,
+      "passed": true
     }
   ]
 }

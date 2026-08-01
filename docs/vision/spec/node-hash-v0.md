@@ -13,7 +13,24 @@
 >   contract; golden wire-format vectors in `packages/provenance/test/golden/` pin it in CI.
 > - **Additive reserved fields** (already specified, additive-only, do not alter any hash):
 >   - `Certificate.signatures?: {alg: 'ed25519', key, sig}[]` — reserved per §6 Q5 (decision
->     2026-07-24), ignored by v0 verification; actual signing lands with M4.
+>     2026-07-24), ignored by v0 verification; actual signing lands with M4. Two normative
+>     constraints on that landing:
+>     1. **v0 defines no canonical certificate byte encoding.** The frozen format below covers
+>        *node* hashes only — there is no specified, reproducible byte stream for a `Certificate`
+>        itself, and therefore **nothing well-defined for M4 to sign over**. Defining that encoding
+>        is part of the signing work, not a detail M4 can assume it inherits; until it exists, a
+>        `signatures` array is decoration, and any claim that a v0 certificate is "signed" is
+>        unbacked. v0 verification consequently ignores the field entirely, and `createCertificate`
+>        only enforces its *shape* (one reserved algorithm, `ed25519`; non-empty `key` and `sig`)
+>        so the slot M4 inherits is either absent or well-formed.
+>     2. **M4 must mint a NEW version string and must never sign under `node-hash-v0`.** A signed
+>        certificate is a different security artifact from an unsigned one: today the only thing
+>        separating "signature-bearing" from "signature-ignoring" is the exact match on
+>        `version === 'node-hash-v0'`, so signing under the v0 string would leave verifiers that
+>        legitimately ignore signatures indistinguishable from verifiers that check them — a
+>        downgrade with no wire-visible signal. The M4 version string (and its certificate byte
+>        encoding) is introduced alongside the signing scheme; v0 keeps ignoring the reserved field
+>        forever.
 >   - `GeometryMeshPayload.semanticHash?` — the RTC-invariant annotation per §6 Q2, deliberately
 >     NOT folded into the node hash (pinned by test).
 > - **Scope: this freeze covers the node-hash wire format only.** The commutation certificate
@@ -244,6 +261,21 @@ the pinned entries in `mesh_determinism.json`'s `meshes[]` array (same `position
 `normals_hash` construction, plus the same 3-hash fold as the per-mesh slice of `top`). Offset
 basis and prime are the pinned constants (`0xcbf2_9ce4_8422_2325`, `0x0000_0100_0000_01b3`).
 
+**Field domains are normative, and out-of-domain payloads are rejected, not coerced.** The
+encoding above is a verbatim port of a Rust wire format, so the fields carry Rust's types:
+`express_id` and every index are `u32` (integers in `[0, 4294967295]`), `geometry_class` is a `u8`
+(integer in `[0, 255]`), positions and normals are `f32` (finite, and finite once narrowed to
+`f32`), and `origin` is exactly three finite `f64`. A host language with one numeric type (a
+TypeScript port hashing `number`) must **reject** anything outside those domains rather than
+truncate it: masking `geometry_class` with `& 0xff` or forcing an index through `v >>> 0` maps
+distinct payloads onto one hash (`1`/`257`/`-255`; `100`/`100.9`/`100 + 2**32`; `[-1]`/
+`[4294967295]`), which is a second preimage a certificate would verify. Rejection is a
+**conformance rule, not part of the wire format** — it changes no accepted payload's bytes, and no
+golden vector can pin it, because a vector fixes how an accepted payload encodes while this fixes
+which payloads are accepted at all. In-range `f64 → f32` narrowing is inherent to the frozen format
+and stays as-is; only values with no `f32` at all (NaN, ±Infinity, and finite doubles like `1e39`
+that narrow to Infinity) are out of domain.
+
 This hash is **byte-exact, not RTC-invariant** — it is a proof of "the kernel reproduced this
 exact geometry," not "this geometry is semantically the same shape." That is the correct choice
 for a certificate whose whole point is proving deterministic replay (§4), and it is deliberately
@@ -259,8 +291,8 @@ engine), which is the constraint the B0.1 prototype must satisfy. A **common bin
 shared across all four composite kinds so the encoding rules are stated once:
 
 - All multi-byte integers are **little-endian**.
-- Every **string** field (already NFC-normalized) is encoded as `u32` LE byte-length prefix, then
-  its UTF-8 bytes.
+- Every **string** field is **NFC-normalized by the hasher** (Unicode Normalization Form C) and
+  then encoded as `u32` LE byte-length prefix, followed by its UTF-8 bytes.
 - Every **f64** field is its raw IEEE-754 bit pattern, 8 bytes, little-endian
   (`DataView.setFloat64(offset, v, /* littleEndian */ true)`).
 - Every **count** (array/map length) is a `u32` LE prefix before the elements it introduces.
@@ -280,6 +312,16 @@ shared across all four composite kinds so the encoding rules are stated once:
   `IfcRelAggregates.RelatedObjects` is a set) and preserves order exactly where it's semantic
   (e.g. a layer's op sequence, per `02-layer-format.md` §2.4's own "same-path opinion order is
   preserved" rule for the pre-existing `computeLayerId`).
+- **Normalization applies to sorting as well as to encoding.** Set ordering compares the
+  **NFC-normalized UTF-8 bytes** — byte-for-byte the same bytes the string encoding above will
+  write — never the producer's raw pre-normalization spelling. Sorting raw and encoding normalized
+  would let the *spelling* pick the order: `{"é"(NFD), "z"}` and `{"é"(NFC), "z"}` are one and the
+  same set after NFC, but raw-byte order puts NFD `é` (`0x65 0xcc 0x81`) before `z` and NFC `é`
+  (`0xc3 0xa9`) after it, so one canonical input would produce two different hashes. That dual is
+  worse than a collision for a verifier: "recompute and compare" would fail on honest data. Two
+  entries whose spellings differ but whose NFC forms are equal compare equal; the sort is **stable**
+  (producer order is kept), and since their encoded key bytes are identical by construction the
+  byte stream does not depend on which of the two the sort places first.
 
 Per kind:
 
@@ -433,6 +475,9 @@ for the record, each followed by the decision. Summary:
 - **Q5 — Reserve now, sign in M4.** `Certificate.signatures?` mirrors the ifcx
   provenance-manifest signature shape (`{alg: 'ed25519', key, sig}`) and is ignored by v0
   verification; actual signing lands with M4 (Phase 2); key custody is a human-calendar item.
+  See the FROZEN header block's reserved-fields entry for the two constraints on that landing:
+  v0 defines no canonical certificate byte encoding (so there is nothing well-defined to sign
+  over yet), and M4 must mint a new version string rather than sign under `node-hash-v0`.
 
 ### Original questions (for the record)
 

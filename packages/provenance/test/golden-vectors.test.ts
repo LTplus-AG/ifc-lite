@@ -81,9 +81,12 @@ const GOLDEN_FILES = [
   'merkle-chain.json',
 ] as const;
 
-/** Pinned at freeze time. If this fails because vectors were removed, that is
- *  a hole in the frozen contract's coverage — restore them. */
-const FROZEN_VECTOR_COUNT = 55;
+/** Pinned at freeze time (55), plus the two `ps-unicode-*-multi-prop` vectors
+ *  added pre-merge for the sort/encode normalization split (see
+ *  `compareUtf8`). Adding coverage never changes the format — every one of the
+ *  original 55 hashes is byte-identical — but REMOVING a vector is a hole in
+ *  the frozen contract's coverage: restore it rather than lowering this count. */
+const FROZEN_VECTOR_COUNT = 57;
 
 const allVectors = GOLDEN_FILES.map((file) => ({ file, vectors: loadGolden(file) }));
 

@@ -284,6 +284,45 @@
         ]
       },
       "expectedHash": "sha256:d9003aa75a7156ec805bd92c733b6e9e706e71b0a755c941e7329fac52b5bc36"
+    },
+    {
+      "id": "ps-unicode-nfc-multi-prop",
+      "description": "Multi-property NFC baseline for ps-unicode-nfd-multi-prop. Spelled with \\u00c9 (precomposed LATIN CAPITAL LETTER E WITH ACUTE); escapes are used deliberately so no editor can silently renormalize the vector. In NFC bytes \"Zone\" (0x5a...) sorts BEFORE \"\u00c9paisseur\" (0xc3 0x89...).",
+      "kind": "property-set",
+      "payload": {
+        "name": "Pset_WindowCommon",
+        "properties": [
+          {
+            "name": "\u00c9paisseur",
+            "value": 0.24
+          },
+          {
+            "name": "Zone",
+            "value": "A"
+          }
+        ]
+      },
+      "expectedHash": "sha256:1c1d2c0d52c59a7fd968f8ec3e4ebd629c7690c8b20252f3c7b8fbed66e850b5"
+    },
+    {
+      "id": "ps-unicode-nfd-multi-prop",
+      "description": "Same two properties in decomposed form (E + \\u0301 COMBINING ACUTE ACCENT). Regression vector for the sort/encode normalization split: strings are NFC-normalized before encoding (spec section 3.2), so they must ALSO be NFC-normalized before sorting. Sorting the raw spelling puts \"E\u0301paisseur\" (0x45...) BEFORE \"Zone\" while NFC puts it after, so a raw-byte sort makes one canonical input produce two different hashes. The single-property ps-unicode-nfd-decomposed vector cannot catch that - one entry cannot be reordered.",
+      "kind": "property-set",
+      "payload": {
+        "name": "Pset_WindowCommon",
+        "properties": [
+          {
+            "name": "E\u0301paisseur",
+            "value": 0.24
+          },
+          {
+            "name": "Zone",
+            "value": "A"
+          }
+        ]
+      },
+      "expectedHash": "sha256:1c1d2c0d52c59a7fd968f8ec3e4ebd629c7690c8b20252f3c7b8fbed66e850b5",
+      "expectSameHashAs": "ps-unicode-nfc-multi-prop"
     }
   ]
 }

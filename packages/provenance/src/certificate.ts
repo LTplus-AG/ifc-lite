@@ -81,7 +81,13 @@ export type Claim = SubtreeUntouchedClaim | HashEqualityClaim | ScalarDeltaClaim
  *  see `canonical.ts`'s "signatures sign the id" rule) so the codebase keeps
  *  one signature idiom. v0 verification IGNORES this field entirely — actual
  *  signing lands with M4 (encrypted multiplayer, Phase 2); key custody is a
- *  human-calendar item. */
+ *  human-calendar item.
+ *
+ *  Because v0 ignores it, `createCertificate` at least refuses to MINT one that
+ *  is structurally wrong (see {@link assertSignatureShape}): a reserved field
+ *  that accepts `[{alg: 'not-ed25519'}, {}, null]` today is a field M4 inherits
+ *  full of garbage, and "the verifier ignores it" is exactly the reasoning that
+ *  makes a downgrade look harmless. */
 export interface CertificateSignature {
   alg: 'ed25519';
   key: string;
@@ -125,6 +131,46 @@ function assertTaggedHash(ref: NodeRef, where: string): void {
 }
 
 /**
+ * Structural check for the reserved `signatures` field.
+ *
+ * v0 verification ignores signatures entirely and there is deliberately NO
+ * canonical certificate byte encoding in v0 — so there is currently nothing
+ * well-defined for anyone to sign OVER. That makes an unvalidated `signatures`
+ * array pure decoration: a certificate carrying `[{alg: 'not-ed25519'}, {}, null]`
+ * verifies exactly as well as one with the field stripped, which is the shape
+ * of a downgrade. v0 cannot make signatures mean anything (that is M4's job,
+ * under a NEW version string — see the spec's reserved-fields section), but it
+ * can refuse to mint a malformed one, so the field M4 inherits is either absent
+ * or well-formed.
+ */
+function assertSignatureShape(signatures: readonly CertificateSignature[]): void {
+  if (!Array.isArray(signatures)) {
+    throw new Error('@ifc-lite/provenance: `signatures` must be an array when present');
+  }
+  signatures.forEach((s, i) => {
+    const where = `signatures[${i}]`;
+    if (s === null || typeof s !== 'object') {
+      throw new Error(`@ifc-lite/provenance: ${where} must be an object (got ${String(s)})`);
+    }
+    if (s.alg !== 'ed25519') {
+      throw new Error(
+        `@ifc-lite/provenance: ${where}.alg must be "ed25519" (got ${JSON.stringify(s.alg)}) — ` +
+          'v0 reserves exactly one algorithm; a new one requires a new version string, ' +
+          'never a new entry under node-hash-v0',
+      );
+    }
+    for (const field of ['key', 'sig'] as const) {
+      if (typeof s[field] !== 'string' || s[field].length === 0) {
+        throw new Error(
+          `@ifc-lite/provenance: ${where}.${field} must be a non-empty string ` +
+            `(got ${JSON.stringify(s[field])})`,
+        );
+      }
+    }
+  });
+}
+
+/**
  * Build a v0 certificate. Performs only structural validation (every ref's
  * hash is tagged with a known algorithm) — it does not itself recompute
  * anything from a resolver; that's `verifyCertificate`'s job, on purpose, so
@@ -133,6 +179,7 @@ function assertTaggedHash(ref: NodeRef, where: string): void {
  * independently, possibly by a different party.
  */
 export function createCertificate(input: CreateCertificateInput): Certificate {
+  if (input.signatures !== undefined) assertSignatureShape(input.signatures);
   for (const ref of input.reads) assertTaggedHash(ref, 'read');
   for (const ref of input.writes) assertTaggedHash(ref, 'write');
   for (const claim of input.claims) {

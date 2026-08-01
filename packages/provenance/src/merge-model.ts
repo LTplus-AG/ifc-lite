@@ -279,6 +279,12 @@ export const HOST_CONTAINMENT_TOLERANCE_M = 1e-9;
  *  {@link recutHost} -- see {@link stripVoidMarkers}. */
 function baseVertexFloatCount(mesh: GeometryMeshPayload): number {
   const indices = mesh.indices;
+  // No indices means no index-referenced vertex, so there is no marker
+  // boundary to infer: the whole vertex list is base geometry. (Taking the
+  // maxIndex path here would return 0 and let stripVoidMarkers hand
+  // aabbFromMesh an empty positions array, turning an unindexed mesh into a
+  // bare throw rather than a typed OpApplicationError.)
+  if (indices.length === 0) return mesh.positions.length;
   let maxIndex = -1;
   for (let i = 0; i < indices.length; i++) {
     const v = indices[i];
@@ -326,8 +332,12 @@ function aabbContains(outer: Aabb, inner: Aabb, tolerance = HOST_CONTAINMENT_TOL
   return true;
 }
 
-/** `box` clipped to `clip`; callers only use this when the two overlap (the
- *  containment invariant guarantees it), so no empty-box case arises. */
+/** `box` clipped to `clip`. Under `containment: 'enforced'` the two always
+ *  overlap (the invariant guarantees it) and the result is `box` itself; under
+ *  `containment: 'off'` an opening may sit partly or wholly outside its host,
+ *  so an axis can clip empty -- collapsed to a degenerate (zero-width) extent
+ *  rather than an inverted box, which keeps the marker a deterministic
+ *  function of the two inputs. */
 function clipAabb(box: Aabb, clip: Aabb): Aabb {
   const min: [number, number, number] = [0, 0, 0];
   const max: [number, number, number] = [0, 0, 0];
@@ -434,21 +444,31 @@ function deriveAllCuts(state: ModelState): void {
 /** Throw unless every opening hosted in `hostEntityId` is inside the host's
  *  (uncut) bounds. The host's read set: an edit to ANY of these openings can
  *  flip this verdict, which is what makes host and opening edits fail to
- *  commute. */
+ *  commute.
+ *
+ *  Geometry-less openings are unconstrained, exactly as in
+ *  {@link assertInsideHost} -- and, for the same reason, as in
+ *  {@link recutHost}, which skips them because they subtract nothing. The
+ *  boxes are therefore resolved BEFORE the host's geometry is demanded: a host
+ *  that carries only geometry-less openings has nothing to contain, and must
+ *  not be rejected here when the opening-side entry point would accept it. */
 function assertOpeningsContained(
   opId: string,
   hostEntityId: string,
   host: EntityState,
   openings: readonly [string, EntityState][],
 ): void {
-  if (openings.length === 0) return;
-  const hostBox = baseAabbOfEntity(host);
-  if (!hostBox) {
-    throw new SpatialRejectionError(opId, `host "${hostEntityId}" has no geometry but hosts ${openings.length} opening(s)`);
-  }
+  const boxed: [string, Aabb][] = [];
   for (const [openingId, opening] of openings) {
     const box = baseAabbOfEntity(opening);
-    if (!box) continue;
+    if (box) boxed.push([openingId, box]);
+  }
+  if (boxed.length === 0) return;
+  const hostBox = baseAabbOfEntity(host);
+  if (!hostBox) {
+    throw new SpatialRejectionError(opId, `host "${hostEntityId}" has no geometry but hosts ${boxed.length} opening(s) with geometry`);
+  }
+  for (const [openingId, box] of boxed) {
     if (!aabbContains(hostBox, box)) {
       throw new SpatialRejectionError(
         opId,
@@ -828,25 +848,62 @@ function withHostRegion(state: ModelState, hostId: string | undefined, own: Aabb
  *   claiming one of those very ids (structural intersection) or by touching
  *   space the new geometry occupies (spatial intersection).
  *
- * Hosting (B4.2) adds two rules, both of which keep the predicate SOUND under
- * the coupled semantics:
+ * Hosting (B4.2) adds three rules, which together keep the predicate SOUND
+ * under the coupled semantics:
  *
  * - `entity-add` of a hosted opening unions its HOST's current bounds into
  *   its region. Every other opening op is covered without widening, because
  *   the containment invariant puts the opening's CURRENT bounds inside its
  *   host, and every opening op's region already contains those (a move is
  *   old-union-new; a remove is the entity's own bounds) -- so it necessarily
- *   intersects any host op's region, which always covers the host's old box.
- *   An `entity-add` has no "old" bounds to lean on: its geometry is inside
- *   the host only if the add is valid, and an add that is invalid against the
- *   base is exactly the case where a missed conflict would be unsound. The
- *   host's box closes that hole and nothing else needs it.
+ *   intersects any host op's region, which (by the next rule) always covers
+ *   the host's whole box. An `entity-add` has no "old" bounds to lean on: its
+ *   geometry is inside the host only if the add is valid, and an add that is
+ *   invalid against the base is exactly the case where a missed conflict would
+ *   be unsound. The host's box closes that hole and nothing else needs it.
+ * - `geometry-replace` on a mesh whose owner HOSTS OPENINGS declares all of
+ *   the owner's mesh ids, and unions the owner's whole (uncut) bounds into its
+ *   region. Both are needed because {@link recutHost} rewrites every mesh of
+ *   the host, with markers derived from every opening the host carries: the
+ *   op's writes are not confined to the named mesh, and neither is the state
+ *   it reads. The mesh-id half is subsumed by the ancestor closure (all of an
+ *   element's meshes share that element node, so two ops on sibling meshes
+ *   conflict structurally either way) and is declared for honesty; the REGION
+ *   half is load-bearing. Without it, a host with two spatially separated
+ *   meshes admits a genuine unsound auto-merge: `geometry-replace` on the far
+ *   mesh looks disjoint from an op on an opening sitting next to the near one,
+ *   yet the two orders record different cuts. (Not reachable from
+ *   `merge-battery.ts`, whose entities carry exactly one mesh each -- so this
+ *   rule leaves every published B4.2 number unchanged -- but reachable from
+ *   the model's own API, which is what soundness has to be stated over.)
  * - `entity-remove` of a HOST declares its hosted openings' element ids as
  *   additional targets, because applying it deletes them (the cascade in
  *   {@link applyOp}). A write is never left undeclared.
  *
- * Both rules assume the base state satisfies the containment invariant --
- * which {@link applyOp} enforces on every op that could break it.
+ * ### Scope of the soundness argument: `containment: 'enforced'` only
+ *
+ * The argument above leans on the containment invariant in one specific place:
+ * "the opening's CURRENT bounds are inside its host", which is what makes an
+ * opening op's region necessarily meet a host op's region. That is true under
+ * {@link DEFAULT_MERGE_SEMANTICS} because {@link applyOp} rejects every op
+ * that would break it. It is NOT true under `containment: 'off'`, where an
+ * opening may overhang or sit entirely outside its host: the host op's region
+ * (host bounds) and the opening op's region (the opening's own bounds) can
+ * then be disjoint while a host re-cut still reads the opening's geometry, so
+ * the predicate under-approximates and can clear a pair that does not commute.
+ * Making it sound there would mean widening every hosted-opening op's region by
+ * its host's bounds as well (the mirror of the `entity-add` rule), which is a
+ * different model and is deliberately not what the B4.2 numbers were measured
+ * under.
+ *
+ * So: the footprint rules here are claimed sound for `cuts: 'lazy'` +
+ * `containment: 'enforced'`. The `containment: 'off'` cells of
+ * `runDerivedCutSensitivity`'s grid are measurements of the OP MODEL under a
+ * predicate that is not sound for it, and must not be read as soundness
+ * measurements of the shipping predicate -- the committed data says as much
+ * (`lazyNoContainment` scores 9 unsound auto-merges with the spatial rule
+ * ablated, 13 when the schedules are regenerated, against 0 for the enforced
+ * baseline).
  */
 export function computeMergeOpFootprint(dag: ProvenanceDag, state: ModelState, op: MergeOp): Footprint {
   switch (op.type) {
@@ -885,15 +942,36 @@ export function computeMergeOpFootprint(dag: ProvenanceDag, state: ModelState, o
       return computeFootprint(dag, editOp);
     }
     case 'geometry-replace': {
+      const owner = findMeshOwner(state, op.meshNodeId);
+      if (!owner) {
+        throw new Error(`@ifc-lite/provenance: computeMergeOpFootprint: unknown mesh "${op.meshNodeId}"`);
+      }
+      const [ownerId, ownerEntity] = owner;
+      // A geometry-replace on a HOST is not a single-mesh write: applyOp calls
+      // recutHost, which rewrites EVERY one of the host's meshes (each gets the
+      // void markers for every opening the host carries). Both halves of the
+      // footprint have to say so.
+      const openings = hostedOpenings(state, ownerId);
+      const targetNodeIds = openings.length > 0 ? [...ownerEntity.meshes.keys()] : [op.meshNodeId];
       let region = op.region;
       if (!region) {
-        const owner = findMeshOwner(state, op.meshNodeId);
-        if (!owner) {
-          throw new Error(`@ifc-lite/provenance: computeMergeOpFootprint: unknown mesh "${op.meshNodeId}"`);
+        const boxes: Aabb[] = [
+          aabbFromMesh(ownerEntity.meshes.get(op.meshNodeId) as GeometryMeshPayload),
+          aabbFromMesh(op.payload),
+        ];
+        // ...and the bytes it writes are a function of EVERY opening in the
+        // host, which can sit anywhere inside the host's bounds -- not just
+        // inside the named mesh's. On a single-mesh host the two coincide (the
+        // named mesh IS the host), which is why this was invisible; on a host
+        // whose meshes are spatially separated, omitting the host box lets an
+        // op on a far-away opening look disjoint from the re-cut it changes.
+        if (openings.length > 0) {
+          const hostBox = baseAabbOfEntity(ownerEntity);
+          if (hostBox) boxes.push(hostBox);
         }
-        region = regionOfMeshes([owner[1].meshes.get(op.meshNodeId) as GeometryMeshPayload, op.payload]);
+        region = unionAabb(boxes);
       }
-      const editOp: EditOp = { opId: op.opId, kind: 'geometry-edit', targetNodeIds: [op.meshNodeId], region };
+      const editOp: EditOp = { opId: op.opId, kind: 'geometry-edit', targetNodeIds, region };
       return computeFootprint(dag, editOp);
     }
     default: {

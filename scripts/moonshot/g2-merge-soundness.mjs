@@ -118,6 +118,12 @@ if (!Number.isFinite(EPSILON_MM) || EPSILON_MM < 0) {
   process.exit(2);
 }
 
+/** True when the run is the one the committed per-case readings were derived
+ *  on. Any hand-derived, single-schedule explanation in this artifact is
+ *  printed only under this flag -- at other parameters it would be an
+ *  unverified claim wearing the authority of a gate. */
+const AT_GATE_DEFAULTS = SCHEDULES === 1000 && SEED === 20260724 && EPSILON_MM === DEFAULT_EPSILON_MM;
+
 function pct(x) {
   return `${(x * 100).toFixed(2)}%`;
 }
@@ -184,13 +190,20 @@ async function main() {
   console.error('schedules that actually commute; [2] and [3] are precision-complements over');
   console.error('schedules the predicate flagged. Reading [3] against [1], or against a bar');
   console.error("defined over [1]'s denominator, is a denominator switch, not a comparison.");
-  const tighter = report.spatialFiredFalseConflictRate < flaggedRate;
+  // Three-way, not two-way: equality is its own verdict. Collapsing it into
+  // "NOT lower / over-approximates MORE" would print a strictly-worse claim
+  // than the numbers support -- including in the degenerate case where both
+  // rates are 0 and the honest reading is "no difference to report".
+  const delta = report.spatialFiredFalseConflictRate - flaggedRate;
+  const direction = delta < 0 ? 'lower' : delta > 0 ? 'higher' : 'equal';
   console.error(
     `against its own unrestricted analogue [2] = ${pct(flaggedRate)}, the spatial-fired rate [3]` +
-      ` ${tighter ? 'is LOWER' : 'is NOT lower'}:`,
+      ` ${direction === 'lower' ? 'is LOWER' : direction === 'higher' ? 'is HIGHER' : 'is EQUAL'}:`,
   );
   console.error(
-    `the spatial rule over-approximates ${tighter ? 'LESS' : 'MORE'} than the predicate as a whole.`,
+    direction === 'equal'
+      ? 'the spatial rule over-approximates NEITHER MORE NOR LESS than the predicate as a whole.'
+      : `the spatial rule over-approximates ${direction === 'lower' ? 'LESS' : 'MORE'} than the predicate as a whole.`,
   );
   console.error(
     `B4.2 nonetheless measured [3] against the same numeric < 20% bar and reported` +
@@ -325,6 +338,13 @@ async function main() {
   console.error(`${rowLabel('lazy   (B4.2 default)')}${cell(m.lazyEnforced).padEnd(32)}${cell(m.lazyNoContainment)}`);
   console.error(`${rowLabel('derived (IFC + this repo)')}${cell(m.derivedEnforced).padEnd(32)}${cell(m.derivedNoContainment)}`);
   console.error('');
+  console.error('  PRECONDITION on the "off" column: the footprint soundness argument in');
+  console.error('  merge-model.ts holds only under containment: enforced (it needs an opening to');
+  console.error('  lie inside its host, so an opening op\'s region necessarily meets a host op\'s).');
+  console.error('  With containment off, openings may overhang and the predicate under-approximates');
+  console.error('  by construction, so those two cells measure the OP MODEL under a predicate that');
+  console.error('  is not sound for it -- not the shipping predicate, and not the exam bar.');
+  console.error('');
   console.error('  regenerating the stream under each variant\'s own semantics instead:');
   console.error(
     `    derived/enforced ${cell(r.derivedEnforced)}   lazy/off ${cell(r.lazyNoContainment)}   derived/off ${cell(r.derivedNoContainment)}`,
@@ -357,17 +377,36 @@ async function main() {
     console.error('re-read the grid before quoting either mechanism as independent.');
   }
   console.error('Neither number may be quoted without the other.');
-  if (r.derivedNoContainment.unsoundAutoMerges > 0) {
+  const survivors = r.derivedNoContainment.unsoundAutoMerges;
+  if (survivors > 0) {
     console.error('');
     console.error(
-      `${r.derivedNoContainment.unsoundAutoMerges} case(s) survive every correction (regenerated derived/off, schedule index` +
+      `${survivors} case${survivors === 1 ? '' : 's'} survive${survivors === 1 ? 's' : ''} every correction` +
+        ` (regenerated derived/off, schedule ${survivors === 1 ? 'index' : 'indices'}` +
         ` ${r.derivedNoContainment.unsoundScheduleIndices.join(', ')}).`,
     );
-    console.error('At the gate defaults that is the one case with an IFC basis: one client adds an');
-    console.error('opening hosted in an element the other client removes, so one order applies and');
-    console.error('the other cannot. That is IfcRelVoidsElement referential integrity, which IFC DOES');
-    console.error("impose, and only the spatial half of the predicate catches it -- the add's");
-    console.error('writtenNodes are fresh ids, structurally disjoint from the remove.');
+    // The IFC-basis paragraph below is a per-case reading of ONE schedule that
+    // was read by hand at the gate defaults. It is not a general property of
+    // this cell, so it is printed only when the cell still holds exactly that
+    // one case at exactly those parameters -- otherwise the artifact would be
+    // asserting a mechanism nobody re-derived.
+    if (survivors === 1 && AT_GATE_DEFAULTS) {
+      console.error('That one case has an IFC basis: one client adds an');
+      console.error('opening hosted in an element the other client removes, so one order applies and');
+      console.error('the other cannot. That is IfcRelVoidsElement referential integrity, which IFC DOES');
+      console.error("impose, and only the spatial half of the predicate catches it -- the add's");
+      console.error('writtenNodes are fresh ids, structurally disjoint from the remove.');
+    } else {
+      console.error(
+        `Mechanism NOT stated: the per-case reading in this artifact was derived by hand for the` +
+          ` single survivor at the gate defaults`,
+      );
+      console.error(
+        `(1000 schedules, seed 20260724, epsilon ${DEFAULT_EPSILON_MM}mm). At these parameters the cell holds` +
+          ` ${survivors} case${survivors === 1 ? '' : 's'},`,
+      );
+      console.error('so read the listed schedule indices before attributing any mechanism to them.');
+    }
   }
   console.error(`sensitivity elapsed:     ${(sensitivity.elapsedMs / 1000).toFixed(1)}s`);
   console.error('---------------------------------------------------------------------------');

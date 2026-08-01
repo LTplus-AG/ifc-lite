@@ -279,6 +279,126 @@ describe('node-disjoint ops that genuinely do NOT commute (the B4.2 headline)', 
   });
 });
 
+describe('a geometry-less opening is unconstrained, from BOTH entry points', () => {
+  /**
+   * `assertInsideHost` (the opening-side check, run on entity-add and on a
+   * geometry-replace whose owner is hosted) and `assertOpeningsContained` (the
+   * host-side check, run on a geometry-replace whose owner is a host) have to
+   * agree about an opening that carries no geometry: it subtracts nothing, so
+   * `recutHost` skips it, and neither check may reject on account of it.
+   */
+  function withEmptyOpening(): ModelState {
+    const base = hostedState();
+    return applyOp(base, {
+      opId: 'seed',
+      type: 'entity-add',
+      entity: {
+        entityNodeId: 'element:ghost',
+        key: 'GUID-ghost',
+        ifcType: 'IfcOpeningElement',
+        storeyId: 'S0',
+        hostId: HOST_ID,
+        psets: [{ psetNodeId: 'pset:ghost', payload: { name: 'Pset_Common', properties: [] } }],
+        meshes: [],
+      },
+    });
+  }
+
+  it('the opening-side check accepts the add', () => {
+    expect(() => withEmptyOpening()).not.toThrow();
+  });
+
+  it('the host-side check accepts a host edit made while it is hosted', () => {
+    const base = withEmptyOpening();
+    const next = applyOp(base, moveHost('a0', 0.1, 0.1));
+    // ...and it contributes no void marker, because it subtracts nothing.
+    const host = next.entities.get(HOST_ID) as EntityState;
+    const mesh = host.meshes.get(HOST_MESH) as GeometryMeshPayload;
+    const base3 = stripVoidMarkers(mesh).positions.length;
+    // Exactly one marker pair (6 floats) -- from the real opening, not two.
+    expect(mesh.positions.length - base3).toBe(6);
+  });
+});
+
+describe('a host with SEVERAL meshes: recutHost writes every one of them', () => {
+  /**
+   * The CodeRabbit finding on PR #1900, made concrete. `recutHost` rewrites
+   * EVERY mesh of a host, with markers derived from EVERY opening the host
+   * carries -- but a `geometry-replace` footprint used to declare only the
+   * named mesh and to derive its region from that mesh alone. On the
+   * single-mesh entities `merge-battery.ts` generates the two coincide, so the
+   * gap was invisible; on a host whose meshes are spatially separated it is a
+   * genuine unsound auto-merge, which is what this pins.
+   *
+   * A wall in two pieces 10 m apart, each with its own opening. Client A
+   * nudges the NEAR piece; client B nudges the FAR piece's opening. Disjoint
+   * node ids, and (before the fix) disjoint regions -- yet the two orders
+   * record different cuts, because A's op re-cuts BOTH pieces against the
+   * openings as they stand at that moment.
+   */
+  function splitHostState(): ModelState {
+    const host = entity('wall', 'IfcWall', tri(1, [0, 0, 0], 1));
+    host.meshes.set('mesh:wall:far', tri(2, [10, 0, 0], 1));
+    return {
+      storeyIds: ['S0'],
+      entities: new Map([
+        [HOST_ID, host],
+        ['element:near', entity('near', 'IfcOpeningElement', tri(3, [0.3, 0.3, 0], 0.2), HOST_ID)],
+        ['element:far', entity('far', 'IfcOpeningElement', tri(4, [10.2, 0.2, 0], 0.2), HOST_ID)],
+      ]),
+    };
+  }
+
+  const nearPieceOp: MergeOp = { opId: 'a0', type: 'geometry-replace', meshNodeId: HOST_MESH, payload: tri(1, [0.1, 0, 0], 1) };
+  const farOpeningOp: MergeOp = {
+    opId: 'b0',
+    type: 'geometry-replace',
+    meshNodeId: 'mesh:far',
+    payload: tri(4, [10.5, 0.2, 0], 0.2),
+  };
+
+  it('the two orders genuinely diverge', () => {
+    expect(attemptBothOrders(splitHostState(), [nearPieceOp], [farOpeningOp]).status).toBe('diverged');
+  });
+
+  it('the footprint declares EVERY mesh the re-cut writes, and the whole host as its region', () => {
+    const base = splitHostState();
+    const fp = computeMergeOpFootprint(buildStateDag(base), base, nearPieceOp);
+    expect(fp.writtenNodes.has(HOST_MESH)).toBe(true);
+    // The sibling mesh is written by the re-cut, so it is declared too.
+    expect(fp.writtenNodes.has('mesh:wall:far')).toBe(true);
+    // ...and the region covers the whole host, not just the named mesh's box,
+    // because the markers it writes come from openings anywhere inside it.
+    expect(fp.region?.max[0]).toBeGreaterThanOrEqual(11);
+  });
+
+  it('so the predicate REFUSES the pair instead of clearing it', async () => {
+    const base = splitHostState();
+    const dag = buildStateDag(base);
+    const verdict = conflictPredicate(
+      computeMergeOpFootprint(dag, base, nearPieceOp),
+      computeMergeOpFootprint(dag, base, farOpeningOp),
+    );
+    expect(verdict.spatial).toBe(true);
+
+    const outcome = await createCommutationCertificate({ base, opsA: [nearPieceOp], opsB: [farOpeningOp] });
+    expect(outcome.ok).toBe(false);
+    // 'conflict', not 'non-commutative': the PREDICATE caught it, not the
+    // replay backstop. That is the whole distinction the B4.2 exam is stated
+    // over.
+    expect(outcome.ok === false && outcome.reason).toBe('conflict');
+  });
+
+  it('a host with no openings is not widened (the rule costs nothing where it buys nothing)', () => {
+    const base = splitHostState();
+    base.entities.delete('element:near');
+    base.entities.delete('element:far');
+    const fp = computeMergeOpFootprint(buildStateDag(base), base, nearPieceOp);
+    expect(fp.writtenNodes.has('mesh:wall:far')).toBe(false);
+    expect(fp.region?.max[0]).toBeLessThan(2);
+  });
+});
+
 describe('the ablation, at unit scale (G4 review item 6)', () => {
   it('with the spatial rule DISABLED the predicate clears the headline non-commuting pair', async () => {
     const base = hostedState();

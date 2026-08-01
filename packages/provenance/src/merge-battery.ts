@@ -1010,7 +1010,10 @@ export async function runSpatialAblation(options: MergeBatteryOptions = {}): Pro
 export interface SensitivityVariant {
   /** Short human label, e.g. `'derived cuts + containment off'`. */
   label: string;
-  /** Semantics the schedules were scored under. */
+  /** Semantics the schedules were scored under. When `containment` is `'off'`
+   *  the conflict predicate is not sound for this op model (see
+   *  {@link runDerivedCutSensitivity}), so the cell measures the model, not the
+   *  predicate. */
   semantics: MergeSemantics;
   /** Semantics the schedule STREAM was generated under. When this differs
    *  from `semantics`, the variant is schedule-MATCHED to the baseline: one
@@ -1053,6 +1056,18 @@ export interface SensitivityVariant {
  * measured if the model had always worked that way". Both are reported,
  * because quoting only the flattering one is the failure mode this whole
  * exercise exists to correct.
+ *
+ * Precondition on the `containment: 'off'` column. The footprint soundness
+ * argument in `merge-model.ts` (`computeMergeOpFootprint`, "Scope of the
+ * soundness argument") holds only under `containment: 'enforced'`: it needs an
+ * opening's current bounds to lie inside its host so that an opening op's
+ * region necessarily meets a host op's. With containment off, openings may
+ * overhang and the predicate under-approximates by construction. The two
+ * containment-off cells are therefore measurements of the OP MODEL under a
+ * predicate that is not sound for it -- read them as "how much of the count
+ * survives this modelling choice", never as soundness measurements of the
+ * shipping predicate, and never against the exam's "zero unsound auto-merges"
+ * bar, which is defined over the enforced semantics.
  *
  * Nothing here gates: it is a measurement of how load-bearing two modelling
  * choices are, and a sensitivity analysis that could fail an exam would just
@@ -1178,6 +1193,11 @@ export function wilsonInterval(successes: number, trials: number, z: number = Z_
   }
   if (successes > trials) {
     throw new Error(`@ifc-lite/provenance: wilsonInterval: successes (${successes}) exceeds trials (${trials})`);
+  }
+  // A non-finite or negative z silently produces NaN / an inverted interval,
+  // which would be printed as a confidence interval by the gate script.
+  if (!Number.isFinite(z) || z < 0) {
+    throw new Error(`@ifc-lite/provenance: wilsonInterval: z (${z}) must be a non-negative finite number`);
   }
   // No trials, no information: the honest interval is the whole range, not a
   // point at zero.

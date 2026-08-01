@@ -340,13 +340,18 @@ describe('wilsonInterval', () => {
   });
 
   it('brackets the point estimate and stays inside [0, 1]', () => {
+    // The bracket is a claim about the MATHS, so it is asserted with a float
+    // tolerance: at p = 0 or p = 1 the Wilson bound touches the point estimate
+    // exactly in exact arithmetic, and a bare <= would then be decided by the
+    // last bit of a sqrt rather than by the property under test.
+    const EPS = 1e-12;
     for (const [successes, trials] of [[0, 10], [1, 3], [7, 7], [20, 49], [3, 1000]] as const) {
       const { low, high } = wilsonInterval(successes, trials);
       const p = successes / trials;
       expect(low).toBeGreaterThanOrEqual(0);
       expect(high).toBeLessThanOrEqual(1);
-      expect(low).toBeLessThanOrEqual(p);
-      expect(high).toBeGreaterThanOrEqual(p);
+      expect(low).toBeLessThanOrEqual(p + EPS);
+      expect(high).toBeGreaterThanOrEqual(p - EPS);
     }
   });
 

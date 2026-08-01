@@ -292,8 +292,14 @@ export class ExtensionHostService {
    *
    * The `exportMenu` counterpart of `runCommand`. Implementation lives in
    * `host-exporters.ts`; this method just injects the host's primitives.
+   *
+   * `extensionId` should always be passed by UI callers: the `exportMenu`
+   * slot can hold same-id exporter contributions from more than one
+   * installed extension (one button per `SlotContribution`), and without
+   * the owner id this falls back to "first enabled extension that declares
+   * the id", which can run the wrong handler.
    */
-  runExporter(exporterId: string): Promise<ExporterOutput> {
+  runExporter(exporterId: string, extensionId?: string): Promise<ExporterOutput> {
     return runExtensionExporter(
       {
         storage: this.storage,
@@ -303,6 +309,7 @@ export class ExtensionHostService {
         sdk: this.sdk,
       },
       exporterId,
+      extensionId,
     );
   }
 

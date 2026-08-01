@@ -68,13 +68,19 @@ export function coerceExporterOutput(value: unknown): string | Uint8Array | null
   if (Array.isArray(value) && value.every((n) => typeof n === 'number')) {
     return Uint8Array.from(value);
   }
-  // A structured-cloned Uint8Array: { "0": 12, "1": 34, ... }.
+  // A structured-cloned Uint8Array: { "0": 12, "1": 34, ... }. Must be DENSE
+  // and in-order ("0".."n-1") — `Object.entries` returns integer-like keys in
+  // ascending numeric order, so index-vs-position comparison is sound. A
+  // sparse object (e.g. `{0: 65, 100: 66}`) would otherwise allocate
+  // `Uint8Array(entries.length)` and silently drop the out-of-range write
+  // instead of producing a clear rejection.
   if (value && typeof value === 'object') {
     const entries = Object.entries(value as Record<string, unknown>);
-    if (entries.length > 0 && entries.every(([k, v]) => /^\d+$/.test(k) && typeof v === 'number')) {
-      const bytes = new Uint8Array(entries.length);
-      for (const [k, v] of entries) bytes[Number(k)] = v as number;
-      return bytes;
+    if (
+      entries.length > 0 &&
+      entries.every(([k, v], index) => k === String(index) && typeof v === 'number')
+    ) {
+      return Uint8Array.from(entries.map(([, v]) => v as number));
     }
   }
   return null;
@@ -84,18 +90,30 @@ export function coerceExporterOutput(value: unknown): string | Uint8Array | null
  * Run an extension-contributed exporter end-to-end. Pure function — no
  * `this`; the host service injects its primitives.
  *
- * Throws when no installed, enabled extension owns the id, when the stored
- * capabilities are unreadable, when the handler file is missing from the
- * bundle, or when the handler returns something that cannot be written to a
- * file. Never returns a silent empty result — a user who clicks Export and
- * gets nothing has no way to tell a broken extension from a broken viewer.
+ * `extensionId` pins the run to a specific contributing extension. The
+ * `exportMenu` slot can hold contributions from multiple installed
+ * extensions that declare the same exporter id — the slot UI renders one
+ * button per contribution (`SlotContribution.extensionId` + `payload.id`),
+ * so without the owner id this would run whichever enabled extension
+ * happens to be first in storage order, silently producing the wrong
+ * file for every button but the first (#1930 review).
+ *
+ * Throws when no installed, enabled extension owns the exporter id (or,
+ * with `extensionId` given, when that specific extension does not), when
+ * the stored capabilities are unreadable, when the handler file is missing
+ * from the bundle, or when the handler returns something that cannot be
+ * written to a file. Never returns a silent empty result — a user who
+ * clicks Export and gets nothing has no way to tell a broken extension from
+ * a broken viewer.
  */
 export async function runExtensionExporter(
   deps: RunExporterDeps,
   exporterId: string,
+  extensionId?: string,
 ): Promise<ExporterOutput> {
   const records = await deps.storage.listExtensions();
   for (const record of records) {
+    if (extensionId !== undefined && record.id !== extensionId) continue;
     if (!record.enabled) continue;
     const bundle = deps.loader.getBundle(record.id);
     if (!bundle) continue;
@@ -161,7 +179,11 @@ export async function runExtensionExporter(
     }
     return { contribution, data, result };
   }
-  throw new Error(`No installed, enabled extension owns exporter "${exporterId}".`);
+  throw new Error(
+    extensionId !== undefined
+      ? `Extension "${extensionId}" does not own an enabled exporter "${exporterId}".`
+      : `No installed, enabled extension owns exporter "${exporterId}".`,
+  );
 }
 
 function describeReturn(value: unknown): string {

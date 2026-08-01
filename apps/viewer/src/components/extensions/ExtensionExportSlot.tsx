@@ -22,7 +22,8 @@ import { Label } from '@/components/ui/label';
 import { toast } from '@/components/ui/toast';
 import { useSlotContributions } from '@/hooks/useSlotContributions';
 import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
-import { downloadFile, sanitizeFilename } from '@/lib/export/download';
+import { downloadFile } from '@/lib/export/download';
+import { buildExportFilename, normalizeExtension } from '@/lib/export/extension-filename';
 
 interface ExtensionExportSlotProps {
   /** Base name for the produced file, before the exporter's extension. */
@@ -36,17 +37,16 @@ export function ExtensionExportSlot({ baseName }: ExtensionExportSlotProps) {
 
   if (!host || contributions.length === 0) return null;
 
-  const handleRun = async (payload: ExporterContribution) => {
+  const handleRun = async (extensionId: string, payload: ExporterContribution) => {
     setRunningId(payload.id);
     try {
-      const output = await host.runExporter(payload.id);
+      const output = await host.runExporter(payload.id, extensionId);
       // `downloadFile` is the only sanctioned save path: it copies wasm-backed
       // buffers into a BlobPart and emits the tour event a hand-rolled
       // <a download> would skip.
-      const ext = payload.extension.startsWith('.') ? payload.extension : `.${payload.extension}`;
       downloadFile(
         output.data,
-        sanitizeFilename(`${baseName}${ext}`),
+        buildExportFilename(baseName, payload.extension),
         payload.mimeType || 'application/octet-stream',
       );
       toast.success(`Exported with ${payload.name}`);
@@ -74,7 +74,7 @@ export function ExtensionExportSlot({ baseName }: ExtensionExportSlotProps) {
               variant="outline"
               className="justify-start"
               disabled={runningId !== null}
-              onClick={() => { void handleRun(payload); }}
+              onClick={() => { void handleRun(c.extensionId, payload); }}
             >
               {busy ? (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -83,7 +83,7 @@ export function ExtensionExportSlot({ baseName }: ExtensionExportSlotProps) {
               )}
               {payload.name}
               <span className="ml-auto text-xs text-muted-foreground">
-                {payload.extension.startsWith('.') ? payload.extension : `.${payload.extension}`}
+                {normalizeExtension(payload.extension)}
               </span>
             </Button>
           );

@@ -144,6 +144,79 @@ describe('runExtensionExporter (#1907)', () => {
     );
   });
 
+  // #1930 review: two enabled extensions can declare the SAME exporter id.
+  // `ExtensionExportSlot` renders one button per `SlotContribution`, each
+  // carrying its own `extensionId` — without threading that id through,
+  // `runExtensionExporter` took the first match in storage order, so the
+  // second extension's button silently ran the first extension's handler.
+  it('runs the extension named by extensionId, not just the first owner of the id', async () => {
+    const fired: string[] = [];
+    const files = new Map<string, { text: string }>([
+      ['exporters/a.js', { text: 'function run() { return "from-a"; }' }],
+      ['exporters/b.js', { text: 'function run() { return "from-b"; }' }],
+    ]);
+    const manifestFor = (handler: string) => ({
+      id: 'unused',
+      entry: {},
+      contributes: {
+        exporters: [{ id: EXPORTER_ID, name: 'x', mimeType: 'text/plain', extension: '.txt', handler }],
+      },
+    });
+    const bundles = new Map([
+      ['ext-a', { manifest: manifestFor('exporters/a.js'), files }],
+      ['ext-b', { manifest: manifestFor('exporters/b.js'), files }],
+    ]);
+    const deps = {
+      storage: {
+        listExtensions: async () => [
+          { id: 'ext-a', enabled: true, grantedCapabilities: [] },
+          { id: 'ext-b', enabled: true, grantedCapabilities: [] },
+        ],
+      },
+      loader: { getBundle: (id: string) => bundles.get(id) },
+      runtime: {
+        activate: async () => ({
+          sandbox: {
+            setGlobal: async (k: string, v: unknown) => { (globalThis as unknown as Record<string, unknown>).__probe_ctx__ = v; void k; },
+            // Mirror `fixture()`'s sandbox: stand in the `globalThis.bim` /
+            // `__ifclite_ctx__` the real wrapper hard-requires, then restore.
+            run: async (source: string) => {
+              const g = globalThis as unknown as Record<string, unknown>;
+              const ctx = g.__probe_ctx__;
+              const prevCtx = g.__ifclite_ctx__;
+              const prevBim = g.bim;
+              g.__ifclite_ctx__ = ctx;
+              g.bim = (ctx as { bim?: unknown } | undefined)?.bim;
+              try {
+                const value = await (0, eval)(source);
+                return { value, logs: [], durationMs: 1 };
+              } finally {
+                g.__ifclite_ctx__ = prevCtx;
+                g.bim = prevBim;
+              }
+            },
+          },
+        }),
+        deactivate: async () => {},
+      },
+      dispatcher: { fire: async (event: string) => { fired.push(event); } },
+      sdk: { marker: 'bim-context' },
+    };
+
+    const out = await runExtensionExporter(deps as never, EXPORTER_ID, 'ext-b');
+
+    assert.equal(out.data, 'from-b');
+  });
+
+  it('throws naming the extension when it does not own an enabled exporter with that id', async () => {
+    const f = fixture();
+
+    await assert.rejects(
+      () => runExtensionExporter(f.deps, EXPORTER_ID, 'someone-else'),
+      /Extension "someone-else" does not own an enabled exporter/,
+    );
+  });
+
   it('throws when the handler file is missing from the bundle', async () => {
     const f = fixture({ withHandlerFile: false });
 
@@ -194,5 +267,19 @@ describe('coerceExporterOutput', () => {
     assert.equal(coerceExporterOutput(null), null);
     assert.equal(coerceExporterOutput(42), null);
     assert.equal(coerceExporterOutput({ nope: true }), null);
+  });
+
+  // A sparse numeric-keyed object (e.g. `{0: 65, 100: 66}`) used to pass the
+  // old "all keys are digit-strings" check, then allocate
+  // `Uint8Array(entries.length)` — 2 bytes here — and write `bytes[100] = 66`,
+  // which JS silently drops since it's out of range. That produced a
+  // corrupted 2-byte download instead of a clear rejection. Only a DENSE,
+  // in-order object ("0".."n-1") may be treated as a cloned Uint8Array.
+  it('rejects a sparse numeric-keyed object instead of silently dropping out-of-range writes', () => {
+    assert.equal(coerceExporterOutput({ 0: 65, 100: 66 }), null);
+  });
+
+  it('rejects a numeric-keyed object with a gap in the sequence', () => {
+    assert.equal(coerceExporterOutput({ 0: 1, 2: 3 }), null);
   });
 });

@@ -61,6 +61,7 @@ import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { spliceScheduleIntoExport } from '@/sdk/adapters/export-schedule-splice';
 import { downloadFile, sanitizeFilename } from '@/lib/export/download';
+import { ExtensionExportSlot } from '@/components/extensions/ExtensionExportSlot';
 
 type ExportScope = 'single' | 'merged';
 type SchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
@@ -814,6 +815,16 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
               <AlertDescription>{exportResult.message}</AlertDescription>
             </Alert>
           )}
+
+          {/* Extension-contributed exporters (#1907). Rendered alongside the
+              built-in formats so a third-party exporter is actually reachable. */}
+          <ExtensionExportSlot
+            baseName={
+              selectedModel
+                ? sanitizeFilename(selectedModel.name.replace(/\.[^.]+$/, ''), { fallback: 'model' })
+                : 'model'
+            }
+          />
         </div>
 
         <DialogFooter>

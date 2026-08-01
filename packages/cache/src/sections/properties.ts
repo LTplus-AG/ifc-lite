@@ -6,8 +6,8 @@
  * PropertyTable serialization
  */
 
-import type { PropertyTable, PropertySet, StringTable } from '@ifc-lite/data';
-import { PropertyValueType } from '@ifc-lite/data';
+import type { PropertyTable, PropertySet, PropertyValue, StringTable } from '@ifc-lite/data';
+import { comparePropertyValues, PropertyValueType } from '@ifc-lite/data';
 import { BufferWriter, BufferReader } from '../utils/buffer-utils.js';
 
 /**
@@ -178,7 +178,7 @@ export function readProperties(reader: BufferReader, strings: StringTable): Prop
       for (const idx of rowIndices) {
         if (psetIdx >= 0 && psetName[idx] !== psetIdx) continue;
         const propValue = getPropertyValue(idx);
-        if (compareValues(propValue, operator, value)) {
+        if (comparePropertyValues(propValue, operator, value)) {
           results.push(entityId[idx]);
         }
       }
@@ -186,36 +186,6 @@ export function readProperties(reader: BufferReader, strings: StringTable): Prop
       return results;
     },
   };
-}
-
-type PropertyValue = string | number | boolean | null | PropertyValue[];
-
-function compareValues(propValue: PropertyValue, operator: string, value: PropertyValue): boolean {
-  if (propValue === null || value === null) return false;
-
-  if (typeof propValue === 'number' && typeof value === 'number') {
-    switch (operator) {
-      case '>=': return propValue >= value;
-      case '>': return propValue > value;
-      case '<=': return propValue <= value;
-      case '<': return propValue < value;
-      case '=':
-      case '==': return propValue === value;
-      case '!=': return propValue !== value;
-    }
-  }
-
-  if (typeof propValue === 'string' && typeof value === 'string') {
-    switch (operator) {
-      case '=':
-      case '==': return propValue === value;
-      case '!=': return propValue !== value;
-      case 'contains': return propValue.includes(value);
-      case 'startsWith': return propValue.startsWith(value);
-    }
-  }
-
-  return false;
 }
 
 function writeIndex(writer: BufferWriter, index: Map<number, number[]>): void {

@@ -120,3 +120,40 @@ describe('QuantityTable round-trip', () => {
     expect(rebuilt.sumByType('NetArea')).toBeCloseTo(5.0);
   });
 });
+
+describe('QuantityTable.findByQuantity', () => {
+  // `EntityQuery.whereProperty('Qto_...', 'NetArea', '>', 10)` is documented but
+  // quantities are not property rows, so the filter needs a quantity-side index
+  // to answer without resolving every candidate (issue #577 follow-up).
+  function buildQuantityFixture() {
+    const strings = new StringTable();
+    const builder = new QuantityTableBuilder(strings);
+    builder.add({ entityId: 1, qsetName: 'Qto_WallBaseQuantities', quantityName: 'NetArea', quantityType: QuantityType.Area, value: 12.5 });
+    builder.add({ entityId: 2, qsetName: 'Qto_WallBaseQuantities', quantityName: 'NetArea', quantityType: QuantityType.Area, value: 4.0 });
+    builder.add({ entityId: 3, qsetName: 'Qto_SlabBaseQuantities', quantityName: 'NetArea', quantityType: QuantityType.Area, value: 30.0 });
+    return builder.build();
+  }
+
+  it('matches numeric comparisons across quantity sets', () => {
+    const table = buildQuantityFixture();
+    expect(table.findByQuantity!('NetArea', '>', 10).sort()).toEqual([1, 3]);
+    expect(table.findByQuantity!('NetArea', '<', 10)).toEqual([2]);
+    expect(table.findByQuantity!('NetArea', '=', 12.5)).toEqual([1]);
+    expect(table.findByQuantity!('NetArea', '>=', 30)).toEqual([3]);
+  });
+
+  it('scopes to the named quantity set', () => {
+    const table = buildQuantityFixture();
+    expect(table.findByQuantity!('NetArea', '>', 10, 'Qto_WallBaseQuantities')).toEqual([1]);
+    expect(table.findByQuantity!('NetArea', '>', 10, 'Qto_SlabBaseQuantities')).toEqual([3]);
+    expect(table.findByQuantity!('NetArea', '>', 10, 'Qto_DoesNotExist')).toEqual([]);
+  });
+
+  it('returns [] for an unknown quantity name and for a string filter value', () => {
+    const table = buildQuantityFixture();
+    expect(table.findByQuantity!('NoSuchQuantity', '>', 0)).toEqual([]);
+    // Quantity values are always numbers; `comparePropertyValues` is same-type
+    // only, so a string filter value never matches.
+    expect(table.findByQuantity!('NetArea', '=', '12.5')).toEqual([]);
+  });
+});

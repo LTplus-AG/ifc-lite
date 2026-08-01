@@ -3,11 +3,17 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Canonical browser-export helpers: one filename sanitiser and one download
- * trigger, so every "Save as ..." path in the app behaves identically. Prefer
- * these over hand-rolling an `<a download>` blob dance or another bespoke
- * filename regex — see issue #1299 for what drifting copies cost us (uppercase
- * names lowercased, dotted classification codes hyphenated, dots underscored).
+ * Canonical browser-export helpers: one filename sanitiser, one
+ * extension-aware filename builder, and one download trigger, so every
+ * "Save as ..." path in the app behaves identically. Prefer these over
+ * hand-rolling an `<a download>` blob dance or another bespoke filename
+ * regex — see issue #1299 for what drifting copies cost us (uppercase names
+ * lowercased, dotted classification codes hyphenated, dots underscored).
+ *
+ * `buildExportFilename`/`normalizeExtension` used to live in a separate
+ * `extension-filename.ts` sibling; they moved here because this module is
+ * already the declared canonical home for filename handling, and "extension"
+ * in that old filename punned file-extension against viewer-extension.
  */
 
 import { emitFileDownloaded } from '@/lib/tours/events';
@@ -45,6 +51,47 @@ export function sanitizeFilename(name: string, options: SanitizeFilenameOptions 
     .slice(0, maxLength)
     .replace(/[\s.-]+$/, ''); // re-trim in case slice() left a trailing separator
   return cleaned || fallback;
+}
+
+/** No real file extension is longer than this; caps a pathological input. */
+const EXTENSION_MAX_LENGTH = 16;
+
+/** Normalise a declared extension to a leading-dot form (`csv` -> `.csv`). */
+export function normalizeExtension(extension: string): string {
+  return extension.startsWith('.') ? extension : `.${extension}`;
+}
+
+/**
+ * Build the download filename `stem.ext`, sanitizing the stem and extension
+ * SEPARATELY and budgeting the stem so the whole result fits inside
+ * `maxLength`.
+ *
+ * `sanitizeFilename` slices to `maxLength` internally, so sanitizing the
+ * already-concatenated `${baseName}${ext}` truncates from the right and can
+ * cut the extension off entirely for a long base name — turning e.g.
+ * `some-very-long-model-name-that-keeps-going-and-going.csv` into a file
+ * with no extension at all, which browsers then treat as
+ * `application/octet-stream` regardless of the declared mime type.
+ *
+ * The extension itself is capped at `EXTENSION_MAX_LENGTH` before the stem
+ * budget is computed — without that cap, a pathological (or malicious)
+ * extension string could consume the whole `maxLength` budget and push the
+ * final `stem.ext` past `maxLength`, breaking the very contract this
+ * function exists to uphold.
+ */
+export function buildExportFilename(
+  baseName: string,
+  extension: string,
+  maxLength = 60,
+): string {
+  const ext = normalizeExtension(extension);
+  // Reserve at least 1 char for the stem: cap the extension's own budget
+  // below maxLength so stemBudget below is never zero-or-negative.
+  const extBudget = Math.min(EXTENSION_MAX_LENGTH, Math.max(1, maxLength - 1));
+  const sanitizedExt = `.${sanitizeFilename(ext.slice(1), { fallback: 'dat', maxLength: extBudget })}`;
+  const stemBudget = Math.max(1, maxLength - sanitizedExt.length);
+  const stem = sanitizeFilename(baseName, { maxLength: stemBudget });
+  return `${stem}${sanitizedExt}`;
 }
 
 /** True when we can actually trigger a download (browser context). */

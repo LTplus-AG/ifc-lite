@@ -440,6 +440,30 @@ describe('BinaryCacheWriter and BinaryCacheReader', () => {
     expect(fireRating).toBe('REI60');
   });
 
+  it('restored findByProperty matches booleans and strings (issue #577 follow-up)', async () => {
+    // The cache carried its own copy of the comparison helper, and that copy
+    // had no boolean branch: a restored `findByProperty('IsExternal', '=', true)`
+    // fell through to `return false` and answered `[]`, so a cached model
+    // silently filtered out every wall a freshly parsed model matched. It now
+    // shares `comparePropertyValues` with `@ifc-lite/data`.
+    const writer = new BinaryCacheWriter();
+    const cacheBuffer = await writer.write(dataStore, undefined, sourceBuffer, {
+      includeGeometry: false,
+    });
+    const reader = new BinaryCacheReader();
+    const { properties } = (await reader.read(cacheBuffer)).dataStore;
+
+    expect(properties.findByProperty('IsExternal', '=', true)).toEqual([4]);
+    expect(properties.findByProperty('IsExternal', '==', true)).toEqual([4]);
+    expect(properties.findByProperty('IsExternal', '!=', true)).toEqual([]);
+    expect(properties.findByProperty('IsExternal', '=', false)).toEqual([]);
+    // The string branch was never broken; it is here as the control that tells
+    // a boolean-only failure apart from a wholesale round-trip failure.
+    expect(properties.findByProperty('FireRating', '=', 'REI60')).toEqual([4]);
+    // Property-set scoping still applies.
+    expect(properties.findByProperty('IsExternal', '=', true, 'Pset_DoorCommon')).toEqual([]);
+  });
+
   it('should preserve quantity data through round-trip', async () => {
     const writer = new BinaryCacheWriter();
     const cacheBuffer = await writer.write(dataStore, undefined, sourceBuffer, {
@@ -457,6 +481,34 @@ describe('BinaryCacheWriter and BinaryCacheReader', () => {
 
     const length = quantities.getQuantityValue(4, 'Qto_WallBaseQuantities', 'Length');
     expect(length).toBe(5.5);
+  });
+
+  it('restored quantity table answers findByQuantity off its name index', async () => {
+    // `EntityQuery.whereProperty('Qto_...', ...)` uses `findByQuantity` when the
+    // table offers it and otherwise resolves every candidate through
+    // `getForEntity`. Both answer the same, so this pins the method — not the
+    // strategy — across the round-trip.
+    //
+    // Scope: the `dataStore` here is built with `PropertyTableBuilder` /
+    // `QuantityTableBuilder`, i.e. an already-materialised store (the IFCX
+    // shape). Only such a cache restores onto the indexed path. A cache written
+    // from a STEP parse serialises the empty tables verbatim, so it restores
+    // with `count === 0` and `whereProperty` puts it on the per-candidate
+    // fallback regardless of this method surviving.
+    const writer = new BinaryCacheWriter();
+    const cacheBuffer = await writer.write(dataStore, undefined, sourceBuffer, {
+      includeGeometry: false,
+    });
+    const reader = new BinaryCacheReader();
+    const { quantities } = (await reader.read(cacheBuffer)).dataStore;
+
+    expect(quantities.findByQuantity).toBeTypeOf('function');
+    expect(quantities.findByQuantity!('Length', '>', 5)).toEqual([4]);
+    expect(quantities.findByQuantity!('Length', '>', 6)).toEqual([]);
+    expect(quantities.findByQuantity!('GrossVolume', '=', 2.75)).toEqual([4]);
+    // Quantity-set scoping: an unknown set name matches nothing.
+    expect(quantities.findByQuantity!('Length', '>', 5, 'Qto_WallBaseQuantities')).toEqual([4]);
+    expect(quantities.findByQuantity!('Length', '>', 5, 'Qto_SlabBaseQuantities')).toEqual([]);
   });
 
   it('should preserve relationship data through round-trip', async () => {

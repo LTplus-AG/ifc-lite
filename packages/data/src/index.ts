@@ -9,7 +9,7 @@
 export { StringTable } from './string-table.js';
 export { EntityTableBuilder, entityTableFromColumns, entityTableToColumns } from './entity-table.js';
 export type { EntityTable, EntityTableColumns } from './entity-table.js';
-export { PropertyTableBuilder, propertyTableFromColumns, propertyTableToColumns } from './property-table.js';
+export { PropertyTableBuilder, propertyTableFromColumns, propertyTableToColumns, comparePropertyValues } from './property-table.js';
 export type { PropertyTable, PropertyTableColumns, PropertySet, Property, PropertyValue } from './property-table.js';
 export { QuantityTableBuilder, quantityTableFromColumns, quantityTableToColumns } from './quantity-table.js';
 export type { QuantityTable, QuantityTableColumns, QuantitySet, Quantity } from './quantity-table.js';

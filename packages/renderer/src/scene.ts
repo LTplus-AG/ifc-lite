@@ -18,6 +18,7 @@ import {
   raycastTriangles,
   rayIntersectsBox,
 } from './scene-raycaster.js';
+import { selectBoundingBoxesInRect } from './scene-rect-select.js';
 import { mergeGeometry, splitMeshDataForBufferLimit, colorSaltByte, packEntityLane } from './scene-geometry.js';
 import { sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
 import { simplifyIndicesByClustering, lodCellSizeForBounds, LOD_MIN_TRIANGLES } from './lod-simplify.js';
@@ -3957,5 +3958,61 @@ export class Scene {
       return instancedHit.distance < flatHit.distance ? instancedHit : flatHit;
     }
     return flatHit ?? instancedHit;
+  }
+
+  /**
+   * CPU rectangle selection — the rect counterpart of {@link Scene.raycast}.
+   *
+   * Used by the pick path when the GPU rect pass cannot see the geometry:
+   * either JS geometry data was released, or hydrating an individual mesh per
+   * visible piece would blow the pick-mesh budget. Without it, rectangle
+   * select silently returned nothing on batched models (#1904).
+   *
+   * Bounding-box granularity, the same fidelity the released-geometry raycast
+   * path has. Unlike that path it runs no depth test at all, so an entity fully
+   * hidden behind another is still selected. Instanced-only occurrences are
+   * covered: their world AABBs are registered in `boundingBoxes` when the
+   * instanced shard is built.
+   */
+  selectRect(
+    x0: number,
+    y0: number,
+    x1: number,
+    y1: number,
+    viewportWidth: number,
+    viewportHeight: number,
+    viewProj: Float32Array,
+    hiddenIds?: Set<number>,
+    isolatedIds?: Set<number> | null,
+    clip?: PickClipState | null,
+  ): Set<number> {
+    // After release the cache is already the complete set; before it, boxes are
+    // computed lazily, so make sure every entity that still has mesh data has
+    // one. Same authoritative id set pick() uses, so colour-fused fillers whose
+    // id lives only in per-vertex entityIds are not skipped (#1358).
+    // Cost shape: `getEntityBoundingBox` walks every vertex of an entity on a
+    // miss and memoises into `boundingBoxes`, so the scan is O(total vertices)
+    // but one-time — it is the same cache the CPU raycast path warms, and every
+    // later drag only pays the O(entities) box loop below. Earlier picks do not
+    // necessarily prime all of it, though: the raycast path applies the
+    // hiddenIds/isolatedIds filters *before* it calls getEntityBoundingBox (see
+    // raycastTriangles in scene-raycaster.ts), so under isolation the first
+    // Ctrl+drag can still scan entities no click ever reached.
+    if (!this.geometryReleased) {
+      for (const expressId of this.getAllMeshDataExpressIds()) {
+        this.getEntityBoundingBox(expressId);
+      }
+    }
+
+    return selectBoundingBoxesInRect(
+      this.boundingBoxes,
+      viewProj,
+      { x0, y0, x1, y1 },
+      viewportWidth,
+      viewportHeight,
+      hiddenIds,
+      isolatedIds,
+      clip,
+    );
   }
 }

@@ -75,17 +75,56 @@ const externalWalls = query
   .execute();
 
 // Filter by numeric comparison
-const fireRatedWalls = query
+const wellInsulated = query
   .walls()
-  .whereProperty('Pset_WallCommon', 'FireRating', '>=', 60)
+  .whereProperty('Pset_WallCommon', 'ThermalTransmittance', '<=', 0.25)
   .execute();
 
-// Filter by string pattern
+// Filter by boolean
 const loadBearing = query
   .walls()
   .whereProperty('Pset_WallCommon', 'LoadBearing', '=', true)
   .execute();
+
+// Filter by string pattern
+const fireRated = query
+  .walls()
+  .whereProperty('Pset_WallCommon', 'FireRating', 'startsWith', 'REI')
+  .execute();
+
+// Quantity sets work through the same call — name the Qto_ set as the
+// first argument
+const largeWalls = query
+  .walls()
+  .whereProperty('Qto_WallBaseQuantities', 'NetSideArea', '>', 10)
+  .execute();
 ```
+
+Comparisons are same-type only: `'60'` (a string `FireRating`) does not match
+the number `60`, and a `null` on either side never matches — not even with `!=`.
+`contains` and `startsWith` are string-only. A filter matches when *any*
+property of that name, in *any* set of that name, satisfies it — which can
+differ from `EntityNode.property()`, a single-value getter that returns the
+first match, for an entity that carries the same property twice.
+
+!!! note "Scope the query before filtering on a property"
+
+    On a STEP (`.ifc`) model the property sets are read lazily from the source
+    buffer rather than from a pre-built index, so `whereProperty` resolves each
+    *candidate* entity and the cost grows with how many entities reach the
+    filter. Call `.walls()` / `.ofType(...)` / `.onStorey(...)` first:
+    `query.all().whereProperty(...)` resolves every entity in the model, which on
+    a large model can cost many times the type-scoped form.
+
+    This applies to a **cache-restored** `.ifc` model too: the cache stores the
+    property table as it was built, and a STEP parse leaves it empty, so a
+    restored model resolves per candidate exactly like a fresh parse.
+
+    The rule is the store, not the file format: a query answers from the
+    property index whenever the store carries table rows, and resolves per
+    candidate when it does not. An indexed store's cost scales with the number
+    of rows carrying the name rather than with the candidate count. Both paths
+    return the same entities.
 
 ### Chained Queries
 
@@ -105,7 +144,7 @@ flowchart LR
 const walls = query
   .walls()
   .whereProperty('Pset_WallCommon', 'IsExternal', '=', true)
-  .whereProperty('Pset_WallCommon', 'FireRating', '>=', 60)
+  .whereProperty('Pset_WallCommon', 'FireRating', '=', 'REI60')
   .whereProperty('Qto_WallBaseQuantities', 'NetSideArea', '>', 10)
   .execute();
 
@@ -354,6 +393,13 @@ const externalWallIds = store.properties.findByProperty(
   'IsExternal', '=', true, 'Pset_WallCommon',
 );
 ```
+
+`findByProperty` reads the columnar property table, which a STEP parse leaves
+empty on purpose (`store.properties.count === 0`) — on a `.ifc` model it returns
+`[]`, and it still returns `[]` after that model is restored from cache, because
+the empty table is what was cached. Use `query.walls().whereProperty(...)`, which
+picks the right source for the store it is given, unless you know the table is
+materialised.
 
 ## Query Performance
 

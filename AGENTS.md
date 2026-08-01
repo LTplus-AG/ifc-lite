@@ -92,6 +92,14 @@ Browser-first IFC toolkit: a WebGPU web viewer plus a headless CLI/MCP/server. N
 - Elements carrying `data-tour` are interactive-tour anchors. If you move, rename, or delete one, update `apps/viewer/src/lib/tours/anchors.ts` and the referencing steps under `apps/viewer/src/lib/tours/tours/` in the same PR. A broken anchor does not fail CI: it auto-skips at runtime and fires a `tour_step_broken` PostHog event, so rot surfaces on the dashboard, not in review. Tour telemetry (`lib/tours/telemetry.ts`) carries only registry ids, enums, and numbers, never file or model names (scrub-safe).
 - The tour demo kit reuses the committed `building-architecture.ifc` sample as its base; its variants (`building-architecture-rev-b.ifc`, `building-architecture.ids`, `demo-kit.json`) are derived from that base by `tools/demo-kit/derive-variants.mts`. Revision B preserves the base's GlobalIds (diff matches on GlobalId, so a regenerated base would make compare read as 100% added/deleted) and carries the injected clash. Never hand-edit or regenerate one artifact in isolation; rerun the derivation script, which self-verifies the IDS/clash/diff invariants.
 
+## This repository is public
+- Everything here is world-readable the moment it is pushed: code, docs, comments, commit messages, PR titles and bodies, changesets, issue text. Write as if a competitor and a client are both reading, because they are.
+- Never name a client, customer, prospect, or partner organisation, and never describe a commercial relationship (engagement, contract, statement of work, pricing, fee, or the intent to convert one into another). Use a generic segment instead: "an AEC design platform", "a desktop authoring client", "an enterprise buyer".
+- The same rule applies to anything a named party would consider non-public: their customer base or buyer profile, internal or unreleased API schemas, unreleased product plans, architecture they have not published, and any data they supplied.
+- This binds commit messages and PR text as much as file contents. A commit that removes a client name but explains itself by naming the client has published it again.
+- Roadmap, strategy and ecosystem docs are the usual offenders, because naming a real partner feels like it makes the argument concrete. It does not; the generic segment carries the same argument. If a claim only works with the real name attached, it belongs in a private repo.
+- If you find such a reference, remove it and say so without repeating it. Removing it from the working tree stops further publication but does not erase git history, so flag it rather than assuming the fix is complete.
+
 ## New source files
 - MPL-2.0 header on every new file: see [`./LICENSE_HEADER.md`](./LICENSE_HEADER.md).
 

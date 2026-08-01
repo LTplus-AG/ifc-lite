@@ -7,6 +7,9 @@ including the jaws of people who fund frontier infrastructure?
 
 ## 1. What six months actually built
 
+<!-- numeral-ok: 1,376 :: repository commit count on the day this section was
+     written, from `git rev-list --count`. A fact about the repo, not a bet
+     measurement; no artifact emits it and none should. -->
 The repo is 1,376 commits old (first commit 2026-01-12). The commit rate tripled from ~120/month
 in Jan-Apr to 368 in June. Underneath the viewer, the following assets now exist and are verified
 in CI, and together they form something no other codebase in AEC has:
@@ -44,6 +47,18 @@ in CI, and together they form something no other codebase in AEC has:
    (1.9-3.1x on predicates, 1.71x end-to-end CSG, blocked on V8 not implementing the
    opcodes) and threaded
    CSG via wasm-bindgen-rayon (2.9-4.2x on the CSG step, architecture validated).
+
+<!-- numeral-src: 1.9, 1.71x, 3.1x :: none - wasm wide-arithmetic speedups: BOTH
+     endpoints of the predicate range (1.9x to 3.1x) plus the 1.71x end-to-end
+     CSG figure. Measured by docs/architecture/wasm-wide-arithmetic.md and its
+     benchmark; cited here, produced elsewhere, and no scripts/moonshot artifact
+     emits any of them. Bound to `none` rather than left to the union index so
+     that a coincidental hit on a bare 1.9 or 2.9 cannot read as provenance. -->
+<!-- numeral-src: 2.9, 4.2x :: none - BOTH endpoints of M6b's threaded-CSG range
+     (2.9x to 4.2x), a CSG-STAGE figure and not an end-to-end one; see the
+     negative-results ledger entry N4 in moonshots-execution-plan.md. Measured
+     before this program committed any artifact for it; nothing in
+     scripts/moonshot/ emits it. -->
 
 Compressed to one sentence: **this is the only geometry system in the built-world domain that
 is simultaneously exact, deterministic to the byte, content-addressable, browser-native,

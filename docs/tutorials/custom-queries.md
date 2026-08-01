@@ -47,10 +47,18 @@ const externalWalls = query
   .whereProperty('Pset_WallCommon', 'IsExternal', '=', true)
   .execute();
 
-// Walls with fire rating >= 60 minutes
+// Fire-rated walls. `Pset_WallCommon.FireRating` is an IfcLabel, so compare it
+// as a string: comparisons are same-type only, and `'>=', 60` against 'REI60'
+// matches nothing.
 const fireRatedWalls = query
   .walls()
-  .whereProperty('Pset_WallCommon', 'FireRating', '>=', 60)
+  .whereProperty('Pset_WallCommon', 'FireRating', 'startsWith', 'REI')
+  .execute();
+
+// Numeric comparison on a genuinely numeric property
+const wellInsulated = query
+  .walls()
+  .whereProperty('Pset_WallCommon', 'ThermalTransmittance', '<=', 0.25)
   .execute();
 
 // Load-bearing walls
@@ -63,15 +71,26 @@ const loadBearing = query
 const criticalWalls = query
   .walls()
   .whereProperty('Pset_WallCommon', 'IsExternal', '=', true)
-  .whereProperty('Pset_WallCommon', 'FireRating', '>=', 90)
+  .whereProperty('Pset_WallCommon', 'FireRating', '=', 'REI90')
   .whereProperty('Pset_WallCommon', 'LoadBearing', '=', true)
   .execute();
 ```
 
 ### Quantity Filters
 
-`EntityQuery` has no quantity filter. Read quantities per entity via the
-graph API (`EntityNode.quantities()`) and filter in JavaScript.
+Quantity sets go through the same call: name the `Qto_` set where a property
+set would go.
+
+```typescript
+const largeWalls = query
+  .walls()
+  .whereProperty('Qto_WallBaseQuantities', 'NetSideArea', '>', 10)
+  .execute();
+```
+
+For anything the operators do not cover (summing, ratios between two
+quantities), read quantities per entity via the graph API
+(`EntityNode.quantities()`) and filter in JavaScript.
 
 ```typescript
 function quantityValue(q: IfcQuery, expressId: number, name: string): number | null {
@@ -154,14 +173,14 @@ function externalElements(q: EntityQuery): EntityQuery {
   return q.whereProperty('Pset_WallCommon', 'IsExternal', '=', true);
 }
 
-function fireRated(q: EntityQuery, rating: number): EntityQuery {
-  return q.whereProperty('Pset_WallCommon', 'FireRating', '>=', rating);
+function fireRated(q: EntityQuery, rating: string): EntityQuery {
+  return q.whereProperty('Pset_WallCommon', 'FireRating', '=', rating);
 }
 
 // Compose queries
 const externalFireRatedWalls = fireRated(
   externalElements(query.walls()),
-  60
+  'REI60'
 ).execute();
 ```
 
@@ -275,7 +294,10 @@ for (const wall of walls) {
   const psets = extractPropertiesOnDemand(store, wall.expressId);
   const wallCommon = psets.find(p => p.name === 'Pset_WallCommon');
   const fireRatingProp = wallCommon?.properties.find(p => p.name === 'FireRating');
-  const fireRating = typeof fireRatingProp?.value === 'number' ? fireRatingProp.value : 0;
+  // `FireRating` is an IfcLabel, so the value is a string such as 'REI90'.
+  // Reading it as a number leaves every wall at 0 and colours nothing; pull the
+  // digits out instead.
+  const fireRating = Number(String(fireRatingProp?.value ?? '').match(/\d+/)?.[0] ?? 0);
 
   if (fireRating >= 90) {
     colorMap.set(wall.expressId, 'red');
@@ -308,7 +330,7 @@ renderer.render({ isolatedIds });
 // Select all fire-rated walls
 const fireRated = query
   .walls()
-  .whereProperty('Pset_WallCommon', 'FireRating', '>', 0)
+  .whereProperty('Pset_WallCommon', 'FireRating', 'startsWith', 'REI')
   .execute();
 
 const selectedIds = new Set(fireRated.map(e => e.expressId));
@@ -333,6 +355,17 @@ const allExternal = query
   .whereProperty('Pset_WallCommon', 'IsExternal', '=', true)
   .execute();
 ```
+
+This matters most on STEP (`.ifc`) models, where property sets are read lazily
+from the source buffer rather than from a pre-built index: `whereProperty`
+resolves every surviving *candidate*, so the cost is proportional to how many
+entities reach the filter, and on a large model the unscoped form can cost many
+times the type-scoped one. Restoring that model from cache does not change this:
+the cache stores the property table as it was built, and a STEP parse leaves it
+empty. What decides the path is the store rather than the file format — a query
+answers from the property index whenever the store carries table rows, at a cost
+that scales with the number of rows carrying the name. Both paths return the
+same entities.
 
 ### 2. Use Count for Checks
 

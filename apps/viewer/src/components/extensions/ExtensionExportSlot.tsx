@@ -22,8 +22,7 @@ import { Label } from '@/components/ui/label';
 import { toast } from '@/components/ui/toast';
 import { useSlotContributions } from '@/hooks/useSlotContributions';
 import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
-import { downloadFile } from '@/lib/export/download';
-import { buildExportFilename, normalizeExtension } from '@/lib/export/extension-filename';
+import { downloadFile, buildExportFilename, normalizeExtension } from '@/lib/export/download';
 
 interface ExtensionExportSlotProps {
   /** Base name for the produced file, before the exporter's extension. */

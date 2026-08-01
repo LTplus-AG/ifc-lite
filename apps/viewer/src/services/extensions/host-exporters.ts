@@ -30,15 +30,32 @@ import {
   type ExporterContribution,
   type RuntimeRunResult,
 } from '@ifc-lite/extensions';
-import type { BimContext } from '@ifc-lite/sdk';
 import type { IdbExtensionStorage } from './idb-storage.js';
 
+/**
+ * Structural picks, not the full classes: `ExtensionLoader` carries a
+ * private `bundleCache` field, which makes a plain object literal (as every
+ * test fixture is) structurally incompatible with it — the object literal
+ * has no private member to match against. Picking only the methods this
+ * module actually calls keeps `RunExporterDeps` satisfiable by a fixture
+ * without a cast, while `ExtensionHostService.runExporter` still passes its
+ * full `storage`/`loader`/`runtime`/`dispatcher` instances unchanged (a
+ * wider type is always assignable to a narrower structural pick).
+ */
 export interface RunExporterDeps {
-  storage: IdbExtensionStorage;
-  loader: ExtensionLoader;
-  runtime: ExtensionRuntime;
-  dispatcher: ActivationDispatcher;
-  sdk: BimContext;
+  storage: Pick<IdbExtensionStorage, 'listExtensions'>;
+  loader: Pick<ExtensionLoader, 'getBundle'>;
+  runtime: Pick<ExtensionRuntime, 'activate' | 'deactivate'>;
+  dispatcher: Pick<ActivationDispatcher, 'fire'>;
+  /**
+   * Typed as `ExtensionContextV1['bim']` (currently `unknown`), not
+   * `BimContext`: this module never calls a `BimContext` method, it only
+   * forwards the value into `ExtensionContextV1.bim` for the sandboxed
+   * handler to use. `BimContext` would overstate the contract and force
+   * every fixture to cast a class with private fields it can never
+   * structurally satisfy.
+   */
+  sdk: ExtensionContextV1['bim'];
 }
 
 /** What an exporter produced, normalised for the download path. */
@@ -60,13 +77,18 @@ export interface ExporterOutput {
  */
 export function coerceExporterOutput(value: unknown): string | Uint8Array | null {
   if (typeof value === 'string') return value;
+  // The next three branches are unreachable via the current sandbox path:
+  // `vm.dump` (packages/sandbox/src/sandbox.ts:182) JSON round-trips every
+  // handler return value, and JSON cannot represent a typed array, so a live
+  // one never crosses that boundary. Kept as the correct handling if that
+  // ever changes, and exercised directly by this function's unit tests.
   if (value instanceof Uint8Array) return value;
   if (value instanceof ArrayBuffer) return new Uint8Array(value);
   if (ArrayBuffer.isView(value)) {
     return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
   }
   if (Array.isArray(value) && value.every((n) => typeof n === 'number')) {
-    return Uint8Array.from(value);
+    return isByteSequence(value) ? Uint8Array.from(value) : null;
   }
   // A structured-cloned Uint8Array: { "0": 12, "1": 34, ... }. Must be DENSE
   // and in-order ("0".."n-1") — `Object.entries` returns integer-like keys in
@@ -80,40 +102,54 @@ export function coerceExporterOutput(value: unknown): string | Uint8Array | null
       entries.length > 0 &&
       entries.every(([k, v], index) => k === String(index) && typeof v === 'number')
     ) {
-      return Uint8Array.from(entries.map(([, v]) => v as number));
+      const bytes = entries.map(([, v]) => v as number);
+      return isByteSequence(bytes) ? Uint8Array.from(bytes) : null;
     }
   }
   return null;
 }
 
 /**
+ * A byte is an integer in [0, 255]. `Uint8Array.from` silently wraps out of
+ * range values mod 256 and truncates floats (e.g. `[300, -5, 1.7]` becomes
+ * `[44, 251, 1]`) instead of raising, which would write a corrupted file
+ * with no indication anything went wrong. Reject the whole sequence instead
+ * so the caller raises a clear error.
+ */
+function isByteSequence(values: number[]): boolean {
+  return values.every((v) => Number.isInteger(v) && v >= 0 && v <= 255);
+}
+
+/**
  * Run an extension-contributed exporter end-to-end. Pure function — no
  * `this`; the host service injects its primitives.
  *
- * `extensionId` pins the run to a specific contributing extension. The
- * `exportMenu` slot can hold contributions from multiple installed
- * extensions that declare the same exporter id — the slot UI renders one
- * button per contribution (`SlotContribution.extensionId` + `payload.id`),
- * so without the owner id this would run whichever enabled extension
- * happens to be first in storage order, silently producing the wrong
- * file for every button but the first (#1930 review).
+ * `extensionId` pins the run to a specific contributing extension and is
+ * required. The `exportMenu` slot can hold contributions from multiple
+ * installed extensions that declare the same exporter id — the slot UI
+ * renders one button per contribution (`SlotContribution.extensionId` +
+ * `payload.id`), so without the owner id this would run whichever enabled
+ * extension happens to be first in storage order, silently producing the
+ * wrong file for every button but the first (#1930 review). The slot is the
+ * only caller and always passes its own id; making the parameter required
+ * closes off the unscoped scan entirely rather than merely leaving it
+ * unused.
  *
- * Throws when no installed, enabled extension owns the exporter id (or,
- * with `extensionId` given, when that specific extension does not), when
- * the stored capabilities are unreadable, when the handler file is missing
- * from the bundle, or when the handler returns something that cannot be
- * written to a file. Never returns a silent empty result — a user who
- * clicks Export and gets nothing has no way to tell a broken extension from
- * a broken viewer.
+ * Throws when the named extension does not own an enabled exporter with
+ * that id, when the stored capabilities are unreadable, when the handler
+ * file is missing from the bundle, when the handler returns something that
+ * cannot be written to a file, or when it returns an empty result. A user
+ * who clicks Export and gets nothing has no way to tell a broken extension
+ * from a broken viewer.
  */
 export async function runExtensionExporter(
   deps: RunExporterDeps,
   exporterId: string,
-  extensionId?: string,
+  extensionId: string,
 ): Promise<ExporterOutput> {
   const records = await deps.storage.listExtensions();
   for (const record of records) {
-    if (extensionId !== undefined && record.id !== extensionId) continue;
+    if (record.id !== extensionId) continue;
     if (!record.enabled) continue;
     const bundle = deps.loader.getBundle(record.id);
     if (!bundle) continue;
@@ -170,24 +206,42 @@ export async function runExtensionExporter(
     };
 
     const result = await runOnce(false);
-    const data = coerceExporterOutput(await result.value);
+    const rawValue = await result.value;
+    const data = coerceExporterOutput(rawValue);
     if (data === null) {
       throw new Error(
-        `Exporter "${exporterId}" returned ${describeReturn(result.value)}; ` +
+        `Exporter "${exporterId}" returned ${describeReturn(rawValue)}; ` +
           `expected a string or byte array to write to the file.`,
+      );
+    }
+    if (data.length === 0) {
+      throw new Error(
+        `Exporter "${exporterId}" returned ${describeEmptyReturn(rawValue)}; ` +
+          `an empty export is not writable. The handler must produce actual ` +
+          `content — there is no empty-result shape this accepts.`,
       );
     }
     return { contribution, data, result };
   }
   throw new Error(
-    extensionId !== undefined
-      ? `Extension "${extensionId}" does not own an enabled exporter "${exporterId}".`
-      : `No installed, enabled extension owns exporter "${exporterId}".`,
+    `Extension "${extensionId}" does not own an enabled exporter "${exporterId}".`,
   );
 }
 
 function describeReturn(value: unknown): string {
   if (value === undefined) return 'nothing';
   if (value === null) return 'null';
-  return `a ${typeof value}`;
+  const type = typeof value;
+  const article = /^[aeiou]/i.test(type) ? 'an' : 'a';
+  return `${article} ${type}`;
+}
+
+/** Names the specific empty shape that coerced to zero bytes, for `data.length === 0`. */
+function describeEmptyReturn(value: unknown): string {
+  if (typeof value === 'string') return 'an empty string';
+  if (Array.isArray(value)) return 'an empty array';
+  if (value instanceof Uint8Array) return 'an empty Uint8Array';
+  if (value instanceof ArrayBuffer) return 'an empty ArrayBuffer';
+  if (ArrayBuffer.isView(value)) return 'an empty typed array';
+  return 'an empty result';
 }

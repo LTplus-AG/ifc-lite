@@ -142,9 +142,10 @@ which makes it an ideal golden-output regression test that nobody is running.
 | M6b threaded CSG | 5 | **5** | unchanged, and now on the critical path |
 | M6c exact predicates on GPU | 1 | **4, with a negative economic verdict** | real stage, real parity, loses to the production filter |
 
-TRL 4 to 5 across the board, with one shipped surface. That is a genuinely
-strong six-month position and it is not TRL 7 anywhere, which is what "finished"
-would require.
+The column spans **TRL 3 to 6**, not a flat band: M6a is already 6, M3 and M4
+are still 3, and the modal value is 4. Five of the eight moved up and none moved
+down. That is a genuinely strong six-month position, with one shipped surface,
+and it is not TRL 7 anywhere - which is what "finished" would require.
 
 ---
 
@@ -279,9 +280,16 @@ unchanged, the original stands.
 
 - **Exams (amended, see section 9):** the midterm's "wide margin" clause is not
   supported after two tiers and one replication, and should be formally amended
-  to the quantity the evidence does support: correct behaviour at the
-  infeasibility boundary and guaranteed recovery under held-out rules, both
-  with pre-registered paired CIs.
+  to the quantity the evidence does support. The amendment as landed in
+  `moonshots-execution-plan.md` reads: correctly handles infeasible briefs at a
+  rate exceeding budget-matched baselines, and **recovers from held-out-rule
+  violations**, both with pre-registered paired CIs, with feasible-brief quality
+  reported as a null result. Recovery is not guaranteed and the amendment must
+  not be read as saying so: it is bounded by the tier-2 arm's repair cap of 2
+  (at most three calls per task), and the executed exam showed run 1 at 6/6
+  recovery with the replication exhausting that cap on T2-10, which then scored
+  0. The defensible claim is "6/6 in one run, with a known cap-sensitivity",
+  which is what section 1.2 already records.
 - **Risks (revised):** at Haiku strength the proposer does not make intent-level
   errors often enough for decode-time feedback to show a quality margin. A wide
   margin needs either a weaker proposer or briefs whose constraint interactions
@@ -399,15 +407,19 @@ its own calibration is quoted here so a green E9 can never be read as
 verification. The checker perturbs each numeral in a document by a seeded three
 to thirty percent - far outside any rounding or unit story, i.e. definitely
 wrong - and re-runs the matcher. On the `docs/vision` prose, whose haystack is
-the union of every moonshot artifact in the tree, **57.5% to 91.7% of those
-deliberately-wrong decoys came back "backed" by coincidence**, and 69.0% on this
-document, measured when the gate first went green (commit `0d5a68a2`). Two
-further limits, both measured rather than feared: about 23% of the numerals in
-the checked corpus are excused by self-certified inline `numeral-ok` markers,
-and re-introducing a known-wrong figure together with a marker makes the finding
-vanish. What a green E9 does establish is narrow and still worth having: no
-sentence in the checked corpus contradicts a committed artifact it names, and no
-excuse has outlived its reason.
+the union of every moonshot artifact in the tree, **between roughly 40% and
+91.7% of those deliberately-wrong decoys came back "backed" by coincidence**,
+depending on the document, with this one at the bottom of the range. The exact
+span is printed by the checker at the end of every run, computed from that run
+rather than transcribed, because a figure this document quotes about itself is
+a figure editing this document changes. Two further limits, both measured rather
+than feared: about a fifth of the numerals in the checked corpus are excused by
+self-certified inline `numeral-ok` markers, a quarter once
+`numeral-src: ... :: none` assertions are counted too, and re-introducing a
+known-wrong figure together with a marker makes the finding vanish. What a green
+E9 does establish is narrow and still worth having: no sentence in the checked
+corpus contradicts a committed artifact it names, and no excuse has outlived its
+reason.
 
 *The fix is per-claim binding, not a bigger haystack.* A second marker form
 names the artifact and JSON path a figure came from -
@@ -418,28 +430,45 @@ check in the program that can say *this sentence contradicts the field it claims
 to quote*. A binding into a bet directory not yet in this tree is PENDING: not
 counted as backed, its decoys never cleared, and enforced the day the branch
 lands. This document's load-bearing figures were bound on 2026-07-30, and this
-document's own decoy rate fell to 43.8% as a result. Over the bound subset alone
-it is 0.8% of 123 decoys, which is the number that shows the mechanism working;
-the rest of the fall is arithmetic, since every figure moved out of the union
-stops being a coin flip. The remainder is what "backed" is still worth for the
-figures that are not bound, and it is not much.
+document's own decoy rate fell as a result. **Over its bound subset alone the
+decoys clear at 0.7%, against roughly three quarters for the figures still left
+to the union index** - that gap, not the headline, is the number that shows the
+mechanism working. The rest of the fall is arithmetic, since every figure moved
+out of the union stops being a coin flip. The union-index remainder is what
+"backed" is still worth for the figures that are not bound, and it is not much.
 
-<!-- numeral-src: 57.5%, 91.7%, 69.0%, 23%, 43.8%, 0.8%, 123 :: none - this checker's own decoy
+*Why these calibration figures moved.* An earlier revision of this section
+quoted 57.5% to 91.7%, 69.0% and 43.8%. Those were real measurements of a
+checker whose decoy generator was broken for exponent-form numerals: it read the
+decimal count off the whole string, so a decoy for `2.19e-13` was written
+`toFixed(6)` and became `0.000000`, a value most artifacts hold somewhere. Every
+exponent-form figure in the program was therefore calibrated against a decoy of
+zero. Fixed in PR #1897, which is why the rates fell; nothing about the corpus
+changed.
+
+<!-- numeral-src: 40%, 57.5%, 91.7%, 69.0%, 43.8%, 0.7% :: none - this checker's own decoy
      calibration over docs/vision, printed by
      scripts/moonshot/ci/check-report-numerals.mjs and deliberately NOT emitted
      into any artifact: an artifact under scripts/moonshot/ joins the union
      index this figure is a measurement OF, so emitting it would let the number
      back itself. Reproduce with `node
-     scripts/moonshot/ci/check-report-numerals.mjs`: the 57.5-to-91.7% range and
-     69.0% are the state at commit 0d5a68a2, before per-claim binding; 43.8% and
-     the 0.8%-of-123 bound subset are this document's state after it. -->
+     scripts/moonshot/ci/check-report-numerals.mjs`, which prints the exact
+     span. The prose above is deliberately coarse at the low end and exact only
+     at 91.7% (node-hash-v0.md, the one document in the corpus this section
+     cannot perturb): this section is self-referential, so a low endpoint stated
+     to one decimal is a number that moves every time the paragraph quoting it
+     is edited. Its own bound-subset rate, 0.7%, survives that because it is
+     stable to one decimal against small edits; the unbound rate is given in
+     words for the same reason. The superseded 57.5%, 69.0% and 43.8% are quoted
+     only to retract them, in the paragraph that does so. -->
 
 Consequence for instrument 5: the certificate and tamper results are held by
 the lane in the *forgery* sense only. Holding them against drift would need a
 committed golden chain verified by a current binary, which is a bet, not a
 line in this one.
 
-**B4.2 Spatially coupled merge semantics (closes the B2.1 finding).**
+**B4.2 Spatially coupled merge semantics (bet AGAINST the B2.1 finding; B2.1
+stays OPEN - see "what B4.2 closed" at the end of this entry).**
 Give the op model semantics that can fail: hosted openings must remain inside
 their host wall, `geometry-replace` triggers a re-cut, ops can be rejected on
 spatial grounds. Re-run the 1,000-schedule battery.
@@ -501,10 +530,34 @@ any geometry at all. KEEP therefore stands on replay-cost avoidance, not on
 soundness: `createCommutationCertificate` replays both orders regardless of the
 predicate, so zero unsound certificates are emitted with or without the rule.
 
+**What B4.2 closed, and what it did not.** Three claims with three different
+denominators, separated because this record has run them together before:
+
+1. *The plan's M4 kill criterion is met, and B4.2 did not need to close it.*
+   That criterion reads "false-conflict rate below 20%" and is measured over
+   ground-truth-commuting schedules: **8.78%** (84 of 957), `killCriterionPass:
+   true` in the battery's own output.
+2. *B4.2's own restricted exam is not met.* 40.82% (20 of 49),
+   `spatialKillCriterionPass: false`. This is a precision-complement over
+   flagged-and-spatial-fired schedules; the battery's `ratios.note` says in as
+   many words that its like-for-like comparator is the 66.14% flagged rate and
+   **not** the plan's < 20% bar. Both numbers are true at once because they are
+   not the same quantity.
+3. *The B2.1 finding itself is NOT closed.* B2.1 said the spatial predicate was
+   unfalsifiable: it had never produced a true conflict, so neither the headline
+   nor the kill metric could be adjudicated on it. Coupled semantics did make it
+   fire truthfully - 29 true conflicts among the 49 schedules where the spatial
+   rule fired, 9 of them spatial-only, against zero before the bet. But the
+   derived-cut grid above shows that count is a property of the lazy-cut cell,
+   and under the cut semantics IFC and this codebase actually implement it falls
+   to zero or one. A rule that fires truthfully only under semantics nothing in
+   the stack implements is unfalsified in the sense B2.1 meant, which is why
+   section 1.2 still carries B2.1 as OPEN.
+
 B5.1 on real traces remains the only test that adjudicates this, which is what
 the bet's own PR says.
 
-<!-- numeral-src: 40.82%, 8.78%, 66.14%, 28.22%, 54.75%, 49 :: none - B4.2 is
+<!-- numeral-src: 40.82%, 8.78%, 66.14%, 28.22%, 54.75%, 49, 957 :: none - B4.2 is
      the one Phase 4 bet that commits no scorecard JSON. Its grid and its three
      ratios are emitted to stdout by scripts/moonshot/g2-merge-soundness.mjs and
      pinned by tests in packages/provenance on branch feat/b42-spatial-merge, so
@@ -515,7 +568,8 @@ the bet's own PR says.
      same way: a file-scoped marker on a bare digit would also block the honest
      matches that digit has elsewhere in this document. -->
 
-**B4.3 Benchmark integrity v1.1 (closes the B2.2 finding; human decision).**
+**B4.3 Benchmark integrity v1.1 (aimed at the B2.2 finding; human decision).
+STATUS: PENDING. Nothing about it is closed.**
 Choose one of the three documented options and implement it. Recommendation, for
 the record and subject to the betting table: **hosted episode bytes for test,
 dev left open and explicitly labelled attackable-by-design, with
@@ -525,6 +579,20 @@ defers the salt decision until a hosted scorer exists.
 *Exam:* `clean-twin-diff` scores at or below the always-clean anchor on the
 reporting split; spec version bumped; the attack stays committed as a
 regression.
+*Why it is PENDING, spelled out so no reader has to infer it.* Three things must
+happen and none of them has:
+
+1. **The integrity-model decision.** Secret per-split salt versus hosted episode
+   bytes is Louis's call and has not been made. The recommendation above is a
+   recommendation, not the decision.
+2. **The implementation of whichever option is chosen**, including the spec
+   version bump.
+3. **The clean-twin check re-run against it**, i.e. `clean-twin-diff` scoring at
+   or below the always-clean anchor on the reporting split rather than the 1.000
+   aggregate it scores today.
+
+Until all three are done, B2.2 stays **CONFIRMED, UNFIXED** in section 1.2 and
+this bet is not a Phase 4 delivery.
 
 **B4.4 The M3 kernel-adjoint spike (binary).**
 A dual-number scalar type through the mesher for the rectangular-extrusion
@@ -857,6 +925,41 @@ are amendable only in writing in this file - and the re-scope below was not.
    misclassified - but it is an amendment and is recorded as one. Note also
    that the accompanying "0/200 on the old metric" figure is partly a property
    of the U(-30, 30) m placement box, not of the metric alone.
+
+   *The amended pass condition, written out so it can be re-graded without
+   reading the harness.* **Denominator: points, not components.** Each battery
+   is 200 seeded points, a point passes iff **every** component at that point
+   passes, and the bar is the exam's own **95% of 200**. Components are
+   partitioned once, by parameter, before any measurement:
+   - **Active components** are graded strictly: relative agreement with central
+     finite differences within **1e-6**, unchanged from the exam's wording.
+     Family A is 10 parameters per point of which 6 are active (1,200 of 2,000
+     components); family B is 14 of which 8 are active (1,600 of 2,800). The
+     "60% of components" figure above is family A's split; family B's is 8 in
+     14.
+   - **Invariant components** are the parameters whose analytic derivative is
+     zero by construction (rigid motions, void translation). They are graded
+     against that theoretical zero, as `|ad| / ||ad||_inf` at the same point,
+     and pass only if that ratio is at machine-noise level. They are **not**
+     compared to finite differences at all, and this is the whole amendment:
+     FD noise on those components measures up to 7.451817e-8 absolute against a
+     true value of 0, so any relative FD criterion fails them at every
+     tolerance.
+   The delivered result under this rule: **200/200 on five of the six
+   (family, seed) batteries and 199/200 on the sixth**, all six PASS against the
+   95% bar; worst active relative error 1.262e-6 at the single failing point,
+   worst invariant ratio 2.8e-14 across all six. The retired metric - the strict
+   relative criterion applied to *all* components - scores 0/200 on every
+   battery, which is the "0/200" figure above and is a statement about zero
+   derivatives, not about the gradient.
+
+   <!-- numeral-src: 199 :: b44-kernel-adjoint/battery.json#[5].passed -->
+   <!-- numeral-src: 1.262e-6 :: b44-kernel-adjoint/battery.json#[5].maxRelErrActive -->
+   <!-- numeral-src: 2.8e-14 :: b44-kernel-adjoint/battery.json#[1].maxInvariantAdRatio -->
+   <!-- numeral-src: 7.451817e-8 :: b44-kernel-adjoint/battery.json#[5].maxInvariantFdNoise -->
+   <!-- numeral-ok: -30 :: a bound of the harness's U(-30, 30) m placement box,
+        a sampling-design constant declared in b44-kernel-adjoint/run.mjs and
+        emitted by no report. -->
 8. **Phase 4 is recorded as a FAILED phase under pre-mortem entry 4.**
 
    *Re-grounded 2026-07-30, after an audit of this amendment itself.* This entry
@@ -937,18 +1040,39 @@ paper drafts, all documentation.
 
 ## 11. First moves
 
-In order, this week:
+This list is the outstanding blockers as of 2026-07-30, not the list this
+section shipped with. The original four - write `moonshot.yml` (B4.1),
+land amendments 1 to 5, take the B4.3 decision, schedule the Phase 4 betting
+table and commission the G4 reviewer - are done except B4.3, which survives
+below. B4.1's lane exists and both halves of its exam now have committed
+artifacts; amendments 1 to 5 are in `moonshots-execution-plan.md`; the G4 review
+was commissioned, ran, and failed the gate, and its re-attestation kept it
+failed. Rewriting the list rather than ticking it is deliberate: a stale
+"do this first" list is the same defect class as a stale figure.
 
-1. **B4.1.** Write `moonshot.yml`. Half a day of work protecting eight months
-   of results. Right now a single kernel change could silently falsify every
-   headline in the program and nothing would say so.
-2. **Amendments 1 to 5** into `moonshots-execution-plan.md`. Ten minutes each,
-   and they stop the record hardening around claims the evidence has already
-   outrun.
-3. **B4.3 decision.** One paragraph from you unblocks Phase 6.
-4. **Schedule the Phase 4 betting table** and name the adversarial reviewer for
-   G4 at the same time, so the review is commissioned before the work it will
-   attack is finished.
+In order:
 
-The order matters. Item 1 makes everything already achieved durable, item 2
-makes it honest, and items 3 and 4 are the two things nobody else can do.
+1. **Merge #1897.** Section 9.1 defines gate-holder sign-off as the merge of
+   the gate's docs PR by the repo-owner account, so this merge is what converts
+   amendments 6 to 8 from proposed to signed. Nothing downstream of them is
+   settled until it happens, and no agent can perform or fake it.
+2. **B4.3 decision.** Secret per-split salt versus hosted episode bytes. One
+   paragraph from you, then the implementation and the clean-twin re-check.
+   Blocking Phase 6, and B2.2 stays CONFIRMED, UNFIXED until all three are done.
+3. **Phase 5's external-data prerequisites**, which are lead-time items and not
+   agent work: a foreign IFC source and real collaboration traces (B5.1),
+   foreign brief authors (B5.2), and one real scan plus a manually modelled
+   reference (B5.5). Phase 5 cannot start against internally authored
+   distributions without repeating the finding that section 3 of the G2 review
+   already made.
+4. **The Phase 5 betting table**, which has to settle whether the CSG-adjoint
+   bet enters at all. Amendment 6 leaves M3 UNADJUDICATED pending it, and
+   entering it needs a number, an exam, a kill clause, a statement of which of
+   B5.1 to B5.5 it displaces against the five-bet cap, and a cycle-budget
+   update. None of those exist, and writing them is a betting-table act.
+5. **Name the G5 adversarial reviewer before Phase 5's work finishes**, on the
+   same logic that made G4 worth commissioning: a reviewer named afterwards
+   reviews a record that has already hardened.
+
+Item 1 is the only one that unblocks the rest of the stack; items 2 and 3 are
+the two nobody else can do; item 4 is the decision the whole M3 line waits on.

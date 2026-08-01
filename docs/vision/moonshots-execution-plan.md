@@ -279,7 +279,7 @@ Gate G0: B0.1 demo passes the M1 midterm timing on a real 100 MB fixture; B0.3 s
 without manifest changes; B0.4 runs an agent loop end to end. Fail on B0.1 = the program's
 core premise (cheap subtree replay) is wrong; stop and rethink before spending more.
 
-### Phase 1, two cycles (target: Sep-Dec 2026; ACTUAL: executed 2026-07-24). "The root and the factory."
+### Phase 1, two cycles (target: Sep-Dec 2026; ACTUAL: executed and gated 2026-07-24, M6c verdict 2026-07-25). "The root and the factory."
 
 Bets:
 - **B1.1 Merkle DAG + memoized recompute (M1).** Dependency-tracked recomputation through the
@@ -362,9 +362,20 @@ Pre-committed kill conditions (ledger entry mandatory, resurrection requires new
   section 2, M3, risk 6). Its own oracle then showed the extrusion volume is a
   smooth closed form, so that exam could not have failed. **B4.4's PASS therefore
   neither passes nor fails this criterion.** M3's status is
-  **UNADJUDICATED pending the CSG-adjoint bet in Phase 5**; the obstruction is
-  scoped at two cycles in `scripts/moonshot/b44-kernel-adjoint/DESIGN.md`
-  section 6.1.
+  **UNADJUDICATED**, and it stays that way until a CSG-adjoint bet is run.
+  **That bet is NOT scheduled.** Phase 5 contains B5.1 to B5.5 and nothing else;
+  the CSG-adjoint work has no number, no exam, no kill clause, no statement of
+  which of B5.1 to B5.5 it would displace against the five-bet cap, and no
+  cycle-budget line. Entering a bet is a betting-table act, not a sentence in an
+  amendment, so nothing here schedules it and no reader should infer that it is
+  queued, next, or first in Phase 5. What exists is an input to that decision:
+  `scripts/moonshot/b44-kernel-adjoint/DESIGN.md` section 6.1 scopes the
+  obstruction at two cycles and names it (the exact-predicate tier is a
+  fixed-width integer type with no derivative slot).
+  Note also what the PROVISIONAL marker above does and does not mean: merging
+  #1897 makes this amendment *signed by the gate holder*, i.e. part of the
+  record. It is not approval of a CSG-adjoint bet, and it is certainly not
+  completion of one.
 - **M4:** if footprint tightening cannot get false-conflict rate below 20% on real traces,
   provable merging is technically true but practically annoying; keep the theorem, drop the
   auto-merge product claim.

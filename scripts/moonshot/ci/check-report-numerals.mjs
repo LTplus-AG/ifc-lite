@@ -118,8 +118,13 @@
  * run: how often a deliberately-wrong number is cleared as "backed" by
  * coincidence. Against a single curated scorecard that rate is near zero.
  * Against `docs/vision`, whose haystack is the UNION of every moonshot
- * artifact in the tree (~8,900 numbers), it measured 57.5% to 91.7% per
- * document on 2026-07-29 -- 69.0% on the finishing plan itself. A "backed"
+ * artifact in the tree (~8,900 numbers), it is high: tens of percent, and over
+ * 90% on one document. No figure is transcribed here on purpose -- the run
+ * epilogue COMPUTES the docs/vision span from the run it just did, because a
+ * checker that hunts stale numerals must not carry one in its own header. (The
+ * 57.5%-to-91.7% figures quoted here before 2026-08-01 were measured with a
+ * decoy generator that rendered every exponent-form numeral through toFixed()
+ * and so tested a decoy of 0.000000.) A "backed"
  * verdict there means "some field somewhere in the program holds this value",
  * which is close to no information at all. The gate catches a figure that
  * contradicts a named artifact; it does not certify one that agrees with the
@@ -575,6 +580,19 @@ const STRUCTURAL_WORD = new Set([
 
 const NUM_RE = /(?<![\w.$])(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?([eE][+-]?\d+)?/g;
 
+/**
+ * Characters that can open a SIGNED numeral. `NUM_RE` deliberately matches the
+ * magnitude only, because folding `[+-]?` into the pattern would swallow the
+ * separator of every range and date -- `lines 148-171`, `2026-07-24`,
+ * `IEEE-754` -- and the range/compound suppressions below all look for that
+ * separator in the text BEFORE the match. So the sign is recovered afterwards
+ * and only when it is adjacent to the digits AND opened by a delimiter, which
+ * is exactly the shape a written negative has and a range never does. Without
+ * this, `-1.669700836e-2` was read as `+1.669700836e-2` and mismatched an
+ * artifact holding the real, negative value.
+ */
+const SIGN_OPENER = /[\s([{,;:=<>]/;
+
 function extractNumerals(rawText) {
   const masked = maskProse(rawText);
   // Line starts, for offset -> line number.
@@ -631,9 +649,18 @@ function extractNumerals(rawText) {
     // never about value.
     if (unit === '' && /[A-Za-z]-$/.test(beforeText)) continue;
 
-    const value = Number(raw.replace(/,/g, ''));
+    // Sign recovery, after every suppression above has had the unsigned text
+    // it expects. See SIGN_OPENER.
+    const signChar = start > 0 ? masked[start - 1] : '';
+    const signed =
+      (signChar === '-' || signChar === '+') &&
+      (start === 1 || SIGN_OPENER.test(masked[start - 2]))
+        ? signChar + raw
+        : raw;
+
+    const value = Number(signed.replace(/,/g, ''));
     if (!Number.isFinite(value)) continue;
-    out.push({ raw, value, unit, line: lineOf(start) });
+    out.push({ raw: signed, value, unit, line: lineOf(start) });
   }
   return out;
 }
@@ -796,12 +823,19 @@ function calibrate(groups, index, bindingIndexFor) {
       if (v === 0) continue;
       // Write the decoy at the same precision the prose used, so the tolerance
       // is the same tolerance the real numeral got.
-      const decimals = (() => {
-        const raw = g.raw.replace(/,/g, '');
-        const dot = raw.indexOf('.');
-        return dot === -1 ? 0 : raw.length - dot - 1;
-      })();
-      const rawDecoy = v.toFixed(Math.min(decimals, 12));
+      // Precision comes from the MANTISSA, and an exponent-form numeral stays
+      // in exponent form. Reading decimals off the whole string counted the
+      // exponent digits ("2.19e-13" -> 6) and then toFixed(6) collapsed the
+      // decoy to "0.000000", which tests nothing: every exponent-form figure
+      // in the program was being calibrated against a decoy of zero.
+      const plain = g.raw.replace(/,/g, '');
+      const em = /[eE][+-]?\d+$/.exec(plain);
+      const mantissa = em ? plain.slice(0, em.index) : plain;
+      const dot = mantissa.indexOf('.');
+      const decimals = dot === -1 ? 0 : mantissa.length - dot - 1;
+      const rawDecoy = em
+        ? v.toExponential(Math.min(decimals, 12))
+        : v.toFixed(Math.min(decimals, 12));
       decoys += 1;
       const tally = isBound ? bound : unbound;
       tally.decoys += 1;
@@ -1144,9 +1178,20 @@ console.log('(c) lives: a number sitting 1% from the committed value is almost a
 console.log('left behind by a re-run. STALE/MALFORMED markers count as findings too: an');
 console.log('excuse that no longer applies is the same defect one level up.');
 console.log('');
+// Computed from THIS run rather than transcribed, so the one number the
+// checker publishes about itself cannot go stale the way the figures it hunts
+// do. Falls back to a generic sentence when no docs/vision set was scanned.
+const visionRates = results
+  .flatMap((b) => b.docs)
+  .filter((d) => d.doc.startsWith('docs/vision') && d.decoy.decoys > 0)
+  .map((d) => d.decoy.rate * 100);
+const visionSpan = visionRates.length
+  ? `on docs/vision this run that cleared ${Math.min(...visionRates).toFixed(1)}% to ` +
+    `${Math.max(...visionRates).toFixed(1)}% of deliberately-wrong decoys. This is`
+  : 'and the calibration lines above say how often that happened by chance. This is';
 console.log('And read the calibration before the BACKED count. Against a union haystack a');
 console.log('"backed" verdict means only that SOME field in the program holds that value --');
-console.log('on docs/vision that cleared 57.5% to 91.7% of deliberately-wrong decoys. This is');
+console.log(visionSpan);
 console.log('a contradiction gate, not a truth gate. The way to make a figure actually');
 console.log('checkable is `<!-- numeral-src: <token> :: <file>#<json.path> -->`, which binds it');
 console.log('to one field and drops its decoy rate to ~0.');

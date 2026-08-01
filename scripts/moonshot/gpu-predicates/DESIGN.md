@@ -109,7 +109,7 @@ before the expensive exact tier runs.
 - `D_MAX = 100` covers a coordinate-magnitude ratio of `2^100 ≈ 1.27e30`
   within one predicate — vastly larger than any realistic single-scene
   dynamic range (even "1 nanometer feature next to a 10,000 km georeferenced
-  coordinate" is only ~2^63). It is chosen generously relative to real
+  coordinate" is only ~2^53). It is chosen generously relative to real
   geometry so the fallback rate on realistic inputs is ~0%, while still being
   a hard, provable, checked limit — not an approximation.
 - Genuinely extreme constructions (subnormals mixed with O(1) magnitudes,
@@ -122,10 +122,17 @@ before the expensive exact tier runs.
      (scripts/moonshot/ci/check-report-numerals.mjs). No figure in this document
      is changed; these comments record which numbers the committed
      report.b25.*.json artifacts emit and which they do not. -->
-<!-- numeral-ok: 52, 63, 1074 :: IEEE-754 double structure and its consequences
-     (52-bit mantissa, ~2^63 for the largest plausible coordinate, the ~1074-bit
-     spread from DBL_MAX down to the smallest subnormal). Properties of the
-     format, not measurements. -->
+<!-- numeral-ok: 52, 1074 :: IEEE-754 binary64 structure. 52 is the width of the
+     FRACTION FIELD (the stored bits; the significand is 53 with the implicit
+     leading 1, which is why section 4 says at most 53 bits for a normal and 52
+     for a subnormal). 1074 is the exponent-range spread from an O(1) magnitude
+     down to the smallest subnormal, 2^-1074 -- NOT from DBL_MAX, which would be
+     ~2098. Properties of the format, not measurements.
+     Not covered here, because it is neither: the "~2^53" in section 4 is a
+     GEOMETRY-DERIVED dynamic-range ratio, 1e7 m over 1e-9 m = 1e16 ~= 2^53, and
+     its near-coincidence with the significand width is arithmetic rather than
+     derivation. An earlier revision of that line read ~2^63, which the
+     arithmetic does not support. -->
 
 ## 5. Width budget (why 512-bit two's-complement-free sign-magnitude is enough)
 
@@ -323,10 +330,21 @@ The worker-parallelized-encode candidate was not implemented: with encode
 gone from the pipeline entirely, there is nothing left for workers to
 parallelize on the main path (it would only multiply path B's 5.4x).
 
-<!-- numeral-ok: 1.34x, 290ms, 96B, 288B :: 1.34x and ~290 ms (shader
-     compilation) are from the baseline-reproduction run of §9.1, whose JSON was
-     not committed; 96 B and 288 B are the per-test upload sizes of the two
-     encodings, format constants fixed by the WGSL. -->
+<!-- numeral-src: 1731ms :: gpu-predicates/report.throughput.json#throughput[1].encodeMs -->
+<!-- numeral-src: 146ms :: gpu-predicates/report.throughput.json#throughput[1].gpuMs -->
+<!-- numeral-src: 2523ms :: gpu-predicates/report.throughput.json#throughput[1].cpuBigIntMs -->
+<!-- numeral-src: 17x :: none - a RATIO of section 9.1 that no artifact stores:
+     cpuBigIntMs / gpuMs = 2523.4 / 146.4 = 17.24, over the three fields bound
+     directly above. Bound to `none` deliberately: left to the union index a
+     bare 17 resolves against an unrelated field in report.b25.bigrandom.json,
+     and a coincidence must not be allowed to read as provenance. -->
+<!-- numeral-ok: 1.34x :: the other section-9.1 ratio, also stored by no
+     artifact: cpuBigIntMs / (encodeMs + gpuMs) = 2523.4 / (1730.9 + 146.4) =
+     1.344, over the same three bound fields. -->
+<!-- numeral-ok: 290ms, 96B, 288B :: ~290 ms is the first-dispatch shader
+     compilation observed in the §9.1 reproduction run, which report.throughput.json
+     does not break out as a field; 96 B and 288 B are the per-test upload sizes
+     of the two encodings, format constants fixed by the WGSL. -->
 
 ### 9.3 incircle and the unified width budget
 

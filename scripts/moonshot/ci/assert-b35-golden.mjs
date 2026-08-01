@@ -133,24 +133,48 @@ function readJson(file, what) {
   }
 }
 
-/** Every leaf path where `a` and `b` disagree, as `a/b/c` strings. */
-function diffPaths(a, b, prefix = '', out = []) {
-  if (out.length >= 40) return out;
-  const bothObjects =
-    a !== null && b !== null && typeof a === 'object' && typeof b === 'object' &&
-    Array.isArray(a) === Array.isArray(b);
-  if (!bothObjects) {
-    if (JSON.stringify(a) !== JSON.stringify(b)) {
-      out.push({ path: prefix || '(root)', golden: a, actual: b });
+/**
+ * How many differing leaves the walk collects before it stops. A cap keeps a
+ * shape change from printing thousands of lines, but a SILENT cap reads as
+ * "and that is all of them", which is the one thing a drift report must never
+ * imply. The constant is shared with the printer and with `--self-test` so the
+ * truncated case is announced everywhere it can occur.
+ */
+const MAX_DIFF_PATHS = 40;
+
+/**
+ * Every leaf path where `a` and `b` disagree, as `a/b/c` strings, up to
+ * `MAX_DIFF_PATHS`. `truncated` is true when the walk stopped early, i.e. the
+ * list is a prefix of the differences and not the whole set.
+ */
+function diffPaths(a, b) {
+  const out = [];
+  let truncated = false;
+  const walk = (x, y, prefix) => {
+    if (out.length >= MAX_DIFF_PATHS) {
+      truncated = true;
+      return;
     }
-    return out;
-  }
-  const keys = [...new Set([...Object.keys(a), ...Object.keys(b)])];
-  for (const k of keys) {
-    diffPaths(a[k], b[k], prefix ? `${prefix}/${k}` : k, out);
-    if (out.length >= 40) break;
-  }
-  return out;
+    const bothObjects =
+      x !== null && y !== null && typeof x === 'object' && typeof y === 'object' &&
+      Array.isArray(x) === Array.isArray(y);
+    if (!bothObjects) {
+      if (JSON.stringify(x) !== JSON.stringify(y)) {
+        out.push({ path: prefix || '(root)', golden: x, actual: y });
+      }
+      return;
+    }
+    const keys = [...new Set([...Object.keys(x), ...Object.keys(y)])];
+    for (const k of keys) {
+      walk(x[k], y[k], prefix ? `${prefix}/${k}` : k);
+      if (out.length >= MAX_DIFF_PATHS) {
+        truncated = true;
+        break;
+      }
+    }
+  };
+  walk(a, b, '');
+  return { diffs: out, truncated };
 }
 
 // ---------------------------------------------------------------------------
@@ -247,6 +271,7 @@ function runNode(scriptPath, args = []) {
  */
 function parseDiffPaths(stderr) {
   const out = [];
+  let truncated = false;
   let inBlock = false;
   for (const line of stderr.split('\n')) {
     if (!inBlock) {
@@ -254,10 +279,14 @@ function parseDiffPaths(stderr) {
       continue;
     }
     if (line.trim() === '') break;
+    if (line.includes(`LIST TRUNCATED at the ${MAX_DIFF_PATHS}-entry cap`)) {
+      truncated = true;
+      continue;
+    }
     const m = /^ {2}(\S+)$/.exec(line);
     if (m) out.push(m[1]);
   }
-  return out;
+  return { paths: out, truncated };
 }
 
 function selfTest() {
@@ -376,11 +405,26 @@ function selfTest() {
         problems.push('the failure output does not carry the "B3.5 DETERMINISTIC DRIFT" banner');
       }
 
-      const paths = parseDiffPaths(assertA.stderr);
+      const { paths, truncated } = parseDiffPaths(assertA.stderr);
       const act5 = paths.filter((p) => p.startsWith('acts/act5/'));
       const other = paths.filter((p) => !p.startsWith('acts/act5/'));
       const kernel = paths.filter((p) => p.startsWith('acts/act5/data/kernelValidation/'));
-      say(`  differing paths named: ${paths.length} (act 5: ${act5.length}, kernel-validation: ${kernel.length})`);
+      say(
+        `  differing paths named: ${paths.length}${truncated ? ` (TRUNCATED at the ${MAX_DIFF_PATHS}-entry cap)` : ''}` +
+          ` (act 5: ${act5.length}, kernel-validation: ${kernel.length})`,
+      );
+
+      // Reported BEFORE the path assertions below, because a truncated list
+      // makes every one of them unsound: a required path can be absent because
+      // it never moved, or merely because the cap cut the list before it. Those
+      // are different defects and must not print the same message.
+      if (truncated) {
+        problems.push(
+          `the differing-path list hit the ${MAX_DIFF_PATHS}-entry cap, so the assertions below are ` +
+            'evaluated on a PREFIX of the differences -- a missing required path here may be a cap ' +
+            'artifact rather than a real absence. Raise MAX_DIFF_PATHS or narrow the perturbation.',
+        );
+      }
 
       if (act5.length === 0) {
         problems.push('the failure names no acts/act5/* path -- "names which act broke" is not met');
@@ -666,11 +710,22 @@ function kernelTest() {
         if (!assertA.stderr.includes('B3.5 DETERMINISTIC DRIFT')) {
           problems.push('the failure output does not carry the "B3.5 DETERMINISTIC DRIFT" banner');
         }
-        const paths = parseDiffPaths(assertA.stderr);
+        const { paths, truncated } = parseDiffPaths(assertA.stderr);
         const kernel = paths.filter((p) => p.startsWith('acts/act5/data/kernelValidation/'));
         const other = paths.filter((p) => !p.startsWith('acts/act5/data/kernelValidation/'));
-        say(`  differing paths named: ${paths.length} (kernel-validation: ${kernel.length})`);
+        say(
+          `  differing paths named: ${paths.length}${truncated ? ` (TRUNCATED at the ${MAX_DIFF_PATHS}-entry cap)` : ''}` +
+            ` (kernel-validation: ${kernel.length})`,
+        );
         for (const p of paths) say(`    ${p}`);
+        if (truncated) {
+          // Same reason as the model-constant mode: a capped list turns "the
+          // required path is absent" into an ambiguous statement.
+          problems.push(
+            `the differing-path list hit the ${MAX_DIFF_PATHS}-entry cap, so the kernel-validation ` +
+              'assertions below are evaluated on a PREFIX of the differences',
+          );
+        }
         if (!kernel.includes('acts/act5/data/kernelValidation/kernelCarbonKg')) {
           problems.push(
             'acts/act5/data/kernelValidation/kernelCarbonKg did not move under a kernel ' +
@@ -794,7 +849,7 @@ if (golden.text === actualText) {
   process.exit(0);
 }
 
-const diffs = diffPaths(golden.value, report.deterministic);
+const { diffs, truncated } = diffPaths(golden.value, report.deterministic);
 console.error(
   '::error::B3.5 DETERMINISTIC DRIFT -- the five-act demo no longer reproduces its seeded golden.',
 );
@@ -806,7 +861,13 @@ if (diffs.length === 0) {
   console.error('No value-level difference found -- the two serialize differently only in key order or');
   console.error('formatting, i.e. the report SHAPE changed rather than any measured number.');
 } else {
-  console.error(`${diffs.length}${diffs.length >= 40 ? '+' : ''} differing path(s), golden -> actual:`);
+  console.error(`${diffs.length}${truncated ? '+' : ''} differing path(s), golden -> actual:`);
+  if (truncated) {
+    console.error(
+      `  LIST TRUNCATED at the ${MAX_DIFF_PATHS}-entry cap -- these are the first ${MAX_DIFF_PATHS} of` +
+        ' AT LEAST that many. Fix these, re-run, and the next batch appears.',
+    );
+  }
   for (const d of diffs) {
     console.error(`  ${d.path}`);
     console.error(`      golden: ${JSON.stringify(d.golden)}`);

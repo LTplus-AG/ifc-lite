@@ -96,9 +96,14 @@ node harness-b34.mjs --dir=<scratch> --models=duplex,advanced,holter,c20,i129
 <!-- numeral-ok: 640, 96, 96B :: format constants of the path-C encoding, not
      measurements: a 640-bit exact integer accumulator over 96-byte tuples. Fixed
      by the kernel's design and stated in the WGSL, not emitted by any report. -->
-<!-- numeral-ok: 194 :: the fidelity-gated job corpus size, summed over the
-     per-model `meta.jobs` fields of report.b34.json. The artifact stores the
-     addends, not the total. -->
+<!-- numeral-ok: 194 :: the number of jobs that PASSED the byte-identity fidelity
+     gate, summed over report.b34.json's five per-model `meta.fidelityChecked`
+     fields: models[0..4].meta.fidelityChecked = 10 (duplex) + 13 (advanced) + 2
+     (holter) + 68 (c20) + 101 (i129) = 194. It is NOT the sum of `meta.jobs`,
+     which is 208: i129 declares 115 jobs but only 101 were fidelity-checked,
+     the 14 batched i129 jobs being excluded. numeral-src cannot express this
+     because no single field holds the total; the five addends are individually
+     bindable and are named above so the sum is checkable by hand. -->
 <!-- numeral-ok: 82% :: the void-CSG share of load time, from the repo's separate
      CSG performance investigation, not from this bet. -->
 
@@ -136,11 +141,21 @@ grazing contacts), nothing like random inputs; per-tuple those cost the CPU
 adaptive path ~6x more (~65 ns vs ~10 ns native), and up to 68% of the
 stage's CPU time (duplex).
 
-<!-- numeral-ok: 20.8%, 35.8%, 18.1%, 25.8%, 4.4%, 6.4%, 8.3% :: shares computed
-     in the table row from two counts printed in that same row, both of which come
-     from report.b34.json (`meta.totalPairs`, `meta.nearCoplanarPairs`,
-     `meta.tuples`, `meta.signCounts.zero`). Arithmetic the reader can check on
-     the line; the artifact stores the operands, not the ratio. -->
+<!-- numeral-ok: 20.8%, 35.8%, 18.1%, 6.4% :: shares computed in the table row
+     from two counts PRINTED IN THAT SAME ROW, so the arithmetic is checkable on
+     the line. 20.8%, 18.1% and 6.4% are `meta.nearCoplanarPairs` over
+     `meta.totalPairs`; 35.8% is `meta.signCounts.zero` over `meta.tuples`. All
+     four operand fields are in report.b34.json, which stores the operands and
+     not the ratio. -->
+<!-- numeral-ok: 25.8%, 4.4%, 8.3% :: also `meta.signCounts.zero` over
+     `meta.tuples`, but written BARE in the "exact-Zero signs" column with no
+     count beside them, so unlike 35.8% their numerator is not on the line and
+     has to be read out of report.b34.json: advanced 1203/4656, holter 238/5448,
+     i129 22861/274254. -->
+<!-- numeral-src: 1.2% :: none - the fourth bare zero-sign share, c20's
+     162/14016 = 1.156%, rounded to 1.2%. Bound to `none` because a bare 1.2
+     resolves against unrelated fields in the union index, and this ratio is
+     stored by no artifact any more than the three above it. -->
 <!-- numeral-ok: 108k :: rounded tuple count of the single largest i129 element,
      a per-element figure the model-level report does not break out. -->
 
@@ -266,9 +281,13 @@ moonshot framing assumed at this stage; the adaptive filter already deleted
 the cost the GPU was supposed to delete.
 
 <!-- numeral-ok: 5000x, 135x :: 5000x is the escalated interval/exact tier cost
-     per call from the kernel's own budget.rs profiling (the #1109 stall family);
-     135x is the best exact-CPU-tier speedup quoted from B2.5's DESIGN.md, a
-     different bet's run. Neither is emitted by report.b34.json. -->
+     per call from the kernel's own budget.rs profiling (the #1109 stall family).
+     The range "25-135x" quotes BOTH endpoints of B2.5's exact-CPU-tier result
+     table in scripts/moonshot/gpu-predicates/DESIGN.md: the low endpoint is the
+     1e6-tuple row's 24.6x, rounded UP to 25; the high endpoint is the 1e7-tuple
+     row's 135.1x, rounded DOWN to 135. That table is markdown, not JSON, so
+     neither endpoint can be bound with numeral-src to a field, and neither is
+     emitted by report.b34.json - it is a different bet's run. -->
 
 ## 6. Files
 

@@ -80,25 +80,36 @@ THE EXACT PERTURBATION
   change in a diff. It is a reliability choice, not a sensitivity claim.
 
 NEGATIVE CONTROL (this file's most important line)
-A self-test that always passes is the same disease it was written to cure. Run
-on 2026-07-29 with PERTURB_REPLACE set to the one-ULP value 315.00000000000006
-and nothing else changed, the mode correctly FAILED, exit 1:
+A self-test that always passes is the same disease it was written to cure. Re-run
+on 2026-08-01 at b893b89c (same branch, same machine as the header above) with
+PERTURB_REPLACE set to the one-ULP value 315.00000000000006 and nothing else
+changed, the mode correctly FAILED, exit 1. Verbatim stderr, the only edit being
+a line wrap of each `  - ` bullet to fit this file:
 
   ::error::B3.5 GOLDEN SELF-TEST FAILED -- the tripwire cannot be trusted.
     - THE TRIPWIRE DID NOT FIRE: the golden check passed with a perturbed carbon
-      factor. A >=1e-6 relative change reached no pinned field -- the golden no
-      longer covers act 5's kernel-validation block, or the demo is not reading
-      the perturbed source.
+      factor. A >=1e-6 relative change to act 5 reached no pinned field -- the
+      golden no longer covers act 5, or the demo is not reading the perturbed
+      source.
     - the failure output does not carry the "B3.5 DETERMINISTIC DRIFT" banner
     - the failure names no acts/act5/* path -- "names which act broke" is not met
     - acts/act5/data/kernelValidation/kernelCarbonKg did not move, although the
-      perturbed constant is multiplied into it by act5-descent.mjs -- the kernel
-      measurement is no longer reaching the golden
+      perturbed constant is multiplied into it by act5-descent.mjs -- the
+      kernel-validation block is no longer emitted, or no longer pinned by the
+      golden
 
   stage A reported: golden check exited 0 (expected 1 = drift), differing paths
-  named: 0. The tree was still restored clean. So the mode distinguishes "the
-  tripwire fired" from "the tripwire was asked something it cannot detect", and
-  exits non-zero for the second -- it tests the test.
+  named: 0 (act 5: 0, kernel-validation: 0). The tree was still restored clean.
+  So the mode distinguishes "the tripwire fired" from "the tripwire was asked
+  something it cannot detect", and exits non-zero for the second -- it tests the
+  test.
+
+  This block was regenerated on 2026-08-01 rather than hand-corrected: the
+  transcript captured on 2026-07-29 had drifted from the messages the script
+  actually emits (the fourth bullet still read "the kernel measurement is no
+  longer reaching the golden", wording the script stopped using when the
+  assertion was correctly re-described as a WIRING check on act 5). A negative
+  control that quotes output the code cannot produce is not evidence.
 
 TIMING: THE "GREEN IN UNDER 20 MINUTES" HALF OF THE EXAM
 Both halves are now measured in the FULL configuration (the two Holter-gated

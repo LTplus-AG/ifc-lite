@@ -2,7 +2,8 @@
   "bet": "B5.2",
   "pass": "adjudication",
   "alias": "model-a",
-  "approxMegabytes": 75,
+  "modelSha256Prefix": "1eac13348753",
+  "bytes": 75511560,
   "quantityBinding": {
     "elementQuantitySets": 15872,
     "boundByRelDefinesByProperties": 15872,

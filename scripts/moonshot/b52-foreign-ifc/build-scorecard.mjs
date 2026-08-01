@@ -18,14 +18,17 @@
  * judgement call in this bet. Each carries the artifact field that decides it,
  * so a reviewer can overturn any single line without re-running anything.
  *
+ * Nothing is written until the identifier guard at the bottom of this file has
+ * passed over both the scorecard and every pass artifact it copies.
+ *
  * Usage:
  *   node build-scorecard.mjs --runs <dir with the pass JSONs> [--out <dir>]
+ *     [--forbid <name>]... [--forbid-file <path outside this repo>]
  */
 
 import { readFileSync, writeFileSync, mkdirSync, copyFileSync, readdirSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { SIZE_BUCKET_MB, ENTITY_COUNT_BUCKET } from './lib/model-id.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '../../..');
@@ -171,17 +174,12 @@ const medianHeuristicMs = anchor.heuristicMsPerModel.median;
 const medianEntityCount = anchor.entityCount.median;
 const medianBytes = anchor.fileBytes.median;
 
-// NOTE on the foreign rows: every scale figure below divides by a BUCKETED
-// entity count and a BUCKETED byte size (lib/model-id.mjs), because the exact
-// values are a re-identification vector on a delivered client file. The ratios
-// are therefore accurate to the bucket, which is far finer than any claim the
-// report makes from them.
 const scaleRow = (a) => ({
   alias: a,
-  approxEntityCount: foreign[a].text.approxEntityCount,
-  entityCountVsSyntheticMedian: round(foreign[a].text.approxEntityCount / medianEntityCount, 1),
-  approxMegabytes: foreign[a].text.approxMegabytes,
-  bytesVsSyntheticMedian: round((foreign[a].text.approxMegabytes * 1e6) / medianBytes, 1),
+  entityCount: foreign[a].text.entityCount,
+  entityCountVsSyntheticMedian: round(foreign[a].text.entityCount / medianEntityCount, 1),
+  bytes: foreign[a].text.bytes,
+  bytesVsSyntheticMedian: round(foreign[a].text.bytes / medianBytes, 1),
   oracleMs: foreign[a].oracle.oracleMs,
   oracleMsVsSyntheticMedian: round(foreign[a].oracle.oracleMs / medianOracleMs, 1),
   heuristicMs: foreign[a].text.heuristicMs,
@@ -190,7 +188,7 @@ const scaleRow = (a) => ({
   oracleRssAtExitMb: foreign[a].oracle.rssAtExitMb,
   // Cost per entity is the scale-normalised comparison: it says whether the
   // instrument merely met a bigger file or got worse per unit of work.
-  oracleUsPerEntity: round((foreign[a].oracle.oracleMs * 1000) / foreign[a].text.approxEntityCount, 3),
+  oracleUsPerEntity: round((foreign[a].oracle.oracleMs * 1000) / foreign[a].text.entityCount, 3),
 });
 
 const syntheticOracleUsPerEntity = round((medianOracleMs * 1000) / medianEntityCount, 3);
@@ -306,20 +304,16 @@ const scorecard = {
         referenceIntegrityProbe: anchor.referenceIntegrityProbe,
       },
     },
-    foreignDeidentification: {
-      note: 'both foreign models are real delivered client work. Descriptors that would let a reader holding a candidate file CONFIRM a match - a sha256 prefix, an exact byte length, an exact entity count, a counted element histogram - are not emitted here or in results/*.json; what remains is bucketed or ordinal. See lib/model-id.mjs.',
-      sizeBucketMegabytes: SIZE_BUCKET_MB,
-      entityCountBucket: ENTITY_COUNT_BUCKET,
-      dominantElementTypesEmitted: foreign['model-a'].text.dominantElementTypes.length,
-    },
     foreign: ALIASES.map((a) => ({
       alias: a,
+      modelSha256Prefix: foreign[a].text.modelSha256Prefix,
       authoringToolFamily: foreign[a].text.authoringToolFamily,
       schema: foreign[a].text.schema,
-      approxMegabytes: foreign[a].text.approxMegabytes,
-      approxEntityCount: foreign[a].text.approxEntityCount,
+      bytes: foreign[a].text.bytes,
+      megabytes: foreign[a].text.megabytes,
+      entityCount: foreign[a].text.entityCount,
       distinctEntityTypes: foreign[a].text.distinctEntityTypes,
-      dominantElementTypes: foreign[a].text.dominantElementTypes,
+      elementHistogram: foreign[a].text.elementHistogram,
       meshedElementCount: foreign[a].kernel.clash.meshedElementCount,
       totalTriangles: foreign[a].qto.meshes.totalTriangles,
     })),
@@ -470,9 +464,210 @@ degRow.reading = bodyless
   ? `every one of the ${degenA.unmeshedColumns} unmeshed columns declares a Representation, but none of those representations is a Body: the whole set is ${repKeys.join(', ')}. So the kernel is right to produce no mesh, the file really does ship columns with no solid geometry, and the verdict points at something real - but the defect type it names ("degenerate-geometry", planted in the corpus as a zero-depth extrusion) is not what is there. Classed true-signal-wrong-label.`
   : `${degenA.unmeshedDeclaringNoRepresentation} of the ${degenA.unmeshedColumns} unmeshed columns declare no Representation at all; the remaining ${degenA.unmeshedDeclaringRepresentation} declare ${repKeys.length > 0 ? repKeys.join(', ') : 'no shape representation this probe could read'}.`;
 
-mkdirSync(join(outDir, 'results'), { recursive: true });
-for (const f of readdirSync(runsDir)) {
-  if (f.endsWith('.json')) copyFileSync(join(runsDir, f), join(outDir, 'results', f));
+// ---------------------------------------------------------------------------
+// THE IDENTIFIER GUARD.
+//
+// Everything above this line composes an artifact out of whatever the pass
+// JSONs happened to contain and, until now, wrote it unchecked. B5.5's runner
+// asserts over its own output before writing; this build asserted nothing, and
+// that is the entire structural difference between the bet that leaked
+// authored text into a committed file and the bet that did not. So the
+// assertion lives here, and it runs over the scorecard AND over every results
+// file this script copies, because the leak was in both.
+//
+// WHAT IT REJECTS IS NAMES, NOT MEASUREMENTS. Exact byte counts, exact entity
+// counts, counted histograms and sha256 prefixes are published deliberately -
+// the claim this bet makes is "measured on real files", and a bucketed figure
+// is a weaker version of that claim, not a safer one. There is therefore no
+// rule below about magnitude, precision or uniqueness. What must never appear
+// is a real FILE NAME or a person / organisation / project name.
+//
+// Three rules, in the order they fire:
+//
+//  1. FILE NAMES AND PATHS, by shape. Any token carrying a model or CAD file
+//     extension, and any absolute or home-relative filesystem path. This needs
+//     no knowledge of what the two source files are actually called - which
+//     matters, because a denylist that spelled them out would itself be the
+//     leak it exists to prevent.
+//
+//  2. AUTHORED STRINGS, by closed vocabulary at the points they can enter.
+//     Every map in this artifact set whose KEYS are text the file authored is
+//     listed with the vocabulary those keys must come from. A storey, site or
+//     organisation name fails the pattern that `IFCWALL`, `BaseQuantities` or
+//     `quantity-completeness/info` passes. Maps that are keyed by authored text
+//     with no safe vocabulary at all (`byStorey`, the one run-cli-pass used to
+//     copy wholesale) map to null and are rejected on sight. A key name that
+//     looks like a map and is NOT listed is also rejected, so an open-ended map
+//     added upstream fails closed rather than shipping.
+//
+//  3. AN OPERATOR DENYLIST, for the names no shape rule can know: the client,
+//     the firm, the project, the two source file names. Supplied at run time
+//     via --forbid <string> (repeatable) or --forbid-file <path>, both read
+//     from OUTSIDE this repository. Writing them into this file would publish
+//     exactly what they exist to suppress.
+// ---------------------------------------------------------------------------
+
+/** Model / CAD file extensions. A basename carrying one of these is a file name. */
+const MODEL_FILE_RE = /[^\s"'`]*\.(?:ifc|ifczip|ifcxml|ifcjson|rvt|rfa|rte|pln|plc|dwg|dxf|dgn|skp|nwd|nwc|3dm|stp|step|sat)\b/i;
+
+/** Absolute or home-relative filesystem paths, on either platform. */
+const FS_PATH_RE = /(?:[A-Za-z]:[\\/]|\\\\[^\\]|~\/|\/(?:Users|home|Volumes|mnt|media|Documents|Desktop|Downloads)\/)/;
+
+/**
+ * Maps whose KEYS are, or could be, text the source file authored. The pattern
+ * is the vocabulary a key is allowed to come from; null means the map itself
+ * must never reach an artifact.
+ */
+const KEYED_BY_AUTHORED_TEXT = new Map([
+  ['elementHistogram', /^IFC[A-Z0-9]+$/],
+  ['duplicateGroupsByEntityType', /^IFC[A-Z0-9]+$/],
+  // Emitted as a `{ rule, severity, count }` array by every pass here; the
+  // pattern covers the map form the CLI can also produce.
+  ['byRule', /^[a-z0-9-]+$/],
+  ['byTypePair', /^IFC[A-Z0-9]+\s*[|/]\s*IFC[A-Z0-9]+$/],
+  // Kernel CSG failure reasons; emitted as a `{ reason, count }` array here.
+  ['failuresByReason', /^[A-Za-z]+$/],
+  ['ruleCounts', /^[a-z0-9-]+\/(?:error|warning|info)$/],
+  ['qsetLabelCounts', /^(?:Qto_[A-Za-z0-9]+|BaseQuantities|<non-standard>)$/],
+  ['quantityLabelCounts', /^(?:[A-Za-z]+|<non-standard>)$/],
+  ['groups', /^[a-z]+$/],
+  ['perGroup', /^[a-z]+$/],
+  ['committedRows', /^[a-z][a-z-]*$/],
+  // Synthetic-side only, keyed by the corpus's own defect-type names.
+  ['oracleByType', /^[a-z][a-z-]*$/],
+  ['heuristicByType', /^[a-z][a-z-]*$/],
+  ['bySeverity', /^(?:critical|major|minor|info)$/],
+  ['sampledPairSeverityHistogram', /^(?:critical|major|minor|info)$/],
+  ['representationIdentifierAndType', /^[A-Za-z]+\/[A-Za-z]+$/],
+  ['unmeshedRepresentationIdentifierAndType', /^[A-Za-z]+\/[A-Za-z]+$/],
+  ['representationItemTypes', /^(?:Ifc[A-Za-z0-9]+|Unknown)$/],
+  ['unmeshedRepresentationItemTypes', /^(?:Ifc[A-Za-z0-9]+|Unknown)$/],
+  // Keyed by authored storey / element / project name. No safe vocabulary.
+  ['byStorey', null],
+  ['byElement', null],
+  ['byName', null],
+  ['byProject', null],
+  ['byOrganization', null],
+  ['byOrganisation', null],
+]);
+
+/**
+ * A key name that reads as "a map keyed by data" and is absent from the table
+ * above is a hole, not a pass: it means an upstream pass started emitting a
+ * dynamic map that nobody vetted. Deliberately narrower than "ends in Counts",
+ * which also matches fixed-shape records like `foreignVerdictCounts`.
+ */
+const LOOKS_LIKE_A_MAP = /^by[A-Z]|(?:Histogram|LabelCounts|NameCounts|TypeCounts|ByEntityType|ByReason|ByType)$/;
+
+/** `{ rule, severity, count }` rows, as ifc-lite's own validate / clash emit them. */
+const RULE_ID_RE = /^[a-z0-9-]+$/;
+const SEVERITY_RE = /^(?:critical|major|minor|info|error|warning)$/;
+const FAILURE_REASON_RE = /^[A-Za-z]+$/;
+
+function collectForbidden() {
+  const out = [];
+  for (let i = 0; i < process.argv.length; i += 1) {
+    if (process.argv[i] === '--forbid' && process.argv[i + 1]) out.push(process.argv[i + 1]);
+    if (process.argv[i] === '--forbid-file' && process.argv[i + 1]) {
+      for (const line of readFileSync(process.argv[i + 1], 'utf-8').split('\n')) {
+        const s = line.trim();
+        if (s !== '' && !s.startsWith('#')) out.push(s);
+      }
+    }
+  }
+  return out.map((s) => s.toLowerCase()).filter((s) => s.length >= 3);
 }
+
+function assertNoIdentifiers(root, label, forbidden) {
+  const violations = [];
+  /**
+   * NEVER print the offending value. This guard's whole job is to stop an
+   * identifier reaching a public artifact, and its failure message goes
+   * straight into a CI log on a PUBLIC repository -- echoing the name there
+   * would leak exactly what the guard just caught, in a place that is harder
+   * to redact than the artifact was. So a violation reports WHERE it is and
+   * WHAT rule it broke, plus a shape sketch (length and character classes)
+   * that is enough to find the value locally and not enough to reconstruct it.
+   * Run the build yourself to see the value; the log will not hand it over.
+   */
+  const sketch = (sample) => {
+    const s = String(sample);
+    const classes = [
+      /[A-Z]/.test(s) ? 'A' : '',
+      /[a-z]/.test(s) ? 'a' : '',
+      /[0-9]/.test(s) ? '9' : '',
+      /[^A-Za-z0-9]/.test(s) ? '_' : '',
+    ].join('');
+    return `<${s.length} chars, [${classes}]>`;
+  };
+  const fail = (where, why, sample) => violations.push(`${label}${where}: ${why} -> ${sketch(sample)}`);
+
+  const checkText = (text, where, kind) => {
+    if (typeof text !== 'string' || text === '') return;
+    const fileName = MODEL_FILE_RE.exec(text);
+    if (fileName) fail(where, `${kind} carries a model/CAD file name`, fileName[0]);
+    if (FS_PATH_RE.test(text)) fail(where, `${kind} carries a filesystem path`, text.slice(0, 120));
+    const lower = text.toLowerCase();
+    for (const f of forbidden) {
+      if (lower.includes(f)) fail(where, `${kind} contains a denylisted name`, '<redacted denylist hit>');
+    }
+  };
+
+  const walk = (node, where) => {
+    if (Array.isArray(node)) {
+      node.forEach((v, i) => walk(v, `${where}[${i}]`));
+      return;
+    }
+    if (node === null || typeof node !== 'object') {
+      checkText(node, where, 'value');
+      return;
+    }
+    // `{ rule, severity, count }` and `{ reason, count }` rows carry ifc-lite's
+    // own vocabulary; anything else in those slots came from the file.
+    if (typeof node.rule === 'string' && 'severity' in node && 'count' in node) {
+      if (!RULE_ID_RE.test(node.rule)) fail(`${where}.rule`, 'not an ifc-lite rule id', node.rule);
+      if (!SEVERITY_RE.test(String(node.severity))) fail(`${where}.severity`, 'not a severity', node.severity);
+    }
+    if (typeof node.reason === 'string' && 'count' in node && !FAILURE_REASON_RE.test(node.reason)) {
+      fail(`${where}.reason`, 'not a kernel failure reason', node.reason);
+    }
+    for (const [k, v] of Object.entries(node)) {
+      checkText(k, `${where}.${k}`, 'key');
+      const known = KEYED_BY_AUTHORED_TEXT.has(k);
+      if (known || LOOKS_LIKE_A_MAP.test(k)) {
+        if (!known) {
+          fail(`${where}.${k}`, 'map-shaped key this guard was never taught; add it to KEYED_BY_AUTHORED_TEXT', k);
+        } else {
+          const pattern = KEYED_BY_AUTHORED_TEXT.get(k);
+          if (pattern === null) {
+            fail(`${where}.${k}`, 'this map is keyed by authored text and must not be emitted', k);
+          } else if (v !== null && typeof v === 'object' && !Array.isArray(v)) {
+            for (const mk of Object.keys(v)) {
+              if (!pattern.test(mk)) fail(`${where}.${k}`, `key outside the allowed vocabulary ${pattern}`, mk);
+            }
+          }
+        }
+      }
+      walk(v, `${where}.${k}`);
+    }
+  };
+
+  walk(root, '');
+  if (violations.length > 0) {
+    process.stderr.write(`identifier guard FAILED with ${violations.length} violation(s):\n`);
+    for (const v of violations) process.stderr.write(`  ${v}\n`);
+    process.stderr.write('nothing was written. Measurements are publishable; names are not.\n');
+    process.exit(1);
+  }
+}
+
+const FORBIDDEN = collectForbidden();
+const copies = readdirSync(runsDir).filter((f) => f.endsWith('.json'));
+for (const f of copies) assertNoIdentifiers(readJson(join(runsDir, f)), `results/${f}`, FORBIDDEN);
+assertNoIdentifiers(scorecard, 'scorecard.json', FORBIDDEN);
+
+mkdirSync(join(outDir, 'results'), { recursive: true });
+for (const f of copies) copyFileSync(join(runsDir, f), join(outDir, 'results', f));
 writeFileSync(join(outDir, 'scorecard.json'), `${JSON.stringify(scorecard, null, 2)}\n`, 'utf-8');
-process.stdout.write(`wrote ${join(outDir, 'scorecard.json')}\n`);
+process.stdout.write(`wrote ${join(outDir, 'scorecard.json')} (identifier guard passed over ${copies.length} pass artifacts + the scorecard`
+  + `${FORBIDDEN.length > 0 ? `, with ${FORBIDDEN.length} operator-supplied denylist entries` : ', no operator denylist supplied'})\n`);

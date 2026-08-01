@@ -2,7 +2,8 @@
   "bet": "B5.2",
   "pass": "kernel",
   "alias": "model-b",
-  "approxMegabytes": 90,
+  "modelSha256Prefix": "90ddf9c3403a",
+  "bytes": 90264955,
   "schemaVersion": "IFC4",
   "timings": {
     "wasmWarmMs": 5.3,

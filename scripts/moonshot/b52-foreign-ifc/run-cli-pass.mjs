@@ -17,8 +17,7 @@
  * `clash --json` echoes authored element names in every clash record, and the
  * clash SUMMARY carries `byStorey`, whose keys are authored storey names. None
  * of it is read out of the child's stdout: every field lifted below is named
- * explicitly, the raw stdout is never written anywhere, and the entity count
- * is bucketed before it is emitted (see lib/model-id.mjs).
+ * explicitly, and the raw stdout is never written anywhere.
  *
  * Usage:
  *   node run-cli-pass.mjs --model <abs path> --alias model-a --out <dir>
@@ -29,7 +28,7 @@ import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { coarseMegabytes, coarseEntityCount, round } from './lib/model-id.mjs';
+import { modelId, round } from './lib/model-id.mjs';
 
 const execFileAsync = promisify(execFile);
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -48,6 +47,7 @@ if (!modelPath || !alias || !outDir) {
 }
 
 const bytes = await readFile(modelPath);
+const id = modelId(bytes);
 
 async function runCli(args) {
   const t0 = performance.now();
@@ -88,7 +88,7 @@ try {
     errorCode: v.errorCode,
     wallMs: round(v.ms, 1),
     schema: j.schema ?? null,
-    approxEntityCount: coarseEntityCount(j.entityCount ?? null),
+    entityCount: j.entityCount ?? null,
     valid: j.valid,
     errors: j.errors,
     warnings: j.warnings,
@@ -145,7 +145,8 @@ const out = {
   bet: 'B5.2',
   pass: 'cli',
   alias,
-  approxMegabytes: coarseMegabytes(bytes.byteLength),
+  modelSha256Prefix: id,
+  bytes: bytes.byteLength,
   validate,
   clash,
 };

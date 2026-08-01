@@ -2,7 +2,8 @@
   "bet": "B5.2",
   "pass": "oracle",
   "alias": "model-a",
-  "approxMegabytes": 75,
+  "modelSha256Prefix": "1eac13348753",
+  "bytes": 75511560,
   "oracleMs": 29754.1,
   "rssAtExitMb": 1106.8,
   "prediction": {

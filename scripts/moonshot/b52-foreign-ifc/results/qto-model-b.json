@@ -2,7 +2,8 @@
   "bet": "B5.2",
   "pass": "qto",
   "alias": "model-b",
-  "approxMegabytes": 90,
+  "modelSha256Prefix": "90ddf9c3403a",
+  "bytes": 90264955,
   "geometryMs": 14676.2,
   "rssAtExitMb": 1102.3,
   "units": {

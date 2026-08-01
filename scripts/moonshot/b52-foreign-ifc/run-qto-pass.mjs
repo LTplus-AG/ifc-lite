@@ -49,7 +49,7 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseStore, initChecks } from '../../../tools/world-gym/lib/checks.mjs';
-import { coarseMegabytes, round } from './lib/model-id.mjs';
+import { modelId, round } from './lib/model-id.mjs';
 
 const { EntityNode } = await import('../../../packages/query/dist/index.js');
 const { extractProjectUnits } = await import('../../../packages/parser/dist/index.js');
@@ -68,6 +68,7 @@ if (!modelPath || !alias || !outDir) {
 }
 
 const bytes = await readFile(modelPath);
+const id = modelId(bytes);
 
 const processor = await initChecks();
 process.stderr.write('parsing...\n');
@@ -243,7 +244,8 @@ const out = {
   bet: 'B5.2',
   pass: 'qto',
   alias,
-  approxMegabytes: coarseMegabytes(bytes.byteLength),
+  modelSha256Prefix: id,
+  bytes: bytes.byteLength,
   geometryMs: round(geomMs, 1),
   // Sampled once, here, at the end of the pass - not a high-water mark over
   // the parse and geometry stages. Named for what it is.

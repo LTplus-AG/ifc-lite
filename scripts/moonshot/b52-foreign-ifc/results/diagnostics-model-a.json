@@ -3,7 +3,8 @@
   "pass": "diagnostics",
   "side": "foreign",
   "alias": "model-a",
-  "approxMegabytes": 75,
+  "modelSha256Prefix": "1eac13348753",
+  "bytes": 75511560,
   "elapsedMs": 28603.9,
   "diagnostics": {
     "present": true,

@@ -37,7 +37,7 @@ import { join } from 'node:path';
 import {
   parseStore, schemaCheckInProcess, clashCheckInProcess, extractQuantityTotals, initChecks,
 } from '../../../tools/world-gym/lib/checks.mjs';
-import { coarseMegabytes, standardNameOrPlaceholder, round } from './lib/model-id.mjs';
+import { modelId, standardNameOrPlaceholder, round } from './lib/model-id.mjs';
 
 const { EntityNode } = await import('../../../packages/query/dist/index.js');
 
@@ -57,6 +57,7 @@ if (!modelPath || !alias || !outDir) {
 const mem = () => round(process.memoryUsage().rss / 1e6, 1);
 
 const bytes = await readFile(modelPath);
+const id = modelId(bytes);
 
 process.stderr.write('warming geometry processor...\n');
 const tWarm = performance.now();
@@ -146,7 +147,8 @@ const out = {
   bet: 'B5.2',
   pass: 'kernel',
   alias,
-  approxMegabytes: coarseMegabytes(bytes.byteLength),
+  modelSha256Prefix: id,
+  bytes: bytes.byteLength,
   schemaVersion: schema.schema,
   timings: {
     wasmWarmMs: round(warmMs, 1),

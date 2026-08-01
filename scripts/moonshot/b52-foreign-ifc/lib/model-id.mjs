@@ -12,22 +12,12 @@
  * path as a RUNTIME argument, reads it in place, and writes only what this
  * module lets through:
  *
- *   - a human-readable alias ("model-a" / "model-b") supplied on the command
- *     line by the operator, and nothing else that binds an artifact to a
- *     specific file;
- *   - COARSENED descriptors: a 5 MB size bucket, a 50,000-entity count
- *     bucket, the schema version, the ORDER of the dominant element types
- *     (names, no counts) and the authoring-tool FAMILY (a coarse label the
+ *   - a stable id: the first 12 hex of sha256(file bytes), plus a
+ *     human-readable alias ("model-a" / "model-b") supplied on the command
+ *     line by the operator;
+ *   - non-identifying descriptors: byte size, schema version, entity count,
+ *     entity-type histogram, authoring-tool FAMILY (a coarse label the
  *     operator passes in, never the FILE_NAME / FILE_DESCRIPTION strings).
- *
- * RE-IDENTIFICATION, which is the thing this module exists to prevent. A
- * measurement that is exact, cheap to recompute and effectively unique is not
- * a descriptor, it is a confirmation oracle: a reader holding a candidate file
- * can check it in seconds and know whether they are holding the model. A
- * sha256 prefix does that outright; so, very nearly, do an exact byte length,
- * an exact entity count and a full element histogram. None of those is emitted
- * by this bet. What IS emitted is coarse enough that a match narrows rather
- * than confirms.
  *
  * Two different filters, because the two kinds of string carry different
  * risk:
@@ -46,52 +36,11 @@
  * file's quantity vocabulary is standard" is the number the report wants.
  */
 
-/** Size bucket, in megabytes. Widened deliberately: see RE-IDENTIFICATION. */
-export const SIZE_BUCKET_MB = 5;
+import { createHash } from 'node:crypto';
 
-/** Entity-count bucket. Widened deliberately: see RE-IDENTIFICATION. */
-export const ENTITY_COUNT_BUCKET = 50_000;
-
-/**
- * Coarsen a byte length to a 5 MB bucket. The exact length is one `stat` away
- * for anyone holding a candidate file and is very nearly unique to it; a 5 MB
- * bucket keeps the only claim the report makes from this number (these files
- * are three orders of magnitude larger than a corpus model) while admitting
- * far too many files to confirm one.
- *
- * Both buckets are sized for this bet's inputs, which are 75-90 MB and ~1M
- * entities. Anything much smaller rounds to 0, which is the honest bucket for
- * it and not a measurement failure.
- */
-export function coarseMegabytes(byteLength) {
-  if (typeof byteLength !== 'number' || !Number.isFinite(byteLength)) return null;
-  return Math.round(byteLength / 1e6 / SIZE_BUCKET_MB) * SIZE_BUCKET_MB;
-}
-
-/**
- * Coarsen an entity count to a 50,000-entity bucket. Same reasoning as
- * `coarseMegabytes`: an exact count is one grep away and effectively unique,
- * while the scale comparison the report makes survives the bucket intact.
- */
-export function coarseEntityCount(n) {
-  if (typeof n !== 'number' || !Number.isFinite(n)) return null;
-  return Math.round(n / ENTITY_COUNT_BUCKET) * ENTITY_COUNT_BUCKET;
-}
-
-/**
- * The dominant element types, by descending count, as NAMES ONLY.
- *
- * The counted histogram this replaces was the strongest single fingerprint in
- * the artifact set: forty-odd exact per-type counts jointly identify a file
- * beyond doubt. The ordered names carry what the report actually claims from
- * it - whether the model is structural or architectural - and are shared by
- * every model of that character.
- */
-export function dominantElementTypes(typeCounts, n = 8) {
-  return Object.entries(typeCounts ?? {})
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, n)
-    .map(([t]) => t);
+/** Stable, non-reversible id for a model: first 12 hex of sha256(bytes). */
+export function modelId(bytes) {
+  return createHash('sha256').update(bytes).digest('hex').slice(0, 12);
 }
 
 /**

@@ -15,25 +15,25 @@ from the committed `benchmark/results/`, never recomputed.
 
 ## The two foreign models
 
-Both are real delivered client work, so they are named only by an operator-supplied
-alias and a coarse authoring-tool family. Nothing identifying about the project,
-the firm, the file name or the filesystem is recorded anywhere in this directory.
-`lib/model-id.mjs` is the filter that enforces it.
+Both are real delivered client work, so they are named only by a truncated
+sha256 of their bytes, an operator-supplied alias and a coarse authoring-tool
+family. Nothing identifying about the project, the firm, the file name or the
+filesystem is recorded anywhere in this directory. `lib/model-id.mjs` is the
+filter that enforces it, and `build-scorecard.mjs` asserts it again over the
+finished artifact before writing it.
 
-That filter treats **re-identification** as the thing to prevent, not just
-naming. An exact byte length, an exact entity count, a counted element
-histogram or a sha256 prefix are each cheap to recompute and effectively unique
-to one file, which makes them a confirmation oracle: a reader holding a
-candidate model could check any one of them in seconds and know. None of them
-is emitted. The size and entity figures below are buckets (5 MB and 50,000
-entities), and the element mix is an ordering of type names with no counts.
+The measurements themselves are published exactly. What is excluded is names:
+the source file names, any `.ifc` / `.ifcZIP` basename, and authored
+person/organisation/storey/site strings. A byte count is evidence; a file name
+is an identifier.
 
 | | model-a | model-b |
 | --- | --- | --- |
+| sha256 prefix | `1eac13348753` | `90ddf9c3403a` |
 | schema | IFC4 | IFC4 |
 | authoring tool family | IfcOpenShell | Archicad |
-| approximate size | ~75 MB | ~90 MB |
-| approximate entities | ~1,100,000 | ~1,050,000 |
+| bytes | 75,511,560 | 90,264,955 |
+| entities | 1,083,664 | 1,040,356 |
 | distinct entity types | 97 | 122 |
 | character | structural: beams, slabs, columns | architectural: windows, walls, doors, spaces, furniture |
 | meshed elements | 20,809 | 77,290 |
@@ -41,7 +41,7 @@ entities), and the element mix is an ordering of type names with no counts.
 
 The synthetic corpus these are being compared against has a median of 649
 entities and a maximum of 4,749 over the whole 1,000-model dev split. The
-foreign models are 1,694.9x and 1,617.9x the median entity count.
+foreign models are 1,669.7x and 1,603.0x the median entity count.
 
 ## The delta table
 
@@ -148,7 +148,7 @@ underneath it does not.
 
 - `ifc-lite validate` ran clean on both models through the shipped CLI:
   0 errors, 0 warnings, exit code 0, in 2,100.2 ms and 1,920.1 ms wall,
-  reporting ~1,100,000 and ~1,050,000 entities. The only issues raised are
+  reporting 1,083,664 and 1,040,356 entities. The only issues raised are
   informational (`quantity-completeness` on both, `named-elements` on model-b).
   No dangling references, no duplicate GlobalIds, no missing spatial entities.
 - `ifc-lite clash --matrix` ran clean on both: 0 clashes, 29,051.8 ms and
@@ -258,25 +258,21 @@ detector that generalizes poorly. It is a corpus-artifact detector.
 
 | | synthetic median | model-a | model-b |
 | --- | --- | --- | --- |
-| entities | 649 | ~1,100,000 | ~1,050,000 |
-| file size | 33,134.5 B | ~75 MB | ~90 MB |
+| entities | 649 | 1,083,664 | 1,040,356 |
+| file bytes | 33,134.5 | 75,511,560 | 90,264,955 |
 | `oracle-kernel` wall clock | 2.846 ms | 29,754.1 ms | 16,535.3 ms |
 | `heuristic-text` wall clock | 0.305 ms | 565.6 ms | 527.4 ms |
-| oracle microseconds per entity | 4.385 | 27.049 | 15.748 |
+| oracle microseconds per entity | 4.385 | 27.457 | 15.894 |
 
-The foreign columns are bucketed. At this scale the entity bucket is under 5%
-wide, against a claim about a several-fold difference in per-entity cost, so
-the coarsening does not touch the reading.
-
-The instrument scales, but not linearly: 1,694.9x the entities cost 10,454.7x
-the time on model-a, i.e. 6.2x worse per entity. Model-b is 15.748 microseconds
+The instrument scales, but not linearly: 1,669.7x the entities cost 10,454.7x
+the time on model-a, i.e. 6.3x worse per entity. Model-b is 15.894 microseconds
 per entity against the synthetic 4.385, 3.6x worse. The gap is geometry - a
 corpus model is a handful of box extrusions with rectangular through-cuts, and
 per-entity cost is dominated by the meshing and boolean work that the corpus
 barely has.
 
-<!-- numeral-ok: 6.2x, 3.6x :: the two per-entity cost ratios, computed in the
-     sentence from scale.foreign[].oracleUsPerEntity (27.049 and 15.748) over
+<!-- numeral-ok: 6.3x, 3.6x :: the two per-entity cost ratios, computed in the
+     sentence from scale.foreign[].oracleUsPerEntity (27.457 and 15.894) over
      scale.syntheticOracleUsPerEntity (4.385). Emitting them would mean adding
      a derived field whose only consumer is this sentence; the inputs are all
      backed and the division is stated. -->
@@ -325,14 +321,11 @@ barely has.
 - Every figure in this document emits from `scorecard.json` or from
   `results/*.json`.
 - `results/*.json` is the record of a single run against files that are not in
-  this repository and cannot be re-run from it. Two consequences. The
-  identifying descriptors that run originally emitted (sha256 prefix, exact
-  bytes, exact entity count, counted element histogram) were redacted in place
-  rather than re-measured. And three fields added to the pass scripts after
-  that run (`meshes.nonFiniteMeshVolumes` in the QTO pass, plus
-  `distinctAuthoredQsetNames` and `distinctAuthoredQuantityNames` in the kernel
-  pass) are absent from the committed artifacts rather than filled in with a
-  value nobody measured.
+  this repository and cannot be re-run from it. So three fields added to the
+  pass scripts after that run (`meshes.nonFiniteMeshVolumes` in the QTO pass,
+  plus `distinctAuthoredQsetNames` and `distinctAuthoredQuantityNames` in the
+  kernel pass) are absent from the committed artifacts rather than filled in
+  with a value nobody measured.
 - The synthetic anchor's `entityCount` and `fileBytes` medians were re-derived
   with the corrected even-length rule (the mean of the two middle values of
   200, not the upper one) and verified against a regeneration of the same
@@ -357,6 +350,15 @@ node scripts/moonshot/b52-foreign-ifc/run-synthetic-anchor.mjs  --split dev --sa
 node scripts/moonshot/b52-foreign-ifc/run-diagnostics-pass.mjs  --synthetic --sample 200 --out <dir>
 node scripts/moonshot/b52-foreign-ifc/build-scorecard.mjs --runs <dir>
 ```
+
+`build-scorecard.mjs` writes nothing until its identifier guard has passed over
+the scorecard and over every pass artifact it copies. The guard rejects model
+and CAD file names, filesystem paths, and authored map keys outside a closed
+vocabulary, all by shape. For the names shape cannot know - the client, the
+firm, the project, the source file names - pass them at run time with
+`--forbid <name>` (repeatable) or `--forbid-file <path>`, read from outside
+this repository. Nothing about a measurement is rejected: exact byte counts,
+entity counts and histograms are the evidence this bet exists to publish.
 
 The passes that touch geometry need `--max-old-space-size=10240` at this file
 size, and the workspace must be built (`pnpm build` plus staged WASM).

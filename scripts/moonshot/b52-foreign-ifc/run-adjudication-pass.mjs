@@ -52,7 +52,7 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseStore, clashCheckInProcess, initChecks } from '../../../tools/world-gym/lib/checks.mjs';
-import { coarseMegabytes, round } from './lib/model-id.mjs';
+import { modelId, round } from './lib/model-id.mjs';
 
 const { EntityNode } = await import('../../../packages/query/dist/index.js');
 const { EntityExtractor } = await import('../../../packages/parser/dist/index.js');
@@ -70,6 +70,7 @@ if (!modelPath || !alias || !outDir) {
 }
 
 const bytes = await readFile(modelPath);
+const id = modelId(bytes);
 await initChecks();
 const store = await parseStore(bytes, `${alias}.ifc`);
 const content = bytes.toString('utf-8');
@@ -218,7 +219,8 @@ const out = {
   bet: 'B5.2',
   pass: 'adjudication',
   alias,
-  approxMegabytes: coarseMegabytes(bytes.byteLength),
+  modelSha256Prefix: id,
+  bytes: bytes.byteLength,
   quantityBinding: {
     elementQuantitySets: qsetIds.size,
     boundByRelDefinesByProperties: boundByRelDefinesByProperties.size,

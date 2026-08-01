@@ -29,7 +29,7 @@ import { join } from 'node:path';
 import { oraclePrediction } from '../../../tools/world-gym/benchmark/baselines.mjs';
 import { DEFECT_TYPES, QUANTITY_KEYS } from '../../../tools/world-gym/benchmark/splits.mjs';
 import { initChecks } from '../../../tools/world-gym/lib/checks.mjs';
-import { coarseMegabytes, round } from './lib/model-id.mjs';
+import { modelId, round } from './lib/model-id.mjs';
 
 function flag(name, fallback) {
   const i = process.argv.indexOf(name);
@@ -45,6 +45,7 @@ if (!modelPath || !alias || !outDir) {
 }
 
 const bytes = await readFile(modelPath);
+const id = modelId(bytes);
 const content = bytes.toString('utf-8');
 
 await initChecks();
@@ -59,7 +60,8 @@ const out = {
   bet: 'B5.2',
   pass: 'oracle',
   alias,
-  approxMegabytes: coarseMegabytes(bytes.byteLength),
+  modelSha256Prefix: id,
+  bytes: bytes.byteLength,
   oracleMs: round(oracleMs, 1),
   // RSS sampled once, here, at the end of the pass. It is NOT a high-water
   // mark: nothing samples during the parse or the geometry stage, so a peak

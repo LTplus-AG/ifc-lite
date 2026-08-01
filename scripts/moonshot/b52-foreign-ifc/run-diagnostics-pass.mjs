@@ -36,7 +36,7 @@ import { join } from 'node:path';
 import { initChecks } from '../../../tools/world-gym/lib/checks.mjs';
 import { generateModel } from '../../../tools/world-gym/generator.mjs';
 import { FAMILY, CORRUPT_RATE, seedsForSplit } from '../../../tools/world-gym/benchmark/splits.mjs';
-import { coarseMegabytes, round } from './lib/model-id.mjs';
+import { modelId, round } from './lib/model-id.mjs';
 
 const { mergeGeometryDiagnostics } = await import('../../../packages/geometry/dist/index.js');
 
@@ -139,7 +139,8 @@ if (synthetic) {
     pass: 'diagnostics',
     side: 'foreign',
     alias,
-    approxMegabytes: coarseMegabytes(bytes.byteLength),
+    modelSha256Prefix: modelId(bytes),
+    bytes: bytes.byteLength,
     elapsedMs: round(performance.now() - t0, 1),
     diagnostics: summarize(diag),
   };

@@ -26,7 +26,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { heuristicPrediction } from '../../../tools/world-gym/benchmark/baselines.mjs';
 import { DEFECT_TYPES, QUANTITY_KEYS } from '../../../tools/world-gym/benchmark/splits.mjs';
-import { coarseMegabytes, coarseEntityCount, dominantElementTypes, round } from './lib/model-id.mjs';
+import { modelId, round } from './lib/model-id.mjs';
 
 function flag(name, fallback) {
   const i = process.argv.indexOf(name);
@@ -44,6 +44,7 @@ if (!modelPath || !alias || !outDir) {
 
 const t0 = performance.now();
 const bytes = await readFile(modelPath);
+const id = modelId(bytes);
 const content = bytes.toString('utf-8');
 const tRead = performance.now() - t0;
 
@@ -59,18 +60,14 @@ for (const line of content.split('\n')) {
 }
 const schema = /FILE_SCHEMA\(\('([A-Z0-9_]+)'/.exec(content)?.[1] ?? null;
 
-// Product-ish types only (IfcProduct subtypes we can recognise by name without
-// a schema walk). Representation/placement entities dominate the raw count and
-// say nothing about the building.
-// Only the ORDER of the dominant types is emitted, never the counts: the
-// counted histogram is a joint fingerprint (see lib/model-id.mjs), while the
-// ordering is what carries the report's "structural" / "architectural" claim.
-const elementCounts = {};
-for (const t of Object.keys(typeCounts)) {
-  if (/^IFC(WALL|SLAB|COLUMN|BEAM|DOOR|WINDOW|SPACE|STAIR|RAILING|ROOF|PLATE|MEMBER|COVERING|CURTAINWALL|FOOTING|PILE|FURNI|BUILDINGELEMENTPROXY|FLOWTERMINAL|FLOWSEGMENT|FLOWFITTING|SITE|BUILDING$|BUILDINGSTOREY|OPENINGELEMENT|SHADINGDEVICE|RAMP|ANNOTATION)/.test(t)) {
-    elementCounts[t] = typeCounts[t];
-  }
-}
+// Product-ish types only, for the element histogram (IfcProduct subtypes we
+// can recognise by name without a schema walk). Representation/placement
+// entities dominate the raw count and say nothing about the building.
+const ELEMENT_TYPES = Object.keys(typeCounts)
+  .filter((t) => /^IFC(WALL|SLAB|COLUMN|BEAM|DOOR|WINDOW|SPACE|STAIR|RAILING|ROOF|PLATE|MEMBER|COVERING|CURTAINWALL|FOOTING|PILE|FURNI|BUILDINGELEMENTPROXY|FLOWTERMINAL|FLOWSEGMENT|FLOWFITTING|SITE|BUILDING$|BUILDINGSTOREY|OPENINGELEMENT|SHADINGDEVICE|RAMP|ANNOTATION)/.test(t))
+  .sort((a, b) => typeCounts[b] - typeCounts[a]);
+const elementHistogram = {};
+for (const t of ELEMENT_TYPES) elementHistogram[t] = typeCounts[t];
 
 const tHeur0 = performance.now();
 const heuristic = heuristicPrediction(-1, content);
@@ -80,12 +77,14 @@ const out = {
   bet: 'B5.2',
   pass: 'text',
   alias,
+  modelSha256Prefix: id,
   authoringToolFamily: tool,
   schema,
-  approxMegabytes: coarseMegabytes(bytes.byteLength),
-  approxEntityCount: coarseEntityCount(entityCount),
+  bytes: bytes.byteLength,
+  megabytes: round(bytes.byteLength / 1e6, 2),
+  entityCount,
   distinctEntityTypes: Object.keys(typeCounts).length,
-  dominantElementTypes: dominantElementTypes(elementCounts),
+  elementHistogram,
   readMs: round(tRead, 1),
   heuristicMs: round(heuristicMs, 1),
   heuristicPrediction: {

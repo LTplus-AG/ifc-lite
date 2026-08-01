@@ -442,6 +442,12 @@ jobs:
       - name: E9 prose vs artifact numerals (bets + docs/vision, gated)
         shell: bash
         run: |
+          # The gate's own exam FIRST. E9 can only be trusted while its
+          # `:: none` advisory still fires, and an advisory that has regressed
+          # into silence is indistinguishable from a clean tree -- so a green
+          # E9 with a broken advisory is exactly the false pass this lane
+          # exists to prevent. Same shape as E3c guarding E3b.
+          node scripts/moonshot/ci/check-report-numerals.mjs --self-test
           node scripts/moonshot/ci/check-report-numerals.mjs --gate
           echo '- **E9 prose vs artifact** -- every numeral backed by an artifact or marked with a reason' >> "$GITHUB_STEP_SUMMARY"
 

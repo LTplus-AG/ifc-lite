@@ -891,6 +891,81 @@ function calibrate(groups, index, bindingIndexFor) {
 // ---------------------------------------------------------------------------
 
 const roots = targets.length > 0 ? targets.map((t) => path.resolve(t)) : [REPO_ROOT];
+/**
+ * `--self-test`: prove the `:: none` advisory still fires, and still does NOT gate.
+ *
+ * Codex's review of the advisory made the point that mattered: a feature with no
+ * test can regress into silence, and an advisory that silently stops advising
+ * looks exactly like "nothing to report". That is the same defect class this
+ * whole gate exists to catch, so the check needs a check.
+ *
+ * Builds a throwaway prose set in a temp dir with three tokens -- one blocked and
+ * matched by an artifact, one blocked and unmatched, one blocked but matched only
+ * under a unit scale -- runs THIS script against it as a child process, and
+ * asserts on the JSON: the matched ones appear in staleNegativeBindings, the
+ * unmatched one does not, and `--gate` still exits 0 with the advisory present.
+ */
+if (argv.includes('--self-test')) {
+  const os = await import('node:os');
+  const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import('node:fs');
+  const { spawnSync } = await import('node:child_process');
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'numeral-selftest-'));
+  const bet = path.join(dir, 'selftest-bet');
+  mkdirSync(bet, { recursive: true });
+  // 4210 is emitted exactly; 91.5% is emitted as the fraction 0.915 (unit scale);
+  // 777 is emitted by nothing.
+  writeFileSync(path.join(bet, 'scorecard.json'),
+    JSON.stringify({ flagged: 4210, rate: 0.915 }, null, 2));
+  writeFileSync(path.join(bet, 'REPORT.md'), [
+    '# self-test',
+    '',
+    'A blocked figure the artifact now emits exactly: 4210 units.',
+    '<!-- numeral-src: 4210 :: none - blocked, and the artifact matches it exactly -->',
+    '',
+    'A blocked figure matched only under a unit scale: 91.5%.',
+    '<!-- numeral-src: 91.5% :: none - blocked, matched via the percent scale -->',
+    '',
+    'A blocked figure nothing emits: 777 units.',
+    '<!-- numeral-src: 777 :: none - blocked, and genuinely unmatched -->',
+    '',
+  ].join('\n'));
+
+  // The temp bet is passed as a positional target, which is how `roots` is
+  // resolved -- the checker takes paths, not an env var.
+  const run = (extra) => spawnSync(process.execPath, [fileURLToPath(import.meta.url), bet, ...extra],
+    { encoding: 'utf8' });
+
+  const r = run(['--json']);
+  let parsed;
+  try { parsed = JSON.parse(r.stdout); } catch {
+    console.error('::error::self-test could not parse the checker\'s own --json output');
+    console.error(r.stdout.slice(0, 400)); console.error(r.stderr.slice(0, 400));
+    rmSync(dir, { recursive: true, force: true });
+    process.exit(1);
+  }
+  // staleNegativeBindings is per-DOCUMENT, not per-set: each prose set carries a
+  // `docs` array and the advisory hangs off each doc.
+  const docs = (Array.isArray(parsed) ? parsed : []).flatMap((s) => s.docs || []);
+  const flagged = new Set(docs.flatMap((d) => (d.staleNegativeBindings || []).map((b) => b.token)));
+  const gated = run(['--gate']);
+
+  const failures = [];
+  if (!flagged.has('4210')) failures.push('an exactly-matched `:: none` token was NOT flagged (the advisory has gone silent)');
+  if (!flagged.has('91.5%')) failures.push('a unit-scaled match was NOT flagged (matchDirect integration regressed)');
+  if (flagged.has('777')) failures.push('a genuinely unmatched `:: none` token WAS flagged (false positive)');
+  if (gated.status !== 0) failures.push(`--gate exited ${gated.status}; the advisory must never fail the gate`);
+
+  rmSync(dir, { recursive: true, force: true });
+  if (failures.length) {
+    console.error('::error::NUMERAL-GATE SELF-TEST FAILED');
+    for (const f of failures) console.error(`  - ${f}`);
+    process.exit(1);
+  }
+  console.log('numeral-gate self-test PASS: advisory fires on exact and unit-scaled matches,');
+  console.log('stays silent on a genuinely unmatched block, and does not fail --gate.');
+  process.exit(0);
+}
+
 const bets = [];
 for (const r of roots) bets.push(...findProseSets(r));
 

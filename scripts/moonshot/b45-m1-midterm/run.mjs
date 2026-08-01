@@ -1010,11 +1010,32 @@ async function main() {
       log('tamper (forged trust anchor): SKIPPED — no claimed storey carries a child hash');
     }
   }
-  const tamperAllCaught = tamperResults.length > 0 && tamperResults.every((t) => t.caught && t.altered);
+  // WHY THE REASON IS ASSERTED AND NOT JUST THE CATCH. "Caught" is not the
+  // property any of these cases is under test for; each one exists to prove a
+  // SPECIFIC check fires, and caught-for-the-wrong-reason would pass a
+  // catch-only assertion while the check it was written for had quietly
+  // stopped working. The forged-anchor case is where that is not hypothetical:
+  // it flips a child hash AND re-derives the claim hash so the certificate
+  // agrees with the lie, and the whole point is that the ANCHOR rejects it. If
+  // the re-derivation ever broke, the case would come back caught on
+  // `hash-mismatch` — green, and testing nothing it was written to test.
+  // Declared here rather than pushed into the entries so the scorecard's shape
+  // is unchanged; each entry already records the `reason` a reader can check
+  // this against.
+  const MUST_REJECT_WITH = {
+    'geometry-mesh-float-flip': 'hash-mismatch',
+    'untouched-storey-child-hash-flip': 'hash-mismatch',
+    'forged-trust-anchor-with-rederived-claim-hash': 'bundle-carries-trust-anchor',
+  };
+  const tamperAllCaught =
+    tamperResults.length > 0 &&
+    tamperResults.every((t) => t.caught && t.altered && t.reason === MUST_REJECT_WITH[t.case]);
   if (!tamperAllCaught) {
     throw new Error(
-      `[b45] tamper battery did not hold: ${JSON.stringify(tamperResults)} — a case that was not ` +
-        'caught, or that altered nothing, means the verdict below is not evidence of anything.',
+      `[b45] tamper battery did not hold: ${JSON.stringify(tamperResults)} — expected rejection ` +
+        `reasons ${JSON.stringify(MUST_REJECT_WITH)}. A case that was not caught, that altered ` +
+        'nothing, or that was caught for a different reason than the one it was written to prove ' +
+        'means the verdict below is not evidence of anything.',
     );
   }
 

@@ -44,6 +44,26 @@ the forgery that proved it added to the tamper battery. No published figure
 moved: every node count, percentage, hit rate, clause verdict and the verified
 count are identical before and after, because every bundle in the corpus is
 produced by this runner and none of them was forged.
+**2026-08-01 (second code review).** The hosted reviewer was rate-limited again,
+so the CLI ran again and returned a disjoint set of findings - which is itself
+the finding: that reviewer is non-deterministic, and one clean pass from it is
+not evidence. Two held. First, the verifier sized its work from the bundle: it
+read the file and decoded every payload before any hash was checked, so a
+hostile bundle could exhaust the heap. It now takes both a maximum file size
+and a maximum total decoded payload from the parent - the same place the trust
+anchor comes from, and for the same reason - and checks each BEFORE the
+allocation it bounds, rejecting with `bundle-too-large` or `payload-too-large`.
+That matters because the failure it replaces was not a wrong answer but no
+answer: the pre-fix worker aborted on a heap OOM and wrote nothing to stdout,
+and a verifier that dies on bad input drops that bundle out of the count
+instead of counting it as rejected. Second, the tamper battery asserted only
+that each case was *caught*, never that it was caught for the reason it was
+written to prove; the forged-anchor case flips a child hash and re-derives the
+claim hash, so if that re-derivation ever broke it would come back green on
+`hash-mismatch` while testing nothing. Each case now declares the rejection
+reason it requires. Again no published figure moved: the caps are far above
+anything this bet produces and are never reached on an honest run, and the
+reason assertion tightened a check without changing what is measured.
 
 `scorecard.json` WAS re-blessed (`--write-scorecard`), deliberately and at a
 cost worth stating. Leaving it alone would have been cheaper: the committed
@@ -112,8 +132,13 @@ all three clauses at once, with mesh leaves present throughout.
 | 3. Cache hits, single-wall recompute | > 90% | **99.9956%** geometry+property; **99.9984%** property-only | PASS |
 | Mesh leaves genuinely present | not zero | **109,632** leaves, 43.8% of the DAG, 7 rewritten by the edit | YES |
 
-<!-- numeral-ok: 500ms :: the exam's own bar, quoted in the Bar column. A
-     threshold this bet is judged against, not a value it produces. -->
+<!-- numeral-src: 500ms, 5%, 90% :: none - the exam's own bars, quoted in the
+     Bar column. A bar is a threshold this bet is judged against, not a value it
+     produces, so it must never read as backed. Bound negatively rather than
+     merely excused because the union index CLEARS all three by coincidence:
+     90% against verifyWholeProcessWallMedianMs 90, and 5% against the digits of
+     the string "B4.5" in the scorecard's own `bet` field. -->
+<!-- numeral-src: 7 :: b45-m1-midterm/scorecard.json#examB_propertyPlusGeometryWallEdit.meshLeavesEdited -->
 <!-- numeral-ok: 9.0x, 43.8% :: computed on the line from committed fields -
      9.0x is the 500 ms bar over verifyMedianMs 55.532, 43.8% is nodesMeshLeaves
      109,632 over nodesTotal 250,582. The scorecard stores the operands; the
@@ -121,6 +146,9 @@ all three clauses at once, with mesh leaves present throughout.
 
 Fixture: `tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc`,
 177,465,622 bytes, 2,807,815 entities.
+
+<!-- numeral-src: 177,465,622 :: b45-m1-midterm/scorecard.json#fixtureBytes -->
+<!-- numeral-src: 2,807,815 :: b45-m1-midterm/scorecard.json#entities -->
 
 ### Node census
 
@@ -134,10 +162,14 @@ Fixture: `tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc`,
 | `root` | 1 |
 | MeshData entries emitted | 110,632 (2,934,427 triangles, 4,593,788 vertices) |
 
-99.1% of the model's emitted geometry is represented in the DAG.
+99.1% of the MeshData entries the mesher emitted have a `geometry-mesh` leaf in
+the DAG (109,632 of 110,632). That is a count of entries and not a measure of
+geometry: the 1,000 entries without a leaf are unweighted by size, so this says
+nothing about what share of the model's triangles they carry.
 
 <!-- numeral-ok: 99.1% :: nodesMeshLeaves 109,632 over meshDataEntries 110,632,
      computed in the sentence from two committed fields. -->
+<!-- numeral-src: 1,000 :: b45-m1-midterm/scorecard.json#meshDataUnattached -->
 
 ### Construction versus verification
 
@@ -203,7 +235,13 @@ verification cost is dominated by re-hashing the 49 untouched-storey
      55.53 ms. -->
 <!-- numeral-ok: 46x, 49 :: 46x is examB's verticesMoved 1,106 over the wall's
      original 24, and 49 is nodesStoreys 50 minus the one storey the edit
-     touches. Both are computed in the sentence. -->
+     touches. Both ratios are computed in the sentence. -->
+<!-- numeral-src: 24 :: none - the edited wall's original vertex count, an input
+     to the 46x ratio, read off the mesh during the variant run and stored by
+     neither scorecard. Bound negatively because the union index clears it
+     against scorecard-no-aggregates.json's parseMs, 2423 ms scaled by 1/100 -
+     a parse timing standing in for a vertex count. -->
+<!-- numeral-src: 1,106 :: b45-m1-midterm/scorecard.json#examB_propertyPlusGeometryWallEdit.verticesMoved -->
 <!-- numeral-src: 53.9, 56.0ms :: none - the pre- and post-inflation verify
      medians, from a separate instrumented run predating the 2026-08-01
      re-bless. The scorecard stores no pre-inflation field, so neither is
@@ -220,9 +258,11 @@ for reasons that have nothing to do with the system getting better. **The
 invariant worth quoting is the count: 60 nodes.** Against the hardest honest
 denominator (mesh leaves excluded) the figure is 0.0426%.
 
-<!-- numeral-ok: 101,922, 0.052% :: g0/g1's own no-mesh node count and resolved
-     share. Those demos write no scorecard, so both are quoted from their
-     published runs and no artifact in this directory emits them. -->
+<!-- numeral-src: 101,922, 0.052%, 53 :: none - g0/g1's own no-mesh node count,
+     resolved share and resolved count. Those demos write no scorecard, so all
+     three are quoted from their published runs and no artifact in this
+     directory emits them. Bound negatively rather than excused because the
+     union index clears 53 against the digits of the fixture PATH string. -->
 
 ### 2. Clauses 1 and 2 are properties of the CLAIM, not of the DAG
 
@@ -281,7 +321,7 @@ invented, they were unattributed. Both the row and this paragraph are the same
 underlying defect - a figure with no committed artifact behind it - and the fix
 in both directions is the artifact, which now exists.
 
-### 3. g0/g1's DAG shape silently drops 36% of this model's geometry
+### 3. g0/g1's DAG shape silently drops 36% of this model's MeshData entries
 
 `g0` and `g1` reach elements only through `IfcRelContainedInSpatialStructure`.
 On Holter that misses **40,028 of 110,632** MeshData entries - that is
@@ -320,9 +360,11 @@ those figures belong to the pre-re-bless run; the current median is 55.53 ms.)
      the checker vindicate the very number the paragraph exists to withdraw. -->
 
 The exam passes either way and the resolved count is stable at 53-60 across
-all three shapes; only the denominator moves. But **the published g0/g1 node
-counts undercount geometry on any model that uses aggregation**, which is most
-real curtain-walled buildings. That is a defect in the demos' traversal, not
+all three DAG shapes measured - 60 in both rows of the table above, 53 in g0's
+mesh-free shape, which is the third and is not in that table because it has no
+mesh leaves to compare. Only the denominator moves. But **the published g0/g1
+node counts undercount the model's MeshData entries on any model that uses
+aggregation**, which is most real curtain-walled buildings. That is a defect in the demos' traversal, not
 in M1.
 
 ### Smaller caveats
@@ -354,6 +396,15 @@ runner self-execs with a raised heap; working bundles including the 36.5 MB
 element-granularity sensitivity bundle go to a temp dir and are removed on
 exit. Machine-readable results in `scorecard.json` and, for the g0/g1 shape,
 `scorecard-no-aggregates.json`.
+
+<!-- numeral-src: 177MB :: b45-m1-midterm/scorecard.json#fixtureBytes -->
+<!-- numeral-src: 36.5MB :: b45-m1-midterm/scorecard.json#sensitivityElementGranularityClaim.bundleBytes -->
+<!-- numeral-src: 60s :: none - the fixture fetcher's default timeout, a
+     constant of a different script. It is bound negatively because the union
+     index CLEARS it against nodesResolvedDuringVerify, which is the integer 60
+     and has nothing to do with seconds: a timeout reading as "backed" by a node
+     count is the union-haystack pathology this document's caveat-3 note is
+     about. -->
 
 **The plain run does not touch the committed scorecard.** It writes to a temp
 path and prints where. Re-blessing is `--write-scorecard`, and under

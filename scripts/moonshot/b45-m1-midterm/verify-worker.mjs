@@ -34,11 +34,12 @@
  * JSON verdict line, whatever happens:
  *   { ok, reason?, nodesResolved, uniqueNodesResolved, verifyMs,
  *     bundleParseMs, maxRssBytes }
- * A malformed bundle, an unreadable file, a bad base64 blob or a throw from
- * anywhere in the load/revive/verify path is a verification FAILURE for that
- * bundle (`ok: false` with a deterministic reason), never a lost result and
- * never an aborted run — a verifier that crashes on bad input silently drops
- * that bundle out of the count instead of counting it as rejected.
+ * A malformed bundle, an unreadable file, a bad base64 blob, a bundle or payload
+ * over the caps below, or a throw from anywhere in the load/revive/verify path
+ * is a verification FAILURE for that bundle (`ok: false` with a deterministic
+ * reason), never a lost result and never an aborted run — a verifier that
+ * crashes on bad input silently drops that bundle out of the count instead of
+ * counting it as rejected.
  *
  * Being a separate `node` invocation is the point: this process shares no
  * memory with the one that produced the certificate. Everything it knows about
@@ -47,13 +48,61 @@
  * mesh pass, or the other ~1e6 DAG nodes.
  */
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '../../..');
+
+/**
+ * CAPS ON UNTRUSTED INPUT, AND WHERE THEY SIT.
+ *
+ * The bundle is the attacker-controlled side of the same trust boundary as the
+ * anchor above: this process is handed a file and asked to spend memory on it
+ * before a single hash has been checked. Nothing here amplifies — there is no
+ * declared-length field sizing a buffer, so the cost is linear in the file — but
+ * "linear in a number the attacker picks" is still unbounded, and the failure
+ * mode without a cap is a heap abort, which produces no verdict line at all.
+ * That is the one outcome the whole emit() contract exists to prevent: a
+ * verifier that dies on bad input drops that bundle out of the count instead of
+ * counting it as rejected.
+ *
+ * Both caps come from the parent, like the anchor, and both are checked BEFORE
+ * the allocation they bound rather than after:
+ *   - the file size is stat'd before `readFileSync`, so an oversized bundle is
+ *     never read into a string;
+ *   - each payload's decoded size is computed from its base64 LENGTH before
+ *     `Buffer.from` runs, and charged against a running total, so an oversized
+ *     payload is never decoded.
+ * The defaults are ~7x the largest bundle this bet produces (the 36.5 MB
+ * element-granularity sensitivity bundle), so no honest run can reach them.
+ */
+const MiB = 1024 * 1024;
+
+function capFromEnv(name, fallbackBytes) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === '') return fallbackBytes;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) {
+    process.stderr.write(`verify-worker: ignoring ${name}=${JSON.stringify(raw)} (not a positive number)\n`);
+    return fallbackBytes;
+  }
+  return Math.floor(n);
+}
+
+const MAX_BUNDLE_BYTES = capFromEnv('B45_MAX_BUNDLE_BYTES', 256 * MiB);
+const MAX_PAYLOAD_BYTES = capFromEnv('B45_MAX_PAYLOAD_BYTES', 256 * MiB);
+
+/** Upper bound on what `Buffer.from(s, 'base64')` can allocate, from the string
+ *  length alone. Deliberately the ceiling rather than the exact size: this is a
+ *  guard, and the exact byte count is charged after the decode. */
+function maxDecodedBytes(b64Length) {
+  return Math.ceil(b64Length / 4) * 3;
+}
+
+let decodedPayloadBytes = 0;
 
 /** A bundle-level defect. Carries the reason the verdict line will report, so
  *  every rejection path produces the same shape as `verifyCertificate`'s. */
@@ -119,7 +168,21 @@ function reviveTypedArray(v, where) {
   if (typeof v.b64 !== 'string') {
     throw new BundleError('malformed-typed-array', { where, b64: typeof v.b64 });
   }
+  // Charged BEFORE the decode, from the string length: `Buffer.from` is the
+  // allocation this cap exists to prevent, so it must not be the thing that
+  // measures it. (The exactness check below re-encodes, costing another 4/3 of
+  // the decoded size — also bounded by this cap.)
+  const projected = maxDecodedBytes(v.b64.length);
+  if (decodedPayloadBytes + projected > MAX_PAYLOAD_BYTES) {
+    throw new BundleError('payload-too-large', {
+      where,
+      decodedSoFar: decodedPayloadBytes,
+      declaredNext: projected,
+      maxPayloadBytes: MAX_PAYLOAD_BYTES,
+    });
+  }
   const buf = Buffer.from(v.b64, 'base64');
+  decodedPayloadBytes += buf.byteLength;
   if (buf.toString('base64') !== v.b64) {
     throw new BundleError('invalid-base64', { where, length: v.b64.length });
   }
@@ -179,6 +242,20 @@ async function run() {
   const { verifyCertificate } = await import(
     path.join(REPO_ROOT, 'packages/provenance/dist/index.js')
   );
+
+  /* --- The size cap, before the file is read rather than after --- */
+  let declaredBundleBytes;
+  try {
+    declaredBundleBytes = statSync(bundlePath).size;
+  } catch (err) {
+    throw new BundleError('unreadable-bundle', { message: String(err?.message ?? err) });
+  }
+  if (declaredBundleBytes > MAX_BUNDLE_BYTES) {
+    throw new BundleError('bundle-too-large', {
+      bundleBytes: declaredBundleBytes,
+      maxBundleBytes: MAX_BUNDLE_BYTES,
+    });
+  }
 
   const parseStart = performance.now();
   let bundle;

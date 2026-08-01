@@ -82,6 +82,7 @@ export function solidQuantities(meshes) {
   let minX = Infinity, minY = Infinity, minZ = Infinity;
   let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
   let triCount = 0;
+  let validTriCount = 0;
   for (const mesh of meshes) {
     for (const [v0, v1, v2] of triangles(mesh)) {
       triCount++;
@@ -92,6 +93,7 @@ export function solidQuantities(meshes) {
       const nz = n[UP];
       const twiceArea = Math.hypot(n[0], n[1], n[2]);
       if (twiceArea === 0) continue;
+      validTriCount++;
       vol6 += v0[0] * (v1[1] * v2[2] - v1[2] * v2[1])
             - v0[1] * (v1[0] * v2[2] - v1[2] * v2[0])
             + v0[2] * (v1[0] * v2[1] - v1[1] * v2[0]);
@@ -107,6 +109,17 @@ export function solidQuantities(meshes) {
       }
     }
   }
+  /**
+   * FAIL, do not return zeros. With no non-degenerate triangle the bounding
+   * box is still (+Inf, -Inf), so `height` is -Infinity and `bbox` is a pair
+   * of infinities -- and every consumer here (the frame check, the exam rows,
+   * the reference height audit) treats what comes back as a measurement. A
+   * quantity that is silently 0 or Infinity corrupts a comparison instead of
+   * failing it, which is the one thing this exam cannot afford.
+   */
+  if (validTriCount === 0) {
+    throw new Error(`solidQuantities: ${meshes.length} mesh(es), ${triCount} triangle(s), none non-degenerate -- there is nothing to measure`);
+  }
   const bmin = [minX, minY, minZ];
   const bmax = [maxX, maxY, maxZ];
   const height = bmax[UP] - bmin[UP];
@@ -119,6 +132,7 @@ export function solidQuantities(meshes) {
     perimeter: height > 1e-6 ? lateralArea / height : 0,
     bbox: { min: bmin, max: bmax },
     triangleCount: triCount,
+    degenerateTriangleCount: triCount - validTriCount,
   };
 }
 

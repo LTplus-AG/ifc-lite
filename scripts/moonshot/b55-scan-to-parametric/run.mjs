@@ -79,6 +79,10 @@ const slim = (v) => ({
     sweepStepM: v.rooms.ceilingCut.sweepStepM,
     sweepSamples: v.rooms.ceilingCut.sweep.length,
     plateau: v.rooms.ceilingCut.plateau,
+    /** Widest stable plateau at EVERY room count, not just the chosen one --
+     *  this is what the "rank by room count, not by width" argument rests on,
+     *  so it is emitted rather than asserted in prose. */
+    plateausByRoomCount: v.rooms.ceilingCut.plateausByRoomCount,
     sweep: v.rooms.ceilingCut.sweep,
   },
   principalFrame: v.rooms.principalFrame,
@@ -203,6 +207,41 @@ const ALLOWED_VALUE = [
   /^full-cloud z histogram, 1 cm bins, \+-1 cm around the tested elevation$/,
   /^Both models meshed by the same kernel, so both boxes are in the viewer frame \(Y up\)\. No transform was applied to either side\.$/,
 ];
+/**
+ * Every quoted STEP string in `text`, with `''` escapes honoured.
+ *
+ * The denylist below used to scan with `/'([^']{10,})'/g`, which loses quote
+ * PARITY at the first doubled quote and then pairs each closing quote with the
+ * next string's opening one for the rest of the file. Measured on this bet's
+ * reference model: 150 of its 570 identifying strings were invisible to the
+ * check, all of them after the first escape, and a string planted past that
+ * point in a leak test was not flagged. The allowlist above still caught it --
+ * that arm is the primary defence and fails closed -- but the denylist exists
+ * precisely so a future widening of the allowlist cannot carry a person, an
+ * organisation or a file name through, and it cannot do that job blind.
+ */
+function stepStrings(text) {
+  const out = [];
+  let i = 0;
+  while (i < text.length) {
+    const start = text.indexOf("'", i);
+    if (start < 0) break;
+    let j = start + 1, buf = '', closed = false;
+    for (;;) {
+      const q = text.indexOf("'", j);
+      if (q < 0) break;                                  // unterminated: stop
+      if (text[q + 1] === "'") { buf += `${text.slice(j, q)}'`; j = q + 2; continue; }
+      buf += text.slice(j, q);
+      i = q + 1;
+      closed = true;
+      break;
+    }
+    if (!closed) break;
+    out.push(buf);
+  }
+  return out;
+}
+
 function assertNoIdentifiers(s, obj) {
   const hits = new Set();
   const walk = (v, path) => {
@@ -221,8 +260,10 @@ function assertNoIdentifiers(s, obj) {
   // are long enough to identify something (short ones like 'Reference' or a
   // bare year collide with this pipeline's own vocabulary and mean nothing).
   const refText = readFileSync(REFERENCE, 'latin1');
-  for (const m of refText.matchAll(/'([^']{10,})'/g)) {
-    if (/[A-Za-z]/.test(m[1]) && s.includes(m[1])) hits.add(`reference string ${JSON.stringify(m[1])}`);
+  for (const str of stepStrings(refText)) {
+    if (str.length >= 10 && /[A-Za-z]/.test(str) && s.includes(str)) {
+      hits.add(`reference string ${JSON.stringify(str)}`);
+    }
   }
   // Anything shaped like the IfcSite degrees/minutes/seconds tuple.
   if (/\b\d{1,3}\s*,\s*\d{1,2}\s*,\s*\d{1,2}\s*,\s*\d{5,}\b/.test(s)) hits.add('<dms tuple>');
@@ -234,6 +275,7 @@ assertNoIdentifiers(text, scorecard);
 writeFileSync(OUT, text);
 
 const p = variants[PRIMARY].card.verdict;
-console.log(`\nprimary (${PRIMARY}): ${p.rowsWithinBar}/${p.rowsTotal} rows within the ${scorecard.bar * 100}% bar`);
+console.log(`\nprimary (${PRIMARY}): ${p.rowsWithinBar}/${p.rowsScored} rows within the ${scorecard.bar * 100}% bar`);
 for (const r of p.rowsOutsideBar) console.log(`  outside: ${r.scope}/${r.quantity} ${r.deviationPercent.toFixed(2)}%`);
+for (const r of p.rowsUnscored) console.log(`  UNSCORED: ${r.scope}/${r.quantity} (no reference space assigned)`);
 console.log(`scorecard -> ${OUT}`);

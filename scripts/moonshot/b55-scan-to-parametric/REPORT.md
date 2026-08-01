@@ -65,7 +65,7 @@ is never resident and never copied.
 | also inside the file | 250 registered pinhole photographs (4032 by 3024) with poses |
 | extent | **11.81 x 11.63 x 2.74 m** |
 | density | **506,008** points per m2 of plan |
-| ingest | **3.163 s**, **22.0 M points/s**, whole file, one pass (page-cache dependent; the first cold run of the same pass took roughly 5.5 s) |
+| ingest | **3.152 s**, **22.0 M points/s**, whole file, one pass (page-cache and machine-load dependent, and the only figure in this report that is; the first cold run of the same pass took roughly 5.5 s) |
 
 So this is not a survey-grade tripod scan of an empty shell. It is a dense,
 coloured, photo-registered capture of a **furnished, occupied dwelling**, whose
@@ -113,11 +113,13 @@ count and whose total area varies by under 2%, ranked by room count first.
 That ranking is load-bearing and was corrected during the run. The first
 version took the *longest* plateau, and a cut low enough to merge the whole
 apartment through the lintels is trivially stable over a wide band -- the
-one-room plateau is 8 samples wide against the three-room plateau's 5, so
+one-room plateau is 9 samples wide against the three-room plateau's 5, so
 "longest" reliably returns the degenerate answer. Merging is a strict loss of
 structure, so room count ranks first and width only breaks ties. The full
-sweep is in `scorecard.json` (`variants.*.ceilingCut.sweep`) so the choice is
-auditable rather than asserted.
+sweep is in `scorecard.json` (`variants.*.ceilingCut.sweep`), and the widest
+stable plateau at each room count is emitted beside it
+(`variants.*.ceilingCut.plateausByRoomCount`), so the choice is auditable
+rather than asserted.
 
 Chosen: **cut 2.131 m**, midpoint of the plateau **2.031 m to 2.231 m**, which
 holds **3** rooms.
@@ -321,8 +323,8 @@ node scripts/moonshot/b55-scan-to-parametric/run.mjs \
 
 Requires a built tree (`pnpm build`) with staged wasm. Peak on-disk cost
 outside the repository is the subsample at **83,343,840** bytes; the source
-file is read in place and never copied. Ingest is **3.16 s** and
-everything after it is **1.15 s**.
+file is read in place and never copied. Ingest is **3.15 s** and
+everything after it is **1.29 s**.
 
 ## 10. One side effect on the numerals gate, flagged not fixed
 

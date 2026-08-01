@@ -50,9 +50,27 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+const USAGE = 'usage: node extract-rooms.mjs <workDir> [--cell 0.025] [--ceiling-cut N] [--principal-frame]';
+const die = (msg) => { console.error(`${msg}\n${USAGE}`); process.exit(2); };
+
 const args = process.argv.slice(2);
 const WORK = args[0];
-const num = (n, d) => { const i = args.indexOf(n); return i >= 0 ? Number(args[i + 1]) : d; };
+if (!WORK || WORK.startsWith('--')) die('missing <workDir>');
+/**
+ * Every threshold below is a measurement input, so a typo must stop the run
+ * rather than propagate: `Number(undefined)` and `Number('0.o25')` are both
+ * NaN, and NaN silently poisons the raster (`Math.ceil(NaN)`, every comparison
+ * false) all the way to a rooms.json full of nulls.
+ */
+const num = (n, d) => {
+  const i = args.indexOf(n);
+  if (i < 0) return d;
+  const v = Number(args[i + 1]);
+  if (args[i + 1] === undefined || args[i + 1] === '' || !Number.isFinite(v)) {
+    die(`${n} needs a finite number, got ${JSON.stringify(args[i + 1])}`);
+  }
+  return v;
+};
 
 /** Plan raster cell, metres. 25 mm keeps a 90 mm partition 3.6 cells wide. */
 const CELL = num('--cell', 0.025);
@@ -71,6 +89,16 @@ const MAX_FILL_HOLE = num('--max-fill-hole', 0.25);
 const SWEEP_LO = num('--sweep-lo', 1.40);
 const SWEEP_STEP = 0.05;
 const PLATEAU_TOL = num('--plateau-tol', 0.02);
+// Ranges, not just finiteness: a zero or negative cell size divides the plan
+// raster by zero, and a min-cell count below 1 makes every empty cell occupied.
+if (!(CELL > 0)) die('--cell must be greater than 0');
+if (!(PLANE_BAND > 0)) die('--plane-band must be greater than 0');
+if (!(MIN_CELL_POINTS >= 1)) die('--min-cell-points must be at least 1');
+if (!(MIN_ROOM_AREA > 0)) die('--min-room-area must be greater than 0');
+if (!(DP_EPS >= 0)) die('--dp-eps must not be negative');
+if (!(MAX_FILL_HOLE >= 0)) die('--max-fill-hole must not be negative');
+if (!(PLATEAU_TOL >= 0)) die('--plateau-tol must not be negative');
+if (!(SWEEP_LO > 0)) die('--sweep-lo must be greater than 0');
 
 /**
  * `--principal-frame` rasterizes in the BUILDING's frame instead of the
@@ -86,8 +114,15 @@ const PRINCIPAL = args.includes('--principal-frame');
 
 const ingest = JSON.parse(readFileSync(join(WORK, 'ingest.json'), 'utf8'));
 const rawBytes = readFileSync(join(WORK, 'sub.f32'));
+// sub.f32 is a flat run of xyz float32 triples, 12 B each. A length that is
+// not a multiple of 12 means a truncated ingest (a killed run, a full disk),
+// and a trailing partial record would be read as a point at whatever the
+// pooled buffer happened to hold.
+if (rawBytes.byteLength === 0 || rawBytes.byteLength % 12 !== 0) {
+  throw new Error(`${join(WORK, 'sub.f32')} is ${rawBytes.byteLength} B, not a whole number of 12 B xyz records -- re-run ingest-scan.mjs`);
+}
 const rawPts = new Float32Array(rawBytes.buffer, rawBytes.byteOffset, rawBytes.byteLength / 4);
-const N = rawPts.length / 3;
+const N = rawBytes.byteLength / 12;
 
 /** Andrew's monotone chain over a decimated point set. */
 function convexHull(ps) {
@@ -156,6 +191,10 @@ function fitHorizontalPlane(h, lo, hi) {
     if (z < lo || z >= hi) continue;
     if (h.counts[i] > bestCount) { bestCount = h.counts[i]; best = i; }
   }
+  // No bin in the window, or a window with no point mass at all, is missing
+  // data -- not a plane at z = NaN. Returning NaN here would flow into the
+  // ceiling cut, the room heights and every quantity downstream as a number.
+  if (best < 0) throw new Error(`no z-histogram bin inside [${lo}, ${hi}) -- the scan has no horizontal accumulation there`);
   const zPeak = h.origin + best * h.binSize;
   let wsum = 0, w = 0;
   for (let i = 0; i < h.counts.length; i++) {
@@ -163,6 +202,7 @@ function fitHorizontalPlane(h, lo, hi) {
     if (Math.abs(z - zPeak) > PLANE_BAND) continue;
     wsum += z * h.counts[i]; w += h.counts[i];
   }
+  if (!(w > 0)) throw new Error(`z-histogram band +-${PLANE_BAND} m around ${zPeak} holds no points -- cannot fit a horizontal plane`);
   return { z: wsum / w, peakZ: zPeak, peakBinPoints: bestCount, bandPoints: w };
 }
 
@@ -236,6 +276,9 @@ function chooseCeilingCut() {
     sweep.push({ cut: +c.toFixed(3), roomCount: rooms.length, totalArea: rooms.reduce((a, b) => a + b, 0), areas: rooms.map((a) => +a.toFixed(3)) });
   }
   let best = null;
+  /** Widest stable plateau per room count, emitted so the ranking rule below
+   *  can be checked against the data instead of taken on the prose's word. */
+  const widestPerRoomCount = new Map();
   for (let i = 0; i < sweep.length; i++) {
     for (let j = i; j < sweep.length; j++) {
       if (sweep[j].roomCount !== sweep[i].roomCount) break;
@@ -245,11 +288,13 @@ function chooseCeilingCut() {
       if (mean > 0 && spread / mean > PLATEAU_TOL) break;
       // FINEST stable segmentation, not longest. A cut low enough to merge
       // everything through the door lintels is trivially stable over a wide
-      // band -- on this scan the one-room plateau is 8 samples wide against
-      // the three-room plateau's 6 -- so "longest plateau" reliably picks the
+      // band -- on this scan the one-room plateau is 9 samples wide against
+      // the three-room plateau's 5 -- so "longest plateau" reliably picks the
       // degenerate answer. Merging is a strict loss of structure, so rank by
       // room count first and use plateau width only to break ties.
       const cand = { length: slice.length, lo: slice[slice.length - 1].cut, hi: slice[0].cut, roomCount: sweep[i].roomCount };
+      const widest = widestPerRoomCount.get(cand.roomCount);
+      if (!widest || cand.length > widest.length) widestPerRoomCount.set(cand.roomCount, cand);
       const better = !best
         || cand.roomCount > best.roomCount
         || (cand.roomCount === best.roomCount && cand.length > best.length);
@@ -257,7 +302,8 @@ function chooseCeilingCut() {
     }
   }
   if (!best) throw new Error('no stable ceiling-cut plateau found');
-  return { cut: +((best.lo + best.hi) / 2).toFixed(4), plateau: best, sweep };
+  const plateausByRoomCount = [...widestPerRoomCount.values()].sort((a, b) => b.roomCount - a.roomCount);
+  return { cut: +((best.lo + best.hi) / 2).toFixed(4), plateau: best, plateausByRoomCount, sweep };
 }
 
 const cutChoice = chooseCeilingCut();
@@ -331,7 +377,11 @@ function fillHoles(cells) {
  * exactly -- no marching-squares half-cell bias.
  */
 function traceOutline(cellSet) {
-  const has = (x, y) => cellSet.has(y * nx + x);
+  // The column bound is load-bearing: without it `has(-1, y)` reads
+  // `y * nx - 1`, the LAST cell of the row below, and `has(nx, y)` reads the
+  // first cell of the row above -- so a room touching either edge of the
+  // raster loses boundary edges to a neighbour that is not adjacent to it.
+  const has = (x, y) => x >= 0 && x < nx && y >= 0 && y < ny && cellSet.has(y * nx + x);
   const edges = new Map(); // "x,y" -> [[x,y], ...] successors
   const push = (a, b) => {
     const key = `${a[0]},${a[1]}`;

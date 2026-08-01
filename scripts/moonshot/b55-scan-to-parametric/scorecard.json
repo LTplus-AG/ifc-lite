@@ -1,9 +1,9 @@
 {
   "bet": "B5.5 scan-to-parametric (M5 final)",
-  "generatedAt": "2026-08-01T05:31:57.608Z",
+  "generatedAt": "2026-08-01T06:43:52.242Z",
   "bar": 0.05,
-  "elapsedSeconds": 4.31,
-  "elapsedSecondsAfterIngest": 1.1469999999999998,
+  "elapsedSeconds": 4.437,
+  "elapsedSecondsAfterIngest": 1.2850000000000001,
   "primaryVariant": "axisAligned",
   "scan": {
     "sourceBytes": 3939103744,
@@ -20,8 +20,8 @@
     ],
     "densityPerM3": 184807.48697576692,
     "densityPerPlanM2": 506007.5984146027,
-    "ingestSeconds": 3.163,
-    "megaPointsPerSecond": 21.958013278533038,
+    "ingestSeconds": 3.152,
+    "megaPointsPerSecond": 22.034643401015227,
     "planes": {
       "floor": {
         "z": -1.368653498211528,
@@ -133,6 +133,26 @@
           "hi": 2.231,
           "roomCount": 3
         },
+        "plateausByRoomCount": [
+          {
+            "length": 5,
+            "lo": 2.031,
+            "hi": 2.231,
+            "roomCount": 3
+          },
+          {
+            "length": 3,
+            "lo": 1.881,
+            "hi": 1.981,
+            "roomCount": 2
+          },
+          {
+            "length": 9,
+            "lo": 1.431,
+            "hi": 1.831,
+            "roomCount": 1
+          }
+        ],
         "sweep": [
           {
             "cut": 2.531,
@@ -642,7 +662,9 @@
       "verdict": {
         "bar": 0.05,
         "rowsTotal": 16,
+        "rowsScored": 16,
         "rowsWithinBar": 12,
+        "rowsUnscored": [],
         "rowsOutsideBar": [
           {
             "scope": "model",
@@ -683,6 +705,26 @@
           "hi": 2.231,
           "roomCount": 3
         },
+        "plateausByRoomCount": [
+          {
+            "length": 5,
+            "lo": 2.031,
+            "hi": 2.231,
+            "roomCount": 3
+          },
+          {
+            "length": 3,
+            "lo": 1.881,
+            "hi": 1.981,
+            "roomCount": 2
+          },
+          {
+            "length": 9,
+            "lo": 1.431,
+            "hi": 1.831,
+            "roomCount": 1
+          }
+        ],
         "sweep": [
           {
             "cut": 2.531,
@@ -1192,7 +1234,9 @@
       "verdict": {
         "bar": 0.05,
         "rowsTotal": 16,
+        "rowsScored": 16,
         "rowsWithinBar": 12,
+        "rowsUnscored": [],
         "rowsOutsideBar": [
           {
             "scope": "model",
@@ -1265,6 +1309,6 @@
     "scanMinusDefaultedHeightM": 0.0928101656168816,
     "floorPlaneDepthBelowScanOriginM": 1.368653498211528,
     "subsampleBytes": 83343840,
-    "derivedIntermediateBytes": 83396346
+    "derivedIntermediateBytes": 83396893
   }
 }

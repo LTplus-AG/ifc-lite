@@ -46,6 +46,13 @@ const WALL_MIN_EDGE = 0.60;
 const WALL_DP_EPS = 0.12;
 
 const rooms = JSON.parse(readFileSync(join(WORK, 'rooms.json'), 'utf8'));
+// With no rooms there is nothing to extrude and, further down, the slab's
+// bounding box stays at +-Infinity -- which would emit an IfcSlab with
+// Infinity extents rather than fail. An empty extraction is a result to
+// report, not a model to write.
+if (!Array.isArray(rooms.rooms) || rooms.rooms.length === 0) {
+  throw new Error(`${join(WORK, 'rooms.json')} contains no rooms; there is no space, wall or slab to generate`);
+}
 const floorZ = rooms.planes.floor.z;
 
 /** Modal interior partition thickness from the measured wall channels. */

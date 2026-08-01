@@ -20,7 +20,13 @@
  * it also handles the many-to-one case honestly, which matters here because
  * the extraction merges two reference spaces into one room. Where n reference
  * spaces map to one generated room, the reference side of that row is their
- * aggregate, and the row is flagged `merged: n`.
+ * aggregate, and the row is flagged `merged: n`. A generated room that no
+ * centroid lands in is reported UNSCORED rather than scored against nothing.
+ *
+ * Which polygon belongs to which generated space is an IDENTITY lookup on the
+ * room id the generator stamped into the IfcSpace Name, checked to be total
+ * and injective -- never an area match, which would be an inference standing
+ * in for a fact at the exact point where the whole correspondence is decided.
  *
  * NO FITTING TO THE REFERENCE. Nothing upstream of this file reads the
  * reference model. The two coordinate frames coincide as a property of the
@@ -70,6 +76,11 @@ const gen = measureSpaces(GEN);
 const refSpaces = ref.spaces
   .map((s, i) => ({ ...s, label: `ref_space_${String.fromCharCode(65 + i)}` }));
 for (const s of refSpaces) { delete s.name; delete s.longName; }
+// The generated model's IfcSpace Name IS the extracted room id -- `generate-ifc.mjs`
+// stamps `Name: room.id` -- so it is the correspondence key. It is lifted out
+// here and then deleted from the space records themselves, so only the
+// RESOLVED `roomId` can reach the output.
+const genRoomIdOf = new Map(gen.spaces.map((s) => [s.expressId, s.name]));
 for (const s of gen.spaces) { delete s.name; }
 
 // -------------------------------------------------------------- frame check ---
@@ -98,11 +109,35 @@ const frameCheck = {
 };
 
 // ----------------------------------------------------------- correspondence ---
+/**
+ * Generated space -> extracted room BY IDENTITY, and verified total and
+ * injective. An earlier revision inferred the link from |polygonArea -
+ * floorArea| < 0.02 with a positional fallback; that is a guess wearing a
+ * measurement's clothes. Two rooms whose areas land within 2 dm2 of each
+ * other, or any future change to the emitted profile, would silently score one
+ * room's quantities against another room's polygon -- and the polygon is what
+ * the reference centroids are tested against, so the whole correspondence
+ * would move without a single error. The id is written by the generator and is
+ * read back here.
+ */
+const roomById = new Map();
+for (const r of rooms.rooms) {
+  if (roomById.has(r.id)) throw new Error(`rooms.json declares room id ${r.id} twice`);
+  roomById.set(r.id, r);
+}
+const claimed = new Set();
 const genRooms = gen.spaces.map((s) => {
-  const room = rooms.rooms.find((r) => Math.abs(r.polygonAreaM2 - s.floorArea) < 0.02)
-    ?? rooms.rooms[gen.spaces.indexOf(s)];
+  const id = genRoomIdOf.get(s.expressId);
+  if (!id) throw new Error(`generated IfcSpace #${s.expressId} carries no Name to resolve against rooms.json`);
+  const room = roomById.get(id);
+  if (!room) throw new Error(`generated IfcSpace #${s.expressId} names room "${id}", which is not in rooms.json`);
+  if (claimed.has(id)) throw new Error(`two generated IfcSpaces resolve to room "${id}"`);
+  claimed.add(id);
   return { ...s, roomId: room.id, polygon: room.polygon };
 });
+if (claimed.size !== rooms.rooms.length) {
+  throw new Error(`rooms.json holds ${rooms.rooms.length} rooms but the generated model has ${claimed.size} spaces`);
+}
 const assignments = [];
 for (const rs of refSpaces) {
   const c = toScanPlan(rs.bbox.min, rs.bbox.max).center;
@@ -116,15 +151,27 @@ const rowsPerRoom = genRooms.map((g) => {
   const refVol = mine.reduce((a, s) => a + s.volume, 0);
   const refLat = mine.reduce((a, s) => a + s.lateralArea, 0);
   const refHeight = refFloor > 0 ? mine.reduce((a, s) => a + s.height * s.floorArea, 0) / refFloor : 0;
+  /**
+   * A generated room that NO reference centroid falls into has no reference
+   * side at all. The sums above are then 0, and 0 as a denominator prints
+   * Infinity into the scorecard exactly where a deviation belongs -- a room
+   * the exam never scored would read as a room that failed by an infinite
+   * margin, or, once `Math.max` is applied, would carry Infinity into the
+   * headline. Such a row is emitted with a null reference and is counted
+   * separately in the verdict (`rowsUnscored`), never as a pass and never as
+   * a fail.
+   */
+  const matched = mine.length > 0;
+  const q = (generated, reference) => ({ generated, reference: matched ? reference : null });
   return {
     room: g.roomId,
     mergedReferenceSpaces: mine.length,
     referenceLabels: mine.map((s) => s.label),
     quantities: {
-      floorAreaM2: { generated: g.floorArea, reference: refFloor },
-      clearHeightM: { generated: g.height, reference: refHeight },
-      volumeM3: { generated: g.volume, reference: refVol },
-      lateralAreaM2: { generated: g.lateralArea, reference: refLat },
+      floorAreaM2: q(g.floorArea, refFloor),
+      clearHeightM: q(g.height, refHeight),
+      volumeM3: q(g.volume, refVol),
+      lateralAreaM2: q(g.lateralArea, refLat),
     },
   };
 });
@@ -192,21 +239,34 @@ const referenceHeightAudit = {
   })),
 };
 
-const withDeviation = (o) => ({
-  ...o,
-  deviation: (o.generated - o.reference) / o.reference,
-  deviationPercent: ((o.generated - o.reference) / o.reference) * 100,
-  // Magnitude carried explicitly: it is what the bar is tested against, and
-  // it is what prose quotes when it says a row is "inside 1%".
-  absDeviationPercent: Math.abs(((o.generated - o.reference) / o.reference) * 100),
-  withinBar: Math.abs((o.generated - o.reference) / o.reference) <= BAR,
-});
+/**
+ * A row is SCORABLE only against a finite, non-zero reference. Anything else
+ * would make the deviation Infinity or NaN, and there is no honest way to
+ * print that as a percentage; the row keeps its generated measurement, states
+ * null for everything derived, and is excluded from the bar count and from
+ * the maximum rather than silently distorting either.
+ */
+const withDeviation = (o) => {
+  if (!Number.isFinite(o.generated) || !Number.isFinite(o.reference) || o.reference === 0) {
+    return { ...o, scored: false, deviation: null, deviationPercent: null, absDeviationPercent: null, withinBar: null };
+  }
+  const d = (o.generated - o.reference) / o.reference;
+  return {
+    ...o,
+    deviation: d,
+    deviationPercent: d * 100,
+    // Magnitude carried explicitly: it is what the bar is tested against, and
+    // it is what prose quotes when it says a row is "inside 1%".
+    absDeviationPercent: Math.abs(d * 100),
+    withinBar: Math.abs(d) <= BAR,
+  };
+};
 for (const r of rowsPerRoom) for (const k of Object.keys(r.quantities)) r.quantities[k] = withDeviation(r.quantities[k]);
 // Volume is area x height, so its deviation is the product of the two -- worth
 // carrying explicitly so a volume miss can be attributed rather than guessed.
 for (const r of rowsPerRoom) {
   const a = r.quantities.floorAreaM2.deviation, h = r.quantities.clearHeightM.deviation;
-  r.quantities.volumeM3.decomposition = { areaDeviation: a, heightDeviation: h, product: (1 + a) * (1 + h) - 1 };
+  r.quantities.volumeM3.decomposition = { areaDeviation: a, heightDeviation: h, product: a === null || h === null ? null : (1 + a) * (1 + h) - 1 };
 }
 for (const k of Object.keys(totals)) totals[k] = withDeviation(totals[k]);
 
@@ -214,12 +274,19 @@ const allRows = [
   ...Object.entries(totals).map(([k, v]) => ({ scope: 'model', quantity: k, ...v })),
   ...rowsPerRoom.flatMap((r) => Object.entries(r.quantities).map(([k, v]) => ({ scope: r.room, quantity: k, ...v }))),
 ];
+// An unscored row is neither a pass nor a fail: it is reported on its own line
+// so `rowsWithinBar / rowsScored` can never be read as a result the exam did
+// not produce, and it is kept out of the maximum, which is otherwise the one
+// place a single Infinity would swallow the whole headline.
+const scoredRows = allRows.filter((r) => r.withinBar !== null);
 const verdict = {
   bar: BAR,
   rowsTotal: allRows.length,
-  rowsWithinBar: allRows.filter((r) => r.withinBar).length,
-  rowsOutsideBar: allRows.filter((r) => !r.withinBar).map((r) => ({ scope: r.scope, quantity: r.quantity, deviationPercent: r.deviationPercent })),
-  maxAbsDeviationPercent: Math.max(...allRows.map((r) => Math.abs(r.deviationPercent))),
+  rowsScored: scoredRows.length,
+  rowsWithinBar: scoredRows.filter((r) => r.withinBar).length,
+  rowsUnscored: allRows.filter((r) => r.withinBar === null).map((r) => ({ scope: r.scope, quantity: r.quantity })),
+  rowsOutsideBar: scoredRows.filter((r) => !r.withinBar).map((r) => ({ scope: r.scope, quantity: r.quantity, deviationPercent: r.deviationPercent })),
+  maxAbsDeviationPercent: scoredRows.length ? Math.max(...scoredRows.map((r) => Math.abs(r.deviationPercent))) : null,
   referenceSpaceCount: refSpaces.length,
   generatedSpaceCount: gen.spaces.length,
   unassignedReferenceSpaces: assignments.filter((a) => !a.assignedTo).length,
@@ -246,4 +313,10 @@ writeFileSync(OUT, JSON.stringify({
   generatedTypeCounts: gen.typeCounts,
 }, null, 2));
 
-console.log(JSON.stringify({ verdict, totals, rows: allRows.map((r) => `${r.scope}/${r.quantity}: ${r.deviationPercent.toFixed(2)}% ${r.withinBar ? 'PASS' : 'FAIL'}`) }, null, 2));
+console.log(JSON.stringify({
+  verdict,
+  totals,
+  rows: allRows.map((r) => (r.withinBar === null
+    ? `${r.scope}/${r.quantity}: UNSCORED (no reference space assigned to this room)`
+    : `${r.scope}/${r.quantity}: ${r.deviationPercent.toFixed(2)}% ${r.withinBar ? 'PASS' : 'FAIL'}`)),
+}, null, 2));

@@ -3968,9 +3968,11 @@ export class Scene {
    * visible piece would blow the pick-mesh budget. Without it, rectangle
    * select silently returned nothing on batched models (#1904).
    *
-   * Bounding-box granularity, like the released-geometry raycast path.
-   * Instanced-only occurrences are covered: their world AABBs are registered
-   * in `boundingBoxes` when the instanced shard is built.
+   * Bounding-box granularity, the same fidelity the released-geometry raycast
+   * path has. Unlike that path it runs no depth test at all, so an entity fully
+   * hidden behind another is still selected. Instanced-only occurrences are
+   * covered: their world AABBs are registered in `boundingBoxes` when the
+   * instanced shard is built.
    */
   selectRect(
     x0: number,
@@ -3988,6 +3990,14 @@ export class Scene {
     // computed lazily, so make sure every entity that still has mesh data has
     // one. Same authoritative id set pick() uses, so colour-fused fillers whose
     // id lives only in per-vertex entityIds are not skipped (#1358).
+    // Cost shape: `getEntityBoundingBox` walks every vertex of an entity on a
+    // miss and memoises into `boundingBoxes`, so the scan is O(total vertices)
+    // but one-time — it is the same cache the CPU raycast path warms, and every
+    // later drag only pays the O(entities) box loop below. Earlier picks do not
+    // necessarily prime all of it, though: the raycast path applies the
+    // hiddenIds/isolatedIds filters *before* it calls getEntityBoundingBox (see
+    // raycastTriangles in scene-raycaster.ts), so under isolation the first
+    // Ctrl+drag can still scan entities no click ever reached.
     if (!this.geometryReleased) {
       for (const expressId of this.getAllMeshDataExpressIds()) {
         this.getEntityBoundingBox(expressId);

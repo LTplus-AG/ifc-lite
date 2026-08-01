@@ -244,10 +244,21 @@ export class PickingManager {
      *
      * Batched models take the same route as `pick()`: hydrate the
      * missing individual meshes when that is affordable, otherwise fall
-     * back to `Scene.selectRect` (bounding-box granularity, so slightly
-     * over-selective versus the pixel-exact GPU pass). Reading
+     * back to `Scene.selectRect`, which over-selects relative to the
+     * pixel-exact GPU pass in three ways: it is bounding-box granular
+     * (a rect over empty space inside an element's bounds selects it),
+     * it has no depth test (occluded entities are selected), and it
+     * drops a section-planed or cropped entity only when the whole box
+     * is clipped away, where the pick shader discards per fragment.
+     * Hidden and isolation filtering do apply there. Reading
      * `scene.getMeshes()` unconditionally is what made this return an
      * empty set on every batched model (#1904).
+     *
+     * Point clouds never depend on mesh hydration — splats render into
+     * the pick pass on their own — so the CPU branch still runs the GPU
+     * pass for them and unions the two results. Skipping it would drop
+     * point selection on any mixed scene big enough to miss the
+     * pick-mesh budget.
      */
     async pickRect(
         x0: number,
@@ -267,7 +278,7 @@ export class PickingManager {
         if (options?.isStreaming) return new Set();
 
         if (this.prepareBatchedPick(options) === 'cpu') {
-            return this.scene.selectRect(
+            const boxHits = this.scene.selectRect(
                 sx0, sy0, sx1, sy1,
                 this.canvas.width, this.canvas.height,
                 this.camera.getViewProjMatrix().m,
@@ -275,6 +286,51 @@ export class PickingManager {
                 options?.isolatedIds,
                 clip,
             );
+            const cpuPointSnap = this.pointPickProvider?.() ?? null;
+            if (!cpuPointSnap || cpuPointSnap.nodes.length === 0) return boxHits;
+
+            // Point-only pick pass. Meshes are deliberately `[]`: this branch runs
+            // precisely because the per-element pick buffers were NOT hydrated, so
+            // `scene.getMeshes()` holds an arbitrary partial set (highlight meshes
+            // and whatever an earlier pick left behind) whose ids `selectRect`
+            // already covers.
+            //
+            // Instanced templates are left out for a different reason. The
+            // instanced pick pass IS visibility-filtered — its fragment shader
+            // discards on `instFlags` bit 1, which `Scene` sets for every
+            // occurrence that is hidden or excluded by isolation — so unioning its
+            // hits would not re-admit anything. It is left out because it would
+            // add no ids and can only subtract. Every instanced occurrence whose
+            // template has geometry folds its world AABB into
+            // `Scene.boundingBoxes`, so `selectRect` above has already returned
+            // those ids under the same two filters (a template with no finite
+            // local box is skipped there, and rasterises nothing here either).
+            // Meanwhile the instanced draw shares this pass's depth target, so an
+            // occurrence in front of a splat would occlude it and drop a point hit
+            // that nothing else on this path can supply — point assets have no
+            // entry in `boundingBoxes` at all.
+            let pointHits: Set<number>;
+            try {
+                pointHits = await this.picker.pickRect(
+                    sx0, sy0, sx1, sy1,
+                    this.canvas.width, this.canvas.height,
+                    [],
+                    this.camera.getViewProjMatrix().m,
+                    cpuPointSnap.nodes,
+                    cpuPointSnap.sizing,
+                    undefined,
+                    clip,
+                );
+            } catch (err) {
+                // `picker.pickRect` rethrows any readback failure that is not a
+                // device-loss abort. The box hits are already computed and this
+                // branch could not throw at all before the point pass was added,
+                // so degrade to them instead of failing the whole rectangle select.
+                console.warn('[PickingManager] point-cloud rect pick failed; returning bounding-box hits only:', err);
+                return boxHits;
+            }
+            for (const id of pointHits) boxHits.add(id);
+            return boxHits;
         }
 
         let meshes = this.scene.getMeshes();

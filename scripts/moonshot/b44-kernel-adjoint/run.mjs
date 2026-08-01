@@ -66,18 +66,67 @@ function cargoTest(filter) {
   return { out: `${r.stdout ?? ''}${r.stderr ?? ''}`, status: r.status };
 }
 
+/**
+ * Extract a marker-delimited block, or null if the block is not COMPLETE.
+ *
+ * The end marker is required. The earlier form split on it unconditionally, so
+ * a run that printed the begin marker and then died mid-block - a panic, an
+ * abort, a signal - returned the truncated remainder as if it were the block.
+ * Downstream that surfaced as a bare `SyntaxError` from `JSON.parse` naming
+ * neither the step nor cargo's exit code. A cut-short block is a named
+ * condition here instead, and every caller already handles null.
+ */
 function between(text, begin, end) {
   if (!text.includes(begin)) return null;
-  return text.split(begin)[1].split(end)[0].trim();
+  const after = text.split(begin)[1];
+  if (!after.includes(end)) return null;
+  return after.split(end)[0].trim();
 }
 
 console.log('[1/3] battery (cargo test b44_kernel_adjoint)');
 const battery = cargoTest('b44_kernel_adjoint');
 const reportPath = path.join(__dirname, 'battery-report.txt');
 writeFileSync(reportPath, sanitize(battery.out));
+// The same defect the cross-check emission below was fixed for, one step
+// earlier. `battery.json` is committed evidence and the provenance source bound
+// to figures in DESIGN.md and in the G4 reviews, so what it must never do is
+// take its contents from a run that failed or was cut short. The old form -
+// `JSON.parse(between(...))` guarded only by "is there a begin marker" - had
+// two ways to get that wrong: a cargo run that printed a complete block and
+// THEN failed rewrote battery.json from it, and a run cut short mid-block threw
+// a bare `SyntaxError: Unexpected end of JSON input` out of the top level,
+// killing the byte-identity and wasm legs and never reaching the
+// "RUST ASSERTIONS FAILED" line that would have named the cause. Each case is
+// now a named failure that leaves the previous artifact alone and lets the run
+// continue to its own reporting.
 const json = between(battery.out, 'B44_JSON_BEGIN', 'B44_JSON_END');
-if (json) {
-  writeFileSync(path.join(__dirname, 'battery.json'), `${JSON.stringify(JSON.parse(json), null, 2)}\n`);
+if (battery.status !== 0) {
+  console.error(
+    `\nbattery run FAILED (cargo exit ${battery.status ?? 'signal'}); battery.json is left at the ` +
+      'previous run\'s contents - a failing run is not a measurement. Cargo output:',
+  );
+  console.error(sanitize(battery.out));
+  process.exitCode = 1;
+} else if (json === null) {
+  console.error(
+    '\nbattery emitted no complete B44_JSON_BEGIN/B44_JSON_END block (output truncated or the ' +
+      'harness never reached the emission); battery.json not written. Cargo output:',
+  );
+  console.error(sanitize(battery.out));
+  process.exitCode = 1;
+} else {
+  try {
+    writeFileSync(
+      path.join(__dirname, 'battery.json'),
+      `${JSON.stringify(JSON.parse(json), null, 2)}\n`,
+    );
+  } catch (err) {
+    console.error(
+      `\nbattery JSON block did not parse (${err.message}); battery.json not written. Cargo output:`,
+    );
+    console.error(sanitize(battery.out));
+    process.exitCode = 1;
+  }
 }
 const summary = battery.out
   .split('\n')

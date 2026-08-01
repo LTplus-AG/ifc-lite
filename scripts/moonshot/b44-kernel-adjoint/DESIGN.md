@@ -388,9 +388,10 @@ The wasm leg needs `pnpm --filter @ifc-lite/geometry... build` first (it builds
 `packages/wasm/pkg` from this working tree, so the cross-check runs against the
 wasm compiled from the instrumented mesher, not a stale artifact).
 
-Runtime: the battery is ~0.15 s in debug for all six runs (8,400 gradient
-components, ~180,000 mesher evaluations).
-<!-- numeral-ok: 180,000 :: an order-of-magnitude count of mesher calls (2 FD evaluations per component plus one AD pass per point); nothing counts them at runtime -->
+Runtime: the battery is ~0.15 s in debug for all six runs (14,400 parameter
+components, ~35,000 mesher evaluations).
+<!-- numeral-ok: 14,400 :: the six families' npoints x nparams summed over battery.json (200 x 10 for the three A runs, 200 x 14 for the three B runs), which is also their activeComponents + invariantComponents; no single field holds the total -->
+<!-- numeral-ok: 35,000 :: an order-of-magnitude count of mesher calls - 2 central-difference evaluations per parameter component (28,800) plus 5 per point (6,000): the dual/AD pass, the f64 replay, the world-placement production mesh, and the local-frame dual and production meshes. Nothing counts them at runtime. -->
 It runs inside
 `cargo test --workspace` as a standing assertion, and its `assert!` against the
 95% bar means a future kernel change that breaks the adjoints turns the required

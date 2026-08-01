@@ -22,7 +22,9 @@
  *
  * ACCEPTANCE CRITERIA. See ACCEPTANCE below: this script FAILS (non-zero exit)
  * when a point emits no mesh, when a deviation is not finite, or when either
- * relative deviation exceeds its documented bar.
+ * relative deviation exceeds its documented bar. The two worst-case deviations
+ * it reports cover the FINITE points only; a non-finite one fails its point and
+ * is counted under `nonFinite` rather than folded into a maximum it would erase.
  */
 
 import path from 'node:path';
@@ -239,6 +241,7 @@ async function main() {
   let worstVsProductionInProcess = 0;
   let missing = 0;
   let failed = 0;
+  let nonFinite = 0;
   /** A deviation is acceptable only if it is a finite number at or under its bar. */
   const grade = (dev, limit) => Number.isFinite(dev) && dev <= limit;
   for (const [k, pt] of points.entries()) {
@@ -263,8 +266,25 @@ async function main() {
     const okProduction = grade(relProduction, ACCEPTANCE.vsProductionInProcess);
     const passed = okInstrumented && okProduction;
     if (!passed) failed += 1;
-    worstVsInstrumented = Math.max(worstVsInstrumented, relInstrumented);
-    worstVsProductionInProcess = Math.max(worstVsProductionInProcess, relProduction);
+    // Fold a deviation into the running worst case only when it is finite.
+    // `Math.max(x, NaN)` is NaN, so a single non-finite point would not merely
+    // add itself to the maximum - it would ERASE every real measurement behind
+    // it, and both maxima are published: they are printed as this run's
+    // headline, written to kernel-cross-check.json, and bound as the provenance
+    // source for the deviations quoted in DESIGN.md (a NaN serialises to
+    // `null`, which is a broken binding, and an Infinity reads as a real
+    // measurement). `grade()` already refuses the point, so guarding here
+    // cannot hide a failure - the verdict still comes from `failed`. What it
+    // protects is the number the run reports. The non-finite case is counted
+    // rather than dropped, so a poisoned point is visible in the artifact
+    // instead of leaving two clean-looking maxima with no trace of it.
+    if (Number.isFinite(relInstrumented)) {
+      worstVsInstrumented = Math.max(worstVsInstrumented, relInstrumented);
+    }
+    if (Number.isFinite(relProduction)) {
+      worstVsProductionInProcess = Math.max(worstVsProductionInProcess, relProduction);
+    }
+    if (!Number.isFinite(relInstrumented) || !Number.isFinite(relProduction)) nonFinite += 1;
     rows.push({
       point: k,
       meshes,
@@ -274,6 +294,9 @@ async function main() {
       relVsInstrumented: relInstrumented,
       relVsProductionInProcess: relProduction,
       passed,
+      ...(Number.isFinite(relInstrumented) && Number.isFinite(relProduction)
+        ? {}
+        : { note: 'non-finite deviation, excluded from the worst-case figures' }),
     });
     console.log(
       `point ${String(k).padStart(2)}: wasm ${vol.toFixed(9)}  instrumented ${pt.instrumentedVolume.toFixed(9)}  ` +
@@ -286,7 +309,16 @@ async function main() {
   }
 
   console.log('---');
-  console.log(`points: ${points.length}, meshes missing: ${missing}, points failed: ${failed}`);
+  console.log(
+    `points: ${points.length}, meshes missing: ${missing}, non-finite deviations: ${nonFinite}, ` +
+      `points failed: ${failed}`,
+  );
+  if (nonFinite > 0) {
+    console.log(
+      `WARNING: ${nonFinite} point(s) produced a non-finite deviation and are excluded from the ` +
+        'two worst-case figures below; those figures describe the remaining points only.',
+    );
+  }
   console.log(
     `worst relative deviation, wasm pipeline vs instrumented forward value: ${worstVsInstrumented.toExponential(3)} ` +
       `[bar ${ACCEPTANCE.vsInstrumented}]`,
@@ -304,6 +336,7 @@ async function main() {
       {
         points: points.length,
         missing,
+        nonFinite,
         failed,
         verdict: failed === 0 ? 'PASS' : 'FAIL',
         acceptance: ACCEPTANCE,

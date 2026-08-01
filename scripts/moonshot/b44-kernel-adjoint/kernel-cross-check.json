@@ -1,6 +1,7 @@
 {
   "points": 24,
   "missing": 0,
+  "nonFinite": 0,
   "failed": 0,
   "verdict": "PASS",
   "acceptance": {

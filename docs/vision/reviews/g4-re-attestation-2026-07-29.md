@@ -221,9 +221,13 @@ From here:
      Negative-bound 2026-08-01: B4.4's artifacts joining this tree put six
      per-family oracle deviations in the union index, three of which (1.185012e-13
      on A/seed-7; 2.188857e-13 on A/seed-20260727 and 2.143144e-13 on A/seed-2026)
-     fall inside the half-ULP of a bare 1e-13 or 2e-13 and made these retracted
-     tolerances read as backed. That is the union index vindicating a retraction,
-     which is the exact defect this gate exists to catch one level up, so the
-     match is BLOCKED rather than the marker deleted. -->
+     made these retracted tolerances read as backed. The window is sized by the
+     last digit actually WRITTEN, not by the value: writtenTolerance() gives a
+     bare 1e-13 and a bare 2e-13 - one digit each, same exponent - the same
+     +/-5e-14, and each of the three deviations sits inside that window around
+     one or the other (1.185012e-13 around 1e-13; the two 2.1e-13 figures around
+     2e-13). That is the union index vindicating a retraction, which is the
+     exact defect this gate exists to catch one level up, so the match is
+     BLOCKED rather than the marker deleted. -->
 <!-- numeral-src: 2.19e-13, 2.188857e-13 :: b44-kernel-adjoint/battery.json#[0].maxOracleRelDev -->
 <!-- numeral-src: 1.358479e-12 :: b44-kernel-adjoint/battery.json#[5].maxOracleRelDev -->

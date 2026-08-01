@@ -52,8 +52,11 @@ function loadMaplibre() {
     // later remount would degrade instantly without retrying. Drop the memo on
     // failure so the next mount gets a real attempt.
     maplibrePromise = pending;
-    void pending.catch(() => {
+    void pending.catch((err) => {
       if (maplibrePromise === pending) maplibrePromise = null;
+      // Logged per the no-silent-catch rule. This handler exists only to clear
+      // the memo; `pending` itself stays rejected for its real callers.
+      console.warn('[location-map] maplibre module load failed; a retry will be allowed:', err);
     });
   }
   return maplibrePromise;

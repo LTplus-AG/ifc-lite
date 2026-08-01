@@ -92,6 +92,9 @@ export class ChunkErrorBoundary extends Component<
     const chunk = isChunkLoadError(error);
     return (
       <div
+        // The fallback swaps in asynchronously, so without this a screen reader
+        // user gets no notification that the view they asked for is not coming.
+        role="alert"
         className="flex h-full min-h-[160px] w-full flex-col items-center justify-center gap-2 px-4 text-center"
         style={night ? { background: '#0a0a0c' } : undefined}
       >
@@ -119,7 +122,7 @@ export class ChunkErrorBoundary extends Component<
           }
           style={night ? { borderColor: NIGHT_TONE.dim, color: NIGHT_TONE.fg } : undefined}
         >
-          <RefreshCw className="h-3 w-3" />
+          <RefreshCw className="h-3 w-3" aria-hidden />
           Reload
         </button>
       </div>

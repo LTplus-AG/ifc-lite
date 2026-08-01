@@ -32,6 +32,7 @@
     "check:test-wiring": "node scripts/check-test-wiring.mjs",
     "check:api-surface": "node scripts/check-api-surface.mjs",
     "api-surface:update": "node scripts/check-api-surface.mjs --update",
+    "check:git-lfs": "node scripts/check-git-lfs.mjs",
     "generate:server-attr-indices": "pnpm turbo build --filter=@ifc-lite/parser && node scripts/generate-server-attr-indices.mjs",
     "check:server-attr-indices": "pnpm turbo build --filter=@ifc-lite/parser && node scripts/generate-server-attr-indices.mjs --check",
     "test:regression": "node scripts/test-geometry-regression.mjs",

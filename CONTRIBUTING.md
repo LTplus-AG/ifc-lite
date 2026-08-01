@@ -64,5 +64,19 @@ Never hand-edit versions or `CHANGELOG.md`.
 - Keep client and project identifiers out of code, tests, commit messages, and
   PR text.
 
+If your push fails with `You need Push access to upload Git LFS objects`, run
+`git lfs uninstall --local` in this clone and push again. This repo retired
+Git LFS but its history still holds LFS pointer blobs, and a `pre-push` hook
+left by `git lfs install` asks git for the objects being pushed with
+`--not --remotes=<remote>`. With no remote-tracking refs for the remote you are
+pushing to, that widens to the whole history, so git-lfs queues those old
+pointers for upload and the push dies uploading them. It only affects clones
+predating the retirement, or clones where `git lfs install` was run; a clone
+made today gets no LFS hooks. `--local` is clone-scoped and leaves your global
+Git LFS setup alone. `pnpm check:git-lfs` reports whether your clone has the
+leftover hooks and never changes anything, and `git push --no-verify` gets a
+push out in the meantime. Details in
+[docs/contributing/setup.md](./docs/contributing/setup.md#push-fails-with-you-need-push-access-to-upload-git-lfs-objects).
+
 By contributing you agree your contributions are licensed under the repository
 license and that you follow the [Code of Conduct](./CODE_OF_CONDUCT.md).

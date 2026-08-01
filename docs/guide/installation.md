@@ -253,7 +253,7 @@ ifc-lite no longer ships its own desktop app. The published `@ifc-lite/*` packag
 If you need large IFC benchmark fixtures, fetch only the specific files you plan to use:
 
 ```bash
-git lfs pull --include="tests/models/ara3d/AC20-FZK-Haus.ifc"
+pnpm fixtures tests/models/ara3d/AC20-FZK-Haus.ifc
 ```
 
 !!! note "Prerequisites for a Desktop Build"
@@ -280,8 +280,8 @@ git lfs pull --include="tests/models/ara3d/AC20-FZK-Haus.ifc"
 ### Clone and Build
 
 ```bash
-# Clone the repository
-GIT_LFS_SKIP_SMUDGE=1 git clone https://github.com/LTplus-AG/ifc-lite.git
+# Clone the repository (no Git LFS: fixtures are fetched on demand)
+git clone https://github.com/LTplus-AG/ifc-lite.git
 cd ifc-lite
 
 # Install dependencies

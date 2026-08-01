@@ -334,6 +334,39 @@ describe('PickingManager', () => {
       assert.deepStrictEqual(h.pickerRectPointNodes, [pointNode(POINT_ASSET)]);
     });
 
+    // Point splats are deliberately NOT filtered by hiddenIds / isolatedIds, on
+    // either branch. Per-asset point visibility is binary and handled upstream,
+    // so the pick pass has never filtered point nodes by the entity-level sets —
+    // pickRect passed the snapshot through unfiltered before this change too.
+    // Pinning it here so the asymmetry with meshes reads as intent rather than
+    // an oversight, and so making splats respect those sets becomes a deliberate
+    // decision with a failing test rather than a silent behaviour change. (#1904)
+    it('leaves point splats unfiltered by hidden/isolated, as the GPU rect pass always has (#1904)', async () => {
+      const hidden = harness({ released: true, pointNodes: [pointNode(POINT_ASSET)] });
+      const hiddenResult = await hidden.manager.pickRect(0, 0, 100, 100, {
+        hiddenIds: new Set([POINT_ASSET]),
+      });
+
+      assert.ok(
+        hiddenResult.has(POINT_ASSET),
+        'hiding a point asset must not silently drop it from rect select; that is an upstream concern',
+      );
+      assert.deepStrictEqual(
+        hidden.pickerRectPointNodes, [pointNode(POINT_ASSET)],
+        'the point snapshot reaches the pass unfiltered',
+      );
+
+      const isolated = harness({ released: true, pointNodes: [pointNode(POINT_ASSET)] });
+      const isolatedResult = await isolated.manager.pickRect(0, 0, 100, 100, {
+        isolatedIds: new Set([WALL]),
+      });
+
+      assert.ok(
+        isolatedResult.has(POINT_ASSET),
+        'isolating a mesh must not filter point assets either — same rule, same reason',
+      );
+    });
+
     it('keeps the pure-CPU fast path when there are no splats to pick (#1904)', async () => {
       const noProvider = harness({ released: true });
       const nullSnapshot = harness({ released: true, pointNodes: null });

@@ -309,7 +309,9 @@ describe('runExtensionExporter (#1907)', () => {
   // `new Uint8Array(0)` here hits the `instanceof Uint8Array` branch in
   // `coerceExporterOutput` directly, rather than the round-tripped `{}`
   // shape production sees. Both are exercised: this one names the
-  // `Uint8Array` case, `coerceExporterOutput` below covers the `{}` shape.
+  // `Uint8Array` case; the `coerceExporterOutput` suite below pins what `{}`
+  // does, which is to fall through to the caller's generic object error rather
+  // than this empty-specific message.
   it('throws when the handler returns an empty Uint8Array', async () => {
     const f = fixture({ handlerSource: 'function run() { return new Uint8Array(0); }' });
 
@@ -349,6 +351,31 @@ describe('coerceExporterOutput', () => {
     assert.equal(coerceExporterOutput(null), null);
     assert.equal(coerceExporterOutput(42), null);
     assert.equal(coerceExporterOutput({ nope: true }), null);
+  });
+
+  // `{}` is what production actually delivers for an empty export: `vm.dump`
+  // JSON round-trips the return value, so `new Uint8Array(0)` reaches the host
+  // with no keys at all, indistinguishable from any other empty object. The
+  // dense-key branch requires at least one entry, so this returns null and the
+  // caller raises its generic "returned an object" error rather than the
+  // empty-specific one. Both refuse to write the file, which is what matters;
+  // pinned here so the wording of that path is a choice, not an accident.
+  it('cannot tell a round-tripped empty typed array from any other empty object', () => {
+    assert.equal(coerceExporterOutput({}), null);
+  });
+
+  // The third typed-array branch, `ArrayBuffer.isView`, is unreachable through
+  // the sandbox for the same round-tripping reason, so this is the only thing
+  // exercising it. A view must be read through its own offset and length, not
+  // its whole backing buffer.
+  // The view must carry a non-zero offset AND a shorter length than its
+  // backing buffer, or the test cannot tell `new Uint8Array(buf, off, len)`
+  // from `new Uint8Array(buf)` and pins nothing. A plain `Uint8Array` would
+  // also return at the earlier `instanceof` branch and never reach this one.
+  it('reads a typed-array view through its offset and length, not the whole buffer', () => {
+    const backing = new Uint8Array([1, 2, 3, 4, 5]).buffer;
+    assert.deepStrictEqual(coerceExporterOutput(new DataView(backing, 1, 3)), new Uint8Array([2, 3, 4]));
+    assert.deepStrictEqual(coerceExporterOutput(new Int8Array(backing, 2, 2)), new Uint8Array([3, 4]));
   });
 
   // A sparse numeric-keyed object (e.g. `{0: 65, 100: 66}`) used to pass the

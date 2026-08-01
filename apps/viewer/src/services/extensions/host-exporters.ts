@@ -218,7 +218,7 @@ export async function runExtensionExporter(
       throw new Error(
         `Exporter "${exporterId}" returned ${describeEmptyReturn(rawValue)}; ` +
           `an empty export is not writable. The handler must produce actual ` +
-          `content — there is no empty-result shape this accepts.`,
+          `content; there is no empty-result shape this accepts.`,
       );
     }
     return { contribution, data, result };

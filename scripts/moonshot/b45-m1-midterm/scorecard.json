@@ -20,25 +20,25 @@
   "uniqueNodesResolvedDuringVerify": 60,
   "nodesResolvedPct": 0.023944,
   "nodesResolvedPctIfMeshLeavesExcludedFromDenominator": 0.042568,
-  "verifyMedianMs": 55.971,
+  "verifyMedianMs": 55.532,
   "verifyAllMs": [
-    55.971,
-    55.921,
-    56.164,
-    56.986,
-    55.885
+    55.586,
+    55.26,
+    55.563,
+    55.532,
+    55.155
   ],
-  "verifyBundleParseMedianMs": 2.16,
-  "verifyWholeProcessWallMedianMs": 83.2,
-  "verifierMaxRssBytes": 71516160,
-  "bundleBytes": 1683001,
+  "verifyBundleParseMedianMs": 2.159,
+  "verifyWholeProcessWallMedianMs": 82.3,
+  "verifierMaxRssBytes": 71696384,
+  "bundleBytes": 1682899,
   "examA_propertyOnlyWallEdit": {
     "element": 44657,
     "ifcType": "IfcWallStandardCase",
     "recomputed": 4,
     "cacheHits": 250578,
     "hitRate": 0.99998404,
-    "recomputeMs": 5.386
+    "recomputeMs": 6.288
   },
   "examB_propertyPlusGeometryWallEdit": {
     "element": 4688035,
@@ -49,24 +49,32 @@
     "recomputed": 11,
     "cacheHits": 250571,
     "hitRate": 0.9999561,
-    "recomputeMs": 8.448
+    "recomputeMs": 7.693
   },
-  "parseMs": 2796,
-  "meshMs": 8082,
-  "dagStructureMs": 1110,
-  "dagBuildMs": 9463,
-  "crossCheckRebuildMs": 10059,
+  "parseMs": 2925,
+  "meshMs": 7997,
+  "dagStructureMs": 1039,
+  "dagBuildMs": 9508,
+  "crossCheckRebuildMs": 9608,
   "correctnessCrossCheck": true,
   "tamper": [
     {
       "case": "geometry-mesh-float-flip",
       "caught": true,
+      "altered": true,
       "reason": "hash-mismatch"
     },
     {
       "case": "untouched-storey-child-hash-flip",
       "caught": true,
+      "altered": true,
       "reason": "hash-mismatch"
+    },
+    {
+      "case": "forged-trust-anchor-with-rederived-claim-hash",
+      "caught": true,
+      "altered": true,
+      "reason": "bundle-carries-trust-anchor"
     }
   ],
   "sensitivityElementGranularityClaim": {
@@ -74,12 +82,12 @@
     "claimNodes": 60794,
     "nodesResolved": 60805,
     "nodesResolvedPct": 24.2655,
-    "verifyMs": 899,
-    "bundleBytes": 36536090,
+    "verifyMs": 845.6,
+    "bundleBytes": 36535988,
     "wouldPassClause1": false,
     "wouldPassClause2": false
   },
-  "peakRssBytes": 2467250176,
+  "peakRssBytes": 2771992576,
   "clause1_verifyUnder500msInSecondProcess": true,
   "clause2_under5PctOfDagNodesResolved": true,
   "clause3_over90PctCacheHitsOnSingleWallRecompute": true,

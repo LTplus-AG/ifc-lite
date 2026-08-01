@@ -110,7 +110,7 @@ if (!process.env.B45_REEXEC) {
 
 const { loadIfcFile } = await import(path.join(REPO_ROOT, 'packages/cli/dist/loader.js'));
 const { RelationshipType } = await import(path.join(REPO_ROOT, 'packages/data/dist/index.js'));
-const { ProvenanceDag, computeNodeHash, createCertificate } = await import(
+const { ProvenanceDag, computeNodeHash, createCertificate, hashResolvedNode } = await import(
   path.join(REPO_ROOT, 'packages/provenance/dist/index.js')
 );
 const { GeometryProcessor } = await import(path.join(REPO_ROOT, 'packages/geometry/dist/index.js'));
@@ -793,12 +793,11 @@ async function main() {
         : struct.materializeComposite(getHash, id);
     nodes[id] = serializeResolved(kind, payload);
   }
-  const bundle = {
-    certificate,
-    expectedTrustRoot: TRUST_ROOT,
-    expectedKernelVersion: KERNEL_VERSION,
-    nodes,
-  };
+  // NOTE the absence of `expectedTrustRoot`/`expectedKernelVersion`. The pin the
+  // verifier checks against is the verifier's own configuration (passed through
+  // the environment below), never a field of the artifact it is checking — see
+  // verify-worker.mjs's header for the forged bundle that motivated this.
+  const bundle = { certificate, nodes };
   const bundlePath = path.join(OUT_DIR, 'bundle.json');
   const bundleJson = JSON.stringify(bundle);
   writeFileSync(bundlePath, bundleJson);
@@ -808,7 +807,16 @@ async function main() {
   const workerPath = path.join(__dirname, 'verify-worker.mjs');
   function verifyInSecondProcess(pathToBundle) {
     const t0 = performance.now();
-    const res = spawnSync(process.execPath, [workerPath, pathToBundle], { encoding: 'utf-8' });
+    const res = spawnSync(process.execPath, [workerPath, pathToBundle], {
+      encoding: 'utf-8',
+      // The trust anchor travels here and nowhere else: the verifier's pin has
+      // to come from the party doing the verifying, not from the artifact.
+      env: {
+        ...process.env,
+        B45_EXPECT_TRUST_ROOT: TRUST_ROOT,
+        B45_EXPECT_KERNEL_VERSION: KERNEL_VERSION,
+      },
+    });
     const processWallMs = performance.now() - t0;
     if (res.status !== 0) {
       throw new Error(`[b45] verify-worker exited ${res.status}: ${res.stderr}`);
@@ -875,12 +883,7 @@ async function main() {
       nodes2[r.nodeId] = serializeResolved(kind, payload);
     }
     const p2 = path.join(OUT_DIR, 'bundle.sensitivity-element-granular.json');
-    const json2 = JSON.stringify({
-      certificate: cert2,
-      expectedTrustRoot: TRUST_ROOT,
-      expectedKernelVersion: KERNEL_VERSION,
-      nodes: nodes2,
-    });
+    const json2 = JSON.stringify({ certificate: cert2, nodes: nodes2 });
     writeFileSync(p2, json2);
     const r2 = verifyInSecondProcess(p2);
     if (!r2.ok) throw new Error(`[b45] sensitivity-probe verify FAILED: ${r2.reason}`);
@@ -902,7 +905,13 @@ async function main() {
     );
   }
 
-  /* --- Tamper battery, also in the second process --- */
+  /* --- Tamper battery, also in the second process ------------------------
+   * Every case records `altered`: the byte-level evidence that the case
+   * actually changed the bundle. A tamper test that mutates nothing is a check
+   * that passes without exercising anything, which is the same defect class as
+   * a verifier reading its trust anchor out of the artifact — a green cell
+   * carrying no information. `caught && altered` is what the scorecard means.
+   * -------------------------------------------------------------------- */
   const tamperResults = [];
   {
     // (a) flip one float inside a bundled geometry-mesh payload.
@@ -910,14 +919,26 @@ async function main() {
     if (meshId) {
       const t = JSON.parse(bundleJson);
       const enc = t.nodes[meshId].payload.positions;
-      const buf = Buffer.from(enc.b64, 'base64');
-      buf[0] ^= 0xff;
-      enc.b64 = buf.toString('base64');
-      const p = path.join(OUT_DIR, 'bundle.tamper-mesh.json');
-      writeFileSync(p, JSON.stringify(t));
-      const r = verifyInSecondProcess(p);
-      tamperResults.push({ case: 'geometry-mesh-float-flip', caught: r.ok === false, reason: r.reason });
-      log(`tamper (mesh float flip): ok=${r.ok} reason=${r.reason ?? '-'}`);
+      const before = enc.b64;
+      const buf = Buffer.from(before, 'base64');
+      // An empty positions blob would leave `buf[0] ^= 0xff` a no-op and the
+      // case would "pass" having flipped nothing.
+      if (buf.byteLength > 0) {
+        buf[0] ^= 0xff;
+        enc.b64 = buf.toString('base64');
+        const p = path.join(OUT_DIR, 'bundle.tamper-mesh.json');
+        writeFileSync(p, JSON.stringify(t));
+        const r = verifyInSecondProcess(p);
+        tamperResults.push({
+          case: 'geometry-mesh-float-flip',
+          caught: r.ok === false,
+          altered: enc.b64 !== before,
+          reason: r.reason,
+        });
+        log(`tamper (mesh float flip): ok=${r.ok} reason=${r.reason ?? '-'}`);
+      } else {
+        log('tamper (mesh float flip): SKIPPED — the bundled mesh carries no positions bytes');
+      }
     }
   }
   {
@@ -925,17 +946,76 @@ async function main() {
     // the storey relationship node's own payload is a list of element hashes,
     // so tamper the hash list directly (the equivalent of an element under that
     // storey having silently changed).
-    const storeyId = untouchedStoreyRefs[0]?.nodeId;
+    //
+    // The storey has to be one that HAS a child hash to flip. Taking
+    // `untouchedStoreyRefs[0]` unconditionally reads `roles[0].refs` of whatever
+    // happens to be first, and an empty storey (no contained elements, which
+    // Holter does not have but another fixture will) would throw, or flip
+    // nothing and record a vacuous pass.
+    const t = JSON.parse(bundleJson);
+    const storeyId = untouchedStoreyRefs
+      .map((r) => r.nodeId)
+      .find((id) => (t.nodes[id]?.payload?.roles?.[0]?.refs ?? []).length > 0);
     if (storeyId) {
-      const t = JSON.parse(bundleJson);
       const refs = t.nodes[storeyId].payload.roles[0].refs;
-      refs[0] = `${refs[0].slice(0, -1)}${refs[0].slice(-1) === '0' ? '1' : '0'}`;
+      const before = refs[0];
+      refs[0] = `${before.slice(0, -1)}${before.slice(-1) === '0' ? '1' : '0'}`;
       const p = path.join(OUT_DIR, 'bundle.tamper-storey.json');
       writeFileSync(p, JSON.stringify(t));
       const r = verifyInSecondProcess(p);
-      tamperResults.push({ case: 'untouched-storey-child-hash-flip', caught: r.ok === false, reason: r.reason });
+      tamperResults.push({
+        case: 'untouched-storey-child-hash-flip',
+        caught: r.ok === false,
+        altered: refs[0] !== before,
+        reason: r.reason,
+      });
       log(`tamper (untouched storey child-hash flip): ok=${r.ok} reason=${r.reason ?? '-'}`);
+    } else {
+      log('tamper (untouched storey child-hash flip): SKIPPED — no untouched storey carries a child hash');
     }
+  }
+  {
+    // (c) the forgery the trust-anchor fix exists for. Tamper a child hash under
+    // an untouched storey AND re-derive the claim's own hash so the certificate
+    // is internally consistent with the lie, then stamp an attacker-chosen
+    // trustRoot/kernelVersion on the certificate and ship the matching
+    // `expected*` fields the old worker pinned against. Against a verifier that
+    // reads its anchor from the bundle this returned `ok: true` with all 60
+    // nodes resolved — indistinguishable from the genuine bundle. It is in the
+    // battery so it can never quietly become true again.
+    const t = JSON.parse(bundleJson);
+    const claim = t.certificate.claims.find((c) => c.type === 'subtree-untouched');
+    const ref = claim?.nodes.find((n) => (t.nodes[n.nodeId]?.payload?.roles?.[0]?.refs ?? []).length > 0);
+    if (ref) {
+      const refs = t.nodes[ref.nodeId].payload.roles[0].refs;
+      const beforeRef = refs[0];
+      const beforeHash = ref.hash;
+      refs[0] = `${beforeRef.slice(0, -1)}${beforeRef.slice(-1) === '0' ? '1' : '0'}`;
+      ref.hash = await hashResolvedNode(t.nodes[ref.nodeId]);
+      t.certificate.trustRoot = 'attacker-forged-trust-root-v0';
+      t.certificate.kernelVersion = 'attacker-forged-kernel-v0';
+      t.expectedTrustRoot = t.certificate.trustRoot;
+      t.expectedKernelVersion = t.certificate.kernelVersion;
+      const p = path.join(OUT_DIR, 'bundle.forged-trust-anchor.json');
+      writeFileSync(p, JSON.stringify(t));
+      const r = verifyInSecondProcess(p);
+      tamperResults.push({
+        case: 'forged-trust-anchor-with-rederived-claim-hash',
+        caught: r.ok === false,
+        altered: refs[0] !== beforeRef && ref.hash !== beforeHash,
+        reason: r.reason,
+      });
+      log(`tamper (forged trust anchor + re-derived claim hash): ok=${r.ok} reason=${r.reason ?? '-'}`);
+    } else {
+      log('tamper (forged trust anchor): SKIPPED — no claimed storey carries a child hash');
+    }
+  }
+  const tamperAllCaught = tamperResults.length > 0 && tamperResults.every((t) => t.caught && t.altered);
+  if (!tamperAllCaught) {
+    throw new Error(
+      `[b45] tamper battery did not hold: ${JSON.stringify(tamperResults)} — a case that was not ` +
+        'caught, or that altered nothing, means the verdict below is not evidence of anything.',
+    );
   }
 
   /* --- Correctness cross-check --- */
@@ -1048,7 +1128,19 @@ async function main() {
 
   mkdirSync(path.dirname(SCORECARD_PATH), { recursive: true });
   writeFileSync(SCORECARD_PATH, `${JSON.stringify(scorecard, null, 2)}\n`);
-  if (process.env.B45_KEEP_BUNDLES !== '1') rmSync(OUT_DIR, { recursive: true, force: true });
+  // Removing the working directory must never remove the run's own result.
+  // `--scorecard-out $B45_OUT/scorecard.json` is a perfectly natural thing to
+  // type, and the unconditional rmSync deleted the file it had just written.
+  const scorecardRel = path.relative(OUT_DIR, SCORECARD_PATH);
+  const scorecardInsideOutDir =
+    scorecardRel === '' || (!scorecardRel.startsWith('..') && !path.isAbsolute(scorecardRel));
+  if (process.env.B45_KEEP_BUNDLES === '1') {
+    log(`working bundles kept in ${OUT_DIR} (B45_KEEP_BUNDLES=1)`);
+  } else if (scorecardInsideOutDir) {
+    log(`working bundles kept in ${OUT_DIR}: the scorecard was written inside it`);
+  } else {
+    rmSync(OUT_DIR, { recursive: true, force: true });
+  }
   console.log(JSON.stringify(scorecard));
 
   log(`CLAUSE 1 (second-process verify < 500 ms):        ${clause1 ? 'PASS' : 'FAIL'} (${verifyMedianMs.toFixed(2)} ms)`);

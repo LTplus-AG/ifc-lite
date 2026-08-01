@@ -49,6 +49,81 @@ function getWorkspacePackages() {
   return packages;
 }
 
+/**
+ * Rewrite the workspace members' own `version` entries in Cargo.lock.
+ *
+ * Bumping the manifests without this leaves the lock recording the previous
+ * version for every member, and from then on `cargo` refuses any command
+ * carrying `--locked` ("cannot update the lock file ... because --locked was
+ * passed"), while every local build silently rewrites Cargo.lock and shows it
+ * as dirty. Cargo would fix it in one resolve, but this script has to run
+ * where a toolchain and the registry index may not be available, so the edit
+ * is textual and offline.
+ *
+ * Only entries with no `source` field are touched: in a lock file that is
+ * exactly the set of path/workspace members. Registry crates always carry a
+ * `source`, so a third-party crate that happened to share a name cannot be
+ * caught by this. A member is skipped unless its manifest actually inherits
+ * `version.workspace = true`: one pinning its own version means to hold it.
+ */
+function syncCargoLock(version) {
+  const cargoLockPath = join(rootDir, 'Cargo.lock');
+  let lock;
+  try {
+    lock = readFileSync(cargoLockPath, 'utf8');
+  } catch {
+    console.log('ℹ️  No Cargo.lock to sync');
+    return;
+  }
+
+  const rootToml = readFileSync(join(rootDir, 'Cargo.toml'), 'utf8');
+  const membersMatch = rootToml.match(/^members\s*=\s*\[([^\]]*)\]/m);
+  if (!membersMatch) {
+    console.log('ℹ️  No [workspace] members found; leaving Cargo.lock alone');
+    return;
+  }
+  const memberDirs = [...membersMatch[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+
+  const inheritingCrates = new Set();
+  for (const dir of memberDirs) {
+    let memberToml;
+    try {
+      memberToml = readFileSync(join(rootDir, dir, 'Cargo.toml'), 'utf8');
+    } catch {
+      continue;
+    }
+    // `version.workspace = true` or `version = { workspace = true }`
+    if (!/^\s*version(\.workspace\s*=\s*true|\s*=\s*\{\s*workspace\s*=\s*true\s*\})/m.test(memberToml)) {
+      continue;
+    }
+    const name = memberToml.match(/^\s*name\s*=\s*"([^"]+)"/m);
+    if (name) inheritingCrates.add(name[1]);
+  }
+
+  const updated = [];
+  // Split on the block delimiter and rebuild, so a rewrite stays inside the
+  // block it belongs to instead of running past it.
+  const parts = lock.split('[[package]]');
+  for (let i = 1; i < parts.length; i++) {
+    const block = parts[i];
+    if (/^\s*source\s*=/m.test(block)) continue;
+    const name = block.match(/^\s*name\s*=\s*"([^"]+)"/m);
+    if (!name || !inheritingCrates.has(name[1])) continue;
+    const rewritten = block.replace(/^(\s*version\s*=\s*")[^"]+(")/m, `$1${version}$2`);
+    if (rewritten !== block) {
+      parts[i] = rewritten;
+      updated.push(name[1]);
+    }
+  }
+
+  if (updated.length === 0) {
+    console.log('✅ Cargo.lock member versions already in sync');
+    return;
+  }
+  writeFileSync(cargoLockPath, parts.join('[[package]]'));
+  console.log(`✅ Updated Cargo.lock member versions to ${version} (${updated.join(', ')})`);
+}
+
 function syncVersions() {
   const packagePaths = getWorkspacePackages();
 
@@ -111,6 +186,8 @@ function syncVersions() {
       console.log(`✅ Updated rust/${member}/Cargo.toml internal dep versions to ${version}`);
     }
   }
+
+  syncCargoLock(version);
 
   // Update root package.json
   if (rootPackageJson.version !== version) {

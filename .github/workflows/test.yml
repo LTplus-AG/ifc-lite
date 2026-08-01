@@ -456,6 +456,14 @@ jobs:
         # The fixtures script is pure Node (no npm deps) so we skip the
         # pnpm install dance Rust-only jobs don't need.
         run: node scripts/fixtures/fetch-fixtures.mjs
+      # Cheap (resolve only, no compile) and it catches a failure mode that
+      # otherwise stays invisible for weeks: a release bumps the manifests but
+      # leaves Cargo.lock recording the old member versions, so every `--locked`
+      # command refuses to run and every local build silently dirties the lock.
+      # `scripts/sync-versions.js` keeps the two in step; this is the gate that
+      # notices if that ever stops being true.
+      - name: Cargo.lock is in sync with the manifests
+        run: cargo metadata --locked --format-version 1 > /dev/null
       # Workspace exclusions:
       #   - ifc-lite-wasm: dev-deps on wasm-bindgen-test; tests target wasm32.
       - name: Clippy (lint gate)

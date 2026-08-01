@@ -102,14 +102,20 @@ flowchart LR
 
 ```typescript
 // Complex query chain
+// Qto_* quantities live in a separate table from properties, so they are not
+// reachable via whereProperty() — filter by quantity value after execute() instead.
 const walls = query
   .walls()
   .whereProperty('Pset_WallCommon', 'IsExternal', '=', true)
   .whereProperty('Pset_WallCommon', 'FireRating', '>=', 60)
-  .whereProperty('Qto_WallBaseQuantities', 'NetSideArea', '>', 10)
-  .execute();
+  .execute()
+  .filter(w => {
+    const qset = w.quantities.find(q => q.name === 'Qto_WallBaseQuantities');
+    const netSideArea = qset?.quantities.find(q => q.name === 'NetSideArea')?.value;
+    return typeof netSideArea === 'number' && netSideArea > 10;
+  });
 
-// execute() returns QueryResultEntity[]; project the fields you need
+// execute() (via the .filter() above) returns QueryResultEntity[]; project the fields you need
 const results = walls.map(w => ({ expressId: w.expressId, name: w.name, type: w.type }));
 
 console.log(results);

@@ -6,6 +6,11 @@
  * Golden wire-format vectors for node-hash-v0 (FROZEN 2026-07-25, spec
  * version node-hash-v0 / 1.0.0, docs/vision/spec/node-hash-v0.md).
  *
+ * Regression suite for the freeze itself, landed by PR #1886 -- the PR whose
+ * merge IS the freeze act. The ps-unicode vectors trace to findings F4/F5 of
+ * the pre-freeze adversarial attack (NFC-normalised comparison, and rejecting
+ * out-of-domain payloads rather than coercing them).
+ *
  * Every vector in `test/golden/*.json` carries a payload and the hash the
  * frozen implementation produced for it at freeze time. This suite recomputes
  * every vector and byte-compares. Byte-for-byte pinning is exactly right here

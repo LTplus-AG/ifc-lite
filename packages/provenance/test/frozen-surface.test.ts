@@ -6,6 +6,11 @@
  * Cross-surface freeze pin for node-hash-v0 (FROZEN 2026-07-25, spec version
  * node-hash-v0 / 1.0.0, docs/vision/spec/node-hash-v0.md).
  *
+ * Regression suite for the freeze itself, landed by PR #1886 -- the PR whose
+ * merge IS the freeze act. Findings F4/F5/F11 of the pre-freeze adversarial
+ * attack, and the NFC key-collision second preimage found by the first real
+ * review of the freeze, are all pinned from here or from golden-vectors.test.ts.
+ *
  * Two things beyond the per-kind golden vectors must stay byte-stable under
  * the node-hash-v0 freeze:
  *
@@ -178,6 +183,17 @@ describe('node-hash-v0 frozen cross-surface pin', () => {
     const dag = new ProvenanceDag();
     for (const node of fixture.nodes) addNode(dag, node);
     await dag.build();
+
+    // Completeness BEFORE values. The loop below iterates `expectedHashes`, so
+    // a node present in the DAG but absent from that map was never asserted --
+    // in a freeze that is the dangerous direction, because a node kind could be
+    // added to the fixture and silently ship unpinned while this test stayed
+    // green. Comparing the two id sets first makes an omission a failure rather
+    // than an absence.
+    expect(
+      Object.keys(fixture.expectedHashes).sort(),
+      `The mini-model must pin EVERY node it builds, not just the ones listed. ${FREEZE_POLICY}`,
+    ).toEqual([...dag.nodeIds()].sort());
 
     for (const [nodeId, expected] of Object.entries(fixture.expectedHashes)) {
       expect(

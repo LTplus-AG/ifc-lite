@@ -113,6 +113,33 @@
  * than a marker, and it is what was done for B4.5's g0/g1 DAG shape rather than
  * leaving three figures excused.
  *
+ * THIS IS NOT A TRUTH GATE, AND THE SCRIPT SAYS SO IN ITS OWN OUTPUT. The
+ * decoy calibration below measures the only thing that matters about a green
+ * run: how often a deliberately-wrong number is cleared as "backed" by
+ * coincidence. Against a single curated scorecard that rate is near zero.
+ * Against `docs/vision`, whose haystack is the UNION of every moonshot
+ * artifact in the tree (~8,900 numbers), it measured 57.5% to 91.7% per
+ * document on 2026-07-29 -- 69.0% on the finishing plan itself. A "backed"
+ * verdict there means "some field somewhere in the program holds this value",
+ * which is close to no information at all. The gate catches a figure that
+ * contradicts a named artifact; it does not certify one that agrees with the
+ * pile.
+ *
+ * THE FIX FOR THAT IS POSITIVE BINDING, NOT A BIGGER HAYSTACK. A second marker
+ * form names the artifact and the JSON path a figure comes from:
+ *
+ *   <!-- numeral-src: 899 :: b45-m1-midterm/scorecard.json#sensitivityElementGranularityClaim.verifyMs -->
+ *
+ * A bound numeral is checked against that ONE value, so its haystack is 1 and
+ * its decoy pass rate is ~0 (a 3-30% perturbation cannot land inside the
+ * half-ULP of a single named field). A binding that resolves and disagrees is a
+ * hard finding -- the strongest check in this script, because it is the only
+ * one that can say "this sentence contradicts the field it claims to quote".
+ * A binding into a bet directory that is not in this tree yet is PENDING: it is
+ * not counted as backed, its decoys are never cleared, and it becomes a real
+ * check the moment the branch lands. A binding into a directory that DOES exist
+ * but whose file or path does not is a broken binding and fails the gate.
+ *
  * Usage:
  *   node scripts/moonshot/ci/check-report-numerals.mjs
  *   node scripts/moonshot/ci/check-report-numerals.mjs <dir-or-repo-root> ...
@@ -327,8 +354,32 @@ function indexArtifacts(files) {
  */
 const MARKER_RE = /<!--\s*numeral-ok:\s*([\s\S]*?)\s*-->/g;
 
+/**
+ * POSITIVE BINDING -- the marker that makes a "backed" verdict mean something.
+ *
+ *   <!-- numeral-src: 899 :: b45-m1-midterm/scorecard.json#sensitivityElementGranularityClaim.verifyMs -->
+ *
+ * `numeral-ok` says "this number is legitimately absent from the artifacts, and
+ * here is why" -- it EXCUSES. `numeral-src` says "this number is field X of
+ * artifact Y" -- it BINDS, and the checker then verifies exactly that. The two
+ * are not interchangeable and a token may carry only one of them.
+ *
+ * The path is relative to `scripts/moonshot/` (a repo-relative path starting
+ * `scripts/` also works). After `#` comes a dotted JSON path in the same
+ * notation this report already prints for artifact values: `a.b[0].c`.
+ *
+ * WHY THIS FORM. `docs/vision` is checked against the union of every artifact
+ * in the tree, so the question "does the program hold this number anywhere" is
+ * nearly always yes -- see the decoy calibration in the header. Naming the
+ * field collapses the haystack to one value, which is the difference between
+ * "not contradicted" and "quoted from here". It also survives a re-bless: when
+ * the artifact's field moves, the gate says which sentence quoted it.
+ */
+const MARKER_SRC_RE = /<!--\s*numeral-src:\s*([\s\S]*?)\s*-->/g;
+
 function parseMarkers(rawText) {
   const out = new Map(); // token -> reason
+  const bindings = new Map(); // token -> artifact reference string
   const bad = [];
   // Blank code first, so a document that DOCUMENTS the marker syntax inside a
   // code span (`<!-- numeral-ok: <token> :: <reason> -->`) does not register
@@ -362,7 +413,108 @@ function parseMarkers(rawText) {
     }
     for (const t of tokens) out.set(t, reason);
   }
-  return { markers: out, bad };
+  for (const m of text.matchAll(MARKER_SRC_RE)) {
+    const body = m[1];
+    const split = body.indexOf('::');
+    if (split === -1) {
+      bad.push(`numeral-src marker without a " :: <artifact>#<json.path>": ${JSON.stringify(body.slice(0, 80))}`);
+      continue;
+    }
+    const tokens = body.slice(0, split).split(/,\s+/).map((t) => t.trim()).filter(Boolean);
+    const rest = body.slice(split + 2).trim();
+    // `:: none - <why>` is the NEGATIVE binding: an assertion that no artifact
+    // emits this figure. It is not the same as `numeral-ok`, which only excuses
+    // a numeral the union index failed to match. A negative binding also BLOCKS
+    // the union match, which is the point: a retracted figure, or a measurement
+    // of the checker itself, must not be silently vindicated by a coincidental
+    // hit somewhere in ~8,900 numbers. Its decoys are never cleared either, so
+    // it costs the calibration nothing.
+    const ref = /^none\b/i.test(rest) ? `none${rest.slice(4)}` : rest.replace(/\s+/g, '');
+    if (tokens.length === 0) {
+      bad.push(`numeral-src marker lists no numerals: ${JSON.stringify(body.slice(0, 80))}`);
+      continue;
+    }
+    if (!/^none\b/i.test(ref) && !ref.includes('#')) {
+      bad.push(`numeral-src marker needs <artifact>#<json.path>, got ${JSON.stringify(ref.slice(0, 80))}`);
+      continue;
+    }
+    for (const t of tokens) {
+      if (out.has(t)) {
+        bad.push(`${t} carries both a numeral-ok excuse and a numeral-src binding; a token may have only one`);
+        continue;
+      }
+      bindings.set(t, ref);
+    }
+  }
+  return { markers: out, bindings, bad };
+}
+
+// ---------------------------------------------------------------------------
+// Binding resolution
+// ---------------------------------------------------------------------------
+
+const artifactCache = new Map();
+
+function loadArtifact(abs) {
+  if (!artifactCache.has(abs)) {
+    let doc = null;
+    try {
+      doc = JSON.parse(readFileSync(abs, 'utf-8'));
+    } catch {
+      doc = null;
+    }
+    artifactCache.set(abs, doc);
+  }
+  return artifactCache.get(abs);
+}
+
+/** `models[0].speedups.x` -> the number at that path, or undefined. */
+function readJsonPath(doc, jsonPath) {
+  let node = doc;
+  for (const seg of jsonPath.match(/[^.[\]]+/g) ?? []) {
+    if (node === null || node === undefined) return undefined;
+    node = Array.isArray(node) && /^\d+$/.test(seg) ? node[Number(seg)] : node[seg];
+  }
+  if (typeof node === 'number') return Number.isFinite(node) ? node : undefined;
+  if (typeof node === 'string' && /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(node.trim())) {
+    const v = Number(node.trim());
+    return Number.isFinite(v) ? v : undefined;
+  }
+  return undefined;
+}
+
+/**
+ * A binding resolves to one of four states. PENDING is the interesting one: a
+ * bet directory that is simply not in this tree yet (its branch is unmerged) is
+ * a promise the checker will start enforcing the day it lands, and until then
+ * the numeral is NOT counted as backed. A directory that exists with a missing
+ * file or path is a typo, and typos must not hide inside PENDING.
+ */
+function resolveBinding(ref) {
+  if (/^none\b/i.test(ref)) {
+    return { status: 'none', reason: ref.slice(4).replace(/^\s*[-:]\s*/, '').trim() };
+  }
+  const [relRaw, jsonPath] = ref.split('#');
+  const rel = relRaw.startsWith('scripts/') || relRaw.startsWith('docs/')
+    ? relRaw
+    : path.join('scripts/moonshot', relRaw);
+  const abs = path.join(REPO_ROOT, rel);
+  const betDir = path.dirname(abs);
+  if (!statSafe(abs)) {
+    if (!statSafe(betDir)) return { status: 'pending', rel, jsonPath };
+    return { status: 'missing-file', rel, jsonPath };
+  }
+  const doc = loadArtifact(abs);
+  if (doc === null) return { status: 'missing-file', rel, jsonPath };
+  const value = readJsonPath(doc, jsonPath);
+  if (value === undefined) return { status: 'missing-path', rel, jsonPath };
+  return { status: 'ok', rel, jsonPath, value, src: `${path.basename(rel)}:${jsonPath}` };
+}
+
+/** Does the bound value back this numeral, under the prose's own unit scales? */
+function bindingBacks(p, tol, unit, value) {
+  for (const [s] of scalesFor(unit)) if (Math.abs(value * s - p) <= tol) return true;
+  return false;
 }
 
 const SPACES = (n) => ' '.repeat(n);
@@ -610,9 +762,19 @@ function matchDerived(p, tol, unit, index) {
  * reader is entitled to know that before trusting a clean report.
  *
  * Seeded (mulberry32) so the printed rate is reproducible run to run.
+ *
+ * A numeral carrying a `numeral-src` binding is calibrated against ITS OWN
+ * haystack -- the single named field, or nothing at all when the binding is
+ * still pending -- because that is the evidence the reader is being offered.
+ * That is the whole mechanism: every figure moved from the union to a binding
+ * moves three decoys from a coin flip to a certainty, and the rate falls with
+ * it. `bound` / `unbound` are reported separately so the headline rate can
+ * never be improved by quietly binding the easy numbers.
  */
-function calibrate(groups, index) {
-  if (groups.length === 0) return { decoys: 0, cleared: 0, rate: 0 };
+function calibrate(groups, index, bindingIndexFor) {
+  if (groups.length === 0) {
+    return { decoys: 0, cleared: 0, rate: 0, bound: { decoys: 0, cleared: 0 }, unbound: { decoys: 0, cleared: 0 } };
+  }
   let s = 0x9e3779b9;
   const rnd = () => {
     s = (s + 0x6d2b79f5) | 0;
@@ -622,7 +784,12 @@ function calibrate(groups, index) {
   };
   let cleared = 0;
   let decoys = 0;
+  const bound = { decoys: 0, cleared: 0 };
+  const unbound = { decoys: 0, cleared: 0 };
   for (const g of groups) {
+    const own = bindingIndexFor ? bindingIndexFor(g) : null;
+    const haystack = own === null ? index : own;
+    const isBound = own !== null;
     for (let k = 0; k < 3; k += 1) {
       const factor = 1 + (rnd() < 0.5 ? -1 : 1) * (0.03 + rnd() * 0.27);
       const v = g.value * factor;
@@ -636,10 +803,15 @@ function calibrate(groups, index) {
       })();
       const rawDecoy = v.toFixed(Math.min(decimals, 12));
       decoys += 1;
-      if (matchDirect(Number(rawDecoy), writtenTolerance(rawDecoy), g.unit, index).kind) cleared += 1;
+      const tally = isBound ? bound : unbound;
+      tally.decoys += 1;
+      if (matchDirect(Number(rawDecoy), writtenTolerance(rawDecoy), g.unit, haystack).kind) {
+        cleared += 1;
+        tally.cleared += 1;
+      }
     }
   }
-  return { decoys, cleared, rate: decoys === 0 ? 0 : cleared / decoys };
+  return { decoys, cleared, rate: decoys === 0 ? 0 : cleared / decoys, bound, unbound };
 }
 
 // ---------------------------------------------------------------------------
@@ -670,14 +842,19 @@ for (const bet of bets) {
 
   for (const doc of bet.prose) {
     const rawText = readFileSync(doc, 'utf-8');
-    const { markers, bad: badMarkers } = parseMarkers(rawText);
+    const { markers, bindings, bad: badMarkers } = parseMarkers(rawText);
     const usedMarkers = new Set();
+    const usedBindings = new Set();
     const nums = extractNumerals(rawText);
     const backed = [];
     const nearMiss = [];
     const noTrace = [];
     const derived = [];
     const excused = [];
+    const bound = [];
+    const pending = [];
+    const assertedUnbacked = [];
+    const brokenBindings = [];
 
     // Group identical (value, unit) pairs so a number quoted five times is one
     // finding with five line numbers, not five findings.
@@ -688,8 +865,53 @@ for (const bet of bets) {
       groups.get(key).lines.push(n.line);
     }
 
+    // Bindings first: a numeral that names its source is checked against that
+    // source and nothing else, whatever the union index happens to contain.
+    const boundHaystack = new Map(); // token -> 1-element index, or [] when pending
     for (const g of groups.values()) {
       const token = `${g.raw}${g.unit}`;
+      const ref = bindings.get(token);
+      if (!ref) continue;
+      usedBindings.add(token);
+      const tol = writtenTolerance(g.raw);
+      const r = resolveBinding(ref);
+      if (r.status === 'none') {
+        boundHaystack.set(token, []);
+        assertedUnbacked.push({ ...g, reason: r.reason || '(no reason given)' });
+        continue;
+      }
+      if (r.status === 'pending') {
+        boundHaystack.set(token, []);
+        pending.push({ ...g, ref, rel: r.rel, jsonPath: r.jsonPath });
+        continue;
+      }
+      if (r.status === 'missing-file' || r.status === 'missing-path') {
+        boundHaystack.set(token, []);
+        brokenBindings.push({
+          ...g,
+          ref,
+          why: r.status === 'missing-file'
+            ? `the bet directory exists but ${r.rel} does not parse or does not exist`
+            : `${r.rel} has no numeric value at ${r.jsonPath}`,
+        });
+        continue;
+      }
+      if (!bindingBacks(g.value, tol, g.unit, r.value)) {
+        boundHaystack.set(token, []);
+        brokenBindings.push({
+          ...g,
+          ref,
+          why: `the prose says ${token} and ${r.rel}#${r.jsonPath} holds ${r.value} -- outside the half-ULP of the written digit`,
+        });
+        continue;
+      }
+      boundHaystack.set(token, [{ v: r.value, src: r.src }]);
+      bound.push({ ...g, ref, src: r.src, artifactValue: r.value });
+    }
+
+    for (const g of groups.values()) {
+      const token = `${g.raw}${g.unit}`;
+      if (bindings.has(token)) continue; // adjudicated above
       const tol = writtenTolerance(g.raw);
       const direct = matchDirect(g.value, tol, g.unit, index);
       if (direct.kind) {
@@ -725,23 +947,47 @@ for (const bet of bets) {
           : 'no unbacked numeral in this document matches this token -- the prose moved, delete the marker',
       });
     }
+    // A binding whose numeral has left the document is the same defect: an
+    // assertion about a sentence nobody can read any more.
+    for (const [token, ref] of bindings) {
+      if (usedBindings.has(token)) continue;
+      staleMarkers.push({
+        token,
+        reason: ref,
+        why: 'no numeral in this document matches this numeral-src binding -- the prose moved, update or delete the binding',
+      });
+    }
 
     nearMiss.sort((a, b) => a.near.rel - b.near.rel);
     noTrace.sort((a, b) => a.lines[0] - b.lines[0]);
     derived.sort((a, b) => a.lines[0] - b.lines[0]);
     excused.sort((a, b) => a.lines[0] - b.lines[0]);
 
+    bound.sort((a, b) => a.lines[0] - b.lines[0]);
+    pending.sort((a, b) => a.lines[0] - b.lines[0]);
+    assertedUnbacked.sort((a, b) => a.lines[0] - b.lines[0]);
+    brokenBindings.sort((a, b) => a.lines[0] - b.lines[0]);
+
     betOut.docs.push({
       doc: path.relative(REPO_ROOT, doc) || path.basename(doc),
       total: groups.size,
       backed: backed.length,
+      backedSources: backed.map((b) => ({ token: `${b.raw}${b.unit}`, lines: b.lines, src: b.src, via: b.via })),
+      bound,
+      pending,
+      assertedUnbacked,
+      brokenBindings,
       nearMiss,
       noTrace,
       derived,
       excused,
       staleMarkers,
       badMarkers,
-      decoy: calibrate([...groups.values()], index),
+      decoy: calibrate(
+        [...groups.values()],
+        index,
+        (g) => boundHaystack.get(`${g.raw}${g.unit}`) ?? null,
+      ),
     });
   }
   results.push(betOut);
@@ -772,15 +1018,25 @@ for (const bet of results) {
     // land by coincidence (this bet's 8.9x "explains" as a percent change
     // between two unrelated verify medians), so letting them pass --gate silently
     // would be the one place the checker clears a number it has not checked.
-    findings += unbacked + d.derived.length + d.staleMarkers.length + d.badMarkers.length;
+    findings += unbacked + d.derived.length + d.staleMarkers.length + d.badMarkers.length + d.brokenBindings.length;
     console.log(
-      `   ${d.doc}: ${d.total} numerals -- ${d.backed} backed, ${d.excused.length} marked, ` +
+      `   ${d.doc}: ${d.total} numerals -- ${d.backed} backed, ${d.bound.length} BOUND, ` +
+        `${d.pending.length} binding pending, ${d.assertedUnbacked.length} asserted-unbacked, ` +
+        `${d.excused.length} marked, ` +
         `${d.derived.length} derived-only, ${unbacked} UNBACKED`,
     );
     console.log(
       `   calibration: ${(d.decoy.rate * 100).toFixed(1)}% of ${d.decoy.decoys} ` +
         `deliberately-wrong decoys were also "backed"`,
     );
+    if (d.decoy.bound.decoys > 0) {
+      const bp = (d.decoy.bound.cleared / d.decoy.bound.decoys) * 100;
+      const up = d.decoy.unbound.decoys === 0 ? 0 : (d.decoy.unbound.cleared / d.decoy.unbound.decoys) * 100;
+      console.log(
+        `                per-claim bound: ${bp.toFixed(1)}% of ${d.decoy.bound.decoys}; ` +
+          `against the union index: ${up.toFixed(1)}% of ${d.decoy.unbound.decoys}`,
+      );
+    }
     if (d.decoy.rate > 0.25) {
       console.log(
         `   >> the BACKED count carries little information for this bet: its artifacts hold raw`,
@@ -794,6 +1050,14 @@ for (const bet of results) {
       console.log(
         `   >> against a curated scorecard, not against a data dump.`,
       );
+    }
+    if (d.brokenBindings.length > 0) {
+      console.log('');
+      console.log(`   BROKEN numeral-src BINDINGS (a named source that does not say what the prose says):`);
+      for (const n of d.brokenBindings) {
+        console.log(`     ${fmtLines(n.lines).padEnd(14)} ${(n.raw + n.unit).padEnd(14)} ${n.ref}`);
+        console.log(`     ${''.padEnd(14)} ${n.why}`);
+      }
     }
     if (d.nearMiss.length > 0) {
       console.log('');
@@ -836,6 +1100,27 @@ for (const bet of results) {
         console.log(`     ${''.padEnd(14)} reason on file: ${s.reason}`);
       }
     }
+    if (d.bound.length > 0) {
+      console.log('');
+      console.log(`   BOUND to a named field (\`<!-- numeral-src: ... :: file#json.path -->\`, haystack of 1):`);
+      for (const n of d.bound) {
+        console.log(`     ${fmtLines(n.lines).padEnd(14)} ${(n.raw + n.unit).padEnd(14)} ${n.artifactValue} <- ${n.ref}`);
+      }
+    }
+    if (d.pending.length > 0) {
+      console.log('');
+      console.log(`   BINDING PENDING (bet directory not in this tree; NOT counted as backed, checked when it lands):`);
+      for (const n of d.pending) {
+        console.log(`     ${fmtLines(n.lines).padEnd(14)} ${(n.raw + n.unit).padEnd(14)} ${n.ref}`);
+      }
+    }
+    if (d.assertedUnbacked.length > 0) {
+      console.log('');
+      console.log(`   ASSERTED UNBACKED (\`numeral-src: ... :: none\`; the union match is BLOCKED for these):`);
+      for (const n of d.assertedUnbacked) {
+        console.log(`     ${fmtLines(n.lines).padEnd(14)} ${(n.raw + n.unit).padEnd(14)} ${n.reason}`);
+      }
+    }
     if (d.excused.length > 0) {
       console.log('');
       console.log(`   MARKED as legitimately unbacked (\`<!-- numeral-ok: ... :: reason -->\`):`);
@@ -858,6 +1143,13 @@ console.log('the artifact -- that is the catch this exists for. The near-miss li
 console.log('(c) lives: a number sitting 1% from the committed value is almost always prose');
 console.log('left behind by a re-run. STALE/MALFORMED markers count as findings too: an');
 console.log('excuse that no longer applies is the same defect one level up.');
+console.log('');
+console.log('And read the calibration before the BACKED count. Against a union haystack a');
+console.log('"backed" verdict means only that SOME field in the program holds that value --');
+console.log('on docs/vision that cleared 57.5% to 91.7% of deliberately-wrong decoys. This is');
+console.log('a contradiction gate, not a truth gate. The way to make a figure actually');
+console.log('checkable is `<!-- numeral-src: <token> :: <file>#<json.path> -->`, which binds it');
+console.log('to one field and drops its decoy rate to ~0.');
 
 if (GATE && findings > 0) {
   console.error(`::error::${findings} finding(s) and --gate was requested.`);

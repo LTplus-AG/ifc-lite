@@ -354,8 +354,10 @@ Pre-committed kill conditions (ledger entry mandatory, resurrection requires new
   re-gate once.
 - **M3:** spike gate is binary. No adjoint battery pass, no differentiable moonshot.
   **AMENDED 2026-07-29 (betting table, amendment 6 of moonshots-finishing-plan.md
-  section 9; signed off by Louis Truempler as gate-holder, not by the bet's
-  author).** The Phase 4 spike (B4.4) was run against the **extrusion mesher**,
+  section 9). PROVISIONAL: this amendment carries gate-holder sign-off when
+  docs PR #1897 is merged by the repo-owner account, which is what sign-off
+  means in this program - see that file's section 9.1. Until then it is the
+  proposed record, and the claim is checkable with `gh pr view 1897`.** The Phase 4 spike (B4.4) was run against the **extrusion mesher**,
   not the CSG/void path this criterion was written about (see the kill risk at
   section 2, M3, risk 6). Its own oracle then showed the extrusion volume is a
   smooth closed form, so that exam could not have failed. **B4.4's PASS therefore

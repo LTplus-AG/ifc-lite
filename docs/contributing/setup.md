@@ -343,28 +343,84 @@ clone may report more, because `--all` walks every ref it has and a long-lived
 clone also has remote-tracking refs for forks. None of those objects are at
 HEAD: no `.gitattributes` in this repo declares `filter=lfs` any more.
 
-Fix this clone once, then push again:
+Three fixes, least invasive first. Fixes 2 and 3 both touch a hooks directory
+that may not be the one you think, so read
+[Check which hooks directory you are about to change](#check-which-hooks-directory-you-are-about-to-change)
+before picking either.
 
 ```bash
+# 1. Change nothing, get this one push out.
+git push --no-verify <remote> <branch>
+
+# 2. Narrowest lasting fix: this hook only, no config touched.
+rm "$(git rev-parse --path-format=absolute --git-path hooks)/pre-push"
+
+# 3. Whole-clone fix: removes the hooks and this clone's lfs filters.
 git lfs uninstall --local
 ```
 
-`--local` is clone-scoped. Per `git lfs uninstall --help` it removes the lfs
-smudge and clean filters from this repository's git config instead of the
-global `~/.gitconfig`, so Git LFS keeps working in your other repositories.
-`git lfs install --local` puts this clone's LFS setup back if you ever need it.
+`--local` is clone-scoped in its **config** effect. Per
+`git lfs uninstall --help` it removes the lfs smudge and clean filters from
+this repository's git config instead of the global `~/.gitconfig`, so Git LFS
+keeps working in your other repositories. `git lfs install --local` puts this
+clone's LFS setup back if you ever need it.
 
-`git push --no-verify` skips the hook for one push if you want to get something
-out first, and deleting `.git/hooks/pre-push` by hand stops it for good.
+#### Check which hooks directory you are about to change
+
+`git lfs uninstall` also deletes git-lfs's hook files, and `--local` does not
+scope that part. The hooks it deletes are the ones in whatever `core.hooksPath`
+resolves to, which is not always the `.git/hooks` of the checkout you are
+standing in:
+
+- every **linked worktree** of a clone resolves to the main clone's
+  `.git/hooks`, with nobody having configured anything;
+- `core.hooksPath` can be set, locally or globally, to an absolute path in a
+  **different repository**, and then that repository's hooks are the ones on
+  the chopping block.
+
+Measured with git-lfs 3.7.1 and git 2.50.1: `git lfs uninstall --local` run
+inside a repo whose `core.hooksPath` pointed at another repository's
+`.git/hooks` deleted that other repository's `pre-push`, `post-checkout`,
+`post-commit` and `post-merge`. An unrelated `pre-commit` in the same directory
+survived, so it removes git-lfs's own hooks rather than everything, but the
+repository that owned them is now without a `pre-push`, and per
+`git lfs pre-push --help` that hook is what uploads a commit's LFS objects.
+Pushes from that repository silently stop uploading them.
+
+It only deletes a hook whose body it recognises as one it wrote: given a
+hand-edited body it prints `Hook already exists: <name>` and leaves the file.
+That is a narrower blast radius than the paragraph above might suggest, but it
+is not a safety net, because the hooks git-lfs installed are exactly the ones
+it recognises.
+
+This directory-resolution surprise is not hypothetical here. An earlier,
+automated version of `pnpm check:git-lfs` could delete the hooks itself; run
+from a throwaway directory, it resolved through `core.hooksPath` and deleted
+the real clone's hooks. That is why the check is detection-only now and prints
+commands for you to run instead. The same resolution applies to the commands.
+
+So before running fix 2 or fix 3, print the directory and satisfy yourself that
+no other checkout shares it:
+
+```bash
+git config --get core.hooksPath                         # empty means unset
+git rev-parse --path-format=absolute --git-path hooks   # what will be changed
+```
+
+If it is shared, fix 1 is the one that touches nothing. Reach for fix 2 only
+once you know the checkout that owns that directory does not need its
+`pre-push`.
 
 `pnpm check:git-lfs` reports whether your clone has the leftover hooks and
 never writes anything. Two things about it are worth knowing before you read
 its output: it inspects the repository the script file lives in, not your
-current directory, and the hooks directory it names is whatever
-`core.hooksPath` resolves to, which can be an absolute path outside the
-checkout you are standing in and is shared by every linked worktree of that
-clone. Run it again after `git lfs uninstall --local`; if a hook is still
-listed, read that file and delete it yourself.
+current directory, and the hooks directory it names is that same
+`core.hooksPath` resolution, so it names the directory for you and warns when
+`core.hooksPath` is set. It only stays quiet about the hooks when a
+`filter=lfs` rule actually applies to a path in your checkout, which it asks
+`git check-attr`; a stale rule matching nothing does not buy silence. Run it
+again after the fix; if a hook is still listed, read that file and delete it
+yourself.
 
 Who hits this: clones made before this repo retired Git LFS, and clones where
 someone ran `git lfs install`. A clone made today is unaffected; cloning this
@@ -421,8 +477,9 @@ Push your branch and open a PR on GitHub:
 git push origin feature/my-feature
 ```
 
-If the push fails with `You need Push access to upload Git LFS objects`, run
-`git lfs uninstall --local` and push again. See
+If the push fails with `You need Push access to upload Git LFS objects`,
+`git push --no-verify` gets it out unchanged; for the lasting fix, and for the
+one thing to check before you run it, see
 [Push fails with "You need Push access to upload Git LFS objects"](#push-fails-with-you-need-push-access-to-upload-git-lfs-objects).
 
 **PR Requirements:**

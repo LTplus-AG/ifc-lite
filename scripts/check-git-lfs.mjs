@@ -41,14 +41,17 @@
  *       git rev-parse --show-toplevel
  *       git config --get core.hooksPath
  *       git config --get core.attributesFile
- *       git ls-files -z --cached --others --exclude-standard -- <pathspecs>
+ *       git ls-files -z --cached --others --exclude-standard [-- <pathspecs>]
+ *       git check-attr filter --stdin -z
  *
  *   No `git config --unset`, no `--remove-section`, no `--replace-all`, no
  *   `git lfs` at all. `git ls-files` above is git's own index/worktree
  *   listing, not `git lfs ls-files`: the latter writes
  *   `lfs.repositoryformatversion` into `.git/config` (confirmed with git-lfs
  *   3.7.1 in a throwaway clone), which is why "does this repo use Git LFS?"
- *   is answered from git attributes alone.
+ *   is answered from git attributes alone. `git check-attr` only reports the
+ *   attributes that apply to a path; running it in a throwaway repo left
+ *   `git config --local -l` and every file under `.git` byte-identical.
  *
  * BACKGROUND
  *
@@ -69,18 +72,58 @@
  *   Who is affected: clones predating the LFS retirement, and clones where
  *   someone ran `git lfs install`. A clone made today installs no LFS hooks.
  *
- * THE REMEDY IT PRINTS
+ * THE REMEDIES IT PRINTS, AND THE HAZARD IN THE BIGGEST ONE
  *
- *   `git lfs uninstall --local`. Per `git lfs uninstall --help`, `--local`
- *   removes the lfs smudge and clean filters from the local repository's git
- *   config "instead of the global git config (~/.gitconfig)", so the
- *   developer's global Git LFS setup keeps working everywhere else.
+ *   `git lfs uninstall --local` is clone-scoped in its CONFIG effect only.
+ *   Per `git lfs uninstall --help`, `--local` removes the lfs smudge and
+ *   clean filters from the local repository's git config "instead of the
+ *   global git config (~/.gitconfig)"; the same help text also says it will
+ *   "Uninstall the Git LFS pre-push hook if run from inside a Git
+ *   repository", and that hook removal is NOT scoped by `--local`. It deletes
+ *   git-lfs's hooks from whatever `core.hooksPath` resolves to, which is the
+ *   same lookup this script reports on.
+ *
+ *   Measured with git-lfs 3.7.1 and git 2.50.1 in throwaway repos: with
+ *   `core.hooksPath` pointing at ANOTHER repository's `.git/hooks` (set
+ *   locally in one run, globally in another), `git lfs uninstall --local` run
+ *   from a repo that had no LFS config of its own deleted that other
+ *   repository's `pre-push`, `post-checkout`, `post-commit` and `post-merge`.
+ *   An unrelated `pre-commit` hook in the same directory survived, so it
+ *   removes git-lfs's own hooks rather than everything, but the repository
+ *   that owned them loses its `pre-push`, and per `git lfs pre-push --help`
+ *   that hook is what pushes a commit's LFS objects to the LFS API. Without
+ *   it, that repository's pushes stop uploading its LFS objects.
+ *
+ *   Linked worktrees hit the same sharing without anyone setting
+ *   `core.hooksPath`: a linked worktree resolves `--git-path hooks` to the
+ *   main clone's `.git/hooks` (verified with `git rev-parse`), so every
+ *   worktree of a clone shares one hooks directory.
+ *
+ *   That is why the report warns before it prints the command, and offers
+ *   `git push --no-verify` (changes nothing) and deleting the single
+ *   `pre-push` file (narrowest change) first.
+ *
+ * WHEN IT STAYS SILENT, AND WHICH WAY IT ERRS
+ *
+ *   Silence needs a `filter=lfs` rule that APPLIES to a path that exists
+ *   here, not merely a rule somewhere. `git check-attr filter --stdin -z` is
+ *   asked, over the paths `git ls-files --cached --others --exclude-standard`
+ *   lists, capped at CHECK_ATTR_PATH_LIMIT. On this repo that listing is
+ *   ~4.2k paths and the pipe takes ~20ms, so the cap only bites on a checkout
+ *   several times this size; and the scan runs at most once, only after a
+ *   rule was already found, so the usual run never pays for it.
+ *
+ *   If the answer cannot be established, because git refused or because the
+ *   listing was longer than the cap, it REPORTS the hooks and says which of
+ *   the two it was. Reporting a repo that is fine costs a message the reader
+ *   can ignore; staying silent costs the failed push this exists to prevent.
  *
  * EXIT CODES
  *
  *   1 when leftover git-lfs hooks are present in this clone, 0 otherwise: no
- *   such hooks, not a git work tree, this checkout genuinely declares
- *   `filter=lfs`, or the hooks directory could not be resolved at all.
+ *   such hooks, not a git work tree, this checkout genuinely uses
+ *   `filter=lfs` on a path that exists, or the hooks directory could not be
+ *   resolved at all.
  *
  *   This is a local-developer tool. It is NOT wired into CI or into any
  *   install hook, and it must stay that way.
@@ -100,7 +143,9 @@ const LFS_HOOKS = ['pre-push', 'post-checkout', 'post-commit', 'post-merge'];
 /** Read-only git call, always against this script's own repo. */
 function git(args, opts = {}) {
   const r = spawnSync('git', args, { cwd: ROOT, encoding: 'utf-8', ...opts });
-  return { ok: r.status === 0, status: r.status, stdout: (r.stdout || '').trim() };
+  // `raw` is for NUL-separated output, where trimming could eat a leading
+  // space in the first path.
+  return { ok: r.status === 0, status: r.status, stdout: (r.stdout || '').trim(), raw: r.stdout || '' };
 }
 
 // --- Is this even a git work tree? ----------------------------------------
@@ -156,10 +201,21 @@ if (found.length === 0) {
 }
 
 // --- Does this checkout genuinely use LFS? --------------------------------
-// A file is an LFS file because a `filter=lfs` attribute applies to it, so the
-// attributes are the authority, and the ones that count are the ones on disk
-// right now: `git lfs track` writes `.gitattributes` without committing it, so
-// a repo half-way through ADOPTING LFS must not read as one that retired it.
+// A file is an LFS file because a `filter=lfs` attribute APPLIES TO IT, so a
+// rule on its own settles nothing: a leftover `*.psd filter=lfs` in a repo
+// with no `.psd` files would otherwise silence this check for exactly the
+// person who needs it. So this is two questions, and both must answer yes:
+//
+//   1. is there a `filter=lfs` rule at all, and in which file?  (cheap, and
+//      it is what lets the output name the file)
+//   2. does that rule apply to a path that exists in this checkout?  (asked
+//      of `git check-attr`, which is git's own answer to it)
+//
+// The attributes that count are the ones on disk right now: `git lfs track`
+// writes `.gitattributes` without committing it, so a repo half-way through
+// ADOPTING LFS must not read as one that retired it. `git check-attr` without
+// `--cached` reads the working tree, and also honours `.git/info/attributes`
+// and `core.attributesFile` (both verified).
 const ATTR_LFS_RE = /(^|\s)filter=lfs(\s|$)/;
 
 function declaresLfs(text) {
@@ -199,7 +255,7 @@ function attributeFilesDeclaringLfs() {
       ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', ':(glob)**/.gitattributes', '.gitattributes'],
       { cwd: top.stdout },
     );
-    if (ls.ok) candidates.push(...ls.stdout.split('\0').filter(Boolean).map((rel) => resolve(top.stdout, rel)));
+    if (ls.ok) candidates.push(...ls.raw.split('\0').filter(Boolean).map((rel) => resolve(top.stdout, rel)));
   }
   // `.git/info/attributes` is not version-controlled but carries the same
   // weight, and so does the user's global attributes file.
@@ -215,30 +271,92 @@ function attributeFilesDeclaringLfs() {
   return declaring;
 }
 
+// How many paths this is willing to hand to `git check-attr`. On this repo the
+// whole listing is ~4.2k paths and `ls-files | check-attr` takes ~20ms, so the
+// bound only bites on a checkout more than about five times this size. It is a
+// bound on work, not on correctness for repos of this size, and the scan runs
+// at most once, only after a `filter=lfs` rule was already found.
+const CHECK_ATTR_PATH_LIMIT = 20000;
+
+/**
+ * Ask git whether `filter=lfs` actually applies to a path that exists here.
+ * Returns 'applies' with the first such path, 'unused' when the complete
+ * listing was checked and nothing matched, or 'unknown' when git would not
+ * answer or the listing was longer than the bound.
+ */
+function lfsFilterAppliesToAPath() {
+  const top = git(['rev-parse', '--show-toplevel']);
+  if (!top.ok || !top.stdout) return { verdict: 'unknown', why: '`git rev-parse --show-toplevel` failed' };
+
+  const ls = git(['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { cwd: top.stdout });
+  if (!ls.ok) return { verdict: 'unknown', why: '`git ls-files` failed' };
+  const paths = ls.raw.split('\0').filter(Boolean);
+  if (paths.length === 0) return { verdict: 'unused', checked: 0 };
+  const checked = paths.slice(0, CHECK_ATTR_PATH_LIMIT);
+
+  // `--stdin -z` so paths with spaces, quotes or newlines survive the trip.
+  const attr = git(['check-attr', 'filter', '--stdin', '-z'], {
+    cwd: top.stdout,
+    input: `${checked.join('\0')}\0`,
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  if (!attr.ok) return { verdict: 'unknown', why: `\`git check-attr\` exited ${attr.status}` };
+
+  // Output is flat NUL-separated triples: <path> <attr> <value>.
+  const f = attr.raw.split('\0');
+  for (let i = 0; i + 2 < f.length; i += 3) {
+    if (f[i + 1] === 'filter' && f[i + 2] === 'lfs') return { verdict: 'applies', path: f[i] };
+  }
+  if (checked.length < paths.length) {
+    return { verdict: 'unknown', why: `checked the first ${checked.length} of ${paths.length} paths`, checked: checked.length };
+  }
+  return { verdict: 'unused', checked: checked.length };
+}
+
 const declaring = attributeFilesDeclaringLfs();
+let applies = null;
 if (declaring.length > 0) {
-  console.log(`✅ This checkout tracks files with Git LFS, so its LFS hooks belong there.
+  applies = lfsFilterAppliesToAPath();
+  if (applies.verdict === 'applies') {
+    console.log(`✅ This checkout tracks files with Git LFS, so its LFS hooks belong there.
    filter=lfs is declared in:
-${declaring.map((p) => `      ${p}`).join('\n')}`);
-  process.exit(0);
+${declaring.map((p) => `      ${p}`).join('\n')}
+   and \`git check-attr\` says it applies to ${applies.path}`);
+    process.exit(0);
+  }
 }
 
 // --- Report. ---------------------------------------------------------------
+// The `filter=lfs` rules that exist but match nothing. Saying which file they
+// are in matters: a stale rule used to silence this check entirely, and the
+// reader may want to delete it.
+const staleRules =
+  declaring.length === 0
+    ? ''
+    : applies.verdict === 'unused'
+      ? `
+A \`filter=lfs\` rule exists here, but it is stale: \`git check-attr filter\`
+finds no path among the ${applies.checked} in this checkout that it applies to,
+so nothing here is an LFS file. The rule is in:
+${declaring.map((p) => `   ${p}`).join('\n')}
+`
+      : `
+A \`filter=lfs\` rule exists here, in:
+${declaring.map((p) => `   ${p}`).join('\n')}
+but whether it applies to any real path could not be established
+(${applies.why}). This errs toward reporting rather than toward
+silence, so if this checkout really does use Git LFS, ignore the rest.
+`;
+
+const pushHook = found.find((h) => h.name === 'pre-push');
+
 console.error(`❌ This clone still has Git LFS hooks, but this repo has no LFS content.
 
 Checked the repo this script lives in (${ROOT}), NOT the current directory.
 
 Leftover hooks in ${hooksDir}:
 ${found.map((h) => `   ${h.path}`).join('\n')}
-${
-  configuredHooksPath
-    ? `
-core.hooksPath is set to ${configuredHooksPath}, so that is the directory
-above, and every worktree of that clone shares it. It may well not be the
-.git/hooks of the checkout you are in.
-`
-    : ''
-}
+${staleRules}
 \`git lfs pre-push\` asks git for the objects being pushed with
 \`--not --remotes=<remote>\`. Push to a remote this clone has no
 remote-tracking refs for, a fork you just added, and that excludes nothing,
@@ -246,18 +364,45 @@ so the range becomes the whole history, which still holds LFS pointer blobs.
 git-lfs queues those for upload and the push fails uploading them, even though
 your own commits contain no LFS files.
 
-Remedy, one command, run it yourself:
-   git lfs uninstall --local
+READ THIS BEFORE RUNNING ANY REMEDY
+${
+  configuredHooksPath
+    ? `
+core.hooksPath is set to
+   ${configuredHooksPath}
+so that, rather than the .git/hooks of whatever checkout you are standing in,
+is the directory listed above. It may be this clone's own, or another
+repository's. Every linked worktree of the clone that owns it shares it too.
+Check which checkouts it serves before you touch it.`
+    : `
+The hooks directory above is shared by every linked worktree of this clone,
+and a core.hooksPath setting elsewhere can point other repositories at it too.`
+}
 
-\`--local\` is clone-scoped: per \`git lfs uninstall --help\` it removes the lfs
-filters from this repository's git config instead of the global
-~/.gitconfig, so your Git LFS setup in other repos is left alone.
+\`git lfs uninstall\` deletes git-lfs's hooks from whatever core.hooksPath
+resolves to, and \`--local\` does NOT scope that: it scopes the config edit
+only. A repository that loses its \`pre-push\` this way stops uploading its LFS
+objects on push, and it will not tell you.
+
+Remedies, least invasive first.
+
+1. Change nothing, get this push out:
+      git push --no-verify <remote> <branch>
+
+2. Narrowest fix, this hook only, no config touched:
+      rm ${pushHook ? pushHook.path : join(hooksDir, 'pre-push')}
+
+3. Whole-clone fix, only once you are sure no other checkout shares the
+   directory above:
+      git lfs uninstall --local
+
+   Per \`git lfs uninstall --help\`, \`--local\` removes the lfs filters from
+   this repository's git config instead of the global ~/.gitconfig, so your
+   Git LFS config in other repos is left alone. Its hook removal is not
+   limited that way.
 
 Then re-run \`pnpm check:git-lfs\`. If a hook is still listed, read it and
 delete the file yourself.
-
-To get one push out without changing anything:
-   git push --no-verify <remote> <branch>
 `);
 if (unreadable.length > 0) {
   console.error(`Also could not read: ${unreadable.join(', ')}\n`);

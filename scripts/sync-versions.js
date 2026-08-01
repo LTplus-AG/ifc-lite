@@ -89,7 +89,13 @@ function syncCargoLock(version) {
     let memberToml;
     try {
       memberToml = readFileSync(join(rootDir, dir, 'Cargo.toml'), 'utf8');
-    } catch {
+    } catch (error) {
+      // Say so rather than skipping quietly: a member we cannot read is a
+      // member whose lock entry we then leave on the old version, which is the
+      // exact drift this function exists to prevent. CI's `cargo metadata
+      // --locked` gate would fail afterwards, but on the lock rather than on
+      // the cause, so name the cause here.
+      console.warn(`⚠️  Could not read ${dir}/Cargo.toml; its Cargo.lock version is left alone (${error.message})`);
       continue;
     }
     // `version.workspace = true` or `version = { workspace = true }`

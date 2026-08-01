@@ -6,7 +6,7 @@
 # collab-server's dependency subgraph (`...`), so it stays off the heavy
 # viewer/wasm toolchain. Slim it with a separate runtime stage + `pnpm deploy`
 # if image size matters.
-FROM node:22-slim AS app
+FROM node:25-slim AS app
 WORKDIR /app
 
 RUN corepack enable

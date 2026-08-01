@@ -926,6 +926,8 @@ for (const bet of bets) {
     const bound = [];
     const pending = [];
     const assertedUnbacked = [];
+    /** `:: none` bindings whose figure has since become backed -- see the `none` branch. */
+    const staleNegativeBindings = [];
     const brokenBindings = [];
 
     // Group identical (value, unit) pairs so a number quoted five times is one
@@ -950,6 +952,37 @@ for (const bet of bets) {
       if (r.status === 'none') {
         boundHaystack.set(token, []);
         assertedUnbacked.push({ ...g, reason: r.reason || '(no reason given)' });
+        // ADVISORY ANTI-ROT FOR THE NEGATIVE CASE, and it deliberately does
+        // NOT gate. Read the reason before adding one that does.
+        //
+        // The gap is real: `numeral-ok` excuses are anti-rot checked, but a
+        // `:: none` block is only checked for whether its token still appears
+        // in the prose -- never for whether the block is still warranted. So a
+        // block can assert "no artifact emits this" long after one does, and
+        // the gate stays green. B4.2's re-bless turned four tokens of one such
+        // marker into real fields, and that marker was what would have kept
+        // `49` blocked in the merged tree, though the battery emits it exactly.
+        //
+        // But it CANNOT be a gate, because a value match is exactly what a
+        // block is for. The retracted 1e-13 tolerance is blocked precisely
+        // because a real per-family deviation falls inside its half-ULP; that
+        // block working looks identical, to this check, to a block that has
+        // gone wrong. Failing on it would punish the mechanism for doing its
+        // job and would train the next reader to delete blocks to get green --
+        // the one edit that lets a withdrawn figure become a claim again.
+        //
+        // So: list them, say which field matched, and let a human decide
+        // whether it is still a coincidence. A list a reader must think about
+        // is the honest instrument here; a gate would be a confident wrong one.
+        const nowBacked = matchDirect(g.value, tol, g.unit, index);
+        if (nowBacked && (nowBacked.kind === 'exact' || nowBacked.kind === 'rounded')) {
+          staleNegativeBindings.push({
+            token,
+            reason: r.reason || '(no reason given)',
+            src: nowBacked.entry ? nowBacked.entry.src : '(unknown field)',
+            value: nowBacked.entry ? nowBacked.entry.v : undefined,
+          });
+        }
         continue;
       }
       if (r.status === 'pending') {
@@ -1054,6 +1087,7 @@ for (const bet of bets) {
       derived,
       excused,
       staleMarkers,
+      staleNegativeBindings,
       badMarkers,
       decoy: calibrate(
         [...groups.values()],
@@ -1163,6 +1197,19 @@ for (const bet of results) {
       console.log('');
       console.log(`   MALFORMED numeral-ok MARKERS:`);
       for (const b of d.badMarkers) console.log(`     ${b}`);
+    }
+    if (d.staleNegativeBindings.length > 0) {
+      console.log('');
+      console.log(`   \`:: none\` BLOCKS WITH A VALUE MATCH (advisory, does NOT fail the gate):`);
+      console.log(`   >> a block whose value now appears in an artifact is USUALLY the block`);
+      console.log(`   >> working -- that is what it is for. Check each one anyway: if the figure`);
+      console.log(`   >> genuinely became a committed field, the block is now asserting something`);
+      console.log(`   >> false and should become a positive numeral-src binding instead.`);
+      for (const b of d.staleNegativeBindings) {
+        console.log(`     ${b.token.padEnd(14)} an artifact value now matches this blocked numeral`);
+        console.log(`     ${''.padEnd(14)} found at ${b.src}${b.value === undefined ? '' : ` = ${b.value}`}`);
+        console.log(`     ${''.padEnd(14)} reason on file: ${String(b.reason).replace(/\s+/g, ' ').slice(0, 150)}`);
+      }
     }
     if (d.staleMarkers.length > 0) {
       console.log('');

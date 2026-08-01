@@ -248,7 +248,8 @@ an agent team) plus named human time, because that is the actual currency here.
    the current kernel structure produces, sinks to 0.8x-1.1x on three of five models.
    Remaining M6c exam is retargeted to publication (B6.3), not a speedup. Consequence:
 
-<!-- numeral-ok: 0.20x, 194 :: 0.20x is the endpoint of a RANGE measured against the
+<!-- numeral-src: 0.20x :: none - endpoint of a RANGE against the production adaptive-Shewchuk path; no artifact emits it. Negative-bound 2026-08-01 because a union hit made it read as backed by an unrelated slab thickness in B5.5's scorecard - a speedup ratio must not be cleared by a length in metres. -->
+<!-- numeral-ok: 194 :: 0.20x is the endpoint of a RANGE measured against the
      production adaptive-Shewchuk path; report.b25.throughput.json emits speedups against
      the exact BigInt CPU baseline (4.4x / 19.5x / 102x) and holds no production-path
      comparison, so the ratio is computed outside the artifact. 194 is the size of the

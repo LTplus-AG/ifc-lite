@@ -394,7 +394,13 @@ export function LocationMap({
     if (!editableRef.current) return;
     const pos = { lat: e.lngLat.lat, lon: e.lngLat.lng };
     setPickedLatLon(pos);
-    loadMaplibre().then(ml => updatePickedMarker(pos, ml));
+    // These two chains reach maplibre only to move a marker, so a failed chunk
+    // is not worth degrading the panel for: the pin state above is already set
+    // and the coordinate readout still updates. Without a handler the rejection
+    // would surface as an uncaught error (see lib/chunk-version-skew.ts).
+    loadMaplibre()
+      .then(ml => updatePickedMarker(pos, ml))
+      .catch(err => console.warn('[location-map] could not update the picked marker:', err));
   }, [updatePickedMarker]);
 
   // Handle search result selection
@@ -405,10 +411,12 @@ export function LocationMap({
     setSearchQuery('');
     setSearchResults([]);
 
-    loadMaplibre().then(ml => {
-      updatePickedMarker(pos, ml);
-      mapRef.current?.flyTo({ center: [pos.lon, pos.lat], zoom: 16, duration: 1200 });
-    });
+    loadMaplibre()
+      .then(ml => {
+        updatePickedMarker(pos, ml);
+        mapRef.current?.flyTo({ center: [pos.lon, pos.lat], zoom: 16, duration: 1200 });
+      })
+      .catch(err => console.warn('[location-map] could not move to the search result:', err));
   }, [updatePickedMarker]);
 
   // Handle apply position (waits for elevation to finish loading)

@@ -53,7 +53,12 @@ export class ChunkErrorBoundary extends Component<
     // is coming, it is a real dead end and worth hearing about.
     posthog.captureException(error, {
       context: 'lazy_chunk_boundary',
-      chunk_label: this.props.label,
+      // `lazy_chunk`, not `chunk_label`: the analytics scrub deletes any key
+      // with a `label` word (free text is where model names leak), so the
+      // latter would have been dropped on the way out and this event would
+      // have carried no indication of WHICH chunk died. The value is a fixed
+      // string from the call sites in this repo, not user data.
+      lazy_chunk: this.props.label,
     });
   }
 

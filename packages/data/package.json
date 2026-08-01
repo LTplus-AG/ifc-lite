@@ -22,8 +22,8 @@
     "generate:ifc-schema": "tsx scripts/generate-ifc-schema.ts"
   },
   "devDependencies": {
-    "@types/node": "^26.1.1",
-    "proj4": "^2.20.9",
+    "@types/node": "^26.1.2",
+    "proj4": "^2.21.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.10"
   },

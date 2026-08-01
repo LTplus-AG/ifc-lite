@@ -614,9 +614,16 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           // Fire the activation event first so onCommand:<id>-subscribed
           // extensions wake up, then invoke the command handler. The
           // runtime dedupes activations.
+          //
+          // The run is pinned to `contribution.extensionId`, the owner of
+          // this palette entry. Command ids are namespaced by convention
+          // only, so two installed extensions can declare the same id; the
+          // loop above pushes one entry per contribution either way, and
+          // without the owner id both entries would run whichever extension
+          // storage happened to list first.
           void extensionHost.dispatcher
             .fire(`onCommand:${payload.id}` as `onCommand:${string}`)
-            .then(() => extensionHost.runCommand(payload.id))
+            .then(() => extensionHost.runCommand(payload.id, contribution.extensionId))
             .catch((err) => {
               paletteToast.error(describeRunCommandError(payload.id, err));
             });

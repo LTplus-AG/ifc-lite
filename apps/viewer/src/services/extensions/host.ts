@@ -267,14 +267,22 @@ export class ExtensionHostService {
   }
 
   /**
-   * Dispatch an extension command. Finds the owning extension,
-   * activates it if needed, loads the handler source from the bundle,
-   * wraps it, injects `__ifclite_ctx__`, and runs.
+   * Dispatch an extension command. Resolves `extensionId`, activates it
+   * if needed, loads the handler source from the bundle, wraps it,
+   * injects `__ifclite_ctx__`, and runs.
    *
    * Implementation lives in `host-commands.ts` — this method is a
    * thin delegator that injects the host's primitives.
+   *
+   * `extensionId` is required, for the same reason as `runExporter`:
+   * command ids are namespaced only by convention, so more than one
+   * installed extension can declare the same id. Every UI slot that
+   * surfaces a command renders one entry per `SlotContribution` and has
+   * that contribution's `extensionId` in hand; without it this would fall
+   * back to "first enabled extension that declares the id" and could run
+   * the wrong handler.
    */
-  runCommand(commandId: string): Promise<RuntimeRunResult | undefined> {
+  runCommand(commandId: string, extensionId: string): Promise<RuntimeRunResult | undefined> {
     return runExtensionCommand(
       {
         storage: this.storage,
@@ -284,6 +292,7 @@ export class ExtensionHostService {
         sdk: this.sdk,
       },
       commandId,
+      extensionId,
     );
   }
 

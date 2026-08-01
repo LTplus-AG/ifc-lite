@@ -37,7 +37,12 @@ export function ExtensionExportSlot({ baseName }: ExtensionExportSlotProps) {
   if (!host || contributions.length === 0) return null;
 
   const handleRun = async (extensionId: string, payload: ExporterContribution) => {
-    setRunningId(payload.id);
+    // Keyed by owner AND exporter id, the same composite the button's React key
+    // uses. Exporter ids are not namespaced, so two enabled extensions can
+    // declare the same one; keying the spinner on `payload.id` alone would spin
+    // both buttons while only one is running. The run itself already goes to
+    // the right extension, so this is the display half of the same fix (#1907).
+    setRunningId(`${extensionId}:${payload.id}`);
     try {
       const output = await host.runExporter(payload.id, extensionId);
       // `downloadFile` is the only sanctioned save path: it copies wasm-backed
@@ -66,7 +71,7 @@ export function ExtensionExportSlot({ baseName }: ExtensionExportSlotProps) {
       <div className="flex flex-col gap-2">
         {contributions.map((c) => {
           const payload = c.payload;
-          const busy = runningId === payload.id;
+          const busy = runningId === `${c.extensionId}:${payload.id}`;
           return (
             <Button
               key={`${c.extensionId}:${payload.id}`}

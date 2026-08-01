@@ -33,7 +33,8 @@ import { reprojectToLatLon, reprojectFromLatLon, queryTerrainElevation, computeF
 import { buildKmz } from '@/lib/geo/kmz-exporter';
 import {
   probeMapWebglSupport, markMapWebglUnsupported, takeMapWebglReportSlot,
-  getMapWebglVerdict, describeMapInitFailure, type MapWebglFailureReason,
+  getMapWebglVerdict, describeMapInitFailure, watchContextCreationStatus,
+  reconstructMapInitFailure, type MapWebglFailureReason,
 } from '@/lib/geo/map-webgl-support';
 import { posthog } from '@/lib/analytics';
 
@@ -526,6 +527,10 @@ export function LocationMap({
       // *unhandled rejection* — which is exactly how this reached error
       // tracking as an uncaught error.
       const container = containerRef.current;
+      // Must be listening BEFORE the constructor runs: the canvas it asks for a
+      // context is created inside that call, and the driver's explanation
+      // arrives as a DOM event on it. See `watchContextCreationStatus`.
+      const contextStatus = watchContextCreationStatus(container);
       let map: InstanceType<typeof maplibregl.Map>;
       try {
         map = new maplibregl.Map({
@@ -541,6 +546,7 @@ export function LocationMap({
         // containers to our div. `mapRef` was never assigned, so the unmount
         // cleanup cannot reach them — purge them here, before the fallback
         // renders, so no frame shows a dead canvas.
+        contextStatus.stop();
         purgeMapContainer(container);
         degradeMap('map_construction_failed', err);
         return;
@@ -549,11 +555,12 @@ export function LocationMap({
       // v6 stopped THROWING this failure, so the try/catch above no longer
       // sees it. `_setupPainter` now asks for `webgl2`, and on refusal fires an
       // `error` event carrying a `GPUInitializationError` and returns, leaving
-      // `painter` undefined. Two things make that worse than a throw: the event
-      // fires from inside the constructor, before any `map.on('error')` of ours
-      // could be attached, and v6 has no console fallback for an unlistened
-      // error event, so nothing is logged. The map object then looks fine until
-      // the first call that touches the painter throws somewhere unrelated.
+      // `painter` undefined. The event goes out from inside the constructor,
+      // before any `map.on('error')` of ours could be attached; `Evented.fire`
+      // console.errors it for us (verified in the browser, not assumed), but
+      // console output is not a control-flow signal we can act on. Without this
+      // check the map object looks fine until the first call that touches the
+      // painter throws somewhere unrelated.
       //
       // `painter` is on the public class surface, so testing it is a supported
       // read rather than a reach into internals.
@@ -561,14 +568,28 @@ export function LocationMap({
         // No painter means nothing will ever render, but the constructor still
         // built the canvas and control containers into our div. Same cleanup as
         // the throwing path, for the same reason.
+        //
+        // `remove()` can only ever run PARTWAY here, and deliberately so: it
+        // reaches `this.painter.destroy()` fifth and throws on the undefined
+        // painter, so the hash, the controls, the frame request and the render
+        // queue are released while `_handlers.destroy()`, `setStyle(null)`, the
+        // window `online` listener, the image-queue handle, the ResizeObserver
+        // and the canvas listeners are not. There is no public API that gets
+        // further on a painter-less map, and partial teardown beats none, so
+        // this stays: `disposeMap` contains the throw, and the warning it logs
+        // on this path is expected rather than a symptom to chase.
         queueMicrotask(() => disposeMap(map));
         purgeMapContainer(container);
-        degradeMap(
-          'map_construction_failed',
-          new Error('WebGL2 is required to display this map (no painter after construction)'),
-        );
+        // Rebuilt from the DOM event rather than invented, so this path reports
+        // the driver's own words. A bare `new Error(...)` here would have made
+        // `describeMapInitFailure` return nothing and collapsed every v6 map
+        // failure into one bucket with no `webgl_status`.
+        const failure = reconstructMapInitFailure(contextStatus.statusMessage());
+        contextStatus.stop();
+        degradeMap('map_construction_failed', failure);
         return;
       }
+      contextStatus.stop();
 
       // A lost context would otherwise be restored by MapLibre calling
       // `_setupPainter()` again from inside a DOM listener — where a throw is

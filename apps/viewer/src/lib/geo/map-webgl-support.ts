@@ -223,6 +223,62 @@ const MAP_WEBGL2_REQUIRED_MESSAGE = 'WebGL2 is required to display this map';
  */
 const MAP_WEBGL_INIT_MESSAGE = 'Failed to initialize WebGL';
 
+/** The DOM event the driver dispatches when it refuses a context. */
+const CONTEXT_CREATION_ERROR_EVENT = 'webglcontextcreationerror';
+
+/**
+ * Watch a container for the driver's explanation of a refused context.
+ *
+ * MapLibre v6 does not hand us its `GPUInitializationError`: `_setupPainter`
+ * fires it as an `error` event from inside the `Map` constructor, before any
+ * `map.on('error')` of ours could be attached, so the object itself is only
+ * ever console.errored by `Evented.fire` and then dropped. The diagnostic it
+ * carries (`statusMessage`, the difference between "this GPU lacks an
+ * extension" and "the GPU process lost a race") would go with it, leaving every
+ * map failure in one unactionable bucket in error tracking.
+ *
+ * The source of that string is a DOM event on the canvas, and the canvas is
+ * built into OUR container during the same constructor, so we can be listening
+ * before it exists. The capture phase is load-bearing and not a style choice:
+ * `webglcontextcreationerror` does not bubble, so an ancestor only ever sees it
+ * on the way DOWN to the target.
+ *
+ * Call `stop()` on every path. The listener is on a container React owns.
+ */
+export function watchContextCreationStatus(container: {
+  addEventListener(type: string, listener: (ev: Event) => void, capture: boolean): void;
+  removeEventListener(type: string, listener: (ev: Event) => void, capture: boolean): void;
+}): { statusMessage(): string | null; stop(): void } {
+  let status: string | null = null;
+  const onCreationError = (ev: Event) => {
+    const { statusMessage } = ev as Event & { statusMessage?: unknown };
+    if (typeof statusMessage === 'string' && statusMessage) status = statusMessage;
+  };
+  container.addEventListener(CONTEXT_CREATION_ERROR_EVENT, onCreationError, true);
+  return {
+    statusMessage: () => status,
+    stop: () => container.removeEventListener(CONTEXT_CREATION_ERROR_EVENT, onCreationError, true),
+  };
+}
+
+/**
+ * Rebuild the error MapLibre v6 created and then threw away.
+ *
+ * Reconstruction rather than capture, because the original object is
+ * unreachable: it is fired into an `error` event with no listeners and
+ * garbage-collected. This carries the same three fields the rest of this module
+ * reads (`name`, the v6 wording, `statusMessage`), so a construction that
+ * failed without throwing reports exactly like one that threw.
+ */
+export function reconstructMapInitFailure(statusMessage: string | null): Error {
+  const err = new Error(
+    `${MAP_WEBGL2_REQUIRED_MESSAGE}. The map could not start: MapLibre built no painter.`,
+  ) as Error & { statusMessage: string | null };
+  err.name = MAP_GPU_INIT_ERROR_NAME;
+  err.statusMessage = statusMessage;
+  return err;
+}
+
 /**
  * Is this the MapLibre "no WebGL context" failure?
  *

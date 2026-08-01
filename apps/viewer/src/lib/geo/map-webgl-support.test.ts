@@ -11,6 +11,8 @@ import {
   getMapWebglVerdict,
   isWebglContextCreationError,
   describeMapInitFailure,
+  watchContextCreationStatus,
+  reconstructMapInitFailure,
   resetMapWebglSupportForTests,
 } from './map-webgl-support.js';
 
@@ -195,6 +197,77 @@ describe('describeMapInitFailure', () => {
   it('returns nothing extractable when v6 had no creation event to quote', () => {
     // `statusMessage` is null unless a `webglcontextcreationerror` supplied one.
     assert.deepEqual(describeMapInitFailure(gpuInitializationError(null)), {});
+  });
+});
+
+describe('watchContextCreationStatus', () => {
+  /** Minimal stand-in for the container: records how the listener was bound. */
+  function fakeContainer() {
+    const bound: Array<{ type: string; capture: boolean; fn: (ev: Event) => void }> = [];
+    return {
+      bound,
+      addEventListener(type: string, fn: (ev: Event) => void, capture: boolean) {
+        bound.push({ type, capture, fn });
+      },
+      removeEventListener(type: string, fn: (ev: Event) => void, capture: boolean) {
+        const i = bound.findIndex(b => b.type === type && b.fn === fn && b.capture === capture);
+        if (i >= 0) bound.splice(i, 1);
+      },
+    };
+  }
+
+  it('binds on the CAPTURE phase, because the event does not bubble', () => {
+    // The whole mechanism rests on this. `webglcontextcreationerror` is
+    // dispatched on the canvas with `bubbles: false`, so a listener on the
+    // container is only ever reached on the way down to the target. Bound on
+    // the bubble phase this would silently never fire.
+    const container = fakeContainer();
+    watchContextCreationStatus(container);
+    assert.equal(container.bound.length, 1);
+    assert.equal(container.bound[0].type, 'webglcontextcreationerror');
+    assert.equal(container.bound[0].capture, true);
+  });
+
+  it('keeps the driver status the event carried', () => {
+    const container = fakeContainer();
+    const watch = watchContextCreationStatus(container);
+    assert.equal(watch.statusMessage(), null);
+    container.bound[0].fn({ statusMessage: 'OES_packed_depth_stencil support is required.' } as unknown as Event);
+    assert.equal(watch.statusMessage(), 'OES_packed_depth_stencil support is required.');
+  });
+
+  it('ignores an event with no usable status', () => {
+    const container = fakeContainer();
+    const watch = watchContextCreationStatus(container);
+    container.bound[0].fn({ statusMessage: '' } as unknown as Event);
+    container.bound[0].fn({} as unknown as Event);
+    assert.equal(watch.statusMessage(), null);
+  });
+
+  it('stop() unbinds, so a remount cannot stack listeners on the container', () => {
+    const container = fakeContainer();
+    const watch = watchContextCreationStatus(container);
+    watch.stop();
+    assert.equal(container.bound.length, 0);
+  });
+});
+
+describe('reconstructMapInitFailure', () => {
+  it('rebuilds an error the rest of the module recognises and can mine', () => {
+    // THE regression assertion for the reported gap: a bare `new Error(...)` on
+    // the no-painter path made `describeMapInitFailure` return nothing, so
+    // `webgl_status` was dropped and every v6 map failure looked identical.
+    const err = reconstructMapInitFailure('BindToCurrentSequence failed: .');
+    assert.equal(isWebglContextCreationError(err), true);
+    const detail = describeMapInitFailure(err);
+    assert.equal(detail.status, 'BindToCurrentSequence failed: .');
+    assert.equal(detail.eventType, 'webglcontextcreationerror');
+  });
+
+  it('is still recognisable when the driver said nothing', () => {
+    const err = reconstructMapInitFailure(null);
+    assert.equal(isWebglContextCreationError(err), true);
+    assert.deepEqual(describeMapInitFailure(err), {});
   });
 });
 

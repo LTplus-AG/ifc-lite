@@ -174,6 +174,14 @@ const PROSE_NAMES = new Set(['REPORT.md', 'DESIGN.md']);
 const JSON_IGNORE = /^(package(-lock)?|tsconfig.*|jsconfig|\.eslintrc)\.json$/;
 /** Beyond this many artifact numbers the O(n^2) derived pass is skipped. */
 const DERIVED_LIMIT = 600;
+/**
+ * Minimum digit count for a numeral embedded in an IDENTIFIER-shaped artifact
+ * string (no whitespace: a name, a path, a code) to enter the haystack. Prose
+ * strings and whole-string numerals are exempt -- see the walker. Without this,
+ * the string "B4.5" backed a clause bar. Raising it drops real seeds and dates;
+ * lowering it re-admits identifier fragments.
+ */
+const MIN_EMBEDDED_DIGITS = 4;
 /** The gate record itself. Every .md here is prose this checker must see. */
 const VISION_DIR = 'docs/vision';
 
@@ -300,13 +308,43 @@ function indexArtifacts(files) {
         // field, and a checker that cannot see it reports the prose's seed as
         // unbacked -- a false positive created purely by where the artifact
         // chose to put the digits.
+        //
+        // But embedded harvesting was UNBOUNDED, and that manufactured haystack
+        // entries no measurement produced. Measured on B4.5: the clause-2 bar
+        // `5%` was reported BACKED by the digits of the string "B4.5" -- the
+        // bet's own name vouching for the bar it is judged against. `53` cleared
+        // against digits in a fixture PATH. A gate whose haystack contains the
+        // identifiers of the thing being graded is not a gate.
+        //
+        // Two admission routes, because a digit floor alone was too blunt.
+        //
+        // PROSE: a string containing whitespace is a sentence, and a number a
+        // sentence states is a number the artifact means. `results-tier2.json`
+        // records validator errors like "base 1.1 + height 1.5 must lie within
+        // [0, 2.550] (wall height 2.6 m)"; those figures are genuinely emitted
+        // and must stay checkable, so drift between the design doc and the run
+        // is still caught. A digit floor alone silently converted them into
+        // permanent `numeral-ok` excuses -- trading a live check for an excuse,
+        // which is worse than the false positive it was fixing.
+        //
+        // IDENTIFIER: a string with no whitespace is a name, a path or a code,
+        // and its digits are usually incidental. Here a floor is right: a real
+        // measurement transcribed into a label carries enough digits to be
+        // worth matching (`A/seed-20260727` has 8), an identifier fragment does
+        // not (`B4.5` -> 4.5, `IFC4` -> 4, and a fixture path's `053` / `10`).
+        //
+        // Whole-string numerals bypass both: a field holding exactly "60" is a
+        // value, not a label.
         const t = node.trim();
         if (/^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(t)) {
           const v = Number(t);
           if (Number.isFinite(v)) entries.push({ v, src: `${rel}:${keyPath || '(root)'}` });
           return;
         }
+        const isProse = /\s/.test(t);
         for (const m of t.matchAll(/\d+(?:\.\d+)?/g)) {
+          // Digits only, so "2.19" counts 3 and a 4-digit year counts 4.
+          if (!isProse && m[0].replace(/\D/g, '').length < MIN_EMBEDDED_DIGITS) continue;
           const v = Number(m[0]);
           if (Number.isFinite(v)) entries.push({ v, src: `${rel}:${keyPath || '(root)'} (in string)` });
         }

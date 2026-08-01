@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 
 import {
   handlePreloadError,
+  isChunkLoadError,
   isCssPreloadFailure,
   shouldSuppressChunkSkewNoise,
   type ChunkSkewDeps,
@@ -92,12 +93,56 @@ describe('isCssPreloadFailure', () => {
     }
   });
 
-  it('reads a bare string or an error-shaped object, and tolerates neither', () => {
+  it('reads a bare string or an error-shaped object, and matches neither a missing nor a non-error payload', () => {
     assert.equal(isCssPreloadFailure('Unable to preload CSS for /a.css'), true);
     assert.equal(isCssPreloadFailure({ message: 'Unable to preload CSS for /a.css' }), true);
     assert.equal(isCssPreloadFailure(undefined), false);
     assert.equal(isCssPreloadFailure(null), false);
     assert.equal(isCssPreloadFailure(42), false);
+  });
+});
+
+// The boundary wraps whole page subtrees, so it must tell a chunk that failed to
+// LOAD apart from a crash inside a chunk that loaded fine.
+describe('isChunkLoadError', () => {
+  it('matches how each engine words a failed dynamic import', () => {
+    for (const message of [
+      // Chromium
+      'Failed to fetch dynamically imported module: https://x/assets/bcf-C3r7vdyE.js',
+      // Gecko
+      'error loading dynamically imported module',
+      // WebKit
+      'Importing a module script failed.',
+      // A host that answers a missing asset with its SPA fallback instead of a
+      // 404: the browser gets index.html and rejects the MIME type.
+      'Failed to load module script: Expected a JavaScript module script but the server responded with a MIME type of text/html.',
+      // Vite's own CSS arm
+      'Unable to preload CSS for /assets/panel.css',
+    ]) {
+      assert.equal(isChunkLoadError(new Error(message)), true, message);
+    }
+  });
+
+  it('does NOT match an ordinary crash inside a chunk that loaded fine', () => {
+    // These would otherwise be filed under the chunk-skew context and told the
+    // user their tab was out of date. Includes shapes that merely mention
+    // modules or loading, so the matcher cannot be loose about it.
+    for (const message of [
+      "Cannot read properties of undefined (reading 'rows')",
+      'Maximum update depth exceeded',
+      'Failed to fetch',
+      'Cannot access module before initialization',
+      'Objects are not valid as a React child',
+    ]) {
+      assert.equal(isChunkLoadError(new Error(message)), false, message);
+    }
+  });
+
+  it('tolerates a non-Error payload', () => {
+    assert.equal(isChunkLoadError('Importing a module script failed.'), true);
+    assert.equal(isChunkLoadError(undefined), false);
+    assert.equal(isChunkLoadError(null), false);
+    assert.equal(isChunkLoadError(42), false);
   });
 });
 

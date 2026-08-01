@@ -24,6 +24,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { posthog } from '@/lib/analytics';
+import { isChunkLoadError } from '@/lib/chunk-version-skew';
 
 /**
  * Which surface the fallback paints on.
@@ -62,13 +63,19 @@ export class ChunkErrorBoundary extends Component<
   }
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
-    console.error(`[chunk-boundary] "${this.props.label}" failed to load`, error, info);
+    // This boundary wraps whole page subtrees, so it catches ANY render error
+    // under them, not only a rejected lazy import. Classify before reporting:
+    // filing a component crash under the chunk-skew context would mis-group a
+    // real bug with an auto-recovered one, and the render path below would tell
+    // the user their tab was out of date when it was not.
+    const chunk = isChunkLoadError(error);
+    console.error(`[chunk-boundary] "${this.props.label}" failed`, error, info);
     // Reported explicitly so it lands as HANDLED rather than as an uncaught
     // error-level exception. When a skew reload is in flight the before_send
     // gate in lib/chunk-version-skew.ts drops this as collateral; when no reload
     // is coming, it is a real dead end and worth hearing about.
     posthog.captureException(error, {
-      context: 'lazy_chunk_boundary',
+      context: chunk ? 'lazy_chunk_boundary' : 'lazy_subtree_boundary',
       // `lazy_chunk`, not `chunk_label`: the analytics scrub deletes any key
       // with a `label` word (free text is where model names leak), so the
       // latter would have been dropped on the way out and this event would
@@ -82,6 +89,7 @@ export class ChunkErrorBoundary extends Component<
     const { error } = this.state;
     if (!error) return this.props.children;
     const night = this.props.tone === 'night';
+    const chunk = isChunkLoadError(error);
     return (
       <div
         className="flex h-full min-h-[160px] w-full flex-col items-center justify-center gap-2 px-4 text-center"
@@ -91,13 +99,15 @@ export class ChunkErrorBoundary extends Component<
           className={night ? 'text-xs' : 'text-xs text-muted-foreground'}
           style={night ? { color: NIGHT_TONE.fg } : undefined}
         >
-          {this.props.label} could not be loaded
+          {chunk ? `${this.props.label} could not be loaded` : `${this.props.label} stopped working`}
         </span>
         <span
           className={night ? 'max-w-[280px] text-[11px]' : 'max-w-[280px] text-[11px] text-muted-foreground/70'}
           style={night ? { color: NIGHT_TONE.dim } : undefined}
         >
-          This usually means the app was updated while your tab was open.
+          {chunk
+            ? 'This usually means the app was updated while your tab was open.'
+            : 'An unexpected error stopped it from rendering.'}
         </span>
         <button
           type="button"

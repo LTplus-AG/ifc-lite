@@ -1,0 +1,42 @@
+{
+  "bet": "B5.2",
+  "pass": "cli",
+  "alias": "model-b",
+  "approxMegabytes": 90,
+  "validate": {
+    "ok": true,
+    "exitCode": 0,
+    "errorCode": null,
+    "wallMs": 1920.1,
+    "schema": "IFC4",
+    "approxEntityCount": 1050000,
+    "valid": true,
+    "errors": 0,
+    "warnings": 0,
+    "info": 2,
+    "issueCount": 2,
+    "ruleCounts": {
+      "named-elements/info": 1,
+      "quantity-completeness/info": 1
+    }
+  },
+  "clash": {
+    "ok": true,
+    "exitCode": 0,
+    "errorCode": null,
+    "wallMs": 16496.7,
+    "summary": {
+      "total": 0,
+      "bySeverity": {
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      "distinctRules": 0,
+      "distinctTypePairs": 0
+    },
+    "recordsReturned": 0,
+    "truncated": null
+  }
+}

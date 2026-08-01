@@ -1,0 +1,46 @@
+{
+  "bet": "B5.2",
+  "pass": "text",
+  "alias": "model-b",
+  "authoringToolFamily": "archicad",
+  "schema": "IFC4",
+  "approxMegabytes": 90,
+  "approxEntityCount": 1050000,
+  "distinctEntityTypes": 122,
+  "dominantElementTypes": [
+    "IFCFURNITURE",
+    "IFCWINDOW",
+    "IFCWALL",
+    "IFCOPENINGELEMENT",
+    "IFCDOOR",
+    "IFCSPACE",
+    "IFCCOVERING",
+    "IFCBUILDINGELEMENTPROXY"
+  ],
+  "readMs": 80.6,
+  "heuristicMs": 527.4,
+  "heuristicPrediction": {
+    "defects": {
+      "clash-pair": true,
+      "degenerate-geometry": false,
+      "duplicate-globalid": true,
+      "missing-site": false,
+      "multiple-project": false,
+      "dangling-ref": false,
+      "missing-quantities": false
+    },
+    "defectsFired": [
+      "clash-pair",
+      "duplicate-globalid"
+    ],
+    "defectsFiredCount": 2,
+    "triage": 2,
+    "quantities": {
+      "wallGrossVolume": 0,
+      "slabGrossVolume": 0,
+      "columnGrossVolume": 0,
+      "beamGrossVolume": 0,
+      "roomNetFloorArea": 0
+    }
+  }
+}

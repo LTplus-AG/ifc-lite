@@ -1,0 +1,42 @@
+{
+  "bet": "B5.2",
+  "pass": "adjudication",
+  "alias": "model-a",
+  "approxMegabytes": 75,
+  "quantityBinding": {
+    "elementQuantitySets": 15872,
+    "boundByRelDefinesByProperties": 15872,
+    "reachableFromTypeObject": 0,
+    "orphanQuantitySets": 0,
+    "orphanPct": 0,
+    "relDefinesByPropertiesLines": 104409,
+    "relDefinesByPropertiesParsedByHeuristicRegex": 0,
+    "heuristicRegexCoveragePct": 0
+  },
+  "globalIdScan": {
+    "distinct22CharFirstAttributes": 248592,
+    "duplicateGroups": 0,
+    "entitiesInDuplicateGroups": 0,
+    "duplicateGroupsByEntityType": {},
+    "kernelUniqueGlobalIdErrors": 0
+  },
+  "footings": {
+    "ifcFootingCount": 0,
+    "footingSelfClashesFound": 0,
+    "totalClashes": 0
+  },
+  "unmeshedColumns": {
+    "totalColumns": 2597,
+    "meshedColumns": 2568,
+    "unmeshedColumns": 29,
+    "unmeshedPct": 1.1167,
+    "unmeshedDeclaringRepresentation": 29,
+    "unmeshedDeclaringNoRepresentation": 0,
+    "unmeshedRepresentationIdentifierAndType": {
+      "Axis/MappedRepresentation": 29
+    },
+    "unmeshedRepresentationItemTypes": {
+      "Unknown": 29
+    }
+  }
+}

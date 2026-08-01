@@ -1,0 +1,36 @@
+{
+  "bet": "B5.2",
+  "pass": "diagnostics",
+  "side": "synthetic",
+  "split": "dev",
+  "sampledModels": 200,
+  "modelsWithAnyDiagnostics": 76,
+  "modelsWithCsgFailures": 0,
+  "elapsedMs": 573.7,
+  "diagnostics": {
+    "present": true,
+    "schemaVersion": 2,
+    "totalCsgFailures": 0,
+    "productsWithFailures": 0,
+    "hostsWithOpenings": 400,
+    "silentNoOps": 0,
+    "classification": {
+      "rectangular": 848,
+      "diagonal": 0,
+      "nonRectangular": 0,
+      "total": 848
+    },
+    "failuresByReason": [],
+    "rectFast": {
+      "fired": 400,
+      "openingsCut": 848,
+      "deferHostNotBox": 0,
+      "deferNotThrough": 0,
+      "deferOffFace": 0,
+      "deferNearEdge": 0,
+      "deferNoOpenings": 0,
+      "deferTooManyOpenings": 0
+    },
+    "worstHosts": []
+  }
+}

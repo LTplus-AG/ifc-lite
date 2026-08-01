@@ -1,0 +1,45 @@
+{
+  "bet": "B5.2",
+  "pass": "text",
+  "alias": "model-a",
+  "authoringToolFamily": "ifcopenshell",
+  "schema": "IFC4",
+  "approxMegabytes": 75,
+  "approxEntityCount": 1100000,
+  "distinctEntityTypes": 97,
+  "dominantElementTypes": [
+    "IFCBEAM",
+    "IFCSLAB",
+    "IFCCOLUMN",
+    "IFCCOLUMNTYPE",
+    "IFCWALLSTANDARDCASE",
+    "IFCOPENINGELEMENT",
+    "IFCBEAMTYPE",
+    "IFCSLABTYPE"
+  ],
+  "readMs": 68.1,
+  "heuristicMs": 565.6,
+  "heuristicPrediction": {
+    "defects": {
+      "clash-pair": false,
+      "degenerate-geometry": false,
+      "duplicate-globalid": false,
+      "missing-site": false,
+      "multiple-project": false,
+      "dangling-ref": false,
+      "missing-quantities": true
+    },
+    "defectsFired": [
+      "missing-quantities"
+    ],
+    "defectsFiredCount": 1,
+    "triage": 1,
+    "quantities": {
+      "wallGrossVolume": 0,
+      "slabGrossVolume": 0,
+      "columnGrossVolume": 0,
+      "beamGrossVolume": 0,
+      "roomNetFloorArea": 0
+    }
+  }
+}

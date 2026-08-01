@@ -1,0 +1,32 @@
+{
+  "bet": "B5.2",
+  "pass": "oracle",
+  "alias": "model-b",
+  "approxMegabytes": 90,
+  "oracleMs": 16535.3,
+  "rssAtExitMb": 1348.8,
+  "prediction": {
+    "defects": {
+      "clash-pair": false,
+      "degenerate-geometry": false,
+      "duplicate-globalid": false,
+      "missing-site": false,
+      "multiple-project": false,
+      "dangling-ref": false,
+      "missing-quantities": true
+    },
+    "defectsFired": [
+      "missing-quantities"
+    ],
+    "defectsFiredCount": 1,
+    "triage": 1,
+    "quantities": {
+      "wallGrossVolume": 0,
+      "slabGrossVolume": 0,
+      "columnGrossVolume": 0,
+      "beamGrossVolume": 0,
+      "roomNetFloorArea": 0
+    },
+    "quantityKeysNonZero": 0
+  }
+}

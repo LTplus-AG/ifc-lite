@@ -1,0 +1,40 @@
+{
+  "bet": "B5.2",
+  "pass": "adjudication",
+  "alias": "model-b",
+  "approxMegabytes": 90,
+  "quantityBinding": {
+    "elementQuantitySets": 13294,
+    "boundByRelDefinesByProperties": 13294,
+    "reachableFromTypeObject": 0,
+    "orphanQuantitySets": 0,
+    "orphanPct": 0,
+    "relDefinesByPropertiesLines": 48559,
+    "relDefinesByPropertiesParsedByHeuristicRegex": 48559,
+    "heuristicRegexCoveragePct": 100
+  },
+  "globalIdScan": {
+    "distinct22CharFirstAttributes": 130517,
+    "duplicateGroups": 1,
+    "entitiesInDuplicateGroups": 725,
+    "duplicateGroupsByEntityType": {
+      "IFCPROPERTYSINGLEVALUE": 725
+    },
+    "kernelUniqueGlobalIdErrors": 0
+  },
+  "footings": {
+    "ifcFootingCount": 16,
+    "footingSelfClashesFound": 0,
+    "totalClashes": 0
+  },
+  "unmeshedColumns": {
+    "totalColumns": 112,
+    "meshedColumns": 112,
+    "unmeshedColumns": 0,
+    "unmeshedPct": 0,
+    "unmeshedDeclaringRepresentation": 0,
+    "unmeshedDeclaringNoRepresentation": 0,
+    "unmeshedRepresentationIdentifierAndType": {},
+    "unmeshedRepresentationItemTypes": {}
+  }
+}

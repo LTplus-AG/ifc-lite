@@ -1,0 +1,34 @@
+{
+  "bet": "B5.2",
+  "pass": "diagnostics",
+  "side": "foreign",
+  "alias": "model-a",
+  "approxMegabytes": 75,
+  "elapsedMs": 28603.9,
+  "diagnostics": {
+    "present": true,
+    "schemaVersion": 2,
+    "totalCsgFailures": 0,
+    "productsWithFailures": 0,
+    "hostsWithOpenings": 324,
+    "silentNoOps": 1,
+    "classification": {
+      "rectangular": 119,
+      "diagonal": 238,
+      "nonRectangular": 317,
+      "total": 674
+    },
+    "failuresByReason": [],
+    "rectFast": {
+      "fired": 88,
+      "openingsCut": 111,
+      "deferHostNotBox": 22,
+      "deferNotThrough": 0,
+      "deferOffFace": 8,
+      "deferNearEdge": 0,
+      "deferNoOpenings": 0,
+      "deferTooManyOpenings": 0
+    },
+    "worstHosts": []
+  }
+}

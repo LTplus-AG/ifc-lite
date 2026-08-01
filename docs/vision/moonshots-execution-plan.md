@@ -463,10 +463,6 @@ regenerates both twins locally and never requests the served bytes. Hosting is t
 delivery channel a salt needs, not an integrity mechanism; see the benchmark spec's
 integrity-model section.* The attack stays committed as a regression.
 
-<!-- numeral-ok: 0.931, 0.993 :: aggregate scores of the kernel oracle and the text
-     heuristic through the real benchmark scorer. Emitted by the benchmark harness under
-     benchmark/, not by any scripts/moonshot artifact. -->
-
 **N3. M5 feasible-brief quality margin is null (2026-07-25, replicated).** Believed:
 per-op kernel feedback would produce better programs than the same model generating
 freely. Measured across two tiers and one fresh-sample replication: no detectable

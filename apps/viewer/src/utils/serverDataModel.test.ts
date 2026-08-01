@@ -332,7 +332,7 @@ describe('convertServerDataModel', () => {
     );
   });
 
-  it('whereProperty filters a server-converted store through the on-demand path', () => {
+  it('whereProperty filters a server-converted store through the on-demand path (#577)', () => {
     // The transition this pins: `convertServerDataModel` reports `count: 0` on
     // both tables, so `EntityQuery.applyPropertyFilters` classifies a
     // server-loaded model as on-demand and resolves candidates through

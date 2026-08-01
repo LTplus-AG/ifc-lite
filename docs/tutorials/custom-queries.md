@@ -294,7 +294,10 @@ for (const wall of walls) {
   const psets = extractPropertiesOnDemand(store, wall.expressId);
   const wallCommon = psets.find(p => p.name === 'Pset_WallCommon');
   const fireRatingProp = wallCommon?.properties.find(p => p.name === 'FireRating');
-  const fireRating = typeof fireRatingProp?.value === 'number' ? fireRatingProp.value : 0;
+  // `FireRating` is an IfcLabel, so the value is a string such as 'REI90'.
+  // Reading it as a number leaves every wall at 0 and colours nothing; pull the
+  // digits out instead.
+  const fireRating = Number(String(fireRatingProp?.value ?? '').match(/\d+/)?.[0] ?? 0);
 
   if (fireRating >= 90) {
     colorMap.set(wall.expressId, 'red');

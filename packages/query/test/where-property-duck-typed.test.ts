@@ -3,10 +3,15 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
+ * Regression cover for the compatibility half of #577 / PR #1935.
+ *
  * `count` and `findByQuantity` are OPTIONAL members of the property/quantity
  * tables on `IfcStoreBase`, and @ifc-lite/data is published: stores written
  * against the interface before those members existed must keep working. These
- * pin what omitting them does.
+ * pin what omitting them does. The first cut of the fix read a missing `count`
+ * as zero, which silently routed every such store to the on-demand fallback
+ * and returned [] for a store whose `findByProperty` worked perfectly, which
+ * is the same class of defect #577 is about.
  *
  * The `createMinimalStore` duck-typed store lives in
  * `where-property-fixtures.ts`; the STEP-vs-table behaviour it complements is

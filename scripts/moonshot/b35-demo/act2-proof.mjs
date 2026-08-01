@@ -332,6 +332,12 @@ export async function runAct2({ model }) {
       elements: dag.elementCount,
       psetLeaves: dag.psetCount,
       storeys: dag.storeys.length,
+      // One `element` node per storey (the RelatingStructure referent) AND one
+      // containment `relationship` node per storey. Reported separately so the
+      // parts of the breakdown add up to totalNodes without the reader having
+      // to know that a storey contributes two nodes.
+      storeyElementNodes: dag.storeys.length,
+      storeyRelationshipNodes: dag.storeys.length,
       rootHashBefore,
       rootHashAfter,
       edit: {

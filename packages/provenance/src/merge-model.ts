@@ -826,9 +826,20 @@ export function buildStateDag(state: ModelState): ProvenanceDag {
   for (const entityId of entityIds) {
     const entity = state.entities.get(entityId) as EntityState;
     if (entity.hostId === undefined) continue;
-    if (!state.entities.has(entity.hostId)) {
+    const host = state.entities.get(entity.hostId);
+    if (!host) {
       throw new Error(
         `@ifc-lite/provenance: buildStateDag: entity "${entityId}" references unknown host "${entity.hostId}"`,
+      );
+    }
+    // Same invariant applyOp enforces at entity-add time ("no nesting in
+    // v0"), re-checked here because buildStateDag is also called on
+    // directly-authored states (tests, fixtures) that never went through an
+    // op. A nested host would not break the DAG structurally -- it would
+    // silently commit to a model shape the op vocabulary cannot produce.
+    if (host.hostId !== undefined) {
+      throw new Error(
+        `@ifc-lite/provenance: buildStateDag: entity "${entityId}" is hosted in "${entity.hostId}", which is itself hosted (no nesting in v0)`,
       );
     }
     const nodeId = voidsRelNodeId(entityId);

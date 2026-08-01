@@ -49,6 +49,8 @@
         "elements": 27,
         "psetLeaves": 27,
         "storeys": 1,
+        "storeyElementNodes": 1,
+        "storeyRelationshipNodes": 1,
         "rootHashBefore": "sha256:3abc104a6b505c5c7574c8a032e91b9de2af528eeb69f29b78ad703bda0f41cc",
         "rootHashAfter": "sha256:a4cfcd2b860dc7db4f7afef0234f43d92e2d5d5e7c3038703b9e3f00c84c5dff",
         "edit": {

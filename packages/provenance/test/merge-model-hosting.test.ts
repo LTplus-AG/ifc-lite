@@ -494,7 +494,11 @@ describe('wire format: node-hash-v0 is untouched, but the DAG binds hosting', ()
   });
 
   it('re-hosting one opening between two coincident walls moves the root', async () => {
-    // The reachable second preimage the G4 review constructed. Both walls are
+    // The reachable second preimage (F2, PR #1933): the construction that
+    // refutes "a host collision is unreachable under this op model".
+    // Deliberately NOT attributed to a numbered item in any review DOCUMENT --
+    // no committed review doc on this branch contains this construction, and
+    // the argument stands on the construction below regardless. Both walls are
     // legal hosts for the same opening, both states are spatially valid, and
     // under LAZY cut semantics the host meshes are byte-identical -- so the
     // IfcRelVoidsElement node is the ONLY thing separating them.

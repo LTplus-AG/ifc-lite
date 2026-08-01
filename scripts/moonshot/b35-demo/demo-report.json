@@ -53,6 +53,8 @@
           "elements": 27,
           "psetLeaves": 27,
           "storeys": 1,
+          "storeyElementNodes": 1,
+          "storeyRelationshipNodes": 1,
           "rootHashBefore": "sha256:3abc104a6b505c5c7574c8a032e91b9de2af528eeb69f29b78ad703bda0f41cc",
           "rootHashAfter": "sha256:a4cfcd2b860dc7db4f7afef0234f43d92e2d5d5e7c3038703b9e3f00c84c5dff",
           "edit": {
@@ -391,23 +393,23 @@
   },
   "volatile": {
     "note": "ONLY this block differs between runs: wall clocks and the timestamp. Everything under `deterministic` is a pure function of the master seed.",
-    "generatedAt": "2026-08-01T06:29:27.559Z",
+    "generatedAt": "2026-08-01T07:04:51.441Z",
     "nodeVersion": "v22.14.0",
-    "totalWallClockMs": 8910,
+    "totalWallClockMs": 6825,
     "actWallClockMs": {
-      "act1": 39,
-      "act2": 63,
-      "act3": 297,
-      "act4": 3226,
-      "act5": 5284
+      "act1": 34,
+      "act2": 57,
+      "act3": 266,
+      "act4": 2624,
+      "act5": 3843
     },
     "actVolatile": {
       "act2": {
-        "verifyMs": 3.067,
-        "tamperVerifyMs": 2.464
+        "verifyMs": 2.765,
+        "tamperVerifyMs": 2.059
       },
       "act4": {
-        "batteryElapsedMs": 3216.8704589999998
+        "batteryElapsedMs": 2615.46225
       }
     },
     "artifactDir": "/var/folders/n2/jkb39p_x4md9jdv5hhzny6jc0000gn/T/ifc-lite-b35-demo"

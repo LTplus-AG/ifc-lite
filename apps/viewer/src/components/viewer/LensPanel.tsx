@@ -17,13 +17,15 @@
  * classification systems, materials). No hardcoded IFC class lists.
  */
 
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X, EyeOff, Palette, Check, Plus, Trash2, Pencil, Copy, Save, Download, Upload, Sparkles, Search, ChevronDown, ArrowUpDown, GripVertical } from 'lucide-react';
 import { discoverDataSources } from '@ifc-lite/lens';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { downloadFile } from '@/lib/export/download';
 import { tourAnchor, TOUR_ANCHORS, lensCardAnchor } from '@/lib/tours/anchors';
+import { usePortalContainer } from '@/components/ui/portal-container';
 import { useViewerStore } from '@/store';
 import { useLens } from '@/hooks/useLens';
 import { createLensDataProvider } from '@/lib/lens';
@@ -61,7 +63,50 @@ interface LensPanelProps {
 
 // ─── Searchable dropdown (for large dynamic lists) ──────────────────────────
 
-function SearchableSelect({
+/** Popup's own CSS `max-h`, kept in one place so the flip math agrees with the class below. */
+const SEARCHABLE_SELECT_POPUP_MAX_HEIGHT = 200;
+
+/** Fixed-position coordinates for the portaled popup, computed from the trigger's rect. */
+interface SearchableSelectAnchor {
+  left: number;
+  width: number;
+  /** Distance from the viewport top to the trigger's bottom (used when opening down). */
+  top: number;
+  /** Distance from the viewport bottom to the trigger's top (used when opening up). */
+  bottom: number;
+  openUp: boolean;
+}
+
+/**
+ * Pure positioning math for `SearchableSelect`'s portaled popup (#1924): given
+ * the trigger's viewport rect and the viewport height, decide whether the
+ * popup opens down (default) or flips up, and return the `position: fixed`
+ * coordinates for either case. Extracted so the flip decision is unit
+ * testable without a DOM (`LensPanel.searchable-select-anchor.test.ts`).
+ */
+export function computeSearchableSelectAnchor(
+  triggerRect: { left: number; width: number; top: number; bottom: number },
+  viewportHeight: number,
+  popupMaxHeight: number = SEARCHABLE_SELECT_POPUP_MAX_HEIGHT,
+): SearchableSelectAnchor {
+  const spaceBelow = viewportHeight - triggerRect.bottom;
+  const spaceAbove = triggerRect.top;
+  // Flip up only when there isn't enough room below AND there's more room
+  // above — otherwise keep the (already clipped-by-viewport, at least
+  // visible-on-screen) default so we never flip into an even smaller gap.
+  const openUp = spaceBelow < popupMaxHeight && spaceAbove > spaceBelow;
+  return {
+    left: triggerRect.left,
+    width: triggerRect.width,
+    top: triggerRect.bottom,
+    bottom: viewportHeight - triggerRect.top,
+    openUp,
+  };
+}
+
+/** Exported for `LensPanel.searchable-select.test.tsx` — rendering it directly
+ *  avoids mounting the whole panel (store, discovered data, etc). */
+export function SearchableSelect({
   value,
   options,
   onChange,
@@ -78,8 +123,12 @@ function SearchableSelect({
 }) {
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState('');
+  const [anchor, setAnchor] = useState<SearchableSelectAnchor | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const popupRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const portalContainer = usePortalContainer();
 
   const filtered = useMemo(() => {
     if (!filter) return options;
@@ -87,24 +136,53 @@ function SearchableSelect({
     return options.filter(o => o.toLowerCase().includes(q));
   }, [options, filter]);
 
-  // Close on outside click
+  const reposition = useCallback(() => {
+    const el = triggerRef.current;
+    if (!el) return;
+    setAnchor(computeSearchableSelectAnchor(el.getBoundingClientRect(), window.innerHeight));
+  }, []);
+
+  // The popup is portaled straight to <body> (or the popped-out panel
+  // window's body, #1208) so it clears every `overflow-hidden`/`overflow-auto`
+  // clipping ancestor between the trigger and the viewport — the panel's
+  // scroll container, the floating-panel chrome, the docked-panel host (#1924).
+  // Track the trigger's position while open (capture = also catch ancestor
+  // scrolls, e.g. the panel's own scroll container) and flip up near the
+  // bottom of the viewport instead of overflowing off-screen.
+  useLayoutEffect(() => {
+    if (!open) return;
+    reposition();
+    const onScroll = () => reposition();
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onScroll);
+    return () => {
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onScroll);
+    };
+  }, [open, reposition]);
+
+  // Close on outside click — the popup is portaled out of `containerRef`, so
+  // it needs its own containment check.
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
-        setFilter('');
-      }
+      const target = e.target as Node;
+      if (containerRef.current?.contains(target)) return;
+      if (popupRef.current?.contains(target)) return;
+      setOpen(false);
+      setFilter('');
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
   const display = displayFn ?? ((v: string) => v);
+  const showPopup = open && anchor !== null;
 
   return (
     <div ref={containerRef} className={cn('relative', className)}>
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => {
           setOpen(!open);
@@ -119,8 +197,23 @@ function SearchableSelect({
         <span className="truncate">{value ? display(value) : (placeholder ?? 'Select...')}</span>
         <ChevronDown className="h-3 w-3 flex-shrink-0 opacity-50" />
       </button>
-      {open && (
-        <div className="absolute z-50 top-full left-0 right-0 mt-0.5 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-600 rounded-sm shadow-lg max-h-[200px] flex flex-col">
+      {showPopup && createPortal(
+        <div
+          ref={popupRef}
+          data-testid="searchable-select-popup"
+          style={{
+            position: 'fixed',
+            left: anchor.left,
+            width: anchor.width,
+            ...(anchor.openUp
+              ? { bottom: anchor.bottom + 2 }
+              : { top: anchor.top + 2 }),
+          }}
+          // Stop pointerdown from bubbling past the popup (e.g. into a Radix
+          // dismissable layer) so picking a value doesn't also close a host dialog.
+          onPointerDown={(e) => e.stopPropagation()}
+          className="z-[120] bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-600 rounded-sm shadow-lg max-h-[200px] flex flex-col"
+        >
           {options.length > 8 && (
             <div className="flex items-center gap-1 px-1.5 py-1 border-b border-zinc-200 dark:border-zinc-700">
               <Search className="h-3 w-3 text-zinc-400 flex-shrink-0" />
@@ -156,7 +249,8 @@ function SearchableSelect({
               </button>
             ))}
           </div>
-        </div>
+        </div>,
+        portalContainer ?? document.body,
       )}
     </div>
   );

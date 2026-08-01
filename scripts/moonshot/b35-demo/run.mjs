@@ -224,7 +224,8 @@ function renderMarkdown(report) {
     push('## Act 2 -- PROOF (M1 proof-carrying edit, the G0 story on a fresh model)');
     push('');
     push(`The parsed building becomes a ${x.totalNodes}-node node-hash-v0 DAG`);
-    push(`(${x.elements} elements, ${x.psetLeaves} pset/qset leaves, ${x.storeys} storeys, 1 root).`);
+    push(`(${x.elements} elements, ${x.psetLeaves} pset/qset leaves, ${x.storeys} storey element(s),`);
+    push(`${x.storeys} storey containment relationship(s), 1 root).`);
     push(`One edit -- ${x.edit.ifcType} #${x.edit.expressId} ${x.edit.property}: ${JSON.stringify(x.edit.before)} -> ${JSON.stringify(x.edit.after)} --`);
     push('yields a certificate carrying the changed path, the untouched sibling reads and a');
     push(`subtree-untouched claim over ${x.untouchedClaimRefs} untouched ${x.claimGranularity === 'storey-subtrees' ? 'storey subtree(s)' : 'sibling element subtree(s)'}.`);

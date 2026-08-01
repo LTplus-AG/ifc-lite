@@ -27,7 +27,8 @@ entities, 1 storey(s), 28004 bytes.
 ## Act 2 -- PROOF (M1 proof-carrying edit, the G0 story on a fresh model)
 
 The parsed building becomes a 57-node node-hash-v0 DAG
-(27 elements, 27 pset/qset leaves, 1 storeys, 1 root).
+(27 elements, 27 pset/qset leaves, 1 storey element(s),
+1 storey containment relationship(s), 1 root).
 One edit -- IfcWall #58 GrossVolume: 8.136439344000001 -> 9.136439344000001 --
 yields a certificate carrying the changed path, the untouched sibling reads and a
 subtree-untouched claim over 26 untouched sibling element subtree(s).
@@ -90,8 +91,8 @@ differentiable building with exact dual-number gradients:
 
 Wall clocks and the timestamp below change run to run; nothing above does.
 
-- generated at: 2026-08-01T05:51:47.272Z (node v22.14.0)
-- total wall clock: 6.9s
-- per act: act1=0.0s, act2=0.1s, act3=0.3s, act4=2.6s, act5=3.9s
+- generated at: 2026-08-01T06:29:27.559Z (node v22.14.0)
+- total wall clock: 8.9s
+- per act: act1=0.0s, act2=0.1s, act3=0.3s, act4=3.2s, act5=5.3s
 - artifacts (outside the repo): /var/folders/n2/jkb39p_x4md9jdv5hhzny6jc0000gn/T/ifc-lite-b35-demo
 

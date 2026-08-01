@@ -233,7 +233,7 @@ export async function runAct2({ model }) {
   const dag = await buildDag(store);
   const totalNodes = dag.dagNodes.size;
   const rootHashBefore = dag.dagHashes.get('root');
-  say(`  provenance DAG: ${totalNodes} nodes (${dag.elementCount} elements, ${dag.psetCount} pset/qset leaves, ${dag.storeys.length} storeys, 1 root)`);
+  say(`  provenance DAG: ${totalNodes} nodes (${dag.elementCount} elements, ${dag.psetCount} pset/qset leaves, ${dag.storeys.length} storey element(s), ${dag.storeys.length} storey containment relationship(s), 1 root)`);
   say(`  root hash before edit: ${short(rootHashBefore, 28)}...`);
 
   // Single-element edit: grow one wall's GrossVolume by exactly 1 m3.

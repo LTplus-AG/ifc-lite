@@ -376,7 +376,8 @@ async function main() {
   const totalNodes = dag.dagNodes.size;
   console.error(
     `[g0] DAG built + fully hashed in ${fullHashMs.toFixed(1)} ms — ${totalNodes} nodes ` +
-      `(${dag.elementCount} elements, ${dag.psetCount} property-sets, ${dag.storeys.length} storeys, 1 root)`,
+      `(${dag.elementCount} elements, ${dag.psetCount} property-sets, ${dag.storeys.length} storey element(s), ` +
+      `${dag.storeys.length} storey containment relationship(s), 1 root)`,
   );
 
   // Pick a wall-like element with at least one non-empty property set,

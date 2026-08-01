@@ -205,11 +205,17 @@ describe('buildStateDag / hashModelState', () => {
 });
 
 /**
- * Regression guards for the three producer bindings the DAG must commit to.
+ * Regression guards for the three producer bindings the DAG must commit to
+ * (PR #1933, fixing findings F1 and F2 of the pre-freeze adversarial attack
+ * on node-hash-v0; F1 = missing `RelatingStructure` plus the storey's own
+ * element node, F2 = the missing `IfcRelVoidsElement` node).
+ *
  * Each of these passes ONLY because `buildStateDag` emits both EXPRESS roles
  * of `IfcRelContainedInSpatialStructure` and a real `IfcRelVoidsElement` node
  * per hosted element. Drop either and the model changes while the root hash
  * does not -- which is exactly a second preimage a certificate would accept.
+ * All three cases below (reparent, storey swap, role payload) are F1's
+ * constructions; F2's host-binding guard lives in merge-model-hosting.test.ts.
  */
 describe('the root hash binds the model relationships, not just its contents', () => {
   /** Re-parent an element with ORDINARY ops (no bespoke move op exists in

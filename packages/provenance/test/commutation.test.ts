@@ -232,6 +232,14 @@ describe('verifyCommutationCertificate', () => {
 });
 
 /**
+ * Regression guard for PR #1933, finding F3 of the pre-freeze adversarial
+ * attack on node-hash-v0: a certificate verifying against a genuinely
+ * different base. F3 is the end-to-end consequence of F1 and F2 (the missing
+ * `RelatingStructure` / storey element node and the missing
+ * `IfcRelVoidsElement` node, guarded in merge-model.test.ts and
+ * merge-model-hosting.test.ts) -- it needs no separate producer fix and
+ * closes when those two do.
+ *
  * A certificate's only tie to the model it was issued for is `baseRootHash`,
  * so that root has to separate models that genuinely differ. These are the
  * end-to-end guards for that: a certificate issued over base B1 must be

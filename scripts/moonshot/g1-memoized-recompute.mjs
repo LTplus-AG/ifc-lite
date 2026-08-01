@@ -484,7 +484,8 @@ async function runDataPlaneScaleExam() {
   const { dag, buildMs, totalNodes } = await buildDag(struct.buildSpecs, leafPayloads);
   console.error(
     `[g1] full build hashed ${totalNodes} nodes in ${buildMs.toFixed(1)} ms ` +
-      `(${struct.elementCount} elements, ${struct.psetCount} property-sets, ${struct.storeys.length} storeys, 1 root)`,
+      `(${struct.elementCount} elements, ${struct.psetCount} property-sets, ${struct.meshLeafCount} geometry-mesh leaves, ` +
+      `${struct.storeys.length} storey element(s), ${struct.storeys.length} storey containment relationship(s), 1 root)`,
   );
 
   let target;

@@ -63,10 +63,15 @@ export function App() {
   const normalizedPath = pathname.length > 1 && pathname.endsWith('/')
     ? pathname.slice(0, -1)
     : pathname;
+  // The two MCP branches below return the same fragment shape, so React
+  // reconciles their ChunkErrorBoundary as ONE instance by type + position and
+  // carries `state.error` across a route change: a failed playground chunk would
+  // leave the fallback up on /mcp, whose chunk is a different file that may well
+  // load. Keying by route makes each one its own instance.
   if (normalizedPath === '/mcp/playground') {
     return (
       <>
-        <ChunkErrorBoundary label="MCP playground" tone="night">
+        <ChunkErrorBoundary key={normalizedPath} label="MCP playground" tone="night">
           <Suspense fallback={<RouteFallback />}>
             <McpPlayground />
           </Suspense>
@@ -79,7 +84,7 @@ export function App() {
   if (normalizedPath === '/mcp' || normalizedPath.startsWith('/mcp/')) {
     return (
       <>
-        <ChunkErrorBoundary label="MCP page" tone="night">
+        <ChunkErrorBoundary key={normalizedPath} label="MCP page" tone="night">
           <Suspense fallback={<RouteFallback />}>
             <McpLanding />
           </Suspense>

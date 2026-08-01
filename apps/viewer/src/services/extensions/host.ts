@@ -65,6 +65,7 @@ import { IdbLogStorage } from './idb-log-storage.js';
 import { createBimSandboxFactory } from './sandbox-factory.js';
 import { FlavorService } from './flavor-service.js';
 import { runExtensionCommand } from './host-commands.js';
+import { runExtensionExporter, type ExporterOutput } from './host-exporters.js';
 import {
   ExtensionInstallError,
   installFromBytes,
@@ -283,6 +284,25 @@ export class ExtensionHostService {
         sdk: this.sdk,
       },
       commandId,
+    );
+  }
+
+  /**
+   * Run an extension-contributed exporter and hand back its bytes.
+   *
+   * The `exportMenu` counterpart of `runCommand`. Implementation lives in
+   * `host-exporters.ts`; this method just injects the host's primitives.
+   */
+  runExporter(exporterId: string): Promise<ExporterOutput> {
+    return runExtensionExporter(
+      {
+        storage: this.storage,
+        loader: this.loader,
+        runtime: this.runtime,
+        dispatcher: this.dispatcher,
+        sdk: this.sdk,
+      },
+      exporterId,
     );
   }
 

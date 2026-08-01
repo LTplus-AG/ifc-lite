@@ -353,11 +353,15 @@ this plan had wrong:
    perturbation" in this exam should be read as "a perturbation that survives
    rounding", which is the honest bar.
 
-<!-- numeral-ok: 3e-9 :: the measured sensitivity FLOOR of the B3.5 golden, i.e. a
-     property of the tripwire established by injection and transcribed in
-     scripts/moonshot/ci/self-test-evidence.txt. It is not a value any report
+<!-- numeral-src: 3e-9 :: none - the measured sensitivity FLOOR of the B3.5
+     golden, i.e. a property of the tripwire established by injection and
+     transcribed in scripts/moonshot/ci/self-test-evidence.txt, which is a .txt
+     and so is not in the artifact index at all. It is not a value any report
      emits, and it must not be: the golden pins measurements, not its own
-     resolution. -->
+     resolution. Negative-bound 2026-08-01: B4.4's artifacts joining this tree
+     put 3.142876596321449e-9 in the union index (one cross-check row's
+     wasm-versus-native volume deviation, an unrelated quantity), which made
+     this floor read as backed and sent the excuse STALE. -->
 
 *G4 review note (2026-07-29): both halves of this exam are attested rather than
 evidenced and the bet does NOT yet pass.* The only observed run is 5m27s but was

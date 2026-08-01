@@ -212,9 +212,18 @@ From here:
      no artifact in any tree backs it. It is the one Phase 4 headline with no
      machine-readable source, and until one exists this marker is the whole
      guarantee. -->
-<!-- numeral-ok: 13.6x, 1e-13, 2e-13 :: 13.6x is the ratio between the claimed
-     1e-13 and the measured 1.358479e-12, arithmetic done in the sentence;
-     1e-13 and 2e-13 are the two WRONG tolerances being retracted here and must
-     stay unbacked. -->
+<!-- numeral-ok: 13.6x :: the ratio between the claimed 1e-13 and the measured
+     1.358479e-12, arithmetic done in the sentence. -->
+<!-- numeral-src: 1e-13, 2e-13 :: none - the two WRONG tolerances being retracted
+     here. They must stay unbacked: this section exists to record that no
+     artifact ever said either of them, and a figure the program has formally
+     withdrawn must not acquire provenance after the fact.
+     Negative-bound 2026-08-01: B4.4's artifacts joining this tree put six
+     per-family oracle deviations in the union index, three of which (1.185012e-13
+     on A/seed-7; 2.188857e-13 on A/seed-20260727 and 2.143144e-13 on A/seed-2026)
+     fall inside the half-ULP of a bare 1e-13 or 2e-13 and made these retracted
+     tolerances read as backed. That is the union index vindicating a retraction,
+     which is the exact defect this gate exists to catch one level up, so the
+     match is BLOCKED rather than the marker deleted. -->
 <!-- numeral-src: 2.19e-13, 2.188857e-13 :: b44-kernel-adjoint/battery.json#[0].maxOracleRelDev -->
 <!-- numeral-src: 1.358479e-12 :: b44-kernel-adjoint/battery.json#[5].maxOracleRelDev -->

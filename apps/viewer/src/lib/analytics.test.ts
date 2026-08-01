@@ -5,6 +5,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { scrubEvent } from './analytics-scrub.js';
+import { beforeSend } from './analytics.js';
+import { __setChunkReloadPendingForTests } from './chunk-version-skew.js';
 
 // `scrubEvent` is the single `before_send` gate every captured event passes
 // through: it drops unactionable third-party noise, tags the geometry
@@ -506,5 +508,53 @@ describe('scrubEvent — benign network failures (#1903)', () => {
     // is `error_type`. Do not rename it.
     const named = scrubEvent(safariLoadFailed({ error_name: 'TypeError' }));
     assert.equal(named?.properties?.error_name, undefined);
+  });
+});
+
+// ── before_send wiring ──────────────────────────────────────────────────────
+// The two skew gates are unit-tested in isolation (chunk-version-skew.test.ts,
+// wasm-skew-noise.test.ts). What only a test of `beforeSend` itself can catch is
+// the gate being DISCONNECTED from the pipeline: delete the call in analytics.ts
+// and every isolated test still passes while the noise silently returns.
+describe('beforeSend - chunk-skew gate wiring', () => {
+  it('drops an exception captured while a chunk-skew reload is in flight', () => {
+    __setChunkReloadPendingForTests(Date.now());
+    try {
+      // The collateral from #1926/#1938/#1941: an arbitrary TypeError from a
+      // consumer still awaiting the chunk that just 404'd.
+      const dropped = beforeSend(
+        exceptionEvent("Cannot read properties of undefined (reading 'Map')"),
+      );
+      assert.equal(dropped, null);
+    } finally {
+      __setChunkReloadPendingForTests(null);
+    }
+  });
+
+  it('keeps the same exception when no reload is in flight', () => {
+    __setChunkReloadPendingForTests(null);
+    const kept = beforeSend(
+      exceptionEvent("Cannot read properties of undefined (reading 'Map')"),
+    );
+    assert.notEqual(kept, null);
+  });
+
+  it('still runs the scrub on events the gates let through', () => {
+    // Ordering guard: a `return null` accidentally placed before scrubEvent, or
+    // a gate that short-circuits the pipeline, would lose the tagging that the
+    // rest of error tracking is grouped by.
+    __setChunkReloadPendingForTests(null);
+    const out = beforeSend(exceptionEvent('Geometry worker error: unreachable'));
+    assert.equal(out?.properties?.error_kind, 'geometry_worker_crash');
+  });
+
+  it('never drops a non-exception event, even mid-reload', () => {
+    __setChunkReloadPendingForTests(Date.now());
+    try {
+      const kept = beforeSend({ event: 'ifc_model_loaded', properties: {} });
+      assert.notEqual(kept, null);
+    } finally {
+      __setChunkReloadPendingForTests(null);
+    }
   });
 });

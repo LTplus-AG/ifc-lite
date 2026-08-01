@@ -153,18 +153,28 @@ export function BasketPresentationDock() {
     setPlayingAll(false);
   }, []);
 
-  const activateSavedView = useCallback(async (viewId: string) => {
+  /**
+   * Activate a saved view. Resolves `false` when the activator chunk could not
+   * be loaded.
+   *
+   * Contained here so BOTH call sites are covered: the `void` in the thumbnail's
+   * onClick below, and `startPlayAll`, whose try/finally has no catch - either
+   * would otherwise become an unhandled rejection when a deploy rotates this
+   * chunk's hash under an open tab (see lib/chunk-version-skew.ts).
+   *
+   * The result is REPORTED rather than swallowed because the recovery is not
+   * guaranteed: the skew handler reloads at most once per debounce window, so a
+   * chunk that stays missing leaves the tab running. Play-all must stop there
+   * instead of looping forever over views that can no longer be applied.
+   */
+  const activateSavedView = useCallback(async (viewId: string): Promise<boolean> => {
     try {
       const { activateBasketViewFromStore } = await import('@/store/basket/basketViewActivator');
       activateBasketViewFromStore(viewId);
+      return true;
     } catch (err) {
-      // Contained here so BOTH call sites are covered: the `void` in the
-      // thumbnail's onClick below, and `startPlayAll`, whose try/finally has no
-      // catch - either would otherwise become an unhandled rejection when a
-      // deploy rotates this chunk's hash under an open tab (see
-      // lib/chunk-version-skew.ts). Play-all keeps cycling rather than aborting;
-      // the skew handler's reload is the real recovery.
       console.warn('[basket-dock] could not load the basket-view activator', err);
+      return false;
     }
   }, []);
 
@@ -179,7 +189,13 @@ export function BasketPresentationDock() {
       do {
         for (const view of orderedViews) {
           if (stopPlayRef.current) break;
-          await activateSavedView(view.id);
+          if (!(await activateSavedView(view.id))) {
+            // The activator chunk is gone. Reuse the normal stop signal so the
+            // `while` below also ends and the finally block resets the UI, and
+            // do not wait out this view's transition on the way out.
+            stopPlayRef.current = true;
+            break;
+          }
           const transitionMs = toTransitionMs(view.transitionMs);
           await wait(transitionMs + 180);
         }

@@ -17,7 +17,10 @@ import { shouldSuppressChunkSkewNoise } from './chunk-version-skew.js';
 // scrub on everything that remains. Kept here rather than inside scrubEvent so
 // analytics-scrub.ts stays dependency-free (no @ifc-lite/geometry import) and
 // independently unit-testable.
-const beforeSend = <
+// Exported for ./analytics.test.ts. Both gates are unit-tested in isolation, but
+// only a test of THIS function can catch the gate being disconnected from the
+// pipeline, which is the failure that would silently restore the noise.
+export const beforeSend = <
   T extends { event?: string; properties?: Record<string, unknown> } | null,
 >(event: T): T | null => {
   if (shouldSuppressWasmSkewNoise(event)) return null;

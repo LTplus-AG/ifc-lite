@@ -278,3 +278,15 @@ export function __resetChunkVersionSkewForTests(): void {
   installed = false;
   reloadPendingSince = null;
 }
+
+/**
+ * Test-only: drive the module-private in-flight flag directly.
+ *
+ * The flag is normally set by {@link handlePreloadError} through its default
+ * deps, which need a real `window` and `sessionStorage`. This lets the
+ * `before_send` wiring in ./analytics.ts be tested for what it actually has to
+ * guarantee - that the gate is CONNECTED - without a DOM.
+ */
+export function __setChunkReloadPendingForTests(now: number | null): void {
+  reloadPendingSince = now;
+}

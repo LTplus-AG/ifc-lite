@@ -129,12 +129,24 @@ export function HbjsonExportDialog({ trigger }: HbjsonExportDialogProps) {
       const baseName = selectedModel.name.replace(/\.[^.]+$/, '');
 
       // A fresh processor is cheap: wasm-bindgen shares one module singleton,
-      // so init() no-ops when the viewer already initialised the engine.
+      // so init() no-ops when the viewer already initialised the engine. It
+      // owns a WASM `IfcLiteBridge` handle, so it must be freed on every
+      // path out of this block, success or throw — mirrors the CLI-side fix
+      // in `packages/cli/src/hbjson-export.ts` (#1956 review fix). Scoped to
+      // its own try/finally (not merged into the outer one) so disposal runs
+      // exactly when the processor's lifetime ends, independent of
+      // `setIsExporting(false)` in the outer `finally` below.
       const processor = new GeometryProcessor();
-      await processor.init();
-      const hbjson = processor.exportHbjson(bytes, baseName);
-      if (hbjson === null) {
-        throw new Error('Geometry engine unavailable');
+      let hbjson: Uint8Array;
+      try {
+        await processor.init();
+        const result = processor.exportHbjson(bytes, baseName);
+        if (result === null) {
+          throw new Error('Geometry engine unavailable');
+        }
+        hbjson = result;
+      } finally {
+        processor.dispose();
       }
 
       const blob = new Blob([hbjson as BlobPart], { type: 'application/json' });

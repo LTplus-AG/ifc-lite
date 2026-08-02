@@ -106,8 +106,9 @@ export interface DiffOptions {
    *   1:1 match is reported as `renamed`.
    *
    *   Because this is the pass's only destructive path and `dataHash` is a
-   *   32-bit FNV-1a value, a pair is retired only if it also agrees on
-   *   `ifcType` and — when both sides carry them — on every
+   *   64-bit FNV-1a value rather than a cryptographic digest, a pair is
+   *   retired only if it also agrees on `ifcType` and — when both sides
+   *   carry them — on every
    *   {@link EntityFingerprint.components} sub-hash. Neither check can reject
    *   a genuine match, and neither makes the pass collision-proof; see the
    *   "Hash collisions" section of `docs/guide/model-diff.md`.

@@ -47,9 +47,30 @@ Each `EntityFingerprint` carries two independent hashes, so data and geometry ch
 - IFC type, `Name`, `Description`, `ObjectType`, `PredefinedType`
 - every property set and its properties
 - **every quantity set and its quantities** (quantities participate in the data fingerprint)
-- type assignments (by the type's `GlobalId`, name, and IFC type)
+- type assignments — **by the assigned type's name and IFC class only**
 
 Property sets, quantity sets, their members, and type assignments are all sorted before hashing, so collection ordering never produces a spurious "modified", and two semantically equal entities in the base and head hash identically.
+
+!!! warning "The assigned type's `GlobalId` is not hashed"
+    `TypeAssignmentInput` still has a `globalId` field and callers may keep
+    populating it — it is useful for display and for resolving the type entity
+    — but it does not participate in any hash the package produces.
+    `IfcTypeObject` is an `IfcRoot`, so a from-scratch re-export regenerates
+    the *type's* GlobalId exactly as it regenerates every product's. Hashing it
+    changed the fingerprint of every **typed** element (walls, doors, windows:
+    most of a real model) on the very re-export that
+    [content-keyed matching](#content-keyed-matching-unreliable-globalids)
+    exists to survive, so none of them could pair. Name plus IFC class is the
+    part of a type assignment that outlives a re-GUID.
+
+    The cost, stated plainly: two *different* type entities that share a name
+    and a class are indistinguishable here, so re-pointing an element from one
+    to the other does not move its `dataHash`. That needs duplicate type names
+    within one class — a modelling defect, and one a human reader of the model
+    cannot see either — and it only surfaces on elements that are otherwise
+    identical in every attribute, property and quantity. Assignments are sorted
+    but never deduplicated, so an occurrence bound to two types still hashes
+    differently from one bound to a single type.
 
 **Geometry hash** — an opaque fingerprint of the entity's mesh, supplied separately (a `bigint` from the WASM mesh pass, `MeshCollection.geometryHashValues`, or a string for callers that fingerprint geometry another way). Two entities are geometry-equal when both hashes are absent, or both are present and their normalized values match; one side missing means geometry was added or removed.
 
@@ -87,12 +108,12 @@ For `duplicated`/`deduplicated`/`ambiguous`, there is no principled way to pick 
 
 ### Hash collisions
 
-`dataHash` is a 32-bit FNV-1a value, and collisions between genuinely different content are reachable rather than theoretical — the package's tests pin three real ones. The exposure grows with the square of the number of distinct fingerprints compared, and a from-scratch re-export leaves the whole model unpaired. Only the 1:1 path is destructive — it retires a real `added` and a real `deleted` — so it applies two checks that can never reject a genuine match:
+`dataHash` is a 64-bit FNV-1a value. It was 32 bits until issue #1962: at that width collisions between plausible IFC content were findable by enumeration, and the package's tests pinned three real ones. 64 bits makes that class of collision vastly less likely - it does not remove it, and no finite hash could - and FNV-1a is a drift-catching hash rather than a cryptographic digest, and the exposure grows with the square of the number of distinct fingerprints compared — a from-scratch re-export leaves the whole model unpaired, which is the worst case. Only the 1:1 path is destructive — it retires a real `added` and a real `deleted` — so it still applies two checks that can never reject a genuine match:
 
 - entities are bucketed by `ifcType` as well as `dataHash`. `buildDataFingerprint` already hashes `ifcType`, so identical content always agrees on it; a disagreement proves a collision.
-- when both sides carry `components` (from `buildComponentFingerprints`), every sub-hash must agree.
+- when both sides carry `components` (from `buildComponentFingerprints`), every sub-hash must agree. This holds only because the sub-hashes are computed over exactly the projection `buildDataFingerprint` hashes, GlobalId-free `type-assignment` included. A sub-hash that saw something `dataHash` does not would stop being a collision guard and start being a filter: it would reject genuine re-export matches, which is the opposite of what this pass is for.
 
-Neither makes the pass collision-proof. FNV-1a's per-character update is a bijection on its 32-bit state, so for two entities differing only inside `attr:core` — a different `Name`, everything else equal — a `dataHash` collision *implies* an `attr:core` collision, and the component check cannot see it. It bites when the differing content sits in a pset or qset slice, whose sub-hash is computed over an unrelated string.
+Neither makes the pass collision-proof, and widening did not change which collisions the second check can see. FNV-1a's per-character update is a bijection on its state at any width, so for two entities differing only inside `attr:core` — a different `Name`, everything else equal — a `dataHash` collision *implies* an `attr:core` collision, and the component check cannot see it. It bites when the differing content sits in a pset or qset slice, whose sub-hash is computed over an unrelated string. That structural limit is unchanged; only the likelihood of hitting it dropped.
 
 **Supply `components` if you enable this option.** The second check is only active when both revisions carry them, so how much protection you get depends on your adapter:
 
@@ -101,7 +122,7 @@ Neither makes the pass collision-proof. FNV-1a's per-character update is a bijec
 | `dataHash` only | different `ifcType` | any collision within one `ifcType` |
 | `dataHash` + `components` | different `ifcType`; differing pset/qset content | collisions confined to `attr:core` (name, description, object/predefined type) |
 
-`buildComponentFingerprints` takes the same `DataFingerprintInput` you already pass to `buildDataFingerprint`, so populating it is one extra call per entity. Closing the remaining gap outright means widening `stableHash`, which changes every published fingerprint.
+`buildComponentFingerprints` takes the same `DataFingerprintInput` you already pass to `buildDataFingerprint`, so populating it is one extra call per entity. No finite hash eliminates the `attr:core` row: a wider hash lowers the probability of an accidental collision, and a cryptographic one additionally makes a deliberate collision hard to construct, but neither is a guarantee. Treat it as a residual rather than a bug.
 
 Ambiguous groups retire nothing, so a collision landing in one costs the caller an extra candidate to inspect rather than a lost entry.
 

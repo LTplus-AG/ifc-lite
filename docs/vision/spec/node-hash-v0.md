@@ -139,15 +139,29 @@ harness (`determinism.ts` in the same directory), not by the blob store itself.
 
 This is the one the B0.1 brief calls "`packages/diff/src/fingerprint.ts` +
 `component-fingerprint.ts`" — that description undersells it. `packages/diff/src/fingerprint.ts`
-(`fingerprint.ts:1-202`) is actually the **data** fingerprint: `buildDataFingerprint` (line 105)
-FNV-1a32-hashes (`stableHash`, `fingerprint.ts:49-56`, a textbook 32-bit FNV-1a over UTF-16 code
+(`fingerprint.ts:1-298`) is actually the **data** fingerprint: `buildDataFingerprint` (line 171)
+FNV-1a64-hashes (`stableHash`, `fingerprint.ts:95-101`, a textbook FNV-1a over UTF-16 code
 units) a `JSON.stringify` of the entity's attrs/psets/qsets/type-assignments, each level
-recursively key-sorted (`stableSerialize`, `fingerprint.ts:63-73`) so key-insertion order can't
-produce a spurious diff. `buildComponentFingerprints` (`fingerprint.ts:174-202`) is the same
+recursively key-sorted (`stableSerialize`, `fingerprint.ts:108-118`) so key-insertion order can't
+produce a spurious diff. `buildComponentFingerprints` (`fingerprint.ts:270-298`) is the same
 scheme, split into one sub-hash per `attr:core` / `pset:<Name>` / `qset:<Name>` /
 `type-assignment` key — there is no separate `component-fingerprint.ts` file; that logic lives in
 `fingerprint.ts` itself (confirmed: only `component-fingerprint.test.ts` exists, importing from
 `./fingerprint.js`).
+
+> **Post-freeze correction (2026-08-02, #1962).** `stableHash` was 32-bit FNV-1a when this
+> survey was written; it is now FNV-1a64 (same offset basis and prime as `determinism.rs`),
+> because `packages/diff`'s content-keyed matching treats hash equality as *identity* and 32
+> bits is too narrow for that. This is a descriptive correction to §1, not a format change:
+> the freeze covers the §3 wire format, which uses only fnv1a64 and SHA-256 and never
+> `stableHash`. System 1c is surveyed here as pre-existing prior art and §0 explicitly scopes
+> changing these systems as out of scope for v0.
+>
+> The same change also stopped both functions folding the *assigned type's* `GlobalId` into
+> the payload — an assigned type is now identified by its name and IFC class — because
+> `IfcTypeObject` is an `IfcRoot` and a re-export re-GUIDs it, which broke content matching
+> for every typed element. "attrs/psets/qsets/type-assignments" above still describes what is
+> hashed; only the type-assignment projection narrowed.
 
 The **geometry** half — the actual "RTC-invariant hash" the brief means — is computed in Rust,
 not TypeScript: `rust/geometry/src/geom_hash.rs`. `GeometryHasher` (lines 74-204) is built per

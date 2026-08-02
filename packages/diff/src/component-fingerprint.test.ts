@@ -59,6 +59,31 @@ describe('buildComponentFingerprints', () => {
     expect(after['type-assignment']).toBe(before['type-assignment']);
   });
 
+  it('projects type assignments exactly as buildDataFingerprint does — no GlobalId', () => {
+    // Not a stylistic duplication: `componentsAgree` in the content pass is a
+    // collision guard justified by "a component hashes a slice of what
+    // `dataHash` hashes whole". Keeping the type's GlobalId here while
+    // `dataHash` drops it would break that justification and make the guard
+    // veto genuine re-export matches.
+    const reGuided: DataFingerprintInput = {
+      ...wall,
+      typeAssignments: [{ globalId: 'type-2-after-re-export', name: 'WT', type: 'IfcWallType' }],
+    };
+    expect(buildComponentFingerprints(reGuided)['type-assignment']).toBe(
+      buildComponentFingerprints(wall)['type-assignment'],
+    );
+    expect(buildDataFingerprint(reGuided)).toBe(buildDataFingerprint(wall));
+
+    // A different type name is still a different sub-hash.
+    const retyped: DataFingerprintInput = {
+      ...wall,
+      typeAssignments: [{ globalId: 'type-1', name: 'WT-OTHER', type: 'IfcWallType' }],
+    };
+    expect(buildComponentFingerprints(retyped)['type-assignment']).not.toBe(
+      buildComponentFingerprints(wall)['type-assignment'],
+    );
+  });
+
   it('leaves the default whole-blob fingerprint untouched', () => {
     // Existing dataHash behaviour is protected: sub-hash mode is additive.
     expect(buildDataFingerprint(wall)).toBe(buildDataFingerprint({ ...wall }));
@@ -97,6 +122,22 @@ describe('diffModels with component sub-hashes', () => {
     };
     const diff = diffModels([fp('w', withoutFire)], [fp('w', wall)]);
     expect(diff.byKey.get('w')?.changedComponents).toEqual(['pset:Pset_FireSafety']);
+  });
+
+  it('does not report a re-GUIDed type as a changed component on a kept key', () => {
+    // The key-based pass reads `state` off `dataHash` and `changedComponents`
+    // off the sub-hashes. If only one of the two ignored the type's GlobalId,
+    // an element that kept its own GlobalId across a re-export would come out
+    // `unchanged` while listing `type-assignment` as changed — a
+    // self-contradictory entry. One projection, one answer.
+    const reGuided: DataFingerprintInput = {
+      ...wall,
+      typeAssignments: [{ globalId: 'type-2-after-re-export', name: 'WT', type: 'IfcWallType' }],
+    };
+    const diff = diffModels([fp('w', wall)], [fp('w', reGuided)]);
+    const entry = diff.byKey.get('w');
+    expect(entry?.state).toBe('unchanged');
+    expect(entry?.changedComponents).toEqual([]);
   });
 
   it('omits changedComponents when fingerprints lack sub-hashes', () => {

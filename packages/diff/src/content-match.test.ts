@@ -200,54 +200,61 @@ describe('diffModels — matchUnpairedByContent: ambiguous groups', () => {
 });
 
 /**
- * `dataHash` is a 32-bit FNV-1a hex string (`stableHash`, `fingerprint.ts`).
- * Across the tens of thousands of unpaired entities a from-scratch re-export
- * produces, distinct content colliding on 32 bits is not hypothetical — all
- * three pairs below are real collisions, found by enumerating
- * `buildDataFingerprint` over varying names (two pairs) and over a varying
- * pset value (one pair). A collision that lands 1:1 would otherwise be
- * retired from `entries` as a `renamed`/`moved` match, destroying a genuine
- * add and a genuine delete.
+ * `dataHash` is a 64-bit FNV-1a hex string (`stableHash`, `fingerprint.ts`),
+ * widened from 32 bits in issue #1962 precisely because this pass treats hash
+ * equality as identity: the 1:1 branch is the only destructive path, retiring
+ * a real `added` and a real `deleted` in favour of one match record, and its
+ * exposure grows with the square of the number of distinct fingerprints
+ * compared. At 32 bits collisions between plausible IFC content were findable
+ * by enumeration; at 64 they are not. They are still not impossible — FNV-1a
+ * is a drift-catching hash, not a cryptographic one — so the guards stay, and
+ * so does their coverage here.
  *
- * Both guards below are *sound* — neither can reject a real match:
+ * These tests set `dataHash` on the fingerprints directly instead of hunting
+ * for inputs that happen to collide. What the engine does *when* two hashes
+ * are equal is independent of how likely that is, and a found-collision
+ * fixture stops testing anything the moment the hash changes — which is
+ * exactly what happened to the three 32-bit fixtures these replaced.
+ *
+ * Both guards are *sound* — neither can reject a real match:
  * `buildDataFingerprint` already folds `ifcType` into the hashed payload, and
  * `buildComponentFingerprints` hashes slices of the same content. Identical
  * content therefore always agrees on both; disagreement proves a collision.
  *
  * Neither guard makes the pass collision-proof, and the last test here pins
  * the limit rather than leaving it implied. FNV-1a's per-character update
- * (`h = (h ^ c) * prime`) is a bijection on the 32-bit state, so for two
+ * (`h = (h ^ c) * prime`) is a bijection on its state at any width, so for two
  * entities differing only inside `attr:core` — a different `Name`, everything
  * else equal — the whole-payload strings are `prefix + name + identical
- * suffix`, and a `dataHash` collision *implies* an `attr:core` collision. The
- * component guard can only catch a collision whose differing content lands in
- * a different slice (a pset, a qset), where the sub-hash is computed over an
- * unrelated string. Closing the gap properly means widening `stableHash`,
- * which changes every published fingerprint and is out of scope here.
+ * suffix`, and a `dataHash` collision *implies* an `attr:core` collision.
+ * Widening does not change that implication, only how unlikely its premise is.
+ * The component guard can only catch a collision whose differing content lands
+ * in a different slice (a pset, a qset), where the sub-hash is computed over
+ * an unrelated string.
  */
-describe('diffModels — content matching does not trust a 32-bit hash alone', () => {
-  /** Real collision across types: both hash to `b4b48be`. */
-  const COLLIDING_WALL: DataFingerprintInput = { ifcType: 'IfcWall', name: 'W-168484' };
-  const COLLIDING_DOOR: DataFingerprintInput = { ifcType: 'IfcDoor', name: 'D-35800' };
+describe('diffModels — content matching does not trust the data hash alone', () => {
+  /** Stand-in for a hash collision: two different entities, one `dataHash`. */
+  const COLLIDING = 'c011ded0c011ded0';
 
   /**
-   * Real collision within one type, both hashing to `36c92241`, with the
-   * differing content inside a pset — so `pset:Pset_WallCommon` differs
-   * (`c18f26d5` vs `2d7da255`) even though the whole-blob hash agrees.
+   * Two walls differing only inside `Pset_WallCommon`. Their real `dataHash`
+   * values differ; the tests below override that to simulate a collision, but
+   * `components` stay genuinely derived, so `pset:Pset_WallCommon` really does
+   * disagree the way a caught collision would.
    */
-  const collidingPset = (reference: string): DataFingerprintInput => ({
+  const wallWithReference = (reference: string): DataFingerprintInput => ({
     ifcType: 'IfcWall',
     name: 'Wall',
     propertySets: [
       { name: 'Pset_WallCommon', properties: [{ name: 'Reference', value: reference }] },
     ],
   });
-  const COLLIDING_PSET_A = collidingPset('R-1129599');
-  const COLLIDING_PSET_B = collidingPset('R-1732382');
+  const PSET_A = wallWithReference('R-1129599');
+  const PSET_B = wallWithReference('R-1732382');
 
-  /** Real collision within one type whose difference is confined to `attr:core`. */
-  const COLLIDING_NAME_A: DataFingerprintInput = { ifcType: 'IfcWall', name: 'W-129599' };
-  const COLLIDING_NAME_B: DataFingerprintInput = { ifcType: 'IfcWall', name: 'W-732382' };
+  /** Two walls differing only in `Name`, i.e. only inside `attr:core`. */
+  const NAME_A: DataFingerprintInput = { ifcType: 'IfcWall', name: 'W-129599' };
+  const NAME_B: DataFingerprintInput = { ifcType: 'IfcWall', name: 'W-732382' };
 
   function fromInput(key: string, input: DataFingerprintInput, withComponents = false) {
     const entity = fp(key, { ifcType: input.ifcType, dataHash: buildDataFingerprint(input) });
@@ -255,23 +262,19 @@ describe('diffModels — content matching does not trust a 32-bit hash alone', (
     return entity;
   }
 
-  it('the fixtures really do collide (guards the tests below against a hash change)', () => {
-    expect(buildDataFingerprint(COLLIDING_WALL)).toBe(buildDataFingerprint(COLLIDING_DOOR));
-    expect(buildDataFingerprint(COLLIDING_PSET_A)).toBe(buildDataFingerprint(COLLIDING_PSET_B));
-    expect(buildDataFingerprint(COLLIDING_NAME_A)).toBe(buildDataFingerprint(COLLIDING_NAME_B));
-    // The pset collision is detectable because the differing content sits in
-    // its own slice; the name-only one is not, for the reason above.
-    expect(buildComponentFingerprints(COLLIDING_PSET_A)).not.toEqual(
-      buildComponentFingerprints(COLLIDING_PSET_B),
-    );
-    expect(buildComponentFingerprints(COLLIDING_NAME_A)).toEqual(
-      buildComponentFingerprints(COLLIDING_NAME_B),
-    );
+  it('the pset fixtures differ in exactly one component sub-hash', () => {
+    // Guards the two tests below: the simulated collision is only interesting
+    // if `pset:Pset_WallCommon` is what disagrees and nothing else does.
+    const a = buildComponentFingerprints(PSET_A);
+    const b = buildComponentFingerprints(PSET_B);
+    expect(Object.keys(a)).toEqual(Object.keys(b));
+    const differing = Object.keys(a).filter((key) => a[key] !== b[key]);
+    expect(differing).toEqual(['pset:Pset_WallCommon']);
   });
 
-  it('does not pair two entities of different ifcType that collide on dataHash', () => {
-    const base = [fromInput('wall-guid', COLLIDING_WALL)];
-    const head = [fromInput('door-guid', COLLIDING_DOOR)];
+  it('does not pair two entities of different ifcType that share a dataHash', () => {
+    const base = [fp('wall-guid', { ifcType: 'IfcWall', dataHash: COLLIDING })];
+    const head = [fp('door-guid', { ifcType: 'IfcDoor', dataHash: COLLIDING })];
 
     const diff = diffModels(base, head, { matchUnpairedByContent: true });
 
@@ -281,9 +284,21 @@ describe('diffModels — content matching does not trust a 32-bit hash alone', (
     expect(diff.contentMatches ?? []).toEqual([]);
   });
 
-  it('does not pair same-type colliding entities whose component sub-hashes disagree', () => {
-    const base = [fromInput('a-guid', COLLIDING_PSET_A, true)];
-    const head = [fromInput('b-guid', COLLIDING_PSET_B, true)];
+  it('does not pair same-type entities sharing a dataHash whose component sub-hashes disagree', () => {
+    const base = [
+      fp('a-guid', {
+        ifcType: 'IfcWall',
+        dataHash: COLLIDING,
+        components: buildComponentFingerprints(PSET_A),
+      }),
+    ];
+    const head = [
+      fp('b-guid', {
+        ifcType: 'IfcWall',
+        dataHash: COLLIDING,
+        components: buildComponentFingerprints(PSET_B),
+      }),
+    ];
 
     const diff = diffModels(base, head, { matchUnpairedByContent: true });
 
@@ -294,8 +309,8 @@ describe('diffModels — content matching does not trust a 32-bit hash alone', (
   });
 
   it('pairs the same colliding entities when no components are supplied (the guard needs them)', () => {
-    const base = [fromInput('a-guid', COLLIDING_PSET_A)];
-    const head = [fromInput('b-guid', COLLIDING_PSET_B)];
+    const base = [fp('a-guid', { ifcType: 'IfcWall', dataHash: COLLIDING })];
+    const head = [fp('b-guid', { ifcType: 'IfcWall', dataHash: COLLIDING })];
 
     const diff = diffModels(base, head, { matchUnpairedByContent: true });
 
@@ -303,14 +318,23 @@ describe('diffModels — content matching does not trust a 32-bit hash alone', (
   });
 
   it('KNOWN LIMIT: a collision confined to attr:core is not detectable and still pairs', () => {
-    const base = [fromInput('a-guid', COLLIDING_NAME_A, true)];
-    const head = [fromInput('b-guid', COLLIDING_NAME_B, true)];
+    // Both sides carry the SAME component map on purpose. That is not a
+    // convenience: for a difference confined to `attr:core`, a `dataHash`
+    // collision implies an `attr:core` collision (the bijection argument
+    // above) and every other slice is equal by hypothesis, so agreeing
+    // components are what such a collision necessarily looks like.
+    const components = buildComponentFingerprints(NAME_A);
+    const base = [fp('a-guid', { ifcType: 'IfcWall', dataHash: COLLIDING, components })];
+    const head = [fp('b-guid', { ifcType: 'IfcWall', dataHash: COLLIDING, components })];
+
+    // The two entities really are different content...
+    expect(buildDataFingerprint(NAME_A)).not.toBe(buildDataFingerprint(NAME_B));
 
     const diff = diffModels(base, head, { matchUnpairedByContent: true });
 
-    // Documented, not endorsed: components agree because the sub-hash inherits
-    // the colliding FNV state, so nothing here can tell the two apart. Only a
-    // wider `stableHash` closes this.
+    // ...and nothing here can tell them apart: documented, not endorsed.
+    // Widening `stableHash` made the premise far less likely; it did not
+    // remove the limit.
     expect(diff.contentMatches?.[0]?.kind).toBe('renamed');
   });
 
@@ -328,6 +352,60 @@ describe('diffModels — content matching does not trust a 32-bit hash alone', (
     expect(diff.counts).toEqual({ added: 0, modified: 0, deleted: 0, unchanged: 0 });
     expect(diff.contentMatches).toHaveLength(1);
     expect(diff.contentMatches?.[0]?.kind).toBe('renamed');
+  });
+
+  it('pairs a TYPED element whose assigned type was re-GUIDed too, components and all', () => {
+    // The whole re-export scenario, end to end: `IfcTypeObject` is an
+    // `IfcRoot`, so a from-scratch re-export regenerates the *type's* GlobalId
+    // alongside the element's. Typed elements are most of a real model, so if
+    // either the bucket key (`dataHash`) or the collision guard
+    // (`componentsAgree`, via the `type-assignment` sub-hash) folded in the
+    // type's GlobalId, this pass would fail on the majority of the model it
+    // exists to rescue. Both must ignore it, which is why they share one
+    // projection.
+    const typed = (typeGuid: string): DataFingerprintInput => ({
+      ifcType: 'IfcWall',
+      name: 'Wall-A',
+      propertySets: [{ name: 'Pset_WallCommon', properties: [{ name: 'IsExternal', value: true }] }],
+      typeAssignments: [{ globalId: typeGuid, name: 'WT-200', type: 'IfcWallType' }],
+    });
+    const before = typed('0aBc$before000000000001');
+    const after = typed('3xYz_after0000000000002');
+
+    const diff = diffModels([fromInput('old-guid', before, true)], [fromInput('new-guid', after, true)], {
+      matchUnpairedByContent: true,
+    });
+
+    expect(diff.counts).toEqual({ added: 0, modified: 0, deleted: 0, unchanged: 0 });
+    expect(diff.contentMatches).toHaveLength(1);
+    expect(diff.contentMatches?.[0]?.kind).toBe('renamed');
+
+    // ...and it paired because the guard abstained on an agreeing sub-hash,
+    // not because components were withheld. Asserted after the outcome so a
+    // regression reports the behaviour that broke, not just its cause.
+    expect(fromInput('new-guid', after, true).components).toBeDefined();
+    expect(buildComponentFingerprints(after)['type-assignment']).toBe(
+      buildComponentFingerprints(before)['type-assignment'],
+    );
+  });
+
+  it('still refuses a pair whose assigned type genuinely differs by name', () => {
+    // The guard keeps its teeth on the axis that survived: a different type
+    // *name* is real content, so these do not share a `dataHash` at all and
+    // never reach the same bucket.
+    const typed = (typeName: string): DataFingerprintInput => ({
+      ifcType: 'IfcWall',
+      name: 'Wall-A',
+      typeAssignments: [{ globalId: 'same-guid', name: typeName, type: 'IfcWallType' }],
+    });
+    const base = [fromInput('old-guid', typed('WT-200'), true)];
+    const head = [fromInput('new-guid', typed('WT-300'), true)];
+
+    const diff = diffModels(base, head, { matchUnpairedByContent: true });
+
+    expect(diff.byKey.get('old-guid')?.state).toBe('deleted');
+    expect(diff.byKey.get('new-guid')?.state).toBe('added');
+    expect(diff.contentMatches ?? []).toEqual([]);
   });
 });
 

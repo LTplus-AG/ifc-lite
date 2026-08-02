@@ -73,6 +73,14 @@ const dataHash = buildDataFingerprint({
 });
 ```
 
+An assigned type is identified by its **name and IFC class**, never by its
+`GlobalId`: `IfcTypeObject` is an `IfcRoot`, so a from-scratch re-export
+re-GUIDs it and hashing that would change the fingerprint of every typed
+element for no substantive reason. `TypeAssignmentInput.globalId` is still
+accepted and still useful for display; it just does not reach any hash. See
+[the guide](https://ifclite.dev/docs/guide/model-diff/#what-participates-in-the-fingerprint)
+for the discrimination that costs.
+
 ## Why geometry hashing lives in Rust/WASM
 
 The geometry fingerprint is computed in `ifc_lite_geometry::geom_hash` and

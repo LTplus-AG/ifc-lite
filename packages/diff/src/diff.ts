@@ -84,13 +84,13 @@ function indexByKey<TRef>(
 /**
  * Bucket key for the content pass.
  *
- * {@link EntityFingerprint.dataHash} alone is a 32-bit FNV-1a hex string
- * (`stableHash`), and collisions between genuinely different content are
- * reachable rather than theoretical — `content-match.test.ts` pins three real
- * ones. The exposure grows with the square of the number of distinct
- * fingerprints compared, and a from-scratch re-export leaves the whole model
- * unpaired. Pairing on `dataHash` alone would retire a real `added` and a real
- * `deleted` entry in favour of a fabricated `renamed`/`moved`.
+ * {@link EntityFingerprint.dataHash} alone is a 64-bit FNV-1a hex string
+ * (`stableHash`, widened from 32 bits in issue #1962). It is a drift-catching
+ * hash, not a cryptographic one, and the exposure grows with the square of the
+ * number of distinct fingerprints compared — a from-scratch re-export leaves
+ * the whole model unpaired. Pairing on `dataHash` alone would retire a real
+ * `added` and a real `deleted` entry in favour of a fabricated
+ * `renamed`/`moved`.
  *
  * Folding `ifcType` in as plaintext costs nothing and cannot reject a real
  * match: `buildDataFingerprint` already hashes `ifcType` as part of its
@@ -111,14 +111,14 @@ function contentBucketKey<TRef>(entity: EntityFingerprint<TRef>): string {
  * content `dataHash` hashes whole — so a disagreement proves a collision.
  *
  * It does *not* make the pass collision-proof, and the asymmetry is worth
- * knowing: FNV-1a's per-character update is a bijection on the 32-bit state,
- * so two entities differing only inside `attr:core` (a different `Name`, all
- * else equal) hash their whole payloads as `prefix + name + identical suffix`
- * — a `dataHash` collision there *implies* an `attr:core` collision, and this
- * check abstains. It bites when the differing content lands in a pset/qset
- * slice, whose sub-hash is computed over an unrelated string. Closing the gap
- * for real means widening `stableHash`, which changes every published
- * fingerprint.
+ * knowing: FNV-1a's per-character update is a bijection on its state at any
+ * width, so two entities differing only inside `attr:core` (a different
+ * `Name`, all else equal) hash their whole payloads as `prefix + name +
+ * identical suffix` — a `dataHash` collision there *implies* an `attr:core`
+ * collision, and this check abstains. It bites when the differing content
+ * lands in a pset/qset slice, whose sub-hash is computed over an unrelated
+ * string. Widening `stableHash` to 64 bits (issue #1962) made the premise far
+ * less likely without removing the implication.
  *
  * One side missing them is not evidence either way (components are opt-in, and
  * a caller may supply them for one revision only), so this mirrors the
@@ -218,7 +218,7 @@ function applyContentMatching<TRef>(
       if (!baseFp || !headFp) continue;
 
       // Retiring the pair destroys a real `added` and a real `deleted` if the
-      // 32-bit `dataHash` collided. Component sub-hashes, when the caller
+      // `dataHash` collided. Component sub-hashes, when the caller
       // supplied them, catch part of that — see {@link componentsAgree} for
       // which part, and which it provably cannot.
       if (!componentsAgree(baseFp.components, headFp.components)) continue;

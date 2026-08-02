@@ -468,6 +468,18 @@ Pre-mortem, the three most likely ways the whole program dies, and their antidot
 2. **The human calendar slips.** Agents finish, gates stack, and review becomes the
    bottleneck (this happened in the 14-agent planning workflow). Antidote: gates are betting
    tables Louis already holds; no separate ceremony, max 5 bets per phase.
+   **AMENDED 2026-08-02 (betting table, amendment 11 of
+   moonshots-finishing-plan.md section 9): the cap is 6 for Phase 5 only and
+   stays 5 for every other phase.** B5.6 enters as a **full sixth bet** and
+   displaces nothing. The exception is written here rather than left implicit
+   because this antidote is the cap's home, and a rule that says 5 while the
+   betting table runs 6 is the kind of gap this program's record exists to
+   close. It does not reintroduce what the antidote guards against: the scarce
+   resource here is gate time, and B5.6 is adjudicated at G5 with the other
+   five - no extra gate, no extra ceremony, one binary verdict on the day - while
+   Phase 5's two hardest bets (B5.2, B5.5) are already run and measured, and a
+   cycle-1 NO on B5.6 is a pre-committed early stop. The argument and the price
+   are in `moonshots-finishing-plan.md` section 5 (B5.6) and section 7.
 3. **Maintenance starves the program.** The main repo's issue/perf cadence (300+ commits per
    month) absorbs everything. Antidote: moonshot bets are explicit betting-table line items
    with their own worktrees; if a phase gets zero bets twice in a row, that is a deliberate

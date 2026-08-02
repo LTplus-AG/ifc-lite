@@ -59,7 +59,7 @@ findings plus one structural criticism. Status as of today:
 | B2.2 (M2): answer key is publicly computable | **CONFIRMED, UNFIXED** | `benchmark/attacks/clean-twin-diff.mjs` scores an exact **1.000 aggregate on dev** through the real scorer, above both anchors; spec bumped to `1.1.0` 2026-08-01, which WITHDREW the false hidden-by-hosting claim and declared the real model (per-split salt across every RNG stream, delivered by a hosted scorer) -- but neither half is implemented, so the finding is unchanged: the answer key is still publicly computable and the reporting split still has no integrity property |
 | B2.1 (M4): spatial predicate unfalsifiable | **OPEN** | `merge-model.ts` still applies ops purely per-node; spatial-structure edits explicitly outside the v0 vocabulary; no real-trace replay |
 | B2.4 (M3): gradients never touch the kernel | **OPEN and widened** | B3.3 built more certificate infrastructure on the parametric path instead of attacking adjoints through CSG |
-| Section 3: nothing verifies against the external world | **OPEN** | every result in the program is still measured on distributions the program authored |
+| Section 3: nothing verifies against the external world | **OPEN, narrowed 2026-08-02** | B5.2 and B5.5 are the only results in the program measured on data it did not author (amendment 9); every other result is still measured on distributions the program authored. The narrowing does not reach the standing lane, and the claim is deliberately not written as if it did: neither run is re-runnable in CI, because the foreign models and the scan can be neither committed nor fetched. B5.5's only standing coverage is `E8b`, a synthetic closed-form proxy that holds the extraction/emission/scoring **pipeline** and asserts nothing about the headline number; B5.2 has no standing coverage at all. So the external-data evidence is two dated runs, not a lane |
 
 <!-- numeral-src: 0.847 :: m5-constrained-decoding/results-tier2.json#headroom.meanQuality -->
 <!-- numeral-src: 1.000 :: none - the clean-twin-diff aggregate, produced by
@@ -225,9 +225,15 @@ defect this program shipped:
   instrument the emitter does not control.
 - **8c. A null-space audit at commissioning.** Before the bet runs, enumerate
   the **invariance group of the scored observable** - the transformations of the
-  emitted artifact under which every scored number is unchanged - and require at
-  least one committed check that is *not* invariant under it. An exam whose
-  whole null space is unchecked grades a quotient, not the thing.
+  emitted artifact under which every scored number is unchanged - and commit
+  checks that, **taken together, distinguish every non-identity transformation
+  in that group**. One non-invariant check does not discharge this: a check can
+  catch one direction of the group and be blind to another, and the blind
+  direction is exactly where the defect sits. If the committed checks cannot
+  cover the enumerated group, then **narrow the group to what they do cover and
+  record the remainder as unchecked** - a smaller honest claim, not a bigger
+  unearned one. An exam whose null space is unchecked grades a quotient, not the
+  thing.
 
 What these three reach, and the one real defect only 8c reaches, is recorded in
 amendment 14 rather than here, so the reader who wants the calibration gets it
@@ -868,8 +874,8 @@ instrument 8c, and that is recorded in amendment 14 rather than here.
 <!-- numeral-src: 64.567 :: b55-scan-to-parametric/scorecard.json#variants.axisAligned.totals.floorAreaM2.reference -->
 
 **B5.6 Adjoints through the CSG path (the M3 adjudication bet). Entered
-2026-08-02, amendment 11, as Phase 5's sixth bet against a cap raised from five
-to six.**
+2026-08-02, amendment 11, as Phase 5's full sixth bet against a cap raised from
+five to six.**
 Dual-number scalars through `subtract_many` on the opening-cut family - a host
 wall plus an intersecting opening, the void pipeline as it ships - differentiating
 the emitted volume with respect to design parameters.
@@ -899,8 +905,10 @@ intersection points carry derivatives without touching the exact-predicate tier?
 The tier is a fixed-width integer type with no derivative slot, but predicates
 need only the primal, so this is plausible rather than hopeful. Cycle 2 makes the
 subtraction output stable enough for FD to be meaningful across a cut.
-**Reaching a NO in cycle 1 is itself the verdict**, and is a delivery, not an
-overrun.
+**A NO in cycle 1 is a pre-committed early stop**, declared here before the run:
+it terminates B5.6 at one cycle, is recorded as the bet's verdict, and fires the
+same M3 downgrade a FAIL fires. It is a delivery, not an overrun, and it is what
+bounds the raised cap's cost from above.
 *Displacement:* **none, and the cap is therefore raised rather than held.** This
 was first written as "B5.6 takes the slot freed by the retired world-model
 clause", counting obligations rather than labels so that six fitted inside five.
@@ -912,14 +920,36 @@ B5.6 is six bets against a cap of five, and calling that five by redefining
 "bet" is the kind of move this program's whole record exists to catch.
 
 So it is recorded as what it is: **Phase 5's cap is raised from five bets to six
-by amendment 11.** The pre-mortem set the cap to stop a phase overcommitting and
-then delivering only its easy bets -- the failure Phase 3 actually had. Raising
-it is defensible here for a reason that is checkable rather than rhetorical:
-four of the six (B5.1, B5.2, B5.5, and B5.6's cycle-1 spike) are agent-buildable
-and two are already delivered, so the added obligation is one binary verdict
-rather than one full bet. If that turns out to be wrong, the cap was the
-instrument that should have stopped it, and this entry is where a later reader
-finds out it was moved on purpose.
+by amendment 11.** B5.6 is counted as a full sixth bet at full weight - two
+cycles, a seeded battery with a mandatory topology-boundary row, and a kill
+clause that fires the M3 downgrade - and section 7's Phase 5 row pays for it in
+full rather than netting it against anything.
+
+*Why raising it does not reintroduce the risk the cap exists to stop.* The
+pre-mortem put the cap under one specific failure: a phase overcommits, the gate
+holder becomes the bottleneck, and the phase delivers only its easy bets. That
+is the Phase 3 failure exactly (`moonshots-execution-plan.md` section 5,
+pre-mortem antidote 2, amended to match this decision). Three checkable facts
+answer it here, and none of them is "B5.6 is smaller than a bet":
+
+1. **The hard bets are already paid.** The easy-bets pattern means skipping the
+   two exams that need contact outside the sandbox. Phase 5's two are B5.2 and
+   B5.5, and both are already run and measured (amendment 9). The sixth bet is
+   being added to a phase that has already discharged the cap's real premium,
+   not to one still deferring it.
+2. **It adds no gate and no ceremony.** B5.6 is adjudicated at G5 alongside the
+   other five, and what it puts on the gate holder's desk there resolves to one
+   binary verdict. The scarce resource the antidote rations is gate time, and
+   the raise does not spend more of it.
+3. **The overrun is bounded before the run.** Four of the six (B5.1, B5.2, B5.5,
+   and B5.6's cycle-1 spike) are agent-buildable, and **early stop is
+   pre-committed rather than discretionary**: a NO in cycle 1 terminates B5.6
+   there, is recorded as the bet's verdict, and fires the same M3 downgrade a
+   FAIL fires. The two-cycle budget is a ceiling, not a plan.
+
+If that turns out to be wrong, the cap was the instrument that should have
+stopped it, and this entry is where a later reader finds out it was moved on
+purpose.
 
 **Gate G5.** M4 final, M5 final **(the scan clause alone, per amendment 10)**,
 B5.6's binary verdict, plus the external-validity clauses of B5.1 to B5.3.
@@ -1176,6 +1206,11 @@ are amendable only in writing in this file - and the re-scope below was not.
    at two cycles and names the obstruction (the exact-predicate tier is a
    fixed-width integer type with no derivative slot), which is the input to
    that decision, not the decision.
+   **SUPERSEDED in part 2026-08-02 by amendment 11**, which entered the bet as
+   B5.6 with all five things listed above. The displacement statement it
+   demanded came back **none**, and the "five-bet cap" this paragraph names was
+   raised to six for Phase 5 rather than fitted into; that sentence is the
+   requirement as written on 2026-07-29, not the standing cap.
 7. **B4.4's grading metric amends the exam's finite-difference wording.** The
    exam reads "matching central finite differences to 1e-6 relative on 95% of a
    200-point seeded battery". The delivered result matches central finite
@@ -1382,14 +1417,20 @@ forbids a sentence claiming sign-off that names nothing a reader can check.*
       B5.6 displaces nothing. Cutting a clause inside B5.5 (amendment 10) frees
       no bet slot: B5.5 still exists, still has an exam, still has to be
       adjudicated at G5. So **Phase 5's cap is raised from five bets to six by
-      this amendment**, for Phase 5 only, and the justification is checkable
-      rather than rhetorical - four of the six (B5.1, B5.2, B5.5 and B5.6's
-      cycle-1 spike) are agent-buildable and two are already delivered, so the
-      added obligation is one binary verdict rather than one full bet. The full
-      argument, including why counting exam obligations instead of labels would
-      have been a redefinition rather than a fit, is in section 5's B5.6 entry,
-      so a later reader can reject the raise rather than discover it. Section 7's
-      Phase 5 row is where it is paid for.
+      this amendment**, for Phase 5 only, and **B5.6 counts as a full sixth bet**
+      - two cycles, its own exam, its own kill clause - not as a fraction of one.
+      The justification is checkable rather than rhetorical, and it is about who
+      pays rather than about the bet being small: Phase 5's two hardest bets
+      (B5.2, B5.5) are already run and measured, four of the six are
+      agent-buildable, the sixth adds no gate and no ceremony because it is
+      adjudicated at G5 with the rest, and a cycle-1 NO is a pre-committed early
+      stop that bounds it at one cycle. The full argument, including why counting
+      exam obligations instead of labels would have been a redefinition rather
+      than a fit, is in section 5's B5.6 entry, so a later reader can reject the
+      raise rather than discover it. Section 7's Phase 5 row is where it is paid
+      for, and `moonshots-execution-plan.md` section 5's pre-mortem antidote 2
+      carries the matching exception so the two documents cannot be read as
+      disagreeing about the cap.
 
 12. **M6b's interactivity kill clause is FIRED, deliberately, now. M3's
     INTERACTIVITY claim is WITHDRAWN.** Section 8's M6b clause reads "if it is

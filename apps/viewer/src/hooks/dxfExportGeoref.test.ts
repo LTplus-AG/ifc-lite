@@ -774,4 +774,50 @@ describe('buildDxfMapToWorldTransform', () => {
       close(mapPoint.y, 6_000_000 + 2001);
     });
   }
+
+  // PR #1965 review, round 2: the loop above only exercises a bad component
+  // paired with a ZERO good component (xAxisOrdinate: 0), which doesn't
+  // distinguish "falls back to (1, 0)" from "keeps the good component and
+  // discards only the bad one" -- both produce (1, 0) when the good
+  // component is already 0. A MIXED pair with a genuinely non-zero good
+  // component (e.g. XAxisAbscissa: NaN, XAxisOrdinate: 0.6) tells them
+  // apart: the previous implementation substituted only the bad component to
+  // its identity default (1) and then normalized THAT against the real 0.6,
+  // manufacturing a bogus ~31-degree rotation the file never authored,
+  // instead of discarding the whole pair for the (1, 0) no-rotation
+  // fallback like the near-zero-magnitude case does.
+  it('falls back the WHOLE axis pair to (1, 0) when only one component is non-finite, not a half-fabricated rotation', () => {
+    const georeference = {
+      mapConversion: {
+        id: 1, sourceCRS: 1, targetCRS: 1,
+        eastings: 500_000, northings: 6_000_000, orthogonalHeight: 0,
+        xAxisAbscissa: NaN, xAxisOrdinate: 0.6, scale: 1,
+      },
+      projectedCRS: { id: 1, name: 'EPSG:32632', mapUnit: 'METRE', mapUnitScale: 1 },
+      lengthUnitScale: 1,
+    };
+
+    const inverse = buildDxfMapToWorldTransform(georeference);
+    const world = inverse({ x: 500_000 + 1007, y: 6_000_000 + 2001 });
+    assert.ok(Number.isFinite(world.x), `expected finite x, got ${world.x}`);
+    assert.ok(Number.isFinite(world.y), `expected finite y, got ${world.y}`);
+    // With the correct (1, 0) fallback the inverse is exact, not just finite
+    // -- a bogus partial rotation would land world.x/y off by the rotation
+    // it fabricated instead of matching these values.
+    close(world.x, 1007);
+    close(world.y, 2001);
+
+    const forward = buildDxfExportTransform({
+      coordinateInfo: undefined,
+      sectionAxis: 'down',
+      isCustomPlane: false,
+      flipped: false,
+      georeference,
+    });
+    const mapPoint = forward({ x: 1007, y: -2001 });
+    assert.ok(Number.isFinite(mapPoint.x), `expected finite x, got ${mapPoint.x}`);
+    assert.ok(Number.isFinite(mapPoint.y), `expected finite y, got ${mapPoint.y}`);
+    close(mapPoint.x, 500_000 + 1007);
+    close(mapPoint.y, 6_000_000 + 2001);
+  });
 });

@@ -114,22 +114,27 @@ describe('effective georeferencing', () => {
 
   it('falls back NaN eastings/northings/orthogonalHeight to 0 instead of poisoning downstream math (PR #1965 review)', () => {
     // A malformed IfcMapConversion or a bad mutation edit must not let a
-    // NaN reach `resolveGeorefLinearParams`'s eastings/northings math --
-    // `?? 0` alone passes NaN through untouched (NaN ?? 0 === NaN).
+    // NaN reach `resolveGeorefLinearParams`'s eastings/northings math, or
+    // `hasStandardGeoreferencing`'s orthogonalHeight finiteness check --
+    // `?? 0` alone passes NaN through untouched (NaN ?? 0 === NaN). The
+    // maintainer's PR #1965 review flagged that the previous version of this
+    // test asserted eastings/northings but never actually exercised
+    // orthogonalHeight, even though the title claimed it did -- exercise it
+    // for real here so a regression on that field fails this test.
     const original: MapConversion = {
       id: 2,
       sourceCRS: 10,
       targetCRS: 11,
       eastings: NaN,
       northings: 200,
-      orthogonalHeight: 5,
+      orthogonalHeight: NaN,
     };
 
     const merged = mergeMapConversion(original, { northings: NaN });
 
     assert.strictEqual(merged?.eastings, 0);
     assert.strictEqual(merged?.northings, 0);
-    assert.strictEqual(merged?.orthogonalHeight, 5);
+    assert.strictEqual(merged?.orthogonalHeight, 0);
   });
 
   it('overlays edited IfcMapConversion fields without dropping original rotation and scale', () => {
@@ -376,6 +381,46 @@ describe('effective georeferencing', () => {
           mapConversion: { ...mapConversion, northings: Infinity },
         }),
         false,
+      );
+    });
+
+    it('rejects a mapConversion with non-finite orthogonalHeight (PR #1965 review round 2, NaN guard)', () => {
+      // The finiteness check previously stopped at eastings/northings.
+      // `hasUsableMapGeoref` (pick-to-geo.ts) delegates here for the XYZ
+      // readout, which adds `mapConversion.orthogonalHeight` straight into
+      // the returned height with no fallback -- a NaN here must be rejected
+      // at this gate exactly like a NaN eastings/northings is, or it lands
+      // directly in Z.
+      assert.strictEqual(
+        hasStandardGeoreferencing({
+          source: 'mapConversion',
+          projectedCRS: { id: 1, name: 'EPSG:28992' },
+          mapConversion: { ...mapConversion, orthogonalHeight: NaN },
+        }),
+        false,
+      );
+    });
+
+    it('accepts a mapConversion with non-finite Scale or axis components (deliberate, not a gap)', () => {
+      // Unlike orthogonalHeight, Scale and the XAxisAbscissa/XAxisOrdinate
+      // axis pair are NOT part of this gate's finiteness check. The DXF
+      // export/underlay path's `resolveGeorefLinearParams`
+      // (dxfExportGeoref.ts) already substitutes finite fallbacks for
+      // exactly this case (Scale=0/NaN → 1, degenerate/non-finite axis →
+      // (1, 0)) so a malformed Scale/axis still renders the DXF underlay
+      // somewhere. `selectAnchorGeoref` gates anchor selection through this
+      // same predicate, so rejecting non-finite Scale/axis here would reject
+      // that model as an anchor before the fallback ever runs -- turning a
+      // georeference that currently renders (via the fallback) into one
+      // that's silently disabled. This test locks that the gate stays
+      // permissive for these two fields.
+      assert.strictEqual(
+        hasStandardGeoreferencing({
+          source: 'mapConversion',
+          projectedCRS: { id: 1, name: 'EPSG:28992' },
+          mapConversion: { ...mapConversion, scale: NaN, xAxisAbscissa: NaN, xAxisOrdinate: Infinity },
+        }),
+        true,
       );
     });
   });

@@ -216,8 +216,7 @@ function resolveGeorefLinearParams(georeference: DxfExportGeoreference): {
   // PR #1965 review: `axisLen < 1e-9` alone only catches the near-zero
   // MAGNITUDE case — `NaN < 1e-9` and `Infinity < 1e-9` are both `false`, so
   // a non-finite component used to fall through to the divide branch and
-  // manufacture a NaN axis. `finiteOr` closes that before `Math.hypot` ever
-  // sees the raw values, same as the eastings/northings guard below.
+  // manufacture a NaN axis.
   //
   // This is a DELIBERATE divergence from `normalize_axis`, not an oversight
   // left over from the "exactly like Rust" framing above: `normalize_axis`
@@ -229,11 +228,25 @@ function resolveGeorefLinearParams(georeference: DxfExportGeoreference): {
   // finite (1, 0) fallback rather than propagating NaN, consistent with
   // every other guard in this function (Scale, eastings, northings) always
   // preferring a finite fallback over an exact-parity NaN.
-  const rawAbscissa = finiteOr(mapConversion.xAxisAbscissa ?? 1, 1);
-  const rawOrdinate = finiteOr(mapConversion.xAxisOrdinate ?? 0, 0);
-  const axisLen = Math.hypot(rawAbscissa, rawOrdinate);
-  const abscissa = axisLen < 1e-9 ? 1 : rawAbscissa / axisLen;
-  const ordinate = axisLen < 1e-9 ? 0 : rawOrdinate / axisLen;
+  //
+  // PR #1965 review, round 2: a MIXED pair (one finite, one not -- e.g.
+  // XAxisAbscissa: NaN, XAxisOrdinate: 0.6) needs the SAME fallback as the
+  // both-non-finite case, not a half-fabricated one. The previous version
+  // ran `finiteOr` on each component independently BEFORE computing
+  // `axisLen`, substituting only the bad component to its identity default
+  // (1 or 0) and then normalizing that against the other, still-real
+  // component -- manufacturing a bogus rotation the file never authored
+  // (NaN, 0.6) silently became a real ~31° rotation instead of the (1, 0)
+  // no-rotation fallback. Checking finiteness of the RAW pair up front, and
+  // falling back to (1, 0) for the whole pair when either component fails,
+  // closes that: a malformed axis component discards the other component
+  // too, exactly like the near-zero-magnitude branch already does.
+  const rawAbscissa = mapConversion.xAxisAbscissa ?? 1;
+  const rawOrdinate = mapConversion.xAxisOrdinate ?? 0;
+  const axisIsFinite = Number.isFinite(rawAbscissa) && Number.isFinite(rawOrdinate);
+  const axisLen = axisIsFinite ? Math.hypot(rawAbscissa, rawOrdinate) : 0;
+  const abscissa = axisIsFinite && axisLen >= 1e-9 ? rawAbscissa / axisLen : 1;
+  const ordinate = axisIsFinite && axisLen >= 1e-9 ? rawOrdinate / axisLen : 0;
   // Guard eastings/northings against NaN/Infinity the same way the Scale
   // and axis guards above already do (issue #1965 review): a malformed
   // IfcMapConversion's `?? 0` in `mergeMapConversion` (effective-georef.ts)

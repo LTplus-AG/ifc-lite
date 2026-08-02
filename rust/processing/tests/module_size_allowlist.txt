@@ -18,9 +18,10 @@
      463 rust/core/src/parser/tokenizer.rs
 # +3: Arc<Vec<AttributeValue>> so DecodedEntity clone is a refcount bump not a deep attribute-tree clone (perf/decode-churn).
     553 rust/core/src/schema_gen.rs
-# +99: #1910 has_geometry_by_name("IFCBUILDING") intentionally excludes spatial containers, but a DGM/terrain export can attach real geometry directly to IfcBuilding; adds is_representationless_spatial_container_by_name + nth_attribute_is_present so callers can catch that exceptional instance without loosening the by-name rule for the common case.
-     489 rust/core/src/schema_helpers.rs
-     990 rust/core/src/units.rs
+# schema_helpers.rs row removed: the merged upstream #1969 split its tests into
+# schema_helpers_tests.rs, dropping the file to 305 lines (under the 400 budget),
+# same as the tree main converged on independently.
+    990 rust/core/src/units.rs
 # +4: build the index once in parallel on the fail-closed try_/project_glb_size large-model GLB paths (perf/parallel-scan).
 # +81: emissive-material knob for KMZ/Google Earth (#1427) - make_material lit/unlit/emissive branch + emissive param threaded through build_gltf/export_glb_from_meshes and their tests.
     4028 rust/export/src/gltf.rs

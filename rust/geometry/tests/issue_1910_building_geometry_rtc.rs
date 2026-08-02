@@ -8,19 +8,27 @@
 //! identity placements throughout) loaded with correct metadata/hierarchy
 //! but rendered NO visible geometry.
 //!
-//! Root cause: `has_geometry_by_name("IFCBUILDING")` is hard-coded `false`
-//! (it treats `IfcBuilding` as a pure hierarchy node) so the entity-job scan
+//! Root cause: `has_geometry_by_name("IFCBUILDING")` was hard-coded `false`
+//! (it treated `IfcBuilding` as a pure hierarchy node) so the entity-job scan
 //! in `rust/processing/src/processor/mod.rs` (server) and
 //! `rust/wasm-bindings/src/api/gpu_meshes/prepass.rs` (browser/wasm) never
-//! schedules the building's `IfcProductDefinitionShape` for meshing at all —
+//! scheduled the building's `IfcProductDefinitionShape` for meshing at all —
 //! independent of RTC. As a side effect, `detect_rtc_offset_from_first_element`
 //! (which scans the same `has_geometry_by_name`-filtered entity set) also
-//! samples zero translations and reports a `(0, 0, 0)` offset for this file,
+//! sampled zero translations and reported a `(0, 0, 0)` offset for this file,
 //! matching the symptom reported in the issue.
 //!
-//! Fixture: `fixtures/issue_1910_building_shell_geometry.ifc` — a minimal
-//! synthetic equivalent of the reporter's `dgm_4x2.ifc` (not committed here;
-//! it was emailed directly to the maintainer). Eastings ~500 000, northings
+//! `IfcBuilding` specifically is now exempted from `has_geometry_by_name`
+//! class-wide by the merged upstream fix (#1969) — see
+//! `building_is_covered_by_the_merged_upstream_exemption` below. The tests in
+//! this file remain as end-to-end RTC/meshing regression coverage for that
+//! case. This PR's own contribution — the instance-level exception that
+//! generalises past `IfcBuilding` to any other representationless spatial
+//! container (e.g. `IfcBuildingStorey`) — is proven separately in
+//! `issue_1910_storey_generalization.rs`.
+//!
+//! Fixture: `fixtures/issue_1910_building_shell_geometry.ifc`, synthesised
+//! from the structure documented in #1910. Eastings ~500 000, northings
 //! ~5 400 000 (UTM zone 32N scale), all placements identity, geometry hangs
 //! off `IFCBUILDING` rather than a building element.
 
@@ -36,29 +44,32 @@ fn read_fixture() -> String {
     std::fs::read_to_string(FIXTURE).expect("issue_1910 fixture must be present")
 }
 
-/// `has_geometry_by_name` alone never schedules `IFCBUILDING` for meshing —
-/// that part of the exclusion is intentional and unchanged (most files' 
-/// `IfcBuilding` has a null Representation). The fix is instance-level: 
-/// `is_representationless_spatial_container_by_name` + a cheap non-null
-/// Representation check (attribute 6) lets the job-collection scan catch the
-/// exceptional case where a spatial container DOES carry real geometry.
+/// Sanity for the doc above: `IfcBuilding` is exempted from
+/// `has_geometry_by_name` class-wide as of the merged upstream fix (#1969),
+/// so it no longer needs (or triggers) this PR's instance-level exception —
+/// `is_representationless_spatial_container_by_name("IFCBUILDING")` is `false`
+/// post-merge. The fixture's building still carries a real, non-null
+/// Representation, which is what the rest of this file's tests mesh and
+/// re-base; that part of the fixture is unaffected by which mechanism
+/// schedules it.
 #[test]
-fn building_excluded_by_name_but_scheduled_when_it_has_a_representation() {
+fn building_is_covered_by_the_merged_upstream_exemption() {
     let content = read_fixture();
 
     assert!(
-        !has_geometry_by_name("IFCBUILDING"),
-        "sanity: IFCBUILDING must stay excluded from has_geometry_by_name by \
-         default — this is an intentional, unchanged invariant"
+        has_geometry_by_name("IFCBUILDING"),
+        "sanity: IFCBUILDING should be scheduled by name after #1969's \
+         class-wide exemption landed on main"
     );
     assert!(
-        ifc_lite_core::is_representationless_spatial_container_by_name("IFCBUILDING"),
-        "sanity: IFCBUILDING must be recognised as a normally-representationless \
-         spatial container"
+        !ifc_lite_core::is_representationless_spatial_container_by_name("IFCBUILDING"),
+        "sanity: with IFCBUILDING exempted class-wide, this PR's instance-level \
+         exception should no longer treat it as a normally-representationless \
+         container needing the extra check"
     );
 
-    // Locate the IFCBUILDING entity's raw bytes in the fixture and confirm
-    // the instance-level Representation check now catches it.
+    // Locate the IFCBUILDING entity's raw bytes in the fixture and confirm it
+    // still carries a real Representation (the actual test payload).
     let mut scanner = EntityScanner::new(&content);
     let mut found = false;
     while let Some((id, type_name, start, end)) = scanner.next_entity() {

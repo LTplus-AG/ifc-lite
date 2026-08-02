@@ -64,11 +64,12 @@ where
 /// Implementation:
 /// 1. Modern names go through `IfcType::from_str` and are accepted iff they
 ///    inherit from `IfcProduct`, with a small block-list for abstract spatial
-///    containers (`IfcBuilding`, `IfcBuildingStorey`, `IfcFacility`,
-///    `IfcFacilityPart`, `IfcSpatialElement`, `IfcSpatialStructureElement`)
-///    that don't carry geometry directly. `IfcSpace` and `IfcSite` (and any
-///    concrete subtype of either) are intentionally kept — they have boundary
-///    representations the renderer consumes.
+///    containers (`IfcBuildingStorey`, `IfcFacility`, `IfcFacilityPart`,
+///    `IfcSpatialElement`, `IfcSpatialStructureElement`) that don't carry
+///    geometry directly. `IfcSpace`, `IfcSite`, `IfcSpatialZone` and
+///    `IfcBuilding` (and any concrete subtype of those) are intentionally
+///    kept — they have boundary representations the renderer consumes. See
+///    [`is_non_geometric_spatial`] for how that exempt set is maintained.
 /// 2. Legacy IFC2x3 / removed-in-IFC4x3 names that aren't in the generated
 ///    enum (e.g. `IFCSLABELEMENTEDCASE`, `IFCBUILDINGELEMENT`, `IFCPROXY`,
 ///    `IFCEQUIPMENTELEMENT`, `IFCELECTRICALDISTRIBUTIONPOINT`) resolve through
@@ -105,13 +106,21 @@ fn compute_has_geometry(upper: &str) -> bool {
 }
 
 /// Subtypes of `IfcProduct` that exist solely as spatial containers and
-/// aren't rendered directly. `IfcSpace`/`IfcSite`/`IfcSpatialZone` and their
-/// concrete subtypes are deliberately exempt — their boundary representations
-/// are consumed by the renderer when present. `IfcSpatialZone` was originally
-/// blocked, but real-world exporters (e.g. Revit Family geometry authored via
-/// Dynamo, common in Dutch GFA/permitting models) emit it with a body, so it
-/// is now treated like `IfcSpace` (issue #1075). The gate only *permits*
-/// meshing; a zone with no representation still produces nothing.
+/// aren't rendered directly. `IfcSpace`/`IfcSite`/`IfcSpatialZone`/`IfcBuilding`
+/// and their concrete subtypes are deliberately exempt — their boundary
+/// representations are consumed by the renderer when present.
+///
+/// The exempt set grows as exporters are found that attach a body to a
+/// container. `IfcSpatialZone` was unblocked for Revit Family geometry authored
+/// via Dynamo (issue #1075); `IfcBuilding` for terrain/DGM exports that hang an
+/// `IfcShellBasedSurfaceModel` straight off the building (issue #1910). In both
+/// cases the class was blocked, so the entity never became a geometry job and
+/// the model rendered nothing at all. **The gate only *permits* meshing; a
+/// container with no representation still produces nothing**, so exempting a
+/// class costs one abandoned job per instance and is the safe direction.
+/// `IfcBuildingStorey` and the `IfcFacility`/`IfcFacilityPart` families stay
+/// blocked only because no exporter has been observed giving them a body; the
+/// same one-line exemption applies if one is.
 ///
 /// We block by inheritance, not by exact match, so IFC4X3 facility
 /// subclasses like `IfcBridge`/`IfcRoad`/`IfcRailway`/`IfcMarineFacility`
@@ -122,6 +131,7 @@ fn is_non_geometric_spatial(t: IfcType) -> bool {
     if t.is_subtype_of(IfcType::IfcSpace)
         || t.is_subtype_of(IfcType::IfcSite)
         || t.is_subtype_of(IfcType::IfcSpatialZone)
+        || t.is_subtype_of(IfcType::IfcBuilding)
     {
         return false;
     }
@@ -291,199 +301,5 @@ fn compute_is_simple(upper: &str) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn building_elements_have_geometry() {
-        for name in [
-            "IFCWALL",
-            "IFCSLAB",
-            "IFCBEAM",
-            "IFCCOLUMN",
-            "IFCDOOR",
-            "IFCWINDOW",
-            "IFCROOF",
-            "IFCSTAIR",
-            "IFCSHADINGDEVICE",
-        ] {
-            assert!(has_geometry_by_name(name), "{name} should have geometry");
-        }
-    }
-
-    #[test]
-    fn mep_elements_have_geometry() {
-        for name in [
-            "IFCFLOWSEGMENT",
-            "IFCFLOWFITTING",
-            "IFCENERGYCONVERSIONDEVICE",
-            "IFCFLOWTREATMENTDEVICE",
-            "IFCBOILER",
-            "IFCPUMP",
-            "IFCVALVE",
-        ] {
-            assert!(has_geometry_by_name(name), "{name} should have geometry");
-        }
-    }
-
-    /// Regression for PR #585 — IfcSolarDevice was missing because the
-    /// whitelist matched leaf names directly even though its parent
-    /// `IfcEnergyConversionDevice` was already in the list.
-    #[test]
-    fn solar_device_has_geometry() {
-        assert!(has_geometry_by_name("IFCSOLARDEVICE"));
-        assert!(has_geometry_by_name("IfcSolarDevice"));
-    }
-
-    #[test]
-    fn ifc4x3_infrastructure_have_geometry() {
-        for name in [
-            "IFCBEARING",
-            "IFCKERB",
-            "IFCPAVEMENT",
-            "IFCRAIL",
-            "IFCTRACKELEMENT",
-            "IFCSIGN",
-            "IFCSIGNAL",
-            "IFCEARTHWORKSCUT",
-        ] {
-            assert!(has_geometry_by_name(name), "{name} should have geometry");
-        }
-    }
-
-    #[test]
-    fn reinforcement_variants_have_geometry() {
-        assert!(has_geometry_by_name("IFCREINFORCINGBAR"));
-        assert!(has_geometry_by_name("IFCREINFORCINGMESH"));
-        assert!(has_geometry_by_name("IFCREINFORCEDSOIL"));
-    }
-
-    #[test]
-    fn standardcase_and_elementedcase_have_geometry() {
-        for name in [
-            "IFCBEAMSTANDARDCASE",
-            "IFCSLABSTANDARDCASE",
-            "IFCSLABELEMENTEDCASE",
-            "IFCWALLSTANDARDCASE",
-            "IFCWALLELEMENTEDCASE",
-            "IFCDOORSTANDARDCASE",
-            "IFCWINDOWSTANDARDCASE",
-            "IFCOPENINGSTANDARDCASE",
-        ] {
-            assert!(has_geometry_by_name(name), "{name} should have geometry");
-        }
-    }
-
-    #[test]
-    fn space_and_site_have_geometry() {
-        assert!(has_geometry_by_name("IFCSPACE"));
-        assert!(has_geometry_by_name("IFCSITE"));
-        assert!(has_geometry_by_name("IFCOPENINGELEMENT"));
-        // #1075: IfcSpatialZone may carry a body (Revit Family/Dynamo GFA
-        // volumes) — it is meshed like IfcSpace when a representation exists.
-        assert!(has_geometry_by_name("IFCSPATIALZONE"));
-    }
-
-    #[test]
-    fn legacy_ifc2x3_distribution_names_have_geometry() {
-        // Routed through legacy_entities now (was an inline match arm).
-        assert!(has_geometry_by_name("IFCEQUIPMENTELEMENT"));
-        assert!(has_geometry_by_name("IFCELECTRICALDISTRIBUTIONPOINT"));
-    }
-
-    #[test]
-    fn non_geometric_spatial_excluded() {
-        for name in [
-            // The original whitelist excluded these explicitly.
-            "IFCBUILDING",
-            "IFCBUILDINGSTOREY",
-            "IFCFACILITY",
-            "IFCFACILITYPART",
-            // Abstract bases — same logic, never rendered directly.
-            "IFCSPATIALELEMENT",
-            "IFCSPATIALSTRUCTUREELEMENT",
-            // IFC4X3 facility subtypes: previously absent from the whitelist
-            // and would now leak through if the block-list were leaf-only
-            // (regression flagged on the original PR review).
-            "IFCBRIDGE",
-            "IFCROAD",
-            "IFCRAILWAY",
-            "IFCMARINEFACILITY",
-            "IFCBRIDGEPART",
-            "IFCFACILITYPARTCOMMON",
-            // External spatial elements are abstract air volumes, not
-            // rendered. Not in the original whitelist.
-            "IFCEXTERNALSPATIALELEMENT",
-            "IFCEXTERNALSPATIALSTRUCTUREELEMENT",
-        ] {
-            assert!(!has_geometry_by_name(name), "{name} should NOT have geometry");
-        }
-    }
-
-    #[test]
-    fn non_products_excluded() {
-        for name in [
-            "IFCPROJECT",
-            "IFCMATERIAL",
-            "IFCPROPERTYSET",
-            "IFCRELAGGREGATES",
-            "IFCDIMENSIONALEXPONENTS",
-            "IFCSURFACESTYLERENDERING",
-            "IFCGEOMETRICREPRESENTATIONSUBCONTEXT",
-            "IFCCARTESIANPOINT",
-        ] {
-            assert!(!has_geometry_by_name(name), "{name} should NOT have geometry");
-        }
-    }
-
-    #[test]
-    fn legacy_proxy_and_buildingelement_have_geometry() {
-        // From legacy_entities: both map to renderable types
-        assert!(has_geometry_by_name("IFCPROXY"));
-        assert!(has_geometry_by_name("IFCBUILDINGELEMENT"));
-    }
-
-    #[test]
-    fn unknown_garbage_excluded() {
-        // Reinforcement substring tightened to a prefix — unrelated tokens
-        // containing "REINFORC" are no longer accepted.
-        assert!(!has_geometry_by_name("IFCNOTAREALTYPE"));
-        assert!(!has_geometry_by_name(""));
-        assert!(!has_geometry_by_name("FOOREINFORCEDBAR"));
-    }
-
-    #[test]
-    fn cached_results_are_consistent() {
-        // Hit the cache twice for the same name and confirm both return the
-        // same value (regression for any race in the cache layer).
-        for _ in 0..3 {
-            assert!(has_geometry_by_name("IFCWALL"));
-            assert!(!has_geometry_by_name("IFCPROJECT"));
-            assert!(is_simple_geometry_type("IFCWALL"));
-            assert!(!is_simple_geometry_type("IFCWINDOW"));
-        }
-    }
-
-    #[test]
-    fn is_simple_geometry_type_routes_correctly() {
-        // Structural / structural-adjacent: simple.
-        assert!(is_simple_geometry_type("IFCWALL"));
-        assert!(is_simple_geometry_type("IFCSLAB"));
-        assert!(is_simple_geometry_type("IFCBEAM"));
-        assert!(is_simple_geometry_type("IFCCOLUMN"));
-
-        // Secondary categories.
-        assert!(!is_simple_geometry_type("IFCWINDOW"));
-        assert!(!is_simple_geometry_type("IFCDOOR"));
-        assert!(!is_simple_geometry_type("IFCOPENINGELEMENT"));
-        assert!(!is_simple_geometry_type("IFCFLOWSEGMENT"));
-        assert!(!is_simple_geometry_type("IFCSOLARDEVICE"));
-        assert!(!is_simple_geometry_type("IFCSPACE"));
-        assert!(!is_simple_geometry_type("IFCANNOTATION"));
-        assert!(!is_simple_geometry_type("IFCBUILDINGELEMENTPROXY"));
-
-        // Mixed-case input — exercises the `to_ascii_uppercase` branch.
-        assert!(is_simple_geometry_type("IfcWall"));
-        assert!(!is_simple_geometry_type("IfcDoor"));
-    }
-}
+#[path = "schema_helpers_tests.rs"]
+mod tests;

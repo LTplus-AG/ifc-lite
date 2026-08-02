@@ -248,7 +248,8 @@ an agent team) plus named human time, because that is the actual currency here.
    the current kernel structure produces, sinks to 0.8x-1.1x on three of five models.
    Remaining M6c exam is retargeted to publication (B6.3), not a speedup. Consequence:
 
-<!-- numeral-ok: 0.20x, 194 :: 0.20x is the endpoint of a RANGE measured against the
+<!-- numeral-src: 0.20x :: none - endpoint of a RANGE against the production adaptive-Shewchuk path; no artifact emits it. Negative-bound 2026-08-01 because a union hit made it read as backed by an unrelated slab thickness in B5.5's scorecard - a speedup ratio must not be cleared by a length in metres. -->
+<!-- numeral-ok: 194 :: 0.20x is the endpoint of a RANGE measured against the
      production adaptive-Shewchuk path; report.b25.throughput.json emits speedups against
      the exact BigInt CPU baseline (4.4x / 19.5x / 102x) and holds no production-path
      comparison, so the ratio is computed outside the artifact. 194 is the size of the
@@ -454,12 +455,14 @@ scores an exact 1.000 aggregate through the real scorer, above the kernel oracle
 and the text heuristic (0.993), reading only `model.content`. Adding geometric or organic
 defect families does NOT fix this: any defect on an independent stream is isolated by the
 same diff. Reviving a public launch requires denying the adversary the clean twin
-(hosted bytes, secret per-split salt, or a real-model substrate), not a longer defect
-list. The attack stays committed as a regression.
-
-<!-- numeral-ok: 0.931, 0.993 :: aggregate scores of the kernel oracle and the text
-     heuristic through the real benchmark scorer. Emitted by the benchmark harness under
-     benchmark/, not by any scripts/moonshot artifact. -->
+(a secret per-split salt mixed into every RNG stream, or a real-model substrate that has
+no procedural twin), not a longer defect list.
+*Corrected with spec v1.1: this list originally read "hosted bytes, secret per-split
+salt, or a real-model substrate". Hosted bytes alone deny nothing - splits are seed
+arithmetic over a public universe and `generateModel` takes no secret, so the adversary
+regenerates both twins locally and never requests the served bytes. Hosting is the
+delivery channel a salt needs, not an integrity mechanism; see the benchmark spec's
+integrity-model section.* The attack stays committed as a regression.
 
 **N3. M5 feasible-brief quality margin is null (2026-07-25, replicated).** Believed:
 per-op kernel feedback would produce better programs than the same model generating

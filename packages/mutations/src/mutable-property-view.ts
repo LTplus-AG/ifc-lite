@@ -47,6 +47,7 @@ export class MutablePropertyView {
    */
   private propertyKeysByEntity: Map<number, Set<string>> = new Map();
   private quantityKeysByEntity: Map<number, Set<string>> = new Map();
+  private attributeKeysByEntity: Map<number, Set<string>> = new Map();
   private deletedPsets: Set<string> = new Set(); // `${entityId}:${psetName}`
   private deletedQsets: Set<string> = new Set(); // `${entityId}:${qsetName}`
   private newPsets: Map<number, Map<string, PropertySet>> = new Map(); // entityId -> psetName -> PropertySet
@@ -138,6 +139,28 @@ export class MutablePropertyView {
       if (bucket) {
         bucket.delete(key);
         if (bucket.size === 0) this.quantityKeysByEntity.delete(entityId);
+      }
+    }
+    return removed;
+  }
+
+  private setAttributeMutation(entityId: number, key: string, mutation: AttributeMutation): void {
+    this.attributeMutations.set(key, mutation);
+    let bucket = this.attributeKeysByEntity.get(entityId);
+    if (!bucket) {
+      bucket = new Set();
+      this.attributeKeysByEntity.set(entityId, bucket);
+    }
+    bucket.add(key);
+  }
+
+  private deleteAttributeMutation(entityId: number, key: string): boolean {
+    const removed = this.attributeMutations.delete(key);
+    if (removed) {
+      const bucket = this.attributeKeysByEntity.get(entityId);
+      if (bucket) {
+        bucket.delete(key);
+        if (bucket.size === 0) this.attributeKeysByEntity.delete(entityId);
       }
     }
     return removed;
@@ -781,7 +804,7 @@ export class MutablePropertyView {
   ): Mutation {
     const key = attributeKey(entityId, attrName);
 
-    this.attributeMutations.set(key, {
+    this.setAttributeMutation(entityId, key, {
       attribute: attrName,
       value,
       oldValue,
@@ -1120,10 +1143,31 @@ export class MutablePropertyView {
    */
   getAttributeMutationsForEntity(entityId: number): Array<{ name: string; value: string }> {
     const result: Array<{ name: string; value: string }> = [];
-    for (const [key, mutation] of this.attributeMutations) {
-      if (key.startsWith(`${entityId}:attr:`)) {
-        result.push({ name: mutation.attribute, value: mutation.value });
+    for (const key of this.attributeKeysByEntity.get(entityId) ?? []) {
+      const mutation = this.attributeMutations.get(key);
+      if (mutation) result.push({ name: mutation.attribute, value: mutation.value });
+    }
+    return result;
+  }
+
+  /**
+   * Every attribute override currently in the overlay, keyed by entity then
+   * attribute name.
+   *
+   * This is the *current* overlay state, not the append-only mutation history:
+   * an undone edit has had its overlay entry reset to the pre-edit value (or
+   * removed outright), so it does not appear here, whereas its superseded
+   * `UPDATE_ATTRIBUTE` record lives on in {@link getMutations} forever. Export
+   * must read this — replaying the history resurrects undone edits (#1957).
+   */
+  getAttributeMutationsByEntity(): Map<number, Map<string, string>> {
+    const result = new Map<number, Map<string, string>>();
+    for (const entityId of this.attributeKeysByEntity.keys()) {
+      const attrs = new Map<string, string>();
+      for (const { name, value } of this.getAttributeMutationsForEntity(entityId)) {
+        attrs.set(name, value);
       }
+      if (attrs.size > 0) result.set(entityId, attrs);
     }
     return result;
   }
@@ -1171,8 +1215,7 @@ export class MutablePropertyView {
    * Remove an attribute mutation (used by undo for newly set attributes)
    */
   removeAttributeMutation(entityId: number, attrName: string): void {
-    const key = attributeKey(entityId, attrName);
-    this.attributeMutations.delete(key);
+    this.deleteAttributeMutation(entityId, attributeKey(entityId, attrName));
   }
 
   /**
@@ -1250,6 +1293,7 @@ export class MutablePropertyView {
     this.propertyKeysByEntity.clear();
     this.quantityKeysByEntity.clear();
     this.attributeMutations.clear();
+    this.attributeKeysByEntity.clear();
     this.deletedPsets.clear();
     this.deletedQsets.clear();
     this.newPsets.clear();

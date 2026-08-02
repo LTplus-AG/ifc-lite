@@ -1,0 +1,113 @@
+{
+  "bet": "B5.2",
+  "pass": "kernel",
+  "alias": "model-b",
+  "modelSha256Prefix": "90ddf9c3403a",
+  "bytes": 90264955,
+  "schemaVersion": "IFC4",
+  "timings": {
+    "wasmWarmMs": 5.3,
+    "parseMs": 1014.6,
+    "schemaCheckMs": 554.8,
+    "clashCheckMs": 14957.8,
+    "totalMs": 16532.4
+  },
+  "memory": {
+    "rssAfterParseMb": 537.1,
+    "rssAfterGeometryMb": 1167.3
+  },
+  "validate": {
+    "valid": true,
+    "errors": 0,
+    "warnings": 0,
+    "issueCount": 2,
+    "byRule": [
+      {
+        "rule": "named-elements",
+        "severity": "info",
+        "count": 1
+      },
+      {
+        "rule": "quantity-completeness",
+        "severity": "info",
+        "count": 1
+      }
+    ]
+  },
+  "clash": {
+    "ok": true,
+    "total": 0,
+    "bySeverity": {
+      "critical": 0,
+      "major": 0,
+      "minor": 0,
+      "info": 0
+    },
+    "byRule": {},
+    "meshedElementCount": 77290,
+    "columnProbes": 112,
+    "unmeshedColumns": 0,
+    "unmeshedColumnPct": 0,
+    "sampledPairCount": 0,
+    "sampledPairSeverityHistogram": {}
+  },
+  "gymQuantityReRead": {
+    "wallGrossVolume": 0,
+    "slabGrossVolume": 0,
+    "columnGrossVolume": 0,
+    "beamGrossVolume": 0,
+    "roomNetFloorArea": 0,
+    "elementsWithQuantities": 0,
+    "quantifiableElements": 4009
+  },
+  "authoredQuantities": {
+    "elementsChecked": 9928,
+    "elementsWithAnyQset": 9818,
+    "elementsWithoutQset": 110,
+    "elementsWithAnyQsetPct": 98.892,
+    "qsetInstances": 9818,
+    "standardQsetInstances": 9818,
+    "nonStandardQsetInstances": 0,
+    "distinctCollapsedQsetLabels": 10,
+    "qsetLabelCounts": {
+      "Qto_WindowBaseQuantities": 3924,
+      "Qto_WallBaseQuantities": 2352,
+      "Qto_DoorBaseQuantities": 1452,
+      "Qto_SpaceBaseQuantities": 1034,
+      "Qto_SlabBaseQuantities": 493,
+      "Qto_MemberBaseQuantities": 401,
+      "Qto_ColumnBaseQuantities": 112,
+      "Qto_BeamBaseQuantities": 18,
+      "Qto_RoofBaseQuantities": 16,
+      "Qto_FootingBaseQuantities": 16
+    },
+    "distinctCollapsedQuantityLabels": 24,
+    "quantityLabelCounts": {
+      "Height": 8762,
+      "Width": 8219,
+      "<non-standard>": 6393,
+      "Area": 5376,
+      "Perimeter": 4522,
+      "NetVolume": 4426,
+      "GrossVolume": 4410,
+      "Length": 2872,
+      "GrossFootprintArea": 2352,
+      "NetFootprintArea": 2352,
+      "GrossSideArea": 2352,
+      "NetSideArea": 2352,
+      "GrossFloorArea": 1034,
+      "NetFloorArea": 1034,
+      "GrossCeilingArea": 1034,
+      "NetCeilingArea": 1034,
+      "GrossWallArea": 1034,
+      "NetWallArea": 1034,
+      "OuterSurfaceArea": 531,
+      "GrossSurfaceArea": 531,
+      "CrossSectionArea": 520,
+      "GrossArea": 509,
+      "NetArea": 509,
+      "NetSurfaceArea": 504
+    },
+    "hasGymQuantities": false
+  }
+}

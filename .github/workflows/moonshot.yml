@@ -420,6 +420,32 @@ jobs:
           node tools/world-gym/determinism-check.mjs
           echo '- **E8 world-gym determinism** -- 20/20 seeds byte-identical' >> "$GITHUB_STEP_SUMMARY"
 
+      # --- E8b: the B5.5 scan-to-parametric pipeline ------------------------
+      # B5.5's headline comes off a 3.9 GB client scan that cannot be
+      # committed, fetched, or run here, so the usual shape of this lane -- a
+      # fixture-backed re-run asserted against a golden -- is not available for
+      # it. This step runs the REAL stage scripts (extract -> generate ->
+      # score) over a synthetic two-room cloud whose every quantity is known in
+      # closed form, and asserts the numbers: the fitted planes, the room
+      # areas and heights, the measured partition width, the emitted model's
+      # ABSOLUTE placement datum, and the scorer's deviation arithmetic against
+      # deliberate misses placed either side of the 5% bar.
+      #
+      # The placement case is why this exists. `addIfcWall`/`addIfcSlab` place
+      # relative to the storey while `addIfcSpace` places relative to the
+      # world, so handing the same Z to both puts the walls at 2x the storey
+      # elevation -- and the exam cannot see it, because every quantity it
+      # scores is an IfcSpace quantity and therefore invariant under a rigid Z
+      # shift of the walls. The suite carries a negative control that rebuilds
+      # the model the broken way and requires the check to reject it.
+      #
+      # ~0.5 s: the cloud is 0.4 M points and the models are a few solids.
+      - name: E8b B5.5 scan-to-parametric pipeline (synthetic, closed-form)
+        shell: bash
+        run: |
+          node scripts/moonshot/ci/b55-pipeline-regression.mjs
+          echo '- **E8b B5.5 pipeline** -- extraction, placement datum and scoring arithmetic asserted on a synthetic apartment' >> "$GITHUB_STEP_SUMMARY"
+
       # --- E9: the claim NOBODY else in this lane checks --------------------
       # Every other step re-runs code and asserts the result. This one reads the
       # PROSE and asserts that each numeral in it either matches an artifact or

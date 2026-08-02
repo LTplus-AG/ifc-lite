@@ -323,7 +323,16 @@ describe.skipIf(!MODEL_AVAILABLE)('gymCommand (fixture: AB22.ifc)', () => {
     for (let i = 0; i < rewards1.length; i++) {
       expect(JSON.stringify(rewards1[i])).toBe(JSON.stringify(rewards2[i]));
     }
-  });
+    // The only test in this file that runs the SAME episode twice, so it pays
+    // the fixture parse and three step applications twice over -- structurally
+    // the slowest case here, and the 5 s default left it about 1.5x of margin
+    // (3.3 s observed on lighter branches). vitest runs suites concurrently, so
+    // that margin is a function of what else is running: on a branch that adds
+    // a heavy provenance battery this file's tests went 8.87 s -> 14.09 s and
+    // this case timed out at 5.59 s TWICE, having never once disagreed on a
+    // byte. A determinism test that fails by running out of clock reports the
+    // opposite of what it measures, which is worth more than the 10 s.
+  }, 20_000);
 
   it('reset mid-session restores the pristine model', async () => {
     const lines = await runGym(

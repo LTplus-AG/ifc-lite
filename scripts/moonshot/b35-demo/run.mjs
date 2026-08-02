@@ -274,8 +274,17 @@ function renderMarkdown(report) {
     push(`- colliding edits (both write the same wall pset): blocked=${x.blockedConflict.blocked}, ${x.blockedConflict.conflicts.length} conflicting cross pair(s) -- no certificate, no silent overwrite`);
     push(`- property battery (${x.battery.schedules} schedules, seed ${det.masterSeed}): ${x.battery.autoMerged} auto-merged,`);
     push(`  **${x.battery.unsoundAutoMerges} unsound auto-merges**, ${x.battery.flaggedConflicts} flagged (${(x.battery.conflictRate * 100).toFixed(2)}%),`);
-    push(`  false-conflict rate ${(x.battery.falseConflictRate * 100).toFixed(2)}%, certificates ${x.battery.certificatesIssued} issued / ${x.battery.certificatesVerified} verified / ${x.battery.certificateFailures} failures;`);
+    // The denominator is spelled out on purpose (G4 red-team review item 5):
+    // this rate is `falseConflicts / ground-truth-COMMUTING schedules`, and
+    // the previous line's flagged count is a DIFFERENT denominator sitting
+    // right next to it. The bare percentage invited exactly that misreading.
+    push(`  false-conflict rate ${(x.battery.falseConflictRate * 100).toFixed(2)}% = ${x.battery.falseConflicts} false / ${x.battery.groundTruthConvergent} ground-truth-COMMUTING`);
+    push(`  schedules (the denominator the plan's < 20% kill criterion is defined over -- not the ${x.battery.flaggedConflicts} flagged),`);
+    push(`  certificates ${x.battery.certificatesIssued} issued / ${x.battery.certificatesVerified} verified / ${x.battery.certificateFailures} failures;`);
     push(`  exam ${x.battery.examPass ? 'PASS' : 'FAIL'}, kill criterion ${x.battery.killCriterionPass ? 'PASS' : 'FAIL'}`);
+    push('  (the full decomposition, the spatial-restricted rate with its Wilson interval and the');
+    push('  spatial-rule ablation live in `scripts/moonshot/g2-merge-soundness.mjs`, which runs the');
+    push('  same battery at gate scale)');
     push('');
   }
 

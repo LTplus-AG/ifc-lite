@@ -9,6 +9,7 @@ import {
   extractTypePropertiesOnDemand,
   extractTypeEntityOwnProperties,
   extractAllEntityAttributes,
+  mergeInheritedPropertySets,
 } from '@ifc-lite/parser';
 import { RelationshipType } from '@ifc-lite/data';
 
@@ -44,13 +45,18 @@ export function collectAllPropertySets(
   store: IfcDataStore,
   expressId: number
 ): PropertySetInfo[] {
-  const out: PropertySetInfo[] = [];
+  const own: PropertySetInfo[] = [];
   const scale = store.lengthUnitScale;
 
-  appendInstancePropertySets(store, expressId, scale, out);
-  appendQuantitySets(store, expressId, out);
-  appendPredefinedPropertySets(store, expressId, out);
-  appendInheritedPropertySets(store, expressId, scale, out);
+  appendInstancePropertySets(store, expressId, scale, own);
+  appendQuantitySets(store, expressId, own);
+  appendPredefinedPropertySets(store, expressId, own);
+
+  // Merged per property, not per set — see `mergeInheritedPropertySets`.
+  const out = mergeInheritedPropertySets(
+    own,
+    inheritedPropertySets(store, expressId, scale),
+  );
 
   if (out.length === 0) {
     appendTypeEntityOwnProperties(store, expressId, out);
@@ -159,12 +165,11 @@ function appendPredefinedPropertySets(
   }
 }
 
-function appendInheritedPropertySets(
+function inheritedPropertySets(
   store: IfcDataStore,
   expressId: number,
-  scale: number | undefined,
-  out: PropertySetInfo[]
-): void {
+  scale: number | undefined
+): PropertySetInfo[] {
   // Source-backed extraction (WASM/columnar parse) first; it bails on stores
   // with no `source` buffer — i.e. server-parsed stores — so fall back to the
   // prebuilt property table keyed by the element's IfcTypeProduct id (issue
@@ -172,18 +177,11 @@ function appendInheritedPropertySets(
   const inheritedPsets =
     extractTypePropertiesOnDemand(store, expressId)?.properties ??
     typePropertySetsFromTable(store, expressId);
-  if (inheritedPsets.length === 0) return;
 
-  const seen = new Set(out.map((p) => p.name));
-  for (const pset of inheritedPsets) {
-    if (seen.has(pset.name)) continue;
-    out.push({
-      name: pset.name,
-      properties: (pset.properties || []).map((p) =>
-        projectProperty(p as RawProp, scale)
-      ),
-    });
-  }
+  return inheritedPsets.map((pset) => ({
+    name: pset.name,
+    properties: (pset.properties || []).map((p) => projectProperty(p as RawProp, scale)),
+  }));
 }
 
 /** Type-inherited property sets for server-parsed stores: resolve the element's

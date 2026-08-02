@@ -81,12 +81,18 @@ Submission how-to, in three steps: (1) for every seed of your split,
 obtain the model (regenerate locally, or stream episodes via `ifc-lite gym
 --seed N`) and produce per-model predictions; (2) write the JSONL file -
 header `{"type":"header","benchmark":"ifc-lite-world-gym","specVersion":
-"1.0.0","split":"dev","name":"<your-method>","tasks":[...]}` then one
+"1.1.0","split":"dev","name":"<your-method>","tasks":[...]}` then one
 `{"seed":8,"defects":{...},"quantities":{...},"triage":0.7}` line per seed;
 (3) run `score.mjs` as above. The only rule that matters locally: reading
 `generateModel(...).defects`/`labels` for an evaluated seed is reading the
 answer key (see BENCHMARK.md rules). Dev-split anchor rows to beat are in
-`benchmark/results/leaderboard-dev.json`.
+`benchmark/results/leaderboard-dev.json`. Those committed rows carry
+`specVersion` `1.0.0` and stay that way: the field records the version a row
+was scored under, and that run happened under v1.0. They are still the right
+anchors for a 1.1.0 row, because v1.1 changed no constant, no generator byte,
+no task and no scoring math - only what the spec claims a *test* row is worth
+(BENCHMARK.md version note and section 1a). Your own header must say `1.1.0`;
+the validator rejects any other value.
 
 `--family` accepts `frame`, `office`, or `auto` (default - the seed itself
 picks the family, so `--seed N` alone still determines one specific building
@@ -404,10 +410,16 @@ caught the duplicated IfcProject silently doubling as an unplanned GUID dup
   geometric/organic defect families (misalignment, unit-scale errors,
   off-by-storey placement) that text scans cannot see. Documented in
   BENCHMARK.md section 5.
-- **Test-split integrity is honesty-based until hosting exists.** Labels
-  are regenerable-by-seed by design (open generator), so local test rows
-  are self-reported; the trusted channel is a hosted leaderboard that
-  scores test submissions server-side. Public hosting, benchmark
+- **The test split has no integrity property today, and hosting alone would
+  not give it one.** Labels are regenerable-by-seed by design (open
+  generator), so local test rows are self-reported. v1.0 called this
+  "hidden-by-hosting"; that claim was false and v1.1 withdraws it -
+  `benchmark/attacks/clean-twin-diff.mjs` scores an exact 1.000 aggregate
+  through the real scorer while reading only model bytes, because the
+  adversary regenerates the served bytes rather than requesting them. The
+  trusted channel v1.1 declares is a per-split secret salt mixed into every
+  RNG stream, delivered by a hosted scorer, and neither half is implemented
+  (BENCHMARK.md section 1a). Public hosting, benchmark
   governance/licensing, and external-lab recruitment are HUMAN-track items
   (execution plan B2.2), not covered by this code.
 - **Leaderboard verifier is Node-side, not yet client-side in a browser.**

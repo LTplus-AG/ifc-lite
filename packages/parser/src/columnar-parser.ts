@@ -1165,6 +1165,8 @@ export {
     extractQsetsFromIds,
 } from './on-demand-extractors.js';
 
+export { mergeInheritedPropertySets } from './property-set-merge.js';
+
 export type {
     ClassificationInfo,
     MaterialInfo,

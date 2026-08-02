@@ -189,6 +189,38 @@ console.log(`GlobalId: ${attrs.globalId}`);
 console.log(`Description: ${attrs.description}`);
 ```
 
+### Type-Inherited Properties
+
+`extractPropertiesOnDemand` returns only the sets attached to the occurrence
+itself. Properties defined once on the element's `IfcTypeProduct` — where
+`Pset_*Common` usually lives — come from `extractTypePropertiesOnDemand`.
+
+Combine them with `mergeInheritedPropertySets`. IFC inherits **per property, not
+per property set**: an occurrence and its type routinely both carry a set of the
+same name holding different properties, so replacing the whole set on a name
+collision would hide every type-only property in it.
+
+```typescript
+import {
+  extractPropertiesOnDemand,
+  extractTypePropertiesOnDemand,
+  mergeInheritedPropertySets
+} from '@ifc-lite/parser';
+
+const own = extractPropertiesOnDemand(store, wallId);
+const inherited = extractTypePropertiesOnDemand(store, wallId)?.properties ?? [];
+
+const psets = mergeInheritedPropertySets(own, inherited);
+```
+
+- Where both sides define the same **property** name, the occurrence wins — it is
+  the more specific definition.
+- An inherited set whose name the occurrence does not use is appended as-is.
+- If the occurrence carries several sets of one name (one per
+  `IfcRelDefinesByProperties`), the inherited properties are merged into every
+  one of them.
+- Neither argument is mutated, so cached extractor results stay reusable.
+
 ### How On-Demand Works
 
 ```mermaid

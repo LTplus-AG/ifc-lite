@@ -265,6 +265,51 @@ describe('conflictPredicate: spatial conflicts', () => {
 });
 
 /* ------------------------------------------------------------------ */
+/* The ablation knob (G4 review item 6)                                  */
+/* ------------------------------------------------------------------ */
+
+describe("conflictPredicate: spatialRule: 'disabled' (the B4.2 ablation)", () => {
+  it('drops the spatial half: overlapping regions on structurally disjoint ops no longer conflict', async () => {
+    const dag = buildFixedDag();
+    await dag.build();
+    const fpA = computeFootprint(dag, geometryEdit('opA', ['meshA'], { min: [0, 0, 0], max: [2, 2, 2] }));
+    const fpB = computeFootprint(dag, geometryEdit('opB', ['meshC'], { min: [1, 1, 1], max: [3, 3, 3] }));
+
+    const enabled = conflictPredicate(fpA, fpB, { epsilonMm: 0 });
+    expect(enabled.spatial).toBe(true);
+    expect(enabled.conflict).toBe(true);
+
+    const ablated = conflictPredicate(fpA, fpB, { epsilonMm: 0, spatialRule: 'disabled' });
+    expect(ablated.spatial).toBe(false);
+    expect(ablated.structural).toBe(false);
+    expect(ablated.conflict).toBe(false);
+  });
+
+  it('leaves the STRUCTURAL half untouched: only one variable changes', async () => {
+    const dag = buildFixedDag();
+    await dag.build();
+    // Two leaves of the same element: structurally conflicting, boxes far apart.
+    const fpA = computeFootprint(dag, propertyEdit('opA', ['psetX'], { min: [0, 0, 0], max: [1, 1, 1] }));
+    const fpB = computeFootprint(dag, geometryEdit('opB', ['meshA'], { min: [500, 500, 500], max: [501, 501, 501] }));
+    for (const spatialRule of ['enabled', 'disabled'] as const) {
+      const result = conflictPredicate(fpA, fpB, { spatialRule });
+      expect(result.structural).toBe(true);
+      expect(result.conflict).toBe(true);
+    }
+  });
+
+  it("defaults to 'enabled' -- the ablation is never what a caller gets by accident", async () => {
+    const dag = buildFixedDag();
+    await dag.build();
+    const fpA = computeFootprint(dag, geometryEdit('opA', ['meshA'], { min: [0, 0, 0], max: [2, 2, 2] }));
+    const fpB = computeFootprint(dag, geometryEdit('opB', ['meshC'], { min: [1, 1, 1], max: [3, 3, 3] }));
+    expect(conflictPredicate(fpA, fpB).spatial).toBe(true);
+    expect(conflictPredicate(fpA, fpB, {}).spatial).toBe(true);
+    expect(conflictPredicate(fpA, fpB, { epsilonMm: 0, spatialRule: undefined }).spatial).toBe(true);
+  });
+});
+
+/* ------------------------------------------------------------------ */
 /* Soundness invariant: structural intersection ALWAYS conflicts,        */
 /* regardless of region state (no region, disjoint region, or same).    */
 /* ------------------------------------------------------------------ */

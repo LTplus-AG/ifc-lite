@@ -49,7 +49,7 @@ findings plus one structural criticism. Status as of today:
 | Finding | Status | Detail |
 |---|---|---|
 | B2.3 (M5): exam cannot measure its claim | **CLOSED** | tier-2 exam 2026-07-25 implements all five required changes (rubric headroom proven at mean 0.847 spread 0 to 1; five validator rules held out of prompts; three budget-matched arms at k=3; 23 briefs including 3 infeasible; anti-laundering intent-fidelity multiplier), then replicated on fresh samples |
-| B2.2 (M2): answer key is publicly computable | **CONFIRMED, UNFIXED** | `benchmark/attacks/clean-twin-diff.mjs` scores an exact **1.000 aggregate on dev** through the real scorer, above both anchors; spec still `1.0.0`, integrity model unchanged (correctly parked as a maintainer decision) |
+| B2.2 (M2): answer key is publicly computable | **CONFIRMED, UNFIXED** | `benchmark/attacks/clean-twin-diff.mjs` scores an exact **1.000 aggregate on dev** through the real scorer, above both anchors; spec bumped to `1.1.0` 2026-08-01, which WITHDREW the false hidden-by-hosting claim and declared the real model (per-split salt across every RNG stream, delivered by a hosted scorer) -- but neither half is implemented, so the finding is unchanged: the answer key is still publicly computable and the reporting split still has no integrity property |
 | B2.1 (M4): spatial predicate unfalsifiable | **OPEN** | `merge-model.ts` still applies ops purely per-node; spatial-structure edits explicitly outside the v0 vocabulary; no real-trace replay |
 | B2.4 (M3): gradients never touch the kernel | **OPEN and widened** | B3.3 built more certificate infrastructure on the parametric path instead of attacking adjoints through CSG |
 | Section 3: nothing verifies against the external world | **OPEN** | every result in the program is still measured on distributions the program authored |
@@ -226,9 +226,7 @@ unchanged, the original stands.
   present**, certificate verified in a second process in under 500 ms while
   resolving under 5% of DAG nodes.
 
-<!-- numeral-ok: 169MB :: the on-disk size of the Holter Tower fixture
-     (tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc). A fact about a
-     file, recorded in tests/models/manifest.json; no bet artifact emits it. -->
+<!-- numeral-src: 169MB :: b45-m1-midterm/scorecard.json#fixtureBytes -->
 
 ### M2 world gym
 
@@ -427,7 +425,7 @@ reason.
 
 *The fix is per-claim binding, not a bigger haystack.* A second marker form
 names the artifact and JSON path a figure came from -
-`<!-- numeral-src: 899 :: b45-m1-midterm/scorecard.json#sensitivityElementGranularityClaim.verifyMs -->` -
+`<!-- numeral-src: 845.6ms :: b45-m1-midterm/scorecard.json#sensitivityElementGranularityClaim.verifyMs -->` -
 so that figure's haystack is one value and its decoy pass rate is zero. A
 binding that resolves and disagrees is a hard gate failure, and it is the only
 check in the program that can say *this sentence contradicts the field it claims
@@ -561,36 +559,59 @@ denominators, separated because this record has run them together before:
 B5.1 on real traces remains the only test that adjudicates this, which is what
 the bet's own PR says.
 
-<!-- numeral-src: 40.82%, 8.78%, 66.14%, 28.22%, 54.75%, 49, 957 :: none - B4.2 is
-     the one Phase 4 bet that commits no scorecard JSON. Its grid and its three
-     ratios are emitted to stdout by scripts/moonshot/g2-merge-soundness.mjs and
-     pinned by tests in packages/provenance on branch feat/b42-spatial-merge, so
-     no artifact in any tree backs them and no coincidental hit in the union
-     index may be allowed to look like one. Closing this gap - emitting a
-     scorecard from that script - is the cheapest remaining item in the
-     instrument-5 backlog. The grid's own small integers cannot be bound the
-     same way: a file-scoped marker on a bare digit would also block the honest
-     matches that digit has elsewhere in this document. -->
+<!-- Re-adjudicated 2026-08-01, when B4.2's artifacts joined this tree. B4.2 is
+     still the one Phase 4 bet that commits no scorecard JSON of its own, but it
+     re-blesses the B3.5 golden's act-4 battery block, and four of the seven
+     tokens below turned out to be fields in it. Asserting "no artifact in any
+     tree backs them" of those four is now false, and a negative binding is never
+     reported STALE, so the anti-rot check could not have caught it: it is
+     corrected by hand here. The three that remain blocked are the ones the
+     battery genuinely does not emit. -->
+<!-- numeral-src: 40.82% :: ci/b35-golden.json#acts.act4.data.battery.spatialFiredFalseConflictRate -->
+<!-- numeral-src: 8.78% :: ci/b35-golden.json#acts.act4.data.battery.falseConflictRate -->
+<!-- numeral-src: 49 :: ci/b35-golden.json#acts.act4.data.battery.spatialFiredFlagged -->
+<!-- numeral-src: 957 :: ci/b35-golden.json#acts.act4.data.battery.groundTruthConvergent -->
+<!-- numeral-src: 66.14%, 28.22%, 54.75% :: none - the like-for-like comparator
+     and the Wilson interval on it. These are computed from the battery's numbers
+     rather than emitted by it: they reach the record only through
+     scripts/moonshot/g2-merge-soundness.mjs stdout and the tests that pin it in
+     packages/provenance, so no artifact backs them and no coincidental hit in
+     the union index may be allowed to look like one. Emitting the three ratios
+     into a scorecard from that script is the cheapest remaining item in the
+     instrument-5 backlog. The derived-cut grid's own small integers cannot be
+     bound either way: a file-scoped marker on a bare digit would also block the
+     honest matches that digit has elsewhere in this document. -->
 
 **B4.3 Benchmark integrity v1.1 (aimed at the B2.2 finding; human decision).
 STATUS: PENDING. Nothing about it is closed.**
-Choose one of the three documented options and implement it. Recommendation, for
-the record and subject to the betting table: **hosted episode bytes for test,
-dev left open and explicitly labelled attackable-by-design, with
-`clean-twin-diff` cited in the spec as the reason.** This preserves local
-iteration, stops the spec claiming an integrity property it does not have, and
-defers the salt decision until a hosted scorer exists.
+Choose one of the documented options and implement it. **The recommendation
+this section used to carry - hosted episode bytes for test, deferring the salt
+decision - is withdrawn, because it is refuted by the attack this bet exists to
+answer.** Hosting alone withholds nothing: splits are seed arithmetic over a
+public universe and `generateModel` takes no secret, so the adversary
+regenerates both the corrupted model and its clean twin locally and never
+requests the served bytes. Hosting is the DELIVERY channel a salt needs, not an
+integrity mechanism (`benchmark/attacks/README.md`; BENCHMARK.md section 1a is
+normative). What survives for a procedural corpus is a secret in the generation
+path - a per-split salt mixed into **every** RNG stream, delivered by a hosted
+scorer - or a different substrate (real models, which have no procedural twin
+to diff against, at the cost of known-by-construction truth). Spec v1.1 has
+shipped the half that needs no infrastructure: it withdraws the false claim,
+labels dev attackable-by-design, cites `clean-twin-diff` as the reason, and
+declares the salt model. NEITHER HALF OF THAT MODEL IS IMPLEMENTED, so the
+reporting split still has no integrity property and this bet is not closed.
 *Exam:* `clean-twin-diff` scores at or below the always-clean anchor on the
 reporting split; spec version bumped; the attack stays committed as a
 regression.
 *Why it is PENDING, spelled out so no reader has to infer it.* Three things must
 happen and none of them has:
 
-1. **The integrity-model decision.** Secret per-split salt versus hosted episode
-   bytes is Louis's call and has not been made. The recommendation above is a
-   recommendation, not the decision.
-2. **The implementation of whichever option is chosen**, including the spec
-   version bump.
+1. **The integrity-model decision.** Secret per-split salt versus a real-model
+   substrate is Louis's call and has not been made (hosted bytes alone is no
+   longer one of the alternatives - see above). Spec v1.1 declares the salt
+   model; declaring it is not deciding to build it.
+2. **The implementation of whichever option is chosen.** The spec version bump
+   is done; the mechanism is not.
 3. **The clean-twin check re-run against it**, i.e. `clean-twin-diff` scoring at
    or below the always-clean anchor on the reporting split rather than the 1.000
    aggregate it scores today.
@@ -620,7 +641,7 @@ size, so a bigger model makes it easier; clause 3 would need one wall edit to
 recompute >25,058 nodes to fail. Do not quote "PASS on all three clauses" as
 three independent results. The pass also holds only for a **storey-granularity**
 claim: at element granularity, which is the shape the M1 *final* exam's
-region-scoped permission actually needs, both clauses FAIL (24.27%, 899 ms).
+region-scoped permission actually needs, both clauses FAIL (24.27%, 845.6 ms).
 That row belongs in B6.1's risk register.
 
 *Addendum 2026-07-29, and it cuts against the review.* The review's other B4.5
@@ -647,17 +668,23 @@ It is committed now. Recorded here rather than by editing the dated review.
 
 *(Corrected 2026-07-29: this sentence read "907 ms" against a committed
 `scripts/moonshot/b45-m1-midterm/scorecard.json` whose
-`sensitivityElementGranularityClaim.verifyMs` is 899. The wrong figure was
+`sensitivityElementGranularityClaim.verifyMs` was then 899. The wrong figure was
 introduced by the commit remediating the previous round of wrong figures, in a
 document the numeral checker could not then see - which is why its search root
-now covers `docs/vision/**`. What that gate is and is not worth is quoted with
-the lane's step E9 above; the figure below is bound per-claim to the field it
-comes from rather than left to the union index.)*
+now covers `docs/vision/**`. Corrected again 2026-08-01: B4.5 re-blessed that
+scorecard when its verifier was fixed, moving the field to 845.6, and the
+binding below is what caught the entry above still quoting the old value. What
+that gate is and is not worth is quoted with the lane's step E9 above; the
+figure is bound per-claim to the field it comes from rather than left to the
+union index, which is the only reason a re-bless three days later could not
+leave this sentence quietly wrong.)*
 
-<!-- numeral-src: 899ms, 899 :: b45-m1-midterm/scorecard.json#sensitivityElementGranularityClaim.verifyMs -->
-<!-- numeral-src: 907ms :: none - quoted only in order to retract it. It is the
-     figure this correction removes, and a coincidental hit in the union index
-     must not be allowed to vindicate it. -->
+<!-- numeral-src: 845.6ms :: b45-m1-midterm/scorecard.json#sensitivityElementGranularityClaim.verifyMs -->
+<!-- numeral-src: 907ms, 899 :: none - quoted only in order to retract them: 907
+     is the figure this correction removed, and 899 is what the bound field held
+     before the 2026-08-01 re-bless moved it to 845.6. Neither is emitted by
+     anything in this tree, and a coincidental hit in the union index must not
+     be allowed to vindicate either. -->
 
 *Exam:* under 500 ms verification, under 5% of nodes resolved, over 90% cache
 hits on single-wall recompute, with real mesh leaves present throughout.
@@ -1060,7 +1087,8 @@ In order:
    the gate's docs PR by the repo-owner account, so this merge is what converts
    amendments 6 to 8 from proposed to signed. Nothing downstream of them is
    settled until it happens, and no agent can perform or fake it.
-2. **B4.3 decision.** Secret per-split salt versus hosted episode bytes. One
+2. **B4.3 decision.** Secret per-split salt versus a real-model substrate
+   (hosted bytes alone denies nothing - B4.3). One
    paragraph from you, then the implementation and the clean-twin re-check.
    Blocking Phase 6, and B2.2 stays CONFIRMED, UNFIXED until all three are done.
 3. **Phase 5's external-data prerequisites**, which are lead-time items and not

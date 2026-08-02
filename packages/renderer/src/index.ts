@@ -2407,10 +2407,6 @@ export class Renderer {
                 const texturedMeshes = this.scene.getTexturedMeshes();
                 if (texturedMeshes.length > 0) {
                     pass.setPipeline(this.pipeline.getTexturedPipeline());
-                    // Textured meshes carry absolute (origin-0) positions, so the
-                    // model translation must be identity here — reset the column
-                    // that renderBatch left set to the last opaque batch's origin.
-                    tpl[28] = 0; tpl[29] = 0; tpl[30] = 0;
                     for (const tm of texturedMeshes) {
                         // Honour hide/isolate — textured meshes bypass the batch
                         // visibility filtering above, so apply it per-mesh here or
@@ -2435,6 +2431,16 @@ export class Renderer {
                         // batch overlay paint pass doesn't iterate textured meshes,
                         // so applying the override here is what recolours them.
                         const txOverride = colorOverrides?.get(tm.expressId);
+                        // `world = origin + position`: the vertex buffer stores
+                        // positions in this mesh's per-element local frame, so the
+                        // model translation carries the world magnitude (#1973).
+                        // Per mesh, which also overwrites the column renderBatch
+                        // left set to the last opaque batch's origin. This used to
+                        // be hoisted out of the loop and hard-zeroed — right only
+                        // for the orphan type-geometry path (origin == 0), and it
+                        // drew every textured occurrence collapsed toward the
+                        // world origin.
+                        tpl[28] = tm.origin[0]; tpl[29] = tm.origin[1]; tpl[30] = tm.origin[2];
                         tpl[32] = txOverride ? txOverride[0] : tm.color[0];
                         tpl[33] = txOverride ? txOverride[1] : tm.color[1];
                         tpl[34] = txOverride ? txOverride[2] : tm.color[2];

@@ -12,9 +12,19 @@
  * `../generator.mjs#generateModel(seed, 'auto', { corruptRate: CORRUPT_RATE })`.
  * That is a deliberate design decision: test-split labels are never
  * distributed as data, because distributing them is pointless when anyone
- * with this repo can regenerate them. The benchmark's integrity story is
- * therefore "hidden-by-hosting" (a hosted leaderboard scores test
- * submissions server-side; the human track), not "hidden-by-secrecy".
+ * with this repo can regenerate them.
+ *
+ * v1.1 WITHDREW the "hidden-by-hosting" integrity story this file used to
+ * assert. It was false, and the two lines above are the reason: if splits are
+ * defined by arithmetic over a public seed universe and the generator takes no
+ * secret, then hosting the bytes withholds nothing -- the attacker regenerates
+ * both the corrupted model and its clean twin locally and diffs them
+ * (`attacks/clean-twin-diff.mjs`, an exact 1.000 aggregate through the real
+ * scorer). The reporting split's integrity model is now
+ * hidden-by-secret-salt-delivered-by-hosting, and NEITHER HALF IS IMPLEMENTED:
+ * until the scoring service exists, test carries no integrity property at all
+ * and its rows are self-reported. See BENCHMARK.md section 1a, which is
+ * normative for this; do not restate the claim here.
  *
  * Bump SPEC_VERSION whenever any of: the constants below, the generator's
  * byte output for any in-universe seed, the task set, or the scoring math
@@ -23,7 +33,7 @@
  */
 
 export const BENCHMARK_NAME = 'ifc-lite-world-gym';
-export const SPEC_VERSION = '1.0.0';
+export const SPEC_VERSION = '1.1.0';
 
 /** Seed universe: the benchmark is exactly seeds 0..UNIVERSE_SIZE-1. */
 export const UNIVERSE_SIZE = 10_000;

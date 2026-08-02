@@ -1,15 +1,35 @@
-# World Gym Benchmark - spec v1.0.0
+# World Gym Benchmark - spec v1.1.0
 
 The public benchmark face of the M2 World Gym (docs/vision/moonshots-execution-plan.md,
 B2.2). One sentence: given procedurally generated IFC building models with
 known-by-construction ground truth, score a system on detecting planted
 defects, estimating quantities, and triaging models by severity - with the
 answer key regenerable by anyone from seed arithmetic, and reference
-baselines anchoring the leaderboard.
+baselines anchoring the leaderboard. That regenerability is the benchmark's
+design premise and also, on the reporting split, its open integrity problem --
+see section 1a before quoting a test score.
 
-Version: `1.0.0` (`specVersion` in every submission and leaderboard row).
+Version: `1.1.0` (`specVersion` in every submission and leaderboard row).
 Any change to the constants, the generator's byte output, the task set, or
-the scoring math bumps the version; rows across versions are not comparable.
+the scoring math bumps the version, and rows produced under versions that
+differ in any of those are not numerically comparable. A version may also bump
+without touching any of them, and v1.1.0 is exactly that case: it changes no
+constant, no byte output, no task and no scoring math, only what the spec
+claims a test row is worth - it withdraws a false integrity claim and states
+the real one (section 1a). So comparability splits in two here, and the two
+halves must not be conflated:
+
+- **numerically comparable: yes.** Same seed universe, same bytes, same tasks,
+  same scoring math, so a v1.0 score and a v1.1 score measure the same thing
+  and may be read side by side.
+- **comparable in trust: no.** A v1.0 *test* row was reported under a claimed
+  integrity property that did not exist (section 1a); a v1.1 test row is
+  reported as self-reported, with no integrity property claimed at all. The
+  numbers line up; what they are worth does not, and no later version can
+  retroactively give a v1.0 test row the trust its version asserted.
+
+Dev rows are untouched by the second point: dev carried no integrity claim
+under either version and still carries none.
 
 ## 1. Model universe and splits
 
@@ -30,20 +50,63 @@ Splits are defined by seed arithmetic, nothing else:
 
 There is no dataset download. A model, its bytes, its planted defects, its
 quantities - all are pure functions of the seed (see the determinism section
-of `../README.md`). **Test labels are regenerable-by-seed, not distributed:**
-we do not publish an answer-key file for any split, because with an open
-generator such a file would be security theater - anyone can regenerate it.
-The test split's integrity model is therefore explicitly *hidden-by-hosting*,
-not hidden-by-secrecy:
+of `../README.md`). We do not publish an answer-key file for any split,
+because while the generator is unsalted - which is every split today, see
+section 1a - such a file would be security theater: anyone can regenerate it.
+Read "anyone can regenerate it" as scoped to that unsalted state. Once the
+reporting split is salted its answer key stops being regenerable by anyone,
+and it stays unpublished for the opposite reason: it is then held by the
+hosted scorer and publishing it would destroy the property.
 
-- dev is the public iteration split: score yourself locally as often as you
-  like (`score.mjs --split dev`).
-- test is the reporting split: honest actors run `score.mjs --split test`
-  once and report; a hosted leaderboard (human track, not yet live) scores
-  test submissions server-side and is the only test channel that carries
-  trust against adversaries. Until it exists, test rows are self-reported and
-  the leaderboard says so.
-- train is where systems may learn; training on dev/test seeds is
+### 1a. Integrity model (v1.1). Read this before quoting a score.
+
+**v1.0 claimed the test split was "hidden-by-hosting". That claim was false and
+is withdrawn.** `attacks/clean-twin-diff.mjs` scores an exact **1.000 aggregate**
+through the real scorer, above all three committed anchors, while reading only
+`model.content` and touching no answer-key field. The attack is not a rule
+violation; it is a consequence of the design:
+
+- splits are defined by seed arithmetic alone (`seed % 10`), so **every test
+  seed is public** - there is no seed list to withhold;
+- `generateModel(seed, family, opts)` takes **no secret**, so anyone can
+  regenerate any model;
+- corruption is drawn from its own `${seed}:corrupt` RNG stream, independent of
+  the family and param streams, so `corruptRate: 0` yields a byte-identical
+  **clean twin** and a line diff isolates every planted defect exactly.
+
+Hosting the episode bytes does not fix this, and it is worth being explicit
+about why, because it is the intuitive fix: the attacker never needed the bytes.
+Knowing the seed and owning the generator, they produce both twins locally. A
+hosted server withholds only what is freely reconstructible.
+
+**What actually closes it is a secret that enters generation.** v1.1 therefore
+declares the reporting split's integrity model as *hidden-by-secret-salt,
+delivered by hosting*, and the two halves are not alternatives:
+
+1. a per-split salt, held only by the scoring service, mixed into **every** RNG
+   stream - `family`, `params` and `corrupt`. Salting only the corruption stream
+   is insufficient: the clean twin stays computable and diffs against the served
+   bytes. The salt is rotatable per split, so a leak is a dated, recoverable
+   event rather than a silent permanent one;
+2. a hosted scorer to deliver the salted bytes, since a submitter who cannot
+   regenerate the split must receive it. This is the same server B6.2 requires,
+   not a second mechanism.
+
+**Status, stated so no reader has to infer it: neither half is implemented.**
+Until the scorer exists, the reporting split has *no* integrity property, test
+rows are self-reported, and the leaderboard says so. `clean-twin-diff` stays
+committed as a regression and the exam clause is that it scores at or below the
+always-clean anchor on the reporting split - a clause that can only be run once
+hosting exists.
+
+- **dev is open and attackable by design.** Score yourself locally as often as
+  you like (`score.mjs --split dev`). `clean-twin-diff` works on dev and will
+  keep working; that is deliberate, and dev numbers carry no integrity claim
+  whatsoever.
+- **test is the reporting split.** Today: self-reported, no integrity property,
+  see above. After the scorer: salted and server-side, the only channel that
+  carries trust against an adversary.
+- **train is where systems may learn**; training on dev/test seeds is
   contamination and disqualifies a row (enforceable only for hosted rows).
 
 ## 2. Tasks
@@ -101,7 +164,7 @@ One JSONL file. First line is a header, then one line per seed of the split
 (any order, every seed exactly once):
 
 ```jsonl
-{"type":"header","benchmark":"ifc-lite-world-gym","specVersion":"1.0.0","split":"dev","name":"my-method","tasks":["defect-detection","quantity-estimation","validity-triage"]}
+{"type":"header","benchmark":"ifc-lite-world-gym","specVersion":"1.1.0","split":"dev","name":"my-method","tasks":["defect-detection","quantity-estimation","validity-triage"]}
 {"seed":8,"defects":{"clash-pair":false,"degenerate-geometry":false,"duplicate-globalid":false,"missing-site":false,"multiple-project":false,"dangling-ref":false,"missing-quantities":false},"quantities":{"wallGrossVolume":44.7,"slabGrossVolume":35.2,"columnGrossVolume":0,"beamGrossVolume":0,"roomNetFloorArea":122.1},"triage":0}
 ```
 
@@ -130,10 +193,16 @@ submission in, byte-identical row out.
    the `oracle-kernel` baseline does, and beating it is the point.
 2. Training/tuning on `train` seeds is expected; any use of dev/test seed
    ground truth during training is contamination.
-3. Report the spec version with every row. Rows across versions never share
-   a leaderboard.
-4. Self-reported test rows must state "self-reported"; hosted scoring
-   (human track) is the trusted channel.
+3. Report the spec version with every row. Rows never share a leaderboard
+   across versions that differ in seed universe, byte output, task set or
+   scoring math. v1.0 and v1.1 differ in none of those and are the one
+   documented exception (see the version note at the top of this file) -
+   which is why the committed anchor rows still read `1.0.0`. The integrity
+   claim never carries across a version, exception or not.
+4. Self-reported test rows must state "self-reported", and today every test
+   row is one. The trusted channel is hosted scoring over a SALTED split
+   (human track); it does not exist yet, and hosting without the salt would
+   not be one - see section 1a.
 
 ## 5. Reference baselines (leaderboard anchors)
 
@@ -147,6 +216,14 @@ external numbers interpretable:
   geometry kernel, no schema engine.
 - **oracle-kernel**: the kernel's own in-process schema/clash/quantity
   checks mapped to verdicts - the oracle-ish upper bound.
+
+The committed rows under `results/` carry `"specVersion": "1.0.0"` and keep
+it. That is the version they were produced and scored under, and rewriting the
+field would assert a scoring run that never happened. They remain the valid
+anchors for a v1.1 number: the only non-comment change v1.1 makes to any file
+under `benchmark/` is the `SPEC_VERSION` constant itself, so re-running
+`baselines.mjs` emits the same values with `1.1.0` in that field. They are dev
+rows, so nothing about the withdrawn test-split claim attaches to them.
 
 Two honest and load-bearing observations from the dev-split anchors
 (numbers in `results/leaderboard-dev.json`):

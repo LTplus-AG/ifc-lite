@@ -4,6 +4,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { NAMESPACE_SCHEMAS, type MethodPlacementKind } from '@ifc-lite/sandbox/schema';
 import { validateScriptPreflight, validateScriptPreflightDetailed } from './script-preflight.js';
 
 test('preflight accepts valid dedicated create methods', () => {
@@ -59,7 +60,7 @@ bim.create.addIfcWindow(h, s0, {
 });
 `;
   const errors = validateScriptPreflight(code);
-  assert.ok(errors.some((error) => error.includes('world-aligned standalone window')));
+  assert.ok(errors.some((error) => error.includes('standalone axis-aligned window')));
   assert.ok(errors.some((error) => error.includes('addIfcWallWindow')));
 });
 
@@ -214,6 +215,121 @@ for (let i = 0; i < storeyCount; i++) {
 `;
   const errors = validateScriptPreflight(code);
   assert.ok(!errors.some((error) => error.includes('Storey elevation applied twice')));
+});
+
+// ── Elevation-doubling guard: coverage and evidence ────────────────────────
+//
+// The guard derives its constructor list from the bridge schema, so this test
+// derives its cases the same way: a constructor converted to storey placement
+// without the check seeing it fails here rather than shipping silently.
+
+const ELEVATION_FRAMES = new Set<MethodPlacementKind>(['storey-relative', 'explicit-placement', 'wall-local']);
+
+function elevationSensitiveMethodNames(): string[] {
+  const createNamespace = NAMESPACE_SCHEMAS.find((schema) => schema.name === 'create');
+  assert.ok(createNamespace, 'create namespace must exist in the bridge schema');
+  return createNamespace.methods
+    .filter((method) => method.llmSemantics?.placement && ELEVATION_FRAMES.has(method.llmSemantics.placement))
+    .map((method) => method.name);
+}
+
+/** Every coordinate key the guard probes, so one template fits every method. */
+function storeyLoopCall(methodName: string, z: string): string {
+  return `
+const h = bim.create.project({ Name: "Tower" });
+const storeyCount = 3;
+for (let i = 0; i < storeyCount; i++) {
+  const elevation = i * 3.5;
+  const storey = bim.create.addIfcBuildingStorey(h, { Name: "Level " + i, Elevation: elevation });
+  bim.create.${methodName}(h, storey, {
+    Position: [0, 0, ${z}],
+    Start: [0, 0, ${z}],
+    End: [5, 0, ${z}],
+    Placement: { Location: [0, 0, ${z}] },
+  });
+}
+`;
+}
+
+function doubledElevationMethods(code: string): string[] {
+  return validateScriptPreflightDetailed(code)
+    .filter((diagnostic) => diagnostic.data?.failureKind === 'storey_elevation_double_applied')
+    .map((diagnostic) => String(diagnostic.data?.methodName));
+}
+
+test('elevation guard flags the doubling pattern for every storey-anchored constructor', () => {
+  const methods = elevationSensitiveMethodNames();
+  // 27 storey-relative + addElement + the two wall-hosted inserts.
+  assert.ok(methods.length >= 30, `expected the full converted set, got ${methods.length}`);
+
+  for (const methodName of methods) {
+    assert.ok(
+      doubledElevationMethods(storeyLoopCall(methodName, 'elevation')).includes(methodName),
+      `${methodName} must flag a Z that repeats the storey elevation`,
+    );
+  }
+});
+
+test('elevation guard stays silent on storey-relative Z for every storey-anchored constructor', () => {
+  for (const methodName of elevationSensitiveMethodNames()) {
+    assert.ok(
+      !doubledElevationMethods(storeyLoopCall(methodName, '0')).includes(methodName),
+      `${methodName} must accept a storey-relative Z`,
+    );
+  }
+});
+
+test('elevation guard does not reject a local offset that merely looks like an elevation name', () => {
+  for (const name of ['baseZ', 'levelZ', 'storeyZ']) {
+    const code = `
+const h = bim.create.project({ Name: "Tower" });
+const storeyCount = 3;
+for (let i = 0; i < storeyCount; i++) {
+  const storey = bim.create.addIfcBuildingStorey(h, { Name: "Level " + i, Elevation: i * 3.5 });
+  const ${name} = 0.5;
+  bim.create.addIfcWall(h, storey, { Start: [0, 0, ${name}], End: [5, 0, ${name}], Thickness: 0.2, Height: 3 });
+}
+`;
+    assert.deepEqual(doubledElevationMethods(code), [], `\`const ${name} = 0.5\` is a local offset, not the storey datum`);
+  }
+});
+
+test('elevation guard follows the declaration, not just the spelling of the Z variable', () => {
+  const code = `
+const h = bim.create.project({ Name: "Tower" });
+const storeyCount = 3;
+for (let i = 0; i < storeyCount; i++) {
+  const elevation = i * 3.5;
+  const storey = bim.create.addIfcBuildingStorey(h, { Name: "Level " + i, Elevation: elevation });
+  const e = elevation;
+  bim.create.addIfcWall(h, storey, { Start: [0, 0, e], End: [5, 0, e], Thickness: 0.2, Height: 3 });
+}
+`;
+  assert.deepEqual(doubledElevationMethods(code), ['addIfcWall']);
+});
+
+test('elevation guard matches the storey Elevation expression even when nothing is named "elevation"', () => {
+  const code = `
+const h = bim.create.project({ Name: "Tower" });
+const storeyCount = 3;
+for (let i = 0; i < storeyCount; i++) {
+  const storey = bim.create.addIfcBuildingStorey(h, { Name: "Level " + i, Elevation: i * 3.5 });
+  bim.create.addIfcSlab(h, storey, { Position: [0, 0, i * 3.5], Width: 5, Depth: 5, Thickness: 0.3 });
+}
+`;
+  assert.deepEqual(doubledElevationMethods(code), ['addIfcSlab']);
+});
+
+test('elevation guard treats a literal Elevation as a coincidence, not as evidence', () => {
+  const code = `
+const h = bim.create.project({ Name: "Tower" });
+const storeyCount = 3;
+for (let i = 0; i < storeyCount; i++) {
+  const storey = bim.create.addIfcBuildingStorey(h, { Name: "Level " + i, Elevation: 0 });
+  bim.create.addIfcWall(h, storey, { Start: [0, 0, 0], End: [5, 0, 0], Thickness: 0.2, Height: 3 });
+}
+`;
+  assert.deepEqual(doubledElevationMethods(code), []);
 });
 
 test('preflight warns when material is queried via property sets', () => {

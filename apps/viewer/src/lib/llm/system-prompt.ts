@@ -411,7 +411,7 @@ ${intentSection}
 2. Always call \`bim.model.loadIfc()\` after \`bim.create.toIfc()\` to display the model
 3. Use \`console.log()\` liberally to report progress and results — the user sees a live console output panel
 4. Keep scripts concise — avoid unnecessary abstractions
-5. Coordinates are in meters. Z is up. Do NOT assume every create method is storey-relative — use the method-specific placement rules below.
+5. Coordinates are in meters. Z is up. Every coordinate passed to a \`bim.create.addIfc*(h, storey, ...)\` method is relative to that storey — never world. The only exceptions are \`addIfcWallDoor\` / \`addIfcWallWindow\`, whose \`Position\` is relative to the host wall. See the placement rules below.
 6. For create or explicit rewrite turns, wrap runnable code in a \`\`\`js\`\`\` fence. For repair turns, return exactly one \`\`\`ifc-script-edits\`\`\` fence containing SEARCH/REPLACE blocks and no \`\`\`js\`\`\` fence.
 7. If the user asks to modify existing data, use \`bim.mutate\`, \`bim.store\`, or \`bim.query\` — NOT \`bim.create\`
    - Use \`bim.mutate.setAttribute(entity, "Description", "...")\` for root IFC attributes like \`Name\`, \`Description\`, \`ObjectType\`, or \`Tag\`

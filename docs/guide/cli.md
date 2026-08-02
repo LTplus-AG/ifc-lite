@@ -530,6 +530,10 @@ ifc-lite clash model.ifc --matrix --bcf clashes.bcfzip
 
 Generate IFC building elements from CLI flags or JSON input. Supports **29 element types** with property sets, quantities, materials, and colors.
 
+> **Coordinates are storey-relative.** `--position`, `--start`, and `--end` are passed through unchanged to `@ifc-lite/create`, and every element is placed against the storey created by `--storey` / `--elevation`. The storey placement is what applies `--elevation`, exactly once — so an element standing on the floor of a storey created with `--elevation 3` takes `Z = 0`, not `Z = 3`.
+>
+> **Changed in `@ifc-lite/create` 2.0.0.** 21 of the 28 element types previously read these flags as world coordinates while the other 7 were already storey-relative, so a nonzero `--elevation` put them on two different datums. They are now uniformly storey-relative. If you were compensating by adding the elevation into `--position` / `--start` / `--end` yourself, drop it — otherwise the element lands at twice the elevation. Nothing changes when `--elevation` is `0` or omitted (the default).
+
 ```bash
 # Basic elements
 ifc-lite create wall --start 0,0,0 --end 5,0,0 --height 3 --thickness 0.2 --out wall.ifc

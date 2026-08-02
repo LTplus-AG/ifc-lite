@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { NAMESPACE_SCHEMAS } from '@ifc-lite/sandbox/schema';
+import { NAMESPACE_SCHEMAS, type MethodPlacementKind } from '@ifc-lite/sandbox/schema';
 import {
   createPreflightDiagnostic,
   formatDiagnosticsForDisplay,
@@ -822,8 +822,8 @@ function validateWallHostedOpeningDiagnostics(code: string): PreflightScriptDiag
 
   const diagnostics: PreflightScriptDiagnostic[] = [];
   const methodMessages = {
-    addIfcWindow: 'Suspicious pattern: `bim.create.addIfcWindow(...)` is being used alongside walls, but no wall `Openings` are defined. `addIfcWindow(...)` creates a world-aligned standalone window and will not auto-align or host into a wall. For wall-hosted inserts, use `bim.create.addIfcWallWindow(...)` or `Openings` on `bim.create.addIfcWall(...)`.',
-    addIfcDoor: 'Suspicious pattern: `bim.create.addIfcDoor(...)` is being used alongside walls, but no wall `Openings` are defined. `addIfcDoor(...)` creates a world-aligned standalone door and will not auto-align or host into a wall. For wall-hosted inserts, use `bim.create.addIfcWallDoor(...)` or `Openings` on `bim.create.addIfcWall(...)`.',
+    addIfcWindow: 'Suspicious pattern: `bim.create.addIfcWindow(...)` is being used alongside walls, but no wall `Openings` are defined. `addIfcWindow(...)` creates a standalone axis-aligned window and will not auto-align or host into a wall. For wall-hosted inserts, use `bim.create.addIfcWallWindow(...)` or `Openings` on `bim.create.addIfcWall(...)`.',
+    addIfcDoor: 'Suspicious pattern: `bim.create.addIfcDoor(...)` is being used alongside walls, but no wall `Openings` are defined. `addIfcDoor(...)` creates a standalone axis-aligned door and will not auto-align or host into a wall. For wall-hosted inserts, use `bim.create.addIfcWallDoor(...)` or `Openings` on `bim.create.addIfcWall(...)`.',
   } satisfies Record<'addIfcWindow' | 'addIfcDoor', string>;
 
   for (const methodName of Object.keys(methodMessages) as Array<'addIfcWindow' | 'addIfcDoor'>) {
@@ -867,13 +867,141 @@ function looksLikeMultiStoreyScript(code: string): boolean {
 }
 
 /**
- * Names that unambiguously hold the storey elevation. Deliberately does NOT
- * include a bare `z`: `Position: [x, y, z]` is the most ordinary line in a
- * generated script and flagging it would make this check noise.
+ * Names that can only mean the storey elevation. Spelling alone is proof for
+ * these, so no further evidence is required. Deliberately does NOT include a
+ * bare `z`: `Position: [x, y, z]` is the most ordinary line in a generated
+ * script and flagging it would make this check noise.
  */
-function mentionsElevationSignal(value: string): boolean {
-  return /\b(elevation|storeyElevation|levelElevation|baseZ|levelZ|storeyZ)\b/i.test(value);
+const UNAMBIGUOUS_ELEVATION_NAMES = /\b(elevation|storeyElevation|levelElevation)\b/i;
+
+/**
+ * Names that USUALLY mean the storey elevation but legitimately mean a local
+ * offset too (`const baseZ = 0.5`). These need corroborating evidence from the
+ * declaration before they are treated as the elevation.
+ */
+const AMBIGUOUS_ELEVATION_NAMES = /\b(baseZ|levelZ|storeyZ)\b/i;
+
+/** A Z expression that is just a number carries no elevation, whatever it is called. */
+function isNumericLiteralExpression(value: string): boolean {
+  return /^-?\d+(\.\d+)?(e-?\d+)?$/i.test(value.trim());
 }
+
+/**
+ * `const|let|var <name> = <init>` for every simple declaration in the script.
+ * One level deep on purpose — see `validateStoreyElevationDoubling`.
+ */
+function collectSimpleInitializers(code: string): Map<string, string> {
+  const initializers = new Map<string, string>();
+  const declRegex = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([^;\n]+)/g;
+  let match: RegExpExecArray | null;
+  while ((match = declRegex.exec(code)) !== null) {
+    // A name reassigned later is not something one initializer can vouch for.
+    if (initializers.has(match[1])) {
+      initializers.set(match[1], '');
+      continue;
+    }
+    initializers.set(match[1], match[2].trim());
+  }
+  return initializers;
+}
+
+/**
+ * The exact expressions handed to `addIfcBuildingStorey({ Elevation: … })`.
+ * Numeric literals are excluded: `Elevation: 0` next to `Position: [0, 0, 0]`
+ * is a textual coincidence, not a data-flow fact.
+ */
+function collectStoreyElevationExpressions(code: string): Set<string> {
+  const expressions = new Set<string>();
+  for (const body of getObjectBodiesForMethod(code, 'addIfcBuildingStorey')) {
+    const value = findPropertyValue(body, 'Elevation');
+    if (!value) continue;
+    const trimmed = value.trim();
+    if (!trimmed || isNumericLiteralExpression(trimmed)) continue;
+    expressions.add(trimmed);
+  }
+  return expressions;
+}
+
+interface ElevationEvidence {
+  initializers: Map<string, string>;
+  storeyElevationExpressions: Set<string>;
+}
+
+/**
+ * Does this Z expression carry the storey elevation?
+ *
+ * Three independent kinds of evidence, in increasing order of how much work
+ * they do:
+ *
+ *  1. The expression itself is spelled with an unambiguous elevation word.
+ *  2. The expression is textually the same non-literal expression the script
+ *     passed as the storey's own `Elevation`. This is the data-flow fact, not
+ *     a name: `Elevation: i * 3.5` + `Position: [0, 0, i * 3.5]` is caught even
+ *     though nothing in it is called "elevation".
+ *  3. An identifier in the expression is DECLARED from something matching (1)
+ *     or (2). This catches `const e = storeyElevation; …, e]` — an ordinary
+ *     name that holds the elevation — and, in the other direction, it is what
+ *     lets `const baseZ = 0.5` NOT be flagged: an ambiguous name resolving to a
+ *     plain number is a local offset, not the storey datum.
+ */
+function carriesStoreyElevation(value: string, evidence: ElevationEvidence): boolean {
+  const expression = value.trim();
+  if (!expression || isNumericLiteralExpression(expression)) return false;
+  if (UNAMBIGUOUS_ELEVATION_NAMES.test(expression)) return true;
+  if (evidence.storeyElevationExpressions.has(expression)) return true;
+
+  for (const identifier of expression.match(/[A-Za-z_$][\w$]*/g) ?? []) {
+    const initializer = evidence.initializers.get(identifier);
+    if (initializer === undefined || initializer === '') continue;
+    if (isNumericLiteralExpression(initializer)) continue;
+    if (UNAMBIGUOUS_ELEVATION_NAMES.test(initializer)) return true;
+    if (evidence.storeyElevationExpressions.has(initializer)) return true;
+  }
+
+  // Last resort: an ambiguous name with no declaration in the script at all.
+  // Nothing contradicts it, and the doubling it would cause is silent.
+  return AMBIGUOUS_ELEVATION_NAMES.test(expression)
+    && (expression.match(/[A-Za-z_$][\w$]*/g) ?? []).every((id) => !evidence.initializers.has(id));
+}
+
+/** Coordinate keys probed when a method declares no point contract of its own. */
+const DEFAULT_ELEVATION_Z_KEYS = ['Position', 'Start', 'End', 'Location'];
+
+/**
+ * Every create method whose coordinates resolve against the storey, with the
+ * keys that hold a Z. Derived from the bridge schema rather than hand-listed so
+ * a constructor cannot be converted to storey placement without this check
+ * seeing it. `explicit-placement` (`addElement`) is included because its
+ * `Placement.Location` is resolved against the storey too, and `wall-local`
+ * because a wall-hosted insert inherits the storey datum through its host.
+ */
+function buildElevationSensitiveMethods(): Array<{ methodName: string; keys: string[] }> {
+  const createNamespace = NAMESPACE_SCHEMAS.find((schema) => schema.name === 'create');
+  if (!createNamespace) return [];
+
+  const frames = new Set<MethodPlacementKind>(['storey-relative', 'explicit-placement', 'wall-local']);
+  const checks: Array<{ methodName: string; keys: string[] }> = [];
+
+  for (const method of createNamespace.methods) {
+    const semantics = method.llmSemantics;
+    if (!semantics?.placement || !frames.has(semantics.placement)) continue;
+
+    const declared = new Set<string>();
+    for (const [key, arity] of Object.entries(semantics.pointArity ?? {})) {
+      if (arity >= 3) declared.add(key);
+    }
+    for (const key of semantics.axisPair ?? []) declared.add(key);
+
+    checks.push({
+      methodName: method.name,
+      keys: declared.size > 0 ? [...declared] : DEFAULT_ELEVATION_Z_KEYS,
+    });
+  }
+
+  return checks;
+}
+
+const ELEVATION_SENSITIVE_METHODS = buildElevationSensitiveMethods();
 
 /**
  * The storey elevation applied TWICE.
@@ -886,30 +1014,26 @@ function mentionsElevationSignal(value: string): boolean {
  * is worth a preflight error rather than a warning.
  *
  * (This check used to assert the OPPOSITE — `@ifc-lite/create` placed a handful
- * of constructors against the world until 1.18.0, so the advice then was to add
+ * of constructors against the world until 2.0.0, so the advice then was to add
  * the elevation. Following that advice now is the bug.)
+ *
+ * KNOWN LIMITS. `carriesStoreyElevation` resolves one level of declaration and
+ * compares against the literal text of the storey's own `Elevation` expression.
+ * It is not a data-flow analysis: an elevation reaching Z through a function
+ * parameter, an array or object member, a reassignment, or two hops of aliasing
+ * is not seen. Those cases stay silent rather than being guessed at, because a
+ * false rejection aborts the whole script in `useSandbox.execute()`.
  */
 function validateStoreyElevationDoubling(code: string): PreflightScriptDiagnostic[] {
   if (!looksLikeMultiStoreyScript(code)) return [];
 
   const diagnostics: PreflightScriptDiagnostic[] = [];
-  const checks: Array<{ methodName: string; keys: string[] }> = [
-    { methodName: 'addIfcWall', keys: ['Start', 'End'] },
-    { methodName: 'addIfcSlab', keys: ['Position'] },
-    { methodName: 'addIfcColumn', keys: ['Position'] },
-    { methodName: 'addIfcBeam', keys: ['Start', 'End'] },
-    { methodName: 'addIfcCurtainWall', keys: ['Start', 'End'] },
-    { methodName: 'addIfcMember', keys: ['Start', 'End'] },
-    { methodName: 'addIfcRailing', keys: ['Start', 'End'] },
-    { methodName: 'addIfcPlate', keys: ['Position'] },
-    { methodName: 'addIfcSpace', keys: ['Position'] },
-    { methodName: 'addIfcDoor', keys: ['Position'] },
-    { methodName: 'addIfcWindow', keys: ['Position'] },
-    { methodName: 'addIfcFurnishingElement', keys: ['Position'] },
-    { methodName: 'addIfcBuildingElementProxy', keys: ['Position'] },
-  ];
+  const evidence: ElevationEvidence = {
+    initializers: collectSimpleInitializers(code),
+    storeyElevationExpressions: collectStoreyElevationExpressions(code),
+  };
 
-  for (const { methodName, keys } of checks) {
+  for (const { methodName, keys } of ELEVATION_SENSITIVE_METHODS) {
     for (const match of getMethodCalls(code, methodName)) {
       const body = getObjectBodiesForMethod(match.snippet, methodName)[0];
       if (!body) continue;
@@ -921,7 +1045,7 @@ function validateStoreyElevationDoubling(code: string): PreflightScriptDiagnosti
         .filter((value): value is string => Boolean(value));
 
       if (zValues.length === 0) continue;
-      if (!zValues.some((value) => mentionsElevationSignal(value))) continue;
+      if (!zValues.some((value) => carriesStoreyElevation(value, evidence))) continue;
 
       diagnostics.push(createPreflightDiagnostic(
         'storey_elevation_double_applied',

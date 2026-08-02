@@ -7,7 +7,7 @@
  *
  * `IfcCreator`'s element constructors all take a storey and all emit an
  * `IfcRelContainedInSpatialStructure` into it, so their `IfcLocalPlacement`
- * must chain to that storey's placement. Until 1.18.0 only seven of them did:
+ * must chain to that storey's placement. Until 2.0.0 only seven of them did:
  * `addIfcWall`, `addIfcSlab`, `addIfcColumn`, `addIfcBeam`, `addIfcStair`,
  * `addIfcRoof` and `addIfcGableRoof`. The other 21 chained to the world, so on
  * a storey with a non-zero `Elevation` a caller mixing the two families got two

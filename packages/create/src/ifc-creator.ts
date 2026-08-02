@@ -83,7 +83,7 @@ function optReal(v: number | undefined | null): string {
  * class that is chained to the world). A wall whose floor sits on a storey at
  * `Elevation: 3` is created with `Z = 0`, not `Z = 3`.
  *
- * Before 1.18.0 only `addIfcWall`, `addIfcSlab`, `addIfcColumn`, `addIfcBeam`,
+ * Before 2.0.0 only `addIfcWall`, `addIfcSlab`, `addIfcColumn`, `addIfcBeam`,
  * `addIfcStair`, `addIfcRoof` and `addIfcGableRoof` behaved this way; the other
  * 21 constructors chained to the world, so a caller mixing them on a storey
  * with a non-zero elevation got two different datums in one model.

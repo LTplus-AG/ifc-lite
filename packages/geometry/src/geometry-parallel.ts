@@ -544,6 +544,11 @@ export async function* processParallel(
           (msg as { instancedGeometryHashIds?: Uint32Array }).instancedGeometryHashIds;
         const instancedGeometryHashValues =
           (msg as { instancedGeometryHashValues?: BigUint64Array }).instancedGeometryHashValues;
+        // #1891: the world boxes for those same ids, six values per id. Travels
+        // with the ids, never on its own — an aabb array without its id array
+        // indexes nothing.
+        const instancedGeometryAabbValues =
+          (msg as { instancedGeometryAabbValues?: Float64Array }).instancedGeometryAabbValues;
         if (
           meshes.length > 0 ||
           (instancedShards && instancedShards.length > 0) ||
@@ -568,7 +573,11 @@ export async function* processParallel(
             coordinateInfo: coordinateInfo || undefined,
             ...(instancedShards && instancedShards.length > 0 ? { instancedShards } : {}),
             ...(instancedGeometryHashIds && instancedGeometryHashIds.length > 0
-              ? { instancedGeometryHashIds, instancedGeometryHashValues }
+              ? {
+                  instancedGeometryHashIds,
+                  instancedGeometryHashValues,
+                  ...(instancedGeometryAabbValues ? { instancedGeometryAabbValues } : {}),
+                }
               : {}),
           });
           wake();

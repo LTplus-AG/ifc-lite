@@ -415,7 +415,13 @@ Compare mode runs `matchUnpairedByContent` **on by default**, and the panel has 
 
 Because both sides carry `components`, the viewer sits in the stronger row of the [collision table](#hash-collisions): a colliding data hash is additionally rejected when the pset/qset content disagrees.
 
-The viewer does **not** yet supply an `aabb`. Everything the pass needs to *pair* entities is present, but nothing can separate a move from a reshape or measure a displacement, so a 1:1 pair whose geometry hash differs is reported as a bare `moved` with no distance — the engine's documented fallback.
+The viewer supplies the `aabb` too, so the positional tiers are live: a 1:1 pair whose geometry hash differs is separated into `moved` (same extent, shifted centre) or `reshaped` (different extent), with the displacement reported in metres, and a group of same-content candidates is paired by iterated mutual nearest neighbour instead of being handed back as `ambiguous`.
+
+The box comes from the same WASM mesh pass as the geometry hash (`MeshCollection.geometryAabbValues` → `MeshData.geometryAabb`), which matters for the frame contract above: it is **absolute world in the renderer's Y-up frame**, with the file's RTC offset and the per-element local-frame `origin` already folded in on the Rust side. Two revisions that chose different RTC offsets therefore report the same box, which is exactly what makes the comparison meaningful. Do not substitute a box folded from `MeshData.positions` — those are RTC- and origin-relative, and an element that moved would report as stationary.
+
+Entities that only ever appear as GPU instances never reach the flat mesh array, so their boxes ride the same instanced side-channel as their hashes and are folded in by the fingerprint builder. That is deliberate rather than incidental: an element is instanced *because* it is one of many identical copies, which is precisely the population the mutual-nearest pass exists to pair.
+
+Two cases still fall back to the engine's bare `moved`: a model restored from the viewer's geometry cache (the cache round-trips meshes, not fingerprints, so neither hash nor box survives it — Compare warns about this already), and a WASM build predating the getter.
 
 What you see when a match is found:
 

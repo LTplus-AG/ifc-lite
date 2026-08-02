@@ -27,6 +27,13 @@ import {
   type CompareRef,
 } from '@/lib/compare/buildFingerprints';
 import { contentMatchCounts, contentMatchingRan } from '@/lib/compare/contentMatches';
+import { buildAtCurrentVersion } from '@/lib/compare/versionedBuild';
+
+/** Read the live mesh-content version. A FUNCTION, not a captured number: the
+ *  whole point is to observe the value moving across an extraction's awaits, so
+ *  a caller that snapshots it once defeats the guard it feeds. */
+export const readGeometryContentVersion = (): number =>
+  useViewerStore.getState().geometryContentVersion;
 
 type Side = EntityFingerprint<CompareRef>[];
 interface BuiltPair {
@@ -36,12 +43,37 @@ interface BuiltPair {
   headName: string;
   base: Side;
   head: Side;
+  /**
+   * `geometryContentVersion` the fingerprints were extracted at (#1891).
+   *
+   * The A/B model ids are NOT enough to key this cache. Federation re-alignment
+   * re-frames vertices and their world `geometryAabb`s IN PLACE, under the same
+   * ids and the same `geometryResult` object, so fingerprints built before it
+   * carry pre-alignment boxes while the meshes carry post-alignment ones — and
+   * every move distance the engine derives from them is then measured between
+   * two coordinate frames. That store counter is bumped by exactly one caller,
+   * `realignFederation`, and only when something actually moved, so it is the
+   * precise "mesh content was mutated under you" signal this cache was missing.
+   */
+  contentVersion: number;
 }
 
-/** Are these fingerprints the ones for this A/B pair? (Compared field-wise
- *  rather than through a joined key string, so two ids can never alias.) */
-function isPairOf(built: BuiltPair, baseModelId: string, headModelId: string): boolean {
-  return built.baseModelId === baseModelId && built.headModelId === headModelId;
+/** Are these fingerprints the ones for this A/B pair, extracted from the mesh
+ *  content the store holds NOW? (Ids compared field-wise rather than through a
+ *  joined key string, so two ids can never alias.)
+ *
+ *  THE staleness predicate for the compare path — asked before a cached pair is
+ *  reused, again after the extraction's awaits, and again before a cheap
+ *  re-diff. One definition, so the three cannot drift apart. */
+export function isCurrentFor(
+  built: Pick<BuiltPair, 'baseModelId' | 'headModelId' | 'contentVersion'>,
+  baseModelId: string,
+  headModelId: string,
+  contentVersion: number,
+): boolean {
+  return built.baseModelId === baseModelId
+    && built.headModelId === headModelId
+    && built.contentVersion === contentVersion;
 }
 
 /** Canonical, order-independent signature of a blacklist so a re-render with a
@@ -165,6 +197,7 @@ export function useCompare() {
   const running = useViewerStore((s) => s.compareRunning);
   const result = useViewerStore((s) => s.compareResult);
   const error = useViewerStore((s) => s.compareError);
+  const geometryContentVersion = useViewerStore((s) => s.geometryContentVersion);
 
   // Cache the built fingerprints for the current pair so a scope / blacklist
   // change is a cheap re-diff rather than a full re-extraction.
@@ -194,6 +227,13 @@ export function useCompare() {
       store.setCompareError('Version B is not fully loaded yet.');
       return;
     }
+    // Pin the validated handles for the extraction closure below. `geometryResult`
+    // survives a re-align by IDENTITY - it is mutated in place, not replaced - so
+    // a retry re-reads the re-framed meshes through these same references.
+    const baseStore = baseModel.ifcDataStore;
+    const baseGeometry = baseModel.geometryResult;
+    const headStore = headModel.ifcDataStore;
+    const headGeometry = headModel.geometryResult;
 
     store.setCompareError(null);
     store.setCompareRunning(true);
@@ -202,30 +242,49 @@ export function useCompare() {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     try {
-      let built = builtRef.current;
-      if (!built || !isPairOf(built, baseId, headId)) {
-        built = {
+      // Reuse-if-current, extract otherwise, and re-check after the awaits.
+      // Federation re-alignment re-frames meshes IN PLACE under these very ids,
+      // so a run that started before it must not publish what it read across
+      // it - the invalidation effect below would have cleared the panel, and
+      // this run would put the stale answer straight back. Re-extracting rather
+      // than abandoning is deliberate: the user pressed Run.
+      const built = await buildAtCurrentVersion<BuiltPair>({
+        readVersion: readGeometryContentVersion,
+        cached: builtRef.current,
+        isCurrent: (candidate, version) => isCurrentFor(candidate, baseId, headId, version),
+        extract: async (contentVersion) => ({
           baseModelId: baseId,
           headModelId: headId,
+          contentVersion,
           baseName: baseModel.name,
           headName: headModel.name,
           base: await buildEntityFingerprints({
             modelId: baseId,
-            store: baseModel.ifcDataStore,
-            meshes: baseModel.geometryResult.meshes,
-            instancedGeometryHashes: baseModel.geometryResult.instancedGeometryHashes,
+            store: baseStore,
+            meshes: baseGeometry.meshes,
+            instancedGeometryHashes: baseGeometry.instancedGeometryHashes,
+            instancedGeometryAabbs: baseGeometry.instancedGeometryAabbs,
             idOffset: baseModel.idOffset,
           }),
           head: await buildEntityFingerprints({
             modelId: headId,
-            store: headModel.ifcDataStore,
-            meshes: headModel.geometryResult.meshes,
-            instancedGeometryHashes: headModel.geometryResult.instancedGeometryHashes,
+            store: headStore,
+            meshes: headGeometry.meshes,
+            instancedGeometryHashes: headGeometry.instancedGeometryHashes,
+            instancedGeometryAabbs: headGeometry.instancedGeometryAabbs,
             idOffset: headModel.idOffset,
           }),
-        };
-        builtRef.current = built;
+        }),
+      });
+      if (!built) {
+        // Never silently: `finally` clears the running flag, so returning with
+        // no message would leave the panel blank after the user pressed Run.
+        store.setCompareError(
+          'The model geometry kept changing while comparing. Run the comparison again.',
+        );
+        return;
       }
+      builtRef.current = built;
 
       // The diff options are read inside `publishCompareResult`, AFTER every
       // `await` above, and published atomically with it - see the invariant
@@ -261,6 +320,27 @@ export function useCompare() {
     }
   }, []);
 
+  // Federation re-alignment re-frames vertices and their world boxes IN PLACE
+  // (#1891), so a comparison published before it describes geometry that has
+  // since moved and the cached fingerprints hold pre-alignment boxes. Retire
+  // both. Clearing the RESULT as well as the cache is what keeps
+  // `publishCompareResult`'s invariant intact: leaving a result on screen with
+  // no usable fingerprints behind it would make the effect below early-return
+  // on an option change, and the panel would disagree with its own controls -
+  // exactly the staleness that function exists to prevent.
+  //
+  // Declared BEFORE the re-diff effect so a commit that changes both the
+  // version and an option clears first. Seeded with the mounted value so a
+  // remount is not mistaken for a bump; a re-align while this panel is
+  // unmounted leaves no cache to reuse, and `runComparison` re-extracts.
+  const lastContentVersionRef = useRef(geometryContentVersion);
+  useEffect(() => {
+    if (lastContentVersionRef.current === geometryContentVersion) return;
+    lastContentVersionRef.current = geometryContentVersion;
+    builtRef.current = null;
+    useViewerStore.getState().clearCompare();
+  }, [geometryContentVersion]);
+
   // Scope, blacklist OR content-matching change with an existing result for the
   // same pair -> re-diff from the cached fingerprints (instant). No-op when
   // nothing has been compared yet, or when none actually changed (equivalent
@@ -280,7 +360,7 @@ export function useCompare() {
   useEffect(() => {
     const built = builtRef.current;
     if (!result || !built) return;
-    if (!isPairOf(built, result.baseModelId, result.headModelId)) return;
+    if (!isCurrentFor(built, result.baseModelId, result.headModelId, geometryContentVersion)) return;
     const sameScope = result.scope === scope;
     const sameExcluded =
       excludedSignature(result.diff.excludedTypes) === excludedSignature(excludedTypes);

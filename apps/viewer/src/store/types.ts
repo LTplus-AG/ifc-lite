@@ -284,7 +284,7 @@ export interface CameraCallbacks {
 // ============================================================================
 
 import type { IfcDataStore } from '@ifc-lite/parser';
-import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
+import type { CoordinateInfo, EntityWorldAabb, GeometryResult } from '@ifc-lite/geometry';
 
 /**
  * Compound identifier for entities across multiple models.
@@ -410,6 +410,25 @@ export interface FederatedModel {
    * frame is recovered before applying the new alignment.
    */
   preAlignmentCoordinateInfo?: CoordinateInfo;
+  /**
+   * Snapshot of the per-entity world boxes (#1891) before federation alignment
+   * ran, one slot per mesh in `geometryResult.meshes` order (empty slot when
+   * that mesh carried no box). Restored alongside `preAlignmentPositions` for
+   * the same reason the normals are: alignment REPLACES each box with one in
+   * the anchor's frame, so a second re-align run against already-aligned boxes
+   * would transform them twice while the vertices started over from the
+   * snapshot — the box and its mesh would part company again, silently.
+   *
+   * References, not copies: alignment never mutates a box in place, so the
+   * snapshotted objects stay valid pre-alignment values.
+   */
+  preAlignmentGeometryAabbs?: (EntityWorldAabb | undefined)[];
+  /**
+   * Snapshot of `geometryResult.instancedGeometryAabbs` before alignment, for
+   * the same reason as `preAlignmentGeometryAabbs`. Absent when the model
+   * carried no instanced-only boxes.
+   */
+  preAlignmentInstancedGeometryAabbs?: Map<number, EntityWorldAabb>;
   /**
    * How this model was placed in the current federation:
    *   - `'anchor'`       — this model drives the world frame, no alignment

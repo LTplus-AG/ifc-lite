@@ -303,6 +303,11 @@ Why it exists: a changed geometry hash conflates *moved*, *reshaped* and
 centre is a move, a different extent is a reshape, an identical box with a
 different hash is retriangulation.
 
+`@ifc-lite/geometry` reads this for you: the box lands on `MeshData.geometryAabb`
+(and, for entities whose whole geometry went to the GPU-instanced shard, on
+`GeometryResult.instancedGeometryAabbs`). The `NaN` sentinel is resolved to
+`undefined` at that boundary, so a `geometryAabb` you hold is always a real box.
+
 #### geometryVolumeValues and geometryClosureFlags
 
 Two companions from the same pass, gated by the same

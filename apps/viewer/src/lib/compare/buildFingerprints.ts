@@ -13,6 +13,19 @@
  * compare example pioneered) and the geometry fingerprint is the RTC-invariant
  * WASM hash riding on each `MeshData.geometryHash`.
  *
+ * The `aabb` rides alongside it on `MeshData.geometryAabb`, from the same WASM
+ * pass (#1891). It is ABSOLUTE world in the renderer's Y-up frame — RTC and the
+ * per-element `origin` already folded in on the Rust side — which is what makes
+ * it comparable across two revisions that chose different RTC offsets, the
+ * frame contract `EntityFingerprint.aabb` demands. Do not add `origin` to it,
+ * and do not substitute a box folded from `MeshData.positions`: those are
+ * RTC- and origin-relative and would report a moved element as stationary.
+ *
+ * A federated model whose vertices were re-baked into the anchor's frame has
+ * had its boxes re-framed with them (`hooks/ingest/federationAlignAabb.ts`),
+ * so both sides of a compare are read in one frame no matter which of them
+ * the federation anchored on.
+ *
  * Scope: only entities that produced at least one mesh are fingerprinted —
  * the engine needs a geometry hash to detect geometry changes, and the
  * compare UI colours meshed elements in 3D. Data-only edits on those meshed
@@ -32,7 +45,7 @@ import {
   extractQuantitiesOnDemand,
   type IfcDataStore,
 } from '@ifc-lite/parser';
-import type { MeshData } from '@ifc-lite/geometry';
+import type { EntityWorldAabb, MeshData } from '@ifc-lite/geometry';
 import { isGeometricDataName } from './geometricData.js';
 
 /**
@@ -66,6 +79,15 @@ export interface BuildFingerprintsModel {
    * `idOffset === 0`.
    */
   instancedGeometryHashes?: ReadonlyMap<number, bigint>;
+  /**
+   * World boxes for those same instanced-ONLY entities (#1891). Without them
+   * the diff's positional tiers stay dark for exactly the repeated components
+   * they exist to pair — instancing removes an element from `meshes` precisely
+   * when it is one of many identical copies. Keyed by express id, like
+   * {@link instancedGeometryHashes}; a hashed entity may legitimately be absent
+   * here (the pass produced no box for it).
+   */
+  instancedGeometryAabbs?: ReadonlyMap<number, EntityWorldAabb>;
   /** This model's federation id offset (0 for the anchor / single-model load). */
   idOffset: number;
 }
@@ -83,11 +105,23 @@ export interface BuildFingerprintsModel {
 export async function buildEntityFingerprints(
   model: BuildFingerprintsModel,
 ): Promise<EntityFingerprint<CompareRef>[]> {
-  const { store, meshes, instancedGeometryHashes, idOffset, modelId } = model;
+  const {
+    store,
+    meshes,
+    instancedGeometryHashes,
+    instancedGeometryAabbs,
+    idOffset,
+    modelId,
+  } = model;
 
   // local express id → first geometry hash seen for it (may be undefined when
   // hashing was disabled or the WASM build predates it — data diff still works)
   const geometryByLocalId = new Map<number, bigint | undefined>();
+  // local express id → the entity's absolute world box (#1891). No
+  // first-wins arbitration like the hash needs: the box is per ENTITY, so every
+  // submesh of one entity carries the identical object off a single wasm pass
+  // and there is nothing for two submeshes to disagree about.
+  const aabbByLocalId = new Map<number, EntityWorldAabb>();
   for (const mesh of meshes) {
     const localId = mesh.expressId - idOffset;
     if (!geometryByLocalId.has(localId)) {
@@ -95,6 +129,7 @@ export async function buildEntityFingerprints(
     } else if (geometryByLocalId.get(localId) === undefined && mesh.geometryHash !== undefined) {
       geometryByLocalId.set(localId, mesh.geometryHash);
     }
+    if (mesh.geometryAabb) aabbByLocalId.set(localId, mesh.geometryAabb);
   }
   // Fold in instanced-only entities (#924): repeated opaque geometry GPU-instancing
   // took off the flat `meshes` array. They have no MeshData, so they'd be absent
@@ -106,6 +141,16 @@ export async function buildEntityFingerprints(
       if (geometryByLocalId.get(localId) === undefined) {
         geometryByLocalId.set(localId, hash);
       }
+    }
+  }
+  // Their boxes need the same fold, and for the same reason squared: a
+  // GPU-instanced element is by definition one of several identical copies, so
+  // it is the population tier 3's mutual-nearest pairing was written for. Fill
+  // gaps only, so a flat mesh's box (measured on this very load) always wins.
+  if (instancedGeometryAabbs) {
+    for (const [expressId, aabb] of instancedGeometryAabbs) {
+      const localId = expressId - idOffset;
+      if (!aabbByLocalId.has(localId)) aabbByLocalId.set(localId, aabb);
     }
   }
 
@@ -125,12 +170,20 @@ export async function buildEntityFingerprints(
     // collision guard and start rejecting genuine re-export matches.
     const dataInput = buildDataInput(store, localId, ifcType);
 
+    // The box goes on ONLY when the pass produced one: the engine's contract is
+    // that a missing box is `undefined`, and a NaN-bearing object would pass
+    // `aabb !== undefined` while classifying every comparison as garbage. The
+    // NaN sentinel is already resolved at the wasm boundary
+    // (`extractGeometryFingerprints`), so anything reaching here is real.
+    const aabb = aabbByLocalId.get(localId);
+
     fingerprints.push({
       key,
       ifcType,
       dataHash: buildDataFingerprint(dataInput),
       components: buildComponentFingerprints(dataInput),
       geometryHash,
+      ...(aabb ? { aabb } : {}),
       ref: { modelId, localId, globalId: localId + idOffset },
     });
 

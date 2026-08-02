@@ -7,6 +7,20 @@
  */
 
 /**
+ * An entity's world-space axis-aligned bounding box, in the renderer frame
+ * (WebGL Y-up, metres) and in ABSOLUTE world coordinates — the RTC offset and
+ * the per-element {@link MeshData.origin} are already folded in.
+ *
+ * Distinct from {@link MeshData.localBounds}, which is the pre-placement
+ * object-space box of one submesh, and from `origin`, which is a translation
+ * carried purely for f32 precision. Do not conflate the three.
+ */
+export interface EntityWorldAabb {
+  min: [number, number, number];
+  max: [number, number, number];
+}
+
+/**
  * Mesh data for a single geometric representation of an IFC element.
  *
  * An element may produce MULTIPLE MeshData entries (one per material, CSG part,
@@ -65,6 +79,22 @@ export interface MeshData {
    *  share the same value (it is the whole-entity hash). Consumed by the
    *  model-diff / compare feature (issue #924); renderers ignore it. */
   geometryHash?: bigint;
+  /** Whole-entity world bounding box from the SAME hashing pass as
+   *  {@link MeshData.geometryHash} (`MeshCollection.geometryAabbValues`),
+   *  populated only when geometry hashing is enabled
+   *  (`GeometryProcessor.enableGeometryHashes()`). Like the hash, all submeshes
+   *  of one entity carry the same box — it spans the entity, not this submesh.
+   *
+   *  ABSOLUTE world, unlike `positions`: the RTC offset and the per-element
+   *  {@link MeshData.origin} are already folded in, so two revisions that chose
+   *  different RTC offsets report the same box. Do NOT add `origin` to it.
+   *
+   *  Absent when the pass produced no box for the entity (the wasm side writes
+   *  six `NaN`s there; the extractor drops them rather than passing a
+   *  NaN-bearing object on), when hashing is off, or on a wasm build predating
+   *  the getter. Consumed by the model-diff / compare feature to tell a move
+   *  from a reshape (#1891); renderers ignore it. */
+  geometryAabb?: EntityWorldAabb;
   /** Geometry provenance for rendering and the viewer's Model/Types view switch:
    *  - 0 = occurrence (placed IfcProduct). RENDER THIS in normal/Model views.
    *  - 1 = orphan type geometry (an IfcTypeProduct RepresentationMap with no
@@ -291,6 +321,15 @@ export interface GeometryResult {
    * geometry hashing is off or no entity was fully instanced.
    */
   instancedGeometryHashes?: Map<number, bigint>;
+  /**
+   * World bounding boxes for the SAME instanced-only entities as
+   * {@link GeometryResult.instancedGeometryHashes}, keyed the same way. A
+   * separate map rather than a field on the hash entry because an entity can
+   * have a hash and no box (the wasm side writes six `NaN`s there); a key
+   * missing here means exactly that. Absent when geometry hashing is off,
+   * nothing was fully instanced, or the wasm build predates the getter.
+   */
+  instancedGeometryAabbs?: Map<number, EntityWorldAabb>;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

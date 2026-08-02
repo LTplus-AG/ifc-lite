@@ -258,18 +258,26 @@ export function useIfcFederation(
       let snapshots = model.preAlignmentPositions;
       let normalSnapshots = model.preAlignmentNormals;
       let snapshotInfo = model.preAlignmentCoordinateInfo;
+      let aabbSnapshots = model.preAlignmentGeometryAabbs;
+      let instancedAabbSnapshot = model.preAlignmentInstancedGeometryAabbs;
       if (!snapshots || !snapshotInfo) {
         snapshots = model.geometryResult.meshes.map((m) => new Float32Array(m.positions));
         normalSnapshots = model.geometryResult.meshes.map((m) =>
           m.normals && m.normals.length > 0 ? new Float32Array(m.normals) : undefined,
         );
         snapshotInfo = model.geometryResult.coordinateInfo;
+        aabbSnapshots = model.geometryResult.meshes.map((m) => m.geometryAabb);
+        instancedAabbSnapshot = model.geometryResult.instancedGeometryAabbs;
       }
 
-      // Restore vertices and normals to pre-alignment state. Normals must be
-      // restored too because applyAlignmentTransformAndUpdateBounds rotates
-      // them in place — without restoring, repeated re-aligns would compound
-      // rotations and drift lighting/shading.
+      // Restore vertices, normals and world boxes to pre-alignment state.
+      // Normals must be restored because applyAlignmentTransformAndUpdateBounds
+      // rotates them in place — without restoring, repeated re-aligns would
+      // compound rotations and drift lighting/shading. The per-entity world
+      // boxes (#1891) are re-framed by the same pass and need it for the same
+      // reason: re-aligning an already-aligned box while the vertices restart
+      // from the snapshot would leave the box in a frame of its own, and
+      // compare would report a plausible but wrong move distance.
       const meshes = model.geometryResult.meshes;
       const restoreCount = Math.min(meshes.length, snapshots.length);
       for (let i = 0; i < restoreCount; i += 1) {
@@ -280,7 +288,20 @@ export function useIfcFederation(
             meshes[i].normals = new Float32Array(snap);
           }
         }
+        if (aabbSnapshots) {
+          const box = aabbSnapshots[i];
+          if (box) meshes[i].geometryAabb = box;
+          else delete meshes[i].geometryAabb;
+        }
       }
+      // Unconditional: the snapshot's value IS the pre-alignment state, and
+      // `undefined` — this model had no instanced-only boxes — is a state worth
+      // restoring like any other. Gating the restore on the snapshot being
+      // truthy would make the capture and the restore answer two different
+      // questions ("was there a snapshot?" vs "was there a channel?"), which is
+      // how a box survives a re-align in the previous anchor's frame and gets
+      // transformed a second time.
+      model.geometryResult.instancedGeometryAabbs = instancedAabbSnapshot;
       model.geometryResult.coordinateInfo = {
         ...snapshotInfo,
         originalBounds: { ...snapshotInfo.originalBounds },
@@ -297,6 +318,8 @@ export function useIfcFederation(
           preAlignmentPositions: snapshots,
           preAlignmentNormals: normalSnapshots,
           preAlignmentCoordinateInfo: snapshotInfo,
+          preAlignmentGeometryAabbs: aabbSnapshots,
+          preAlignmentInstancedGeometryAabbs: instancedAabbSnapshot,
           federationAlignmentStatus: 'none',
         });
         skipped += 1;
@@ -308,6 +331,8 @@ export function useIfcFederation(
         preAlignmentPositions: snapshots,
         preAlignmentNormals: normalSnapshots,
         preAlignmentCoordinateInfo: snapshotInfo,
+        preAlignmentGeometryAabbs: aabbSnapshots,
+        preAlignmentInstancedGeometryAabbs: instancedAabbSnapshot,
         federationAlignmentStatus: status,
       });
       if (status === 'reprojected') reprojected += 1;

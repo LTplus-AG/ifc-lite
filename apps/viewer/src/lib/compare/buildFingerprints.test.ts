@@ -5,7 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
-import type { MeshData } from '@ifc-lite/geometry';
+import type { EntityWorldAabb, MeshData } from '@ifc-lite/geometry';
 import { buildEntityFingerprints } from './buildFingerprints.js';
 
 /** Wrap a STEP body in a minimal IFC4 envelope (same helper shape as
@@ -115,5 +115,97 @@ describe('buildEntityFingerprints - component sub-hashes (#1891)', () => {
       a.components!['pset:Pset_WallCommon'],
       b.components!['pset:Pset_WallCommon'],
     );
+  });
+});
+
+describe('buildEntityFingerprints - world AABB (#1891)', () => {
+  const WALL = wallWithPset(
+    '0aaaaaaaaaaaaaaaaaaaaa',
+    '0bbbbbbbbbbbbbbbbbbbbb',
+    '0ccccccccccccccccccccc',
+    '60',
+  );
+
+  const box = (x: number): EntityWorldAabb => ({ min: [x, 0, 0], max: [x + 1, 2, 3] });
+
+  /** Build one wall's fingerprint from an explicit model description. */
+  async function wallFrom(
+    model: Omit<Parameters<typeof buildEntityFingerprints>[0], 'store' | 'modelId'>,
+  ) {
+    const store = await storeFromStep(WALL);
+    const built = await buildEntityFingerprints({ modelId: 'A', store, ...model });
+    const wall = built.find((f) => f.ifcType === 'IfcWall');
+    assert.ok(wall, 'expected an IfcWall fingerprint');
+    return wall;
+  }
+
+  it('carries the flat mesh box onto the fingerprint', async () => {
+    // Without this the whole positional half of the content pass is dead: the
+    // engine reports a geometry-hash difference as a bare `moved` with no
+    // distance, which is what the viewer shipped before this change.
+    const wall = await wallFrom({
+      meshes: [{ expressId: 1, geometryHash: 1n, geometryAabb: box(5) } as unknown as MeshData],
+      idOffset: 0,
+    });
+    assert.deepStrictEqual(wall.aabb, box(5));
+  });
+
+  it('leaves aabb undefined - never a NaN-bearing object - when the pass produced no box', async () => {
+    // The engine's contract: absent means `undefined`. A `{min:[NaN,...]}` would
+    // pass `aabb !== undefined` and poison every distance computed from it.
+    const wall = await wallFrom({
+      meshes: [{ expressId: 1, geometryHash: 1n } as unknown as MeshData],
+      idOffset: 0,
+    });
+    assert.strictEqual(wall.aabb, undefined);
+    assert.ok(!('aabb' in wall), 'the key must not be present at all');
+  });
+
+  it('falls back to the instanced-only box, so repeated components are not dark', async () => {
+    // A GPU-instanced element never reaches the flat `meshes` array - and it is
+    // instanced precisely BECAUSE it is one of many identical copies, i.e. the
+    // exact population tier 3 pairs by position. No fallback, no tiers.
+    const wall = await wallFrom({
+      meshes: [],
+      instancedGeometryHashes: new Map([[1, 9n]]),
+      instancedGeometryAabbs: new Map([[1, box(7)]]),
+      idOffset: 0,
+    });
+    assert.strictEqual(wall.geometryHash, 9n);
+    assert.deepStrictEqual(wall.aabb, box(7));
+  });
+
+  it('prefers the flat mesh box over the instanced-only one', async () => {
+    // Same precedence as the hash: a box measured on this load's real mesh wins
+    // over the side-channel, so the two can never disagree about an entity.
+    const wall = await wallFrom({
+      meshes: [{ expressId: 1, geometryHash: 1n, geometryAabb: box(5) } as unknown as MeshData],
+      instancedGeometryHashes: new Map([[1, 9n]]),
+      instancedGeometryAabbs: new Map([[1, box(7)]]),
+      idOffset: 0,
+    });
+    assert.deepStrictEqual(wall.aabb, box(5));
+  });
+
+  it('resolves a flat mesh box through the federation id offset', async () => {
+    // Meshes are keyed by federation-global id, the store by local express id.
+    // Getting this wrong drops every box on any non-anchor model, silently.
+    const wall = await wallFrom({
+      meshes: [{ expressId: 1001, geometryHash: 1n, geometryAabb: box(5) } as unknown as MeshData],
+      idOffset: 1000,
+    });
+    assert.deepStrictEqual(wall.aabb, box(5), 'localId 1 must resolve from globalId 1001');
+  });
+
+  it('resolves an instanced-only box through the federation id offset', async () => {
+    // The side-channel is keyed the same way, and it is a SEPARATE loop - so it
+    // needs its own offset check or the subtraction can go missing on one side.
+    const wall = await wallFrom({
+      meshes: [],
+      instancedGeometryHashes: new Map([[1001, 9n]]),
+      instancedGeometryAabbs: new Map([[1001, box(7)]]),
+      idOffset: 1000,
+    });
+    assert.deepStrictEqual(wall.aabb, box(7), 'localId 1 must resolve from globalId 1001');
   });
 });

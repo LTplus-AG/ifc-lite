@@ -34,6 +34,11 @@ export { mergeGeometryDiagnostics } from './diagnostics.js';
 // Typed export-failure contract (fail-closed empty exports, mirrors Rust ExportError).
 export { NO_RENDER_GEOMETRY, isNoRenderGeometryError } from './export-errors.js';
 
+// The six-values-per-id world-box layout the geometry-hash pass emits (#1891),
+// shared with consumers that read the instanced-only side-channel off the
+// streaming `batch` event rather than off a `MeshData`.
+export { geometryAabbAt } from './geometry-fingerprints.js';
+
 // Support components
 export { BufferBuilder } from './buffer-builder.js';
 export { CoordinateHandler } from './coordinate-handler.js';
@@ -204,6 +209,11 @@ export type StreamingGeometryEvent =
        *  repeated opaque elements. Present only when geometry hashing is on. */
       instancedGeometryHashIds?: Uint32Array;
       instancedGeometryHashValues?: BigUint64Array;
+      /** World boxes (#1891) for those same instanced-only entities: SIX values
+       *  per `instancedGeometryHashIds` entry, `minXYZ` then `maxXYZ`, absolute
+       *  world in the renderer's Y-up frame. A NaN span means that entity
+       *  produced no box; the whole array is omitted when none did. */
+      instancedGeometryAabbValues?: Float64Array;
     }
   | { type: 'colorUpdate'; updates: Map<number, [number, number, number, number]> }
   | { type: 'rtcOffset'; rtcOffset: { x: number; y: number; z: number }; hasRtc: boolean }
@@ -976,6 +986,11 @@ export class GeometryProcessor {
    * `MeshCollection.geometryHashValues`, which `convertMeshCollectionToBatch`
    * attaches to each `MeshData.geometryHash`. RTC-invariant + tolerance-
    * quantized; default tolerance is {@link DEFAULT_GEOM_HASH_TOLERANCE} (1 mm).
+   *
+   * The same switch also populates `MeshCollection.geometryAabbValues`, which
+   * lands on `MeshData.geometryAabb` (#1891) — the absolute world box that lets
+   * a consumer tell a move from a reshape instead of reading one changed-hash
+   * bit. Nothing is computed while this is off.
    *
    * Safe to call before `init()` — the bridge caches the value and replays
    * it on the freshly-built IfcAPI. No-op on the native/desktop path (the

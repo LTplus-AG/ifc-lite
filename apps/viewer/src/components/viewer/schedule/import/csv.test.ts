@@ -81,6 +81,59 @@ describe('parseCsvDuration', () => {
   it('returns undefined for unparsable text', () => {
     assert.strictEqual(parseCsvDuration('abc'), undefined);
   });
+
+  it('returns undefined for an unrecognised unit ("2 yrs") rather than guessing days', () => {
+    // Regression: `unitToSeconds` used to catch-all fall back to days for
+    // any unit it didn't recognise, silently turning 2 YEARS into 2 days.
+    assert.strictEqual(parseCsvDuration('2 yrs'), undefined);
+  });
+
+  it('returns undefined for a unit typo ("3 dyas") rather than guessing days', () => {
+    assert.strictEqual(parseCsvDuration('3 dyas'), undefined);
+  });
+
+  it('still treats a bare number as days', () => {
+    assert.strictEqual(parseCsvDuration('4'), 'P4D');
+  });
+
+  for (const unit of ['d', 'day', 'days']) {
+    it(`"${unit}" still means days`, () => {
+      assert.strictEqual(parseCsvDuration(`2 ${unit}`), 'P2D');
+    });
+  }
+
+  for (const unit of ['ed', 'eday', 'edays']) {
+    it(`"${unit}" (elapsed days) still means days`, () => {
+      assert.strictEqual(parseCsvDuration(`2 ${unit}`), 'P2D');
+    });
+  }
+
+  for (const unit of ['w', 'wk', 'wks', 'week', 'weeks']) {
+    it(`"${unit}" still means weeks`, () => {
+      assert.strictEqual(parseCsvDuration(`1 ${unit}`), 'P7D');
+    });
+  }
+
+  for (const unit of ['h', 'hr', 'hrs', 'hour', 'hours']) {
+    it(`"${unit}" still means hours`, () => {
+      assert.strictEqual(parseCsvDuration(`2 ${unit}`), 'PT2H');
+    });
+  }
+
+  for (const unit of ['m', 'min', 'mins', 'minute', 'minutes']) {
+    it(`"${unit}" still means minutes`, () => {
+      assert.strictEqual(parseCsvDuration(`30 ${unit}`), 'PT30M');
+    });
+  }
+
+  for (const unit of ['mo', 'mon', 'month', 'months']) {
+    it(`"${unit}" still means months (30-day approximation), not minutes`, () => {
+      // The regression this guards: "mon" also satisfies a naive
+      // `startsWith('m')` minutes check, so it must resolve to months, not
+      // 1 minute.
+      assert.strictEqual(parseCsvDuration(`1 ${unit}`), 'P30D');
+    });
+  }
 });
 
 describe('parseCsvPredecessors', () => {
@@ -128,6 +181,20 @@ describe('parseCsvPredecessors', () => {
     assert.strictEqual(warnings.length, 1);
     assert.strictEqual(warnings[0]!.code, 'unparsable-predecessor');
     assert.strictEqual(warnings[0]!.line, 5);
+  });
+
+  it('keeps the dependency but drops the lag and warns on an unrecognised lag unit', () => {
+    const warnings: ScheduleImportWarning[] = [];
+    const deps = parseCsvPredecessors('12FS+3 yrs', warnings, 9);
+    // The link is still real information — only the lag is untrustworthy.
+    assert.strictEqual(deps.length, 1);
+    assert.strictEqual(deps[0]!.predecessorSourceId, '12');
+    assert.strictEqual(deps[0]!.type, 'FINISH_START');
+    assert.strictEqual(deps[0]!.lagSeconds, undefined);
+    assert.strictEqual(warnings.length, 1);
+    assert.strictEqual(warnings[0]!.code, 'unparsable-predecessor');
+    assert.strictEqual(warnings[0]!.line, 9);
+    assert.match(warnings[0]!.message, /yrs/);
   });
 });
 
@@ -181,5 +248,34 @@ describe('parseScheduleCsv', () => {
     const result = parseScheduleCsv(csv);
     assert.strictEqual(result.rows[0]!.durationIso, undefined);
     assert.ok(result.warnings.some(w => w.code === 'unparsable-duration'));
+  });
+
+  it('warns unparsable-duration (not silent days) for an unrecognised duration unit', () => {
+    const csv = 'Name,Duration\nTask 1,2 yrs\n';
+    const result = parseScheduleCsv(csv);
+    assert.strictEqual(result.rows[0]!.durationIso, undefined);
+    assert.ok(result.warnings.some(w => w.code === 'unparsable-duration'));
+  });
+
+  it('rejects impossible dates (31/02, 31/04, 30/02) with an unparsable-date warning', () => {
+    for (const bad of ['31/02/2026', '31/04/2026', '30/02/2026']) {
+      const csv = `Name,Start\nTask 1,${bad}\n`;
+      const result = parseScheduleCsv(csv);
+      assert.strictEqual(result.rows[0]!.start, undefined, `expected ${bad} to be rejected`);
+      assert.ok(
+        result.warnings.some(w => w.code === 'unparsable-date'),
+        `expected an unparsable-date warning for ${bad}`,
+      );
+    }
+  });
+
+  it('accepts a leap-day date (29/02/2024) and rejects the same day in a non-leap year (29/02/2026)', () => {
+    const leap = parseScheduleCsv('Name,Start\nTask 1,29/02/2024\n');
+    assert.strictEqual(leap.rows[0]!.start, '2024-02-29T08:00:00');
+    assert.ok(!leap.warnings.some(w => w.code === 'unparsable-date'));
+
+    const nonLeap = parseScheduleCsv('Name,Start\nTask 1,29/02/2026\n');
+    assert.strictEqual(nonLeap.rows[0]!.start, undefined);
+    assert.ok(nonLeap.warnings.some(w => w.code === 'unparsable-date'));
   });
 });

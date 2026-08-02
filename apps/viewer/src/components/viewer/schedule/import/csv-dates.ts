@@ -72,8 +72,26 @@ export function detectDateOrder(cells: string[]): { order: CsvDateOrder; ambiguo
   return { order: 'day-first', ambiguous: true };
 }
 
+function isLeapYear(year: number): boolean {
+  return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+}
+
+const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+function daysInMonth(year: number, month: number): number {
+  if (month === 2 && isLeapYear(year)) return 29;
+  return DAYS_IN_MONTH[month - 1] ?? 31;
+}
+
+/**
+ * `day > 31` alone lets through impossible dates like `31/02` or `31/04` —
+ * every non-ISO cell goes through here (and the ISO branch reuses it too,
+ * via `parseCsvDate`), so a calendar-aware bound is required, not just a
+ * fixed upper limit.
+ */
 function partsToIso(parts: DateParts, day: number, month: number): string | undefined {
-  if (month < 1 || month > 12 || day < 1 || day > 31) return undefined;
+  if (month < 1 || month > 12 || day < 1) return undefined;
+  if (day > daysInMonth(parts.year, month)) return undefined;
   const pad = (n: number) => n.toString().padStart(2, '0');
   return `${parts.year}-${pad(month)}-${pad(day)}T${pad(parts.hour)}:${pad(parts.minute)}:00`;
 }

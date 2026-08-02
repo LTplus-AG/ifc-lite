@@ -45,7 +45,7 @@ If exact date order matters, prefer ISO dates in your CSV export, or use MSPDI, 
 
 ## Duration and predecessor grammar (CSV)
 
-Durations accept `5 days`, `2 wks`, `8 hrs`, `1 mon`, or a bare number (interpreted as days). `edays` (elapsed days) are treated the same as plain days — the importer does not model working-calendar exceptions.
+Durations accept `5 days`, `2 wks`, `8 hrs`, `1 mon`, or a bare number (interpreted as days). `edays` (elapsed days) are treated the same as plain days — the importer does not model working-calendar exceptions. A unit it doesn't recognise (a typo like `3 dyas`, or a unit it doesn't model like `2 yrs`) is **not** guessed as days — it's reported as an `unparsable-duration` warning instead, the same way an unreadable date is. The same rule applies to a predecessor's lag: an unrecognised lag unit drops only the lag (the dependency itself is kept) and warns.
 
 Predecessors use MS Project's shorthand:
 

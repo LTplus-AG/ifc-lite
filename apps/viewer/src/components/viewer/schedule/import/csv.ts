@@ -147,6 +147,12 @@ function mapColumns(header: string[]): Record<string, number> {
  * `5 days`, `2 wks`, `8 hrs`, `0 days`, `1 mon`, or a bare number (days).
  * `edays` (elapsed days) are treated as days — the distinction is a calendar
  * concern this importer does not model, and is noted in the guide.
+ *
+ * An unrecognised unit (`2 yrs`, a typo like `3 dyas`) returns `undefined`
+ * rather than silently falling back to days — `parseScheduleCsv` turns that
+ * into an `unparsable-duration` warning. Guessing days for an unknown unit
+ * would corrupt the duration exactly the way a wrong date-order guess would
+ * corrupt a date, which is the one thing this importer is built to avoid.
  */
 export function parseCsvDuration(raw: string): string | undefined {
   const text = raw.trim().toLowerCase();
@@ -155,7 +161,9 @@ export function parseCsvDuration(raw: string): string | undefined {
   if (!match) return undefined;
   const value = Number(match[1].replace(',', '.'));
   if (!Number.isFinite(value)) return undefined;
-  const seconds = value * unitToSeconds(match[2]);
+  const unitSeconds = unitToSeconds(match[2]);
+  if (unitSeconds === undefined) return undefined;
+  const seconds = value * unitSeconds;
   if (seconds <= 0) return 'PT0S';
   if (seconds % SECONDS_PER_DAY === 0) return `P${seconds / SECONDS_PER_DAY}D`;
   if (seconds % SECONDS_PER_HOUR === 0) return `PT${seconds / SECONDS_PER_HOUR}H`;
@@ -163,14 +171,34 @@ export function parseCsvDuration(raw: string): string | undefined {
   return `PT${Math.round(seconds)}S`;
 }
 
-function unitToSeconds(unit: string): number {
-  if (unit.startsWith('mo')) return 30 * SECONDS_PER_DAY;
-  if (unit.startsWith('w')) return 7 * SECONDS_PER_DAY;
-  if (unit.startsWith('h')) return SECONDS_PER_HOUR;
-  // `m`/`min` is minutes; `mon` was already handled above.
-  if (unit.startsWith('m')) return SECONDS_PER_MINUTE;
-  // `d`, `ed` (elapsed days), empty, or anything unrecognised → days.
-  return SECONDS_PER_DAY;
+// Exact-match unit sets rather than `startsWith` prefixes: a `startsWith('d')`
+// check would happily accept a typo like "3 dyas" as days, which is exactly
+// the silent-guess failure this rework exists to close. `ed`/`eday`/`edays`
+// (elapsed days) are folded into the same bucket as plain days per the
+// duration doc comment above.
+const DAY_UNITS = new Set(['d', 'day', 'days', 'ed', 'eday', 'edays']);
+const WEEK_UNITS = new Set(['w', 'wk', 'wks', 'week', 'weeks']);
+const HOUR_UNITS = new Set(['h', 'hr', 'hrs', 'hour', 'hours']);
+const MINUTE_UNITS = new Set(['m', 'min', 'mins', 'minute', 'minutes']);
+const MONTH_UNITS = new Set(['mo', 'mon', 'month', 'months']);
+
+/**
+ * Seconds-per-unit for a duration/lag suffix, or `undefined` when the unit
+ * isn't one of ours. Exact membership rather than a prefix match is what
+ * makes this correct twice over: `startsWith('m')` would have swallowed
+ * "mon" into minutes, and — the bug this replaced — `startsWith('d')`
+ * would have accepted the typo "dyas" as days instead of reporting it.
+ *
+ * The sets are disjoint, so the order of these checks carries no meaning;
+ * it is grouped largest-unit-first only for readability.
+ */
+function unitToSeconds(unit: string): number | undefined {
+  if (unit === '' || DAY_UNITS.has(unit)) return SECONDS_PER_DAY;
+  if (MONTH_UNITS.has(unit)) return 30 * SECONDS_PER_DAY;
+  if (WEEK_UNITS.has(unit)) return 7 * SECONDS_PER_DAY;
+  if (HOUR_UNITS.has(unit)) return SECONDS_PER_HOUR;
+  if (MINUTE_UNITS.has(unit)) return SECONDS_PER_MINUTE;
+  return undefined;
 }
 
 const LINK_CODES: Record<string, SequenceTypeEnum> = {
@@ -202,8 +230,21 @@ export function parseCsvPredecessors(
     if (lagRaw) {
       const lagMatch = /^([+-])\s*(\d+(?:[.,]\d+)?)\s*([a-zA-Z]*)$/.exec(lagRaw.replace(/\s+/g, ' ').trim());
       if (lagMatch) {
-        const magnitude = Number(lagMatch[2].replace(',', '.')) * unitToSeconds(lagMatch[3].toLowerCase());
-        lagSeconds = lagMatch[1] === '-' ? -magnitude : magnitude;
+        const unitSeconds = unitToSeconds(lagMatch[3].toLowerCase());
+        if (unitSeconds === undefined) {
+          // Unknown lag unit (typo, or a unit this importer doesn't model,
+          // e.g. "yrs"): the link itself is still real information — drop
+          // only the lag rather than the whole dependency — but say so
+          // rather than silently treating it as days.
+          warnings.push({
+            code: 'unparsable-predecessor',
+            message: `Predecessor "${entry}": unrecognised lag unit "${lagMatch[3]}" — link kept, lag dropped.`,
+            line,
+          });
+        } else {
+          const magnitude = Number(lagMatch[2].replace(',', '.')) * unitSeconds;
+          lagSeconds = lagMatch[1] === '-' ? -magnitude : magnitude;
+        }
       }
     }
     deps.push({

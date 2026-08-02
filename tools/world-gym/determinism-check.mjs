@@ -131,6 +131,11 @@ async function main() {
   if (resolveSaltFromArgs(['--salt-env', 'WG_CHECK_SALT'], { WG_CHECK_SALT: SALT_ONE }) !== SALT_ONE) {
     saltFailures.push({ seed: null, why: '--salt-env did not resolve the salt from the environment' });
   }
+  //    ...and a salt flag in TRAILING position, with nothing after it, refuses
+  //    rather than returning an empty salt: same silent-unsalted failure shape
+  //    as `--salt-env=FOO`, just spelled differently.
+  refuses('--salt-env as the last argument', () => resolveSaltFromArgs(['--salt-env'], {}));
+  refuses('--salt-file as the last argument', () => resolveSaltFromArgs(['--seeds', '4', '--salt-file'], {}));
   // 5. A freshly minted salt (the documented command's output) is accepted by
   //    every boundary. A validator that rejects the value the docs tell you to
   //    generate is a check that cannot pass, which is as bad as one that cannot

@@ -343,9 +343,16 @@ function readSaltFile(path) {
  * @returns {string} '' (unsalted) or the validated salt
  */
 export function resolveSaltFromArgs(args, env = process.env) {
+  // A flag present with nothing after it is the same trap as `--salt-env=FOO`:
+  // the value reads as `undefined`, no branch runs, and the caller gets an
+  // UNSALTED run believing it was salted. So it is a refusal, not a fallthrough.
   const flagValue = (name) => {
     const i = args.indexOf(name);
-    return i >= 0 ? args[i + 1] : undefined;
+    if (i < 0) return undefined;
+    if (i + 1 >= args.length) {
+      throw new SaltFormatError(`${name} is the last argument and has nothing after it (this parser would have ignored it and run UNSALTED)`);
+    }
+    return args[i + 1];
   };
 
   // `--salt VALUE` AND `--salt=VALUE`. The second spelling matters more than it

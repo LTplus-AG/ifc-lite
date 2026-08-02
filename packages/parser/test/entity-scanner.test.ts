@@ -137,6 +137,31 @@ describe('scanIfcEntities', () => {
       '7:IFCWALL',
     ]);
   });
+
+  // Guards parser.worker.ts's deferred-compile optimization: when a pre-scanned
+  // index is handed over, the worker skips compiling the ~3.9 MB WASM scanner
+  // entirely (no `wasmApi` supplied). The scan must still resolve from the index
+  // alone — otherwise deferring the compile would silently drop entities.
+  it('resolves from a pre-scanned index with NO wasmApi (deferred-compile path)', async () => {
+    const project = entitySpan(1);
+    const wall = entitySpan(7);
+
+    const result = await scanIfcEntities(encodeSource(), {
+      disableWorkerScan: true,
+      // wasmApi intentionally omitted — the worker never compiled it.
+      preScannedEntityIndex: {
+        ids: new Uint32Array([1, 7]),
+        starts: new Uint32Array([project.start, wall.start]),
+        lengths: new Uint32Array([project.length, wall.length]),
+      },
+    });
+
+    expect(result.scanPath).toBe('pre-scanned');
+    expect(result.entityRefs.map((ref) => `${ref.expressId}:${ref.type}`)).toEqual([
+      '1:IFCPROJECT',
+      '7:IFCWALL',
+    ]);
+  });
 });
 
 describe('IfcParser legacy ParseResult adapter', () => {

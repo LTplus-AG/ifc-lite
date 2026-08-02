@@ -60,6 +60,7 @@ async function handleOpen(msg: Extract<WorkerRequest, { kind: 'open' }>): Promis
     const source = await createSource(msg.format, msg.blob, {
       label: msg.label,
       downsample: { stride: Math.max(1, msg.stride | 0) },
+      originOffset: msg.originOffset,
     });
     const abort = new AbortController();
     const info = await source.open(abort.signal);
@@ -148,7 +149,13 @@ function handleAbort(sourceId: number): void {
 async function createSource(
   format: 'las' | 'laz' | 'ply' | 'pcd' | 'e57' | 'pts' | 'xyz',
   blob: Blob,
-  opts: { label?: string; downsample: { stride: number } },
+  opts: {
+    label?: string;
+    downsample: { stride: number };
+    /** See `decodeLasPoints`'s `originOffset` param (issue #1804);
+     *  only the LAS/LAZ sources consume it. */
+    originOffset?: readonly [number, number, number];
+  },
 ): Promise<StreamingPointSource> {
   switch (format) {
     case 'las': {

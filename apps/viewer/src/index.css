@@ -42,6 +42,9 @@
   --tokyo-green: #9ece6a;
   --tokyo-teal: #73daca;
   --tokyo-red: #f7768e;
+
+  /* Custom SVG icon accent: preserve the source blue in light mode. */
+  --viewer-icon-accent: #0063b1;
   
   /* Special */
   --tokyo-git-add: #449dab;
@@ -120,6 +123,7 @@
 /* Dark mode - Tokyo Night Storm */
 :root.dark,
 .dark {
+  --viewer-icon-accent: var(--tokyo-blue);
   --color-background: var(--tokyo-storm) !important;
   --color-foreground: var(--tokyo-fg) !important;
   --color-card: var(--tokyo-night) !important;
@@ -317,6 +321,25 @@ body {
   }
 
   .properties-tabs-list .panel-compact-text {
+    display: none;
+  }
+}
+
+/* Hierarchy grouping row has 5 tabs (Spatial / Class / Type / Material /
+   Groups). Their full uppercase labels only fit above ~384px of panel width;
+   below that they truncate and overlap ("MATERIAGROUPS" at the default
+   sidebar width). Collapse to icon-only under the threshold — each button keeps
+   a `title` tooltip, so the meaning stays discoverable. The threshold sits
+   above the default content pane (~22% of the row) so a normal or narrow
+   sidebar shows clean icons, and only a deliberately widened sidebar restores
+   the text labels. This is scoped to the hierarchy tabs so it never changes
+   the shared 200px panel-compact behaviour elsewhere. */
+@container (max-width: 384px) {
+  .hierarchy-grouping-tabs .panel-compact-icon {
+    display: inline;
+  }
+
+  .hierarchy-grouping-tabs .panel-compact-text {
     display: none;
   }
 }

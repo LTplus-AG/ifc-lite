@@ -23,7 +23,7 @@ import {
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { PropertySet, QuantitySet } from '@ifc-lite/data';
 import { safeUtf8Decode } from '@ifc-lite/data';
-import { generateIfcGuid } from '@ifc-lite/encoding';
+import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
 import { collectReferencedEntityIds, getVisibleEntityIds, collectStyleEntities } from './reference-collector.js';
 import { convertStepLine, needsConversion, type IfcSchemaVersion } from './schema-converter.js';
 import { retypeStepLine, retypeArgTokens } from './retype.js';
@@ -34,12 +34,14 @@ import {
   quantityTypeToIfcType,
   serializePropertyValue,
   serializeAttributeValue,
-  serializeStepArgs,
   serializeStepValue,
+  tokenIsRealLiteral,
   splitTopLevelArgs,
   splitTopLevelStepArguments,
   assembleStepBytes,
 } from './step-serialization.js';
+import { getRealTypedSlots, serializeEntityArgs, serializeAttributeSlot, isTypedMarker } from './attribute-real-slots.js';
+import { serializeQualifiedSelectSlot } from './select-qualification.js';
 
 /**
  * Options for STEP export
@@ -84,6 +86,28 @@ export interface StepExportOptions {
     projectedCRS?: Partial<ProjectedCRS>;
     mapConversion?: Partial<MapConversion>;
   };
+
+  /**
+   * Seeded randomness for the GlobalIds this exporter SYNTHESIZES:
+   * the `IfcPropertySet` / `IfcElementQuantity` roots regenerated for
+   * mutated (or overlay-created) property and quantity sets, their
+   * `IfcRelDefinesByProperties` links, and any `IFCPROXY` placeholder minted
+   * by schema conversion. Without it those come from the platform CSPRNG, so
+   * two exports of the same model differ in exactly those bytes - which
+   * breaks byte-reproducibility for in-store builds that call
+   * `addPropertySet` / `addQuantitySet` (the sets themselves live in the
+   * mutation overlay and only become IFC roots here). Pass the same seeded
+   * source used for `SpatialAnchor.guidRandom` to close that gap. Default
+   * (omitted) behaviour is unchanged: random.
+   */
+  guidRandom?: RandomSource;
+  /**
+   * Pin the STEP header `FILE_NAME` timestamp (STEP format, e.g.
+   * `20240101T000000`). Omitted = the wall clock, as before. Required for
+   * genuinely byte-identical exports, since the header otherwise carries the
+   * export instant.
+   */
+  timeStamp?: string;
 
   /** Progress callback for async export */
   onProgress?: (progress: StepExportProgress) => void;
@@ -219,6 +243,7 @@ export class StepExporter {
         authorization: sourceHeader?.authorization,
         application: options.application ?? 'ifc-lite',
         filename: options.filename ?? 'export.ifc',
+        timeStamp: options.timeStamp,
       });
     };
 
@@ -640,7 +665,7 @@ export class StepExporter {
           ? this.mutationView!.getPositionalMutationsForEntity(expressId)
           : null;
         if (positional && positional.size > 0) {
-          nextEntityText = this.applyPositionalMutations(nextEntityText, positional);
+          nextEntityText = this.applyPositionalMutations(nextEntityText, positional, workingType, sourceSchema);
           if (!modifiedEntities.has(expressId)) {
             modifiedEntities.add(expressId);
             modifiedEntityCount++;
@@ -649,7 +674,7 @@ export class StepExporter {
 
         // Apply schema conversion if exporting to a different schema version
         if (converting) {
-          const converted = convertStepLine(nextEntityText, sourceSchema, schema);
+          const converted = convertStepLine(nextEntityText, sourceSchema, schema, options.guidRandom);
           if (converted !== null) {
             entities.push(converted);
           }
@@ -666,7 +691,8 @@ export class StepExporter {
         entityId,
         psets,
         allowedEntityIds,
-        typeOwnedPsetNamesByEntity.get(entityId)
+        typeOwnedPsetNamesByEntity.get(entityId),
+        options.guidRandom
       );
       entities.push(...newEntities.lines);
       newEntityCount += newEntities.count;
@@ -701,7 +727,7 @@ export class StepExporter {
 
     // Generate new quantity entities for mutations
     for (const { entityId, qsets } of newQuantitySets) {
-      const newEntities = this.generateQuantitySetEntities(entityId, qsets, allowedEntityIds);
+      const newEntities = this.generateQuantitySetEntities(entityId, qsets, allowedEntityIds, options.guidRandom);
       entities.push(...newEntities.lines);
       newEntityCount += newEntities.count;
     }
@@ -750,7 +776,11 @@ export class StepExporter {
         // (e.g. setEntityType(id, 'IfcColumn', 'PILASTER')).
         let argsText: string;
         if (typeMut) {
-          const srcTokens = entity.attributes.map(serializeStepValue);
+          // Serialize against the AUTHORED layout (`entity.type`); retypeArgTokens
+          // then re-lays the tokens out by name up to the effective class.
+          const srcTokens = entity.attributes.map(
+            (value, i) => serializeAttributeSlot(entity.type, i, value, sourceSchema),
+          );
           const { tokens } = retypeArgTokens(
             srcTokens,
             entity.type,
@@ -760,11 +790,11 @@ export class StepExporter {
           );
           argsText = tokens.join(',');
         } else {
-          argsText = serializeStepArgs(entity.attributes);
+          argsText = serializeEntityArgs(entity.type, entity.attributes, sourceSchema);
         }
         const line = `#${entity.expressId}=${upperType}(${argsText});`;
         if (converting) {
-          const converted = convertStepLine(line, sourceSchema, schema);
+          const converted = convertStepLine(line, sourceSchema, schema, options.guidRandom);
           if (converted !== null) {
             entities.push(converted);
             newEntityCount++;
@@ -889,7 +919,8 @@ export class StepExporter {
     entityId: number,
     psets: PropertySet[],
     allowedEntityIds: Set<number> | null,
-    typeOwnedPsetNames?: Set<string>
+    typeOwnedPsetNames?: Set<string>,
+    random?: RandomSource
   ): { lines: string[]; count: number; generatedTypeOwnedPsetIds: Map<string, number> } {
     const lines: string[] = [];
     let count = 0;
@@ -918,7 +949,7 @@ export class StepExporter {
       count++;
 
       const propRefs = propertyIds.map(id => `#${id}`).join(',');
-      const globalId = this.generateGlobalId();
+      const globalId = this.generateGlobalId(random);
 
       // #ID=IFCPROPERTYSET('GlobalId',#ownerHistory,'Name',$,(#props));
       const psetLine = `#${psetId}=IFCPROPERTYSET('${globalId}',${this.resolveOwnerHistoryRef(entityId, allowedEntityIds)},'${escapeStepString(pset.name)}',$,(${propRefs}));`;
@@ -931,7 +962,7 @@ export class StepExporter {
         const relId = this.nextExpressId++;
         count++;
 
-        const relGlobalId = this.generateGlobalId();
+        const relGlobalId = this.generateGlobalId(random);
         // #ID=IFCRELDEFINESBYPROPERTIES('GlobalId',#ownerHistory,$,$,(#entity),#pset);
         const relLine = `#${relId}=IFCRELDEFINESBYPROPERTIES('${relGlobalId}',${this.resolveOwnerHistoryRef(entityId, allowedEntityIds)},$,$,(#${entityId}),#${psetId});`;
         lines.push(relLine);
@@ -947,7 +978,8 @@ export class StepExporter {
   private generateQuantitySetEntities(
     entityId: number,
     qsets: QuantitySet[],
-    allowedEntityIds: Set<number> | null
+    allowedEntityIds: Set<number> | null,
+    random?: RandomSource
   ): { lines: string[]; count: number } {
     const lines: string[] = [];
     let count = 0;
@@ -972,7 +1004,7 @@ export class StepExporter {
       count++;
 
       const quantRefs = quantityIds.map(id => `#${id}`).join(',');
-      const globalId = this.generateGlobalId();
+      const globalId = this.generateGlobalId(random);
 
       // #ID=IFCELEMENTQUANTITY('GlobalId',#ownerHistory,'Name',$,$,(#quants));
       const qsetLine = `#${qsetId}=IFCELEMENTQUANTITY('${globalId}',${this.resolveOwnerHistoryRef(entityId, allowedEntityIds)},'${escapeStepString(qset.name)}',$,$,(${quantRefs}));`;
@@ -982,7 +1014,7 @@ export class StepExporter {
       const relId = this.nextExpressId++;
       count++;
 
-      const relGlobalId = this.generateGlobalId();
+      const relGlobalId = this.generateGlobalId(random);
       const relLine = `#${relId}=IFCRELDEFINESBYPROPERTIES('${relGlobalId}',${this.resolveOwnerHistoryRef(entityId, allowedEntityIds)},$,$,(#${entityId}),#${qsetId});`;
       lines.push(relLine);
     }
@@ -1035,20 +1067,46 @@ export class StepExporter {
   private applyPositionalMutations(
     entityText: string,
     positionals: Map<number, IfcAttributeValue>,
+    entityType: string,
+    schemaVersion: IfcSchemaVersion,
   ): string {
     const openParen = entityText.indexOf('(');
     const closeParen = entityText.lastIndexOf(');');
     if (openParen < 0 || closeParen < openParen) return entityText;
 
     const args = splitTopLevelArgs(entityText.slice(openParen + 1, closeParen));
+    const realSlots = getRealTypedSlots(entityType, schemaVersion);
     let changed = false;
     for (const [index, value] of positionals) {
       if (index < 0 || index >= args.length) continue;
-      args[index] = serializeStepValue(value);
+      args[index] = this.serializePositionalOverride(entityType, index, value, args[index], realSlots, schemaVersion);
       changed = true;
     }
     if (!changed) return entityText;
     return `${entityText.slice(0, openParen + 1)}${args.join(',')}${entityText.slice(closeParen)}`;
+  }
+
+  /**
+   * Serialize one positional override, composing the schema-aware passes:
+   * explicit `{ real }`/`{ typed }` marker → SELECT auto-qualification
+   * (`IFCBOOLEAN(.T.)`) → REAL forcing. For REAL forcing the current source
+   * token is a secondary signal: replacing a value that was already a REAL
+   * (`0.4`, `1.5E-7`) keeps it REAL even for entities the XSD index doesn't
+   * cover, so a whole-number edit can't silently downgrade the slot.
+   */
+  private serializePositionalOverride(
+    entityType: string,
+    index: number,
+    value: IfcAttributeValue,
+    currentToken: string,
+    realSlots: ReadonlySet<number>,
+    schemaVersion: IfcSchemaVersion,
+  ): string {
+    if (isTypedMarker(value)) return serializeStepValue(value);
+    const qualified = serializeQualifiedSelectSlot(entityType, index, value);
+    if (qualified !== null) return qualified;
+    const forceReal = realSlots.has(index) || tokenIsRealLiteral(currentToken);
+    return serializeStepValue(value, forceReal);
   }
 
   private resolveMapUnitReference(unitName: string, newGeorefLines: string[]): number {
@@ -1164,10 +1222,12 @@ export class StepExporter {
   }
 
   /**
-   * Generate a new IFC GlobalId (22 character base64)
+   * Generate a new IFC GlobalId (22 character base64). `random` is the
+   * export's optional seeded source (`StepExportOptions.guidRandom`);
+   * undefined keeps the default random path.
    */
-  private generateGlobalId(): string {
-    return generateIfcGuid();
+  private generateGlobalId(random?: RandomSource): string {
+    return generateIfcGuid(random);
   }
 
   /**

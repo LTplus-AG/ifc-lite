@@ -22,6 +22,9 @@ import { cn } from '@/lib/utils';
 interface ColumnHeaderMenuProps {
   isNumeric: boolean;
   isGroupedBy: boolean;
+  /** Grouping is active on OTHER columns — grouping this one adds a nesting
+   *  level (multi-criteria grouping, issue #1790). */
+  groupedElsewhere: boolean;
   isSummed: boolean;
   active: boolean;
   onSort: (dir: 'asc' | 'desc') => void;
@@ -31,7 +34,7 @@ interface ColumnHeaderMenuProps {
 }
 
 export function ColumnHeaderMenu({
-  isNumeric, isGroupedBy, isSummed, active,
+  isNumeric, isGroupedBy, groupedElsewhere, isSummed, active,
   onSort, onToggleGroup, onToggleSum, onColorBy,
 }: ColumnHeaderMenuProps) {
   return (
@@ -60,8 +63,10 @@ export function ColumnHeaderMenu({
         <DropdownMenuSeparator />
         <DropdownMenuItem className="gap-2 text-xs" onClick={onToggleGroup}>
           {isGroupedBy
-            ? (<><Ungroup className="h-3.5 w-3.5" /> Remove grouping</>)
-            : (<><Group className="h-3.5 w-3.5" /> Group by this column</>)}
+            ? (<><Ungroup className="h-3.5 w-3.5" /> Remove from grouping</>)
+            : groupedElsewhere
+              ? (<><Group className="h-3.5 w-3.5" /> Add grouping level</>)
+              : (<><Group className="h-3.5 w-3.5" /> Group by this column</>)}
         </DropdownMenuItem>
         <DropdownMenuCheckboxItem
           className="text-xs"

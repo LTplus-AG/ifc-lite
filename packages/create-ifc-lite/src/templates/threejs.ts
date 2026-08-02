@@ -293,7 +293,7 @@ Open http://localhost:3000 and drop an IFC file.
 
 ## Learn More
 
-- [Three.js Integration Guide](https://ltplus-ag.github.io/ifc-lite/tutorials/threejs-integration/)
-- [IFC-Lite Documentation](https://ltplus-ag.github.io/ifc-lite/)
+- [Three.js Integration Guide](https://ifclite.dev/docs/tutorials/threejs-integration/)
+- [IFC-Lite Documentation](https://ifclite.dev/docs/)
 `);
 }

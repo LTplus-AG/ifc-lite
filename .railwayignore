@@ -1,0 +1,8 @@
+# Files excluded from `railway up` uploads (gitignore syntax). Everything the
+# server build needs comes from the git tree via apps/server/Dockerfile, so we
+# drop local-only state that would otherwise bloat the upload.
+
+# Local agent / editor state. The .claude memory dir can be multiple GB, which
+# makes `railway up` uploads slow or drop the connection mid-upload. Not needed
+# for any Railway build.
+.claude/

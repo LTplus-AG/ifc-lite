@@ -27,7 +27,7 @@ import { writeEntities } from './sections/entities.js';
 import { writeProperties } from './sections/properties.js';
 import { writeQuantities } from './sections/quantities.js';
 import { writeRelationships } from './sections/relationships.js';
-import { writeGeometry } from './sections/geometry.js';
+import { buildGeometrySectionV13 } from './sections/geometry-chunks.js';
 import { writeInstancedShards } from './sections/instanced-shards.js';
 import { writeEntityIndex } from './sections/entity-index.js';
 
@@ -59,11 +59,13 @@ export class BinaryCacheWriter {
   ): Promise<ArrayBuffer> {
     const {
       includeGeometry = true,
-      includeSpatialHierarchy = true,
+      omitSourceHash = false,
     } = options;
 
-    // Compute source hash
-    const sourceHash = xxhash64(sourceBuffer);
+    // Source hash: `omitSourceHash` skips the full-file main-thread `xxhash64`
+    // for large sources (the caller validates the source another way and flags
+    // the header as unset); otherwise hash the whole buffer as before.
+    const sourceHash = omitSourceHash ? 0n : xxhash64(sourceBuffer);
 
     // Build sections
     const sectionBuffers: Array<{ type: SectionType; buffer: ArrayBuffer }> = [];
@@ -122,17 +124,14 @@ export class BinaryCacheWriter {
     let totalTriangles = 0;
 
     if (includeGeometry && geometry) {
-      const geometryBuffer = this.writeSection(() => {
-        const writer = new BufferWriter();
-        writeGeometry(
-          writer,
-          geometry.meshes,
-          geometry.totalVertices,
-          geometry.totalTriangles,
-          geometry.coordinateInfo
-        );
-        return writer.build();
-      });
+      // v13: chunked geometry section (spatially coherent, per-chunk
+      // deflate-raw). The pre-v13 sequential writer was removed — this is
+      // the only geometry serializer.
+      const geometryBuffer = await buildGeometrySectionV13(
+        geometry.meshes,
+        geometry.coordinateInfo,
+        { compress: options.compressGeometryChunks ?? true }
+      );
       sectionBuffers.push({ type: SectionType.Geometry, buffer: geometryBuffer });
       totalVertices = geometry.totalVertices;
       totalTriangles = geometry.totalTriangles;
@@ -170,8 +169,14 @@ export class BinaryCacheWriter {
     if (includeGeometry && geometry) {
       headerFlags |= HeaderFlags.HasGeometry;
     }
-    if (includeSpatialHierarchy && dataStore.spatialHierarchy) {
-      headerFlags |= HeaderFlags.HasSpatial;
+    // NOTE: HeaderFlags.HasSpatial is intentionally NOT set. No Spatial section
+    // is ever written (or read — the reader has no SectionType.Spatial handler),
+    // so setting the flag only misleads consumers of CacheHeaderInfo into
+    // believing a hierarchy is present. The viewer rebuilds spatialHierarchy
+    // from relationships on load regardless. Re-introduce the flag only if a
+    // Spatial section writer+reader is actually added.
+    if (omitSourceHash) {
+      headerFlags |= HeaderFlags.SourceHashUnset;
     }
 
     const header: CacheHeader = {

@@ -13,7 +13,7 @@
  */
 
 import React, { useCallback, useMemo, useState } from 'react';
-import { Play, Plus, Trash2, ChevronDown, ChevronRight, ChevronUp, Save, Check, GripVertical } from 'lucide-react';
+import { Play, Plus, Trash2, ChevronDown, ChevronRight, ChevronUp, Save, Check, GripVertical, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ComboInput } from '@/components/ui/combo-input';
@@ -21,6 +21,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { IfcTypeEnum } from '@ifc-lite/data';
+import { collectSpatialContainerNames } from '@/utils/spatialHierarchy';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import {
   discoverFilterValues,
@@ -35,7 +36,21 @@ import type {
   PropertyCondition,
   ConditionOperator,
 } from '@ifc-lite/lists';
-import { discoverColumns, ENTITY_ATTRIBUTES } from '@ifc-lite/lists';
+import { discoverColumns, ENTITY_ATTRIBUTES, groupingColumnIds } from '@ifc-lite/lists';
+import { useViewerStore } from '@/store';
+import type { ZoneSet } from '@/lib/zones';
+import { collectScopeTypes } from '@/lib/lists/scope-types';
+import { rebuildGrouping } from './list-table-utils';
+import {
+  isEditableColumn,
+  draftFromColumn,
+  columnFromDraft,
+  columnDefKey,
+  draftDefKey,
+  updateColumnInPlace,
+  type ColumnDraft,
+} from '@/lib/lists/column-edit';
+import { previewSetPattern, formatMatchHint } from './pattern-preview';
 
 const NO_OPTIONS: readonly string[] = [];
 
@@ -77,40 +92,32 @@ function discoverConditionValues(stores: IfcDataStore[]): ListConditionValues {
   return { materials: sort(materials), classifications: sort(classifications), propertyValues: pv };
 }
 
-// Building element types available for selection
-const SELECTABLE_TYPES: { type: IfcTypeEnum; label: string }[] = [
-  { type: IfcTypeEnum.IfcWall, label: 'Walls' },
-  { type: IfcTypeEnum.IfcWallStandardCase, label: 'Walls (Standard)' },
-  { type: IfcTypeEnum.IfcDoor, label: 'Doors' },
-  { type: IfcTypeEnum.IfcWindow, label: 'Windows' },
-  { type: IfcTypeEnum.IfcSlab, label: 'Slabs' },
-  { type: IfcTypeEnum.IfcColumn, label: 'Columns' },
-  { type: IfcTypeEnum.IfcBeam, label: 'Beams' },
-  { type: IfcTypeEnum.IfcStair, label: 'Stairs' },
-  { type: IfcTypeEnum.IfcRamp, label: 'Ramps' },
-  { type: IfcTypeEnum.IfcRoof, label: 'Roofs' },
-  { type: IfcTypeEnum.IfcCovering, label: 'Coverings' },
-  { type: IfcTypeEnum.IfcCurtainWall, label: 'Curtain Walls' },
-  { type: IfcTypeEnum.IfcRailing, label: 'Railings' },
-  { type: IfcTypeEnum.IfcSpace, label: 'Spaces' },
-  { type: IfcTypeEnum.IfcSpatialZone, label: 'Spatial Zones' },
-  { type: IfcTypeEnum.IfcZone, label: 'Zones' },
-  { type: IfcTypeEnum.IfcSystem, label: 'Systems' },
-  { type: IfcTypeEnum.IfcDistributionSystem, label: 'Distribution Systems' },
-  { type: IfcTypeEnum.IfcBuildingStorey, label: 'Storeys' },
-  { type: IfcTypeEnum.IfcDistributionElement, label: 'MEP Distribution' },
-  { type: IfcTypeEnum.IfcFlowTerminal, label: 'MEP Terminals' },
-  { type: IfcTypeEnum.IfcFlowSegment, label: 'MEP Segments' },
-  { type: IfcTypeEnum.IfcFlowFitting, label: 'MEP Fittings' },
-];
-
 /** Column descriptor shared by the quick-add grid. */
-interface CommonColumn { id: string; source: ColumnDefinition['source']; propertyName: string; label: string }
+interface CommonColumn {
+  id: string;
+  source: ColumnDefinition['source'];
+  /** Zone-SET id for `source: 'zone'` columns; unused otherwise. */
+  psetName?: string;
+  propertyName: string;
+  label: string;
+}
+
+/** Spatial-container levels a `spatial` column / filter can target, fine to
+ *  coarse: Container is the element's IMMEDIATE container (any level); Storey
+ *  is the default (back-compat). */
+const SPATIAL_LEVELS = ['Container', 'Storey', 'Building', 'Site', 'Project'] as const;
 
 /**
  * The first-class columns: built-in attributes plus the spatial / semantic
- * columns. Surfaced as a flat grid so Material / Classification / Storey
- * are as reachable as Name / Class — not buried in a collapsed group.
+ * columns. Surfaced as a flat grid so Material / Classification / Container /
+ * Storey / Site / Building / Project / Model are as reachable as Name / Class —
+ * not buried in a collapsed group. Container is the element's IMMEDIATE spatial
+ * container (Bonsai's "container"): the direct IfcRelContainedInSpatialStructure
+ * parent, at whatever level — the storey, or for bridges/roads the
+ * IfcBridgePart / IfcRoadPart / IfcSpatialZone it sits in. Site / Building /
+ * Project / Model identify which federated file (and where in its spatial tree)
+ * each row comes from, so a list over several models can be grouped and sorted
+ * by source (issue #1591).
  */
 const COMMON_COLUMNS: CommonColumn[] = [
   ...ENTITY_ATTRIBUTES.map((a): CommonColumn => ({
@@ -121,7 +128,12 @@ const COMMON_COLUMNS: CommonColumn[] = [
   })),
   { id: 'col-material', source: 'material', propertyName: 'Material', label: 'Material' },
   { id: 'col-classification', source: 'classification', propertyName: 'Classification', label: 'Classification' },
+  { id: 'col-container', source: 'spatial', propertyName: 'Container', label: 'Container' },
   { id: 'col-storey', source: 'spatial', propertyName: 'Storey', label: 'Storey' },
+  { id: 'col-building', source: 'spatial', propertyName: 'Building', label: 'Building' },
+  { id: 'col-site', source: 'spatial', propertyName: 'Site', label: 'Site' },
+  { id: 'col-project', source: 'spatial', propertyName: 'Project', label: 'Project' },
+  { id: 'col-model', source: 'model', propertyName: 'Model', label: 'Model' },
 ];
 
 /** Union the per-provider complete-discovery results into one column set. */
@@ -185,23 +197,65 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
     }
     return Array.from(set).sort();
   }, [stores]);
-  const [groupByColumnId, setGroupByColumnId] = useState<string>(initial?.grouping?.columnId ?? '');
+
+  // Spatial-filter value suggestions per level. Storey reuses the index-derived
+  // names above; Building / Site / Project come from a cheap spatial-tree walk
+  // (only the handful of container nodes, no element sampling).
+  const spatialNamesByLevel = useMemo<Record<string, string[]>>(() => {
+    const building = new Set<string>();
+    const site = new Set<string>();
+    const project = new Set<string>();
+    const container = new Set<string>();
+    // Reuse the shared collector so the site / building-like / project /
+    // container classification can't drift from the column resolver (#1591 review).
+    for (const store of stores) {
+      const names = collectSpatialContainerNames(store.spatialHierarchy, (id) => store.entities.getName(id));
+      names.sites.forEach((n) => site.add(n));
+      names.buildings.forEach((n) => building.add(n));
+      names.projects.forEach((n) => project.add(n));
+      names.containers.forEach((n) => container.add(n));
+    }
+    const sorted = (s: Set<string>) => Array.from(s).sort();
+    return {
+      Container: sorted(container),
+      Storey: storeyNames,
+      Building: sorted(building),
+      Site: sorted(site),
+      Project: sorted(project),
+    };
+  }, [stores, storeyNames]);
+
+  // Loaded model / file names — value suggestions for a `Model` filter, and the
+  // discriminator the Model column surfaces (issue #1591).
+  const modelNames = useMemo<string[]>(() => {
+    const set = new Set<string>();
+    for (const p of providers) { const n = p.getModelName?.(); if (n) set.add(n); }
+    return Array.from(set).sort();
+  }, [providers]);
+
+  // Location zones (issue #1810): every currently-defined zone set, for the
+  // quick-add column chips and the `zone` filter's set-picker + value
+  // suggestions. Read directly from the store rather than round-tripping
+  // through a provider — zone sets are viewer state, not IFC-model data.
+  const zoneSets = useViewerStore((s) => s.zoneSets);
+  // Ordered group-by columns, outermost first (multi-criteria grouping #1790).
+  const [groupByColumnIds, setGroupByColumnIds] = useState<string[]>(
+    () => groupingColumnIds(initial?.grouping)
+  );
   const [sumColumnIds, setSumColumnIds] = useState<Set<string>>(
     new Set(initial?.grouping?.sumColumnIds ?? [])
   );
 
-  // Count entities per type across all providers
+  // Scope classes offered as chips: every element class actually present in
+  // the loaded model(s), with instance counts. Derived from the models rather
+  // than a curated allowlist, so a present class the curator never listed —
+  // e.g. IfcDuctSegment / IfcPipeSegment — is still selectable (#1662).
+  const scopeTypes = useMemo(() => collectScopeTypes(stores), [stores]);
   const typeCounts = useMemo(() => {
     const counts = new Map<IfcTypeEnum, number>();
-    for (const { type } of SELECTABLE_TYPES) {
-      let total = 0;
-      for (const p of providers) {
-        total += p.getEntitiesByType(type).length;
-      }
-      if (total > 0) counts.set(type, total);
-    }
+    for (const { type, count } of scopeTypes) counts.set(type, count);
     return counts;
-  }, [providers]);
+  }, [scopeTypes]);
 
   // Available columns. Prefer COMPLETE, type-independent discovery (every
   // property set / quantity set in the model) so all properties/quantities
@@ -231,7 +285,7 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
   const removeColumn = useCallback((id: string) => {
     setColumns(prev => prev.filter(c => c.id !== id));
     // Keep grouping consistent when its column is removed.
-    setGroupByColumnId(prev => (prev === id ? '' : prev));
+    setGroupByColumnIds(prev => (prev.includes(id) ? prev.filter(g => g !== id) : prev));
     setSumColumnIds(prev => {
       if (!prev.has(id)) return prev;
       const next = new Set(prev);
@@ -240,9 +294,33 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
     });
   }, []);
 
-  const toggleColumn = useCallback((col: ColumnDefinition) => {
-    setColumns(prev => (prev.some(c => c.id === col.id) ? prev.filter(c => c.id !== col.id) : [...prev, col]));
+  // Edit a column's definition IN PLACE — same array position, same id, so the
+  // column order and the results table's per-id width / index-based sort survive
+  // (issue #1591 follow-up). The list is re-run from the existing Run action.
+  const updateColumn = useCallback((id: string, next: ColumnDefinition) => {
+    setColumns(prev => updateColumnInPlace(prev, id, next));
   }, []);
+
+  const toggleColumn = useCallback((col: ColumnDefinition) => {
+    // Delegate to add/removeColumn so the removal path shares removeColumn's
+    // grouping + sum cleanup — otherwise toggling off a grouped/summed column
+    // would strand a stale level in the config until buildDefinition prunes it.
+    if (columns.some(c => c.id === col.id)) removeColumn(col.id);
+    else addColumn(col);
+  }, [columns, addColumn, removeColumn]);
+
+  // Would `draft` duplicate an EXISTING column's definition? Keyed by content
+  // (source + set + property), not by column id, so the guard still fires after
+  // an in-place edit drifted a column's definition away from its (stable) id.
+  // `excludeId` skips the slot being edited, so re-saving a column unchanged
+  // isn't flagged as a self-duplicate.
+  const isDuplicateColumn = useCallback(
+    (draft: ColumnDraft, excludeId?: string): boolean => {
+      const key = draftDefKey(draft);
+      return columns.some((c) => c.id !== excludeId && columnDefKey(c) === key);
+    },
+    [columns],
+  );
 
   const moveColumn = useCallback((idx: number, direction: -1 | 1) => {
     setColumns(prev => {
@@ -273,14 +351,33 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
     });
   }, []);
 
+  // Set / clear one grouping level. An empty id removes the level; setting the
+  // slot one past the end appends a new level (multi-criteria grouping #1790).
+  const setGroupLevel = useCallback((level: number, id: string) => {
+    setGroupByColumnIds(prev => {
+      const next = [...prev];
+      if (id === '') {
+        if (level < next.length) next.splice(level, 1);
+      } else if (level < next.length) {
+        next[level] = id;
+      } else {
+        next.push(id);
+      }
+      // Safety de-dup (the selects already hide ids used at other levels).
+      return next.filter((v, i) => next.indexOf(v) === i);
+    });
+  }, []);
+
   const buildDefinition = useCallback((): ListDefinition => {
-    const groupValid = groupByColumnId && columns.some(c => c.id === groupByColumnId);
+    const validGroupIds = groupByColumnIds.filter(id => columns.some(c => c.id === id));
     const sumCols = columns.filter(c => sumColumnIds.has(c.id)).map(c => c.id);
     // Keep grouping when there's a valid group column OR any sum column — sums
     // alone still produce grand totals, and may have been set from the table.
-    const grouping = (groupValid || sumCols.length > 0)
-      ? { columnId: groupValid ? groupByColumnId : '', sumColumnIds: sumCols }
-      : undefined;
+    // The Builder form has no `view` control of its own (that toggle lives on
+    // the results table, issue #1790 round 2) — `rebuildGrouping` spreads
+    // `initial?.grouping` first, so `view` (and any future field) survives
+    // instead of being silently reset when other settings are edited here.
+    const grouping = rebuildGrouping(initial?.grouping, validGroupIds, sumCols);
     return {
       id: initial?.id ?? crypto.randomUUID(),
       name: name || 'Untitled List',
@@ -294,7 +391,7 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
       columns,
       grouping,
     };
-  }, [initial, name, description, selectedTypes, conditions, columns, groupByColumnId, sumColumnIds]);
+  }, [initial, name, description, selectedTypes, conditions, columns, groupByColumnIds, sumColumnIds]);
 
   const handleSave = useCallback(() => onSave(buildDefinition()), [buildDefinition, onSave]);
   const handleRun = useCallback(() => onExecute(buildDefinition()), [buildDefinition, onExecute]);
@@ -353,20 +450,16 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
             ) : (
               <>
                 <div className="flex flex-wrap gap-1.5">
-                  {SELECTABLE_TYPES.map(({ type, label }) => {
-                    const count = typeCounts.get(type);
-                    if (!count) return null;
-                    return (
-                      <Chip
-                        key={type}
-                        selected={selectedTypes.has(type)}
-                        onClick={() => toggleType(type)}
-                        trailing={count.toLocaleString()}
-                      >
-                        {label}
-                      </Chip>
-                    );
-                  })}
+                  {scopeTypes.map(({ type, label, count }) => (
+                    <Chip
+                      key={type}
+                      selected={selectedTypes.has(type)}
+                      onClick={() => toggleType(type)}
+                      trailing={count.toLocaleString()}
+                    >
+                      {label}
+                    </Chip>
+                  ))}
                 </div>
                 {selectedTypes.size === 0 && (
                   <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
@@ -384,7 +477,9 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
               conditions={conditions}
               discovered={discovered}
               values={conditionValues}
-              storeys={storeyNames}
+              spatialNames={spatialNamesByLevel}
+              modelNames={modelNames}
+              zoneSets={zoneSets}
               onAdd={addCondition}
               onUpdate={updateCondition}
               onRemove={removeCondition}
@@ -394,13 +489,22 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
           {/* Columns */}
           <Section label="Columns" hint={columns.length > 0 ? `${columns.length}` : undefined}>
             {columns.length > 0 && (
-              <SelectedColumns columns={columns} onMove={moveColumn} onRemove={removeColumn} />
+              <SelectedColumns
+                columns={columns}
+                discovered={discovered}
+                onMove={moveColumn}
+                onRemove={removeColumn}
+                onUpdate={updateColumn}
+                isDuplicate={isDuplicateColumn}
+              />
             )}
             <ColumnPicker
               discovered={discovered}
+              zoneSets={zoneSets}
               selectedIds={selectedColumnIds}
               onAdd={addColumn}
               onToggle={toggleColumn}
+              isDuplicate={isDuplicateColumn}
             />
           </Section>
 
@@ -409,9 +513,9 @@ export function ListBuilder({ providers, stores, initial, onSave, onCancel, onEx
             <Section label="Grouping & Totals">
               <GroupingBody
                 columns={columns}
-                groupByColumnId={groupByColumnId}
+                groupByColumnIds={groupByColumnIds}
                 sumColumnIds={sumColumnIds}
-                onGroupByChange={setGroupByColumnId}
+                onGroupLevelChange={setGroupLevel}
                 onToggleSum={toggleSumColumn}
               />
             </Section>
@@ -502,52 +606,88 @@ function Chip({
 
 function SelectedColumns({
   columns,
+  discovered,
   onMove,
   onRemove,
+  onUpdate,
+  isDuplicate,
 }: {
   columns: ColumnDefinition[];
+  discovered: DiscoveredColumns;
   onMove: (idx: number, dir: -1 | 1) => void;
   onRemove: (id: string) => void;
+  onUpdate: (id: string, next: ColumnDefinition) => void;
+  isDuplicate: (draft: ColumnDraft, excludeId?: string) => boolean;
 }) {
+  // Which column's inline editor is open (one at a time). Cleared when the
+  // edited column is removed or after a save.
+  const [editingId, setEditingId] = useState<string | null>(null);
+
   return (
     <div className="mb-3 space-y-1">
-      {columns.map((col, idx) => (
-        <div
-          key={col.id}
-          className="group flex items-center gap-1.5 rounded-md border border-border/60 bg-card px-2 py-1 text-xs"
-        >
-          <GripVertical className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
-          <span className="w-4 shrink-0 text-right tabular-nums text-muted-foreground">{idx + 1}</span>
-          <span className="flex-1 truncate font-medium">
-            {col.label ?? col.propertyName}
-            {col.psetName && <span className="ml-1 font-normal text-muted-foreground">· {col.psetName}</span>}
-          </span>
-          <ColSourceTag source={col.source} />
-          <button
-            onClick={() => onMove(idx, -1)}
-            disabled={idx === 0}
-            aria-label="Move up"
-            className="shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-25"
-          >
-            <ChevronUp className="h-3.5 w-3.5" />
-          </button>
-          <button
-            onClick={() => onMove(idx, 1)}
-            disabled={idx === columns.length - 1}
-            aria-label="Move down"
-            className="shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-25"
-          >
-            <ChevronDown className="h-3.5 w-3.5" />
-          </button>
-          <button
-            onClick={() => onRemove(col.id)}
-            aria-label="Remove column"
-            className="shrink-0 text-muted-foreground hover:text-destructive"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      ))}
+      {columns.map((col, idx) => {
+        const editing = editingId === col.id;
+        const editable = isEditableColumn(col);
+        return (
+          <div key={col.id} className="space-y-1">
+            <div className="group flex items-center gap-1.5 rounded-md border border-border/60 bg-card px-2 py-1 text-xs">
+              <GripVertical className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
+              <span className="w-4 shrink-0 text-right tabular-nums text-muted-foreground">{idx + 1}</span>
+              <span className="flex-1 truncate font-medium">
+                {col.label ?? col.propertyName}
+                {col.psetName && <span className="ml-1 font-normal text-muted-foreground">· {col.psetName}</span>}
+              </span>
+              <ColSourceTag col={col} />
+              {editable && (
+                <button
+                  onClick={() => setEditingId(editing ? null : col.id)}
+                  aria-label={editing ? 'Close editor' : 'Edit column'}
+                  aria-pressed={editing}
+                  className={cn(
+                    'shrink-0 hover:text-foreground',
+                    editing ? 'text-primary' : 'text-muted-foreground',
+                  )}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </button>
+              )}
+              <button
+                onClick={() => onMove(idx, -1)}
+                disabled={idx === 0}
+                aria-label="Move up"
+                className="shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-25"
+              >
+                <ChevronUp className="h-3.5 w-3.5" />
+              </button>
+              <button
+                onClick={() => onMove(idx, 1)}
+                disabled={idx === columns.length - 1}
+                aria-label="Move down"
+                className="shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-25"
+              >
+                <ChevronDown className="h-3.5 w-3.5" />
+              </button>
+              <button
+                onClick={() => { if (editing) setEditingId(null); onRemove(col.id); }}
+                aria-label="Remove column"
+                className="shrink-0 text-muted-foreground hover:text-destructive"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            {editing && editable && (
+              <ColumnEditorPanel
+                mode="edit"
+                discovered={discovered}
+                initial={draftFromColumn(col)}
+                isDuplicate={(draft) => isDuplicate(draft, col.id)}
+                onSubmit={(draft) => { onUpdate(col.id, columnFromDraft(draft, col.id, col)); setEditingId(null); }}
+                onClose={() => setEditingId(null)}
+              />
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -559,12 +699,23 @@ const SOURCE_TAG: Record<ColumnDefinition['source'], string> = {
   material: 'mat',
   classification: 'cls',
   spatial: 'storey',
+  model: 'model',
+  zone: 'zone',
 };
 
-function ColSourceTag({ source }: { source: ColumnDefinition['source'] }) {
+/** A `spatial` column's tag reflects its level (storey / building / site /
+ *  project); a `zone` column's tag reflects its display mode (zone /
+ *  straddles); everything else uses the flat per-source tag. */
+function colSourceTag(col: ColumnDefinition): string {
+  if (col.source === 'spatial') return (col.propertyName || 'Storey').toLowerCase();
+  if (col.source === 'zone') return (col.propertyName || 'Zone').toLowerCase();
+  return SOURCE_TAG[col.source];
+}
+
+function ColSourceTag({ col }: { col: ColumnDefinition }) {
   return (
     <span className="shrink-0 rounded bg-muted px-1 text-[9px] font-medium uppercase tracking-wide text-muted-foreground">
-      {SOURCE_TAG[source]}
+      {colSourceTag(col)}
     </span>
   );
 }
@@ -575,12 +726,16 @@ function ColSourceTag({ source }: { source: ColumnDefinition['source'] }) {
 
 interface ColumnPickerProps {
   discovered: DiscoveredColumns;
+  /** Every currently-defined zone set (issue #1810) — one quick-add chip per
+   *  set, so "Zone: Sections" is as reachable as Material / Storey. */
+  zoneSets: ZoneSet[];
   selectedIds: Set<string>;
   onAdd: (col: ColumnDefinition) => void;
   onToggle: (col: ColumnDefinition) => void;
+  isDuplicate: (draft: ColumnDraft, excludeId?: string) => boolean;
 }
 
-function ColumnPicker({ discovered, selectedIds, onAdd, onToggle }: ColumnPickerProps) {
+function ColumnPicker({ discovered, zoneSets, selectedIds, onAdd, onToggle, isDuplicate }: ColumnPickerProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const toggleSection = (id: string) =>
     setExpanded(prev => {
@@ -599,17 +754,30 @@ function ColumnPicker({ discovered, selectedIds, onAdd, onToggle }: ColumnPicker
     [discovered.quantities],
   );
 
+  // One quick-add column per zone set (issue #1810), appended after the
+  // static first-class columns since zone sets are user-defined + dynamic.
+  const zoneColumns = useMemo<CommonColumn[]>(
+    () => zoneSets.map((zs) => ({
+      id: `col-zone-${zs.id}`,
+      source: 'zone' as const,
+      psetName: zs.id,
+      propertyName: 'Zone',
+      label: `Zone: ${zs.name}`,
+    })),
+    [zoneSets],
+  );
+
   return (
     <div className="space-y-2">
       {/* Quick-add grid of the first-class columns */}
       <div className="flex flex-wrap gap-1.5">
-        {COMMON_COLUMNS.map(({ id, source, propertyName, label }) => {
+        {[...COMMON_COLUMNS, ...zoneColumns].map(({ id, source, psetName, propertyName, label }) => {
           const selected = selectedIds.has(id);
           return (
             <Chip
               key={id}
               selected={selected}
-              onClick={() => onToggle({ id, source, propertyName, label })}
+              onClick={() => onToggle({ id, source, psetName, propertyName, label })}
             >
               {selected && <Check className="h-3 w-3" />}
               {label}
@@ -663,6 +831,186 @@ function ColumnPicker({ discovered, selectedIds, onAdd, onToggle }: ColumnPicker
             </PickerGroup>
           ))}
         </div>
+      )}
+
+      {/* Custom / pattern column: type a set + property name directly, with
+          `/regex/` support so one column pulls a value across matching sets
+          (issue #1591 follow-up). Progressive disclosure keeps the picker
+          uncluttered until a power user reaches for it. */}
+      <CustomColumnEntry discovered={discovered} onAdd={onAdd} isDuplicate={isDuplicate} />
+    </div>
+  );
+}
+
+// ============================================================================
+// Custom / pattern column entry — free-text set + property, regex-aware
+// ============================================================================
+
+function CustomColumnEntry({
+  discovered,
+  onAdd,
+  isDuplicate,
+}: {
+  discovered: DiscoveredColumns;
+  onAdd: (col: ColumnDefinition) => void;
+  isDuplicate: (draft: ColumnDraft, excludeId?: string) => boolean;
+}) {
+  const [open, setOpen] = useState(false);
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="flex w-full items-center gap-1.5 rounded-md border border-dashed border-border px-2 py-1.5 text-xs text-muted-foreground hover:border-primary/50 hover:text-foreground"
+      >
+        <Plus className="h-3.5 w-3.5" /> Custom column
+        <span className="ml-auto font-mono text-[10px] opacity-70">Pset/Qto or /regex/</span>
+      </button>
+    );
+  }
+
+  return (
+    <ColumnEditorPanel
+      mode="add"
+      discovered={discovered}
+      initial={{ source: 'property', setName: '', propName: '' }}
+      isDuplicate={(draft) => isDuplicate(draft)}
+      onSubmit={(draft) =>
+        onAdd({
+          id: customColumnId(draft),
+          source: draft.source,
+          psetName: draft.setName,
+          propertyName: draft.propName,
+          label: draft.propName,
+        })
+      }
+      onClose={() => setOpen(false)}
+    />
+  );
+}
+
+/**
+ * Id for a custom / pattern column. Slugified like the discovered-column ids
+ * (collapse whitespace) but case-PRESERVING: regex patterns are case-sensitive,
+ * so `/A/` and `/a/` are distinct sets and must not collapse to one id.
+ */
+function customColumnId(draft: ColumnDraft): string {
+  return `custom-${draft.source}-${draft.setName}-${draft.propName}`.replace(/\s+/g, '-');
+}
+
+/**
+ * The shared property/quantity column editor — the same UI for ADDING a custom
+ * column and for EDITING an existing one in place (issue #1591 follow-up), so
+ * the two never drift. `mode` only changes the primary action (Add keeps the
+ * panel open to add several in a row and clears just the property; Save applies
+ * and lets the parent close). Set + property names accept Bonsai-style
+ * `/regex/`, with the same live match preview and invalid-pattern guard.
+ */
+function ColumnEditorPanel({
+  mode,
+  discovered,
+  initial,
+  onSubmit,
+  onClose,
+  isDuplicate,
+}: {
+  mode: 'add' | 'edit';
+  discovered: DiscoveredColumns;
+  initial: ColumnDraft;
+  onSubmit: (draft: ColumnDraft) => void;
+  onClose: () => void;
+  isDuplicate?: (draft: ColumnDraft) => boolean;
+}) {
+  const [source, setSource] = useState<'property' | 'quantity'>(initial.source);
+  const [setName, setSetName] = useState(initial.setName);
+  const [propName, setPropName] = useState(initial.propName);
+
+  const setOptions = useMemo<string[]>(
+    () => Array.from((source === 'quantity' ? discovered.quantities : discovered.properties).keys()).sort(),
+    [discovered, source],
+  );
+  // Suggest property names only when the typed set is an exact discovered set
+  // (a `/regex/` set has no single property list to offer).
+  const propOptions = useMemo<string[]>(
+    () => [...((source === 'quantity' ? discovered.quantities : discovered.properties).get(setName.trim()) ?? [])],
+    [discovered, source, setName],
+  );
+
+  const set = setName.trim();
+  const prop = propName.trim();
+  // Live preview: which discovered sets a `/regex/` set field matches, so a
+  // power user sees "matches 2 sets: ..." before saving, and a malformed pattern
+  // is flagged rather than silently kept as a dead literal (issue #1591).
+  const preview = useMemo(() => previewSetPattern(set, setOptions), [set, setOptions]);
+  const draft: ColumnDraft = { source, setName: set, propName: prop };
+  const duplicate = isDuplicate?.(draft) ?? false;
+  const canSubmit = set.length > 0 && prop.length > 0 && !preview.isInvalid && !duplicate;
+
+  const submit = () => {
+    if (!canSubmit) return;
+    onSubmit(draft);
+    // Adding keeps the set + source so several properties from the same
+    // (pattern) set can be added in a row; editing is a one-shot apply.
+    if (mode === 'add') setPropName('');
+  };
+
+  return (
+    <div className="space-y-2 rounded-md border border-border/60 bg-card p-2.5">
+      <div className="flex items-center gap-1.5">
+        <Chip selected={source === 'property'} onClick={() => setSource('property')}>Property</Chip>
+        <Chip selected={source === 'quantity'} onClick={() => setSource('quantity')}>Quantity</Chip>
+        {preview.isPattern && (
+          <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-primary">
+            regex
+          </span>
+        )}
+        <button
+          onClick={onClose}
+          aria-label={mode === 'add' ? 'Close custom column' : 'Close editor'}
+          className="ml-auto shrink-0 text-muted-foreground hover:text-foreground"
+        >
+          <ChevronUp className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      <div className="flex items-center gap-1.5">
+        <ComboInput
+          value={setName}
+          options={setOptions}
+          placeholder={source === 'quantity' ? 'Qto_… or /Qto_.*/' : 'Pset_… or /Pset_.*/'}
+          className="h-7 min-w-0 flex-1 text-xs"
+          onChange={setSetName}
+        />
+        <ComboInput
+          value={propName}
+          options={propOptions}
+          placeholder={source === 'quantity' ? 'NetVolume' : 'FireRating'}
+          className="h-7 min-w-0 flex-1 text-xs"
+          onChange={setPropName}
+        />
+        <Button
+          size="sm"
+          onClick={submit}
+          disabled={!canSubmit}
+          aria-label={mode === 'add' ? 'Add custom column' : 'Save column'}
+          className="h-7 shrink-0 px-2"
+        >
+          {mode === 'add' ? <Plus className="h-3.5 w-3.5" /> : <Check className="h-3.5 w-3.5" />}
+        </Button>
+      </div>
+      {preview.isInvalid ? (
+        <p className="text-[11px] leading-relaxed text-destructive">
+          Invalid pattern. It would be matched as a literal name, so it likely hits nothing.
+        </p>
+      ) : preview.isPattern ? (
+        <p className="text-[11px] leading-relaxed text-muted-foreground">
+          {formatMatchHint(preview.matches)}
+        </p>
+      ) : (
+        <p className="text-[11px] leading-relaxed text-muted-foreground">
+          Type an exact set name, or wrap a pattern in{' '}
+          <code className="rounded bg-muted px-1 font-mono text-[10px]">/…/</code> to pull one value across every
+          matching set, e.g. <code className="rounded bg-muted px-1 font-mono text-[10px]">/Qto_.*BaseQuantities/</code>.
+        </p>
       )}
     </div>
   );
@@ -729,32 +1077,49 @@ function PickerItem({
 
 function GroupingBody({
   columns,
-  groupByColumnId,
+  groupByColumnIds,
   sumColumnIds,
-  onGroupByChange,
+  onGroupLevelChange,
   onToggleSum,
 }: {
   columns: ColumnDefinition[];
-  groupByColumnId: string;
+  /** Ordered group-by columns, outermost first (multi-criteria grouping #1790). */
+  groupByColumnIds: string[];
   sumColumnIds: Set<string>;
-  onGroupByChange: (id: string) => void;
+  onGroupLevelChange: (level: number, id: string) => void;
   onToggleSum: (id: string) => void;
 }) {
+  // One select per active level, plus a trailing empty slot to add the next
+  // level (as long as ungrouped columns remain).
+  const levelSlots = groupByColumnIds.length < columns.length
+    ? [...groupByColumnIds, '']
+    : groupByColumnIds;
   return (
     <div className="space-y-3 rounded-md border border-border/60 bg-card p-2.5">
-      <label className="flex items-center gap-2 text-xs">
-        <span className="w-16 shrink-0 text-muted-foreground">Group by</span>
-        <select
-          value={groupByColumnId}
-          onChange={(e) => onGroupByChange(e.target.value)}
-          className="h-7 flex-1 rounded-md border border-border bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
-        >
-          <option value="">— None (flat list) —</option>
-          {columns.map((c) => (
-            <option key={c.id} value={c.id}>{c.label ?? c.propertyName}</option>
-          ))}
-        </select>
-      </label>
+      <div className="space-y-1.5">
+        {levelSlots.map((id, level) => (
+          <label key={level} className="flex items-center gap-2 text-xs">
+            <span className="w-16 shrink-0 text-muted-foreground">{level === 0 ? 'Group by' : 'then by'}</span>
+            <select
+              value={id}
+              onChange={(e) => onGroupLevelChange(level, e.target.value)}
+              className="h-7 flex-1 rounded-md border border-border bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+            >
+              <option value="">{level === 0 ? '— None (flat list) —' : 'None'}</option>
+              {columns
+                .filter((c) => c.id === id || !groupByColumnIds.includes(c.id))
+                .map((c) => (
+                  <option key={c.id} value={c.id}>{c.label ?? c.propertyName}</option>
+                ))}
+            </select>
+          </label>
+        ))}
+        {groupByColumnIds.length > 0 && (
+          <div className="text-[11px] text-muted-foreground">
+            Each group shows its element count.
+          </div>
+        )}
+      </div>
       <div>
         <div className="mb-1 text-[11px] text-muted-foreground">
           Σ Totals — sum these columns per group and overall
@@ -783,7 +1148,9 @@ const CONDITION_SOURCES: { source: ConditionSource; label: string }[] = [
   { source: 'quantity', label: 'Quantity' },
   { source: 'material', label: 'Material' },
   { source: 'classification', label: 'Classification' },
-  { source: 'spatial', label: 'Storey' },
+  { source: 'spatial', label: 'Spatial' },
+  { source: 'model', label: 'Model' },
+  { source: 'zone', label: 'Zone' },
 ];
 
 const OPERATOR_LABEL: Record<ConditionOperator, string> = {
@@ -809,7 +1176,10 @@ function operatorsFor(source: ConditionSource): ConditionOperator[] {
   }
 }
 
-function defaultConditionFor(source: ConditionSource): PropertyCondition {
+/** `zoneSets` supplies the default zone-SET id for a fresh `zone` condition
+ *  (the first defined set, so switching the source dropdown to Zone lands
+ *  on something usable rather than an empty set-picker). */
+function defaultConditionFor(source: ConditionSource, zoneSets: ZoneSet[] = []): PropertyCondition {
   switch (source) {
     case 'property':
       return { source, psetName: '', propertyName: '', operator: 'equals', value: '' };
@@ -821,6 +1191,10 @@ function defaultConditionFor(source: ConditionSource): PropertyCondition {
       return { source, propertyName: 'Classification', operator: 'contains', value: '' };
     case 'spatial':
       return { source, propertyName: 'Storey', operator: 'equals', value: '' };
+    case 'model':
+      return { source, propertyName: 'Model', operator: 'equals', value: '' };
+    case 'zone':
+      return { source, psetName: zoneSets[0]?.id ?? '', propertyName: 'Zone', operator: 'equals', value: '' };
     case 'attribute':
     default:
       return { source: 'attribute', propertyName: 'Name', operator: 'contains', value: '' };
@@ -834,7 +1208,9 @@ function ConditionsBody({
   conditions,
   discovered,
   values,
-  storeys,
+  spatialNames,
+  modelNames,
+  zoneSets,
   onAdd,
   onUpdate,
   onRemove,
@@ -842,7 +1218,9 @@ function ConditionsBody({
   conditions: PropertyCondition[];
   discovered: DiscoveredColumns;
   values: ListConditionValues | null;
-  storeys: string[];
+  spatialNames: Record<string, string[]>;
+  modelNames: string[];
+  zoneSets: ZoneSet[];
   onAdd: (condition: PropertyCondition) => void;
   onUpdate: (idx: number, condition: PropertyCondition) => void;
   onRemove: (idx: number) => void;
@@ -855,7 +1233,9 @@ function ConditionsBody({
           condition={condition}
           discovered={discovered}
           values={values}
-          storeys={storeys}
+          spatialNames={spatialNames}
+          modelNames={modelNames}
+          zoneSets={zoneSets}
           onChange={(next) => onUpdate(idx, next)}
           onRemove={() => onRemove(idx)}
         />
@@ -874,14 +1254,18 @@ function ConditionRow({
   condition,
   discovered,
   values,
-  storeys,
+  spatialNames,
+  modelNames,
+  zoneSets,
   onChange,
   onRemove,
 }: {
   condition: PropertyCondition;
   discovered: DiscoveredColumns;
   values: ListConditionValues | null;
-  storeys: string[];
+  spatialNames: Record<string, string[]>;
+  modelNames: string[];
+  zoneSets: ZoneSet[];
   onChange: (next: PropertyCondition) => void;
   onRemove: () => void;
 }) {
@@ -889,6 +1273,8 @@ function ConditionRow({
   const showValue = condition.operator !== 'exists';
   const isProperty = condition.source === 'property';
   const isQuantity = condition.source === 'quantity';
+  const isSpatial = condition.source === 'spatial';
+  const isZone = condition.source === 'zone';
   const showSetFields = isProperty || isQuantity;
 
   const setNameOptions = useMemo<string[]>(() => {
@@ -904,28 +1290,38 @@ function ConditionRow({
     return [];
   }, [discovered, condition.psetName, isProperty, isQuantity]);
 
+  const zoneNameOptions = useMemo<string[]>(() => {
+    if (!isZone) return [];
+    const set = zoneSets.find((zs) => zs.id === condition.psetName);
+    return set ? set.zones.map((z) => z.name) : [];
+  }, [isZone, zoneSets, condition.psetName]);
+
   const valueOptions = useMemo<readonly string[]>(() => {
     switch (condition.source) {
       case 'property':
         return values?.propertyValues.get(propValueKey(condition.psetName ?? '', condition.propertyName)) ?? NO_OPTIONS;
       case 'material': return values?.materials ?? NO_OPTIONS;
       case 'classification': return values?.classifications ?? NO_OPTIONS;
-      case 'spatial': return storeys;
+      case 'spatial': return spatialNames[condition.propertyName] ?? spatialNames.Storey ?? NO_OPTIONS;
+      case 'model': return modelNames;
+      case 'zone': return condition.propertyName === 'Straddles' ? ['true', 'false'] : zoneNameOptions;
       default: return NO_OPTIONS;
     }
-  }, [condition.source, condition.psetName, condition.propertyName, values, storeys]);
+  }, [condition.source, condition.psetName, condition.propertyName, values, spatialNames, modelNames, zoneNameOptions]);
 
   const valuePlaceholder =
-    condition.source === 'spatial' ? 'storey name'
-      : condition.source === 'material' ? 'material'
-        : condition.source === 'classification' ? 'code or name'
-          : 'value';
+    condition.source === 'spatial' ? `${(condition.propertyName || 'Storey').toLowerCase()} name`
+      : condition.source === 'model' ? 'model / file'
+        : condition.source === 'material' ? 'material'
+          : condition.source === 'classification' ? 'code or name'
+            : condition.source === 'zone' ? (condition.propertyName === 'Straddles' ? 'true / false' : 'zone name')
+              : 'value';
 
   return (
     <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-border/60 bg-card px-2 py-1.5 text-xs">
       <select
         value={condition.source}
-        onChange={(e) => onChange(defaultConditionFor(e.target.value as ConditionSource))}
+        onChange={(e) => onChange(defaultConditionFor(e.target.value as ConditionSource, zoneSets))}
         className={SELECT_CLASS}
         aria-label="Filter dimension"
       >
@@ -945,6 +1341,44 @@ function ConditionRow({
             <option key={a} value={a}>{a}</option>
           ))}
         </select>
+      )}
+
+      {isSpatial && (
+        <select
+          value={condition.propertyName || 'Storey'}
+          onChange={(e) => onChange({ ...condition, propertyName: e.target.value, value: '' })}
+          className={SELECT_CLASS}
+          aria-label="Spatial level"
+        >
+          {SPATIAL_LEVELS.map((level) => (
+            <option key={level} value={level}>{level}</option>
+          ))}
+        </select>
+      )}
+
+      {isZone && (
+        <>
+          <select
+            value={condition.psetName ?? ''}
+            onChange={(e) => onChange({ ...condition, psetName: e.target.value, value: '' })}
+            className={SELECT_CLASS}
+            aria-label="Zone set"
+          >
+            {zoneSets.length === 0 && <option value="">(no zone sets)</option>}
+            {zoneSets.map((zs) => (
+              <option key={zs.id} value={zs.id}>{zs.name}</option>
+            ))}
+          </select>
+          <select
+            value={condition.propertyName || 'Zone'}
+            onChange={(e) => onChange({ ...condition, propertyName: e.target.value, value: '' })}
+            className={SELECT_CLASS}
+            aria-label="Zone display mode"
+          >
+            <option value="Zone">Zone</option>
+            <option value="Straddles">Straddles</option>
+          </select>
+        </>
       )}
 
       {showSetFields && (

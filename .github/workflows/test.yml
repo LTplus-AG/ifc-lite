@@ -39,16 +39,18 @@ jobs:
       rust: ${{ steps.filter.outputs.rust }}
       frontend: ${{ steps.filter.outputs.frontend }}
       geometry: ${{ steps.filter.outputs.geometry }}
+      plato: ${{ steps.filter.outputs.plato }}
+      docs: ${{ steps.filter.outputs.docs }}
       # `true` when the WASM source is byte-identical to the published release
       # tag, so `build` can fetch the prebuilt bundle and run on a FREE runner
       # instead of compiling wasm32 on a paid Depot runner. See the `build`
       # job and scripts/ci-wasm-prebuilt-eligible.sh.
       wasm_prebuilt: ${{ steps.wasm.outputs.eligible }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+      - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
         id: filter
         with:
           filters: |
@@ -81,6 +83,22 @@ jobs:
               - 'apps/server/Cargo.toml'
               - 'Cargo.lock'
               - '.github/workflows/test.yml'
+              # The watertightness census sweeps the fixture set named here, so a
+              # corpus change moves its pinned counts even with no code change.
+              - 'tests/models/manifest.json'
+            plato:
+              - 'tools/plato/**'
+              - 'rust/clash/src/generated/**'
+              - 'packages/clash/src/math/generated/**'
+              - 'scripts/generate-plato-clash.mjs'
+              - '.github/workflows/test.yml'
+            docs:
+              - 'docs/**'
+              - 'mkdocs.yml'
+              - 'README.md'
+              - 'packages/*/README.md'
+              - 'scripts/docs/**'
+              - '.github/workflows/test.yml'
 
       # Decide whether `build` can skip the from-source wasm32 compile. The
       # probe emits `true` only when the WASM source is byte-identical to the
@@ -109,7 +127,7 @@ jobs:
     runs-on: ${{ needs.changes.outputs.wasm_prebuilt == 'true' && 'ubuntu-latest' || 'depot-ubuntu-24.04-4' }}
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Fixtures live in a GitHub Release (see tests/models/manifest.json
           # and AGENTS.md §9). The repo no longer uses Git LFS — explicitly
@@ -125,7 +143,7 @@ jobs:
         uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
 
       - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: pnpm
@@ -240,12 +258,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: false
           persist-credentials: false
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: pnpm
@@ -265,12 +283,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: false
           persist-credentials: false
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: pnpm
@@ -289,12 +307,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: false
           persist-credentials: false
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: pnpm
@@ -322,6 +340,23 @@ jobs:
       # can't ship silently.
       - name: Check API surface
         run: node scripts/check-api-surface.mjs
+      # The server-parse root-attribute table (attr_indices.rs) is generated
+      # from @ifc-lite/parser's SCHEMA_REGISTRY — the SAME table the in-browser
+      # parse resolves names against. Guard that the committed file is in sync
+      # so a registry change can't silently break server↔client parity. Uses
+      # the parser dist from the build artifact above; format-agnostic, no Rust
+      # toolchain needed (issue #1780).
+      - name: Check server attr-indices freshness
+        run: node scripts/generate-server-attr-indices.mjs --check
+      # Docs upkeep guards (cheap, no build/fixtures needed — the doc-sample
+      # typecheck resolves @ifc-lite/* to each package's src via tsconfig
+      # paths). Keep the docs in lockstep with the code they describe.
+      - name: Check package READMEs
+        run: node scripts/docs/check-package-readmes.mjs
+      - name: Check doc code samples
+        run: node scripts/docs/check-doc-samples.mjs
+      - name: Check generated doc sections
+        run: node scripts/docs/generate-docs-sections.mjs --check
       - run: pnpm test
       - name: Integration tests (parse → quantities → export)
         # Step-scoped timeout: a hung harness must fail fast here, not
@@ -344,12 +379,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: false
           persist-credentials: false
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: pnpm
@@ -400,7 +435,7 @@ jobs:
     runs-on: depot-ubuntu-24.04-4
     timeout-minutes: 28
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: false
           persist-credentials: false
@@ -421,6 +456,14 @@ jobs:
         # The fixtures script is pure Node (no npm deps) so we skip the
         # pnpm install dance Rust-only jobs don't need.
         run: node scripts/fixtures/fetch-fixtures.mjs
+      # Cheap (resolve only, no compile) and it catches a failure mode that
+      # otherwise stays invisible for weeks: a release bumps the manifests but
+      # leaves Cargo.lock recording the old member versions, so every `--locked`
+      # command refuses to run and every local build silently dirties the lock.
+      # `scripts/sync-versions.js` keeps the two in step; this is the gate that
+      # notices if that ever stops being true.
+      - name: Cargo.lock is in sync with the manifests
+        run: cargo metadata --locked --format-version 1 > /dev/null
       # Workspace exclusions:
       #   - ifc-lite-wasm: dev-deps on wasm-bindgen-test; tests target wasm32.
       - name: Clippy (lint gate)
@@ -428,13 +471,134 @@ jobs:
       - name: Rust tests
         run: cargo test --workspace --exclude ifc-lite-wasm
 
+  # Geometry watertightness / triangulation-invariance census.
+  #
+  # Its own job, not a step in `rust-tests`: the sweep runs the whole fixture
+  # manifest and takes ~20 min, which pushed that lane past its 28-minute timeout
+  # and cancelled it. Here it runs concurrently instead of serially, so neither
+  # lane's wall-clock depends on the other.
+  #
+  # Feature-gated because it links a second ear-clipper as a differential oracle,
+  # so `cargo test --workspace` does not run it — without this job the suite
+  # early-returns and its pinned baselines gate nothing.
+  #
+  # `geometry`, not `rust`: only rust/geometry, rust/processing or the fixture
+  # manifest can move its numbers.
+  geometry-census:
+    name: Geometry watertightness census
+    needs: changes
+    if: needs.changes.outputs.geometry == 'true'
+    runs-on: depot-ubuntu-24.04-4
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+      - name: Setup Rust (pinned by rust-toolchain.toml)
+        run: rustup show
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          prefix-key: ci-rust-census
+      - name: Cache test fixtures
+        id: fixtures-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: tests/models
+          key: ci-fixtures-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json') }}
+      - name: Fetch fixtures
+        if: steps.fixtures-cache.outputs.cache-hit != 'true'
+        run: node scripts/fixtures/fetch-fixtures.mjs
+      - name: Census
+        run: cargo test -p ifc-lite-geometry --features triangulation-alt --test triangulation_invariance -- --nocapture
+
+  # Plato clash-math single-source freshness gate. The clash narrow-phase math
+  # is written once in Plato and transpiled to Rust + TypeScript; the committed
+  # rust/clash/src/generated/plato.rs and packages/clash/src/math/generated/
+  # plato.g.ts must stay in sync with the .plato source. The generator clones
+  # plato + ara3d-sdk at pinned SHAs and rebuilds Plato.CLI (needs the .NET 9
+  # SDK), so this runs only when the plato sources / generated files / the
+  # generator change. See tools/plato/README.md.
+  plato-check:
+    name: Plato clash-math freshness
+    needs: changes
+    if: needs.changes.outputs.plato == 'true'
+    # Free runner - the generator clones + builds Plato.CLI with dotnet; no
+    # Depot cores needed.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+      # The scalar codemod imports the repo's own pinned typescript package;
+      # printer output is only byte-stable against that exact version, so the
+      # gate resolves it from the lockfile like every other node job.
+      - run: pnpm install --frozen-lockfile
+      - name: Setup .NET 9 SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '9.0.x'
+      # The toolchain checkouts and NuGet packages only change when the pins
+      # in the generator script change, so key the cache on that file.
+      - name: Cache Plato toolchain
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/ifc-lite-plato
+            ~/.nuget/packages
+          key: plato-toolchain-${{ runner.os }}-${{ hashFiles('scripts/generate-plato-clash.mjs') }}
+      # Regenerates the Rust + TypeScript outputs from tools/plato/ at the
+      # pinned plato + ara3d-sdk SHAs and fails (exit 1) if the committed
+      # files drift.
+      - name: Check committed Plato outputs are in sync
+        run: PLATO_WORK_DIR=$HOME/.cache/ifc-lite-plato node scripts/generate-plato-clash.mjs --check
+
+  # Docs guards for docs-only PRs. node-tests runs the same three checks,
+  # but it only triggers on frontend/rust changes - and docs-only PRs are
+  # exactly the ones most likely to break code samples or generated
+  # tables. This lightweight twin (install + three node scripts, no build,
+  # no fixtures) fills that gap and is skipped whenever node-tests already
+  # covers it.
+  docs-checks:
+    name: Docs checks (docs-only PRs)
+    needs: changes
+    if: needs.changes.outputs.docs == 'true' && needs.changes.outputs.frontend != 'true' && needs.changes.outputs.rust != 'true'
+    # Free runner - three node scripts, not compute-bound.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Check package READMEs
+        run: node scripts/docs/check-package-readmes.mjs
+      - name: Check doc code samples
+        run: node scripts/docs/check-doc-samples.mjs
+      - name: Check generated doc sections
+        run: node scripts/docs/generate-docs-sections.mjs --check
+
   # Aggregate gate. Keeps the existing required status check name green
   # for the branch protection rule so we don't have to retouch settings.
   # Succeeds if every dependency succeeded or was skipped (path-filtered
   # out); fails the moment any dependency fails or is cancelled.
   test:
     name: Build + WASM + Rust + Node
-    needs: [changes, build, typecheck, lint, node-tests, viewer-e2e, rust-tests]
+    needs: [changes, build, typecheck, lint, node-tests, viewer-e2e, rust-tests, geometry-census, plato-check, docs-checks]
     if: always()
     # Free runner — the gate just inspects upstream job results.
     runs-on: ubuntu-latest
@@ -448,6 +612,9 @@ jobs:
             [node-tests]="${{ needs.node-tests.result }}"
             [viewer-e2e]="${{ needs.viewer-e2e.result }}"
             [rust-tests]="${{ needs.rust-tests.result }}"
+            [geometry-census]="${{ needs.geometry-census.result }}"
+            [plato-check]="${{ needs.plato-check.result }}"
+            [docs-checks]="${{ needs.docs-checks.result }}"
           )
           fail=0
           for j in "${!results[@]}"; do

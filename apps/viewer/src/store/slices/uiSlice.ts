@@ -7,13 +7,38 @@
  */
 
 import type { StateCreator } from 'zustand';
-import { MERGE_LAYERS_STORAGE_KEY, GEOMETRY_MODE_STORAGE_KEY, UI_DEFAULTS, type GeometryMode } from '../constants.js';
+import {
+  MERGE_LAYERS_STORAGE_KEY,
+  GEOMETRY_MODE_STORAGE_KEY,
+  HIERARCHY_MODE_STORAGE_KEY,
+  TOOLBAR_STYLE_STORAGE_KEY,
+  RIBBON_COLLAPSED_STORAGE_KEY,
+  RIBBON_CONTEXTUAL_TABS_STORAGE_KEY,
+  UI_DEFAULTS,
+  type GeometryMode,
+  type RibbonTabId,
+  type ToolbarStyle,
+} from '../constants.js';
 import type { ContactShadingQuality, SeparationLinesQuality } from '@ifc-lite/renderer';
 import type { FederatedModel } from '../types.js';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import type { CesiumPlacementDraft } from './cesiumSlice.js';
 
 export type ThemeMode = 'light' | 'dark' | 'colorful';
+export type HierarchyMode = 'spatial' | 'type' | 'ifc-type' | 'material' | 'groups';
+
+function getInitialHierarchyMode(): HierarchyMode {
+  if (typeof window === 'undefined') return 'spatial';
+  try {
+    const stored = localStorage.getItem(HIERARCHY_MODE_STORAGE_KEY);
+    if (stored === 'spatial' || stored === 'type' || stored === 'ifc-type' || stored === 'material' || stored === 'groups') {
+      return stored;
+    }
+  } catch (err) {
+    console.warn('[hierarchy-mode] storage unavailable; using spatial', err);
+  }
+  return 'spatial';
+}
 
 /**
  * One-shot target for "jump to a property and edit it" flows (issue #1107).
@@ -90,6 +115,8 @@ export interface UISlice {
   /** Active tab in the Properties panel. Controlled so in-app flows (e.g.
    *  adding a bSDD property) can jump back to "properties" — issue #1107. */
   propertiesActiveTab: 'properties' | 'quantities' | 'bsdd' | 'raw-step';
+  /** Active grouping tab shared by the Hierarchy panel and Ribbon. */
+  hierarchyMode: HierarchyMode;
   /** One-shot "scroll to + highlight + edit this property" request, armed by
    *  the bSDD add flow and consumed by the Properties panel. Null when idle. */
   pendingPropertyFocus: PropertyFocusTarget | null;
@@ -124,6 +151,28 @@ export interface UISlice {
   geometryMode: GeometryMode;
   /** True after the user flipped `geometryMode` while a model was loaded. */
   geometryModePendingReload: boolean;
+  /**
+   * Desktop toolbar style (issue #1686): the tabbed, IFCFlux-style
+   * `ribbon` (the default) or the original `classic` strip. Persisted
+   * preference — the mobile toolbar is orthogonal (`isMobile` wins on
+   * small screens).
+   */
+  toolbarStyle: ToolbarStyle;
+  /** Ribbon collapsed to its tab strip (Office-style double-click). */
+  ribbonCollapsed: boolean;
+  /**
+   * Ribbon tab showing in the band. Lives in the store rather than the
+   * component so non-React drivers (the ribbon walkthrough, the command
+   * palette) can open a tab; deliberately NOT persisted, so every session
+   * still starts on Home.
+   */
+  ribbonTab: RibbonTabId;
+  /**
+   * Ribbon tabs follow the working context: a selection opens Elements,
+   * edit mode opens Author, an empty scene opens File, and dropping the
+   * context returns the user to the tab they came from. Persisted opt-out.
+   */
+  ribbonContextualTabs: boolean;
 
   // Actions
   setLeftPanelCollapsed: (collapsed: boolean) => void;
@@ -134,6 +183,7 @@ export interface UISlice {
   setEditEnabled: (enabled: boolean) => void;
   toggleEditEnabled: () => void;
   setPropertiesActiveTab: (tab: 'properties' | 'quantities' | 'bsdd' | 'raw-step') => void;
+  setHierarchyMode: (mode: HierarchyMode) => void;
   /** Arm (or clear, with null) the one-shot property-focus request. */
   setPendingPropertyFocus: (focus: PropertyFocusTarget | null) => void;
   setTheme: (theme: ThemeMode) => void;
@@ -160,6 +210,14 @@ export interface UISlice {
   setGeometryMode: (v: GeometryMode) => void;
   /** Acknowledge the geometry-mode reload banner without performing a reload. */
   clearGeometryModePendingReload: () => void;
+  /** Switch the desktop toolbar style and persist the choice. */
+  setToolbarStyle: (style: ToolbarStyle) => void;
+  /** Collapse/expand the ribbon band and persist the choice. */
+  setRibbonCollapsed: (collapsed: boolean) => void;
+  /** Open a ribbon tab (session-local). */
+  setRibbonTab: (tab: RibbonTabId) => void;
+  /** Turn contextual tab following on/off and persist the choice. */
+  setRibbonContextualTabs: (enabled: boolean) => void;
 }
 
 /** Apply the correct CSS classes on <html> for the given theme */
@@ -188,6 +246,7 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   editEnabled: false,
   spaceSketchMinimized: false,
   propertiesActiveTab: 'properties',
+  hierarchyMode: getInitialHierarchyMode(),
   pendingPropertyFocus: null,
   theme: UI_DEFAULTS.THEME,
   isMobile: false,
@@ -206,6 +265,10 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   mergeLayersPendingReload: false,
   geometryMode: UI_DEFAULTS.GEOMETRY_MODE,
   geometryModePendingReload: false,
+  toolbarStyle: UI_DEFAULTS.TOOLBAR_STYLE,
+  ribbonCollapsed: UI_DEFAULTS.RIBBON_COLLAPSED,
+  ribbonTab: UI_DEFAULTS.RIBBON_TAB,
+  ribbonContextualTabs: UI_DEFAULTS.RIBBON_CONTEXTUAL_TABS,
 
   // Actions
   setLeftPanelCollapsed: (leftPanelCollapsed) => set({ leftPanelCollapsed }),
@@ -215,15 +278,31 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
     // the global toggle on so the rest of the UI (Properties panel,
     // future manipulators) stays in sync. Read-only tools leave the
     // flag alone.
-    // Any tool change resets the Space Sketch minimize state, so the panel is
-    // never stranded collapsed after switching tools and a fresh open of the
-    // tool always starts expanded.
-    set(AUTHORING_TOOLS.has(activeTool)
-      ? { activeTool, editEnabled: true, spaceSketchMinimized: false }
-      : { activeTool, spaceSketchMinimized: false });
+    // Any tool change that actually lands also resets the Space Sketch minimize
+    // state, so the panel is never stranded collapsed after switching tools and
+    // a fresh open of the tool always starts expanded. A tool change the collab
+    // gate below rejects is not a tool change, so it leaves the flag alone.
+    if (AUTHORING_TOOLS.has(activeTool)) {
+      // Collab role gate: in a shared session only editor/admin may
+      // unlock authoring. Viewers/commenters can still pick read-only
+      // tools, so we only block the authoring branch.
+      const canEdit = (get() as unknown as { canCollabEdit?: () => boolean }).canCollabEdit;
+      if (canEdit && !canEdit()) return;
+      set({ activeTool, editEnabled: true, spaceSketchMinimized: false });
+      return;
+    }
+    set({ activeTool, spaceSketchMinimized: false });
   },
   setSpaceSketchMinimized: (spaceSketchMinimized) => set({ spaceSketchMinimized }),
   setEditEnabled: (editEnabled) => {
+    if (editEnabled) {
+      // Collab role gate: only editor/admin (or single-user, role===null)
+      // may enter edit mode. This is the single chokepoint that unlocks
+      // the gizmo, geometry card, add-element draw tools, and the inline
+      // property editors — gating it here covers every authoring surface.
+      const canEdit = (get() as unknown as { canCollabEdit?: () => boolean }).canCollabEdit;
+      if (canEdit && !canEdit()) return;
+    }
     if (!editEnabled) {
       // Flipping edit mode off must clear every authoring sub-state
       // that depends on it — otherwise the viewer ends up "not in
@@ -260,6 +339,15 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   },
 
   setPropertiesActiveTab: (propertiesActiveTab) => set({ propertiesActiveTab }),
+
+  setHierarchyMode: (mode) => {
+    set({ hierarchyMode: mode });
+    try {
+      localStorage.setItem(HIERARCHY_MODE_STORAGE_KEY, mode);
+    } catch (err) {
+      console.warn('[hierarchy-mode] persist failed; in-memory only', err);
+    }
+  },
 
   setPendingPropertyFocus: (pendingPropertyFocus) => set({ pendingPropertyFocus }),
 
@@ -341,4 +429,36 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   },
 
   clearGeometryModePendingReload: () => set({ geometryModePendingReload: false }),
+
+  setToolbarStyle: (toolbarStyle) => {
+    // Persist eagerly so the next page-load boots straight into the chosen
+    // style (constants.ts `resolveInitialToolbarStyle`). Wrap in try/catch —
+    // Safari private mode / locked storage throws.
+    try {
+      localStorage.setItem(TOOLBAR_STYLE_STORAGE_KEY, toolbarStyle);
+    } catch (err) {
+      console.warn('[toolbar-style] persist failed; in-memory only', err);
+    }
+    set({ toolbarStyle });
+  },
+
+  setRibbonCollapsed: (ribbonCollapsed) => {
+    try {
+      localStorage.setItem(RIBBON_COLLAPSED_STORAGE_KEY, String(ribbonCollapsed));
+    } catch (err) {
+      console.warn('[ribbon-collapsed] persist failed; in-memory only', err);
+    }
+    set({ ribbonCollapsed });
+  },
+
+  setRibbonTab: (ribbonTab) => set({ ribbonTab }),
+
+  setRibbonContextualTabs: (ribbonContextualTabs) => {
+    try {
+      localStorage.setItem(RIBBON_CONTEXTUAL_TABS_STORAGE_KEY, String(ribbonContextualTabs));
+    } catch (err) {
+      console.warn('[ribbon-contextual-tabs] persist failed; in-memory only', err);
+    }
+    set({ ribbonContextualTabs });
+  },
 });

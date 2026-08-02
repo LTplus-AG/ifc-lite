@@ -4,11 +4,17 @@ Extension manifest, capability grammar, and slot registry for IFClite's
 user-customization system.
 
 This package implements the **non-UI** half of the design described in
-[`docs/architecture/ai-customization/`](../../docs/architecture/ai-customization/).
+[docs/architecture/ai-customization/](https://github.com/LTplus-AG/ifc-lite/tree/main/docs/architecture/ai-customization).
 It is host-agnostic — the same code is consumed by the browser viewer,
-the desktop app, the CLI, and the headless server.
+the CLI, and the headless server.
 
-## What's here (v0.1.0 — Phase 0)
+## Installation
+
+```bash
+npm install @ifc-lite/extensions
+```
+
+## What's here
 
 - **Manifest** — typed schema + hand-rolled validator producing
   structured `{ path, code, hint }` errors.
@@ -27,15 +33,17 @@ the desktop app, the CLI, and the headless server.
 - **Manifest migrations** — chain scaffold for forward-compatibility
   with future manifest versions.
 
-## Coming in later phases
+## Also included (re-exported from the package root)
 
-- **Phase 1** — IndexedDB storage, host loader, runtime activation,
-  sandbox wiring, audit log, viewer-side slot binding.
-- **Phase 2** — Widget DSL renderer, AI authoring pipeline, repair loop.
-- **Phase 3** — Flavor data model, export/import, three-way merge.
-- **Phase 4** — Action log, pattern miner, prompt overlay, SDK-update repair.
+- **Storage, host, audit** - IndexedDB storage, host loader, runtime
+  activation, sandbox wiring, audit log, viewer-side slot binding.
+- **Widget + authoring** - Widget DSL renderer, AI authoring pipeline,
+  repair loop.
+- **Flavor** - Flavor data model, export/import, three-way merge.
+- **Log, miner, inference** - Action log, pattern miner, prompt overlay,
+  SDK-update repair.
 
-## Usage (Phase 0)
+## Usage
 
 ```ts
 import {
@@ -47,8 +55,9 @@ import {
   parseWhen,
   evaluateWhen,
   SlotRegistry,
-  loadBundleFromDirectory,
 } from '@ifc-lite/extensions';
+// The directory/`.iflx` bundle loader is Node-only:
+import { loadBundleFromDirectory } from '@ifc-lite/extensions/node';
 
 // Validate a manifest
 const result = validateManifest(manifestJson);
@@ -61,10 +70,9 @@ if (result.ok) {
 }
 ```
 
-## Design references
+## Docs
 
-- `docs/architecture/ai-customization/01-extension-model.md`
-- `docs/architecture/ai-customization/02-security.md`
-- `docs/architecture/ai-customization/03-ui-surface.md`
+- [Extensions Guide](https://ifclite.dev/docs/guide/extensions/) and [Extension Authoring](https://ifclite.dev/docs/guide/extension-authoring/)
+- Design references: [01-extension-model.md](https://github.com/LTplus-AG/ifc-lite/blob/main/docs/architecture/ai-customization/01-extension-model.md), [02-security.md](https://github.com/LTplus-AG/ifc-lite/blob/main/docs/architecture/ai-customization/02-security.md), [03-ui-surface.md](https://github.com/LTplus-AG/ifc-lite/blob/main/docs/architecture/ai-customization/03-ui-surface.md)
 
 Licensed under MPL-2.0.

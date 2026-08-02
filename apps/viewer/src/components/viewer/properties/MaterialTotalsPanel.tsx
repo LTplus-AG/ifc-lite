@@ -9,20 +9,29 @@
  * uses the material. Volumes/areas are apportioned by each element's material
  * share (layer thickness / constituent fraction), so a layered wall's volume is
  * split between its concrete and insulation rather than double-counted.
+ * NOTE: apportioning is per ASSOCIATION — an element carrying several
+ * IfcRelAssociatesMaterial (e.g. a layer set plus a fallback material)
+ * contributes its full volume under EACH association, so summing every
+ * material's total can exceed the model volume for such elements.
  */
 
 import { useMemo } from 'react';
 import { Layers, Calculator, Boxes, Info } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useIfc } from '@/hooks/useIfc';
+import { useViewerStore } from '@/store';
 import {
   buildMaterialUsageIndex,
   getMaterialDisplay,
   extractMaterialPropertiesForMaterialId,
   extractQuantitiesOnDemand,
+  extractTypeQuantitiesOnDemand,
+  extractProjectUnits,
+  ProjectUnits,
   type IfcDataStore,
 } from '@ifc-lite/parser';
-import { QuantityType } from '@ifc-lite/data';
+import { QuantityType, RelationshipType } from '@ifc-lite/data';
+import { resolveQuantityDisplay } from '@/lib/units/display';
 import { PropertySetCard } from './PropertySetCard';
 import type { PropertySet } from './encodingUtils';
 
@@ -61,8 +70,32 @@ function formatNumber(value: number): string {
   return value.toLocaleString(undefined, { maximumFractionDigits: 4 });
 }
 
+/** Render an aggregated total with its resolved unit (issue #1573 follow-up):
+ *  the display-unit override when set, else the file's declared/SI-default
+ *  unit — same resolution as the property/quantity cards below, just with
+ *  `formatNumber`'s magnitude-adaptive precision instead of `formatConverted`
+ *  so large totals stay readable. NOTE: the totals loop sums raw quantity
+ *  values across `allStores` (materials of the same name are merged across the
+ *  federation), but the unit label + any override conversion here use only the
+ *  SELECTED store's declared units. For a single-store model that is exact; a
+ *  federation whose stores declare different volume/area/mass units mixes raw
+ *  values before this label is applied — a pre-existing concern (the block was
+ *  previously hardcoded m³/m²/kg) that this label does not attempt to fix. */
+function formatTotal(
+  value: number,
+  quantityType: number,
+  projectUnits: ProjectUnits,
+  overrides: Record<string, string>,
+): string {
+  const disp = resolveQuantityDisplay(value, quantityType, projectUnits, overrides);
+  const shown = disp.converted ?? value;
+  return disp.unit ? `${formatNumber(shown)} ${disp.unit}` : formatNumber(shown);
+}
+
 export function MaterialTotalsPanel({ materialId, modelId }: { materialId: number; modelId: string }) {
   const { ifcDataStore, models } = useIfc();
+  // Display-unit converter overrides (issue #1573 proposal 2).
+  const unitDisplayOverrides = useViewerStore((s) => s.unitDisplayOverrides);
 
   // The store the selected material lives in, plus every loaded store (so the
   // totals merge same-named materials across a federation).
@@ -92,6 +125,13 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
     return extractMaterialPropertiesForMaterialId(selectedStore, materialId);
   }, [selectedStore, materialId]);
 
+  // The file's declared units, for rendering unit suffixes on material
+  // property values (issue #1573).
+  const projectUnits = useMemo(() => {
+    if (!selectedStore?.source?.length || !selectedStore?.entityIndex) return ProjectUnits.empty();
+    return extractProjectUnits(selectedStore.source, selectedStore.entityIndex);
+  }, [selectedStore]);
+
   // Aggregate quantities across all elements using a material of this name.
   const totals = useMemo<MaterialTotals>(() => {
     const result: MaterialTotals = {
@@ -116,6 +156,23 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
       // material used by thousands of elements only pays the parse cost for the
       // subset that actually has Qto data.
       const qMap = store.onDemandQuantityMap;
+      // Type-level Qto fallback cache (#1745 pattern): when an occurrence has
+      // no quantity sets of its own, its type may carry them (HasPropertySets
+      // or IFC4 rel-defined). Resolved once per TYPE, not per occurrence, so a
+      // 500-door type pays a single extraction.
+      const typeQsetCache = new Map<number, ReadonlyArray<{ name: string; quantities: ReadonlyArray<{ name: string; type: number; value: number }> }>>();
+      const typeQsetsFor = (entityId: number) => {
+        if (!store.relationships) return [];
+        const typeIds = store.relationships.getRelated(entityId, RelationshipType.DefinesByType, 'inverse');
+        if (typeIds.length === 0) return [];
+        const typeId = typeIds[0];
+        let qsets = typeQsetCache.get(typeId);
+        if (!qsets) {
+          qsets = extractTypeQuantitiesOnDemand(store, entityId)?.quantities ?? [];
+          typeQsetCache.set(typeId, qsets);
+        }
+        return qsets;
+      };
       for (const usage of usageIndex.values()) {
         if (usage.name !== targetName) continue;
         for (const { entityId, weight } of usage.entries) {
@@ -124,8 +181,15 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
           const ifcClass = store.entityIndex.byId.get(entityId)?.type || usage.ifcClass;
           classCounts.set(ifcClass, (classCounts.get(ifcClass) ?? 0) + 1);
 
-          if (qMap && !qMap.get(entityId)?.length) continue; // no quantities — skip extraction
-          const qsets = extractQuantitiesOnDemand(store, entityId);
+          // Occurrence quantities win; fall back to the type's (#1755 sweep).
+          // "Win" requires at least one actual quantity — a named-but-empty
+          // occurrence qset must not mask populated type-level quantities.
+          const qsets = (qMap && !qMap.get(entityId)?.length)
+            ? typeQsetsFor(entityId)
+            : (() => {
+                const own = extractQuantitiesOnDemand(store, entityId);
+                return own.some((qset) => qset.quantities.length > 0) ? own : typeQsetsFor(entityId);
+              })();
           if (qsets.length === 0) continue;
           const volByName = new Map<string, number>();
           const areaByName = new Map<string, number>();
@@ -198,13 +262,13 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
             <div className="divide-y divide-amber-100 dark:divide-amber-900/30">
               <TotalRow label="Elements" value={totals.elementCount.toLocaleString()} />
               {totals.hasVolume && (
-                <TotalRow label="Volume" value={`${formatNumber(totals.volume)} m³`} />
+                <TotalRow label="Volume" value={formatTotal(totals.volume, QuantityType.Volume, projectUnits, unitDisplayOverrides)} />
               )}
               {totals.hasArea && (
-                <TotalRow label="Area" value={`${formatNumber(totals.area)} m²`} />
+                <TotalRow label="Area" value={formatTotal(totals.area, QuantityType.Area, projectUnits, unitDisplayOverrides)} />
               )}
               {totals.hasWeight && (
-                <TotalRow label="Weight" value={`${formatNumber(totals.weight)} kg`} />
+                <TotalRow label="Weight" value={formatTotal(totals.weight, QuantityType.Weight, projectUnits, unitDisplayOverrides)} />
               )}
             </div>
             {totals.elementCount > 0 && !totals.hasVolume && (
@@ -253,9 +317,9 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
                 group.psets.map((pset) => {
                   const psetView: PropertySet = {
                     name: pset.name,
-                    properties: pset.properties.map((p) => ({ name: p.name, value: p.value, isMutated: false })),
+                    properties: pset.properties.map((p) => ({ name: p.name, value: p.value, isMutated: false, dataType: p.dataType })),
                   };
-                  return <PropertySetCard key={`${group.materialId}-${pset.name}`} pset={psetView} />;
+                  return <PropertySetCard key={`${group.materialId}-${pset.name}`} pset={psetView} projectUnits={projectUnits} unitDisplayOverrides={unitDisplayOverrides} />;
                 }),
               )}
             </div>

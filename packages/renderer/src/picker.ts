@@ -41,6 +41,52 @@ function unprojectPickSample(
   return MathUtils.transformPoint(inv, { x: ndcX, y: ndcY, z: depth });
 }
 
+/**
+ * Whether a rejected `mapAsync` readback means "the GPU resource went away"
+ * rather than "we asked for something illegal".
+ *
+ * WebGPU only rejects a map with `AbortError` when the thing being mapped
+ * stops existing: the buffer is destroyed or unmapped before the map settles,
+ * or the device/instance behind it is destroyed or lost. The pick path never
+ * touches its readback buffers before the map settles, so for us that reduces
+ * to "the device is gone" — Chromium words it
+ * `AbortError: … A valid external Instance reference no longer exists.` (#1901).
+ *
+ * The entry guards in `pick()` / `pickRect()` (and `Renderer.pickPathAlive()`)
+ * stop a pick that STARTS on a dead device, but they cannot close the window
+ * between `queue.submit()` and the map settling: a pick that was perfectly
+ * legal when it started is still aborted if the canvas unmounts, the model
+ * reloads (`Renderer.destroy()` ends in `device.destroy()`), or the driver
+ * resets while the readback is in flight. Nothing on that path can handle the
+ * rejection — the DOM listeners that reach it are `async` functions nobody
+ * awaits — so it escapes as an unhandled rejection.
+ *
+ * Real faults are NOT covered here: a validation failure (already-mapped
+ * buffer, bad usage flags, out-of-range range) rejects with `OperationError`,
+ * which still propagates.
+ */
+function isReadbackAbort(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && (err as { name?: unknown }).name === 'AbortError';
+}
+
+/**
+ * Free readback buffers on the aborted path. The device may already be gone,
+ * in which case `destroy()` is a no-op — or throws on some backends, which
+ * must not turn a handled teardown back into an escaping error.
+ */
+function releaseReadbacks(...buffers: GPUBuffer[]): void {
+  for (const buffer of buffers) {
+    try {
+      buffer.destroy();
+    } catch (err) {
+      // Non-fatal: the device is already gone and the buffer died with it.
+      // Surfaced rather than swallowed, per the no-silent-catch house rule —
+      // this firing on a LIVE device would mean a real teardown bug.
+      console.warn('[Picker] failed to release a readback buffer during teardown', err);
+    }
+  }
+}
+
 /** Point-pick sizing parameters forwarded to the GPU pipeline. */
 export interface PointPickSizing {
   sizeMode: 0 | 1 | 2; // matches PointCloudRenderer's SIZE_MODE_INDEX
@@ -62,6 +108,7 @@ export class Picker {
   private expressIdBuffer: GPUBuffer;
   private bindGroup: GPUBindGroup;
   private maxMeshes: number = 100000; // Support up to 100K meshes (was 10K)
+  /** Set by `destroy()`; makes it idempotent and turns `pick`/`pickRect` into no-ops. */
   private destroyed = false;
   private pointPicker: PointPicker | null = null;
   // Reused scratch for the 32-float (128-byte) uniform block: viewProj +
@@ -338,6 +385,11 @@ export class Picker {
    * Returns `PickResult` with `{expressId, modelIndex}` for both kinds.
    * For point hits, expressId is the federated globalId of the asset
    * (already correct for hover/selection plumbing — no remapping needed).
+   *
+   * Returns null once `destroy()` has run — every texture and buffer below is
+   * already freed, so the `mapAsync` readback could only reject. Also returns
+   * null if the device dies *during* the readback, which no entry guard can
+   * pre-empt (see {@link isReadbackAbort}).
    */
   async pick(
     x: number,
@@ -351,6 +403,7 @@ export class Picker {
     instancedTemplates?: readonly InstancedTemplateGPU[],
     clip?: PickClipState | null,
   ): Promise<PickResult | null> {
+    if (this.destroyed) return null;
     const encoder = this.renderPickPass(width, height, meshes, viewProj, pointNodes, pointSizing, instancedTemplates, clip);
 
     // Clamp the texel origin to the texture bounds. Math.floor(x/y) can
@@ -399,7 +452,18 @@ export class Picker {
 
     this.device.queue.submit([encoder.finish()]);
     // GPUMapMode.READ = 1 (WebGPU spec)
-    await Promise.all([readBuffer.mapAsync(1), depthBuffer.mapAsync(1)]);
+    try {
+      await Promise.all([readBuffer.mapAsync(1), depthBuffer.mapAsync(1)]);
+    } catch (err) {
+      // Free BOTH readbacks on every failure path, not just the aborted one.
+      // `Promise.all` rejects the moment one map fails, so the other may have
+      // succeeded and still be holding its mapped GPU allocation — rethrowing
+      // without this leaks it for the life of the device.
+      releaseReadbacks(readBuffer, depthBuffer);
+      // The device died between submit and readback — see isReadbackAbort.
+      if (!isReadbackAbort(err)) throw err;
+      return null;
+    }
     const sample = new Uint32Array(readBuffer.getMappedRange())[0];
     const depthBytes = new Uint8Array(depthBuffer.getMappedRange());
     const depthOffset = sampleY * depthBytesPerRow + sampleX * 4;
@@ -477,6 +541,9 @@ export class Picker {
    * sustained use because the readback grows with rect area. A 800×600
    * rect = 480k pixels = ~2 MB transfer, fine for one-shot but we'd
    * want a GPU-side dedupe for sustained marquee selection.
+   *
+   * Returns an empty set once `destroy()` has run — or if the device dies
+   * mid-readback — for the same reasons {@link Picker.pick} returns null.
    */
   async pickRect(
     x0: number,
@@ -492,6 +559,7 @@ export class Picker {
     instancedTemplates?: readonly InstancedTemplateGPU[],
     clip?: PickClipState | null,
   ): Promise<Set<number>> {
+    if (this.destroyed) return new Set();
     // Normalise + clip rect to texture bounds.
     const lx = Math.max(0, Math.floor(Math.min(x0, x1)));
     const ly = Math.max(0, Math.floor(Math.min(y0, y1)));
@@ -520,7 +588,16 @@ export class Picker {
       { width: rectW, height: rectH },
     );
     this.device.queue.submit([encoder.finish()]);
-    await readBuffer.mapAsync(1);
+    try {
+      await readBuffer.mapAsync(1);
+    } catch (err) {
+      // Released on every failure path, not just the aborted one — a real
+      // fault must not leak the readback's GPU allocation on its way out.
+      releaseReadbacks(readBuffer);
+      // The device died between submit and readback — see isReadbackAbort.
+      if (!isReadbackAbort(err)) throw err;
+      return new Set();
+    }
     const view = new Uint32Array(readBuffer.getMappedRange());
     const ids = new Set<number>();
     const stridePx = rowStride / 4;

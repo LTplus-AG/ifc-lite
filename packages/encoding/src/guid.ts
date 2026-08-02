@@ -83,17 +83,31 @@ export function ifcGuidToUuid(ifcGuid: string): string {
   return `${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20, 32)}`.toLowerCase();
 }
 
-export function generateIfcGuid(): string {
-  return uuidToIfcGuid(generateUuid());
+/**
+ * Optional randomness source for GUID generation: a `Math.random`-style
+ * function returning floats in `[0, 1)`. Pass a seeded generator to make GUID
+ * generation reproducible (e.g. for byte-deterministic file output); omit it
+ * to use Web Crypto when the runtime provides it, falling back to
+ * `Math.random` when it does not. A seeded source trades global uniqueness
+ * for reproducibility - only use one where that is the point.
+ */
+export type RandomSource = () => number;
+
+export function generateIfcGuid(random?: RandomSource): string {
+  return uuidToIfcGuid(generateUuid(random));
 }
 
-export function generateUuid(): string {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+export function generateUuid(random?: RandomSource): string {
+  if (random === undefined && typeof crypto !== 'undefined' && crypto.randomUUID) {
     return crypto.randomUUID();
   }
 
   const bytes = new Uint8Array(16);
-  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+  if (random !== undefined) {
+    for (let i = 0; i < 16; i++) {
+      bytes[i] = Math.floor(random() * 256) & 0xff;
+    }
+  } else if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
     crypto.getRandomValues(bytes);
   } else {
     for (let i = 0; i < 16; i++) {

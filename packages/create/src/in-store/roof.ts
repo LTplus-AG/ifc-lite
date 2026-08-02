@@ -102,12 +102,12 @@ export function addRoofToStore(
   const solidId = emitExtrudedSolid(editor, profileId, p.Thickness);
   const { shapeRepId, productShapeId } = emitBodyRepresentation(editor, anchor.bodyContextId, solidId);
 
-  const attrs = ifcElementHeader(anchor.ownerHistoryId, placementId, productShapeId, params, 'Roof');
+  const attrs = ifcElementHeader(anchor.ownerHistoryId, placementId, productShapeId, params, 'Roof', anchor.guidRandom);
   if ((anchor.schema ?? 'IFC4') !== 'IFC2X3') {
     attrs.push('.FLAT_ROOF.');
   }
   const roofId = editor.addEntity('IfcRoof', attrs as Parameters<StoreEditor['addEntity']>[1]).expressId;
-  const relContainedId = emitRelContainedInSpatialStructure(editor, anchor.ownerHistoryId, roofId, anchor.storeyId);
+  const relContainedId = emitRelContainedInSpatialStructure(editor, anchor.ownerHistoryId, roofId, anchor.storeyId, anchor.guidRandom);
 
   return { roofId, placementId, profileId, solidId, shapeRepId, productShapeId, relContainedId };
 }

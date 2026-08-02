@@ -5,7 +5,7 @@
 //! Parsing and entity scanning methods for IFC-Lite API
 
 use super::IfcAPI;
-use ifc_lite_core::{EntityScanner, ParseEvent};
+use ifc_lite_core::EntityScanner;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -118,75 +118,4 @@ impl IfcAPI {
         to_value(&refs).unwrap_or_else(|_| js_sys::Array::new().into())
     }
 
-}
-
-/// Convert ParseEvent to JavaScript object
-fn parse_event_to_js(event: &ParseEvent) -> JsValue {
-    let obj = js_sys::Object::new();
-
-    match event {
-        ParseEvent::Started {
-            file_size,
-            timestamp,
-        } => {
-            super::set_js_prop(&obj, "type", &"started".into());
-            super::set_js_prop(&obj, "fileSize", &(*file_size as f64).into());
-            super::set_js_prop(&obj, "timestamp", &(*timestamp).into());
-        }
-        ParseEvent::EntityScanned {
-            id,
-            ifc_type,
-            position,
-        } => {
-            super::set_js_prop(&obj, "type", &"entityScanned".into());
-            super::set_js_prop(&obj, "id", &(*id as f64).into());
-            super::set_js_prop(&obj, "ifcType", &ifc_type.as_str().into());
-            super::set_js_prop(&obj, "position", &(*position as f64).into());
-        }
-        ParseEvent::GeometryReady {
-            id,
-            vertex_count,
-            triangle_count,
-        } => {
-            super::set_js_prop(&obj, "type", &"geometryReady".into());
-            super::set_js_prop(&obj, "id", &(*id as f64).into());
-            super::set_js_prop(&obj, "vertexCount", &(*vertex_count as f64).into());
-            super::set_js_prop(&obj, "triangleCount", &(*triangle_count as f64).into());
-        }
-        ParseEvent::Progress {
-            phase,
-            percent,
-            entities_processed,
-            total_entities,
-        } => {
-            super::set_js_prop(&obj, "type", &"progress".into());
-            super::set_js_prop(&obj, "phase", &phase.as_str().into());
-            super::set_js_prop(&obj, "percent", &(*percent as f64).into());
-            super::set_js_prop(
-                &obj,
-                "entitiesProcessed",
-                &(*entities_processed as f64).into(),
-            );
-            super::set_js_prop(&obj, "totalEntities", &(*total_entities as f64).into());
-        }
-        ParseEvent::Completed {
-            duration_ms,
-            entity_count,
-            triangle_count,
-        } => {
-            super::set_js_prop(&obj, "type", &"completed".into());
-            super::set_js_prop(&obj, "durationMs", &(*duration_ms).into());
-            super::set_js_prop(&obj, "entityCount", &(*entity_count as f64).into());
-            super::set_js_prop(&obj, "triangleCount", &(*triangle_count as f64).into());
-        }
-        ParseEvent::Error { message, position } => {
-            super::set_js_prop(&obj, "type", &"error".into());
-            super::set_js_prop(&obj, "message", &message.as_str().into());
-            if let Some(pos) = position {
-                super::set_js_prop(&obj, "position", &(*pos as f64).into());
-            }
-        }
-    }
-
-    obj.into()
 }

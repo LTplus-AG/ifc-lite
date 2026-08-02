@@ -4,6 +4,10 @@
 
 //! PHASE-1 PARITY: prove the PARAMETRIC placement-frame cut matches the exact kernel.
 //!
+//! NOTE: `#[ignore]` + needs an external corpus model, so it does NOT gate in
+//! CI. The hermetic CI gate on the shipped default is `rect_param_gate.rs`
+//! (inline fixture, no fetch).
+//!
 //! For each fireable host: build exact axis-aligned boxes (host + openings) in the wall's
 //! own placement frame F from `parametric_rect_probe`, run the watertight cellular
 //! `subtract_rect_openings` in F (small coords), rotate the result back to world, and

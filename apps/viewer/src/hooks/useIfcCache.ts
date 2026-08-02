@@ -14,12 +14,19 @@ import {
   BinaryCacheWriter,
   BinaryCacheReader,
   SchemaVersion,
+  SectionType,
+  openGeometryChunksV13,
+  readInstancedShards,
+  BufferReader,
   type CachedEntityIndexColumns,
   type CacheDataStore,
   type GeometryData,
 } from '@ifc-lite/cache';
 import { SpatialHierarchyBuilder, StepTokenizer, CompactEntityIndex, CompactEntityIndexBuilder, extractLengthUnitScale, attachDataStoreAccessors, type IfcDataStore, type IfcStoreData } from '@ifc-lite/parser';
 import { buildSpatialIndexGuarded } from '../utils/loadingUtils.js';
+import { makeColdGeometryProvider } from '../utils/coldGeometryProvider.js';
+import { getGlobalRenderer } from './useBCF.js';
+import { computeFullSourceHash } from '../utils/sourceContentHash.js';
 import type { MeshData } from '@ifc-lite/geometry';
 
 import { useShallow } from 'zustand/react/shallow';
@@ -87,7 +94,7 @@ function hydrateCacheStore(
     entityIndex: IfcDataStore['entityIndex'];
     onDemandPropertyMap?: Map<number, number[]>;
     onDemandQuantityMap?: Map<number, number[]>;
-    onDemandMaterialMap?: Map<number, number>;
+    onDemandMaterialMap?: Map<number, number[]>;
   },
 ): IfcDataStore {
   const storeData: IfcStoreData = {
@@ -155,16 +162,20 @@ export function useIfcCache() {
     setIfcDataStore,
     setGeometryResult,
     appendInstancedShards,
+    appendGeometryBatch,
+    setGeometryStreamingActive,
   } = useViewerStore(useShallow((s) => ({
     setProgress: s.setProgress,
     setIfcDataStore: s.setIfcDataStore,
     setGeometryResult: s.setGeometryResult,
     appendInstancedShards: s.appendInstancedShards,
+    appendGeometryBatch: s.appendGeometryBatch,
+    setGeometryStreamingActive: s.setGeometryStreamingActive,
   })));
 
   /**
-   * Load from binary cache - INSTANT load for maximum speed
-   * Large cached models load all geometry at once for fastest total time
+   * Load from binary cache: metadata hydrates first, then geometry STREAMS
+   * chunk-by-chunk (v13 format) so first paint lands after the first chunk.
    */
   const loadFromCache = useCallback(async (
     cacheResult: CacheResult,
@@ -180,7 +191,38 @@ export function useIfcCache() {
       setGeometryResult(null);
 
       const reader = new BinaryCacheReader();
-      const result = await reader.read(cacheResult.buffer);
+
+      // No full-file hash on the repeat-open path (the #1 un-flag blocker). The
+      // hit is already validated by the strengthened, spread-sampled cache key
+      // (`sourceFingerprint.ts`): a key match means the exact byte length AND a
+      // 64-bit hash of a ~160KB spread (head + tail + interior windows) match, so
+      // a genuinely different file can never key the same entry. That makes the
+      // former ~0.7-1.7s `xxhash64(fullSource)` recompute here redundant, and
+      // dropping it removes the main-thread stall for BOTH cache tiers. A
+      // truncated/corrupt cache buffer still fails fast in `reader.read` below →
+      // the catch deletes the entry and returns a graceful miss.
+      // Blob entries (cold-tier writes) are disk-backed: materialize once
+      // for the load, but KEEP the blob handle — the cold-storage provider
+      // uses slice() for partial chunk reads later (issue #1682 phase 3b).
+      const rawCacheBuffer = cacheResult.buffer;
+      const cacheBlob = rawCacheBuffer instanceof Blob ? rawCacheBuffer : null;
+      const cacheBuffer: ArrayBuffer = rawCacheBuffer instanceof Blob
+        ? await rawCacheBuffer.arrayBuffer()
+        : rawCacheBuffer;
+
+      // Geometry streams chunk-by-chunk below (first paint after the FIRST
+      // chunk instead of a full deserialize) — the reader here loads
+      // metadata only. Every hit is v13+ by construction: the cache key
+      // embeds FORMAT_VERSION, so older entries can never key a hit (the
+      // pre-v13 one-shot load path was removed with them).
+      const headerInfo = reader.readHeader(cacheBuffer);
+      if (headerInfo.version < 13) {
+        // Impossible via the keyed lookup; fail loudly so the catch below
+        // deletes the entry and the load falls back to a fresh parse.
+        throw new Error(`unexpected pre-v13 cache entry (v${headerInfo.version})`);
+      }
+      const geometrySection = headerInfo.sections.find((s) => s.type === SectionType.Geometry);
+      const result = await reader.read(cacheBuffer, { skipGeometry: true });
       const cacheReadTime = performance.now() - cacheLoadStart;
 
       // Restore the source buffer — required for on-demand property extraction
@@ -194,7 +236,7 @@ export function useIfcCache() {
       let entityIndex: IfcDataStore['entityIndex'] = { byId: new Map(), byType: new Map() };
       let onDemandPropertyMap: Map<number, number[]> | undefined;
       let onDemandQuantityMap: Map<number, number[]> | undefined;
-      let onDemandMaterialMap: Map<number, number> | undefined;
+      let onDemandMaterialMap: Map<number, number[]> | undefined;
 
       if (sourceBuffer) {
         source = new Uint8Array(sourceBuffer);
@@ -283,43 +325,93 @@ export function useIfcCache() {
         }
       }
 
-      if (result.geometry) {
-        const { meshes, coordinateInfo, totalVertices, totalTriangles } = result.geometry;
+      let meshCount = 0;
+      let loadedTotalVertices = 0;
+      let loadedTotalTriangles = 0;
 
-        // INSTANT: Set ALL geometry in ONE call - fastest for cached models
-        setGeometryResult({
-          meshes,
-          totalVertices,
-          totalTriangles,
-          coordinateInfo,
-        });
+      if (geometrySection && headerInfo.hasGeometry) {
+        // v13 STREAMED path: decode + append geometry chunk-by-chunk so the
+        // first chunks paint while the rest still decompress. Mirrors the
+        // fresh streaming path's store contract (appendGeometryBatch under
+        // geometryStreamingActive, so useGeometryStreaming finalizes the
+        // fragments when the flag flips back off).
+        const open = openGeometryChunksV13(
+          cacheBuffer,
+          geometrySection.offset,
+          headerInfo.version
+        );
+        loadedTotalVertices = open.totalVertices;
+        loadedTotalTriangles = open.totalTriangles;
 
-        // Restore the GPU-instancing shards (opaque repeated occurrences that were
-        // partitioned off the flat meshes). useGeometryStreaming drains these →
-        // decodeInstancedShard → scene.addInstancedShard, exactly like a fresh load,
-        // so cached instanced geometry renders + picks + exports correctly.
-        if (result.geometry.instancedShards && result.geometry.instancedShards.length > 0) {
-          appendInstancedShards(result.geometry.instancedShards);
+        setGeometryStreamingActive(true);
+        const allMeshes: MeshData[] = [];
+        try {
+          for (let i = 0; i < open.chunks.length; i++) {
+            const chunkMeshes = await open.readChunk(i);
+            allMeshes.push(...chunkMeshes);
+            appendGeometryBatch(chunkMeshes, open.coordinateInfo);
+            if ((i & 3) === 3 || i === open.chunks.length - 1) {
+              setProgress({
+                phase: 'Loading geometry from cache',
+                percent: 20 + Math.round((70 * (i + 1)) / open.chunks.length),
+              });
+            }
+            // Yield so the animation loop can drain the mesh queue between
+            // chunks (paint progresses during the load, like a fresh stream).
+            await new Promise<void>((resolve) => setTimeout(resolve, 0));
+          }
+        } catch (chunkErr) {
+          // A corrupt/truncated entry can fail AFTER earlier chunks were
+          // already appended. Roll the partial geometry back so the caller's
+          // fallback fresh stream starts from a clean scene instead of
+          // appending onto half a cached model.
+          setGeometryResult(null);
+          throw chunkErr;
+        } finally {
+          setGeometryStreamingActive(false);
+        }
+        meshCount = allMeshes.length;
+
+        // Restore the GPU-instancing shards (opaque repeated occurrences that
+        // were partitioned off the flat meshes).
+        const shardsSection = headerInfo.sections.find((s) => s.type === SectionType.InstancedShards);
+        if (shardsSection) {
+          const shardsReader = new BufferReader(cacheBuffer);
+          shardsReader.position = shardsSection.offset;
+          const shards = readInstancedShards(shardsReader);
+          if (shards.length > 0) appendInstancedShards(shards);
         }
 
-        // Set data store
         setIfcDataStore(dataStore);
+        buildSpatialIndexGuarded(allMeshes, dataStore, setIfcDataStore);
 
-        buildSpatialIndexGuarded(meshes, dataStore, setIfcDataStore);
+        // Cold-storage provider (issue #1682 phase 3b): with this wired the
+        // scene may drop CPU meshData for cold chunks and restore them from
+        // this entry via partial reads (Blob slice when available). Primary
+        // loads only — a federated add clears the provider (its geometry is
+        // not in this entry, so cold restores could not serve it).
+        const renderer = getGlobalRenderer();
+        if (renderer) {
+          renderer.getScene().setColdGeometryProvider(makeColdGeometryProvider({
+            source: cacheBlob ?? cacheBuffer,
+            geometrySectionOffset: geometrySection.offset,
+            chunks: open.chunks,
+            version: headerInfo.version,
+          }));
+        }
       } else {
         setIfcDataStore(dataStore);
       }
 
       setProgress({ phase: 'Complete (from cache)', percent: 100 });
       const totalCacheTime = performance.now() - cacheLoadStart;
-      const meshCount = result.geometry?.meshes.length || 0;
       console.log(`[useIfcCache] ✓ ${fileName} (cached) → ${meshCount} meshes | ${totalCacheTime.toFixed(0)}ms`);
 
       return {
         success: true,
         meshCount,
-        totalVertices: result.geometry?.totalVertices || 0,
-        totalTriangles: result.geometry?.totalTriangles || 0,
+        totalVertices: loadedTotalVertices,
+        totalTriangles: loadedTotalTriangles,
       };
     } catch (err) {
       console.error('[useIfcCache] Failed to load from cache:', err);
@@ -349,10 +441,25 @@ export function useIfcCache() {
     dataStore: IfcDataStore,
     geometry: GeometryData,
     sourceBuffer: ArrayBuffer,
-    fileName: string
+    fileName: string,
+    options: { persistSource?: boolean; lastModified?: number } = {}
   ): Promise<void> => {
+    // `persistSource` (default true) is the classic <=150MB tier: the raw source
+    // is stored alongside the cache so lazy property/quantity accessors + re-export
+    // read it from IndexedDB. The mesh-only tier (150-400MB) passes false: the
+    // source is too big to persist, so it is omitted from IndexedDB and rehydrated
+    // from the freshly read buffer on re-open.
+    //
+    // The header's full-file `xxhash64` is OMITTED (`omitSourceHash`) so a 400MB
+    // cold-load write pays no full-file main-thread hash. The source-decoupled hit
+    // is instead validated by the source File's `lastModified` (mtime guard) plus
+    // a TRUE full-file SHA-256 computed OFF the main thread (`computeFullSourceHash`,
+    // via Web Crypto), both stored in the IndexedDB record — distinct from the
+    // header hash and the key's spread fingerprint. This whole block is
+    // backgrounded on a cold load, so the off-thread hash costs the user nothing.
+    const { persistSource = true, lastModified } = options;
     try {
-      console.log('[useIfcCache] Starting cache write for:', fileName);
+      console.log(`[useIfcCache] Starting cache write for: ${fileName} (persistSource=${persistSource})`);
       const writer = new BinaryCacheWriter();
 
       // Adapt dataStore to cache format
@@ -368,13 +475,34 @@ export function useIfcCache() {
         entityIndex: dataStore.entityIndex,
       };
 
+      // Compute the true full-file validation hash off the main thread (runs in
+      // parallel with the cache-buffer serialization below). ONLY for the
+      // source-decoupled tier: the source-persisting tier serves cached geometry
+      // AND cached source together (self-consistent) and never consults it, so
+      // its <=150MB write path stays exactly as it was.
+      const fullHashPromise = persistSource
+        ? Promise.resolve<string | null>(null)
+        : computeFullSourceHash(sourceBuffer);
+
       console.log('[useIfcCache] Writing cache buffer...');
-      const cacheBuffer = await writer.write(cacheDataStore, geometry, sourceBuffer, { includeGeometry: true });
+      const cacheBuffer = await writer.write(cacheDataStore, geometry, sourceBuffer, {
+        includeGeometry: true,
+        omitSourceHash: true,
+      });
       console.log('[useIfcCache] Cache buffer written:', cacheBuffer.byteLength, 'bytes');
 
+      const fullSourceHash = (await fullHashPromise) ?? undefined;
+
       console.log('[useIfcCache] Saving to cache storage...');
-      await setCached(cacheKey, cacheBuffer, fileName, sourceBuffer.byteLength, sourceBuffer);
-      console.log('[useIfcCache] ✓ Cache saved successfully');
+      await setCached(
+        cacheKey,
+        cacheBuffer,
+        fileName,
+        sourceBuffer.byteLength,
+        persistSource ? sourceBuffer : undefined,
+        { lastModified, fullSourceHash },
+      );
+      console.log(`[useIfcCache] ✓ Cache saved successfully (${persistSource ? 'with' : 'without'} source, mtime=${lastModified ?? 'n/a'}, fullHash=${fullSourceHash ? 'yes' : 'no'})`);
     } catch (err) {
       console.error('[useIfcCache] Failed to cache model:', err);
       console.error('[useIfcCache] Error stack:', err instanceof Error ? err.stack : 'No stack trace');

@@ -46,7 +46,7 @@ fn box_mesh(min: [f32; 3], max: [f32; 3]) -> Mesh {
         indices,
         rtc_applied: false,
         origin: [0.0; 3],
-    instance_meta: None, }
+    instance_meta: None, local_bounds: None, local_to_world: None }
 }
 
 /// A faceted "half-space" slab whose top face is tessellated into `n`×`n` quads,
@@ -102,7 +102,7 @@ fn faceted_slab(min: [f32; 3], max: [f32; 3], n: usize, z_top: f32) -> Mesh {
         indices,
         rtc_applied: false,
         origin: [0.0; 3],
-    instance_meta: None, }
+    instance_meta: None, local_bounds: None, local_to_world: None }
 }
 
 /// Total exact-tier escalations a sequence of cuts drives, under whatever caps are

@@ -1,0 +1,142 @@
+{
+  "description": "FROZEN wire-format golden vectors for node-hash-v0 (spec version node-hash-v0 / 1.0.0, frozen 2026-07-25, docs/vision/spec/node-hash-v0.md). Do NOT regenerate: a hash change here is a wire-format change and requires node-hash-v1 plus a major version bump of @ifc-lite/provenance. IFC identifiers follow the schema exactly (AGENTS.md \"IFC schema fidelity\"): relationship role names are the real EXPRESS attribute names of the named relationship, and element ifcType values are the exact EXPRESS PascalCase names the canonical load path produces (store.entities.getTypeName), never the uppercase STEP storage spelling. Special numbers are encoded as {\"$num\": \"NaN\" | \"Infinity\" | \"-Infinity\" | \"-0\"}.",
+  "vectors": [
+    {
+      "id": "el-basic",
+      "description": "Element with the full ComponentKey vocabulary (attr:core, pset:<Name>, qset:<Name>, type-assignment, geometry-mesh, relationship:<RelType>), unsorted on input. ifcType is the exact IFC EXPRESS PascalCase name IfcWallStandardCase - the canonical producer value (store.entities.getTypeName), hashed verbatim.",
+      "kind": "element",
+      "payload": {
+        "key": "2O2Fr$t4X7Zf8NOew3FLOH",
+        "ifcType": "IfcWallStandardCase",
+        "components": [
+          {
+            "componentKey": "pset:Pset_WallCommon",
+            "hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "componentKey": "attr:core",
+            "hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          {
+            "componentKey": "geometry-mesh",
+            "hash": "fnv1a64:0x0123456789abcdef"
+          },
+          {
+            "componentKey": "relationship:IfcRelVoidsElement",
+            "hash": "sha256:0000000000000000000000000000000000000000000000000000000000000001"
+          },
+          {
+            "componentKey": "type-assignment",
+            "hash": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+          },
+          {
+            "componentKey": "qset:Qto_WallBaseQuantities",
+            "hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        ]
+      },
+      "expectedHash": "sha256:0c01e18e8d968a1732446c0193736d5b6470378884a19a7b7c1dc1bd66e94d08"
+    },
+    {
+      "id": "el-components-permuted",
+      "description": "Same components in a different input order: components are sorted by componentKey (ordinal UTF-8), so the hash MUST equal el-basic.",
+      "kind": "element",
+      "payload": {
+        "key": "2O2Fr$t4X7Zf8NOew3FLOH",
+        "ifcType": "IfcWallStandardCase",
+        "components": [
+          {
+            "componentKey": "qset:Qto_WallBaseQuantities",
+            "hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "componentKey": "type-assignment",
+            "hash": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+          },
+          {
+            "componentKey": "relationship:IfcRelVoidsElement",
+            "hash": "sha256:0000000000000000000000000000000000000000000000000000000000000001"
+          },
+          {
+            "componentKey": "geometry-mesh",
+            "hash": "fnv1a64:0x0123456789abcdef"
+          },
+          {
+            "componentKey": "attr:core",
+            "hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          {
+            "componentKey": "pset:Pset_WallCommon",
+            "hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        ]
+      },
+      "expectedHash": "sha256:0c01e18e8d968a1732446c0193736d5b6470378884a19a7b7c1dc1bd66e94d08",
+      "expectSameHashAs": "el-basic"
+    },
+    {
+      "id": "el-step-uppercase-name",
+      "description": "Identical element except ifcType carries the uppercase STEP STORAGE spelling IFCWALLSTANDARDCASE instead of the canonical EXPRESS PascalCase. ifcType is hashed verbatim with no case folding, so this MUST hash differently from el-basic. This vector exists to pin the failure mode, not to bless the input: a producer that feeds raw STEP-uppercase type names produces hashes no canonical-path consumer can reproduce (spec section 3.2).",
+      "kind": "element",
+      "payload": {
+        "key": "2O2Fr$t4X7Zf8NOew3FLOH",
+        "ifcType": "IFCWALLSTANDARDCASE",
+        "components": [
+          {
+            "componentKey": "pset:Pset_WallCommon",
+            "hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "componentKey": "attr:core",
+            "hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          {
+            "componentKey": "geometry-mesh",
+            "hash": "fnv1a64:0x0123456789abcdef"
+          },
+          {
+            "componentKey": "relationship:IfcRelVoidsElement",
+            "hash": "sha256:0000000000000000000000000000000000000000000000000000000000000001"
+          },
+          {
+            "componentKey": "type-assignment",
+            "hash": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+          },
+          {
+            "componentKey": "qset:Qto_WallBaseQuantities",
+            "hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        ]
+      },
+      "expectedHash": "sha256:2bfec666696e7c719ef7b1689c32b10c269762aac8964a0871bb17337997b16a",
+      "expectDifferentHashFrom": "el-basic"
+    },
+    {
+      "id": "el-no-components",
+      "description": "Empty payloads edge case: an element with zero components (header + key + ifcType + count 0), exact EXPRESS name IfcBuildingElementProxy.",
+      "kind": "element",
+      "payload": {
+        "key": "0AbCdEfGhIjKlMnOpQrStU",
+        "ifcType": "IfcBuildingElementProxy",
+        "components": []
+      },
+      "expectedHash": "sha256:73251f1fac3328777d5ec5dda4687861214d37d79d5b4877215435fb082936f7"
+    },
+    {
+      "id": "el-unicode-key",
+      "description": "Unicode element key with the exact EXPRESS name IfcWall: both key and ifcType are plain length-prefixed NFC UTF-8 strings.",
+      "kind": "element",
+      "payload": {
+        "key": "wand-über-tür-梁",
+        "ifcType": "IfcWall",
+        "components": [
+          {
+            "componentKey": "attr:core",
+            "hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        ]
+      },
+      "expectedHash": "sha256:3541606b215bf2d4ec7119587196060d8d712fd2a239e6195b019a17a3194aa0"
+    }
+  ]
+}

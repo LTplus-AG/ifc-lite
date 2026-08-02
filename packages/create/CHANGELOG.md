@@ -1,5 +1,43 @@
 # @ifc-lite/create
 
+## 1.17.0
+
+### Minor Changes
+
+- [#1887](https://github.com/LTplus-AG/ifc-lite/pull/1887) [`87f3507`](https://github.com/LTplus-AG/ifc-lite/commit/87f3507f6fb67a3fd834a190737ea33d7e9ad661) Thanks [@louistrue](https://github.com/louistrue)! - Thread `@ifc-lite/encoding`'s `RandomSource` through the in-store builders: `SpatialAnchor.guidRandom` seeds every GlobalId the anchored builders emit (`addWallToStore`, `addSlabToStore`, `addColumnToStore`, `addBeamToStore`, `addDoorToStore`, `addWindowToStore`, `addSpaceToStore`, `addRoofToStore`, `addPlateToStore`, `addMemberToStore`, plus the shared emit helpers), `DuplicateInStoreOptions.guidRandom` does the same for `duplicateInStore`, and `generateSpacesFromWalls` / `generateSpaces` forward `options.guidRandom`. Same seeded source in, identical GlobalIds out - the in-store counterpart of `ProjectParams.GuidSource` from the previous release. Defaults unchanged (platform CSPRNG).
+
+- [#1879](https://github.com/LTplus-AG/ifc-lite/pull/1879) [`8799484`](https://github.com/LTplus-AG/ifc-lite/commit/87994844a5edb66404fa12b0719c89f5ec026c4d) Thanks [@louistrue](https://github.com/louistrue)! - Opt-in determinism hooks for reproducible IFC generation. `generateUuid` and `generateIfcGuid` accept an optional `RandomSource` (a `() => number` in `[0, 1)`) so GUIDs can be drawn from a seeded generator, and `IfcCreator` gains `ProjectParams.Timestamp` (fixed creation instant for the STEP header, IfcOwnerHistory and work-schedule defaults) and `ProjectParams.GuidSource` (deterministic GlobalId source). Same options twice yields byte-identical output; defaults are unchanged (wall clock + platform CSPRNG).
+
+### Patch Changes
+
+- [#1882](https://github.com/LTplus-AG/ifc-lite/pull/1882) [`382fa7c`](https://github.com/LTplus-AG/ifc-lite/commit/382fa7cf97c04bad07963e25052cbaeb6c2ba7e3) Thanks [@louistrue](https://github.com/louistrue)! - Reject `IfcCreator` `Timestamp` values that are finite but outside the ±8.64e15 ms Date range. They previously cleared the `Number.isFinite` guard and failed much later as a `RangeError` from `toISOString()` while writing the file header; they are now rejected in the constructor, where the error can still name the parameter. Also corrects the `RandomSource` documentation: the unseeded path uses Web Crypto when the runtime provides it and falls back to `Math.random` when it does not, rather than guaranteeing a platform CSPRNG.
+
+- Updated dependencies [[`382fa7c`](https://github.com/LTplus-AG/ifc-lite/commit/382fa7cf97c04bad07963e25052cbaeb6c2ba7e3), [`6842c56`](https://github.com/LTplus-AG/ifc-lite/commit/6842c56c72065fd9f43ac282cacb766b7808c282), [`6869d5c`](https://github.com/LTplus-AG/ifc-lite/commit/6869d5ced2d19ac4ab8b2591847f3ffd52236d14), [`8799484`](https://github.com/LTplus-AG/ifc-lite/commit/87994844a5edb66404fa12b0719c89f5ec026c4d), [`22bffac`](https://github.com/LTplus-AG/ifc-lite/commit/22bffac737efa9bdd6ca583518f637593cb4d4bc), [`205a136`](https://github.com/LTplus-AG/ifc-lite/commit/205a136ee69e378ea01cd0d0a8a6dc81cf2fb08f), [`428c5ae`](https://github.com/LTplus-AG/ifc-lite/commit/428c5ae54bac236a3950f451ee12a0dc23226336)]:
+  - @ifc-lite/encoding@1.15.0
+  - @ifc-lite/parser@3.11.0
+  - @ifc-lite/mutations@1.21.1
+
+## 1.16.4
+
+### Patch Changes
+
+- [#1691](https://github.com/LTplus-AG/ifc-lite/pull/1691) [`26af236`](https://github.com/LTplus-AG/ifc-lite/commit/26af236a9128f5fc97493d75d7c9642958343a7a) Thanks [@louistrue](https://github.com/louistrue)! - Documentation moved to https://ifclite.dev/docs/ - README links and package homepage fields now point at the new home (the GitHub Pages site remains as a mirror whose canonical URLs point there).
+
+- Updated dependencies [[`26af236`](https://github.com/LTplus-AG/ifc-lite/commit/26af236a9128f5fc97493d75d7c9642958343a7a), [`bc1531f`](https://github.com/LTplus-AG/ifc-lite/commit/bc1531f899e5f8d18d1a6ff1ef6d997236a01243)]:
+  - @ifc-lite/encoding@1.14.10
+  - @ifc-lite/mutations@1.18.1
+  - @ifc-lite/parser@3.8.2
+
+## 1.16.3
+
+### Patch Changes
+
+- [#1676](https://github.com/LTplus-AG/ifc-lite/pull/1676) [`da04601`](https://github.com/LTplus-AG/ifc-lite/commit/da0460183dcb4e2b26ceb53cfebd8cca33c78c39) Thanks [@louistrue](https://github.com/louistrue)! - Docs refresh: correct stale README claims and API samples against the current codebase; add READMEs to the ten published packages that shipped without one (cli, create, sdk, sandbox, lens, lists, embed-sdk, embed-protocol, encoding, viewer-core).
+
+- Updated dependencies [[`da04601`](https://github.com/LTplus-AG/ifc-lite/commit/da0460183dcb4e2b26ceb53cfebd8cca33c78c39)]:
+  - @ifc-lite/encoding@1.14.9
+  - @ifc-lite/parser@3.8.1
+
 ## 1.16.2
 
 ### Patch Changes

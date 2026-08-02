@@ -32,6 +32,8 @@ import {
   type HatchPattern,
 } from './styles.js';
 import { boundsSize, boundsCenter } from './math.js';
+import { applyDxfPlacement } from './dxf/convert.js';
+import { DEFAULT_DXF_PLACEMENT, type DxfPlacement, type DxfUnderlay } from './dxf/types.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES
@@ -58,6 +60,19 @@ export interface SVGExportOptions {
   backgroundColor?: string;
   /** Units for dimension display */
   units?: 'mm' | 'm';
+  /** DXF reference underlays rendered beneath the drawing (issue #1782) */
+  underlays?: SVGUnderlayOptions[];
+}
+
+/** One DXF reference underlay to composite under the drawing. */
+export interface SVGUnderlayOptions {
+  underlay: DxfUnderlay;
+  /** Placement in drawing space; identity when omitted. */
+  placement?: DxfPlacement;
+  /** Per-layer visibility override; falls back to the DXF layer state. */
+  layerVisibility?: Record<string, boolean>;
+  /** Overall opacity (default 1). */
+  opacity?: number;
 }
 
 interface Transform2D {
@@ -88,6 +103,7 @@ export class SVGExporter {
       title = 'Section',
       projectName = '',
       backgroundColor = '#FFFFFF',
+      underlays = [],
     } = options;
 
     // Calculate transform from drawing coordinates to SVG coordinates
@@ -96,6 +112,11 @@ export class SVGExporter {
     // Build SVG
     let svg = this.createHeader(paperSize, backgroundColor);
     svg += this.createDefs(drawing, scale.factor);
+
+    // Layer: DXF reference underlays (bottom-most, issue #1782)
+    for (const underlayOptions of underlays) {
+      svg += this.createUnderlayLayer(underlayOptions, transform);
+    }
 
     // Layer: Hatching (bottom)
     if (showHatching && drawing.cutPolygons.length > 0) {
@@ -418,6 +439,85 @@ export class SVGExporter {
     <text x="${x + 105}" y="${y + 30}" font-family="Arial" font-size="7">Date:</text>
     <text x="${x + 105}" y="${y + 45}" font-family="Arial" font-size="7">${new Date().toLocaleDateString()}</text>
   </g>\n`;
+  }
+
+  /**
+   * Render one DXF reference underlay as an SVG layer group (issue #1782).
+   * Underlay geometry is in world plan coordinates (metres, +Y = north);
+   * it maps to plan drawing space (`x, -y`), takes the user placement,
+   * then goes through the shared drawing → paper transform. Note this
+   * assumes the Drawing2D was generated without a render-frame origin
+   * shift; shifted/georeferenced pipelines (like the viewer) must handle
+   * the shift themselves before calling into SVG export.
+   */
+  private createUnderlayLayer(options: SVGUnderlayOptions, transform: Transform2D): string {
+    const { underlay, placement = DEFAULT_DXF_PLACEMENT, layerVisibility = {}, opacity = 1 } = options;
+    const mapPoint = (p: Point2D): Point2D =>
+      this.transformPoint(applyDxfPlacement({ x: p.x, y: -p.y }, placement), transform);
+    const groupId = `dxf-${underlay.name.replace(/[^A-Za-z0-9_-]/g, '_')}`;
+
+    let layer = `  <g id="${this.escapeXml(groupId)}" inkscape:label="${this.escapeXml(underlay.name)}" inkscape:groupmode="layer" opacity="${opacity}">\n`;
+
+    for (const dxfLayer of underlay.layers) {
+      const visible = layerVisibility[dxfLayer.name] ?? dxfLayer.visible;
+      if (!visible) continue;
+      layer += `    <g data-dxf-layer="${this.escapeXml(dxfLayer.name)}">\n`;
+
+      for (const fill of dxfLayer.fills) {
+        let d = '';
+        const rings = [fill.polygon.outer, ...fill.polygon.holes];
+        for (const ring of rings) {
+          if (ring.length === 0) continue;
+          const first = mapPoint(ring[0]);
+          d += `${d ? ' ' : ''}M ${first.x.toFixed(3)} ${first.y.toFixed(3)}`;
+          for (let i = 1; i < ring.length; i++) {
+            const p = mapPoint(ring[i]);
+            d += ` L ${p.x.toFixed(3)} ${p.y.toFixed(3)}`;
+          }
+          d += ' Z';
+        }
+        const fillColor = fill.color ?? dxfLayer.color;
+        const fillOpacity = fill.pattern ? 0.25 : 1;
+        layer += `      <path d="${d}" fill="${fillColor}" fill-opacity="${fillOpacity}" fill-rule="evenodd" stroke="none"/>\n`;
+      }
+
+      for (const path of dxfLayer.paths) {
+        if (path.points.length < 2) continue;
+        const pts = path.points.map(mapPoint);
+        const pointsAttr = pts.map((p) => `${p.x.toFixed(3)},${p.y.toFixed(3)}`).join(' ');
+        const tag = path.closed ? 'polygon' : 'polyline';
+        const strokeWidth = path.widthMm ?? 0.18;
+        const dash = path.dashed ? ` stroke-dasharray="${(strokeWidth * 6).toFixed(3)} ${(strokeWidth * 4).toFixed(3)}"` : '';
+        layer += `      <${tag} points="${pointsAttr}" fill="none" stroke="${path.color ?? dxfLayer.color}" stroke-width="${strokeWidth}" stroke-linecap="round"${dash}/>\n`;
+      }
+
+      for (const text of dxfLayer.texts) {
+        if (!text.text.trim()) continue;
+        const anchor = mapPoint(text.position);
+        const tip = mapPoint({ x: text.position.x + text.dirX, y: text.position.y + text.dirY });
+        const angle = (Math.atan2(tip.y - anchor.y, tip.x - anchor.x) * 180) / Math.PI;
+        // Placement scales geometry through mapPoint; the font height must
+        // follow or labels detach from their linework.
+        const heightMm = text.height * placement.scale * transform.scale;
+        const anchorAttr = text.align === 'center' ? 'middle' : text.align === 'right' ? 'end' : 'start';
+        const baseline =
+          text.valign === 'bottom' ? 'text-after-edge'
+            : text.valign === 'middle' ? 'central'
+              : text.valign === 'top' ? 'text-before-edge'
+                : 'alphabetic';
+        // Multiline MTEXT stacks with tspans, matching the canvas layout.
+        const lines = text.text.split('\n');
+        const content = lines
+          .map((line, i) => `<tspan x="${anchor.x.toFixed(3)}" dy="${i === 0 ? 0 : (heightMm * 1.3).toFixed(3)}">${this.escapeXml(line)}</tspan>`)
+          .join('');
+        layer += `      <text x="${anchor.x.toFixed(3)}" y="${anchor.y.toFixed(3)}" font-family="Arial, sans-serif" font-size="${heightMm.toFixed(3)}" fill="${text.color ?? dxfLayer.color}" text-anchor="${anchorAttr}" dominant-baseline="${baseline}" transform="rotate(${angle.toFixed(2)} ${anchor.x.toFixed(3)} ${anchor.y.toFixed(3)})">${content}</text>\n`;
+      }
+
+      layer += '    </g>\n';
+    }
+
+    layer += '  </g>\n';
+    return layer;
   }
 
   private escapeXml(str: string): string {

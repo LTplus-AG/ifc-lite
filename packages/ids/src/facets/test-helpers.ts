@@ -28,6 +28,8 @@ interface MockEntity {
     propName: string;
     value: string | number | boolean | null;
     dataType?: string;
+    /** Candidate values for multi-valued properties (issue #1766). */
+    values?: Array<string | number | boolean>;
   }>;
   classifications?: Array<{ system?: string; value?: string }>;
   materials?: Array<{ name: string; category?: string }>;
@@ -103,6 +105,7 @@ export function createMockAccessor(entities: MockEntity[]): IFCDataAccessor {
           name: prop.propName,
           value: prop.value,
           dataType: prop.dataType || 'IFCLABEL',
+          ...(prop.values?.length ? { values: prop.values } : {}),
         });
       }
       return Array.from(psetMap.values());

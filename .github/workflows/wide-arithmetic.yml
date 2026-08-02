@@ -1,0 +1,431 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# WASM wide-arithmetic tripwire. Turns an external dependency (upstream
+# wasm-bindgen/walrus support + engine support for the opcodes, which V8 does
+# not yet implement) into a monitored condition instead of something we have to
+# remember to re-check.
+#
+# Full context: docs/architecture/wasm-wide-arithmetic.md. Short version: the
+# exact-CSG kernel's `bnum` limb arithmetic maps to the WASM wide-arithmetic
+# proposal's `i64.mul_wide_s/u` / `i64.add128` / `i64.sub128` instead of
+# `__multi3` libcalls, measured 1.9-3.1x on the predicate hot path and 1.71x
+# end-to-end on a real void cut. `scripts/build-wasm.sh` already has a
+# `BUILD_WIDE=1` bundle (`packages/wasm/pkg-wide`) behind this flag, verified
+# with `wasm-tools print | grep` for the actual wide ops. Two things gate
+# shipping it, and this workflow is built to name which one is failing:
+#
+#   1. Build-toolchain gate: CLEARED 2026-07-31 by bumping the pin to
+#      `wasm-bindgen = "=0.2.126"`. Kept as a gate so a future pin regression or a
+#      wasm-bindgen release that loses wide-arith parsing is caught. History: the
+#      pin was `=0.2.106`, whose bundled `walrus` rejects a wide-arithmetic code
+#      section ("failed to parse code section: wide arithmetic support is not
+#      enabled"). Upstream `walrus` 0.26.0 (wasm-bindgen/walrus#306, merged
+#      2026-03-25) fixed it; wasm-bindgen >=0.2.115 is the floor that depends on
+#      it. The bump was taken in its own PR, as this workflow always intended —
+#      a green run here is proof the pin moved, never a workaround for it.
+#   2. Engine-support gate: STILL BLOCKING. Measured on V8 (Chrome/Edge);
+#      SpiderMonkey and JavaScriptCore were not tested, so treat Firefox/Safari
+#      as unverified rather than assumed.
+#      Measured 2026-07-31 on V8 (Node 22 / V8 12.4 locally, Node 26.5.1 /
+#      V8 14.6 in this lane): a module using every wide op the bundle emits
+#      is rejected outright —
+#      "invalid numeric opcode: 0xfc13" — and `--v8-options` lists no
+#      wide-arithmetic flag whatsoever. An earlier revision of this file assumed
+#      a `--experimental-wasm-wide-arithmetic` flag and passed it unconditionally
+#      via NODE_ARGS; that flag has never existed, so node exited with
+#      "bad option" before loading any wasm and this gate measured nothing. It is
+#      now probed at runtime (see the probe step) instead of assumed.
+#
+# Gate 2 being blocked is the KNOWN state, so it is green — a permanently red
+# lane is one nobody reads, which is exactly how the bogus flag survived. Red
+# means the state moved and someone should look:
+#
+#   * build step red      -> toolchain regression (gate 1 came back)
+#   * tripwire step red   -> the engine now ACCEPTS wide-arithmetic. Good news,
+#                            and the signal this workflow exists to deliver.
+#   * determinism red     -> wide-arithmetic changed the kernel's exact-predicate
+#                            output. Must not ship. Only reachable once the
+#                            engine runs the module at all.
+#
+# Cost: weekly + on-demand only, same profile as determinism.yml, and
+# deliberately NOT a `pull_request` trigger — this must never become a
+# required or noisy check; it exists to be looked at, not to gate merges.
+
+name: WASM wide-arithmetic tripwire
+
+on:
+  schedule:
+    # Weekly, Wednesday 04:29 UTC — a different day/minute than
+    # determinism.yml's Monday 03:17 so the two weekly wasm32 jobs don't pile
+    # onto the same scheduler slot.
+    - cron: '29 4 * * 3'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  # The exact `BUILD_WIDE=1` incantation from scripts/build-wasm.sh, repeated
+  # here (not sourced from the script) because RUSTFLAGS as an env var fully
+  # replaces .cargo/config.toml's `[target.wasm32-unknown-unknown] rustflags`
+  # for any cargo invocation that doesn't go through the script — the
+  # wasm-pack test step below needs to set it directly. Keep this in lockstep
+  # with scripts/build-wasm.sh's BUILD_WIDE block if that ever changes.
+  WIDE_ARITH_RUSTFLAGS: >-
+    -C link-arg=--max-memory=4294967296
+    -C link-arg=-zstack-size=8388608
+    -C target-feature=+simd128,+wide-arithmetic
+
+jobs:
+  wide-arithmetic-tripwire:
+    name: Build + determinism check (wide-arithmetic wasm)
+    runs-on: ubuntu-latest
+    # Generous: a cold nightly + wasm-pack build plus a cargo-installed
+    # wasm-tools can take a while before caches warm up. Weekly, so slow is fine.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+
+      # Same composite action determinism.yml's wasm32 job uses: pinned Rust
+      # nightly (rust-toolchain.toml already has the wasm32 target — no extra
+      # nightly bump needed, `wide-arithmetic` is a plain target-feature the
+      # pinned LLVM already lowers `bnum`'s checked_mul to) + wasm-pack + cargo
+      # cache.
+      - name: Setup WASM build toolchain
+        uses: ./.github/actions/setup-wasm-build
+        with:
+          cache-prefix: ci-wide-arithmetic
+
+      # wasm-tools is required by scripts/build-wasm.sh's own BUILD_WIDE=1
+      # litmus check (it refuses to ship an unverified bundle without it) and
+      # is reused below for the informational op-count step. Cached like
+      # fuzz.yml caches cargo-fuzz, keyed on the pinned version so a bump
+      # rebuilds cleanly instead of silently reusing a stale binary.
+      - name: Cache wasm-tools binary
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cargo/bin/wasm-tools
+          key: ci-wasm-tools-${{ runner.os }}-1.254.0
+
+      - name: Install wasm-tools
+        run: command -v wasm-tools || cargo install wasm-tools --version 1.254.0 --locked
+
+      # --- Gate 1: build-toolchain -----------------------------------------
+      # Runs the repo's OWN BUILD_WIDE=1 path exactly as scripts/build-wasm.sh
+      # defines it — no flags reimplemented here. If wasm-pack's matched
+      # wasm-bindgen-cli (pinned by rust/wasm-bindings/Cargo.toml) still can't
+      # parse the wide-arithmetic code section, this fails here, before any
+      # determinism question is even reachable.
+      - name: Build pkg-wide bundle (wasm-bindgen + wide-arithmetic)
+        id: build_wide
+        run: BUILD_WIDE=1 bash scripts/build-wasm.sh
+
+      - name: Diagnose build-toolchain gap
+        if: failure() && steps.build_wide.outcome == 'failure'
+        run: |
+          echo "::error::pkg-wide build failed — this is gate 1 (build-toolchain), not a determinism regression."
+          echo "This gate was cleared on 2026-07-31 by pinning wasm-bindgen = \"=0.2.126\", so a"
+          echo "failure here is a REGRESSION, not the known-blocked state. Check whether the pin in"
+          echo "rust/wasm-bindings/Cargo.toml moved below 0.2.115 (the floor for walrus >=0.26.0),"
+          echo "whose bundled walrus parser rejects the wide-arithmetic code section"
+          echo "(\"failed to parse code section: wide arithmetic support is not enabled\")."
+          echo "See docs/architecture/wasm-wide-arithmetic.md blocker 1 for the exact version chain."
+          echo "If the error instead mentions a missing wasm-tools/wasm-pack binary, that is an"
+          echo "environment problem with this job, not a toolchain-support gap."
+
+      # --- Gate 2: does this engine actually accept wide-arithmetic? -------
+      # Probe FIRST, then decide how to run the determinism test.
+      #
+      # The previous shape hard-coded `NODE_ARGS: --experimental-wasm-wide-arithmetic`
+      # and could never work: no Node exposes that flag (V8 has no wide-arithmetic
+      # entry in `--v8-options` at all), so node exited with "bad option" during
+      # argv parsing, before loading any wasm. Gate 2 was never measured. The
+      # signal was also inverted: a shipped V8 feature DROPS its experimental
+      # flag, so on the day wide-arithmetic lands, a hard-coded flag would still
+      # be "bad option" and this lane would stay red exactly when it should turn
+      # actionable.
+      #
+      # So ask the engine directly, with a 102-byte module that uses every wide
+      # op the bundle emits. Order matters: try no flags first (the shipped
+      # case), then only flags this V8 actually lists.
+      # Deliberately NOT the repo's Node 22. That V8 line is frozen and will
+      # never gain these opcodes, so pinning the probe to it would make this lane
+      # permanently blind — the opposite of a tripwire. Ride the newest Node so
+      # support is detected as early as possible, and record which engine produced
+      # the verdict so a state change is attributable to V8 rather than to an
+      # image bump.
+      #
+      # `always()` for the same reason the probe has it: gate 2 must stay
+      # measurable when gate 1 is red. Without it this step inherits the implicit
+      # success() and gets skipped on a build failure, while the probe below runs
+      # anyway — silently measuring the image's preinstalled Node and recording it
+      # as the newest.
+      - name: Install newest Node for the engine probe
+        if: always() && !cancelled()
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: latest
+
+      - name: Probe engine support for wide-arithmetic (gate 2)
+        id: engine_probe
+        if: always() && !cancelled()
+        run: |
+          # Fail closed: without node the probe cannot classify anything, and
+          # reporting "unsupported" would turn that into a quiet green run —
+          # the exact pathology this step exists to remove.
+          if ! node --version >/dev/null 2>&1; then
+            echo "::error::node unavailable — cannot classify engine support. This is a runner/environment fault, not a wide-arithmetic status."
+            exit 1
+          fi
+
+          # Attribution: a verdict is only meaningful next to the engine that produced it,
+          # so a missing version is a broken probe, not a cosmetic loss. Captured
+          # before the tr pipeline, which would otherwise mask the failure.
+          nodever=$(node --version) || { echo "::error::node --version failed after succeeding moments earlier — unstable runner, refusing to report a verdict."; exit 1; }
+          v8ver=$(node -p 'process.versions.v8') || { echo "::error::could not read process.versions.v8 — a verdict without an engine to attribute it to is not worth recording."; exit 1; }
+          # Flattened: a newline here would forge extra lines in $GITHUB_OUTPUT.
+          engine=$(printf '%s' "node $nodever / V8 $v8ver" | tr -d '\n\r')
+          echo "engine=$engine" >> "$GITHUB_OUTPUT"
+          echo "probing $engine"
+
+          # Covers EVERY wide op the bundle can emit — i64.add128, i64.sub128,
+          # i64.mul_wide_s, i64.mul_wide_u — not just one of them. A probe that
+          # tested add128 alone would call a partial implementation "supported"
+          # and hand the determinism step a module the engine cannot run.
+          # Assembled from:
+          #   (module
+          #     (func (export "a") (param i64 i64 i64 i64) (result i64 i64)
+          #       local.get 0 local.get 1 local.get 2 local.get 3 i64.add128)
+          #     (func (export "s") (param i64 i64 i64 i64) (result i64 i64)
+          #       local.get 0 local.get 1 local.get 2 local.get 3 i64.sub128)
+          #     (func (export "ms") (param i64 i64) (result i64 i64)
+          #       local.get 0 local.get 1 i64.mul_wide_s)
+          #     (func (export "mu") (param i64 i64) (result i64 i64)
+          #       local.get 0 local.get 1 i64.mul_wide_u))
+          # `wasm-tools validate` rejects it without --features wide-arithmetic
+          # and accepts it with, so a false verdict isolates to feature support.
+          mod='AGFzbQEAAAABEQJgBH5+fn4Cfn5gAn5+An5+AwUEAAABAQcTBAFhAAABcwABAm1zAAICbXUAAwotBAwAIAAgASACIAP8EwsMACAAIAEgAiAD/BQLCAAgACAB/BULCAAgACAB/BYL'
+          # The verdict is the SENTINEL it prints, never the exit status. Reading
+          # the exit status would make a crash, an OOM or a mangled `mod`
+          # constant indistinguishable from "engine says no" — a lane that
+          # reports the expected answer without measuring, which is the exact
+          # bug this step was written to remove. The length guard catches the
+          # mangled-constant case specifically: Buffer.from tolerates bad base64
+          # silently, and a truncated module fails validation for the wrong
+          # reason.
+          # Digest, not length: substituting a base64 character (rather than
+          # dropping one) still decodes to 102 bytes, so a length check passes
+          # while the module is malformed — validate would say no, the lane would
+          # record "unsupported", and it would stay green forever even after the
+          # engine shipped support. The digest pins the exact bytes.
+          #   printf %s "$mod" | base64 -d | sha256sum
+          probe='const b=Buffer.from(process.argv[1],"base64");
+                 const d=require("crypto").createHash("sha256").update(b).digest("hex");
+                 if(d!=="d83c3e467c96f8a8bc62e05f63efa8184f52bed0029011180705cad77c083503"){
+                   console.log("PROBE_ERR:module digest "+d+" ("+b.length+" bytes) is not the pinned probe module");process.exit(9)}
+                 console.log(WebAssembly.validate(b)?"PROBE_YES":"PROBE_NO")'
+
+          classify() {  # $@ = node argv prefix; echoes yes|no, or returns 1 on a broken probe
+            local out
+            out=$($TIMEOUT node "$@" -e "$probe" "$mod" 2>/dev/null | tail -n 1)
+            case "$out" in
+              PROBE_YES) echo yes ;;
+              PROBE_NO)  echo no ;;
+              *) echo "probe returned no verdict (got: '${out:-<nothing>}')" >&2
+                 return 1 ;;
+            esac
+          }
+
+          # 30s each: a flag that makes node hang would otherwise burn the job timeout.
+          TIMEOUT=""; command -v timeout >/dev/null 2>&1 && TIMEOUT="timeout 30"
+
+          if ! verdict=$(classify); then
+            echo "::error::the flagless probe could not be evaluated. Refusing to guess — this is a broken probe, not an engine answer."
+            exit 1
+          fi
+          if [ "$verdict" = yes ]; then
+            echo "support=default" >> "$GITHUB_OUTPUT"
+            echo "node_args=" >> "$GITHUB_OUTPUT"
+            echo "engine accepts all wide-arithmetic opcodes with no flags -> shipped here"
+            exit 0
+          fi
+
+          # Fail closed again: if flag enumeration itself breaks, an empty list
+          # is indistinguishable from "no such flag" and would report
+          # unsupported on incomplete information — a silent green.
+          if ! v8opts=$(node --v8-options 2>/dev/null); then
+            echo "::error::node --v8-options failed — cannot enumerate feature flags, so 'unsupported' would be a guess."
+            exit 1
+          fi
+
+          # `--wasm-staging` turns on every staged feature at once, and V8 has
+          # historically exposed a proposal through it before giving it a
+          # dedicated flag. Without it the early-warning lane would report
+          # "unsupported" through exactly the rollout phase it exists to catch.
+          # Here-strings, not pipes. `--v8-options` is ~108 KB, and `grep -q`
+          # exits on first match, so a pipe leaves the producer writing into a
+          # closed pipe: harmless under plain `bash -e` (the pipeline takes
+          # grep's status) but SIGPIPE=141 under `-o pipefail`, which is what
+          # GitHub's `shell: bash` means. That would silently stop probing
+          # staging — blind in exactly the rollout this lane watches for — from
+          # nothing more than someone adding a `defaults: run: shell: bash`.
+          # V8 accepts --foo-bar and --foo_bar interchangeably. Today `--v8-options`
+          # prints the hyphen form, but we parse what it prints, so a printer that
+          # ever switched to underscores would yield zero candidates and a silent
+          # "unsupported". Match both, and take staging's spelling from the listing
+          # rather than hardcoding it.
+          candidates=$(grep -oE -- '--experimental[-_]wasm[-_][a-z0-9_-]+' <<<"$v8opts" | sort -u || true)
+          staging=$(grep -oE -- '--wasm[-_]staging' <<<"$v8opts" | head -1 || true)
+          if [ -n "$staging" ]; then
+            candidates=$(printf '%s\n%s' "$staging" "$candidates")
+          fi
+
+          # One unusable flag must not hide a working one: a candidate that cannot
+          # be evaluated is skipped, not fatal. But the search is then incomplete,
+          # so it must not end in a confident "unsupported" either — that is
+          # tracked and turned into an error below.
+          unevaluated=0
+          for f in $candidates; do
+            # staging is a catch-all, so it bypasses the proposal-name filter
+            case "$f" in --wasm[-_]staging) ;; *wide*|*arith*|*128*) ;; *) continue ;; esac
+            if ! verdict=$(classify "$f"); then
+              echo "::warning::could not evaluate $f — skipping it and continuing with the remaining candidates."
+              unevaluated=$((unevaluated + 1))
+              continue
+            fi
+            if [ "$verdict" = yes ]; then
+              echo "support=flag" >> "$GITHUB_OUTPUT"
+              echo "node_args=$f" >> "$GITHUB_OUTPUT"
+              echo "engine accepts all wide-arithmetic opcodes under $f"
+              exit 0
+            fi
+          done
+
+          if [ "$unevaluated" -gt 0 ]; then
+            echo "::error::$unevaluated candidate flag(s) could not be evaluated, so no flag enabled the opcodes but the search was incomplete. Reporting 'unsupported' here would be a guess."
+            exit 1
+          fi
+
+          echo "support=unsupported" >> "$GITHUB_OUTPUT"
+          echo "node_args=" >> "$GITHUB_OUTPUT"
+          echo "engine rejects the wide-arithmetic opcodes and exposes no flag that enables them"
+
+      # Reuses the SAME wasm32 determinism manifest check determinism.yml runs
+      # (rust/wasm-bindings/tests/mesh_determinism.rs against the pinned
+      # rust/processing/tests/manifests/mesh_determinism.wasm32.json), just
+      # compiled with +wide-arithmetic. Only runs once the probe says the engine
+      # ACCEPTS the module (validate, not execute — this step is the execution
+      # check); otherwise it measures nothing about determinism.
+      # Gated on the build too: this compiles the test crate with the same
+      # toolchain, so if pkg-wide could not build, this can only fail for the
+      # same reason — two red steps, one cause. Gate 2 no longer needs `always()`
+      # to stay independent; the probe step provides that, and it does not
+      # depend on the build at all.
+      - name: wasm32 mesh-determinism vs pinned manifest (wide-arithmetic bundle)
+        id: determinism_check
+        if: always() && !cancelled() && steps.build_wide.outcome == 'success'
+          && (steps.engine_probe.outputs.support == 'default'
+          || steps.engine_probe.outputs.support == 'flag')
+        env:
+          RUSTFLAGS: ${{ env.WIDE_ARITH_RUSTFLAGS }}
+          # NODE_ARGS (honored by wasm-bindgen-test-runner) passes V8 flags as
+          # direct node argv: they are NOT allowed inside NODE_OPTIONS (node
+          # exits with "not allowed in NODE_OPTIONS"). Empty when the feature
+          # is on by default.
+          NODE_ARGS: ${{ steps.engine_probe.outputs.node_args }}
+        run: wasm-pack test --node rust/wasm-bindings --test mesh_determinism
+
+      - name: Diagnose determinism-check failure
+        if: failure() && steps.determinism_check.outcome == 'failure'
+        run: |
+          echo "::error::wasm32 mesh-determinism check failed — read which gate this is before treating it as a regression."
+          echo ""
+          echo "This step only runs once the build succeeded AND the probe found engine support,"
+          echo "so the usual excuses are already ruled out. Most likely cause first:"
+          echo ""
+          echo "Failure is an assertion/panic naming mesh_determinism.wasm32.json (a manifest diff"
+          echo "report, e.g. positions_hash/indices_origin_hash/normals_hash mismatch) -> REAL"
+          echo "regression: wide-arithmetic changed the kernel's emitted bytes. Treat it as"
+          echo "high-priority regardless of the weekly/non-blocking schedule -> do NOT flip"
+          echo "BUILD_WIDE on by default until fixed."
+          echo ""
+          echo "A WebAssembly.validate / instantiate / \"invalid opcode\" error should NOT appear here:"
+          echo "the probe gates this on the engine accepting i64.add128. If one does, the probe and"
+          echo "the real module disagree -> suspect the probe, not the kernel."
+          echo ""
+          echo "A walrus / \"wide arithmetic support is not enabled\" parse error should not appear"
+          echo "either, since pkg-wide built. If one does, this compile of the TEST crate differs"
+          echo "from the bundle build -> compare their features/flags, not the kernel."
+
+      # The actual tripwire. Blocked-on-V8 is the known state, so it is GREEN:
+      # a lane that is permanently red teaches everyone to ignore it, which is
+      # how the bogus-flag bug above survived. Red here means the state MOVED
+      # and someone should look.
+      #
+      # Accepted trade-off: once an engine does ship the feature, every run here
+      # is red until someone flips BUILD_WIDE or updates this lane. That is
+      # deliberate — it is a standing demand for a decision, not a status light.
+      - name: Tripwire — engine support changed
+        if: always() && !cancelled() && (steps.engine_probe.outputs.support == 'default'
+          || steps.engine_probe.outputs.support == 'flag')
+        env:
+          ENGINE_SUPPORT: ${{ steps.engine_probe.outputs.support }}
+          ENGINE: ${{ steps.engine_probe.outputs.engine }}
+        run: |
+          echo "::error::wide-arithmetic is now ENGINE-SUPPORTED on ${ENGINE} (${ENGINE_SUPPORT}) — this lane is red on purpose."
+          echo ""
+          echo "This is the signal the tripwire exists to give, not a regression."
+          echo "Next steps: confirm the determinism step above passed, then re-evaluate"
+          echo "flipping BUILD_WIDE and update docs/architecture/wasm-wide-arithmetic.md"
+          echo "(blocker 2) plus the expected state encoded in this workflow."
+          exit 1
+
+      - name: Record blocked-on-engine state (expected)
+        if: always() && !cancelled() && steps.engine_probe.outputs.support == 'unsupported'
+        env:
+          ENGINE: ${{ steps.engine_probe.outputs.engine }}
+        run: |
+          {
+            echo "### Gate 2: engine support — still blocked (expected)"
+            echo ""
+            echo "Measured on **${ENGINE}**."
+            echo ""
+            echo "This V8 rejects the wide-arithmetic opcodes (\`i64.add128\` fails first, at"
+            echo "opcode \`0xfc13\`) and exposes no flag"
+            echo "that enables it, so the wasm32 determinism check was skipped: it would have"
+            echo "measured engine support, not determinism."
+            echo ""
+            echo "This is the known state (blocker 2 in docs/architecture/wasm-wide-arithmetic.md)"
+            echo "and is intentionally **not** a failure. The lane turns red when it changes."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # --- Informational only: NOT a timing benchmark ----------------------
+      # There is no in-repo wasm timing harness for this — the predicate and
+      # end-to-end benches that produced the 1.9-3.1x / 1.71x numbers in
+      # docs/architecture/wasm-wide-arithmetic.md live in a separate profiling
+      # repo, not here. Cheapest useful in-repo signal without adding new Rust
+      # code: confirm the shipped pkg-wide bundle keeps emitting wide ops (the
+      # mechanism the speedup depends on), as a step-summary count. This does
+      # NOT measure speed and must never gate the job.
+      - name: Wide-op emission count (informational, not a benchmark)
+        if: always() && steps.build_wide.outcome == 'success'
+        continue-on-error: true
+        run: |
+          count=$(wasm-tools print packages/wasm/pkg-wide/ifc-lite_bg.wasm 2>/dev/null | grep -cE 'mul_wide|add128|sub128' || true)
+          {
+            echo "### Wide-arithmetic op emission (informational)"
+            echo ""
+            echo "\`packages/wasm/pkg-wide/ifc-lite_bg.wasm\` emits **${count}** wide-arithmetic ops"
+            echo "(\`mul_wide\`/\`add128\`/\`sub128\`, via \`wasm-tools print\`)."
+            echo ""
+            echo "This confirms the mechanism the measured speedup depends on is present in the"
+            echo "shipped bundle; it is not a timing measurement. See"
+            echo "docs/architecture/wasm-wide-arithmetic.md for the actual measured speedups"
+            echo "(1.9-3.1x predicate microbench, 1.71x end-to-end), captured externally."
+          } >> "$GITHUB_STEP_SUMMARY"

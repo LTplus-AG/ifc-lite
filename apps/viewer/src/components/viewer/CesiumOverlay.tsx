@@ -28,8 +28,9 @@ import { createCesiumBridge, type CesiumBridge } from '@/lib/geo/cesium-bridge';
 import {
   computeCesiumPlacement,
   shouldPreferOrthometricTerrain,
+  shouldApplyGeoidUndulation,
+  orthometricTargetForTerrain,
 } from '@/lib/geo/cesium-placement';
-import { getEffectiveHorizontalScale, resolveMapUnitToMetreScale } from '@/lib/geo/geo-scale';
 import { egm96Undulation } from '@/lib/geo/egm96-undulation';
 import { buildMergedGLB } from '@/lib/geo/cesium-glb';
 import { applySolarScene, SunPathDome } from '@/lib/geo/cesium-sun';
@@ -61,19 +62,10 @@ function loadCesium() {
 function buildModelMatrix(
   Cesium: typeof import('cesium'),
   bridge: CesiumBridge,
-  mapConversion: MapConversion | undefined,
-  projectedCRS: ProjectedCRS | undefined,
   coordinateInfo: CoordinateInfo | undefined,
-  lengthUnitScale: number,
 ) {
   // GLB vertices are in viewer-space metres (geometry engine converts during
-  // extraction). IfcMapConversion.Scale is defined per IFC spec relative to
-  // the project length unit, so applying it raw to metre-converted geometry
-  // double-scales the model — see issue #595. Use the effective scale.
-  const mapUnitScale = resolveMapUnitToMetreScale(projectedCRS?.mapUnitScale, lengthUnitScale);
-  const hScale = getEffectiveHorizontalScale(mapConversion?.scale, mapUnitScale, lengthUnitScale);
-  const absc = mapConversion?.xAxisAbscissa ?? 1.0;
-  const ordi = mapConversion?.xAxisOrdinate ?? 0.0;
+  // extraction; the effective map scale is already folded into the rotation).
   const bounds = coordinateInfo?.originalBounds;
   // Viewer bounds are already in metres (geometry engine converts from IFC native unit)
   const mvx = bounds ? (bounds.min.x + bounds.max.x) / 2 : 0;
@@ -87,16 +79,20 @@ function buildModelMatrix(
     bridge.modelOrigin.longitude, bridge.modelOrigin.latitude, bridge.modelOrigin.height,
   );
   const enuToEcef = Cesium.Transforms.eastNorthUpToFixedFrame(origin);
-  // No lengthUnitScale here — viewer-space GLB vertices are already in metres.
-  const sa = hScale * absc, so = hScale * ordi;
-  const tx = -(sa * mvx + so * mvz);
-  const ty = -(so * mvx - sa * mvz);
+  // No lengthUnitScale here: viewer-space GLB vertices are already in metres.
+  // Reuse the bridge's convergence-corrected viewer-to-ENU rotation so the
+  // model geometry and the camera frame agree on north; a grid-only rotation
+  // here would leave the model rotated by the meridian convergence off the
+  // true-north basemap (up to ~8 deg for Krovak). See #1408.
+  const rot = bridge.viewerRotation;
+  const tx = -(rot.eastFromVx * mvx + rot.eastFromVz * mvz);
+  const ty = -(rot.northFromVx * mvx + rot.northFromVz * mvz);
   const tz = -mvy;
   const ifcToEnu = new Cesium.Matrix4(
-    sa, 0,  so, tx,
-    so, 0, -sa, ty,
-    0,  1,  0,  tz,
-    0,  0,  0,  1,
+    rot.eastFromVx,  0, rot.eastFromVz,  tx,
+    rot.northFromVx, 0, rot.northFromVz, ty,
+    0,               1, 0,               tz,
+    0,               0, 0,               1,
   );
   return Cesium.Matrix4.multiply(enuToEcef, ifcToEnu, new Cesium.Matrix4());
 }
@@ -138,9 +134,11 @@ export function CesiumOverlay({
   const dataSource = useViewerStore((s) => s.cesiumDataSource);
   const ionToken = useViewerStore((s) => s.cesiumIonToken);
   const terrainEnabled = useViewerStore((s) => s.cesiumTerrainEnabled);
+  const heightsAreEllipsoidal = useViewerStore((s) => s.cesiumHeightsAreEllipsoidal);
   const terrainClipY = useViewerStore((s) => s.cesiumTerrainClipY);
   const setCesiumTerrainHeight = useViewerStore((s) => s.setCesiumTerrainHeight);
   const setCesiumTerrainSource = useViewerStore((s) => s.setCesiumTerrainSource);
+  const setCesiumTerrainSaveHeight = useViewerStore((s) => s.setCesiumTerrainSaveHeight);
   const setCesiumTerrainClipY = useViewerStore((s) => s.setCesiumTerrainClipY);
   const setCesiumGlbLoaded = useViewerStore((s) => s.setCesiumGlbLoaded);
 
@@ -263,7 +261,29 @@ export function CesiumOverlay({
         scene.globe.showGroundAtmosphere = false;
         scene.backgroundColor = Cesium.Color.TRANSPARENT;
         scene.globe.baseColor = Cesium.Color.TRANSPARENT;
-        if (dataSource === 'osm-buildings') {
+        if (dataSource === 'osm-map') {
+          // Plain OpenStreetMap slippy map: a simple, uncluttered flat base
+          // map (no satellite imagery, no 3D massing) for users who find the
+          // photorealistic globe overwhelming (#1744). The globe drapes the
+          // OSM tiles (over terrain when enabled) and receives cast shadows.
+          scene.globe.show = true;
+          scene.globe.shadows = Cesium.ShadowMode.RECEIVE_ONLY;
+          try {
+            // maximumLevel 19 = OSM's deepest tile zoom; conforms to the
+            // OpenStreetMap tile usage policy and avoids 404s past z19.
+            // Pass an explicit `credit`: Cesium's default OSM credit is the
+            // outdated "MapQuest … CC-BY-SA" string, but the OSMF tile policy
+            // requires a visible "© OpenStreetMap contributors" attribution
+            // linking to the copyright page. Cesium renders credit HTML, so the
+            // anchor is clickable in the on-canvas attribution.
+            const osm = new Cesium.OpenStreetMapImageryProvider({
+              maximumLevel: 19,
+              credit:
+                '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
+            });
+            if (!cancelled) viewer.imageryLayers.addImageryProvider(osm);
+          } catch (e) { console.warn('[CesiumOverlay] OSM base map unavailable:', e); }
+        } else if (dataSource === 'osm-buildings') {
           // OSM massing context: keep the globe with the satellite base map —
           // the extruded buildings sit ON TOP of the imagery, and the globe
           // is what receives their cast shadows during a sun study.
@@ -361,6 +381,7 @@ export function CesiumOverlay({
       const usesSeparateCameraBridge = cameraConversion !== mapConversion;
       const cameraTentative = await createCesiumBridge(
         cameraConversion, projectedCRS, coordinateInfo, lengthUnitScale,
+        undefined, heightsAreEllipsoidal,
       );
       if (cancelled) return;
       if (!cameraTentative) {
@@ -390,7 +411,10 @@ export function CesiumOverlay({
       if (cancelled) return;
       const terrainH = terrainSample?.height ?? null;
       const modelTentative = usesSeparateCameraBridge
-        ? await createCesiumBridge(mapConversion, projectedCRS, coordinateInfo, lengthUnitScale)
+        ? await createCesiumBridge(
+            mapConversion, projectedCRS, coordinateInfo, lengthUnitScale,
+            undefined, heightsAreEllipsoidal,
+          )
         : cameraTentative;
       if (cancelled) return;
       if (!modelTentative) {
@@ -434,6 +458,20 @@ export function CesiumOverlay({
         setCesiumTerrainSource(
           `${terrainSample.source}${terrainSample.reference === 'orthometric' ? ' (orthometric)' : ''}`,
         );
+        // Snap-to-terrain target in the OrthogonalHeight frame: the read path
+        // places the base at OrthogonalHeight + geoid N, so persist the
+        // ellipsoidal terrain altitude (terrainHForFrame) minus the same N that
+        // was actually applied to this model. N mirrors the bridge: the EGM96
+        // undulation, or 0 when heights are flagged ellipsoidal. Keeps the snap
+        // button round-tripping (#1456).
+        const appliedGeoidN = shouldApplyGeoidUndulation(heightsAreEllipsoidal)
+          ? egm96Undulation(modelTentative.modelOrigin.latitude, modelTentative.modelOrigin.longitude)
+          : 0;
+        setCesiumTerrainSaveHeight(
+          terrainHForFrame !== null
+            ? orthometricTargetForTerrain(terrainHForFrame, appliedGeoidN)
+            : null,
+        );
         // terrainClipY stays in viewer-space; it represents the world terrain
         // altitude expressed in the camera bridge's committed frame. Draft
         // placement edits must not move this floor, or the camera will drift.
@@ -443,6 +481,7 @@ export function CesiumOverlay({
         // the clip plane doesn't drift relative to the new bridge.
         setCesiumTerrainHeight(null);
         setCesiumTerrainSource(null);
+        setCesiumTerrainSaveHeight(null);
         setCesiumTerrainClipY(null);
       }
 
@@ -495,10 +534,12 @@ export function CesiumOverlay({
     coordinateInfo,
     lengthUnitScale,
     terrainEnabled,
+    heightsAreEllipsoidal,
     dataSource,
     storeyElevations,
     setCesiumTerrainHeight,
     setCesiumTerrainSource,
+    setCesiumTerrainSaveHeight,
     setCesiumTerrainClipY,
   ]);
 
@@ -544,7 +585,7 @@ export function CesiumOverlay({
         if (cancelled) return;
 
         // Build initial model matrix
-        const modelMatrix = buildModelMatrix(Cesium, bridge, mapConversion, projectedCRS, coordinateInfo, lengthUnitScale);
+        const modelMatrix = buildModelMatrix(Cesium, bridge, coordinateInfo);
 
         const blob = new Blob([glbBytes as BlobPart], { type: 'model/gltf-binary' });
         const glbUrl = URL.createObjectURL(blob);
@@ -618,7 +659,7 @@ export function CesiumOverlay({
     const Cesium = cesiumModule;
     if (!model || !bridge || !viewer || !Cesium) return;
 
-    const newMatrix = buildModelMatrix(Cesium, bridge, mapConversion, projectedCRS, coordinateInfo, lengthUnitScale);
+    const newMatrix = buildModelMatrix(Cesium, bridge, coordinateInfo);
     model.modelMatrix = newMatrix;
     viewer.scene.requestRender();
     // Depend on bridgeVersion so the matrix is rebuilt with the *new* bridge
@@ -846,6 +887,12 @@ async function addDataSourceLayer(
 ): Promise<InstanceType<typeof import('cesium').Cesium3DTileset> | null> {
   try {
     switch (dataSource) {
+      case 'osm-map': {
+        // Plain OSM base map: the imagery layer is the whole context (added in
+        // Effect 1). There is no 3D tileset to place — return null so solar
+        // shadows fall on the globe alone.
+        return null;
+      }
       case 'osm-buildings': {
         // OpenStreetMap Buildings — flat-shaded extruded footprints, the grey
         // massing context used for sun-path / overshadowing studies.

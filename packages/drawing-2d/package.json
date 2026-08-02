@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/drawing-2d",
-  "version": "1.18.4",
+  "version": "1.20.0",
   "description": "2D architectural drawing generation from IFC models - section cuts, floor plans, and elevations",
   "type": "module",
   "main": "./dist/index.js",
@@ -23,7 +23,7 @@
   "devDependencies": {
     "@webgpu/types": "^0.1.71",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.10"
   },
   "license": "MPL-2.0",
   "author": "Louis True",
@@ -32,7 +32,7 @@
     "url": "https://github.com/LTplus-AG/ifc-lite.git",
     "directory": "packages/drawing-2d"
   },
-  "homepage": "https://ltplus-ag.github.io/ifc-lite/",
+  "homepage": "https://ifclite.dev/docs/",
   "bugs": "https://github.com/LTplus-AG/ifc-lite/issues",
   "keywords": [
     "ifc",

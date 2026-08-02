@@ -116,6 +116,13 @@ function getInitialMergeLayers(): boolean {
 export const GEOM_WORKERS_STORAGE_KEY = 'ifc-lite-geom-workers';
 export const GEOM_TIER_STORAGE_KEY = 'ifc-lite-geom-tier';
 
+/**
+ * localStorage key for the source-decoupled mesh-only cache KILL SWITCH. The
+ * tier is on by default; this key holds `'0'` only when the user disabled it via
+ * `?meshCache=0` (absent = default on). See `isMeshOnlyCacheEnabled`.
+ */
+export const MESH_ONLY_CACHE_STORAGE_KEY = 'ifc-lite-mesh-cache';
+
 // Auto-low tessellation density for heavy models. The on-screen load already
 // skips tiny detail boolean cuts on every load (#1286), which removes the
 // exact-tier escalations that dominate boolean-heavy steel; this is the
@@ -133,6 +140,9 @@ export const AUTO_LOWEST_TIER_MB = 150; // >= this → 'lowest'
 
 /** localStorage key for the load-time geometry fidelity mode (mirrors merge-layers). */
 export const GEOMETRY_MODE_STORAGE_KEY = 'ifc-lite-geometry-mode';
+
+/** localStorage key for the active Hierarchy view mode. */
+export const HIERARCHY_MODE_STORAGE_KEY = 'hierarchy-mode';
 
 /**
  * Load-time geometry fidelity mode — a user-facing, persistent switch that
@@ -239,6 +249,60 @@ export function getGeomTierOverride(): TessellationQuality | undefined {
 }
 
 /**
+ * Pure decision for the source-decoupled mesh-only cache tier, split out for
+ * node:test (the outer {@link isMeshOnlyCacheEnabled} reads `window`/
+ * `localStorage`). Default ON — the tier is unflagged for 150-400MB files. The
+ * kill switch is `?meshCache=0` (persisted so it sticks across reloads and rides
+ * a shared link); `?meshCache=1` clears the kill switch back to the default.
+ *
+ * @param param  the `meshCache` URL query value, or `null` if absent
+ * @param stored the persisted `MESH_ONLY_CACHE_STORAGE_KEY` value, or `null`
+ * @returns `enabled` plus the persistence side-effect the caller should apply
+ *   (`persist: '0'` writes the kill switch; `clear: true` removes it).
+ */
+export function resolveMeshCacheDecision(
+  param: string | null,
+  stored: string | null,
+): { enabled: boolean; persist?: '0'; clear?: boolean } {
+  if (param === '0' || param === 'false' || param === 'off') {
+    return { enabled: false, persist: '0' };
+  }
+  if (param === '1' || param === 'true' || param === 'on') {
+    return { enabled: true, clear: true };
+  }
+  // Default ON unless the kill switch was persisted.
+  return { enabled: stored !== '0' };
+}
+
+/**
+ * Is the source-decoupled mesh-only cache tier enabled? It caches tables +
+ * geometry + instanced shards WITHOUT the source buffer for large (150-400MB)
+ * files so REPEAT opens skip the 10-90s parse+mesh. ON BY DEFAULT — the kill
+ * switch `?meshCache=0` disables it (persisted to localStorage so it sticks
+ * across the reload a re-measure needs, and a shared link carries it);
+ * `?meshCache=1` clears the kill switch. The <=150MB source-persisting tier is
+ * unaffected either way (it never consults this flag).
+ */
+export function isMeshOnlyCacheEnabled(): boolean {
+  if (typeof window === 'undefined') return false; // SSR never runs the cache path
+  const param = new URLSearchParams(window.location.search).get('meshCache');
+  try {
+    const stored = localStorage.getItem(MESH_ONLY_CACHE_STORAGE_KEY);
+    const decision = resolveMeshCacheDecision(param, stored);
+    if (decision.persist) localStorage.setItem(MESH_ONLY_CACHE_STORAGE_KEY, decision.persist);
+    else if (decision.clear) localStorage.removeItem(MESH_ONLY_CACHE_STORAGE_KEY);
+    return decision.enabled;
+  } catch (err) {
+    // Blocked/unavailable storage (Safari private mode): can't read or persist
+    // the kill switch, but an explicit `?meshCache=0` in the URL must STILL
+    // disable the tier for this load; otherwise fall back to default-on. Don't
+    // swallow silently (AGENTS.md: no silent catch).
+    console.warn('[mesh-cache] storage unavailable; honouring URL param, else default-on', err);
+    return resolveMeshCacheDecision(param, null).enabled;
+  }
+}
+
+/**
  * Resolve the load-time tessellation tier for a model of `fileSizeMB` under the
  * given geometry `mode`: a manual `?geomTier=` override wins in any mode; else
  * in `fast` mode auto-low for heavy models by size; else `undefined` (engine
@@ -257,6 +321,76 @@ export function resolveLoadTessellationTier(
   if (fileSizeMB >= AUTO_LOWEST_TIER_MB) return 'lowest';
   if (fileSizeMB >= AUTO_LOW_TIER_MB) return 'low';
   return undefined;
+}
+
+/**
+ * localStorage key for the desktop toolbar style (issue #1686). `classic`
+ * is the original single-strip toolbar; `ribbon` is the tabbed,
+ * IFCFlux-style ribbon. Same sticky-preference pattern as the theme.
+ */
+export const TOOLBAR_STYLE_STORAGE_KEY = 'ifc-lite-toolbar-style';
+
+export type ToolbarStyle = 'classic' | 'ribbon';
+
+/**
+ * Resolve the initial toolbar style from localStorage; default `ribbon`.
+ *
+ * The ribbon is the default toolbar. Only an explicitly stored `classic`
+ * wins, so a user who switched back keeps the classic strip forever while
+ * everyone else (and every new browser) lands on the ribbon. Exported for
+ * the unit test - the module-level `UI_DEFAULTS` is computed once at import
+ * and cannot be re-seeded from a test.
+ */
+export function resolveInitialToolbarStyle(): ToolbarStyle {
+  if (typeof window === 'undefined') return 'ribbon';
+  try {
+    return localStorage.getItem(TOOLBAR_STYLE_STORAGE_KEY) === 'classic' ? 'classic' : 'ribbon';
+  } catch (err) {
+    // Blocked storage (Safari private mode): fall back to the default so the
+    // toolbar still renders, but say why the preference didn't stick.
+    console.warn('[toolbar-style] storage unavailable; using ribbon', err);
+    return 'ribbon';
+  }
+}
+
+/** Ribbon tab strip contexts, in strip order. */
+export type RibbonTabId = 'file' | 'home' | 'view' | 'elements' | 'analyze' | 'author';
+
+/** Home first: it holds the everyday tool and camera loop. */
+export const RIBBON_DEFAULT_TAB: RibbonTabId = 'home';
+
+/**
+ * localStorage key for contextual ribbon tabs (Revit-style: a selection
+ * opens Elements, edit mode opens Author, and clearing the context returns
+ * you to where you were). On by default; the escape hatch lives in the
+ * ribbon's View tab because auto-switching under the cursor is exactly the
+ * kind of help some people want turned off.
+ */
+export const RIBBON_CONTEXTUAL_TABS_STORAGE_KEY = 'ifc-lite-ribbon-contextual-tabs';
+
+/** Resolve contextual tab following from localStorage; default on. */
+function getInitialRibbonContextualTabs(): boolean {
+  if (typeof window === 'undefined') return true;
+  try {
+    return localStorage.getItem(RIBBON_CONTEXTUAL_TABS_STORAGE_KEY) !== 'false';
+  } catch (err) {
+    console.warn('[ribbon-contextual-tabs] storage unavailable; using on', err);
+    return true;
+  }
+}
+
+/** localStorage key for the ribbon's collapsed state (tab strip only). */
+export const RIBBON_COLLAPSED_STORAGE_KEY = 'ifc-lite-ribbon-collapsed';
+
+/** Resolve the initial ribbon collapsed state from localStorage; default expanded. */
+function getInitialRibbonCollapsed(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return localStorage.getItem(RIBBON_COLLAPSED_STORAGE_KEY) === 'true';
+  } catch (err) {
+    console.warn('[ribbon-collapsed] storage unavailable; using expanded', err);
+    return false;
+  }
 }
 
 export const UI_DEFAULTS = {
@@ -300,6 +434,18 @@ export const UI_DEFAULTS = {
    * `exact` for full display/measure/export fidelity.
    */
   GEOMETRY_MODE: getInitialGeometryMode(),
+  /**
+   * Desktop toolbar style (issue #1686): the tabbed `ribbon` (default) or
+   * the original `classic` single strip. Read from localStorage on boot so
+   * the choice survives reloads.
+   */
+  TOOLBAR_STYLE: resolveInitialToolbarStyle(),
+  /** Ribbon band collapsed to the tab strip only. */
+  RIBBON_COLLAPSED: getInitialRibbonCollapsed(),
+  /** Ribbon tab open on boot; session-local, never persisted. */
+  RIBBON_TAB: RIBBON_DEFAULT_TAB,
+  /** Ribbon tabs follow the working context (selection, edit mode, model). */
+  RIBBON_CONTEXTUAL_TABS: getInitialRibbonContextualTabs(),
 } as const;
 
 // ============================================================================

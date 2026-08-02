@@ -12,7 +12,11 @@ export async function toPdf(model: ExportModel): Promise<Blob> {
   const { jsPDF } = await import('jspdf');
   const autoTable = (await import('jspdf-autotable')).default;
 
-  const landscape = model.columns.length > 5;
+  // Schedule / pivot presentation (issue #1790 round 2): grouping columns
+  // become leading columns, one row per group-value tuple, then Count and
+  // any configured sums — matching the on-screen schedule view exactly.
+  const cols = model.schedule?.columns ?? model.columns;
+  const landscape = cols.length > 5;
   const doc = new jsPDF({ orientation: landscape ? 'landscape' : 'portrait', unit: 'pt', format: 'a4' });
 
   doc.setFont('helvetica', 'bold'); doc.setFontSize(14);
@@ -21,14 +25,18 @@ export async function toPdf(model: ExportModel): Promise<Blob> {
   doc.text(`${model.totals.count.toLocaleString()} elements · ${model.generatedAt}`, 40, 58);
   doc.setTextColor(0);
 
-  const head = [model.columns.map((c) => c.label)];
+  const head = [cols.map((c) => c.label)];
   const cell = (vals: CellValue[], i: number) => displayCell(vals[i]);
   const body: Array<Array<string | { content: string; styles: Record<string, unknown> }>> = [];
 
-  if (model.groups) {
+  if (model.schedule) {
+    for (const r of model.schedule.rows) body.push(cols.map((_, i) => cell(r, i)));
+  } else if (model.groups) {
+    // Nested (multi-criteria) grouping: sub-group headers indent one step per
+    // level and carry their own count; member rows sit on leaf groups only.
     for (const g of model.groups) {
       body.push(model.columns.map((c, i) => ({
-        content: i === 0 ? `${g.label}  (${g.count})` : (c.summed ? displayCell(g.sums[c.id]) : ''),
+        content: i === 0 ? `${'    '.repeat(g.level)}${g.label}  (${g.count})` : (c.summed ? displayCell(g.sums[c.id]) : ''),
         styles: { fontStyle: 'bold', fillColor: [226, 232, 240] as unknown as number[] },
       })));
       for (const r of g.rows) body.push(model.columns.map((_, i) => cell(r, i)));
@@ -38,11 +46,15 @@ export async function toPdf(model: ExportModel): Promise<Blob> {
   }
 
   const foot = model.sumColumnIds.length > 0
-    ? [model.columns.map((c, i) => (c.summed ? displayCell(model.totals.sums[c.id]) : (i === 0 ? `Total (${model.totals.count})` : '')))]
+    ? [cols.map((c, i) => {
+        if (i === 0) return `Total (${model.totals.count})`;
+        if (model.schedule && c.id === '__count') return displayCell(model.totals.count);
+        return c.summed ? displayCell(model.totals.sums[c.id]) : '';
+      })]
     : undefined;
 
   const columnStyles: Record<number, { halign: 'right' }> = {};
-  model.columns.forEach((c, i) => { if (c.numeric) columnStyles[i] = { halign: 'right' }; });
+  cols.forEach((c, i) => { if (c.numeric) columnStyles[i] = { halign: 'right' }; });
 
   autoTable(doc, {
     head,

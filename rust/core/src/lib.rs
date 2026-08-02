@@ -62,6 +62,7 @@
 //! - **Entity scanning**: ~650 MB/s with SIMD acceleration
 //! - **Number parsing**: 10x faster than std using [lexical-core](https://docs.rs/lexical-core)
 
+pub mod columnar_index;
 pub mod decoder;
 pub mod error;
 pub mod fast_parse;
@@ -70,12 +71,14 @@ pub mod georef;
 pub mod legacy_entities;
 pub mod model_bounds;
 pub mod parser;
+pub mod project_units;
 pub mod schema_gen;
 pub(crate) mod schema_helpers;
 pub mod step_encoding;
 pub mod streaming;
 pub mod units;
 
+pub use columnar_index::ColumnarEntityIndex;
 pub use decoder::{build_entity_index, EntityDecoder, EntityIndex};
 pub use error::{Error, Result};
 pub use fast_parse::{
@@ -89,9 +92,13 @@ pub use legacy_entities::{
     get_legacy_entity_info, is_legacy_entity, map_legacy_to_base_type, LegacyEntityInfo,
 };
 pub use model_bounds::{scan_model_bounds, scan_placement_bounds, ModelBounds};
-pub use parser::{parse_entity, EntityScanner, Token};
+pub use parser::{entity_count, parse_entity, EntityScanner, Token};
+pub use project_units::{
+    measure::{measure_unit, MeasureUnit},
+    resolve_unit_by_ref, ProjectUnits, ResolvedUnit,
+};
 pub use schema_gen::{AttributeValue, DecodedEntity, GeometryCategory, IfcSchema, ProfileCategory};
-pub use schema_helpers::{has_geometry_by_name, is_simple_geometry_type};
+pub use schema_helpers::{has_geometry_by_name, is_simple_geometry_type, legacy_aware_ifc_type};
 pub use step_encoding::{decode_ifc_string, encode_ifc_string};
 pub use streaming::{parse_stream, ParseEvent, StreamConfig};
 pub use units::{

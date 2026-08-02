@@ -77,6 +77,31 @@ const PRISM_INDICES = new Uint32Array([
   0, 1, 2, 3, 4, 5, 0, 1, 4, 0, 4, 3, 1, 2, 5, 1, 5, 4, 2, 0, 3, 2, 3, 5,
 ]);
 
+const L_PRISM_INDICES = new Uint32Array([
+  // bottom cap (fan from 0), top cap (fan from 6)
+  0, 2, 1, 0, 3, 2, 0, 4, 3, 0, 5, 4,
+  6, 7, 8, 6, 8, 9, 6, 9, 10, 6, 10, 11,
+  // sides (one quad per footprint edge)
+  0, 1, 7, 0, 7, 6, 1, 2, 8, 1, 8, 7, 2, 3, 9, 2, 9, 8,
+  3, 4, 10, 3, 10, 9, 4, 5, 11, 4, 11, 10, 5, 0, 6, 5, 6, 11,
+]);
+
+/**
+ * Closed, CONCAVE L-shaped prism: footprint (0,0)-(2,0)-(2,1)-(1,1)-(1,2)-(0,2)
+ * extruded z=0..1. The square [1,2]x[1,2] is a notch: inside the AABB but
+ * OUTSIDE the solid, so a small box sitting in the notch is AABB-contained
+ * while only its faces cross the notch wall at x=1.
+ */
+function lPrismElement(key: string, tag: string): ClashElement {
+  const positions = new Float32Array([
+    // bottom (z=0): 0..5
+    0, 0, 0, 2, 0, 0, 2, 1, 0, 1, 1, 0, 1, 2, 0, 0, 2, 0,
+    // top (z=1): 6..11
+    0, 0, 1, 2, 0, 1, 2, 1, 1, 1, 1, 1, 1, 2, 1, 0, 2, 1,
+  ]);
+  return { key, ref: nextRef++, model: 'm', tag, bounds: fromPositions(positions), positions, indices: L_PRISM_INDICES };
+}
+
 /** Closed triangular prism: `footprint` (XY) extruded between z0 and z1. */
 function triPrismElement(
   key: string,
@@ -276,5 +301,49 @@ describe('TsClashEngine: false-positive + bounds regressions (#1362 / #1402)', (
       expect(bounds.min[i]).toBeGreaterThanOrEqual(overlapMin - 1e-6);
       expect(bounds.max[i]).toBeLessThanOrEqual(overlapMax + 1e-6);
     }
+  });
+});
+
+describe('TsClashEngine: contained-pair penetration depth (#1866)', () => {
+  it('reports the mesh-level depth, not the AABB gap, for a contained crossing pair', async () => {
+    // Box in the L's notch, AABB-contained in the L's AABB, dipping past the
+    // notch wall at x=1 into the solid. True mesh penetration = 1 - xMin.
+    const wall = lPrismElement('A', 'IfcWall');
+    const duct = boxElementHxyz('B', 'IfcDuct', [1.2, 1.4, 0.5], [0.25, 0.2, 0.2]);
+    const result = await engine.run([wall, duct], [hard()]);
+    expect(result.summary.total).toBe(1);
+    const clash = result.clashes[0];
+    expect(clash.status).toBe('hard');
+    const expected = 1 - duct.bounds.min[0]; // ~0.05, f32-exact from the mesh
+    expect(expected).toBeGreaterThan(0.049);
+    expect(expected).toBeLessThan(0.051);
+    expect(Math.abs(-clash.distance - expected)).toBeLessThan(1e-9);
+    // The old AABB signed-gap depth for this pair was 0.7 (the contained box's
+    // own smallest-axis overlap), 14x the real penetration.
+    expect(-clash.distance).toBeLessThan(0.1);
+  });
+
+  it('reports a micrometre-scale depth for a designed face contact (issue corpus scale)', async () => {
+    // Same layout, but the box crosses the notch wall by ~1e-6 m: a designed
+    // face contact as in the #1866 corpus (true worst depth 7.39e-6 m). The
+    // reported depth must sit inside the touching band, not at the AABB gap.
+    const wall = lPrismElement('A', 'IfcWall');
+    const xMinTarget = 0.999999;
+    const duct = boxElementHxyz(
+      'B',
+      'IfcDuct',
+      [(xMinTarget + 1.45) / 2, 1.4, 0.5],
+      [(1.45 - xMinTarget) / 2, 0.2, 0.2],
+    );
+    const xMin = duct.bounds.min[0]; // f32-rounded, slightly below 1
+    expect(xMin).toBeLessThan(1);
+    const expected = 1 - xMin; // ~1e-6
+    expect(expected).toBeGreaterThan(0);
+    expect(expected).toBeLessThan(1e-4); // inside TOUCHING_EPSILON
+    const result = await engine.run([wall, duct], [hard()]);
+    expect(result.summary.total).toBe(1);
+    const clash = result.clashes[0];
+    expect(clash.status).toBe('hard');
+    expect(Math.abs(-clash.distance - expected)).toBeLessThan(1e-12);
   });
 });

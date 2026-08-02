@@ -549,6 +549,21 @@ export interface ProjectParams {
   LengthUnit?: string;
   Author?: string;
   Organization?: string;
+  /**
+   * Fixed creation instant (epoch milliseconds or Date) used for the FILE_NAME
+   * header timestamp, IfcOwnerHistory.CreationDate, and the default
+   * work-schedule/work-plan CreationDate. Defaults to the wall clock; set it
+   * (together with GuidSource) for byte-reproducible output.
+   */
+  Timestamp?: number | Date;
+  /**
+   * Deterministic GlobalId source: called once per generated GlobalId and must
+   * return a valid 22-character IFC GUID - e.g. `() => generateIfcGuid(rng)`
+   * with a seeded `RandomSource` from `@ifc-lite/encoding`. Defaults to the
+   * platform CSPRNG. Values already used by this creator are retried, so the
+   * source must not repeat indefinitely.
+   */
+  GuidSource?: () => string;
 }
 
 /** Site-level options */

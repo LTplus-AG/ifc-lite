@@ -9,7 +9,7 @@
 
 import type { ComposedNode, IfcClass } from './types.js';
 import { ATTR, SPATIAL_TYPES } from './types.js';
-import { IfcTypeEnum, IfcTypeEnumFromString } from '@ifc-lite/data';
+import { IfcTypeEnum, IfcTypeEnumFromString, findStoreyByElevation } from '@ifc-lite/data';
 import type { SpatialHierarchy, SpatialNode } from '@ifc-lite/data';
 
 /**
@@ -73,18 +73,10 @@ export function buildHierarchy(
       return byStorey.get(storeyId) || [];
     },
     getStoreyByElevation(z: number): number | null {
-      let closestStorey: number | null = null;
-      let closestDist = Infinity;
-
-      for (const [storeyId, elevation] of storeyElevations) {
-        const dist = Math.abs(z - elevation);
-        if (dist < closestDist) {
-          closestDist = dist;
-          closestStorey = storeyId;
-        }
-      }
-
-      return closestStorey;
+      // Canonical resolver (#1841). This used to always snap to the nearest
+      // storey while the STEP parser path returned null beyond 1m, so an IFCX
+      // model answered differently from the same building loaded as IFC4.
+      return findStoreyByElevation(storeyElevations, z);
     },
     getContainingSpace(elementId: number): number | null {
       // Check if element is directly in a space
@@ -150,10 +142,21 @@ function buildSpatialNode(
   const typeEnum = IfcTypeEnumFromString(ifcClass?.code ?? '');
   const elementIds = new Set<number>();
 
+  const name = extractName(node) ?? node.path.slice(0, 8);
+  // Keep LongName as a distinct descriptor (Name "01" / LongName "Main
+  // Residence") so the hierarchy panel can show both (issue #1634); drop it when
+  // it just duplicates the primary label.
+  const rawLongName = node.attributes.get('bsi::ifc::prop::LongName');
+  const longName =
+    typeof rawLongName === 'string' && rawLongName.trim() && rawLongName.trim() !== name
+      ? rawLongName.trim()
+      : undefined;
+
   const spatialNode: SpatialNode = {
     expressId,
     type: typeEnum,
-    name: extractName(node) ?? node.path.slice(0, 8),
+    name,
+    longName,
     children: [],
     elements: [],
   };

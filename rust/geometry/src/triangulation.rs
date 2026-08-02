@@ -11,6 +11,11 @@
 //! `crate::cdt` for the determinism / watertightness / bounded-refinement
 //! contract.
 
+#[cfg(feature = "triangulation-alt")]
+pub(crate) mod alt_oracle;
+mod ring_geom;
+use ring_geom::{point_in_ring, ring_bbox};
+
 use crate::{Error, Point2, Point3, Result, Vector3};
 
 /// Guarded ear-clipping — the ONLY sanctioned way to call `earcutr` in this
@@ -40,6 +45,17 @@ use crate::{Error, Point2, Point3, Result, Vector3};
 ///
 /// Returned indices are remapped to the CALLER's original vertex order, so
 /// call sites keep indexing their own arrays.
+/// Ear-clip one sanitised ring group. The ONLY place `safe_earcut` reaches a
+/// triangulator, so the test-only oracle can stand in here and see byte-identical
+/// input to the production path.
+fn ear_clip(data: &[f64], hole_indices: &[usize]) -> std::result::Result<Vec<usize>, String> {
+    #[cfg(feature = "triangulation-alt")]
+    if let Some(alt) = alt_oracle::maybe_earcut(data, hole_indices) {
+        return Ok(alt);
+    }
+    earcutr::earcut(data, hole_indices, 2).map_err(|e| format!("{e:?}"))
+}
+
 pub(crate) fn safe_earcut(
     data: &[f64],
     hole_indices: &[usize],
@@ -62,7 +78,7 @@ pub(crate) fn safe_earcut(
                 data[v * 2] == data[v * 2 + 2] && data[v * 2 + 1] == data[v * 2 + 3]
             }) || (data[0] == data[(n - 1) * 2] && data[1] == data[(n - 1) * 2 + 1]));
         if !has_dup {
-            return earcutr::earcut(data, &[], 2).map_err(|e| format!("{:?}", e));
+            return ear_clip(data, &[]);
         }
     }
 
@@ -160,47 +176,18 @@ pub(crate) fn safe_earcut(
             coords.extend_from_slice(&rings[ring_no].0);
             orig.extend_from_slice(&rings[ring_no].1);
         }
-        let indices = earcutr::earcut(&coords, &holes, 2).map_err(|e| format!("{:?}", e))?;
+        let indices = ear_clip(&coords, &holes)?;
         out.extend(indices.into_iter().map(|i| orig[i]));
     }
 
     // Disjoint "holes" render as their own hole-less polygons.
     for &ring_no in &separate_polys {
         let (coords, orig) = &rings[ring_no];
-        let indices = earcutr::earcut(coords, &[], 2).map_err(|e| format!("{:?}", e))?;
+        let indices = ear_clip(coords, &[])?;
         out.extend(indices.into_iter().map(|i| orig[i]));
     }
 
     Ok(out)
-}
-
-/// Axis-aligned bbox of a flat `[x0,y0,x1,y1,…]` ring: `(min_x, min_y, max_x, max_y)`.
-fn ring_bbox(coords: &[f64]) -> (f64, f64, f64, f64) {
-    let (mut min_x, mut min_y) = (f64::INFINITY, f64::INFINITY);
-    let (mut max_x, mut max_y) = (f64::NEG_INFINITY, f64::NEG_INFINITY);
-    for p in coords.chunks_exact(2) {
-        min_x = min_x.min(p[0]);
-        min_y = min_y.min(p[1]);
-        max_x = max_x.max(p[0]);
-        max_y = max_y.max(p[1]);
-    }
-    (min_x, min_y, max_x, max_y)
-}
-
-/// Even-odd ray cast of `(x, y)` against a flat `[x0,y0,…]` ring.
-fn point_in_ring(x: f64, y: f64, ring: &[f64]) -> bool {
-    let n = ring.len() / 2;
-    let mut inside = false;
-    let mut j = n - 1;
-    for i in 0..n {
-        let (xi, yi) = (ring[i * 2], ring[i * 2 + 1]);
-        let (xj, yj) = (ring[j * 2], ring[j * 2 + 1]);
-        if ((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi) {
-            inside = !inside;
-        }
-        j = i;
-    }
-    inside
 }
 
 /// Check if a polygon is convex (all cross products have same sign)
@@ -343,15 +330,14 @@ pub fn triangulate_polygon_with_holes(
 /// outer+holes vertex list and an earcut index list (no Steiner) if the CDT
 /// declines, so the caller always gets a usable result.
 ///
-/// `allow_boundary_split = false` keeps refinement OFF the outer/hole rings so a
-/// region whose boundary is SHARED with neighbouring plane buckets stays
-/// watertight at the seam (no boundary Steiner T-junction). The consolidate path
-/// passes `false`; a standalone single-region caller can pass `true` for full
-/// Ruppert.
+/// Refinement is interior-only and NEVER touches the outer/hole rings, so a
+/// region whose boundary is SHARED with neighbouring plane buckets (the
+/// consolidate path — the only caller) stays watertight at the seam (no
+/// boundary Steiner T-junction). See [`crate::cdt::triangulate_refined`] for
+/// why this is the only supported mode.
 pub fn triangulate_polygon_with_holes_refined(
     outer: &[Point2<f64>],
     holes: &[Vec<Point2<f64>>],
-    allow_boundary_split: bool,
 ) -> Result<(Vec<Point2<f64>>, Vec<usize>)> {
     if outer.len() < 3 {
         return Err(Error::TriangulationError(
@@ -362,9 +348,7 @@ pub fn triangulate_polygon_with_holes_refined(
         holes.iter().filter(|h| h.len() >= 3).cloned().collect();
 
     // Quality CDT + bounded refinement.
-    if let Some((pts, idx)) =
-        crate::cdt::triangulate_refined(outer, &valid_holes, allow_boundary_split)
-    {
+    if let Some((pts, idx)) = crate::cdt::triangulate_refined(outer, &valid_holes) {
         return Ok((pts, idx));
     }
 
@@ -617,7 +601,7 @@ mod tests {
             Point2::new(3.0, 7.0),
         ];
         let (pts, idx) =
-            triangulate_polygon_with_holes_refined(&outer, std::slice::from_ref(&hole), false).unwrap();
+            triangulate_polygon_with_holes_refined(&outer, std::slice::from_ref(&hole)).unwrap();
 
         let n_input = outer.len() + hole.len();
         assert!(pts.len() >= n_input, "input vertices must all be present");
@@ -651,9 +635,12 @@ mod tests {
 
     /// `triangulate_polygon_with_holes_refined`, degenerate path: a fully
     /// collinear outer ring is declined by the CDT (its closing constraint
-    /// passes through the intermediate vertices and cannot be recovered); the
-    /// earcut/fan fallback must still return `Ok` with the `outer ++ holes`
-    /// vertex set and in-range indices.
+    /// passes through the intermediate vertices and cannot be recovered), so the
+    /// function must bail to the earcut/fan fallback and still return `Ok` with
+    /// the `outer ++ holes` vertex set and in-range indices. This fallback is
+    /// independent of the (removed) Ruppert boundary-split path — it fires on
+    /// the CDT-decline branch before any refinement — so it still needs its own
+    /// regression coverage under the no-arg signature.
     #[test]
     fn test_refined_collinear_outer_falls_back() {
         let outer = vec![
@@ -662,7 +649,7 @@ mod tests {
             Point2::new(2.0, 0.0),
             Point2::new(3.0, 0.0),
         ];
-        let (pts, idx) = triangulate_polygon_with_holes_refined(&outer, &[], true)
+        let (pts, idx) = triangulate_polygon_with_holes_refined(&outer, &[])
             .expect("degenerate input must fall back, not error");
         assert_eq!(pts.len(), outer.len(), "fallback must return the input vertex set");
         for (i, p) in outer.iter().enumerate() {

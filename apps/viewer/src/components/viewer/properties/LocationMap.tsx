@@ -20,18 +20,73 @@ import {
   Search, Mountain, MapPin, X, Check,
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+// maplibre-gl v5 pulled `@types/geojson` in transitively, which put a global
+// `GeoJSON` namespace in scope. v6 dropped that dependency, so the type is
+// imported explicitly and `@types/geojson` is a direct devDependency.
+import type { Feature } from 'geojson';
+// See `loadMaplibre` below for why the worker URL is threaded in by hand.
+import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
-import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
-import { exportGlbFromGeometry } from '@/lib/export/glb';
+import type { CoordinateInfo, GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { downloadBlob } from '@/lib/export/download';
 import { reprojectToLatLon, reprojectFromLatLon, queryTerrainElevation, computeFootprintGeoJSON, type LatLon } from '@/lib/geo/reproject';
 import { buildKmz } from '@/lib/geo/kmz-exporter';
+import {
+  probeMapWebglSupport, markMapWebglUnsupported, takeMapWebglReportSlot,
+  getMapWebglVerdict, describeMapInitFailure, watchContextCreationStatus,
+  reconstructMapInitFailure, type MapWebglFailureReason,
+} from '@/lib/geo/map-webgl-support';
+import { posthog } from '@/lib/analytics';
 
 // Lazy-load maplibre-gl to avoid bloating the initial bundle
 let maplibrePromise: Promise<typeof import('maplibre-gl')> | null = null;
 function loadMaplibre() {
   if (!maplibrePromise) {
-    maplibrePromise = import('maplibre-gl');
+    const pending = import('maplibre-gl').then(ml => {
+      // Defence in depth against a namespace that resolves without throwing.
+      // Vite's preload helper returns `undefined` from a failed import whenever
+      // a `vite:preloadError` listener calls `preventDefault()` (ours no longer
+      // does - see lib/chunk-version-skew.ts), and every consumer below reads
+      // `.Map` / `.Marker` off this value. Failing here routes the problem into
+      // the `.catch` backstop, which degrades the panel with the right reason,
+      // instead of throwing a bare "Cannot read properties of undefined
+      // (reading 'Map')" that the WebGL try/catch misreads as a dead GPU.
+      if (!ml) throw new Error('Failed to load the maplibre-gl module');
+      // v6 ships its tile-parsing worker as a SIBLING FILE and resolves it as
+      // `new URL('./maplibre-gl-worker.mjs', import.meta.url)`. Neither end of
+      // our pipeline satisfies that on its own: the dev server rewrites the
+      // module into node_modules/.vite/deps (handled by `optimizeDeps.exclude`
+      // in vite.config.ts), and the production build emits the chunk under
+      // /assets without ever emitting that sibling, because the filename is
+      // computed at runtime and so is invisible to static analysis.
+      //
+      // The failure is silent and looks like data rather than breakage: the
+      // style, sprite and TileJSON are all fetched on the main thread, so the
+      // canvas, the marker and the attribution all appear, and only the vector
+      // tiles never arrive. In the production build the request would have
+      // resolved to the SPA's index.html with a 200, so even a network panel
+      // reads as healthy. v5 inlined the worker as a blob and had no such seam.
+      //
+      // `?worker&url` makes Vite bundle the worker (following its own import of
+      // `maplibre-gl-shared.mjs`) and hand back a real, hashed URL, in dev and
+      // in the build alike. `setWorkerUrl` then keeps MapLibre from ever
+      // computing the sibling path. It must run after the guard above: on the
+      // undefined namespace this call is what would throw first, and it would
+      // throw the wrong thing.
+      ml.setWorkerUrl(maplibreWorkerUrl);
+      return ml;
+    });
+    // A rejected promise stays rejected, so memoising one would make a single
+    // transient chunk failure permanent for the rest of the session - every
+    // later remount would degrade instantly without retrying. Drop the memo on
+    // failure so the next mount gets a real attempt.
+    maplibrePromise = pending;
+    void pending.catch((err) => {
+      if (maplibrePromise === pending) maplibrePromise = null;
+      // Logged per the no-silent-catch rule. This handler exists only to clear
+      // the memo; `pending` itself stays rejected for its real callers.
+      console.warn('[location-map] maplibre module load failed; a retry will be allowed:', err);
+    });
   }
   return maplibrePromise;
 }
@@ -59,6 +114,49 @@ export interface LocationMapProps {
 }
 
 type MapState = 'idle' | 'loading' | 'ready' | 'error';
+
+/**
+ * Why the minimap could not be shown. Kept separate from `MapState`, which
+ * tracks *coordinate resolution*: the two are independent, and folding them
+ * together would let a later reprojection silently clear a device-level
+ * failure and re-trigger the very construction that failed.
+ *
+ * `map_load_failed` is the one non-device reason — the maplibre chunk itself
+ * failed to download — and it deliberately does NOT latch, because a chunk
+ * fetch is transient in a way a missing GPU capability is not.
+ */
+type MapUnavailableReason = MapWebglFailureReason | 'map_load_failed';
+
+/**
+ * Dispose a MapLibre map, containing any throw from its teardown.
+ *
+ * After a context loss MapLibre has already run `painter.destroy()`, and
+ * `remove()` runs it again and then reaches through `painter.context.gl` — so
+ * teardown is exactly the moment a second throw is most likely. This runs from
+ * React cleanup, where an uncaught throw unmounts the surrounding tree, so the
+ * failure has to stop here.
+ */
+function disposeMap(map: InstanceType<typeof import('maplibre-gl').Map>) {
+  try {
+    map.remove();
+  } catch (err) {
+    console.warn('[location-map] map teardown failed; continuing:', err);
+  }
+}
+
+/**
+ * Undo what MapLibre's `_setupContainer` did to our div.
+ *
+ * It adds its class and builds the canvas plus control containers BEFORE the
+ * context is requested, so both failure paths (v5 threw, v6 leaves `painter`
+ * undefined) leave that debris behind with `mapRef` never assigned, which puts
+ * it out of reach of the unmount cleanup. Purging before the fallback renders
+ * keeps any frame from showing a dead canvas.
+ */
+function purgeMapContainer(container: HTMLElement) {
+  container.replaceChildren();
+  container.classList.remove('maplibregl-map');
+}
 
 // Debounce helper
 function useDebouncedValue<T>(value: T, delayMs: number): T {
@@ -93,7 +191,7 @@ async function geocodeSearch(query: string): Promise<Array<{ lat: number; lon: n
 
 /** Add or update the building footprint GeoJSON polygon on a MapLibre map */
 function addFootprintToMap(map: InstanceType<typeof import('maplibre-gl').Map>, ring: [number, number][]) {
-  const geojson: GeoJSON.Feature = {
+  const geojson: Feature = {
     type: 'Feature',
     properties: {},
     geometry: {
@@ -169,6 +267,42 @@ export function LocationMap({
   const [mapState, setMapState] = useState<MapState>('idle');
   const [latLon, setLatLon] = useState<LatLon | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Seeded from the session latch, so a remount on a device already known to
+  // refuse WebGL paints the fallback immediately — no probe, no construction,
+  // no half-built canvas. This is what turns the accordion's collapse/expand
+  // cycle from "throw again" into "already answered".
+  const [mapUnavailable, setMapUnavailable] = useState<MapUnavailableReason | null>(() => {
+    const verdict = getMapWebglVerdict();
+    return verdict && !verdict.supported ? verdict.reason ?? 'probe_no_context' : null;
+  });
+
+  /**
+   * Degrade to the no-map fallback and report once per session.
+   *
+   * `posthog.captureException` (rather than letting the throw escape) is the
+   * point: an explicit capture is recorded as HANDLED, so an unsupported GPU
+   * stops arriving as an error-level uncaught exception for something no user
+   * and no code change can fix.
+   */
+  const degradeMap = useCallback((reason: MapUnavailableReason, err: unknown) => {
+    // A missing GPU capability is a property of the device, so latch it for the
+    // session. A failed chunk download is not — leave that one retryable.
+    if (reason !== 'map_load_failed') markMapWebglUnsupported(reason);
+    setMapUnavailable(reason);
+    if (!takeMapWebglReportSlot()) return;
+    const detail = describeMapInitFailure(err);
+    posthog.captureException(err, {
+      context: 'location_map_webgl',
+      map_unavailable_reason: reason,
+      // `webgl_status`, not `..._message`: the analytics scrub deletes any key
+      // containing the word `message` (free text is where model names leak).
+      // This value is a driver capability string — it describes the GPU and
+      // carries nothing about the model — so it is worth keeping intact.
+      ...(detail.status ? { webgl_status: detail.status } : {}),
+      ...(detail.eventType ? { webgl_event_type: detail.eventType } : {}),
+    });
+  }, []);
 
   // Picked position state (user-placed pin)
   const [pickedLatLon, setPickedLatLon] = useState<LatLon | null>(null);
@@ -306,7 +440,13 @@ export function LocationMap({
     if (!editableRef.current) return;
     const pos = { lat: e.lngLat.lat, lon: e.lngLat.lng };
     setPickedLatLon(pos);
-    loadMaplibre().then(ml => updatePickedMarker(pos, ml));
+    // These two chains reach maplibre only to move a marker, so a failed chunk
+    // is not worth degrading the panel for: the pin state above is already set
+    // and the coordinate readout still updates. Without a handler the rejection
+    // would surface as an uncaught error (see lib/chunk-version-skew.ts).
+    loadMaplibre()
+      .then(ml => updatePickedMarker(pos, ml))
+      .catch(err => console.warn('[location-map] could not update the picked marker:', err));
   }, [updatePickedMarker]);
 
   // Handle search result selection
@@ -317,10 +457,12 @@ export function LocationMap({
     setSearchQuery('');
     setSearchResults([]);
 
-    loadMaplibre().then(ml => {
-      updatePickedMarker(pos, ml);
-      mapRef.current?.flyTo({ center: [pos.lon, pos.lat], zoom: 16, duration: 1200 });
-    });
+    loadMaplibre()
+      .then(ml => {
+        updatePickedMarker(pos, ml);
+        mapRef.current?.flyTo({ center: [pos.lon, pos.lat], zoom: 16, duration: 1200 });
+      })
+      .catch(err => console.warn('[location-map] could not move to the search result:', err));
   }, [updatePickedMarker]);
 
   // Handle apply position (waits for elevation to finish loading)
@@ -351,6 +493,8 @@ export function LocationMap({
   // Initialize/update the map when we have a valid lat/lon
   useEffect(() => {
     if (!latLon || !containerRef.current) return;
+    // Already known to be unavailable: never touch the GPU again this session.
+    if (mapUnavailable) return;
 
     let cancelled = false;
 
@@ -366,14 +510,105 @@ export function LocationMap({
         return;
       }
 
-      // Create new map
-      const map = new maplibregl.Map({
-        container: containerRef.current,
-        style: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
-        center: [latLon.lon, latLon.lat],
-        zoom: 15,
-        attributionControl: false,
-        interactive: true,
+      // Pre-flight, before MapLibre gets anywhere near our container: its
+      // constructor builds the canvas FIRST and asks for a WebGL context
+      // second, so letting it fail leaves a half-built canvas behind. Probing
+      // first makes the fallback the user's first paint instead of a flash of
+      // a broken map.
+      if (!probeMapWebglSupport().supported) {
+        degradeMap('probe_no_context', new Error('Failed to initialize WebGL (pre-flight probe)'));
+        return;
+      }
+
+      // The probe is an optimisation, not a guarantee: it can pass and the
+      // context still be refused a moment later when the GPU process is
+      // contended (the reported `BindToCurrentSequence failed` case). This
+      // callback is a microtask, so anything escaping it becomes an
+      // *unhandled rejection* — which is exactly how this reached error
+      // tracking as an uncaught error.
+      const container = containerRef.current;
+      // Must be listening BEFORE the constructor runs: the canvas it asks for a
+      // context is created inside that call, and the driver's explanation
+      // arrives as a DOM event on it. See `watchContextCreationStatus`.
+      const contextStatus = watchContextCreationStatus(container);
+      let map: InstanceType<typeof maplibregl.Map>;
+      try {
+        map = new maplibregl.Map({
+          container,
+          style: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+          center: [latLon.lon, latLon.lat],
+          zoom: 15,
+          attributionControl: false,
+          interactive: true,
+        });
+      } catch (err) {
+        // `_setupContainer` already added its class, canvas and control
+        // containers to our div. `mapRef` was never assigned, so the unmount
+        // cleanup cannot reach them — purge them here, before the fallback
+        // renders, so no frame shows a dead canvas.
+        contextStatus.stop();
+        purgeMapContainer(container);
+        degradeMap('map_construction_failed', err);
+        return;
+      }
+
+      // v6 stopped THROWING this failure, so the try/catch above no longer
+      // sees it. `_setupPainter` now asks for `webgl2`, and on refusal fires an
+      // `error` event carrying a `GPUInitializationError` and returns, leaving
+      // `painter` undefined. The event goes out from inside the constructor,
+      // before any `map.on('error')` of ours could be attached; `Evented.fire`
+      // console.errors it for us (verified in the browser, not assumed), but
+      // console output is not a control-flow signal we can act on. Without this
+      // check the map object looks fine until the first call that touches the
+      // painter throws somewhere unrelated.
+      //
+      // `painter` is on the public class surface, so testing it is a supported
+      // read rather than a reach into internals.
+      if (!map.painter) {
+        // No painter means nothing will ever render, but the constructor still
+        // built the canvas and control containers into our div. Same cleanup as
+        // the throwing path, for the same reason.
+        //
+        // `remove()` can only ever run PARTWAY here, and deliberately so: it
+        // reaches `this.painter.destroy()` fifth and throws on the undefined
+        // painter, so the hash, the controls, the frame request and the render
+        // queue are released while `_handlers.destroy()`, `setStyle(null)`, the
+        // window `online` listener, the image-queue handle, the ResizeObserver
+        // and the canvas listeners are not. There is no public API that gets
+        // further on a painter-less map, and partial teardown beats none, so
+        // this stays: `disposeMap` contains the throw, and the warning it logs
+        // on this path is expected rather than a symptom to chase.
+        queueMicrotask(() => disposeMap(map));
+        purgeMapContainer(container);
+        // Rebuilt from the DOM event rather than invented, so this path reports
+        // the driver's own words. A bare `new Error(...)` here would have made
+        // `describeMapInitFailure` return nothing and collapsed every v6 map
+        // failure into one bucket with no `webgl_status`.
+        const failure = reconstructMapInitFailure(contextStatus.statusMessage());
+        contextStatus.stop();
+        degradeMap('map_construction_failed', failure);
+        return;
+      }
+      contextStatus.stop();
+
+      // A lost context would otherwise be restored by MapLibre calling
+      // `_setupPainter()` again from inside a DOM listener — where a throw is
+      // beyond any try/catch of ours. Tear down deterministically instead:
+      // `remove()` detaches both the lost and restored listeners, so that
+      // un-catchable path can never run. Deferred out of MapLibre's own stack.
+      map.on('webglcontextlost', () => {
+        if (mapRef.current !== map) return;
+        mapRef.current = null;
+        markerRef.current = null;
+        queueMicrotask(() => disposeMap(map));
+        degradeMap('context_lost', new Error('Failed to initialize WebGL (context lost)'));
+      });
+
+      // Without a listener MapLibre logs style/tile fetch failures straight to
+      // console.error. These are transient network problems, not map failures,
+      // so keep a breadcrumb and leave the map running.
+      map.on('error', e => {
+        console.warn('[location-map] maplibre error:', e?.error ?? e);
       });
 
       map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
@@ -405,12 +640,21 @@ export function LocationMap({
           addFootprintToMap(map, footprintRef.current!);
         });
       }
+    }).catch(err => {
+      // The backstop. Nothing above may escape this chain: with no handler the
+      // derived promise rejects unhandled and PostHog records it as an
+      // uncaught, error-level exception (issue #1914). Reaching here means the
+      // maplibre chunk itself failed to load, or a shape the try/catch above
+      // did not cover — either way the panel degrades instead of throwing.
+      if (cancelled) return;
+      console.warn('[location-map] map initialisation failed:', err);
+      degradeMap('map_load_failed', err);
     });
 
     return () => {
       cancelled = true;
     };
-  }, [latLon, handleMapClick]);
+  }, [latLon, handleMapClick, mapUnavailable, degradeMap]);
 
   // Add/update building footprint GeoJSON layer when footprint or style changes
   useEffect(() => {
@@ -435,7 +679,9 @@ export function LocationMap({
       pickedMarkerRef.current = null;
       markerRef.current?.remove();
       markerRef.current = null;
-      mapRef.current?.remove();
+      // Guarded: teardown throws if the context was already lost, and an
+      // uncaught throw in cleanup unmounts the properties panel around us.
+      if (mapRef.current) disposeMap(mapRef.current);
       mapRef.current = null;
     };
   }, []);
@@ -453,13 +699,15 @@ export function LocationMap({
   const handleExportKmz = useCallback(async () => {
     if (!latLon || !geometryResult || !mapConversion) return;
     try {
-      const glb = await exportGlbFromGeometry(geometryResult, { includeMetadata: true });
+      // Embed the model as COLLADA (Rust exporter): Google Earth's <Model> only loads
+      // COLLADA, renders it bright via emission, and clampToGround keeps it on the
+      // terrain so the MSL orthogonal height no longer floats it (#1427).
       const kmz = await buildKmz({
         latLon,
         altitude: mapConversion.orthogonalHeight,
         xAxisAbscissa: mapConversion.xAxisAbscissa,
         xAxisOrdinate: mapConversion.xAxisOrdinate,
-        glb,
+        meshes: geometryResult.meshes as MeshData[],
         name: 'IFC Model',
       });
       downloadBlob(new Blob([kmz as BlobPart], { type: 'application/vnd.google-earth.kmz' }), 'model.kmz');
@@ -584,19 +832,37 @@ export function LocationMap({
 
       {(mapState === 'ready' || (mapState === 'loading' && latLon)) && (
         <>
-          <div className="relative">
-            <div
-              ref={containerRef}
-              className="h-[180px] w-full [&_.maplibregl-ctrl-attrib]:!text-[7px] [&_.maplibregl-ctrl-attrib]:!bg-white/40 [&_.maplibregl-ctrl-attrib]:dark:!bg-black/30 [&_.maplibregl-ctrl-attrib]:!py-0 [&_.maplibregl-ctrl-attrib]:!px-1 [&_.maplibregl-ctrl-attrib]:!shadow-none [&_.maplibregl-ctrl-attrib]:!text-zinc-400/70 [&_.maplibregl-ctrl-attrib_a]:!text-zinc-400/70 [&_.maplibregl-ctrl-attrib]:!leading-normal"
-              style={{ minHeight: 180 }}
-            />
-            {/* Edit mode hint overlay */}
-            {editable && !pickedLatLon && (
-              <div className="absolute top-2 left-2 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-sm px-2 py-1 text-[9px] text-zinc-500 dark:text-zinc-400 pointer-events-none shadow-sm border border-zinc-200/50 dark:border-zinc-700/50">
-                Click map to place pin
-              </div>
-            )}
-          </div>
+          {mapUnavailable ? (
+            /* No WebGL context on this device. Everything that does not need a
+               GPU stays: the coordinate readout above, the external map links
+               and the KMZ export below, and — in edit mode — place search,
+               which still drives the reverse projection and the Apply button. */
+            <div className="flex flex-col items-center justify-center h-[180px] bg-zinc-50 dark:bg-zinc-900/50 gap-1.5 px-4 text-center">
+              <MapPinOff className="h-4 w-4 text-zinc-400" />
+              <span className="text-[10px] text-zinc-500 dark:text-zinc-400">
+                Map preview unavailable on this device
+              </span>
+              <span className="text-[9px] text-zinc-400 dark:text-zinc-500 max-w-[240px]">
+                {mapUnavailable === 'map_load_failed'
+                  ? 'The map component could not be loaded. Check your connection and reload the page.'
+                  : 'Your browser could not provide graphics for the map. Coordinates, search and the links below still work; reloading the page may restore it.'}
+              </span>
+            </div>
+          ) : (
+            <div className="relative">
+              <div
+                ref={containerRef}
+                className="h-[180px] w-full [&_.maplibregl-ctrl-attrib]:!text-[7px] [&_.maplibregl-ctrl-attrib]:!bg-white/40 [&_.maplibregl-ctrl-attrib]:dark:!bg-black/30 [&_.maplibregl-ctrl-attrib]:!py-0 [&_.maplibregl-ctrl-attrib]:!px-1 [&_.maplibregl-ctrl-attrib]:!shadow-none [&_.maplibregl-ctrl-attrib]:!text-zinc-400/70 [&_.maplibregl-ctrl-attrib_a]:!text-zinc-400/70 [&_.maplibregl-ctrl-attrib]:!leading-normal"
+                style={{ minHeight: 180 }}
+              />
+              {/* Edit mode hint overlay */}
+              {editable && !pickedLatLon && (
+                <div className="absolute top-2 left-2 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-sm px-2 py-1 text-[9px] text-zinc-500 dark:text-zinc-400 pointer-events-none shadow-sm border border-zinc-200/50 dark:border-zinc-700/50">
+                  Click map to place pin
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Picked position info bar */}
           {pickedLatLon && editable && (
@@ -709,15 +975,18 @@ export function LocationMap({
                     Google Earth
                   </button>
                 </TooltipTrigger>
-                <TooltipContent>Download KMZ to open in Google Earth with model at correct position</TooltipContent>
+                <TooltipContent>Download KMZ for Google Earth Pro (desktop), placed at the model location. Google Earth on the web cannot show KMZ 3D models — use Export GLB for the web.</TooltipContent>
               </Tooltip>
             )}
-            <button
-              onClick={handleStyleToggle}
-              className="ml-auto text-[10px] text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
-            >
-              Toggle style
-            </button>
+            {/* Hidden without a map: it would be a permanent no-op. */}
+            {!mapUnavailable && (
+              <button
+                onClick={handleStyleToggle}
+                className="ml-auto text-[10px] text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
+              >
+                Toggle style
+              </button>
+            )}
           </div>
         </>
       )}

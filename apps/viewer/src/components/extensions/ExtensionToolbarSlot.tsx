@@ -70,10 +70,15 @@ export function ExtensionToolbarSlot({ slot }: ExtensionToolbarSlotProps) {
 
   if (visible.length === 0 || !host) return null;
 
-  const handleClick = (commandId: string) => {
+  // `extensionId` is the clicked contribution's own owner. Two installed
+  // extensions can declare the same command id (ids are namespaced by
+  // convention only), and this slot renders one button per contribution —
+  // so the run has to be pinned to the button's extension or the second
+  // button silently runs the first extension's handler.
+  const handleClick = (commandId: string, extensionId: string) => {
     void host.dispatcher
       .fire(`onCommand:${commandId}` as `onCommand:${string}`)
-      .then(() => host.runCommand(commandId))
+      .then(() => host.runCommand(commandId, extensionId))
       .catch((err) => {
         toast.error(describeRunCommandError(commandId, err));
       });
@@ -91,7 +96,7 @@ export function ExtensionToolbarSlot({ slot }: ExtensionToolbarSlotProps) {
               <Button
                 size="icon"
                 variant="ghost"
-                onClick={() => handleClick(cmd)}
+                onClick={() => handleClick(cmd, c.extensionId)}
                 aria-label={`Run ${title}`}
               >
                 <Icon className="h-4 w-4" />

@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/export",
-  "version": "2.3.0",
+  "version": "2.7.0",
   "description": "Export formats for IFC-Lite",
   "type": "module",
   "main": "./dist/index.js",
@@ -23,14 +23,14 @@
     "@ifc-lite/encoding": "workspace:^",
     "@ifc-lite/parser": "workspace:^",
     "@ifc-lite/mutations": "workspace:^",
-    "parquet-wasm": "^0.7.1",
-    "apache-arrow": "^21.1.0",
+    "parquet-wasm": "^0.7.2",
+    "apache-arrow": "^21.2.0",
     "jszip": "^3.10.0"
   },
   "devDependencies": {
     "@ifc-lite/ifcx": "workspace:^",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.10"
   },
   "license": "MPL-2.0",
   "author": "Louis True",
@@ -39,7 +39,7 @@
     "url": "https://github.com/LTplus-AG/ifc-lite.git",
     "directory": "packages/export"
   },
-  "homepage": "https://ltplus-ag.github.io/ifc-lite/",
+  "homepage": "https://ifclite.dev/docs/",
   "bugs": "https://github.com/LTplus-AG/ifc-lite/issues",
   "keywords": [
     "ifc",

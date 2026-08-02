@@ -8,7 +8,7 @@ From any 3D IFC model, you can produce:
 
 - **Floor plans** - Horizontal section cuts at a specified height
 - **Section cuts** - Vertical sections through the model
-- **Elevations** - Projected views from a direction
+- **Elevations** - A vertical section placed just outside the building, with projection lines enabled, reads as an elevation (there is no separate elevation API)
 
 Each drawing includes:
 
@@ -58,13 +58,42 @@ import { exportToSVG } from '@ifc-lite/drawing-2d';
 const svg = exportToSVG(drawing, {
   showHatching: true,
   showHiddenLines: true,
-  scale: { name: '1:100', factor: 100 },
+  scale: { name: '1:100', factor: 100, useCase: 'Floor plans' },
   title: 'Ground Floor Plan',
 });
 
 // svg is a string of SVG markup
 document.getElementById('drawing').innerHTML = svg;
 ```
+
+### DXF Export
+
+Drawings can also be exported as ASCII DXF R12 (`AC1009`) — the universal
+CAD interop baseline. Coordinates are written verbatim in the drawing's own
+unit (metres); an optional `coordinateTransform` maps every point (drawing
+geometry and underlays alike) right before it reaches the writer, which is
+how the viewer georeferences plan sections to true world/map coordinates
+(issue #1861):
+
+```typescript
+import { exportToDXF } from '@ifc-lite/drawing-2d';
+
+const dxf = exportToDXF(drawing, {
+  showHiddenLines: true,
+  showHatching: true, // cut polygons become closed POLYLINE boundaries
+  // Optional: applied to every emitted point, e.g. drawing -> world/CRS.
+  coordinateTransform: (p) => ({ x: p.x + 2600000, y: 2007 - p.y }),
+  // R12 has no $INSUNITS; the unit (and CRS, if any) goes in a leading 999 comment.
+  metadataComment: 'ifc-lite section export - units: metres, CRS: EPSG:2056',
+});
+// dxf is the full ASCII DXF document text
+```
+
+Lines land on per-category layers (`IFC-CUT`, `IFC-PROJECTION`,
+`IFC-HIDDEN`, …), hidden lines use a `DASHED` linetype, and colours are
+resolved to the nearest AutoCAD Color Index. Layer names follow the strict
+R12 symbol rules (31 chars, `A-Z a-z 0-9 $ - _`); names that collide after
+sanitizing get a numeric suffix instead of merging.
 
 ## Drawing Sheets
 
@@ -77,24 +106,30 @@ import {
   renderFrame,
   renderTitleBlock,
   renderScaleBar,
+  DEFAULT_SCALE_BAR,
   PAPER_SIZE_REGISTRY,
 } from '@ifc-lite/drawing-2d';
 
-// Create an A1 landscape sheet
-const paper = PAPER_SIZE_REGISTRY.find(p => p.name === 'A1');
-const frame = createFrame({ paper, orientation: 'landscape' });
-const titleBlock = createTitleBlock({
-  projectName: 'Office Building',
-  drawingTitle: 'Ground Floor Plan',
-  scale: '1:100',
-  drawnBy: 'Architect',
-  date: '2026-02-07',
-});
+// Create an A1 landscape sheet. PAPER_SIZE_REGISTRY is keyed by id.
+const paper = PAPER_SIZE_REGISTRY.A1_LANDSCAPE;
 
-// Render to SVG
-const frameSvg = renderFrame(frame);
-const titleBlockSvg = renderTitleBlock(titleBlock);
-const scaleBarSvg = renderScaleBar({ scale: 100, units: 'm' });
+// createFrame takes a FrameStyle string:
+//   'simple' | 'professional' | 'minimal' | 'iso' | 'custom'
+const frame = createFrame('professional');
+
+// createTitleBlock takes a TitleBlockLayout string:
+//   'compact' | 'standard' | 'extended' | 'custom'
+// (title text/fields are populated via updateTitleBlockField)
+const titleBlock = createTitleBlock('standard');
+
+// Renderers return result objects, not raw SVG strings.
+const frameResult = renderFrame(paper, frame);
+const titleBlockResult = renderTitleBlock(titleBlock, frameResult.innerBounds);
+const scale = { name: '1:100', factor: 100, useCase: 'Floor plans' };
+const scaleBarSvg = renderScaleBar(DEFAULT_SCALE_BAR, scale, { x: 20, y: 20 });
+
+const frameSvg = frameResult.svgElements;
+const titleBlockSvg = titleBlockResult.svgElements;
 ```
 
 ## Graphic Overrides
@@ -107,7 +142,7 @@ import { createOverrideEngine, ARCHITECTURAL_PRESET } from '@ifc-lite/drawing-2d
 const engine = createOverrideEngine();
 
 // Apply a built-in preset
-engine.applyPreset(ARCHITECTURAL_PRESET);
+engine.setRules(ARCHITECTURAL_PRESET.rules);
 // Available: VIEW_3D_PRESET, ARCHITECTURAL_PRESET, FIRE_SAFETY_PRESET,
 //           STRUCTURAL_PRESET, MEP_PRESET, MONOCHROME_PRESET
 
@@ -117,8 +152,8 @@ engine.addRule({
   name: 'Highlight Load-Bearing Walls',
   enabled: true,
   priority: 1,
-  criteria: { type: 'ifcType', value: 'IFCWALL' },
-  style: { lineWeight: 0.5, color: '#FF0000' },
+  criteria: { type: 'ifcType', ifcTypes: ['IFCWALL'] },
+  style: { lineWeight: 0.5, strokeColor: '#FF0000' },
 });
 ```
 
@@ -136,8 +171,18 @@ The package generates proper architectural symbols:
 ```typescript
 import { generateDoorSymbol, generateWindowSymbol } from '@ifc-lite/drawing-2d';
 
-const doorSvg = generateDoorSymbol({ width: 0.9, angle: 90, swing: 'left' });
-const windowSvg = generateWindowSymbol({ width: 1.2, type: 'casement' });
+// `opening` is an OpeningInfo (extracted from the model), `bounds2D` its
+// projected footprint (Bounds2D), and `wallDirection` the wall's in-plane
+// axis as a Point2D.
+// generateDoorSymbol(opening, bounds2D, wallDirection): DoorSymbolResult
+const doorResult = generateDoorSymbol(opening, bounds2D, wallDirection);
+
+// generateWindowSymbol(opening, bounds2D, wallDirection, wallThickness?): WindowSymbolResult
+const windowResult = generateWindowSymbol(opening, bounds2D, wallDirection, 0.3);
+
+// Both return result objects (not SVG strings):
+//   doorResult.lines / doorResult.arcPath, windowResult.lines
+
 ```
 
 ## GPU Acceleration
@@ -147,9 +192,12 @@ For large models, section cutting can be GPU-accelerated:
 ```typescript
 import { GPUSectionCutter, isGPUComputeAvailable } from '@ifc-lite/drawing-2d';
 
-if (await isGPUComputeAvailable()) {
+// isGPUComputeAvailable() is synchronous - do not await it.
+if (isGPUComputeAvailable()) {
   const cutter = new GPUSectionCutter(gpuDevice);
-  const result = await cutter.cut(meshData, sectionConfig);
+  // Allocate GPU buffers first; cutMeshes throws if initialize() was not called.
+  await cutter.initialize(maxTriangles);
+  const result = await cutter.cutMeshes(meshData, sectionConfig);
 }
 ```
 
@@ -163,7 +211,7 @@ In the IFClite viewer:
 4. **Annotate** - Add measurements, polygon areas, text boxes, and revision clouds
 5. **Select & edit** - Click annotations to select, drag to move, Delete to remove
 6. **Graphic overrides** - Apply presets to change element appearance
-7. **Export SVG** - Download the drawing as vector SVG
+7. **Export** - Download the drawing as vector SVG, or as DXF R12 (plan sections are georeferenced to true world/map coordinates when the model carries an `IfcMapConversion`)
 
 ### Annotation Tools
 

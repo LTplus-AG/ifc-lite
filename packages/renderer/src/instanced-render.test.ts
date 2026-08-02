@@ -8,6 +8,7 @@ import {
   composeInstanceMatrix,
   writeInstanceRecord,
   prepareInstancedRender,
+  foldOccurrenceWorldBox,
   INSTANCE_STRIDE_BYTES,
   INSTANCE_FLAGS_OFFSET,
   INSTANCE_FLAG_SELECTED,
@@ -222,5 +223,55 @@ describe('prepareInstancedRender — grouping + buffer assembly', () => {
     assert.strictEqual(t0.instanceCount, 1, 'the transparent occurrence of template 0 is excluded');
     const dv = new DataView(t0.instanceBuffer);
     assert.strictEqual(dv.getUint32(64, true), 1, 'the kept instance is the opaque one (entityId 1)');
+  });
+});
+
+describe('foldOccurrenceWorldBox — template cull metadata', () => {
+  const freshMeta = () => ({ bounds: null as { min: [number, number, number]; max: [number, number, number] } | null, maxOccRadius: 0 });
+  const box = (minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number) =>
+    ({ minX, minY, minZ, maxX, maxY, maxZ });
+
+  it('initializes bounds from the first occurrence and grows the union after', () => {
+    const meta = freshMeta();
+    foldOccurrenceWorldBox(meta, box(0, 0, 0, 2, 2, 2));
+    assert.deepStrictEqual(meta.bounds, { min: [0, 0, 0], max: [2, 2, 2] });
+    assert.ok(Math.abs(meta.maxOccRadius - Math.sqrt(12) / 2) < 1e-9);
+
+    foldOccurrenceWorldBox(meta, box(-5, 1, 1, -4, 2, 2));
+    assert.deepStrictEqual(meta.bounds, { min: [-5, 0, 0], max: [2, 2, 2] });
+  });
+
+  it('maxOccRadius tracks the LARGEST single occurrence, not the union diagonal', () => {
+    const meta = freshMeta();
+    foldOccurrenceWorldBox(meta, box(0, 0, 0, 1, 1, 1));       // r = sqrt(3)/2
+    foldOccurrenceWorldBox(meta, box(100, 0, 0, 101, 1, 1));   // same size, far away
+    const single = Math.sqrt(3) / 2;
+    assert.ok(Math.abs(meta.maxOccRadius - single) < 1e-9, `got ${meta.maxOccRadius}`);
+    // The union spans >100 units — the occurrence radius must NOT.
+    assert.ok(meta.maxOccRadius < 1);
+  });
+
+  it('poisons on a non-finite box: bounds wiped, radius pinned to Infinity', () => {
+    const meta = freshMeta();
+    foldOccurrenceWorldBox(meta, box(0, 0, 0, 1, 1, 1));
+    foldOccurrenceWorldBox(meta, box(NaN, 0, 0, 1, 1, 1));
+    assert.strictEqual(meta.bounds, null);
+    assert.strictEqual(meta.maxOccRadius, Infinity);
+  });
+
+  it('poison is sticky: later finite occurrences must not resurrect bounds', () => {
+    const meta = freshMeta();
+    foldOccurrenceWorldBox(meta, box(Infinity, 0, 0, Infinity, 1, 1));
+    foldOccurrenceWorldBox(meta, box(0, 0, 0, 1, 1, 1));
+    assert.strictEqual(meta.bounds, null, 'bounds stay null after poison');
+    assert.strictEqual(meta.maxOccRadius, Infinity);
+  });
+
+  it('poisons when min/max are individually finite-summing but a coordinate is NaN', () => {
+    const meta = freshMeta();
+    // NaN in max only; min sum is finite.
+    foldOccurrenceWorldBox(meta, box(0, 0, 0, NaN, 1, 1));
+    assert.strictEqual(meta.bounds, null);
+    assert.strictEqual(meta.maxOccRadius, Infinity);
   });
 });

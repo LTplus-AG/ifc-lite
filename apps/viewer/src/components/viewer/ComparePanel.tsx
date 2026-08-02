@@ -13,6 +13,7 @@ import { useEffect, useMemo } from 'react';
 import { GitCompareArrows, Loader2, Play, X, Trash2, Download, ChevronLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { useViewerStore } from '@/store';
 import { useCompare } from '@/hooks/useCompare';
 import { useCompareOverlay } from '@/hooks/useCompareOverlay';
@@ -25,7 +26,8 @@ import { ChangeDetailView } from './compare/ChangeDetailView';
 import { BcfFromChange } from './compare/BcfFromChange';
 import { useBcfFromChange } from './compare/useBcfFromChange';
 import { CompareResultsList, CountBadge, LISTED_STATES, type CompareBucket } from './compare/CompareResultsList';
-import type { CompareRow } from './compare/changeRow';
+import { CompareBlacklist } from './compare/CompareBlacklist';
+import { changedTypeCounts, type CompareRow } from './compare/changeRow';
 import type { DiffScope, DiffState, DiffEntry } from '@ifc-lite/diff';
 
 interface ComparePanelProps {
@@ -54,11 +56,15 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
   const headModelId = useViewerStore((s) => s.compareHeadModelId);
   const scope = useViewerStore((s) => s.compareScope);
   const showUnchanged = useViewerStore((s) => s.compareShowUnchanged);
+  const excludedTypes = useViewerStore((s) => s.compareExcludedTypes);
   const selectedKey = useViewerStore((s) => s.compareSelectedKey);
   const setBaseModelId = useViewerStore((s) => s.setCompareBaseModelId);
   const setHeadModelId = useViewerStore((s) => s.setCompareHeadModelId);
   const setScope = useViewerStore((s) => s.setCompareScope);
   const setShowUnchanged = useViewerStore((s) => s.setCompareShowUnchanged);
+  const addExcludedType = useViewerStore((s) => s.addCompareExcludedType);
+  const removeExcludedType = useViewerStore((s) => s.removeCompareExcludedType);
+  const clearExcludedTypes = useViewerStore((s) => s.clearCompareExcludedTypes);
   const clearCompare = useViewerStore((s) => s.clearCompare);
   const bcfAuthor = useViewerStore((s) => s.bcfAuthor);
 
@@ -120,6 +126,13 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
   const counts = result?.diff.counts;
   const canRun = !!baseModelId && !!headModelId && baseModelId !== headModelId && !running;
 
+  // Classes present among the current changes - the "ignore a class" picker's
+  // options (#1470). Excluded classes are already absent from the diff.
+  const typeCounts = useMemo(
+    () => (result ? changedTypeCounts(result.diff.entries) : []),
+    [result],
+  );
+
   // "What changed" detail for the selected entry — computed lazily from both
   // stores so a huge diff stays cheap (only the selection is described).
   const detail = useMemo<ChangeDetail | null>(() => {
@@ -166,7 +179,9 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
 
   const downloadReport = (format: 'csv' | 'json') => {
     if (!result) return;
-    downloadCompareReport(format, result, models);
+    // Pass the blacklist in its original IFC casing so the report reads
+    // "IfcOpeningElement", not the engine's uppercase-normalized form (#1470).
+    downloadCompareReport(format, result, models, excludedTypes);
     const c = result.diff.counts;
     posthog.capture('model_compare_export', {
       format,
@@ -215,7 +230,7 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
             <>
               {/* Run controls */}
               <div className="p-3 space-y-3 border-b border-border">
-                <div className="grid grid-cols-[1.25rem_1fr] items-center gap-x-2 gap-y-2 text-xs">
+                <div className="grid grid-cols-[1.25rem_1fr] items-center gap-x-2 gap-y-2 text-xs" {...tourAnchor(TOUR_ANCHORS.compareAb)}>
                   <span className="text-muted-foreground">A</span>
                   <select
                     value={baseModelId ?? ''}
@@ -267,7 +282,7 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
                   </label>
                 </div>
 
-                <Button size="sm" className="w-full gap-1.5" disabled={!canRun} onClick={() => void runComparison()}>
+                <Button size="sm" className="w-full gap-1.5" disabled={!canRun} onClick={() => void runComparison()} {...tourAnchor(TOUR_ANCHORS.compareRun)}>
                   {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
                   {running ? 'Comparing…' : 'Run comparison'}
                 </Button>
@@ -281,11 +296,21 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
                     are still accurate — switch to the Data scope for reliable results.
                   </p>
                 )}
+
+                {/* Ignored classes - blacklist noisy types out of the diff (#1470).
+                    Compact, in-line with the run controls; self-hides when empty. */}
+                <CompareBlacklist
+                  excludedTypes={excludedTypes}
+                  changedTypeCounts={typeCounts}
+                  onAdd={addExcludedType}
+                  onRemove={removeExcludedType}
+                  onClear={clearExcludedTypes}
+                />
               </div>
 
               {/* Counts */}
               {counts && (
-                <div className="grid grid-cols-4 gap-1 p-3 border-b border-border text-center">
+                <div className="grid grid-cols-4 gap-1 p-3 border-b border-border text-center" {...tourAnchor(TOUR_ANCHORS.compareCounts)}>
                   <CountBadge label="Changed" value={counts.modified} color={COMPARE_COLORS.modified} />
                   <CountBadge label="Added" value={counts.added} color={COMPARE_COLORS.added} />
                   <CountBadge label="Deleted" value={counts.deleted} color={COMPARE_COLORS.deleted} />

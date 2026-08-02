@@ -27,6 +27,7 @@
 //! ordering beyond the bit pattern), so native x86_64/aarch64 and wasm32 produce
 //! identical keys.
 
+use crate::geom_hash::mix64;
 use ifc_lite_core::EntityDecoder;
 use rustc_hash::FxHashMap;
 
@@ -46,14 +47,6 @@ const CYCLE_SENTINEL: u128 = 0xC1C1_C1C1_C1C1_C1C1_C1C1_C1C1_C1C1_C1C1;
 /// seed so a brep hashed via the fast path and one hashed via the recursive
 /// fallback occupy disjoint key space and never false-merge.
 const FACETED_BREP_TAG: u64 = 0xFACE_7B16_5160_0001;
-
-#[inline]
-fn mix64(mut x: u64) -> u64 {
-    // splitmix64 finalizer — strong avalanche, same as `geom_hash::mix64`.
-    x = (x ^ (x >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
-    x = (x ^ (x >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
-    x ^ (x >> 31)
-}
 
 /// Fold a 64-bit value into a 128-bit running state across two independent lanes.
 #[inline]

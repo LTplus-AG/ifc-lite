@@ -10,8 +10,9 @@
  */
 
 import type { StateCreator } from 'zustand';
-import type { Drawing2D, GraphicOverrideRule, GraphicOverridePreset } from '@ifc-lite/drawing-2d';
-import { BUILT_IN_PRESETS } from '@ifc-lite/drawing-2d';
+import type { Drawing2D, DxfPlacement, DxfUnderlay, GraphicOverrideRule, GraphicOverridePreset } from '@ifc-lite/drawing-2d';
+import { BUILT_IN_PRESETS, DEFAULT_DXF_PLACEMENT } from '@ifc-lite/drawing-2d';
+import { DEFAULT_SCAN_SECTION_THICKNESS } from '@/hooks/scanSectionMath';
 
 export type Drawing2DStatus = 'idle' | 'generating' | 'ready' | 'error';
 
@@ -65,6 +66,23 @@ export interface SelectedAnnotation2D {
   id: string;
 }
 
+/** An imported DXF reference underlay with its viewer state (issue #1782) */
+export interface DxfUnderlayState {
+  id: string;
+  /** Display name (file name) */
+  name: string;
+  /** Parsed + converted geometry in drawing space */
+  underlay: DxfUnderlay;
+  /** Master visibility toggle */
+  visible: boolean;
+  /** Render opacity (0-1) */
+  opacity: number;
+  /** Per-DXF-layer visibility, seeded from the DXF layer table */
+  layerVisibility: Record<string, boolean>;
+  /** User placement (offset/rotation/scale) in drawing space */
+  placement: DxfPlacement;
+}
+
 export interface Drawing2DState {
   /** Current drawing data (null when not generated) */
   drawing2D: Drawing2D | null;
@@ -105,6 +123,20 @@ export interface Drawing2DState {
      * Off by default; the section view stays cut-only until enabled.
      */
     showConstructionProjection: boolean;
+    /**
+     * Point-cloud "scan" overlay on the 2D section view (issue #1805): a
+     * thin band of loaded scan points around the cut plane, projected into
+     * drawing space and drawn as dots. Default on — with no point cloud
+     * loaded the layer contributes nothing, so the toggle only matters
+     * once a scan is present.
+     */
+    showScanSection: boolean;
+    /** Full slab thickness (metres) around the section plane. */
+    scanSectionThickness: number;
+    /** Dot opacity, 0..1. */
+    scanSectionOpacity: number;
+    /** Include the scan layer's dots in SVG export/print. */
+    scanSectionIncludeInExport: boolean;
   };
   /** Available graphic override presets */
   graphicOverridePresets: GraphicOverridePreset[];
@@ -160,6 +192,10 @@ export interface Drawing2DState {
   // Selection
   /** Currently selected annotation (null = none) */
   selectedAnnotation2D: SelectedAnnotation2D | null;
+
+  // DXF Reference Underlays (issue #1782)
+  /** Imported DXF underlays rendered beneath the generated drawing */
+  dxfUnderlays: DxfUnderlayState[];
 }
 
 export interface Drawing2DSlice extends Drawing2DState {
@@ -241,9 +277,25 @@ export interface Drawing2DSlice extends Drawing2DState {
   // Bulk Actions
   /** Clear all annotations (measurements, polygons, text, clouds) */
   clearAllAnnotations2D: () => void;
+
+  // DXF Underlay Actions (issue #1782)
+  /** Register an imported DXF underlay; returns its id */
+  addDxfUnderlay: (underlay: DxfUnderlay) => string;
+  removeDxfUnderlay: (id: string) => void;
+  setDxfUnderlayVisible: (id: string, visible: boolean) => void;
+  setDxfUnderlayOpacity: (id: string, opacity: number) => void;
+  /** Toggle one DXF layer within an underlay */
+  toggleDxfUnderlayLayer: (id: string, layerName: string) => void;
+  updateDxfUnderlayPlacement: (id: string, placement: Partial<DxfPlacement>) => void;
+  clearDxfUnderlays: () => void;
 }
 
-const getDefaultDisplayOptions = (): Drawing2DState['drawing2DDisplayOptions'] => ({
+/**
+ * Single source of truth for `drawing2DDisplayOptions` defaults. Both the
+ * slice initializer and `resetViewerState` (`store/index.ts`) call this so
+ * the two paths can't drift — the same pattern `POINT_CLOUD_DEFAULTS` uses.
+ */
+export const getDefaultDisplayOptions = (): Drawing2DState['drawing2DDisplayOptions'] => ({
   showHiddenLines: true,
   showHatching: true,
   showAnnotations: true,
@@ -252,6 +304,10 @@ const getDefaultDisplayOptions = (): Drawing2DState['drawing2DDisplayOptions'] =
   useSymbolicRepresentations: false, // Default to section cut (Body geometry)
   showIfcAnnotations: true, // Mirror the 3D Class Visibility default
   showConstructionProjection: false, // Optional reference projection (issue #979), off by default
+  showScanSection: true, // Scan overlay (issue #1805) — on by default, no-op without a loaded point cloud
+  scanSectionThickness: DEFAULT_SCAN_SECTION_THICKNESS,
+  scanSectionOpacity: 0.9,
+  scanSectionIncludeInExport: true,
 });
 
 const getDefaultState = (): Drawing2DState => ({
@@ -289,6 +345,8 @@ const getDefaultState = (): Drawing2DState => ({
   cloudAnnotations2D: [],
   // Selection
   selectedAnnotation2D: null,
+  // DXF underlays
+  dxfUnderlays: [],
 });
 
 export const createDrawing2DSlice: StateCreator<Drawing2DSlice, [], [], Drawing2DSlice> = (set, get) => ({
@@ -661,6 +719,56 @@ export const createDrawing2DSlice: StateCreator<Drawing2DSlice, [], [], Drawing2
       }
     }
   },
+
+  // DXF Underlay Actions (issue #1782)
+  addDxfUnderlay: (underlay) => {
+    const id = `dxf-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+    const layerVisibility: Record<string, boolean> = {};
+    for (const layer of underlay.layers) layerVisibility[layer.name] = layer.visible;
+    const entry: DxfUnderlayState = {
+      id,
+      name: underlay.name,
+      underlay,
+      visible: true,
+      opacity: 1,
+      layerVisibility,
+      placement: { ...DEFAULT_DXF_PLACEMENT },
+    };
+    set((state) => ({ dxfUnderlays: [...state.dxfUnderlays, entry] }));
+    return id;
+  },
+
+  removeDxfUnderlay: (id) => set((state) => ({
+    dxfUnderlays: state.dxfUnderlays.filter((u) => u.id !== id),
+  })),
+
+  setDxfUnderlayVisible: (id, visible) => set((state) => ({
+    dxfUnderlays: state.dxfUnderlays.map((u) => (u.id === id ? { ...u, visible } : u)),
+  })),
+
+  setDxfUnderlayOpacity: (id, opacity) => set((state) => ({
+    dxfUnderlays: state.dxfUnderlays.map((u) =>
+      u.id === id ? { ...u, opacity: Math.max(0, Math.min(1, opacity)) } : u
+    ),
+  })),
+
+  toggleDxfUnderlayLayer: (id, layerName) => set((state) => ({
+    dxfUnderlays: state.dxfUnderlays.map((u) => {
+      if (u.id !== id) return u;
+      const current = u.layerVisibility[layerName]
+        ?? u.underlay.layers.find((l) => l.name === layerName)?.visible
+        ?? true;
+      return { ...u, layerVisibility: { ...u.layerVisibility, [layerName]: !current } };
+    }),
+  })),
+
+  updateDxfUnderlayPlacement: (id, placement) => set((state) => ({
+    dxfUnderlays: state.dxfUnderlays.map((u) =>
+      u.id === id ? { ...u, placement: { ...u.placement, ...placement } } : u
+    ),
+  })),
+
+  clearDxfUnderlays: () => set({ dxfUnderlays: [] }),
 
   // Bulk Actions
   clearAllAnnotations2D: () => set({

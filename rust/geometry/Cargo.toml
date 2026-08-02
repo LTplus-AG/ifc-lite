@@ -22,11 +22,26 @@ debug_geometry = []
 # global buffer so a bench can replay the real CSG corpus under varying thread
 # counts. Zero cost when absent. See src/csg_capture.rs.
 csg_capture = []
+# Structured diagnostics: routes the production warn/debug messages through
+# `tracing` (structured fields, subscriber-controlled) instead of eprintln.
+# Default OFF so default builds carry no tracing code in this crate; the
+# native server enables it (via ifc-lite-processing/observability) so
+# geometry-crate diagnostics land in its existing tracing subscriber.
+# See src/diag.rs for the warn-vs-debug gating policy.
+observability = ["dep:tracing"]
+# Test-only differential oracle: makes `earcut` available ALONGSIDE the production
+# `earcutr` as a second, independent triangulator, so
+# `tests/triangulation_invariance.rs` can feed the pipeline two equally valid
+# triangulations of the same polygons. Never enabled in a shipping build.
+triangulation-alt = ["dep:earcut"]
 
 [dependencies]
 
 # Triangulation
 earcutr = "0.5"
+# Differential oracle only, behind `triangulation-alt`. Present to be DIFFERENT
+# from earcutr, not to be depended on.
+earcut = { version = "0.4", optional = true }
 
 # 2D polygon boolean operations for profile-level void subtraction
 i_overlay = "7.0"
@@ -42,6 +57,7 @@ rayon = "1.10"
 
 # Fast hashing
 rustc-hash = "2.1"
+memchr = "2.8"
 
 # Serialization for the public GeometryDiagnostics contract (already present in
 # the wasm tree transitively via ifc-lite-processing; no new bundle weight).
@@ -63,6 +79,13 @@ smallvec = "1.13"
 # Error handling
 thiserror = "2.0"
 
+# Structured diagnostics, only behind the `observability` feature (dep:tracing
+# keeps it out of default builds entirely). Package-local on purpose: the
+# workspace root does not force tracing on every crate. ifc-lite-processing
+# already depends on tracing unconditionally, so enabling the feature adds no
+# new crate to consumers that use both.
+tracing = { version = "0.1", optional = true }
+
 # Pure-Rust CSG kernel (`kernel/`) — exact geometric predicates.
 # geometry-predicates: Shewchuk adaptive predicates + the public expansion
 # primitives (two_sum/two_product/scale_expansion_zeroelim) for the indirect
@@ -71,7 +94,6 @@ geometry-predicates = "0.3"
 # Exact BigRational oracle + the predicate cascade's exact fallback tier
 # (already transitive; promoted to direct).
 num-rational = { version = "0.4", default-features = false, features = ["num-bigint"] }
-num-bigint = { version = "0.4", default-features = false }
 num-traits = { version = "0.2", default-features = false }
 bnum = { version = "0.14.4", features = ["numtraits"] }
 

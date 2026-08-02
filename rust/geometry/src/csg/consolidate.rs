@@ -4,8 +4,12 @@
 
 use crate::mesh::Mesh;
 use nalgebra::{Point3, Vector3};
-use rustc_hash::FxHashMap;
+mod conform;
+mod ring_ops;
+
 use super::ClippingProcessor;
+use conform::{build_seam_map, conform_plans, count_open_boundary_edges_at, emit_plans, PlanBucket, PlanRegion};
+use ring_ops::{floor_pow2, simplify_2d_collinear, weld_near_coincident_2d};
 
 /// Is `v` a degenerate NEEDLE — its shortest edge a hairline relative to its
 /// longest? Such a triangle is a zero-area-intended sliver: the exact kernel
@@ -37,7 +41,7 @@ pub(crate) fn tri_is_needle(v: &[Point3<f64>; 3]) -> bool {
 /// the needle drop here is what removes the #1007 diagonal sliver, since each
 /// tilted opening face lands in its own single-triangle plane bucket and would
 /// otherwise pass the raw kernel needle through verbatim.
-fn emit_triangle(mesh: &mut Mesh, v: &[Point3<f64>; 3], normal: &Vector3<f64>) {
+pub(super) fn emit_triangle(mesh: &mut Mesh, v: &[Point3<f64>; 3], normal: &Vector3<f64>) {
     if tri_is_needle(v) {
         return;
     }
@@ -56,33 +60,7 @@ fn emit_triangle(mesh: &mut Mesh, v: &[Point3<f64>; 3], normal: &Vector3<f64>) {
 /// facet width, cm). A watertight closed mesh returns 0; the consolidation tear
 /// shows up as a positive count the (watertight) raw kernel output lacks.
 fn count_open_boundary_edges(mesh: &Mesh) -> usize {
-    if mesh.positions.len() < 9 || mesh.indices.len() < 3 {
-        return 0;
-    }
-    let q = |v: f32| (v as f64 * 1.0e3).round() as i64;
-    let mut vid: FxHashMap<(i64, i64, i64), u32> = FxHashMap::default();
-    let mut id_of = |i: usize| -> u32 {
-        let k = (
-            q(mesh.positions[i * 3]),
-            q(mesh.positions[i * 3 + 1]),
-            q(mesh.positions[i * 3 + 2]),
-        );
-        let next = vid.len() as u32;
-        *vid.entry(k).or_insert(next)
-    };
-    let mut bal: FxHashMap<(u32, u32), i32> = FxHashMap::default();
-    for tri in mesh.indices.chunks_exact(3) {
-        let (a, b, c) = (
-            id_of(tri[0] as usize),
-            id_of(tri[1] as usize),
-            id_of(tri[2] as usize),
-        );
-        for (x, y) in [(a, b), (b, c), (c, a)] {
-            let (key, s) = if x < y { ((x, y), 1) } else { ((y, x), -1) };
-            *bal.entry(key).or_insert(0) += s;
-        }
-    }
-    bal.values().filter(|&&v| v != 0).count()
+    count_open_boundary_edges_at(mesh, 1.0e3)
 }
 
 /// Count spike triangles (longest-edge / shortest-edge > 50:1) — the same quality
@@ -115,163 +93,23 @@ fn count_spike_triangles(mesh: &Mesh) -> usize {
     n
 }
 
-/// Drop 2D contour vertices that are collinear with both neighbours. The
-/// i_overlay union of many small fragments often leaves "phantom"
-/// vertices on every fragment boundary that crosses the outer outline;
-/// without this pass earcut would emit one sliver triangle per phantom.
-fn simplify_2d_collinear(ring: &[nalgebra::Point2<f64>]) -> Vec<nalgebra::Point2<f64>> {
-    let n = ring.len();
-    if n < 4 {
-        return ring.to_vec();
-    }
-    let mut keep = vec![true; n];
-    let mut changed = true;
-    while changed {
-        changed = false;
-        for i in 0..n {
-            if !keep[i] {
-                continue;
-            }
-            let prev = (1..n).map(|k| (i + n - k) % n).find(|&k| keep[k]);
-            let next = (1..n).map(|k| (i + k) % n).find(|&k| keep[k]);
-            let (prev, next) = match (prev, next) {
-                (Some(p), Some(n)) if p != i && n != i && p != n => (p, n),
-                _ => continue,
-            };
-            let a = ring[prev];
-            let b = ring[i];
-            let c = ring[next];
-            let e1x = b.x - a.x;
-            let e1y = b.y - a.y;
-            let e2x = c.x - b.x;
-            let e2y = c.y - b.y;
-            let cross = e1x * e2y - e1y * e2x;
-            let len1 = (e1x * e1x + e1y * e1y).sqrt();
-            let len2 = (e2x * e2x + e2y * e2y).sqrt();
-            let denom = len1 * len2;
-            // 1e-4 = sin(0.006°). Real arc samples sit well above this
-            // (cavity 6-seg per quadrant ⇒ 15°/segment ⇒ sin ≈ 0.26); the
-            // i_overlay union of split fragments leaves "phantom" vertices
-            // whose sin(angle) ranges 1e-7..1e-5, all caught here.
-            if denom < 1.0e-18 || (cross.abs() / denom) < 1.0e-4 {
-                keep[i] = false;
-                changed = true;
-            }
-        }
-    }
-    ring.iter()
-        .zip(keep.iter())
-        .filter_map(|(p, k)| if *k { Some(*p) } else { None })
-        .collect()
-}
-
-/// Largest power of two ≤ `x` (x finite, > 0). The exponent is read straight
-/// off the IEEE-754 bits, so the result is an EXACT f64 with a single set bit —
-/// bit-identical across x86_64/aarch64/wasm (no rounding, no transcendental).
-#[inline]
-fn floor_pow2(x: f64) -> f64 {
-    if !x.is_finite() || x <= 0.0 {
-        return 0.0;
-    }
-    // 2^floor(log2(x)) via the unbiased exponent of the f64 representation.
-    let exp = x.to_bits() >> 52 & 0x7ff; // biased exponent
-    let unbiased = exp as i64 - 1023;
-    // f64::powi keeps a power-of-two base exact; 2.0_f64.powi is exact for the
-    // representable exponent range we hit (|coords| ≲ 1e7 ⇒ exponent ≲ 24).
-    2.0_f64.powi(unbiased as i32)
-}
-
-/// Merge consecutive near-coincident 2D contour vertices BEFORE the union/earcut.
-///
-/// The exact mesh-arrangement kernel correctly preserves two distinct rim points
-/// that the modeller intended as one but f32 import / a shallow-dihedral LPI
-/// crossing split a few µm apart (issue #1007 / schependomlaan: the diagonal
-/// sliver "flap" over an opening). They reach `consolidate_coplanar` as a hairline
-/// notch on the hole/outer ring; `simplify_2d_collinear` (a TURN-ANGLE test) does
-/// not remove them, so earcut frames the notch out to a far vertex → a degenerate
-/// needle (aspect ≫ 10⁵) that renders as a flap across the opening.
-///
-/// This collapses any vertex within `eps` of its kept predecessor onto that
-/// predecessor. `eps` is a POWER OF TWO scaled to the ring's bounding-box extent
-/// (`floor_pow2(extent) · 2⁻¹³` ≈ extent/8192) and CAPPED at an absolute
-/// 2⁻¹² m (244 µm) — bit-deterministic. On the #1007 fixture the rim
-/// duplicates span 6–72 µm on ~2 m faces (~3·10⁻⁶ … 4·10⁻⁵ of the extent)
-/// while the smallest REAL feature edge is 0.2 m (~0.1 of the extent), so eps
-/// (~10⁻⁴ of the extent) sits three orders of magnitude above the duplicate
-/// spread and three below any real edge — no over-weld. The absolute cap is
-/// what protects mm-scale features on LARGE rings: the duplicate spread comes
-/// from f32 import noise / shallow-dihedral LPI crossings whose magnitude does
-/// NOT grow with ring extent (operands are snapped about their AABB centre),
-/// but an uncapped extent-relative eps reaches 1 mm at 8 m and would swallow a
-/// genuine 1 mm chamfer on a long steel member. This runs in the already-
-/// non-exact consolidation post-pass; it does NOT touch the exact kernel's
-/// interner/predicates (no float weld in the determinism path).
-fn weld_near_coincident_2d(ring: &[nalgebra::Point2<f64>]) -> Vec<nalgebra::Point2<f64>> {
-    let n = ring.len();
-    if n < 4 {
-        return ring.to_vec();
-    }
-    let (mut minx, mut miny, mut maxx, mut maxy) =
-        (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
-    for p in ring {
-        minx = minx.min(p.x);
-        miny = miny.min(p.y);
-        maxx = maxx.max(p.x);
-        maxy = maxy.max(p.y);
-    }
-    let extent = (maxx - minx).max(maxy - miny);
-    if !extent.is_finite() || extent <= 0.0 {
-        return ring.to_vec();
-    }
-    // extent · 2⁻¹³ rounded DOWN to a power of two, capped at an absolute
-    // 2⁻¹² m so big rings can't swallow mm-scale features ⇒ exact, deterministic.
-    let eps = (floor_pow2(extent) * 2.0_f64.powi(-13)).min(2.0_f64.powi(-12));
-    let eps2 = eps * eps;
-    let mut kept: Vec<nalgebra::Point2<f64>> = Vec::with_capacity(n);
-    for &p in ring {
-        let dup = kept.last().is_some_and(|q| {
-            let dx = p.x - q.x;
-            let dy = p.y - q.y;
-            dx * dx + dy * dy < eps2
-        });
-        if !dup {
-            kept.push(p);
-        }
-    }
-    // close-the-loop check: last vs first.
-    if kept.len() >= 2 {
-        let (first, last) = (kept[0], *kept.last().unwrap());
-        let dx = last.x - first.x;
-        let dy = last.y - first.y;
-        if dx * dx + dy * dy < eps2 {
-            kept.pop();
-        }
-    }
-    if kept.len() >= 3 {
-        kept
-    } else {
-        ring.to_vec()
-    }
-}
-
 impl ClippingProcessor {
     /// Re-merge the kernel's per-plane fragments via 2D polygon union, then
     /// earcut each result back to triangles. CSG over-fragments host faces
     /// along operand cut lines; a naive edge-walk merge fails on the
     /// "X" crossings that appear at cutter-outline corners (four fragments
     /// sharing only a vertex), so we project each plane bucket to 2D, run
-    /// the i_overlay union the rest of the codebase already uses for
-    /// `bool2d::union_contours`, and earcut the resulting (possibly
-    /// annular) shapes. This is what brought the bath from 189 → ~50
+    /// the same `i_overlay` boolean engine `bool2d.rs` already uses elsewhere
+    /// in the crate, and earcut the resulting (possibly annular) shapes.
+    /// This is what brought the bath from 189 → ~50
     /// triangles with the cavity outline intact (issue #780); it also hosts
     /// the needle/weld cleanup passes for #1007.
     ///
     /// Returns the input mesh unchanged if the consolidate fails or yields
     /// nothing — never worse than the raw kernel output.
     pub(crate) fn consolidate_coplanar(mesh: Mesh) -> Mesh {
-        use crate::triangulation::{
-            project_to_2d_with_basis, triangulate_polygon_with_holes_refined,
-        };
+        use crate::grid::NORMAL_QUANT_F64 as NORMAL_QUANT;
+        use crate::triangulation::project_to_2d_with_basis;
         use i_overlay::core::fill_rule::FillRule;
         use i_overlay::core::overlay_rule::OverlayRule;
         use i_overlay::float::single::SingleFloatOverlay;
@@ -293,7 +131,6 @@ impl ClippingProcessor {
         // plane) lets the i_overlay UNION close the opening hole — a bridging facet
         // over the footprint, caught by `issue_1007_real_opening_no_bridge`.
         const POS_QUANT: f64 = 1.0e6;
-        const NORMAL_QUANT: f64 = 1.0e3;
         let qpos = |p: f64| (p * POS_QUANT).round() as i64;
         let qnorm = |n: f64| (n * NORMAL_QUANT).round() as i64;
 
@@ -304,8 +141,16 @@ impl ClippingProcessor {
         }
         let positions = &mesh.positions;
         let vertex_count = positions.len() / 3;
-        let mut buckets: FxHashMap<(i64, i64, i64, i64), Vec<PlaneTri>> =
-            FxHashMap::default();
+        // BTreeMap, NOT FxHashMap: step 2 emits the output mesh in bucket
+        // iteration order, and FxHasher mixes usize-wide chunks, so its
+        // iteration order differs between 64-bit native and 32-bit wasm32 -
+        // the same cut came out with a different (valid but non-identical)
+        // triangle order per target, breaking the native==wasm mesh-output
+        // determinism manifest. Ord-keyed iteration is target-independent
+        // (same pattern as facet_weld's normal_buckets); bucket counts per
+        // cut are small, so the tree overhead is noise.
+        let mut buckets: std::collections::BTreeMap<(i64, i64, i64, i64), Vec<PlaneTri>> =
+            std::collections::BTreeMap::new();
         for chunk in mesh.indices.chunks_exact(3) {
             let (i0, i1, i2) = (chunk[0] as usize, chunk[1] as usize, chunk[2] as usize);
             if i0 >= vertex_count || i1 >= vertex_count || i2 >= vertex_count {
@@ -347,13 +192,32 @@ impl ClippingProcessor {
             });
         }
 
-        let mut output = Mesh::new();
+        // Step 2 — three phases over the SAME bucket map.
+        //
+        // A: union + weld + simplify each bucket's rings and record which 0.1 mm
+        //    positions each bucket KEPT.
+        // B: put back, into every ring, the recorded positions that some OTHER
+        //    bucket kept and that fall strictly inside one of this ring's edges.
+        // C: triangulate and emit.
+        //
+        // WHY (T-junction hairline cracks, dental_clinic #217): `simplify_2d_collinear`
+        // chords a boundary that an ABUTTING bucket subdivides — the cut end face is
+        // split at mid-height, the two corner verticals keep the full-height edge, so
+        // one long edge faces two short ones. Retaining every shared vertex kills the
+        // phantom merge the simplify exists for (#098's faceted reveal shares nearly
+        // all of them), and no local geometric test separates the cases: #217's
+        // must-keep sagitta (0.93 µm) sits BELOW several of #098's must-drop phantoms.
+        // Conforming by ADDITION uses the same asymmetry as a source instead of a
+        // veto, so the phantom removal is untouched: a phantom is near-collinear in
+        // every bucket, is kept nowhere, and is never re-inserted.
+        let mut plans: Vec<PlanBucket> = Vec::with_capacity(buckets.len());
 
-        // Step 2 — per bucket, union triangles in 2D, triangulate result.
-        for tris in buckets.values() {
+        // Phase A.
+        for (bid, tris) in buckets.values().enumerate() {
             if tris.is_empty() {
                 continue;
             }
+            let bid = bid as u32;
             // Use the FIRST triangle's normal/anchor for a stable 2D basis;
             // all tris in this bucket share the plane by construction.
             let normal = tris[0].normal;
@@ -373,10 +237,24 @@ impl ClippingProcessor {
             // looking down `normal`; the (u, v) basis above is right-handed
             // with `v = normal × u`, so projection preserves winding.
 
+            let mut plan = PlanBucket {
+                bid,
+                normal,
+                origin,
+                u_axis,
+                v_axis,
+                raw: Vec::new(),
+                regions: Vec::new(),
+            };
+
             // Project each triangle to 2D and build i_overlay paths.
             if tris.len() == 1 {
-                // Single triangle — skip the union round-trip entirely.
-                emit_triangle(&mut output, &tris[0].v, &normal);
+                // Single triangle — skip the union round-trip entirely. Its three
+                // corners are hard corners by definition, so they are valid
+                // insertion sources for the buckets that abut them (recorded
+                // lazily, in `build_seam_map`).
+                plan.raw.push(tris[0].v);
+                plans.push(plan);
                 continue;
             }
             let mut subject: Vec<Vec<[f64; 2]>> = Vec::with_capacity(1);
@@ -406,8 +284,9 @@ impl ClippingProcessor {
             if shapes.is_empty() {
                 // Union collapsed everything — emit originals to avoid loss.
                 for t in tris {
-                    emit_triangle(&mut output, &t.v, &normal);
+                    plan.raw.push(t.v);
                 }
+                plans.push(plan);
                 continue;
             }
 
@@ -480,56 +359,59 @@ impl ClippingProcessor {
                     })
                     .collect();
 
-                // Quality CDT + bounded Ruppert refinement. Returns the
-                // (possibly Steiner-augmented) 2D vertex list `all_2d` plus
-                // indices into it; the lift below maps EVERY returned vertex
-                // (input + Steiner) back to 3D, so a Steiner point on a shared
-                // edge is split on both sides → watertight, no T-junction.
-                // allow_boundary_split = false: this region's outer/hole rings
-                // are shared with neighbouring plane buckets triangulated
-                // independently; a boundary Steiner point would tear that seam
-                // (open edges / T-junctions). Interior-only refinement keeps the
-                // seam watertight while still removing the rim-corner slivers.
-                let (all_2d, indices) = match triangulate_polygon_with_holes_refined(
-                    &outer_simplified,
-                    &holes_simplified,
-                    false,
-                ) {
-                    Ok((pts, idx)) => (pts, idx),
-                    Err(_) => continue,
-                };
+                plan.regions.push(PlanRegion {
+                    changed: false,
+                    cached: None,
+                    outer_conformed: outer_simplified.clone(),
+                    holes_conformed: holes_simplified.clone(),
+                    outer: outer_simplified,
+                    holes: holes_simplified,
+                });
+            }
+            plans.push(plan);
+        }
 
-                let lift = |p: nalgebra::Point2<f64>| -> Point3<f64> {
-                    let off = u_axis * p.x + v_axis * p.y;
-                    origin + off
-                };
-                let mut verts_3d: Vec<Point3<f64>> = Vec::with_capacity(all_2d.len());
-                for p in &all_2d {
-                    verts_3d.push(lift(*p));
-                }
-
-                let base = output.vertex_count() as u32;
-                for vp in &verts_3d {
-                    output.add_vertex(*vp, normal);
-                }
-                for tri in indices.chunks_exact(3) {
-                    // Needle backstop: drop any residual sub-weld degenerate sliver
-                    // ([`tri_is_needle`], the same scale-relative power-of-two rule
-                    // as the single-triangle path). Cannot open a real gap — the
-                    // hole/seam is framed by its non-degenerate neighbours.
-                    let v = [
-                        verts_3d[tri[0]],
-                        verts_3d[tri[1]],
-                        verts_3d[tri[2]],
-                    ];
-                    if tri_is_needle(&v) {
-                        continue;
-                    }
-                    output.add_triangle(
-                        base + tri[0] as u32,
-                        base + tri[1] as u32,
-                        base + tri[2] as u32,
-                    );
+        // Phase C — today's output first. An already-watertight host pays nothing for
+        // the conform: phase B and the second triangulation are pure cost when there
+        // is no tear to close, and the accept bar below would reject them anyway.
+        //
+        // The bar is ALL-OR-NOTHING, and that is measured, not cautious: on the #098
+        // reveal wall conforming lowers the per-cut open-edge count on EVERY one of the
+        // seven sequential cuts (227 -> 144 on the last), yet each partially-conformed
+        // intermediate feeds the next kernel cut and the FINAL wall came out at 282
+        // unpaired edges against 42 for today's output. A partial conform trades a
+        // T-junction for a subdivided edge whose true neighbour across it did NOT get
+        // the same vertex; only a fully-closed host proves every insertion landed on a
+        // real seam. With the bar at zero that wall improves to 22 and dental_clinic
+        // #217 goes watertight (6 -> 0).
+        //
+        // Measured on the 0.1 mm grid, not the 1 mm default: a chorded seam deviates by
+        // ~µm, merges away at 1 mm, and would read as "closed" — which accepts a
+        // conform that is in fact still torn (that is exactly the 282 above).
+        // The seam map is built ONLY when today's output is torn. Recording every
+        // bucket's kept corners unconditionally cost +61% geometry time on
+        // ISSUE_129 (1014 -> 1634 ms) for a map that ~85% of hosts never consult.
+        let (mut output, base_complete) = emit_plans(&mut plans, false);
+        // A region that failed to triangulate is skipped, so an incomplete baseline
+        // can be missing a whole closed component while still reading as watertight.
+        // Consolidation's standing contract is "never worse than the raw kernel
+        // output", so hand back the raw mesh rather than a known-lossy consolidation.
+        if !base_complete {
+            return mesh;
+        }
+        if count_open_boundary_edges_at(&output, 1.0e4) > 0 {
+            let seam = build_seam_map(&plans);
+            if conform_plans(&mut plans, &seam) {
+                // `complete` is part of the bar, not a detail: a region that fails
+                // to triangulate is skipped, and if it was its own closed component
+                // the remainder still balances — so a watertight-LOOKING candidate
+                // can be missing a whole surface. Reject unless every region landed.
+                let (candidate, complete) = emit_plans(&mut plans, true);
+                if complete
+                    && !candidate.is_empty()
+                    && count_open_boundary_edges_at(&candidate, 1.0e4) == 0
+                {
+                    output = candidate;
                 }
             }
         }
@@ -588,6 +470,21 @@ impl ClippingProcessor {
                 }
             }
         }
+        // Carry the input's placement / frame metadata (`origin` local-frame
+        // translation, `rtc_applied`, and the #1474 world-capture `local_bounds` /
+        // `local_to_world`) onto the re-triangulated output. `consolidate_coplanar`
+        // only re-triangulates coplanar faces — the geometry stays in the SAME
+        // frame — but `output` is a bare `Mesh::new()` whose defaults reset those
+        // fields to zero/None. For a LOCAL-FRAME caller (origin != 0: the prism /
+        // coaxial-union void fast paths, #1806/#1815) that reset drops the host's
+        // per-element origin and mis-places the whole cut host at the world origin
+        // (the mesh.rs #1474 hazard; mirrors `refine_high_aspect_slivers`'s
+        // `rebuilt_like`). World-frame callers (origin 0) are unaffected. The early
+        // `return mesh` branches above already carry the original frame.
+        output.rtc_applied = mesh.rtc_applied;
+        output.origin = mesh.origin;
+        output.local_bounds = mesh.local_bounds;
+        output.local_to_world = mesh.local_to_world;
         output
     }
 }
@@ -701,6 +598,7 @@ mod tests {
         );
     }
 
+
     #[test]
     fn merge_coplanar_collapses_subdivided_quad() {
         // Quad on z=0 plane split into 4 triangles via a centroid vertex.
@@ -730,6 +628,53 @@ mod tests {
             2,
             "consolidated quad should triangulate to 2 tris, got {}",
             consolidated.indices.len() / 3
+        );
+    }
+
+    #[test]
+    fn consolidate_preserves_local_frame_origin() {
+        // Regression (#1806 void fast-path misplacement): `consolidate_coplanar`
+        // rebuilds into a bare `Mesh::new()` whose `origin`/`rtc_applied`/#1474
+        // capture default to zero. A LOCAL-FRAME host (origin != 0 — the wasm
+        // default, and the frame the prism/coaxial void fast paths cut in) must
+        // keep its per-element `origin` through the merge, or the whole cut host
+        // is re-placed at the world origin (the AC20-FZK-Haus ground-floor walls
+        // that floated ~6 m off the building). Uses the same subdivided quad the
+        // merge test drives so consolidation genuinely runs (not the early
+        // `return mesh` no-op path, which trivially preserves the frame).
+        let mut mesh = Mesh::new();
+        for p in [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.5, 0.5, 0.0],
+        ] {
+            mesh.add_vertex(Point3::new(p[0], p[1], p[2]), Vector3::new(0.0, 0.0, 1.0));
+        }
+        mesh.add_triangle(0, 1, 4);
+        mesh.add_triangle(1, 2, 4);
+        mesh.add_triangle(2, 3, 4);
+        mesh.add_triangle(3, 0, 4);
+        mesh.origin = [11.85, 5.0, 1.35];
+        mesh.rtc_applied = true;
+
+        let consolidated = ClippingProcessor::consolidate_coplanar(mesh);
+        // Sanity: consolidation actually ran (merged 4 tris -> 2), i.e. the
+        // `output` path (not an early `return mesh`) produced this result.
+        assert_eq!(
+            consolidated.indices.len() / 3,
+            2,
+            "test precondition: the mesh must consolidate so the rebuilt-output frame carry is exercised"
+        );
+        assert_eq!(
+            consolidated.origin,
+            [11.85, 5.0, 1.35],
+            "consolidate_coplanar dropped the local-frame origin — the cut host would render at the world origin"
+        );
+        assert!(
+            consolidated.rtc_applied,
+            "consolidate_coplanar dropped rtc_applied"
         );
     }
 

@@ -144,31 +144,79 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
     };
   }),
 
-  removeModel: (modelId) => set((state) => {
-    const newModels = new Map(state.models);
-    newModels.delete(modelId);
+  removeModel: (modelId) => {
+    // Discard the removed model's mutation footprint before dropping it.
+    // Otherwise its mutation view, georef edits, undo/redo stacks and any
+    // schedule it owns linger in the store: getModifiedEntityCount keeps
+    // counting a model that can no longer be exported, and a schedule whose
+    // source model is gone dangles. clearMutations empties the view + stacks +
+    // georef (and clears an owned schedule); clearMutationView then drops the
+    // now-empty view entry so the count stops iterating it. Both are existing,
+    // separately-tested actions on the mutation slice (cross-slice via get()).
+    const cross = get() as unknown as {
+      clearMutations?: (id: string) => void;
+      clearMutationView?: (id: string) => void;
+      clearGeneratedSchedule?: () => number;
+      idsValidationReport?: { modelInfo: { modelId: string } } | null;
+      clearIdsValidationReport?: () => void;
+    };
+    cross.clearMutations?.(modelId);
+    cross.clearMutationView?.(modelId);
 
-    // Unregister from federation registry
-    federationRegistry.unregisterModel(modelId);
-
-    // Update activeModelId if removed model was active
-    let newActiveId = state.activeModelId;
-    if (state.activeModelId === modelId) {
-      const remaining = Array.from(newModels.keys());
-      newActiveId = remaining.length > 0 ? remaining[0] : null;
+    // If the removed model is the one the current IDS report describes, that
+    // report is stale by definition — its results reference a model that no
+    // longer exists, and the panel's controlled model picker would bind to a
+    // now-missing option. Drop it so the panel self-heals (#1702 C2).
+    if (cross.idsValidationReport?.modelInfo.modelId === modelId) {
+      cross.clearIdsValidationReport?.();
     }
 
-    const activeModel = newActiveId ? newModels.get(newActiveId) : null;
+    // clearMutations only clears a schedule whose source === modelId. Removing
+    // the last model orphans any remaining schedule (e.g. one with a null /
+    // dangling source), which would keep inflating getModifiedEntityCount with
+    // no model left to own it — so drop its generated tasks once the federation
+    // is empty.
+    const models = get().models;
+    if (models.size <= 1 && models.has(modelId)) {
+      cross.clearGeneratedSchedule?.();
+      // Removing the final model empties the federation. Any surviving report
+      // (e.g. one whose stored target is the '__legacy__' sentinel, which can
+      // never match a real model id above) now references nothing loaded, so
+      // drop it regardless of its stored target id.
+      cross.clearIdsValidationReport?.();
+    }
 
-    return {
-      models: newModels,
-      activeModelId: newActiveId,
-      ifcDataStore: activeModel?.ifcDataStore ?? null,
-      geometryResult: activeModel?.geometryResult ?? null,
-    };
-  }),
+    set((state) => {
+      const newModels = new Map(state.models);
+      newModels.delete(modelId);
+
+      // Unregister from federation registry
+      federationRegistry.unregisterModel(modelId);
+
+      // Update activeModelId if removed model was active
+      let newActiveId = state.activeModelId;
+      if (state.activeModelId === modelId) {
+        const remaining = Array.from(newModels.keys());
+        newActiveId = remaining.length > 0 ? remaining[0] : null;
+      }
+
+      const activeModel = newActiveId ? newModels.get(newActiveId) : null;
+
+      return {
+        models: newModels,
+        activeModelId: newActiveId,
+        ifcDataStore: activeModel?.ifcDataStore ?? null,
+        geometryResult: activeModel?.geometryResult ?? null,
+      };
+    });
+  },
 
   clearAllModels: () => {
+    // Full federation teardown: any IDS report now references an unloaded
+    // model, so drop it too (removeModel's per-model cleanup never runs here).
+    (get() as unknown as {
+      clearIdsValidationReport?: () => void;
+    }).clearIdsValidationReport?.();
     // Clear the federation registry
     federationRegistry.clear();
     return set({

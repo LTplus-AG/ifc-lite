@@ -16,6 +16,8 @@ import { GeometryProcessor, isNoRenderGeometryError } from '@ifc-lite/geometry';
 import { countGlbMeshes } from '@ifc-lite/export';
 import { createHeadlessContext } from '../loader.js';
 import { getFlag, hasFlag, fatal, writeOutput } from '../output.js';
+import { logger } from '../logger.js';
+import { formatGeometryReport, NO_DIAGNOSTICS_LINE } from '../geometry-report.js';
 import type { ComparisonOp } from '@ifc-lite/sdk';
 import type { IfcDataStore } from '@ifc-lite/parser';
 
@@ -286,7 +288,16 @@ export async function exportCommand(args: string[]): Promise<void> {
       if (filterActive && format === 'ifcx') {
         process.stderr.write('Note: --type/--storey/--where/--limit do not apply to IFCX; exporting the whole model.\n');
       }
+      // --profile: attribute wall-time between the per-invocation wasm
+      // bootstrap (GeometryProcessor init) and the export itself - the
+      // fixed-overhead split the throughput plan needs for tiny inputs.
+      const profileFlag = hasFlag(args, '--profile');
+      const tInit = performance.now();
       const { bytes, gp } = await rustExportContext(store, filePath);
+      if (profileFlag) {
+        process.stderr.write(`profile: wasm init ${(performance.now() - tInit).toFixed(0)}ms\n`);
+      }
+      const tWork = performance.now();
       try {
         if (format === 'ifcx') {
           const out = gp.exportIfcx(bytes);
@@ -334,8 +345,34 @@ export async function exportCommand(args: string[]): Promise<void> {
                 : 'GLB export produced 0 meshes — the model has no exportable render geometry (or geometry production failed).',
             );
           }
+          logger.debug(`GLB meshes: ${countGlbMeshes(out as Uint8Array)}`);
           await writeFile(outPath, out as Uint8Array);
-          process.stderr.write(`Written to ${outPath}\n`);
+          logger.info(`Written to ${outPath}`);
+        }
+        if (profileFlag) {
+          process.stderr.write(
+            `profile: ${format} export ${(performance.now() - tWork).toFixed(0)}ms\n`,
+          );
+        }
+        // Opt-in geometry summary (--diagnostics, or implied by --verbose):
+        // reuses the gp/bytes already in scope. This is a second geometry pass
+        // (the export bindings do not return diagnostics yet), so it only runs
+        // when asked for; the renderer is shared with diagnose-geometry.
+        if (hasFlag(args, '--diagnostics') || logger.level() === 'debug') {
+          if (format === 'ifcx') {
+            logger.info('No geometry diagnostics for ifcx export (no mesh pass).');
+          } else {
+            // Best-effort: the export already succeeded; a diagnostics failure
+            // must not turn it into a command failure.
+            try {
+              const diag = gp.diagnoseGeometry(bytes);
+              logger.info(diag ? formatGeometryReport(diag) : NO_DIAGNOSTICS_LINE);
+            } catch (err) {
+              logger.warn(
+                `Geometry diagnostics failed: ${err instanceof Error ? err.message : String(err)}`,
+              );
+            }
+          }
         }
       } finally {
         gp.dispose();

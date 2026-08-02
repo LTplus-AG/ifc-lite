@@ -274,6 +274,25 @@ export function decodeE57Packet(
 export function decodeE57Scan(logical: Uint8Array, entry: Data3DEntry): DecodedPointChunk {
   const fields = resolveScanFields(entry.prototype);
 
+  // Guard against a header (XML `recordCount`) that declares far more records
+  // than the binary section can hold. The XML parser only rejects NaN/negative
+  // counts (e57-xml.ts) — it has no access to the file length — so the
+  // upper-bound-vs-body check lives here, where `logical` is in hand. Every
+  // record occupies at least one bit in the packed bytestream, so recordCount
+  // can never exceed `availableBytes * 8`. Without this, a small hostile file
+  // could declare a huge count and force a multi-GB `Float32Array` allocation
+  // (OOM) before the packet walk ever notices the body is short.
+  const availableBytes = logical.length - entry.binaryFileOffset;
+  if (!Number.isFinite(entry.recordCount) || entry.recordCount < 0) {
+    throw new Error(`E57: invalid recordCount ${entry.recordCount}`);
+  }
+  if (availableBytes <= 0 || entry.recordCount > availableBytes * 8) {
+    throw new Error(
+      `E57: declared recordCount ${entry.recordCount} exceeds what the ` +
+        `${Math.max(0, availableBytes)}-byte binary section can hold`,
+    );
+  }
+
   const positions = new Float32Array(entry.recordCount * 3);
   const colors = fields.hasRgb ? new Float32Array(entry.recordCount * 3) : undefined;
   const intensities = fields.hasIntensity ? new Uint16Array(entry.recordCount) : undefined;

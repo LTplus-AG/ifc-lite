@@ -41,6 +41,7 @@ import {
   quantityTableToColumns,
   relationshipGraphFromColumns,
   relationshipGraphToColumns,
+  findStoreyByElevation,
 } from '@ifc-lite/data';
 
 import { CompactEntityIndex } from './compact-entity-index.js';
@@ -107,6 +108,7 @@ interface SerializedSpatialNode {
   expressId: number;
   type: number;
   name: string;
+  longName?: string;
   elevation?: number;
   children: SerializedSpatialNode[];
   elements: number[];
@@ -121,6 +123,7 @@ export interface SpatialHierarchyColumns {
   storeyElevations: Array<[number, number]>;
   storeyHeights: Array<[number, number]>;
   elementToStorey: Array<[number, number]>;
+  elementToContainer?: Array<[number, number]>;
 }
 
 function serializeSpatialNode(node: SpatialNode): SerializedSpatialNode {
@@ -128,6 +131,7 @@ function serializeSpatialNode(node: SpatialNode): SerializedSpatialNode {
     expressId: node.expressId,
     type: node.type,
     name: node.name,
+    longName: node.longName,
     elevation: node.elevation,
     children: node.children.map(serializeSpatialNode),
     elements: [...node.elements],
@@ -139,6 +143,7 @@ function deserializeSpatialNode(node: SerializedSpatialNode): SpatialNode {
     expressId: node.expressId,
     type: node.type as IfcTypeEnum,
     name: node.name,
+    longName: node.longName,
     elevation: node.elevation,
     children: node.children.map(deserializeSpatialNode),
     elements: [...node.elements],
@@ -155,6 +160,9 @@ export function spatialHierarchyToColumns(hierarchy: SpatialHierarchy): SpatialH
     storeyElevations: [...hierarchy.storeyElevations.entries()],
     storeyHeights: [...hierarchy.storeyHeights.entries()],
     elementToStorey: [...hierarchy.elementToStorey.entries()],
+    elementToContainer: hierarchy.elementToContainer
+      ? [...hierarchy.elementToContainer.entries()]
+      : undefined,
   };
 }
 
@@ -167,6 +175,9 @@ export function spatialHierarchyFromColumns(columns: SpatialHierarchyColumns): S
   const storeyElevations = new Map<number, number>(columns.storeyElevations);
   const storeyHeights = new Map<number, number>(columns.storeyHeights);
   const elementToStorey = new Map<number, number>(columns.elementToStorey);
+  const elementToContainer = columns.elementToContainer
+    ? new Map<number, number>(columns.elementToContainer)
+    : undefined;
 
   // elementToSpace is the inverse of bySpace and is what `getContainingSpace`
   // queries. Only this direction is shipped over the wire because it is
@@ -187,21 +198,17 @@ export function spatialHierarchyFromColumns(columns: SpatialHierarchyColumns): S
     storeyElevations,
     storeyHeights,
     elementToStorey,
+    elementToContainer,
 
     getStoreyElements(storeyId: number): number[] {
       return byStorey.get(storeyId) ?? [];
     },
     getStoreyByElevation(z: number): number | null {
-      let best: number | null = null;
-      let bestDistance = Number.POSITIVE_INFINITY;
-      for (const [storeyId, elevation] of storeyElevations) {
-        const distance = Math.abs(elevation - z);
-        if (distance < bestDistance) {
-          bestDistance = distance;
-          best = storeyId;
-        }
-      }
-      return best;
+      // Canonical resolver (#1841). Rehydrating a store over the worker
+      // transport used to drop the 1m tolerance that `SpatialHierarchyBuilder`
+      // applies, so the SAME parse answered differently either side of the
+      // worker boundary.
+      return findStoreyByElevation(storeyElevations, z);
     },
     getContainingSpace(elementId: number): number | null {
       return elementToSpace.get(elementId) ?? null;
@@ -269,7 +276,7 @@ export interface DataStoreTransport {
   onDemandPropertyMap: Array<[number, number[]]>;
   onDemandQuantityMap: Array<[number, number[]]>;
   onDemandClassificationMap: Array<[number, number[]]>;
-  onDemandMaterialMap: Array<[number, number]>;
+  onDemandMaterialMap: Array<[number, number[]]>;
   onDemandDocumentMap: Array<[number, number[]]>;
 
   memory?: ParserMemorySnapshot;

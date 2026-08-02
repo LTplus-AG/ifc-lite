@@ -36,3 +36,11 @@ export {
   type ImportProgress,
   type CsvParseOptions,
 } from './csv-connector.js';
+export {
+  changeSetToOps,
+  deriveEntityIdentity,
+  type ChangeSetOp,
+  type ChangeSetOpsResult,
+  type DerivedIdentityEntry,
+  type EntityIdentityResolver,
+} from './change-set-to-ops.js';

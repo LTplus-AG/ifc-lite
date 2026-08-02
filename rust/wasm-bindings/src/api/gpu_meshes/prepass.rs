@@ -27,15 +27,20 @@ impl IfcAPI {
     /// Takes raw bytes (&[u8]) to avoid TextDecoder overhead.
     #[wasm_bindgen(js_name = buildPrePassOnce)]
     pub fn build_pre_pass_once(&self, data: &[u8]) -> JsValue {
-        use crate::api::styling::{combined_pre_pass, extract_building_rotation_from_site};
+        use crate::api::styling::combined_pre_pass;
         use ifc_lite_core::EntityDecoder;
-        use ifc_lite_geometry::GeometryRouter;
+        use ifc_lite_processing::stream_meta::{resolve_stream_meta, MetaMode};
+
+        // Load START on the serial/main-thread path: the previous load's
+        // pipeline diagnostics must not accumulate into this one. (The worker
+        // path resets via setEntityIndex; every load-start entry point resets.)
+        self.reset_pipeline_diagnostics();
 
         let content = data;
 
-        // Build entity index — wrap in Arc so processGeometryBatch can
-        // share it across many calls without cloning the HashMap.
-        let entity_index = std::sync::Arc::new(ifc_lite_core::build_entity_index(content));
+        // Build entity index — a compact columnar index (sorted u32 columns +
+        // binary search, #1682) wrapped in Arc for cheap reuse.
+        let entity_index = std::sync::Arc::new(ifc_lite_core::ColumnarEntityIndex::from_scan(content));
         // Cache for reuse by processGeometryBatch.
         // Mutex held only briefly to install the Arc; rayon helpers
         // pick up clones below without re-locking. Panic on poison —
@@ -44,27 +49,19 @@ impl IfcAPI {
         let mut slot = self
             .cached_entity_index
             .lock()
-            .expect("ifc-lite cached_entity_index Mutex poisoned");
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         *slot = Some(entity_index.clone());
         drop(slot);
-        let mut decoder = EntityDecoder::with_arc_index(content, entity_index);
+        let mut decoder = EntityDecoder::with_arc_columnar_index(content, entity_index);
 
         // Run combined pre-pass
         let pre_pass = combined_pre_pass(content, &mut decoder);
 
-        // Resolve BOTH unit scales once via the shared resolver (handles a
-        // missing project-id hint and partial-index chains internally) and
-        // seed the decoder so nothing downstream re-pays the IFCPROJECT hunt.
-        let unit_scales = ifc_lite_processing::prepass::resolve_unit_scales(
-            content,
-            pre_pass.project_id,
-            &mut decoder,
-        );
-        let unit_scale = unit_scales.length_unit_scale;
-        decoder.seed_unit_scales(unit_scale, unit_scales.plane_angle_to_radians);
-        let router = GeometryRouter::with_scale(unit_scale);
-
-        // Detect RTC offset
+        // Resolve the load-time meta (unit scales + RTC offset + needs-shift +
+        // building rotation) via the shared resolver. This decoder already sees
+        // the FULL entity index, so the single-stage `SmallFileSingle` ladder is
+        // correct. It also seeds the decoder so nothing downstream re-pays the
+        // IFCPROJECT hunt.
         let rtc_jobs: Vec<_> = pre_pass
             .simple_jobs
             .iter()
@@ -72,15 +69,14 @@ impl IfcAPI {
             .chain(pre_pass.complex_jobs.iter().take(25))
             .copied()
             .collect();
-        let rtc_offset = router.detect_rtc_offset_with_fallback(&rtc_jobs, &mut decoder, content);
-        let needs_shift = rtc_offset.0.abs() > 10000.0
-            || rtc_offset.1.abs() > 10000.0
-            || rtc_offset.2.abs() > 10000.0;
-
-        // Extract building rotation
-        let building_rotation = pre_pass
-            .site_position
-            .and_then(|pos| extract_building_rotation_from_site(pos, &router, &mut decoder));
+        let meta = resolve_stream_meta(
+            MetaMode::SmallFileSingle,
+            content,
+            pre_pass.project_id,
+            pre_pass.site_position,
+            &rtc_jobs,
+            &mut decoder,
+        );
 
         // Build combined job list: simple first, then complex
         let total_jobs = pre_pass.simple_jobs.len() + pre_pass.complex_jobs.len();
@@ -125,24 +121,9 @@ impl IfcAPI {
         let result = js_sys::Object::new();
         crate::api::set_js_prop(&result, "jobs", &jobs_flat);
         crate::api::set_js_prop(&result, "totalJobs", &(total_jobs as f64).into());
-        crate::api::set_js_prop(&result, "unitScale", &unit_scale.into());
-        crate::api::set_js_prop(
-            &result,
-            "planeAngleToRadians",
-            &unit_scales.plane_angle_to_radians.into(),
-        );
-
-        let rtc_arr = js_sys::Float64Array::new_with_length(3);
-        rtc_arr.set_index(0, rtc_offset.0);
-        rtc_arr.set_index(1, rtc_offset.1);
-        rtc_arr.set_index(2, rtc_offset.2);
-        crate::api::set_js_prop(&result, "rtcOffset", &rtc_arr);
-        crate::api::set_js_prop(&result, "needsShift", &needs_shift.into());
-
-        match building_rotation {
-            Some(rot) => crate::api::set_js_prop(&result, "buildingRotation", &rot.into()),
-            None => crate::api::set_js_prop(&result, "buildingRotation", &JsValue::NULL),
-        };
+        // unitScale / planeAngleToRadians / rtcOffset / needsShift / buildingRotation
+        // from the shared resolver.
+        super::prepass_sharded::set_stream_meta_props(&result, &meta);
 
         crate::api::set_js_prop(&result, "voidKeys", &void_keys);
         crate::api::set_js_prop(&result, "voidCounts", &void_counts);
@@ -197,9 +178,37 @@ impl IfcAPI {
         disabled_type_names: Option<Vec<String>>,
         skip_type_geometry: bool,
     ) -> Result<JsValue, JsValue> {
-        use crate::api::styling::extract_building_rotation_from_site;
+        self.pre_pass_streaming_impl(
+            data,
+            on_event,
+            chunk_size,
+            disabled_type_names,
+            skip_type_geometry,
+            None,
+            false,
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn pre_pass_streaming_impl(
+        &self,
+        data: &[u8],
+        on_event: &Function,
+        chunk_size: u32,
+        disabled_type_names: Option<Vec<String>>,
+        skip_type_geometry: bool,
+        prebuilt: Option<ifc_lite_core::ColumnarEntityIndex>,
+        external_styles: bool,
+        columns: Option<super::prepass_discovery::IndexColumns<'_>>,
+    ) -> Result<JsValue, JsValue> {
+        let prebuilt_arc: Option<std::sync::Arc<ifc_lite_core::ColumnarEntityIndex>> =
+            prebuilt.map(std::sync::Arc::new);
+        // Load START on the streaming pre-pass path (see build_pre_pass_once).
+        self.reset_pipeline_diagnostics();
         use ifc_lite_core::{has_geometry_by_name, EntityDecoder, EntityScanner, IfcType};
         use ifc_lite_geometry::GeometryRouter;
+        use ifc_lite_processing::stream_meta::{resolve_stream_meta, MetaMode};
 
         let chunk_size = chunk_size.max(1024) as usize;
         let content = data;
@@ -216,7 +225,16 @@ impl IfcAPI {
         // tag geometry-bearing rows so we can emit jobs incrementally.
         // Entity index is built from the same pass — no second walk.
         let mut scanner = EntityScanner::new(content);
-        let estimated = content.len() / 50;
+        // Cap the up-front index reservation. On wasm32 the whole `content` slice
+        // is already resident in the 4GB linear memory (wasm-bindgen copies the
+        // buffer in), so reserving `len/50` slots — ~82M entries (~1GB) for a
+        // ~4GB file — ON TOP of that exhausts the address space before the scan
+        // even starts, aborting with a bare `unreachable executed`. Reserve at
+        // most CAP entries; a rarer huge model grows the map via rehash (a
+        // one-time cost) instead of a fatal up-front OOM. Ordinary (<2GB) files
+        // are unaffected — their `len/50` estimate stays under the cap.
+        const PREPASS_INDEX_RESERVE_CAP: usize = 40_000_000; // ~0.5GB reserved
+        let estimated = (content.len() / 50).min(PREPASS_INDEX_RESERVE_CAP);
         let mut entity_index: rustc_hash::FxHashMap<u32, (usize, usize)> =
             rustc_hash::FxHashMap::with_capacity_and_hasher(estimated, Default::default());
 
@@ -225,6 +243,27 @@ impl IfcAPI {
         let mut project_id: Option<u32> = None;
         let mut site_position: Option<(u32, usize, usize)> = None;
         let mut meta_emitted = false;
+
+        // #957 / #563 single-scan hoist: the workers each re-walk the whole file
+        // on their first batch to rebuild these three per-content structures
+        // (referenced RepresentationMaps, instantiated type ids, the material-
+        // layer index). Collect the spans they need HERE, during the one scan the
+        // pre-pass already runs, then build + ship each ONCE below so every
+        // worker skips its own full-file walk. `rel_associates_material` spans are
+        // already stashed in `prepass_spans`.
+        let mut mapped_item_spans: Vec<(u32, usize, usize)> = Vec::new();
+        let mut rel_defines_by_type_spans: Vec<(u32, usize, usize)> = Vec::new();
+        // #957/#962: IfcTypeProduct candidates (id, span, resolved type), stashed
+        // here so the orphan-type-geometry pass reuses THIS scan instead of a
+        // second full EntityScanner walk over the file. `IfcType` is captured
+        // from the scanner's `type_name` so it matches `collect_type_geometry_jobs`
+        // byte-for-byte.
+        let mut type_candidate_spans: Vec<(u32, usize, usize, IfcType)> = Vec::new();
+        // Mirror `get_or_build_material_layer_index`'s `IFCMATERIALLAYERSET`
+        // substring gate exactly, but detect it from the scan (a layer-set
+        // keyword only appears as an entity type) so we never re-scan the file:
+        // an `IfcMaterialLayerSet`/`...Usage` entity is present iff the gate fires.
+        let mut has_layer_set = false;
         // Plane-angle scale, resolved with the meta by the shared resolver and
         // carried on the meta event so workers seed their batch decoders.
         let mut plane_angle_to_radians = 1.0f64;
@@ -276,9 +315,26 @@ impl IfcAPI {
         // resolver the native pipeline and `buildPrePassOnce` run.
         let mut prepass_spans = ifc_lite_processing::prepass::PrepassSpans::default();
 
+        // STAGE 2: fill collectors from the class columns; no byte scan.
+        if let Some((cids, cstarts, clengths, cclasses)) = columns {
+            let d = super::prepass_discovery::discover_from_columns(
+                content, cids, cstarts, clengths, cclasses, &disabled_types,
+            );
+            buffered_jobs = d.buffered_jobs;
+            total_jobs = d.total_jobs;
+            project_id = d.project_id;
+            site_position = d.site_position;
+            prepass_spans = d.prepass_spans;
+            prepass_spans.styled_items = Vec::new(); // shards resolve styles
+            mapped_item_spans = d.mapped_item_spans;
+            rel_defines_by_type_spans = d.rel_defines_by_type_spans;
+            type_candidate_spans = d.type_candidate_spans;
+            has_layer_set = d.has_layer_set;
+        } else {
         while let Some((id, type_name, start, end)) = scanner.next_entity() {
-            // Build entity index inline (same data we'd otherwise re-scan for).
-            entity_index.insert(id, (start, end));
+            if prebuilt_arc.is_none() {
+                entity_index.insert(id, (start, end)); // prebuilt mode: map unused
+            }
 
             match type_name {
                 "IFCPROJECT" => {
@@ -315,7 +371,28 @@ impl IfcAPI {
                 "IFCRELAGGREGATES" => {
                     prepass_spans.aggregate_rels.push((id, start, end));
                 }
+                "IFCMAPPEDITEM" => {
+                    mapped_item_spans.push((id, start, end));
+                }
+                "IFCRELDEFINESBYTYPE" => {
+                    rel_defines_by_type_spans.push((id, start, end));
+                }
+                "IFCMATERIALLAYERSET" | "IFCMATERIALLAYERSETUSAGE" => {
+                    has_layer_set = true;
+                }
                 _ => {
+                    // #957/#962: an IfcTypeProduct subtype (its geometry is
+                    // authored on RepresentationMaps, not the type itself, so it
+                    // never matches `has_geometry_by_name`). Stash it for the
+                    // orphan-type pass; the RepresentationMaps attr-6 decode +
+                    // referenced-filter happens later in
+                    // `collect_type_geometry_jobs_from_spans`.
+                    if type_name.ends_with("TYPE") || type_name.ends_with("STYLE") {
+                        let type_ty = IfcType::from_str(type_name);
+                        if type_ty.is_subtype_of(IfcType::IfcTypeProduct) {
+                            type_candidate_spans.push((id, start, end, type_ty));
+                        }
+                    }
                     if has_geometry_by_name(type_name) && !disabled_types.contains(type_name) {
                         let ifc_type = IfcType::from_str(type_name);
                         // We don't bucket by simple/complex here — the host
@@ -340,210 +417,136 @@ impl IfcAPI {
             // full index instead of silently defaulting (a millimetre model
             // resolved as metres renders 1000× oversized).
             if !meta_emitted && buffered_jobs.len() >= RTC_SAMPLE_THRESHOLD {
-                // Build a decoder over the partial entity index built so far.
-                let mut decoder = EntityDecoder::with_index(content, entity_index.clone());
-                let unit_scales = ifc_lite_processing::prepass::resolve_unit_scales(
-                    content,
-                    project_id,
-                    &mut decoder,
-                );
-                let unit_scale = unit_scales.length_unit_scale;
-                decoder.seed_unit_scales(unit_scale, unit_scales.plane_angle_to_radians);
-                plane_angle_to_radians = unit_scales.plane_angle_to_radians;
-
-                let router = GeometryRouter::with_scale(unit_scale);
-                let is_large = |t: (f64, f64, f64)| {
-                    t.0.abs() > 10000.0 || t.1.abs() > 10000.0 || t.2.abs() > 10000.0
+                // MID-SCAN meta emission — the streaming win (~17 s → ~3 s
+                // time-to-first-geometry on a 986 MB file). The RESOLUTION logic
+                // (3-stage RTC ladder: partial-index detect → full-index
+                // re-detect when the partial index resolved no placement chain →
+                // placement-bounds last resort) lives in the shared
+                // `resolve_stream_meta` so it cannot drift from the tail /
+                // `buildPrePassOnce` paths. Emission STAYS HERE, unchanged: the
+                // meta event is dispatched the moment RTC_SAMPLE_THRESHOLD jobs
+                // are buffered, near the top of the file, so workers spin up
+                // early. Do NOT move this to a post-scan point — that regresses
+                // every large file.
+                // PREBUILT index (sharded): full index available, so run the
+                // single-stage full-index ladder (what the partial ladder
+                // escalates to anyway) — no mid-scan full-rescan detour.
+                let meta_res = if let Some(pi) = &prebuilt_arc {
+                    let mut decoder =
+                        EntityDecoder::with_arc_columnar_index(content, pi.clone());
+                    resolve_stream_meta(
+                        MetaMode::SmallFileSingle,
+                        content,
+                        project_id,
+                        site_position,
+                        &buffered_jobs,
+                        &mut decoder,
+                    )
+                } else {
+                    let mut decoder = EntityDecoder::with_index(content, entity_index.clone());
+                    resolve_stream_meta(
+                        MetaMode::StreamingPartial,
+                        content,
+                        project_id,
+                        site_position,
+                        &buffered_jobs,
+                        &mut decoder,
+                    )
                 };
-                let detected_rtc = router.detect_rtc_offset_from_jobs(&buffered_jobs, &mut decoder);
-                let mut rtc_offset = detected_rtc.unwrap_or((0.0, 0.0, 0.0));
-                // True once ANY detection (partial OR the full re-detect below)
-                // resolved usable placement samples — even if it concluded "no
-                // shift" (0,0,0). The placement-bounds fallback must NOT override
-                // a successful "no shift": that scan averages ALL placement
-                // points incl. a far georef anchor (e.g. IfcSite/MapConversion at
-                // national grid), so on a building whose geometry sits near origin
-                // but carries a georef datum it returns a bogus ~-792 km offset,
-                // pushing the whole model off-screen.
-                let mut detection_succeeded = detected_rtc.is_some();
-
-                // Streaming emits this meta as soon as RTC_SAMPLE_THRESHOLD geometry
-                // jobs are buffered (~the 50th element, near the top of the file), so
-                // the partial index here only covers the file head. When a model's
-                // world offset lives in spatial-structure placements emitted LATE
-                // (a Revit/French export with IfcSite + its placement chain at the
-                // END of the file — observed at line 202 339 of a 202 691 line
-                // model), the element -> storey -> building -> site chain can't
-                // resolve from the partial index, detection returns (0,0,0), and the
-                // huge ~8e6 m world coordinates get cast to f32 downstream → ~0.5 m
-                // of vertex jitter. Re-detect against a FULL index when no large
-                // offset was found AND either (a) we haven't scanned the IfcSite
-                // yet, or (b) the partial index resolved NO usable placement
-                // samples at all. Case (b) covers the inverse ordering: the
-                // IfcSite *entity* is early (so `site_position` is already set) but
-                // its IfcAxis2Placement3D *location* — where the national-grid
-                // offset actually lives — is forward-referenced past the file head,
-                // so the element→storey→building→site chain still can't resolve and
-                // detection returns None. Gating on `!detection_succeeded` instead
-                // of site scan order alone keeps the common early-site model that
-                // DID resolve a (0,0,0) "no shift" from paying for a second index
-                // build, while rescuing the forward-referenced-placement case that
-                // otherwise fell through to the placement-bounds centroid — which
-                // averages the near-origin relative placements against the lone far
-                // anchor and lands at ~half the true offset, leaving geometry
-                // stranded in the f32-collapse zone.
-                // (`buildPrePassOnce` and the small-file tail already use a full
-                // index, so only this early-meta path needs the fallback.)
-                if !is_large(rtc_offset) && (site_position.is_none() || !detection_succeeded) {
-                    let full_index = ifc_lite_core::build_entity_index(content);
-                    let mut full_decoder = EntityDecoder::with_index(content, full_index);
-                    if let Some(full_rtc) =
-                        router.detect_rtc_offset_from_jobs(&buffered_jobs, &mut full_decoder)
-                    {
-                        // The full index resolved the placement chain — this is a
-                        // successful detection whether it shifts (large) or not.
-                        detection_succeeded = true;
-                        if is_large(full_rtc) {
-                            rtc_offset = full_rtc;
-                        }
-                    }
-                }
-                // Server parity LAST RESORT: only when NO detection (partial or
-                // full) found any usable placement translations do we scan the
-                // placement bounds (a model whose placements truly can't decode
-                // from this index, e.g. a genuine >10 km georef whose chain is
-                // unresolved). A successful "no shift" must NOT reach here, or the
-                // georef-anchor-skewed scan would re-base an origin-local model.
-                if !detection_succeeded && !is_large(rtc_offset) {
-                    let raw = ifc_lite_core::scan_placement_bounds(content).rtc_offset();
-                    // scan_placement_bounds reads raw IfcCartesianPoint values
-                    // (FILE units); the detection path is unit-scaled to metres.
-                    rtc_offset = (raw.0 * unit_scale, raw.1 * unit_scale, raw.2 * unit_scale);
-                }
-                let needs_shift = is_large(rtc_offset);
-
-                let building_rotation = site_position.and_then(|pos| {
-                    extract_building_rotation_from_site(pos, &router, &mut decoder)
-                });
+                plane_angle_to_radians = meta_res.plane_angle_to_radians;
 
                 // Emit meta event.
                 let meta = js_sys::Object::new();
                 crate::api::set_js_prop(&meta, "type", &"meta".into());
-                crate::api::set_js_prop(&meta, "unitScale", &unit_scale.into());
-                crate::api::set_js_prop(
-                    &meta,
-                    "planeAngleToRadians",
-                    &plane_angle_to_radians.into(),
-                );
-                let rtc_arr = js_sys::Float64Array::new_with_length(3);
-                rtc_arr.set_index(0, rtc_offset.0);
-                rtc_arr.set_index(1, rtc_offset.1);
-                rtc_arr.set_index(2, rtc_offset.2);
-                crate::api::set_js_prop(&meta, "rtcOffset", &rtc_arr);
-                crate::api::set_js_prop(&meta, "needsShift", &needs_shift.into());
-                match building_rotation {
-                    Some(rot) => crate::api::set_js_prop(&meta, "buildingRotation", &rot.into()),
-                    None => crate::api::set_js_prop(&meta, "buildingRotation", &JsValue::NULL),
-                };
+                super::prepass_sharded::set_stream_meta_props(&meta, &meta_res);
                 on_event.call1(&JsValue::NULL, &meta.into())?;
                 meta_emitted = true;
-                // NOTE: jobs are NOT drained here. They are buffered through the
-                // whole scan and emitted post-scan with an exact geometry-hash
-                // affinity key (which needs the COMPLETE entity index). Deferring
-                // is free: workers gate on the styles + entity-index events, both
-                // of which are themselves post-scan.
+                // Jobs stay buffered through the scan; the post-scan pass
+                // emits them with exact geometry-hash affinity keys (workers
+                // gate on post-scan events anyway, so deferring is free).
                 continue;
             }
         }
 
-        // Tail: if we never hit the meta threshold (very small file with
-        // <50 geometry jobs), emit meta now with whatever data we have so
-        // workers can still process the trailing buffer.
+        }
+
+        // Tail meta: small files (scan path) + every columns-path file.
         if !meta_emitted {
             // Build a decoder lazily for unit/RTC/site lookups. With a
-            // sub-50-job file the scan is essentially instant anyway, so
-            // buying a second pass here is irrelevant.
-            let mut decoder = EntityDecoder::with_index(content, entity_index.clone());
-            let unit_scales = ifc_lite_processing::prepass::resolve_unit_scales(
-                content,
-                project_id,
-                &mut decoder,
-            );
-            let unit_scale = unit_scales.length_unit_scale;
-            decoder.seed_unit_scales(unit_scale, unit_scales.plane_angle_to_radians);
-            plane_angle_to_radians = unit_scales.plane_angle_to_radians;
-            let router = GeometryRouter::with_scale(unit_scale);
-            let rtc_offset =
-                router.detect_rtc_offset_with_fallback(&buffered_jobs, &mut decoder, content);
-            let needs_shift = rtc_offset.0.abs() > 10000.0
-                || rtc_offset.1.abs() > 10000.0
-                || rtc_offset.2.abs() > 10000.0;
-            let building_rotation = site_position
-                .and_then(|pos| extract_building_rotation_from_site(pos, &router, &mut decoder));
+            // sub-50-job file the scan is essentially instant anyway, so the
+            // full entity index is already complete here — the single-stage
+            // `SmallFileSingle` ladder (one detect_rtc_offset_with_fallback) is
+            // correct, sharing its resolution with `buildPrePassOnce`.
+            let meta_jobs = &buffered_jobs[..buffered_jobs.len().min(RTC_SAMPLE_THRESHOLD)];
+            let meta_res = if let Some(pi) = &prebuilt_arc {
+                let mut decoder = EntityDecoder::with_arc_columnar_index(content, pi.clone());
+                resolve_stream_meta(
+                    MetaMode::SmallFileSingle,
+                    content,
+                    project_id,
+                    site_position,
+                    meta_jobs,
+                    &mut decoder,
+                )
+            } else {
+                let mut decoder = EntityDecoder::with_index(content, entity_index.clone());
+                resolve_stream_meta(
+                    MetaMode::SmallFileSingle,
+                    content,
+                    project_id,
+                    site_position,
+                    &buffered_jobs,
+                    &mut decoder,
+                )
+            };
+            plane_angle_to_radians = meta_res.plane_angle_to_radians;
 
             let meta = js_sys::Object::new();
             crate::api::set_js_prop(&meta, "type", &"meta".into());
-            crate::api::set_js_prop(&meta, "unitScale", &unit_scale.into());
-            crate::api::set_js_prop(
-                &meta,
-                "planeAngleToRadians",
-                &plane_angle_to_radians.into(),
-            );
-            let rtc_arr = js_sys::Float64Array::new_with_length(3);
-            rtc_arr.set_index(0, rtc_offset.0);
-            rtc_arr.set_index(1, rtc_offset.1);
-            rtc_arr.set_index(2, rtc_offset.2);
-            crate::api::set_js_prop(&meta, "rtcOffset", &rtc_arr);
-            crate::api::set_js_prop(&meta, "needsShift", &needs_shift.into());
-            match building_rotation {
-                Some(rot) => crate::api::set_js_prop(&meta, "buildingRotation", &rot.into()),
-                None => crate::api::set_js_prop(&meta, "buildingRotation", &JsValue::NULL),
-            };
+            super::prepass_sharded::set_stream_meta_props(&meta, &meta_res);
             on_event.call1(&JsValue::NULL, &meta.into())?;
         }
 
-        // Cache the entity index for processGeometryBatch reuse — same
-        // contract as buildPrePassOnce. Wrapped in Arc
-        // so process workers reuse the same index by reference instead of
-        // cloning the 14 M-entry HashMap on every batch call.
-        let entity_index_arc = std::sync::Arc::new(entity_index);
+        // Cache for processGeometryBatch reuse. Convert the scan's FxHashMap
+        // into a compact columnar index (sorted u32 columns + binary search):
+        // ~229 MB vs the hashmap's ~436 MB on a 19.1 M-entity model (#1682).
+        // Consuming frees the map before sorting: one interleaved transient.
+        let entity_index_arc = match prebuilt_arc {
+            Some(pi) => pi,
+            None => std::sync::Arc::new(ifc_lite_core::ColumnarEntityIndex::from_hashmap_consuming(
+                entity_index,
+            )),
+        };
+        let have_prebuilt = external_styles; // sharded mode always passes both
+
         // Mutex held only briefly to install the Arc.
         {
             let mut slot = self
                 .cached_entity_index
                 .lock()
-                .expect("ifc-lite cached_entity_index Mutex poisoned");
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             *slot = Some(entity_index_arc.clone());
         }
         // Hold a second clone for the post-scan entity-index export below;
-        // `with_arc_index` consumes the Arc so we'd lose the reference
-        // after the decoder is created.
+        // `with_arc_columnar_index` consumes the Arc so we'd lose the
+        // reference after the decoder is created.
         let index_for_export = entity_index_arc.clone();
 
         // ── FAST FIRST GEOMETRY ──
-        // Workers gate on three post-scan events: entity-index, styles, and the
-        // first jobs chunk. Previously all three waited behind a whole-model
-        // per-job affinity hash (geometry_routing_key over every job, ~4 s), and
-        // the entity-index event was emitted LAST of all — so workers idled until
-        // ~the end of the pre-pass. Now we ship entity-index + styles + a SMALL
-        // first job wave right here (the index is already complete), then run the
-        // affinity pass only over the REST. Only the first wave routes by id; the
-        // bulk keeps exact geometry-hash affinity, so dedup distribution is intact.
+        // Workers gate on entity-index + styles + the first jobs chunk; all
+        // three ship right here post-scan (a SMALL id-routed first wave, then
+        // the affinity pass over the REST — dedup distribution stays intact).
 
-        // (A) Entity-index — workers re-scan the whole file (~5 s) without it, so
-        // it must reach them as early as possible. Built from the complete index.
-        {
-            let n = index_for_export.len();
-            let ids_arr = js_sys::Uint32Array::new_with_length(n as u32);
-            let starts_arr = js_sys::Uint32Array::new_with_length(n as u32);
-            let lengths_arr = js_sys::Uint32Array::new_with_length(n as u32);
-            let mut i = 0u32;
-            for (&id, &(start, end)) in index_for_export.iter() {
-                ids_arr.set_index(i, id);
-                starts_arr.set_index(i, start as u32);
-                lengths_arr.set_index(i, (end - start) as u32);
-                i += 1;
-            }
+        // (A) Entity-index — workers re-scan the whole file (~5 s) without it.
+        // Sharded mode skips this: the host delivered the stitched index first.
+        if !have_prebuilt {
+            // Bulk-copy in 3 boundary crossings, not ~8.4M per-entry set_index
+            // calls (workers' critical path). Columns are already sorted by id,
+            // so consumers hit ColumnarEntityIndex::from_columns' O(n)
+            // already-sorted fast path (no per-worker argsort).
+            let ids_arr = js_sys::Uint32Array::from(index_for_export.ids());
+            let starts_arr = js_sys::Uint32Array::from(index_for_export.starts());
+            let lengths_arr = js_sys::Uint32Array::from(index_for_export.lengths());
             let index_event = js_sys::Object::new();
             crate::api::set_js_prop(&index_event, "type", &"entity-index".into());
             crate::api::set_js_prop(&index_event, "ids", &ids_arr);
@@ -552,73 +555,124 @@ impl IfcAPI {
             on_event.call1(&JsValue::NULL, &index_event.into())?;
         }
 
-        // (B) Styles + voids — workers also gate on this. Resolve once (the same
-        // shared resolver the native pipeline and buildPrePassOnce run) and emit.
+        // (B) Styles + voids — workers also gate on this. Serial mode resolves
+        // + emits here (shared resolver; MaterialLayerIndex::from_content is
+        // deliberately skipped, aggregate void propagation included); sharded
+        // (external_styles) mode leaves styles to the worker shards + finalize.
         // `decoder` stays in scope below for the orphan type-geometry pass.
-        // MaterialLayerIndex::from_content is deliberately skipped (its own full
-        // scan); aggregate void propagation IS included via the stashed
-        // IfcRelAggregates spans, keeping void-parity with the server.
-        let mut decoder = EntityDecoder::with_arc_index(content, entity_index_arc.clone());
+        let mut decoder = EntityDecoder::with_arc_columnar_index(content, entity_index_arc.clone());
         decoder.seed_unit_scales(1.0, plane_angle_to_radians);
-        let resolved = ifc_lite_processing::prepass::resolve_prepass(
-            &prepass_spans,
-            &mut decoder,
-            ifc_lite_processing::prepass::ResolveOptions {
-                collect_indexed_colour_full: false,
-                defer_attached_styles: false,
-            },
-        );
-        let (style_ids_vec, style_colors_vec) =
-            ifc_lite_processing::prepass::flat_styles_rgba8(&resolved, &mut decoder);
-        let (void_keys_vec, void_counts_vec, void_values_vec) =
-            ifc_lite_processing::prepass::flat_voids(&resolved.void_index);
-        let (mat_ids_vec, mat_counts_vec, mat_colors_vec) =
-            ifc_lite_processing::prepass::flat_material_colors(
-                &resolved.element_material_colors,
+        if !external_styles {
+            let resolved = ifc_lite_processing::prepass::resolve_prepass(
+                &prepass_spans,
+                &mut decoder,
+                ifc_lite_processing::prepass::ResolveOptions {
+                    collect_indexed_colour_full: false,
+                    defer_attached_styles: false,
+                },
             );
-        let styles_event = js_sys::Object::new();
-        crate::api::set_js_prop(&styles_event, "type", &"styles".into());
+            let styles_event = super::prepass_sharded::styles_payload(&resolved, &mut decoder);
+            crate::api::set_js_prop(&styles_event, "type", &"styles".into());
+            on_event.call1(&JsValue::NULL, &styles_event.into())?;
+        }
+
+        // (B2) Pre-pass columns — the three per-content structures each geometry
+        // worker would otherwise rebuild with its OWN full-file walk on its first
+        // batch (issue #957 orphan/instanced type geometry + #563 material-layer
+        // slicing). Built ONCE here from spans this scan already collected, then
+        // installed on every worker via `set{ReferencedRepmaps,InstantiatedTypeIds,
+        // MaterialLayerIndex}`. Emitted BEFORE the first jobs chunk (below) and
+        // workers apply messages FIFO, so the injected data is always in place
+        // before any `processGeometryBatch` — the lazy per-worker build (the
+        // byte-identical fallback) never fires on the streaming path.
+        let referenced_repmaps =
+            crate::api::styling::build_referenced_representation_maps_from_spans(
+                &mapped_item_spans,
+                &mut decoder,
+            );
+        let instantiated_type_ids =
+            crate::api::styling::build_instantiated_type_ids_from_spans(
+                &rel_defines_by_type_spans,
+                &mut decoder,
+            );
+        // #1623 Phase 3 don't-bake plan: the RepresentationMap ids an IfcMappedItem
+        // instantiates >= 2 times, tallied from the SAME spans (no extra scan). The
+        // batch path arms its router with these so a repeated single-solid mapped
+        // source materializes once per batch and the rest ride as shard instances.
+        let mapped_instance_plan =
+            crate::api::styling::build_mapped_instance_plan_from_spans(
+                &mapped_item_spans,
+                &mut decoder,
+            );
+        // Gate on `has_layer_set` to stay bit-identical to
+        // `get_or_build_material_layer_index`, which ships an EMPTY index when the
+        // file authors no layer set (its substring bail-out). from_spans reuses
+        // the already-stashed IfcRelAssociatesMaterial spans — no extra walk.
+        let material_layer_flat = if has_layer_set {
+            ifc_lite_geometry::MaterialLayerIndex::from_spans(
+                &prepass_spans.rel_associates_material,
+                &mut decoder,
+            )
+            .to_flat()
+        } else {
+            ifc_lite_geometry::MaterialLayerFlat::default()
+        };
+
+        let repmaps_arr: Vec<u32> = referenced_repmaps.into_iter().collect();
+        let type_ids_arr: Vec<u32> = instantiated_type_ids.into_iter().collect();
+        let columns_event = js_sys::Object::new();
+        crate::api::set_js_prop(&columns_event, "type", &"prepass-columns".into());
         crate::api::set_js_prop(
-            &styles_event,
-            "styleIds",
-            &js_sys::Uint32Array::from(style_ids_vec.as_slice()),
+            &columns_event,
+            "referencedRepmaps",
+            &js_sys::Uint32Array::from(repmaps_arr.as_slice()),
         );
         crate::api::set_js_prop(
-            &styles_event,
-            "styleColors",
-            &js_sys::Uint8Array::from(style_colors_vec.as_slice()),
+            &columns_event,
+            "instantiatedTypeIds",
+            &js_sys::Uint32Array::from(type_ids_arr.as_slice()),
         );
         crate::api::set_js_prop(
-            &styles_event,
-            "voidKeys",
-            &js_sys::Uint32Array::from(void_keys_vec.as_slice()),
+            &columns_event,
+            "mappedInstancePlan",
+            &js_sys::Uint32Array::from(mapped_instance_plan.as_slice()),
         );
         crate::api::set_js_prop(
-            &styles_event,
-            "voidCounts",
-            &js_sys::Uint32Array::from(void_counts_vec.as_slice()),
+            &columns_event,
+            "mliElementIds",
+            &js_sys::Uint32Array::from(material_layer_flat.element_ids.as_slice()),
         );
         crate::api::set_js_prop(
-            &styles_event,
-            "voidValues",
-            &js_sys::Uint32Array::from(void_values_vec.as_slice()),
+            &columns_event,
+            "mliAxis",
+            &js_sys::Uint32Array::from(material_layer_flat.axis.as_slice()),
         );
         crate::api::set_js_prop(
-            &styles_event,
-            "materialElementIds",
-            &js_sys::Uint32Array::from(mat_ids_vec.as_slice()),
+            &columns_event,
+            "mliLayerCounts",
+            &js_sys::Uint32Array::from(material_layer_flat.layer_counts.as_slice()),
         );
         crate::api::set_js_prop(
-            &styles_event,
-            "materialColorCounts",
-            &js_sys::Uint32Array::from(mat_counts_vec.as_slice()),
+            &columns_event,
+            "mliDirectionSense",
+            &js_sys::Float64Array::from(&material_layer_flat.direction_sense[..]),
         );
         crate::api::set_js_prop(
-            &styles_event,
-            "materialColors",
-            &js_sys::Uint8Array::from(mat_colors_vec.as_slice()),
+            &columns_event,
+            "mliOffset",
+            &js_sys::Float64Array::from(&material_layer_flat.offset[..]),
         );
-        on_event.call1(&JsValue::NULL, &styles_event.into())?;
+        crate::api::set_js_prop(
+            &columns_event,
+            "mliLayerMaterialIds",
+            &js_sys::Uint32Array::from(material_layer_flat.layer_material_ids.as_slice()),
+        );
+        crate::api::set_js_prop(
+            &columns_event,
+            "mliLayerThicknesses",
+            &js_sys::Float64Array::from(&material_layer_flat.layer_thicknesses[..]),
+        );
+        on_event.call1(&JsValue::NULL, &columns_event.into())?;
 
         // (C) First wave — a small chunk routed by element id (no affinity hash)
         // so workers get a quick, cheap first batch the instant the gate opens.
@@ -638,7 +692,7 @@ impl IfcAPI {
         // failure the key falls back to the element id (its own bucket).
         {
             let mut akey_decoder =
-                EntityDecoder::with_arc_index(content, entity_index_arc.clone());
+                EntityDecoder::with_arc_columnar_index(content, entity_index_arc.clone());
             let akey_router = GeometryRouter::new();
             let rest = &buffered_jobs[first_n..];
             let mut affinity: Vec<u32> = Vec::with_capacity(rest.len());
@@ -670,19 +724,23 @@ impl IfcAPI {
         // (geometry on the type via RepresentationMaps, no occurrence). The
         // entity index is complete here, so this resolves cleanly.
         //
-        // PERF (flagged, #962 review): for files WITH representation maps this is
-        // a second linear EntityScanner pass over `content` on top of the
-        // streaming scan above. A `IFCREPRESENTATIONMAP` substring guard inside
-        // the helper makes the ~all-files-without-type-geometry case free (just a
-        // SIMD memmem). The remaining instanced-file cost is a tracked follow-up:
-        // fold the mapped-item-source + type-candidate collection into the
-        // streaming scan loop so orphans resolve with no extra pass. Kept as a
-        // separate pass for now to avoid destabilising the streaming hot path.
+        // #962 done: the mapped-item source + type-candidate spans were collected
+        // by the streaming scan above, so this resolves orphans from those stashes
+        // with NO second EntityScanner pass. The gate is the SAME predicate the old
+        // `collect_type_geometry_jobs` bailed on — an `IFCREPRESENTATIONMAP`
+        // substring (a SIMD memmem, not a full scan) — so behaviour stays byte-
+        // identical to the old path and `combined_pre_pass`, free on the no-type case.
         // #1097 perf: the viewer's default Model view does not render the
         // type-library (#957) geometry, so skip producing it at load when the
         // caller asks (the Types view re-loads on demand).
-        if !skip_type_geometry {
-            let type_jobs = crate::api::styling::collect_type_geometry_jobs(content, &mut decoder);
+        if !skip_type_geometry
+            && memchr::memmem::find(content, b"IFCREPRESENTATIONMAP").is_some()
+        {
+            let type_jobs = crate::api::styling::collect_type_geometry_jobs_from_spans(
+                &mapped_item_spans,
+                &type_candidate_spans,
+                &mut decoder,
+            );
             if !type_jobs.is_empty() {
                 total_jobs += type_jobs.len() as u32;
                 // Type-library geometry is a small, usually-suppressed tail; route

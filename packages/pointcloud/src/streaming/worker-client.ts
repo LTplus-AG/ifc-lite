@@ -175,6 +175,9 @@ export interface CreateDecodeWorkerSourceOptions extends DecodeWorkerOptions {
   label?: string;
   /** stride>1 → drop every Nth point on decode for memory bounds. */
   stride?: number;
+  /** See `decodeLasPoints`'s `originOffset` param (issue #1804); ignored
+   *  by non-LAS/LAZ formats. */
+  originOffset?: readonly [number, number, number];
 }
 
 /**
@@ -217,6 +220,7 @@ export function createDecodeWorkerSource(
           blob: opts.blob,
           label: opts.label,
           stride: Math.max(1, opts.stride ?? 1),
+          originOffset: opts.originOffset,
         }),
       );
       sourceId = resp.sourceId;

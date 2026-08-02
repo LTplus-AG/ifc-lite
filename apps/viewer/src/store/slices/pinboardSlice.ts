@@ -427,9 +427,17 @@ export const createPinboardSlice: StateCreator<
   },
 
   activateBasketView: (viewId) => {
-    void import('../basket/basketViewActivator.js').then(({ activateBasketViewFromStore }) => {
-      activateBasketViewFromStore(viewId);
-    });
+    void import('../basket/basketViewActivator.js')
+      .then(({ activateBasketViewFromStore }) => {
+        activateBasketViewFromStore(viewId);
+      })
+      // Fire-and-forget: with no handler a rejected chunk load (a deploy rotated
+      // the hash under this tab - see lib/chunk-version-skew.ts) becomes an
+      // unhandled rejection. The view simply does not activate; the reload the
+      // skew handler schedules is the recovery.
+      .catch((err) => {
+        console.warn('[pinboard] could not load the basket-view activator', err);
+      });
   },
 
   removeBasketView: (viewId) => {

@@ -1,0 +1,76 @@
+ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('mapped_instances_nested.ifc','2024-01-01T00:00:00',(''),(''),'ifc-lite','ifc-lite','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCCARTESIANPOINT((0.,0.,0.));
+#2=IFCAXIS2PLACEMENT3D(#1,$,$);
+#3=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#4=IFCUNITASSIGNMENT((#3));
+#5=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,#2,$);
+/* One 1x1 box, height 2 */
+#6=IFCCARTESIANPOINT((0.,0.));
+#7=IFCAXIS2PLACEMENT2D(#6,$);
+#8=IFCRECTANGLEPROFILEDEF(.AREA.,$,#7,1.0,1.0);
+#9=IFCDIRECTION((0.,0.,1.));
+#10=IFCAXIS2PLACEMENT3D(#1,$,$);
+#11=IFCEXTRUDEDAREASOLID(#8,#10,#9,2.0);
+/* Inner RepresentationMap over the solid */
+#12=IFCSHAPEREPRESENTATION(#5,'Body','SweptSolid',(#11));
+#13=IFCAXIS2PLACEMENT3D(#1,$,$);
+#14=IFCREPRESENTATIONMAP(#13,#12);
+/* Inner MappingTarget: translate (2,0,0) */
+#15=IFCCARTESIANPOINT((2.,0.,0.));
+#16=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#15,$,$);
+/* Outer map: its MappedRepresentation holds a nested IfcMappedItem (so it is NOT a
+   single-solid source and stays on the flat path that exercises the fix) */
+#17=IFCMAPPEDITEM(#14,#16);
+#18=IFCSHAPEREPRESENTATION(#5,'Body','MappedRepresentation',(#17));
+#19=IFCAXIS2PLACEMENT3D(#1,$,$);
+#20=IFCREPRESENTATIONMAP(#19,#18);
+/* Spatial structure */
+#21=IFCLOCALPLACEMENT($,#2);
+#22=IFCSITE('0SITE56789ABCDEFGHIJKL',$,'Site',$,$,#21,$,$,.ELEMENT.,$,$,$,$,$);
+#23=IFCLOCALPLACEMENT(#21,#2);
+#24=IFCBUILDING('0BLDG56789ABCDEFGHIJKL',$,'Building',$,$,#23,$,$,.ELEMENT.,$,$,$);
+#25=IFCLOCALPLACEMENT(#23,#2);
+#26=IFCBUILDINGSTOREY('0STRY56789ABCDEFGHIJKL',$,'Storey',$,$,#25,$,$,.ELEMENT.,0.);
+#27=IFCPROJECT('0PRJ456789ABCDEFGHIJKL',$,'Proj',$,$,$,$,(#5),#4);
+/* Outer MappingTargets: two 90deg-about-Z rotations (distinct origins) + one pure
+   translation. A rotation composed with the inner translation does NOT commute, so
+   the reconstruction check below fails if the outer-inner compose ORDER is wrong. */
+#28=IFCDIRECTION((0.,1.,0.));
+#29=IFCDIRECTION((-1.,0.,0.));
+#30=IFCCARTESIANPOINT((10.,0.,0.));
+#31=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#28,#29,#30,$,$);
+#32=IFCCARTESIANPOINT((0.,10.,0.));
+#33=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#28,#29,#32,$,$);
+#34=IFCCARTESIANPOINT((0.,0.,10.));
+#35=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#34,$,$);
+/* Occurrence 0: outer map #20 with rotated target #31 */
+#36=IFCMAPPEDITEM(#20,#31);
+#37=IFCSHAPEREPRESENTATION(#5,'Body','MappedRepresentation',(#36));
+#38=IFCPRODUCTDEFINITIONSHAPE($,$,(#37));
+#39=IFCLOCALPLACEMENT(#25,#2);
+#40=IFCBUILDINGELEMENTPROXY('0PRX056789ABCDEFGHIJKL',$,'Nested_0',$,$,#39,#38,$,$);
+/* Occurrence 1: outer map #20 with rotated target #33 */
+#41=IFCMAPPEDITEM(#20,#33);
+#42=IFCSHAPEREPRESENTATION(#5,'Body','MappedRepresentation',(#41));
+#43=IFCPRODUCTDEFINITIONSHAPE($,$,(#42));
+#44=IFCLOCALPLACEMENT(#25,#2);
+#45=IFCBUILDINGELEMENTPROXY('0PRX156789ABCDEFGHIJKL',$,'Nested_1',$,$,#44,#43,$,$);
+/* Occurrence 2: outer map #20 with translation target #35 */
+#46=IFCMAPPEDITEM(#20,#35);
+#47=IFCSHAPEREPRESENTATION(#5,'Body','MappedRepresentation',(#46));
+#48=IFCPRODUCTDEFINITIONSHAPE($,$,(#47));
+#49=IFCLOCALPLACEMENT(#25,#2);
+#50=IFCBUILDINGELEMENTPROXY('0PRX256789ABCDEFGHIJKL',$,'Nested_2',$,$,#49,#48,$,$);
+/* Spatial aggregation + containment */
+#51=IFCRELAGGREGATES('0REL156789ABCDEFGHIJKL',$,$,$,#27,(#22));
+#52=IFCRELAGGREGATES('0REL256789ABCDEFGHIJKL',$,$,$,#22,(#24));
+#53=IFCRELAGGREGATES('0REL356789ABCDEFGHIJKL',$,$,$,#24,(#26));
+#54=IFCRELCONTAINEDINSPATIALSTRUCTURE('0REL456789ABCDEFGHIJKL',$,$,$,(#40,#45,#50),#26);
+ENDSEC;
+END-ISO-10303-21;

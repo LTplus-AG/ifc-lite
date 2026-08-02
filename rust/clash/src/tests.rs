@@ -224,12 +224,31 @@ fn l_prism() -> TriMesh {
     ];
     let indices: Vec<u32> = vec![
         // bottom cap (fan from 0)
-        0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 5, // top cap (fan from 6)
+        0, 2, 1, 0, 3, 2, 0, 4, 3, 0, 5, 4, // top cap (fan from 6)
         6, 7, 8, 6, 8, 9, 6, 9, 10, 6, 10, 11, // sides (one quad per footprint edge)
         0, 1, 7, 0, 7, 6, 1, 2, 8, 1, 8, 7, 2, 3, 9, 2, 9, 8, 3, 4, 10, 3, 10, 9, 4, 5, 11, 4, 11,
         10, 5, 0, 6, 5, 6, 11,
     ];
     TriMesh::new(positions, indices)
+}
+
+/// The concave L prism (same footprint as [`l_prism`]) as `f32` session parts.
+fn l_part() -> (Vec<f32>, Vec<u32>, Vec<f32>) {
+    let positions: Vec<f32> = vec![
+        // bottom (z=0): 0..5
+        0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 2.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 2.0, 0.0, 0.0, 2.0, 0.0,
+        // top (z=1): 6..11
+        0.0, 0.0, 1.0, 2.0, 0.0, 1.0, 2.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 2.0, 1.0, 0.0, 2.0, 1.0,
+    ];
+    let indices: Vec<u32> = vec![
+        // bottom cap (fan from 0), top cap (fan from 6)
+        0, 2, 1, 0, 3, 2, 0, 4, 3, 0, 5, 4, 6, 7, 8, 6, 8, 9, 6, 9, 10, 6, 10, 11,
+        // sides (one quad per footprint edge)
+        0, 1, 7, 0, 7, 6, 1, 2, 8, 1, 8, 7, 2, 3, 9, 2, 9, 8, 3, 4, 10, 3, 10, 9, 4, 5, 11, 4, 11,
+        10, 5, 0, 6, 5, 6, 11,
+    ];
+    let aabb = vec![0.0, 0.0, 0.0, 2.0, 2.0, 1.0];
+    (positions, indices, aabb)
 }
 
 const HARD: u8 = 0;
@@ -309,6 +328,44 @@ fn self_clash_group() {
 }
 
 #[test]
+fn cross_group_dedup_and_same_element_skip() {
+    // Cross-group clash (group_b non-empty): exercises the BVH-over-group_a
+    // query-per-group_b-element branch of `candidate_pairs`, distinct from the
+    // self-clash (`group_b` empty) path every other test above uses.
+    //
+    // Cube 0 = a "wall", cube 1 = an overlapping "pipe", cube 2 = a distant pipe.
+    let session = session_of_cubes(&[(0.0, 0.0, 0.0), (0.5, 0.0, 0.0), (10.0, 0.0, 0.0)]);
+
+    // group_a deliberately lists the wall's global id TWICE (e.g. the caller
+    // accidentally included the same element in a group from two sources). The
+    // BVH is built with one item per group_a POSITION, so both positions 0 and 1
+    // map to global element 0 and will both hit group_b element 1's query -> the
+    // HashSet pair-dedup in `candidate_pairs` must collapse that to one record.
+    let group_a = &[0u32, 0u32];
+    // group_b includes the wall's OWN global id (0) alongside the two pipes: a
+    // group_b element equal to a group_a element (same underlying entity, e.g.
+    // classified into both groups) must be skipped rather than clashed with
+    // itself, and the far pipe (2) must not clash at all.
+    let group_b = &[0u32, 1u32, 2u32];
+
+    let result = session.run_rule(group_a, group_b, HARD, 0.001, 0.0, false);
+
+    assert_eq!(
+        result.records.len(),
+        1,
+        "expected exactly one deduplicated cross-group record, got {:?}",
+        result.records.iter().map(|r| (r.a, r.b)).collect::<Vec<_>>()
+    );
+    let rec = &result.records[0];
+    assert_eq!(
+        (rec.a, rec.b),
+        (0, 1),
+        "the only real cross-group clash is wall(0) vs overlapping pipe(1)"
+    );
+    assert_eq!(rec.status, ClashStatus::Hard);
+}
+
+#[test]
 fn enclosed_solid_hard() {
     // A side-1 cube fully inside a side-10 cube, both centred at origin: surfaces
     // are ~4.5 apart so no triangle pair is within margin — only full enclosure
@@ -327,6 +384,26 @@ fn separated_not_enclosed_none() {
     let session = session_of_sized(&[(0.0, 0.0, 0.0, 1.0), (20.0, 0.0, 0.0, 1.0)]);
     let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
     assert_eq!(result.records.len(), 0, "disjoint cubes are not a clash");
+}
+
+#[test]
+fn contained_pair_reports_mesh_depth_not_aabb_gap() {
+    // #1866: a small box in the L prism's notch, AABB-contained in the L's AABB,
+    // dipping past the notch wall at x=1 into the solid. The old AABB signed-gap
+    // depth reported the contained box's own smallest-axis overlap (0.7 here);
+    // the reported depth must be the mesh-level penetration 1 - x_min instead.
+    let session = session_of_parts(&[l_part(), box_hxyz(1.2, 1.4, 0.5, 0.25, 0.2, 0.2)]);
+    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
+    assert_eq!(result.records.len(), 1, "expected one hard clash");
+    let rec = &result.records[0];
+    assert_eq!(rec.status, ClashStatus::Hard);
+    let x_min = (1.2f32 - 0.25f32) as f64; // matches box_hxyz's f32 corner math
+    let expected = 1.0 - x_min;
+    assert!(
+        (rec.distance + expected).abs() < 1e-9,
+        "depth must be the mesh penetration {expected}, got {}",
+        rec.distance
+    );
 }
 
 #[test]

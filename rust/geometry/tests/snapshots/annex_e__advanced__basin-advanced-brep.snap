@@ -1,16 +1,17 @@
 ---
 source: rust/geometry/tests/geometry_correctness_harness.rs
+assertion_line: 628
 description: tests/models/buildingsmart/annex_e/advanced-geometric-shape/basin-advanced-brep.ifc
 ---
 parse_ok: true
 products_attempted: 30
 products_non_empty: 1
 process_errors: 29
-total_triangles: 1008
-total_vertices: 572
+total_triangles: 1060
+total_vertices: 628
 spike_triangles: 0
-total_surface_area: 0.343
-bbox_min: [-0.304, -0.149, -0.094]
+total_surface_area: 0.485
+bbox_min: [-0.304, -0.154, -0.094]
 bbox_max: [0.304, 0.269, 0.000]
 types_seen:
   IFCSANITARYTERMINAL: 1

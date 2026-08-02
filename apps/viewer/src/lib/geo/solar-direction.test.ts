@@ -5,6 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { enuToViewerDirection, sunLightingForAltitude } from './solar-direction.js';
+import { viewerToEnuRotation } from './viewer-enu-rotation.js';
 
 function assertVecClose(actual: number[], expected: number[], eps = 1e-9) {
   for (let i = 0; i < 3; i++) {
@@ -44,6 +45,39 @@ describe('enuToViewerDirection', () => {
   it('returns a unit vector', () => {
     const v = enuToViewerDirection({ e: 3, n: 4, u: 5 }, 0.6, -0.8);
     assert.ok(Math.abs(Math.hypot(...v) - 1) < 1e-9);
+  });
+
+  it('is the EXACT inverse of the full viewer-to-ENU rotation, including gamma (#1408)', () => {
+    const absc = 2 * Math.cos(Math.PI / 6); // 30deg Helmert, unnormalized x2
+    const ordi = 2 * Math.sin(Math.PI / 6);
+    const gamma = 0.135; // ~7.7deg meridian convergence
+
+    // viewer dir -> ENU (bridge rotation, with gamma) -> back to viewer == identity.
+    const rot = viewerToEnuRotation(1, Math.cos(Math.PI / 6), Math.sin(Math.PI / 6), gamma);
+    const n0 = Math.hypot(0.3, 0.2, -0.9);
+    const v = [0.3 / n0, 0.2 / n0, -0.9 / n0];
+    const enu = {
+      e: rot.eastFromVx * v[0] + rot.eastFromVz * v[2],
+      n: rot.northFromVx * v[0] + rot.northFromVz * v[2],
+      u: v[1],
+    };
+    assertVecClose(enuToViewerDirection(enu, absc, ordi, gamma), v);
+  });
+
+  it('omitting gamma equals gamma=0 (backward compatible default)', () => {
+    const enu = { e: 0.3, n: 0.8, u: 0.52 };
+    assertVecClose(enuToViewerDirection(enu, 0.6, 0.8), enuToViewerDirection(enu, 0.6, 0.8, 0));
+  });
+
+  it('gamma rotates the sun by the convergence vs the grid-only mapping', () => {
+    const gamma = 0.135;
+    const enu = { e: 0.5, n: 0.5, u: Math.SQRT1_2 }; // e,n > 0 so no atan2 wrap
+    const grid = enuToViewerDirection(enu, 1, 0, 0);
+    const withGamma = enuToViewerDirection(enu, 1, 0, gamma);
+    // Horizontal bearing from grid north (viewer -Z), +east = atan2(vx, -vz).
+    const bearing = (w: number[]) => Math.atan2(w[0], -w[2]);
+    assert.ok(Math.abs((bearing(withGamma) - bearing(grid)) - gamma) < 1e-9,
+      `expected the sun bearing to shift by exactly gamma (${gamma})`);
   });
 });
 

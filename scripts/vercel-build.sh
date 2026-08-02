@@ -90,8 +90,74 @@ echo "   PATH=$PATH"
 FILTER="${1:-@ifc-lite/viewer...}"
 echo "   filter:    $FILTER"
 
+# ── PostHog source maps ─────────────────────────────────────────────────────
+# Production stack traces are unreadable without them: every frame in error
+# tracking reads "Could not find sourcemap for source url", so diagnosing a
+# crash has meant hand-fetching the deployed bundle from its immutable
+# deployment URL and decoding line/column by hand.
+#
+# Strictly opt-in: map generation costs build time + memory, and this builder is
+# tight enough that the WASM link has OOM'd it before. So we only turn it on
+# when a CLI key is actually present, i.e. only when the maps will be uploaded
+# and then deleted. With no key, nothing changes from today's build at all.
+#
+# Required Vercel project env to enable:
+#   POSTHOG_CLI_API_KEY   personal API key (phx_...) with
+#                         `error tracking write` + `organization read` scopes
+#                         -> https://eu.posthog.com/settings/user-api-keys
+#   POSTHOG_CLI_ENV_ID    PostHog project id (199147)
+#   POSTHOG_CLI_HOST      https://eu.posthog.com   (EU cloud)
+if [ -n "${POSTHOG_CLI_API_KEY:-}" ] && [ -n "${POSTHOG_CLI_ENV_ID:-}" ]; then
+  export VITE_SOURCEMAP=1
+  echo "🗺️  Source maps ENABLED (POSTHOG_CLI_API_KEY + POSTHOG_CLI_ENV_ID present) — will upload then delete"
+else
+  echo "🗺️  Source maps disabled (need both POSTHOG_CLI_API_KEY and POSTHOG_CLI_ENV_ID) — traces stay minified"
+fi
+
 npx turbo build --filter="$FILTER"
 build_status=$?
+
+# Upload + strip. `sourcemap process` injects a chunk id, uploads, and with
+# --delete-after removes the .map files AND strips the sourceMappingURL
+# comments, so maps are never served to users. Release version is the same
+# 12-char sha the viewer stamps on every event as `app_build_sha`, so symbol
+# sets line up with the events they symbolicate.
+#
+# Never fails the deploy: symbolication is diagnostics, not correctness. But we
+# ALWAYS sweep leftover maps out of the output afterwards — a failed upload must
+# not silently publish them.
+OUT_DIR="apps/viewer/dist"
+if [ $build_status -eq 0 ] && [ -n "${POSTHOG_CLI_API_KEY:-}" ] && [ -n "${POSTHOG_CLI_ENV_ID:-}" ] && [ -d "$OUT_DIR" ]; then
+  # This repo builds with rolldown-vite, which emits the .map files but NOT the
+  # trailing `//# sourceMappingURL=` comment. posthog-cli documents that it
+  # locates maps via that comment (see its --public-path-prefix flag: "we need
+  # to ignore it while searching for them"), so add the comment for any chunk
+  # that has a sibling map. Pairing is then guaranteed by construction instead
+  # of relying on an unverified filename-convention fallback. `--delete-after`
+  # strips these comments again after upload, so nothing ships with a dangling
+  # reference.
+  node scripts/add-sourcemap-refs.mjs "$OUT_DIR"
+  RELEASE_VERSION="$(printf '%.12s' "${VERCEL_GIT_COMMIT_SHA:-${GITHUB_SHA:-dev}}")"
+  echo "🗺️  Uploading source maps (release ${RELEASE_VERSION})…"
+  pnpm exec posthog-cli sourcemap process \
+    --directory "$OUT_DIR" \
+    --release-name ifc-lite-viewer \
+    --release-version "$RELEASE_VERSION" \
+    --delete-after || echo "⚠️  Source-map upload failed — continuing (deploy is unaffected)"
+fi
+
+# Belt and braces: whatever happened above, no .map may reach the CDN.
+if [ -d "$OUT_DIR" ]; then
+  leftover=$(find "$OUT_DIR" -name '*.map' -type f 2>/dev/null | wc -l | tr -d ' ')
+  if [ "$leftover" != "0" ]; then
+    echo "🗺️  Removing $leftover source map(s) from the output (not for public serving)"
+    find "$OUT_DIR" -name '*.map' -type f -delete 2>/dev/null || true
+    # The maps are gone, so any surviving reference now points at nothing and
+    # would 404 for anyone with devtools open. Strip them (this only runs when
+    # the upload did not, since --delete-after already removes both).
+    node scripts/add-sourcemap-refs.mjs "$OUT_DIR" --strip || true
+  fi
+fi
 
 # NOTE: A previous client-side Vercel Skew Protection pin (a __vdpl cookie set
 # from apps/viewer/index.html, with the live deployment id substituted here at

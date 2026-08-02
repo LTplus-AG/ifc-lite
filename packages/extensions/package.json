@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/extensions",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "description": "Extension manifest, capability grammar, and slot registry for ifc-lite user customization",
   "type": "module",
   "main": "./dist/index.js",
@@ -34,14 +34,14 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "acorn": "^8.17.0",
+    "acorn": "^8.18.0",
     "acorn-walk": "^8.3.0",
     "fflate": "^0.8.2"
   },
   "devDependencies": {
-    "@types/node": "^26.0.1",
+    "@types/node": "^26.1.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.10"
   },
   "license": "MPL-2.0",
   "author": "Louis True",
@@ -50,7 +50,7 @@
     "url": "https://github.com/LTplus-AG/ifc-lite.git",
     "directory": "packages/extensions"
   },
-  "homepage": "https://ltplus-ag.github.io/ifc-lite/",
+  "homepage": "https://ifclite.dev/docs/",
   "bugs": "https://github.com/LTplus-AG/ifc-lite/issues",
   "keywords": [
     "ifc",

@@ -5,10 +5,27 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { footprintOBB, wallRectsFromMeshes } from './wall-rects-from-meshes.js';
-import type { MeshData } from '@ifc-lite/geometry';
+import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
 
 type Pt = [number, number];
 const near = (a: number, b: number, eps = 1e-6) => Math.abs(a - b) < eps;
+
+// Canonical render→IFC reconstruction, independent of the code under test:
+// coordinate-handler `toWorld` (mirrored in PropertiesPanel + lib/geo
+// `totalYupOffset`). worldYup = renderLocal + originShift + rtcYup, with
+// rtcYup = { x: rtc.x, y: rtc.z, z: -rtc.y }; then ifcX = worldYup.x,
+// ifcY = -worldYup.z, ifcZ = worldYup.y.
+function canonicalIfc(
+  rx: number, ry: number, rz: number,
+  shift: { x: number; y: number; z: number },
+  rtc: { x: number; y: number; z: number },
+): { ifcX: number; ifcY: number; ifcZ: number } {
+  const rtcYup = { x: rtc.x, y: rtc.z, z: -rtc.y };
+  const wx = rx + shift.x + rtcYup.x;
+  const wy = ry + shift.y + rtcYup.y;
+  const wz = rz + shift.z + rtcYup.z;
+  return { ifcX: wx, ifcY: -wz, ifcZ: wy };
+}
 
 // A render-frame box for one wall: plan footprint is XZ, height is Y. A wall
 // 4 m long (X) × `thick` (Z), `h0..h1` tall (Y).
@@ -90,6 +107,58 @@ describe('wallRectsFromMeshes', () => {
     // Wall Y[0..20] spans storey band [6,9] → included.
     const rects = wallRectsFromMeshes([wallBox(1, 0, 4, 0, 0.8, 0, 20)], undefined, 6, 3);
     assert.strictEqual(rects.length, 1);
+  });
+
+  it('reconstructs the footprint + elevation under a NON-ZERO originShift/rtc, matching the canonical handler', () => {
+    // Georeferenced model: non-zero originShift (viewer Y-up frame) AND
+    // wasmRtcOffset (IFC Z-up). Regression guard for the inverted shift signs —
+    // with a zero shift this test would pass even with the old (wrong) code.
+    const shift = { x: 100, y: 5, z: 20 };
+    const rtc = { x: 1000, y: 2000, z: 3000 };
+    const coord = {
+      originShift: shift,
+      wasmRtcOffset: rtc,
+      hasLargeCoordinates: true,
+      originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } },
+      shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } },
+    } as unknown as CoordinateInfo;
+
+    // Wall render box: renderX[0..4], renderZ[0..0.8], renderY[0..3].
+    // Its render-Y band maps to ifcZ = renderY + shift.y + rtc.z = renderY + 3005,
+    // so the wall occupies ifcZ ∈ [3005, 3008]. Storey band [3005, 3008].
+    const floorElevation = 3005;
+    const floorToFloor = 3;
+    const rects = wallRectsFromMeshes([wallBox(1, 0, 4, 0, 0.8, 0, 3)], coord, floorElevation, floorToFloor);
+    assert.strictEqual(rects.length, 1, 'wall should fall on the shifted storey band');
+    assert.ok(near(rects[0].thickness, 0.8, 1e-3), `thickness ${rects[0].thickness}`);
+
+    // The centreline runs along X at mid-thickness (renderZ = 0.4). Compare the
+    // wall-rects output to the canonical reconstruction of that render point.
+    const [a, b] = rects[0].centreline;
+    const endA = canonicalIfc(0, 1.5, 0.4, shift, rtc); // renderX 0
+    const endB = canonicalIfc(4, 1.5, 0.4, shift, rtc); // renderX 4
+    // endpoints may be in either order — match as an unordered pair
+    const matches =
+      (near(a[0], endA.ifcX, 1e-3) && near(a[1], endA.ifcY, 1e-3) && near(b[0], endB.ifcX, 1e-3) && near(b[1], endB.ifcY, 1e-3)) ||
+      (near(a[0], endB.ifcX, 1e-3) && near(a[1], endB.ifcY, 1e-3) && near(b[0], endA.ifcX, 1e-3) && near(b[1], endA.ifcY, 1e-3));
+    assert.ok(matches, `centreline ${JSON.stringify([a, b])} vs canonical A=${JSON.stringify(endA)} B=${JSON.stringify(endB)}`);
+    // Concretely: cx = rtc.x + shift.x = 1100, cy = rtc.y - shift.z = 1980,
+    // mid-thickness ifcY = 1980 - 0.4 = 1979.6.
+    assert.ok(near(a[1], 1979.6, 1e-3) && near(b[1], 1979.6, 1e-3), `centreline y ${a[1]},${b[1]}`);
+  });
+
+  it('excludes a wall whose SHIFTED elevation leaves the storey band', () => {
+    // Same shift/rtc, but a storey band that (after the shift) the wall misses.
+    const coord = {
+      originShift: { x: 100, y: 5, z: 20 },
+      wasmRtcOffset: { x: 1000, y: 2000, z: 3000 },
+      hasLargeCoordinates: true,
+      originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } },
+      shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } },
+    } as unknown as CoordinateInfo;
+    // Wall ifcZ ∈ [3005, 3008]; a band at ifcZ [0, 3] does NOT overlap it.
+    const rects = wallRectsFromMeshes([wallBox(1, 0, 4, 0, 0.8, 0, 3)], coord, 0, 3);
+    assert.strictEqual(rects.length, 0);
   });
 
   it('ignores non-wall meshes', () => {

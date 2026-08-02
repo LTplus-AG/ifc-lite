@@ -53,6 +53,7 @@ import { useSpaceGhostPreview, type GhostSpec } from './space-sketch/useSpaceGho
 import { useSpaceSceneFraming } from './space-sketch/useSpaceSceneFraming';
 import { exteriorPerimeter, perimeterWalls } from './space-sketch/storey-footprint';
 import type { Hover, SplitTarget, IntentTone } from './space-sketch/types';
+import { eventKey, isTextEntryTarget } from '@/lib/keyboard-event';
 
 const DEFAULT_W = 420;
 const DEFAULT_H = 340;
@@ -336,9 +337,8 @@ export function SpaceSketchOverlay() {
   // listener's lifetime is exactly the tool's.
   useEffect(() => {
     const onUndoRedo = (e: KeyboardEvent) => {
-      if (e.key.toLowerCase() !== 'z' || !(e.ctrlKey || e.metaKey)) return;
-      const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      if (eventKey(e) !== 'z' || !(e.ctrlKey || e.metaKey)) return;
+      if (isTextEntryTarget(e)) return;
       e.preventDefault();
       e.stopPropagation();
       if (e.shiftKey) redo(); else undo();
@@ -633,22 +633,36 @@ export function SpaceSketchOverlay() {
     const coord = geometryResult?.coordinateInfo;
     const snapTol = snapTolRef.current ?? 0.05;
     let floors = 0;
+    let firstError: string | null = null;
     for (const st of storeys) {
       if (sessionsRef.current.has(st.id)) continue; // keep existing drafts/edits
       const rects = wallRectsFromMeshes(meshes, coord, st.elev, floorToFloor(st.id));
       if (!rects.length) continue;
-      const session = new SpacePlateSession();
-      sessionsRef.current.set(st.id, session);
-      const { rooms } = session.buildFromRects(flattenWallRects(rects.map((r) => r.corners)), snapTol, 0.3);
-      const name = ifcDataStore.entities.getName(st.id) || `Storey #${st.id}`;
-      buildsRef.current.set(st.id, {
-        rects, label: name,
-        extraction: { segments: rects.map((r) => ({ a: r.centreline[0], b: r.centreline[1] })), thicknesses: rects.map((r) => r.thickness) },
-      });
-      if (rooms.length) floors++;
+      try {
+        const session = new SpacePlateSession();
+        sessionsRef.current.set(st.id, session);
+        const { rooms } = session.buildFromRects(flattenWallRects(rects.map((r) => r.corners)), snapTol, 0.3);
+        const name = ifcDataStore.entities.getName(st.id) || `Storey #${st.id}`;
+        buildsRef.current.set(st.id, {
+          rects, label: name,
+          extraction: { segments: rects.map((r) => ({ a: r.centreline[0], b: r.centreline[1] })), thicknesses: rects.map((r) => r.thickness) },
+        });
+        if (rooms.length) floors++;
+      } catch (e) {
+        // A storey that exceeds the arrangement input cap (or otherwise fails to
+        // build) must not abort the whole run or leave an unhandled rejection that
+        // can tear down the canvas; record it and move on to the next storey.
+        // Drop the half-built draft so the storey is retryable rather than stuck
+        // holding a session that never produced rooms.
+        firstError ??= e instanceof Error ? e.message : String(e);
+        sessionsRef.current.delete(st.id);
+        buildsRef.current.delete(st.id);
+      }
     }
     setPendingTick((v) => v + 1);
-    setStatus(`Derived rooms across ${floors} storey(s). Confirm on close to create the spaces.`);
+    setStatus(firstError
+      ? `Derived rooms across ${floors} storey(s) — others failed: ${firstError}`
+      : `Derived rooms across ${floors} storey(s). Confirm on close to create the spaces.`);
   }, [ifcDataStore, geometryResult, storeys, floorToFloor]);
 
   // One space for the whole floor: replace the draft with a single room whose

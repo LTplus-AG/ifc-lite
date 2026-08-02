@@ -67,9 +67,9 @@ interface SampleEntry {
 }
 
 const SAMPLES: SampleEntry[] = [
-  { id: 'hello-wall',          label: 'Hello Wall',          blurb: 'IFC5 minimal · 1 wall, 1 storey',          url: '/samples/hello-wall.ifc',          approxBytes:  78_000 },
+  { id: 'hello-wall',          label: 'Hello Wall',          blurb: 'IFC4 minimal · 1 wall, 1 storey',          url: '/samples/hello-wall.ifc',          approxBytes:  78_000 },
   { id: 'building-architecture', label: 'Building / Architecture', blurb: 'buildingSMART sample · 444 entities, IFC4', url: '/samples/building-architecture.ifc', approxBytes: 220_000 },
-  { id: 'infra-bridge',        label: 'Infra Bridge',        blurb: 'Infrastructure · IFC4.3 bridge sample',     url: '/samples/infra-bridge.ifc',        approxBytes: 1_800_000 },
+  { id: 'infra-bridge',        label: 'Infra Bridge',        blurb: 'Infrastructure · IFC4 bridge sample',      url: '/samples/infra-bridge.ifc',        approxBytes: 1_800_000 },
 ];
 
 export function McpPlayground(): ReactNode {
@@ -295,7 +295,7 @@ function DropZone({
         e.preventDefault();
         setHover(false);
         const f = e.dataTransfer.files[0];
-        if (f && /\.ifc$/i.test(f.name)) onFile(f);
+        if (f && /\.ifc(zip)?$/i.test(f.name)) onFile(f);
       }}
       className={cn(
         'flex cursor-pointer flex-col items-center gap-1 rounded-md border-2 border-dashed px-3 py-4 text-center transition-colors',
@@ -305,11 +305,11 @@ function DropZone({
       style={{ color: PAPER_DIM }}
     >
       <Upload size={14} />
-      <span className="text-[11.5px]">drop an .ifc, or click to pick</span>
+      <span className="text-[11.5px]">drop an .ifc/.ifczip, or click to pick</span>
       <input
         ref={inputRef}
         type="file"
-        accept=".ifc"
+        accept=".ifc,.ifczip"
         className="hidden"
         onChange={(e) => {
           const f = e.target.files?.[0];

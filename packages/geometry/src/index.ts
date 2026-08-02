@@ -4,7 +4,7 @@
 
 /**
  * @ifc-lite/geometry - Geometry processing bridge
- * Now powered by IFC-Lite native Rust WASM (1.9x faster than web-ifc)
+ * Now powered by IFC-Lite native Rust WASM (exact-arithmetic CSG kernel)
  */
 
 // IFC-Lite components (recommended - faster)
@@ -40,6 +40,11 @@ export { CoordinateHandler } from './coordinate-handler.js';
 export { GeometryQuality } from './progressive-loader.js';
 export { computeWorkerCount, pickWorkerCount, type WorkerCountInputs, type WorkerCountResult } from './worker-count.js';
 export { getGeometryStreamWatchdogMs, type WatchdogInputs } from './watchdog.js';
+// Cold-start prewarm: start the shared wasm fetch+compile before a file is
+// opened so the download overlaps the user's think time instead of blocking
+// first geometry. The host app decides when (idle / intent) and whether the
+// connection can afford it.
+export { prewarmSharedWasmModule } from './wasm-shared-module.js';
 // Stale-deployment WASM-asset detection (#1363). The host app subscribes to
 // WASM_ASSET_UNAVAILABLE_EVENT and uses `isWasmAssetUnavailableError` to reload
 // onto the current deployment. `notifyIfWasmAssetUnavailable` stays internal —
@@ -48,6 +53,18 @@ export {
   isWasmAssetUnavailableError,
   WASM_ASSET_UNAVAILABLE_EVENT,
 } from './wasm-asset-error.js';
+// WebAssembly runtime-trap contract (#1898). A trap taken by an operation
+// drops only the engine handle that took it and propagates unchanged, so the
+// host can report it; a trap taken while INITIALIZING cannot be recovered in
+// this document and is reported as `WASM_RUNTIME_UNRECOVERABLE` + the event,
+// which the host answers by offering a reload (never automatically — a crash
+// mid-session would discard the user's work).
+export {
+  isWasmRuntimeTrap,
+  isWasmRuntimeUnrecoverableError,
+  WASM_RUNTIME_UNRECOVERABLE_CODE,
+  WASM_RUNTIME_UNRECOVERABLE_EVENT,
+} from './wasm-runtime-trap.js';
 export {
   // `isInstancedShard` / `INSTANCED_SHARD_MAGIC` / `INSTANCED_SHARD_VERSION`
   // are intentionally NOT re-exported — they have no consumer outside the
@@ -66,7 +83,7 @@ import { BufferBuilder } from './buffer-builder.js';
 import { CoordinateHandler } from './coordinate-handler.js';
 import { GeometryQuality } from './progressive-loader.js';
 import { createPlatformBridge, isTauri, type GeometryStats as PlatformGeometryStats, type IPlatformBridge } from './platform-bridge.js';
-import type { GeometryResult, MeshData, CoordinateInfo, GridAxis, TessellationQuality } from './types.js';
+import type { GeometryResult, MeshData, CoordinateInfo, GridAxis, TessellationQuality, KmzAltitudeMode, SimplifyMeshesResult } from './types.js';
 
 // Extracted sub-modules
 import { getStreamingBatchSize, convertMeshCollectionToBatch, withBuildingRotation } from './geometry-coordinate.js';
@@ -437,7 +454,12 @@ export class GeometryProcessor {
           prePass.materialColorCounts,
           prePass.materialColors,
         );
-        meshes.push(...convertMeshCollectionToBatch(collection));
+        // Loop, not `push(...batch)`: spreading passes one ARGUMENT per mesh,
+        // and past V8's ~65k argument ceiling that throws RangeError "Maximum
+        // call stack size exceeded" — real models (Holter: ~110k meshes) hit
+        // it, killing the whole sync process() call.
+        const batch = convertMeshCollectionToBatch(collection);
+        for (let i = 0; i < batch.length; i++) meshes.push(batch[i]);
       }
 
       return { meshes, buildingRotation: prePass.buildingRotation ?? undefined };
@@ -1142,9 +1164,10 @@ export class GeometryProcessor {
     isolated: Uint32Array = new Uint32Array(),
     hiddenTypesCsv = '',
     lit = true,
+    emissive = false,
   ): Uint8Array | null {
     if (!this.bridge?.isInitialized()) return null;
-    return this.bridge.exportGlb(buffer, includeMetadata, hidden, isolated, hiddenTypesCsv, lit);
+    return this.bridge.exportGlb(buffer, includeMetadata, hidden, isolated, hiddenTypesCsv, lit, emissive);
   }
 
   /**
@@ -1226,9 +1249,11 @@ export class GeometryProcessor {
    * Flattens `MeshData[]` into the wasm binding's parallel arrays. The caller passes
    * exactly the meshes it wants emitted (its own visibility filtering). `lit` emits
    * standard PBR materials that shade from normals; `false` ⇒ flat
-   * `KHR_materials_unlit` (the historical look — #1321).
+   * `KHR_materials_unlit` (the historical look — #1321). `emissive` self-illuminates
+   * each material at its base colour (core glTF `emissiveFactor`) so renderers with
+   * no ambient/IBL — Google Earth — don't render it near-black (#1427).
    */
-  exportGlbFromMeshes(meshes: MeshData[], includeMetadata = false, lit = true): Uint8Array | null {
+  exportGlbFromMeshes(meshes: MeshData[], includeMetadata = false, lit = true, emissive = false): Uint8Array | null {
     if (!this.bridge?.isInitialized()) return null;
     let totalV = 0;
     let totalI = 0;
@@ -1262,8 +1287,155 @@ export class GeometryProcessor {
       io += m.indices.length;
     }
     return this.bridge.exportGlbFromMeshes(
-      positions, normals, indices, vertexCounts, indexCounts, colors, origins, expressIds, includeMetadata, lit,
+      positions, normals, indices, vertexCounts, indexCounts, colors, origins, expressIds, includeMetadata, lit, emissive,
     );
+  }
+
+  /**
+   * Demesher: simplify already-produced element meshes at per-element levels
+   * (1-4 = cavity removal + clustering at 0.5/0.25/0.10/0.03 triangle ratio,
+   * 5 = bounding box). Pass ALL of the target elements' MeshData records
+   * (per-material submeshes included); records with `geometryClass !== 0`
+   * (type-library shapes) are ignored. Returns render-ready replacement
+   * meshes (swap into the scene via `removeMeshesForEntities` + `addMeshes`)
+   * plus each element's geometry in its IFC object-placement frame in file
+   * units, for the tessellated IFC re-export (`applySimplifiedGeometry`).
+   *
+   * `originShift` is `coordinateInfo.originShift` (IFC Z-up metres);
+   * `unitScale` is metres per project length unit (defaults to 1 = metres).
+   * Returns null if the wasm bridge is not initialized.
+   */
+  simplifyMeshes(
+    meshes: MeshData[],
+    levels: ReadonlyMap<number, number>,
+    options: { originShift?: { x: number; y: number; z: number }; unitScale?: number } = {},
+  ): SimplifyMeshesResult | null {
+    if (!this.bridge?.isInitialized()) return null;
+    const records = meshes.filter(
+      (m) => (m.geometryClass ?? 0) === 0 && levels.has(m.expressId) && m.indices.length >= 3,
+    );
+    const requested = new Set([...levels.keys()]);
+    const covered = new Set(records.map((m) => m.expressId));
+    const result: SimplifyMeshesResult = { elements: [], skipped: [] };
+    for (const id of requested) {
+      if (!covered.has(id)) result.skipped.push({ expressId: id, reason: 'no-records' });
+    }
+    if (records.length === 0) return result;
+
+    let totalV = 0;
+    let totalI = 0;
+    for (const m of records) {
+      totalV += m.positions.length;
+      totalI += m.indices.length;
+    }
+    const positions = new Float32Array(totalV);
+    const normals = new Float32Array(totalV);
+    const indices = new Uint32Array(totalI);
+    const vertexCounts = new Uint32Array(records.length);
+    const indexCounts = new Uint32Array(records.length);
+    const origins = new Float64Array(records.length * 3);
+    const l2w = new Float64Array(records.length * 16);
+    const l2wPresent = new Uint8Array(records.length);
+    const expressIds = new Uint32Array(records.length);
+    const recordLevels = new Uint8Array(records.length);
+    let vo = 0;
+    let io = 0;
+    for (let i = 0; i < records.length; i++) {
+      const m = records[i];
+      positions.set(m.positions, vo);
+      if (m.normals && m.normals.length === m.positions.length) normals.set(m.normals, vo);
+      indices.set(m.indices, io);
+      vertexCounts[i] = m.positions.length / 3;
+      indexCounts[i] = m.indices.length;
+      const o = m.origin ?? [0, 0, 0];
+      origins[i * 3] = o[0]; origins[i * 3 + 1] = o[1]; origins[i * 3 + 2] = o[2];
+      if (m.localToWorld && m.localToWorld.length === 16) {
+        l2w.set(m.localToWorld, i * 16);
+        l2wPresent[i] = 1;
+      }
+      expressIds[i] = m.expressId;
+      const level = levels.get(m.expressId) ?? 1;
+      // Non-finite levels clamp to 1 (NaN would silently become 0 in the
+      // Uint8Array and select an undefined wasm-side level).
+      recordLevels[i] = Number.isFinite(level) ? Math.min(5, Math.max(1, Math.round(level))) : 1;
+      vo += m.positions.length;
+      io += m.indices.length;
+    }
+
+    const shift = options.originShift ?? { x: 0, y: 0, z: 0 };
+    const out = this.bridge.simplifyMeshes(
+      expressIds, recordLevels, positions, normals, indices, vertexCounts, indexCounts,
+      origins, l2w, l2wPresent, shift.x, shift.y, shift.z, options.unitScale ?? 1, true,
+    );
+
+    // EVERYTHING after the wasm call runs inside the try so `out.free()` in
+    // the finally covers every exception path (WASM handles must be freed
+    // deterministically). Getters copy into fresh JS-owned arrays.
+    try {
+      // Element metadata (type/color) carried from the element's DOMINANT
+      // source record — the per-material submesh with the most triangles
+      // (deterministic: ties keep the first-seen record). The first record
+      // is arbitrary submesh order; a small trim strip must not color the
+      // whole simplified element.
+      const metaRecord = new Map<number, MeshData>();
+      for (const m of records) {
+        const cur = metaRecord.get(m.expressId);
+        if (!cur || m.indices.length > cur.indices.length) metaRecord.set(m.expressId, m);
+      }
+      const outIds: Uint32Array = out.elementIds;
+      const outLevels: Uint8Array = out.levels;
+      const outVertexCounts: Uint32Array = out.vertexCounts;
+      const outIndexCounts: Uint32Array = out.indexCounts;
+      const renderPositions: Float32Array = out.renderPositions;
+      const renderNormals: Float32Array = out.renderNormals;
+      const renderIndices: Uint32Array = out.renderIndices;
+      const renderOrigins: Float64Array = out.renderOrigins;
+      const localPositions: Float64Array = out.localPositions;
+      const localIndices: Uint32Array = out.localIndices;
+      const trisBefore: Uint32Array = out.trisBefore;
+      const trisAfter: Uint32Array = out.trisAfter;
+      const cavitiesDropped: Uint32Array = out.cavitiesDropped;
+
+      let rvo = 0;
+      let rio = 0;
+      for (let i = 0; i < outIds.length; i++) {
+        const vCount = outVertexCounts[i] * 3;
+        const iCount = outIndexCounts[i];
+        const src = metaRecord.get(outIds[i]);
+        const render: MeshData = {
+          expressId: outIds[i],
+          ifcType: src?.ifcType ?? 'IfcBuildingElementProxy',
+          positions: renderPositions.slice(rvo, rvo + vCount),
+          normals: renderNormals.slice(rvo, rvo + vCount),
+          indices: renderIndices.slice(rio, rio + iCount),
+          color: src?.color ?? [0.8, 0.8, 0.8, 1],
+          origin: [renderOrigins[i * 3], renderOrigins[i * 3 + 1], renderOrigins[i * 3 + 2]],
+          geometryClass: 0,
+          ...(src?.localToWorld ? { localToWorld: src.localToWorld } : {}),
+        };
+        result.elements.push({
+          expressId: outIds[i],
+          level: outLevels[i],
+          render,
+          localPositions: localPositions.slice(rvo, rvo + vCount),
+          localIndices: localIndices.slice(rio, rio + iCount),
+          trisBefore: trisBefore[i],
+          trisAfter: trisAfter[i],
+          cavitiesDropped: cavitiesDropped[i],
+        });
+        rvo += vCount;
+        rio += iCount;
+      }
+
+      const skippedIds: Uint32Array = out.skippedIds;
+      const skippedReasons: string[] = out.skippedReasons;
+      for (let i = 0; i < skippedIds.length; i++) {
+        result.skipped.push({ expressId: skippedIds[i], reason: String(skippedReasons[i] ?? 'unknown') });
+      }
+      return result;
+    } finally {
+      out.free();
+    }
   }
 
   /**
@@ -1282,6 +1454,64 @@ export class GeometryProcessor {
   ): Uint8Array | null {
     if (!this.bridge?.isInitialized()) return null;
     return this.bridge.exportKmz(glb, latitude, longitude, altitude, xAxisAbscissa, xAxisOrdinate, name);
+  }
+
+  /**
+   * Build a Google-Earth-ready KMZ from already-produced meshes (no re-meshing) —
+   * the working KMZ path (#1427). The model is embedded as COLLADA (`model.dae`),
+   * the only `<Model>` format Google Earth loads (a GLB raises "Unsupported element:
+   * Model"), with emission-lit double-sided materials.
+   * Flattens `MeshData[]` into the wasm binding's parallel arrays.
+   * `xAxisAbscissa`/`xAxisOrdinate` are the `IfcMapConversion` grid-north components
+   * (pass `undefined` for heading 0). `altitudeMode` selects the KML vertical
+   * placement (`'clampToGround'` default rests on the terrain and ignores `altitude`;
+   * `'absolute'` places the origin at `altitude` metres MSL). Returns null if not
+   * initialized.
+   */
+  exportKmzFromMeshes(
+    meshes: MeshData[],
+    latitude: number,
+    longitude: number,
+    altitude: number,
+    xAxisAbscissa: number | undefined,
+    xAxisOrdinate: number | undefined,
+    name = 'IFC Model',
+    altitudeMode?: KmzAltitudeMode,
+  ): Uint8Array | null {
+    if (!this.bridge?.isInitialized()) return null;
+    let totalV = 0;
+    let totalI = 0;
+    for (const m of meshes) {
+      totalV += m.positions.length;
+      totalI += m.indices.length;
+    }
+    const positions = new Float32Array(totalV);
+    const normals = new Float32Array(totalV);
+    const indices = new Uint32Array(totalI);
+    const vertexCounts = new Uint32Array(meshes.length);
+    const indexCounts = new Uint32Array(meshes.length);
+    const colors = new Float32Array(meshes.length * 4);
+    const origins = new Float64Array(meshes.length * 3);
+    let vo = 0;
+    let io = 0;
+    for (let i = 0; i < meshes.length; i++) {
+      const m = meshes[i];
+      positions.set(m.positions, vo);
+      if (m.normals && m.normals.length === m.positions.length) normals.set(m.normals, vo);
+      indices.set(m.indices, io);
+      vertexCounts[i] = m.positions.length / 3;
+      indexCounts[i] = m.indices.length;
+      const c = m.color ?? [0.8, 0.8, 0.8, 1];
+      colors[i * 4] = c[0]; colors[i * 4 + 1] = c[1]; colors[i * 4 + 2] = c[2]; colors[i * 4 + 3] = c[3];
+      const o = m.origin ?? [0, 0, 0];
+      origins[i * 3] = o[0]; origins[i * 3 + 1] = o[1]; origins[i * 3 + 2] = o[2];
+      vo += m.positions.length;
+      io += m.indices.length;
+    }
+    return this.bridge.exportKmzFromMeshes(
+      positions, normals, indices, vertexCounts, indexCounts, colors, origins,
+      latitude, longitude, altitude, xAxisAbscissa, xAxisOrdinate, name, altitudeMode,
+    );
   }
 
   /**
@@ -1312,9 +1542,32 @@ export class GeometryProcessor {
   }
 
   /**
-   * Cleanup resources
+   * Cleanup resources: frees the underlying WASM `IfcAPI` handle
+   * deterministically (AGENTS.md "Free every WASM handle deterministically").
+   * `IfcLiteBridge.dispose()` also frees whatever the pre-pass / batch caches
+   * were still holding on the handle (see the poisoned-mutex recovery note
+   * on the Rust `IfcAPI` struct) — meshes and pre-pass results are already
+   * freed as they're extracted (`.free()` right after copying into JS
+   * arrays plus `clearPrePassCache()` in every load path's `finally`), so
+   * this only needs to release the long-lived `IfcAPI` handle itself.
+   *
+   * The native (Tauri) path has no WASM handle to release; `platformBridge`
+   * is left untouched.
+   *
+   * Idempotent: `IfcLiteBridge.dispose()` nulls its handle after freeing,
+   * so calling this more than once (e.g. an explicit call after a `using`
+   * declaration already ran `[Symbol.dispose]()`) is a no-op, not a
+   * double-free.
    */
   dispose(): void {
-    // No cleanup needed
+    this.bridge?.dispose();
+  }
+
+  /**
+   * `using processor = new GeometryProcessor(...)` support (TS 5.2+ /
+   * ES2022 target): frees the WASM handle deterministically at scope exit.
+   */
+  [Symbol.dispose](): void {
+    this.dispose();
   }
 }

@@ -23,11 +23,21 @@ const BVH_NODE_BYTES = 32;
 /** Bytes per triangle — 12 floats (3 verts + face normal). */
 const TRIANGLE_BYTES = 48;
 /**
- * Uniform block size for `DeviationParams`. WGSL std140 packs the
- * struct compactly; we add 4 padding u32s to round to 32 bytes which
- * matches a single uniform alignment slot on every WebGPU impl.
+ * Uniform block size for `DeviationParams`: a 64-byte column-major
+ * mat4x4 model matrix (issue #1804 — transforms chunk-space points to
+ * world space before the BVH query, mirroring the splat shader) followed
+ * by pointCount/pointStrideF32/positionOffsetF32 (u32) and maxRange
+ * (f32) — 80 bytes, already 16-byte aligned.
  */
-const PARAMS_UNIFORM_BYTES = 32;
+const PARAMS_UNIFORM_BYTES = 80;
+
+/** Column-major identity, reused for assets without a model matrix. */
+const IDENTITY_MAT4 = new Float32Array([
+  1, 0, 0, 0,
+  0, 1, 0, 0,
+  0, 0, 1, 0,
+  0, 0, 0, 1,
+]);
 
 export interface DeviationDispatchInput {
   /** Storage-usage GPU buffer holding interleaved point vertices.
@@ -41,6 +51,14 @@ export interface DeviationDispatchInput {
   pointCount: number;
   /** Optional clip range in metres. 0 / negative → no clip. */
   maxRange: number;
+  /**
+   * Optional per-asset model matrix (column-major, 16 floats) — the
+   * point cloud node's `model` (issue #1804 IfcMapConversion alignment).
+   * Points are transformed by it BEFORE the closest-triangle query so
+   * deviations are measured in world space, where the BVH triangles
+   * live. Omitted/malformed → identity (chunk space IS world space).
+   */
+  model?: Float32Array;
 }
 
 export class DeviationPipeline {
@@ -165,14 +183,16 @@ export class DeviationPipeline {
     this.transientParamsBuffers.push(paramsBuffer);
     const params = new Uint32Array(PARAMS_UNIFORM_BYTES / 4);
     const paramsF = new Float32Array(params.buffer);
-    params[0] = input.pointCount;
+    // Floats 0..15: the model matrix (see DeviationDispatchInput.model).
+    const model = input.model && input.model.length === 16 ? input.model : IDENTITY_MAT4;
+    paramsF.set(model, 0);
+    params[16] = input.pointCount;
     // Each point in the splat vertex layout occupies POINT_VERTEX_BYTES
     // (24 bytes). The shader walks `positions` as a flat f32 array; one
     // point = 6 floats; the vec3 position is at offset 0.
-    params[1] = POINT_VERTEX_BYTES / 4; // pointStrideF32
-    params[2] = 0;                       // positionOffsetF32
-    paramsF[3] = Math.max(0, input.maxRange);
-    // params[4..7] reserved padding; left zero.
+    params[17] = POINT_VERTEX_BYTES / 4; // pointStrideF32
+    params[18] = 0;                       // positionOffsetF32
+    paramsF[19] = Math.max(0, input.maxRange);
     this.device.queue.writeBuffer(paramsBuffer, 0, params.buffer, 0, PARAMS_UNIFORM_BYTES);
 
     const bindGroup = this.device.createBindGroup({

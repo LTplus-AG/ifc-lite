@@ -16,7 +16,7 @@ use std::cell::RefCell;
 mod consolidate;
 mod normals;
 
-pub use normals::{calculate_normals, smooth_normals_with_creases};
+pub use normals::calculate_normals;
 pub(crate) use consolidate::tri_is_needle;
 
 /// Type alias for small triangle collections (typically 1-2 triangles from clipping)
@@ -44,11 +44,6 @@ impl Plane {
     /// Positive = in front, Negative = behind
     pub fn signed_distance(&self, point: &Point3<f64>) -> f64 {
         (point - self.point).dot(&self.normal)
-    }
-
-    /// Check if point is in front of plane
-    pub fn is_front(&self, point: &Point3<f64>) -> bool {
-        self.signed_distance(point) >= 0.0
     }
 }
 
@@ -78,12 +73,43 @@ impl Triangle {
         Self { v0, v1, v2 }
     }
 
-    /// Calculate triangle normal
+    /// Calculate triangle normal.
+    ///
+    /// **Degenerate triangles get `+Z`, never NaN.** A zero-area (collapsed or
+    /// exactly collinear) triangle has a zero-length cross product, and the
+    /// plain `normalize()` this used to call is `v / |v|` — i.e. `0.0 / 0.0`,
+    /// which is NaN in every component. Those NaNs were written verbatim into
+    /// `Mesh::normals` by `add_triangle_to_mesh` (the only production caller of
+    /// this method, via `ClippingProcessor::clip_mesh`), and they SURVIVED the
+    /// mesh-hygiene pass: `clean_degenerate` / `drop_thin_triangles` rewrites
+    /// only `indices`, so the degenerate triangle's vertices stay in
+    /// `positions` / `normals` as ORPHANS carrying NaN. Six of duplex.ifc's
+    /// material-layer wall slices shipped 81 NaN normal components that way,
+    /// which the `@ifc-lite/provenance` node-hash domain check rightly rejects
+    /// (every NaN bit pattern collapses to one quiet NaN when serialized, so
+    /// accepting them would give distinct payloads the same hash).
+    ///
+    /// `+Z` is this crate's established convention for an undefined normal —
+    /// the same fallback `csg::normals::calculate_normals` and
+    /// `mesh::weld_impl`'s average-normals path already use — so a consumer
+    /// that meets one meets them all. It is stated in the KERNEL's own Z-up
+    /// frame, like every other normal this crate writes, so a viewer that
+    /// converts to Y-up reads it back as `+Y`; that is the conversion doing its
+    /// job, not a second convention. The value is arbitrary but must be a FIXED
+    /// unit vector: a zero normal would just re-create the division by zero in
+    /// any shader or exporter that re-normalizes.
+    ///
+    /// Non-degenerate triangles are unaffected, bit-for-bit: `try_normalize(0.0)`
+    /// returns `Some(v.unscale(|v|))` for every `|v| > 0`, which is exactly what
+    /// `normalize()` computed. The extra `is_finite` check covers the
+    /// astronomically-unlikely underflow case where `|v|` rounds to zero from
+    /// non-zero components (division would yield ±Inf, also out of domain).
     #[inline]
     pub fn normal(&self) -> Vector3<f64> {
-        let edge1 = self.v1 - self.v0;
-        let edge2 = self.v2 - self.v0;
-        edge1.cross(&edge2).normalize()
+        match self.cross_product().try_normalize(0.0) {
+            Some(n) if n.x.is_finite() && n.y.is_finite() && n.z.is_finite() => n,
+            _ => Vector3::new(0.0, 0.0, 1.0),
+        }
     }
 
     /// Calculate the cross product of edges, which is twice the area vector.
@@ -163,49 +189,6 @@ pub struct ClippingProcessor {
     /// Boolean / CSG failures recorded since the last `take_failures()`.
     /// Interior-mutable so the existing `&self` API stays unchanged.
     failures: RefCell<Vec<BoolFailure>>,
-}
-
-/// Create a box mesh from AABB min/max bounds
-/// Returns a mesh with 12 triangles (2 per face, 6 faces)
-fn aabb_to_mesh(min: Point3<f64>, max: Point3<f64>) -> Mesh {
-    let mut mesh = Mesh::with_capacity(8, 36);
-
-    // Define the 8 vertices of the box
-    let v0 = Point3::new(min.x, min.y, min.z); // 0: front-bottom-left
-    let v1 = Point3::new(max.x, min.y, min.z); // 1: front-bottom-right
-    let v2 = Point3::new(max.x, max.y, min.z); // 2: front-top-right
-    let v3 = Point3::new(min.x, max.y, min.z); // 3: front-top-left
-    let v4 = Point3::new(min.x, min.y, max.z); // 4: back-bottom-left
-    let v5 = Point3::new(max.x, min.y, max.z); // 5: back-bottom-right
-    let v6 = Point3::new(max.x, max.y, max.z); // 6: back-top-right
-    let v7 = Point3::new(min.x, max.y, max.z); // 7: back-top-left
-
-    // Add triangles for each face (counter-clockwise winding when viewed from outside)
-    // Front face (z = min.z) - normal points toward -Z
-    add_triangle_to_mesh(&mut mesh, &Triangle::new(v0, v2, v1));
-    add_triangle_to_mesh(&mut mesh, &Triangle::new(v0, v3, v2));
-
-    // Back face (z = max.z) - normal points toward +Z
-    add_triangle_to_mesh(&mut mesh, &Triangle::new(v4, v5, v6));
-    add_triangle_to_mesh(&mut mesh, &Triangle::new(v4, v6, v7));
-
-    // Left face (x = min.x) - normal points toward -X
-    add_triangle_to_mesh(&mut mesh, &Triangle::new(v0, v4, v7));
-    add_triangle_to_mesh(&mut mesh, &Triangle::new(v0, v7, v3));
-
-    // Right face (x = max.x) - normal points toward +X
-    add_triangle_to_mesh(&mut mesh, &Triangle::new(v1, v2, v6));
-    add_triangle_to_mesh(&mut mesh, &Triangle::new(v1, v6, v5));
-
-    // Bottom face (y = min.y) - normal points toward -Y
-    add_triangle_to_mesh(&mut mesh, &Triangle::new(v0, v1, v5));
-    add_triangle_to_mesh(&mut mesh, &Triangle::new(v0, v5, v4));
-
-    // Top face (y = max.y) - normal points toward +Y
-    add_triangle_to_mesh(&mut mesh, &Triangle::new(v3, v7, v6));
-    add_triangle_to_mesh(&mut mesh, &Triangle::new(v3, v6, v2));
-
-    mesh
 }
 
 impl ClippingProcessor {
@@ -385,21 +368,6 @@ impl ClippingProcessor {
 
             _ => unreachable!(),
         }
-    }
-
-    /// Box subtraction - removes everything inside the box from the mesh
-    /// Uses proper CSG difference operation via subtract_mesh
-    pub fn subtract_box(&self, mesh: &Mesh, min: Point3<f64>, max: Point3<f64>) -> Result<Mesh> {
-        // Fast path: if mesh is empty, return empty mesh
-        if mesh.is_empty() {
-            return Ok(Mesh::new());
-        }
-
-        // Create a box mesh from the AABB bounds
-        let box_mesh = aabb_to_mesh(min, max);
-
-        // Use the CSG difference operation (mesh - box)
-        self.subtract_mesh(mesh, &box_mesh)
     }
 
     /// Check if two meshes' bounding boxes overlap
@@ -647,89 +615,6 @@ impl ClippingProcessor {
         Ok(result)
     }
 
-    /// Subtract multiple meshes efficiently
-    ///
-    /// When void count exceeds threshold, unions all voids first
-    /// then performs a single subtraction. This is much more efficient
-    /// for elements with many openings (e.g., floors with many penetrations).
-    ///
-    /// # Arguments
-    /// * `host` - The host mesh to subtract from
-    /// * `voids` - List of void meshes to subtract
-    ///
-    /// # Returns
-    /// The host mesh with all voids subtracted
-    pub fn subtract_meshes_batched(&self, host: &Mesh, voids: &[Mesh]) -> Result<Mesh> {
-        // Filter out empty meshes
-        let non_empty_voids: Vec<&Mesh> = voids.iter().filter(|m| !m.is_empty()).collect();
-
-        if non_empty_voids.is_empty() {
-            return Ok(host.clone());
-        }
-
-        if non_empty_voids.len() == 1 {
-            return self.subtract_mesh(host, non_empty_voids[0]);
-        }
-
-        // Threshold for batching: if more than 10 voids, union them first
-        const BATCH_THRESHOLD: usize = 10;
-
-        if non_empty_voids.len() > BATCH_THRESHOLD {
-            // Union all voids into a single mesh first
-            let void_refs: Vec<Mesh> = non_empty_voids.iter().map(|m| (*m).clone()).collect();
-            let combined = self.union_meshes(&void_refs)?;
-
-            // Single subtraction
-            self.subtract_mesh(host, &combined)
-        } else {
-            // Sequential subtraction for small counts
-            let mut result = host.clone();
-
-            for void in non_empty_voids {
-                result = self.subtract_mesh(&result, void)?;
-            }
-
-            Ok(result)
-        }
-    }
-
-    /// Subtract meshes with fallback on failure
-    ///
-    /// Attempts batched subtraction, but if it fails, returns the host mesh
-    /// unchanged rather than propagating the error. This provides graceful
-    /// degradation for problematic void geometries.
-    pub fn subtract_meshes_with_fallback(&self, host: &Mesh, voids: &[Mesh]) -> Mesh {
-        // Empty host has nothing to cut — short-circuit before invoking the
-        // kernel. Recording a failure here would be a false positive.
-        if host.is_empty() {
-            return host.clone();
-        }
-        match self.subtract_meshes_batched(host, voids) {
-            Ok(result) => {
-                // An empty result is a legitimate outcome (cutters may fully
-                // contain the host). Only non-finite / invalid kernel output
-                // counts as a failure that warrants reverting to the un-cut
-                // host.
-                if !self.validate_mesh(&result) {
-                    self.record_failure(
-                        BoolOp::Difference,
-                        BoolFailureReason::KernelOutputInvalid,
-                    );
-                    host.clone()
-                } else {
-                    result
-                }
-            }
-            Err(e) => {
-                self.record_failure(
-                    BoolOp::Difference,
-                    BoolFailureReason::KernelError(e.to_string()),
-                );
-                host.clone()
-            }
-        }
-    }
-
     /// Heuristic: does this look like a botched CSG difference?
     ///
     /// Kernel-neutral check used by the boolean processor (e.g. the
@@ -899,163 +784,5 @@ fn add_triangle_to_mesh(mesh: &mut Mesh, triangle: &Triangle) {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// More cutters than MAX_CUTTERS_PER_ARRANGEMENT force the chunked path in
-    /// `subtract_mesh_many`; the result must match the sequential subtract chain.
-    /// Set difference is order-independent (`host - {all}` equals
-    /// `host - {chunk1} - {chunk2} - ...`), so chunking is solid-equivalent. Guards
-    /// the chunk boundary (the perf fix for the 86 MB model that stalled the
-    /// geometry stream on a ~90-opening host packed into one arrangement).
-    #[test]
-    fn subtract_mesh_many_chunks_match_sequential() {
-        fn vol(m: &Mesh) -> f64 {
-            let p = |i: u32| {
-                let k = i as usize * 3;
-                [
-                    m.positions[k] as f64,
-                    m.positions[k + 1] as f64,
-                    m.positions[k + 2] as f64,
-                ]
-            };
-            let mut v = 0.0;
-            for t in m.indices.chunks_exact(3) {
-                let (a, b, c) = (p(t[0]), p(t[1]), p(t[2]));
-                v += a[0] * (b[1] * c[2] - c[1] * b[2])
-                    - a[1] * (b[0] * c[2] - c[0] * b[2])
-                    + a[2] * (b[0] * c[1] - c[0] * b[1]);
-            }
-            (v / 6.0).abs()
-        }
-        let csg = ClippingProcessor::new();
-        // Long wall + 20 disjoint through-openings (>16 ⇒ 2 chunks at the cap).
-        let wall = aabb_to_mesh(Point3::new(0., 0., 0.), Point3::new(40., 3., 0.2));
-        let cutters: Vec<Mesh> = (0..20)
-            .map(|i| {
-                let x = 1.0 + i as f64 * 2.0; // 2 m spacing ⇒ pairwise disjoint
-                aabb_to_mesh(Point3::new(x, 1., -0.5), Point3::new(x + 1.0, 2., 0.7))
-            })
-            .collect();
-        let refs: Vec<&Mesh> = cutters.iter().collect();
-        let batched = csg
-            .subtract_mesh_many(&wall, &refs)
-            .expect("chunked subtract must conform");
-        let mut seq = wall.clone();
-        for c in &cutters {
-            seq = csg.subtract_mesh(&seq, c).expect("sequential subtract");
-        }
-        let (vb, vs) = (vol(&batched), vol(&seq));
-        assert!(
-            (vb - vs).abs() < 1e-4,
-            "chunked volume {vb} != sequential {vs} on 20 disjoint cutters"
-        );
-        // Sanity: ~20 holes (~0.2 m³ each) actually removed from the ~24 m³ wall.
-        assert!(
-            vb < vol(&wall) - 3.0,
-            "expected ~20 holes removed; wall {} -> {vb}",
-            vol(&wall)
-        );
-    }
-
-    #[test]
-    fn test_plane_signed_distance() {
-        let plane = Plane::new(Point3::new(0.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 1.0));
-
-        assert_eq!(plane.signed_distance(&Point3::new(0.0, 0.0, 5.0)), 5.0);
-        assert_eq!(plane.signed_distance(&Point3::new(0.0, 0.0, -5.0)), -5.0);
-        assert_eq!(plane.signed_distance(&Point3::new(5.0, 5.0, 0.0)), 0.0);
-    }
-
-    #[test]
-    fn test_clip_triangle_all_front() {
-        let processor = ClippingProcessor::new();
-        let triangle = Triangle::new(
-            Point3::new(0.0, 0.0, 1.0),
-            Point3::new(1.0, 0.0, 1.0),
-            Point3::new(0.5, 1.0, 1.0),
-        );
-        let plane = Plane::new(Point3::new(0.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 1.0));
-
-        match processor.clip_triangle(&triangle, &plane) {
-            ClipResult::AllFront(_) => {}
-            _ => panic!("Expected AllFront"),
-        }
-    }
-
-    #[test]
-    fn test_clip_triangle_all_behind() {
-        let processor = ClippingProcessor::new();
-        let triangle = Triangle::new(
-            Point3::new(0.0, 0.0, -1.0),
-            Point3::new(1.0, 0.0, -1.0),
-            Point3::new(0.5, 1.0, -1.0),
-        );
-        let plane = Plane::new(Point3::new(0.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 1.0));
-
-        match processor.clip_triangle(&triangle, &plane) {
-            ClipResult::AllBehind => {}
-            _ => panic!("Expected AllBehind"),
-        }
-    }
-
-    #[test]
-    fn test_clip_triangle_split_one_front() {
-        let processor = ClippingProcessor::new();
-        let triangle = Triangle::new(
-            Point3::new(0.0, 0.0, 1.0),  // Front
-            Point3::new(1.0, 0.0, -1.0), // Behind
-            Point3::new(0.5, 1.0, -1.0), // Behind
-        );
-        let plane = Plane::new(Point3::new(0.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 1.0));
-
-        match processor.clip_triangle(&triangle, &plane) {
-            ClipResult::Split(triangles) => {
-                assert_eq!(triangles.len(), 1);
-            }
-            _ => panic!("Expected Split"),
-        }
-    }
-
-    #[test]
-    fn test_clip_triangle_split_two_front() {
-        let processor = ClippingProcessor::new();
-        let triangle = Triangle::new(
-            Point3::new(0.0, 0.0, 1.0),  // Front
-            Point3::new(1.0, 0.0, 1.0),  // Front
-            Point3::new(0.5, 1.0, -1.0), // Behind
-        );
-        let plane = Plane::new(Point3::new(0.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 1.0));
-
-        match processor.clip_triangle(&triangle, &plane) {
-            ClipResult::Split(triangles) => {
-                assert_eq!(triangles.len(), 2);
-            }
-            _ => panic!("Expected Split with 2 triangles"),
-        }
-    }
-
-    #[test]
-    fn test_triangle_normal() {
-        let triangle = Triangle::new(
-            Point3::new(0.0, 0.0, 0.0),
-            Point3::new(1.0, 0.0, 0.0),
-            Point3::new(0.0, 1.0, 0.0),
-        );
-
-        let normal = triangle.normal();
-        assert!((normal.z - 1.0).abs() < 1e-6);
-    }
-
-    #[test]
-    fn test_triangle_area() {
-        let triangle = Triangle::new(
-            Point3::new(0.0, 0.0, 0.0),
-            Point3::new(1.0, 0.0, 0.0),
-            Point3::new(0.0, 1.0, 0.0),
-        );
-
-        let area = triangle.area();
-        assert!((area - 0.5).abs() < 1e-6);
-    }
-}
+#[path = "csg_tests.rs"]
+mod csg_tests;

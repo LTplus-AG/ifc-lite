@@ -1,15 +1,16 @@
 ---
 source: rust/geometry/tests/geometry_correctness_harness.rs
+assertion_line: 628
 description: tests/models/issues/472_2222.ifc
 ---
 parse_ok: true
 products_attempted: 3349
 products_non_empty: 13
 process_errors: 3335
-total_triangles: 51588
-total_vertices: 30673
-spike_triangles: 1359
-total_surface_area: 76478.998
+total_triangles: 53479
+total_vertices: 33365
+spike_triangles: 1417
+total_surface_area: 76807.613
 bbox_min: [7.803, -55.407, -8.345]
 bbox_max: [210.141, 201.399, 2.900]
 types_seen:

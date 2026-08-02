@@ -13,10 +13,9 @@ flowchart TB
     end
 
     subgraph Parse["Parse Stage"]
-        Tokenize["Tokenize STEP"]
-        Scan["Scan Entities"]
-        Decode["Decode Attributes"]
-        Build["Build Index"]
+        Scan["Scan Entities (memchr)"]
+        Build["Build Entity Index"]
+        Decode["Decode Attributes (lazy)"]
     end
 
     subgraph Store["Storage Stage"]
@@ -56,24 +55,26 @@ flowchart TB
 
 ### Token Flow
 
+Tokenization happens lazily, per entity, when attributes are decoded (the scan itself never builds tokens):
+
 ```mermaid
 flowchart LR
     subgraph Input["Input"]
-        Bytes["UTF-8 Bytes"]
+        Bytes["Entity byte span"]
     end
 
-    subgraph Lexer["Lexer"]
+    subgraph Lexer["nom Tokenizer"]
         WS["Skip Whitespace"]
         Match["Match Token"]
         Emit["Emit Token"]
     end
 
     subgraph Tokens["Token Types"]
-        Keyword["KEYWORD"]
-        String["STRING"]
-        Number["NUMBER"]
-        EntityRef["#123"]
-        Punctuation["( ) , ; ="]
+        EntityRef["EntityRef #123"]
+        String["String (borrowed bytes)"]
+        Number["Integer / Float"]
+        Enum["Enum .T./.F./..."]
+        List["List / TypedValue"]
     end
 
     Bytes --> WS --> Match --> Emit --> Tokens
@@ -186,10 +187,12 @@ flowchart TB
     end
 
     subgraph Route["2. Route"]
-        Router["Geometry Router"]
-        ExtProc["Extrusion Processor"]
-        BrepProc["Brep Processor"]
-        CSGProc["CSG Processor"]
+        Router["GeometryRouter"]
+        ExtProc["Extrusion / Swept"]
+        BrepProc["Brep / AdvancedBrep"]
+        BoolProc["Boolean (exact CSG)"]
+        TessProc["Tessellated / Surface"]
+        MapProc["MappedItem (instancing)"]
     end
 
     subgraph Triangulate["3. Triangulate"]
@@ -199,9 +202,10 @@ flowchart TB
     end
 
     subgraph Output["4. Output"]
-        Positions["Float32Array positions"]
+        Positions["Float32Array positions<br/>(relative to per-element origin)"]
         NormalsOut["Float32Array normals"]
         Indices["Uint32Array indices"]
+        Origin["origin: [f64; 3]"]
     end
 
     Extract --> Route
@@ -214,21 +218,24 @@ flowchart TB
 ```mermaid
 flowchart LR
     subgraph Local["Local Coordinates"]
-        LP["Profile Points<br/>(2D)"]
+        LP["Profile Points<br/>(2D, f64)"]
     end
 
-    subgraph Transform["Transformations"]
+    subgraph Transform["Transformations (f64)"]
         Extrude["Extrude to 3D"]
         Place["Apply Placement"]
-        Shift["Origin Shift"]
+        RTC["Subtract RTC offset<br/>(large-coordinate models)"]
+        Frame["Split into per-element<br/>origin + local positions"]
     end
 
-    subgraph World["World Coordinates"]
-        WP["World Points<br/>(3D Float32)"]
+    subgraph GPU["GPU Coordinates"]
+        WP["Local Points (f32)<br/>+ origin [f64; 3]"]
     end
 
-    LP --> Extrude --> Place --> Shift --> WP
+    LP --> Extrude --> Place --> RTC --> Frame --> WP
 ```
+
+All placement math runs in f64 on the CPU; only the final per-element local positions are stored as f32, with the world-magnitude translation kept in the f64 `origin`. See [Coordinate Handling](coordinate-handling.md).
 
 ## Render Data Flow
 
@@ -244,9 +251,8 @@ flowchart TB
     end
 
     subgraph Transfer["Transfer"]
-        Map["Map GPU Buffer"]
-        Write["Write Data"]
-        Unmap["Unmap Buffer"]
+        Interleave["Interleave<br/>(pos + normal + entityId)"]
+        Write["queue.writeBuffer"]
     end
 
     subgraph GPU["GPU Memory"]
@@ -269,10 +275,10 @@ flowchart TB
     end
 
     subgraph Draw["Draw Loop"]
-        ForEach["For Each Mesh"]
-        Cull["Frustum Cull"]
+        ForEach["For Each Batch / Instanced Shard"]
+        Cull["Frustum Cull (AABB)"]
         SetBuffers["Set Buffers"]
-        DrawCall["Draw Indexed"]
+        DrawCall["Draw Indexed (+ instanced)"]
     end
 
     subgraph Finish["Finish"]
@@ -362,6 +368,8 @@ flowchart TB
 ```
 
 ## Export Data Flow
+
+Exporters are implemented in Rust (`rust/export`: glTF/GLB, STEP/IFC, IFC5/IFCX, CSV, JSON, OBJ, KMZ, HBJSON, Parquet, and more) and surfaced through the WASM API and the CLI. The TypeScript `@ifc-lite/export` package hosts the browser-side orchestration (merged export, schema conversion, change sets).
 
 ### glTF Export
 

@@ -23,6 +23,12 @@ debug_geometry = ["ifc-lite-geometry/debug_geometry"]
 # separately with atomics/shared-memory flags (build-wasm.sh BUILD_THREADED=1).
 # Off by default — the default bundle stays single-threaded.
 threads = ["dep:wasm-bindgen-rayon"]
+# Browser-console tracing: forwards the geometry/processing crates'
+# structured diagnostics (the `observability` feature) to the DevTools
+# console via a minimal Subscriber. OFF by default - the shipped bundle
+# carries zero tracing code; build a diagnostics bundle with
+# `wasm-pack build ... --features console-tracing`.
+console-tracing = ["dep:tracing", "ifc-lite-processing/observability"]
 
 [dependencies]
 # Optional: only compiled for the threaded bundle (--features threads). Needs
@@ -36,15 +42,15 @@ ifc-lite-core.workspace = true
 # same kernel on wasm32 and native. The Manifold C++ kernel and its
 # LLVM/emsdk build prerequisites were removed in the kernel
 # consolidation (docs/architecture/geometry-pipeline.md).
-ifc-lite-geometry = { version = "4.1.0", path = "../geometry", default-features = false, features = [] }
+ifc-lite-geometry = { version = "4.2.1", path = "../geometry", default-features = false, features = [] }
 # Canonical 2D-symbol extractor lives here; the wasm bindings just
 # delegate (issue #843 follow-up — full parity, one implementation).
-ifc-lite-processing = { version = "4.1.0", path = "../processing" }
+ifc-lite-processing = { version = "4.2.1", path = "../processing" }
 # Pure-geometry clash kernel (BVH broad phase + exact triangle narrow phase).
-ifc-lite-clash = { version = "4.1.0", path = "../clash" }
+ifc-lite-clash = { version = "4.2.1", path = "../clash" }
 # Domain-format exporters (HBJSON, OBJ, glTF/GLB, CSV, JSON, JSON-LD, STEP, IFC5, Merged).
-ifc-lite-export = { version = "4.1.0", path = "../export" }
-js-sys = "=0.3.83"
+ifc-lite-export = { version = "4.2.1", path = "../export" }
+js-sys = "=0.3.103"
 rayon = "1.10"
 # `ifc-lite-geometry` uses rayon `par_iter` (e.g. FacetedBrep
 # preprocessing). On wasm32 there is no thread pool, so it runs
@@ -55,15 +61,17 @@ rayon = "1.10"
 # than N-worker baseline before this fix.)
 rayon-core = { version = "1", features = ["web_spin_lock"] }
 rustc-hash = "2.1"
+memchr = "2.8"
 serde = { version = "1.0", features = ["derive"] }
 serde-wasm-bindgen = "=0.6.5"
 thiserror = "2.0"
-wasm-bindgen = "=0.2.106"
-wasm-bindgen-futures = "=0.4.56"
-web-sys = { version = "=0.3.83", features = ["console", "Performance", "Window"] }
+wasm-bindgen = "=0.2.126"
+wasm-bindgen-futures = "=0.4.76"
+tracing = { version = "0.1", optional = true, default-features = false, features = ["std"] }
+web-sys = { version = "=0.3.103", features = ["console", "Performance", "Window"] }
 
 [dev-dependencies]
-wasm-bindgen-test = "=0.3.56"
+wasm-bindgen-test = "=0.3.76"
 
 [lints]
 workspace = true

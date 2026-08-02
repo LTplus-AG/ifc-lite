@@ -4,10 +4,29 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { IfcTypeEnum, RelationshipType, type SpatialHierarchy, type SpatialNode } from '@ifc-lite/data';
+import {
+  EntityTableBuilder,
+  IfcTypeEnum,
+  RelationshipGraphBuilder,
+  RelationshipType,
+  StringTable,
+  type SpatialHierarchy,
+  type SpatialNode,
+} from '@ifc-lite/data';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore, type FederatedModel } from '@/store';
-import { buildTreeData, buildTypeTree, buildUnifiedStoreys, compareStoreyEntries, type AuthoredProduct } from './treeDataBuilder';
+import {
+  buildTreeData,
+  buildTypeTree,
+  buildUnifiedStoreys,
+  compareStoreyEntries,
+  buildGroupTree,
+  buildMaterialTree,
+  resolveMemberGeometry,
+  groupMatchesSubFilter,
+  GROUP_ENTITY_TYPES,
+  type AuthoredProduct,
+} from './treeDataBuilder';
 import type { HierarchySortMode } from './types';
 
 function createSpatialNode(
@@ -15,11 +34,13 @@ function createSpatialNode(
   type: IfcTypeEnum,
   name: string,
   children: SpatialNode[] = [],
+  longName?: string,
 ): SpatialNode {
   return {
     expressId,
     type,
     name,
+    longName,
     children,
     elements: [],
   };
@@ -300,6 +321,66 @@ describe('buildTreeData', () => {
     assert.strictEqual(railing.ifcType, 'IfcRailing');
     assert.strictEqual(flight.depth, stair.depth + 1, 'parts nest one level under the assembly');
     assert.strictEqual(flight.hasChildren, false, 'leaf parts are not expandable');
+  });
+});
+
+/** ISO 19650 spatial structure: buildings carry a short code in Name and the
+ *  descriptive label in LongName. #3 "01"/"Main Residence" (distinct), #7
+ *  "02"/"Garage" (distinct), #8 "Annex"/"Annex" (duplicate — no secondary). */
+function createLongNameDataStore(): IfcDataStore {
+  const residence = createSpatialNode(3, IfcTypeEnum.IfcBuilding, '01', [], 'Main Residence');
+  const garage = createSpatialNode(7, IfcTypeEnum.IfcBuilding, '02', [], 'Garage & Workshop');
+  const annex = createSpatialNode(8, IfcTypeEnum.IfcBuilding, 'Annex', [], 'Annex');
+  const siteNode = createSpatialNode(2, IfcTypeEnum.IfcSite, 'MY_SITE', [residence, garage, annex]);
+  const projectNode = createSpatialNode(1, IfcTypeEnum.IfcProject, 'MY_PROJECT', [siteNode]);
+
+  const spatialHierarchy: SpatialHierarchy = {
+    project: projectNode,
+    byStorey: new Map(),
+    byBuilding: new Map(),
+    bySite: new Map(),
+    bySpace: new Map(),
+    storeyElevations: new Map(),
+    storeyHeights: new Map(),
+    elementToStorey: new Map(),
+    getStoreyElements: () => [],
+    getStoreyByElevation: () => null,
+    getContainingSpace: () => null,
+    getPath: () => [],
+  };
+
+  return {
+    spatialHierarchy,
+    entities: { count: 0, getName: () => '', getTypeName: () => 'Unknown' },
+  } as unknown as IfcDataStore;
+}
+
+describe('spatial short + long name (#1634)', () => {
+  const expanded = new Set(['root-1', 'root-1-2']);
+
+  it('exposes LongName as secondaryName alongside the short Name', () => {
+    const nodes = buildTreeData(new Map(), createLongNameDataStore(), expanded, false, []);
+
+    const residence = nodes.find((n) => n.id === 'root-1-2-3')!;
+    assert.strictEqual(residence.name, '01');
+    assert.strictEqual(residence.secondaryName, 'Main Residence');
+
+    const garage = nodes.find((n) => n.id === 'root-1-2-7')!;
+    assert.strictEqual(garage.name, '02');
+    assert.strictEqual(garage.secondaryName, 'Garage & Workshop');
+  });
+
+  it('drops a LongName that just duplicates the Name (no redundant secondary)', () => {
+    const nodes = buildTreeData(new Map(), createLongNameDataStore(), expanded, false, []);
+    const annex = nodes.find((n) => n.id === 'root-1-2-8')!;
+    assert.strictEqual(annex.name, 'Annex');
+    assert.strictEqual(annex.secondaryName, undefined);
+  });
+
+  it('leaves secondaryName undefined when a node carries no LongName', () => {
+    const nodes = buildTreeData(new Map(), createLongNameDataStore(), expanded, false, []);
+    const site = nodes.find((n) => n.id === 'root-1-2')!;
+    assert.strictEqual(site.secondaryName, undefined);
   });
 });
 
@@ -682,5 +763,399 @@ describe('storey sort order — IFC4.3 parts and non-level siblings (#1296)', ()
       .map((n) => n.expressIds[0]);
     // Storeys A(6)/B(4) reorder by name; the space (5) stays in the middle slot.
     assert.deepStrictEqual(order, [6, 5, 4]);
+  });
+});
+
+// ============================================================================
+// Groups tab — buildGroupTree / resolveMemberGeometry (#1622)
+// ============================================================================
+
+/**
+ * A minimal MEP-shaped store for the Groups tab. Legacy mode → globalId ===
+ * expressId, so `geometricIds` are plain express ids.
+ *
+ *  - IfcDistributionSystem #100 "HVAC System": ports #201/#203 (no geometry) +
+ *    duct #202 (geometry). Both ports NEST under #202 (IfcRelNests → the shared
+ *    Aggregates edge bucket, inverse direction).
+ *  - IfcZone #300 (unnamed, ObjectType "Fire Compartment"): spaces #301/#302.
+ *  - IfcGroup #400 "Misc": duct #202 again (many-to-many) + orphan port #999
+ *    (no geometry, no relatives → select-only row).
+ *  - IfcSystem #500 "Empty": no members → skipped.
+ *
+ * Note #100 is an IfcDistributionSystem, NOT an IfcSystem: an exact-match
+ * `byType.get('IFCSYSTEM')` returns only #500, so the tab must enumerate the
+ * subtype explicitly (the #1662 defect class).
+ */
+function createGroupDataStore(): IfcDataStore {
+  const names: Record<number, string> = {
+    100: 'HVAC System', 300: '', 400: 'Misc', 500: 'Empty', 600: 'Lighting Circuit',
+    201: 'Port A', 202: 'Main Duct', 203: 'Port B',
+    301: 'Room 1', 302: 'Room 2', 999: 'Orphan Port',
+  };
+  const types: Record<number, string> = {
+    100: 'IfcDistributionSystem', 300: 'IfcZone', 400: 'IfcGroup', 500: 'IfcSystem',
+    600: 'IfcDistributionCircuit',
+    201: 'IfcDistributionPort', 202: 'IfcDuctSegment', 203: 'IfcDistributionPort',
+    301: 'IfcSpace', 302: 'IfcSpace', 999: 'IfcDistributionPort',
+  };
+  const objectTypes: Record<number, string> = { 300: 'Fire Compartment' };
+
+  const byType = new Map<string, number[]>([
+    ['IFCDISTRIBUTIONSYSTEM', [100]],
+    ['IFCDISTRIBUTIONCIRCUIT', [600]],
+    ['IFCZONE', [300]],
+    ['IFCGROUP', [400]],
+    ['IFCSYSTEM', [500]],
+  ]);
+  const byId = new Map<number, { type: string }>();
+  for (const id of Object.keys(types)) byId.set(Number(id), { type: types[Number(id)].toUpperCase() });
+
+  const members: Record<number, number[]> = {
+    100: [201, 202, 203],
+    300: [301, 302],
+    400: [202, 999],
+    500: [],
+    600: [202],
+  };
+  // IfcRelNests: ports #201/#203 nest under duct #202 (inverse → parent host).
+  const nestParent: Record<number, number[]> = { 201: [202], 203: [202] };
+
+  return {
+    entityIndex: { byType, byId },
+    entities: {
+      count: 0,
+      getName: (id: number) => names[id] ?? '',
+      getTypeName: (id: number) => types[id] ?? 'Unknown',
+      getObjectType: (id: number) => objectTypes[id] ?? '',
+    },
+    relationships: {
+      getRelated: (id: number, relType: RelationshipType, direction: 'forward' | 'inverse') => {
+        if (relType === RelationshipType.AssignsToGroup && direction === 'forward') {
+          return members[id] ?? [];
+        }
+        if (relType === RelationshipType.Aggregates && direction === 'inverse') {
+          return nestParent[id] ?? [];
+        }
+        return [];
+      },
+    },
+  } as unknown as IfcDataStore;
+}
+
+const GROUP_GEO_IDS = new Set<number>([202, 301, 302]);
+
+const toLegacyGlobal = (id: number) => id;
+
+describe('resolveMemberGeometry (#1622)', () => {
+  it('passes a geometry-bearing member through as itself', () => {
+    const ds = createGroupDataStore();
+    const resolved = resolveMemberGeometry(ds, 202, toLegacyGlobal, GROUP_GEO_IDS);
+    assert.deepStrictEqual(resolved, [{ expressId: 202, globalId: 202 }]);
+  });
+
+  it('resolves a geometry-less port to its nesting host element (IfcRelNests / Aggregates inverse)', () => {
+    const ds = createGroupDataStore();
+    const resolved = resolveMemberGeometry(ds, 201, toLegacyGlobal, GROUP_GEO_IDS);
+    assert.deepStrictEqual(resolved, [{ expressId: 202, globalId: 202 }]);
+  });
+
+  it('returns [] for a member with no geometry and no resolvable relatives', () => {
+    const ds = createGroupDataStore();
+    const resolved = resolveMemberGeometry(ds, 999, toLegacyGlobal, GROUP_GEO_IDS);
+    assert.deepStrictEqual(resolved, []);
+  });
+});
+
+describe('groupMatchesSubFilter (#1622)', () => {
+  it('buckets the IfcSystem family (incl. IfcDistributionCircuit, IfcStructuralAnalysisModel) as Systems', () => {
+    assert.strictEqual(groupMatchesSubFilter('IfcDistributionSystem', 'systems'), true);
+    assert.strictEqual(groupMatchesSubFilter('IfcDistributionCircuit', 'systems'), true);
+    assert.strictEqual(groupMatchesSubFilter('IfcStructuralAnalysisModel', 'systems'), true);
+    assert.strictEqual(groupMatchesSubFilter('IfcZone', 'systems'), false);
+  });
+
+  it('buckets IfcZone as Zones and IfcGroup / IfcAsset / IfcInventory as Other', () => {
+    assert.strictEqual(groupMatchesSubFilter('IfcZone', 'zones'), true);
+    assert.strictEqual(groupMatchesSubFilter('IfcGroup', 'other'), true);
+    assert.strictEqual(groupMatchesSubFilter('IfcAsset', 'other'), true);
+    assert.strictEqual(groupMatchesSubFilter('IfcInventory', 'other'), true);
+    assert.strictEqual(groupMatchesSubFilter('IfcStructuralResultGroup', 'other'), true);
+    assert.strictEqual(groupMatchesSubFilter('IfcDistributionCircuit', 'other'), false);
+    assert.strictEqual(groupMatchesSubFilter('IfcDistributionSystem', 'other'), false);
+  });
+
+  it('passes everything under All', () => {
+    for (const t of GROUP_ENTITY_TYPES) {
+      assert.strictEqual(groupMatchesSubFilter(t, 'all'), true);
+    }
+  });
+});
+
+describe('buildGroupTree (#1622)', () => {
+  it('enumerates concrete subtypes an exact-match IfcSystem query would miss', () => {
+    const ds = createGroupDataStore();
+    // Guard: the exact-match index really does NOT fold subtypes.
+    assert.deepStrictEqual(ds.entityIndex!.byType!.get('IFCSYSTEM'), [500]);
+    assert.strictEqual(ds.entityIndex!.byType!.get('IFCDISTRIBUTIONSYSTEM')?.[0], 100);
+
+    const nodes = buildGroupTree(new Map(), ds, new Set(), false, GROUP_GEO_IDS);
+    const distSystem = nodes.find((n) => n.type === 'group' && n.ifcType === 'IfcDistributionSystem');
+    assert.ok(distSystem, 'the IfcDistributionSystem surfaces despite the exact-match index');
+    assert.strictEqual(distSystem.name, 'HVAC System');
+  });
+
+  it('surfaces IfcDistributionCircuit and buckets it under the Systems sub-filter', () => {
+    const ds = createGroupDataStore();
+    // Guard: the circuit is a distinct exact-match bucket, not folded into IfcSystem.
+    assert.strictEqual(ds.entityIndex!.byType!.get('IFCDISTRIBUTIONCIRCUIT')?.[0], 600);
+
+    const all = buildGroupTree(new Map(), ds, new Set(), false, GROUP_GEO_IDS);
+    const circuit = all.find((n) => n.type === 'group' && n.ifcType === 'IfcDistributionCircuit');
+    assert.ok(circuit, 'the IfcDistributionCircuit surfaces despite the exact-match index');
+    assert.strictEqual(circuit.name, 'Lighting Circuit');
+
+    // It is a system, so the Systems sub-filter keeps it and Zones drops it.
+    const systems = buildGroupTree(new Map(), ds, new Set(), false, GROUP_GEO_IDS, 'systems');
+    assert.ok(
+      systems.some((n) => n.type === 'group' && n.ifcType === 'IfcDistributionCircuit'),
+      'IfcDistributionCircuit passes the Systems sub-filter',
+    );
+    const zones = buildGroupTree(new Map(), ds, new Set(), false, GROUP_GEO_IDS, 'zones');
+    assert.ok(
+      !zones.some((n) => n.type === 'group' && n.ifcType === 'IfcDistributionCircuit'),
+      'IfcDistributionCircuit is not a zone',
+    );
+  });
+
+  it('skips a group with zero members', () => {
+    const ds = createGroupDataStore();
+    const nodes = buildGroupTree(new Map(), ds, new Set(), false, GROUP_GEO_IDS);
+    assert.ok(!nodes.some((n) => n.entityExpressId === 500), 'the empty IfcSystem #500 is dropped');
+  });
+
+  it('collapses ports into their host element and carries resolved geometry for isolation', () => {
+    const ds = createGroupDataStore();
+    const nodes = buildGroupTree(new Map(), ds, new Set(['group-legacy-100']), false, GROUP_GEO_IDS);
+    const groupNode = nodes.find((n) => n.type === 'group' && n.entityExpressId === 100)!;
+    // #100 has 3 members (2 ports + 1 duct) but they resolve to ONE geometry row.
+    assert.strictEqual(groupNode.elementCount, 1);
+    assert.deepStrictEqual(groupNode.globalIds, [202], 'isolation ids = resolved host geometry only');
+    const memberRows = nodes.filter((n) => n.type === 'group-member' && n.id.startsWith('groupmember-legacy-100-'));
+    assert.strictEqual(memberRows.length, 1);
+    assert.strictEqual(memberRows[0].expressIds[0], 202, 'the duct, not the ports');
+  });
+
+  it('keeps a select-only row for a member with no resolvable geometry', () => {
+    const ds = createGroupDataStore();
+    const nodes = buildGroupTree(new Map(), ds, new Set(['group-legacy-400']), false, GROUP_GEO_IDS);
+    const groupNode = nodes.find((n) => n.type === 'group' && n.entityExpressId === 400)!;
+    // Duct #202 (geometry) + orphan port #999 (select-only) = 2 rows, but only
+    // the duct contributes to isolation geometry.
+    assert.strictEqual(groupNode.elementCount, 2);
+    assert.deepStrictEqual(groupNode.globalIds, [202]);
+    const orphan = nodes.find((n) => n.type === 'group-member' && n.id === 'groupmember-legacy-400-999');
+    assert.ok(orphan, 'the geometry-less orphan port stays browsable');
+  });
+
+  it('renders the same member under two groups as distinct rows (many-to-many, no dedup)', () => {
+    const ds = createGroupDataStore();
+    const nodes = buildGroupTree(
+      new Map(), ds, new Set(['group-legacy-100', 'group-legacy-400']), false, GROUP_GEO_IDS,
+    );
+    // Duct #202 belongs to BOTH the HVAC system and the Misc group.
+    const rowsFor202 = nodes.filter((n) => n.type === 'group-member' && n.expressIds[0] === 202);
+    assert.strictEqual(rowsFor202.length, 2, 'one row per owning group');
+    const ids = new Set(rowsFor202.map((n) => n.id));
+    assert.strictEqual(ids.size, 2, 'composite ids keep the rows distinct');
+    assert.ok(ids.has('groupmember-legacy-100-202'));
+    assert.ok(ids.has('groupmember-legacy-400-202'));
+  });
+
+  it('falls back to ObjectType for an unnamed group (#1075 display parity)', () => {
+    const ds = createGroupDataStore();
+    const nodes = buildGroupTree(new Map(), ds, new Set(), false, GROUP_GEO_IDS);
+    const zone = nodes.find((n) => n.type === 'group' && n.entityExpressId === 300)!;
+    assert.strictEqual(zone.name, 'Fire Compartment');
+  });
+
+  it('honours the sub-filter, returning only zones', () => {
+    const ds = createGroupDataStore();
+    const nodes = buildGroupTree(new Map(), ds, new Set(), false, GROUP_GEO_IDS, 'zones');
+    const groups = nodes.filter((n) => n.type === 'group');
+    assert.strictEqual(groups.length, 1);
+    assert.strictEqual(groups[0].ifcType, 'IfcZone');
+  });
+
+  it('orders systems before zones before generic groups', () => {
+    const ds = createGroupDataStore();
+    const nodes = buildGroupTree(new Map(), ds, new Set(), false, GROUP_GEO_IDS);
+    const order = nodes.filter((n) => n.type === 'group').map((n) => n.ifcType);
+    assert.deepStrictEqual(order, [
+      'IfcDistributionSystem', 'IfcDistributionCircuit', 'IfcZone', 'IfcGroup',
+    ]);
+  });
+});
+
+// ============================================================================
+// Groups tab — IFCX-shaped stores (#1622 IFCX follow-up)
+// ============================================================================
+
+/**
+ * An IFCX-ingested store (see buildIfcxDataStore / the federated path): a REAL
+ * populated EntityTable + RelationshipGraph, but `entityIndex.byId` and
+ * `.byType` permanently EMPTY — there are no STEP byte spans to index. The
+ * Groups tab must fall back to the entity table for both group enumeration
+ * and member existence/type resolution.
+ *
+ *  - IfcDistributionSystem #1 "Water Supply": pipes #2/#3 (geometry).
+ *  - IfcGroup #10 "Misc": pipe #2. IfcGroup has NO IfcTypeEnum member, so this
+ *    exercises the rawTypeName fallback inside the type-column scan.
+ */
+function createIfcxShapedDataStore(): IfcDataStore {
+  const strings = new StringTable();
+  const builder = new EntityTableBuilder(8, strings);
+  // add(expressId, type, globalId, name, description, objectType, hasGeometry, isType)
+  builder.add(1, 'IfcDistributionSystem', 'path-system', 'Water Supply', '', '', false, false);
+  builder.add(2, 'IfcPipeSegment', 'path-pipe-1', 'Pipe 1', '', '', true, false);
+  builder.add(3, 'IfcPipeSegment', 'path-pipe-2', 'Pipe 2', '', '', true, false);
+  builder.add(10, 'IfcGroup', 'path-group', 'Misc', '', '', false, false);
+  const entities = builder.build();
+
+  const relBuilder = new RelationshipGraphBuilder();
+  relBuilder.addEdge(1, 2, RelationshipType.AssignsToGroup, 1);
+  relBuilder.addEdge(1, 3, RelationshipType.AssignsToGroup, 2);
+  relBuilder.addEdge(10, 2, RelationshipType.AssignsToGroup, 3);
+
+  return {
+    entityIndex: { byId: new Map(), byType: new Map() },
+    entities,
+    relationships: relBuilder.build(),
+  } as unknown as IfcDataStore;
+}
+
+describe('buildGroupTree — IFCX-shaped store (empty entityIndex)', () => {
+  it('lists groups with real members despite empty byType/byId', () => {
+    const ds = createIfcxShapedDataStore();
+    const nodes = buildGroupTree(
+      new Map(), ds, new Set(['group-legacy-1']), false, new Set([2, 3]),
+    );
+
+    const system = nodes.find((n) => n.type === 'group' && n.ifcType === 'IfcDistributionSystem');
+    assert.ok(system, 'the system surfaces via the entity-table fallback');
+    assert.strictEqual(system.name, 'Water Supply');
+    assert.strictEqual(system.elementCount, 2);
+    assert.deepStrictEqual([...system.globalIds].sort(), [2, 3], 'isolation ids carry member geometry');
+
+    const memberRows = nodes.filter((n) => n.type === 'group-member' && n.id.startsWith('groupmember-legacy-1-'));
+    assert.strictEqual(memberRows.length, 2);
+    assert.deepStrictEqual(
+      memberRows.map((n) => n.name).sort(),
+      ['Pipe 1', 'Pipe 2'],
+      'member rows resolve name/type from the entity table, not byId',
+    );
+    assert.ok(memberRows.every((n) => n.ifcType === 'IfcPipeSegment'));
+  });
+
+  it('surfaces a class with no IfcTypeEnum member (IfcGroup) via rawTypeName', () => {
+    const ds = createIfcxShapedDataStore();
+    const nodes = buildGroupTree(new Map(), ds, new Set(), false, new Set([2, 3]));
+    const group = nodes.find((n) => n.type === 'group' && n.ifcType === 'IfcGroup');
+    assert.ok(group, 'IfcGroup (enum-less) surfaces via the raw type-name scan');
+    assert.strictEqual(group.name, 'Misc');
+    assert.strictEqual(group.elementCount, 1);
+  });
+
+  it('returns no group rows when the model has no group entities', () => {
+    const strings = new StringTable();
+    const builder = new EntityTableBuilder(2, strings);
+    builder.add(1, 'IfcWall', 'path-wall', 'Wall', '', '', true, false);
+    const ds = {
+      entityIndex: { byId: new Map(), byType: new Map() },
+      entities: builder.build(),
+      relationships: new RelationshipGraphBuilder().build(),
+    } as unknown as IfcDataStore;
+    assert.deepStrictEqual(buildGroupTree(new Map(), ds, new Set(), false, new Set([1])), []);
+  });
+
+  it('processes a data store shared by several federated layers exactly once', () => {
+    // Federated IFCX layers share idOffset 0 (one composed expressId space),
+    // so globalId === expressId; keep the store's model registry empty.
+    useViewerStore.setState({ models: new Map() });
+    const ds = createIfcxShapedDataStore();
+    const models = new Map<string, FederatedModel>([
+      ['layer-base', { id: 'layer-base', name: 'base.ifcx', ifcDataStore: ds, idOffset: 0, maxExpressId: 0 } as unknown as FederatedModel],
+      ['layer-overlay', { id: 'layer-overlay', name: 'overlay.ifcx', ifcDataStore: ds, idOffset: 0, maxExpressId: 0 } as unknown as FederatedModel],
+    ]);
+    const nodes = buildGroupTree(models, null, new Set(), true, new Set([2, 3]));
+    const systems = nodes.filter((n) => n.type === 'group' && n.ifcType === 'IfcDistributionSystem');
+    assert.strictEqual(systems.length, 1, 'the shared store must not duplicate group rows per layer');
+  });
+});
+
+// ============================================================================
+// Issue #1755 — By Material tab must surface materials associated to TYPE
+// entities (IfcDoorType). Before the fix the usage index keyed those entries
+// to the type entity, which the geometricIds filter silently dropped.
+// ============================================================================
+
+/** STEP-lines store: doors #1/#2 typed by IfcDoorType #5 (constituent set
+ *  wood1/wood2 on the TYPE), wall #3 with occurrence-level 'Unknown'. */
+function createTypedMaterialDataStore(): IfcDataStore {
+  const lines = [
+    `#1=IFCDOOR('d1',$,'Door',$,$,$,$,$,2.,0.9,$,$,$);`,
+    `#2=IFCDOOR('d2',$,'Door',$,$,$,$,$,2.,0.9,$,$,$);`,
+    `#3=IFCWALL('w1',$,'Wall',$,$,$,$,$,$);`,
+    `#5=IFCDOORTYPE('t1',$,'DoorType',$,$,$,$,$,$,.DOOR.,.SINGLE_SWING_LEFT.,$);`,
+    `#10=IFCMATERIAL('wood1',$,$);`,
+    `#11=IFCMATERIAL('wood2',$,$);`,
+    `#12=IFCMATERIAL('Unknown',$,$);`,
+    `#20=IFCMATERIALCONSTITUENT('Lining',$,#10,0.6,$);`,
+    `#21=IFCMATERIALCONSTITUENT('Framing',$,#11,0.4,$);`,
+    `#22=IFCMATERIALCONSTITUENTSET('Unnamed',$,(#20,#21));`,
+  ];
+  const text = lines.join('\n');
+  const byId = new Map<number, { expressId: number; type: string; byteOffset: number; byteLength: number; lineNumber: number }>();
+  let cursor = 0;
+  for (const line of lines) {
+    const start = text.indexOf(line, cursor);
+    const match = line.match(/^#(\d+)\s*=\s*(\w+)\(/)!;
+    byId.set(parseInt(match[1], 10), {
+      expressId: parseInt(match[1], 10),
+      type: match[2],
+      byteOffset: start,
+      byteLength: line.length,
+      lineNumber: 1,
+    });
+    cursor = start + line.length;
+  }
+
+  const relBuilder = new RelationshipGraphBuilder();
+  relBuilder.addEdge(5, 1, RelationshipType.DefinesByType, 100);
+  relBuilder.addEdge(5, 2, RelationshipType.DefinesByType, 100);
+
+  return {
+    source: new TextEncoder().encode(text),
+    entityIndex: { byId, byType: new Map() },
+    onDemandMaterialMap: new Map([[5, [22]], [3, [12]]]),
+    relationships: relBuilder.build(),
+  } as unknown as IfcDataStore;
+}
+
+describe('buildMaterialTree — type-level material expansion (#1755)', () => {
+  it('surfaces type-associated materials as rows carrying the occurrence ids', () => {
+    const ds = createTypedMaterialDataStore();
+    // Geometry filter ON with only wall+doors rendered — types must survive it.
+    const nodes = buildMaterialTree(new Map(), ds, new Set(), false, new Set([1, 2, 3]));
+
+    const byName = new Map(nodes.map((n) => [n.name, n]));
+    assert.deepStrictEqual(
+      [...byName.keys()].sort(),
+      ['Unknown', 'wood1', 'wood2'],
+      'all three materials must appear (wood1/wood2 hang off the IfcDoorType)',
+    );
+    assert.deepStrictEqual([...byName.get('wood1')!.globalIds].sort(), [1, 2], 'click-to-isolate targets the doors, not the type');
+    assert.deepStrictEqual([...byName.get('wood2')!.globalIds].sort(), [1, 2]);
+    assert.strictEqual(byName.get('wood1')!.elementCount, 2);
+    assert.deepStrictEqual(byName.get('Unknown')!.globalIds, [3], 'occurrence-level association untouched');
   });
 });

@@ -14,5 +14,5 @@
 mod scanner;
 mod tokenizer;
 
-pub use scanner::EntityScanner;
+pub use scanner::{entity_count, EntityScanner};
 pub use tokenizer::{parse_entity, Token};

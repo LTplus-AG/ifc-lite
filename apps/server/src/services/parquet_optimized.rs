@@ -13,8 +13,9 @@
 //!
 //! Typical additional compression: 3-5x over basic Parquet format.
 
+use crate::services::axis::{zup_to_yup, zup_to_yup_f64};
 use crate::types::MeshData;
-use arrow::array::{Float32Array, Int32Array, StringArray, UInt32Array, UInt8Array};
+use arrow::array::{Float32Array, Float64Array, Int32Array, StringArray, UInt32Array, UInt8Array};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 use bytes::Bytes;
@@ -128,6 +129,17 @@ pub fn serialize_to_parquet_optimized(
     let mut instance_ifc_types: Vec<&str> = Vec::with_capacity(meshes.len());
     let mut instance_mesh_indices: Vec<u32> = Vec::with_capacity(meshes.len());
     let mut instance_material_indices: Vec<u32> = Vec::with_capacity(meshes.len());
+    // Per-instance placement + provenance (issue #1841). Dedup merges meshes
+    // whose vertex buffers are bit-identical — which, in an origin-relative
+    // frame, is exactly two occurrences of the same shape at DIFFERENT origins.
+    // Without a per-instance origin those repeats all render at the shared
+    // template coordinates ("N slabs collapse to one"). Carrying the origin (in
+    // the same Y-up frame as the vertices) lets the client place each instance
+    // via world = origin + template_position. Zero for world-baked meshes.
+    let mut instance_origin_x: Vec<f64> = Vec::with_capacity(meshes.len());
+    let mut instance_origin_y: Vec<f64> = Vec::with_capacity(meshes.len());
+    let mut instance_origin_z: Vec<f64> = Vec::with_capacity(meshes.len());
+    let mut instance_geometry_class: Vec<u8> = Vec::with_capacity(meshes.len());
 
     for mesh in meshes {
         // Compute geometry hash for deduplication
@@ -153,11 +165,18 @@ pub fn serialize_to_parquet_optimized(
             idx
         });
 
-        // Record instance
+        // Record instance. Origin is emitted in the same Z-up→Y-up frame as the
+        // vertices (X stays, new Y = old Z, new Z = -old Y) so the client
+        // reconstructs world = origin + template_position in Y-up.
         instance_entity_ids.push(mesh.express_id);
         instance_ifc_types.push(&mesh.ifc_type);
         instance_mesh_indices.push(mesh_idx);
         instance_material_indices.push(material_idx);
+        let origin_yup = zup_to_yup_f64(mesh.origin);
+        instance_origin_x.push(origin_yup[0]);
+        instance_origin_y.push(origin_yup[1]);
+        instance_origin_z.push(origin_yup[2]);
+        instance_geometry_class.push(mesh.geometry_class);
     }
 
     // Phase 2: Build vertex and index buffers from unique meshes
@@ -219,19 +238,28 @@ pub fn serialize_to_parquet_optimized(
             );
         }
 
-        // Quantize and store vertices with Z-up to Y-up transform
-        // OPTIMIZATION: Apply coordinate transform server-side to eliminate client per-vertex loops
-        // IFC uses Z-up, WebGL uses Y-up. Transform: X stays same, new Y = old Z, new Z = -old Y
+        // Quantize and store vertices in the Y-up wire frame (services::axis),
+        // server-side so the client needs no per-vertex loop.
         for i in 0..vert_count {
-            vertex_x.push(quantize_position(mesh.positions[i * 3])); // X stays the same
-            vertex_y.push(quantize_position(mesh.positions[i * 3 + 2])); // New Y = old Z (vertical)
-            vertex_z.push(quantize_position(-mesh.positions[i * 3 + 1])); // New Z = -old Y (depth)
+            let (x, y, z) = zup_to_yup(
+                mesh.positions[i * 3],
+                mesh.positions[i * 3 + 1],
+                mesh.positions[i * 3 + 2],
+            );
+            vertex_x.push(quantize_position(x));
+            vertex_y.push(quantize_position(y));
+            vertex_z.push(quantize_position(z));
 
             if include_normals {
                 if mesh_has_normals {
-                    normal_x.push(mesh.normals[i * 3]); // X stays the same
-                    normal_y.push(mesh.normals[i * 3 + 2]); // New Y = old Z
-                    normal_z.push(-mesh.normals[i * 3 + 1]); // New Z = -old Y
+                    let (x, y, z) = zup_to_yup(
+                        mesh.normals[i * 3],
+                        mesh.normals[i * 3 + 1],
+                        mesh.normals[i * 3 + 2],
+                    );
+                    normal_x.push(x);
+                    normal_y.push(y);
+                    normal_z.push(z);
                 } else {
                     normal_x.push(0.0);
                     normal_y.push(0.0);
@@ -255,6 +283,10 @@ pub fn serialize_to_parquet_optimized(
         Field::new("ifc_type", DataType::Utf8, false),
         Field::new("mesh_index", DataType::UInt32, false),
         Field::new("material_index", DataType::UInt32, false),
+        Field::new("origin_x", DataType::Float64, false),
+        Field::new("origin_y", DataType::Float64, false),
+        Field::new("origin_z", DataType::Float64, false),
+        Field::new("geometry_class", DataType::UInt8, false),
     ]));
 
     let instance_batch = RecordBatch::try_new(
@@ -264,6 +296,10 @@ pub fn serialize_to_parquet_optimized(
             Arc::new(StringArray::from(instance_ifc_types)),
             Arc::new(UInt32Array::from(instance_mesh_indices)),
             Arc::new(UInt32Array::from(instance_material_indices)),
+            Arc::new(Float64Array::from(instance_origin_x)),
+            Arc::new(Float64Array::from(instance_origin_y)),
+            Arc::new(Float64Array::from(instance_origin_z)),
+            Arc::new(UInt8Array::from(instance_geometry_class)),
         ],
     )?;
 
@@ -490,92 +526,5 @@ pub fn serialize_to_parquet_optimized_with_stats(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_optimized_parquet_serialization() {
-        // Create test data with some duplicate meshes
-        let wall_positions = vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0];
-        let wall_normals = vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0];
-        let wall_indices = vec![0, 1, 2];
-        let wall_color = [0.8, 0.8, 0.8, 1.0];
-
-        let meshes = vec![
-            // Two walls with same geometry (should be deduplicated)
-            MeshData::new(
-                1,
-                "IfcWall".to_string(),
-                wall_positions.clone(),
-                wall_normals.clone(),
-                wall_indices.clone(),
-                wall_color,
-            ),
-            MeshData::new(
-                2,
-                "IfcWall".to_string(),
-                wall_positions.clone(),
-                wall_normals.clone(),
-                wall_indices.clone(),
-                wall_color,
-            ),
-            // Different geometry
-            MeshData::new(
-                3,
-                "IfcSlab".to_string(),
-                vec![0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 2.0, 2.0, 0.0, 0.0, 2.0, 0.0],
-                vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
-                vec![0, 1, 2, 0, 2, 3],
-                [0.5, 0.5, 0.5, 1.0],
-            ),
-        ];
-
-        let (data, stats) = serialize_to_parquet_optimized_with_stats(&meshes, false).unwrap();
-
-        // Should deduplicate the two identical walls
-        assert_eq!(stats.input_meshes, 3);
-        assert_eq!(stats.unique_meshes, 2);
-        assert_eq!(stats.unique_materials, 2);
-        assert!(stats.mesh_reuse_ratio > 1.0);
-
-        // Should be very compact
-        // Note: Parquet has fixed overhead, so small test data may be larger
-        assert!(
-            data.len() < 5000,
-            "Expected compact output, got {} bytes",
-            data.len()
-        );
-    }
-
-    #[test]
-    fn test_quantization() {
-        assert_eq!(quantize_position(1.0), 10_000);
-        assert_eq!(quantize_position(0.0001), 1); // 0.1mm
-        assert_eq!(quantize_position(-1.5), -15_000);
-    }
-
-    #[test]
-    fn test_color_to_byte() {
-        assert_eq!(color_to_byte(0.0), 0);
-        assert_eq!(color_to_byte(1.0), 255);
-        assert_eq!(color_to_byte(0.5), 128);
-    }
-
-    /// Regression test for #586: meshes with positions but no normals
-    /// (e.g. `advanced_brep.ifc`) used to panic when `include_normals = true`.
-    #[test]
-    fn test_optimized_serialize_mesh_without_normals() {
-        let meshes = vec![MeshData::new(
-            42,
-            "IfcAdvancedBrep".to_string(),
-            vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0],
-            Vec::new(),
-            vec![0, 1, 2],
-            [0.8, 0.8, 0.8, 1.0],
-        )];
-
-        // Both code paths must survive empty normals.
-        assert!(serialize_to_parquet_optimized_with_stats(&meshes, false).is_ok());
-        assert!(serialize_to_parquet_optimized_with_stats(&meshes, true).is_ok());
-    }
-}
+#[path = "parquet_optimized_tests.rs"]
+mod optimized_tests;

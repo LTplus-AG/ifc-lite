@@ -50,7 +50,15 @@ export async function createWebRtcProvider(
   roomId: string,
   options: WebRtcProviderOptions = {},
 ): Promise<WebRtcProvider> {
-  const mod = await import('y-webrtc' as string).catch(() => null);
+  // Hide the specifier from bundler static analysis: y-webrtc is an OPTIONAL
+  // dependency, and consumers that never construct the WebRTC provider (the
+  // viewer, viewer-embed, downstream apps) must not be forced to resolve or
+  // stub it at build time. A literal `import('y-webrtc')` is still resolved
+  // statically by Rollup/Rolldown/Vite even inside a .catch; routing it
+  // through a variable (+ @vite-ignore) leaves it as a plain runtime dynamic
+  // import that the catch below turns into the friendly error.
+  const specifier = 'y-webrtc';
+  const mod = await import(/* @vite-ignore */ specifier).catch(() => null);
   if (!mod) {
     throw new Error(
       '@ifc-lite/collab: y-webrtc is not installed. Run `pnpm add y-webrtc` and retry.',

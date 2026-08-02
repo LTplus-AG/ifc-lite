@@ -1,6 +1,6 @@
 # @ifc-lite/export
 
-Export formats for IFClite. Writes Apache Parquet, Apache Arrow, IFC STEP (with mutations applied), IFC5 IFCX (JSON + USD geometry), and lightweight LOD0/LOD1 envelopes — all from a single parsed `IfcDataStore`.
+Export formats for IFClite. Writes Apache Parquet (Arrow-based internally), IFC STEP (with mutations applied), IFC5 IFCX (JSON + USD geometry), and lightweight LOD0/LOD1 envelopes — all from a single parsed `IfcDataStore`.
 
 > **glTF/GLB, CSV and JSON-LD moved to Rust.** They are now assembled by the `ifc-lite-export` crate and reached through `GeometryProcessor` in [`@ifc-lite/geometry`](../geometry); the standalone `GLTFExporter`/`CSVExporter`/`JSONLDExporter` classes were retired.
 
@@ -27,13 +27,30 @@ const glb = gp.exportGlbFromMeshes(result.meshes, /* includeMetadata */ true);
 const url = URL.createObjectURL(new Blob([new Uint8Array(glb)], { type: 'model/gltf-binary' }));
 ```
 
+## CSV / JSON-LD / HBJSON - also via GeometryProcessor
+
+```typescript
+// `file` is a caller-provided File (e.g. from an <input type="file">)
+const bytes = new Uint8Array(await file.arrayBuffer()); // raw IFC bytes
+
+// CSV: mode is one of entities | properties | quantities | spatial
+const csv = gp.exportCsv(bytes, 'properties');
+
+// JSON-LD knowledge graph
+const jsonld = gp.exportJsonld(bytes);
+
+// HBJSON (Honeybee JSON for energy simulation)
+const hbjson = gp.exportHbjson(bytes, 'model');
+// Each returns Uint8Array | null (null until the processor is initialized)
+```
+
 ## IFC STEP — with mutations
 
 ```typescript
 import { exportToStep } from '@ifc-lite/export';
 
 const stepText = exportToStep(store, {
-  schema: 'IFC4',           // 'IFC2X3' | 'IFC4' | 'IFC4X3'
+  schema: 'IFC4',           // 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5'
   applyMutations: true,     // include edits from MutablePropertyView
   visibleOnly: false,       // export only entities visible in the renderer
 });
@@ -49,12 +66,16 @@ const blob = new Blob([stepText], { type: 'application/x-step' });
 ```typescript
 import { ParquetExporter } from '@ifc-lite/export';
 
-const exporter = new ParquetExporter();
-const entities = await exporter.exportEntities(parseResult);
-const properties = await exporter.exportProperties(parseResult);
-const quantities = await exporter.exportQuantities(parseResult);
+const exporter = new ParquetExporter(store);
 
-// Each is ~15–50× smaller than equivalent JSON
+// One .bos archive (ZIP of Parquet tables: entities, properties, quantities, …)
+const bos = await exporter.exportBOS();
+
+// …or a single table on its own
+//   tableName ∈ entities|properties|quantities|relationships|strings|vertices|indices|meshes
+const entities = await exporter.exportTable('entities');
+
+// Each Parquet table is ~15–50× smaller than equivalent JSON
 // Loadable directly from DuckDB, Polars, pandas, BigQuery, …
 ```
 
@@ -92,14 +113,20 @@ const lod0 = await generateLod0(bytes);
 
 // LOD1 — meshes simplified to bounding boxes / convex hulls, returned as GLB
 const lod1 = await generateLod1(bytes, { quality: 'medium' });
-//   { glb: Uint8Array, meta: { failedElements, expressIdToNodeId, ... } }
+//   { glb: Uint8Array, meta: { failedElements, mapping, ... } }
 
 // Falls back gracefully to box geometry if a complex element fails to mesh
 ```
 
+## Also exported
+
+- `MergedExporter` - merge several parsed models into one STEP export
+- `convertEntityType` / `convertStepLine` / `needsConversion` - IFC2X3 / IFC4 / IFC4X3 schema conversion helpers
+- `parseGLB` / `parseGLBToMeshData` / `extractGlbMapping` - GLB round-trip readers
+
 ## API
 
-See the [Exporting Guide](https://ltplus-ag.github.io/ifc-lite/guide/exporting/) and [API Reference](https://ltplus-ag.github.io/ifc-lite/api/typescript/#ifc-liteexport).
+See the [Exporting Guide](https://ifclite.dev/docs/guide/exporting/) and [API Reference](https://ifclite.dev/docs/api/typescript/#ifc-liteexport).
 
 ## License
 

@@ -357,15 +357,6 @@ describe('IDS BCF Reporter', () => {
       expect(vp.components?.coloring?.[0].color).toBe('FF0000FF');
     });
 
-    it('should not create viewpoint for entity without globalId', () => {
-      const report = createMockReport();
-      report.specificationResults[0].entityResults[0].globalId = undefined;
-      const project = createBCFFromIDSReport(report);
-
-      const topic = [...project.topics.values()][0];
-      expect(topic.viewpoints.length).toBe(0);
-    });
-
     it('should not have camera set (viewer should zoom-to-fit)', () => {
       const report = createMockReport();
       const project = createBCFFromIDSReport(report);

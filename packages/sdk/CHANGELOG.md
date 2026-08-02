@@ -1,5 +1,93 @@
 # @ifc-lite/sdk
 
+## 1.21.4
+
+### Patch Changes
+
+- [#1944](https://github.com/LTplus-AG/ifc-lite/pull/1944) [`41ea677`](https://github.com/LTplus-AG/ifc-lite/commit/41ea6776448adf32a18c810239c84f5da0d93fb8) Thanks [@louistrue](https://github.com/louistrue)! - Guard spreadsheet formula triggers hidden behind an invisible character in `bim.export.csv()`.
+
+  The CWE-1236 escape tested for a leading `=`, `+`, `-`, `@`, tab or carriage return with an anchored regex, so a trigger sitting behind a byte-order mark, zero-width space, left-to-right mark, right-to-left override or non-breaking space did not match. A spreadsheet still evaluates such a cell, so a value like `\uFEFF=HYPERLINK(...)` (a literal byte-order mark before the `=`) was exported unguarded. IFC text properties are author-controlled and survive round-trips, so a model can carry any of them.
+
+  The trigger is now looked for past leading `\p{Cf}` and `\p{Zs}` characters. Not `\s`, which would swallow a leading tab, and tab is itself a trigger.
+
+- Updated dependencies [[`f2357a2`](https://github.com/LTplus-AG/ifc-lite/commit/f2357a2115d8787b62b68fa11951a76f01e6b2de), [`9a7b5a2`](https://github.com/LTplus-AG/ifc-lite/commit/9a7b5a2fc1bb85ce60e954ccf7819829e43431d6)]:
+  - @ifc-lite/lists@1.22.1
+  - @ifc-lite/data@3.1.0
+  - @ifc-lite/query@1.14.15
+  - @ifc-lite/ids@1.15.36
+
+## 1.21.3
+
+### Patch Changes
+
+- Updated dependencies [[`0cfb88b`](https://github.com/LTplus-AG/ifc-lite/commit/0cfb88b3ac3e5615c7e125c5076ea75cf2039a09), [`382fa7c`](https://github.com/LTplus-AG/ifc-lite/commit/382fa7cf97c04bad07963e25052cbaeb6c2ba7e3), [`6792dd1`](https://github.com/LTplus-AG/ifc-lite/commit/6792dd11ad7049acb7329221ea8809d6333aefb7), [`0f15d56`](https://github.com/LTplus-AG/ifc-lite/commit/0f15d5629c532a9ae6b8d79586e6b16613000498), [`87f3507`](https://github.com/LTplus-AG/ifc-lite/commit/87f3507f6fb67a3fd834a190737ea33d7e9ad661), [`8492e51`](https://github.com/LTplus-AG/ifc-lite/commit/8492e516f23775930e55a192abe526ff507d79bc), [`6842c56`](https://github.com/LTplus-AG/ifc-lite/commit/6842c56c72065fd9f43ac282cacb766b7808c282), [`6869d5c`](https://github.com/LTplus-AG/ifc-lite/commit/6869d5ced2d19ac4ab8b2591847f3ffd52236d14), [`ae0498a`](https://github.com/LTplus-AG/ifc-lite/commit/ae0498a23d61dd63baede3df86cd2f9ec74b1203), [`8799484`](https://github.com/LTplus-AG/ifc-lite/commit/87994844a5edb66404fa12b0719c89f5ec026c4d), [`22bffac`](https://github.com/LTplus-AG/ifc-lite/commit/22bffac737efa9bdd6ca583518f637593cb4d4bc), [`87f3507`](https://github.com/LTplus-AG/ifc-lite/commit/87f3507f6fb67a3fd834a190737ea33d7e9ad661), [`205a136`](https://github.com/LTplus-AG/ifc-lite/commit/205a136ee69e378ea01cd0d0a8a6dc81cf2fb08f), [`205a136`](https://github.com/LTplus-AG/ifc-lite/commit/205a136ee69e378ea01cd0d0a8a6dc81cf2fb08f), [`428c5ae`](https://github.com/LTplus-AG/ifc-lite/commit/428c5ae54bac236a3950f451ee12a0dc23226336), [`f8a3f39`](https://github.com/LTplus-AG/ifc-lite/commit/f8a3f3970844edf266ae6887884ed3be4293ff8c)]:
+  - @ifc-lite/clash@1.6.4
+  - @ifc-lite/create@1.17.0
+  - @ifc-lite/encoding@1.15.0
+  - @ifc-lite/data@3.0.0
+  - @ifc-lite/drawing-2d@1.20.0
+  - @ifc-lite/lists@1.22.0
+  - @ifc-lite/parser@3.11.0
+  - @ifc-lite/export@2.7.0
+  - @ifc-lite/mutations@1.21.1
+  - @ifc-lite/ids@1.15.35
+  - @ifc-lite/query@1.14.14
+
+## 1.21.2
+
+### Patch Changes
+
+- [#1691](https://github.com/LTplus-AG/ifc-lite/pull/1691) [`26af236`](https://github.com/LTplus-AG/ifc-lite/commit/26af236a9128f5fc97493d75d7c9642958343a7a) Thanks [@louistrue](https://github.com/louistrue)! - Documentation moved to https://ifclite.dev/docs/ - README links and package homepage fields now point at the new home (the GitHub Pages site remains as a mirror whose canonical URLs point there).
+
+- Updated dependencies [[`26af236`](https://github.com/LTplus-AG/ifc-lite/commit/26af236a9128f5fc97493d75d7c9642958343a7a), [`3267aaf`](https://github.com/LTplus-AG/ifc-lite/commit/3267aaf5dfe98f9550695d44c1d12644f2c04b88), [`bc1531f`](https://github.com/LTplus-AG/ifc-lite/commit/bc1531f899e5f8d18d1a6ff1ef6d997236a01243)]:
+  - @ifc-lite/bcf@1.16.2
+  - @ifc-lite/clash@1.6.2
+  - @ifc-lite/create@1.16.4
+  - @ifc-lite/data@2.5.2
+  - @ifc-lite/drawing-2d@1.18.6
+  - @ifc-lite/encoding@1.14.10
+  - @ifc-lite/export@2.5.2
+  - @ifc-lite/ids@1.15.27
+  - @ifc-lite/lens@1.17.2
+  - @ifc-lite/lists@1.18.3
+  - @ifc-lite/mutations@1.18.1
+  - @ifc-lite/parser@3.8.2
+  - @ifc-lite/query@1.14.13
+  - @ifc-lite/spatial@1.14.12
+
+## 1.21.1
+
+### Patch Changes
+
+- [#1676](https://github.com/LTplus-AG/ifc-lite/pull/1676) [`da04601`](https://github.com/LTplus-AG/ifc-lite/commit/da0460183dcb4e2b26ceb53cfebd8cca33c78c39) Thanks [@louistrue](https://github.com/louistrue)! - Docs refresh: correct stale README claims and API samples against the current codebase; add READMEs to the ten published packages that shipped without one (cli, create, sdk, sandbox, lens, lists, embed-sdk, embed-protocol, encoding, viewer-core).
+
+- Updated dependencies [[`da04601`](https://github.com/LTplus-AG/ifc-lite/commit/da0460183dcb4e2b26ceb53cfebd8cca33c78c39)]:
+  - @ifc-lite/bcf@1.16.1
+  - @ifc-lite/clash@1.6.1
+  - @ifc-lite/create@1.16.3
+  - @ifc-lite/data@2.5.1
+  - @ifc-lite/encoding@1.14.9
+  - @ifc-lite/export@2.5.1
+  - @ifc-lite/ids@1.15.26
+  - @ifc-lite/lens@1.17.1
+  - @ifc-lite/lists@1.18.2
+  - @ifc-lite/parser@3.8.1
+  - @ifc-lite/query@1.14.12
+  - @ifc-lite/spatial@1.14.11
+
+## 1.21.0
+
+### Minor Changes
+
+- [#1626](https://github.com/LTplus-AG/ifc-lite/pull/1626) [`07f630e`](https://github.com/LTplus-AG/ifc-lite/commit/07f630e8373e52f37e5c5133d4b92ca5592368eb) Thanks [@louistrue](https://github.com/louistrue)! - Support Bonsai-style `/regex/` patterns for property-set / quantity-set and property / quantity names. A name wrapped in slashes (e.g. `/Qto_.*BaseQuantities/`, optionally with flags like `/qto_.*/i`) is matched as a regular expression; a plain name stays an exact match. This lets one list column or query read a value across several matching sets at once, for example `NetVolume` from `Qto_WallBaseQuantities` AND `Qto_SlabBaseQuantities` (issue [#1591](https://github.com/LTplus-AG/ifc-lite/issues/1591)). Applies to `@ifc-lite/lists` column extraction and filter conditions and to the SDK `bim.query().property()` / `quantity()` getters. `@ifc-lite/lists` exports the new `compileNameMatcher` / `isNamePattern` helpers.
+
+### Patch Changes
+
+- Updated dependencies [[`6be7ad4`](https://github.com/LTplus-AG/ifc-lite/commit/6be7ad477e1f20d6ba1a90e5b5db4645fc48a960), [`6be7ad4`](https://github.com/LTplus-AG/ifc-lite/commit/6be7ad477e1f20d6ba1a90e5b5db4645fc48a960), [`f6f8bd2`](https://github.com/LTplus-AG/ifc-lite/commit/f6f8bd2ca0be7b242fb78bef1bd1a1b8a5ab8944), [`07f630e`](https://github.com/LTplus-AG/ifc-lite/commit/07f630e8373e52f37e5c5133d4b92ca5592368eb)]:
+  - @ifc-lite/bcf@1.16.0
+  - @ifc-lite/clash@1.6.0
+  - @ifc-lite/lists@1.18.0
+
 ## 1.20.1
 
 ### Patch Changes

@@ -19,6 +19,8 @@
 import { useEffect, useRef, type MutableRefObject } from 'react';
 import type { Renderer } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
+import { unregisterPointCloudAlignment, hasRegisteredPointCloudAlignment } from '@/hooks/ingest/pointCloudAlignment';
+import { removePointCloudScanCache } from '@/hooks/ingest/pointCloudScanCache';
 
 export interface UsePointCloudLifecycleParams {
   rendererRef: MutableRefObject<Renderer | null>;
@@ -29,6 +31,7 @@ export function usePointCloudLifecycle(params: UsePointCloudLifecycleParams): vo
   const { rendererRef, isInitialized } = params;
   const models = useViewerStore((s) => s.models);
   const decCount = useViewerStore((s) => s.incrementPointCloudAssetCount);
+  const setClassCounts = useViewerStore((s) => s.setPointCloudClassCounts);
   const previousRef = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
@@ -52,13 +55,27 @@ export function usePointCloudLifecycle(params: UsePointCloudLifecycleParams): vo
       const nextHandle = current.get(modelId);
       if (nextHandle !== handleId) {
         renderer.removePointCloudAsset({ id: handleId });
+        // Drop the asset's classification histogram so the classes
+        // checklist stops listing points that are no longer loaded.
+        setClassCounts(handleId, null);
+        // Drop its IfcMapConversion alignment registration (issue #1804)
+        // so a later toggle doesn't push a stale matrix to a freed handle,
+        // and re-derive the panel toggle's visibility from the registry —
+        // otherwise removing the last aligned scan leaves a toggle that
+        // silently does nothing for the next (e.g. PLY) scan.
+        unregisterPointCloudAlignment(handleId);
+        useViewerStore.getState().setPointCloudAlignmentAvailable(hasRegisteredPointCloudAlignment());
+        // Same cleanup for the 2D section scan-layer cache (issue #1805) —
+        // nothing else frees this, since streamed assets live outside the
+        // normal geometryResult/pointClouds lifecycle.
+        removePointCloudScanCache(handleId);
         decCount(-1);
       }
     }
 
     previousRef.current = current;
     renderer.requestRender();
-  }, [models, isInitialized, rendererRef, decCount]);
+  }, [models, isInitialized, rendererRef, decCount, setClassCounts]);
 }
 
 export default usePointCloudLifecycle;

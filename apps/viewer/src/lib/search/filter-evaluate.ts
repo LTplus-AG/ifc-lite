@@ -37,7 +37,7 @@
 import {
   extractPropertiesOnDemand,
   extractQuantitiesOnDemand,
-  extractMaterialsOnDemand,
+  extractAllMaterialsOnDemand,
   extractClassificationsOnDemand,
   type IfcDataStore,
   type ClassificationInfo,
@@ -420,7 +420,15 @@ function evaluateOneEntity(
     return qtyCache;
   };
   const matNamesFor = (): string[] => {
-    if (!matCache) matCache = materialNamesOf(extractMaterialsOnDemand(ctx.store, expressId));
+    if (!matCache) {
+      // Union across ALL associations so a material rule matches an element
+      // whose second IfcRelAssociatesMaterial carries the queried name.
+      const seen = new Set<string>();
+      for (const info of extractAllMaterialsOnDemand(ctx.store, expressId)) {
+        for (const n of materialNamesOf(info)) seen.add(n);
+      }
+      matCache = [...seen];
+    }
     return matCache;
   };
   const classFor = (): readonly ClassificationInfo[] => {

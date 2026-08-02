@@ -10,11 +10,13 @@
  * from the command line. Designed for both humans and LLM terminals.
  */
 
+import { logger, parseVerbosity } from './logger.js';
 import { infoCommand } from './commands/info.js';
 import { queryCommand } from './commands/query.js';
 import { propsCommand } from './commands/props.js';
 import { exportCommand } from './commands/export.js';
 import { diagnoseGeometryCommand } from './commands/diagnose-geometry.js';
+import { extractEntitiesCommand } from './commands/extract-entities.js';
 import { idsCommand } from './commands/ids.js';
 import { bcfCommand } from './commands/bcf.js';
 import { clashCommand } from './commands/clash.js';
@@ -34,8 +36,12 @@ import { askCommand } from './commands/ask.js';
 import { viewCommand } from './commands/view.js';
 import { analyzeCommand } from './commands/analyze.js';
 import { lodCommand } from './commands/lod.js';
+import { simplifyCommand } from './commands/simplify.js';
 import { mcpCommand } from './commands/mcp.js';
 import { extCommand } from './commands/ext.js';
+import { layerCommand } from './commands/layer.js';
+import { refCommand } from './commands/ref.js';
+import { gymCommand } from './commands/gym.js';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -67,6 +73,9 @@ const HELP = `
     props     <file.ifc> --id <N>                 All properties for a single entity
     export    <file.ifc> --format csv|json|ifc|hbjson  Export data / Honeybee energy model
     diagnose-geometry <file.ifc> [--json]        CSG / opening diagnostics (failures, classification)
+                      [--product ID|GUID] [--type T]  Filter worst-hosts detail to one product/type
+    extract-entities <file.ifc> --out F          Isolate entities into a small, viewable standalone IFC
+                      [--product ID|GUID] [--storey S] [--detect] [--view]  by GUID/type/storey or auto-triage
     ids       <file.ifc> <rules.ids>              Validate against IDS rules
     bcf       <create|list|add-comment>           Work with BCF collaboration files
     clash     <file.ifc> [--matrix] [--bcf F]      Detect geometric clashes between elements
@@ -86,14 +95,22 @@ const HELP = `
     view      <file.ifc> [--port N]              Interactive 3D viewer in browser
     analyze   <file.ifc> --viewer <port>        Query + visualize analysis results
     lod       <file.ifc> --level 0|1            Generate lightweight LOD artifacts
+    simplify  <file.ifc> --out F [--level 1..5] [--ids 1,2,...] [--json]  Demesher: simplify meshes, write lighter IFC
     mcp       <file.ifc> [--transport stdio|http] Start an MCP server bound to one or more IFC files
     ext       validate <path>|init <dir>          Manage IFClite extensions (Phase 0 — validate, init)
+    layer     <publish|diff|merge|log|bake|...>    Layered change tracking over a local store (.ifc-lite/)
+    ref       <list|create|move|protect>           Manage named refs in the layer store
+    gym       --model <file.ifc> | --seed <n>      reset/step/reward environment loop (JSONL over stdin/stdout)
 
   Options:
-    --help, -h       Show help
-    --version, -v    Show version
-    --json           Output as JSON (machine-readable)
-    --out <file>     Write output to file instead of stdout
+    --help, -h           Show help
+    --version, -v        Show version
+    --json               Output as JSON (machine-readable)
+    --out <file>         Write output to file instead of stdout
+    --verbose            Show parser + geometry diagnostics (stderr)
+    --quiet              Errors only
+    --debug              Verbose + stack traces on error
+    --log-level <level>  error|warn|info|debug (explicit wins over shorthands)
 
   Examples:
     ifc-lite info model.ifc
@@ -109,6 +126,9 @@ const HELP = `
     ifc-lite props model.ifc --id 42
     ifc-lite export model.ifc --format csv --type IfcWall --columns Name,Type,GlobalId
     ifc-lite export model.ifc --format json --type IfcWall,IfcDoor
+    ifc-lite diagnose-geometry model.ifc --json
+    ifc-lite diagnose-geometry model.ifc --type IfcWall
+    ifc-lite diagnose-geometry model.ifc --product 0YvCT2_$X3_xJG3rzD8L_8
     ifc-lite ids model.ifc requirements.ids --json
     ifc-lite bcf create --title "Missing door" --out issue.bcf
     ifc-lite clash model.ifc --matrix --json
@@ -151,6 +171,14 @@ const HELP = `
     ifc-lite mcp model.ifc --read-only
     ifc-lite mcp arch.ifc struct.ifc --federate
     ifc-lite mcp model.ifc --transport http --port 8765 --token abc
+    ifc-lite ref create main
+    ifc-lite layer publish delta.ifcx --base main --intent "Set fire ratings" --scope "model.mutate:Pset_FireSafety*@IfcWall"
+    ifc-lite layer merge blake3:abc123 --into main --preview
+    ifc-lite layer log main
+    ifc-lite layer bake main -o flat.ifcx
+    ifc-lite gym --model model.ifc --checks schema,clash
+    ifc-lite gym --model model.ifc --checks schema,clash,ids --ids rules.ids
+    ifc-lite gym --seed 42 --checks schema,clash
 
   Pipe-friendly:
     ifc-lite query model.ifc --type IfcWall --json | jq '.[].name'
@@ -164,11 +192,36 @@ const HELP = `
     hollow-circular-column, i-shape-beam, l-shape-member, t-shape-member,
     u-shape-member, rectangle-hollow-beam
 
+  gym protocol (newline-delimited JSON, one command per stdin line):
+    On start:            {"type":"reset","observation":{entityCounts,storeyCount,schema,bounds},"channels":{...}}
+    -> {"type":"step","ops":[{"op":"setProperty"|"setAttribute"|"deleteProperty", ...}]}
+    <- {"type":"reward","channels":{schema:{score,...},clash:{score,...},ids:{score,...}},"done":false}
+    -> {"type":"reset"}               reloads the pristine model, replies like the initial reset
+    -> {"type":"reset","seed":8}      episode factory: swaps to a generated World Gym benchmark
+                                      model (optional "family"/"corrupt"/"corruptRate" fields);
+                                      needs the repo checkout (tools/world-gym). Also on start via
+                                      --seed <n> [--family ...] [--corrupt|--no-corrupt|--corrupt-rate p].
+                                      Generated-episode resets add "episode":{seed,family,corrupted}.
+    -> {"type":"close"}               exits 0
+    Malformed input replies {"type":"error","message":"..."} instead of crashing.
+    v0 ops: setProperty/setAttribute/deleteProperty only (mirrors bim.mutate's method
+    names). Geometry-creating ops are out of scope for v0.
+
   Learn more: https://ifclite.com
 `;
 
+/** Command being executed, captured for the top-level error handler. */
+let activeCommand = '';
+/** True when --debug was passed (stack traces on error). */
+let debugFlag = false;
+
 async function main(): Promise<void> {
-  const args = process.argv.slice(2);
+  // Global verbosity flags are parsed and STRIPPED before dispatch so a
+  // command's positional-argument scan never mistakes them for a file path.
+  const verbosity = parseVerbosity(process.argv.slice(2));
+  logger.configure({ level: verbosity.level });
+  debugFlag = verbosity.debug;
+  const args = verbosity.rest;
 
   if (args.length === 0 || args.includes('--help') || args.includes('-h')) {
     process.stdout.write(HELP + '\n');
@@ -181,6 +234,7 @@ async function main(): Promise<void> {
   }
 
   const command = args[0];
+  activeCommand = command;
   const commandArgs = args.slice(1);
 
   switch (command) {
@@ -198,6 +252,9 @@ async function main(): Promise<void> {
       break;
     case 'diagnose-geometry':
       await diagnoseGeometryCommand(commandArgs);
+      break;
+    case 'extract-entities':
+      await extractEntitiesCommand(commandArgs);
       break;
     case 'ids':
       await idsCommand(commandArgs);
@@ -256,11 +313,23 @@ async function main(): Promise<void> {
     case 'lod':
       await lodCommand(commandArgs);
       break;
+    case 'simplify':
+      await simplifyCommand(commandArgs);
+      break;
     case 'mcp':
       await mcpCommand(commandArgs);
       break;
     case 'ext':
       await extCommand(commandArgs);
+      break;
+    case 'layer':
+      await layerCommand(commandArgs);
+      break;
+    case 'ref':
+      await refCommand(commandArgs);
+      break;
+    case 'gym':
+      await gymCommand(commandArgs);
       break;
     default:
       process.stderr.write(`Unknown command: ${command}\n`);
@@ -270,9 +339,16 @@ async function main(): Promise<void> {
 }
 
 main().catch((err: Error) => {
-  process.stderr.write(`Error: ${err.message}\n`);
-  if (process.env.DEBUG) {
+  const label = activeCommand ? `Error [${activeCommand}]` : 'Error';
+  process.stderr.write(`${label}: ${err.message}\n`);
+  // Stack traces with --debug/--verbose/--log-level debug, or the legacy
+  // DEBUG env var (kept for back-compat).
+  if (debugFlag || logger.level() === 'debug' || process.env.DEBUG) {
     process.stderr.write((err.stack ?? '') + '\n');
+  } else {
+    process.stderr.write(
+      `Hint: re-run with --debug for a stack trace, or \`ifc-lite ${activeCommand || '<command>'} --help\` for usage.\n`,
+    );
   }
   process.exit(1);
 });

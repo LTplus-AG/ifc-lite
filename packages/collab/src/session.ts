@@ -95,6 +95,13 @@ export interface CollabSession {
   snapshot(options?: SnapshotOptions): IfcxFile;
   /** Capture a baseline state vector for later layer extraction. */
   captureBaseline(): Uint8Array;
+  /**
+   * Capture the doc's FULL state (`Y.encodeStateAsUpdate`) as the fork
+   * point for whole-doc publishing (`publishLayer`'s `baseline`). Distinct
+   * from `captureBaseline`, which returns a state VECTOR for the per-user
+   * `extractUserLayer` path.
+   */
+  captureDocState(): Uint8Array;
   /** Extract a per-user layer (defaults to *this* peer). */
   extractUserLayer(baseline: Uint8Array, clientId?: number, snapshot?: SnapshotOptions): IfcxFile;
   /** Wrap edits in a Yjs transaction tagged with our local origin. */
@@ -180,6 +187,9 @@ export async function createCollabSession(opts: CollabSessionOptions): Promise<C
     },
     captureBaseline() {
       return captureBaselineSV(doc);
+    },
+    captureDocState() {
+      return Y.encodeStateAsUpdate(doc);
     },
     extractUserLayer(baseline, clientId, snapshot) {
       return extractLayerForClient(doc, baseline, {

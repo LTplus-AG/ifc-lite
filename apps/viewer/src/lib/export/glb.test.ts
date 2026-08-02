@@ -12,14 +12,14 @@ function makeStub(result: Uint8Array | null | (() => never)) {
   const calls = {
     init: 0,
     dispose: 0,
-    exportArgs: [] as Array<{ meshes: MeshData[]; includeMetadata: boolean }>,
+    exportArgs: [] as Array<{ meshes: MeshData[]; includeMetadata: boolean; lit: boolean; emissive: boolean }>,
   };
   const gp: GlbProcessor = {
     async init() {
       calls.init++;
     },
-    exportGlbFromMeshes(meshes: MeshData[], includeMetadata = false) {
-      calls.exportArgs.push({ meshes, includeMetadata });
+    exportGlbFromMeshes(meshes: MeshData[], includeMetadata = false, lit = true, emissive = false) {
+      calls.exportArgs.push({ meshes, includeMetadata, lit, emissive });
       if (typeof result === 'function') result();
       return result as Uint8Array | null;
     },
@@ -47,6 +47,16 @@ describe('exportGlbFromGeometry', () => {
     assert.equal(calls.exportArgs.length, 1);
     assert.deepEqual(calls.exportArgs[0].meshes, meshes, 'uses geometryResult.meshes by default');
     assert.equal(calls.exportArgs[0].includeMetadata, false, 'includeMetadata defaults to false');
+    assert.equal(calls.exportArgs[0].emissive, false, 'emissive defaults to off');
+  });
+
+  it('forwards the emissive flag to the assembler (self-illuminated GLB option)', async () => {
+    const { gp, calls } = makeStub(new Uint8Array([1]));
+
+    await exportGlbFromGeometry(geometry([mesh(1)]), { includeMetadata: true, emissive: true }, () => gp);
+
+    assert.equal(calls.exportArgs[0].emissive, true, 'emissive:true threads through to the assembler');
+    assert.equal(calls.exportArgs[0].lit, true, 'lit stays true so no unlit extension pairs with emissive');
   });
 
   it('prefers the pre-filtered opts.meshes and forwards includeMetadata', async () => {

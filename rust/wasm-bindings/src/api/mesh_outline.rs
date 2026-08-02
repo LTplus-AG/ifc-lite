@@ -55,6 +55,22 @@ impl MeshOutlineJs {
     }
 }
 
+impl MeshOutlineJs {
+    /// Rings as f64 `[x, y]` pairs, widened from the stored f32 flat form, for
+    /// the 2D boolean bindings (`Contours2D::fromMeshOutline`). Not exported to
+    /// JS — the accessor above is the JS-facing shape.
+    pub(crate) fn rings_f64(&self) -> Vec<Vec<[f64; 2]>> {
+        self.contours
+            .iter()
+            .map(|flat| {
+                flat.chunks_exact(2)
+                    .map(|p| [p[0] as f64, p[1] as f64])
+                    .collect()
+            })
+            .collect()
+    }
+}
+
 /// Compute the winding-robust 2D footprint outline of a triangle mesh.
 ///
 /// `positions` is flat XYZ; `indices` is flat triangle indices. `axis` is

@@ -102,12 +102,12 @@ export function addPlateToStore(
   const solidId = emitExtrudedSolid(editor, profileId, p.Thickness);
   const { shapeRepId, productShapeId } = emitBodyRepresentation(editor, anchor.bodyContextId, solidId);
 
-  const attrs = ifcElementHeader(anchor.ownerHistoryId, placementId, productShapeId, params, 'Plate');
+  const attrs = ifcElementHeader(anchor.ownerHistoryId, placementId, productShapeId, params, 'Plate', anchor.guidRandom);
   if ((anchor.schema ?? 'IFC4') !== 'IFC2X3') {
     attrs.push(`.${params.PredefinedType ?? 'NOTDEFINED'}.`);
   }
   const plateId = editor.addEntity('IfcPlate', attrs as Parameters<StoreEditor['addEntity']>[1]).expressId;
-  const relContainedId = emitRelContainedInSpatialStructure(editor, anchor.ownerHistoryId, plateId, anchor.storeyId);
+  const relContainedId = emitRelContainedInSpatialStructure(editor, anchor.ownerHistoryId, plateId, anchor.storeyId, anchor.guidRandom);
 
   return { plateId, placementId, profileId, solidId, shapeRepId, productShapeId, relContainedId };
 }

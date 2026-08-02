@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "base": "samples/building-architecture.ifc",
+  "revB": "samples/building-architecture-rev-b.ifc",
+  "ids": "samples/building-architecture.ids",
+  "clash": "samples/building-architecture-rev-b.ifc",
+  "globalIds": {
+    "dataModified": "1AQAupaRP1txwK1AGiN61V",
+    "geometryMoved": "3wdauVJT5Fx9drrREiDqA$",
+    "deleted": "2e9pghUJbBqR4jTInsONQT",
+    "added": "3GwpRmJBf7fhCP8KgMyfOD",
+    "clashAdded": "3GwpRmJBf7fhCP8KgMyfOD",
+    "clashHit": "0OfZwWc8j9QP5uX8xPTxDH"
+  },
+  "facts": {
+    "storeys": [
+      "00 groundfloor"
+    ],
+    "searchTerm": "wall",
+    "clashPair": "IfcDuctSegment vs IfcWall"
+  }
+}

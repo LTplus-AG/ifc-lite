@@ -57,6 +57,17 @@ export type { SnapTarget, SnapOptions, EdgeLockInput, MagneticSnapResult } from 
 // Extracted manager classes
 export { PickingManager } from './picking-manager.js';
 export type { PointPickProvider } from './picking-manager.js';
+export { resolveContributionThresholdPx, projectedAabbRadiusPx } from './contribution-cull.js';
+export type { ContributionCullOptions, CullCameraState } from './contribution-cull.js';
+export { chunkCellKey, bucketBaseKeyFor, DEFAULT_CHUNK_CELL_SIZE } from './chunk-grid.js';
+export type { SpatialChunkingConfig, ChunkAnchorSource } from './chunk-grid.js';
+export { selectEvictions, MIN_EVICTION_AGE_FRAMES } from './residency.js';
+export type { ResidencyShell, ColdGeometryProvider } from './residency.js';
+export { simplifyIndicesByClustering, lodCellSizeForBounds, LOD_MIN_TRIANGLES, LOD_CELL_FRACTION } from './lod-simplify.js';
+export { quantizeInterleaved, octEncode, octDecode, QUANT_STEP, MAX_QUANT_EXTENT, QUANT_BYTES_PER_VERTEX } from './quantize.js';
+export type { QuantizedVertexData } from './quantize.js';
+export { sumResidentGpuBytes } from './render-stats.js';
+export type { FrameStats, ResidentGpuBytes } from './render-stats.js';
 export { RaycastEngine } from './raycast-engine.js';
 export { PointPicker, decodePickSample } from './point-picker.js';
 export type { PointPickNode, DecodedPickSample } from './point-picker.js';
@@ -81,7 +92,7 @@ export type {
 import { WebGPUDevice } from './device.js';
 import { RenderPipeline } from './pipeline.js';
 import { Camera } from './camera.js';
-import { Scene } from './scene.js';
+import { Scene, type InstancedTemplateGPU } from './scene.js';
 import { Picker } from './picker.js';
 import { MathUtils } from './math.js';
 import { FrustumUtils } from '@ifc-lite/spatial';
@@ -93,6 +104,7 @@ import type {
     PickClipState,
     ClipBox,
     Mesh,
+    BatchedMesh,
     VisualEnhancementOptions,
     ContactShadingQuality,
     SeparationLinesQuality,
@@ -113,6 +125,9 @@ import { PickingManager } from './picking-manager.js';
 import { RaycastEngine } from './raycast-engine.js';
 import { PostProcessor } from './post-processor.js';
 import { InteractionEffectsGovernor } from './interaction-effects-governor.js';
+import { VisibilityEpochTracker } from './visibility-epoch.js';
+import { resolveContributionThresholdPx, projectedAabbRadiusPx, projectedInstancedRadiusPx, type CullCameraState } from './contribution-cull.js';
+import type { FrameStats } from './render-stats.js';
 import { EdlPass } from './edl-pass.js';
 import { SkyPass } from './sky-pass.js';
 import { skyShaderSource } from './shaders/sky.wgsl.js';
@@ -201,6 +216,16 @@ export class Renderer {
     /** Set true at the end of `init()`; gates `whenReady()`. */
     private ready = false;
     private readyWaiters: Array<() => void> = [];
+
+    /**
+     * Set once the GPU device is lost for a non-intentional reason (driver
+     * reset / VRAM exhaustion — see `WebGPUDevice`). Every GPU resource is then
+     * dead, so `render()` becomes a no-op (it would only spew validation errors)
+     * until the host re-initialises the renderer. Consumers learn of this via
+     * `onDeviceLost` and typically respond by reloading the model.
+     */
+    private deviceLost = false;
+    private deviceLostListeners = new Set<(info: { message: string; reason: string }) => void>();
     private deviationPipeline: DeviationPipeline | null = null;
     /**
      * Cache of which mesh-set the BVH was built from. We rebuild on
@@ -224,13 +249,18 @@ export class Renderer {
     private pickingManager: PickingManager;
     private raycastEngine: RaycastEngine;
 
-    // Error rate limiting (log at most once per second)
-    private lastRenderErrorTime: number = 0;
+    // Error rate limiting (log at most once per second). -Infinity, not 0:
+    // performance.now() is below 1000 during the first second of page life, so
+    // a 0 start would silently suppress the FIRST render/device-loss error —
+    // exactly the evidence worth keeping.
+    private lastRenderErrorTime: number = -Infinity;
     private readonly RENDER_ERROR_THROTTLE_MS = 1000;
 
     // Diagnostic counters for mobile debugging
     private _renderCallCount: number = 0;
     private _renderSkipCount: number = 0;
+    /** Snapshot of the last completed render() — see getFrameStats(). */
+    private _lastFrameStats: FrameStats | null = null;
     private _renderErrorCount: number = 0;
     private _lastRenderError: string = '';
 
@@ -239,6 +269,39 @@ export class Renderer {
     // Centralises all render scheduling — callers never call render() directly.
     private _renderRequested: boolean = false;
 
+    // ─── Visibility-change bookkeeping (per-frame perf + leak fixes) ─────────
+    // Hide/isolate changes are detected by CONTENT (snapshot compare in the
+    // tracker), so callers may either mutate the same Set in place or pass a
+    // fresh Set per frame — see the RenderOptions.hiddenIds contract.
+    // `_visibilityVersion` drives the per-batch visibility cache;
+    // `_partialBatchEpoch` additionally folds colour-override changes so the
+    // partial sub-batch cache fast path stays correct.
+    private readonly _visibilityEpochs = new VisibilityEpochTracker();
+    private _visibilityVersion: number = 0;
+    private _partialBatchEpoch: number = 0;
+    private _lastColorOverrideGen: number = -1;
+    private _lastHadVisibilityFiltering: boolean = false;
+    // Cached per-batch visibility, valid only while `_batchVisibilityEpoch`
+    // matches `_visibilityVersion`. Avoids the O(total element count) recompute
+    // (+ per-batch visible-id Set allocation) every frame while hide/isolate
+    // holds. Keyed by batch object (immutable expressIds per instance); a
+    // rebuilt batch is a new object → recomputed lazily. WeakMap, not Map:
+    // residency eviction/restore churn while ONE filter epoch holds (e.g. a
+    // schedule animation) would otherwise pin every dead batch object until
+    // the next visibility change.
+    private _batchVisibilityEpoch: number = -1;
+    private _batchVisibilityCache = new WeakMap<
+        BatchedMesh,
+        { visible: boolean; fullyVisible: boolean; visibleIds?: Set<number> }
+    >();
+    // Selection snapshot from the previous frame — a change triggers disposal of
+    // now-unselected hydrated meshes (leak + double-draw fix). The model index
+    // is part of the snapshot: federated models can share express ids, so a
+    // same-id selection in ANOTHER model is still a change that must free the
+    // old model's hydrated mesh.
+    private _prevHydratedSelection: Set<number> = new Set();
+    private _prevHydratedSelectionModelIndex: number | undefined = undefined;
+
     // One-shot log guard — prints Y-up clip bounds on first section-enable so
     // users can confirm the slider is operating on the intended range.
     private _loggedSectionBounds: boolean = false;
@@ -246,7 +309,9 @@ export class Renderer {
     // Pooled per-frame buffers to avoid GC pressure from per-batch Float32Array allocations
     // A single 224-byte uniform buffer (56 floats) is reused for all batches/meshes within a frame
     // (48 floats viewProj…flags + 8 floats clipBoxMin/clipBoxMax)
-    private readonly uniformScratch = new Float32Array(56);
+    // 60 floats = the WGSL Uniforms struct incl. quantParams (see
+    // pipeline.getUniformBufferSize).
+    private readonly uniformScratch = new Float32Array(60);
     private readonly uniformScratchU32 = new Uint32Array(this.uniformScratch.buffer, 176, 4);
 
     // What the last render() actually clipped, so the GPU picker can mirror it and
@@ -270,6 +335,13 @@ export class Renderer {
      * Initialize renderer
      */
     async init(): Promise<void> {
+        // Clear the lost flag so a re-init (destroy()+init() on the same instance)
+        // resumes rendering instead of staying a permanent no-op from an earlier loss.
+        this.deviceLost = false;
+        // Subscribe before the device exists so a loss during the first frames
+        // is never missed — the handler is only invoked when `device.lost`
+        // actually resolves (a real fault), long after init in practice.
+        this.device.onDeviceLost((info) => this.handleDeviceLost(info));
         await this.device.init(this.canvas);
 
         // Get canvas dimensions (use pixel dimensions if set, otherwise use CSS dimensions)
@@ -361,6 +433,11 @@ export class Renderer {
                 },
             };
         });
+        // Let the CPU raycast engine (measure tool / snap) query each
+        // point-cloud asset's spatial index (#1860) — a separate concern
+        // from the GPU click-pick provider above, since raycastScene* is
+        // synchronous CPU code while pick() is an async GPU readback.
+        this.raycastEngine.setPointCloudProvider(() => this.pointCloudRenderer?.getRayQuerySources() ?? []);
 
         this.markReady();
     }
@@ -383,6 +460,40 @@ export class Renderer {
         const waiters = this.readyWaiters;
         this.readyWaiters = [];
         for (const w of waiters) w();
+    }
+
+    /**
+     * Subscribe to non-intentional GPU device loss (driver reset / VRAM
+     * exhaustion — NOT an intentional `destroy()`). Fired at most once per
+     * device. After it fires, `render()` is a no-op until the renderer is
+     * re-initialised, so the typical response is to dispose this renderer and
+     * reload the model. Returns an unsubscribe function.
+     *
+     * Camera and model state live on the CPU (JS) and survive device loss, so a
+     * reload restores the model at its current orientation — the loss is a GPU
+     * event, not a data loss.
+     */
+    onDeviceLost(listener: (info: { message: string; reason: string }) => void): () => void {
+        this.deviceLostListeners.add(listener);
+        return () => this.deviceLostListeners.delete(listener);
+    }
+
+    /** True once the GPU device has been lost for a non-intentional reason. */
+    isDeviceLost(): boolean {
+        return this.deviceLost;
+    }
+
+    private handleDeviceLost(info: { message: string; reason: string }): void {
+        if (this.deviceLost) return;
+        this.deviceLost = true;
+        console.warn('[Renderer] GPU device lost — halting rendering until re-init:', info.message);
+        for (const listener of this.deviceLostListeners) {
+            try {
+                listener(info);
+            } catch (e) {
+                console.error('[Renderer] onDeviceLost listener threw:', e);
+            }
+        }
     }
 
     /**
@@ -546,6 +657,27 @@ export class Renderer {
     }
 
     /**
+     * Set (or clear, with `null`) a streamed point-cloud asset's per-vertex
+     * GPU model matrix (column-major, 16 floats) — issue #1804's
+     * `IfcMapConversion` alignment toggle. Cheap: takes effect on the next
+     * frame's uniform write, no GPU buffer rewrite.
+     */
+    setPointCloudTransform(
+        handle: import('./pointcloud/point-cloud-renderer.js').PointCloudAssetHandle,
+        matrix: Float32Array | null,
+    ): void {
+        this.pointCloudRenderer?.setAssetTransform(handle, matrix);
+        // The asset's world-space extents just moved: re-fold the (now
+        // matrix-aware) point-cloud bounds into the scene bounds and push
+        // them to the camera (matching every other bounds-mutating
+        // point-cloud method) so framing / zoom-to-fit targets where the
+        // points actually render.
+        this.recomputeModelBounds();
+        this.camera.setSceneBounds(this.modelBounds);
+        this.requestRender();
+    }
+
+    /**
      * Compute BIM ↔ scan deviation for every loaded point cloud asset.
      *
      * Walks every triangle in the scene (individual + batched meshes,
@@ -608,6 +740,12 @@ export class Renderer {
                     deviationsBuffer: chunk.deviationBuffer,
                     pointCount: chunk.pointCount,
                     maxRange,
+                    // #1804: chunk positions are stored in the asset's
+                    // decode-shifted local frame when IfcMapConversion
+                    // alignment is active; the BVH triangles are world
+                    // space, so the compute pass must apply the same
+                    // per-asset matrix the splat shader renders with.
+                    model: node.model,
                 });
                 if (ok) {
                     chunksProcessed++;
@@ -920,13 +1058,24 @@ export class Renderer {
         const fr = Math.fround;
         const sox = so ? fr(so[0]) : null, soy = so ? fr(so[1]) : 0, soz = so ? fr(so[2]) : 0;
         const dx = so ? (ox - so[0]) : ox, dy = so ? (oy - so[1]) : oy, dz = so ? (oz - so[2]) : oz;
+        // Quantized batches (issue #1682 phase 6) render lattice-snapped
+        // positions: the shader's quantMin + q*step is exactly the lattice
+        // node nearest the batch's stored f32 rel coordinate. Reproduce it by
+        // snapping the SAME rel coordinate here (round(s*1024)/1024 in f64
+        // yields the identical exact-f32 lattice value — see quantize.ts), so
+        // the highlight/picker mesh stays BIT-coincident with its quantized
+        // source surface, exactly as the two-step fold above achieves for the
+        // f32 path. Meshes whose batch fell back to f32 must not snap.
+        const snap = this.scene.isMeshQuantized(meshData)
+            ? (v: number) => Math.round(v * 1024) / 1024
+            : (v: number) => v;
         const p = meshData.positions;
         for (let i = 0; i < vertexCount; i++) {
             const base = i * 7;
             const posBase = i * 3;
-            interleaved[base] = so ? fr((sox as number) + fr(p[posBase] + dx)) : (p[posBase] + dx);
-            interleaved[base + 1] = so ? fr(soy + fr(p[posBase + 1] + dy)) : (p[posBase + 1] + dy);
-            interleaved[base + 2] = so ? fr(soz + fr(p[posBase + 2] + dz)) : (p[posBase + 2] + dz);
+            interleaved[base] = so ? fr((sox as number) + snap(fr(p[posBase] + dx))) : snap(p[posBase] + dx);
+            interleaved[base + 1] = so ? fr(soy + snap(fr(p[posBase + 1] + dy))) : snap(p[posBase + 1] + dy);
+            interleaved[base + 2] = so ? fr(soz + snap(fr(p[posBase + 2] + dz))) : snap(p[posBase + 2] + dz);
             const hasNormals = meshData.normals.length > 0;
             interleaved[base + 3] = hasNormals ? meshData.normals[posBase] : 0;
             interleaved[base + 4] = hasNormals ? meshData.normals[posBase + 1] : 0;
@@ -959,7 +1108,10 @@ export class Renderer {
         });
         device.queue.writeBuffer(indexBuffer, 0, meshData.indices);
 
-        // Add to scene with identity transform (positions already in world space)
+        // Add to scene with identity transform (positions already in world space).
+        // Flagged `hydrated` so it can be freed when its entity leaves the
+        // selection — these duplicate geometry already drawn by a batch and would
+        // otherwise accumulate + double-draw (see Scene.disposeHydratedMeshesExcept).
         this.scene.addMesh({
             expressId: meshData.expressId,
             modelIndex: meshData.modelIndex,  // Preserve modelIndex for multi-model selection
@@ -968,6 +1120,71 @@ export class Renderer {
             indexCount: meshData.indices.length,
             transform: MathUtils.identity(),
             color: meshData.color,
+            hydrated: true,
+        });
+    }
+
+    /**
+     * On a selection change, free the hydrated (pick/selection-highlight)
+     * individual meshes whose entity is no longer selected. These duplicate
+     * geometry already drawn by a batch; without this they accumulate in
+     * scene.meshes (VRAM grows with selection history) and — for transparent
+     * entities — re-draw every frame on top of their still-drawn batch copy
+     * (double alpha-blend darkens glass). Currently-selected entities keep their
+     * hydrated meshes so the highlight pass doesn't rebuild them each change.
+     * No-op when the selection set is unchanged to avoid per-frame buffer churn.
+     * Selection identity is the (modelIndex, expressId) PAIR: federated models
+     * can share express ids, so re-selecting the same id in a different model
+     * must still free the previous model's hydrated mesh (it would otherwise
+     * stay resident and keep drawing unhighlighted).
+     */
+    private syncHydratedSelectionMeshes(
+        selected: ReadonlySet<number>,
+        selectedModelIndex: number | undefined,
+    ): void {
+        const prev = this._prevHydratedSelection;
+        let changed = selected.size !== prev.size
+            || selectedModelIndex !== this._prevHydratedSelectionModelIndex;
+        if (!changed) {
+            for (const id of selected) {
+                if (!prev.has(id)) { changed = true; break; }
+            }
+        }
+        if (!changed) return;
+        this._prevHydratedSelection = new Set(selected);
+        this._prevHydratedSelectionModelIndex = selectedModelIndex;
+        this.scene.disposeHydratedMeshesExcept(selected, selectedModelIndex);
+    }
+
+    /**
+     * Pop the frame's validation error scope, recording any captured validation
+     * error into the device diagnostics (getDiagnostics().gpuErrors). The pop
+     * itself REJECTS when the GPU device is lost while the scope is pending —
+     * often the only evidence of the loss — so the rejection is logged
+     * (throttled) and the context invalidated, never swallowed silently. Used
+     * by every render() exit path that pushed a scope, so push/pop stay
+     * balanced even on skipped or throwing frames.
+     */
+    private drainErrorScope(device: GPUDevice): void {
+        device.popErrorScope().then((error) => {
+            if (error) {
+                const msg = error.message || String(error);
+                console.error('[WebGPU] Validation error in render pass:', msg);
+                this.device._lastUncapturedError = `VALIDATION: ${msg}`;
+                this.device._uncapturedErrorCount++;
+            }
+        }).catch((error: unknown) => {
+            // popErrorScope() rejects (e.g. "Instance dropped in popErrorScope")
+            // when the GPU device is lost while the scope is still pending. This
+            // escapes the surrounding synchronous try/catch and would otherwise
+            // surface as an unhandled rejection. Treat it like any other device
+            // loss: invalidate the context so it reconfigures next frame.
+            this.device.invalidateContext();
+            const now = performance.now();
+            if (now - this.lastRenderErrorTime > this.RENDER_ERROR_THROTTLE_MS) {
+                this.lastRenderErrorTime = now;
+                console.warn('[WebGPU] popErrorScope rejected (device likely lost):', error);
+            }
         });
     }
 
@@ -1026,8 +1243,37 @@ export class Renderer {
         };
     }
 
+    /**
+     * Statistics of the last COMPLETED render() call (draw calls issued,
+     * batches drawn / frustum-culled / contribution-culled), or null before
+     * the first frame. Pair with `getScene().getResidentGpuBytes()` for the
+     * load-complete telemetry snapshot (issue #1682 observability).
+     */
+    getFrameStats(): FrameStats | null {
+        return this._lastFrameStats;
+    }
+
+    /**
+     * Probe the quantized pipeline variants and, when all exist, enable
+     * 12-byte quantized batch vertices (issue #1682 phase 6). Returns
+     * whether quantization is active — on failure (e.g. a fragile backend
+     * rejecting pipeline creation) batches stay on the f32 path.
+     */
+    async enableQuantizedBatches(): Promise<boolean> {
+        if (!this.pipeline) return false;
+        const ok = await this.pipeline.ensureQuantizedPipelines();
+        if (ok) this.scene.setQuantizedBatches(true);
+        return ok;
+    }
+
     render(options: RenderOptions = {}): void {
         this._renderCallCount++;
+        // A lost device leaves every pipeline/buffer dead; rendering would only
+        // emit a stream of validation errors. Stay quiet until re-init.
+        if (this.deviceLost) {
+            this._renderSkipCount++;
+            return;
+        }
         if (!this.device.isInitialized() || !this.pipeline) {
             this._renderSkipCount++;
             return;
@@ -1072,6 +1318,24 @@ export class Renderer {
 
         const device = this.device.getDevice();
         const viewProj = this.camera.getViewProjMatrix().m;
+        // Frame stats (issue #1682): geometry draw calls + per-frame cull
+        // outcomes, snapshotted into _lastFrameStats before queue.submit.
+        let frameDrawCalls = 0;
+        let frameBatchesDrawn = 0;
+        let frameBatchesFrustumCulled = 0;
+        let frameBatchesContributionCulled = 0;
+        let frameBatchesNotResident = 0;
+        let frameBatchesAtLod1 = 0;
+        let frameInstancedDrawn = 0;
+        let frameInstancedFrustumCulled = 0;
+        let frameInstancedContributionCulled = 0;
+        // Residency ages are measured in RENDERED frames (idle never ages out).
+        this.scene.beginResidencyFrame();
+        // Capture renders restore evicted batches SYNCHRONOUSLY so isolation
+        // snapshots are complete in this very frame (see RenderOptions doc).
+        if (options.restoreEvictedForCapture && this.pipeline) {
+            this.scene.restoreAllEvicted(device, this.pipeline);
+        }
         const visualEnhancement = this.resolveVisualEnhancement(options.visualEnhancement);
         // Post effects during interaction (orbit/pan/zoom) are governed
         // adaptively: they stay on while the interactive frame cadence holds
@@ -1104,12 +1368,37 @@ export class Renderer {
             && visualEnhancement.separationLines.quality !== 'off';
         const needsObjectIdPass = contactEnabled || separationEnabled;
 
-        let meshes = this.scene.getMeshes();
-
         // Check if visibility filtering is active
         const hasHiddenFilter = options.hiddenIds && options.hiddenIds.size > 0;
         const hasIsolatedFilter = options.isolatedIds !== null && options.isolatedIds !== undefined;
         const hasVisibilityFiltering = hasHiddenFilter || hasIsolatedFilter;
+
+        // ─── Visibility / override epoch bookkeeping ────────────────────────
+        // The tracker compares hide/isolate CONTENT against a snapshot, so both
+        // in-place mutation of the caller's Set and a fresh identical Set per
+        // frame behave correctly (see RenderOptions.hiddenIds). Bumping
+        // `_visibilityVersion` invalidates the per-batch visibility cache; the
+        // partial sub-batch cache additionally depends on colour-override
+        // promotion, so its epoch bumps on either.
+        const newVisibilityVersion = this._visibilityEpochs.update(options.hiddenIds, options.isolatedIds);
+        const visibilityChanged = newVisibilityVersion !== this._visibilityVersion;
+        this._visibilityVersion = newVisibilityVersion;
+        const colorOverrideGen = this.scene.getColorOverrideGeneration();
+        if (visibilityChanged || colorOverrideGen !== this._lastColorOverrideGen) {
+            this._lastColorOverrideGen = colorOverrideGen;
+            this._partialBatchEpoch++;
+        }
+
+        // When hide/isolate turns fully OFF (back to all-visible), release the
+        // partial sub-batch clones built while filtering. They are excluded from
+        // the GPU residency budget and are otherwise only freed on clear()/
+        // finalize/evict — never here — so ~model-sized clone VRAM would stay
+        // pinned until the next model reload. Any override-promotion sub-batches
+        // dropped alongside are rebuilt on demand next frame (cache miss).
+        if (this._lastHadVisibilityFiltering && !hasVisibilityFiltering) {
+            this.scene.dropAllPartialCaches();
+        }
+        this._lastHadVisibilityFiltering = hasVisibilityFiltering;
 
         // Build the selected-id set once per frame so the X-Ray override paths
         // can keep highlighted entities at full alpha without per-site checks.
@@ -1126,6 +1415,15 @@ export class Renderer {
             }
         }
         const hasSelected = selectedExpressIds.size > 0;
+
+        // Free hydrated (pick/selection) individual meshes whose entity is no
+        // longer selected BEFORE we snapshot the mesh list, so stale glass
+        // doesn't double-draw over its batch copy or accumulate until clear().
+        // Only acts on a selection change (avoids per-frame buffer churn) and
+        // never touches authored (non-hydrated) or batch geometry.
+        this.syncHydratedSelectionMeshes(selectedExpressIds, selectedModelIndex);
+
+        let meshes = this.scene.getMeshes();
 
         // Keep the GPU-instanced occurrences' per-instance selected flag in sync.
         // The Scene diff makes this a no-op (no writeBuffer) when the set is
@@ -1242,15 +1540,27 @@ export class Renderer {
         }
 
         // Push a validation error scope to capture the EXACT error (for mobile debugging)
-        // Only do this for the first few renders to avoid performance overhead
+        // Only do this for the first few renders to avoid performance overhead.
+        // Tracked with a flag (not just captureGpuError) so EVERY exit path below
+        // pops it exactly once — an unpopped scope silently swallows all later
+        // validation errors and blinds getDiagnostics().gpuErrors.
         const captureGpuError = this._renderCallCount <= 5;
+        let errorScopePushed = false;
         if (captureGpuError) {
             device.pushErrorScope('validation');
+            errorScopePushed = true;
         }
 
         // Get current texture safely - may return null if context needs reconfiguration
         const currentTexture = this.device.getCurrentTexture();
         if (!currentTexture) {
+            // Balance the pushed scope before bailing so it doesn't leak into
+            // the next frame; drainErrorScope logs a rejection (device loss)
+            // instead of swallowing the evidence.
+            if (errorScopePushed) {
+                errorScopePushed = false;
+                this.drainErrorScope(device);
+            }
             return; // Skip this frame, context will be reconfigured next frame
         }
 
@@ -1683,30 +1993,74 @@ export class Renderer {
                 // This is the primary performance optimization for large models (200K+ meshes)
                 const frustum = FrustumUtils.fromViewProjMatrix(viewProj);
 
-                // Pre-compute visibility for each batch (only when filtering is active)
-                // A batch is visible if ANY of its elements are visible
-                // A batch is fully visible if ALL of its elements are visible
-                const batchVisibility = new Map<typeof allBatchedMeshes[number], { visible: boolean; fullyVisible: boolean }>();
-
-                if (hasVisibilityFiltering) {
-                    for (const batch of allBatchedMeshes) {
-                        let visibleCount = 0;
-                        const total = batch.expressIds.length;
-
-                        for (const expressId of batch.expressIds) {
-                            const isHidden = options.hiddenIds?.has(expressId) ?? false;
-                            const isIsolated = !hasIsolatedFilter || options.isolatedIds!.has(expressId);
-                            if (!isHidden && isIsolated) {
-                                visibleCount++;
-                            }
-                        }
-
-                        batchVisibility.set(batch, {
-                            visible: visibleCount > 0,
-                            fullyVisible: visibleCount === total,
-                        });
-                    }
+                // Contribution culling (issue #1682): skip batches whose world
+                // AABB projects below a pixel threshold. Disabled unless the
+                // caller opts in via options.contributionCull; the threshold is
+                // raised while interacting (quality matters least mid-gesture).
+                const contribThresholdPx = resolveContributionThresholdPx(
+                    options.contributionCull,
+                    interacting,
+                );
+                // LOD1 selection (issue #1682 phase 5): batches projecting below
+                // this draw their simplified index range. Shares the projection
+                // camera with contribution culling. Precedence is intentional:
+                // a batch below the CULL threshold is skipped entirely, so a
+                // lod threshold at or below the cull threshold never fires.
+                const lodScreenPx = options.lod && options.lod.screenPx > 0 ? options.lod.screenPx : 0;
+                const lodBatches = new Set<number>();
+                let cullCam: CullCameraState | null = null;
+                if (contribThresholdPx > 0 || lodScreenPx > 0) {
+                    const eye = this.camera.getPosition();
+                    const tgt = this.camera.getTarget();
+                    const dx = tgt.x - eye.x, dy = tgt.y - eye.y, dz = tgt.z - eye.z;
+                    const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                    cullCam = {
+                        eye,
+                        // Degenerate (eye == target) stays zero-length — the
+                        // projection helper fails open (never culls) on it.
+                        viewDir: len > 0 ? { x: dx / len, y: dy / len, z: dz / len } : { x: 0, y: 0, z: 0 },
+                        mode: this.camera.getProjectionMode(),
+                        fovYRadians: this.camera.getFOV(),
+                        orthoHalfHeight: this.camera.getOrthoSize(),
+                        viewportHeightPx: this.canvas.height,
+                    };
                 }
+
+                // Per-batch visibility (only meaningful while filtering is active).
+                // A batch is visible if ANY of its elements are visible, fully
+                // visible if ALL are. Cached across frames keyed by the visibility
+                // version so the O(total element count) scan + per-batch visible-id
+                // Set allocation happens once per visibility change, not per frame.
+                // The cache map is keyed by batch object (immutable expressIds per
+                // instance); a rebuilt batch is a new object → recomputed lazily.
+                if (this._batchVisibilityEpoch !== this._visibilityVersion) {
+                    this._batchVisibilityCache = new WeakMap();
+                    this._batchVisibilityEpoch = this._visibilityVersion;
+                }
+                const batchVisibilityCache = this._batchVisibilityCache;
+                const getBatchVisibility = (
+                    batch: typeof allBatchedMeshes[number],
+                ): { visible: boolean; fullyVisible: boolean; visibleIds?: Set<number> } => {
+                    let vis = batchVisibilityCache.get(batch);
+                    if (vis) return vis;
+                    const total = batch.expressIds.length;
+                    // Build the visible-id set in one pass; drop it for fully-visible
+                    // batches (they draw from their own buffers, no subset needed).
+                    const visibleIds = new Set<number>();
+                    for (const expressId of batch.expressIds) {
+                        const isHidden = options.hiddenIds?.has(expressId) ?? false;
+                        const isIsolated = !hasIsolatedFilter || options.isolatedIds!.has(expressId);
+                        if (!isHidden && isIsolated) visibleIds.add(expressId);
+                    }
+                    const fullyVisible = visibleIds.size === total;
+                    vis = {
+                        visible: visibleIds.size > 0,
+                        fullyVisible,
+                        visibleIds: fullyVisible ? undefined : visibleIds,
+                    };
+                    batchVisibilityCache.set(batch, vis);
+                    return vis;
+                };
 
                 // Separate batches into opaque and transparent, filtering by visibility
                 // IMPORTANT: Only render FULLY visible batches - partially visible batches
@@ -1777,7 +2131,24 @@ export class Renderer {
                     if (batch.bounds) {
                         const batchAABB = { min: batch.bounds.min, max: batch.bounds.max };
                         if (!FrustumUtils.isAABBVisible(frustum, batchAABB)) {
+                            frameBatchesFrustumCulled++;
                             continue; // Entire batch is off-screen
+                        }
+                        if (cullCam) {
+                            const px = projectedAabbRadiusPx(batch.bounds.min, batch.bounds.max, cullCam);
+                            // Contribution cull: the whole batch projects below the
+                            // pixel threshold — drawing it could change at most a
+                            // (sub-)pixel. Selected entities still highlight: the
+                            // selection pass draws per-mesh, independent of batches.
+                            if (contribThresholdPx > 0 && px < contribThresholdPx) {
+                                frameBatchesContributionCulled++;
+                                continue;
+                            }
+                            // LOD1: small-but-visible batches draw the simplified
+                            // index range over the same vertices.
+                            if (lodScreenPx > 0 && px < lodScreenPx && batch.lod1IndexBuffer) {
+                                lodBatches.add(batch.id);
+                            }
                         }
                     }
 
@@ -1786,25 +2157,41 @@ export class Renderer {
 
                     // Check visibility
                     if (hasVisibilityFiltering) {
-                        const vis = batchVisibility.get(batch);
-                        if (!vis || !vis.visible) continue; // Skip completely hidden batches
+                        const vis = getBatchVisibility(batch);
+                        if (!vis.visible) continue; // Skip completely hidden batches
 
                         // Handle partially visible batches - create sub-batches instead of individual meshes
                         if (!vis.fullyVisible) {
-                            const visibleIds = new Set<number>();
-                            for (const expressId of batch.expressIds) {
-                                const isHidden = options.hiddenIds?.has(expressId) ?? false;
-                                const isIsolated = !hasIsolatedFilter || options.isolatedIds!.has(expressId);
-                                if (!isHidden && isIsolated) visibleIds.add(expressId);
-                            }
-                            if (visibleIds.size > 0) {
+                            // The visible subset was computed once for this
+                            // visibility epoch (cached) — reuse it, don't rebuild.
+                            const visibleIds = vis.visibleIds;
+                            if (visibleIds && visibleIds.size > 0) {
                                 pushVisibleAsPartial(batch, visibleIds, nativelyTransparent);
+                            }
+                            // A COLD parent has no CPU meshData, so the partial
+                            // sub-batch above comes back empty — queue the
+                            // residency restore or the visible subset would
+                            // stay missing under hide/isolate forever.
+                            if (batch.gpuResident === false) {
+                                this.scene.requestBatchResidency(batch);
                             }
                             continue; // Don't add batch to render list
                         }
                     }
 
-                    // Fully visible (or no filtering). Transparent batches with mixed
+                    // Fully visible (or no filtering) — this batch draws from its OWN
+                    // GPU buffers. An evicted batch (residency budget, #1682 phase 3a)
+                    // is skipped for a frame while its rebuild is queued; the partial
+                    // path above is unaffected (sub-batches own separate buffers built
+                    // from CPU meshData).
+                    if (batch.gpuResident === false) {
+                        this.scene.requestBatchResidency(batch);
+                        frameBatchesNotResident++;
+                        continue;
+                    }
+                    this.scene.recordBatchDrawn(batch);
+
+                    // Transparent batches with mixed
                     // override membership must be split so non-overridden batchmates
                     // stay transparent — see splitVisibleIdsByPromotion / issue #677.
                     if (nativelyTransparent) {
@@ -1885,13 +2272,48 @@ export class Renderer {
                     tpl[29] = o ? o[1] : 0;
                     tpl[30] = o ? o[2] : 0;
 
+                    // Quantized dequantization params (issue #1682 phase 6);
+                    // zeroed for f32 batches (their pipelines ignore them).
+                    const qz = batch.quantized;
+                    tpl[56] = qz ? qz.min[0] : 0;
+                    tpl[57] = qz ? qz.min[1] : 0;
+                    tpl[58] = qz ? qz.min[2] : 0;
+                    tpl[59] = qz ? qz.step : 0;
+
                     device.queue.writeBuffer(batch.uniformBuffer, 0, tpl);
 
-                    // Single draw call for entire batch!
+                    // Single draw call for entire batch! LOD1-selected batches
+                    // bind their simplified index range over the same vertices.
+                    const useLod1 = batch.lod1IndexBuffer && batch.lod1IndexCount && lodBatches.has(batch.id);
                     pass.setBindGroup(0, batch.bindGroup);
                     pass.setVertexBuffer(0, batch.vertexBuffer);
-                    pass.setIndexBuffer(batch.indexBuffer, 'uint32');
-                    pass.drawIndexed(batch.indexCount);
+                    if (useLod1) {
+                        pass.setIndexBuffer(batch.lod1IndexBuffer!, 'uint32');
+                        pass.drawIndexed(batch.lod1IndexCount!);
+                        frameBatchesAtLod1++;
+                    } else {
+                        pass.setIndexBuffer(batch.indexBuffer, 'uint32');
+                        pass.drawIndexed(batch.indexCount);
+                    }
+                    frameDrawCalls++;
+                    frameBatchesDrawn++;
+                };
+
+                // Quantized batches (issue #1682 phase 6) draw through the
+                // quantized pipeline variants; scene only quantizes after the
+                // probe (enableQuantizedBatches) verified they exist, so the
+                // base fallback here is type-safety, never taken.
+                const pipeFor = (
+                    batch: typeof allBatchedMeshes[0],
+                    kind: 'opaque' | 'transparent' | 'overlay',
+                ): GPURenderPipeline => {
+                    const base = kind === 'opaque'
+                        ? this.pipeline!.getPipeline()
+                        : kind === 'transparent'
+                            ? this.pipeline!.getTransparentPipeline()
+                            : this.pipeline!.getOverlayPipeline();
+                    if (!batch.quantized) return base;
+                    return this.pipeline!.getQuantizedPipelineVariant(kind) ?? base;
                 };
 
                 // Render opaque batches with the opaque (double-sided) pipeline.
@@ -1905,8 +2327,10 @@ export class Renderer {
                 // Double-siding draws every face of the watertight skin ⇒ solid.
                 pass.setPipeline(this.pipeline.getPipeline());
                 for (const batch of opaqueBatches) {
+                    pass.setPipeline(pipeFor(batch, 'opaque'));
                     renderBatch(batch);
                 }
+                pass.setPipeline(this.pipeline.getPipeline());
 
                 // GPU-instancing pass — repeated geometry collated by the producer
                 // into one template + a per-occurrence instance buffer (mat4 +
@@ -1917,7 +2341,43 @@ export class Renderer {
                 // IFC Z-up→WebGL Y-up swap, so the uniform's model is unused here;
                 // we reuse the frame's viewProj + section + flags from `tpl`.
                 const instancedTemplates = this.scene.getInstancedTemplates();
+                // Cull templates ONCE per frame; the transparent instanced
+                // sub-pass below reuses this list. Frustum: the union of the
+                // occurrences' world AABBs off-screen ⇒ every occurrence is.
+                // Contribution: the LARGEST occurrence projected at the union
+                // box's nearest view depth is an upper bound for any single
+                // occurrence — bolts-scattered-everywhere templates cull as
+                // soon as no bolt can exceed the pixel threshold, even though
+                // the union box itself is model-sized. Templates with a
+                // selected occurrence are exempt so the highlight can't vanish.
+                // CATIA-class models put ~97% of draw calls in this pass, so
+                // this is where interactive frame cost lives (issue #1682).
+                let visibleInstanced: InstancedTemplateGPU[] | readonly InstancedTemplateGPU[] =
+                    instancedTemplates;
                 if (instancedTemplates.length > 0) {
+                    const kept: InstancedTemplateGPU[] = [];
+                    for (const it of instancedTemplates) {
+                        if (it.bounds) {
+                            if (!FrustumUtils.isAABBVisible(frustum, it.bounds)) {
+                                frameInstancedFrustumCulled++;
+                                continue;
+                            }
+                            if (
+                                contribThresholdPx > 0 &&
+                                cullCam &&
+                                it.selectedCount === 0 &&
+                                projectedInstancedRadiusPx(it.bounds.min, it.bounds.max, it.maxOccRadius, cullCam) <
+                                    contribThresholdPx
+                            ) {
+                                frameInstancedContributionCulled++;
+                                continue;
+                            }
+                        }
+                        kept.push(it);
+                    }
+                    visibleInstanced = kept;
+                }
+                if (visibleInstanced.length > 0) {
                     // Opaque instanced pass. flags.x bit 2 marks "instanced pass" so the
                     // shader routes per-instance opacity: opaque (or selected) occurrences
                     // draw here; translucent ones (lens/x-ray/compare overrides) are
@@ -1926,11 +2386,13 @@ export class Renderer {
                     pass.setPipeline(this.pipeline.getInstancedPipeline());
                     pass.setBindGroup(0, this.pipeline.getBindGroup());
                     pass.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());
-                    for (const it of instancedTemplates) {
+                    for (const it of visibleInstanced) {
                         pass.setVertexBuffer(0, it.vertexBuffer);
                         pass.setVertexBuffer(1, it.instanceBuffer);
                         pass.setIndexBuffer(it.indexBuffer, 'uint32');
                         pass.drawIndexed(it.indexCount, it.instanceCount);
+                        frameDrawCalls++;
+                        frameInstancedDrawn++;
                     }
                     pass.setPipeline(this.pipeline.getPipeline());
                     // The TRANSPARENT instanced sub-pass is drawn later, alongside the
@@ -1982,6 +2444,7 @@ export class Renderer {
                         pass.setVertexBuffer(0, tm.vertexBuffer);
                         pass.setIndexBuffer(tm.indexBuffer, 'uint32');
                         pass.drawIndexed(tm.indexCount);
+                        frameDrawCalls++;
                     }
                     // Restore the opaque pipeline for the passes that follow.
                     pass.setPipeline(this.pipeline.getPipeline());
@@ -2002,7 +2465,8 @@ export class Renderer {
                             colorKey,
                             visibleIds,
                             device,
-                            this.pipeline
+                            this.pipeline,
+                            this._partialBatchEpoch
                         );
 
                         if (subBatch) {
@@ -2016,14 +2480,14 @@ export class Renderer {
                                 colorOverrides,
                             );
                             if (isTransparent) {
-                                pass.setPipeline(this.pipeline.getTransparentPipeline());
+                                pass.setPipeline(pipeFor(subBatch, 'transparent'));
                             } else {
                                 // Opaque (incl. material-layer slices): double-sided.
                                 // Layer slices are NOT culled — since #1311 they are
                                 // open watertight-skin bands with unreliable winding,
                                 // so culling punched holes (wall read hollow). See the
                                 // full-batch path above.
-                                pass.setPipeline(this.pipeline.getPipeline());
+                                pass.setPipeline(pipeFor(subBatch, 'opaque'));
                                 opaqueSubBatches.push(subBatch);
                             }
                             // Render the sub-batch as a single draw call
@@ -2050,6 +2514,7 @@ export class Renderer {
                     // bit 1 = overlay; bit 5 (32) = emphasize (pop) — see shader.
                     tplFlags[0] = options.emphasizeOverrides ? (2 | 32) : 2;
                     for (const batch of overrideBatches) {
+                        pass.setPipeline(pipeFor(batch, 'overlay'));
                         renderBatch(batch);
                     }
                     tplFlags[0] = 0;  // restore for any downstream use of the template
@@ -2115,10 +2580,9 @@ export class Renderer {
                 // a complete depth buffer. Only runs when an override actually made some
                 // occurrence translucent (otherwise zero cost). flags.x bit 3 flips the
                 // shader's opacity routing so only translucent occurrences draw here.
-                const instancedTransparent = this.scene.getInstancedTemplates();
                 const instancedTransparentPipeline = this.pipeline.getInstancedTransparentPipeline();
                 if (
-                    instancedTransparent.length > 0 &&
+                    visibleInstanced.length > 0 &&
                     this.scene.hasTransparentInstances() &&
                     instancedTransparentPipeline !== null
                 ) {
@@ -2126,11 +2590,12 @@ export class Renderer {
                     pass.setPipeline(instancedTransparentPipeline);
                     pass.setBindGroup(0, this.pipeline.getBindGroup());
                     pass.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());
-                    for (const it of instancedTransparent) {
+                    for (const it of visibleInstanced) {
                         pass.setVertexBuffer(0, it.vertexBuffer);
                         pass.setVertexBuffer(1, it.instanceBuffer);
                         pass.setIndexBuffer(it.indexBuffer, 'uint32');
                         pass.drawIndexed(it.indexCount, it.instanceCount);
+                        frameDrawCalls++;
                     }
                     pass.setPipeline(this.pipeline.getPipeline());
                 }
@@ -2139,6 +2604,7 @@ export class Renderer {
                 if (transparentBatches.length > 0) {
                     pass.setPipeline(this.pipeline.getTransparentPipeline());
                     for (const batch of transparentBatches) {
+                        pass.setPipeline(pipeFor(batch, 'transparent'));
                         renderBatch(batch);
                     }
                 }
@@ -2180,6 +2646,7 @@ export class Renderer {
                         pass.setVertexBuffer(0, mesh.vertexBuffer);
                         pass.setIndexBuffer(mesh.indexBuffer, 'uint32');
                         pass.drawIndexed(mesh.indexCount, 1, 0, 0, 0);
+                        frameDrawCalls++;
                     }
                 }
 
@@ -2238,6 +2705,7 @@ export class Renderer {
                     pass.setVertexBuffer(0, mesh.vertexBuffer);
                     pass.setIndexBuffer(mesh.indexBuffer, 'uint32');
                     pass.drawIndexed(mesh.indexCount, 1, 0, 0, 0);
+                    frameDrawCalls++;
                 }
             } else {
                 // Fallback: render individual meshes (only when no batches exist)
@@ -2251,6 +2719,7 @@ export class Renderer {
                     pass.setVertexBuffer(0, mesh.vertexBuffer);
                     pass.setIndexBuffer(mesh.indexBuffer, 'uint32');
                     pass.drawIndexed(mesh.indexCount, 1, 0, 0, 0);
+                    frameDrawCalls++;
                 }
 
                 // Render transparent meshes with transparent pipeline (alpha blending)
@@ -2265,6 +2734,7 @@ export class Renderer {
                         pass.setVertexBuffer(0, mesh.vertexBuffer);
                         pass.setIndexBuffer(mesh.indexBuffer, 'uint32');
                         pass.drawIndexed(mesh.indexCount, 1, 0, 0, 0);
+                        frameDrawCalls++;
                     }
                 }
             }
@@ -2462,30 +2932,38 @@ export class Renderer {
 
             device.queue.submit([encoder.finish()]);
 
+            this._lastFrameStats = {
+                drawCalls: frameDrawCalls,
+                batchesDrawn: frameBatchesDrawn,
+                batchesFrustumCulled: frameBatchesFrustumCulled,
+                batchesContributionCulled: frameBatchesContributionCulled,
+                batchesNotResident: frameBatchesNotResident,
+                batchesAtLod1: frameBatchesAtLod1,
+                instancedDrawn: frameInstancedDrawn,
+                instancedFrustumCulled: frameInstancedFrustumCulled,
+                instancedContributionCulled: frameInstancedContributionCulled,
+                timestamp: performance.now(),
+            };
+
+            // GPU residency budget (issue #1682 phase 3a): evict least-recently
+            // drawn bucket batches after submit — destruction of just-submitted
+            // buffers is deferred past in-flight work by WebGPU.
+            this.scene.enforceGpuBudget();
+
             // Pop validation error scope and capture the exact error
-            if (captureGpuError) {
-                device.popErrorScope().then((error) => {
-                    if (error) {
-                        const msg = error.message || String(error);
-                        console.error('[WebGPU] Validation error in render pass:', msg);
-                        this.device._lastUncapturedError = `VALIDATION: ${msg}`;
-                        this.device._uncapturedErrorCount++;
-                    }
-                }).catch((error: unknown) => {
-                    // popErrorScope() rejects (e.g. "Instance dropped in popErrorScope")
-                    // when the GPU device is lost while the scope is still pending. This
-                    // escapes the surrounding synchronous try/catch and would otherwise
-                    // surface as an unhandled rejection. Treat it like any other device
-                    // loss: invalidate the context so it reconfigures next frame.
-                    this.device.invalidateContext();
-                    const now = performance.now();
-                    if (now - this.lastRenderErrorTime > this.RENDER_ERROR_THROTTLE_MS) {
-                        this.lastRenderErrorTime = now;
-                        console.warn('[WebGPU] popErrorScope rejected (device likely lost):', error);
-                    }
-                });
+            if (errorScopePushed) {
+                errorScopePushed = false;
+                this.drainErrorScope(device);
             }
         } catch (error) {
+            // Balance the validation scope if we threw before popping it above —
+            // an unpopped scope would capture every later frame's errors silently.
+            // drainErrorScope logs a pop rejection (device loss) rather than
+            // swallowing it.
+            if (errorScopePushed) {
+                errorScopePushed = false;
+                this.drainErrorScope(device);
+            }
             this._renderErrorCount++;
             this._lastRenderError = error instanceof Error ? error.message : String(error);
             // Handle WebGPU errors (e.g., device lost, invalid state)
@@ -2507,9 +2985,34 @@ export class Renderer {
      *
      * Note: x, y are CSS pixel coordinates relative to the canvas element.
      * These are scaled internally to match the actual canvas pixel dimensions.
+     *
+     * Resolves null once the device is gone — see `pickPathAlive()`.
      */
     async pick(x: number, y: number, options?: PickOptions): Promise<PickResult | null> {
+        if (!this.pickPathAlive()) return null;
         return this.pickingManager.pick(x, y, options, this.activePickClip());
+    }
+
+    /**
+     * Whether the GPU pick path can still run — the same liveness contract
+     * `render()` and `getGPUDevice()` apply, which the pick path used to skip.
+     *
+     * A pick is a full GPU round trip (render pass, `copyTextureToBuffer`,
+     * `mapAsync` readback). Once the device is destroyed or lost, that readback
+     * never completes: Chromium rejects the pending map with an AbortError
+     * ("A valid external Instance reference no longer exists"). Nothing on the
+     * pick path is in a position to handle it — the DOM click/contextmenu
+     * handlers that reach here are `async` listeners whose promise nobody
+     * awaits — so it escapes as an unhandled rejection, once per click, for as
+     * long as the user keeps clicking a frozen viewport (#1901).
+     *
+     * Callers therefore degrade to "no hit" instead of throwing, matching how
+     * `render()` degrades to "skip the frame". This is not a swallow: the GPU
+     * call is never issued, so no error is being hidden. Consumers that want to
+     * react to the loss subscribe to `onDeviceLost()`.
+     */
+    private pickPathAlive(): boolean {
+        return !this.deviceLost && this.device.isInitialized();
     }
 
     /**
@@ -2528,6 +3031,8 @@ export class Renderer {
      *
      * See `PickingManager.pickRect` for the visibility-filter +
      * limitation notes.
+     *
+     * Resolves an empty set once the device is gone — see `pickPathAlive()`.
      */
     async pickRect(
         x0: number,
@@ -2536,6 +3041,7 @@ export class Renderer {
         y1: number,
         options?: PickOptions,
     ): Promise<Set<number>> {
+        if (!this.pickPathAlive()) return new Set();
         return this.pickingManager.pickRect(x0, y0, x1, y1, options, this.activePickClip());
     }
 
@@ -2968,10 +3474,24 @@ export class Renderer {
     }
 
     /**
-     * Get the GPU device (returns null if not initialized)
+     * Get the GPU device (returns null if not initialized, or if the device
+     * has been lost).
+     *
+     * The device-lost check is load-bearing, not defensive tidiness. A lost
+     * device is NOT torn down: `WebGPUDevice.destroy()` is the only thing that
+     * nulls the handle and it is never called for an involuntary loss (TDR /
+     * GPU-process crash / driver reset), so `isInitialized()` stays true and
+     * this used to keep handing out a zombie `GPUDevice`. Every caller then
+     * called `createBuffer()` on it, which throws — bypassing both `render()`'s
+     * own deviceLost guard and the `onDeviceLost` listeners entirely.
+     *
+     * Returning null instead routes into the `if (!device) return` check that
+     * every call site already has, so a lost device degrades to "stop
+     * uploading" rather than an uncaught throw. See `isDeviceLost()` /
+     * `onDeviceLost()` for the recovery contract.
      */
     getGPUDevice(): GPUDevice | null {
-        if (!this.device.isInitialized()) {
+        if (!this.device.isInitialized() || this.deviceLost) {
             return null;
         }
         return this.device.getDevice();
@@ -3021,9 +3541,13 @@ export class Renderer {
         this.pipeline?.destroy();
         this.pipeline = null;
 
-        // Picker GPU resources
+        // Picker GPU resources. The manager holds its own reference, so clear
+        // that too — otherwise its `if (!this.picker) return null` guard keeps
+        // pointing at a destroyed picker and a stray click still drives dead
+        // GPU resources (#1901).
         this.picker?.destroy();
         this.picker = null;
+        this.pickingManager.setPicker(null);
 
         // Post-processor uniform buffer
         this.postProcessor?.destroy();
@@ -3060,6 +3584,14 @@ export class Renderer {
 
         // Snap detector geometry cache
         this.raycastEngine.clearCaches();
+
+        // Finally, release the GPU device itself. Every buffer/pipeline/texture
+        // above was created from it and has already been destroyed, so nothing
+        // will touch the device after this. Without it, an app that spins up a
+        // renderer per model keeps N live devices (and their VRAM) alive. The
+        // lost-handler special-cases reason 'destroyed' so this is not reported
+        // as a fault. render() early-returns while the device is uninitialised.
+        this.device.destroy();
     }
 
     /**

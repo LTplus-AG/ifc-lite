@@ -120,17 +120,40 @@ function DockBody({ contribution }: { contribution: SlotContribution<DockContrib
   const host = useExtensionHost();
   const [widget, setWidget] = useState<unknown>();
   const [error, setError] = useState<string | undefined>();
+  // A dock widget's buttons may invoke only its OWN extension's commands.
+  //
+  // This is a deliberate behaviour restriction. Before it, `invokeCommand`
+  // took a bare id and ran the first enabled extension declaring it, so a
+  // widget could reach any installed extension's command by naming the
+  // string. That is exactly the ambient authority
+  // `docs/architecture/ai-customization/02-security.md` §3.3 rules out:
+  // "if an extension can acquire authority by naming a string, capability
+  // grants become a polite suggestion".
+  //
+  // Cross-extension invocation is not being removed from the design, it is
+  // being put behind the grant that already describes it. The catalogue
+  // (`packages/extensions/src/capability/catalogue.ts`) defines
+  // `command.invoke:<id-pattern>`, "Invoke other extensions' commands
+  // matching the listed id pattern". Nothing in this tree enforces it:
+  // `packages/extensions/src/host/permissions.ts` records it as "handled by
+  // host dispatcher; no sandbox flag" and the dispatcher has no such check,
+  // no code reads a `command`-scope capability, and no manifest in the repo
+  // (fixtures, canaries, examples, docs samples) requests one. The roadmap
+  // still lists inter-extension communication as an open question
+  // (`07-roadmap.md` §5, item 2). Denying by default until the grant is enforced
+  // is the reading that matches the spec; widening it later is a capability
+  // check at this call site, not a redesign.
   const ctx: WidgetRendererContext = useMemo(
     () => ({
       state: {},
       invokeCommand: (commandId: string) => {
-        host.runCommand(commandId).catch((err) => {
+        host.runCommand(commandId, contribution.extensionId).catch((err) => {
           console.warn('[ExtensionDockHost] command failed:', err);
           toast.error(describeRunCommandError(commandId, err));
         });
       },
     }),
-    [host],
+    [host, contribution.extensionId],
   );
 
   useEffect(() => {

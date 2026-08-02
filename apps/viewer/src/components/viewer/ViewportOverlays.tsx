@@ -14,6 +14,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useViewerStore } from '@/store';
 import { goHomeFromStore } from '@/store/homeView';
 import { useIfc } from '@/hooks/useIfc';
+import { emitCameraInteracted } from '@/lib/tours/events';
+import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { cn } from '@/lib/utils';
 import { ViewCube, type ViewCubeRef } from './ViewCube';
 import { AxisHelper, type AxisHelperRef } from './AxisHelper';
@@ -39,6 +41,7 @@ export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: bool
   const cameraRotationRef = useRef({ azimuth: 45, elevation: 25 });
   const viewCubeRef = useRef<ViewCubeRef | null>(null);
   const axisHelperRef = useRef<AxisHelperRef | null>(null);
+  const lastCubeGestureEmitRef = useRef(0);
 
   // Local state for scale - updated via callback, no global re-renders
   const [scale, setScale] = useState(10);
@@ -105,6 +108,7 @@ export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: bool
     const mappedView = viewMap[view];
     if (mappedView && cameraCallbacks.setPresetView) {
       cameraCallbacks.setPresetView(mappedView);
+      emitCameraInteracted('preset');
     }
   }, [cameraCallbacks]);
 
@@ -140,21 +144,15 @@ export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: bool
   return (
     <>
       <PointCloudPanelMount />
-      {/* Bottom-right: Navigation controls (hidden when Cesium active — Cesium is web-only) */}
-      {!cesiumEnabled && (
+      {/* Touch navigation stays available on mobile; the desktop Ribbon owns these controls. */}
+      {isMobile && !cesiumEnabled && (
         <div
-          className={cn(
-            'absolute flex flex-col gap-1 bg-background/90 backdrop-blur-sm border p-1',
-            // Mobile: bottom-left at ~15% up from lower edge — thumb-reachable on
-            // portrait phones and well clear of the URL bar. Tight radii + flat
-            // background match the codebase's brutalist panel-chrome vocabulary.
-            isMobile ? 'left-4 bottom-[15%] rounded-md' : 'bottom-4 right-4 rounded-lg shadow-sm',
-          )}
+          className="absolute left-4 bottom-[15%] flex flex-col gap-1 rounded-md border bg-background/90 p-1 backdrop-blur-sm"
         >
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon-sm" className={cn(isMobile && 'min-h-[44px] min-w-[44px]')} onClick={handleHome}>
-                <Home className={cn(isMobile ? 'h-5 w-5' : 'h-4 w-4')} />
+              <Button variant="ghost" size="icon-sm" aria-label="Home view" className="min-h-[44px] min-w-[44px]" onClick={handleHome}>
+                <Home className="h-5 w-5" />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="left">Home (H)</TooltipContent>
@@ -162,8 +160,8 @@ export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: bool
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon-sm" className={cn(isMobile && 'min-h-[44px] min-w-[44px]')} onClick={handleZoomIn}>
-                <ZoomIn className={cn(isMobile ? 'h-5 w-5' : 'h-4 w-4')} />
+              <Button variant="ghost" size="icon-sm" aria-label="Zoom in" className="min-h-[44px] min-w-[44px]" onClick={handleZoomIn}>
+                <ZoomIn className="h-5 w-5" />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="left">Zoom In (+)</TooltipContent>
@@ -171,8 +169,8 @@ export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: bool
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon-sm" className={cn(isMobile && 'min-h-[44px] min-w-[44px]')} onClick={handleZoomOut}>
-                <ZoomOut className={cn(isMobile ? 'h-5 w-5' : 'h-4 w-4')} />
+              <Button variant="ghost" size="icon-sm" aria-label="Zoom out" className="min-h-[44px] min-w-[44px]" onClick={handleZoomOut}>
+                <ZoomOut className="h-5 w-5" />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="left">Zoom Out (-)</TooltipContent>
@@ -199,11 +197,19 @@ export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: bool
 
       {/* ViewCube (top-right) */}
       {!hideViewCube && (
-        <div className="absolute top-6 right-6">
+        <div className="absolute top-6 right-6" {...tourAnchor(TOUR_ANCHORS.viewcube)}>
           <ViewCube
             ref={viewCubeRef}
             onViewChange={handleViewChange}
-            onDrag={(deltaX, deltaY) => cameraCallbacks.orbit?.(deltaX, deltaY)}
+            onDrag={(deltaX, deltaY) => {
+              cameraCallbacks.orbit?.(deltaX, deltaY);
+              // Throttled: onDrag fires per pointer move.
+              const now = performance.now();
+              if (now - lastCubeGestureEmitRef.current > 500) {
+                lastCubeGestureEmitRef.current = now;
+                emitCameraInteracted('orbit');
+              }
+            }}
             rotationX={initialRotationX}
             rotationY={initialRotationY}
           />

@@ -63,13 +63,17 @@ import {
   Pencil,
   PenLine,
   Slice,
+  Layers,
   Layers3,
+  Users,
   SquareStack,
   ChevronsUpDown,
   PanelRight,
   SlidersHorizontal,
   ChevronsRight,
+  GraduationCap,
 } from 'lucide-react';
+import { isCollabEnabled } from '@/lib/collab/config';
 import { cn } from '@/lib/utils';
 import { useViewerStore } from '@/store';
 import { applyLevelDisplayMode } from '@/store/levelDisplay';
@@ -89,6 +93,9 @@ import { resolveExtensionIcon } from '@/components/extensions/icon-registry';
 import type { CommandContribution } from '@ifc-lite/extensions';
 import { toast as paletteToast } from '@/components/ui/toast';
 import { SCRIPT_TEMPLATES } from '@/lib/scripts/templates';
+import { TOUR_REGISTRY } from '@/lib/tours/registry';
+import { startTour } from '@/lib/tours/controller';
+import { EVENT_SHOW_SHORTCUTS } from '@/lib/tours/events';
 import { exportGlbFromGeometry } from '@/lib/export/glb';
 import { exportCsvFromBytes } from '@/lib/export/csv';
 import { downloadFile } from '@/lib/export/download';
@@ -109,7 +116,8 @@ type Category =
   | 'Export'
   | 'Automation'
   | 'Preferences'
-  | 'Extensions';
+  | 'Extensions'
+  | 'Learn';
 
 interface Command {
   id: string;
@@ -211,7 +219,7 @@ function recordUsage(id: string) {
  *  analysis extension first preserves the prior "panels win the slot" behavior.
  *  Kept as two thin helpers so every existing command action keeps its call
  *  site (the `'list'` legacy id maps to the registry's `'lists'`). */
-function activateRightPanel(panel: 'bcf' | 'ids' | 'lens' | 'clash' | 'compare' | 'extensions') {
+function activateRightPanel(panel: 'bcf' | 'ids' | 'lens' | 'clash' | 'compare' | 'extensions' | 'layers' | 'collab') {
   closeActiveAnalysisExtension();
   useViewerStore.getState().toggleWorkspacePanel(panel);
 }
@@ -438,6 +446,12 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         action: () => { activateBottomPanel('gantt'); } },
       { id: 'panel:lens', label: 'Lens Rules', keywords: 'color filter highlight', category: 'Panels', icon: Palette,
         action: () => { activateRightPanel('lens'); } },
+      { id: 'panel:layers', label: 'Layer Stack', keywords: 'ifcx layers federation draft publish merge review provenance registry version overlay', category: 'Panels', icon: Layers,
+        action: () => { activateRightPanel('layers'); } },
+      ...(isCollabEnabled()
+        ? [{ id: 'panel:collab', label: 'Collaboration Room', keywords: 'share invite live multiplayer presence room realtime sync', category: 'Panels' as const, icon: Users,
+            action: () => { activateRightPanel('collab'); } }]
+        : []),
       { id: 'panel:extensions', label: 'Extensions', keywords: 'extension plugin install manage iflx', category: 'Panels', icon: Puzzle,
         action: () => { activateRightPanel('extensions'); } },
       // ── Customization entry points — first-class discoverability
@@ -554,6 +568,30 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         action: () => { useViewerStore.getState().toggleHoverTooltips(); } },
     );
 
+    // ── Learn (tours) ──
+    // Search-only, like Extensions: not in CATEGORY_ORDER, so browse mode
+    // stays uncluttered. The browsable catalog is the Info dialog's Learn
+    // tab, which "Open Learn Hub" deep-links to.
+    for (const tour of TOUR_REGISTRY) {
+      c.push({
+        id: `tour:${tour.id}`,
+        label: `Tour: ${tour.title}`,
+        keywords: `tour walkthrough learn guide tutorial onboarding ${tour.description}`,
+        category: 'Learn',
+        icon: GraduationCap,
+        detail: `${tour.minutes} min`,
+        action: () => { startTour(tour.id, 'palette'); },
+      });
+    }
+    c.push({
+      id: 'learn:hub',
+      label: 'Open Learn Hub',
+      keywords: 'tour walkthrough learn tutorials help getting started onboarding',
+      category: 'Learn',
+      icon: GraduationCap,
+      action: () => { window.dispatchEvent(new CustomEvent(EVENT_SHOW_SHORTCUTS, { detail: { tab: 'learn' } })); },
+    });
+
     // ── Extension contributions ──
     // Surfaced under the "Extensions" category. Clicking dispatches
     // through the activation event so the runtime executes the
@@ -576,9 +614,16 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           // Fire the activation event first so onCommand:<id>-subscribed
           // extensions wake up, then invoke the command handler. The
           // runtime dedupes activations.
+          //
+          // The run is pinned to `contribution.extensionId`, the owner of
+          // this palette entry. Command ids are namespaced by convention
+          // only, so two installed extensions can declare the same id; the
+          // loop above pushes one entry per contribution either way, and
+          // without the owner id both entries would run whichever extension
+          // storage happened to list first.
           void extensionHost.dispatcher
             .fire(`onCommand:${payload.id}` as `onCommand:${string}`)
-            .then(() => extensionHost.runCommand(payload.id))
+            .then(() => extensionHost.runCommand(payload.id, contribution.extensionId))
             .catch((err) => {
               paletteToast.error(describeRunCommandError(payload.id, err));
             });

@@ -44,6 +44,15 @@ export function testPair(
   const small = aSmaller ? triA : triB;
   const large = aSmaller ? triB : triA;
 
+  // One AABB containing the other flags the contained-contact case (#1866):
+  // for such pairs the AABB signed gap measures how deep the small BOX sits in
+  // the big one (its own extent), not how far the MESHES interpenetrate, so
+  // collect the crossing triangles for a mesh-level depth measurement instead.
+  const contained =
+    aabbContains(elB.bounds, elA.bounds) || aabbContains(elA.bounds, elB.bounds);
+  const crossSmall = contained ? new Uint8Array(small.count) : null;
+  const crossLarge = contained ? new Uint8Array(large.count) : null;
+
   let intersects = false;
   let contactSumX = 0;
   let contactSumY = 0;
@@ -74,6 +83,10 @@ export function testPair(
       const [l0, l1, l2] = large.tri(tl);
       if (triTriIntersect(s0, s1, s2, l0, l1, l2)) {
         intersects = true;
+        if (crossSmall !== null && crossLarge !== null) {
+          crossSmall[ts] = 1;
+          crossLarge[tl] = 1;
+        }
         const c = mid(centroid(s0, s1, s2), centroid(l0, l1, l2));
         contactSumX += c[0];
         contactSumY += c[1];
@@ -138,8 +151,21 @@ export function testPair(
     const point: Vec3 = contactN > 0
       ? [contactSumX / contactN, contactSumY / contactN, contactSumZ / contactN]
       : center(overlap);
-    // Phase-0 penetration estimate from AABB overlap; exact depth lands in Rust.
-    const penetration = Math.max(0, -signedGap(elA.bounds, elB.bounds));
+    // Penetration estimate from the AABB overlap...
+    let penetration = Math.max(0, -signedGap(elA.bounds, elB.bounds));
+    // ...EXCEPT for a contained pair (#1866): there the AABB overlap equals the
+    // small element's own extent, wildly overstating depth for designed face
+    // contacts (e.g. opening fills inset in their host). Measure the real
+    // mesh-level depth instead: the deepest crossing-triangle vertex of either
+    // mesh inside the other solid. Falls back to the AABB estimate when no such
+    // vertex lies inside (thin member piercing straight through).
+    if (crossSmall !== null && crossLarge !== null) {
+      const meshDepth = Math.max(
+        small.maxPenetrationInto(large, crossSmall),
+        large.maxPenetrationInto(small, crossLarge),
+      );
+      if (meshDepth > 0) penetration = meshDepth;
+    }
     return { status: 'hard', distance: -penetration, point, bounds: contactBounds };
   }
 

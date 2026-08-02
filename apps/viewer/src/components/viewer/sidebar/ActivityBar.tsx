@@ -14,7 +14,7 @@
  * gains an eye toggle inline.
  */
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   SlidersHorizontal,
   PanelRightClose,
@@ -37,6 +37,9 @@ import { cn } from '@/lib/utils';
 import { useViewerStore } from '@/store';
 import { usePanelControls } from '@/hooks/usePanelControls';
 import { WORKSPACE_PANELS, getPanelDef, type WorkspacePanelId } from '@/lib/panels/registry';
+import { isCollabEnabled } from '@/lib/collab/config';
+import { pendingCompositionMutations } from '@/lib/layers/pending';
+import { activityAnchor, tourAnchor } from '@/lib/tours/anchors';
 import { CustomizeSidebar } from './CustomizeSidebar';
 
 /** Alt+N hint per panel, by registry index (frozen since #1200): 1-9, then 0.
@@ -59,14 +62,29 @@ export function ActivityBar() {
 
   const { isOpen, panelLocation, toggle, openInHome, floatPanel, popOutPanel, activePanel } = usePanelControls();
 
+  // Draft-awareness badge on the Layers icon (#1717 exposure): unpublished
+  // composition edits are the moment the feature becomes relevant — surface
+  // the count where the user already looks, like the Room peers badge.
+  const mutationVersion = useViewerStore((s) => s.mutationVersion);
+  const hasStack = useViewerStore((s) => s.layerStack.length > 0);
+  const pendingLayerEdits = useMemo(() => {
+    void mutationVersion;
+    return hasStack ? pendingCompositionMutations().length : 0;
+  }, [mutationVersion, hasStack]);
+
   const hidden = new Set(hiddenIds);
   const [dragId, setDragId] = useState<WorkspacePanelId | null>(null);
   const [overId, setOverId] = useState<WorkspacePanelId | null>(null);
 
   // Hidden panels are removed from the rail in every mode (#1263), including
   // customize. Restoring a hidden panel happens in the Customize popover's
-  // dedicated Hidden section, not by an inline greyed icon here.
-  const visibleIds = order.filter((id) => !hidden.has(id) || id === 'properties');
+  // dedicated Hidden section, not by an inline greyed icon here. The collab
+  // Room panel only surfaces while the collab feature flag is on.
+  const visibleIds = order.filter(
+    (id) =>
+      (!hidden.has(id) || id === 'properties') &&
+      (id !== 'collab' || isCollabEnabled()),
+  );
 
   const onIconClick = (id: WorkspacePanelId) => {
     const region = getPanelDef(id)?.region;
@@ -122,6 +140,7 @@ export function ActivityBar() {
                 <TooltipTrigger asChild>
                   <button
                     type="button"
+                    {...tourAnchor(activityAnchor(id))}
                     aria-label={ariaLabel}
                     aria-pressed={active}
                     draggable={customizing && id !== 'properties'}
@@ -156,6 +175,15 @@ export function ActivityBar() {
                       <span className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-r bg-primary" aria-hidden />
                     )}
                     <Icon className="h-4 w-4" />
+                    {/* Unpublished-edits badge on the Layers icon. */}
+                    {!customizing && id === 'layers' && pendingLayerEdits > 0 && (
+                      <span
+                        className="absolute -right-1 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-amber-500 px-1 text-[9px] font-medium text-white ring-1 ring-background"
+                        aria-hidden
+                      >
+                        {pendingLayerEdits > 99 ? '99+' : pendingLayerEdits}
+                      </span>
+                    )}
                     {/* Detached indicator dot — floating (primary) vs popped out (emerald). */}
                     {!customizing && open && loc !== 'docked' && (
                       <span

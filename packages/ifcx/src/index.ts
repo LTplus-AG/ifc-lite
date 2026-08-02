@@ -10,9 +10,10 @@
  */
 
 import type { IfcxFile, ComposedNode } from './types.js';
+import { ATTR, isTypedPropertyValue, parseV5aKey } from './types.js';
 import { composeIfcx, findRoots } from './composition.js';
 import { extractEntities } from './entity-extractor.js';
-import { extractProperties, isQuantityProperty } from './property-extractor.js';
+import { extractProperties, routesToQuantityTable } from './property-extractor.js';
 import { extractGeometry, type MeshData } from './geometry-extractor.js';
 import { extractPointClouds, type PointCloudExtraction } from './pointcloud-extractor.js';
 import { buildHierarchy } from './hierarchy-builder.js';
@@ -38,6 +39,33 @@ import {
 // Re-export types
 export * from './types.js';
 export { composeIfcx, findRoots, getDescendants } from './composition.js';
+export { applyTombstones, isTombstoned } from './tombstones.js';
+export { bakeLayers, type BakeOptions } from './bake.js';
+export {
+  canonicalStringify,
+  canonicalizeLayer,
+  computeLayerId,
+  computeStackHash,
+  blake3Digest,
+} from './canonical.js';
+export {
+  PROVENANCE_VERSION,
+  createProvenanceManifest,
+  getProvenance,
+  setProvenance,
+  validateProvenance,
+  type AuthorKind,
+  type ProvenanceAuthor,
+  type ProvenanceBase,
+  type ProvenanceCheck,
+  type ProvenanceInit,
+  type ProvenanceManifest,
+  type ProvenanceSignature,
+  type IdentityMapEntry,
+  type MergeRecord,
+  type MergeResolution,
+  type WaivedCheck,
+} from './provenance.js';
 export { extractEntities } from './entity-extractor.js';
 export { extractProperties, isQuantityProperty } from './property-extractor.js';
 export { extractGeometry, type MeshData } from './geometry-extractor.js';
@@ -212,7 +240,9 @@ export async function parseIfcx(
 
 /**
  * Build relationship graph from composed nodes.
- * In IFCX, relationships are implicit in the children structure.
+ * In IFCX, relationships are implicit in the children structure, except for
+ * system membership which rides the `bsi::ifc::system::partofsystem`
+ * attribute (see {@link collectRefs}).
  */
 function buildRelationships(
   composed: Map<string, ComposedNode>,
@@ -233,9 +263,39 @@ function buildRelationships(
         builder.addEdge(parentId, childId, relType, relId++);
       }
     }
+
+    // IFC5 system membership: `bsi::ifc::system::partofsystem` sits on the
+    // MEMBER node and refs the IfcSystem-family node. Emit the edge in STEP
+    // direction (source = group, so 'forward' from the group yields its
+    // members) so extractGroupMembersOnDemand / the viewer's Groups tab read
+    // IFCX stores exactly like STEP ones (#1622).
+    const partOfSystem = node.attributes.get(ATTR.PART_OF_SYSTEM);
+    if (partOfSystem !== undefined) {
+      for (const ref of collectRefs(partOfSystem)) {
+        const groupId = pathToId.get(ref);
+        if (groupId !== undefined) {
+          builder.addEdge(groupId, parentId, RelationshipType.AssignsToGroup, relId++);
+        }
+      }
+    }
   }
 
   return builder.build();
+}
+
+/**
+ * Collect the `ref` targets of a relationship-valued IFCX attribute. The
+ * buildingSMART samples author these as an array of `{ ref: "<path>" }`
+ * objects; tolerate a single bare object too. Anything else yields [].
+ */
+function collectRefs(value: unknown): string[] {
+  const items = Array.isArray(value) ? value : [value];
+  const refs: string[] = [];
+  for (const item of items) {
+    const ref = (item as { ref?: unknown } | null)?.ref;
+    if (typeof ref === 'string' && ref.length > 0) refs.push(ref);
+  }
+  return refs;
 }
 
 /**
@@ -280,7 +340,8 @@ function buildQuantities(
   const builder = new QuantityTableBuilder(strings);
 
   // Map property names to quantity types
-  const getQuantityType = (propName: string): number => {
+  const LENGTH_NAME_RE = /(Length|Width|Height|Depth|Thickness|Perimeter|Radius|Diameter)$/;
+  const getQuantityType = (propName: string, qtoSet: boolean): number => {
     // Volume types
     if (propName === 'Volume' || propName.endsWith('Volume')) return 2; // QuantityType.Volume
     // Area types
@@ -290,8 +351,11 @@ function buildQuantities(
     // Weight types
     if (propName === 'Weight' || propName === 'Mass' ||
         propName.endsWith('Weight') || propName.endsWith('Mass')) return 4; // QuantityType.Weight
-    // Default to length for dimension-like quantities
-    return 0; // QuantityType.Length
+    if (LENGTH_NAME_RE.test(propName)) return 0; // QuantityType.Length
+    // Standard Qto_* members are dimension-like by convention; a custom
+    // set's unrecognized numeric (FireResistance: 60) must not pick up a
+    // fabricated length unit in the viewer — Count renders unitless.
+    return qtoSet ? 0 : 3;
   };
 
   for (const node of composed.values()) {
@@ -303,18 +367,25 @@ function buildQuantities(
     const qsetName = ifcClass ? `Qto_${ifcClass.replace('Ifc', '')}BaseQuantities` : 'BaseQuantities';
 
     for (const [key, value] of node.attributes) {
-      // Check if this looks like a quantity
-      const propName = key.split('::').pop() ?? '';
+      // Same routing rule the property extractor uses to skip — the v5a
+      // namespace mirrors the collab inflation dialect, typed records
+      // (#1031) unwrap to their scalar — so neither table drops or
+      // double-claims an attribute.
+      if (!routesToQuantityTable(key, value)) continue;
 
-      if (typeof value === 'number' && isQuantityProperty(propName)) {
-        builder.add({
-          entityId: expressId,
-          qsetName,
-          quantityName: propName,
-          quantityType: getQuantityType(propName),
-          value,
-        });
-      }
+      const v5a = parseV5aKey(key);
+      const propName = v5a?.name ?? key.split('::').pop() ?? '';
+      const effective = isTypedPropertyValue(value) ? value.value : value;
+
+      builder.add({
+        entityId: expressId,
+        // Keep the authored set name (Qto_* or custom) when the key
+        // carries one; only heuristic-routed keys get the synthesized set.
+        qsetName: v5a ? v5a.setName : qsetName,
+        quantityName: propName,
+        quantityType: getQuantityType(propName, v5a ? v5a.setName.startsWith('Qto_') : true),
+        value: effective as number,
+      });
     }
   }
 

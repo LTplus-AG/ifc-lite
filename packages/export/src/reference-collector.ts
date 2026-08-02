@@ -33,6 +33,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 const HASH = 0x23;  // '#'
 const ZERO = 0x30;  // '0'
 const NINE = 0x39;  // '9'
+const QUOTE = 0x27; // "'"
 
 /** Entity types that form the shared file infrastructure and must always be included. */
 const INFRASTRUCTURE_TYPES = new Set([
@@ -201,6 +202,13 @@ const PRODUCT_TYPES = new Set([
  * avoiding TextDecoder string allocation and regex overhead. Each entity
  * is visited at most once, and IDs are parsed inline from bytes.
  *
+ * String-literal aware: `#N` inside a STEP `'...'` string (a Name like
+ * `'detail #999'`) is TEXT, not a reference. Treating it as an edge would
+ * pull unrelated entities into export closures — and, in the demesher's
+ * reverse-reference prune, could tombstone a referrer-less entity that a
+ * string merely mentions. The `''` escape is handled (the scan re-enters
+ * string mode), so `'it''s #7'` contributes no reference either.
+ *
  * ~4-15x faster than TextDecoder + regex for large closures.
  */
 function extractRefsFromBytes(
@@ -212,7 +220,23 @@ function extractRefsFromBytes(
   const end = byteOffset + byteLength;
   let i = byteOffset;
   while (i < end) {
-    if (source[i] === HASH) {
+    const b = source[i];
+    if (b === QUOTE) {
+      // Skip the string literal: advance to the closing quote, treating the
+      // '' escape as string continuation.
+      i++;
+      while (i < end) {
+        if (source[i] === QUOTE) {
+          if (i + 1 < end && source[i + 1] === QUOTE) {
+            i += 2; // escaped quote, still inside the string
+            continue;
+          }
+          i++; // real closing quote
+          break;
+        }
+        i++;
+      }
+    } else if (b === HASH) {
       i++;
       // Check if followed by at least one digit
       if (i < end && source[i] >= ZERO && source[i] <= NINE) {
@@ -228,6 +252,21 @@ function extractRefsFromBytes(
       i++;
     }
   }
+}
+
+/**
+ * Collect the `#ID` references inside one entity's byte range (fresh array
+ * per call). Exported for consumers that need per-entity edges — e.g. the
+ * demesher's reverse-reference prune — rather than a transitive closure.
+ */
+export function collectRefsInByteRange(
+  source: Uint8Array,
+  byteOffset: number,
+  byteLength: number,
+): number[] {
+  const out: number[] = [];
+  extractRefsFromBytes(source, byteOffset, byteLength, out);
+  return out;
 }
 
 // ---------------------------------------------------------------------------

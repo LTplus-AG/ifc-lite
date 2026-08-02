@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { IfcTypeEnum } from '@ifc-lite/data';
-import { executeList, listResultToCSV } from './engine.js';
+import { executeList, listResultToCSV, summariseListRows, groupPathKey, toScheduleRows } from './engine.js';
 import { discoverColumns } from './discovery.js';
 import { LIST_PRESETS } from './presets.js';
 import type { ListDataProvider, ListDefinition } from './types.js';
@@ -25,12 +25,15 @@ function createMockProvider(): ListDataProvider {
     [IfcTypeEnum.IfcSlab, [3]],
   ]);
 
-  const propertySets = new Map<number, Array<{ name: string; properties: Array<{ name: string; value: unknown }> }>>([
+  const propertySets = new Map<number, Array<{ name: string; properties: Array<{ name: string; value: unknown; dataType?: string }> }>>([
     [1, [
       { name: 'Pset_WallCommon', properties: [
         { name: 'IsExternal', value: ['IFCBOOLEAN', '.T.'] },
         { name: 'FireRating', value: 'REI 90' },
         { name: 'LoadBearing', value: ['IFCBOOLEAN', '.T.'] },
+        // A measure property carrying its raw IFC dataType — used to prove
+        // executeList surfaces it onto the result column (#1573).
+        { name: 'ThermalTransmittance', value: 0.24, dataType: 'IFCTHERMALTRANSMITTANCEMEASURE' },
       ]},
     ]],
     [2, [
@@ -49,6 +52,9 @@ function createMockProvider(): ListDataProvider {
         { name: 'Length', value: 5.0, type: 0 },
         { name: 'Height', value: 2.8, type: 0 },
         { name: 'Width', value: 0.2, type: 0 },
+        // NetVolume lives in a DIFFERENT set per element type (wall vs slab);
+        // a `/Qto_.*BaseQuantities/` pattern spans both (#1591).
+        { name: 'NetVolume', value: 0.28, type: 2 },
       ]},
     ]],
     [2, [
@@ -56,12 +62,14 @@ function createMockProvider(): ListDataProvider {
         { name: 'Length', value: 3.5, type: 0 },
         { name: 'Height', value: 2.8, type: 0 },
         { name: 'Width', value: 0.15, type: 0 },
+        { name: 'NetVolume', value: 0.147, type: 2 },
       ]},
     ]],
     [3, [
       { name: 'Qto_SlabBaseQuantities', quantities: [
         { name: 'GrossArea', value: 45.2, type: 1 },
         { name: 'GrossVolume', value: 9.04, type: 2 },
+        { name: 'NetVolume', value: 8.5, type: 2 },
       ]},
     ]],
   ]);
@@ -84,6 +92,27 @@ function createMockProvider(): ListDataProvider {
     [3, 'Level 0'],
   ]);
 
+  // Federation-identity fixtures (#1591): both walls sit in Building A, the
+  // slab in Building B; all share one site and one source model.
+  const buildingNames = new Map<number, string>([
+    [1, 'Building A'],
+    [2, 'Building A'],
+    [3, 'Building B'],
+  ]);
+  const siteNames = new Map<number, string>([
+    [1, 'Main Site'],
+    [2, 'Main Site'],
+    [3, 'Main Site'],
+  ]);
+
+  // Immediate spatial containers (#1591 follow-up): Wall-01 sits directly in
+  // its storey; Wall-02 in a NON-storey container (an IfcBridgePart-style
+  // part); the slab is uncontained, so its container is '' (a blank cell).
+  const containerNames = new Map<number, string>([
+    [1, 'Level 0'],
+    [2, 'Abutment East'],
+  ]);
+
   const predefinedTypes = new Map<number, string>([
     [1, 'SOLIDWALL'],
     // entity 2 intentionally has no PredefinedType
@@ -104,6 +133,11 @@ function createMockProvider(): ListDataProvider {
     getMaterialNames: (id) => materialNames.get(id) ?? [],
     getClassifications: (id) => classifications.get(id) ?? [],
     getStoreyName: (id) => storeyNames.get(id) ?? '',
+    getContainerName: (id) => containerNames.get(id) ?? '',
+    getBuildingName: (id) => buildingNames.get(id) ?? '',
+    getSiteName: (id) => siteNames.get(id) ?? '',
+    getProjectName: () => 'Sample Project',
+    getModelName: () => 'model-a.ifc',
     getEntityPredefinedType: (id) => predefinedTypes.get(id) ?? '',
   };
 }
@@ -205,6 +239,66 @@ describe('executeList', () => {
     expect(result.rows[0].values[1]).toBe(5.0);
   });
 
+  // #1573: the display-unit converter needs to know what unit-KIND a raw
+  // numeric cell is in, so `executeList` annotates the RESULT's columns
+  // (never the persisted ListDefinition) with the QuantityType / measure
+  // dataType of the first matching entry.
+  it('annotates quantity columns with the resolved QuantityType', () => {
+    const provider = createMockProvider();
+    const def: ListDefinition = {
+      id: 'meta-1',
+      name: 'Test',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [IfcTypeEnum.IfcSlab],
+      conditions: [],
+      columns: [
+        { id: 'area', source: 'quantity', psetName: 'Qto_SlabBaseQuantities', propertyName: 'GrossArea' },
+      ],
+    };
+
+    const result = executeList(def, provider);
+    expect(result.columns[0].quantityType).toBe(1); // QuantityType.Area
+    // The persisted definition itself is never mutated.
+    expect(def.columns[0].quantityType).toBeUndefined();
+  });
+
+  it('annotates property columns with the measure dataType', () => {
+    const provider = createMockProvider();
+    const def: ListDefinition = {
+      id: 'meta-3',
+      name: 'Test',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [IfcTypeEnum.IfcWall],
+      conditions: [],
+      columns: [
+        { id: 'u', source: 'property', psetName: 'Pset_WallCommon', propertyName: 'ThermalTransmittance' },
+      ],
+    };
+
+    const result = executeList(def, provider);
+    expect(result.columns[0].dataType).toBe('IFCTHERMALTRANSMITTANCEMEASURE');
+  });
+
+  it('leaves quantityType unset when no entity has a matching quantity', () => {
+    const provider = createMockProvider();
+    const def: ListDefinition = {
+      id: 'meta-2',
+      name: 'Test',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [IfcTypeEnum.IfcWall],
+      conditions: [],
+      columns: [
+        { id: 'missing', source: 'quantity', psetName: 'Qto_SlabBaseQuantities', propertyName: 'GrossArea' },
+      ],
+    };
+
+    const result = executeList(def, provider);
+    expect(result.columns[0].quantityType).toBeUndefined();
+  });
+
   it('extracts material, classification and storey columns', () => {
     const provider = createMockProvider();
     const def: ListDefinition = {
@@ -229,6 +323,75 @@ describe('executeList', () => {
     expect(result.rows[1].values).toEqual(['Wall-02', 'Brick, Rigid Insulation', null, 'Level 1']);
   });
 
+  // #1591: federation-identity columns — the source model plus the spatial
+  // container at each level (Project / Site / Building / Storey), so a list over
+  // several models can be grouped and sorted by where each row comes from.
+  it('extracts the model and leveled spatial columns', () => {
+    const provider = createMockProvider();
+    const def: ListDefinition = {
+      id: 'fed-cols',
+      name: 'Test',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [IfcTypeEnum.IfcWall, IfcTypeEnum.IfcSlab],
+      conditions: [],
+      columns: [
+        { id: 'name', source: 'attribute', propertyName: 'Name' },
+        { id: 'model', source: 'model', propertyName: 'Model' },
+        { id: 'project', source: 'spatial', propertyName: 'Project' },
+        { id: 'site', source: 'spatial', propertyName: 'Site' },
+        { id: 'building', source: 'spatial', propertyName: 'Building' },
+        { id: 'storey', source: 'spatial', propertyName: 'Storey' },
+      ],
+    };
+
+    const result = executeList(def, provider);
+    const byName = new Map(result.rows.map((r) => [r.values[0], r.values]));
+    expect(byName.get('Wall-01')).toEqual(['Wall-01', 'model-a.ifc', 'Sample Project', 'Main Site', 'Building A', 'Level 0']);
+    expect(byName.get('Slab-01')).toEqual(['Slab-01', 'model-a.ifc', 'Sample Project', 'Main Site', 'Building B', 'Level 0']);
+  });
+
+  // #1591 follow-up: the Container column is the element's IMMEDIATE spatial
+  // container — the storey when directly contained there, a non-storey
+  // container (IfcBridgePart / IfcRoadPart / IfcSpatialZone) for infra, and a
+  // blank cell (null) when the element is uncontained.
+  it('extracts the immediate-container spatial column, blank when uncontained', () => {
+    const provider = createMockProvider();
+    const result = executeList({
+      id: 'container-col',
+      name: 'Test',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [IfcTypeEnum.IfcWall, IfcTypeEnum.IfcSlab],
+      conditions: [],
+      columns: [
+        { id: 'name', source: 'attribute', propertyName: 'Name' },
+        { id: 'container', source: 'spatial', propertyName: 'Container' },
+      ],
+    }, provider);
+    const byName = new Map(result.rows.map((r) => [r.values[0], r.values[1]]));
+    expect(byName.get('Wall-01')).toBe('Level 0'); // contained in its storey
+    expect(byName.get('Wall-02')).toBe('Abutment East'); // non-storey container
+    expect(byName.get('Slab-01')).toBeNull(); // uncontained -> blank
+  });
+
+  // A `spatial` column authored before the level existed carries an empty
+  // propertyName; it must still resolve the storey name (back-compat with
+  // persisted lists / the pre-#1591 Storey chip).
+  it('defaults a level-less spatial column to Storey', () => {
+    const provider = createMockProvider();
+    const result = executeList({
+      id: 'sp-default',
+      name: 'T',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [IfcTypeEnum.IfcWall],
+      conditions: [],
+      columns: [{ id: 'sp', source: 'spatial', propertyName: '' }],
+    }, provider);
+    expect(result.rows[0].values[0]).toBe('Level 0');
+  });
+
   // Condition filtering across every condition source. entityTypes: []
   // targets all elements the provider can enumerate (no class constraint),
   // so these rows also pin the class-less targeting semantics.
@@ -243,6 +406,14 @@ describe('executeList', () => {
     // Wall-02 has no classification, so `exists` excludes it.
     { source: 'classification', propertyName: 'Classification', operator: 'exists', value: '', expected: ['Slab-01', 'Wall-01'] },
     { source: 'spatial', propertyName: 'Storey', operator: 'equals', value: 'Level 0', expected: ['Slab-01', 'Wall-01'] },
+    // #1591: leveled spatial + model filters. Building B holds only the slab;
+    // every element shares one site and one source model.
+    { source: 'spatial', propertyName: 'Building', operator: 'equals', value: 'Building B', expected: ['Slab-01'] },
+    // Immediate container: only Wall-02 sits in the non-storey container.
+    { source: 'spatial', propertyName: 'Container', operator: 'equals', value: 'Abutment East', expected: ['Wall-02'] },
+    { source: 'spatial', propertyName: 'Site', operator: 'equals', value: 'Main Site', expected: ['Slab-01', 'Wall-01', 'Wall-02'] },
+    { source: 'model', propertyName: 'Model', operator: 'equals', value: 'model-a.ifc', expected: ['Slab-01', 'Wall-01', 'Wall-02'] },
+    { source: 'model', propertyName: 'Model', operator: 'equals', value: 'other.ifc', expected: [] },
   ] as const)('filters by $source $operator "$value"', ({ source, propertyName, operator, value, expected }) => {
     const provider = createMockProvider();
     const def: ListDefinition = {
@@ -257,6 +428,63 @@ describe('executeList', () => {
 
     const result = executeList(def, provider);
     expect(result.rows.map((r) => r.values[0]).sort()).toEqual([...expected]);
+  });
+
+  // Numeric operators (gt/lt/gte/lte/notEquals) plus the property/quantity
+  // condition sources (getConditionValue's 'property'/'quantity' branches),
+  // which the coverage above only exercises via columns, never via
+  // conditions. Qto_WallBaseQuantities.Length: Wall-01=5.0, Wall-02=3.5,
+  // Slab-01 has no Qto_WallBaseQuantities (null, so it never matches).
+  it.each([
+    { source: 'quantity', psetName: 'Qto_WallBaseQuantities', propertyName: 'Length', operator: 'gt', value: 4, expected: ['Wall-01'] },
+    { source: 'quantity', psetName: 'Qto_WallBaseQuantities', propertyName: 'Length', operator: 'lt', value: 4, expected: ['Wall-02'] },
+    { source: 'quantity', psetName: 'Qto_WallBaseQuantities', propertyName: 'Length', operator: 'gte', value: 5.0, expected: ['Wall-01'] },
+    { source: 'quantity', psetName: 'Qto_WallBaseQuantities', propertyName: 'Length', operator: 'lte', value: 3.5, expected: ['Wall-02'] },
+    // FireRating: Wall-01='REI 90', Wall-02='EI 30', Slab-01 has no
+    // Pset_WallCommon at all (null actualValue is excluded, not a match).
+    { source: 'property', psetName: 'Pset_WallCommon', propertyName: 'FireRating', operator: 'notEquals', value: 'EI 30', expected: ['Wall-01'] },
+    // #1591: a regex qset pattern in a condition. NetVolume: Wall-01=0.28,
+    // Wall-02=0.147, Slab-01=8.5 — only the slab exceeds 1.
+    { source: 'quantity', psetName: '/Qto_.*BaseQuantities/', propertyName: 'NetVolume', operator: 'gt', value: 1, expected: ['Slab-01'] },
+  ] as const)('filters by $source $operator against $value (psetName=$psetName)', ({ source, psetName, propertyName, operator, value, expected }) => {
+    const provider = createMockProvider();
+    const def: ListDefinition = {
+      id: 'cond-numeric',
+      name: 'Test',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [],
+      conditions: [{ source, psetName, propertyName, operator, value }],
+      columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
+    };
+
+    const result = executeList(def, provider);
+    expect(result.rows.map((r) => r.values[0]).sort()).toEqual([...expected]);
+  });
+
+  // #1591: a `/regex/` qset-name pattern pulls the same quantity from whichever
+  // matching set an element carries — NetVolume from Qto_WallBaseQuantities for
+  // walls AND Qto_SlabBaseQuantities for the slab, in one column.
+  it('resolves a quantity via a regex qset-name pattern across sets', () => {
+    const provider = createMockProvider();
+    const def: ListDefinition = {
+      id: 'regex-qty',
+      name: 'T',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [IfcTypeEnum.IfcWall, IfcTypeEnum.IfcSlab],
+      conditions: [],
+      columns: [
+        { id: 'name', source: 'attribute', propertyName: 'Name' },
+        { id: 'vol', source: 'quantity', psetName: '/Qto_.*BaseQuantities/', propertyName: 'NetVolume' },
+      ],
+    };
+
+    const result = executeList(def, provider);
+    const byName = new Map(result.rows.map((r) => [r.values[0], r.values[1]]));
+    expect(byName.get('Wall-01')).toBe(0.28);
+    expect(byName.get('Wall-02')).toBe(0.147);
+    expect(byName.get('Slab-01')).toBe(8.5);
   });
 
   it('returns null for missing properties', () => {
@@ -427,7 +655,186 @@ describe('grouping & summary', () => {
       grouping: { columnId: 'fire', sumColumnIds: [] },
     };
     const result = executeList(def, provider);
-    expect(result.groups).toEqual([{ key: '(none)', label: '(none)', count: 2, sums: {} }]);
+    expect(result.groups).toEqual([{ key: groupPathKey(['(none)']), label: '(none)', count: 2, sums: {}, level: 0, path: ['(none)'] }]);
+  });
+
+  // Multi-criteria grouping + per-group Count (issue #1790).
+  it('groups by several columns in order, counting instances per group at every level', () => {
+    const provider = createMockProvider();
+    const def: ListDefinition = {
+      id: 'grp-multi',
+      name: 'Test',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [IfcTypeEnum.IfcWall, IfcTypeEnum.IfcSlab],
+      conditions: [],
+      columns: [
+        { id: 'class', source: 'attribute', propertyName: 'Class' },
+        { id: 'name', source: 'attribute', propertyName: 'Name' },
+        { id: 'len', source: 'quantity', psetName: 'Qto_WallBaseQuantities', propertyName: 'Length' },
+      ],
+      grouping: { columnId: 'class', columnIds: ['class', 'name'], sumColumnIds: ['len'] },
+    };
+
+    const result = executeList(def, provider);
+
+    // Pre-order flat list: parent group immediately followed by its subgroups.
+    expect(result.groups?.map(g => [g.level, g.label, g.count])).toEqual([
+      [0, 'IfcWall', 2],
+      [1, 'Wall-01', 1],
+      [1, 'Wall-02', 1],
+      [0, 'IfcSlab', 1],
+      [1, 'Slab-01', 1],
+    ]);
+    // Composite keys are unique and carry the full path.
+    const sub = result.groups?.find(g => g.level === 1 && g.label === 'Wall-01');
+    expect(sub?.path).toEqual(['IfcWall', 'Wall-01']);
+    expect(sub?.key).toBe(groupPathKey(['IfcWall', 'Wall-01']));
+    // Sums subtotal at every level.
+    expect(result.groups?.find(g => g.level === 0 && g.label === 'IfcWall')?.sums.len).toBeCloseTo(8.5);
+    expect(sub?.sums.len).toBeCloseTo(5.0);
+    // Whole-result summary is unaffected by nesting depth (no double count).
+    expect(result.summary?.count).toBe(3);
+    expect(result.summary?.sums.len).toBeCloseTo(8.5);
+  });
+
+  it('columnIds takes precedence over columnId; a lone columnId still works', () => {
+    const provider = createMockProvider();
+    const base: ListDefinition = {
+      id: 'grp-compat',
+      name: 'Test',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [IfcTypeEnum.IfcWall],
+      conditions: [],
+      columns: [
+        { id: 'class', source: 'attribute', propertyName: 'Class' },
+        { id: 'name', source: 'attribute', propertyName: 'Name' },
+      ],
+      grouping: { columnId: 'class', columnIds: ['name'], sumColumnIds: [] },
+    };
+    // columnIds wins: two name groups, not one class group.
+    expect(executeList(base, provider).groups?.map(g => g.label)).toEqual(['Wall-01', 'Wall-02']);
+    // Legacy single columnId (no columnIds) unchanged.
+    const legacy = { ...base, grouping: { columnId: 'class', sumColumnIds: [] } };
+    expect(executeList(legacy, provider).groups?.map(g => [g.label, g.count, g.level])).toEqual([['IfcWall', 2, 0]]);
+  });
+
+  it('buckets rows with an empty value at a sub-level under "(none)" and counts them', () => {
+    const def: ListDefinition = {
+      id: 'grp-none-sub',
+      name: 'Test',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [],
+      conditions: [],
+      columns: [
+        { id: 'a', source: 'attribute', propertyName: 'Name' },
+        { id: 'b', source: 'attribute', propertyName: 'Tag' },
+      ],
+      grouping: { columnId: 'a', columnIds: ['a', 'b'], sumColumnIds: [] },
+    };
+    const rows = [
+      { entityId: 1, modelId: 'm', values: ['X', 'T1'] },
+      { entityId: 2, modelId: 'm', values: ['X', null] },
+      { entityId: 3, modelId: 'm', values: ['X', ''] },
+    ];
+    const { groups, summary } = summariseListRows(def, rows);
+    expect(groups?.map(g => [g.level, g.label, g.count])).toEqual([
+      [0, 'X', 3],
+      [1, '(none)', 2],
+      [1, 'T1', 1],
+    ]);
+    expect(summary?.count).toBe(3);
+  });
+
+  it('keeps a repeated child label under different parents as two distinct groups', () => {
+    const def: ListDefinition = {
+      id: 'grp-shared-child',
+      name: 'Test',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [],
+      conditions: [],
+      columns: [
+        { id: 'a', source: 'attribute', propertyName: 'Class' },
+        { id: 'b', source: 'attribute', propertyName: 'Name' },
+      ],
+      grouping: { columnId: 'a', columnIds: ['a', 'b'], sumColumnIds: [] },
+    };
+    const { groups } = summariseListRows(def, [
+      { entityId: 10, modelId: 'm', values: ['IfcWall', 'Shared'] },
+      { entityId: 11, modelId: 'm', values: ['IfcSlab', 'Shared'] },
+    ]);
+    const children = groups?.filter(g => g.level === 1) ?? [];
+    expect(new Set(children.map(g => g.key))).toEqual(new Set([
+      groupPathKey(['IfcWall', 'Shared']),
+      groupPathKey(['IfcSlab', 'Shared']),
+    ]));
+    expect(children.map(g => g.path)).toEqual(expect.arrayContaining([
+      ['IfcWall', 'Shared'],
+      ['IfcSlab', 'Shared'],
+    ]));
+  });
+
+  it('composite keys stay collision-free when a label contains separator-like characters', () => {
+    const def: ListDefinition = {
+      id: 'grp-key-collision',
+      name: 'Test',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [],
+      conditions: [],
+      columns: [
+        { id: 'a', source: 'attribute', propertyName: 'Class' },
+        { id: 'b', source: 'attribute', propertyName: 'Name' },
+      ],
+      grouping: { columnId: 'a', columnIds: ['a', 'b'], sumColumnIds: [] },
+    };
+    // Labels crafted so a naive join would collide: "A|B"+"C" vs "A"+"B|C".
+    const { groups } = summariseListRows(def, [
+      { entityId: 1, modelId: 'm', values: ['A|B', 'C'] },
+      { entityId: 2, modelId: 'm', values: ['A', 'B|C'] },
+    ]);
+    const keys = (groups ?? []).map(g => g.key);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it('returns empty groups and a zero-count summary for an empty row set', () => {
+    const def: ListDefinition = {
+      id: 'grp-empty',
+      name: 'Test',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [],
+      conditions: [],
+      columns: [
+        { id: 'a', source: 'attribute', propertyName: 'Name' },
+        { id: 'n', source: 'quantity', propertyName: 'Length' },
+      ],
+      grouping: { columnId: 'a', columnIds: ['a'], sumColumnIds: ['n'] },
+    };
+    const { groups, summary } = summariseListRows(def, []);
+    expect(groups).toEqual([]);
+    expect(summary).toEqual({ count: 0, sums: { n: 0 } });
+  });
+
+  it('a group column id that matches no column still yields a single "(none)" level', () => {
+    const def: ListDefinition = {
+      id: 'grp-missing-col',
+      name: 'Test',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [],
+      conditions: [],
+      columns: [{ id: 'a', source: 'attribute', propertyName: 'Name' }],
+      grouping: { columnId: 'gone', columnIds: ['gone'], sumColumnIds: [] },
+    };
+    const { groups } = summariseListRows(def, [
+      { entityId: 1, modelId: 'm', values: ['X'] },
+      { entityId: 2, modelId: 'm', values: ['Y'] },
+    ]);
+    expect(groups?.map(g => [g.label, g.count])).toEqual([['(none)', 2]]);
   });
 
   it('omits groups/summary when grouping is not configured', () => {
@@ -444,6 +851,84 @@ describe('grouping & summary', () => {
     const result = executeList(def, provider);
     expect(result.groups).toBeUndefined();
     expect(result.summary).toBeUndefined();
+  });
+});
+
+// Schedule/pivot presentation (issue #1790 round 2): one row per group-value
+// tuple (leaf group), Count + sums as first-class fields — the projection
+// that feeds the viewer's Bonsai-style "Building | Storey | Type | Count"
+// table and its CSV export.
+describe('toScheduleRows', () => {
+  it('single-criterion grouping: every group IS a leaf, one schedule row each', () => {
+    const provider = createMockProvider();
+    const def: ListDefinition = {
+      id: 'sched-1',
+      name: 'Test',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [IfcTypeEnum.IfcWall, IfcTypeEnum.IfcSlab],
+      conditions: [],
+      columns: [
+        { id: 'class', source: 'attribute', propertyName: 'Class' },
+        { id: 'len', source: 'quantity', psetName: 'Qto_WallBaseQuantities', propertyName: 'Length' },
+      ],
+      grouping: { columnId: 'class', sumColumnIds: ['len'] },
+    };
+    const result = executeList(def, provider);
+    const rows = toScheduleRows(result.groups, 1);
+    expect(rows).toEqual([
+      { key: groupPathKey(['IfcWall']), path: ['IfcWall'], count: 2, sums: { len: expect.closeTo(8.5) } },
+      { key: groupPathKey(['IfcSlab']), path: ['IfcSlab'], count: 1, sums: { len: 0 } },
+    ]);
+  });
+
+  it('multi-criteria grouping: only LEAF (deepest-level) tuples become rows, contiguous per parent', () => {
+    const provider = createMockProvider();
+    const def: ListDefinition = {
+      id: 'sched-multi',
+      name: 'Test',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [IfcTypeEnum.IfcWall, IfcTypeEnum.IfcSlab],
+      conditions: [],
+      columns: [
+        { id: 'class', source: 'attribute', propertyName: 'Class' },
+        { id: 'name', source: 'attribute', propertyName: 'Name' },
+        { id: 'len', source: 'quantity', psetName: 'Qto_WallBaseQuantities', propertyName: 'Length' },
+      ],
+      grouping: { columnId: 'class', columnIds: ['class', 'name'], sumColumnIds: ['len'] },
+    };
+    const result = executeList(def, provider);
+    const rows = toScheduleRows(result.groups, 2);
+
+    // Parent-level ('IfcWall'/'IfcSlab' alone) groups are dropped — only the
+    // 2-level tuples remain, and they stay grouped by their parent (Wall rows
+    // before the Slab row) even though the tree itself is never rendered.
+    expect(rows.map(r => r.path)).toEqual([
+      ['IfcWall', 'Wall-01'],
+      ['IfcWall', 'Wall-02'],
+      ['IfcSlab', 'Slab-01'],
+    ]);
+    expect(rows.every(r => r.count === 1)).toBe(true);
+    expect(rows.find(r => r.path[1] === 'Wall-01')?.sums.len).toBeCloseTo(5.0);
+    // Every row's key matches the collision-free path encoding, and all keys
+    // in the schedule are unique (tuple-key stability).
+    for (const r of rows) expect(r.key).toBe(groupPathKey(r.path));
+    expect(new Set(rows.map(r => r.key)).size).toBe(rows.length);
+  });
+
+  it('returns [] when there is no grouping (levelCount 0) even if groups happen to be present', () => {
+    expect(toScheduleRows([{ key: 'x', label: 'x', count: 1, sums: {}, level: 0, path: ['x'] }], 0)).toEqual([]);
+  });
+
+  it('returns [] for an empty/absent group list', () => {
+    expect(toScheduleRows(undefined, 2)).toEqual([]);
+    expect(toScheduleRows([], 1)).toEqual([]);
+  });
+
+  it('a group with no path falls back to a single-entry path built from its label (defensive for older callers)', () => {
+    const rows = toScheduleRows([{ key: 'k', label: 'Solo', count: 4, sums: {}, level: 0 }], 1);
+    expect(rows).toEqual([{ key: 'k', path: ['Solo'], count: 4, sums: {} }]);
   });
 });
 
@@ -480,6 +965,59 @@ describe('listResultToCSV', () => {
     });
 
     expect(csv).toContain('"Hello, ""World"""');
+  });
+
+  // CWE-1236 formula-injection guard: a cell that starts with a spreadsheet
+  // formula trigger char gets a leading apostrophe so Excel/Sheets render it
+  // as text instead of evaluating it as a formula when the CSV is opened.
+  // Genuine numeric cells (including a leading `-`/`+` sign) are EXEMPT so
+  // `-0.35` / `+1` stay summable in Excel; only non-numeric trigger cells quote.
+  it.each([
+    ['=SUM(A1:A10)', "'=SUM(A1:A10)"],
+    ['-2+3', "'-2+3"], // starts numeric but is a formula, not a plain number
+    ['-cmd', "'-cmd"],
+    ['@x', "'@x"],
+    // Plain signed numbers are NOT quoted — they carry no formula payload.
+    // "Genuine numeric" = optionally signed decimal literal with optional
+    // exponent. Hex (0x10), Infinity and NaN are NOT exempt numerics, but the
+    // last three never start with a trigger char so the guard ignores them
+    // anyway; '-Infinity' DOES start with '-' and is quoted (Excel would not
+    // sum it either, so nothing summable is lost).
+    ['-0.35', '-0.35'],
+    ['+1', '+1'],
+    ['+41', '+41'],
+    ['+1234567890', '+1234567890'],
+    ['-0', '-0'],
+    ['-1e5', '-1e5'],
+    ['+1.5E-7', '+1.5E-7'],
+    ['-.5', '-.5'],
+    // Non-numeric trigger-prefixed cells still quote.
+    ['=1+1', "'=1+1"],
+    ['-cmd|foo', "'-cmd|foo"],
+    ['\t=cmd', "'\t=cmd"],
+    ['-Infinity', "'-Infinity"],
+    ['-1.', '-1.'], // trailing-dot literal is a plain number
+    ['- 1', "'- 1"], // interior whitespace disqualifies the exemption
+    ['+1e', "'+1e"], // dangling exponent is not a number
+    // No leading trigger char: guard does not touch these at all.
+    ['0x10', '0x10'],
+    ['1e5', '1e5'],
+    ['Infinity', 'Infinity'],
+    ['NaN', 'NaN'],
+    // Contains a delimiter comma too, so the apostrophe-prefixed value is
+    // also quote-wrapped by the general CSV-escaping rule below it.
+    ['@SUM(1,2)', '"\'@SUM(1,2)"'],
+    ['Normal value', 'Normal value'],
+  ])('escapes %j as %j', (input, escaped) => {
+    const csv = listResultToCSV({
+      columns: [{ id: 'a', source: 'attribute', propertyName: 'Name' }],
+      rows: [{ entityId: 1, modelId: 'default', values: [input] }],
+      totalCount: 1,
+      executionTime: 0,
+    });
+
+    const dataLine = csv.split('\n')[1];
+    expect(dataLine).toBe(escaped);
   });
 });
 

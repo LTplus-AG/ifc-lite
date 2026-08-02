@@ -13,7 +13,7 @@
 //! serializable, server-friendly shape carried inline on every geometry
 //! endpoint's `ModelMetadata` (issue #900 parity follow-up).
 
-use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner, GeoRefExtractor, IfcType};
+use ifc_lite_core::{EntityDecoder, EntityScanner, GeoRefExtractor, IfcType};
 use serde::{Deserialize, Serialize};
 
 /// Georeferencing metadata (`IfcMapConversion` + `IfcProjectedCRS`).
@@ -108,7 +108,7 @@ where
     T: AsRef<[u8]> + ?Sized,
 {
     let content = content.as_ref();
-    let entity_index = build_entity_index(content);
+    let entity_index = crate::build_entity_index_parallel(content);
     let mut decoder = EntityDecoder::with_index(content, entity_index);
 
     let mut entity_types: Vec<(u32, IfcType)> = Vec::new();

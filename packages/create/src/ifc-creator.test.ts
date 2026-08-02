@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, it, expect } from 'vitest';
-import { isValidIfcGuid, ifcGuidToUuid, uuidToIfcGuid } from '@ifc-lite/encoding';
+import { generateIfcGuid, isValidIfcGuid, ifcGuidToUuid, uuidToIfcGuid } from '@ifc-lite/encoding';
 import { IfcCreator } from './ifc-creator.js';
 
 describe('IfcCreator', () => {
@@ -604,5 +604,83 @@ describe('IfcCreator — scheduling / 4D', () => {
     const t = c.addIfcTask({ Name: 'T' });
     expect(() => c.assignProductsToTask(t, [])).toThrow(/empty/);
     expect(() => c.nestTasks(t, [])).toThrow(/empty/);
+  });
+});
+
+describe('IfcCreator deterministic output (Timestamp + GuidSource)', () => {
+  /** Simple LCG in [0, 1): same seed => same stream. */
+  const seededRng = (seed: number) => {
+    let s = seed;
+    return () => {
+      s = (s * 1103515245 + 12345) % 2147483648;
+      return s / 2147483648;
+    };
+  };
+
+  const FIXED = Date.UTC(2024, 0, 1, 0, 0, 0);
+
+  /** A representative model touching header, owner history, GUIDs and scheduling. */
+  const buildModel = (params: ConstructorParameters<typeof IfcCreator>[0]) => {
+    const c = new IfcCreator({ Name: 'Deterministic', Author: 'A', ...params });
+    const storey = c.addIfcBuildingStorey({ Name: 'GF', Elevation: 0 });
+    const wall = c.addIfcWall(storey, { Start: [0, 0, 0], End: [5, 0, 0], Thickness: 0.2, Height: 3 });
+    c.addIfcWallWindow(wall, { Width: 1, Height: 1.2, Position: [1, 0, 0.9] });
+    c.addIfcSlab(storey, { Position: [0, 0, 0], Width: 5, Depth: 5, Thickness: 0.2 });
+    c.addIfcWorkSchedule({ Name: 'S', StartTime: '2024-01-01T00:00:00' });
+    return c.toIfc().content;
+  };
+
+  it('same Timestamp + GuidSource yields byte-identical output', () => {
+    const opts = () => ({
+      Timestamp: FIXED,
+      GuidSource: (() => {
+        const rng = seededRng(42);
+        return () => generateIfcGuid(rng);
+      })(),
+    });
+    const first = buildModel(opts());
+    const second = buildModel(opts());
+    expect(second).toBe(first);
+    // The fixed instant landed in the STEP header and IfcOwnerHistory.
+    expect(first).toContain("'20240101T000000'");
+    expect(first).toContain(`,${Math.floor(FIXED / 1000)});`);
+  });
+
+  it('accepts a Date for Timestamp', () => {
+    const opts = () => ({
+      Timestamp: new Date(FIXED),
+      GuidSource: (() => {
+        const rng = seededRng(7);
+        return () => generateIfcGuid(rng);
+      })(),
+    });
+    expect(buildModel(opts())).toBe(buildModel(opts()));
+  });
+
+  it('default behavior stays random', () => {
+    // Without the hooks, GlobalIds come from the CSPRNG, so two otherwise
+    // identical builds differ.
+    expect(buildModel({})).not.toBe(buildModel({}));
+  });
+
+  it('rejects an invalid Timestamp', () => {
+    expect(() => new IfcCreator({ Timestamp: Number.NaN })).toThrow(/Timestamp/);
+    expect(() => new IfcCreator({ Timestamp: new Date('nonsense') })).toThrow(/Timestamp/);
+    // Regression, PR #1882 (follow-up to #1879): finite but past the
+    // ±8.64e15 ms Date range. Caught here rather than surfacing later as a
+    // RangeError from toISOString() while writing the header.
+    expect(() => new IfcCreator({ Timestamp: 1e16 })).toThrow(/Timestamp/);
+    expect(() => new IfcCreator({ Timestamp: -1e16 })).toThrow(/Timestamp/);
+  });
+
+  it('rejects a GuidSource returning invalid GlobalIds', () => {
+    expect(() => new IfcCreator({ GuidSource: () => 'not-a-guid' })).toThrow(/invalid IFC GlobalId/);
+  });
+
+  it('errors instead of spinning when a GuidSource repeats forever', () => {
+    // The preamble needs several distinct GlobalIds (project/site/building), so
+    // a constant source trips the bounded-retry guard already in the constructor.
+    const constant = generateIfcGuid();
+    expect(() => new IfcCreator({ GuidSource: () => constant })).toThrow(/repeating/);
   });
 });

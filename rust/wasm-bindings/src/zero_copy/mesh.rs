@@ -31,6 +31,14 @@ pub struct MeshDataJs {
     texture_height: u32,
     texture_repeat_s: bool,
     texture_repeat_t: bool,
+    /// Stable texture dedup key: the `IfcSurfaceTexture` express id (#1781).
+    /// Every mesh sampling the same image carries the same id, so the consumer
+    /// creates ONE GPU texture per id. 0 when the mesh is untextured.
+    texture_id: u32,
+    /// `IfcImageTexture.URLReference` (#1781): an external image reference the
+    /// host resolves (typically a sibling file inside the `.ifcZIP`). `None`
+    /// for untextured meshes and for Rust-decoded blob/pixel textures.
+    texture_url: Option<String>,
     /// Geometry provenance for the viewer's Model/Types view switch:
     /// 0 = occurrence (a placed IfcProduct), 1 = orphan type geometry (an
     /// IfcTypeProduct RepresentationMap with NO occurrence — buildingSMART
@@ -45,6 +53,13 @@ pub struct MeshDataJs {
     /// per-element AABB-centre relativization so building-scale coordinates stay
     /// f32-precise (no fan collapse). See `Mesh::origin`/transform_mesh_world_framed.
     origin: [f64; 3],
+    /// Local (pre-placement, object-space) AABB, WebGL Y-up (issue #1474):
+    /// `[minX,minY,minZ,maxX,maxY,maxZ]`. `None` when not captured (e.g. a
+    /// synthetic/from-meshes mesh). See `Mesh::local_bounds`.
+    local_bounds: Option<[f32; 6]>,
+    /// The resolved placement (`local_to_world`), row-major, WebGL Y-up (issue
+    /// #1474). `None` when not captured. See `Mesh::local_to_world`.
+    local_to_world: Option<[f64; 16]>,
 }
 
 #[wasm_bindgen]
@@ -146,6 +161,21 @@ impl MeshDataJs {
         self.texture_repeat_t
     }
 
+    /// Stable texture dedup key (`IfcSurfaceTexture` express id, #1781).
+    /// 0 when the mesh is untextured.
+    #[wasm_bindgen(getter, js_name = textureId)]
+    pub fn texture_id(&self) -> u32 {
+        self.texture_id
+    }
+
+    /// External image reference (`IfcImageTexture.URLReference`, #1781) for the
+    /// host to resolve — e.g. a sibling image inside the `.ifcZIP`. `undefined`
+    /// for untextured meshes and Rust-decoded blob/pixel textures.
+    #[wasm_bindgen(getter, js_name = textureUrl)]
+    pub fn texture_url(&self) -> Option<String> {
+        self.texture_url.clone()
+    }
+
     /// Geometry provenance for the viewer's Model/Types switch (#957 follow-up):
     /// 0 = occurrence, 1 = orphan type geometry (no occurrence), 2 = instanced
     /// type geometry (hidden in Model mode, shown in Types mode).
@@ -161,6 +191,66 @@ impl MeshDataJs {
     pub fn origin(&self) -> js_sys::Float64Array {
         js_sys::Float64Array::from(&self.origin[..])
     }
+
+    /// Local (pre-placement, object-space) AABB (issue #1474), WebGL Y-up,
+    /// `[minX,minY,minZ,maxX,maxY,maxZ]`. `undefined` when not captured
+    /// (wasm-bindgen maps `Option::None` to `undefined`, not `null`).
+    #[wasm_bindgen(getter, js_name = localBounds)]
+    pub fn local_bounds(&self) -> Option<Vec<f32>> {
+        self.local_bounds.map(|b| b.to_vec())
+    }
+
+    /// The resolved `IfcLocalPlacement` chain for this mesh (issue #1474),
+    /// row-major 4×4, WebGL Y-up. `undefined` when not captured (see
+    /// `local_bounds` above).
+    #[wasm_bindgen(getter, js_name = localToWorld)]
+    pub fn local_to_world(&self) -> Option<Vec<f64>> {
+        self.local_to_world.map(|m| m.to_vec())
+    }
+}
+
+/// Swap an axis-aligned box's corners from IFC Z-up to WebGL Y-up
+/// (`(x,y,z) -> (x,z,-y)`). A per-component swap of `min`/`max` independently
+/// is WRONG: negating the Y axis flips which corner is the min/max along the
+/// new Z, so the new Z range is `[-maxY, -minY]`, not `[-minY, -maxY]`.
+fn swap_zup_to_yup_aabb(b: [f32; 6]) -> [f32; 6] {
+    let [min_x, min_y, min_z, max_x, max_y, max_z] = b;
+    [min_x, min_z, -max_y, max_x, max_z, -min_y]
+}
+
+/// Conjugate a row-major 4×4 matrix by the fixed IFC Z-up → WebGL Y-up swap
+/// `S`: `(x,y,z,w) -> (x,z,-y,w)`, so a placement/rotation matrix expressed in
+/// the IFC frame becomes valid in the Y-up frame the renderer uses:
+/// `M' = S · M · Sᵀ` (S is orthogonal, so `S⁻¹ = Sᵀ`).
+fn swap_zup_to_yup_mat4(m: &[f64; 16]) -> [f64; 16] {
+    #[rustfmt::skip]
+    const S: [f64; 16] = [
+        1.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 1.0, 0.0,
+        0.0, -1.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 1.0,
+    ];
+    #[rustfmt::skip]
+    const ST: [f64; 16] = [
+        1.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, -1.0, 0.0,
+        0.0, 1.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 1.0,
+    ];
+    fn matmul(a: &[f64; 16], b: &[f64; 16]) -> [f64; 16] {
+        let mut out = [0.0; 16];
+        for r in 0..4 {
+            for c in 0..4 {
+                let mut sum = 0.0;
+                for k in 0..4 {
+                    sum += a[r * 4 + k] * b[k * 4 + c];
+                }
+                out[r * 4 + c] = sum;
+            }
+        }
+        out
+    }
+    matmul(&matmul(&S, m), &ST)
 }
 
 impl MeshDataJs {
@@ -200,6 +290,15 @@ impl MeshDataJs {
         // / displaced). Default [0,0,0] swaps to [0,0,0] (no-op for legacy).
         let origin = [mesh.origin[0], mesh.origin[2], -mesh.origin[1]];
 
+        // Local (pre-placement) AABB (issue #1474): same swap as positions, but
+        // an AABB corner can't be swapped component-wise — negating an axis
+        // flips which corner is min/max along it. See `swap_zup_to_yup_aabb`.
+        let local_bounds = mesh.local_bounds.map(swap_zup_to_yup_aabb);
+        // The placement transform (issue #1474) is conjugated by the same
+        // swap, since it's expressed in the IFC frame the positions were in
+        // before this conversion: M' = S · M · Sᵀ. See `swap_zup_to_yup_mat4`.
+        let local_to_world = mesh.local_to_world.map(|m| swap_zup_to_yup_mat4(&m));
+
         Self {
             express_id,
             ifc_type,
@@ -214,8 +313,12 @@ impl MeshDataJs {
             texture_height: 0,
             texture_repeat_s: true,
             texture_repeat_t: true,
+            texture_id: 0,
+            texture_url: None,
             geometry_class: 0,
             origin,
+            local_bounds,
+            local_to_world,
         }
     }
 
@@ -244,6 +347,7 @@ impl MeshDataJs {
         height: u32,
         repeat_s: bool,
         repeat_t: bool,
+        texture_id: u32,
     ) {
         self.uvs = uvs;
         self.texture_rgba = rgba;
@@ -251,6 +355,25 @@ impl MeshDataJs {
         self.texture_height = height;
         self.texture_repeat_s = repeat_s;
         self.texture_repeat_t = repeat_t;
+        self.texture_id = texture_id;
+    }
+
+    /// Attach per-vertex UVs + an EXTERNAL image reference (#1781): the host
+    /// resolves `url` (e.g. against the `.ifcZIP` siblings), decodes it once
+    /// per `texture_id`, and shares the GPU texture. Call after `new`.
+    pub fn set_texture_ref(
+        &mut self,
+        uvs: Vec<f32>,
+        url: String,
+        repeat_s: bool,
+        repeat_t: bool,
+        texture_id: u32,
+    ) {
+        self.uvs = uvs;
+        self.texture_url = Some(url);
+        self.texture_repeat_s = repeat_s;
+        self.texture_repeat_t = repeat_t;
+        self.texture_id = texture_id;
     }
 
     /// Build from the canonical per-element producer's [`MeshData`]
@@ -272,18 +395,32 @@ impl MeshDataJs {
             origin: m.origin,
             // Instancing side-channel is not used on this wasm zero-copy path.
             instance_meta: None,
+            // Local bounds/placement (issue #1474), still in the IFC frame —
+            // `new` applies the same Z-up→Y-up swap it applies to positions/origin.
+            local_bounds: m.local_bounds,
+            local_to_world: m.local_to_world,
         };
         let mut js = Self::new(m.express_id, m.ifc_type, mesh, m.color);
         js.set_geometry_class(m.geometry_class);
         if let (Some(uvs), Some(tex)) = (m.uvs, m.texture) {
-            js.set_texture(
-                uvs,
-                tex.rgba,
-                tex.width,
-                tex.height,
-                tex.repeat_s,
-                tex.repeat_t,
-            );
+            if let Some(rgba) = tex.rgba {
+                // Rust-decoded blob/pixel texture (#961): the Arc is shared
+                // across meshes in Rust; this boundary copy is per-mesh but
+                // blob/pixel images are small by construction.
+                js.set_texture(
+                    uvs,
+                    rgba.as_ref().clone(),
+                    tex.width,
+                    tex.height,
+                    tex.repeat_s,
+                    tex.repeat_t,
+                    tex.texture_id,
+                );
+            } else if let Some(url) = tex.url {
+                // External image reference (#1781): ship the URL + repeat
+                // flags only; the host decodes once per texture_id.
+                js.set_texture_ref(uvs, url, tex.repeat_s, tex.repeat_t, tex.texture_id);
+            }
         }
         js
     }
@@ -341,8 +478,12 @@ impl MeshCollection {
             texture_height: m.texture_height,
             texture_repeat_s: m.texture_repeat_s,
             texture_repeat_t: m.texture_repeat_t,
+            texture_id: m.texture_id,
+            texture_url: m.texture_url.clone(),
             geometry_class: m.geometry_class,
             origin: m.origin,
+            local_bounds: m.local_bounds,
+            local_to_world: m.local_to_world,
         })
     }
 
@@ -368,8 +509,12 @@ impl MeshCollection {
             texture_height: m.texture_height,
             texture_repeat_s: m.texture_repeat_s,
             texture_repeat_t: m.texture_repeat_t,
+            texture_id: m.texture_id,
+            texture_url: m.texture_url.take(),
             geometry_class: m.geometry_class,
             origin: m.origin,
+            local_bounds: m.local_bounds,
+            local_to_world: m.local_to_world,
         })
     }
 
@@ -582,8 +727,12 @@ impl Clone for MeshCollection {
                     texture_height: m.texture_height,
                     texture_repeat_s: m.texture_repeat_s,
                     texture_repeat_t: m.texture_repeat_t,
+                    texture_id: m.texture_id,
+                    texture_url: m.texture_url.clone(),
                     geometry_class: m.geometry_class,
                     origin: m.origin,
+                    local_bounds: m.local_bounds,
+                    local_to_world: m.local_to_world,
                 })
                 .collect(),
             rtc_offset_x: self.rtc_offset_x,

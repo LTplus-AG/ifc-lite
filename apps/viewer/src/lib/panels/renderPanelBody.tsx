@@ -11,8 +11,9 @@
  * hosts stay in lock-step.
  */
 
-import type { ReactNode } from 'react';
+import { lazy, Suspense, type ReactNode } from 'react';
 import type { WorkspacePanelId } from './registry';
+import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary';
 import { HierarchyPanel } from '@/components/viewer/HierarchyPanel';
 import { PropertiesPanel } from '@/components/viewer/PropertiesPanel';
 import { ComparePanel } from '@/components/viewer/ComparePanel';
@@ -24,6 +25,13 @@ import { ExtensionsPanel } from '@/components/extensions/ExtensionsPanel';
 import { ScriptPanel } from '@/components/viewer/ScriptPanel';
 import { GanttPanel } from '@/components/viewer/schedule/GanttPanel';
 import { ListPanel } from '@/components/viewer/lists/ListPanel';
+import { RoomPanel } from '@/components/viewer/RoomPanel';
+import { ZonesPanel } from '@/components/viewer/ZonesPanel';
+// Lazy: the Layers panel pulls in @ifc-lite/merge (engine + blake3); a
+// dynamic chunk keeps it out of the initial bundle until first opened.
+const LayersPanel = lazy(() =>
+  import('@/components/viewer/layers/LayersPanel').then((m) => ({ default: m.LayersPanel })),
+);
 
 /**
  * Render the body for a workspace panel. `onClose` is the host's "close this
@@ -45,5 +53,14 @@ export function renderPanelBody(id: WorkspacePanelId, onClose: () => void): Reac
     case 'script': return <ScriptPanel onClose={onClose} />;
     case 'gantt': return <GanttPanel onClose={onClose} />;
     case 'lists': return <ListPanel onClose={onClose} />;
+    case 'collab': return <RoomPanel onClose={onClose} />;
+    case 'zones': return <ZonesPanel onClose={onClose} />;
+    case 'layers': return (
+      <ChunkErrorBoundary label="Layers panel">
+        <Suspense fallback={null}>
+          <LayersPanel onClose={onClose} />
+        </Suspense>
+      </ChunkErrorBoundary>
+    );
   }
 }

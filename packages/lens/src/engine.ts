@@ -222,17 +222,24 @@ interface AutoColorValue {
   label: string;
 }
 
-/** Pick the classification reference to group by - the one whose system matches
- *  `psetName` (case-insensitive substring) when set, else the first. */
+/**
+ * Pick the classification reference to group by - the one whose system matches
+ * `psetName` (case-insensitive substring) when set, else the first.
+ *
+ * When `psetName` is set it acts as a classification-system FILTER: an entity
+ * that carries classifications but none from the selected system must not be
+ * grouped under some other, unrelated system. Returns `undefined` in that
+ * case so the caller ghosts the entity instead of silently falling back to
+ * `cls[0]` (#1923 — the "System" picker on the classification auto-color lens
+ * was a no-op because every entity fell back to its first classification
+ * regardless of which system was selected).
+ */
 function selectClassificationRef(
   cls: ReadonlyArray<ClassificationInfo>,
   psetName?: string,
-): ClassificationInfo {
+): ClassificationInfo | undefined {
   if (!psetName) return cls[0];
-  return (
-    cls.find((ref) => (ref.system ?? '').toLowerCase().includes(psetName.toLowerCase())) ??
-    cls[0]
-  );
+  return cls.find((ref) => (ref.system ?? '').toLowerCase().includes(psetName.toLowerCase()));
 }
 
 /**
@@ -254,6 +261,7 @@ function extractAutoColorValues(
     const cls = provider.getClassifications(globalId);
     if (!cls || cls.length === 0) return [];
     const c = selectClassificationRef(cls, spec.psetName);
+    if (!c) return [];
     const codeParts: string[] = [];
     if (c.system) codeParts.push(c.system);
     if (c.identification) codeParts.push(c.identification);
@@ -324,6 +332,7 @@ function extractAutoColorValue(
         // treat it as a classification-system filter (mirroring matchesClassification),
         // selecting the matching reference instead of unconditionally using the first.
         const c = selectClassificationRef(cls, spec.psetName);
+        if (!c) return undefined;
         const parts: string[] = [];
         if (c.system) parts.push(c.system);
         if (c.identification) parts.push(c.identification);

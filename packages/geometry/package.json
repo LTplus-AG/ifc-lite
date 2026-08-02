@@ -1,7 +1,7 @@
 {
   "name": "@ifc-lite/geometry",
-  "version": "2.13.1",
-  "description": "Geometry processing bridge for IFC-Lite - 1.9x faster than web-ifc",
+  "version": "3.5.0",
+  "description": "Geometry processing bridge for IFC-Lite - exact-arithmetic CSG, streamed across workers",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -27,7 +27,7 @@
   "devDependencies": {
     "@tauri-apps/api": "^2.11.1",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.10"
   },
   "license": "MPL-2.0",
   "author": "Louis True",
@@ -36,7 +36,7 @@
     "url": "https://github.com/LTplus-AG/ifc-lite.git",
     "directory": "packages/geometry"
   },
-  "homepage": "https://ltplus-ag.github.io/ifc-lite/",
+  "homepage": "https://ifclite.dev/docs/",
   "bugs": "https://github.com/LTplus-AG/ifc-lite/issues",
   "keywords": [
     "ifc",

@@ -18,6 +18,10 @@ export const mainShaderSource = `
           flags: vec4<u32>,             // x = isSelected, y = section/clip bits, z = edgeEnabled, w = edgeIntensityMilli
           clipBoxMin: vec4<f32>,        // xyz = clip-box min corner (world), w = pad
           clipBoxMax: vec4<f32>,        // xyz = clip-box max corner (world), w = pad
+          // Quantized-vertex dequantization (issue #1682 phase 6):
+          // xyz = lattice-aligned quantMin (batch-origin-relative), w = step.
+          // Only read by vs_main_quantized; zero elsewhere.
+          quantParams: vec4<f32>,
         }
         @binding(0) @group(0) var<uniform> uniforms: Uniforms;
 
@@ -85,6 +89,55 @@ export const mainShaderSource = `
           @location(7) instEntityId: u32,
           @location(8) instColor: vec4<f32>,
           @location(9) instSelected: u32,
+        }
+
+        // 12-byte quantized vertex (issue #1682 phase 6): uint16x4 (lattice
+        // position xyz + packed octahedral normal in w as (u8x << 8 | u8y))
+        // followed by the u32 entityId lane. Dequantization is BIT-EXACT for
+        // the 2^-10 lattice: quantMin and q*step are both (integer)·2^-10,
+        // so coincident points across batches stay coincident (the shared-
+        // origin z-fight guarantee survives quantization).
+        struct QuantizedVertexInput {
+          @location(0) q: vec4<u32>,     // uint16x4: x, y, z, packedOct
+          @location(2) entityId: u32,
+        }
+
+        fn octDecodeN(packed: u32) -> vec3<f32> {
+          let ox = (f32((packed >> 8u) & 255u) / 255.0) * 2.0 - 1.0;
+          let oy = (f32(packed & 255u) / 255.0) * 2.0 - 1.0;
+          var n = vec3<f32>(ox, oy, 1.0 - abs(ox) - abs(oy));
+          if (n.z < 0.0) {
+            let tx = (1.0 - abs(oy)) * select(-1.0, 1.0, ox >= 0.0);
+            let ty = (1.0 - abs(ox)) * select(-1.0, 1.0, oy >= 0.0);
+            n = vec3<f32>(tx, ty, n.z);
+          }
+          return normalize(n);
+        }
+
+        // Shared flat-path vertex shading — vs_main and vs_main_quantized
+        // differ ONLY in how position/normal are sourced.
+        fn shadeFlatVertex(localPos: vec3<f32>, localNormal: vec3<f32>, entityId: u32) -> VertexOutput {
+          var output: VertexOutput;
+          let worldPos = uniforms.model * vec4<f32>(localPos, 1.0);
+          output.position = uniforms.viewProj * worldPos;
+          // Anti z-fighting depth nudge — see vs_main's comment.
+          let colorSalt = (entityId >> 24u) * 2654435761u;
+          let zHash = (((entityId & 0x00FFFFFFu) ^ colorSalt) * 2654435761u) & 255u;
+          output.position.z *= 1.0 + f32(zHash) * 1e-6;
+          output.worldPos = worldPos.xyz;
+          output.normal = normalize((uniforms.model * vec4<f32>(localNormal, 0.0)).xyz);
+          output.entityId = entityId;
+          output.color = uniforms.baseColor;
+          output.instSelected = 0u;
+          output.viewPos = (uniforms.viewProj * worldPos).xyz;
+          return output;
+        }
+
+        @vertex
+        fn vs_main_quantized(input: QuantizedVertexInput) -> VertexOutput {
+          let p = uniforms.quantParams.xyz
+            + vec3<f32>(f32(input.q.x), f32(input.q.y), f32(input.q.z)) * uniforms.quantParams.w;
+          return shadeFlatVertex(p, octDecodeN(input.q.w), input.entityId);
         }
 
         @vertex

@@ -15,6 +15,7 @@ import type { EntityRef } from './types.js';
 import { entityRefToString, stringToEntityRef } from './types.js';
 import { useViewerStore } from './index.js';
 import { toGlobalIdFromModels } from './globalId.js';
+import { isTypeVisible } from './typeVisibilityFilter.js';
 import { collectAggregatedDescendants, type AggregationRelationships } from '../utils/aggregation.js';
 
 type ViewerStateSnapshot = ReturnType<typeof useViewerStore.getState>;
@@ -81,9 +82,11 @@ function visibilityFingerprint(state: ViewerStateSnapshot): string {
     digestModelEntityMap(state.isolatedEntitiesByModel),
     digestNumberSet(state.selectedStoreys),
     tv.spaces ? 1 : 0,
+    tv.spatialZones ? 1 : 0,
     tv.openings ? 1 : 0,
     tv.virtualElements ? 1 : 0,
     tv.site ? 1 : 0,
+    tv.ifcAnnotations ? 1 : 0,
     state.models.size,
     modelParts.join(';'),
     state.geometryResult?.meshes?.length ?? 0,
@@ -108,15 +111,10 @@ function dedupeRefs(refs: EntityRef[]): EntityRef[] {
 }
 
 function matchesTypeVisibility(ifcType: string | undefined, typeVisibility: ViewerStateSnapshot['typeVisibility']): boolean {
-  if (ifcType === 'IfcSpace' && !typeVisibility.spaces) return false;
-  if (ifcType === 'IfcSpatialZone' && !typeVisibility.spatialZones) return false;
-  if (ifcType === 'IfcOpeningElement' && !typeVisibility.openings) return false;
-  if (ifcType === 'IfcVirtualElement' && !typeVisibility.virtualElements) return false;
-  if (ifcType === 'IfcSite' && !typeVisibility.site) return false;
-  // IfcAnnotation 3D mesh geometry (e.g. Bonsai plan-view boxes) tracks the
-  // same toggle that hides the 2D symbolic curve overlay (issue #1354).
-  if (ifcType === 'IfcAnnotation' && !typeVisibility.ifcAnnotations) return false;
-  return true;
+  // Shared mapping (`typeVisibilityFilter.ts`) so the basket's visible set,
+  // the viewport mesh filter and the GLB export never drift. `site` also hides
+  // `IfcGeographicElement` terrain (issue #1480).
+  return isTypeVisible(ifcType, typeVisibility);
 }
 
 function getDataStoreForModel(state: ViewerStateSnapshot, modelId: string): IfcDataStore | null {

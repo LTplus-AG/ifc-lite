@@ -14,6 +14,9 @@
 
 import type { Renderer } from '@ifc-lite/renderer';
 import {
+  accumulateClassificationCounts,
+  classificationCountEntries,
+  createClassificationCounts,
   streamPointCloud,
   type DecodedPointChunk,
   type StreamHandle,
@@ -22,6 +25,16 @@ import type { CoordinateInfo, GeometryResult, PointCloudAsset } from '@ifc-lite/
 import { createSyntheticDataStore, type IfcDataStore } from '@ifc-lite/parser';
 import type { SchemaVersion } from '../../store/types.js';
 import { createCoordinateInfo } from '../../utils/localParsingUtils.js';
+import {
+  registerPointCloudAlignment,
+  unregisterPointCloudAlignment,
+  type PointCloudAlignmentTransform,
+} from './pointCloudAlignment.js';
+import {
+  addPointsToScanCache,
+  registerPointCloudScanCache,
+  removePointCloudScanCache,
+} from './pointCloudScanCache.js';
 
 export type PointCloudFormat = 'las' | 'laz' | 'ply' | 'pcd' | 'e57' | 'pts' | 'xyz';
 
@@ -87,12 +100,49 @@ export interface PointCloudIngestOptions {
   maxPointsInMemory?: number;
   /** Hard cap on file size in bytes. Default: 4 GB. */
   maxFileSize?: number;
+  /**
+   * Points retained CPU-side (reservoir-sampled) for the 2D section scan
+   * layer (issue #1805) — the GPU upload never keeps a JS-side copy, so
+   * this is the only way the section view can select an in-band slice.
+   * Default: {@link DEFAULT_SCAN_CACHE_CAPACITY}.
+   */
+  maxScanCachePoints?: number;
   /** Progress callback shared with the existing UI. */
   onProgress?: (progress: { phase: string; percent: number }) => void;
   /** Notified with +1 when streaming starts and -1 if it errors. */
   onAssetCountDelta?: (delta: number) => void;
+  /**
+   * Classification histogram for the streamed scan (#1783). Called
+   * with the renderer handle id and the running classId → point-count
+   * record — periodically during streaming so the classes checklist
+   * fills in progressively, and once more on completion. Called with
+   * `null` when the stream errors (asset removed) or when no chunk
+   * carried classifications.
+   */
+  onClassCounts?: (handleId: number, counts: Record<number, number> | null) => void;
   /** Abort signal to cancel ingest. */
   signal?: AbortSignal;
+  /**
+   * IfcMapConversion-derived alignment transform for this scan (issue
+   * #1804), computed by the caller from the reference model's
+   * georeference (`computePointCloudAlignment`). `undefined` when the
+   * loaded model has no usable `IfcMapConversion` — the scan streams at
+   * its raw native coordinates, exactly as before this feature existed.
+   * When present:
+   *   - `decodeOriginOffset` is threaded into `streamPointCloud` so the
+   *     LAS/LAZ decoder subtracts it in f64 before narrowing to f32.
+   *   - the asset defaults to the ALIGNED matrix (alignment ON) and is
+   *     registered so the panel's toggle can flip every loaded scan
+   *     between aligned/unaligned without re-streaming.
+   * IGNORED entirely for formats other than LAS/LAZ: only those decoders
+   * consume the decode-time offset, and the aligned matrix is only valid
+   * on decode-shifted positions (see the gate below).
+   */
+  alignment?: PointCloudAlignmentTransform;
+  /** Alignment toggle's current value at ingest time. Defaults to `true`
+   *  (aligned) — matches the issue's "on by default" requirement. Only
+   *  consulted when `alignment` is provided. */
+  alignmentEnabled?: boolean;
 }
 
 /**
@@ -286,6 +336,55 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
   });
   const onCountChange = opts.onAssetCountDelta ?? (() => {});
   onCountChange(+1);
+  // Reservoir-sample a bounded CPU-side copy for the 2D section scan layer
+  // (issue #1805) — see pointCloudScanCache.ts for why this can't just read
+  // back the GPU buffer.
+  registerPointCloudScanCache(handle.id, opts.maxScanCachePoints);
+
+  // IfcMapConversion alignment (issue #1804): register so the panel's
+  // global toggle can flip this asset later, and push the initial matrix
+  // now (default ON — matches the issue's "apply by default" ask).
+  //
+  // LAS/LAZ ONLY: the aligned matrix assumes positions were decode-shifted
+  // by `decodeOriginOffset` (in f64, inside the decoder), and only the
+  // LAS/LAZ sources consume `streamPointCloud`'s `originOffset`. Applying
+  // the matrix to an un-shifted PLY/PCD/E57/PTS/XYZ stream would rotate
+  // and shift ABSOLUTE coordinates — strictly worse than the raw
+  // placement — so those formats ignore any provided alignment entirely.
+  const alignment = (opts.format === 'las' || opts.format === 'laz') ? opts.alignment : undefined;
+  if (alignment) {
+    registerPointCloudAlignment(handle, alignment);
+    const enabled = opts.alignmentEnabled ?? true;
+    opts.renderer.setPointCloudTransform(
+      handle,
+      enabled ? alignment.alignedMatrix : alignment.unalignedMatrix,
+    );
+  }
+
+  // Running per-class histogram, pushed to the caller periodically so
+  // the classes checklist populates while a large scan is still
+  // streaming (#1783). Every 8 chunks ≈ every 1.6M points at the
+  // default 200k chunk size — frequent enough to feel live, rare
+  // enough not to spam store updates.
+  const classCounts = createClassificationCounts();
+  let sawClassifications = false;
+  let chunksSinceCountsPush = 0;
+  const CHUNKS_PER_COUNTS_PUSH = 8;
+  const pushClassCounts = () => {
+    if (!opts.onClassCounts) return;
+    // A classification-free stream reports null, as documented on the
+    // option — the store treats that as "drop this asset's histogram",
+    // which is a no-op when nothing was ever recorded.
+    if (!sawClassifications) {
+      opts.onClassCounts(handle.id, null);
+      return;
+    }
+    const counts: Record<number, number> = {};
+    for (const { classId, count } of classificationCountEntries(classCounts)) {
+      counts[classId] = count;
+    }
+    opts.onClassCounts(handle.id, counts);
+  };
 
   // `streamPointCloud()` can throw synchronously during validation /
   // worker setup (e.g. invalid `chunkSize`, oversized blob). The
@@ -302,6 +401,7 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
       maxPointsInMemory: opts.maxPointsInMemory,
       maxFileSize: opts.maxFileSize,
       signal: opts.signal,
+      originOffset: alignment?.decodeOriginOffset,
       onOpen: (info) => {
         opts.onProgress?.({
           phase: info.stride > 1
@@ -330,6 +430,18 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
         const yUp = swapZupChunkToYup(chunk);
         opts.renderer.appendPointCloudChunk(handle, yUp);
         opts.renderer.requestRender();
+        // Feed the SAME Y-up points into the bounded CPU reservoir the 2D
+        // section scan layer reads from (issue #1805) — must be the
+        // post-swap chunk so the retained sample and the GPU-rendered scan
+        // agree on orientation.
+        addPointsToScanCache(handle.id, yUp);
+        // Classification histogram — the axis swap doesn't touch the
+        // classifications buffer, so accumulate from the source chunk.
+        sawClassifications = accumulateClassificationCounts(classCounts, chunk) || sawClassifications;
+        if (++chunksSinceCountsPush >= CHUNKS_PER_COUNTS_PUSH) {
+          chunksSinceCountsPush = 0;
+          pushClassCounts();
+        }
       },
       onProgress: (loaded, total) => {
         const pct = total > 0 ? Math.min(99, 10 + Math.floor((loaded / total) * 89)) : 50;
@@ -340,15 +452,22 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
       },
       onComplete: () => {
         opts.renderer.endPointCloudStream(handle);
+        pushClassCounts();
         opts.onProgress?.({ phase: 'Streaming complete', percent: 100 });
       },
       onError: () => {
         opts.renderer.removePointCloudAsset(handle);
+        opts.onClassCounts?.(handle.id, null);
+        unregisterPointCloudAlignment(handle.id);
+        removePointCloudScanCache(handle.id);
         onCountChange(-1);
       },
     });
   } catch (err) {
     opts.renderer.removePointCloudAsset(handle);
+    opts.onClassCounts?.(handle.id, null);
+    unregisterPointCloudAlignment(handle.id);
+    removePointCloudScanCache(handle.id);
     onCountChange(-1);
     throw err;
   }

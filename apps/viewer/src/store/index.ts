@@ -25,7 +25,7 @@ import { createMeasurementSlice, type MeasurementSlice } from './slices/measurem
 import { createDataSlice, type DataSlice } from './slices/dataSlice.js';
 import { createModelSlice, type ModelSlice } from './slices/modelSlice.js';
 import { createMutationSlice, type MutationSlice } from './slices/mutationSlice.js';
-import { createDrawing2DSlice, type Drawing2DSlice } from './slices/drawing2DSlice.js';
+import { createDrawing2DSlice, getDefaultDisplayOptions, type Drawing2DSlice } from './slices/drawing2DSlice.js';
 import { createSheetSlice, type SheetSlice } from './slices/sheetSlice.js';
 import { createBcfSlice, type BCFSlice } from './slices/bcfSlice.js';
 import { createIdsSlice, type IDSSlice } from './slices/idsSlice.js';
@@ -48,10 +48,15 @@ import { createPlaybackSlice, type PlaybackSlice } from './slices/playbackSlice.
 import { createOverlaySlice, type OverlaySlice } from './slices/overlaySlice.js';
 import { createSearchSlice, type SearchSlice } from './slices/searchSlice.js';
 import { createAnnotationsSlice, type AnnotationsSlice } from './slices/annotationsSlice.js';
+import { createCollabSlice, type CollabSlice } from './slices/collabSlice.js';
 import { createAddElementSlice, type AddElementSlice } from './slices/addElementSlice.js';
 import { createSplitToolSlice, type SplitToolSlice } from './slices/splitToolSlice.js';
 import { createLevelDisplaySlice, type LevelDisplaySlice } from './slices/levelDisplaySlice.js';
 import { createPointCloudSlice, type PointCloudSlice, POINT_CLOUD_DEFAULTS } from './slices/pointCloudSlice.js';
+import { createUnitDisplaySlice, type UnitDisplaySlice } from './slices/unitDisplaySlice.js';
+import { createSpaceMouseSlice, type SpaceMouseSlice } from './slices/spaceMouseSlice.js';
+import { createLayerStackSlice, type LayerStackSlice } from './slices/layerStackSlice.js';
+import { createZonesSlice, type ZonesSlice } from './slices/zonesSlice.js';
 import { invalidateVisibleBasketCache } from './basketVisibleSet.js';
 
 // Import constants for reset function
@@ -62,12 +67,14 @@ export type * from './types.js';
 
 // Explicitly re-export multi-model types that need to be imported by name
 export type { EntityRef, SchemaVersion, FederatedModel, MeasurementConstraintEdge, OrthogonalAxis, SectionCapStyle, SectionCapHatchId, SectionPlane, SectionPlaneAxis } from './types.js';
+export type { HierarchyMode } from './slices/uiSlice.js';
+export type { RibbonTabId, ToolbarStyle } from './constants.js';
 
 // Re-export utility functions for entity references
 export { entityRefToString, stringToEntityRef, entityRefEquals, isIfcxDataStore } from './types.js';
 
-// Re-export single source of truth for globalId → EntityRef resolution
-export { resolveEntityRef } from './resolveEntityRef.js';
+// Re-export single source of truth for renderer ID → IFC entity resolution.
+export { resolveEntityRef, resolveGlobalId } from './resolveEntityRef.js';
 export { fromGlobalIdFromModels, toGlobalIdFromModels, toGlobalIdForRef } from './globalId.js';
 export type { ForwardModelMapLike } from './globalId.js';
 
@@ -76,6 +83,9 @@ export type { Drawing2DState, Drawing2DStatus, Annotation2DTool, PolygonArea2DRe
 
 // Re-export Sheet types
 export type { SheetState } from './slices/sheetSlice.js';
+
+// Re-export Collab types
+export type { CollabSlice, CollabRole, CollabStatus, StartCollabOptions } from './slices/collabSlice.js';
 
 // Re-export BCF types
 export type { BCFSlice, BCFSliceState } from './slices/bcfSlice.js';
@@ -92,6 +102,7 @@ export type { PinboardSlice } from './slices/pinboardSlice.js';
 // Re-export Lens types
 export type { LensSlice, Lens, LensRule, LensCriteria } from './slices/lensSlice.js';
 export type { CompareSlice, CompareResult } from './slices/compareSlice.js';
+export type { LayerStackSlice, LayerStackEntry, LayerStackDiffResult, LayerAuthorKind } from './slices/layerStackSlice.js';
 export type { DockSlice, FloatingPanelState, SnapZone } from './slices/dockSlice.js';
 export type { SidebarSlice, SidebarMode, SidebarLayoutSnapshot } from './slices/sidebarSlice.js';
 
@@ -141,6 +152,7 @@ export type ViewerState = LoadingSlice &
   LensSlice &
   ClashSlice &
   CompareSlice &
+  LayerStackSlice &
   DockSlice &
   SidebarSlice &
   ScriptSlice &
@@ -153,10 +165,14 @@ export type ViewerState = LoadingSlice &
   OverlaySlice &
   SearchSlice &
   AnnotationsSlice &
+  CollabSlice &
   AddElementSlice &
   SplitToolSlice &
   LevelDisplaySlice &
   PointCloudSlice &
+  UnitDisplaySlice &
+  SpaceMouseSlice &
+  ZonesSlice &
   ExtensionsSlice & {
     resetViewerState: () => void;
     /**
@@ -224,6 +240,7 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
   ...createLensSlice(...args),
   ...createClashSlice(...args),
   ...createCompareSlice(...args),
+  ...createLayerStackSlice(...args),
   ...createDockSlice(...args),
   ...createSidebarSlice(...args),
   ...createScriptSlice(...args),
@@ -236,10 +253,14 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
   ...createOverlaySlice(...args),
   ...createSearchSlice(...args),
   ...createAnnotationsSlice(...args),
+  ...createCollabSlice(...args),
   ...createAddElementSlice(...args),
   ...createSplitToolSlice(...args),
   ...createLevelDisplaySlice(...args),
   ...createPointCloudSlice(...args),
+  ...createUnitDisplaySlice(...args),
+  ...createSpaceMouseSlice(...args),
+  ...createZonesSlice(...args),
   ...createExtensionsSlice(...args),
 
   // Reset all viewer state when loading new file
@@ -297,6 +318,20 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       compareSelectedKey: null,
       compareRunning: false,
       compareError: null,
+
+      // Zones (#1810): keep the user-authored zone SETS (they persist across
+      // model loads, like clash presets), but drop the computed assignments —
+      // they're keyed by the OUTGOING model's global ids, and the single-model
+      // fallback (globalId === expressId) means the incoming model's ids can
+      // collide and read the old model's zone membership until the debounced
+      // recompute fires. Same stale-model-reference class as compareResult
+      // above; `useZoneAssignmentSync` recomputes against the new scene.
+      zoneAssignments: new Map(),
+      zoneAssignmentTiming: null,
+      // ... and drop any in-flight zone-edit session: leaving `editingZone`
+      // set would hand the incoming model live gizmo handles + picking for
+      // a zone the user was editing against the outgoing model.
+      editingZone: null,
 
       // Hover/Context
       hoverState: { entityId: null, screenX: 0, screenY: 0 },
@@ -359,7 +394,14 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       cesiumAvailable: false,
       cesiumEnabled: false,
       cesiumTerrainHeight: null,
+      // The snap target is model-specific terrain state; drop it with the
+      // sampled height so a new file can't reuse the old target (#1456).
+      cesiumTerrainSaveHeight: null,
       cesiumSourceModelId: null,
+      // A new file is orthometric by default — re-arm the geoid correction
+      // so a previous file's "heights are ellipsoidal" opt-out doesn't carry
+      // over (#1355).
+      cesiumHeightsAreEllipsoidal: false,
       cesiumTerrainClipY: null,
       cesiumGlbLoaded: false,
       cesiumPlacementEditMode: false,
@@ -375,16 +417,7 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       drawing2DPanelVisible: false,
       suppressNextSection2DPanelAutoOpen: false,
       drawing2DSvgContent: null,
-      drawing2DDisplayOptions: {
-        showHiddenLines: true,
-        showHatching: true,
-        showAnnotations: true,
-        show3DOverlay: true,
-        scale: 100,
-        useSymbolicRepresentations: false,
-        showIfcAnnotations: true,
-        showConstructionProjection: false,
-      },
+      drawing2DDisplayOptions: getDefaultDisplayOptions(),
       // Graphic overrides (keep presets, reset active and custom)
       activePresetId: 'preset-3d-colors',
       customOverrideRules: [],
@@ -459,6 +492,10 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       lensPanelVisible: false,
       lensColorMap: new Map<number, string>(),
       lensHiddenIds: new Set<number>(),
+      // Ownership bookkeeping for the shared hidden/isolation channels — those
+      // channels are wiped above, so stale claims must not survive the reset.
+      lensAppliedHiddenIds: [] as number[],
+      lensRuleIsolation: null,
       lensRuleCounts: new Map<string, number>(),
       lensRuleEntityIds: new Map<string, number[]>(),
 
@@ -538,6 +575,8 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       clashPanelVisible: panel === 'clash',
       comparePanelVisible: panel === 'compare',
       extensionsPanelVisible: panel === 'extensions',
+      collabPanelVisible: panel === 'collab',
+      layersPanelVisible: panel === 'layers',
       rightPanelCollapsed: false,
     });
     if (get().sidebarMode !== 'expanded') get().setSidebarMode('expanded');
@@ -571,6 +610,8 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
         clashPanelVisible: false,
         comparePanelVisible: false,
         extensionsPanelVisible: false,
+        collabPanelVisible: false,
+        layersPanelVisible: false,
         rightPanelCollapsed: false,
       });
       get().setSidebarActivePanel('properties');
@@ -648,6 +689,8 @@ const SIDEBAR_PANEL_FLAGS: ReadonlyArray<readonly [keyof ViewerState, WorkspaceP
   ['clashPanelVisible', 'clash'],
   ['comparePanelVisible', 'compare'],
   ['extensionsPanelVisible', 'extensions'],
+  ['collabPanelVisible', 'collab'],
+  ['layersPanelVisible', 'layers'],
 ];
 
 /**

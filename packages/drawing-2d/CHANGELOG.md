@@ -1,5 +1,54 @@
 # @ifc-lite/drawing-2d
 
+## 1.20.0
+
+### Minor Changes
+
+- [#1871](https://github.com/LTplus-AG/ifc-lite/pull/1871) [`0f15d56`](https://github.com/LTplus-AG/ifc-lite/commit/0f15d5629c532a9ae6b8d79586e6b16613000498) Thanks [@louistrue](https://github.com/louistrue)! - Add a DXF exporter (`DXFExporter` / `exportToDXF`) alongside the existing SVG exporter. The underlying ASCII DXF R12 writer stays package-internal; only the exporter facade (and its `DXFExportOptions` / `DXFUnderlayOptions` types) is public API.
+
+  `exportToDXF` mirrors `exportToSVG`'s `Drawing2D` + reference-underlay input contract (same polylines/edges, hatch-boundary polygons, text/annotations, and per-style layers) and writes ASCII DXF R12 (`$ACADVER` = `AC1009`): HEADER, TABLES (LTYPE, STYLE, LAYER), ENTITIES (classic POLYLINE/VERTEX/SEQEND, LINE, TEXT). Layer names follow the strict R12 symbol rules (31 characters, `A-Z a-z 0-9 $ - _`), with numeric-suffix disambiguation when distinct source names collide after sanitizing. R12 is deliberate — entity handles and subclass markers are mandatory from R13 on and this writer emits neither, so declaring a later version would produce an invalid hybrid file that strict readers (AutoCAD, ODA/Teigha-based tools) reject or force-repair. R12 has no `$INSUNITS`; the unit (always metres) and, when known, the target CRS are stated in a leading `999` comment instead. Hatched cut polygons are represented as closed POLYLINE boundaries on a dedicated layer rather than a HATCH entity. An optional `coordinateTransform` lets a caller re-derive world/map coordinates before points reach the writer (used by the viewer's "Download DXF" section-panel export, issue [#1861](https://github.com/LTplus-AG/ifc-lite/issues/1861), to georeference plan sections).
+
+- [#1874](https://github.com/LTplus-AG/ifc-lite/pull/1874) [`ae0498a`](https://github.com/LTplus-AG/ifc-lite/commit/ae0498a23d61dd63baede3df86cd2f9ec74b1203) Thanks [@louistrue](https://github.com/louistrue)! - Export `projectTo2DBasis` from the package root.
+
+  It already existed in `math.ts` and is used internally by `section-cutter.ts`
+  for face-picked custom-plane sections, but was never re-exported. The new
+  point-cloud "scan" layer on the 2D section view (issue [#1805](https://github.com/LTplus-AG/ifc-lite/issues/1805)) needs it as a
+  consumer outside the package, to project retained scan points into the same
+  drawing-space coordinates the section cutter produces for custom (non-cardinal)
+  cut planes.
+
+### Patch Changes
+
+- Updated dependencies [[`428c5ae`](https://github.com/LTplus-AG/ifc-lite/commit/428c5ae54bac236a3950f451ee12a0dc23226336), [`3dc3eb5`](https://github.com/LTplus-AG/ifc-lite/commit/3dc3eb56bd372ddd0e317347db1cad888dffd609)]:
+  - @ifc-lite/geometry@3.5.0
+
+## 1.19.0
+
+### Minor Changes
+
+- [#1794](https://github.com/LTplus-AG/ifc-lite/pull/1794) [`631c3a0`](https://github.com/LTplus-AG/ifc-lite/commit/631c3a0813e722fa65ff052108c2cea3ac905801) Thanks [@louistrue](https://github.com/louistrue)! - Add DXF import as a 2D reference underlay ([#1782](https://github.com/LTplus-AG/ifc-lite/issues/1782)): `importDxf` parses ASCII DXF (LINE, LWPOLYLINE/POLYLINE with bulges, CIRCLE, ARC, ELLIPSE, SPLINE, SOLID/TRACE, HATCH, TEXT/MTEXT, DIMENSION blocks, INSERT/BLOCK with nested transforms) into world-plan geometry (metres, +Y = north) with per-layer visibility, ACI/true-colour and lineweight resolution, $INSUNITS scaling, and a unitless-file millimetre heuristic. `SVGExporter` gains an `underlays` option to composite DXF reference layers beneath exported drawings, and `applyDxfPlacement` positions underlays (offset/rotation/scale) in drawing space.
+
+### Patch Changes
+
+- Updated dependencies [[`2a7c7ff`](https://github.com/LTplus-AG/ifc-lite/commit/2a7c7ffe0ac27a8cc315e5d4a633c56469646cf0), [`90522d2`](https://github.com/LTplus-AG/ifc-lite/commit/90522d218d5a9c4df0760349b5bfc60916a23f8f), [`502c61b`](https://github.com/LTplus-AG/ifc-lite/commit/502c61bc7c0ae1ac313ed93ab335fdd942471c72), [`502bdbf`](https://github.com/LTplus-AG/ifc-lite/commit/502bdbf5c4c4c86999f4e662b71ee5b0b16307ae)]:
+  - @ifc-lite/geometry@3.3.0
+
+## 1.18.6
+
+### Patch Changes
+
+- [#1691](https://github.com/LTplus-AG/ifc-lite/pull/1691) [`26af236`](https://github.com/LTplus-AG/ifc-lite/commit/26af236a9128f5fc97493d75d7c9642958343a7a) Thanks [@louistrue](https://github.com/louistrue)! - Documentation moved to https://ifclite.dev/docs/ - README links and package homepage fields now point at the new home (the GitHub Pages site remains as a mirror whose canonical URLs point there).
+
+- Updated dependencies [[`26af236`](https://github.com/LTplus-AG/ifc-lite/commit/26af236a9128f5fc97493d75d7c9642958343a7a), [`d0647c9`](https://github.com/LTplus-AG/ifc-lite/commit/d0647c9a1801fc03b7c5d32314e53ef922c56f2f), [`26de705`](https://github.com/LTplus-AG/ifc-lite/commit/26de705b8608b9cd75e90411288c7ada96b3352b), [`bc1531f`](https://github.com/LTplus-AG/ifc-lite/commit/bc1531f899e5f8d18d1a6ff1ef6d997236a01243)]:
+  - @ifc-lite/geometry@3.1.4
+
+## 1.18.5
+
+### Patch Changes
+
+- Updated dependencies [[`8e43ecf`](https://github.com/LTplus-AG/ifc-lite/commit/8e43ecf540b88b942a4ec2127dd9bcf24ec244fa), [`6d2cb21`](https://github.com/LTplus-AG/ifc-lite/commit/6d2cb21a170413c6c98aadf10d254667b2ed2b53), [`3d25765`](https://github.com/LTplus-AG/ifc-lite/commit/3d25765edc2cee40268a6d5a27d4055f88f76489), [`b66ff1d`](https://github.com/LTplus-AG/ifc-lite/commit/b66ff1dd915a0ff4f60198a511adb7ed7f714079)]:
+  - @ifc-lite/geometry@3.0.0
+
 ## 1.18.4
 
 ### Patch Changes

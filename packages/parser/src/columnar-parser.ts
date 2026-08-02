@@ -85,11 +85,15 @@ export interface IfcDataStore extends IfcStoreBase {
     onDemandClassificationMap?: Map<number, number[]>;
 
     /**
-     * On-demand material lookup: entityId -> relatingMaterial expressId
+     * On-demand material lookup: entityId -> associated material definition expressIds.
      * Built from IfcRelAssociatesMaterial relationships during parsing.
-     * Value is the expressId of IfcMaterial, IfcMaterialLayerSet, IfcMaterialProfileSet, or IfcMaterialConstituentSet.
+     * Each value is the expressId of IfcMaterial, IfcMaterialLayerSet,
+     * IfcMaterialProfileSet, IfcMaterialConstituentSet, IfcMaterialList, or a
+     * *Usage. The value is a LIST so a second IfcRelAssociatesMaterial targeting
+     * the same element (valid in the wild) is preserved rather than last-wins
+     * overwritten — the model-wide usage index depends on seeing every one.
      */
-    onDemandMaterialMap?: Map<number, number>;
+    onDemandMaterialMap?: Map<number, number[]>;
 
     /**
      * On-demand document lookup: entityId -> array of IfcDocumentReference/IfcDocumentInformation expressIds
@@ -640,8 +644,15 @@ export class ColumnarParser {
         options.onProgress?.({ phase: 'parsing associations', percent: 95 });
 
         const onDemandClassificationMap = new Map<number, number[]>();
-        const onDemandMaterialMap = new Map<number, number>();
+        const onDemandMaterialMap = new Map<number, number[]>();
         const onDemandDocumentMap = new Map<number, number[]>();
+        // Determinism rule for elements with MULTIPLE IfcRelAssociatesMaterial:
+        // the map keeps EVERY association (list-valued), ordered by rel express
+        // id, so list[0] — the "primary" — is the RelatingMaterial of the
+        // LOWEST rel express id regardless of file order. The cache rebuild
+        // (viewer spatialHierarchy rebuildOnDemandMaps) applies the same rule
+        // via edge relationshipIds, so fresh-parse and cache-load agree.
+        const materialRelIds = new Map<number, number[]>();
 
         for (let i = 0; i < associationRelRefs.length; i++) {
             if ((i & 0x3FF) === 0) await yieldIfNeeded();
@@ -660,7 +671,18 @@ export class ColumnarParser {
                     }
                 } else if (typeUpper === 'IFCRELASSOCIATESMATERIAL') {
                     for (const objId of relatedObjects) {
-                        onDemandMaterialMap.set(objId, relatingRef);
+                        let list = onDemandMaterialMap.get(objId);
+                        let relIds = materialRelIds.get(objId);
+                        if (!list || !relIds) {
+                            list = []; onDemandMaterialMap.set(objId, list);
+                            relIds = []; materialRelIds.set(objId, relIds);
+                        }
+                        // Insert in rel-express-id order (lists are tiny) so
+                        // list[0] is the deterministic primary.
+                        let at = relIds.length;
+                        while (at > 0 && relIds[at - 1] > ref.expressId) at--;
+                        relIds.splice(at, 0, ref.expressId);
+                        list.splice(at, 0, relatingRef);
                         relationshipGraphBuilder.addEdge(relatingRef, objId, RelationshipType.AssociatesMaterial, ref.expressId);
                     }
                 } else if (typeUpper === 'IFCRELASSOCIATESDOCUMENT') {
@@ -866,7 +888,7 @@ export class ColumnarParser {
 export function extractPropertiesOnDemand(
     store: IfcDataStore,
     entityId: number
-): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[] }> }> {
+): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string }> }> {
     const parser = new ColumnarParser();
     return parser.extractPropertiesOnDemand(store, entityId);
 }
@@ -1079,11 +1101,22 @@ export function extractRootAttributesFromEntity(
     entity: IfcEntity
 ): { globalId: string; name: string; description: string; objectType: string; tag: string } {
     const attrs = entity.attributes || [];
+    const enumIdx = entity.enumAttrIndices;
     const idx = getRootAttrIndices(entity.type);
     const pick = (schemaIndex: number, fallbackIndex: number): string => {
         const i = idx.known ? schemaIndex : fallbackIndex;
         const raw = i >= 0 ? attrs[i] : undefined;
-        return typeof raw === 'string' ? raw : '';
+        if (typeof raw !== 'string') return '';
+        // Unknown-type fallback only: a fixed index can land on a STEP bare-enum
+        // token — e.g. a PredefinedType at attr 7 for a non-IfcElement layout —
+        // which must not leak into a Tag/Description cell. Reject by token KIND
+        // via the extractor's side channel (#1799), not by dotted-string shape:
+        // a quoted string that merely looks like an enum ('.USERDEFINED.')
+        // survives, exactly matching the Rust server path (string_at accepts
+        // AttributeValue::String and rejects ::Enum, #1779). Skipped for known
+        // types, whose schema indices point at genuine string slots.
+        if (!idx.known && enumIdx !== undefined && enumIdx.includes(i)) return '';
+        return raw;
     };
     return {
         globalId: pick(idx.globalId, 0),
@@ -1112,20 +1145,24 @@ export function pickLongName(entity: IfcEntity): string {
 export {
     extractClassificationsOnDemand,
     extractMaterialsOnDemand,
+    extractAllMaterialsOnDemand,
     extractMaterialPropertiesOnDemand,
     extractMaterialPropertiesForMaterialId,
     resolveMaterialDefId,
+    resolveAllMaterialDefIds,
     collectMaterialLeaves,
     buildMaterialUsageIndex,
     getMaterialDisplay,
     extractTypePropertiesOnDemand,
     extractTypeEntityOwnProperties,
+    extractTypeQuantitiesOnDemand,
     extractDocumentsOnDemand,
     extractRelationshipsOnDemand,
     extractGroupMembersOnDemand,
     extractGeoreferencingOnDemand,
     parsePropertyValue,
     extractPsetsFromIds,
+    extractQsetsFromIds,
 } from './on-demand-extractors.js';
 
 export type {
@@ -1138,6 +1175,7 @@ export type {
     MaterialLeaf,
     MaterialUsage,
     TypePropertyInfo,
+    TypeQuantityInfo,
     DocumentInfo,
     EntityRelationships,
     GroupMember,

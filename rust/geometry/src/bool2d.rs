@@ -102,51 +102,78 @@ pub fn subtract_multiple_2d(
     shapes_to_profile(&result)
 }
 
-/// Union multiple void contours into a single shape
-///
-/// Useful for combining overlapping voids before subtraction.
-pub fn union_contours(contours: &[Vec<Point2<f64>>]) -> Result<Vec<Vec<Point2<f64>>>> {
-    if contours.is_empty() {
-        return Ok(Vec::new());
+/// Like [`subtract_multiple_2d`], but also reports how many DISCONNECTED output
+/// shapes the difference produced (each with non-degenerate area). The returned
+/// `Profile2D` is the largest shape (as [`subtract_multiple_2d`]); a caller that
+/// must not silently drop geometry — the 2D opening-subtraction re-extrude —
+/// checks `shapes == 1` and otherwise defers to the exact kernel (a void that
+/// splits the profile into pieces can't be re-extruded from a single profile).
+pub fn subtract_multiple_2d_counted(
+    profile: &Profile2D,
+    void_contours: &[Vec<Point2<f64>>],
+) -> Result<(Profile2D, usize)> {
+    let valid_contours: Vec<_> = void_contours.iter().filter(|c| c.len() >= 3).collect();
+    if valid_contours.is_empty() {
+        return Ok((profile.clone(), 1));
     }
-
-    if contours.len() == 1 {
-        return Ok(contours.to_vec());
-    }
-
-    // Start with first contour as subject
-    let subject: Vec<Vec<[f64; 2]>> = vec![contour_to_path(&contours[0])];
-
-    // Collect all other contours as clip
-    let clip: Vec<Vec<[f64; 2]>> = contours
+    let subject = profile_to_paths(profile);
+    let clip: Vec<Vec<[f64; 2]>> = valid_contours.iter().map(|c| contour_to_path(c)).collect();
+    let result = subject.overlay(&clip, OverlayRule::Difference, FillRule::EvenOdd);
+    // Count EVERY non-empty output shape (any outer contour with >= 3 vertices),
+    // NOT just those above MIN_AREA_THRESHOLD. This gate decides single-vs-multi
+    // shape for the caller: only `shapes == 1` lets the re-extrude proceed with the
+    // largest shape. Filtering by area would let a valid-but-tiny disconnected
+    // sliver report `shapes == 1`, and its geometry would be silently dropped; the
+    // conservative count forces the exact-kernel fallback whenever the difference
+    // splits the profile at all, even into a sub-threshold piece.
+    let shapes = result
         .iter()
-        .skip(1)
+        .filter(|s| s.first().is_some_and(|outer| outer.len() >= 3))
+        .count();
+    Ok((shapes_to_profile(&result)?, shapes))
+}
+
+/// Union many 2D contours into a set of DISJOINT shapes, each an outer boundary
+/// plus any holes, via ONE i_overlay Union pass (NonZero fill). Overlapping input
+/// contours merge exactly — no pairwise accumulation, so the coaxial
+/// footprint-union void path can't diverge from the true union. Every input
+/// contour is normalised CCW first so opposing windings (e.g. the two caps of a
+/// projected prism) accumulate coverage rather than cancelling. Degenerate
+/// (< 3-vertex or zero-area) contours are dropped; an empty input yields an empty
+/// result. Deterministic f64 → byte-identical native==wasm.
+pub fn union_contours_to_shapes(contours: &[Vec<Point2<f64>>]) -> Vec<Profile2D> {
+    let subject: Vec<Vec<[f64; 2]>> = contours
+        .iter()
         .filter(|c| c.len() >= 3)
-        .map(|c| contour_to_path(c))
+        .map(|c| contour_to_path(&ensure_ccw(c)))
         .collect();
-
-    if clip.is_empty() {
-        return Ok(contours[..1].to_vec());
+    if subject.is_empty() {
+        return Vec::new();
     }
-
-    // Perform union
-    let result = subject.overlay(&clip, OverlayRule::Union, FillRule::EvenOdd);
-
-    // Convert back to Point2 format - flatten all shapes and contours
-    let mut all_contours = Vec::new();
-    for shape in result {
-        for contour in shape {
-            let points: Vec<Point2<f64>> = contour
-                .into_iter()
-                .map(|p| Point2::new(p[0], p[1]))
-                .collect();
-            if points.len() >= 3 {
-                all_contours.push(points);
+    // Self-union: overlay the subject against an empty clip with the Union rule and
+    // NonZero fill so overlapping subject paths dissolve into merged shapes.
+    let empty: Vec<Vec<[f64; 2]>> = Vec::new();
+    let result = subject.overlay(&empty, OverlayRule::Union, FillRule::NonZero);
+    let mut out = Vec::new();
+    for shape in &result {
+        let Some(outer_raw) = shape.first() else {
+            continue;
+        };
+        let outer: Vec<Point2<f64>> = outer_raw.iter().map(|p| Point2::new(p[0], p[1])).collect();
+        if !is_valid_contour(&outer) {
+            continue;
+        }
+        let outer = ensure_ccw(&outer);
+        let mut holes = Vec::new();
+        for c in shape.iter().skip(1) {
+            let hole: Vec<Point2<f64>> = c.iter().map(|p| Point2::new(p[0], p[1])).collect();
+            if is_valid_contour(&hole) {
+                holes.push(ensure_cw(&hole));
             }
         }
+        out.push(Profile2D { outer, holes });
     }
-
-    Ok(all_contours)
+    out
 }
 
 /// Check if a contour is valid (has area, not degenerate)
@@ -200,36 +227,6 @@ pub fn ensure_cw(contour: &[Point2<f64>]) -> Vec<Point2<f64>> {
     }
 }
 
-/// Simplify a contour by removing collinear points
-pub fn simplify_contour(contour: &[Point2<f64>], epsilon: f64) -> Vec<Point2<f64>> {
-    if contour.len() <= 3 {
-        return contour.to_vec();
-    }
-
-    let mut result = Vec::with_capacity(contour.len());
-    let n = contour.len();
-
-    for i in 0..n {
-        let prev = &contour[(i + n - 1) % n];
-        let curr = &contour[i];
-        let next = &contour[(i + 1) % n];
-
-        // Check if current point is collinear with prev and next
-        let cross = (curr.x - prev.x) * (next.y - prev.y) - (curr.y - prev.y) * (next.x - prev.x);
-
-        if cross.abs() > epsilon {
-            result.push(*curr);
-        }
-    }
-
-    // Ensure we have at least 3 points
-    if result.len() < 3 {
-        return contour.to_vec();
-    }
-
-    result
-}
-
 /// Check if a point is inside a contour using ray casting
 pub fn point_in_contour(point: &Point2<f64>, contour: &[Point2<f64>]) -> bool {
     if contour.len() < 3 {
@@ -255,40 +252,13 @@ pub fn point_in_contour(point: &Point2<f64>, contour: &[Point2<f64>]) -> bool {
     inside
 }
 
-/// Check if contour A is completely inside contour B
-pub fn contour_inside_contour(inner: &[Point2<f64>], outer: &[Point2<f64>]) -> bool {
-    // All points of inner must be inside outer
-    inner.iter().all(|p| point_in_contour(p, outer))
-}
-
-/// Compute bounding box of a contour
-pub fn contour_bounds(contour: &[Point2<f64>]) -> Option<(Point2<f64>, Point2<f64>)> {
-    if contour.is_empty() {
-        return None;
-    }
-
-    let mut min = contour[0];
-    let mut max = contour[0];
-
-    for p in contour.iter().skip(1) {
-        min.x = min.x.min(p.x);
-        min.y = min.y.min(p.y);
-        max.x = max.x.max(p.x);
-        max.y = max.y.max(p.y);
-    }
-
-    Some((min, max))
-}
-
-/// Check if two bounding boxes overlap
-pub fn bounds_overlap(
-    a_min: &Point2<f64>,
-    a_max: &Point2<f64>,
-    b_min: &Point2<f64>,
-    b_max: &Point2<f64>,
-) -> bool {
-    a_min.x <= b_max.x && a_max.x >= b_min.x && a_min.y <= b_max.y && a_max.y >= b_min.y
-}
+// `contour_inside_contour` and `contour_bounds` were deleted here: the C3.2
+// `pub(crate)` narrowing orphaned them (zero callers, production or test), so
+// per the anti-cruft rule they go rather than gain a dead-code allow.
+//
+// `simplify_contour`, `union_contours`, and `bounds_overlap` were deleted here
+// for the same reason (D15 dead-code sweep): each had zero production callers,
+// only their own now-deleted unit tests.
 
 // ============================================================================
 // Internal Helper Functions
@@ -375,194 +345,5 @@ fn shapes_to_profile(shapes: &[Vec<Vec<[f64; 2]>>]) -> Result<Profile2D> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_compute_signed_area_ccw() {
-        // Counter-clockwise square
-        let contour = vec![
-            Point2::new(0.0, 0.0),
-            Point2::new(1.0, 0.0),
-            Point2::new(1.0, 1.0),
-            Point2::new(0.0, 1.0),
-        ];
-        let area = compute_signed_area(&contour);
-        assert!((area - 1.0).abs() < EPSILON_2D);
-    }
-
-    #[test]
-    fn test_compute_signed_area_cw() {
-        // Clockwise square
-        let contour = vec![
-            Point2::new(0.0, 0.0),
-            Point2::new(0.0, 1.0),
-            Point2::new(1.0, 1.0),
-            Point2::new(1.0, 0.0),
-        ];
-        let area = compute_signed_area(&contour);
-        assert!((area + 1.0).abs() < EPSILON_2D);
-    }
-
-    #[test]
-    fn test_ensure_ccw() {
-        // Clockwise square
-        let cw = vec![
-            Point2::new(0.0, 0.0),
-            Point2::new(0.0, 1.0),
-            Point2::new(1.0, 1.0),
-            Point2::new(1.0, 0.0),
-        ];
-        let ccw = ensure_ccw(&cw);
-        assert!(compute_signed_area(&ccw) > 0.0);
-    }
-
-    #[test]
-    fn test_subtract_2d_simple() {
-        // 10x10 square profile
-        let profile = Profile2D::new(vec![
-            Point2::new(0.0, 0.0),
-            Point2::new(10.0, 0.0),
-            Point2::new(10.0, 10.0),
-            Point2::new(0.0, 10.0),
-        ]);
-
-        // 2x2 square void in the center
-        let void_contour = vec![
-            Point2::new(4.0, 4.0),
-            Point2::new(6.0, 4.0),
-            Point2::new(6.0, 6.0),
-            Point2::new(4.0, 6.0),
-        ];
-
-        let result = subtract_2d(&profile, &void_contour).unwrap();
-
-        // Should have one hole
-        assert_eq!(result.holes.len(), 1);
-
-        // Outer boundary should be preserved
-        assert_eq!(result.outer.len(), 4);
-    }
-
-    #[test]
-    fn test_subtract_multiple_2d() {
-        // 10x10 square profile
-        let profile = Profile2D::new(vec![
-            Point2::new(0.0, 0.0),
-            Point2::new(10.0, 0.0),
-            Point2::new(10.0, 10.0),
-            Point2::new(0.0, 10.0),
-        ]);
-
-        // Two 1x1 voids
-        let voids = vec![
-            vec![
-                Point2::new(2.0, 2.0),
-                Point2::new(3.0, 2.0),
-                Point2::new(3.0, 3.0),
-                Point2::new(2.0, 3.0),
-            ],
-            vec![
-                Point2::new(7.0, 7.0),
-                Point2::new(8.0, 7.0),
-                Point2::new(8.0, 8.0),
-                Point2::new(7.0, 8.0),
-            ],
-        ];
-
-        let result = subtract_multiple_2d(&profile, &voids).unwrap();
-
-        // Should have two holes
-        assert_eq!(result.holes.len(), 2);
-    }
-
-    #[test]
-    fn test_point_in_contour() {
-        let contour = vec![
-            Point2::new(0.0, 0.0),
-            Point2::new(10.0, 0.0),
-            Point2::new(10.0, 10.0),
-            Point2::new(0.0, 10.0),
-        ];
-
-        assert!(point_in_contour(&Point2::new(5.0, 5.0), &contour));
-        assert!(!point_in_contour(&Point2::new(15.0, 5.0), &contour));
-        assert!(!point_in_contour(&Point2::new(-1.0, 5.0), &contour));
-    }
-
-    #[test]
-    fn test_simplify_contour() {
-        // Square with redundant collinear points
-        let contour = vec![
-            Point2::new(0.0, 0.0),
-            Point2::new(5.0, 0.0), // Collinear
-            Point2::new(10.0, 0.0),
-            Point2::new(10.0, 10.0),
-            Point2::new(0.0, 10.0),
-        ];
-
-        let simplified = simplify_contour(&contour, 1e-6);
-        assert_eq!(simplified.len(), 4);
-    }
-
-    #[test]
-    fn test_is_valid_contour() {
-        // Valid square
-        let valid = vec![
-            Point2::new(0.0, 0.0),
-            Point2::new(1.0, 0.0),
-            Point2::new(1.0, 1.0),
-            Point2::new(0.0, 1.0),
-        ];
-        assert!(is_valid_contour(&valid));
-
-        // Degenerate (all points collinear)
-        let degenerate = vec![
-            Point2::new(0.0, 0.0),
-            Point2::new(1.0, 0.0),
-            Point2::new(2.0, 0.0),
-        ];
-        assert!(!is_valid_contour(&degenerate));
-
-        // Too few points
-        let too_few = vec![Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)];
-        assert!(!is_valid_contour(&too_few));
-    }
-
-    #[test]
-    fn test_union_contours() {
-        // Two overlapping squares
-        let contours = vec![
-            vec![
-                Point2::new(0.0, 0.0),
-                Point2::new(2.0, 0.0),
-                Point2::new(2.0, 2.0),
-                Point2::new(0.0, 2.0),
-            ],
-            vec![
-                Point2::new(1.0, 1.0),
-                Point2::new(3.0, 1.0),
-                Point2::new(3.0, 3.0),
-                Point2::new(1.0, 3.0),
-            ],
-        ];
-
-        let result = union_contours(&contours).unwrap();
-
-        // Should produce a single L-shaped contour
-        assert!(!result.is_empty());
-    }
-
-    #[test]
-    fn test_bounds_overlap() {
-        let a_min = Point2::new(0.0, 0.0);
-        let a_max = Point2::new(10.0, 10.0);
-        let b_min = Point2::new(5.0, 5.0);
-        let b_max = Point2::new(15.0, 15.0);
-        let c_min = Point2::new(20.0, 20.0);
-        let c_max = Point2::new(30.0, 30.0);
-
-        assert!(bounds_overlap(&a_min, &a_max, &b_min, &b_max));
-        assert!(!bounds_overlap(&a_min, &a_max, &c_min, &c_max));
-    }
-}
+#[path = "bool2d_tests.rs"]
+mod tests;

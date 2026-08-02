@@ -165,12 +165,17 @@ function appendInheritedPropertySets(
   scale: number | undefined,
   out: PropertySetInfo[]
 ): void {
-  const inherited = extractTypePropertiesOnDemand(store, expressId);
-  if (!inherited || !inherited.properties || inherited.properties.length === 0)
-    return;
+  // Source-backed extraction (WASM/columnar parse) first; it bails on stores
+  // with no `source` buffer — i.e. server-parsed stores — so fall back to the
+  // prebuilt property table keyed by the element's IfcTypeProduct id (issue
+  // #1787), mirroring the Lists adapter's server-path type fallback.
+  const inheritedPsets =
+    extractTypePropertiesOnDemand(store, expressId)?.properties ??
+    typePropertySetsFromTable(store, expressId);
+  if (inheritedPsets.length === 0) return;
 
   const seen = new Set(out.map((p) => p.name));
-  for (const pset of inherited.properties) {
+  for (const pset of inheritedPsets) {
     if (seen.has(pset.name)) continue;
     out.push({
       name: pset.name,
@@ -179,6 +184,30 @@ function appendInheritedPropertySets(
       ),
     });
   }
+}
+
+/** Type-inherited property sets for server-parsed stores: resolve the element's
+ *  IfcTypeProduct via IfcRelDefinesByType, then read the prebuilt table for
+ *  that type id (server materialises type sets under the type's own id — see
+ *  serverDataModel's TYPEHASPROPERTYSETS merge). [] for WASM stores, which the
+ *  source-backed extractor already handled. */
+function typePropertySetsFromTable(
+  store: IfcDataStore,
+  expressId: number
+): Array<{ name: string; properties: RawProp[] }> {
+  // Server-parsed stores only — a WASM store has a `source` buffer and its type
+  // sets were already resolved by extractTypePropertiesOnDemand above, so this
+  // never runs there (no behaviour change on the WASM path).
+  if (store.source && store.source.length > 0) return [];
+  const typeIds =
+    store.relationships?.getRelated?.(
+      expressId,
+      RelationshipType.DefinesByType,
+      'inverse'
+    ) || [];
+  if (typeIds.length === 0) return [];
+  const psets = store.properties?.getForEntity?.(typeIds[0]);
+  return (psets ?? []) as unknown as Array<{ name: string; properties: RawProp[] }>;
 }
 
 function appendTypeEntityOwnProperties(

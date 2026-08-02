@@ -12,7 +12,7 @@
  */
 
 import React, { useCallback, useRef, useState, useEffect, useMemo } from 'react';
-import { X, Download, Eye, EyeOff, Maximize2, ZoomIn, ZoomOut, Loader2, Printer, GripVertical, MoreHorizontal, RefreshCw, Pin, PinOff, Palette, Ruler, Trash2, FileText, Shapes, Box, BoxSelect, PenTool, Hexagon, Type, Cloud, MousePointer2, Tag } from 'lucide-react';
+import { X, Download, FileDown, Eye, EyeOff, Maximize2, ZoomIn, ZoomOut, Loader2, Printer, GripVertical, MoreHorizontal, RefreshCw, Pin, PinOff, Palette, Ruler, Trash2, FileText, Shapes, Box, BoxSelect, PenTool, Hexagon, Type, Cloud, MousePointer2, Tag, Layers, ScanLine } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -28,6 +28,8 @@ import { useDraggablePanel } from '@/hooks/useDraggablePanel';
 import { GraphicOverrideEngine } from '@ifc-lite/drawing-2d';
 import { type GeometryResult } from '@ifc-lite/geometry';
 import { DrawingSettingsPanel } from './DrawingSettingsPanel';
+import { DxfUnderlayPanel } from './DxfUnderlayPanel';
+import { ScanSectionPanel } from './ScanSectionPanel';
 import { SheetSetupPanel } from './SheetSetupPanel';
 import { TitleBlockEditor } from './TitleBlockEditor';
 import { TextAnnotationEditor } from './TextAnnotationEditor';
@@ -38,6 +40,8 @@ import { useAnnotation2D } from '@/hooks/useAnnotation2D';
 import { useViewControls } from '@/hooks/useViewControls';
 import { useDrawingExport } from '@/hooks/useDrawingExport';
 import { useSymbolicAnnotationsForDrawing } from '@/hooks/useSymbolicAnnotations';
+import { useDxfUnderlaysForDrawing, dxfWorldShift, dxfUnderlayDrawingBounds } from '@/hooks/useDxfUnderlay';
+import { useScanSectionLayer } from '@/hooks/useScanSectionLayer';
 
 interface Section2DPanelProps {
   mergedGeometry?: GeometryResult | null;
@@ -79,6 +83,15 @@ export function Section2DPanel({
 
   // Settings panel visibility
   const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
+
+  // DXF underlay state (issue #1782)
+  const dxfUnderlays = useViewerStore((s) => s.dxfUnderlays);
+  const updateDxfUnderlayPlacement = useViewerStore((s) => s.updateDxfUnderlayPlacement);
+  const [dxfPanelOpen, setDxfPanelOpen] = useState(false);
+
+  // Point-cloud scan overlay (issue #1805)
+  const pointCloudClassMask = useViewerStore((s) => s.pointCloudClassMask);
+  const [scanPanelOpen, setScanPanelOpen] = useState(false);
 
   // Sheet state
   const activeSheet = useViewerStore((s) => s.activeSheet);
@@ -390,11 +403,55 @@ export function Section2DPanel({
     annotationHandlers.handleDoubleClick(e);
   }, [annotationHandlers]);
 
-  const { formatDistance, handleExportSVG, handlePrint } = useDrawingExport({
+  // DXF reference underlays mapped to drawing space (issue #1782): the hook
+  // applies the render-frame origin shift, the flipped-section mirror, and
+  // each underlay's placement. Plan sections only.
+  const dxfUnderlayData = useDxfUnderlaysForDrawing({
+    enabled: status === 'ready',
+    sectionAxis: sectionPlane.axis,
+    isCustomPlane: sectionPlane.custom !== undefined,
+    flipped: sectionPlane.flipped,
+    coordinateInfo: geometryResult?.coordinateInfo,
+  });
+
+  // Centre an underlay on the generated drawing: offset = model-drawing
+  // centre − underlay centre at zero offset (same world→drawing mapping
+  // the render hook applies, including the current rotation/scale).
+  const handleCenterDxfUnderlay = useCallback((id: string) => {
+    const entry = dxfUnderlays.find((u) => u.id === id);
+    if (!entry || !drawing) return;
+    const shift = dxfWorldShift(geometryResult?.coordinateInfo);
+    const mirrorX = sectionPlane.flipped && sectionPlane.custom === undefined;
+    const underlayBounds = dxfUnderlayDrawingBounds(entry, shift, mirrorX);
+    if (!underlayBounds) return;
+    const modelCx = (drawing.bounds.min.x + drawing.bounds.max.x) / 2;
+    const modelCy = (drawing.bounds.min.y + drawing.bounds.max.y) / 2;
+    const underlayCx = (underlayBounds.min.x + underlayBounds.max.x) / 2;
+    const underlayCy = (underlayBounds.min.y + underlayBounds.max.y) / 2;
+    updateDxfUnderlayPlacement(id, { offsetX: modelCx - underlayCx, offsetY: modelCy - underlayCy });
+  }, [dxfUnderlays, drawing, geometryResult, sectionPlane.flipped, sectionPlane.custom, updateDxfUnderlayPlacement]);
+
+  // Point-cloud scan overlay (issue #1805): a thin band of the loaded
+  // scan(s) around the active section plane, projected into the SAME
+  // drawing space the cut geometry uses (see scanSectionMath.ts) — unlike
+  // the DXF underlay, this works on plan AND vertical (front/side) sections.
+  const scanSectionLayer = useScanSectionLayer({
+    enabled: displayOptions.showScanSection && status === 'ready',
+    sectionPlane,
+    coordinateInfo: geometryResult?.coordinateInfo,
+    thickness: displayOptions.scanSectionThickness,
+    classMask: pointCloudClassMask,
+    models,
+    legacyPointClouds: geometryResult?.pointClouds,
+  });
+
+  const { formatDistance, handleExportSVG, handleExportDXF, handlePrint } = useDrawingExport({
     drawing, displayOptions, sectionPlane, activePresetId,
     entityColorMap, overridesEnabled, overrideEngine,
     measure2DResults, polygonArea2DResults, textAnnotations2D, cloudAnnotations2D,
-    sheetEnabled, activeSheet,
+    sheetEnabled, activeSheet, dxfUnderlays: dxfUnderlayData,
+    ifcDataStore, coordinateInfo: geometryResult?.coordinateInfo,
+    scanSection: scanSectionLayer,
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -687,7 +744,16 @@ export function Section2DPanel({
               <Button
                 variant={settingsPanelOpen || activePresetId ? 'default' : 'ghost'}
                 size="icon-sm"
-                onClick={() => setSettingsPanelOpen((prev) => !prev)}
+                onClick={() => {
+                  // The right-side slide-in panels share one slot.
+                  setSettingsPanelOpen((prev) => {
+                    if (!prev) {
+                      setDxfPanelOpen(false);
+                      setScanPanelOpen(false);
+                    }
+                    return !prev;
+                  });
+                }}
                 title="Drawing settings"
                 className="relative"
               >
@@ -701,12 +767,67 @@ export function Section2DPanel({
               <Button
                 variant={sheetPanelVisible || sheetEnabled ? 'default' : 'ghost'}
                 size="icon-sm"
-                onClick={() => setSheetPanelVisible(!sheetPanelVisible)}
+                onClick={() => {
+                  // The right-side slide-in panels share one slot.
+                  if (!sheetPanelVisible) {
+                    setDxfPanelOpen(false);
+                    setScanPanelOpen(false);
+                  }
+                  setSheetPanelVisible(!sheetPanelVisible);
+                }}
                 title="Drawing sheet setup"
                 className="relative"
               >
                 <FileText className="h-4 w-4" />
                 {sheetEnabled && !sheetPanelVisible && (
+                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-primary rounded-full" />
+                )}
+              </Button>
+
+              {/* DXF underlays (issue #1782) */}
+              <Button
+                variant={dxfPanelOpen ? 'default' : 'ghost'}
+                size="icon-sm"
+                onClick={() => {
+                  // The right-side slide-in panels share one slot.
+                  setDxfPanelOpen((prev) => {
+                    if (!prev) {
+                      setSheetPanelVisible(false);
+                      setSettingsPanelOpen(false);
+                      setScanPanelOpen(false);
+                    }
+                    return !prev;
+                  });
+                }}
+                title="DXF underlays"
+                className="relative"
+              >
+                <Layers className="h-4 w-4" />
+                {dxfUnderlays.length > 0 && !dxfPanelOpen && (
+                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-primary rounded-full" />
+                )}
+              </Button>
+
+              {/* Point-cloud scan overlay (issue #1805) */}
+              <Button
+                variant={scanPanelOpen || displayOptions.showScanSection ? 'default' : 'ghost'}
+                size="icon-sm"
+                onClick={() => {
+                  // The right-side slide-in panels share one slot.
+                  setScanPanelOpen((prev) => {
+                    if (!prev) {
+                      setSheetPanelVisible(false);
+                      setSettingsPanelOpen(false);
+                      setDxfPanelOpen(false);
+                    }
+                    return !prev;
+                  });
+                }}
+                title="Scan layer (point cloud overlay)"
+                className="relative"
+              >
+                <ScanLine className="h-4 w-4" />
+                {scanSectionLayer.hasPointCloud && displayOptions.showScanSection && !scanPanelOpen && (
                   <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-primary rounded-full" />
                 )}
               </Button>
@@ -746,6 +867,15 @@ export function Section2DPanel({
                 title="Download SVG"
               >
                 <Download className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={handleExportDXF}
+                disabled={!drawing}
+                title="Download DXF"
+              >
+                <FileDown className="h-4 w-4" />
               </Button>
               <Button
                 variant="ghost"
@@ -838,13 +968,21 @@ export function Section2DPanel({
                     </DropdownMenuItem>
                   )}
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => setSettingsPanelOpen(true)}>
+                  <DropdownMenuItem onClick={() => { setDxfPanelOpen(false); setSettingsPanelOpen(true); }}>
                     <Palette className="h-4 w-4 mr-2" />
                     Drawing Settings...
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setSheetPanelVisible(true)}>
+                  <DropdownMenuItem onClick={() => { setDxfPanelOpen(false); setSheetPanelVisible(true); }}>
                     <FileText className="h-4 w-4 mr-2" />
                     Sheet Setup {sheetEnabled ? '(On)' : ''}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => { setSettingsPanelOpen(false); setSheetPanelVisible(false); setScanPanelOpen(false); setDxfPanelOpen(true); }}>
+                    <Layers className="h-4 w-4 mr-2" />
+                    DXF Underlays {dxfUnderlays.length > 0 ? `(${dxfUnderlays.length})` : ''}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => { setSettingsPanelOpen(false); setSheetPanelVisible(false); setDxfPanelOpen(false); setScanPanelOpen(true); }}>
+                    <ScanLine className="h-4 w-4 mr-2" />
+                    Scan Layer {displayOptions.showScanSection ? '(On)' : ''}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={zoomIn}>
@@ -863,6 +1001,10 @@ export function Section2DPanel({
                   <DropdownMenuItem onClick={handleExportSVG} disabled={!drawing}>
                     <Download className="h-4 w-4 mr-2" />
                     Download SVG
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleExportDXF} disabled={!drawing}>
+                    <FileDown className="h-4 w-4 mr-2" />
+                    Download DXF
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={handlePrint} disabled={!drawing}>
                     <Printer className="h-4 w-4 mr-2" />
@@ -928,7 +1070,7 @@ export function Section2DPanel({
           </div>
         )}
 
-        {status === 'ready' && drawing && (drawing.cutPolygons.length > 0 || drawing.lines?.length > 0) && (
+        {status === 'ready' && drawing && (drawing.cutPolygons.length > 0 || drawing.lines?.length > 0 || dxfUnderlayData.length > 0) && (
           <>
             <Drawing2DCanvas
               drawing={drawing}
@@ -960,6 +1102,9 @@ export function Section2DPanel({
               ifcAnnotationLines={ifcAnnotationData.lines}
               ifcAnnotationTexts={ifcAnnotationData.texts}
               ifcAnnotationFills={ifcAnnotationData.fills}
+              dxfUnderlays={dxfUnderlayData}
+              scanPoints={displayOptions.showScanSection ? scanSectionLayer.points : undefined}
+              scanOpacity={displayOptions.scanSectionOpacity}
             />
             {/* Subtle updating indicator - shows while regenerating without hiding the drawing */}
             {isRegenerating && (
@@ -1038,7 +1183,7 @@ export function Section2DPanel({
           </div>
         )}
 
-        {status === 'ready' && drawing && drawing.cutPolygons.length === 0 && (!drawing.lines || drawing.lines.length === 0) && (
+        {status === 'ready' && drawing && drawing.cutPolygons.length === 0 && (!drawing.lines || drawing.lines.length === 0) && dxfUnderlayData.length === 0 && (
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="text-center text-muted-foreground">
               <p className="font-medium">No geometry at this level</p>
@@ -1094,6 +1239,29 @@ export function Section2DPanel({
       {settingsPanelOpen && (
         <div className="absolute top-0 right-0 bottom-0 w-72 z-50 shadow-xl">
           <DrawingSettingsPanel onClose={() => setSettingsPanelOpen(false)} />
+        </div>
+      )}
+
+      {/* DXF Underlay Panel - slides in from right (issue #1782) */}
+      {dxfPanelOpen && (
+        <div className="absolute top-0 right-0 bottom-0 w-72 z-50 shadow-xl">
+          <DxfUnderlayPanel
+            onClose={() => setDxfPanelOpen(false)}
+            onCenterOnModel={handleCenterDxfUnderlay}
+            planViewActive={sectionPlane.axis === 'down' && sectionPlane.custom === undefined}
+          />
+        </div>
+      )}
+
+      {/* Scan Layer Panel - slides in from right (issue #1805) */}
+      {scanPanelOpen && (
+        <div className="absolute top-0 right-0 bottom-0 w-72 z-50 shadow-xl">
+          <ScanSectionPanel
+            onClose={() => setScanPanelOpen(false)}
+            hasPointCloud={scanSectionLayer.hasPointCloud}
+            totalInBand={scanSectionLayer.totalInBand}
+            renderedCount={scanSectionLayer.renderedCount}
+          />
         </div>
       )}
 

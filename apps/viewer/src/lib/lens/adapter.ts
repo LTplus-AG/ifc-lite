@@ -20,6 +20,7 @@ import {
   extractQuantitiesOnDemand,
   extractClassificationsOnDemand,
   extractMaterialsOnDemand,
+  extractAllMaterialsOnDemand,
 } from '@ifc-lite/parser';
 import { resolveEntityPredefinedType } from '@/lib/entity-predefined-type';
 import { lensMaterialNames } from '@/lib/lens-material-names';
@@ -284,6 +285,9 @@ export function createLensDataProvider(
       const resolved = resolveGlobalId(globalId, entries);
       if (!resolved) return undefined;
       const store = resolved.entry.ifcDataStore;
+      // Primary association only — this accessor is single-valued by contract.
+      // extractMaterialsOnDemand resolves just the primary def (cheaper than
+      // resolving every association and discarding the rest).
       const info = extractMaterialsOnDemand(store, resolved.expressId);
       if (!info) return undefined;
       // Return the top-level material name, or first layer/constituent name
@@ -299,7 +303,12 @@ export function createLensDataProvider(
       const resolved = resolveGlobalId(globalId, entries);
       if (!resolved) return [];
       const store = resolved.entry.ifcDataStore;
-      return lensMaterialNames(extractMaterialsOnDemand(store, resolved.expressId));
+      // Union across ALL associations (elements may carry several).
+      const seen = new Set<string>();
+      for (const info of extractAllMaterialsOnDemand(store, resolved.expressId)) {
+        for (const n of lensMaterialNames(info)) seen.add(n);
+      }
+      return [...seen];
     },
 
     getModelId(globalId: number): string | undefined {

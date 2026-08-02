@@ -68,8 +68,19 @@
 //! - **Complex Breps**: ~200 entities/sec
 //! - **Boolean operations**: ~20 entities/sec
 
-pub mod alignment;
-pub mod bool2d;
+// Module visibility: only 8 modules below are reached externally by sibling
+// crates via a direct submodule path (`ifc_lite_geometry::<module>::...`) and
+// must stay `pub`: csg, csg_capture, kernel, material_layer_index, mesh,
+// projection_outline, rect_fast, space_dcel. Everything else is internal
+// wiring; external consumers reach its types through the root-level `pub use`
+// re-exports below, so those modules are `pub(crate)` (see #C3.2).
+pub(crate) mod alignment;
+pub(crate) mod bool2d;
+/// General 2D booleans over contour sets (union/difference/intersection),
+/// keeping every disjoint output shape. Distinct from `bool2d`, which is the
+/// fixed single-`Profile2D` void-subtraction path. Reached through the
+/// root-level re-exports below, so it stays `pub(crate)` per #C3.2.
+pub(crate) mod contour_bool2d;
 /// Deterministic Constrained Delaunay Triangulation + bounded Ruppert
 /// min-angle refinement. Backs the quality triangulators in `triangulation`.
 mod cdt;
@@ -80,40 +91,72 @@ pub mod csg_capture;
 /// Deterministic near-coplanar facet weld for faceted-BREP host meshes.
 /// Corrects f32 import jitter (~0.09°) so authored-coplanar roof slope facets
 /// are EXACTLY coplanar before the exact-kernel opening cut (issue #1007).
-pub mod facet_weld;
-pub mod diagnostics;
-pub mod error;
-pub mod congruence;
-pub mod geom_hash;
-pub mod extrusion;
-pub mod instancing;
+pub(crate) mod facet_weld;
+/// Intra-mesh vertex weld + index dedup applied at the per-element mesh source
+/// (`build_mesh_data`), collapsing the faceted-brep per-face vertex duplication
+/// while keeping creases (distinct normals) split.
+pub mod mesh_weld;
+/// Structured-diagnostics macro shims for the `observability` feature
+/// (tracing when ON, the legacy eprintln fallback when OFF).
+pub(crate) mod diag;
+pub(crate) mod diagnostics;
+pub(crate) mod error;
+pub(crate) mod geom_hash;
+/// Shared float-noise-tolerance quantisation constants used by more than one
+/// geometry pass (single-sourced so independently-evolving passes can't drift
+/// apart on the same tolerance).
+pub(crate) mod grid;
+pub(crate) mod extrusion;
+pub(crate) mod instancing;
 /// Pure-Rust exact mesh-arrangement CSG kernel — the only CSG kernel, on
 /// every target (see docs/architecture/geometry-pipeline.md).
 pub mod kernel;
 pub mod material_layer_index;
 pub mod mesh;
-pub mod mesh_orient;
-pub mod processors;
-pub mod profile;
-pub mod profile_extractor;
-pub mod profiles;
+pub(crate) mod mesh_orient;
+pub(crate) mod processors;
+pub(crate) mod profile;
+pub(crate) mod profile_extractor;
+pub(crate) mod profiles;
 pub mod projection_outline;
 pub mod rect_fast;
+#[cfg(feature = "triangulation-alt")]
+pub use triangulation::alt_oracle::set_alt_triangulator;
+/// Scalar abstraction the extrusion mesher is generic over (`f64` in
+/// production, a forward-mode dual number in the B4.4 kernel-adjoint spike).
+pub(crate) mod scalar;
+/// The extrusion mesher, generic over the scalar. `extrusion`'s public
+/// functions are its `f64` instantiations.
+pub(crate) mod extrusion_generic;
+/// Profile triangulation / ring builders, generic over the scalar.
+pub(crate) mod profile_generic;
+
+/// B4.4 - the M3 kernel-adjoint spike (test-only). Runs the production
+/// extrusion mesher with a forward-mode dual scalar and grades its adjoints
+/// against central finite differences.
+#[cfg(test)]
+#[path = "b44_kernel_adjoint_tests.rs"]
+mod b44_kernel_adjoint;
 pub use rect_fast::RectFastStats;
-pub mod router;
-pub mod tessellation;
+pub(crate) mod router;
+/// Per-element mesh simplification for the demesher (cavity removal, grid
+/// vertex-clustering decimation, bounding-box collapse).
+pub mod simplify;
+pub(crate) mod tessellation;
 pub mod space_dcel;
-pub mod transform;
-pub mod triangulation;
-pub mod void_analysis;
-pub mod void_index;
+pub(crate) mod transform;
+pub(crate) mod triangulation;
+pub(crate) mod void_index;
 
 // Re-export nalgebra types for convenience
 pub use nalgebra::{Point2, Point3, Vector2, Vector3};
 
 pub use bool2d::{
     compute_signed_area, ensure_ccw, ensure_cw, is_valid_contour, point_in_contour, subtract_2d,
-    subtract_multiple_2d, union_contours,
+    subtract_multiple_2d, subtract_multiple_2d_counted,
+};
+pub use contour_bool2d::{
+    boolean_2d, resolve_2d, sanitize as sanitize_contours, BooleanOp2D, ContourSet, Ring2D,
 };
 pub use csg::{calculate_normals, ClippingProcessor, Plane, Triangle};
 pub use diagnostics::{BoolFailure, BoolFailureReason, BoolOp};
@@ -121,42 +164,55 @@ pub use error::{Error, Result};
 pub use geom_hash::{hash_mesh_world, GeometryHasher, DEFAULT_GEOM_HASH_TOLERANCE};
 pub use extrusion::{extrude_profile, extrude_profile_lofted, extrude_profile_with_voids};
 pub use instancing::{
-    collate_and_encode, collate_instances, collate_refs, decode_instanced, encode_instanced,
-    encode_refs, verify_recomposition, Collated, DecodedInstance, DecodedInstanced,
+    bake_source_at_world, collate_and_encode, collate_instances, collate_refs,
+    compose_instance_world_row_major, decode_instanced, encode_instanced, encode_refs,
+    instance_rel_row_major_f32, verify_recomposition, Collated, DecodedInstance, DecodedInstanced,
     DecodedTemplate, InstanceMeshRef, InstanceOccurrence, InstanceTemplate, INSTANCED_MAGIC,
     INSTANCED_VERSION,
 };
-pub use material_layer_index::{LayerAxis, LayerBuildup, LayerInfo, MaterialLayerIndex};
-pub use mesh::{CoordinateShift, InstanceMeta, Mesh, SubMesh, SubMeshCollection};
+pub use material_layer_index::{
+    LayerAxis, LayerBuildup, LayerInfo, MaterialLayerFlat, MaterialLayerIndex,
+};
+pub use mesh::{InstanceMeta, Mesh, SubMesh, SubMeshCollection};
 pub use mesh_orient::orient_mesh_outward;
 pub use processors::{
     AdvancedBrepProcessor, BooleanClippingProcessor, ExtrudedAreaSolidProcessor,
     ExtrudedAreaSolidTaperedProcessor, FaceBasedSurfaceModelProcessor, FacetedBrepProcessor,
-    build_texture_index, MappedItemProcessor, MeshTexture, PolygonalFaceSetProcessor,
-    ResolvedTextureMap, RevolvedAreaSolidProcessor, SurfaceOfLinearExtrusionProcessor,
+    build_texture_index, ImageTextureRef, MeshTexture, PolygonalFaceSetProcessor,
+    ResolvedTextureMap, RevolvedAreaSolidProcessor, TextureAttachment, TextureSource, SurfaceOfLinearExtrusionProcessor,
     SweptDiskSolidProcessor, TriangulatedFaceSetProcessor,
 };
 pub use alignment::{AlignmentCurve, AlignmentFrame};
 pub use profile::{Profile2D, Profile2DWithVoids, ProfileType, VoidInfo};
 pub use profile_extractor::{extract_profiles, ExtractedProfile};
 pub use profiles::ProfileProcessor;
+pub use router::take_bool2d_stats;
+pub use router::{take_prism_defers, take_prism_stats};
 pub use router::{
-    aggregate_diagnostics, ClassificationStats, ClassificationSummary, GeometryDiagnostics,
-    GeometryProcessor, GeometryRouter, HostOpeningDiagnostic, ItemDedupCache, OpeningDiagnostic,
-    OpeningKindDiag, ReasonCount, RectFastSummary, RectParam, WorstHost,
+    aggregate_diagnostics, local_frame_set_enabled_override, ClassificationStats,
+    GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION,
+    ClassificationSummary, GeometryDiagnostics, GeometryProcessor, GeometryRouter,
+    HostOpeningDiagnostic, ItemDedupCache, MappedInstancePlan, OpeningDiagnostic, OpeningKindDiag,
+    ReasonCount, RectFastSummary, RectParam, SharedMappedItemCache, WorstHost,
 };
+
+/// The streaming / needs-shift large-coordinate threshold (metres): a world
+/// coordinate whose magnitude exceeds this needs RTC re-basing before it is
+/// cast to f32, or the model renders with vertex jitter. Shared by the router's
+/// own coordinate sampling (`router::rtc_offset`) and the streaming pre-pass
+/// meta resolver (`ifc_lite_processing::stream_meta`) so those two make the same
+/// decision. (Other 10 km checks carry their own local constant of the same
+/// value.)
+pub const LARGE_COORD_THRESHOLD_METERS: f64 = 10000.0;
+pub use simplify::{simplify_mesh, SimplifyOptions, SimplifyStats};
 pub use tessellation::{scale_segments, TessellationQuality};
 pub use transform::{
-    apply_rtc_offset, parse_axis2_placement_3d, parse_axis2_placement_3d_from_id,
-    parse_cartesian_point, parse_cartesian_point_from_id, parse_direction, parse_direction_from_id,
+    parse_axis2_placement_3d, parse_axis2_placement_3d_from_id, parse_cartesian_point,
+    parse_cartesian_point_from_id, parse_direction, parse_direction_from_id,
     rotation_angle_about_z,
 };
 pub use triangulation::triangulate_polygon;
-pub use void_analysis::{
-    classify_voids_batch, extract_coplanar_voids, extract_nonplanar_voids, VoidAnalyzer,
-    VoidClassification,
-};
 pub use void_index::{
     build_aggregate_children_index, compute_parts_to_skip, propagate_voids_to_parts,
-    propagate_voids_via_aggregates, VoidIndex, VoidStatistics,
+    propagate_voids_via_aggregates, VoidIndex,
 };

@@ -9,6 +9,9 @@ build/
 *.tsbuildinfo
 .turbo/
 
+# IDE directories
+.agents/
+
 # Rust
 target/
 **/*.rs.bk
@@ -91,6 +94,7 @@ tests/models/various
 tests/models/**/*.ifc
 tests/models/**/*.IFC
 tests/models/**/*.ifcx
+tests/models/**/*.ifczip
 # Partial downloads from the fetcher.
 tests/models/**/*.part
 
@@ -100,3 +104,16 @@ rust/geometry/tests/*.ifc
 # committed reference numbers live in tests/benchmark/baseline.json)
 tests/benchmark/benchmark-results/viewer-*.json
 tests/benchmark/benchmark-results/viewer-*.console.log
+
+# Playwright default run artifacts (test-results/ is Playwright's outputDir;
+# these are regenerated on every run and must never be committed)
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+.vercel
+
+# Railway `railway config pull` scratch output. These land as
+# `.railway-config-pull-<n>/railway.ts` placeholders and must never be
+# committed; the desired Railway state lives elsewhere.
+.railway-config-pull-*/

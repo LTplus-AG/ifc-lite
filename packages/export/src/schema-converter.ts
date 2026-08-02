@@ -20,7 +20,7 @@
  * and adjusts attribute counts via regex replacement on raw STEP lines.
  */
 
-import { generateIfcGuid } from '@ifc-lite/encoding';
+import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
 import { ENTITIES_IFC2X3, ENTITIES_IFC4, ENTITIES_IFC4X3, type IfcEntityInfo } from '@ifc-lite/data';
 
 export type IfcSchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
@@ -335,12 +335,16 @@ function countTopLevelAttributes(attrsRaw: string): number {
  * @param line - Raw STEP entity line (e.g., "#1=IFCWALL('guid',...);")
  * @param fromSchema - Source schema version
  * @param toSchema - Target schema version
+ * @param random - Optional seeded `RandomSource` for the GlobalId of any
+ *   IFCPROXY placeholder minted here. Omit for the default random path; pass
+ *   a seeded source when the caller needs byte-reproducible output.
  * @returns Converted line (entities without valid target representation become IFCPROXY placeholders)
  */
 export function convertStepLine(
   line: string,
   fromSchema: IfcSchemaVersion,
   toSchema: IfcSchemaVersion,
+  random?: RandomSource,
 ): string {
   if (fromSchema === toSchema) return line;
 
@@ -361,7 +365,7 @@ export function convertStepLine(
   // Replace entities that have no valid representation in the target schema
   // with IFCPROXY placeholders to preserve EXPRESS IDs and prevent dangling references
   if (shouldSkipEntity(newType, toSchema)) {
-    return `${prefix}IFCPROXY('${generateIfcGuid()}',$,'${entityType}',$,$,$,$,.NOTDEFINED.,$);`;
+    return `${prefix}IFCPROXY('${generateIfcGuid(random)}',$,'${entityType}',$,$,$,$,.NOTDEFINED.,$);`;
   }
 
   // Adjust attribute count if downgrading to IFC2X3

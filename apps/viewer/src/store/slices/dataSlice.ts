@@ -92,6 +92,16 @@ export interface DataSlice {
   pendingMeshTranslations: Map<number, [number, number, number]> | null;
   setPendingMeshTranslations: (updates: Map<number, [number, number, number]>) => void;
   clearPendingMeshTranslations: () => void;
+  /**
+   * Pending per-entity yaw rotations for the renderer. `globalId → {angle
+   * (radians, renderer +Y axis), pivot (renderer world, Y-up)}`. Drained by
+   * the streaming hook via `scene.rotateMeshesForEntities`, which rotates
+   * vertices + normals in place. Angles accumulate across calls (one combined
+   * rotation per entity per frame); the latest pivot wins.
+   */
+  pendingMeshRotations: Map<number, { angle: number; pivot: [number, number, number] }> | null;
+  setPendingMeshRotations: (updates: Map<number, { angle: number; pivot: [number, number, number] }>) => void;
+  clearPendingMeshRotations: () => void;
   /** Set pending color updates for the renderer without cloning mesh data.
    *  Use this for transient overlays (lens, IDS) where the source-of-truth
    *  mesh colors should remain unchanged. */
@@ -131,6 +141,7 @@ export const createDataSlice: StateCreator<DataSlice & DataCrossSliceState, [], 
   pendingMeshRemovals: null,
   pendingInstancedShards: null,
   pendingMeshTranslations: null,
+  pendingMeshRotations: null,
 
   // Actions
   setIfcDataStore: (ifcDataStore) => set((state) => {
@@ -332,6 +343,21 @@ export const createDataSlice: StateCreator<DataSlice & DataCrossSliceState, [], 
   }),
 
   clearPendingMeshTranslations: () => set({ pendingMeshTranslations: null }),
+
+  setPendingMeshRotations: (updates) => set((state) => {
+    // Accumulate angles across calls (a drag may bump rotateEntity many times
+    // before the streaming hook drains); the latest pivot wins.
+    const merged = new Map<number, { angle: number; pivot: [number, number, number] }>(
+      state.pendingMeshRotations ?? [],
+    );
+    for (const [id, { angle, pivot }] of updates) {
+      const existing = merged.get(id);
+      merged.set(id, { angle: (existing?.angle ?? 0) + angle, pivot });
+    }
+    return { pendingMeshRotations: merged };
+  }),
+
+  clearPendingMeshRotations: () => set({ pendingMeshRotations: null }),
 
   updateCoordinateInfo: (coordinateInfo) => set((state) => {
     if (!state.geometryResult) return {};

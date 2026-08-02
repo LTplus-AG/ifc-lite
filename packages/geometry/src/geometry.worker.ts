@@ -4,6 +4,7 @@
 
 import init, { initSync, IfcAPI } from '@ifc-lite/wasm';
 import { initWasmWithRetry } from './wasm-init-retry.js';
+import { largeFilePrepassError } from './huge-file-error.js';
 import type { MeshData, TessellationQuality } from './types.js';
 import { mergeGeometryDiagnostics, type GeometryDiagnostics } from './diagnostics.js';
 import {
@@ -108,6 +109,52 @@ export interface GeometryWorkerSetEntityIndexMessage {
   lengths: Uint32Array;
 }
 
+/**
+ * Install the three per-content structures the streaming pre-pass computed
+ * ONCE, so this worker's first `processGeometryBatch` skips rebuilding them
+ * with its own full-file walk (issue #957 orphan/instanced type geometry +
+ * #563 material-layer slicing). Without this, every worker independently
+ * re-walks the whole 200-340 MB file on its first type-product / layered
+ * batch — N concurrent walks contending for memory bandwidth.
+ *
+ * `referencedRepmaps` and `instantiatedTypeIds` are id sets; the `mli*` arrays
+ * are the flat SoA encoding of the `MaterialLayerIndex` (see Rust
+ * `MaterialLayerFlat`). Applied AFTER `set-entity-index` (which clears these
+ * caches on content swap), so the injected values survive. Absent ⇒ the
+ * worker's lazy per-batch build (the byte-identical fallback) runs instead.
+ */
+export interface GeometryWorkerSetPrepassColumnsMessage {
+  type: 'set-prepass-columns';
+  referencedRepmaps: Uint32Array;
+  instantiatedTypeIds: Uint32Array;
+  /** #1623 Phase 3 don't-bake plan: RepresentationMap ids an IfcMappedItem
+   *  instantiates >= 2x. Installed via `setMappedInstancePlan`; absent/empty ⇒
+   *  the batch never arms the don't-bake path (materializes every occurrence). */
+  mappedInstancePlan?: Uint32Array;
+  mliElementIds: Uint32Array;
+  mliAxis: Uint32Array;
+  mliLayerCounts: Uint32Array;
+  mliDirectionSense: Float64Array;
+  mliOffset: Float64Array;
+  mliLayerMaterialIds: Uint32Array;
+  mliLayerThicknesses: Float64Array;
+}
+
+/**
+ * Sharded pre-pass: scan the entity index over one byte range of the
+ * shared file buffer. Dispatched to each idle geometry worker up front (before
+ * `stream-start`) so the N workers build the index in parallel; the main thread
+ * stitches the returned `shard-result` columns. `shardIndex` echoes back so the
+ * host can slot the result. Byte offsets returned are GLOBAL.
+ */
+export interface GeometryWorkerScanShardMessage {
+  type: 'scan-shard';
+  sharedBuffer: SharedArrayBuffer;
+  shardIndex: number;
+  rangeStart: number;
+  rangeEnd: number;
+}
+
 export interface GeometryWorkerPrePassMessage {
   type: 'prepass-streaming';
   sharedBuffer: SharedArrayBuffer;
@@ -188,12 +235,98 @@ export type GeometryWorkerRequest =
   | GeometryWorkerStreamEndMessage
   | GeometryWorkerSetStylesMessage
   | GeometryWorkerSetEntityIndexMessage
+  | GeometryWorkerSetPrepassColumnsMessage
   | GeometryWorkerSetMergeLayersMessage
   | GeometryWorkerSetInstancingMessage
   | GeometryWorkerSetComputeGeometryHashesMessage
   | GeometryWorkerSetTessellationQualityMessage
   | GeometryWorkerSetSkipSmallCutsMessage
+  | GeometryWorkerScanShardMessage
+  | GeometryWorkerResolveStylesShardMessage
+  | GeometryWorkerPrePassShardedMessage
+  | GeometryWorkerFinalizeStylesMessage
   | GeometryWorkerPrePassMessage;
+
+/**
+ * SPIKE response to `scan-shard`: one shard's entity-index columns + the
+ * handoff (global start of the first entity at/after `rangeEnd`, or `-1` at
+ * EOF). Columns are transferred back to the main thread for stitching.
+ */
+export interface GeometryWorkerShardResultMessage {
+  type: 'shard-result';
+  shardIndex: number;
+  ids: Uint32Array;
+  starts: Uint32Array;
+  lengths: Uint32Array;
+  /** Per-record prepass class (PREPASS_CLASS_*; 4 = IfcStyledItem). */
+  classes: Uint8Array;
+  handoff: number;
+}
+
+/**
+ * Sharded pre-pass: resolve one contiguous (file-ordered) slice of the
+ * styled-item span list on this worker (must arrive AFTER set-entity-index —
+ * workers apply messages FIFO). `spans` is [id, start, len] triples.
+ */
+export interface GeometryWorkerResolveStylesShardMessage {
+  type: 'resolve-styles-shard';
+  sharedBuffer: SharedArrayBuffer;
+  sliceIndex: number;
+  spans: Uint32Array;
+}
+
+/** Response to resolve-styles-shard: raw resolved style maps as flat columns. */
+export interface GeometryWorkerStylesShardResultMessage {
+  type: 'styles-shard-result';
+  sliceIndex: number;
+  orphanIds: Uint32Array;
+  orphanColors: Float32Array;
+  geomIds: Uint32Array;
+  geomColors: Float32Array;
+  /** Set when resolution threw; the host falls back / logs. */
+  error?: string;
+}
+
+/**
+ * Sharded pre-pass main call: like prepass-streaming but with the PREBUILT
+ * (stitched) entity index columns, and styles resolution EXTERNAL (no styles
+ * event from this call — the host finalizes via finalize-styles below).
+ */
+export interface GeometryWorkerPrePassShardedMessage {
+  type: 'prepass-streaming-sharded';
+  sharedBuffer: SharedArrayBuffer;
+  chunkSize?: number;
+  disabledTypes?: string[];
+  skipTypeGeometry?: boolean;
+  indexIds: Uint32Array;
+  indexStarts: Uint32Array;
+  indexLengths: Uint32Array;
+  /** Per-record prepass classes — drives columns discovery (no byte scan). */
+  indexClasses: Uint8Array;
+}
+
+/**
+ * Sharded pre-pass: merge the shard-resolved styled maps with the stashed
+ * support spans and emit the canonical `styles` event through the same
+ * prepass-stream channel. Queued behind prepass-streaming-sharded (FIFO), so
+ * the stash is always present when it runs.
+ */
+export interface GeometryWorkerFinalizeStylesMessage {
+  type: 'finalize-styles';
+  sharedBuffer: SharedArrayBuffer;
+  orphanIds: Uint32Array;
+  orphanColors: Float32Array;
+  geomIds: Uint32Array;
+  geomColors: Float32Array;
+  /** Support spans ([id,start,len] triples) extracted from the shard classes. */
+  colourMapSpans: Uint32Array;
+  materialDefSpans: Uint32Array;
+  relMaterialSpans: Uint32Array;
+  voidSpans: Uint32Array;
+  fillsSpans: Uint32Array;
+  aggregateSpans: Uint32Array;
+  planeAngleToRadians: number;
+}
 
 export interface GeometryWorkerBatchMessage {
   type: 'batch';
@@ -208,6 +341,9 @@ export interface GeometryWorkerBatchMessage {
     // #961: optional surface texture + per-vertex UVs (transferables).
     uvs?: MeshData['uvs'];
     texture?: MeshData['texture'];
+    // #1781: external image texture reference (`IfcImageTexture`) — the main
+    // thread resolves it against the `.ifcZIP` sibling images by `textureId`.
+    textureRef?: MeshData['textureRef'];
     /** RTC-invariant per-entity geometry fingerprint, present only when
      *  geometry hashing was enabled via `set-compute-geometry-hashes`.
      *  A `bigint` survives the structured-clone `postMessage`. */
@@ -301,6 +437,13 @@ async function ensureInit(): Promise<IfcAPI> {
   applySkipSmallCutsToApi();
   entityIndexApplied = false;
   applyEntityIndexToApi();
+  prepassColumnsApplied = false;
+  applyPrepassColumnsToApi();
+  // Re-install the session source on a recovery re-init (api = null) so the
+  // *FromSource batch path isn't silently reading an empty file — same replay
+  // contract as the entity index. No-op before a session sets cachedSourceBytes.
+  sourceBytesApplied = false;
+  applySourceBytesToApi();
   return api;
 }
 
@@ -329,6 +472,31 @@ type IfcAPIWithMerge = IfcAPI & {
   setComputeGeometryHashes?: (tolerance?: number | null) => void;
   setTessellationQuality?: (level?: string | null) => void;
   setSkipSmallCuts?: (on: boolean) => void;
+  /** Cold-load lever 1c: store the source file ONCE per load (see
+   *  `applySourceBytesToApi`). Absent on wasm builds predating the setter. */
+  setSourceBytes?: (data: Uint8Array) => void;
+};
+
+/**
+ * Narrow wrapper for the pre-pass column setters (issue #957 / #563). Optional
+ * so a staged/older engine binary without them degrades to the byte-identical
+ * lazy per-worker rebuild instead of throwing.
+ */
+type IfcAPIWithPrepassColumns = IfcAPI & {
+  setReferencedRepmaps?: (ids: Uint32Array) => void;
+  setInstantiatedTypeIds?: (ids: Uint32Array) => void;
+  /** #1623 Phase 3: install the don't-bake plan (RepresentationMap ids repeated
+   *  >= 2x). Optional so an older engine binary degrades to full materialize. */
+  setMappedInstancePlan?: (ids: Uint32Array) => void;
+  setMaterialLayerIndex?: (
+    elementIds: Uint32Array,
+    axis: Uint32Array,
+    layerCounts: Uint32Array,
+    directionSense: Float64Array,
+    offset: Float64Array,
+    layerMaterialIds: Uint32Array,
+    layerThicknesses: Float64Array,
+  ) => void;
 };
 
 /**
@@ -421,6 +589,88 @@ function applyEntityIndexToApi(): void {
   if (!ifcApi || entityIndexApplied || !cachedEntityIndex) return;
   ifcApi.setEntityIndex(cachedEntityIndex.ids, cachedEntityIndex.starts, cachedEntityIndex.lengths);
   entityIndexApplied = true;
+}
+
+/**
+ * Cached pre-pass columns (issue #957 / #563). Same replay contract as
+ * {@link cachedEntityIndex}: `setEntityIndex` CLEARS these three per-content
+ * caches on the IfcAPI (content-swap semantics), so they must be re-installed
+ * AFTER every entity-index apply — including the binary-split recovery re-init
+ * that rebuilds the IfcAPI. Without replay a recovery would drop the injected
+ * columns and the next batch would pay the O(file) rebuild the hoist removed.
+ */
+let cachedPrepassColumns: GeometryWorkerSetPrepassColumnsMessage | null = null;
+let prepassColumnsApplied: boolean = false;
+
+/**
+ * Push the cached pre-pass columns onto the IfcAPI (once per API). MUST run
+ * AFTER {@link applyEntityIndexToApi} — `setEntityIndex` clears these caches,
+ * so applying columns first would have them wiped by a later index apply.
+ */
+function applyPrepassColumnsToApi(): void {
+  const ifcApi = api as IfcAPIWithPrepassColumns | null;
+  if (!ifcApi || prepassColumnsApplied || !cachedPrepassColumns) return;
+  const c = cachedPrepassColumns;
+  if (typeof ifcApi.setReferencedRepmaps === 'function') {
+    ifcApi.setReferencedRepmaps(c.referencedRepmaps);
+  }
+  if (typeof ifcApi.setInstantiatedTypeIds === 'function') {
+    ifcApi.setInstantiatedTypeIds(c.instantiatedTypeIds);
+  }
+  // #1623 Phase 3: install the don't-bake plan so the partitioned batch can arm
+  // batch-local instancing. Empty/absent ⇒ the setter no-ops (nothing repeated).
+  if (typeof ifcApi.setMappedInstancePlan === 'function' && c.mappedInstancePlan) {
+    ifcApi.setMappedInstancePlan(c.mappedInstancePlan);
+  }
+  if (typeof ifcApi.setMaterialLayerIndex === 'function') {
+    ifcApi.setMaterialLayerIndex(
+      c.mliElementIds,
+      c.mliAxis,
+      c.mliLayerCounts,
+      c.mliDirectionSense,
+      c.mliOffset,
+      c.mliLayerMaterialIds,
+      c.mliLayerThicknesses,
+    );
+  }
+  prepassColumnsApplied = true;
+}
+
+/**
+ * Cached session source bytes (cold-load lever 1c). Same replay contract as the
+ * entity index above, but it removes a per-call copy rather than a per-load
+ * scan: the wasm-bindgen glue `passArray8ToWasm0` mallocs + memcpys the WHOLE
+ * source file into the worker's wasm heap on EVERY `processGeometryBatch*` call
+ * (~4 ms/call on 169 MB). A huge CSG-dense model adapts down to 64-job batches
+ * and makes 600+ calls/worker, so the per-call copy alone is 15-25 s/worker of
+ * pure memcpy. `setSourceBytes` copies the file ONCE per load; the `*FromSource`
+ * batch variants then read it from the heap. The bytes are identical across a
+ * worker's calls (one model per worker), so one copy suffices.
+ *
+ * Points at the active session's `localBytes`; the SAB fallback in `processBatch`
+ * swaps it for the materialised copy and re-applies. `null` between loads
+ * (released at `stream-end`). Reset (applied=false) on every fresh IfcAPI so the
+ * binary-split recovery re-init (`api = null`) re-installs it, exactly like the
+ * entity index. When the loaded wasm predates `setSourceBytes`, the apply is a
+ * no-op and `processBatch` stays on the legacy `data`-per-call path.
+ */
+let cachedSourceBytes: Uint8Array | null = null;
+let sourceBytesApplied: boolean = false;
+
+/**
+ * Install `cachedSourceBytes` onto the IfcAPI ONCE per instance so the
+ * `*FromSource` batch variants read the file from the wasm heap instead of the
+ * glue re-copying it every call. MAY THROW if the runtime rejects the
+ * (SAB-backed) view during the copy — the `processBatch` caller's SAB fallback
+ * materialises and re-applies. No-op on wasm builds without `setSourceBytes`
+ * (leaving `sourceBytesApplied` false, so `processBatch` uses the legacy path).
+ */
+function applySourceBytesToApi(): void {
+  const ifcApi = api as IfcAPIWithMerge | null;
+  if (!ifcApi || sourceBytesApplied || !cachedSourceBytes) return;
+  if (typeof ifcApi.setSourceBytes !== 'function') return;
+  ifcApi.setSourceBytes(cachedSourceBytes);
+  sourceBytesApplied = true;
 }
 
 /**
@@ -642,6 +892,19 @@ function collectMeshes(
           originArr && originArr.length === 3 && (originArr[0] || originArr[1] || originArr[2])
             ? [originArr[0], originArr[1], originArr[2]]
             : undefined;
+        // Local (pre-placement) AABB + placement transform (issue #1474);
+        // absent on older wasm bundles (no getter) or when not captured.
+        const localBoundsArr = mesh.localBounds;
+        const localBounds =
+          localBoundsArr && localBoundsArr.length === 6
+            ? {
+                min: [localBoundsArr[0], localBoundsArr[1], localBoundsArr[2]] as [number, number, number],
+                max: [localBoundsArr[3], localBoundsArr[4], localBoundsArr[5]] as [number, number, number],
+              }
+            : undefined;
+        const localToWorldArr = mesh.localToWorld;
+        const localToWorld =
+          localToWorldArr && localToWorldArr.length === 16 ? Array.from(localToWorldArr) : undefined;
         const meshData: MeshData = {
           expressId: mesh.expressId,
           ifcType: mesh.ifcType,
@@ -649,6 +912,8 @@ function collectMeshes(
           color: [color[0], color[1], color[2], color[3]],
           ...(shadingColor ? { shadingColor } : {}),
           ...(origin ? { origin } : {}),
+          ...(localBounds ? { localBounds } : {}),
+          ...(localToWorld ? { localToWorld } : {}),
           // Provenance for the Model/Types switch (0=occurrence, 1=orphan type,
           // 2=instanced type). Older wasm bundles lack the getter → default 0.
           geometryClass: mesh.geometryClass ?? 0,
@@ -670,6 +935,21 @@ function collectMeshes(
           };
           session.pendingTransfers.push(uvs.buffer, rgba.buffer);
           session.cumulativeMeshBytes += uvs.byteLength + rgba.byteLength;
+        } else if (mesh.textureUrl) {
+          // #1781: external image reference (`IfcImageTexture`) — UVs travel as
+          // a transferable like #961, but the texture itself is only a URL +
+          // repeat flags; the main thread resolves it against the `.ifcZIP`
+          // sibling images and decodes ONCE per `textureId`.
+          const uvs = new Float32Array(mesh.uvs);
+          meshData.uvs = uvs;
+          meshData.textureRef = {
+            textureId: mesh.textureId,
+            url: mesh.textureUrl,
+            repeatS: mesh.textureRepeatS,
+            repeatT: mesh.textureRepeatT,
+          };
+          session.pendingTransfers.push(uvs.buffer);
+          session.cumulativeMeshBytes += uvs.byteLength;
         }
         // #924: attach the per-entity geometry fingerprint (empty Map → no-op
         // unless geometry hashing was enabled).
@@ -727,6 +1007,59 @@ function extractGeometryHashesFromCollection(
   return map;
 }
 
+/** Shape of a PartitionedBatch result (legacy or `*FromSource`). */
+type PartitionedBatchResult = {
+  takeMeshes(): ReturnType<IfcAPI['processGeometryBatch']> | undefined;
+  takeShard(): Uint8Array;
+  readonly instancedOccurrences: number;
+  free?(): void;
+};
+
+/**
+ * Narrow wrapper for the optional `*FromSource` batch variants (cold-load lever
+ * 1c). Present only on wasm builds that expose `setSourceBytes`; absent ⇒
+ * `processBatch` falls back to the legacy `data`-taking variants.
+ */
+type IfcAPIWithSourceBatch = IfcAPI & {
+  processGeometryBatchFromSource?: (...args: unknown[]) => ReturnType<IfcAPI['processGeometryBatch']>;
+  processGeometryBatchPartitionedFromSource?: (...args: unknown[]) => PartitionedBatchResult;
+};
+
+/**
+ * Drain a PartitionedBatch result (legacy OR `*FromSource`): move the flat
+ * MeshCollection into the session, push the IFNS instancing shard, fold the
+ * instanced-occurrence count, and free the now-empty wrapper. Shared by both
+ * call sites so the lever-1c FromSource path is byte-for-byte the legacy path
+ * minus the per-call file copy.
+ */
+function consumePartitioned(session: ProcessingSession, partitioned: PartitionedBatchResult): void {
+  try {
+    // takeMeshes() MOVES the flat MeshCollection out (take-once); collectMeshes
+    // frees it. None only on a second take — we call it once.
+    const collection = partitioned.takeMeshes();
+    if (collection) collectMeshes(session, collection);
+    const shard = partitioned.takeShard();
+    if (shard && shard.byteLength > 0) {
+      // wasm-bindgen Vec<u8> returns a fresh standalone Uint8Array (offset 0,
+      // exact length), so .buffer is safe to transfer. Guard defensively: if
+      // it is ever a view into a larger buffer, copy out the exact bytes
+      // instead of transferring (and detaching) the parent buffer.
+      const exact =
+        shard.byteOffset === 0 && shard.byteLength === shard.buffer.byteLength
+          ? (shard.buffer as ArrayBuffer)
+          : (shard.slice().buffer as ArrayBuffer);
+      session.pendingInstancedShards.push(exact);
+    }
+    // Fold the instanced occurrence count into the streamed mesh total so the
+    // viewer's "N meshes" reflects ALL rendered geometry (flat + instanced),
+    // not just the flat MeshCollection (these occurrences left the flat path).
+    session.pendingInstancedOccurrences += partitioned.instancedOccurrences ?? 0;
+  } finally {
+    // Free the now-empty PartitionedBatch wrapper (its contents were moved out).
+    partitioned.free?.();
+  }
+}
+
 /**
  * Process a slice of jobsFlat with binary-split recovery. Mirrors the
  * pre-streaming behaviour: if WASM throws on the whole slice, split in
@@ -739,58 +1072,66 @@ async function processBatch(session: ProcessingSession, jobs: Uint32Array): Prom
 
   try {
     const ifcApi = await ensureInit();
-    // Instanced-only path: produce geometry ONCE via processGeometryBatchPartitioned,
-    // which splits each batch into flat meshes (transparent + type-template +
-    // textured) and an IFNS instancing shard (opaque, untextured ordinary
-    // occurrences). This replaces the temporary emit-both stage (which meshed
-    // twice): the upload/memory/draw win is realised here because instanced
-    // occurrences are taken OFF the flat path entirely.
+
+    // Cold-load lever 1c: install this worker's source bytes on the IfcAPI ONCE
+    // per instance so the batch reads the file from the wasm heap instead of the
+    // glue re-mallocing + memcpying the whole file on every call (~4 ms/call on
+    // 169 MB; 600+ calls/worker on huge CSG-dense models). The bytes are the same
+    // across a worker's calls (one model per worker), so one copy suffices and the
+    // meshing reads the exact same bytes -> byte-identical output. A SAB-rejecting
+    // runtime throws inside setSourceBytes during the copy, exactly as the legacy
+    // per-call path would; the catch below materialises + retries, and the retry
+    // re-installs the copy from the materialised buffer.
+    cachedSourceBytes = session.localBytes;
+    applySourceBytesToApi();
+
+    // Instanced-only path: produce geometry ONCE via a partitioned batch, which
+    // splits each batch into flat meshes (transparent + type-template + textured)
+    // and an IFNS instancing shard (opaque, untextured ordinary occurrences). The
+    // upload/memory/draw win is realised because instanced occurrences are taken
+    // OFF the flat path entirely.
     //
-    // Defensive fallback: if the loaded wasm predates the partitioned export,
-    // fall back to plain processGeometryBatch (flat-only, no instancing) so the
-    // viewer stays fully functional rather than throwing into binary-split recovery.
+    // Path selection, most-preferred first:
+    //  1. processGeometryBatchPartitionedFromSource — lever 1c, no per-call copy;
+    //  2. processGeometryBatchFromSource — flat, no per-call copy (federated /
+    //     instancing off);
+    //  3. processGeometryBatchPartitioned — legacy per-call copy (older wasm, or
+    //     a SAB reject before materialise left the source uninstalled);
+    //  4. processGeometryBatch — legacy flat per-call copy, the final fallback so
+    //     the viewer stays functional rather than throwing into recovery.
+    const sourced = ifcApi as IfcAPIWithSourceBatch;
+    const partitionedFromSourceFn = sourceBytesApplied
+      ? sourced.processGeometryBatchPartitionedFromSource
+      : undefined;
+    const batchFromSourceFn = sourceBytesApplied ? sourced.processGeometryBatchFromSource : undefined;
     const partitionedFn = (ifcApi as unknown as {
-      processGeometryBatchPartitioned?: (...args: unknown[]) => {
-        takeMeshes(): ReturnType<IfcAPI['processGeometryBatch']> | undefined;
-        takeShard(): Uint8Array;
-        readonly instancedOccurrences: number;
-        free?(): void;
-      };
+      processGeometryBatchPartitioned?: (...args: unknown[]) => PartitionedBatchResult;
     }).processGeometryBatchPartitioned;
 
-    if (typeof partitionedFn === 'function' && instancingEnabled) {
-      const partitioned = partitionedFn.call(
+    if (typeof partitionedFromSourceFn === 'function' && instancingEnabled) {
+      consumePartitioned(session, partitionedFromSourceFn.call(
+        ifcApi, jobs, session.unitScale,
+        session.rtcX, session.rtcY, session.rtcZ, session.needsShift,
+        session.voidKeys, session.voidCounts, session.voidValues,
+        session.styleIds, session.styleColors, session.planeAngleToRadians,
+        session.materialElementIds, session.materialColorCounts, session.materialColors,
+      ));
+    } else if (typeof batchFromSourceFn === 'function') {
+      collectMeshes(session, batchFromSourceFn.call(
+        ifcApi, jobs, session.unitScale,
+        session.rtcX, session.rtcY, session.rtcZ, session.needsShift,
+        session.voidKeys, session.voidCounts, session.voidValues,
+        session.styleIds, session.styleColors, session.planeAngleToRadians,
+        session.materialElementIds, session.materialColorCounts, session.materialColors,
+      ));
+    } else if (typeof partitionedFn === 'function' && instancingEnabled) {
+      consumePartitioned(session, partitionedFn.call(
         ifcApi, session.localBytes, jobs, session.unitScale,
         session.rtcX, session.rtcY, session.rtcZ, session.needsShift,
         session.voidKeys, session.voidCounts, session.voidValues,
         session.styleIds, session.styleColors, session.planeAngleToRadians,
         session.materialElementIds, session.materialColorCounts, session.materialColors,
-      );
-      try {
-        // takeMeshes() MOVES the flat MeshCollection out (take-once); collectMeshes
-        // frees it. None only on a second take — we call it once.
-        const collection = partitioned.takeMeshes();
-        if (collection) collectMeshes(session, collection);
-        const shard = partitioned.takeShard();
-        if (shard && shard.byteLength > 0) {
-          // wasm-bindgen Vec<u8> returns a fresh standalone Uint8Array (offset 0,
-          // exact length), so .buffer is safe to transfer. Guard defensively: if
-          // it is ever a view into a larger buffer, copy out the exact bytes
-          // instead of transferring (and detaching) the parent buffer.
-          const exact =
-            shard.byteOffset === 0 && shard.byteLength === shard.buffer.byteLength
-              ? (shard.buffer as ArrayBuffer)
-              : (shard.slice().buffer as ArrayBuffer);
-          session.pendingInstancedShards.push(exact);
-        }
-        // Fold the instanced occurrence count into the streamed mesh total so the
-        // viewer's "N meshes" reflects ALL rendered geometry (flat + instanced),
-        // not just the flat MeshCollection (these occurrences left the flat path).
-        session.pendingInstancedOccurrences += partitioned.instancedOccurrences ?? 0;
-      } finally {
-        // Free the now-empty PartitionedBatch wrapper (its contents were moved out).
-        partitioned.free?.();
-      }
+      ));
     } else {
       const collection = ifcApi.processGeometryBatch(
         session.localBytes, jobs, session.unitScale,
@@ -814,15 +1155,28 @@ async function processBatch(session: ProcessingSession, jobs: Uint32Array): Prom
       session.sabFallbackTaken = true;
       console.warn(`[Worker] processGeometryBatch rejected SAB view (${msg}), falling back to copy`);
       session.localBytes = materialiseSharedBytes(session.sharedBuffer);
+      // The source was installed (or attempted) from the SAB view; re-install it
+      // from the materialised copy on the retry so the *FromSource path reads the
+      // exact same bytes (this replaces any partial/failed SAB-view install).
+      cachedSourceBytes = session.localBytes;
+      sourceBytesApplied = false;
       await processBatch(session, jobs);
       return;
     }
     if (numJobs === 1) {
       console.warn(`[Worker] Skipping entity #${jobs[0]}: ${msg}`);
+      // Free the abandoned instance NOW rather than waiting for GC: it holds a
+      // file-sized source copy (setSourceBytes), and `ensureInit` immediately
+      // installs a fresh one — so a bare `api = null` would transiently double the
+      // source in this worker's (never-shrinking) wasm heap on exactly the
+      // memory-stressed models that trigger recovery. `free()` returns the block
+      // to the wasm allocator so the re-install reuses it.
+      try { api?.free(); } catch { /* wrapper may already be invalid */ }
       api = null;
       return;
     }
     console.warn(`[Worker] Batch of ${numJobs} entities failed (${msg}), splitting…`);
+    try { api?.free(); } catch { /* see the free() rationale above */ }
     api = null;
     const mid = Math.floor(numJobs / 2) * 3;
     await processBatch(session, jobs.slice(0, mid));
@@ -910,6 +1264,129 @@ self.onmessage = (rawEvent: MessageEvent<GeometryWorkerRequest>) => {
 
 async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<void> {
   try {
+    if (e.data.type === 'resolve-styles-shard') {
+      // Sharded pre-pass: resolve this worker's styled-item slice against the
+      // entity index installed by the preceding set-entity-index (FIFO).
+      const ifcApi = await ensureInit();
+      const { sharedBuffer, sliceIndex, spans } = e.data;
+      try {
+        const styleApi = (ifcApi as unknown as {
+          resolveStyledItemsShard: (data: Uint8Array, spans: Uint32Array) => {
+            orphanIds: Uint32Array; orphanColors: Float32Array;
+            geomIds: Uint32Array; geomColors: Float32Array;
+          };
+        });
+        let res;
+        try {
+          res = styleApi.resolveStyledItemsShard(viewSharedBytes(sharedBuffer), spans);
+        } catch {
+          // SAB-view rejection fallback (see scan-shard above).
+          res = styleApi.resolveStyledItemsShard(materialiseSharedBytes(sharedBuffer), spans);
+        }
+        (self as unknown as Worker).postMessage(
+          {
+            type: 'styles-shard-result',
+            sliceIndex,
+            orphanIds: res.orphanIds,
+            orphanColors: res.orphanColors,
+            geomIds: res.geomIds,
+            geomColors: res.geomColors,
+          } as GeometryWorkerStylesShardResultMessage,
+          [res.orphanIds.buffer, res.orphanColors.buffer, res.geomIds.buffer, res.geomColors.buffer],
+        );
+      } catch (err) {
+        (self as unknown as Worker).postMessage({
+          type: 'styles-shard-result',
+          sliceIndex,
+          orphanIds: new Uint32Array(0),
+          orphanColors: new Float32Array(0),
+          geomIds: new Uint32Array(0),
+          geomColors: new Float32Array(0),
+          error: err instanceof Error ? err.message : String(err),
+        } as GeometryWorkerStylesShardResultMessage);
+      }
+      return;
+    }
+
+    if (e.data.type === 'prepass-streaming-sharded') {
+      // Sharded pre-pass main call: prebuilt (stitched) index, external styles.
+      const ifcApi = await ensureInit();
+      (self as unknown as Worker).postMessage({ type: 'prepass-progress', phase: 'parsing' });
+      const { sharedBuffer, indexIds, indexStarts, indexLengths, indexClasses } = e.data;
+      const chunkSize = e.data.chunkSize ?? 50_000;
+      const disabledTypes = e.data.disabledTypes ?? undefined;
+      const skipTypeGeometry = e.data.skipTypeGeometry === true;
+      const onEvent = (event: unknown) => {
+        (self as unknown as Worker).postMessage({ type: 'prepass-stream', event });
+      };
+      const run = (
+        bytes: Uint8Array,
+        ids: Uint32Array, starts: Uint32Array, lengths: Uint32Array, classes: Uint8Array,
+      ) =>
+        (ifcApi as unknown as {
+          buildPrePassStreamingSharded: (
+            data: Uint8Array, onEvent: (e: unknown) => void, chunkSize: number,
+            disabledTypes: string[] | undefined, skipTypeGeometry: boolean,
+            ids: Uint32Array, starts: Uint32Array, lengths: Uint32Array, classes: Uint8Array,
+          ) => unknown;
+        }).buildPrePassStreamingSharded(
+          bytes, onEvent, chunkSize, disabledTypes, skipTypeGeometry,
+          ids, starts, lengths, classes,
+        );
+      try {
+        run(viewSharedBytes(sharedBuffer), indexIds, indexStarts, indexLengths, indexClasses);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`[Worker] Sharded streaming prepass with SAB view failed (${msg}), retrying with copy`);
+        try {
+          // The id/start/length columns are SAB-backed too (zero-copy stitch
+          // delivery), so a SAB-view rejection needs them materialised along
+          // with the file bytes — `.slice()` of a SAB view yields a plain copy.
+          run(
+            materialiseSharedBytes(sharedBuffer),
+            indexIds.slice(), indexStarts.slice(), indexLengths.slice(), indexClasses.slice(),
+          );
+        } catch (retryErr) {
+          throw largeFilePrepassError(retryErr, sharedBuffer.byteLength) ?? retryErr;
+        }
+      }
+      return;
+    }
+
+    if (e.data.type === 'finalize-styles') {
+      // Sharded pre-pass epilogue: canonical merge + flatten of the shard-
+      // resolved styled maps against the support spans. Runs on a GEOMETRY
+      // worker (independent of the busy pre-pass worker); the host forwards
+      // the payload into the normal styles-event path.
+      const ifcApi = await ensureInit();
+      const m = e.data;
+      const finalizeApi = (ifcApi as unknown as {
+        finalizePrepassStyles: (
+          data: Uint8Array,
+          orphanIds: Uint32Array, orphanColors: Float32Array,
+          geomIds: Uint32Array, geomColors: Float32Array,
+          colourMapSpans: Uint32Array, materialDefSpans: Uint32Array,
+          relMaterialSpans: Uint32Array, voidSpans: Uint32Array,
+          fillsSpans: Uint32Array, aggregateSpans: Uint32Array,
+          planeAngleToRadians: number,
+        ) => Record<string, unknown>;
+      });
+      const callFinalize = (bytes: Uint8Array) => finalizeApi.finalizePrepassStyles(
+        bytes, m.orphanIds, m.orphanColors, m.geomIds, m.geomColors,
+        m.colourMapSpans, m.materialDefSpans, m.relMaterialSpans,
+        m.voidSpans, m.fillsSpans, m.aggregateSpans, m.planeAngleToRadians,
+      );
+      let payload;
+      try {
+        payload = callFinalize(viewSharedBytes(m.sharedBuffer));
+      } catch {
+        // SAB-view rejection fallback (see scan-shard above).
+        payload = callFinalize(materialiseSharedBytes(m.sharedBuffer));
+      }
+      (self as unknown as Worker).postMessage({ type: 'styles-final', payload });
+      return;
+    }
+
     if (e.data.type === 'prepass-streaming') {
       const ifcApi = await ensureInit();
       // Heartbeat: lets the host watchdog know the worker is alive even
@@ -925,31 +1402,76 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       // them as the streaming-prepass protocol. SAB-decode fallback: try the
       // zero-copy view first, fall back to a materialised copy only if
       // wasm-bindgen rejects the view.
-      let view = viewSharedBytes(sharedBuffer);
-      let triedFallback = false;
       const onEvent = (event: unknown) => {
         (self as unknown as Worker).postMessage({ type: 'prepass-stream', event });
       };
+      const runPrepass = (bytes: Uint8Array) =>
+        ifcApi.buildPrePassStreaming(bytes, onEvent, chunkSize, disabledTypes, skipTypeGeometry);
       try {
-        ifcApi.buildPrePassStreaming(view, onEvent, chunkSize, disabledTypes, skipTypeGeometry);
+        // Zero-copy SAB view first; wasm-bindgen copies it into linear memory.
+        runPrepass(viewSharedBytes(sharedBuffer));
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        if (!triedFallback) {
-          triedFallback = true;
-          console.warn(`[Worker] Streaming prepass with SAB view failed (${msg}), retrying with copy`);
-          view = materialiseSharedBytes(sharedBuffer);
-          ifcApi.buildPrePassStreaming(view, onEvent, chunkSize, disabledTypes, skipTypeGeometry);
-        } else {
-          throw err;
+        console.warn(`[Worker] Streaming prepass with SAB view failed (${msg}), retrying with copy`);
+        try {
+          runPrepass(materialiseSharedBytes(sharedBuffer));
+        } catch (retryErr) {
+          // Both paths trapped — on a very large model this is the wasm32 4GB
+          // limit; surface an actionable error instead of `unreachable executed`.
+          throw largeFilePrepassError(retryErr, sharedBuffer.byteLength) ?? retryErr;
         }
       }
+      return;
+    }
+
+    if (e.data.type === 'scan-shard') {
+      // SPIKE (sharded pre-pass): scan this worker's byte range of the file and
+      // post the entity-index columns + handoff back for main-thread stitching.
+      // Runs while the worker is otherwise idle (before stream-start).
+      const ifcApi = await ensureInit();
+      const { sharedBuffer, shardIndex, rangeStart, rangeEnd } = e.data;
+      const view = viewSharedBytes(sharedBuffer);
+      const scanApi = (ifcApi as unknown as {
+        scanEntityIndexShard: (
+          data: Uint8Array,
+          rangeStart: number,
+          rangeEnd: number,
+        ) => { ids: Uint32Array; starts: Uint32Array; lengths: Uint32Array; classes: Uint8Array; handoff: number };
+      });
+      let shard;
+      try {
+        shard = scanApi.scanEntityIndexShard(view, rangeStart, rangeEnd);
+      } catch {
+        // Some runtimes reject SAB-backed views at the wasm boundary (same
+        // fallback the streaming pre-pass ships) — retry with a copy.
+        shard = scanApi.scanEntityIndexShard(materialiseSharedBytes(sharedBuffer), rangeStart, rangeEnd);
+      }
+      (self as unknown as Worker).postMessage(
+        {
+          type: 'shard-result',
+          shardIndex,
+          ids: shard.ids,
+          starts: shard.starts,
+          lengths: shard.lengths,
+          classes: shard.classes,
+          handoff: shard.handoff,
+        } as GeometryWorkerShardResultMessage,
+        [shard.ids.buffer, shard.starts.buffer, shard.lengths.buffer, shard.classes.buffer],
+      );
       return;
     }
 
     if (e.data.type === 'init') {
       if (e.data.wasmUrl) cachedWasmUrl = e.data.wasmUrl;
       if (e.data.wasmModule) {
-        initSync({ module_or_path: e.data.wasmModule });
+        // Instantiate from the pre-compiled module the host compiled ONCE and
+        // structured-cloned to every worker — no per-worker recompile of the
+        // multi-MB binary. NB: wasm-bindgen's `initSync` destructures the
+        // `.module` key (see `initSync(module)` in the generated glue); the
+        // older `{ module_or_path }` shape here silently destructured to
+        // `undefined` and threw `new WebAssembly.Module(undefined)`, which is
+        // why the shared-module path was never actually taken.
+        initSync({ module: e.data.wasmModule });
         api = new IfcAPI();
         mergeLayersApplied = false;
         applyMergeLayersToApi();
@@ -961,6 +1483,10 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
         applySkipSmallCutsToApi();
         entityIndexApplied = false;
         applyEntityIndexToApi();
+        prepassColumnsApplied = false;
+        applyPrepassColumnsToApi();
+        sourceBytesApplied = false;
+        applySourceBytesToApi();
       } else {
         await ensureInit();
       }
@@ -975,6 +1501,15 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       // size from a previous dense model).
       batchSizing = resolveBatchSizing(e.data.batchSizing);
       adaptiveBatchJobs = batchSizing.maxJobs;
+      // Fresh load: drop any source held for a PREVIOUS load so this load's bytes
+      // are re-installed on its first batch. The in-repo host spawns a fresh
+      // worker per load so this is belt-and-braces there, but a host that reuses a
+      // worker across loads without a `stream-end` between them would otherwise
+      // mesh the new load against the previous file's held bytes (a similar-size
+      // stale source decodes wrong entities). Resetting here makes that misuse
+      // fail to the byte-identical legacy path instead of silently meshing wrong.
+      sourceBytesApplied = false;
+      cachedSourceBytes = null;
       activeSession = startSession({
         sharedBuffer: e.data.sharedBuffer,
         unitScale: e.data.unitScale,
@@ -1033,6 +1568,24 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       cachedEntityIndex = { ids: e.data.ids, starts: e.data.starts, lengths: e.data.lengths };
       entityIndexApplied = false;
       applyEntityIndexToApi();
+      // Re-install any already-cached columns: setEntityIndex just cleared them.
+      prepassColumnsApplied = false;
+      applyPrepassColumnsToApi();
+      return;
+    }
+
+    if (e.data.type === 'set-prepass-columns') {
+      // Install the three per-content structures the pre-pass computed once
+      // (issue #957 / #563) so this worker's first batch skips its own
+      // full-file rebuild. Cache-and-replay like set-entity-index so a
+      // recovery re-init re-installs them. Applied AFTER the entity index
+      // (whose setter clears these caches); the pre-pass emits this event
+      // after `entity-index`, and the worker handles messages FIFO, so the
+      // ordering holds. Absent setters (older engine) ⇒ lazy rebuild fallback.
+      await ensureInit();
+      cachedPrepassColumns = e.data;
+      prepassColumnsApplied = false;
+      applyPrepassColumnsToApi();
       return;
     }
 
@@ -1091,6 +1644,17 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       // arrives. The next load re-populates via its own set-entity-index.
       cachedEntityIndex = null;
       entityIndexApplied = false;
+      // Same rationale for the per-content pre-pass columns: drop them so a
+      // reused worker cannot replay a previous load's referenced-repmaps /
+      // material-layer index. The next load re-populates via set-prepass-columns.
+      cachedPrepassColumns = null;
+      prepassColumnsApplied = false;
+      // Release this worker's reference to the session source bytes and drop the
+      // applied flag. The wasm-side copy is reclaimed on worker termination (the
+      // pool is per-load) or overwritten by the next load's setSourceBytes on a
+      // reused instance; mirrors the entity index.
+      cachedSourceBytes = null;
+      sourceBytesApplied = false;
       return;
     }
   } catch (err) {

@@ -1,0 +1,21 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# B3.4 kernel-stage extractor (moonshot spike). Standalone crate, NOT a
+# workspace member: it path-depends on ifc-lite-geometry (with csg_capture for
+# the corpus deserializer) and reconstructs the tri-pair plane-classification
+# stage exactly as the kernel runs it. See ../REPORT.md.
+[package]
+name = "b34-extractor"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+ifc-lite-geometry = { path = "../../../../rust/geometry", features = ["csg_capture"] }
+
+[profile.release]
+opt-level = 3

@@ -45,6 +45,13 @@ export interface EntityTable {
   getDescription(expressId: number): string;
   getObjectType(expressId: number): string;
   getTypeName(expressId: number): string;
+  /** Element Tag (IfcElement/IfcTypeProduct layouts), '' when absent. Optional:
+   *  populated by server-parsed stores (issue #1765); the WASM path resolves
+   *  Tag on demand from source instead. */
+  getTag?(expressId: number): string;
+  /** PredefinedType enum token (dots stripped), '' when absent. Optional —
+   *  same server-path provenance as {@link getTag}. */
+  getPredefinedType?(expressId: number): string;
   hasGeometry(expressId: number): boolean;
   getByType(type: IfcTypeEnum): number[];
 
@@ -61,9 +68,6 @@ export interface EntityTable {
 
   /** Get expressId by IFC GlobalId string (22-char GUID). Returns -1 if not found. */
   getExpressIdByGlobalId(globalId: string): number;
-
-  /** Get all GlobalId → expressId mappings (for BCF integration) */
-  getGlobalIdMap(): Map<string, number>;
 }
 
 export class EntityTableBuilder {
@@ -340,8 +344,6 @@ export function entityTableFromColumns(
     },
 
     getExpressIdByGlobalId: (gid) => globalIdToExpressId.get(gid) ?? -1,
-
-    getGlobalIdMap: () => new Map(globalIdToExpressId),
   };
 }
 

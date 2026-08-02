@@ -211,7 +211,11 @@ export class HttpBlobStore implements BlobStore {
 
   constructor(private readonly opts: HttpBlobStoreOptions) {
     this.hasher = opts.hasher ?? fnv128;
-    this.fetchImpl = opts.fetch ?? fetch;
+    // The global `fetch` must be invoked with `this` bound to the realm global
+    // (Window / globalThis). Storing the bare reference and later calling it as
+    // `this.fetchImpl(...)` would invoke it with `this` = this store instance,
+    // which browsers reject with "Illegal invocation". Bind the default.
+    this.fetchImpl = opts.fetch ?? globalThis.fetch.bind(globalThis);
   }
 
   private url(hash: BlobHash): string {

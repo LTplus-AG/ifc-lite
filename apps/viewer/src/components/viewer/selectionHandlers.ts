@@ -241,10 +241,12 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
   // not opened (annotations are anchored to surface points by
   // design, not floating in space).
   if (tool === 'annotate') {
+    const store = useViewerStore.getState();
+    // In a shared room, only commenter/editor/admin may drop pins (solo allowed).
+    if (!store.canCollabComment()) return;
     const result = renderer.raycastScene(x, y, ctx.getPickOptions());
     if (!result?.intersection) return;
     const { intersection } = result;
-    const store = useViewerStore.getState();
     // Federated models — resolve which model the hit globalId belongs
     // to so the annotation carries enough context to render its
     // popover header. Falls back to (null, expressId) when there's

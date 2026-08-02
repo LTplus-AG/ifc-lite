@@ -31,6 +31,7 @@
 
 mod aabb;
 mod bvh;
+mod generated;
 mod narrow;
 mod triangle;
 mod tri_mesh;

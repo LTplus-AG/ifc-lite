@@ -18,8 +18,11 @@ FROM chef AS builder
 ARG CARGO_BUILD_JOBS=2
 ENV CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS}
 
-# Install build dependencies
+# Install build dependencies. `build-essential` provides the C toolchain
+# `mimalloc` (via `libmimalloc-sys` -> `cc`) needs to compile its C sources, so
+# the build never depends on the base image implicitly shipping a compiler.
 RUN apt-get update && apt-get install -y \
+    build-essential \
     pkg-config \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*

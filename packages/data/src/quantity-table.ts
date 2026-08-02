@@ -8,6 +8,7 @@
  */
 
 import type { StringTable } from './string-table.js';
+import { comparePropertyValues, type PropertyValue } from './property-table.js';
 import { QuantityType } from './types.js';
 
 export interface QuantitySet {
@@ -40,6 +41,25 @@ export interface QuantityTable {
   
   getForEntity(expressId: number): QuantitySet[];
   getQuantityValue(expressId: number, qsetName: string, quantName: string): number | null;
+  /**
+   * Find entity ids whose quantity `quantityName` satisfies `operator`/`value`.
+   * When `qsetName` is given, only matches within that quantity set; an unknown
+   * quantity-set name matches nothing. The quantity mirror of
+   * `PropertyTable.findByProperty`: same `comparePropertyValues` semantics, and
+   * answered off `quantityIndex`, so the cost scales with the number of rows
+   * carrying that quantity name rather than with the number of entities being
+   * filtered.
+   *
+   * Optional so a duck-typed quantity table stays valid without it.
+   * `EntityQuery.whereProperty` then resolves quantity sets per candidate
+   * through `IfcStoreBase.getQuantities` instead — the same answer, more work.
+   */
+  findByQuantity?(
+    quantityName: string,
+    operator: string,
+    value: PropertyValue,
+    qsetName?: string,
+  ): number[];
   sumByType(quantityName: string, elementType?: number): number;
 }
 
@@ -155,6 +175,20 @@ export function quantityTableFromColumns(columns: QuantityTableColumns, strings:
         }
       }
       return null;
+    },
+
+    findByQuantity: (quantName, operator, filterValue, qset) => {
+      const quantIdx = strings.indexOf(quantName);
+      if (quantIdx < 0) return [];
+      const qsetIdx = qset === undefined ? -1 : strings.indexOf(qset);
+      if (qset !== undefined && qsetIdx < 0) return [];
+      const rowIndices = quantityIndex.get(quantIdx) || [];
+      const results: number[] = [];
+      for (const idx of rowIndices) {
+        if (qsetIdx >= 0 && qsetName[idx] !== qsetIdx) continue;
+        if (comparePropertyValues(value[idx], operator, filterValue)) results.push(entityId[idx]);
+      }
+      return results;
     },
 
     sumByType: (quantName) => {

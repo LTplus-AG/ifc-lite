@@ -23,6 +23,7 @@ import type { Renderer } from '@ifc-lite/renderer';
 import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
 import { decodeInstancedShard } from '@ifc-lite/geometry';
 import { toast } from '../ui/toast.js';
+import { runGpuUpload } from './gpu-upload-guard';
 
 // Session-scoped flag so the linear-infrastructure hint fires at most once
 // per page load (model swaps included). Stored at module scope rather than
@@ -69,6 +70,11 @@ export interface UseGeometryStreamingParams {
    */
   pendingMeshTranslations: Map<number, [number, number, number]> | null;
   /**
+   * Per-entity yaw rotations queued by authoring actions or a collab
+   * peer's placement edit. Drained into `scene.rotateMeshesForEntities`.
+   */
+  pendingMeshRotations: Map<number, { angle: number; pivot: [number, number, number] }> | null;
+  /**
    * Emit-both GPU-instancing: raw IFNS shard bytes from the geometry worker,
    * drained here via `scene.addInstancedShard` (decode + upload as instanced
    * templates). Cleared after each drain. Inert until the wasm exposes
@@ -79,6 +85,7 @@ export interface UseGeometryStreamingParams {
   clearPendingColorUpdates: () => void;
   clearPendingMeshRemovals: () => void;
   clearPendingMeshTranslations: () => void;
+  clearPendingMeshRotations: () => void;
   clearInstancedShards: () => void;
   clearColorRef: MutableRefObject<[number, number, number, number]>;
   releaseGeometryAfterFinalize?: boolean;
@@ -126,11 +133,13 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     pendingColorUpdates,
     pendingMeshRemovals,
     pendingMeshTranslations,
+    pendingMeshRotations,
     pendingInstancedShards,
     clearPendingMeshColorUpdates,
     clearPendingColorUpdates,
     clearPendingMeshRemovals,
     clearPendingMeshTranslations,
+    clearPendingMeshRotations,
     clearInstancedShards,
     clearColorRef,
     releaseGeometryAfterFinalize = false,
@@ -168,7 +177,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       const pipeline = renderer.getPipeline();
       const scene = renderer.getScene();
       if (!device || !pipeline || !scene.hasQueuedMeshes()) return;
-      const flushed = scene.flushPending(device, pipeline);
+      const flushed = runGpuUpload('flushPending:pump', () => scene.flushPending(device, pipeline)) ?? false;
       if (flushed) {
         renderer.clearCaches();
         renderer.requestRender();
@@ -334,6 +343,8 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
 
     // ── Extract new meshes ──
     let newMeshes: MeshData[];
+    const claimedMeshKeys: string[] = [];
+    let appendFailed = false;
     if (isStreaming || isIncremental) {
       // Fast path: new meshes are always appended at end
       const start = lastGeometryLengthRef.current;
@@ -346,7 +357,11 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
         const compoundKey = `${meshData.expressId}:${i}`;
         if (!processedMeshIdsRef.current.has(compoundKey)) {
           newMeshes.push(meshData);
+          // Marked processed BEFORE the upload runs, so the keys are kept to
+          // roll back if it fails — otherwise a failed batch would be recorded
+          // as done and never retried (silently missing geometry).
           processedMeshIdsRef.current.add(compoundKey);
+          claimedMeshKeys.push(compoundKey);
         }
       }
     }
@@ -364,13 +379,33 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
           ensureQueuePump();
         } else {
           // Non-streaming: process immediately (visibility toggles, etc.)
-          scene.appendToBatches(newMeshes, device, pipeline, false);
-          renderer.clearCaches();
+          // The production crash path: this effect is where a failed
+          // createBuffer escaped into React's commit phase and unmounted the
+          // viewport, blanking the canvas.
+          const uploaded = runGpuUpload('appendToBatches:non-streaming', () => {
+            scene.appendToBatches(newMeshes, device, pipeline, false);
+            return true;
+          }) ?? false;
+          if (uploaded) {
+            renderer.clearCaches();
+          } else {
+            appendFailed = true;
+            // Release the claim so a later pass retries these meshes rather
+            // than leaving a permanent hole in the model.
+            for (const key of claimedMeshKeys) {
+              processedMeshIdsRef.current.delete(key);
+            }
+          }
         }
       }
     }
 
-    lastGeometryLengthRef.current = currentLength;
+    // The incremental/fast path tracks progress by length rather than by
+    // key, so it needs the same rollback: leaving this un-advanced is what
+    // makes the failed append retryable there.
+    if (!appendFailed) {
+      lastGeometryLengthRef.current = currentLength;
+    }
 
     // ── Fit camera ──
     //
@@ -649,7 +684,13 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     if (pendingMeshRemovals.size > 0) {
       scene.removeMeshesForEntities(pendingMeshRemovals);
       if (scene.hasPendingBatches()) {
-        scene.rebuildPendingBatches(device, pipeline);
+        const rebuilt = runGpuUpload(
+          'rebuildPendingBatches:removals',
+          () => { scene.rebuildPendingBatches(device, pipeline); return true; },
+        ) ?? false;
+        // Leave the pending map intact on failure so the next mutation retries
+        // this rebuild instead of dropping it.
+        if (!rebuilt) return;
       }
       renderer.requestRender();
     }
@@ -707,7 +748,13 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     if (pendingMeshTranslations.size > 0) {
       scene.translateMeshesForEntities(pendingMeshTranslations);
       if (scene.hasPendingBatches()) {
-        scene.rebuildPendingBatches(device, pipeline);
+        const rebuilt = runGpuUpload(
+          'rebuildPendingBatches:translations',
+          () => { scene.rebuildPendingBatches(device, pipeline); return true; },
+        ) ?? false;
+        // Leave the pending map intact on failure so the next mutation retries
+        // this rebuild instead of dropping it.
+        if (!rebuilt) return;
       }
       // An element appended during streaming (e.g. an authored IfcSpace) lingers
       // as a streaming fragment at its ORIGINAL position on top of its now-moved
@@ -715,12 +762,51 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       // buckets (no-op once none remain). Skipped in ephemeral mode, where no
       // geometry is retained to rebuild the batches from.
       if (scene.hasStreamingFragments() && !scene.isEphemeralStreaming()) {
-        scene.finalizeStreaming(device, pipeline);
+        const finalized = runGpuUpload(
+          'finalizeStreaming:translations',
+          () => { scene.finalizeStreaming(device, pipeline); return true; },
+        ) ?? false;
+        if (!finalized) return;
       }
       renderer.requestRender();
     }
     clearPendingMeshTranslations();
   }, [pendingMeshTranslations, isInitialized, clearPendingMeshTranslations]);
+
+  // ─── Mesh rotations (yaw / numeric rotate / collab apply) ────────────
+  // Same drain pattern as translations: rotate vertices + normals in place
+  // about the given pivot, then rebuild the affected buckets.
+  useEffect(() => {
+    if (pendingMeshRotations === null || !isInitialized) return;
+    const renderer = rendererRef.current;
+    if (!renderer) return;
+    const device = renderer.getGPUDevice();
+    const pipeline = renderer.getPipeline();
+    const scene = renderer.getScene();
+    if (!device || !pipeline) return;
+
+    if (pendingMeshRotations.size > 0) {
+      scene.rotateMeshesForEntities(pendingMeshRotations);
+      if (scene.hasPendingBatches()) {
+        const rebuilt = runGpuUpload(
+          'rebuildPendingBatches:rotations',
+          () => { scene.rebuildPendingBatches(device, pipeline); return true; },
+        ) ?? false;
+        // Leave the pending map intact on failure so the next mutation retries
+        // this rebuild instead of dropping it.
+        if (!rebuilt) return;
+      }
+      if (scene.hasStreamingFragments() && !scene.isEphemeralStreaming()) {
+        const finalized = runGpuUpload(
+          'finalizeStreaming:rotations',
+          () => { scene.finalizeStreaming(device, pipeline); return true; },
+        ) ?? false;
+        if (!finalized) return;
+      }
+      renderer.requestRender();
+    }
+    clearPendingMeshRotations();
+  }, [pendingMeshRotations, isInitialized, clearPendingMeshRotations]);
 
   // ─── Lens color overlays ─────────────────────────────────────────────
   useEffect(() => {

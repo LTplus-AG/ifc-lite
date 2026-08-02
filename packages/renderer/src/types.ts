@@ -47,6 +47,12 @@ export interface Mesh {
   bindGroup?: GPUBindGroup;
   // Bounding box for frustum culling (optional)
   bounds?: { min: [number, number, number]; max: [number, number, number] };
+  /** True when this mesh was lazily hydrated for picking / selection highlight
+   *  (createMeshFromData) rather than added as authored geometry via addMesh().
+   *  Such meshes duplicate geometry already drawn by a batch, so they are freed
+   *  when their entity leaves the selection (see Scene.disposeHydratedMeshesExcept)
+   *  to stop unbounded accumulation + transparent double-draw on deselect. */
+  hydrated?: boolean;
 }
 
 /**
@@ -75,6 +81,22 @@ export interface BatchedMesh {
    *  space (world = origin + position). Keeps f32 vertex coords element-small at
    *  building/georef scale (no fan collapse). [0,0,0] = absolute (legacy). */
   origin?: [number, number, number];
+  /** LOD1 (issue #1682 phase 5): simplified index range over the SAME vertex
+   *  buffer, drawn instead of the full indices when the batch projects below
+   *  the configured screen size. Absent = no LOD (draw full detail always). */
+  lod1IndexBuffer?: GPUBuffer;
+  lod1IndexCount?: number;
+  /** 12-byte lattice-quantized vertex buffer (issue #1682 phase 6): when
+   *  present, `vertexBuffer` holds uint16x4+u32 records and the batch must
+   *  draw through the quantized pipeline variants with these dequantization
+   *  params in the uniform. Absent = 28-byte f32 layout (the default). */
+  quantized?: { min: [number, number, number]; step: number };
+  /** GPU residency (issue #1682 phase 3a): `false` = evicted metadata shell —
+   *  bounds/expressIds/counts remain valid for culling, picking-fallback and
+   *  bookkeeping, but the GPU buffers are destroyed and MUST NOT be bound.
+   *  The draw loop skips such batches and requests a rebuild via
+   *  `Scene.requestBatchResidency`. `undefined`/`true` = resident. */
+  gpuResident?: boolean;
 }
 
 // Section plane for clipping
@@ -185,9 +207,21 @@ export interface RenderOptions {
   enableDepthTest?: boolean;
   enableFrustumCulling?: boolean;
   spatialIndex?: import('@ifc-lite/spatial').SpatialIndex;
-  // Visibility filtering
-  hiddenIds?: Set<number>;        // Meshes to hide
-  isolatedIds?: Set<number> | null; // Only show these meshes (null = show all)
+  /**
+   * Entities to hide. Change detection is by CONTENT, not reference: the
+   * renderer snapshots the set and compares element-wise each frame, so
+   * mutating the same Set in place and passing a fresh Set per frame are both
+   * correct — and a fresh Set with unchanged content does not invalidate the
+   * per-batch visibility caches. An empty set is equivalent to omitting the
+   * option. The per-frame compare costs O(set size) membership checks.
+   */
+  hiddenIds?: Set<number>;
+  /**
+   * Only show these entities (`null`/absent = no isolation). Unlike
+   * {@link hiddenIds}, an EMPTY set is meaningful: it isolates nothing, hiding
+   * everything. Same content-based change-detection contract as `hiddenIds`.
+   */
+  isolatedIds?: Set<number> | null;
   selectedId?: number | null;     // Currently selected mesh (for highlighting)
   selectedIds?: Set<number>;      // Multi-selection support
   /**
@@ -265,6 +299,32 @@ export interface RenderOptions {
   // the display refresh — a deliberately throttled 33ms cadence is not a
   // GPU miss.
   interactionFrameIntervalMs?: number;
+  /**
+   * Contribution culling (issue #1682): skip colour batches whose world AABB
+   * projects below `pixelRadius` device pixels (raised to
+   * `interactingPixelRadius` while the camera moves). Applies to the batched
+   * draw path only — instanced templates, textured meshes and the no-batches
+   * fallback are never contribution-culled. Absent or `pixelRadius <= 0`
+   * disables it (the default), so snapshot/export renders that omit the
+   * option stay exhaustive.
+   */
+  contributionCull?: import('./contribution-cull.js').ContributionCullOptions;
+  /**
+   * One-shot capture renders (IDS/clash/BCF snapshots): synchronously
+   * rebuild every GPU-evicted batch before drawing, so isolation options
+   * that reveal batches aged out under the residency budget still capture a
+   * complete image. Has a frame-time cost proportional to the evicted set —
+   * do NOT pass it on the interactive render loop (evicted batches restore
+   * asynchronously there).
+   */
+  restoreEvictedForCapture?: boolean;
+  /**
+   * LOD selection (issue #1682 phase 5): batches whose world AABB projects
+   * below `screenPx` device pixels draw their simplified LOD1 index range
+   * (when one was built — see Scene.setLodBuildsEnabled) instead of full
+   * detail. Absent or `screenPx <= 0` = always full detail.
+   */
+  lod?: { screenPx: number };
 }
 
 /**

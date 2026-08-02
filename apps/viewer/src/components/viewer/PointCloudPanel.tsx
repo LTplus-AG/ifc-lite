@@ -15,6 +15,8 @@ import { cn } from '@/lib/utils';
 import { PointCloudLegend } from './PointCloudLegend';
 import { PointCloudClasses } from './PointCloudClasses';
 import { DeviationPanel } from './DeviationPanel';
+import { applyPointCloudAlignmentToggle } from '@/hooks/ingest/pointCloudAlignment';
+import { getGlobalRenderer } from '@/hooks/useBCF';
 
 const COLOR_MODES: Array<{ value: PointColorModeUi; label: string; hint: string }> = [
   { value: 'rgb',            label: 'RGB',            hint: 'Per-point colour from the source' },
@@ -55,6 +57,9 @@ export function PointCloudPanel({ assetCount, triangleCount }: PointCloudPanelPr
   const fixedColor = useViewerStore((s) => s.pointCloudFixedColor);
   const setFixedColor = useViewerStore((s) => s.setPointCloudFixedColor);
   const deviationComputed = useViewerStore((s) => s.pointCloudDeviationComputed);
+  const alignmentAvailable = useViewerStore((s) => s.pointCloudAlignmentAvailable);
+  const alignmentEnabled = useViewerStore((s) => s.pointCloudAlignmentEnabled);
+  const setAlignmentEnabled = useViewerStore((s) => s.setPointCloudAlignmentEnabled);
 
   if (assetCount <= 0) return null;
 
@@ -122,6 +127,31 @@ export function PointCloudPanel({ assetCount, triangleCount }: PointCloudPanelPr
           </label>
         )}
       </div>
+
+      {/* IfcMapConversion alignment (issue #1804) — hidden entirely when
+          no loaded model has a usable map conversion; there's nothing
+          to toggle in that case. */}
+      {alignmentAvailable && (
+        <label className="flex items-center justify-between gap-2 cursor-pointer px-2 py-1 rounded bg-muted/40">
+          <span
+            className="text-[10px] text-muted-foreground"
+            title="Applies the inverse IfcMapConversion so the scan's absolute map coordinates (eastings/northings/height) line up with the IFC model. Turn off to see the scan at its raw, un-transformed coordinates."
+          >
+            Align to model georeference
+          </span>
+          <input
+            type="checkbox"
+            checked={alignmentEnabled}
+            onChange={(e) => {
+              const enabled = e.target.checked;
+              setAlignmentEnabled(enabled);
+              applyPointCloudAlignmentToggle(getGlobalRenderer(), enabled);
+            }}
+            className="accent-teal-600"
+            title="Align to model georeference (IfcMapConversion)"
+          />
+        </label>
+      )}
 
       {/* Per-ASPRS-class visibility — toggles the splat shader's
           class-mask uniform; works in any colour mode but most

@@ -14,7 +14,9 @@ import {
   intersectRayWithHorizontalPlane,
   mapUnitsToMeters,
   metersToMapUnits,
+  orthometricTargetForTerrain,
   projectedDeltaToViewerDelta,
+  shouldApplyGeoidUndulation,
   shouldPreferOrthometricTerrain,
   viewerDeltaToProjectedDelta,
 } from './cesium-placement.js';
@@ -49,6 +51,19 @@ describe('cesium placement helpers', () => {
     assert.strictEqual(shouldPreferOrthometricTerrain({ verticalDatum: '$' }), false);
     assert.strictEqual(shouldPreferOrthometricTerrain({ verticalDatum: '' }), false);
     assert.strictEqual(shouldPreferOrthometricTerrain(undefined), false);
+  });
+
+  it('applies the geoid correction by DEFAULT, regardless of vertical datum (#1355)', () => {
+    // The bug: the orthometric->ellipsoidal correction used to be gated on a
+    // declared VerticalDatum, but that attribute is optional in IFC4/IFC4X3 and
+    // routinely omitted (e.g. Dutch RD-New / NAP files). The authored altitude
+    // is orthometric per spec, so the correction must be the default. This
+    // predicate is now decoupled from shouldPreferOrthometricTerrain and keys
+    // only off the user's "heights are ellipsoidal" opt-out.
+    assert.strictEqual(shouldApplyGeoidUndulation(undefined), true);
+    assert.strictEqual(shouldApplyGeoidUndulation(false), true);
+    // Opt-out: the rare file whose OrthogonalHeight is already ellipsoidal.
+    assert.strictEqual(shouldApplyGeoidUndulation(true), false);
   });
 
   it('places the model at its authored IFC height — no terrain/storey clamp', () => {
@@ -256,5 +271,31 @@ describe('cesium placement helpers', () => {
       0,
     );
     assert.strictEqual(y, null);
+  });
+});
+
+describe('snap-to-terrain geoid round-trip (#1456)', () => {
+  it('inverts the read-path geoid add (ellipsoidal terrain - N)', () => {
+    // True orthometric ~515 m, geoid undulation ~45 m -> ellipsoidal terrain 560.
+    assert.ok(Math.abs(orthometricTargetForTerrain(560, 45) - 515) < 1e-9);
+    // Correction off (heights ellipsoidal) -> N = 0 -> identity.
+    assert.strictEqual(orthometricTargetForTerrain(560, 0), 560);
+  });
+
+  it('round-trips: saved OrthogonalHeight + applied N lands back on the terrain', () => {
+    // Without CRS / offsets, OrthogonalHeight == targetBaseAltitude, and the read
+    // path adds N back, so a Cesium-sourced (ellipsoidal) terrain sample saved via
+    // this target reconstructs the original ellipsoidal terrain altitude.
+    const ellipsoidalTerrain = 560.0;
+    const appliedN = 45.3;
+    const target = orthometricTargetForTerrain(ellipsoidalTerrain, appliedN);
+    const orthogonalHeight = computeOrthogonalHeightForBaseAltitude({
+      lengthUnitScale: 1,
+      targetBaseAltitude: target,
+    });
+    assert.ok(
+      Math.abs((orthogonalHeight + appliedN) - ellipsoidalTerrain) < 0.02,
+      `expected round-trip to ${ellipsoidalTerrain}, got ${orthogonalHeight + appliedN}`,
+    );
   });
 });

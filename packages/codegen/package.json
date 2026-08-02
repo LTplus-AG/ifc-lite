@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/codegen",
-  "version": "1.15.4",
+  "version": "1.15.7",
   "description": "TypeScript code generator from IFC EXPRESS schemas",
   "type": "module",
   "repository": {
@@ -24,15 +24,25 @@
     "codegen",
     "typescript"
   ],
-  "author": "",
-  "license": "MIT",
+  "author": "Louis True",
+  "license": "MPL-2.0",
   "dependencies": {
     "@ifc-lite/data": "workspace:^",
     "commander": "^15.0.0"
   },
   "devDependencies": {
-    "@types/node": "^26.0.1",
+    "@types/node": "^26.1.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.9"
-  }
+    "vitest": "^4.1.10"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "homepage": "https://ifclite.dev/docs/",
+  "bugs": "https://github.com/LTplus-AG/ifc-lite/issues",
+  "files": [
+    "dist",
+    "schemas",
+    "README.md"
+  ]
 }

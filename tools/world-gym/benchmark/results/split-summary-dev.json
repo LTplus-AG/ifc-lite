@@ -1,0 +1,33 @@
+{
+  "benchmark": "ifc-lite-world-gym",
+  "specVersion": "1.0.0",
+  "split": "dev",
+  "models": 1000,
+  "clean": 681,
+  "corrupted": 319,
+  "corruptRate": 0.3,
+  "familyCounts": {
+    "office": 491,
+    "frame": 509
+  },
+  "defectTypeCounts": {
+    "degenerate-geometry": 96,
+    "missing-site": 83,
+    "multiple-project": 106,
+    "missing-quantities": 93,
+    "dangling-ref": 94,
+    "duplicate-globalid": 89,
+    "clash-pair": 97
+  },
+  "severityHistogram": {
+    "0": 681,
+    "1": 97,
+    "2": 105,
+    "3": 117
+  },
+  "entityCountDistribution": {
+    "min": 244,
+    "median": 665,
+    "max": 4749
+  }
+}

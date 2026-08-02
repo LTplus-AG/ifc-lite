@@ -37,7 +37,7 @@ import {
   esc, stepLine, num, vecLen, vecNorm, vecCross,
   NON_ELEMENT_TYPES,
 } from './ifc-creator-math.js';
-import { generateIfcGuid } from '@ifc-lite/encoding';
+import { generateIfcGuid, isValidIfcGuid } from '@ifc-lite/encoding';
 
 // ============================================================================
 // STEP attribute helpers (scheduling — optional strings / enums / numbers)
@@ -118,20 +118,51 @@ export class IfcCreator {
 
   private projectParams: ProjectParams;
 
+  /** Fixed creation instant (epoch ms) for header/owner-history; null = wall clock. */
+  private readonly fixedTimestampMs: number | null;
+  /** Deterministic GlobalId source; null = platform CSPRNG. */
+  private readonly guidSource: (() => string) | null;
+
   constructor(params: ProjectParams = {}) {
     this.projectParams = params;
     this.schema = params.Schema ?? 'IFC4';
+    this.fixedTimestampMs = params.Timestamp === undefined
+      ? null
+      : typeof params.Timestamp === 'number' ? params.Timestamp : params.Timestamp.getTime();
+    // Finite is not enough: epoch-ms past ±8.64e15 is outside the Date range,
+    // so it survives `Number.isFinite` and only blows up later in
+    // `toISOString()` while writing the header. Reject it here, where the
+    // message can still name the offending parameter.
+    if (this.fixedTimestampMs !== null
+      && (!Number.isFinite(this.fixedTimestampMs) || Number.isNaN(new Date(this.fixedTimestampMs).getTime()))) {
+      throw new Error('IfcCreator: Timestamp must be a finite epoch-milliseconds number within the Date range, or a valid Date');
+    }
+    this.guidSource = params.GuidSource ?? null;
     this.buildPreamble(params);
+  }
+
+  /** The creation instant used everywhere: the fixed Timestamp when provided, else the wall clock. */
+  private nowMs(): number {
+    return this.fixedTimestampMs ?? Date.now();
   }
 
   /** Generate a spec-valid 22-character IFC GlobalId (canonical encoder from @ifc-lite/encoding). */
   private newGlobalId(): string {
-    let result: string;
-    do {
-      result = generateIfcGuid();
-    } while (this.usedGlobalIds.has(result));
-    this.usedGlobalIds.add(result);
-    return result;
+    const generate = this.guidSource ?? generateIfcGuid;
+    // Bounded retry: with the default CSPRNG a collision is astronomically
+    // unlikely; with a user GuidSource the bound turns a repeating source into
+    // a clear error instead of an infinite loop.
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const result = generate();
+      if (this.guidSource !== null && !isValidIfcGuid(result)) {
+        throw new Error(`IfcCreator: GuidSource returned an invalid IFC GlobalId: '${result}' (must be 22 characters of the IFC base64 alphabet)`);
+      }
+      if (!this.usedGlobalIds.has(result)) {
+        this.usedGlobalIds.add(result);
+        return result;
+      }
+    }
+    throw new Error('IfcCreator: could not generate a unique GlobalId after 100 attempts - the GuidSource is repeating already-used values');
   }
 
   // ============================================================================
@@ -1718,7 +1749,7 @@ export class IfcCreator {
     const desc = optStr(params.Description);
     const objType = '$';
     const ident = optStr(params.Identification);
-    const creationDate = params.CreationDate ?? new Date().toISOString().slice(0, 19);
+    const creationDate = params.CreationDate ?? new Date(this.nowMs()).toISOString().slice(0, 19);
     const purpose = optStr(params.Purpose);
     const duration = optStr(params.Duration);
     const totalFloat = optStr(params.TotalFloat);
@@ -1766,7 +1797,7 @@ export class IfcCreator {
   }
 
   private buildHeader(): string {
-    const now = new Date().toISOString().replace(/[-:]/g, '').split('.')[0];
+    const now = new Date(this.nowMs()).toISOString().replace(/[-:]/g, '').split('.')[0];
     const desc = 'Created by ifc-lite';
     const author = this.projectParams.Author ?? '';
     const org = this.projectParams.Organization ?? '';
@@ -1800,7 +1831,7 @@ ENDSEC;
     this.line(appId, 'IFCAPPLICATION', `#${orgId},'1.0','ifc-lite','ifc-lite'`);
 
     this.ownerHistoryId = this.id();
-    const timestamp = Math.floor(Date.now() / 1000);
+    const timestamp = Math.floor(this.nowMs() / 1000);
     this.line(this.ownerHistoryId, 'IFCOWNERHISTORY',
       `#${personOrgId},#${appId},$,.NOCHANGE.,$,$,$,${timestamp}`);
 

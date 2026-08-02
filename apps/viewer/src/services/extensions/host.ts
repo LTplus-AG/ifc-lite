@@ -65,6 +65,7 @@ import { IdbLogStorage } from './idb-log-storage.js';
 import { createBimSandboxFactory } from './sandbox-factory.js';
 import { FlavorService } from './flavor-service.js';
 import { runExtensionCommand } from './host-commands.js';
+import { runExtensionExporter, type ExporterOutput } from './host-exporters.js';
 import {
   ExtensionInstallError,
   installFromBytes,
@@ -266,14 +267,22 @@ export class ExtensionHostService {
   }
 
   /**
-   * Dispatch an extension command. Finds the owning extension,
-   * activates it if needed, loads the handler source from the bundle,
-   * wraps it, injects `__ifclite_ctx__`, and runs.
+   * Dispatch an extension command. Resolves `extensionId`, activates it
+   * if needed, loads the handler source from the bundle, wraps it,
+   * injects `__ifclite_ctx__`, and runs.
    *
    * Implementation lives in `host-commands.ts` — this method is a
    * thin delegator that injects the host's primitives.
+   *
+   * `extensionId` is required, for the same reason as `runExporter`:
+   * command ids are namespaced only by convention, so more than one
+   * installed extension can declare the same id. Every UI slot that
+   * surfaces a command renders one entry per `SlotContribution` and has
+   * that contribution's `extensionId` in hand; without it this would fall
+   * back to "first enabled extension that declares the id" and could run
+   * the wrong handler.
    */
-  runCommand(commandId: string): Promise<RuntimeRunResult | undefined> {
+  runCommand(commandId: string, extensionId: string): Promise<RuntimeRunResult | undefined> {
     return runExtensionCommand(
       {
         storage: this.storage,
@@ -283,6 +292,33 @@ export class ExtensionHostService {
         sdk: this.sdk,
       },
       commandId,
+      extensionId,
+    );
+  }
+
+  /**
+   * Run an extension-contributed exporter and hand back its bytes.
+   *
+   * The `exportMenu` counterpart of `runCommand`. Implementation lives in
+   * `host-exporters.ts`; this method just injects the host's primitives.
+   *
+   * `extensionId` is required: the `exportMenu` slot can hold same-id
+   * exporter contributions from more than one installed extension (one
+   * button per `SlotContribution`), and without the owner id this would
+   * fall back to "first enabled extension that declares the id", which can
+   * run the wrong handler.
+   */
+  runExporter(exporterId: string, extensionId: string): Promise<ExporterOutput> {
+    return runExtensionExporter(
+      {
+        storage: this.storage,
+        loader: this.loader,
+        runtime: this.runtime,
+        dispatcher: this.dispatcher,
+        sdk: this.sdk,
+      },
+      exporterId,
+      extensionId,
     );
   }
 

@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /// <reference types="vite/client" />
+/// <reference types="unplugin-icons/types/react" />
 
 interface ImportMetaEnv {
   /** Server URL for IFC processing (also used by superset integration) */

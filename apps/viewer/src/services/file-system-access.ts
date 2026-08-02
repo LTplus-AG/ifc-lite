@@ -32,6 +32,7 @@ const IFC_ACCEPT_TYPES: FilePickerAcceptType[] = [
         '.e57',
         '.pts',
         '.xyz',
+        '.dxf',
       ],
     },
   },

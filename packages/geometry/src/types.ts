@@ -47,6 +47,18 @@ export interface MeshData {
    *  for textured meshes (#961). Decoded to RGBA8 entirely in Rust; the
    *  renderer uploads `rgba` verbatim to a GPU texture. */
   texture?: MeshTexture;
+  /** External image texture reference (`IfcImageTexture`, #1781): the image
+   *  ships OUTSIDE the model (a sibling file inside the `.ifcZIP`), so the
+   *  pipeline carries the reference and the viewer resolves + decodes it once
+   *  per `textureId`, sharing the GPU texture across every mesh that samples
+   *  it. Mutually exclusive with `texture`. `uvs` are present alongside. */
+  textureRef?: MeshTextureRef;
+  /** The decoded image for `textureRef`, attached on the MAIN thread by the
+   *  viewer after resolving `textureRef.url` against the `.ifcZIP` sibling
+   *  images (#1781). One ImageBitmap instance is shared by every mesh with the
+   *  same `textureRef.textureId`; the renderer uploads it to ONE GPU texture
+   *  per id. Never set by the worker. */
+  textureBitmap?: ImageBitmap;
   /** RTC-invariant per-entity geometry fingerprint from the WASM mesh pass,
    *  populated only when geometry hashing is enabled
    *  (`GeometryProcessor.enableGeometryHashes()`). All submeshes of one entity
@@ -81,7 +93,62 @@ export interface MeshData {
    *  such caches must key on this instead. Absent for flat meshes (one MeshData
    *  per `expressId`), where `expressId` is already a sufficient key. */
   occurrenceKey?: string;
+  /** Local (pre-placement, object-space) AABB — `positions` bounds as they
+   *  were BEFORE the element's `IfcLocalPlacement` was baked in (issue #1474).
+   *  Absent when not captured (e.g. an instancing template, or a mesh built
+   *  outside the standard element pipeline). Unrelated to `origin`, which is
+   *  a *world*-space translation captured AFTER placement, purely for f32
+   *  precision — don't conflate the two. */
+  localBounds?: { min: [number, number, number]; max: [number, number, number] };
+  /** The resolved `IfcLocalPlacement` chain applied to this mesh (issue
+   *  #1474): row-major 4x4, 16 numbers, WebGL Y-up metres (same frame as
+   *  `positions`). Absent when not captured. All of one entity's `MeshData`
+   *  pieces share the same value (one placement per element). */
+  localToWorld?: number[];
 }
+
+/**
+ * One element simplified by the demesher (`GeometryProcessor.simplifyMeshes`).
+ */
+export interface SimplifiedElementMesh {
+  expressId: number;
+  /** Demesher level this result was produced at (1-5). */
+  level: number;
+  /** Replacement render mesh (WebGL Y-up, same conventions as pipeline
+   *  MeshData) — feed to `Scene.addMeshes` after removing the element's old
+   *  meshes. */
+  render: MeshData;
+  /** The same vertices in the element's IFC object-placement frame, FILE
+   *  units, IFC Z-up (xyz triplets) — the tessellated-IFC export payload. */
+  localPositions: Float64Array;
+  /** Triangle indices over `localPositions`, 0-based, IFC winding. */
+  localIndices: Uint32Array;
+  trisBefore: number;
+  trisAfter: number;
+  cavitiesDropped: number;
+}
+
+/** Result of `GeometryProcessor.simplifyMeshes`. */
+export interface SimplifyMeshesResult {
+  elements: SimplifiedElementMesh[];
+  /** Elements left untouched (keep their original meshes), with reason slugs
+   *  (`no-geometry` / `missing-placement` / `singular-placement` /
+   *  `empty-result` / `invalid-unit-scale` / `no-records`). */
+  skipped: Array<{ expressId: number; reason: string }>;
+}
+
+/**
+ * KML `<altitudeMode>` for KMZ (Google Earth) export — how Google Earth places
+ * the model vertically (#1427):
+ *  - `'clampToGround'` (default): rest the origin on the terrain, ignoring the
+ *    KMZ `altitude`. A building can never float and is immune to a wrong / zero /
+ *    double-counted `IfcMapConversion.OrthogonalHeight`.
+ *  - `'absolute'`: place the origin at `altitude` metres above mean sea level.
+ *    Use when the OrthogonalHeight is a true MSL elevation the user wants honoured.
+ * `'relativeToGround'` (altitude above the terrain below the origin) exists in
+ * the Rust exporter but is not surfaced in the viewer UI.
+ */
+export type KmzAltitudeMode = 'clampToGround' | 'absolute' | 'relativeToGround';
 
 /** A decoded RGBA8 surface texture attached to a mesh (issue #961). */
 export interface MeshTexture {
@@ -89,6 +156,21 @@ export interface MeshTexture {
   rgba: Uint8Array;
   width: number;
   height: number;
+  /** Sampler wrap from `IfcSurfaceTexture.RepeatS/RepeatT` (true = repeat). */
+  repeatS: boolean;
+  repeatT: boolean;
+}
+
+/**
+ * An external image texture reference (`IfcImageTexture`, #1781). The viewer
+ * resolves `url` against the `.ifcZIP` sibling images (basename match) and
+ * decodes it ONCE per `textureId` — meshes only carry this lightweight ref.
+ */
+export interface MeshTextureRef {
+  /** Stable dedup key: the `IfcSurfaceTexture` express id. */
+  textureId: number;
+  /** `IfcImageTexture.URLReference` verbatim (usually a relative filename). */
+  url: string;
   /** Sampler wrap from `IfcSurfaceTexture.RepeatS/RepeatT` (true = repeat). */
   repeatS: boolean;
   repeatT: boolean;

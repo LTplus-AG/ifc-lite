@@ -175,6 +175,17 @@ export { SVGExporter, exportToSVG } from './svg-exporter.js';
 export type { SVGExportOptions } from './svg-exporter.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
+// DXF EXPORT (issue #1861)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Only the exporter facade is public. The low-level writer internals
+// (DxfWriter, sanitizeDxfLayerName, cssToAci, the linetype/justification
+// types) stay package-private: no external consumer exists, and an unused
+// public export is permanent semver liability (PR #1871 review).
+export { DXFExporter, exportToDXF } from './dxf-exporter.js';
+export type { DXFExportOptions, DXFUnderlayOptions } from './dxf-exporter.js';
+
+// ═══════════════════════════════════════════════════════════════════════════
 // GPU ACCELERATION
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -246,6 +257,7 @@ export {
   getAxisNormal,
   getProjectionAxes,
   projectTo2D,
+  projectTo2DBasis,
 
   // Polygon operations
   polygonSignedArea,
@@ -399,6 +411,31 @@ export type {
   ResolvedGraphicStyle,
   OverrideResult,
 } from './graphic-overrides/index.js';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DXF IMPORT (reference underlays, issue #1782)
+// ═══════════════════════════════════════════════════════════════════════════
+
+export {
+  importDxf,
+  parseDxf,
+  convertDxfToUnderlay,
+  applyDxfPlacement,
+  aciToCss,
+  DEFAULT_DXF_PLACEMENT,
+} from './dxf/index.js';
+
+export type {
+  DxfDocument,
+  DxfEntity,
+  DxfLayerInfo,
+  DxfUnderlay,
+  DxfUnderlayLayer,
+  DxfUnderlayPath,
+  DxfUnderlayFill,
+  DxfUnderlayText,
+  DxfPlacement,
+} from './dxf/index.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // DRAWING SHEETS (Paper, Frames, Title Blocks, Scale Bars)

@@ -1,0 +1,323 @@
+B4.1 standing-evidence lane -- committed proof that the B3.5 golden tripwire
+can actually fail, on a JAVASCRIPT MODEL CONSTANT.
+
+SCOPE. READ THIS BEFORE QUOTING THIS FILE.
+This is NOT the kernel perturbation the B4.1 exam names. The G4 adversarial
+re-review showed the difference is load-bearing: you can disconnect the wasm
+geometry kernel from act 5 entirely and this self-test still passes, because
+its only kernel-flavoured assertion is that `kernelValidation/kernelCarbonKg`
+moved -- and that field is a product with the perturbed JS constant, so it moves
+whether or not a kernel measurement still feeds it.
+
+  What a green run here establishes: the golden is wired to act 5's data and
+  can distinguish a >=1e-6 relative change in it from no change, i.e. E3b is a
+  tripwire and not an assertion that cannot fail.
+  What it does NOT establish: that a kernel measurement is still reaching the
+  golden.
+
+The kernel half of the exam is evidenced separately, by an actual one-line
+change to rust/geometry compiled into the wasm bundle:
+scripts/moonshot/ci/kernel-perturbation-evidence.txt, reproducible with
+`node scripts/moonshot/ci/assert-b35-golden.mjs --kernel`. This file is the
+cheap in-lane tripwire; that one is the end-to-end proof. Neither substitutes
+for the other.
+
+WHY THIS FILE EXISTS
+The G4 standing adversarial review (docs/vision/reviews/g4-red-team-2026-07-29.md,
+section 4) failed gate G4 in part because "both halves of B4.1's exam are
+attested rather than evidenced": the perturbation half existed only as prose in
+a commit message. Section 7 item 3 requires a committed red-run artifact or a
+`--self-test` mode. This is the artifact for the in-lane mode. It is the
+verbatim stdout of
+
+    node scripts/moonshot/ci/assert-b35-golden.mjs --self-test
+
+which is also run on every lane execution as workflow step
+"E3c B3.5 tripwire self-test (the golden must be able to fail)".
+Regenerate it with that command; the only line that should move between runs is
+the per-stage wall clock.
+
+WHEN AND WHERE
+  date              2026-07-29 (verbatim block below regenerated the same day
+                    after the mode's banner was corrected to state its scope)
+  machine           Apple M4, 16 GB, macOS 26.5.2, arm64 (LOCAL, not CI)
+  node              v22.14.0 (the version moonshot.yml pins for the golden)
+  rustc             1.93.0-nightly (b6d7ff3aa 2025-11-14)
+  wasm-pack         0.14.0
+  wasm bundle       packages/wasm/pkg/ifc-lite_bg.wasm. NOT pinned by md5 here:
+                    the bundle is not byte-reproducible across rebuilds while
+                    the golden it produces is (three builds of one source tree,
+                    three md5s, one identical golden -- see
+                    kernel-perturbation-evidence.txt). The md5 recorded in an
+                    earlier revision of this file, 16bc0121..., was a fact about
+                    one build, not about the evidence.
+  repo commit       1d5c5b97bbc0145015e0bc1d5a38771353187988 (docs/moonshot-finishing-plan)
+                    (first captured at 5f8f3549 on the same branch)
+  self-test runtime 13 s wall (two full five-act demo runs plus two golden checks)
+
+THE EXACT PERTURBATION
+  file              scripts/moonshot/diff-spike/carbon-model.mjs
+  edit              CARBON_FACTORS.Concrete: 315  ->  315.000315
+  magnitude         +1e-6 relative
+  applied by        assert-b35-golden.mjs --self-test, in-process, then reverted
+                    from a byte snapshot under try/finally and SIGINT/SIGTERM
+                    handlers; `git status --porcelain` over the three touched
+                    files is asserted to be identical afterwards.
+
+  Why this site: act5-descent.mjs imports CARBON_FACTORS and accumulates
+  `kernelCarbon += row.kernelVolume * factor` over the volumes the wasm geometry
+  kernel re-measured, emitting the sum as
+  acts/act5/data/kernelValidation/kernelCarbonKg. The constant therefore reaches
+  the golden's kernel-validation block by construction, not by luck.
+
+  Why 1e-6 and not one ULP: the tripwire's floor is the report's own rounding.
+  kernelCarbonKg is rounded to 3 decimals on a ~73,459 kg total, so ~7e-9
+  relative is the smallest change that can survive serialization; the measured
+  floor for this constant is ~3e-9. A one-ULP nudge (315.00000000000006) is
+  known NOT to move the golden -- see the NEGATIVE CONTROL below. 1e-6 sits
+  ~300x above the measured floor, which is margin the assertion cannot lose to
+  a re-blessing, while staying far too small to pass for a deliberate model
+  change in a diff. It is a reliability choice, not a sensitivity claim.
+
+NEGATIVE CONTROL (this file's most important line)
+A self-test that always passes is the same disease it was written to cure. Re-run
+on 2026-08-01 at b893b89c (same branch, same machine as the header above) with
+PERTURB_REPLACE set to the one-ULP value 315.00000000000006 and nothing else
+changed, the mode correctly FAILED, exit 1. Verbatim stderr, the only edit being
+a line wrap of each `  - ` bullet to fit this file:
+
+  ::error::B3.5 GOLDEN SELF-TEST FAILED -- the tripwire cannot be trusted.
+    - THE TRIPWIRE DID NOT FIRE: the golden check passed with a perturbed carbon
+      factor. A >=1e-6 relative change to act 5 reached no pinned field -- the
+      golden no longer covers act 5, or the demo is not reading the perturbed
+      source.
+    - the failure output does not carry the "B3.5 DETERMINISTIC DRIFT" banner
+    - the failure names no acts/act5/* path -- "names which act broke" is not met
+    - acts/act5/data/kernelValidation/kernelCarbonKg did not move, although the
+      perturbed constant is multiplied into it by act5-descent.mjs -- the
+      kernel-validation block is no longer emitted, or no longer pinned by the
+      golden
+
+  stage A reported: golden check exited 0 (expected 1 = drift), differing paths
+  named: 0 (act 5: 0, kernel-validation: 0). The tree was still restored clean.
+  So the mode distinguishes "the tripwire fired" from "the tripwire was asked
+  something it cannot detect", and exits non-zero for the second -- it tests the
+  test.
+
+  This block was regenerated on 2026-08-01 rather than hand-corrected: the
+  transcript captured on 2026-07-29 had drifted from the messages the script
+  actually emits (the fourth bullet still read "the kernel measurement is no
+  longer reaching the golden", wording the script stopped using when the
+  assertion was correctly re-described as a WIRING check on act 5). A negative
+  control that quotes output the code cannot produce is not evidence.
+
+TIMING: THE "GREEN IN UNDER 20 MINUTES" HALF OF THE EXAM
+Both halves are now measured in the FULL configuration (the two Holter-gated
+steps RUN, not skip). The G4 review's objection was that the only observed run
+was a `pull_request` event, where E2a and E2b exit 0 without doing anything.
+
+  CI, workflow_dispatch, holter=true, ubuntu-latest, run 30441941453
+  (2026-07-29, commit 5f8f3549, branch docs/moonshot-finishing-plan):
+
+    whole job                                        10m 01s   (bar: 20m)
+      setup: checkout/pnpm/node/toolchain/install      4m 02s
+      build wasm from source + workspace packages      1m 39s
+      fixture cache + fetch (duplex + Holter 169 MB)      4s
+      the fifteen assertion steps E1..E8                 80s
+    E2a G0 (Holter)   8s        E2b G1 (Holter)  9s
+    E1 2s  E2c 1s  E2d 3s  E3a 19s  E3b 0s  E4 4s  E5a 2s  E5b 3s
+    E6a 9s  E6b 12s  E7 7s  E8 1s
+    result: SUCCESS, every step green, including both Holter-gated exams.
+
+  LOCAL, same commit, warm toolchain (Apple M4 above), all fifteen assertion
+  steps replayed end to end in the full configuration, E3c included:
+
+    E1  1.4s   E2a 6.4s   E2b 6.4s   E2c 0.5s   E2d 1.7s
+    E3a 6.0s   E3b 0.0s   E3c 12.2s
+    E4  1.5s   E5a 0.9s   E5b 0.9s   E6a 3.1s   E6b 4.3s
+    E7  1.2s   E8  1.3s
+    total 49s, every step exit 0.
+
+  E3c did not exist when run 30441941453 was dispatched, so its cost is measured
+  locally only: +12.2s, i.e. the lane's assertion budget goes from ~80s to ~95s
+  in CI and the 20-minute clause is not remotely at risk.
+
+CAN THE LANE BE DISPATCHED WHILE moonshot.yml IS STILL ON A PR BRANCH? YES.
+This was checked rather than assumed, because the usual rule is that
+workflow_dispatch requires the workflow on the default branch. moonshot.yml does
+NOT exist on main:
+
+    $ git cat-file -e ltplus/main:.github/workflows/moonshot.yml
+    fatal: path '.github/workflows/moonshot.yml' exists on disk, but not in 'ltplus/main'
+
+and yet
+
+    $ gh workflow run 321177537 --ref docs/moonshot-finishing-plan -f holter=true
+    https://github.com/LTplus-AG/ifc-lite/actions/runs/30441941453
+
+dispatched successfully and ran to completion with event=workflow_dispatch and
+fixture scope FULL. The default-branch requirement governs whether GitHub
+REGISTERS a workflow and shows its "Run workflow" button; once the workflow has
+been registered by an earlier run on the branch (two pull_request runs, 30243482383
+and 30440435782), the API accepts a dispatch against that same ref. So the exam's
+"one workflow_dispatch run with the Holter fixture" is satisfied now, before the
+branch merges.
+
+VERBATIM SELF-TEST OUTPUT FOLLOWS
+The block below is stdout of the passing run described in the header. The
+"captured failure output" section inside it is the real stderr the golden check
+produced under the perturbation -- that is the red run the G4 review asked to
+see committed.
+
+========================================================================
+B3.5 golden tripwire --self-test (JS MODEL CONSTANT, not a kernel perturbation)
+  scope: proves the golden is wired to act 5 and can fail. For the kernel
+         path (rust/geometry -> wasm -> act 5) run --kernel; its committed
+         output is scripts/moonshot/ci/kernel-perturbation-evidence.txt.
+  perturbation: CARBON_FACTORS.Concrete 315 -> 315.000315 (+1e-6 relative) in scripts/moonshot/diff-spike/carbon-model.mjs
+  assert under test: scripts/moonshot/ci/assert-b35-golden.mjs
+
+stage A -- perturbation injected, re-running the five-act demo
+  demo completed in 7.9s
+  golden check exited 1 in 0.0s (expected 1 = drift)
+  differing paths named: 35 (act 5: 35, kernel-validation: 3)
+
+stage B -- original state restored, re-running to prove recovery
+  demo completed in 8.0s
+  golden check exited 0 in 0.0s (expected 0 = match)
+
+tree restored: `git status --porcelain` clean over all 3 touched files.
+
+SELF-TEST PASS: the B3.5 golden tripwire fires on a 1e-6 relative carbon-factor
+perturbation, names act 5 and its kernel-validation fields, and returns to green
+when the perturbation is reverted.
+SCOPE: this is a JS model constant. It proves the golden is wired to act 5 and
+can fail; it does NOT prove a kernel measurement still reaches it. That is
+--kernel / kernel-perturbation-evidence.txt.
+
+--- captured failure output (stage A) ---
+::error::B3.5 DETERMINISTIC DRIFT -- the five-act demo no longer reproduces its seeded golden.
+
+golden: scripts/moonshot/ci/b35-golden.json (8931 bytes)
+actual: scripts/moonshot/b35-demo/demo-report.json -> deterministic (8935 bytes)
+
+35 differing path(s), golden -> actual:
+  acts/act5/data/params/Lx
+      golden: 14.927229
+      actual: 14.934305
+  acts/act5/data/params/Ly
+      golden: 13.740763
+      actual: 13.734242
+  acts/act5/data/params/wwL
+      golden: 1.948896
+      actual: 1.937039
+  acts/act5/data/params/wh
+      golden: 1.337394
+      actual: 1.341871
+  acts/act5/data/params/dw
+      golden: 1.429887
+      actual: 1.452212
+  acts/act5/data/params/dh
+      golden: 2.306698
+      actual: 2.320606
+  acts/act5/data/params/cw
+      golden: 0.280305
+      actual: 0.270803
+  acts/act5/data/params/cd
+      golden: 0.290873
+      actual: 0.300998
+  acts/act5/data/params/bh
+      golden: 0.38163
+      actual: 0.381449
+  acts/act5/data/params/wwS
+      golden: 2.049852
+      actual: 2.049699
+  acts/act5/data/startCarbonKg
+      golden: 177100.875
+      actual: 177100.988
+  acts/act5/data/optimumCarbonKg
+      golden: 73459.098
+      actual: 73453.162
+  acts/act5/data/reductionPct
+      golden: 58.521
+      actual: 58.525
+  acts/act5/data/penaltyRounds/0/carbon
+      golden: 67833.465
+      actual: 67830.331
+  acts/act5/data/penaltyRounds/0/maxViol
+      golden: 0.51179282
+      actual: 0.512128667
+  acts/act5/data/penaltyRounds/1/carbon
+      golden: 71744.224
+      actual: 71811.664
+  acts/act5/data/penaltyRounds/1/maxViol
+      golden: 0.127153118
+      actual: 0.120477996
+  acts/act5/data/penaltyRounds/2/carbon
+      golden: 72789.725
+      actual: 72804.868
+  acts/act5/data/penaltyRounds/2/maxViol
+      golden: 0.033694104
+      actual: 0.032602052
+  acts/act5/data/penaltyRounds/3/carbon
+      golden: 73304.362
+      actual: 73293.928
+  acts/act5/data/penaltyRounds/3/maxViol
+      golden: 0.008108661
+      actual: 0.008238318
+  acts/act5/data/penaltyRounds/4/carbon
+      golden: 73426.599
+      actual: 73422.585
+  acts/act5/data/penaltyRounds/4/maxViol
+      golden: 0.0021569
+      actual: 0.001994865
+  acts/act5/data/penaltyRounds/5/carbon
+      golden: 73459.098
+      actual: 73453.162
+  acts/act5/data/penaltyRounds/5/maxViol
+      golden: 0.00051128
+      actual: 0.000533172
+  acts/act5/data/residualScaledViolation
+      golden: 0.00051128
+      actual: 0.000533172
+  acts/act5/data/residualConstraints/0/g
+      golden: 0.048957657
+      actual: 0.049728291
+  acts/act5/data/residualConstraints/1/g
+      golden: 0.000004166
+      actual: 0.000004057
+  acts/act5/data/residualConstraints/2/g
+      golden: 0.00051128
+      actual: 0.000533172
+  acts/act5/data/residualConstraints/3/g
+      golden: 0.000057799
+      actual: 0.000057842
+  acts/act5/data/optimumIfc/bytes
+      golden: 111197
+      actual: 111257
+  acts/act5/data/optimumIfc/sha256
+      golden: "48fc69e72d33c45002832dec38d53fc6d0c563bab997e8fafcdc537181078c4e"
+      actual: "f14e091f9a457ecff501935cda87fa274f932b3aa24ebf6967c012f06382ab2e"
+  acts/act5/data/kernelValidation/worstElementRelDev
+      golden: 0.000001675
+      actual: 0.0000013
+  acts/act5/data/kernelValidation/kernelCarbonKg
+      golden: 73459.109
+      actual: 73453.165
+  acts/act5/data/kernelValidation/carbonRelDev
+      golden: 1.54e-7
+      actual: 4.8e-8
+
+The leading path segment names the act that broke:
+  acts/act1 = BIRTH       world-gym generator/labeler/reward channels
+  acts/act2 = PROOF       node-hash-v0 DAG + certificate verify/tamper (@ifc-lite/provenance)
+  acts/act3 = SABOTAGE    benchmark splits/ground-truth/scorer
+  acts/act4 = CONVERGENCE merge battery + commutation certificates
+  acts/act5 = DESCENT     differentiable carbon model + GEOMETRY KERNEL re-measurement
+
+If the change is intended, re-run the demo and re-bless with:
+  node scripts/moonshot/b35-demo/run.mjs
+  node scripts/moonshot/ci/assert-b35-golden.mjs --update
+and commit both the golden and scripts/moonshot/b35-demo/demo-report.{json,md}.
+
+summary: {"perturbation":"CARBON_FACTORS.Concrete 315 -> 315.000315 (+1e-6 relative) in scripts/moonshot/diff-spike/carbon-model.mjs","stageAExit":1,"stageBExit":0,"node":"v22.14.0","platform":"darwin-arm64"}

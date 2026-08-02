@@ -1,0 +1,357 @@
+{
+  "masterSeed": 20260724,
+  "config": {
+    "devSliceSize": 40,
+    "batterySchedules": 1000
+  },
+  "acts": {
+    "act1": {
+      "status": "ok",
+      "data": {
+        "seed": 20260724,
+        "family": "office",
+        "entityCount": 548,
+        "fileSize": 28004,
+        "storeyCount": 1,
+        "sha256": "80b58870ce12bc4f40bbd4da5ba7b5ce63dfdf7aa944bcc5774ce238898ab912",
+        "groundTruthTotals": {
+          "slabCount": 1,
+          "slabGrossArea": 214.212816,
+          "slabGrossVolume": 62.550142,
+          "wallCount": 4,
+          "wallGrossSideArea": 427.1124,
+          "wallGrossVolume": 68.594251,
+          "partitionWallCount": 6,
+          "roomCount": 16,
+          "roomNetFloorArea": 214.212816,
+          "roomNetVolume": 617.361336
+        },
+        "schema": {
+          "valid": true,
+          "errors": 0,
+          "warnings": 0
+        },
+        "clashTotal": 0,
+        "rewardChannels": {
+          "schemaValidity": 1,
+          "clashScore": 1,
+          "determinismHashMatch": 1,
+          "quantityAccuracy": 1,
+          "defectDetection": 1
+        },
+        "allChannelsPerfect": true
+      }
+    },
+    "act2": {
+      "status": "ok",
+      "data": {
+        "totalNodes": 56,
+        "elements": 27,
+        "psetLeaves": 27,
+        "storeys": 1,
+        "rootHashBefore": "sha256:771cb465932d61e5607a251de8af33a35e721a4eac442787f9974ede79105f0d",
+        "rootHashAfter": "sha256:aa00d60d3f10503c221f09d61b141577fdfac1b8cf012de9ecc7df7f4b170012",
+        "edit": {
+          "expressId": 58,
+          "ifcType": "IfcWall",
+          "property": "GrossVolume",
+          "before": 8.136439344000001,
+          "after": 9.136439344000001
+        },
+        "certificateWrites": 4,
+        "certificateReads": 0,
+        "claimGranularity": "sibling-element-subtrees",
+        "untouchedClaimRefs": 26,
+        "secondProcessVerifyOk": true,
+        "nodesResolved": 30,
+        "nodesResolvedPct": 53.5714,
+        "tamper": {
+          "expressId": 41,
+          "ifcType": "IfcSlab",
+          "caught": true,
+          "reason": "hash-mismatch"
+        }
+      }
+    },
+    "act3": {
+      "status": "ok",
+      "data": {
+        "spotlight": {
+          "seed": 20260725,
+          "family": "office",
+          "sha256": "5d3a433fa4ade71ae882d19a3d9185a33c29e098b0601ed6e059497a4da0d2b4",
+          "plantedDefects": [
+            {
+              "type": "duplicate-globalid",
+              "guid": "1jaVXacz_tNbsfXb48C$nJ"
+            }
+          ],
+          "plantedTypes": [
+            "duplicate-globalid"
+          ],
+          "detectedTypes": [
+            "duplicate-globalid"
+          ],
+          "caughtCount": 1,
+          "plantedCount": 1
+        },
+        "oracleSlice": {
+          "split": "dev",
+          "seeds": [
+            8,
+            18,
+            28,
+            38,
+            48,
+            58,
+            68,
+            78,
+            88,
+            98,
+            108,
+            118,
+            128,
+            138,
+            148,
+            158,
+            168,
+            178,
+            188,
+            198,
+            208,
+            218,
+            228,
+            238,
+            248,
+            258,
+            268,
+            278,
+            288,
+            298,
+            308,
+            318,
+            328,
+            338,
+            348,
+            358,
+            368,
+            378,
+            388,
+            398
+          ],
+          "corruptedCount": 17,
+          "defectMacroF1": 0.857143,
+          "defectPerType": {
+            "clash-pair": {
+              "tp": 4,
+              "fp": 0,
+              "fn": 0,
+              "f1": 1
+            },
+            "degenerate-geometry": {
+              "tp": 3,
+              "fp": 0,
+              "fn": 0,
+              "f1": 1
+            },
+            "duplicate-globalid": {
+              "tp": 2,
+              "fp": 0,
+              "fn": 0,
+              "f1": 1
+            },
+            "missing-site": {
+              "tp": 4,
+              "fp": 0,
+              "fn": 0,
+              "f1": 1
+            },
+            "multiple-project": {
+              "tp": 5,
+              "fp": 0,
+              "fn": 0,
+              "f1": 1
+            },
+            "dangling-ref": {
+              "tp": 0,
+              "fp": 0,
+              "fn": 8,
+              "f1": 0
+            },
+            "missing-quantities": {
+              "tp": 7,
+              "fp": 0,
+              "fn": 0,
+              "f1": 1
+            }
+          },
+          "quantityScore": 0.94697,
+          "triageScore": 0.873166,
+          "triagePairs": 477
+        }
+      }
+    },
+    "act4": {
+      "status": "ok",
+      "data": {
+        "baseEntities": 27,
+        "baseRootHash": "sha256:1d335793b20bc580ce16ba7eafbb3a0a9c48b0786a9e0444cff42eba58c52ebc",
+        "mergedRootHash": "sha256:bff4e3213591febc02e084fdbaf4cc84fadd4ae5382748535d685247bb9cf4ed",
+        "certificateBaseRootHash": "sha256:1d335793b20bc580ce16ba7eafbb3a0a9c48b0786a9e0444cff42eba58c52ebc",
+        "autoMerge": {
+          "clients": [
+            "alice",
+            "bob"
+          ],
+          "aWrites": 2,
+          "bWrites": 2,
+          "verifiedIndependently": true
+        },
+        "blockedConflict": {
+          "blocked": true,
+          "conflicts": [
+            {
+              "a": "alice-2",
+              "b": "bob-2",
+              "structural": true,
+              "spatial": false
+            }
+          ]
+        },
+        "battery": {
+          "schedules": 1000,
+          "seed": 20260724,
+          "epsilonMm": 50,
+          "autoMerged": 849,
+          "unsoundAutoMerges": 0,
+          "unsoundScheduleIndices": [],
+          "flaggedConflicts": 151,
+          "trueConflicts": 50,
+          "falseConflicts": 101,
+          "groundTruthConvergent": 950,
+          "conflictRate": 0.151,
+          "falseConflictRate": 0.10631578947368421,
+          "certificatesIssued": 849,
+          "certificatesVerified": 33,
+          "certificateFailures": 0,
+          "examPass": true,
+          "killCriterionPass": true
+        }
+      }
+    },
+    "act5": {
+      "status": "ok",
+      "data": {
+        "params": {
+          "Lx": 14.927229,
+          "Ly": 13.740763,
+          "h1": 3,
+          "h2": 3,
+          "h3": 3,
+          "tw": 0.18,
+          "ts": 0.18,
+          "tr": 0.18,
+          "wwL": 1.948896,
+          "wh": 1.337394,
+          "sill": 0.57,
+          "dw": 1.429887,
+          "dh": 2.306698,
+          "cw": 0.280305,
+          "cd": 0.290873,
+          "bw": 0.15,
+          "bh": 0.38163,
+          "tp": 0.08,
+          "wwS": 2.049852,
+          "gt": 0.02,
+          "fw": 0.6,
+          "fd": 0.6,
+          "fh": 0.5,
+          "dt": 0.04
+        },
+        "startCarbonKg": 177100.875,
+        "optimumCarbonKg": 73459.098,
+        "reductionPct": 58.521,
+        "penaltyRounds": [
+          {
+            "round": 0,
+            "mu": 10,
+            "carbon": 67833.465,
+            "maxViol": 0.51179282,
+            "iters": 400
+          },
+          {
+            "round": 1,
+            "mu": 40,
+            "carbon": 71744.224,
+            "maxViol": 0.127153118,
+            "iters": 400
+          },
+          {
+            "round": 2,
+            "mu": 160,
+            "carbon": 72789.725,
+            "maxViol": 0.033694104,
+            "iters": 400
+          },
+          {
+            "round": 3,
+            "mu": 640,
+            "carbon": 73304.362,
+            "maxViol": 0.008108661,
+            "iters": 400
+          },
+          {
+            "round": 4,
+            "mu": 2560,
+            "carbon": 73426.599,
+            "maxViol": 0.0021569,
+            "iters": 400
+          },
+          {
+            "round": 5,
+            "mu": 10240,
+            "carbon": 73459.098,
+            "maxViol": 0.00051128,
+            "iters": 400
+          }
+        ],
+        "residualScaledViolation": 0.00051128,
+        "residualConstraints": [
+          {
+            "name": "floor-area",
+            "g": 0.048957657
+          },
+          {
+            "name": "daylight-s0",
+            "g": 0.000004166
+          },
+          {
+            "name": "column-section",
+            "g": 0.00051128
+          },
+          {
+            "name": "beam-depth",
+            "g": 0.000057799
+          }
+        ],
+        "optimumIfc": {
+          "bytes": 111197,
+          "mappedElements": 74,
+          "sha256": "48fc69e72d33c45002832dec38d53fc6d0c563bab997e8fafcdc537181078c4e"
+        },
+        "kernelValidation": {
+          "worstElementRelDev": 0.000001675,
+          "worstElementKey": "wall-south-s0",
+          "missingMeshes": 0,
+          "kernelCarbonKg": 73459.109,
+          "carbonRelDev": 1.54e-7
+        },
+        "schema": {
+          "valid": true,
+          "errors": 0,
+          "warnings": 1
+        }
+      }
+    }
+  }
+}

@@ -144,12 +144,52 @@ export function parseLasHeader(buffer: ArrayBuffer | Uint8Array): LasHeader {
  * `stride` should equal `header.pointRecordLength`. We honour any extra
  * bytes the producer tacked on by skipping them.
  */
+/**
+ * Translate a header bounding box into the same frame `decodeLasPoints`
+ * emits points in (issue #1804).
+ *
+ * `header.bbox` is in absolute native CRS coordinates, but when an
+ * `originOffset` is in play every decoded point has it subtracted in f64
+ * first. Reporting the raw header box would leave the bounds and the points
+ * they describe off by the full offset — at map magnitudes (LV95 easting
+ * ~2.6e6) that puts scene framing, culling and the height-ramp colour range
+ * nowhere near the geometry.
+ *
+ * Shared by BOTH streaming sources on purpose: LAS and LAZ decode through the
+ * same `decodeLasPoints`, so a per-source copy of this translation is exactly
+ * how one of them ends up fixed and the other left behind.
+ */
+export function bboxInDecodedFrame(
+  bbox: PointCloudBBox,
+  originOffset: readonly [number, number, number] | undefined,
+): PointCloudBBox {
+  if (!originOffset) return bbox;
+  const [ox, oy, oz] = originOffset;
+  return {
+    min: [bbox.min[0] - ox, bbox.min[1] - oy, bbox.min[2] - oz],
+    max: [bbox.max[0] - ox, bbox.max[1] - oy, bbox.max[2] - oz],
+  };
+}
+
 export function decodeLasPoints(
   bytes: Uint8Array,
   header: LasHeader,
   count: number,
   stride: number = header.pointRecordLength,
   rgbScale: number = 1,
+  /**
+   * Native (X, Y, Z)-axis offset subtracted from each decoded coordinate
+   * BEFORE narrowing to f32 (issue #1804: georeferenced point clouds carry
+   * ~1e6-1e7 m absolute map coordinates — e.g. `IfcMapConversion`'s
+   * Eastings/Northings/OrthogonalHeight — and narrowing those straight to
+   * f32 quantises to ~0.5-1 m before any alignment math ever sees them).
+   * The subtraction happens in f64 (plain JS number arithmetic) right
+   * here, at the same point the LAS header's own offset is added back in
+   * — so the residual written to the `Float32Array` stays small/precise
+   * regardless of how large the source coordinates are. `undefined` (the
+   * default) subtracts nothing, preserving prior behaviour byte-for-byte.
+   */
+  originOffset?: readonly [number, number, number],
 ): DecodedPointChunk {
   if (bytes.length < count * stride) {
     throw new Error(
@@ -169,12 +209,18 @@ export function decodeLasPoints(
 
   let minX = Infinity, minY = Infinity, minZ = Infinity;
   let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+  const offX = originOffset?.[0] ?? 0;
+  const offY = originOffset?.[1] ?? 0;
+  const offZ = originOffset?.[2] ?? 0;
 
   for (let i = 0; i < count; i++) {
     const base = i * stride;
-    const x = view.getInt32(base, true) * header.scale[0] + header.offset[0];
-    const y = view.getInt32(base + 4, true) * header.scale[1] + header.offset[1];
-    const z = view.getInt32(base + 8, true) * header.scale[2] + header.offset[2];
+    // Full-precision (f64) native coordinate, then the (optional) f64
+    // subtraction, THEN the narrowing `positions[..] =` assignment below
+    // casts to f32 — see the `originOffset` param doc.
+    const x = view.getInt32(base, true) * header.scale[0] + header.offset[0] - offX;
+    const y = view.getInt32(base + 4, true) * header.scale[1] + header.offset[1] - offY;
+    const z = view.getInt32(base + 8, true) * header.scale[2] + header.offset[2] - offZ;
     positions[i * 3] = x;
     positions[i * 3 + 1] = y;
     positions[i * 3 + 2] = z;

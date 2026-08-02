@@ -9,8 +9,10 @@
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { Renderer, type VisualEnhancementOptions, type LightingEnvironment } from '@ifc-lite/renderer';
 import type { MeshData, CoordinateInfo, PointCloudAsset } from '@ifc-lite/geometry';
-import { useViewerStore, resolveEntityRef, type MeasurePoint, type SnapVisualization } from '@/store';
+import { useViewerStore, resolveEntityRef, type CameraViewpoint, type MeasurePoint, type SnapVisualization } from '@/store';
 import { LIGHTING_PRESETS } from '@/lib/lighting-presets';
+import { presetViewRotation } from '@/lib/preset-view-orientation';
+import { isGeometryLoadStreaming } from '@/lib/pick-gating';
 import { sunLightingForAltitude } from '@/lib/geo/solar-direction';
 import {
   useSelectionState,
@@ -28,6 +30,10 @@ import { useModelSelection } from '../../hooks/useModelSelection.js';
 import { useLatestRef } from '../../hooks/useLatestRef.js';
 import { CLASH_COLOR_OVERLAP } from '@/lib/clash/clash-colors';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
+import { getSpatialChunkingConfig } from '../../utils/spatialChunkConfig.js';
+import { getGpuResidencyBudgetBytes, getHostResidencyBudgetBytes } from '../../utils/gpuBudgetConfig.js';
+import { getLodScreenPx } from '../../utils/lodConfig.js';
+import { isQuantizedEnabled } from '../../utils/quantizedConfig.js';
 import {
   getEntityBounds,
   getThemeClearColor,
@@ -40,6 +46,7 @@ import { useMouseControls, type MouseState } from './useMouseControls.js';
 import { RectSelectionOverlay, type RectSelectionRect } from './RectSelectionOverlay.js';
 import { useTouchControls, type TouchState } from './useTouchControls.js';
 import { useKeyboardControls } from './useKeyboardControls.js';
+import { useSpaceMouseControls } from './useSpaceMouseControls.js';
 import { useAnimationLoop } from './useAnimationLoop.js';
 import { useGeometryStreaming } from './useGeometryStreaming.js';
 import { usePointCloudSync } from './usePointCloudSync.js';
@@ -290,11 +297,13 @@ export function Viewport({
     pendingMeshColorUpdates,
     pendingMeshRemovals,
     pendingMeshTranslations,
+    pendingMeshRotations,
     pendingInstancedShards,
     clearPendingColorUpdates,
     clearPendingMeshColorUpdates,
     clearPendingMeshRemovals,
     clearPendingMeshTranslations,
+    clearPendingMeshRotations,
     clearInstancedShards,
   } = useColorUpdateState();
 
@@ -658,11 +667,12 @@ export function Viewport({
   // Helper: get pick options with visibility filtering
   const getPickOptions = () => {
     const currentState = useViewerStore.getState();
-    const currentProgress = currentState.progress;
-    const currentIsStreaming = currentState.geometryStreamingActive
-      || (currentProgress !== null && currentProgress.percent < 100);
     return {
-      isStreaming: currentIsStreaming,
+      // `isStreaming` gates picking off during an active load. It must stay
+      // false once a load has finished — a federated georef model leaves
+      // `progress` stuck at 90%, which would otherwise disable picking forever
+      // for every loaded model (#1570). See isGeometryLoadStreaming.
+      isStreaming: isGeometryLoadStreaming(currentState),
       hiddenIds: hiddenEntitiesRef.current,
       isolatedIds: isolatedEntitiesRef.current,
     };
@@ -715,18 +725,130 @@ export function Viewport({
 
     renderer.init().then(() => {
       if (aborted) return;
+      // Spatial chunk bucketing (issue #1682 phase 2) — must be configured
+      // before any geometry streams into the scene. ON by default since the
+      // flip sweep; kill switch __IFC_LITE_CHUNKS = 0.
+      const chunking = getSpatialChunkingConfig();
+      if (chunking) {
+        renderer.getScene().setSpatialChunking(chunking);
+        console.log(`[Viewport] spatial chunk bucketing on (cellSize=${chunking.cellSize}m)`);
+      }
+      // GPU residency budget (issue #1682 phase 3a) — ON by default (2048MB
+      // target; kill switch = 0). Evicts least-recently-drawn chunk batches
+      // over the budget; the animation loop pumps the on-demand rebuilds.
+      const gpuBudget = getGpuResidencyBudgetBytes();
+      if (gpuBudget !== null) {
+        renderer.getScene().setGpuResidencyBudget(gpuBudget);
+        console.log(`[Viewport] GPU residency budget on (${(gpuBudget / 1048576).toFixed(0)}MB)`);
+      }
+      const hostBudget = getHostResidencyBudgetBytes();
+      if (hostBudget !== null) {
+        renderer.getScene().setHostResidencyBudget(hostBudget);
+        console.log(`[Viewport] host residency budget on (${(hostBudget / 1048576).toFixed(0)}MB)`);
+      }
+      const lodPx = getLodScreenPx();
+      if (lodPx !== null) {
+        renderer.getScene().setLodBuildsEnabled(true);
+        console.log(`[Viewport] LOD1 on (below ${lodPx}px projected)`);
+      }
+      // 12-byte quantized batch vertices (issue #1682 phase 6) — ON by
+      // default since the flip sweep (kill switch __IFC_LITE_QUANTIZED = 0).
+      // The probe verifies the quantized pipeline variants exist before the
+      // scene starts producing 12B buffers.
+      if (isQuantizedEnabled()) {
+        // Async: WebGPU validates the quantized pipelines before the scene
+        // may produce 12B buffers; batches built in the meantime stay f32.
+        void renderer.enableQuantizedBatches().then((on) => {
+          console.log(`[Viewport] quantized vertices ${on ? 'on (12B lattice)' : 'UNAVAILABLE (pipeline probe failed)'}`);
+        });
+      }
+      // Read-only debug/e2e hook (same convention as __ifc_lite_viewer_store__):
+      // live frame stats + resident GPU/CPU bytes for Playwright assertions
+      // and console inspection. Cleared on viewport teardown below.
+      (globalThis as Record<string, unknown>).__ifc_lite_render_stats__ = () => ({
+        frame: renderer.getFrameStats(),
+        gpu: renderer.getScene().getResidentGpuBytes(),
+        cpuBytes: renderer.getScene().getResidentCpuBytes(),
+      });
       setIsInitialized(true);
 
       const camera = renderer.getCamera();
       const renderCurrent = () => {
         renderer.requestRender();
       };
+      const applyViewpoint = (viewpoint: CameraViewpoint, animate = true, durationMs = 300) => {
+        camera.setProjectionMode(viewpoint.projectionMode);
+        useViewerStore.setState({ projectionMode: viewpoint.projectionMode });
+        camera.setFOV(viewpoint.fov);
+        if (
+          viewpoint.projectionMode === 'orthographic' &&
+          typeof viewpoint.orthoSize === 'number' &&
+          Number.isFinite(viewpoint.orthoSize)
+        ) {
+          camera.setOrthoSize(viewpoint.orthoSize);
+        }
+
+        if (animate) {
+          camera.animateToWithUp(viewpoint.position, viewpoint.target, viewpoint.up, durationMs);
+        } else {
+          camera.setPosition(viewpoint.position.x, viewpoint.position.y, viewpoint.position.z);
+          camera.setTarget(viewpoint.target.x, viewpoint.target.y, viewpoint.target.z);
+          camera.setUp(viewpoint.up.x, viewpoint.up.y, viewpoint.up.z);
+        }
+
+        renderCurrent();
+        updateCameraRotationRealtime(camera.getRotation());
+        calculateScale();
+      };
+      const orbitCamera = (deltaX: number, deltaY: number) => {
+        camera.orbit(deltaX, deltaY, false);
+        renderCurrent();
+        updateCameraRotationRealtime(camera.getRotation());
+        calculateScale();
+      };
+      const animateHorizontalRotation = (angle: number) => {
+        const position = camera.getPosition();
+        const target = camera.getTarget();
+        const offsetX = position.x - target.x;
+        const offsetZ = position.z - target.z;
+        const cosine = Math.cos(angle);
+        const sine = Math.sin(angle);
+        const projectionMode = camera.getProjectionMode();
+
+        // Keep CameraControls' spherical-orbit convention, then use the
+        // shared viewpoint path so the ViewCube's animator interpolates it.
+        applyViewpoint(
+          {
+            position: {
+              x: target.x + offsetX * cosine + offsetZ * sine,
+              y: position.y,
+              z: target.z - offsetX * sine + offsetZ * cosine,
+            },
+            target,
+            up: camera.getUp(),
+            fov: camera.getFOV(),
+            projectionMode,
+            orthoSize: projectionMode === 'orthographic' ? camera.getOrthoSize() : undefined,
+          },
+          true,
+          300,
+        );
+      };
 
       // Register camera callbacks for ViewCube and other controls
       setCameraCallbacks({
         setPresetView: (view) => {
-          // Pass actual geometry bounds to avoid distance drift
-          const rotation = coordinateInfoRef.current?.buildingRotation;
+          // Pass actual geometry bounds to avoid distance drift. When the Cesium
+          // world-context basemap is actually rendering, TOP/BOTTOM read as a map
+          // (north up) instead of the building's IfcSite axes; elsewhere they stay
+          // building-aligned (#1532). cesiumAvailable gates out a stale
+          // cesiumEnabled after georef disappears (no basemap = no north-up).
+          const { cesiumEnabled, cesiumAvailable } = useViewerStore.getState();
+          const rotation = presetViewRotation(
+            view,
+            coordinateInfoRef.current?.buildingRotation,
+            cesiumEnabled && cesiumAvailable,
+          );
           camera.setPresetView(view, geometryBoundsRef.current, rotation);
           // Initial render - animation loop will continue rendering during animation
           renderCurrent();
@@ -762,6 +884,12 @@ export function Viewport({
           camera.zoom(50, false);
           renderCurrent();
           calculateScale();
+        },
+        rotateLeft: () => {
+          animateHorizontalRotation(-Math.PI / 2);
+        },
+        rotateRight: () => {
+          animateHorizontalRotation(Math.PI / 2);
         },
         frameSelection: () => {
           // Frame the current selection. Prefer the full multi-selection set
@@ -914,13 +1042,23 @@ export function Viewport({
           renderer.clearCaches();
           renderer.requestRender();
         },
-        orbit: (deltaX: number, deltaY: number) => {
-          // Orbit camera from ViewCube drag
-          camera.orbit(deltaX, deltaY, false);
-          renderCurrent();
-          updateCameraRotationRealtime(camera.getRotation());
+        frameClashRegion: (min, max) => {
+          // Frame the clash's (already context-padded) contact box from the
+          // canonical isometric pose so the penetration is read at a 3/4 angle,
+          // never top-down or edge-on (#1466). `fitBoundsAdaptive` is the same
+          // fit the Home view / post-load auto-fit use, so a clash-sized box
+          // gets the compact SE-isometric pose and handles orthographic zoom.
+          // Pass the real viewport short side (as the Home handler does) so the
+          // fit is viewport-accurate for any policy.
+          const canvas = rendererRef.current?.getCanvas();
+          const canvasShort = Math.min(canvas?.height ?? 0, canvas?.width ?? 0);
+          camera.fitBoundsAdaptive(
+            { min, max },
+            { animate: true, duration: 300, viewportShortPx: canvasShort > 0 ? canvasShort : undefined },
+          );
           calculateScale();
         },
+        orbit: orbitCamera,
         projectToScreen: (worldPos: { x: number; y: number; z: number }) => {
           // Project 3D world position to 2D CSS-pixel screen coordinates.
           // projectToCssScreen rescales the drawing-buffer result (buffer width
@@ -977,30 +1115,7 @@ export function Viewport({
           projectionMode: camera.getProjectionMode(),
           orthoSize: camera.getProjectionMode() === 'orthographic' ? camera.getOrthoSize() : undefined,
         }),
-        applyViewpoint: (viewpoint, animate = true, durationMs = 300) => {
-          camera.setProjectionMode(viewpoint.projectionMode);
-          useViewerStore.setState({ projectionMode: viewpoint.projectionMode });
-          camera.setFOV(viewpoint.fov);
-          if (
-            viewpoint.projectionMode === 'orthographic' &&
-            typeof viewpoint.orthoSize === 'number' &&
-            Number.isFinite(viewpoint.orthoSize)
-          ) {
-            camera.setOrthoSize(viewpoint.orthoSize);
-          }
-
-          if (animate) {
-            camera.animateToWithUp(viewpoint.position, viewpoint.target, viewpoint.up, durationMs);
-          } else {
-            camera.setPosition(viewpoint.position.x, viewpoint.position.y, viewpoint.position.z);
-            camera.setTarget(viewpoint.target.x, viewpoint.target.y, viewpoint.target.z);
-            camera.setUp(viewpoint.up.x, viewpoint.up.y, viewpoint.up.z);
-          }
-
-          renderCurrent();
-          updateCameraRotationRealtime(camera.getRotation());
-          calculateScale();
-        },
+        applyViewpoint,
       });
 
       // ResizeObserver — let renderer handle its own dimension alignment
@@ -1038,6 +1153,7 @@ export function Viewport({
       renderer.destroy();
       // Clear BCF global refs to prevent memory leaks
       clearGlobalRefs();
+      delete (globalThis as Record<string, unknown>).__ifc_lite_render_stats__;
     };
     // Note: selectedEntityId is intentionally NOT in dependencies
     // The click handler captures setSelectedEntityId via closure
@@ -1302,6 +1418,15 @@ export function Viewport({
     calculateScale,
   });
 
+  useSpaceMouseControls({
+    rendererRef,
+    isInitialized,
+    geometryBoundsRef,
+    geometryRef,
+    selectedEntityIdRef,
+    calculateScale,
+  });
+
   useAnimationLoop({
     canvasRef,
     rendererRef,
@@ -1347,11 +1472,13 @@ export function Viewport({
     pendingMeshColorUpdates,
     pendingMeshRemovals,
     pendingMeshTranslations,
+    pendingMeshRotations,
     pendingInstancedShards,
     clearPendingColorUpdates,
     clearPendingMeshColorUpdates,
     clearPendingMeshRemovals,
     clearPendingMeshTranslations,
+    clearPendingMeshRotations,
     clearInstancedShards,
     clearColorRef,
     releaseGeometryAfterFinalize: releaseGeometryAfterStream,

@@ -30,7 +30,11 @@ import type { StreamingGeometryEvent } from './index.js';
 import { mergeGeometryDiagnostics, type GeometryDiagnostics } from './diagnostics.js';
 import { computeWorkerCount } from './worker-count.js';
 import type { BatchSizingConfig } from './batch-sizing.js';
-import { notifyIfWasmAssetUnavailable } from './wasm-asset-error.js';
+import { notifyIfWasmAssetUnavailable, notifyIfWorkerScriptUnavailable } from './wasm-asset-error.js';
+// The compiled-module memo lives in its own module so the main-thread
+// `IfcLiteBridge.init()` path can reuse whatever this pool already compiled
+// (and vice versa) instead of fetching the same binary a second time.
+import { compileSharedWasmModule } from './wasm-shared-module.js';
 
 /**
  * Plan content-affinity routing for one chunk: assign each job (by index) to a
@@ -88,6 +92,109 @@ function readVisibilityFilterOverride(): { disabledTypes?: string[]; skipTypeGeo
   };
   const v = g.__IFC_LITE_VISIBILITY_FILTER;
   return v && typeof v === 'object' ? v : undefined;
+}
+
+/**
+ * SPIKE flag: shard the entity-index scan across the idle geometry workers and
+ * deliver the stitched index early, instead of waiting for the pre-pass
+ * worker's single-threaded post-scan `entity-index` emission. Read off
+ * `globalThis.__IFC_LITE_SHARD_SCAN` (benchmark A/B knob). Truthy ⇒ on.
+ */
+function readShardScanFlag(): boolean {
+  const g = globalThis as unknown as { __IFC_LITE_SHARD_SCAN?: unknown };
+  const v = g.__IFC_LITE_SHARD_SCAN;
+  // ON by default; 0/'0'/false is the kill switch (same convention as the
+  // other #1682 load/render knobs).
+  if (v === 0 || v === '0' || v === false) return false;
+  return true;
+}
+
+/** One shard's returned columns + handoff (see `scanEntityIndexShard`). */
+interface ShardColumns {
+  ids: Uint32Array;
+  starts: Uint32Array;
+  lengths: Uint32Array;
+  /** Per-record prepass class (PREPASS_CLASS_*; 4 = IfcStyledItem). */
+  classes: Uint8Array;
+  /** Global start of the next shard's first real entity, or -1 at EOF. */
+  handoff: number;
+}
+
+/**
+ * SPIKE: stitch N speculative shard scans into the full entity index —
+ * byte-identical to the single-threaded scan. Port of the native
+ * `parallel_scan::stitch`: shard 0 is authoritative (header-aware start); for
+ * shard i>0 the previous shard's validated `handoff` is a real entity start, so
+ * binary-search shard i's `starts` for it and drop the speculative prefix before
+ * it. Concatenates the validated slices in shard order (= file order), so
+ * last-wins on a duplicate id is preserved when the worker rebuilds its map.
+ *
+ * Returns null on the rare "handoff not found" case (speculative overshoot / a
+ * record spanning a whole shard), which needs the serial-rescan fallback the JS
+ * spike doesn't implement — the caller falls back to the pre-pass's own index.
+ */
+function stitchShards(shards: ShardColumns[]): { ids: Uint32Array; starts: Uint32Array; lengths: Uint32Array; classes: Uint8Array } | null {
+  const n = shards.length;
+
+  // Phase 1 — locate each shard's validated slice (binary-search the previous
+  // shard's handoff) WITHOUT copying, so the output size is exact before any
+  // allocation. Exactness matters: the id/start/length columns are allocated
+  // SAB-backed below and handed to every worker as full-buffer views, so a
+  // cap-sized buffer would let consumers read past the last real record.
+  const sliceFrom = new Array<number>(n).fill(0);
+  let used = 1;
+  let w = shards[0].ids.length; // shard 0 is authoritative, take every record
+  let expectedStart = shards[0].handoff; // -1 => no more real entities
+  for (let i = 1; i < n; i++) {
+    if (expectedStart < 0) break;
+    // starts is strictly increasing → binary-search for expectedStart.
+    const starts = shards[i].starts;
+    let lo = 0;
+    let hi = starts.length - 1;
+    let p = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >>> 1;
+      const v = starts[mid];
+      if (v === expectedStart) { p = mid; break; }
+      if (v < expectedStart) lo = mid + 1;
+      else hi = mid - 1;
+    }
+    if (p < 0) {
+      // Handoff not present in this shard — fallback path (not implemented here).
+      return null;
+    }
+    sliceFrom[i] = p;
+    w += starts.length - p;
+    expectedStart = shards[i].handoff;
+    used = i + 1;
+  }
+
+  // Phase 2 — single concatenation copy, straight into SharedArrayBuffer-backed
+  // columns. The stitched index used to be copied THREE times per column on the
+  // main thread (cap-array stitch → `.slice()` to contiguous → `.set()` into
+  // fresh SABs in deliverEntityIndex); writing the stitch output into SABs
+  // directly makes index delivery zero-copy (~450 MB of critical-path memcpy
+  // saved on a 19M-entity file). `classes` stays plain: its only consumer past
+  // the span-extraction loop is the pre-pass worker, which takes it by transfer.
+  const sabAvailable = typeof SharedArrayBuffer !== 'undefined';
+  const u32Column = (len: number) =>
+    new Uint32Array(sabAvailable ? new SharedArrayBuffer(len * 4) : new ArrayBuffer(len * 4));
+  const outIds = u32Column(w);
+  const outStarts = u32Column(w);
+  const outLengths = u32Column(w);
+  const outClasses = new Uint8Array(w);
+  let o = 0;
+  for (let i = 0; i < used; i++) {
+    const s = shards[i];
+    const p = sliceFrom[i];
+    outIds.set(p === 0 ? s.ids : s.ids.subarray(p), o);
+    outStarts.set(p === 0 ? s.starts : s.starts.subarray(p), o);
+    outLengths.set(p === 0 ? s.lengths : s.lengths.subarray(p), o);
+    outClasses.set(p === 0 ? s.classes : s.classes.subarray(p), o);
+    o += s.ids.length - p;
+  }
+
+  return { ids: outIds, starts: outStarts, lengths: outLengths, classes: outClasses };
 }
 
 interface PrepassMeta {
@@ -204,6 +311,11 @@ export async function* processParallel(
   yield { type: 'start', totalEstimate: buffer.length / 1000 };
   yield { type: 'model-open', modelID: 0 };
 
+  // Kick off the ONE shared wasm compile immediately so it overlaps the SAB
+  // setup + worker-count planning below; awaited just before the workers init
+  // (see `compileSharedWasmModule`). Null ⇒ each worker self-inits (unchanged).
+  const wasmModulePromise = compileSharedWasmModule(options?.wasmUrls?.wasm);
+
   // SAB sharing — see Tier-1 / fix-RAM history. Three paths:
   //   1. Caller-supplied SAB.
   //   2. Input `buffer` already views a SAB.
@@ -274,8 +386,50 @@ export async function* processParallel(
    * mesh.expressId; only element-material colours did).
    */
   const queuedChunks: { jobs: Uint32Array; affinity: Uint32Array | null }[] = [];
+  // Sharded pre-pass: prepass `complete` arrived while chunks were still
+  // queued behind the async styles event; stream-end fires on drain instead.
+  let streamEndPendingQueueDrain = false;
   let stylesReceived = false;
   let entityIndexReceived = false;
+
+  // ── SPIKE: sharded entity-index scan across the idle geometry workers ──
+  // When on, split the file into N byte ranges, have each idle worker scan its
+  // shard (`scanEntityIndexShard`), stitch the columns on THIS thread, and
+  // deliver the entity index early (instead of waiting for the pre-pass
+  // worker's single-threaded post-scan `entity-index` event). Measures the
+  // parser-tail-contention blocker from prior art dd56ea9e.
+  const shardScanEnabled = readShardScanFlag();
+  let entityIndexDeliveredEarly = false;
+  const shardResults: (ShardColumns | null)[] = [];
+  let shardResultsRemaining = 0;
+  let shardScanDispatchedAt = -1;
+  // Shard-resolved styled-item slices (see onAllStyleSlicesReceived).
+  interface StylesSlice {
+    orphanIds: Uint32Array; orphanColors: Float32Array;
+    geomIds: Uint32Array; geomColors: Float32Array; error?: string;
+  }
+  const stylesSliceResults: (StylesSlice | null)[] = [];
+  let stylesSlicesRemaining = 0;
+  // Support spans extracted from the shard classes (sharded mode only).
+  let supportSpans: {
+    colourMapSpans: Uint32Array; materialDefSpans: Uint32Array;
+    relMaterialSpans: Uint32Array; voidSpans: Uint32Array;
+    fillsSpans: Uint32Array; aggregateSpans: Uint32Array;
+  } | null = null;
+  // Deferred finalize: needs BOTH the merged style slices and the meta event's
+  // planeAngleToRadians (finalize seeds its decoder with it, exactly like the
+  // serial styles block).
+  let mergedStylesForFinalize: {
+    orphanIds: Uint32Array; orphanColors: Float32Array;
+    geomIds: Uint32Array; geomColors: Float32Array;
+  } | null = null;
+  let finalizeDispatched = false;
+  // Forward ref: assigned at the pre-pass dispatch site (which executes during
+  // synchronous setup, long before any shard result can arrive).
+  let startPrepass: (
+    sharded: boolean,
+    indexColumns?: { ids: Uint32Array; starts: Uint32Array; lengths: Uint32Array; classes: Uint8Array },
+  ) => void = () => {};
 
   // Content-affinity routing (#1130 follow-up): the pre-pass tags every job with
   // an affinity key (ObjectType hash, see `affinity_key` in Rust). Sending all
@@ -292,10 +446,58 @@ export async function* processParallel(
   // workerCount at this point). The closure indexes by workerIndex.
   const firstBatchByWorker: number[] = [];
   const installWorkerHandlers = (worker: Worker, workerIndex: number) => {
+    // True once the worker delivers ANY message — distinguishes an in-worker
+    // crash from the worker SCRIPT failing to load (stale-deploy 404, #1251).
+    let workerSpoke = false;
     worker.onmessage = (e: MessageEvent) => {
+      workerSpoke = true;
       const msg = e.data;
       if (msg.type === 'ready') {
         console.log(`[stream] worker[${workerIndex}] WASM ready @ ${elapsed()}ms`);
+        return;
+      }
+      if (msg.type === 'shard-result') {
+        // SPIKE: one worker's entity-index shard. Store it; when all shards are
+        // in, stitch on this thread and deliver the index early.
+        const si = msg.shardIndex as number;
+        shardResults[si] = {
+          ids: msg.ids as Uint32Array,
+          starts: msg.starts as Uint32Array,
+          lengths: msg.lengths as Uint32Array,
+          classes: msg.classes as Uint8Array,
+          handoff: msg.handoff as number,
+        };
+        shardResultsRemaining--;
+        console.log(`[stream][shard] worker[${workerIndex}] shard ${si} done @ ${elapsed()}ms (${(msg.ids as Uint32Array).length} entities, remaining=${shardResultsRemaining})`);
+        if (shardResultsRemaining === 0) {
+          onAllShardsReceived();
+        }
+        return;
+      }
+      if (msg.type === 'styles-final') {
+        // Finalized styles payload from worker 0 — feed it through the SAME
+        // prepass styles-event path (gates, logging, distribution) by
+        // synthesizing a prepass-stream message. The handler is a plain
+        // closure; invoking it directly is safe (no `this`).
+        (prepassWorker.onmessage as (e: MessageEvent) => void)({
+          data: { type: 'prepass-stream', event: { type: 'styles', ...(msg.payload as Record<string, unknown>) } },
+        } as MessageEvent);
+        return;
+      }
+      if (msg.type === 'styles-shard-result') {
+        const si = msg.sliceIndex as number;
+        stylesSliceResults[si] = {
+          orphanIds: msg.orphanIds as Uint32Array,
+          orphanColors: msg.orphanColors as Float32Array,
+          geomIds: msg.geomIds as Uint32Array,
+          geomColors: msg.geomColors as Float32Array,
+          error: msg.error as string | undefined,
+        };
+        stylesSlicesRemaining--;
+        console.log(`[stream][shard] worker[${workerIndex}] style slice ${si} done @ ${elapsed()}ms (${(msg.geomIds as Uint32Array).length} geometry styles, remaining=${stylesSlicesRemaining})`);
+        if (stylesSlicesRemaining === 0) {
+          onAllStyleSlicesReceived();
+        }
         return;
       }
       if (msg.type === 'memory') {
@@ -322,44 +524,13 @@ export async function* processParallel(
           firstBatchByWorker[workerIndex] = elapsed();
           console.log(`[stream] worker[${workerIndex}] first batch @ ${elapsed()}ms (${msg.meshes?.length ?? 0} meshes)`);
         }
-        const meshes: MeshData[] = msg.meshes.map((m: {
-          expressId: number;
-          ifcType?: string;
-          positions: Float32Array;
-          normals: Float32Array;
-          indices: Uint32Array;
-          color: [number, number, number, number];
-          shadingColor?: [number, number, number, number];
-          // #961: optional per-vertex UVs + decoded surface texture.
-          uvs?: MeshData['uvs'];
-          texture?: MeshData['texture'];
-          geometryHash?: bigint;
-          geometryClass?: number;
-          origin?: [number, number, number];
-        }) => ({
-          expressId: m.expressId,
-          ifcType: m.ifcType,
-          positions: m.positions instanceof Float32Array ? m.positions : new Float32Array(m.positions),
-          normals: m.normals instanceof Float32Array ? m.normals : new Float32Array(m.normals),
-          indices: m.indices instanceof Uint32Array ? m.indices : new Uint32Array(m.indices),
-          color: m.color,
-          // SurfaceColour for GLB "Shading" export (worker parity fix).
-          ...(m.shadingColor ? { shadingColor: m.shadingColor } : {}),
-          // #961: carry per-vertex UVs + decoded surface texture through to the
-          // renderer (transferables; already typed arrays from the worker).
-          ...(m.uvs ? { uvs: m.uvs } : {}),
-          ...(m.texture ? { texture: m.texture } : {}),
-          // Carry the model-diff fingerprint through the worker boundary
-          // (issue #924); undefined when hashing is off.
-          ...(m.geometryHash !== undefined ? { geometryHash: m.geometryHash } : {}),
-          // #957 follow-up: carry the Model/Types geometry class through the
-          // worker→main re-map (else the viewer's view-mode filter sees only
-          // class 0 and the Types view renders nothing).
-          ...(m.geometryClass !== undefined ? { geometryClass: m.geometryClass } : {}),
-          // Per-element local-frame origin (world = origin + position); the
-          // renderer reconstructs world via a per-batch model-matrix translate.
-          ...(m.origin ? { origin: m.origin } : {}),
-        }));
+        // The worker already emits `MeshData`-shaped objects (see the worker's
+        // `meshData` construction: typed arrays ride the transfer list, optional
+        // fields are conditionally spread there). Structured clone preserves
+        // typed-array types, so re-mapping every mesh here only re-allocated
+        // ~one wrapper object per mesh (~110k per large load) on the main
+        // thread. Pass the transferred objects straight through.
+        const meshes: MeshData[] = msg.meshes as MeshData[];
         // GPU-instancing: per-batch IFNS shards ride alongside the flat meshes.
         // Opaque repeated occurrences render ONLY via these shards (taken off the
         // flat `meshes` array), so their count must be folded into the running
@@ -439,8 +610,12 @@ export async function* processParallel(
       const detail =
         (err?.message && String(err.message)) ||
         (err?.filename ? `at ${err.filename}:${err.lineno ?? 0}` : '') ||
-        'worker terminated unexpectedly';
-      notifyIfWasmAssetUnavailable(detail);
+        (workerSpoke
+          ? 'worker terminated unexpectedly'
+          : 'worker script failed to load (possibly a stale deployment)');
+      // Covers both the wasm-binary 404 (message present, #1363) and the
+      // worker SCRIPT 404 after a redeploy (empty message, never spoke).
+      notifyIfWorkerScriptUnavailable(err, workerSpoke);
       workerError = new Error(`Geometry worker failed: ${detail}`);
       workersCompleted++;
       worker.terminate();
@@ -466,24 +641,38 @@ export async function* processParallel(
   });
   const workerCount = workerCountResult.count;
 
+  // Await the ONE shared compile (started up-front) so every worker instantiates
+  // the SAME module via `initSync` instead of recompiling the binary N+1 times.
+  // `null` (URL unresolved / compile failed) keeps the legacy per-worker `init`.
+  const sharedWasmModule = await wasmModulePromise;
+  if (sharedWasmModule) {
+    console.log('[stream] shared wasm module compiled once — workers initSync (no per-worker recompile)');
+  }
+
   const workers: Worker[] = [];
   for (let i = 0; i < workerCount; i++) {
     const worker = makeGeometryWorker();
     workers.push(worker);
     installWorkerHandlers(worker, i);
-    // Kick off WASM compile concurrently with the pre-pass scan. The
-    // worker's tail-promise serialiser guarantees this `init` completes
-    // before any subsequent `stream-start`/`stream-chunk` runs.
+    // Instantiate WASM. When the host compiled the module once (above), each
+    // worker `initSync`s it (cheap); otherwise it falls back to compiling from
+    // bytes. The worker's tail-promise serialiser guarantees this `init`
+    // completes before any subsequent `stream-start`/`stream-chunk` runs.
     //
-    // `wasmUrl` is forwarded only when the consumer explicitly provided
-    // one — undefined leaves the worker on wasm-bindgen's default
-    // `import.meta.url`-based resolution, which is what Vite + webpack
-    // already handle.
+    // `wasmUrl` is forwarded only when the consumer explicitly provided one AND
+    // no shared module is available — undefined leaves the worker on
+    // wasm-bindgen's default `import.meta.url`-based resolution (Vite + webpack).
     const wasmUrlForWorker = options?.wasmUrls?.wasm;
-    worker.postMessage({
-      type: 'init',
-      ...(wasmUrlForWorker ? { wasmUrl: wasmUrlForWorker } : {}),
-    });
+    worker.postMessage(
+      {
+        type: 'init',
+        ...(sharedWasmModule
+          ? { wasmModule: sharedWasmModule }
+          : wasmUrlForWorker
+            ? { wasmUrl: wasmUrlForWorker }
+            : {}),
+      },
+    );
     // Issue #540: forward the user's "Merge Multilayer Walls" toggle
     // BEFORE any stream-start so the worker's IfcAPI has the flag set
     // before its first parse call. The tail-promise serialiser inside
@@ -659,6 +848,13 @@ export async function* processParallel(
       // with default per-type colours; without the pre-built entity
       // index, the worker's first WASM call would re-scan the file
       // (~5 s on 1 GB) to rebuild the index inside Rust.
+      //
+      // NB: the `prepass-columns` event (referenced-repmaps / instantiated-
+      // type-ids / material-layer index, #957/#563) is deliberately NOT gated
+      // here: the pre-pass emits it BEFORE the first jobs chunk and workers
+      // apply messages FIFO, so it always lands before any batch. An older
+      // engine binary that never emits it simply falls back to the worker's
+      // byte-identical lazy rebuild — gating would turn that into a hang.
       queuedChunks.push({ jobs, affinity });
       return;
     }
@@ -672,6 +868,15 @@ export async function* processParallel(
       const c = queuedChunks.shift()!;
       dispatchJobsChunkInternal(c.jobs, c.affinity);
     }
+    // Sharded pre-pass: the prepass can COMPLETE while chunks are still queued
+    // behind the (asynchronously finalized) styles event. stream-end was
+    // deferred in onPrepassComplete for that case — release it now that the
+    // queue is empty, or workers would never see these jobs (measured: a run
+    // completed with ZERO meshes).
+    if (streamEndPendingQueueDrain) {
+      streamEndPendingQueueDrain = false;
+      sendStreamEnd();
+    }
   };
 
   // Step-by-step timing so we can tell exactly where time goes.
@@ -681,6 +886,270 @@ export async function* processParallel(
     ? ` (override=${options.workerCountOverride}, bound=${workerCountResult.reason})`
     : ` (cores=${cores}, bound=${workerCountResult.reason})`;
   console.log(`[stream] processParallel start, fileSizeMB=${fileSizeMB.toFixed(1)} workerCount=${workerCount}${overrideNote}`);
+
+  /**
+   * Deliver a built entity index to every geometry worker (via a shared SAB
+   * triple) + the parser worker (`onEntityIndex`), then open the entity-index
+   * gate and drain. Shared by the pre-pass path and the SPIKE sharded-early
+   * path so both distribute the index identically.
+   */
+  const deliverEntityIndex = (
+    ids: Uint32Array,
+    starts: Uint32Array,
+    lengths: Uint32Array,
+    source: 'prepass' | 'sharded',
+  ) => {
+    console.log(`[stream] entity-index (${source}) @ ${elapsed()}ms (${ids.length} entries)`);
+    if (typeof SharedArrayBuffer !== 'undefined') {
+      // Sharded-stitch columns arrive already SAB-backed (stitchShards writes
+      // its exact-size output into SABs) — share them as-is. The serial
+      // pre-pass path still hands over plain transferred buffers, which need
+      // the one copy into SABs to be shareable with every worker.
+      let sabIds: SharedArrayBuffer;
+      let sabStarts: SharedArrayBuffer;
+      let sabLengths: SharedArrayBuffer;
+      if (
+        ids.buffer instanceof SharedArrayBuffer &&
+        starts.buffer instanceof SharedArrayBuffer &&
+        lengths.buffer instanceof SharedArrayBuffer
+      ) {
+        sabIds = ids.buffer;
+        sabStarts = starts.buffer;
+        sabLengths = lengths.buffer;
+      } else {
+        sabIds = new SharedArrayBuffer(ids.byteLength);
+        sabStarts = new SharedArrayBuffer(starts.byteLength);
+        sabLengths = new SharedArrayBuffer(lengths.byteLength);
+        new Uint32Array(sabIds).set(ids);
+        new Uint32Array(sabStarts).set(starts);
+        new Uint32Array(sabLengths).set(lengths);
+      }
+      for (const w of workers) {
+        try {
+          w.postMessage({
+            type: 'set-entity-index' as const,
+            ids: new Uint32Array(sabIds),
+            starts: new Uint32Array(sabStarts),
+            lengths: new Uint32Array(sabLengths),
+          });
+        } catch (err) {
+          console.warn('[stream] set-entity-index dispatch failed:', err);
+        }
+      }
+      if (options?.onEntityIndex) {
+        try {
+          options.onEntityIndex(
+            new Uint32Array(sabIds),
+            new Uint32Array(sabStarts),
+            new Uint32Array(sabLengths),
+          );
+        } catch (err) {
+          console.warn('[stream] onEntityIndex callback failed:', err);
+        }
+      }
+    } else {
+      for (const w of workers) {
+        try {
+          w.postMessage({
+            type: 'set-entity-index' as const,
+            ids: ids.slice(), starts: starts.slice(), lengths: lengths.slice(),
+          });
+        } catch (err) {
+          console.warn('[stream] set-entity-index dispatch failed:', err);
+        }
+      }
+      if (options?.onEntityIndex) {
+        try {
+          options.onEntityIndex(ids.slice(), starts.slice(), lengths.slice());
+        } catch (err) {
+          console.warn('[stream] onEntityIndex callback failed:', err);
+        }
+      }
+    }
+    entityIndexReceived = true;
+    drainQueuedChunksIfReady();
+  };
+
+  /**
+   * All shards are in — stitch, deliver the index early, fan the styled-item
+   * slices out for parallel style resolution, and start the SHARDED pre-pass
+   * (its start was deferred; it receives the stitched index so it skips its
+   * own index build, resolves meta against the full index, and leaves styles
+   * to the shards). On a stitch miss (rare handoff-not-found), fall back to
+   * the serial pre-pass path — identical to flag-off behaviour.
+   */
+  const onAllShardsReceived = () => {
+    const shards = shardResults as ShardColumns[];
+    const stitched = stitchShards(shards);
+    if (!stitched) {
+      console.warn('[stream][shard] stitch fallback triggered (handoff not found) — serial pre-pass');
+      startPrepass(false);
+      return;
+    }
+    console.log(`[stream][shard] stitched ${stitched.ids.length} entities @ ${elapsed()}ms (shard scan started @ ${shardScanDispatchedAt}ms)`);
+    // Exact-size SAB-backed columns straight from the stitch — no contiguity
+    // copy needed, and deliverEntityIndex shares them zero-copy.
+    const ids = stitched.ids;
+    const starts = stitched.starts;
+    const lengths = stitched.lengths;
+    entityIndexDeliveredEarly = true;
+    // set-entity-index reaches every worker FIRST (FIFO), so the style-shard
+    // messages below always find the index installed.
+    deliverEntityIndex(ids, starts, lengths, 'sharded');
+
+    // Extract the styled-item span triples (class 4) in FILE ORDER from the
+    // stitched columns, split into one contiguous slice per worker, and
+    // resolve them in parallel while everyone waits on the pre-pass scan.
+    const classes = stitched.classes;
+    // Class codes (see Rust PREPASS_CLASS_*): 4 styled, 5 colour map,
+    // 6 material def repr, 7 rel-associates-material, 8 voids, 9 fills,
+    // 10 aggregates. Extract each list in FILE ORDER.
+    const counts = new Uint32Array(11);
+    for (let i = 0; i < classes.length; i++) counts[classes[i]]++;
+    const kinds = [4, 5, 6, 7, 8, 9, 10] as const;
+    const spanLists = new Map<number, { arr: Uint32Array; w: number }>();
+    for (const k of kinds) spanLists.set(k, { arr: new Uint32Array(counts[k] * 3), w: 0 });
+    for (let i = 0; i < classes.length; i++) {
+      const slot = spanLists.get(classes[i]);
+      if (!slot) continue;
+      slot.arr[slot.w] = ids[i];
+      slot.arr[slot.w + 1] = starts[i];
+      slot.arr[slot.w + 2] = lengths[i];
+      slot.w += 3;
+    }
+    supportSpans = {
+      colourMapSpans: spanLists.get(5)!.arr,
+      materialDefSpans: spanLists.get(6)!.arr,
+      relMaterialSpans: spanLists.get(7)!.arr,
+      voidSpans: spanLists.get(8)!.arr,
+      fillsSpans: spanLists.get(9)!.arr,
+      aggregateSpans: spanLists.get(10)!.arr,
+    };
+    const styledCount = counts[4];
+    const styledSpans = spanLists.get(4)!.arr;
+    // 2 slices per worker (round-robin): the tail is set by the SLOWEST
+    // worker, and macOS occasionally schedules one onto a slow core — halving
+    // the slice size halves the damage a slow core can do to the tail.
+    // Slice order stays file order and the merge is by slice INDEX, so
+    // first-wins precedence is unchanged.
+    const sliceCount = workers.length * 2;
+    console.log(`[stream][shard] ${styledCount} styled items -> ${sliceCount} style slices @ ${elapsed()}ms`);
+    stylesSliceResults.length = sliceCount;
+    stylesSlicesRemaining = sliceCount;
+    for (let i = 0; i < sliceCount; i++) {
+      const from = Math.floor((i * styledCount) / sliceCount) * 3;
+      const to = i + 1 === sliceCount ? styledCount * 3 : Math.floor(((i + 1) * styledCount) / sliceCount) * 3;
+      const slice = styledSpans.slice(from, to);
+      workers[i % workers.length].postMessage(
+        { type: 'resolve-styles-shard' as const, sharedBuffer, sliceIndex: i, spans: slice },
+        [slice.buffer],
+      );
+    }
+
+    // Start the sharded pre-pass with the stitched index columns + classes
+    // (stage 2: the pre-pass discovers jobs/spans from the class column and
+    // never byte-scans the file).
+    // `classes` is exact-size (two-phase stitch) so it transfers as-is; the
+    // span-extraction loop above already read everything main needs from it.
+    startPrepass(true, { ids, starts, lengths, classes });
+  };
+
+  /**
+   * Merge the shard-resolved style maps IN SLICE ORDER with first-wins per id
+   * (reproducing the serial resolver's file-order precedence) and queue the
+   * finalize call on the pre-pass worker. FIFO on that worker guarantees the
+   * stash from the sharded pre-pass call is present when finalize runs; the
+   * canonical flatten emits the styles event through the same channel.
+   */
+  const onAllStyleSlicesReceived = () => {
+    const orphan = new Map<number, number>(); // id -> base float index (slice,i)
+    const geom = new Map<number, number>();
+    // First pass: count winners to size the merged columns.
+    const orphanWin: Array<[number, Float32Array, number]> = [];
+    const geomWin: Array<[number, Float32Array, number]> = [];
+    for (const slice of stylesSliceResults) {
+      if (!slice) continue;
+      if (slice.error) console.warn(`[stream][shard] style slice failed (degraded colours possible): ${slice.error}`);
+      for (let i = 0; i < slice.orphanIds.length; i++) {
+        const id = slice.orphanIds[i];
+        if (!orphan.has(id)) { orphan.set(id, 1); orphanWin.push([id, slice.orphanColors, i * 4]); }
+      }
+      for (let i = 0; i < slice.geomIds.length; i++) {
+        const id = slice.geomIds[i];
+        if (!geom.has(id)) { geom.set(id, 1); geomWin.push([id, slice.geomColors, i * 4]); }
+      }
+    }
+    const orphanIds = new Uint32Array(orphanWin.length);
+    const orphanColors = new Float32Array(orphanWin.length * 4);
+    orphanWin.forEach(([id, colors, o], i) => {
+      orphanIds[i] = id;
+      orphanColors.set(colors.subarray(o, o + 4), i * 4);
+    });
+    const geomIds = new Uint32Array(geomWin.length);
+    const geomColors = new Float32Array(geomWin.length * 4);
+    geomWin.forEach(([id, colors, o], i) => {
+      geomIds[i] = id;
+      geomColors.set(colors.subarray(o, o + 4), i * 4);
+    });
+    console.log(`[stream][shard] styles merged: ${geomWin.length} geometry + ${orphanWin.length} orphan @ ${elapsed()}ms`);
+    mergedStylesForFinalize = { orphanIds, orphanColors, geomIds, geomColors };
+    maybeDispatchFinalize();
+  };
+
+  /**
+   * Dispatch the styles finalize to geometry worker 0 once BOTH the merged
+   * style slices and the meta event (for planeAngleToRadians) are in. Worker 0
+   * already holds the entity index (set-entity-index preceded the style
+   * slices, FIFO), and is idle until the first jobs drain — which itself
+   * waits on the styles event this call produces.
+   */
+  const maybeDispatchFinalize = () => {
+    if (finalizeDispatched || !mergedStylesForFinalize || !supportSpans || !prepassMeta) return;
+    finalizeDispatched = true;
+    const m = mergedStylesForFinalize;
+    workers[0].postMessage(
+      {
+        type: 'finalize-styles' as const,
+        sharedBuffer,
+        orphanIds: m.orphanIds,
+        orphanColors: m.orphanColors,
+        geomIds: m.geomIds,
+        geomColors: m.geomColors,
+        ...supportSpans,
+        planeAngleToRadians: prepassMeta.planeAngleToRadians ?? 1,
+      },
+      [m.orphanIds.buffer, m.orphanColors.buffer, m.geomIds.buffer, m.geomColors.buffer],
+    );
+    console.log(`[stream][shard] styles finalize dispatched to worker[0] @ ${elapsed()}ms`);
+  };
+
+  // SPIKE: kick off the shard scans on the idle workers NOW (before the pre-pass
+  // worker's single scan). Gated: flag on, SAB available, file big enough, ≥2
+  // workers. The workers' tail-promise serialiser runs these after their `init`.
+  const SHARD_MIN_BYTES = 8 * 1024 * 1024;
+  const shardActive = shardScanEnabled
+    && typeof SharedArrayBuffer !== 'undefined'
+    && sharedBuffer.byteLength >= SHARD_MIN_BYTES
+    && workers.length >= 2;
+  if (shardActive) {
+    const len = sharedBuffer.byteLength;
+    const n = workers.length;
+    shardResults.length = n;
+    shardResultsRemaining = n;
+    shardScanDispatchedAt = elapsed();
+    console.log(`[stream][shard] dispatching ${n} shard scans over ${(len / (1024 * 1024)).toFixed(1)}MB @ ${shardScanDispatchedAt}ms`);
+    for (let i = 0; i < n; i++) {
+      const rangeStart = Math.floor((i * len) / n);
+      const rangeEnd = i + 1 === n ? len : Math.floor(((i + 1) * len) / n);
+      workers[i].postMessage({
+        type: 'scan-shard' as const,
+        sharedBuffer,
+        shardIndex: i,
+        rangeStart,
+        rangeEnd,
+      });
+    }
+  }
 
   const prepassWorker = makePrepassWorker();
   // Wrap the rest of the pipeline so worker teardown runs not only on
@@ -697,13 +1166,25 @@ export async function* processParallel(
   // legacy (non-threaded) wasm, so `wasmUrls.wasm` is the right key.
   // Skipped entirely when no URL was provided — keeps Vite/webpack
   // consumers on the bundler-native resolution path.
-  if (options?.wasmUrls?.wasm) {
+  // The pre-pass worker runs the same bundle + legacy wasm, so give it the ONE
+  // shared compiled module too (else it independently compiles the binary, the
+  // 4th/5th parallel compile that fed the cold-start stagger). Falls back to the
+  // explicit URL, then to wasm-bindgen's `import.meta.url` default.
+  if (sharedWasmModule) {
+    prepassWorker.postMessage({ type: 'init', wasmModule: sharedWasmModule });
+  } else if (options?.wasmUrls?.wasm) {
     prepassWorker.postMessage({ type: 'init', wasmUrl: options.wasmUrls.wasm });
   }
   let chunkArrivals = 0;
   let totalDispatchedJobs = 0;
   let firstChunkAt = -1;
+  // True once the pre-pass worker delivers ANY message — distinguishes an
+  // in-worker failure from the worker SCRIPT failing to load (a stale-deploy
+  // 404 is served as text/plain; the browser blocks the worker and fires
+  // onerror with an EMPTY message, so the wasm matcher alone never fires).
+  let prepassSpoke = false;
   prepassWorker.onmessage = (e: MessageEvent) => {
+    prepassSpoke = true;
     const data = e.data;
     if (data.type === 'prepass-progress') {
       eventQueue.push({ type: 'progress', phase: 'prepass' });
@@ -721,6 +1202,7 @@ export async function* processParallel(
           buildingRotation: (evt.buildingRotation as number | null | undefined) ?? null,
         };
         console.log(`[stream] meta @ ${elapsed()}ms unitScale=${prepassMeta.unitScale} rtc=[${(prepassMeta.rtcOffset[0]).toFixed(0)},${(prepassMeta.rtcOffset[1]).toFixed(0)},${(prepassMeta.rtcOffset[2]).toFixed(0)}]`);
+        maybeDispatchFinalize();
         sendStreamStartIfReady();
         wake();
       } else if (evt.type === 'jobs') {
@@ -795,78 +1277,84 @@ export async function* processParallel(
         // before any subsequent stream-chunk.
         drainQueuedChunksIfReady();
       } else if (evt.type === 'entity-index') {
-        // Pre-pass exported its built entity_index. Forward to every
-        // worker so they skip the ~5 s file re-scan in Rust's lazy
-        // build path. SAB sharing for zero-copy distribution to N
-        // workers — each gets a Uint32Array view over the same buffer.
+        // Pre-pass exported its built entity_index. In the SPIKE sharded path
+        // the stitched index was already delivered early — here we only run the
+        // byte-identical assertion against the pre-pass's single-scan columns
+        // (the hard correctness gate) and skip the redundant re-delivery.
+        // Otherwise (baseline), deliver it to workers + the parser worker so
+        // they skip the ~5 s Rust file re-scan.
         const ids = evt.ids as Uint32Array;
         const starts = evt.starts as Uint32Array;
         const lengths = evt.lengths as Uint32Array;
-        console.log(`[stream] entity-index @ ${elapsed()}ms (${ids.length} entries)`);
-
-        if (typeof SharedArrayBuffer !== 'undefined') {
-          // Allocate one SAB triple, copy data once, share across all
-          // workers without postMessage clone cost.
-          const idsBytes = ids.byteLength;
-          const startsBytes = starts.byteLength;
-          const lengthsBytes = lengths.byteLength;
-          const sabIds = new SharedArrayBuffer(idsBytes);
-          const sabStarts = new SharedArrayBuffer(startsBytes);
-          const sabLengths = new SharedArrayBuffer(lengthsBytes);
-          new Uint32Array(sabIds).set(ids);
-          new Uint32Array(sabStarts).set(starts);
-          new Uint32Array(sabLengths).set(lengths);
-          for (const w of workers) {
-            try {
-              w.postMessage({
-                type: 'set-entity-index' as const,
-                ids: new Uint32Array(sabIds),
-                starts: new Uint32Array(sabStarts),
-                lengths: new Uint32Array(sabLengths),
-              });
-            } catch (err) {
-              console.warn('[stream] set-entity-index dispatch failed:', err);
-            }
-          }
-          // Hand the same SAB triple to the parser worker (or any other
-          // listener) so it can skip its own `scanEntitiesFastBytes` call.
-          // Each consumer gets its own Uint32Array view over the shared
-          // buffers — no extra copy.
-          if (options?.onEntityIndex) {
-            try {
-              options.onEntityIndex(
-                new Uint32Array(sabIds),
-                new Uint32Array(sabStarts),
-                new Uint32Array(sabLengths),
-              );
-            } catch (err) {
-              console.warn('[stream] onEntityIndex callback failed:', err);
-            }
-          }
+        if (entityIndexDeliveredEarly) {
+          // Sharded mode never reaches here (the sharded pre-pass skips the
+          // entity-index event); guard against double delivery regardless.
+          console.log(`[stream] pre-pass entity-index arrived @ ${elapsed()}ms (already delivered via shards; ignoring)`);
         } else {
-          // SAB unavailable — clone per worker via structured clone.
-          for (const w of workers) {
-            try {
-              w.postMessage({
-                type: 'set-entity-index' as const,
-                ids: ids.slice(),
-                starts: starts.slice(),
-                lengths: lengths.slice(),
-              });
-            } catch (err) {
-              console.warn('[stream] set-entity-index dispatch failed:', err);
-            }
-          }
-          if (options?.onEntityIndex) {
-            try {
-              options.onEntityIndex(ids.slice(), starts.slice(), lengths.slice());
-            } catch (err) {
-              console.warn('[stream] onEntityIndex callback failed:', err);
-            }
+          deliverEntityIndex(ids, starts, lengths, 'prepass');
+        }
+      } else if (evt.type === 'prepass-columns') {
+        // Pre-pass computed the referenced-repmaps + instantiated-type-id sets
+        // and the material-layer index ONCE (issue #957 / #563). Forward to
+        // every worker so its first batch skips the per-worker full-file
+        // rebuild. Small (id sets + one record per material-associated element),
+        // so a per-worker structured-clone slice is cheap; each slice goes in
+        // its own transfer list. Must reach workers AFTER set-entity-index
+        // (whose setter clears these caches) — the pre-pass emits this event
+        // after `entity-index` and workers handle messages FIFO, so it holds.
+        const referencedRepmaps = evt.referencedRepmaps as Uint32Array;
+        const instantiatedTypeIds = evt.instantiatedTypeIds as Uint32Array;
+        // #1623 Phase 3 don't-bake plan (RepresentationMap ids repeated >= 2x).
+        // Absent on older pre-pass builds -> empty, so the batch never arms.
+        const mappedInstancePlan = (evt.mappedInstancePlan as Uint32Array | undefined) ?? new Uint32Array(0);
+        const mliElementIds = evt.mliElementIds as Uint32Array;
+        const mliAxis = evt.mliAxis as Uint32Array;
+        const mliLayerCounts = evt.mliLayerCounts as Uint32Array;
+        const mliDirectionSense = evt.mliDirectionSense as Float64Array;
+        const mliOffset = evt.mliOffset as Float64Array;
+        const mliLayerMaterialIds = evt.mliLayerMaterialIds as Uint32Array;
+        const mliLayerThicknesses = evt.mliLayerThicknesses as Float64Array;
+        console.log(`[stream] prepass-columns @ ${elapsed()}ms (${referencedRepmaps.length} repmaps, ${instantiatedTypeIds.length} inst-types, ${mliElementIds.length} layer-elems)`);
+
+        for (const w of workers) {
+          try {
+            const rRepmaps = referencedRepmaps.slice();
+            const rTypeIds = instantiatedTypeIds.slice();
+            const rMappedPlan = mappedInstancePlan.slice();
+            const mIds = mliElementIds.slice();
+            const mAxis = mliAxis.slice();
+            const mCounts = mliLayerCounts.slice();
+            const mDir = mliDirectionSense.slice();
+            const mOff = mliOffset.slice();
+            const mMatIds = mliLayerMaterialIds.slice();
+            const mThick = mliLayerThicknesses.slice();
+            w.postMessage(
+              {
+                type: 'set-prepass-columns' as const,
+                referencedRepmaps: rRepmaps,
+                instantiatedTypeIds: rTypeIds,
+                mappedInstancePlan: rMappedPlan,
+                mliElementIds: mIds,
+                mliAxis: mAxis,
+                mliLayerCounts: mCounts,
+                mliDirectionSense: mDir,
+                mliOffset: mOff,
+                mliLayerMaterialIds: mMatIds,
+                mliLayerThicknesses: mThick,
+              },
+              [
+                rRepmaps.buffer, rTypeIds.buffer, rMappedPlan.buffer, mIds.buffer, mAxis.buffer, mCounts.buffer,
+                mDir.buffer, mOff.buffer, mMatIds.buffer, mThick.buffer,
+              ],
+            );
+          } catch (err) {
+            console.warn('[stream] set-prepass-columns dispatch failed:', err);
           }
         }
 
-        entityIndexReceived = true;
+        // Not a dispatch gate (see dispatchJobsChunk); the pre-pass emits this
+        // before the first jobs chunk, so drain here only for symmetry with the
+        // other post-scan events in case chunks were queued behind styles/index.
         drainQueuedChunksIfReady();
       } else if (evt.type === 'complete') {
         prepassJobsTotal = evt.totalJobs as number;
@@ -899,8 +1387,16 @@ export async function* processParallel(
     // `buildPrePassStreaming`. We treat unknown messages as no-ops.
   };
   prepassWorker.onerror = (e) => {
-    notifyIfWasmAssetUnavailable(e.message);
-    prepassError = new Error(`Pre-pass worker failed: ${e.message}`);
+    const detail =
+      (e?.message && String(e.message)) ||
+      (prepassSpoke
+        ? 'worker terminated unexpectedly'
+        : 'worker script failed to load (possibly a stale deployment)');
+    // Covers both the wasm-binary 404 (message present, #1363) and the worker
+    // SCRIPT 404 after a redeploy (empty message, never spoke) — either way
+    // the host reloads once onto the current deployment.
+    notifyIfWorkerScriptUnavailable(e, prepassSpoke);
+    prepassError = new Error(`Pre-pass worker failed: ${detail}`);
     prepassDone = true;
     prepassWorker.terminate();
     wake();
@@ -919,7 +1415,13 @@ export async function* processParallel(
     // needed. The dedicated zero-jobs branch in the outer loop
     // handles their teardown.
     if (streamStartSentToWorkers) {
-      sendStreamEnd();
+      if (queuedChunks.length > 0 || (shardActive && !stylesReceived)) {
+        // Sharded mode: chunks are (or will be) queued behind the async
+        // styles finalize — ending the workers now would drop those jobs.
+        streamEndPendingQueueDrain = true;
+      } else {
+        sendStreamEnd();
+      }
     }
     prepassWorker.terminate();
     wake();
@@ -939,13 +1441,56 @@ export async function* processParallel(
   if (visibilityFilter?.disabledTypes?.length || visibilityFilter?.skipTypeGeometry) {
     console.log(`[stream] load-time visibility filter: disabledTypes=[${visibilityFilter.disabledTypes?.join(',') ?? ''}] skipTypeGeometry=${visibilityFilter.skipTypeGeometry === true}`);
   }
-  prepassWorker.postMessage({
-    type: 'prepass-streaming',
-    sharedBuffer,
-    chunkSize: 50_000,
-    ...(visibilityFilter?.disabledTypes ? { disabledTypes: visibilityFilter.disabledTypes } : {}),
-    ...(visibilityFilter?.skipTypeGeometry ? { skipTypeGeometry: true } : {}),
-  });
+  startPrepass = (
+    sharded: boolean,
+    indexColumns?: { ids: Uint32Array; starts: Uint32Array; lengths: Uint32Array; classes: Uint8Array },
+  ) => {
+    if (sharded && indexColumns) {
+      // The id/start/length columns are SharedArrayBuffer-backed (two-phase
+      // stitch): they CANNOT go on the transfer list (transferring a SAB
+      // throws) and don't need to — postMessage shares the SAB for free.
+      // `classes` is a plain exact-size buffer and is the pre-pass worker's
+      // alone from here, so it still transfers (a structured clone would
+      // double its transient memory).
+      const transfers: ArrayBuffer[] = [];
+      for (const column of [
+        indexColumns.ids.buffer,
+        indexColumns.starts.buffer,
+        indexColumns.lengths.buffer,
+        indexColumns.classes.buffer,
+      ]) {
+        if (typeof SharedArrayBuffer === 'undefined' || !(column instanceof SharedArrayBuffer)) {
+          transfers.push(column as ArrayBuffer);
+        }
+      }
+      prepassWorker.postMessage({
+        type: 'prepass-streaming-sharded',
+        sharedBuffer,
+        chunkSize: 50_000,
+        ...(visibilityFilter?.disabledTypes ? { disabledTypes: visibilityFilter.disabledTypes } : {}),
+        ...(visibilityFilter?.skipTypeGeometry ? { skipTypeGeometry: true } : {}),
+        indexIds: indexColumns.ids,
+        indexStarts: indexColumns.starts,
+        indexLengths: indexColumns.lengths,
+        indexClasses: indexColumns.classes,
+      }, transfers);
+    } else {
+      prepassWorker.postMessage({
+        type: 'prepass-streaming',
+        sharedBuffer,
+        chunkSize: 50_000,
+        ...(visibilityFilter?.disabledTypes ? { disabledTypes: visibilityFilter.disabledTypes } : {}),
+        ...(visibilityFilter?.skipTypeGeometry ? { skipTypeGeometry: true } : {}),
+      });
+    }
+  };
+  // Sharded mode DEFERS the pre-pass start until the stitched index is ready
+  // (onAllShardsReceived) — racing the serial scan against N shard scans of
+  // the same bytes just contends for memory bandwidth and slows BOTH (measured
+  // +2.7s on meta for an 883MB model).
+  if (!shardActive) {
+    startPrepass(false);
+  }
 
   // Drain the event queue until the pre-pass and all process workers complete.
   // The pre-pass `complete` event is captured inside the message handler

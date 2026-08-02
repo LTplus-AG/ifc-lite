@@ -24,6 +24,18 @@ export interface ViewerModelPayload {
   dataStore: IfcDataStore;
   geometryResult: GeometryResult;
   schemaVersion: SchemaVersion;
+  /** IFCX path ↔ expressId maps (only present for IFCX-parsed models). */
+  pathToId?: Map<string, number>;
+  idToPath?: Map<number, string>;
+}
+
+export interface ParseIfcxOptions {
+  /**
+   * Allow reconstructing a model from IFCX that carries entities but no inline
+   * geometry (used by collab recipients, whose geometry arrives via blobs).
+   * Without this, geometry-less IFCX throws `overlay-only-ifcx`.
+   */
+  allowEmptyGeometry?: boolean;
 }
 
 export function convertIfcxMeshes(rawMeshes: RawIfcxMesh[]): MeshData[] {
@@ -139,6 +151,7 @@ export function buildIfcxDataStore(ifcxResult: IfcxStoreInput, buffer: ArrayBuff
 export async function parseIfcxViewerModel(
   buffer: ArrayBuffer,
   onProgress?: (progress: { phase: string; percent: number }) => void,
+  opts?: ParseIfcxOptions,
 ): Promise<ViewerModelPayload> {
   const ifcxResult = await parseIfcx(buffer, {
     onProgress: (progress) => {
@@ -154,11 +167,24 @@ export async function parseIfcxViewerModel(
   // Treat as overlay-only ONLY when neither meshes nor pointclouds were extracted.
   // Files that carry just point cloud assets (the buildingSMART Point_Cloud
   // samples) still represent a renderable model on their own.
-  if (meshes.length === 0 && pointClouds.length === 0 && ifcxResult.entityCount > 0) {
+  if (
+    !opts?.allowEmptyGeometry &&
+    meshes.length === 0 &&
+    pointClouds.length === 0 &&
+    ifcxResult.entityCount > 0
+  ) {
     throw new Error('overlay-only-ifcx');
   }
 
   const { bounds, stats } = calculateMeshBounds(meshes);
+  // Empty geometry (e.g. a collab recipient reconstructing before blob hydration
+  // with `allowEmptyGeometry`): calculateMeshBounds returns ±Infinity sentinels,
+  // which make coordinateInfo invalid. Collapse to a zero box; real bounds arrive
+  // once meshes hydrate.
+  if (meshes.length === 0 && pointClouds.length === 0) {
+    bounds.min = { x: 0, y: 0, z: 0 };
+    bounds.max = { x: 0, y: 0, z: 0 };
+  }
   // Expand bounds to include point cloud asset extents so fit-to-view, the
   // section-plane slider, and camera near/far all see the points too.
   for (const pc of pointClouds) {
@@ -180,6 +206,8 @@ export async function parseIfcxViewerModel(
       coordinateInfo: createCoordinateInfo(bounds),
     },
     schemaVersion: 'IFC5',
+    pathToId: ifcxResult.pathToId,
+    idToPath: ifcxResult.idToPath,
   };
 }
 

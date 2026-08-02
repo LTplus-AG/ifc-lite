@@ -35,12 +35,14 @@ pub struct FullIndexedColourMap {
 }
 
 impl FullIndexedColourMap {
-    /// Number of distinct palette entries actually referenced by triangles.
-    pub(crate) fn distinct_used(&self) -> usize {
-        let mut seen = self.triangle_palette.clone();
-        seen.sort_unstable();
-        seen.dedup();
-        seen.len()
+    /// Whether >=2 distinct palette entries are referenced by triangles — the
+    /// split threshold. Zero-alloc with an early exit: true as soon as any triangle
+    /// differs from the first, so a uniform (single-colour) map costs one scan with
+    /// no heap work.
+    pub(crate) fn has_multiple_colours(&self) -> bool {
+        self.triangle_palette
+            .first()
+            .is_some_and(|&first| self.triangle_palette.iter().any(|&c| c != first))
     }
 
     /// The most-frequently-referenced colour (single-colour maps return their
@@ -131,13 +133,15 @@ pub fn split_mesh_by_indexed_colour(
     if tri_count == 0 || tri_count != map.triangle_palette.len() {
         return None;
     }
-    if map.distinct_used() < 2 {
+    if !map.has_multiple_colours() {
         return None; // single colour — nothing to split
     }
 
     let has_normals = mesh.normals.len() == mesh.positions.len();
     let rtc_applied = mesh.rtc_applied;
     let origin = mesh.origin;
+    let local_bounds = mesh.local_bounds;
+    let local_to_world = mesh.local_to_world;
 
     // One accumulator per palette entry; built lazily so empty groups vanish.
     #[derive(Default)]
@@ -192,6 +196,14 @@ pub fn split_mesh_by_indexed_colour(
                 rtc_applied,
                 origin,
                 instance_meta: None,
+                // Every split group shares the parent's placement (same element,
+                // just partitioned by colour), so both carry over unchanged. The
+                // parent's local_bounds is a superset of this group's actual
+                // extent, but that's fine — Scene.getEntityLocalBounds unions
+                // across an entity's pieces, and a union of identical supersets
+                // still yields the correct entity-level box. See issue #1474.
+                local_bounds,
+                local_to_world,
             };
             Some((map.colours[palette], mesh))
         })
@@ -219,6 +231,8 @@ mod tests {
             rtc_applied: false,
             origin: [0.0; 3],
             instance_meta: None,
+            local_bounds: None,
+            local_to_world: None,
         };
         let map = FullIndexedColourMap {
             geometry_id: 1,

@@ -10,6 +10,7 @@
 import { Plus, Minus, PencilLine, MousePointerClick } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
+import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { COMPARE_COLORS, type RGBA } from '@/lib/compare/overlay';
 import type { DiffState } from '@ifc-lite/diff';
 import type { CompareResult } from '@/store/slices/compareSlice';
@@ -54,7 +55,7 @@ interface CompareResultsListProps {
 
 export function CompareResultsList({ result, groups, counts, selectedKey, onFocus, onFocusGroup }: CompareResultsListProps) {
   return (
-    <ScrollArea className="flex-1 min-h-0">
+    <ScrollArea className="flex-1 min-h-0" {...tourAnchor(TOUR_ANCHORS.compareResults)}>
       {!result ? (
         <div className="p-4 text-sm text-muted-foreground">
           Run a comparison to see added, changed, and deleted elements.

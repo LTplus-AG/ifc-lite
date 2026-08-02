@@ -36,6 +36,49 @@ export function isTransientWasmLoadError(message: string): boolean {
   return /HTTP status code is not ok|failed to fetch|network ?error|load failed/i.test(message);
 }
 
+/**
+ * A message that already names the thing that failed to load, so re-throwing it
+ * with an attribution prefix would only add noise. Deliberately includes
+ * `WebAssembly` (the `'compile' on 'WebAssembly'` phrasings) — those are exactly
+ * the signatures `isWasmAssetUnavailableError` (wasm-asset-error.ts) matches to
+ * drive the #1363 stale-deploy reload, and they must reach it byte-for-byte.
+ */
+const SELF_IDENTIFYING = /wasm|webassembly/i;
+
+/**
+ * A failed *module* load already carries its own specifier. Prefixing one with
+ * `ifc-lite_bg.wasm` would make it look to that same #1363 matcher like a
+ * rotated ENGINE BINARY (`/\.wasm/` + "dynamically imported module") and
+ * trigger a spurious page reload, so those are passed through untouched.
+ */
+const MODULE_LOAD_FAILURE = /dynamically imported module|module script/i;
+
+/**
+ * Name the engine binary in a transport failure that names nothing (issue #1903).
+ *
+ * wasm-bindgen's generated loader `await`s the `fetch()` it starts, so a
+ * network-level rejection propagates RAW: WebKit words it `TypeError: Load
+ * failed`, Chromium `TypeError: Failed to fetch`, and because the rejection
+ * originates inside the fetch rather than in our frames it carries an EMPTY
+ * stack. Two words and no frames is unattributable by construction — the toast,
+ * `classifyLoadError` in the viewer, and error tracking all see a bare
+ * `TypeError` that could have come from anywhere in the load.
+ *
+ * So when the final failure identifies nothing, re-throw it naming the binary
+ * and the call site, preserving the original as `.cause`. Anything that already
+ * identifies itself is returned unchanged.
+ */
+function attributeEngineLoadFailure(error: unknown, label: string): unknown {
+  if (!(error instanceof Error)) return error;
+  const msg = error.message;
+  if (!isTransientWasmLoadError(msg)) return error;
+  if (SELF_IDENTIFYING.test(msg) || MODULE_LOAD_FAILURE.test(msg)) return error;
+  return new Error(
+    `Failed to load the WASM engine binary (ifc-lite_bg.wasm) in ${label}: ${msg}`,
+    { cause: error },
+  );
+}
+
 export interface InitWasmRetryOptions {
   /** Delay before the single retry. Default 300ms; pass 0 in tests. */
   retryDelayMs?: number;
@@ -53,7 +96,8 @@ const defaultSleep = (ms: number): Promise<void> =>
 /**
  * Run `init` once; on a transient-looking failure, wait and retry exactly once.
  * Non-transient failures propagate without a retry. The second failure (if any)
- * propagates to the caller.
+ * propagates to the caller — attributed to the engine binary when the browser's
+ * own wording identifies nothing (see {@link attributeEngineLoadFailure}).
  *
  * @param init Thunk that performs the actual `init(...)` call (so callers can
  *   bind their own wasm URL / arguments).
@@ -71,6 +115,10 @@ export async function initWasmWithRetry(
     if (!isTransientWasmLoadError(msg)) throw err;
     warn(`[${label}] WASM engine load failed (${msg}); retrying once`);
     await sleep(retryDelayMs);
-    await init();
+    try {
+      await init();
+    } catch (retryErr) {
+      throw attributeEngineLoadFailure(retryErr, label);
+    }
   }
 }

@@ -96,7 +96,7 @@ export function addWindowToStore(
   const { shapeRepId, productShapeId } = emitBodyRepresentation(editor, anchor.bodyContextId, solidId);
 
   const isIFC2X3 = (anchor.schema ?? 'IFC4') === 'IFC2X3';
-  const attrs = ifcElementHeader(anchor.ownerHistoryId, placementId, productShapeId, params, 'Window');
+  const attrs = ifcElementHeader(anchor.ownerHistoryId, placementId, productShapeId, params, 'Window', anchor.guidRandom);
   attrs.push(params.Height, params.Width);
   if (!isIFC2X3) {
     // Free-form values that aren't part of IfcWindowTypePartitioningEnum
@@ -115,7 +115,7 @@ export function addWindowToStore(
   }
 
   const windowId = editor.addEntity('IfcWindow', attrs as Parameters<StoreEditor['addEntity']>[1]).expressId;
-  const relContainedId = emitRelContainedInSpatialStructure(editor, anchor.ownerHistoryId, windowId, anchor.storeyId);
+  const relContainedId = emitRelContainedInSpatialStructure(editor, anchor.ownerHistoryId, windowId, anchor.storeyId, anchor.guidRandom);
 
   return { windowId, placementId, profileId, solidId, shapeRepId, productShapeId, relContainedId };
 }

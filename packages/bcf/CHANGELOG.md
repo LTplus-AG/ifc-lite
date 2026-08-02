@@ -1,5 +1,50 @@
 # @ifc-lite/bcf
 
+## 1.16.3
+
+### Patch Changes
+
+- [#1772](https://github.com/LTplus-AG/ifc-lite/pull/1772) [`cc92f17`](https://github.com/LTplus-AG/ifc-lite/commit/cc92f171661eb8e27170bcc0360336df819f9ab7) Thanks [@louistrue](https://github.com/louistrue)! - Harden BCF archive I/O and the CSV formula-injection guard.
+
+  BCF writer now sanitizes a topic GUID before using it as a zip folder name, so a GUID parsed from untrusted markup (`../../evil`) can no longer traverse outside the archive root on a read-modify-save (zip-slip). Sanitized names that collide (`a?b` and `a:b` both map to `a_b`) are disambiguated with a hash of the original GUID plus a counter backstop, so no topic silently overwrites another. BCF reader now caps the compressed input size, the raw zip record count (scanned from the buffer, so duplicate-pathname floods that JSZip dedupes to one visible entry are still counted), and the declared expanded size; because declared sizes are attacker-controlled, the expansion cap is additionally enforced on the ACTUAL decompressed bytes as entries stream out, aborting mid-entry. Entries declaring invalid (negative-reading) sizes are rejected outright.
+
+  The lists CSV export formula-injection guard no longer quotes genuine numeric cells: `-0.35` and `+1` export unquoted (summable in Excel), while real injection vectors (`=`, `@`, tab/CR, and a leading `-`/`+` that is not a plain number such as `-cmd` or `-1+cmd`) are still prefixed with an apostrophe.
+
+- Updated dependencies [[`0d400ed`](https://github.com/LTplus-AG/ifc-lite/commit/0d400edd61a71108c2affd0923fb561affbfe9fe)]:
+  - @ifc-lite/encoding@1.14.11
+
+## 1.16.2
+
+### Patch Changes
+
+- [#1691](https://github.com/LTplus-AG/ifc-lite/pull/1691) [`26af236`](https://github.com/LTplus-AG/ifc-lite/commit/26af236a9128f5fc97493d75d7c9642958343a7a) Thanks [@louistrue](https://github.com/louistrue)! - Documentation moved to https://ifclite.dev/docs/ - README links and package homepage fields now point at the new home (the GitHub Pages site remains as a mirror whose canonical URLs point there).
+
+- Updated dependencies [[`26af236`](https://github.com/LTplus-AG/ifc-lite/commit/26af236a9128f5fc97493d75d7c9642958343a7a)]:
+  - @ifc-lite/encoding@1.14.10
+
+## 1.16.1
+
+### Patch Changes
+
+- [#1676](https://github.com/LTplus-AG/ifc-lite/pull/1676) [`da04601`](https://github.com/LTplus-AG/ifc-lite/commit/da0460183dcb4e2b26ceb53cfebd8cca33c78c39) Thanks [@louistrue](https://github.com/louistrue)! - Docs refresh: correct stale README claims and API samples against the current codebase; add READMEs to the ten published packages that shipped without one (cli, create, sdk, sandbox, lens, lists, embed-sdk, embed-protocol, encoding, viewer-core).
+
+- Updated dependencies [[`da04601`](https://github.com/LTplus-AG/ifc-lite/commit/da0460183dcb4e2b26ceb53cfebd8cca33c78c39)]:
+  - @ifc-lite/encoding@1.14.9
+
+## 1.16.0
+
+### Minor Changes
+
+- [#1619](https://github.com/LTplus-AG/ifc-lite/pull/1619) [`6be7ad4`](https://github.com/LTplus-AG/ifc-lite/commit/6be7ad477e1f20d6ba1a90e5b5db4645fc48a960) Thanks [@louistrue](https://github.com/louistrue)! - `BCFTopic` gains an optional `header?: BCFHeaderFile[]` field: the source IFC file(s) a topic refers to (markup `<Header>`), one entry per distinct model a federated topic spans, so a topic round-trips the provenance of every model it touches (issue [#1591](https://github.com/LTplus-AG/ifc-lite/issues/1591)).
+
+  `writeBCF` now emits the `<Header>` block (version-correct: BCF 2.1 nests `<File>` directly, BCF 3.0 wraps them in `<Files>`), and `readBCF` parses it back into `topic.header`. Both are additive: topics without header files emit no `<Header>` element and existing markup output is unchanged.
+
+## 1.15.7
+
+### Patch Changes
+
+- [#1548](https://github.com/LTplus-AG/ifc-lite/pull/1548) [`ec89d3f`](https://github.com/LTplus-AG/ifc-lite/commit/ec89d3f871f54b58fbfe32915ac6304505de1174) Thanks [@louistrue](https://github.com/louistrue)! - Fix BCF round-trip data loss. On read, XML entities in titles, descriptions, comments, and labels are now unescaped, so `&`, `<`, `>`, `"`, `'` come back exactly as written instead of as literal entities. The comment parser no longer truncates every comment to an empty string: the outer `<Comment Guid="...">` wrapper shares its tag name with its nested `<Comment>` text field, so the parser now slices each wrapper's span up to the next wrapper (or end of markup) and takes the last `</Comment>` as its real close. That is robust across BCF 2.1 and 3.0 (where comments sit inside a `<Comments>` container) and tolerates unknown vendor elements, so no comment is silently dropped. On write, `BimSnippet` (when it carries the schema-required `ReferenceSchema`) and `DocumentReference` are now emitted; they were parsed and typed but never written, so they were silently dropped on every export.
+
 ## 1.15.6
 
 ### Patch Changes

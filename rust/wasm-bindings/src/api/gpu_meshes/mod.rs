@@ -8,11 +8,9 @@
 //! and GPU-ready geometry generation.
 
 mod batch;
-mod prepass;
-
-fn decode_ifc_bytes(data: &[u8]) -> &str {
-    match std::str::from_utf8(data) {
-        Ok(content) => content,
-        Err(error) => wasm_bindgen::throw_str(&format!("Invalid UTF-8 IFC data: {error}")),
-    }
-}
+mod batch_from_source;
+mod instancing;
+pub(crate) mod prepass;
+mod prepass_discovery;
+mod prepass_sharded;
+mod void_index;

@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/collab",
-  "version": "0.2.4",
+  "version": "0.4.1",
   "description": "Real-time collaborative BIM via CRDT on IFCX",
   "type": "module",
   "main": "./dist/index.js",
@@ -38,7 +38,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@automerge/automerge": "^3.2.6",
+    "@automerge/automerge": "^3.3.2",
     "@ifc-lite/data": "workspace:^",
     "@ifc-lite/ifcx": "workspace:^",
     "@ifc-lite/mutations": "workspace:^",
@@ -50,7 +50,7 @@
   },
   "devDependencies": {
     "typescript": "^6.0.3",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.10"
   },
   "license": "MPL-2.0",
   "author": "Louis True",
@@ -59,7 +59,7 @@
     "url": "https://github.com/LTplus-AG/ifc-lite.git",
     "directory": "packages/collab"
   },
-  "homepage": "https://ltplus-ag.github.io/ifc-lite/",
+  "homepage": "https://ifclite.dev/docs/",
   "bugs": "https://github.com/LTplus-AG/ifc-lite/issues",
   "keywords": [
     "ifc",

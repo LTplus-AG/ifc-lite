@@ -21,7 +21,8 @@
  * Frame: the rendered meshes are WebGL Y-up (`world = origin + position`). The
  * plan footprint is render XZ; we map it to the same "room frame" the underlay
  * uses (`useConstructionUnderlay`): `ifcX = renderX + cx`, `ifcY = cy − renderZ`,
- * with `cx = rtc.x − shift.x`, `cy = rtc.y + shift.z`. For models with no large
+ * with `cx = rtc.x + shift.x`, `cy = rtc.y − shift.z` — the canonical
+ * `toWorld`/`totalYupOffset` sign convention. For models with no large
  * coordinate shift (rtc = shift = 0) this is `(renderX, −renderZ)` — identity to
  * IFC X/Y. Storey scoping is a render-Y (height) band overlap, so a full-height
  * wall correctly bounds rooms on every storey it passes through.
@@ -128,11 +129,19 @@ export function wallRectsFromMeshes(
 ): WallRect[] {
   const rtc = coord?.wasmRtcOffset ?? { x: 0, y: 0, z: 0 };
   const shift = coord?.originShift ?? { x: 0, y: 0, z: 0 };
-  const cx = rtc.x - shift.x;
-  const cy = rtc.y + shift.z;
-  // Storey band in render-Y (height). renderY = ifcZ − rtc.z + shift.y.
-  const lo = floorElevation - rtc.z + shift.y;
-  const hi = floorElevation + floorToFloor - rtc.z + shift.y;
+  // Canonical reconstruction (coordinate-handler `toWorld`, mirrored in
+  // PropertiesPanel + lib/geo `totalYupOffset`): worldYup = renderLocal + shift
+  // + rtcYup, with rtcYup = { x: rtc.x, y: rtc.z, z: -rtc.y }; then
+  // ifcX = worldYup.x, ifcY = -worldYup.z, ifcZ = worldYup.y. Solving:
+  //   ifcX = renderX + (rtc.x + shift.x)   → cx = rtc.x + shift.x
+  //   ifcY = (rtc.y - shift.z) - renderZ   → cy = rtc.y - shift.z
+  // The shift terms were previously inverted (worked only because shift is
+  // usually 0 for non-georeferenced models).
+  const cx = rtc.x + shift.x;
+  const cy = rtc.y - shift.z;
+  // Storey band in render-Y (height). renderY = ifcZ − rtc.z − shift.y.
+  const lo = floorElevation - rtc.z - shift.y;
+  const hi = floorElevation + floorToFloor - rtc.z - shift.y;
 
   const walls = new Map<number, { pts: Pt[]; ymin: number; ymax: number }>();
   for (const m of meshes) {

@@ -9,6 +9,12 @@ The package is **pure and store-agnostic**: it never touches a parser, a WASM
 module, or a renderer. Adapters (the CLI, the viewer) extract a fingerprint per
 entity and hand them over; the engine matches by key and classifies.
 
+## Installation
+
+```bash
+npm install @ifc-lite/diff
+```
+
 ## Usage
 
 ```ts
@@ -38,6 +44,22 @@ diff.byKey.get(gid);    // O(1) lookup for picking — { state, changeKinds, bas
 A `modified` entry's `changeKinds` (`'data'` / `'geometry'`) records *why* — handy
 for an inspect panel even though the colour is driven by `state`.
 
+### Excluding classes - the blacklist
+
+Some IFC classes are noise in a comparison: an `IfcOpeningElement` is only the
+connective void between a wall and a window, so when the window is removed the
+opening's deletion is not a meaningful change on its own (issue #1470). Pass
+`excludeTypes` to leave those classes out of the diff entirely - matched
+entities are dropped from **both** revisions before classification, so they never
+appear in `entries`, `byKey`, or `counts`:
+
+```ts
+const diff = diffModels(base, head, { excludeTypes: ['IfcOpeningElement'] });
+diff.excludedTypes; // ['IFCOPENINGELEMENT'] - the applied blacklist, normalized
+```
+
+Matching is case-insensitive and trims whitespace; empty names are ignored.
+
 ### Building a data fingerprint
 
 `buildDataFingerprint` canonicalizes (sorts) property sets, quantity sets, and
@@ -58,6 +80,11 @@ exposed over the WASM boundary (`IfcAPI.setComputeGeometryHashes` →
 `MeshCollection.geometryHashValues`). It is RTC-invariant (a file's origin-shift
 never registers as a change) and tolerance-quantized. This package only
 *consumes* those hashes, keeping it dependency-free and unit-testable.
+
+## Docs
+
+See the [ifc-lite docs](https://ifclite.dev/docs/) and the
+[API Reference](https://ifclite.dev/docs/api/typescript/).
 
 ## License
 

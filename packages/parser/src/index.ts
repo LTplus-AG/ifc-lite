@@ -7,6 +7,14 @@
  * Supports both IFC4 (STEP) and IFC5 (IFCX/JSON) formats
  */
 
+import { unwrapIfcZip } from './ifczip.js';
+// `unwrapIfcZip` unwraps an ArrayBuffer (no-op for non-zip); `unwrapIfcZipView`
+// is the same for Node Buffer/Uint8Array callers (CLI/MCP loaders). The
+// magic-byte predicate `isZipBuffer` stays internal to `./ifczip.js` — no
+// external consumer needs to know WHETHER a buffer was a zip, only to get the
+// unwrapped bytes back.
+export { unwrapIfcZip, unwrapIfcZipView, unwrapIfcZipWithResources } from './ifczip.js';
+export type { IfcZipContents } from './ifczip.js';
 export { StepTokenizer } from './tokenizer.js';
 export { EntityIndexBuilder } from './entity-index.js';
 export { EntityExtractor } from './entity-extractor.js';
@@ -19,7 +27,14 @@ export { QuantityExtractor } from './quantity-extractor.js';
 export { RelationshipExtractor } from './relationship-extractor.js';
 export { SpatialHierarchyBuilder } from './spatial-hierarchy-builder.js';
 export { extractLengthUnitScale } from './unit-extractor.js';
-export { ColumnarParser, type IfcDataStore, type EntityByIdIndex, extractPropertiesOnDemand, extractQuantitiesOnDemand, extractEntityAttributesOnDemand, extractAllEntityAttributes, getRawNamedAttributes, extractRootAttributesFromEntity, extractClassificationsOnDemand, extractMaterialsOnDemand, extractMaterialPropertiesOnDemand, extractMaterialPropertiesForMaterialId, resolveMaterialDefId, collectMaterialLeaves, buildMaterialUsageIndex, getMaterialDisplay, extractTypePropertiesOnDemand, extractTypeEntityOwnProperties, extractDocumentsOnDemand, extractRelationshipsOnDemand, extractGroupMembersOnDemand, extractGeoreferencingOnDemand, type ClassificationInfo, type MaterialInfo, type MaterialLayerInfo, type MaterialProfileInfo, type MaterialConstituentInfo, type MaterialPsetGroup, type MaterialLeaf, type MaterialUsage, type TypePropertyInfo, type DocumentInfo, type EntityRelationships, type GroupMember } from './columnar-parser.js';
+export {
+  extractProjectUnits,
+  measureUnit,
+  ProjectUnits,
+  type ResolvedUnit,
+  type MeasureUnit,
+} from './project-units.js';
+export { ColumnarParser, type IfcDataStore, type EntityByIdIndex, extractPropertiesOnDemand, extractQuantitiesOnDemand, extractEntityAttributesOnDemand, extractAllEntityAttributes, getRawNamedAttributes, extractRootAttributesFromEntity, extractClassificationsOnDemand, extractMaterialsOnDemand, extractAllMaterialsOnDemand, extractMaterialPropertiesOnDemand, extractMaterialPropertiesForMaterialId, resolveMaterialDefId, resolveAllMaterialDefIds, collectMaterialLeaves, buildMaterialUsageIndex, getMaterialDisplay, extractTypePropertiesOnDemand, extractTypeEntityOwnProperties, extractTypeQuantitiesOnDemand, extractDocumentsOnDemand, extractRelationshipsOnDemand, extractGroupMembersOnDemand, extractGeoreferencingOnDemand, type ClassificationInfo, type MaterialInfo, type MaterialLayerInfo, type MaterialProfileInfo, type MaterialConstituentInfo, type MaterialPsetGroup, type MaterialLeaf, type MaterialUsage, type TypePropertyInfo, type TypeQuantityInfo, type DocumentInfo, type EntityRelationships, type GroupMember } from './columnar-parser.js';
 export type { IfcStoreBase, IfcSourceHeader, SpatialHierarchy, EntityTable } from '@ifc-lite/data';
 export { parseSourceHeader } from './source-header.js';
 export { attachDataStoreAccessors, type IfcStoreData } from './data-store-accessors.js';
@@ -109,7 +124,7 @@ export {
 } from './generated/serializers.js';
 
 export * from './types.js';
-export { getAttributeNames, getAttributeNameAt, isKnownType, normalizeIfcTypeName } from './ifc-schema.js';
+export { getAttributeNames, getAttributeNamesAcrossSchemas, getAttributeNameAt, isKnownType, normalizeIfcTypeName } from './ifc-schema.js';
 
 import type { IfcEntity, ParseResult } from './types.js';
 import { EntityIndexBuilder } from './entity-index.js';
@@ -257,6 +272,10 @@ export async function parseAuto(
   buffer: ArrayBuffer,
   options: ParseOptions = {}
 ): Promise<AutoParseResult> {
+  // Transparent .ifcZIP unwrap (issue #1494): a no-op for every ordinary
+  // IFC/IFCX/GLB buffer (cheap magic-byte check), so this is safe to run
+  // unconditionally.
+  buffer = await unwrapIfcZip(buffer);
   const format = detectFormat(buffer);
 
   if (format === 'ifcx') {

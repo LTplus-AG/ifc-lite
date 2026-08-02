@@ -6,7 +6,10 @@
 //! ifc-lite's `Mesh` (f32 positions/normals/indices). `subtract`/`union`/
 //! `intersection` here are what the `ClippingProcessor` seam calls.
 
-use super::arrangement::{boolean, difference_all, union_all, BoolOp, Tri};
+use super::arrangement::{
+    boolean, difference_all, difference_all_lenient, union_all, BoolOp, Tri,
+};
+use super::signed_volume::signed_volume6;
 use crate::mesh::Mesh;
 
 /// f32-near-coplanar reconciliation snap grid (metres). A POWER OF TWO so the
@@ -25,6 +28,18 @@ pub(crate) const SNAP_GRID: f64 = 1.0 / 65536.0;
 #[inline]
 fn snap(c: f64) -> f64 {
     (c / SNAP_GRID).round() * SNAP_GRID
+}
+
+/// The near-coplanar perpendicular band (metres) from the operand+point
+/// coordinate magnitude `extent`. `8·SNAP_GRID` is the per-axis-snap scatter
+/// envelope near the origin; the `extent·2⁻²²` term widens it for far-from-
+/// origin operands where f32 import is coarser.
+///
+/// Canonical definition — `tritri`, `classify`, and this module all size their
+/// near-coplanar/scatter bands to this SAME formula, so they call this
+/// function rather than mirroring the expression.
+pub(crate) fn near_band_from_extent(extent: f64) -> f64 {
+    (8.0 * SNAP_GRID).max(extent * (1.0 / 4_194_304.0))
 }
 
 /// `Mesh` → the kernel's triangle list (f32 → f64, snapped to the reconcile
@@ -83,57 +98,6 @@ pub fn tris_to_mesh(tris: &[Tri]) -> Mesh {
     m
 }
 
-/// Twice-the-signed-volume sum for a triangle list (divergence theorem, ×6):
-/// `Σ (v0−o)·((v1−o)×(v2−o))`, ABOUT THE OPERAND'S OWN AABB CENTER `o`. A closed
-/// outward-wound mesh has this `> 0`; an inward-wound one `< 0`. Computed in
-/// plain FMA-free f64 over the snapped operand coords, so only its SIGN is
-/// consumed — byte-identical native==wasm. (The magnitude is irrelevant; we
-/// never compare it to a tolerance.)
-///
-/// WHY the local reference point: for a CLOSED mesh
-/// the sign is translation-invariant, so the reference is free. But an operand
-/// that re-enters a SEQUENTIAL void-cut loop can carry sliver cracks from the
-/// previous subtract (flush-interface seams, the open-edge family) — and for an
-/// OPEN surface the divergence sum is translation-VARIANT: the boundary-loop
-/// flux grows linearly with the distance to the reference point. Referenced to
-/// the WORLD origin, a 250–410 m-out tunnel wall with a 2.65 m sliver crack read
-/// `vol < 0` (e.g. −59.8 from a +0.30 m³ solid), which made [`orient_outward`]
-/// flip the whole host inside-out and invert the next cut (#198779's −49.3
-/// cascade). About the AABB center the crack flux is bounded by the operand's
-/// own extent — the sign is decided by the solid, not by where the model sits.
-fn signed_volume6(tris: &[Tri]) -> f64 {
-    let mut lo = [f64::MAX; 3];
-    let mut hi = [f64::MIN; 3];
-    for t in tris {
-        for v in t {
-            for k in 0..3 {
-                lo[k] = lo[k].min(v[k]);
-                hi[k] = hi[k].max(v[k]);
-            }
-        }
-    }
-    if tris.is_empty() {
-        return 0.0;
-    }
-    let o = [
-        (lo[0] + hi[0]) * 0.5,
-        (lo[1] + hi[1]) * 0.5,
-        (lo[2] + hi[2]) * 0.5,
-    ];
-    tris.iter()
-        .map(|t| {
-            let a = [t[0][0] - o[0], t[0][1] - o[1], t[0][2] - o[2]];
-            let b = [t[1][0] - o[0], t[1][1] - o[1], t[1][2] - o[2]];
-            let c = [t[2][0] - o[0], t[2][1] - o[1], t[2][2] - o[2]];
-            let cr = [
-                b[1] * c[2] - b[2] * c[1],
-                b[2] * c[0] - b[0] * c[2],
-                b[0] * c[1] - b[1] * c[0],
-            ];
-            a[0] * cr[0] + a[1] * cr[1] + a[2] * cr[2]
-        })
-        .sum()
-}
 
 /// Orient a closed operand OUTWARD before it enters the arrangement.
 ///
@@ -203,7 +167,7 @@ fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[Tri]) {
             }
         }
     }
-    let band = (8.0 * SNAP_GRID).max(extent * (1.0 / 4_194_304.0));
+    let band = near_band_from_extent(extent);
     let band2 = band * band;
 
     struct Face {
@@ -360,12 +324,11 @@ pub fn subtract(host: &Mesh, cutter: &Mesh) -> Mesh {
 /// promoted onto the host faces and oriented outward INDIVIDUALLY — the global
 /// signed-volume orientation of [`subtract`] cannot fix mixed per-component
 /// winding of a multi-component operand (the #2176 lesson) — then the whole
-/// group is subtracted in ONE conforming arrangement (`difference_all`), so
+/// group is subtracted in ONE arrangement (`difference_all_volume_safe`), so
 /// there is no per-cutter f64→f32→snap round-trip to re-jitter and re-crack the
 /// previous cut's seams. Component order is the caller's (deterministic).
-/// Returns `None` when the arrangement could not fully conform (an unrecovered
-/// constraint — see [`difference_all`]); the caller must fall back to
-/// sequential per-cutter subtraction.
+/// Returns `None` only when even the volume-safe non-conforming batch is
+/// untrustworthy; the caller then falls back to sequential per-cutter subtraction.
 pub fn subtract_many(host: &Mesh, cutters: &[&Mesh]) -> Option<Mesh> {
     #[cfg(feature = "csg_capture")]
     crate::csg_capture::record_many(host, cutters);
@@ -379,14 +342,81 @@ pub fn subtract_many(host: &Mesh, cutters: &[&Mesh]) -> Option<Mesh> {
         })
         .collect();
     let refs: Vec<&[Tri]> = comp_tris.iter().map(|c| c.as_slice()).collect();
-    Some(tris_to_mesh(&difference_all(&h, &refs)?))
+    // Conforming batch: the fast, exact, byte-identical common path.
+    if let Some(r) = difference_all(&h, &refs) {
+        return Some(tris_to_mesh(&r));
+    }
+    // Non-conforming batch (an unrecovered constraint remains after the robust
+    // traversal recovery). Its exact topology is CLEANER than sequential per-cutter
+    // re-jitter on dense faceted-reveal walls (issue #098 V5C: 532→108 open edges),
+    // but a straddling misclassification can over/under-cut VOLUME (#559171/#1167).
+    // Trust the lenient batch ONLY when its removed volume matches the true removed
+    // volume; else None, so the caller runs its full sequential path.
+    let batch = difference_all_lenient(&h, &refs);
+    // ORACLE for the volume comparison (#1788): batched cutters are pairwise
+    // disjoint (this fn's contract), so the TRUE removed volume is
+    // Σ |host ∩ cutterᵢ| — each a small single boolean against the PRISTINE
+    // host, the well-conditioned regime. The previous oracle re-ran the
+    // sequential subtract chain, but that chain re-jitters its own seams
+    // cut-over-cut and UNDER-cuts on multi-void walls — on the ISSUE_098
+    // Poroton wall its "reference" removed 2% less volume than the (correct)
+    // batch, so a perfect batch was rejected in favour of the broken
+    // sequential fallback, leaving an opening uncut (T6 fail:opening-not-cut).
+    // Budget snapshot/restore: oracle work isn't charged to the caller's
+    // batch budget (codex P2 on #1660); a trip DURING an oracle intersection
+    // makes its volume untrustworthy ⇒ reject the group (as before).
+    let budget_snap = super::budget::snapshot_counters();
+    let mut inter_sum = 0.0f64;
+    let mut oracle_tripped = false;
+    for c in &comp_tris {
+        super::budget::begin();
+        let i = boolean(&h, c, BoolOp::Intersection);
+        if super::budget::tripped() {
+            oracle_tripped = true;
+            break;
+        }
+        inter_sum += signed_volume6(&i).abs();
+    }
+    super::budget::restore_counters(budget_snap);
+    if oracle_tripped {
+        return None;
+    }
+    let host_v = signed_volume6(&h).abs();
+    let batch_removed = host_v - signed_volume6(&batch).abs();
+    // 1% agreement — above f64/FMA noise (parity-stable branch), tight enough to
+    // reject the #1167 gross under-cut (3.7 m³ vs 13 m³).
+    let tol = inter_sum.abs().max(1.0e-9) * 0.01;
+    if (batch_removed - inter_sum).abs() <= tol {
+        Some(tris_to_mesh(&batch))
+    } else {
+        None
+    }
 }
 
 /// `a ∪ b` as a `Mesh`.
 pub fn union(a: &Mesh, b: &Mesh) -> Mesh {
+    // Enter the #1109 escalation budget exactly like `subtract` does: begin a
+    // fresh PER-BOOLEAN count (this is a distinct operation) while the per-ELEMENT
+    // accumulator is left intact — `begin()` resets only the per-op counter, so a
+    // union inside an over-budget element STILL trips (it is not an element-cap
+    // escape hatch; see `budget::begin` / the `per_element_budget_accumulates_
+    // across_booleans` test). Without this, a union scheduled on a worker thread
+    // after a subtract tripped starts already-tripped and `arrange` bails at its
+    // first pair, silently returning a partial/empty arrangement.
+    super::budget::begin();
     let a = orient_outward(mesh_to_tris(a));
     let b = orient_outward(mesh_to_tris(b));
-    tris_to_mesh(&boolean(&a, &b, BoolOp::Union))
+    let out = boolean(&a, &b, BoolOp::Union);
+    // On a budget trip `arrange` bailed mid-way and `out` is a PARTIAL arrangement.
+    // Discard it and return empty — the graceful-fallback signal the callers already
+    // handle (`csg::union_mesh` degrades to a plain merge; the #960 roof
+    // `build_cutter_union` defers to the sequential path) — never a poisoned mesh.
+    // Deterministic: the trip point is a pure function of the snapped operands, so
+    // native and wasm degrade the SAME union identically (parity).
+    if super::budget::tripped() {
+        return Mesh::new();
+    }
+    tris_to_mesh(&out)
 }
 
 /// `∪ meshes` as one watertight `Mesh` — the N-ary union, computed in a single
@@ -394,17 +424,44 @@ pub fn union(a: &Mesh, b: &Mesh) -> Mesh {
 /// segmented-roof cutters) dissolve without the tearing that left-deep pairwise
 /// accumulation produces. Empty input ⇒ empty mesh.
 pub fn union_many(meshes: &[&Mesh]) -> Mesh {
+    // Participate in the #1109 budget like `subtract` / `union` — fresh per-boolean
+    // count, per-element accumulator preserved (see `union`).
+    super::budget::begin();
     let tri_lists: Vec<Vec<Tri>> =
         meshes.iter().map(|m| orient_outward(mesh_to_tris(m))).collect();
     let refs: Vec<&[Tri]> = tri_lists.iter().map(|t| t.as_slice()).collect();
-    tris_to_mesh(&union_all(&refs))
+    let (out, conforming) = union_all(&refs);
+    // #1109 budget trip ⇒ `arrange_many` bailed and `out` is PARTIAL; return empty so
+    // `build_cutter_union` defers to the sequential per-cutter path instead of feeding
+    // a poisoned (non-watertight) cutter union into the subtract.
+    if super::budget::tripped() {
+        return Mesh::new();
+    }
+    // `!conforming` ⇒ an unrecovered constraint left the arrangement non-conforming —
+    // `union_all` now SURFACES the condition `difference_all` hard-rejects (vs the old
+    // silent discard). We deliberately trust the union anyway: the sole caller (#960
+    // `build_cutter_union`) verifies the downstream subtract, and the exact batched
+    // union — even a torn one — beats the sequential fallback that reintroduces the
+    // seam sliver #960 removed (wall #4148: exact → 8984 mm; fallback → 9850 mm).
+    let _ = conforming;
+    tris_to_mesh(&out)
 }
 
 /// `a ∩ b` as a `Mesh`.
 pub fn intersection(a: &Mesh, b: &Mesh) -> Mesh {
+    // Participate in the #1109 budget like `subtract` / `union` — fresh per-boolean
+    // count, per-element accumulator preserved (see `union`).
+    super::budget::begin();
     let a = orient_outward(mesh_to_tris(a));
     let b = orient_outward(mesh_to_tris(b));
-    tris_to_mesh(&boolean(&a, &b, BoolOp::Intersection))
+    let out = boolean(&a, &b, BoolOp::Intersection);
+    // On a budget trip `arrange` bailed and `out` is a PARTIAL arrangement. Return
+    // empty — `csg::intersection_mesh` treats empty as the graceful (disjoint-like)
+    // degrade rather than consuming a poisoned partial intersection.
+    if super::budget::tripped() {
+        return Mesh::new();
+    }
+    tris_to_mesh(&out)
 }
 
 #[cfg(test)]
@@ -447,6 +504,53 @@ mod tests {
         assert_eq!(super::snap(7.0 / 65536.0), 7.0 / 65536.0);
         // distinct grid cells stay distinct
         assert_ne!(super::snap(1.0), super::snap(1.0 + 1e-3));
+    }
+
+    /// `mesh_to_tris` is documented panic-free against a triangle whose vertex
+    /// index runs past the end of `positions` (a truncated/corrupt buffer):
+    /// the offending triangle is silently dropped rather than indexing OOB.
+    #[test]
+    fn mesh_to_tris_drops_out_of_range_index_without_panicking() {
+        let mut m = Mesh::new();
+        // one real triangle (verts 0,1,2)...
+        m.positions.extend_from_slice(&[0.0, 0.0, 0.0]);
+        m.positions.extend_from_slice(&[1.0, 0.0, 0.0]);
+        m.positions.extend_from_slice(&[0.0, 1.0, 0.0]);
+        // ...then a second face referencing vertex index 5, which is past the
+        // end of a 3-vertex positions buffer (truncated/corrupt data).
+        m.indices.extend_from_slice(&[0, 1, 2, 0, 1, 5]);
+
+        let tris = mesh_to_tris(&m);
+
+        assert_eq!(tris.len(), 1, "malformed triangle (OOB index) must be dropped, not panic");
+        assert_eq!(tris[0], [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]);
+    }
+
+    /// `mesh_to_tris` is documented panic-free against a non-finite (NaN/Inf)
+    /// position coordinate: the offending triangle is silently dropped rather
+    /// than propagating NaN into the exact-predicate kernel.
+    #[test]
+    fn mesh_to_tris_drops_non_finite_coordinate_without_panicking() {
+        let mut m = Mesh::new();
+        // valid triangle (verts 0,1,2)
+        m.positions.extend_from_slice(&[0.0, 0.0, 0.0]);
+        m.positions.extend_from_slice(&[1.0, 0.0, 0.0]);
+        m.positions.extend_from_slice(&[0.0, 1.0, 0.0]);
+        // NaN-poisoned vertex 3, referenced by a second face
+        m.positions.extend_from_slice(&[f32::NAN, 0.0, 0.0]);
+        // Inf-poisoned vertex 4, referenced by a third face
+        m.positions.extend_from_slice(&[f32::INFINITY, 0.0, 0.0]);
+        m.indices
+            .extend_from_slice(&[0, 1, 2, 0, 1, 3, 0, 1, 4]);
+
+        let tris = mesh_to_tris(&m);
+
+        assert_eq!(
+            tris.len(),
+            1,
+            "triangles touching a NaN or Inf coordinate must be dropped, not panic"
+        );
+        assert_eq!(tris[0], [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]);
     }
 
     #[test]

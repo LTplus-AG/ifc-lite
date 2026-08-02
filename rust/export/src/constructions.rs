@@ -9,7 +9,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
+use ifc_lite_core::{EntityDecoder, EntityScanner};
 use ifc_lite_geometry::{ExtractedProfile, LayerBuildup, MaterialLayerIndex};
 
 use crate::hbjson::{EnergyMaterial, ModelEnergy, OpaqueConstruction};
@@ -111,7 +111,8 @@ fn build_one(
 
 /// Derive representative wall/slab constructions from the model's material layer sets.
 pub fn build_constructions(content: &[u8], profiles: &[ExtractedProfile]) -> Constructions {
-    let entity_index = build_entity_index(content);
+    // Parallel on native (byte-identical to `build_entity_index`), serial on wasm.
+    let entity_index = ifc_lite_processing::build_entity_index_parallel(content);
     let mut decoder = EntityDecoder::with_index(content, entity_index);
     let scale = decoder.length_unit_scale();
     let layers = MaterialLayerIndex::from_content(content, &mut decoder);

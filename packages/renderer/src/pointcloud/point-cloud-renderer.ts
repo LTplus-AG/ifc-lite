@@ -21,12 +21,16 @@ import {
   appendChunkToNode,
   createNode,
   destroyNode,
+  transformAabb,
   uploadAssetToGpu,
   type PointCloudChunkInput,
   type PointCloudNode,
   type PointCloudNodeMeta,
 } from './point-cloud-node.js';
+import type { PointCloudSpatialIndex } from './point-cloud-spatial-index.js';
+import { buildRayQuerySources } from './point-cloud-ray-transform.js';
 import {
+  normalizeClassMask,
   writePointCloudUniforms,
   type PointColorMode,
   type PointSizeMode,
@@ -77,12 +81,14 @@ export interface PointCloudRenderOptions {
   /** Render splats as discs instead of squares. Defaults to true. */
   roundShape?: boolean;
   /**
-   * Per-ASPRS-class visibility bitmask. Bit `i` set → class `i` is
-   * visible. Defaults to `0xFFFFFFFF` (all 32 classes shown). Only
-   * affects points carrying classifications; meshes ignore it.
-   * Stored as an unsigned 32-bit integer in the uniform block.
+   * Per-LAS-class visibility bitmask covering the full 0..255 code
+   * range (#1783). Bit `i % 32` of word `i / 32` set → class `i` is
+   * visible. Pass up to 8 u32 words LSB-first (missing words default
+   * to all-visible), or a plain `number` for the legacy 32-bit form
+   * (classes 32..255 stay visible). Defaults to everything visible.
+   * Only affects points carrying classifications; meshes ignore it.
    */
-  classMask?: number;
+  classMask?: number | ArrayLike<number>;
   /**
    * Stride-cull factor for the splat shader: 1 = render every point,
    * 2 = every other, 4 = every fourth, etc. Used by the section-plane
@@ -106,6 +112,13 @@ export interface PointCloudAssetHandle {
 }
 
 /**
+ * `PointCloudRenderOptions` with every field present and `classMask`
+ * normalized to the 8-word uniform layout.
+ */
+export type ResolvedPointCloudRenderOptions =
+  Omit<Required<PointCloudRenderOptions>, 'classMask'> & { classMask: Uint32Array };
+
+/**
  * Owner of a point cloud node — drives whether `setAssets` clears it.
  *
  * `'ifcx'` nodes are replaced wholesale every time `setAssets` runs (the
@@ -124,14 +137,14 @@ export class PointCloudRenderer {
   private nextHandleId = 1;
   private uniformScratch = new Float32Array(POINT_UNIFORM_SIZE / 4);
   private uniformScratchU32 = new Uint32Array(this.uniformScratch.buffer);
-  private options: Required<PointCloudRenderOptions> = {
+  private options: ResolvedPointCloudRenderOptions = {
     colorMode: 'rgb',
     fixedColor: [1, 1, 1, 1],
     pointSize: 4,
     sizeMode: 'attenuated',
     worldRadius: 0.02,
     roundShape: true,
-    classMask: 0xFFFFFFFF,
+    classMask: normalizeClassMask(undefined),
     previewStride: 1,
     deviationRange: { centerOffset: 0, halfRange: 0.05 },
   };
@@ -153,7 +166,7 @@ export class PointCloudRenderer {
     if (opts.sizeMode !== undefined) this.options.sizeMode = opts.sizeMode;
     if (opts.worldRadius !== undefined) this.options.worldRadius = opts.worldRadius;
     if (opts.roundShape !== undefined) this.options.roundShape = opts.roundShape;
-    if (opts.classMask !== undefined) this.options.classMask = opts.classMask >>> 0;
+    if (opts.classMask !== undefined) this.options.classMask = normalizeClassMask(opts.classMask);
     if (opts.previewStride !== undefined) {
       // Clamp to a sane positive integer — stride 0 would divide by
       // zero in the shader's modulo. >256 is silly but harmless.
@@ -172,8 +185,11 @@ export class PointCloudRenderer {
     }
   }
 
-  getOptions(): Readonly<Required<PointCloudRenderOptions>> {
-    return this.options;
+  getOptions(): Readonly<ResolvedPointCloudRenderOptions> {
+    // Snapshot the mask — handing out the live Uint32Array would let
+    // callers mutate renderer visibility without going through
+    // setOptions.
+    return { ...this.options, classMask: this.options.classMask.slice() };
   }
 
   // ─── one-shot API (IFCx) ──────────────────────────────────────────────────
@@ -244,6 +260,19 @@ export class PointCloudRenderer {
     node.meta.expressId = newExpressId >>> 0;
   }
 
+  /**
+   * Set (or clear) a streamed asset's per-vertex GPU model matrix
+   * (issue #1804: point-cloud ↔ `IfcMapConversion` alignment). Pass
+   * `null` to reset to identity. Takes effect on the next frame's
+   * uniform write — no GPU buffer rewrite needed, so toggling alignment
+   * on/off is cheap.
+   */
+  setAssetTransform(handle: PointCloudAssetHandle, matrix: Float32Array | null): void {
+    const node = this.nodes.get(handle.id);
+    if (!node) return;
+    node.model = matrix ?? undefined;
+  }
+
   // ─── lifecycle / queries ─────────────────────────────────────────────────
 
   clear(): void {
@@ -298,12 +327,18 @@ export class PointCloudRenderer {
     for (const node of this.nodes.values()) {
       if (!Number.isFinite(node.bounds.min[0])) continue;
       any = true;
-      if (node.bounds.min[0] < minX) minX = node.bounds.min[0];
-      if (node.bounds.min[1] < minY) minY = node.bounds.min[1];
-      if (node.bounds.min[2] < minZ) minZ = node.bounds.min[2];
-      if (node.bounds.max[0] > maxX) maxX = node.bounds.max[0];
-      if (node.bounds.max[1] > maxY) maxY = node.bounds.max[1];
-      if (node.bounds.max[2] > maxZ) maxZ = node.bounds.max[2];
+      // Report WORLD-space extents: fold the per-asset model matrix
+      // (issue #1804 IfcMapConversion alignment) into the chunk-space
+      // bounds, so the height-ramp min/max and the viewer's scene
+      // bounds/framing agree with where the vertex shader actually
+      // places the points. Identity/no-matrix nodes pass through as-is.
+      const b = transformAabb(node.bounds, node.model);
+      if (b.min[0] < minX) minX = b.min[0];
+      if (b.min[1] < minY) minY = b.min[1];
+      if (b.min[2] < minZ) minZ = b.min[2];
+      if (b.max[0] > maxX) maxX = b.max[0];
+      if (b.max[1] > maxY) maxY = b.max[1];
+      if (b.max[2] > maxZ) maxZ = b.max[2];
     }
     if (!any) return null;
     return { min: [minX, minY, minZ], max: [maxX, maxY, maxZ] };
@@ -418,5 +453,25 @@ export class PointCloudRenderer {
       });
     }
     return out;
+  }
+
+  /**
+   * Snapshot of every node's CPU spatial index (issue #1860), for the
+   * measure tool's ray-based point snapping (`RaycastEngine`). Skips
+   * empty nodes, mirroring `getPickNodes`. Each source carries the
+   * CURRENT class visibility bitmask so the query skips points the
+   * splat shader is hiding (#1783) — snapping to invisible scan data
+   * would otherwise silently corrupt measurements.
+   */
+  getRayQuerySources(): Array<{
+    expressId: number;
+    modelIndex?: number;
+    index: PointCloudSpatialIndex;
+    classMask: Uint32Array;
+    model?: Float32Array;
+  }> {
+    // `classMask` is a live reference — read synchronously within one
+    // query, and `setOptions` replaces (never mutates in place) the array.
+    return buildRayQuerySources(this.nodes.values(), this.options.classMask);
   }
 }

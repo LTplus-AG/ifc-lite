@@ -28,7 +28,7 @@ mod voids_common;
 use ifc_lite_core::{build_entity_index, EntityDecoder};
 use ifc_lite_geometry::GeometryRouter;
 use voids_common::production::{
-    build_void_index_like_production, count_hits_through_opening, find_entity_by_guid,
+    build_void_index_like_production, count_hits_through_opening, find_entity_by_guid, fold_origin,
     load_fixture, opening_world_aabb, process_host_like_production,
 };
 
@@ -189,15 +189,21 @@ fn production_smiley_all_host_walls_have_holes() {
         }
         total_hosts += 1;
 
-        let wall_mesh = match router.process_element_with_voids(&entity, &mut decoder, &void_index)
-        {
-            Ok(m) => m,
-            Err(_) => continue,
-        };
+        let mut wall_mesh =
+            match router.process_element_with_voids(&entity, &mut decoder, &void_index) {
+                Ok(m) => m,
+                Err(_) => continue,
+            };
         if wall_mesh.is_empty() {
             empty_meshes += 1;
             continue;
         }
+        // The void path may return a LOCAL-FRAME mesh (`origin != 0`, e.g. the
+        // parametric rect fast path). `opening_world_aabb` and the ray grid are
+        // world-space, so fold the origin in before ray-casting — otherwise the
+        // rays are cast through the host in the wrong frame and a correctly cut
+        // host reads as uncut (or, worse, an uncut one reads as cut).
+        fold_origin(&mut wall_mesh);
 
         let mut host_total_hits = 0usize;
         let mut host_checked = 0usize;

@@ -49,3 +49,35 @@ updates:
         update-types:
           - minor
           - patch
+
+  # requirements-docs.txt builds ifclite.dev/docs in CI (mkdocs + plugins).
+  # Build-time only, but it is a manifest Dependabot was blind to.
+  #
+  # rust/python/pyproject.toml is deliberately NOT listed: it declares no
+  # runtime dependencies, only `maturin>=1.7,<2.0` under build-system, and
+  # that upper bound is a deliberate pin rather than drift to be chased.
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      pip-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  # Base images for the three shipped containers. Dependabot only tracks the
+  # image tag/digest here; it does not see CVEs inside a pulled layer, so a
+  # bump landing is the mechanism by which those get picked up at all.
+  - package-ecosystem: docker
+    directories:
+      - /apps/server
+      - /packages/collab-server
+      - /tools/ifcopenshell_reference
+    schedule:
+      interval: weekly
+    groups:
+      docker-minor-and-patch:
+        update-types:
+          - minor
+          - patch

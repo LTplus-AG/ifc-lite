@@ -15,20 +15,23 @@ import { EntityExtractor } from './entity-extractor.js';
 import {
     RelationshipType,
     PropertyValueType,
+    QuantityType,
 } from '@ifc-lite/data';
 import type { PropertyValue } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
+import { QUANTITY_TYPE_MAP } from './columnar-parser-indexes.js';
 import { extractGeoreferencing as extractGeorefFromEntities, type GeoreferenceInfo } from './georef-extractor.js';
 
 // Re-export classification and material resolvers
 export { extractClassificationsOnDemand } from './classification-resolver.js';
 export type { ClassificationInfo } from './classification-resolver.js';
 
-export { extractMaterialsOnDemand } from './material-resolver.js';
+export { extractMaterialsOnDemand, extractAllMaterialsOnDemand } from './material-resolver.js';
 export type { MaterialInfo, MaterialLayerInfo, MaterialProfileInfo, MaterialConstituentInfo } from './material-resolver.js';
 
 export {
     resolveMaterialDefId,
+    resolveAllMaterialDefIds,
     collectMaterialLeaves,
     buildMaterialUsageIndex,
     getMaterialDisplay,
@@ -36,7 +39,7 @@ export {
 export type { MaterialLeaf, MaterialUsage } from './material-resolver.js';
 
 import {
-    resolveMaterialDefId as resolveMaterialDefIdImpl,
+    resolveAllMaterialDefIds as resolveAllMaterialDefIdsImpl,
     collectMaterialLeaves as collectMaterialLeavesImpl,
     getMaterialDisplay as getMaterialDisplayImpl,
 } from './material-resolver.js';
@@ -52,6 +55,17 @@ export interface TypePropertyInfo {
     typeName: string;
     typeId: number;
     properties: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string }> }>;
+}
+
+/**
+ * Result of type-level quantity extraction (IfcElementQuantity sets on the
+ * element's IfcTypeProduct, e.g. Qto_WallBaseQuantities defined once on
+ * IfcWallType). Mirrors {@link TypePropertyInfo} for quantities.
+ */
+export interface TypeQuantityInfo {
+    typeName: string;
+    typeId: number;
+    quantities: Array<{ name: string; quantities: Array<{ name: string; type: number; value: number }> }>;
 }
 
 /**
@@ -362,7 +376,11 @@ export function extractPsetsFromIds(
             }
         }
 
-        if (properties.length > 0 || psetName) {
+        // Only surface sets that actually carry properties. An empty, named set
+        // contributes nothing and — because extractTypePropertiesOnDemand dedups
+        // by name — an empty set from one source could otherwise suppress a
+        // populated same-named set from another (symmetric with extractQsetsFromIds).
+        if (properties.length > 0) {
             result.push({ name: psetName, globalId: psetGlobalId, properties });
         }
     }
@@ -452,7 +470,7 @@ export function extractTypePropertiesOnDemand(
 export function extractTypeEntityOwnProperties(
     store: IfcDataStore,
     typeEntityId: number
-): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[] }> }> {
+): Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string }> }> {
     const ref = store.entityIndex.byId.get(typeEntityId);
     if (!ref || !store.source?.length) return [];
 
@@ -460,7 +478,7 @@ export function extractTypeEntityOwnProperties(
     const typeEntity = extractor.extractEntity(ref);
     if (!typeEntity) return [];
 
-    const allPsets: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[] }> }> = [];
+    const allPsets: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string }> }> = [];
     const seenPsetNames = new Set<string>();
 
     // Source 1: HasPropertySets attribute (index 5 for IfcTypeObject subtypes)
@@ -488,6 +506,137 @@ export function extractTypeEntityOwnProperties(
     }
 
     return allPsets;
+}
+
+// ============================================================================
+// Type Quantity Extraction
+// ============================================================================
+
+/**
+ * Extract quantity sets (IfcElementQuantity) from a list of set IDs using the
+ * entity index. The quantity counterpart of {@link extractPsetsFromIds}: it
+ * skips anything that is not an IFCELEMENTQUANTITY (e.g. property sets that
+ * share the HasPropertySets list on a type).
+ */
+export function extractQsetsFromIds(
+    store: IfcDataStore,
+    extractor: EntityExtractor,
+    qsetIds: number[]
+): Array<{ name: string; quantities: Array<{ name: string; type: number; value: number }> }> {
+    const result: Array<{ name: string; quantities: Array<{ name: string; type: number; value: number }> }> = [];
+
+    for (const qsetId of qsetIds) {
+        const qsetRef = store.entityIndex.byId.get(qsetId);
+        if (!qsetRef) continue;
+
+        // Only extract IFCELEMENTQUANTITY entities (skip property sets etc.)
+        if (qsetRef.type.toUpperCase() !== 'IFCELEMENTQUANTITY') continue;
+
+        const qsetEntity = extractor.extractEntity(qsetRef);
+        if (!qsetEntity) continue;
+
+        const qsetAttrs = qsetEntity.attributes || [];
+        const qsetName = typeof qsetAttrs[2] === 'string' ? qsetAttrs[2] : `QuantitySet #${qsetId}`;
+        const hasQuantities = qsetAttrs[5];
+
+        const quantities: Array<{ name: string; type: number; value: number }> = [];
+
+        if (Array.isArray(hasQuantities)) {
+            for (const qtyRef of hasQuantities) {
+                if (typeof qtyRef !== 'number') continue;
+
+                const qtyEntityRef = store.entityIndex.byId.get(qtyRef);
+                if (!qtyEntityRef) continue;
+
+                const qtyEntity = extractor.extractEntity(qtyEntityRef);
+                if (!qtyEntity) continue;
+
+                const qtyAttrs = qtyEntity.attributes || [];
+                const qtyName = typeof qtyAttrs[0] === 'string' ? qtyAttrs[0] : '';
+                if (!qtyName) continue;
+
+                const qtyType = QUANTITY_TYPE_MAP[qtyEntity.type.toUpperCase()] ?? QuantityType.Count;
+                // Value is at index 3 for the simple IfcQuantity* subtypes.
+                const value = typeof qtyAttrs[3] === 'number' ? qtyAttrs[3] : 0;
+
+                quantities.push({ name: qtyName, type: qtyType, value });
+            }
+        }
+
+        // Only surface sets that actually carry quantities. An empty set would
+        // add nothing to a schedule, and (because `extractTypeQuantitiesOnDemand`
+        // dedups by name) an empty set from one source could otherwise suppress a
+        // populated same-named set from another.
+        if (quantities.length > 0) {
+            result.push({ name: qsetName, quantities });
+        }
+    }
+
+    return result;
+}
+
+/**
+ * Extract type-level quantities for a single entity ON-DEMAND.
+ * Finds the element's type via IfcRelDefinesByType, then extracts element
+ * quantities from:
+ * 1. The type entity's HasPropertySets attribute (index 5 on IfcTypeObject) —
+ *    an IfcPropertySetDefinition list that may include IfcElementQuantity.
+ * 2. The onDemandQuantityMap for the type entity (IFC4 IfcRelDefinesByProperties
+ *    with an IfcElementQuantity targeting the type).
+ * Returns null when the element has no type or the type carries no quantities.
+ * The quantity counterpart of {@link extractTypePropertiesOnDemand}.
+ */
+export function extractTypeQuantitiesOnDemand(
+    store: IfcDataStore,
+    entityId: number
+): TypeQuantityInfo | null {
+    if (!store.relationships) return null;
+
+    const typeIds = store.relationships.getRelated(entityId, RelationshipType.DefinesByType, 'inverse');
+    if (typeIds.length === 0) return null;
+
+    const typeId = typeIds[0];
+    const typeRef = store.entityIndex.byId.get(typeId);
+    if (!typeRef) return null;
+
+    if (!store.source?.length) return null;
+
+    const extractor = new EntityExtractor(store.source);
+
+    const typeEntity = extractor.extractEntity(typeRef);
+    const typeName = typeEntity && typeof typeEntity.attributes?.[2] === 'string'
+        ? typeEntity.attributes[2]
+        : typeRef.type;
+
+    const allQsets: Array<{ name: string; quantities: Array<{ name: string; type: number; value: number }> }> = [];
+    const seenQsetNames = new Set<string>();
+
+    // Source 1: HasPropertySets attribute on the type (index 5) — quantity sets
+    // live alongside property sets in this IfcPropertySetDefinition list.
+    if (typeEntity) {
+        const hasPropertySets = typeEntity.attributes?.[5];
+        if (Array.isArray(hasPropertySets)) {
+            const ids = hasPropertySets.filter((id): id is number => typeof id === 'number');
+            for (const qset of extractQsetsFromIds(store, extractor, ids)) {
+                seenQsetNames.add(qset.name);
+                allQsets.push(qset);
+            }
+        }
+    }
+
+    // Source 2: onDemandQuantityMap for the type entity (IFC4 IfcRelDefinesByProperties).
+    if (store.onDemandQuantityMap) {
+        const typeQsetIds = store.onDemandQuantityMap.get(typeId);
+        if (typeQsetIds && typeQsetIds.length > 0) {
+            for (const qset of extractQsetsFromIds(store, extractor, typeQsetIds)) {
+                if (!seenQsetNames.has(qset.name)) allQsets.push(qset);
+            }
+        }
+    }
+
+    if (allQsets.length === 0) return null;
+
+    return { typeName, typeId, quantities: allQsets };
 }
 
 // ============================================================================
@@ -624,12 +773,16 @@ export function extractRelationshipsOnDemand(
 
     const getEntityInfo = (id: number): { name?: string; type: string } => {
         const ref = store.entityIndex.byId.get(id);
-        if (!ref) return { type: 'Unknown' };
-        const name = store.entities?.getName(id);
         // Canonical IfcPascalCase (e.g. "IfcZone") for display + case-sensitive
         // consumers; `ref.type` is the raw STEP token ("IFCZONE"). Groups now
         // live in the EntityTable so getTypeName resolves them too. (#1075)
-        const type = store.entities?.getTypeName?.(id) || ref.type;
+        // IFCX stores ingest with an EMPTY entityIndex.byId (no STEP byte
+        // spans exist), so when byId misses the EntityTable is the authority
+        // for name/type instead of reporting Unknown (#1622 IFCX follow-up).
+        const tableType = store.entities?.getTypeName?.(id);
+        if (!ref && (!tableType || tableType === 'Unknown')) return { type: 'Unknown' };
+        const name = store.entities?.getName(id);
+        const type = tableType || ref?.type || 'Unknown';
         return { name: name || undefined, type };
     };
 
@@ -692,12 +845,17 @@ export function extractGroupMembersOnDemand(
     const members: GroupMember[] = [];
     for (const id of memberIds) {
         const ref = store.entityIndex.byId.get(id);
-        if (!ref) continue;
-        const name = store.entities?.getName(id);
         // Canonical IfcPascalCase (e.g. "IfcSpace") — `ref.type` is the raw STEP
         // token ("IFCSPACE"), which would break case-sensitive class checks in
         // consumers (member-isolation toggles, lens zone matching). (#1075)
-        const type = store.entities?.getTypeName(id) || ref.type;
+        const tableType = store.entities?.getTypeName(id);
+        // IFCX stores ingest with an EMPTY entityIndex.byId (no STEP byte spans
+        // exist), so existence rides the EntityTable there: keep a member when
+        // EITHER source knows the id. STEP stores keep byId as the primary gate
+        // and resolve identically to before (#1622 IFCX follow-up).
+        if (!ref && (!tableType || tableType === 'Unknown')) continue;
+        const name = store.entities?.getName(id);
+        const type = tableType || ref?.type || 'Unknown';
         members.push({ id, name: name || undefined, type });
     }
     return members;
@@ -987,10 +1145,15 @@ function buildMaterialPsetGroups(store: IfcDataStore, materialIds: number[]): Ma
  * the set definition itself. Returns one group per material that has psets.
  */
 export function extractMaterialPropertiesOnDemand(store: IfcDataStore, entityId: number): MaterialPsetGroup[] {
-    const defId = resolveMaterialDefIdImpl(store, entityId);
-    if (defId === undefined) return [];
-    const leafIds = collectMaterialLeavesImpl(store, defId).map((l) => l.id);
-    return buildMaterialPsetGroups(store, [defId, ...leafIds]);
+    // Every association, not just the primary — psets on a second
+    // IfcRelAssociatesMaterial's definition were previously invisible.
+    const defIds = resolveAllMaterialDefIdsImpl(store, entityId);
+    if (defIds.length === 0) return [];
+    const ids: number[] = [];
+    for (const defId of defIds) {
+        ids.push(defId, ...collectMaterialLeavesImpl(store, defId).map((l) => l.id));
+    }
+    return buildMaterialPsetGroups(store, ids);
 }
 
 /**

@@ -67,7 +67,8 @@ Two viable shapes:
 
 1. **Naive (proven +1.6–1.9×):** build the geometry path as a threaded bundle and
    call `initThreadPool(navigator.hardwareConcurrency)` once. The existing
-   `par_iter` over elements (`processor.rs:1554`, `gpu_meshes.rs:882`) becomes
+   `par_iter` over elements (`rust/processing/src/processor/mod.rs`,
+   `rust/wasm-bindings/src/api/gpu_meshes/`) becomes
    parallel with **zero algorithm changes**. Decode threads too and pays a small
    penalty, but CSG dominance keeps the net positive on geometry-heavy models.
 

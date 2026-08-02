@@ -11,14 +11,48 @@
 //! lean). KMZ readers accept stored entries; the trade-off is a larger file than a
 //! deflated archive, acceptable for this infrequent georef export.
 
+/// KML `<altitudeMode>` — how Google Earth interprets the model's `altitude`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum AltitudeMode {
+    /// IGNORE `altitude`; rest the model origin on the terrain, following the
+    /// ground. The robust default for a building that should sit on the ground:
+    /// it can never float and is immune to a wrong / zero / double-counted
+    /// `IfcMapConversion.OrthogonalHeight` (#1427). KML's own default mode.
+    #[default]
+    ClampToGround,
+    /// `altitude` is metres ABOVE the terrain directly below the origin.
+    RelativeToGround,
+    /// `altitude` is metres above mean sea level, independent of terrain.
+    Absolute,
+}
+
+impl AltitudeMode {
+    fn as_kml(self) -> &'static str {
+        match self {
+            AltitudeMode::ClampToGround => "clampToGround",
+            AltitudeMode::RelativeToGround => "relativeToGround",
+            AltitudeMode::Absolute => "absolute",
+        }
+    }
+}
+
 /// Options for KMZ export.
+///
+/// Derives `Default` (matching peer `*Options` structs) so callers can spread
+/// `..Default::default()` and stay source-compatible as fields are added.
+#[derive(Default)]
 pub struct KmzOptions {
     /// WGS84 latitude of the model origin (degrees).
     pub latitude: f64,
     /// WGS84 longitude of the model origin (degrees).
     pub longitude: f64,
-    /// Orthogonal height / elevation in metres.
+    /// Orthogonal height / elevation in metres. Ignored by Google Earth when
+    /// `altitude_mode` is `ClampToGround` (the default).
     pub altitude: f64,
+    /// How Google Earth places the model vertically. Defaults to `ClampToGround`
+    /// so the model rests on the terrain instead of floating at its MSL elevation
+    /// (the `relativeToGround` + OrthogonalHeight bug — #1427).
+    pub altitude_mode: AltitudeMode,
     /// `IfcMapConversion` `XAxisAbscissa` (grid-north X component). When either axis
     /// component is absent the heading is `0` (local north == true north).
     pub x_axis_abscissa: Option<f64>,
@@ -53,7 +87,7 @@ fn xml_escape(s: &str) -> String {
         .replace('\'', "&apos;")
 }
 
-fn build_kml(opts: &KmzOptions, heading: f64) -> String {
+fn build_kml(opts: &KmzOptions, heading: f64, model_href: &str) -> String {
     let name = xml_escape(opts.name.as_deref().unwrap_or("IFC Model"));
     format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
@@ -63,7 +97,7 @@ fn build_kml(opts: &KmzOptions, heading: f64) -> String {
     <Placemark>
       <name>{name}</name>
       <Model id="model">
-        <altitudeMode>relativeToGround</altitudeMode>
+        <altitudeMode>{altitude_mode}</altitudeMode>
         <Location>
           <longitude>{lon}</longitude>
           <latitude>{lat}</latitude>
@@ -80,28 +114,68 @@ fn build_kml(opts: &KmzOptions, heading: f64) -> String {
           <z>1</z>
         </Scale>
         <Link>
-          <href>model.glb</href>
+          <href>{href}</href>
         </Link>
       </Model>
     </Placemark>
   </Document>
 </kml>"#,
         name = name,
+        altitude_mode = opts.altitude_mode.as_kml(),
         lon = opts.longitude,
         lat = opts.latitude,
         alt = opts.altitude,
         heading = heading,
+        href = model_href,
     )
 }
 
 /// Build a KMZ archive (`doc.kml` + `model.glb`) from a GLB byte slice + placement.
+///
+/// Note: Google Earth's KML `<Model>` does NOT load glTF/GLB (it raises
+/// "Unsupported element: Model"); prefer [`export_kmz_collada_from_meshes`], which
+/// embeds a COLLADA `.dae` — the format Google Earth actually renders (#1427).
 pub fn export_kmz(glb: &[u8], opts: &KmzOptions) -> Vec<u8> {
     let heading = ifc_angle_to_kml_heading(opts.x_axis_abscissa, opts.x_axis_ordinate);
-    let kml = build_kml(opts, heading);
+    let kml = build_kml(opts, heading, "model.glb");
 
     let mut zip = StoredZip::new();
     zip.add("doc.kml", kml.as_bytes());
     zip.add("model.glb", glb);
+    zip.finish()
+}
+
+/// Build a Google-Earth-ready KMZ (`doc.kml` + `model.dae`) directly from the
+/// viewer's already-produced (Y-up) meshes — the working path (#1427). The model
+/// is embedded as **COLLADA** (the only `<Model>` format Google Earth loads), with
+/// emission-lit, double-sided materials and `clampToGround` placement. Mesh arrays
+/// match [`crate::export_collada_from_meshes`] / `export_glb_from_meshes`.
+#[allow(clippy::too_many_arguments)]
+pub fn export_kmz_collada_from_meshes(
+    positions: &[f32],
+    normals: &[f32],
+    indices: &[u32],
+    vertex_counts: &[u32],
+    index_counts: &[u32],
+    colors: &[f32],
+    origins: &[f64],
+    opts: &KmzOptions,
+) -> Vec<u8> {
+    let dae = crate::export_collada_from_meshes(
+        positions,
+        normals,
+        indices,
+        vertex_counts,
+        index_counts,
+        colors,
+        origins,
+    );
+    let heading = ifc_angle_to_kml_heading(opts.x_axis_abscissa, opts.x_axis_ordinate);
+    let kml = build_kml(opts, heading, "model.dae");
+
+    let mut zip = StoredZip::new();
+    zip.add("doc.kml", kml.as_bytes());
+    zip.add("model.dae", &dae);
     zip.finish()
 }
 
@@ -224,17 +298,40 @@ mod tests {
             latitude: 47.5,
             longitude: 8.5,
             altitude: 412.0,
+            altitude_mode: AltitudeMode::Absolute,
             x_axis_abscissa: Some(1.0),
             x_axis_ordinate: Some(0.0),
             name: Some("Bldg <A>".to_string()),
         };
-        let kml = build_kml(&opts, ifc_angle_to_kml_heading(opts.x_axis_abscissa, opts.x_axis_ordinate));
+        let kml = build_kml(&opts, ifc_angle_to_kml_heading(opts.x_axis_abscissa, opts.x_axis_ordinate), "model.dae");
         assert!(kml.contains("<latitude>47.5</latitude>"));
         assert!(kml.contains("<longitude>8.5</longitude>"));
         assert!(kml.contains("<altitude>412</altitude>"));
+        assert!(kml.contains("<altitudeMode>absolute</altitudeMode>"));
         assert!(kml.contains("<heading>90</heading>"));
-        assert!(kml.contains("<href>model.glb</href>"));
+        assert!(kml.contains("<href>model.dae</href>"));
         assert!(kml.contains("Bldg &lt;A&gt;"), "name is XML-escaped");
+    }
+
+    #[test]
+    fn default_altitude_mode_clamps_to_ground() {
+        // #1427: the default must rest the model on the terrain, not float it at its
+        // MSL OrthogonalHeight (the relativeToGround bug).
+        let opts = KmzOptions {
+            latitude: 47.5,
+            longitude: 8.5,
+            altitude: 560.0,
+            altitude_mode: AltitudeMode::default(),
+            x_axis_abscissa: None,
+            x_axis_ordinate: None,
+            name: None,
+        };
+        let kml = build_kml(&opts, 0.0, "model.dae");
+        assert!(kml.contains("<altitudeMode>clampToGround</altitudeMode>"));
+        assert!(
+            !kml.contains("relativeToGround"),
+            "must not re-introduce the floating relativeToGround placement"
+        );
     }
 
     #[test]
@@ -244,6 +341,7 @@ mod tests {
             latitude: 0.0,
             longitude: 0.0,
             altitude: 0.0,
+            altitude_mode: AltitudeMode::default(),
             x_axis_abscissa: None,
             x_axis_ordinate: None,
             name: None,
@@ -259,5 +357,39 @@ mod tests {
         assert!(kmz.windows(7).any(|w| w == b"doc.kml"));
         assert!(kmz.windows(9).any(|w| w == b"model.glb"));
         assert!(kmz.windows(glb.len()).any(|w| w == glb), "GLB stored verbatim");
+    }
+
+    #[test]
+    fn collada_kmz_embeds_dae_and_references_it() {
+        // #1427: the working path embeds a COLLADA model (model.dae) — the format
+        // Google Earth's <Model> actually loads — not a glTF GLB.
+        let positions = vec![0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0];
+        let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 1.0, 0.0], 3).flatten().collect();
+        let opts = KmzOptions {
+            latitude: 52.15,
+            longitude: 5.38,
+            altitude: 560.0,
+            altitude_mode: AltitudeMode::default(),
+            x_axis_abscissa: None,
+            x_axis_ordinate: None,
+            name: Some("IFC Model".into()),
+        };
+        let kmz = export_kmz_collada_from_meshes(
+            &positions,
+            &normals,
+            &[0, 1, 2],
+            &[3],
+            &[3],
+            &[1.0, 0.0, 0.0, 1.0],
+            &[0.0, 0.0, 0.0],
+            &opts,
+        );
+        // Stored ZIP holding doc.kml + model.dae, KML referencing the .dae.
+        assert!(kmz.windows(7).any(|w| w == b"doc.kml"));
+        assert!(kmz.windows(9).any(|w| w == b"model.dae"), "embeds model.dae");
+        assert!(
+            kmz.windows(8).any(|w| w == b"COLLADA "),
+            "the .dae is COLLADA, not glTF"
+        );
     }
 }

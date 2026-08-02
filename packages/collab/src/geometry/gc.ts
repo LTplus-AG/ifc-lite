@@ -54,9 +54,18 @@ export function collectReferencedBlobHashes(doc: Y.Doc): Set<BlobHash> {
   ents.forEach((entUntyped) => {
     const entity = entUntyped as Y.Map<unknown>;
     const refMap = entity.get(ENTITY_KEY.GEOMETRY_REF) as Y.Map<unknown> | undefined;
-    const geomId = refMap?.get('geomId');
-    if (typeof geomId !== 'string') return;
-    addBlobHashesFromGeometry(geom.get(geomId) as Y.Map<unknown> | undefined, referenced);
+    if (!refMap) return;
+    // An entity may reference several geometry nodes (multi-material); older
+    // docs stored a single `geomId`. Resolve all of them.
+    const idsRaw = refMap.get('geomIds');
+    const geomIds = Array.isArray(idsRaw)
+      ? idsRaw.filter((v): v is string => typeof v === 'string')
+      : typeof refMap.get('geomId') === 'string'
+        ? [refMap.get('geomId') as string]
+        : [];
+    for (const geomId of geomIds) {
+      addBlobHashesFromGeometry(geom.get(geomId) as Y.Map<unknown> | undefined, referenced);
+    }
   });
 
   // 2. Also include unreferenced-by-entity geometry entries' blobs —

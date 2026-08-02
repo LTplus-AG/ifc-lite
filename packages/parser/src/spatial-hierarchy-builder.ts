@@ -24,20 +24,26 @@ import {
   isSpaceLikeSpatialType,
   isSpatialStructureType,
   isStoreyLikeSpatialType,
+  IFC_BUILDING_STOREY_ELEVATION_INDEX,
+  IFC_BUILDING_STOREY_PLACEMENT_INDEX,
+  findStoreyByElevation,
 } from '@ifc-lite/data';
 import type { EntityRef } from './types.js';
 import { EntityExtractor } from './entity-extractor.js';
+import { getAttributeNamesAcrossSchemas } from './ifc-schema.js';
 
 const log = createLogger('SpatialHierarchy');
 
-/** Source needed to extract storey elevations on the fresh-parse path. */
-interface ElevationSource {
+/** Source bytes needed to read on-demand attributes off the raw records
+ *  (storey elevation, LongName). Present on the fresh-parse / cache-with-source
+ *  path, absent on the source-less `buildFromCache` fallback. */
+interface AttributeSource {
   source: Uint8Array;
   entityIndex: { byId: { get(expressId: number): EntityRef | undefined } };
   lengthUnitScale: number;
 }
 
-/** Accumulators threaded through the recursion, plus the optional elevation source. */
+/** Accumulators threaded through the recursion, plus the optional attribute source. */
 interface BuildContext {
   entities: EntityTable;
   relationships: RelationshipGraph;
@@ -47,8 +53,15 @@ interface BuildContext {
   bySpace: Map<number, number[]>;
   storeyElevations: Map<number, number>;
   elementToStorey: Map<number, number>;
+  /** elementId -> nearest containing spatial node at ANY level (see the
+   *  SpatialHierarchy field docs). Covers aggregated descendants of a
+   *  directly-contained element, unlike the storey-only `elementToStorey`. */
+  elementToContainer: Map<number, number>;
   visited: Set<number>;
-  elevation?: ElevationSource;
+  attrSource?: AttributeSource;
+  /** One extractor reused across the recursion when a source is available, so
+   *  LongName reads don't re-allocate per spatial node. */
+  attrExtractor?: EntityExtractor;
 }
 
 export class SpatialHierarchyBuilder {
@@ -85,7 +98,7 @@ export class SpatialHierarchyBuilder {
   private assemble(
     entities: EntityTable,
     relationships: RelationshipGraph,
-    elevation: ElevationSource | undefined,
+    attrSource: AttributeSource | undefined,
     throwOnNoProject: boolean
   ): SpatialHierarchy | undefined {
     const ctx: BuildContext = {
@@ -97,8 +110,10 @@ export class SpatialHierarchyBuilder {
       bySpace: new Map(),
       storeyElevations: new Map(),
       elementToStorey: new Map(),
+      elementToContainer: new Map(),
       visited: new Set(),
-      elevation,
+      attrSource,
+      attrExtractor: attrSource ? new EntityExtractor(attrSource.source) : undefined,
     };
 
     const projectIds = entities.getByType(IfcTypeEnum.IfcProject);
@@ -119,7 +134,7 @@ export class SpatialHierarchyBuilder {
       console.warn('[SpatialHierarchyBuilder] No buildings found in spatial hierarchy');
     }
 
-    const { byStorey, byBuilding, bySite, bySpace, storeyElevations, elementToStorey } = ctx;
+    const { byStorey, byBuilding, bySite, bySpace, storeyElevations, elementToStorey, elementToContainer } = ctx;
 
     // Pre-build the element -> space lookup for O(1) getContainingSpace.
     const elementToSpace = new Map<number, number>();
@@ -139,6 +154,7 @@ export class SpatialHierarchyBuilder {
       // storeyHeights stays empty: both paths use on-demand property extraction.
       storeyHeights: new Map<number, number>(),
       elementToStorey,
+      elementToContainer,
 
       getStoreyElements(storeyId: number): number[] {
         return byStorey.get(storeyId) ?? [];
@@ -146,17 +162,9 @@ export class SpatialHierarchyBuilder {
 
       getStoreyByElevation(z: number): number | null {
         // With an empty storeyElevations map (cache path) this returns null.
-        let closestStorey: number | null = null;
-        let closestDistance = Infinity;
-        for (const [storeyId, elevation] of storeyElevations) {
-          const distance = Math.abs(elevation - z);
-          if (distance < closestDistance) {
-            closestDistance = distance;
-            closestStorey = storeyId;
-          }
-        }
-        // Only return if within a reasonable distance (1 meter).
-        return closestDistance < 1.0 ? closestStorey : null;
+        // Shared with the server-loaded path in the viewer (#1841) so the same
+        // Z can never resolve to a different storey depending on entry path.
+        return findStoreyByElevation(storeyElevations, z);
       },
 
       getContainingSpace(elementId: number): number | null {
@@ -189,21 +197,33 @@ export class SpatialHierarchyBuilder {
   private buildNode(expressId: number, ctx: BuildContext): SpatialNode {
     const { entities, relationships } = ctx;
     const typeEnum = entities.getTypeEnum(expressId);
-    const name = entities.getName(expressId) || `Entity #${expressId}`;
+    const rawName = entities.getName(expressId);
+    // LongName is the descriptive label authors put alongside an ISO 19650 code
+    // in Name (Name "01" / LongName "Main Residence"), so the hierarchy panel can
+    // show both (issue #1634). It lives only in the raw record, so it needs the
+    // source bytes; the source-less buildFromCache fallback leaves it undefined,
+    // exactly like storey elevation.
+    const rawLongName = this.extractLongName(expressId, ctx);
+    // Fall back to LongName when Name is empty (common for IfcSpace), then to a
+    // stable placeholder, so every node still renders a label.
+    const name = rawName || rawLongName || `Entity #${expressId}`;
+    // Only keep LongName as a distinct descriptor when it adds something beyond
+    // the primary label (never duplicate it into the secondary slot).
+    const longName = rawLongName && rawLongName !== name ? rawLongName : undefined;
 
     // Guard against cyclic IfcRelAggregates chains (A aggregates B, B aggregates
     // A), which would otherwise recurse unbounded and overflow the stack. A
     // revisited node is returned as a leaf so the rest of the hierarchy still
     // builds.
     if (ctx.visited.has(expressId)) {
-      return { expressId, type: typeEnum, name, elevation: undefined, children: [], elements: [] };
+      return { expressId, type: typeEnum, name, longName, elevation: undefined, children: [], elements: [] };
     }
     ctx.visited.add(expressId);
 
     // Storey elevation (fresh path only): apply unit scale to convert to meters.
     let elevation: number | undefined;
-    if (typeEnum === IfcTypeEnum.IfcBuildingStorey && ctx.elevation) {
-      const { source, entityIndex, lengthUnitScale } = ctx.elevation;
+    if (typeEnum === IfcTypeEnum.IfcBuildingStorey && ctx.attrSource) {
+      const { source, entityIndex, lengthUnitScale } = ctx.attrSource;
       let rawElevation = this.extractElevation(expressId, source, entityIndex);
       if (rawElevation === undefined) {
         // Elevation is optional and frequently null (Revit / ArchiCAD). Fall back
@@ -300,7 +320,66 @@ export class SpatialHierarchyBuilder {
       }
     }
 
-    return { expressId, type: typeEnum, name, elevation, children: childNodes, elements: containedElements };
+    // Attribute every directly-contained element AND its aggregated descendants
+    // to THIS spatial container, at ANY level - not just storeys. This is what
+    // lets the "immediate Container" lookup resolve a part nested through an
+    // IfcElementAssembly under an IfcBridgePart / IfcRoadPart / IfcSpatialZone,
+    // instead of leaving it blank. It is intentionally SEPARATE from the
+    // storey-only `elementToStorey` above, whose semantics stay byte-identical.
+    // Recursion visits inner containers before their parent, so the nearest
+    // (innermost) container claims a shared descendant first.
+    if (typeEnum !== IfcTypeEnum.IfcProject) {
+      for (const elementId of containedElements) {
+        ctx.elementToContainer.set(elementId, expressId);
+        const stack: number[] = [elementId];
+        const seen = new Set<number>([elementId]);
+        while (stack.length > 0) {
+          const current = stack.pop() as number;
+          const aggregatedKids = relationships.getRelated(current, RelationshipType.Aggregates, 'forward');
+          for (const kid of aggregatedKids) {
+            if (seen.has(kid)) continue;
+            seen.add(kid);
+            if (!ctx.elementToContainer.has(kid)) {
+              ctx.elementToContainer.set(kid, expressId);
+            }
+            stack.push(kid);
+          }
+        }
+      }
+    }
+
+    return { expressId, type: typeEnum, name, longName, elevation, children: childNodes, elements: containedElements };
+  }
+
+  /**
+   * Read an entity's LongName by schema attribute *name*. IfcSite / IfcBuilding /
+   * IfcBuildingStorey / IfcSpace (and the IFC4.3 facility/infra containers)
+   * declare LongName at index 7, but IfcProject carries it at a different slot,
+   * so resolving by name (not a fixed index) stays correct across the IfcRoot
+   * family. The lookup spans every bundled schema, so IFC4.3 leaves outside the
+   * parser's IFC4 codegen pin resolve too. Returns the trimmed value, or
+   * undefined when the type declares no LongName, it is empty, or no source
+   * buffer is available (the buildFromCache path).
+   */
+  private extractLongName(expressId: number, ctx: BuildContext): string | undefined {
+    if (!ctx.attrSource || !ctx.attrExtractor) return undefined;
+    const ref = ctx.attrSource.entityIndex.byId.get(expressId);
+    if (!ref) return undefined;
+    try {
+      const entity = ctx.attrExtractor.extractEntity(ref);
+      if (!entity) return undefined;
+      const idx = getAttributeNamesAcrossSchemas(entity.type).indexOf('LongName');
+      if (idx < 0) return undefined;
+      const raw = (entity.attributes || [])[idx];
+      const value = typeof raw === 'string' ? raw.trim() : '';
+      return value.length > 0 ? value : undefined;
+    } catch (error) {
+      log.caught('Failed to extract LongName', error, {
+        operation: 'extractLongName',
+        entityId: expressId,
+      });
+      return undefined;
+    }
   }
 
   /**
@@ -333,13 +412,13 @@ export class SpatialHierarchyBuilder {
         return undefined;
       };
 
-      // Read ONLY slot 9: a previous "scan every attribute for a number < 10000"
-      // fallback wrongly treated reference attributes (parsed as bare express-id
-      // numbers, e.g. OwnerHistory #3628 -> 3628) as elevations, so a storey with
-      // a null Elevation got a garbage value instead of falling through to the
-      // ObjectPlacement-Z fallback below (#1289).
-      if (attrs.length > 9) {
-        return extractNumber(attrs[9]);
+      // Read ONLY the Elevation slot: a previous "scan every attribute for a
+      // number < 10000" fallback wrongly treated reference attributes (parsed as
+      // bare express-id numbers, e.g. OwnerHistory #3628 -> 3628) as elevations,
+      // so a storey with a null Elevation got a garbage value instead of falling
+      // through to the ObjectPlacement-Z fallback below (#1289).
+      if (attrs.length > IFC_BUILDING_STOREY_ELEVATION_INDEX) {
+        return extractNumber(attrs[IFC_BUILDING_STOREY_ELEVATION_INDEX]);
       }
     } catch (error) {
       log.caught('Failed to extract elevation', error, {
@@ -376,8 +455,7 @@ export class SpatialHierarchyBuilder {
         return extractor.extractEntity(ref)?.attributes ?? undefined;
       };
 
-      // IfcBuildingStorey.ObjectPlacement is attribute index 5.
-      const placementId = readAttrs(expressId)?.[5];
+      const placementId = readAttrs(expressId)?.[IFC_BUILDING_STOREY_PLACEMENT_INDEX];
       if (typeof placementId !== 'number') return undefined;
 
       // IfcLocalPlacement(PlacementRelTo, RelativePlacement) - RelativePlacement

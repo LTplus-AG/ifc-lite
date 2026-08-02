@@ -13,6 +13,7 @@
 import type { PointCloudAsset } from '@ifc-lite/geometry';
 import type { PointRenderPipeline } from './point-pipeline.js';
 import { POINT_VERTEX_BYTES } from './point-pipeline.js';
+import { PointCloudSpatialIndex } from './point-cloud-spatial-index.js';
 
 export interface PointCloudGpuChunk {
   vertexBuffer: GPUBuffer;
@@ -53,6 +54,77 @@ export interface PointCloudNode {
   chunks: PointCloudGpuChunk[];
   bounds: { min: [number, number, number]; max: [number, number, number] };
   pointCount: number;
+  /**
+   * CPU spatial index over this node's points (issue #1860), so the
+   * measure tool can snap to real scan points even though `chunks`
+   * above holds only opaque GPU buffers. Built incrementally in
+   * `appendChunkToNode`, alongside the GPU upload.
+   */
+  spatialIndex: PointCloudSpatialIndex;
+  /**
+   * Optional per-asset GPU model matrix (column-major, 16 floats),
+   * applied in the vertex shader as `uniforms.model * vec4(position, 1)`
+   * before `viewProj` (issue #1804: aligns a georeferenced point cloud
+   * with the IFC model's `IfcMapConversion`). `undefined` → identity,
+   * written by `writePointCloudUniforms`.
+   */
+  model?: Float32Array;
+}
+
+/**
+ * Transform an AABB through a column-major 4x4 model matrix and return
+ * the axis-aligned box of the result (standard 8-corner fold). Used so
+ * `PointCloudRenderer.getBounds()` reports WORLD-space extents when a
+ * node carries a per-asset model matrix (issue #1804) — the height-ramp
+ * colour mode and the viewer's scene-bounds/framing consume those
+ * extents and must agree with where the shader actually places points.
+ * Returns the input box unchanged for a missing/malformed matrix
+ * (mirrors `writePointCloudUniforms`' identity fallback).
+ */
+/**
+ * True when `model` is a usable 4x4: exactly 16 entries, all finite.
+ *
+ * Single-sourced so the two consumers of `PointCloudNode.model` — the AABB
+ * fold below and `writePointCloudUniforms`' GPU write — accept exactly the
+ * same matrices. When they disagree, a matrix one accepts and the other
+ * rejects puts the reported bounds in a different frame from the rendered
+ * points, which is the precise failure this transform exists to prevent.
+ * The finiteness check matters because a single NaN propagates to every
+ * corner of the box (and to every point on the GPU), so a degenerate matrix
+ * must fall back to identity rather than poison the result.
+ */
+export function isUsableModelMatrix(
+  model: Float32Array | undefined,
+): model is Float32Array {
+  if (!model || model.length !== 16) return false;
+  for (let i = 0; i < 16; i++) {
+    if (!Number.isFinite(model[i])) return false;
+  }
+  return true;
+}
+
+export function transformAabb(
+  bounds: { min: [number, number, number]; max: [number, number, number] },
+  model: Float32Array | undefined,
+): { min: [number, number, number]; max: [number, number, number] } {
+  if (!isUsableModelMatrix(model)) return bounds;
+  const min: [number, number, number] = [Infinity, Infinity, Infinity];
+  const max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
+  for (let c = 0; c < 8; c++) {
+    const x = (c & 1) === 0 ? bounds.min[0] : bounds.max[0];
+    const y = (c & 2) === 0 ? bounds.min[1] : bounds.max[1];
+    const z = (c & 4) === 0 ? bounds.min[2] : bounds.max[2];
+    const tx = model[0] * x + model[4] * y + model[8] * z + model[12];
+    const ty = model[1] * x + model[5] * y + model[9] * z + model[13];
+    const tz = model[2] * x + model[6] * y + model[10] * z + model[14];
+    if (tx < min[0]) min[0] = tx;
+    if (ty < min[1]) min[1] = ty;
+    if (tz < min[2]) min[2] = tz;
+    if (tx > max[0]) max[0] = tx;
+    if (ty > max[1]) max[1] = ty;
+    if (tz > max[2]) max[2] = tz;
+  }
+  return { min, max };
 }
 
 /** Build an empty node — chunks are appended via `appendChunkToNode`. */
@@ -74,6 +146,7 @@ export function createNode(
       max: [-Infinity, -Infinity, -Infinity],
     },
     pointCount: 0,
+    spatialIndex: new PointCloudSpatialIndex(),
   };
 }
 
@@ -106,6 +179,13 @@ export function appendChunkToNode(
 ): void {
   const total = chunk.pointCount;
   if (total <= 0) return;
+  // Index the whole chunk's points for measure-tool snapping (#1860),
+  // independent of how the GPU sub-buffer split below divides it up —
+  // the index doesn't care about buffer size limits, only world
+  // positions. Retains `chunk.positions` (and classifications, so the
+  // query can honour the class visibility mask #1783) by reference; see
+  // spatial index class docs. No-ops past the index's point cap.
+  node.spatialIndex.insertRange(chunk.positions, total, chunk.classifications ?? null);
   // Honour BOTH the raw buffer cap and the storage-binding cap, with a 5%
   // margin for safety against driver rounding.
   const maxBytes = Math.min(
@@ -244,6 +324,10 @@ export function destroyNode(node: PointCloudNode): void {
   node.uniformBuffer.destroy();
   node.chunks = [];
   node.pointCount = 0;
+  // Drop the retained position arrays + grid buckets (#1860) — without
+  // this the spatial index would keep every chunk's Float32Array alive
+  // for the rest of the session even after the GPU buffers are freed.
+  node.spatialIndex.dispose();
 }
 
 function growBounds(

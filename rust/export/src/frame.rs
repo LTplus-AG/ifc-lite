@@ -37,6 +37,12 @@ pub(crate) struct YUpMesh {
 }
 
 /// Convert Z-up `positions`/`normals`/`indices`/`origin` to Y-up owned buffers.
+///
+/// The faceted-brep per-face vertex duplication is now collapsed at the mesh
+/// SOURCE (`ifc_lite_processing::element::build_mesh_data` runs
+/// `ifc_lite_geometry::mesh_weld::weld_indexed` on every element), so
+/// `process_geometry`'s `MeshData` arrives pre-welded and this frame conversion
+/// is a faithful pass-through — no export-local re-weld.
 pub(crate) fn to_yup(
     positions: &[f32],
     normals: &[f32],

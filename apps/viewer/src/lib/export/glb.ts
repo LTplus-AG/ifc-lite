@@ -20,6 +20,15 @@ export interface GlbFromGeometryOptions {
    * apparent base colour only, no shading). Defaults to lit. (#1321)
    */
   lit?: boolean;
+  /**
+   * Self-illuminate each material at its base colour (core glTF `emissiveFactor`).
+   * Targets renderers with no ambient/IBL and a single hard sun — Google Earth,
+   * which otherwise lit IFC models so dark that shadow-side faces went black
+   * (#1427). The base colour is kept, so this never darkens a viewer that ignores
+   * emissive. Defaults to off. Mutually exclusive in spirit with unlit, so don't
+   * pair with `lit: false` (the unlit spec mandates `emissiveFactor = 0`).
+   */
+  emissive?: boolean;
 }
 
 /** The slice of `GeometryProcessor` this helper drives — a test seam (see glb.test.ts). */
@@ -40,7 +49,7 @@ export async function exportGlbFromGeometry(
   const gp = createProcessor();
   await gp.init();
   try {
-    const glb = gp.exportGlbFromMeshes(meshes, opts.includeMetadata ?? false, opts.lit ?? true);
+    const glb = gp.exportGlbFromMeshes(meshes, opts.includeMetadata ?? false, opts.lit ?? true, opts.emissive ?? false);
     if (!glb) throw new Error('GLB assembly returned no data');
     return glb;
   } finally {

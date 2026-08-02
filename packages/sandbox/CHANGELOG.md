@@ -1,5 +1,38 @@
 # @ifc-lite/sandbox
 
+## 1.16.4
+
+### Patch Changes
+
+- [#1918](https://github.com/LTplus-AG/ifc-lite/pull/1918) [`d7065f9`](https://github.com/LTplus-AG/ifc-lite/commit/d7065f9bd08cd12d8b17c9f11f0adcd38e0ee1f3) Thanks [@louistrue](https://github.com/louistrue)! - Fix `sandbox.dispose()` aborting the whole QuickJS WASM module when a `bim.*` result could not be marshalled. Handles created through a QuickJS context are unmanaged lifetimes — `context.dispose()` does not free them — so a container handle orphaned by a mid-marshal exception (a throwing getter, a revoked `Proxy`, any host error raised while a result was being converted) kept a JSObject on the runtime's GC list and made `JS_FreeRuntime` assert `list_empty(&rt->gc_obj_list)`. Emscripten then `abort()`ed, leaving the sandbox unusable until a page reload. The bridge now owns every handle it creates across throws (`marshalValue`, namespace registration, the `bim` and `console` globals), and the disposable result of `executePendingJobs()` is freed instead of dropped. Script errors surface unchanged; only the abort is gone.
+
+- Updated dependencies []:
+  - @ifc-lite/sdk@1.21.3
+
+## 1.16.3
+
+### Patch Changes
+
+- [#1691](https://github.com/LTplus-AG/ifc-lite/pull/1691) [`26af236`](https://github.com/LTplus-AG/ifc-lite/commit/26af236a9128f5fc97493d75d7c9642958343a7a) Thanks [@louistrue](https://github.com/louistrue)! - Documentation moved to https://ifclite.dev/docs/ - README links and package homepage fields now point at the new home (the GitHub Pages site remains as a mirror whose canonical URLs point there).
+
+- Updated dependencies [[`26af236`](https://github.com/LTplus-AG/ifc-lite/commit/26af236a9128f5fc97493d75d7c9642958343a7a)]:
+  - @ifc-lite/sdk@1.21.2
+
+## 1.16.2
+
+### Patch Changes
+
+- [#1676](https://github.com/LTplus-AG/ifc-lite/pull/1676) [`da04601`](https://github.com/LTplus-AG/ifc-lite/commit/da0460183dcb4e2b26ceb53cfebd8cca33c78c39) Thanks [@louistrue](https://github.com/louistrue)! - Docs refresh: correct stale README claims and API samples against the current codebase; add READMEs to the ten published packages that shipped without one (cli, create, sdk, sandbox, lens, lists, embed-sdk, embed-protocol, encoding, viewer-core).
+
+- Updated dependencies [[`da04601`](https://github.com/LTplus-AG/ifc-lite/commit/da0460183dcb4e2b26ceb53cfebd8cca33c78c39)]:
+  - @ifc-lite/sdk@1.21.1
+
+## 1.16.1
+
+### Patch Changes
+
+- [#1548](https://github.com/LTplus-AG/ifc-lite/pull/1548) [`ec89d3f`](https://github.com/LTplus-AG/ifc-lite/commit/ec89d3f871f54b58fbfe32915ac6304505de1174) Thanks [@louistrue](https://github.com/louistrue)! - Fix `naiveTypeStrip` mangling namespace imports on the esbuild-free fallback path. The `as`-cast removal regex only protected the `import { Foo as Bar }` alias form, so `import * as utils from 'x'` was rewritten to the invalid `import * from 'x'`, which then survived module-syntax stripping and reached QuickJS verbatim. The negative lookbehind now also excludes `* as name`, so namespace imports are stripped correctly.
+
 ## 1.16.0
 
 ### Minor Changes

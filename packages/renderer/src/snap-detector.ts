@@ -9,6 +9,9 @@ export enum SnapType {
   EDGE = 'edge',
   FACE = 'face',
   FACE_CENTER = 'face_center',
+  /** A snapped scan point from a point-cloud asset (issue #1860) — never
+   *  produced by `SnapDetector` itself; composed in by `RaycastEngine`. */
+  POINT_CLOUD = 'point_cloud',
 }
 
 export interface SnapTarget {
@@ -30,6 +33,14 @@ export interface SnapOptions {
   snapToFaces: boolean;
   snapRadius: number; // In world units
   screenSnapRadius: number; // In pixels
+  /**
+   * Snap to point-cloud scan points (#1860). Consumed by `RaycastEngine`
+   * (SnapDetector itself never produces POINT_CLOUD targets). Optional:
+   * when absent, point snapping follows "is any of the mesh snap kinds
+   * above enabled", so the viewer's single snap toggle governs scan
+   * points too. See `pointCloudSnapEnabled`.
+   */
+  snapToPointClouds?: boolean;
 }
 
 // Edge lock state for magnetic snapping (passed from store)
@@ -729,12 +740,17 @@ export class SnapDetector {
   private getBestSnapTarget(targets: SnapTarget[], cursorPoint: Vec3): SnapTarget | null {
     if (targets.length === 0) return null;
 
-    // Priority order: vertex > edge > face_center > face
-    const priorityMap = {
+    // Priority order: vertex > edge > face_center > face. POINT_CLOUD
+    // never reaches this method (SnapDetector never produces it —
+    // RaycastEngine composes point-cloud snaps in afterwards, #1860)
+    // but the map must stay exhaustive over SnapType for the indexed
+    // lookup below to type-check.
+    const priorityMap: Record<SnapType, number> = {
       [SnapType.VERTEX]: 4,
       [SnapType.EDGE]: 3,
       [SnapType.FACE_CENTER]: 2,
       [SnapType.FACE]: 1,
+      [SnapType.POINT_CLOUD]: 0,
     };
 
     // Sort by priority then confidence

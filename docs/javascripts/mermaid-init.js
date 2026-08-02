@@ -26,13 +26,47 @@
     securityLevel: 'loose'
   });
 
-  // Render mermaid diagrams
+  // Render mermaid diagrams. Stash each diagram's source text before running,
+  // because mermaid replaces the node's content with SVG — the stash lets us
+  // re-render on a palette toggle.
   function renderMermaid() {
     const elements = document.querySelectorAll('.mermaid:not([data-processed])');
     if (elements.length > 0) {
+      elements.forEach(function(el) {
+        if (!el.getAttribute('data-mermaid-source')) {
+          el.setAttribute('data-mermaid-source', el.textContent.trim());
+        }
+      });
       mermaid.run({ nodes: elements });
     }
   }
+
+  // Re-render when the palette is toggled: diagrams carry PLANKOPF red on
+  // carbon, so a stale theme is visible. Reset the processed flag + saved
+  // source, re-initialize with the new theme, and run again.
+  var lastScheme = getTheme();
+  var schemeObserver = new MutationObserver(function() {
+    var next = getTheme();
+    if (next === lastScheme) return;
+    lastScheme = next;
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: next,
+      flowchart: { useMaxWidth: true, htmlLabels: true },
+      securityLevel: 'loose'
+    });
+    document.querySelectorAll('.mermaid[data-processed]').forEach(function(el) {
+      var src = el.getAttribute('data-mermaid-source');
+      if (src) {
+        // Restore as TEXT, not markup — the source must never be reparsed as
+        // DOM (it would let diagram content execute before mermaid rerenders).
+        el.textContent = src;
+      }
+      el.removeAttribute('data-processed');
+    });
+    renderMermaid();
+  });
+  schemeObserver.observe(document.body, { attributes: true, attributeFilter: ['data-md-color-scheme'] });
 
   // Initial render
   if (document.readyState === 'loading') {

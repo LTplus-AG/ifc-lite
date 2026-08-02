@@ -5,7 +5,7 @@
 import { useMemo, useState, useCallback, useEffect } from 'react';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult } from '@ifc-lite/geometry';
-import { useViewerStore, type FederatedModel } from '@/store';
+import { useViewerStore, type FederatedModel, type HierarchyMode } from '@/store';
 import type { TreeNode, UnifiedStorey, HierarchySortMode } from './types';
 import { HIERARCHY_SORT_MODES, DEFAULT_HIERARCHY_SORT } from './types';
 import {
@@ -15,12 +15,14 @@ import {
   buildTypeTree,
   buildIfcTypeTree,
   buildMaterialTree,
+  buildGroupTree,
   filterNodes,
   splitNodes,
   type AuthoredProduct,
+  type GroupSubFilter,
 } from './treeDataBuilder';
 
-export type GroupingMode = 'spatial' | 'type' | 'ifc-type' | 'material';
+export type { HierarchyMode } from '@/store';
 
 const SORT_STORAGE_KEY = 'hierarchy-sort';
 
@@ -71,14 +73,55 @@ function buildGeometricIdSet(
   return ids;
 }
 
+/**
+ * Global IDs of `IfcAnnotation` entities. Their 2D curves (plot boundaries,
+ * "Model Lines", leaders) render through the symbolic overlay, not the mesh
+ * pipeline, so they never enter `buildGeometricIdSet` and were absent from the
+ * "By Class" tree — the user could see them in 3D but not select or hide them
+ * (issue #1480). Folding them into the tree's inclusion set makes each an
+ * ordinary, hideable row; the overlay honours that hide (see
+ * `useSymbolicAnnotations`). Text annotations that carry a real brep mesh are
+ * already in the geometric set, so the union is idempotent for them.
+ */
+function collectAnnotationEntityIds(
+  models: Map<string, FederatedModel>,
+  legacyStore: IfcDataStore | null | undefined,
+): Set<number> {
+  const ids = new Set<number>();
+  const addFrom = (store: IfcDataStore | null | undefined, toGlobal: (localId: number) => number) => {
+    // `getEntitiesByType` is a lazy accessor; guard for the rare
+    // cache-restored store whose accessors have not been reattached yet.
+    if (typeof store?.getEntitiesByType !== 'function') return;
+    for (const ent of store.getEntitiesByType('IfcAnnotation')) {
+      ids.add(toGlobal(ent.expressId));
+    }
+  };
+  if (models.size > 0) {
+    const state = useViewerStore.getState();
+    for (const [modelId, model] of models) {
+      // modelId comes straight from `models`, so it is always resolvable —
+      // only the legacy sentinel needs the raw local id (matches the id the
+      // tree builder assigns via `resolveTreeGlobalId`).
+      addFrom(model.ifcDataStore, (localId) =>
+        modelId === 'legacy' ? localId : state.toGlobalId(modelId, localId),
+      );
+    }
+  } else {
+    addFrom(legacyStore, (localId) => localId);
+  }
+  return ids;
+}
+
 export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryResult }: UseHierarchyTreeParams) {
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [hasInitializedExpansion, setHasInitializedExpansion] = useState(false);
-  const [groupingMode, setGroupingMode] = useState<GroupingMode>(() =>
-    (typeof window !== 'undefined' && localStorage.getItem('hierarchy-grouping') as GroupingMode) || 'spatial'
-  );
+  const groupingMode = useViewerStore((state) => state.hierarchyMode);
+  const setGroupingMode = useViewerStore((state) => state.setHierarchyMode);
   const [sortMode, setSortMode] = useState<HierarchySortMode>(readStoredSortMode);
+  // Groups-tab sub-filter (All / Systems / Zones / Other) — session-only state,
+  // deliberately not persisted (#1622).
+  const [groupFilter, setGroupFilter] = useState<GroupSubFilter>('all');
 
   // Build unified storey data for multi-model mode (moved before useEffect that depends on it)
   const unifiedStoreys = useMemo(
@@ -197,6 +240,22 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
     [models, hasGeometrySource ? meshCount : 0]
   );
 
+  // `IfcAnnotation` entities are a fixed set per loaded model (independent of
+  // streaming mesh count), so this is keyed on model identity only. Unioned
+  // into the "By Class" inclusion set so curve-only annotations appear as
+  // selectable / hideable rows (issue #1480).
+  const annotationEntityIds = useMemo(
+    () => hasGeometrySource ? collectAnnotationEntityIds(models, ifcDataStore) : new Set<number>(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- static per model; toGlobalId reads live store
+    [models, ifcDataStore, hasGeometrySource]
+  );
+  const classTreeIds = useMemo(() => {
+    if (annotationEntityIds.size === 0) return geometricIds;
+    const merged = new Set(geometricIds);
+    for (const id of annotationEntityIds) merged.add(id);
+    return merged;
+  }, [geometricIds, annotationEntityIds]);
+
   const toGlobalIdsForModel = useCallback((modelId: string, expressIds: number[]): number[] => {
     if (modelId === 'legacy') return expressIds;
     const state = useViewerStore.getState();
@@ -240,7 +299,7 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
   const treeData = useMemo(
     (): TreeNode[] => {
       if (groupingMode === 'type') {
-        return buildTypeTree(models, ifcDataStore, expandedNodes, isMultiModel, geometricIds, authoredProducts);
+        return buildTypeTree(models, ifcDataStore, expandedNodes, isMultiModel, classTreeIds, authoredProducts);
       }
       if (groupingMode === 'ifc-type') {
         return buildIfcTypeTree(models, ifcDataStore, expandedNodes, isMultiModel, geometricIds);
@@ -248,9 +307,12 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
       if (groupingMode === 'material') {
         return buildMaterialTree(models, ifcDataStore, expandedNodes, isMultiModel, geometricIds);
       }
+      if (groupingMode === 'groups') {
+        return buildGroupTree(models, ifcDataStore, expandedNodes, isMultiModel, geometricIds, groupFilter);
+      }
       return buildTreeData(models, ifcDataStore, expandedNodes, isMultiModel, unifiedStoreys, sortMode);
     },
-    [models, ifcDataStore, expandedNodes, isMultiModel, unifiedStoreys, sortMode, groupingMode, geometricIds, authoredProducts]
+    [models, ifcDataStore, expandedNodes, isMultiModel, unifiedStoreys, sortMode, groupingMode, geometricIds, classTreeIds, authoredProducts, groupFilter]
   );
 
   // Filter nodes based on search
@@ -279,8 +341,10 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
 
   // Get all elements for a node (handles type groups, ifc-type, unified storeys, single storeys, model contributions, and elements)
   const getNodeElements = useCallback((node: TreeNode): number[] => {
-    if (node.type === 'type-group' || node.type === 'ifc-type' || node.type === 'material-group') {
-      // GlobalIds are pre-stored on the node during tree construction — O(1)
+    if (node.type === 'type-group' || node.type === 'ifc-type' || node.type === 'material-group' ||
+        node.type === 'group' || node.type === 'group-member') {
+      // GlobalIds are pre-stored on the node during tree construction — O(1).
+      // For 'group' rows these are the RESOLVED member geometry ids (#1622).
       return node.globalIds;
     }
     if (node.type === 'unified-storey') {
@@ -338,14 +402,6 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
     return [];
   }, [models, ifcDataStore, unifiedStoreys, getUnifiedStoreyElements, toGlobalIdsForModel]);
 
-  // Persist grouping mode preference
-  const handleSetGroupingMode = useCallback((mode: GroupingMode) => {
-    setGroupingMode(mode);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('hierarchy-grouping', mode);
-    }
-  }, []);
-
   // Persist storey sort-order preference (issue #1296)
   const handleSetSortMode = useCallback((mode: HierarchySortMode) => {
     setSortMode(mode);
@@ -362,9 +418,11 @@ export function useHierarchyTree({ models, ifcDataStore, isMultiModel, geometryR
     searchQuery,
     setSearchQuery,
     groupingMode,
-    setGroupingMode: handleSetGroupingMode,
+    setGroupingMode,
     sortMode,
     setSortMode: handleSetSortMode,
+    groupFilter,
+    setGroupFilter,
     unifiedStoreys,
     treeData,
     filteredNodes,

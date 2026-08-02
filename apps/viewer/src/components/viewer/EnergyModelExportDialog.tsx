@@ -4,9 +4,13 @@
 
 /**
  * Energy Model export dialog. Builds a Ladybug Tools model analytically from IFC bytes
- * (rooms from IfcSpace volumes). The bytes are the CURRENT model serialized with its
- * mutations applied (via StepExporter) — NOT the original `sourceFile` — so spaces created
- * in-app (e.g. by the Space Sketch tool) are included. Two targets:
+ * (rooms from IfcSpace volumes). When the model's mutation overlay carries actual edits,
+ * the bytes are the CURRENT model re-serialized through `StepExporter` — NOT the retained
+ * source bytes — so spaces created in-app (e.g. by the Space Sketch tool) are included
+ * (#1908). An unedited model falls straight through to its source bytes; see
+ * `energy-export-source.ts` for why the gate is `hasPendingChanges()` and not merely
+ * "a mutation view exists". Two targets, and BOTH go through that same gate — DFJSON
+ * originally read the source bytes directly and silently dropped every in-app edit:
  *   - HBJSON (Honeybee): full energy + daylight model with apertures, doors, shades, and
  *     constructions.
  *   - DFJSON (Dragonfly): extruded Room2D floor plates + heights, the simpler target for
@@ -42,11 +46,9 @@ import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
 import { GeometryProcessor } from '@ifc-lite/geometry';
 import { StepExporter } from '@ifc-lite/export';
-import { MutablePropertyView } from '@ifc-lite/mutations';
-import type { IfcDataStore } from '@ifc-lite/parser';
-import { configureMutationView } from '@/utils/configureMutationView';
 import { ensureModelExportReady } from '@/services/desktop-export';
 import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
+import { resolveEnergyExportMutationSource } from './energy-export-source';
 
 type EnergyFormat = 'hbjson' | 'dfjson';
 
@@ -79,7 +81,6 @@ interface EnergyModelExportDialogProps {
 export function EnergyModelExportDialog({ trigger }: EnergyModelExportDialogProps) {
   const models = useViewerStore((s) => s.models);
   const getMutationView = useViewerStore((s) => s.getMutationView);
-  const registerMutationView = useViewerStore((s) => s.registerMutationView);
 
   const [open, setOpen] = useState(false);
   const [format, setFormat] = useState<EnergyFormat>('hbjson');
@@ -118,72 +119,100 @@ export function EnergyModelExportDialog({ trigger }: EnergyModelExportDialogProp
     const spec = FORMATS[format];
     try {
       const modelId = selectedModel.id;
-      // Serialize the CURRENT model (with mutations applied) to IFC bytes so
-      // in-app edits — e.g. spaces created by the Space Sketch tool — are in the
-      // export. Reading the original sourceFile would miss them.
       const exportDataStore = await ensureModelExportReady(modelId);
       if (!exportDataStore) {
         throw new Error('Model data is unavailable for export');
       }
-      let mutationView = getMutationView(modelId);
-      if (!mutationView) {
-        mutationView = new MutablePropertyView(exportDataStore.properties || null, modelId);
-        configureMutationView(mutationView, exportDataStore as IfcDataStore);
-        registerMutationView(modelId, mutationView);
-      }
-      const sv = selectedModel.schemaVersion || 'IFC4';
-      const schema = sv.includes('2X3') ? 'IFC2X3' : sv.includes('4X3') ? 'IFC4X3' : 'IFC4';
-      const exporter = new StepExporter(exportDataStore, mutationView || undefined);
-      const { content } = exporter.export({
-        schema: schema as 'IFC2X3' | 'IFC4' | 'IFC4X3',
-        includeGeometry: true,
-        applyMutations: true,
-        deltaOnly: false,
-        application: 'ifc-lite',
+      // Serialize the CURRENT model (with mutations applied) to IFC bytes so
+      // in-app edits — e.g. spaces created by the Space Sketch tool — are in
+      // the export; reading the retained source bytes alone would miss them.
+      // Only when the overlay actually carries edits, though: a registered but
+      // untouched view is the common case (the Properties panel,
+      // `BulkPropertyEditor`, `DataConnector` and `ExportDialog` all construct
+      // and register one just by being opened), and routing those through a
+      // full STEP re-bake would make every export after opening any panel pay
+      // for a regeneration that cannot change the output. See
+      // `energy-export-source.ts`, and `energy-export.ts` for the CLI twin.
+      const mutationSource = resolveEnergyExportMutationSource({
+        mutationView: getMutationView(modelId),
+        dataStore: exportDataStore,
+        schemaVersion: selectedModel.schemaVersion,
       });
+      let content: Uint8Array;
+      if (mutationSource) {
+        const sv = selectedModel.schemaVersion || 'IFC4';
+        const schema = sv.includes('2X3') ? 'IFC2X3' : sv.includes('4X3') ? 'IFC4X3' : 'IFC4';
+        const exporter = new StepExporter(mutationSource.dataStore, mutationSource.mutationView);
+        content = exporter.export({
+          schema: schema as 'IFC2X3' | 'IFC4' | 'IFC4X3',
+          includeGeometry: true,
+          applyMutations: true,
+          deltaOnly: false,
+          application: 'ifc-lite',
+        }).content;
+      } else {
+        // Unedited (or IFC5, or source-less) model: hand the analytic exporter
+        // the retained STEP bytes verbatim. `StepExporter` re-serializes
+        // un-mutated entities from these same bytes, so when they are absent
+        // there is nothing either path could have produced — fail loudly
+        // rather than emit a structurally valid but empty energy model.
+        if (!exportDataStore.source || exportDataStore.source.length === 0) {
+          throw new Error(
+            `${FORMATS[format].label} export needs the source IFC bytes, which this model did not retain.`,
+          );
+        }
+        content = exportDataStore.source;
+      }
 
       // Strip only a real IFC source-file extension — a dotted display name
       // like `Tower.v2` must survive into the exported model name.
       const baseName = selectedModel.name.replace(/\.(ifc|ifcx|ifczip)$/i, '');
       // A fresh processor is cheap: wasm-bindgen shares one module singleton,
-      // so init() no-ops when the viewer already initialised the engine.
+      // so init() no-ops when the viewer already initialised the engine. It
+      // owns a WASM `IfcLiteBridge` handle, so it must be freed on every path
+      // out of this block, success or throw (AGENTS.md "Free every WASM handle
+      // deterministically") — mirrors the CLI-side `withProcessor` helper.
       const processor = new GeometryProcessor();
-      await processor.init();
       // HBJSON comes back as UTF-8 bytes (not capped by the V8 max-string
       // ceiling); DFJSON models are small 2D plates, so that exporter stays
       // a string.
       let out: Uint8Array | string;
-      if (format === 'hbjson') {
-        const hbjson = processor.exportHbjson(content, baseName);
-        if (hbjson === null) {
-          throw new Error('Geometry engine unavailable');
+      try {
+        await processor.init();
+        if (format === 'hbjson') {
+          const hbjson = processor.exportHbjson(content, baseName);
+          if (hbjson === null) {
+            throw new Error('Geometry engine unavailable');
+          }
+          // The HBJSON exporter returns empty output when the model has no
+          // IfcSpace volumes.
+          if (hbjson.length === 0) {
+            throw new Error('No IfcSpace volumes found in the model to export');
+          }
+          out = hbjson;
+        } else {
+          const dfjson = processor.exportDfjson(content, baseName);
+          if (dfjson === null) {
+            throw new Error('Geometry engine unavailable');
+          }
+          // export_dfjson always returns a complete Model JSON, even with zero
+          // spaces (empty `buildings`), so an emptiness check on the string can
+          // never fire. Count the exported Room2Ds instead so a model without
+          // IfcSpace volumes gets the same friendly error, not a useless file.
+          const dfModel = JSON.parse(dfjson) as {
+            buildings?: { unique_stories?: { room_2ds?: unknown[] }[] }[];
+          };
+          const roomCount = (dfModel.buildings ?? []).reduce(
+            (n, b) => n + (b.unique_stories ?? []).reduce((m, s) => m + (s.room_2ds?.length ?? 0), 0),
+            0,
+          );
+          if (roomCount === 0) {
+            throw new Error('No IfcSpace volumes found in the model to export');
+          }
+          out = dfjson;
         }
-        // The HBJSON exporter returns empty output when the model has no
-        // IfcSpace volumes.
-        if (hbjson.length === 0) {
-          throw new Error('No IfcSpace volumes found in the model to export');
-        }
-        out = hbjson;
-      } else {
-        const dfjson = processor.exportDfjson(content, baseName);
-        if (dfjson === null) {
-          throw new Error('Geometry engine unavailable');
-        }
-        // export_dfjson always returns a complete Model JSON, even with zero
-        // spaces (empty `buildings`), so an emptiness check on the string can
-        // never fire. Count the exported Room2Ds instead so a model without
-        // IfcSpace volumes gets the same friendly error, not a useless file.
-        const dfModel = JSON.parse(dfjson) as {
-          buildings?: { unique_stories?: { room_2ds?: unknown[] }[] }[];
-        };
-        const roomCount = (dfModel.buildings ?? []).reduce(
-          (n, b) => n + (b.unique_stories ?? []).reduce((m, s) => m + (s.room_2ds?.length ?? 0), 0),
-          0,
-        );
-        if (roomCount === 0) {
-          throw new Error('No IfcSpace volumes found in the model to export');
-        }
-        out = dfjson;
+      } finally {
+        processor.dispose();
       }
 
       const blob = new Blob([out as BlobPart], { type: 'application/json' });
@@ -200,7 +229,7 @@ export function EnergyModelExportDialog({ trigger }: EnergyModelExportDialogProp
     } finally {
       setIsExporting(false);
     }
-  }, [selectedModel, format, getMutationView, registerMutationView]);
+  }, [selectedModel, format, getMutationView]);
 
   const spec = FORMATS[format];
 

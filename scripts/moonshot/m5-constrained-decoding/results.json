@@ -1,0 +1,2269 @@
+{
+  "summary": {
+    "generatedAt": "2026-07-24T19:10:31.931Z",
+    "model": "claude-haiku-4-5-20251001",
+    "tasksRun": [
+      "T01",
+      "T02",
+      "T03",
+      "T04",
+      "T05",
+      "T06",
+      "T07",
+      "T08",
+      "T09",
+      "T10",
+      "T11",
+      "T12"
+    ],
+    "modelCalls": 24,
+    "constrained": {
+      "emitted": 12,
+      "compileOk": 12,
+      "compileRate": 1,
+      "exhausted": 0,
+      "totalRepairs": 0,
+      "meanQuality": 1
+    },
+    "baseline": {
+      "strictCompileOk": 12,
+      "strictCompileRate": 1,
+      "lenientCompileOk": 12,
+      "meanQuality": 1
+    },
+    "margin": 0,
+    "baselineRaw": {
+      "emitted": 12,
+      "compileOk": 4,
+      "compileRate": 0.3333333333333333,
+      "meanQuality": 0.319
+    },
+    "marginVsRaw": 0.681,
+    "rawArmModelCalls": 12,
+    "repairProbe": {
+      "brief": "One storey at elevation 0 with a single wall, 6 m long, 0.3 m thick, 3 m high, containing one window 1.6 m wide and 1.4 m high with a sill at exactly 2.0 m, centred on the wall.",
+      "repairs": 1,
+      "exhausted": false,
+      "rejections": [
+        {
+          "op": {
+            "op": "add_window",
+            "id": "win1",
+            "wall": "w1",
+            "along": 3,
+            "sill": 2,
+            "width": 1.6,
+            "height": 1.4
+          },
+          "error": "opening does not fit vertically in wall \"w1\": base 2 + height 1.4 must lie within [0, 2.950] (wall height 3 m)"
+        }
+      ],
+      "opsCount": 3,
+      "compileOk": true,
+      "counts": {
+        "storeys": 1,
+        "walls": 1,
+        "slabs": 0,
+        "columns": 0,
+        "beams": 0,
+        "windows": 1,
+        "doors": 0,
+        "spaces": 0
+      },
+      "finalOps": [
+        {
+          "op": "create_storey",
+          "id": "s1",
+          "name": "Ground",
+          "elevation": 0
+        },
+        {
+          "op": "create_wall",
+          "id": "w1",
+          "storey": "s1",
+          "start": [
+            0,
+            0,
+            0
+          ],
+          "end": [
+            6,
+            0,
+            0
+          ],
+          "thickness": 0.3,
+          "height": 3
+        },
+        {
+          "op": "add_window",
+          "id": "win1",
+          "wall": "w1",
+          "along": 3,
+          "sill": 1.55,
+          "width": 1.6,
+          "height": 1.4
+        }
+      ],
+      "modelCalls": 2
+    }
+  },
+  "records": [
+    {
+      "task": "T01",
+      "difficulty": "easy",
+      "arm": "constrained",
+      "calls": 1,
+      "repairs": 0,
+      "exhausted": false,
+      "rejectionErrors": [],
+      "opsCount": 2,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "storeys = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "slabs = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "slab X extent 10 m",
+          "measured": 10,
+          "score": 1
+        },
+        {
+          "name": "slab Y extent 8 m",
+          "measured": 8,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 0,
+        "slabs": 1,
+        "columns": 0,
+        "beams": 0,
+        "windows": 0,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T01-constrained.ifc"
+    },
+    {
+      "task": "T01",
+      "difficulty": "easy",
+      "arm": "baseline",
+      "calls": 1,
+      "proposedOps": 2,
+      "skippedOps": 0,
+      "strictCompileOk": true,
+      "opsCount": 2,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "storeys = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "slabs = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "slab X extent 10 m",
+          "measured": 10,
+          "score": 1
+        },
+        {
+          "name": "slab Y extent 8 m",
+          "measured": 8,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 0,
+        "slabs": 1,
+        "columns": 0,
+        "beams": 0,
+        "windows": 0,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T01-baseline.ifc"
+    },
+    {
+      "task": "T02",
+      "difficulty": "easy",
+      "arm": "constrained",
+      "calls": 1,
+      "repairs": 0,
+      "exhausted": false,
+      "rejectionErrors": [],
+      "opsCount": 6,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "storeys = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "slabs = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "walls = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "overall height 3.2 m",
+          "measured": 3.2,
+          "score": 1
+        },
+        {
+          "name": "slab X extent 12 m",
+          "measured": 12,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 4,
+        "slabs": 1,
+        "columns": 0,
+        "beams": 0,
+        "windows": 0,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T02-constrained.ifc"
+    },
+    {
+      "task": "T02",
+      "difficulty": "easy",
+      "arm": "baseline",
+      "calls": 1,
+      "proposedOps": 6,
+      "skippedOps": 0,
+      "strictCompileOk": true,
+      "opsCount": 6,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "storeys = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "slabs = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "walls = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "overall height 3.2 m",
+          "measured": 3.2,
+          "score": 1
+        },
+        {
+          "name": "slab X extent 12 m",
+          "measured": 12,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 4,
+        "slabs": 1,
+        "columns": 0,
+        "beams": 0,
+        "windows": 0,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T02-baseline.ifc"
+    },
+    {
+      "task": "T03",
+      "difficulty": "easy",
+      "arm": "constrained",
+      "calls": 1,
+      "repairs": 0,
+      "exhausted": false,
+      "rejectionErrors": [],
+      "opsCount": 4,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "walls = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "windows = 2",
+          "measured": 2,
+          "score": 1
+        },
+        {
+          "name": "total glazed area 3.36 m2",
+          "measured": 3.36,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 1,
+        "slabs": 0,
+        "columns": 0,
+        "beams": 0,
+        "windows": 2,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T03-constrained.ifc"
+    },
+    {
+      "task": "T03",
+      "difficulty": "easy",
+      "arm": "baseline",
+      "calls": 1,
+      "proposedOps": 4,
+      "skippedOps": 0,
+      "strictCompileOk": true,
+      "opsCount": 4,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "walls = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "windows = 2",
+          "measured": 2,
+          "score": 1
+        },
+        {
+          "name": "total glazed area 3.36 m2",
+          "measured": 3.36,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 1,
+        "slabs": 0,
+        "columns": 0,
+        "beams": 0,
+        "windows": 2,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T03-baseline.ifc"
+    },
+    {
+      "task": "T04",
+      "difficulty": "easy",
+      "arm": "constrained",
+      "calls": 1,
+      "repairs": 0,
+      "exhausted": false,
+      "rejectionErrors": [],
+      "opsCount": 8,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "storeys = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "slabs = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "columns = 6",
+          "measured": 6,
+          "score": 1
+        },
+        {
+          "name": "overall height 3.2 m",
+          "measured": 3.2,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 0,
+        "slabs": 1,
+        "columns": 6,
+        "beams": 0,
+        "windows": 0,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T04-constrained.ifc"
+    },
+    {
+      "task": "T04",
+      "difficulty": "easy",
+      "arm": "baseline",
+      "calls": 1,
+      "proposedOps": 8,
+      "skippedOps": 0,
+      "strictCompileOk": true,
+      "opsCount": 8,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "storeys = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "slabs = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "columns = 6",
+          "measured": 6,
+          "score": 1
+        },
+        {
+          "name": "overall height 3.2 m",
+          "measured": 3.2,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 0,
+        "slabs": 1,
+        "columns": 6,
+        "beams": 0,
+        "windows": 0,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T04-baseline.ifc"
+    },
+    {
+      "task": "T05",
+      "difficulty": "medium",
+      "arm": "constrained",
+      "calls": 1,
+      "repairs": 0,
+      "exhausted": false,
+      "rejectionErrors": [],
+      "opsCount": 10,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "walls = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "doors = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "windows = 3",
+          "measured": 3,
+          "score": 1
+        },
+        {
+          "name": "slab X extent 12 m",
+          "measured": 12,
+          "score": 1
+        },
+        {
+          "name": "slab Y extent 10 m",
+          "measured": 10,
+          "score": 1
+        },
+        {
+          "name": "total glazed area 5.4 m2",
+          "measured": 5.4,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 4,
+        "slabs": 1,
+        "columns": 0,
+        "beams": 0,
+        "windows": 3,
+        "doors": 1,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T05-constrained.ifc"
+    },
+    {
+      "task": "T05",
+      "difficulty": "medium",
+      "arm": "baseline",
+      "calls": 1,
+      "proposedOps": 10,
+      "skippedOps": 0,
+      "strictCompileOk": true,
+      "opsCount": 10,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "walls = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "doors = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "windows = 3",
+          "measured": 3,
+          "score": 1
+        },
+        {
+          "name": "slab X extent 12 m",
+          "measured": 12,
+          "score": 1
+        },
+        {
+          "name": "slab Y extent 10 m",
+          "measured": 10,
+          "score": 1
+        },
+        {
+          "name": "total glazed area 5.4 m2",
+          "measured": 5.4,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 4,
+        "slabs": 1,
+        "columns": 0,
+        "beams": 0,
+        "windows": 3,
+        "doors": 1,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T05-baseline.ifc"
+    },
+    {
+      "task": "T06",
+      "difficulty": "medium",
+      "arm": "constrained",
+      "calls": 1,
+      "repairs": 0,
+      "exhausted": false,
+      "rejectionErrors": [],
+      "opsCount": 6,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "storeys = 2",
+          "measured": 2,
+          "score": 1
+        },
+        {
+          "name": "slabs = 2",
+          "measured": 2,
+          "score": 1
+        },
+        {
+          "name": "spaces = 2",
+          "measured": 2,
+          "score": 1
+        },
+        {
+          "name": "total room floor area 40 m2",
+          "measured": 40,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 2,
+        "walls": 0,
+        "slabs": 2,
+        "columns": 0,
+        "beams": 0,
+        "windows": 0,
+        "doors": 0,
+        "spaces": 2
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T06-constrained.ifc"
+    },
+    {
+      "task": "T06",
+      "difficulty": "medium",
+      "arm": "baseline",
+      "calls": 1,
+      "proposedOps": 6,
+      "skippedOps": 0,
+      "strictCompileOk": true,
+      "opsCount": 6,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "storeys = 2",
+          "measured": 2,
+          "score": 1
+        },
+        {
+          "name": "slabs = 2",
+          "measured": 2,
+          "score": 1
+        },
+        {
+          "name": "spaces = 2",
+          "measured": 2,
+          "score": 1
+        },
+        {
+          "name": "total room floor area 40 m2",
+          "measured": 40,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 2,
+        "walls": 0,
+        "slabs": 2,
+        "columns": 0,
+        "beams": 0,
+        "windows": 0,
+        "doors": 0,
+        "spaces": 2
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T06-baseline.ifc"
+    },
+    {
+      "task": "T07",
+      "difficulty": "medium",
+      "arm": "constrained",
+      "calls": 1,
+      "repairs": 0,
+      "exhausted": false,
+      "rejectionErrors": [],
+      "opsCount": 6,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "walls = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "windows = 3",
+          "measured": 3,
+          "score": 1
+        },
+        {
+          "name": "total glazed area 7.5 m2",
+          "measured": 7.5,
+          "score": 1
+        },
+        {
+          "name": "glazing ratio 0.25",
+          "measured": 0.25,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 1,
+        "slabs": 1,
+        "columns": 0,
+        "beams": 0,
+        "windows": 3,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T07-constrained.ifc"
+    },
+    {
+      "task": "T07",
+      "difficulty": "medium",
+      "arm": "baseline",
+      "calls": 1,
+      "proposedOps": 5,
+      "skippedOps": 0,
+      "strictCompileOk": true,
+      "opsCount": 5,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "walls = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "windows = 3",
+          "measured": 3,
+          "score": 1
+        },
+        {
+          "name": "total glazed area 7.5 m2",
+          "measured": 7.5,
+          "score": 1
+        },
+        {
+          "name": "glazing ratio 0.25",
+          "measured": 0.25,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 1,
+        "slabs": 0,
+        "columns": 0,
+        "beams": 0,
+        "windows": 3,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T07-baseline.ifc"
+    },
+    {
+      "task": "T08",
+      "difficulty": "medium",
+      "arm": "constrained",
+      "calls": 1,
+      "repairs": 0,
+      "exhausted": false,
+      "rejectionErrors": [],
+      "opsCount": 9,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "slabs = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "walls = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "columns = 3",
+          "measured": 3,
+          "score": 1
+        },
+        {
+          "name": "slab X extent 20 m",
+          "measured": 20,
+          "score": 1
+        },
+        {
+          "name": "slab Y extent 15 m",
+          "measured": 15,
+          "score": 1
+        },
+        {
+          "name": "overall height 6.3 m",
+          "measured": 6.3,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 4,
+        "slabs": 1,
+        "columns": 3,
+        "beams": 0,
+        "windows": 0,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T08-constrained.ifc"
+    },
+    {
+      "task": "T08",
+      "difficulty": "medium",
+      "arm": "baseline",
+      "calls": 1,
+      "proposedOps": 9,
+      "skippedOps": 0,
+      "strictCompileOk": true,
+      "opsCount": 9,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "slabs = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "walls = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "columns = 3",
+          "measured": 3,
+          "score": 1
+        },
+        {
+          "name": "slab X extent 20 m",
+          "measured": 20,
+          "score": 1
+        },
+        {
+          "name": "slab Y extent 15 m",
+          "measured": 15,
+          "score": 1
+        },
+        {
+          "name": "overall height 6.3 m",
+          "measured": 6.3,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 4,
+        "slabs": 1,
+        "columns": 3,
+        "beams": 0,
+        "windows": 0,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T08-baseline.ifc"
+    },
+    {
+      "task": "T09",
+      "difficulty": "hard",
+      "arm": "constrained",
+      "calls": 1,
+      "repairs": 0,
+      "exhausted": false,
+      "rejectionErrors": [],
+      "opsCount": 24,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "storeys = 3",
+          "measured": 3,
+          "score": 1
+        },
+        {
+          "name": "slabs = 3",
+          "measured": 3,
+          "score": 1
+        },
+        {
+          "name": "columns = 12",
+          "measured": 12,
+          "score": 1
+        },
+        {
+          "name": "beams = 6",
+          "measured": 6,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 3,
+        "walls": 0,
+        "slabs": 3,
+        "columns": 12,
+        "beams": 6,
+        "windows": 0,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T09-constrained.ifc"
+    },
+    {
+      "task": "T09",
+      "difficulty": "hard",
+      "arm": "baseline",
+      "calls": 1,
+      "proposedOps": 24,
+      "skippedOps": 0,
+      "strictCompileOk": true,
+      "opsCount": 24,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "storeys = 3",
+          "measured": 3,
+          "score": 1
+        },
+        {
+          "name": "slabs = 3",
+          "measured": 3,
+          "score": 1
+        },
+        {
+          "name": "columns = 12",
+          "measured": 12,
+          "score": 1
+        },
+        {
+          "name": "beams = 6",
+          "measured": 6,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 3,
+        "walls": 0,
+        "slabs": 3,
+        "columns": 12,
+        "beams": 6,
+        "windows": 0,
+        "doors": 0,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T09-baseline.ifc"
+    },
+    {
+      "task": "T10",
+      "difficulty": "hard",
+      "arm": "constrained",
+      "calls": 1,
+      "repairs": 0,
+      "exhausted": false,
+      "rejectionErrors": [],
+      "opsCount": 8,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "walls = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "spaces = 2",
+          "measured": 2,
+          "score": 1
+        },
+        {
+          "name": "slab X extent 24 m",
+          "measured": 24,
+          "score": 1
+        },
+        {
+          "name": "total room floor area 220 m2",
+          "measured": 220,
+          "score": 1
+        },
+        {
+          "name": "larger room 120 m2",
+          "measured": 120,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 4,
+        "slabs": 1,
+        "columns": 0,
+        "beams": 0,
+        "windows": 0,
+        "doors": 0,
+        "spaces": 2
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T10-constrained.ifc"
+    },
+    {
+      "task": "T10",
+      "difficulty": "hard",
+      "arm": "baseline",
+      "calls": 1,
+      "proposedOps": 8,
+      "skippedOps": 0,
+      "strictCompileOk": true,
+      "opsCount": 8,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "walls = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "spaces = 2",
+          "measured": 2,
+          "score": 1
+        },
+        {
+          "name": "slab X extent 24 m",
+          "measured": 24,
+          "score": 1
+        },
+        {
+          "name": "total room floor area 220 m2",
+          "measured": 220,
+          "score": 1
+        },
+        {
+          "name": "larger room 120 m2",
+          "measured": 120,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 4,
+        "slabs": 1,
+        "columns": 0,
+        "beams": 0,
+        "windows": 0,
+        "doors": 0,
+        "spaces": 2
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T10-baseline.ifc"
+    },
+    {
+      "task": "T11",
+      "difficulty": "hard",
+      "arm": "constrained",
+      "calls": 1,
+      "repairs": 0,
+      "exhausted": false,
+      "rejectionErrors": [],
+      "opsCount": 27,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "storeys = 2",
+          "measured": 2,
+          "score": 1
+        },
+        {
+          "name": "walls = 8",
+          "measured": 8,
+          "score": 1
+        },
+        {
+          "name": "windows = 6",
+          "measured": 6,
+          "score": 1
+        },
+        {
+          "name": "doors = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "total glazed area 13.5 m2",
+          "measured": 13.5,
+          "score": 1
+        },
+        {
+          "name": "FireRating REI60 on all walls",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 2,
+        "walls": 8,
+        "slabs": 2,
+        "columns": 0,
+        "beams": 0,
+        "windows": 6,
+        "doors": 1,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T11-constrained.ifc"
+    },
+    {
+      "task": "T11",
+      "difficulty": "hard",
+      "arm": "baseline",
+      "calls": 1,
+      "proposedOps": 27,
+      "skippedOps": 0,
+      "strictCompileOk": true,
+      "opsCount": 27,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "storeys = 2",
+          "measured": 2,
+          "score": 1
+        },
+        {
+          "name": "walls = 8",
+          "measured": 8,
+          "score": 1
+        },
+        {
+          "name": "windows = 6",
+          "measured": 6,
+          "score": 1
+        },
+        {
+          "name": "doors = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "total glazed area 13.5 m2",
+          "measured": 13.5,
+          "score": 1
+        },
+        {
+          "name": "FireRating REI60 on all walls",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 2,
+        "walls": 8,
+        "slabs": 2,
+        "columns": 0,
+        "beams": 0,
+        "windows": 6,
+        "doors": 1,
+        "spaces": 0
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T11-baseline.ifc"
+    },
+    {
+      "task": "T12",
+      "difficulty": "hard",
+      "arm": "constrained",
+      "calls": 1,
+      "repairs": 0,
+      "exhausted": false,
+      "rejectionErrors": [],
+      "opsCount": 32,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "storeys = 2",
+          "measured": 2,
+          "score": 1
+        },
+        {
+          "name": "slabs = 2",
+          "measured": 2,
+          "score": 1
+        },
+        {
+          "name": "walls = 10",
+          "measured": 10,
+          "score": 1
+        },
+        {
+          "name": "doors = 2",
+          "measured": 2,
+          "score": 1
+        },
+        {
+          "name": "windows = 12",
+          "measured": 12,
+          "score": 1
+        },
+        {
+          "name": "spaces = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "total glazed area 36 m2",
+          "measured": 36,
+          "score": 1
+        },
+        {
+          "name": "total room floor area 252 m2",
+          "measured": 252,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 2,
+        "walls": 10,
+        "slabs": 2,
+        "columns": 0,
+        "beams": 0,
+        "windows": 12,
+        "doors": 2,
+        "spaces": 4
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T12-constrained.ifc"
+    },
+    {
+      "task": "T12",
+      "difficulty": "hard",
+      "arm": "baseline",
+      "calls": 1,
+      "proposedOps": 32,
+      "skippedOps": 0,
+      "strictCompileOk": true,
+      "opsCount": 32,
+      "emitted": true,
+      "compileOk": true,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "storeys = 2",
+          "measured": 2,
+          "score": 1
+        },
+        {
+          "name": "slabs = 2",
+          "measured": 2,
+          "score": 1
+        },
+        {
+          "name": "walls = 10",
+          "measured": 10,
+          "score": 1
+        },
+        {
+          "name": "doors = 2",
+          "measured": 2,
+          "score": 1
+        },
+        {
+          "name": "windows = 12",
+          "measured": 12,
+          "score": 1
+        },
+        {
+          "name": "spaces = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "total glazed area 36 m2",
+          "measured": 36,
+          "score": 1
+        },
+        {
+          "name": "total room floor area 252 m2",
+          "measured": 252,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 2,
+        "walls": 10,
+        "slabs": 2,
+        "columns": 0,
+        "beams": 0,
+        "windows": 12,
+        "doors": 2,
+        "spaces": 4
+      },
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T12-baseline.ifc"
+    },
+    {
+      "task": "T01",
+      "difficulty": "easy",
+      "arm": "baseline-raw",
+      "calls": 1,
+      "emitted": true,
+      "compileOk": false,
+      "bytes": 2579,
+      "quality": 0,
+      "schemaFactor": 0,
+      "clashFactor": 0,
+      "criteria": [
+        {
+          "name": "storeys = 1",
+          "measured": null,
+          "score": 0
+        },
+        {
+          "name": "slabs = 1",
+          "measured": null,
+          "score": 0
+        },
+        {
+          "name": "slab X extent 10 m",
+          "measured": null,
+          "score": 0
+        },
+        {
+          "name": "slab Y extent 8 m",
+          "measured": null,
+          "score": 0
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 0,
+        "slabs": 1,
+        "columns": 0,
+        "beams": 0,
+        "windows": 0,
+        "doors": 0,
+        "spaces": 0
+      },
+      "meshedElements": 0,
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T01-baseline-raw.ifc"
+    },
+    {
+      "task": "T02",
+      "difficulty": "easy",
+      "arm": "baseline-raw",
+      "calls": 1,
+      "emitted": true,
+      "compileOk": false,
+      "bytes": 3879,
+      "quality": 0,
+      "schemaFactor": 0,
+      "clashFactor": 0,
+      "criteria": [
+        {
+          "name": "storeys = 1",
+          "measured": null,
+          "score": 0
+        },
+        {
+          "name": "slabs = 1",
+          "measured": null,
+          "score": 0
+        },
+        {
+          "name": "walls = 4",
+          "measured": null,
+          "score": 0
+        },
+        {
+          "name": "overall height 3.2 m",
+          "measured": null,
+          "score": 0
+        },
+        {
+          "name": "slab X extent 12 m",
+          "measured": null,
+          "score": 0
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 4,
+        "slabs": 1,
+        "columns": 0,
+        "beams": 0,
+        "windows": 0,
+        "doors": 0,
+        "spaces": 0
+      },
+      "meshedElements": 0,
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T02-baseline-raw.ifc"
+    },
+    {
+      "task": "T03",
+      "difficulty": "easy",
+      "arm": "baseline-raw",
+      "calls": 1,
+      "emitted": true,
+      "compileOk": true,
+      "bytes": 3743,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "walls = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "windows = 2",
+          "measured": 2,
+          "score": 1
+        },
+        {
+          "name": "total glazed area 3.36 m2",
+          "measured": 3.36,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 1,
+        "slabs": 0,
+        "columns": 0,
+        "beams": 0,
+        "windows": 2,
+        "doors": 0,
+        "spaces": 0
+      },
+      "meshedElements": 4,
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T03-baseline-raw.ifc"
+    },
+    {
+      "task": "T04",
+      "difficulty": "easy",
+      "arm": "baseline-raw",
+      "calls": 1,
+      "emitted": true,
+      "compileOk": false,
+      "bytes": 3670,
+      "quality": 0,
+      "schemaFactor": 0,
+      "clashFactor": 0,
+      "criteria": [
+        {
+          "name": "storeys = 1",
+          "measured": null,
+          "score": 0
+        },
+        {
+          "name": "slabs = 1",
+          "measured": null,
+          "score": 0
+        },
+        {
+          "name": "columns = 6",
+          "measured": null,
+          "score": 0
+        },
+        {
+          "name": "overall height 3.2 m",
+          "measured": null,
+          "score": 0
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 0,
+        "slabs": 1,
+        "columns": 6,
+        "beams": 0,
+        "windows": 0,
+        "doors": 0,
+        "spaces": 0
+      },
+      "meshedElements": 0,
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T04-baseline-raw.ifc"
+    },
+    {
+      "task": "T05",
+      "difficulty": "medium",
+      "arm": "baseline-raw",
+      "calls": 1,
+      "emitted": true,
+      "compileOk": false,
+      "bytes": 5195,
+      "quality": 0,
+      "schemaFactor": 0,
+      "clashFactor": 0,
+      "criteria": [
+        {
+          "name": "walls = 4",
+          "measured": null,
+          "score": 0
+        },
+        {
+          "name": "doors = 1",
+          "measured": null,
+          "score": 0
+        },
+        {
+          "name": "windows = 3",
+          "measured": null,
+          "score": 0
+        },
+        {
+          "name": "slab X extent 12 m",
+          "measured": null,
+          "score": 0
+        },
+        {
+          "name": "slab Y extent 10 m",
+          "measured": null,
+          "score": 0
+        },
+        {
+          "name": "total glazed area 5.4 m2",
+          "measured": null,
+          "score": 0
+        }
+      ],
+      "schema": {
+        "valid": false,
+        "errors": 1,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 4,
+        "slabs": 1,
+        "columns": 0,
+        "beams": 0,
+        "windows": 3,
+        "doors": 1,
+        "spaces": 0
+      },
+      "meshedElements": 0,
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T05-baseline-raw.ifc"
+    },
+    {
+      "task": "T06",
+      "difficulty": "medium",
+      "arm": "baseline-raw",
+      "calls": 1,
+      "emitted": true,
+      "compileOk": false,
+      "bytes": 2946,
+      "quality": 0,
+      "schemaFactor": 0,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "storeys = 2",
+          "measured": 2,
+          "score": 1
+        },
+        {
+          "name": "slabs = 2",
+          "measured": 2,
+          "score": 1
+        },
+        {
+          "name": "spaces = 2",
+          "measured": 2,
+          "score": 1
+        },
+        {
+          "name": "total room floor area 40 m2",
+          "measured": 40,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": false,
+        "errors": 1,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 2,
+        "walls": 0,
+        "slabs": 2,
+        "columns": 0,
+        "beams": 0,
+        "windows": 0,
+        "doors": 0,
+        "spaces": 2
+      },
+      "meshedElements": 4,
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T06-baseline-raw.ifc"
+    },
+    {
+      "task": "T07",
+      "difficulty": "medium",
+      "arm": "baseline-raw",
+      "calls": 1,
+      "emitted": true,
+      "compileOk": true,
+      "bytes": 2838,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "walls = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "windows = 3",
+          "measured": 3,
+          "score": 1
+        },
+        {
+          "name": "total glazed area 7.5 m2",
+          "measured": 7.502,
+          "score": 1
+        },
+        {
+          "name": "glazing ratio 0.25",
+          "measured": 0.25,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 1,
+        "slabs": 0,
+        "columns": 0,
+        "beams": 0,
+        "windows": 3,
+        "doors": 0,
+        "spaces": 0
+      },
+      "meshedElements": 4,
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T07-baseline-raw.ifc"
+    },
+    {
+      "task": "T08",
+      "difficulty": "medium",
+      "arm": "baseline-raw",
+      "calls": 1,
+      "emitted": true,
+      "compileOk": false,
+      "bytes": 5553,
+      "quality": 0,
+      "schemaFactor": 0,
+      "clashFactor": 0,
+      "criteria": [
+        {
+          "name": "slabs = 1",
+          "measured": null,
+          "score": 0
+        },
+        {
+          "name": "walls = 4",
+          "measured": null,
+          "score": 0
+        },
+        {
+          "name": "columns = 3",
+          "measured": null,
+          "score": 0
+        },
+        {
+          "name": "slab X extent 20 m",
+          "measured": null,
+          "score": 0
+        },
+        {
+          "name": "slab Y extent 15 m",
+          "measured": null,
+          "score": 0
+        },
+        {
+          "name": "overall height 6.3 m",
+          "measured": null,
+          "score": 0
+        }
+      ],
+      "schema": {
+        "valid": false,
+        "errors": 1,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 4,
+        "slabs": 1,
+        "columns": 3,
+        "beams": 0,
+        "windows": 0,
+        "doors": 0,
+        "spaces": 0
+      },
+      "meshedElements": 0,
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T08-baseline-raw.ifc"
+    },
+    {
+      "task": "T09",
+      "difficulty": "hard",
+      "arm": "baseline-raw",
+      "calls": 1,
+      "emitted": true,
+      "compileOk": false,
+      "bytes": 7479,
+      "quality": 0,
+      "schemaFactor": 0,
+      "clashFactor": 0,
+      "criteria": [
+        {
+          "name": "storeys = 3",
+          "measured": null,
+          "score": 0
+        },
+        {
+          "name": "slabs = 3",
+          "measured": null,
+          "score": 0
+        },
+        {
+          "name": "columns = 12",
+          "measured": null,
+          "score": 0
+        },
+        {
+          "name": "beams = 6",
+          "measured": null,
+          "score": 0
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 3,
+        "walls": 0,
+        "slabs": 3,
+        "columns": 12,
+        "beams": 6,
+        "windows": 0,
+        "doors": 0,
+        "spaces": 0
+      },
+      "meshedElements": 0,
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T09-baseline-raw.ifc"
+    },
+    {
+      "task": "T10",
+      "difficulty": "hard",
+      "arm": "baseline-raw",
+      "calls": 1,
+      "emitted": true,
+      "compileOk": true,
+      "bytes": 4226,
+      "quality": 1,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "walls = 4",
+          "measured": 4,
+          "score": 1
+        },
+        {
+          "name": "spaces = 2",
+          "measured": 2,
+          "score": 1
+        },
+        {
+          "name": "slab X extent 24 m",
+          "measured": 24,
+          "score": 1
+        },
+        {
+          "name": "total room floor area 220 m2",
+          "measured": 220,
+          "score": 1
+        },
+        {
+          "name": "larger room 120 m2",
+          "measured": 120,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 1,
+        "walls": 4,
+        "slabs": 1,
+        "columns": 0,
+        "beams": 0,
+        "windows": 0,
+        "doors": 0,
+        "spaces": 2
+      },
+      "meshedElements": 7,
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T10-baseline-raw.ifc"
+    },
+    {
+      "task": "T11",
+      "difficulty": "hard",
+      "arm": "baseline-raw",
+      "calls": 1,
+      "emitted": true,
+      "compileOk": true,
+      "bytes": 8980,
+      "quality": 0.833,
+      "schemaFactor": 1,
+      "clashFactor": 1,
+      "criteria": [
+        {
+          "name": "storeys = 2",
+          "measured": 0,
+          "score": 0
+        },
+        {
+          "name": "walls = 8",
+          "measured": 8,
+          "score": 1
+        },
+        {
+          "name": "windows = 6",
+          "measured": 6,
+          "score": 1
+        },
+        {
+          "name": "doors = 1",
+          "measured": 1,
+          "score": 1
+        },
+        {
+          "name": "total glazed area 13.5 m2",
+          "measured": 13.5,
+          "score": 1
+        },
+        {
+          "name": "FireRating REI60 on all walls",
+          "measured": 1,
+          "score": 1
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 2
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 0,
+        "walls": 8,
+        "slabs": 2,
+        "columns": 0,
+        "beams": 0,
+        "windows": 6,
+        "doors": 1,
+        "spaces": 0
+      },
+      "meshedElements": 17,
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T11-baseline-raw.ifc"
+    },
+    {
+      "task": "T12",
+      "difficulty": "hard",
+      "arm": "baseline-raw",
+      "calls": 1,
+      "emitted": true,
+      "compileOk": false,
+      "bytes": 12359,
+      "quality": 0,
+      "schemaFactor": 0,
+      "clashFactor": 0,
+      "criteria": [
+        {
+          "name": "storeys = 2",
+          "measured": null,
+          "score": 0
+        },
+        {
+          "name": "slabs = 2",
+          "measured": null,
+          "score": 0
+        },
+        {
+          "name": "walls = 10",
+          "measured": null,
+          "score": 0
+        },
+        {
+          "name": "doors = 2",
+          "measured": null,
+          "score": 0
+        },
+        {
+          "name": "windows = 12",
+          "measured": null,
+          "score": 0
+        },
+        {
+          "name": "spaces = 4",
+          "measured": null,
+          "score": 0
+        },
+        {
+          "name": "total glazed area 36 m2",
+          "measured": null,
+          "score": 0
+        },
+        {
+          "name": "total room floor area 252 m2",
+          "measured": null,
+          "score": 0
+        }
+      ],
+      "schema": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 1
+      },
+      "clash": {
+        "total": 0
+      },
+      "counts": {
+        "storeys": 2,
+        "walls": 9,
+        "slabs": 2,
+        "columns": 0,
+        "beams": 0,
+        "windows": 12,
+        "doors": 2,
+        "spaces": 4
+      },
+      "meshedElements": 0,
+      "ifcPath": "/private/tmp/claude-501/-Users-louistrue-Development-ifc-lite/2ec75938-454c-46d9-8819-e37d26fe15fe/scratchpad/m5/ifc/T12-baseline-raw.ifc"
+    }
+  ]
+}

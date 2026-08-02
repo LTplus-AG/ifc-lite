@@ -208,12 +208,14 @@ async function main(): Promise<void> {
       process.exit(1);
     }
     const sessionFactory: SessionFactory = {
-      build(scopeForSession) {
+      build(scopeForSession, sessionId) {
         return createMCPServer({
           version: VERSION,
           // Each HTTP session gets a fresh registry so mutations don't leak.
           registry: new InMemoryModelRegistry(),
           scope: scopeForSession,
+          // Keys per-session state (layer workspaces) and its disposal (#1030).
+          sessionId,
           config: {
             readOnly: opts.readOnly,
             bsddEndpoint: opts.bsdd,

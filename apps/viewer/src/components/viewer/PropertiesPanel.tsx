@@ -17,13 +17,14 @@ import {
   Tag,
   MousePointer2,
   ArrowUpDown,
-  FileBox,
   PenLine,
   Crosshair,
+  Box,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { EditToolbar } from './PropertyEditor';
 import { GeometryEditCard } from './GeometryEditCard';
+import { ModelBadge } from './ModelBadge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -35,7 +36,7 @@ import { useIfc } from '@/hooks/useIfc';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { IfcQuery } from '@ifc-lite/query';
 import { MutablePropertyView } from '@ifc-lite/mutations';
-import { extractClassificationsOnDemand, extractMaterialsOnDemand, extractMaterialPropertiesOnDemand, extractTypePropertiesOnDemand, extractTypeEntityOwnProperties, extractDocumentsOnDemand, extractRelationshipsOnDemand, extractGroupMembersOnDemand, extractGeoreferencingOnDemand, extractLengthUnitScale, getAttributeNames, type IfcDataStore, type MaterialPsetGroup } from '@ifc-lite/parser';
+import { extractClassificationsOnDemand, extractAllMaterialsOnDemand, extractMaterialPropertiesOnDemand, extractTypePropertiesOnDemand, extractTypeEntityOwnProperties, extractDocumentsOnDemand, extractRelationshipsOnDemand, extractGroupMembersOnDemand, extractGeoreferencingOnDemand, extractLengthUnitScale, extractProjectUnits, ProjectUnits, getAttributeNames, type IfcDataStore, type MaterialPsetGroup } from '@ifc-lite/parser';
 import type { NewEntity } from '@ifc-lite/mutations';
 import { EntityFlags, RelationshipType, isSpatialStructureTypeName, isStoreyLikeSpatialTypeName } from '@ifc-lite/data';
 import type { EntityRef, FederatedModel } from '@/store/types';
@@ -55,6 +56,8 @@ import type { PropertySet, QuantitySet } from './properties/encodingUtils';
 import { BsddCard } from './properties/BsddCard';
 import { GeoreferencingPanel } from './properties/GeoreferencingPanel';
 import { RawStepCard } from './properties/RawStepCard';
+import { UnitDisplayControl } from './properties/UnitDisplayControl';
+import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
 
 /** IFC material *definition* classes selectable from the Materials tab. */
 const MATERIAL_DEF_TYPES = new Set([
@@ -67,7 +70,7 @@ const MATERIAL_DEF_TYPES = new Set([
   'IFCMATERIALLIST',
 ]);
 
-type DisplayProperty = { name: string; value: unknown; isMutated: boolean; type?: number };
+type DisplayProperty = { name: string; value: unknown; isMutated: boolean; type?: number; dataType?: string };
 type DisplayPropertySet = {
   name: string;
   properties: DisplayProperty[];
@@ -141,9 +144,15 @@ function mergePropertySetLists(base: DisplayPropertySet[], incoming: DisplayProp
 }
 
 export function PropertiesPanel() {
+  // Display-unit converter overrides (issue #1573 proposal 2) — read once
+  // here and threaded to every PropertySetCard/QuantitySetCard render site
+  // below, plus the secondary EntityDataSection component.
+  const unitDisplayOverrides = useViewerStore((s) => s.unitDisplayOverrides);
   const selectedEntityId = useViewerStore((s) => s.selectedEntityId);
   const selectedEntity = useViewerStore((s) => s.selectedEntity);
   const selectedEntities = useViewerStore((s) => s.selectedEntities);
+  const zoneSets = useViewerStore((s) => s.zoneSets);
+  const zoneAssignments = useViewerStore((s) => s.zoneAssignments);
   const selectedModelId = useViewerStore((s) => s.selectedModelId);
   const cameraCallbacks = useViewerStore((s) => s.cameraCallbacks);
   const toggleEntityVisibility = useViewerStore((s) => s.toggleEntityVisibility);
@@ -572,6 +581,9 @@ export function PropertiesPanel() {
             // Carry the value type so the editor can render the right control
             // even when the value is null/unset (e.g. a fresh bSDD Boolean).
             type: p.type,
+            // Carry the raw IFC measure type so the card can look up its
+            // declared display unit (issue #1573).
+            dataType: p.dataType,
           })),
           isNewPset: newPsetNames.has(pset.name),
         }));
@@ -584,7 +596,7 @@ export function PropertiesPanel() {
     const rawProps = entityNode.properties();
     let result: DisplayPropertySet[] = rawProps.map(pset => ({
       name: pset.name,
-      properties: pset.properties.map(p => ({ name: p.name, value: p.value, isMutated: false })),
+      properties: pset.properties.map(p => ({ name: p.name, value: p.value, isMutated: false, dataType: p.dataType })),
       isNewPset: false,
     }));
 
@@ -596,7 +608,7 @@ export function PropertiesPanel() {
         const typeOwnProps = extractTypeEntityOwnProperties(dataStore, expressId);
         const mappedTypeOwn = typeOwnProps.map(pset => ({
           name: pset.name,
-          properties: pset.properties.map(p => ({ name: p.name, value: p.value, isMutated: false })),
+          properties: pset.properties.map(p => ({ name: p.name, value: p.value, isMutated: false, dataType: p.dataType })),
           isNewPset: false,
         }));
         result = mergePropertySetLists(result, mappedTypeOwn);
@@ -689,12 +701,14 @@ export function PropertiesPanel() {
     return extractClassificationsOnDemand(dataStore as IfcDataStore, lookupExpressId);
   }, [selectedEntity, lookupExpressId, model, ifcDataStore]);
 
-  // Extract materials for the selected entity from the IFC data store
-  const materialInfo = useMemo(() => {
-    if (!selectedEntity || lookupExpressId === null) return null;
+  // Extract materials for the selected entity from the IFC data store —
+  // ALL associations, so an element carrying e.g. a layer set AND a fallback
+  // IfcMaterial renders one card per association instead of hiding the rest.
+  const materialInfos = useMemo(() => {
+    if (!selectedEntity || lookupExpressId === null) return [];
     const dataStore = model?.ifcDataStore ?? ifcDataStore;
-    if (!dataStore) return null;
-    return extractMaterialsOnDemand(dataStore as IfcDataStore, lookupExpressId);
+    if (!dataStore) return [];
+    return extractAllMaterialsOnDemand(dataStore as IfcDataStore, lookupExpressId);
   }, [selectedEntity, lookupExpressId, model, ifcDataStore]);
 
   // Property sets attached to the selected entity's material(s) via
@@ -821,6 +835,16 @@ export function PropertiesPanel() {
     const dataStore = model?.ifcDataStore ?? ifcDataStore;
     if (!dataStore?.source?.length || !dataStore?.entityIndex) return 1;
     return extractLengthUnitScale(dataStore.source, dataStore.entityIndex);
+  }, [model, ifcDataStore]);
+
+  // Extract the file's full declared unit assignment (per-unit-type symbols +
+  // SI scales) so property/quantity cards can render values with their units
+  // (issue #1573). Falls back to an empty resolver (SI defaults) when the
+  // source buffer / entity index aren't available.
+  const projectUnits = useMemo(() => {
+    const dataStore = model?.ifcDataStore ?? ifcDataStore;
+    if (!dataStore?.source?.length || !dataStore?.entityIndex) return ProjectUnits.empty();
+    return extractProjectUnits(dataStore.source, dataStore.entityIndex);
   }, [model, ifcDataStore]);
 
   // Extract type-level properties (e.g., from IfcWallType's HasPropertySets)
@@ -950,6 +974,35 @@ export function PropertiesPanel() {
     return stats.length > 0 ? stats : null;
   }, [selectedEntity, model, ifcDataStore]);
 
+  // Location-zone membership (issue #1810): which zone this element falls in
+  // per defined zone set, read straight from the last-computed assignment
+  // (`zoneAssignments`, keyed by the SAME global id the renderer highlight
+  // uses — `selectedEntityId`). Shown for ANY selected element (not gated to
+  // spatial containers like `spatialContainment` above), since zones classify
+  // ordinary building elements.
+  const zoneMembership = useMemo(() => {
+    if (selectedEntityId === null || zoneSets.length === 0) return null;
+    const record = zoneAssignments.get(selectedEntityId);
+    // `setId` (durable, unique) keys the rendered rows — `label` is the set's
+    // display NAME, which is "unique-by-convention but not enforced" (see
+    // `ZoneSet.name`), so two same-named sets would collide as React keys
+    // (CodeRabbit review of PR #1869).
+    const rows: Array<{ setId: string; label: string; value: string }> = [];
+    for (const zs of zoneSets) {
+      const assignment = record?.[zs.id];
+      if (!assignment) continue;
+      if (assignment.straddles) {
+        const touched = assignment.touchedZoneIds
+          .map((zoneId) => zs.zones.find((z) => z.id === zoneId)?.name)
+          .filter((n): n is string => !!n);
+        rows.push({ setId: zs.id, label: zs.name, value: touched.length > 0 ? `${touched.join(', ')} (straddles)` : 'straddles' });
+      } else if (assignment.zoneName) {
+        rows.push({ setId: zs.id, label: zs.name, value: assignment.zoneName });
+      }
+    }
+    return rows.length > 0 ? rows : null;
+  }, [selectedEntityId, zoneSets, zoneAssignments]);
+
   // Separate occurrence (instance) and inherited type properties.
   // Occurrence properties are displayed first, type properties in a separate section.
   // All type property sets are always shown in the inherited section so users can see
@@ -1064,7 +1117,7 @@ export function PropertiesPanel() {
   const renderedQuantities = quantities;
   const renderedAttributes = attributes;
   const renderedClassifications = classifications;
-  const renderedMaterialInfo = materialInfo;
+  const renderedMaterialInfos = materialInfos;
   const renderedMaterialProperties = materialProperties;
   const renderedDocuments = documents;
   const renderedEntityRelationships = entityRelationships;
@@ -1073,6 +1126,7 @@ export function PropertiesPanel() {
   const renderedTypeProperties = typeProperties;
   const renderedTypeEditImpact = typeEditImpact;
   const renderedIsTypeEntity = isTypeEntity;
+  const renderedProjectUnits = projectUnits;
   const renderedExistingProps = useMemo(() => {
     const keys = new Set<string>();
     for (const pset of renderedMergedProperties) {
@@ -1154,7 +1208,7 @@ export function PropertiesPanel() {
     }
     // Multi-model or no model loaded: show empty state
     return (
-      <div className="h-full flex flex-col border-l-2 border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-black">
+      <div {...tourAnchor(TOUR_ANCHORS.propertiesPanel)} className="h-full flex flex-col border-l-2 border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-black">
         <div className="p-3 border-b-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black">
           <h2 className="font-bold uppercase tracking-wider text-xs text-zinc-900 dark:text-zinc-100">Inspector</h2>
         </div>
@@ -1179,7 +1233,7 @@ export function PropertiesPanel() {
   const entityObjectType = renderedEntityObjectType;
 
   return (
-    <div className="h-full flex flex-col border-l-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black">
+    <div {...tourAnchor(TOUR_ANCHORS.propertiesPanel)} className="h-full flex flex-col border-l-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black">
       {/* Entity Header */}
       <div className="p-4 border-b-2 border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-black space-y-3">
         <div className="flex items-start gap-3">
@@ -1264,6 +1318,10 @@ export function PropertiesPanel() {
                 {selectedEntityId && isEntityVisible(selectedEntityId) ? 'Hide' : 'Show'}
               </TooltipContent>
             </Tooltip>
+            {/* Display-unit converter (issue #1573 proposal 2) — covers both
+                the Properties and Quantities tabs below, so it lives in the
+                shared header rather than inside either TabsContent. */}
+            <UnitDisplayControl />
           </div>
         </div>
 
@@ -1404,9 +1462,8 @@ export function PropertiesPanel() {
 
         {/* Model Source (when multiple models loaded) - below storey, less prominent */}
         {models.size > 1 && model && (
-          <div className="flex items-center gap-2 text-[11px] px-2 py-1 text-zinc-400 dark:text-zinc-500 min-w-0">
-            <FileBox className="h-3 w-3 shrink-0" />
-            <span className="font-mono truncate min-w-0 flex-1">{model.name}</span>
+          <div className="px-2 py-1">
+            <ModelBadge modelId={model.id} className="gap-2 text-[11px] max-w-full" />
           </div>
         )}
       </div>
@@ -1460,6 +1517,29 @@ export function PropertiesPanel() {
                 <div key={item.label} className="grid grid-cols-[minmax(80px,1fr)_minmax(0,2fr)] gap-2 px-3 py-1.5 text-sm">
                   <span className="text-muted-foreground truncate" title={item.label}>{item.label}</span>
                   <span className="font-medium font-mono">{item.value}</span>
+                </div>
+              ))}
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+      )}
+
+      {/* Location zones (issue #1810) — which user-defined zone box(es) this
+          element falls in, per zone set. Read-only: editing zones happens in
+          the Zones panel, not here. */}
+      {zoneMembership && (
+        <Collapsible defaultOpen className="border-b">
+          <CollapsibleTrigger className="flex items-center gap-2 w-full p-3 hover:bg-muted/50 text-left">
+            <Box className="h-4 w-4 text-amber-600" />
+            <span className="font-medium text-sm">Zones</span>
+            <span className="text-xs text-muted-foreground ml-auto">{zoneMembership.length}</span>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div className="divide-y border-t">
+              {zoneMembership.map((item) => (
+                <div key={item.setId} className="grid grid-cols-[minmax(80px,1fr)_minmax(0,2fr)] gap-2 px-3 py-1.5 text-sm">
+                  <span className="text-muted-foreground truncate" title={item.label}>{item.label}</span>
+                  <span className="font-medium font-mono truncate" title={item.value}>{item.value}</span>
                 </div>
               ))}
             </div>
@@ -1544,7 +1624,7 @@ export function PropertiesPanel() {
             )}
             {renderedMergedProperties.length === 0
               && renderedClassifications.length === 0
-              && !renderedMaterialInfo
+              && renderedMaterialInfos.length === 0
               && renderedMaterialProperties.length === 0
               && renderedDocuments.length === 0
               && !renderedEntityRelationships
@@ -1575,6 +1655,8 @@ export function PropertiesPanel() {
                         isTypeProperty={renderedIsTypeEntity}
                         typeEditScope={renderedIsTypeEntity ? renderedTypeEditImpact ?? undefined : undefined}
                         focusedPropKey={focusedPropKey}
+                        projectUnits={renderedProjectUnits}
+                        unitDisplayOverrides={unitDisplayOverrides}
                       />
                     ))}
                   </>
@@ -1600,6 +1682,8 @@ export function PropertiesPanel() {
                         isTypeProperty
                         typeEditScope={renderedTypeEditImpact?.mode === 'inherited' ? renderedTypeEditImpact : undefined}
                         focusedPropKey={focusedPropKey}
+                        projectUnits={renderedProjectUnits}
+                        unitDisplayOverrides={unitDisplayOverrides}
                       />
                     ))}
                   </>
@@ -1617,13 +1701,15 @@ export function PropertiesPanel() {
                   </>
                 )}
 
-                {/* Materials */}
-                {renderedMaterialInfo && (
+                {/* Materials — one card per IfcRelAssociatesMaterial */}
+                {renderedMaterialInfos.length > 0 && (
                   <>
                     {(renderedMergedProperties.length > 0 || renderedClassifications.length > 0) && (
                       <div className="border-t border-zinc-200 dark:border-zinc-800 pt-2 mt-2" />
                     )}
-                    <MaterialCard material={renderedMaterialInfo} />
+                    {renderedMaterialInfos.map((info, i) => (
+                      <MaterialCard key={i} material={info} />
+                    ))}
                   </>
                 )}
 
@@ -1632,7 +1718,7 @@ export function PropertiesPanel() {
                     mirroring the Type Properties block. */}
                 {renderedMaterialProperties.length > 0 && (
                   <>
-                    {(renderedMergedProperties.length > 0 || renderedClassifications.length > 0 || renderedMaterialInfo) && (
+                    {(renderedMergedProperties.length > 0 || renderedClassifications.length > 0 || renderedMaterialInfos.length > 0) && (
                       <div className="border-t border-amber-200 dark:border-amber-800/50 pt-2 mt-2" />
                     )}
                     {renderedMaterialProperties.map((group) => (
@@ -1646,8 +1732,10 @@ export function PropertiesPanel() {
                             key={`matpset-${group.materialId}-${pset.name}`}
                             pset={{
                               name: pset.name,
-                              properties: pset.properties.map((p) => ({ name: p.name, value: p.value, isMutated: false })),
+                              properties: pset.properties.map((p) => ({ name: p.name, value: p.value, isMutated: false, dataType: p.dataType })),
                             }}
+                            projectUnits={renderedProjectUnits}
+                            unitDisplayOverrides={unitDisplayOverrides}
                           />
                         ))}
                       </div>
@@ -1658,7 +1746,7 @@ export function PropertiesPanel() {
                 {/* Documents */}
                 {renderedDocuments.length > 0 && (
                   <>
-                    {(renderedMergedProperties.length > 0 || renderedClassifications.length > 0 || renderedMaterialInfo || renderedMaterialProperties.length > 0) && (
+                    {(renderedMergedProperties.length > 0 || renderedClassifications.length > 0 || renderedMaterialInfos.length > 0 || renderedMaterialProperties.length > 0) && (
                       <div className="border-t border-zinc-200 dark:border-zinc-800 pt-2 mt-2" />
                     )}
                     {renderedDocuments.map((doc, i) => (
@@ -1703,7 +1791,7 @@ export function PropertiesPanel() {
             ) : (
               <div className="space-y-3 w-full overflow-hidden">
                 {renderedQuantities.map((qset: QuantitySet) => (
-                  <QuantitySetCard key={qset.name} qset={qset} />
+                  <QuantitySetCard key={qset.name} qset={qset} projectUnits={renderedProjectUnits} unitDisplayOverrides={unitDisplayOverrides} />
                 ))}
               </div>
             )}
@@ -1854,6 +1942,11 @@ function MultiEntityPanel({
           <span className="text-[10px] font-mono bg-emerald-100 dark:bg-emerald-900 px-1.5 py-0.5 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
             {entities.length} models
           </span>
+          {/* Display-unit converter (issue #1573 proposal 2) — one control
+              for the whole stacked list below, not per-entity section. */}
+          <div className="ml-auto">
+            <UnitDisplayControl />
+          </div>
         </div>
       </div>
 
@@ -1926,7 +2019,7 @@ function EntityDataSection({
     const rawProps = entityNode.properties();
     return rawProps.map(pset => ({
       name: pset.name,
-      properties: pset.properties.map(p => ({ name: p.name, value: p.value })),
+      properties: pset.properties.map(p => ({ name: p.name, value: p.value, dataType: p.dataType })),
     }));
   }, [entityNode]);
 
@@ -1934,6 +2027,19 @@ function EntityDataSection({
     if (!entityNode) return [];
     return entityNode.quantities();
   }, [entityNode]);
+
+  // The file's declared units, for rendering unit suffixes on property/
+  // quantity values (issue #1573). Mirrors the `projectUnits` memo above.
+  const projectUnits = useMemo(() => {
+    if (!dataStore?.source?.length || !dataStore?.entityIndex) return ProjectUnits.empty();
+    return extractProjectUnits(dataStore.source, dataStore.entityIndex);
+  }, [dataStore]);
+
+  // Display-unit converter overrides (issue #1573 proposal 2) — this
+  // component renders in the multi-entity selection panel, a sibling
+  // component to the main PropertiesPanel, so it reads the store directly
+  // rather than threading the value through as a prop.
+  const unitDisplayOverrides = useViewerStore((s) => s.unitDisplayOverrides);
 
   // Get attributes - uses schema-aware extraction to show ALL string/enum attributes
   // Note: GlobalId is intentionally excluded since it's shown in the dedicated GUID field above
@@ -1962,10 +2068,7 @@ function EntityDataSection({
       {/* Entity Header with model name */}
       <div className="p-3 bg-zinc-50 dark:bg-zinc-900/50 space-y-2">
         {showModelName && model && (
-          <div className="flex items-center gap-2 text-[11px] text-zinc-500 dark:text-zinc-400">
-            <FileBox className="h-3 w-3" />
-            <span className="font-mono truncate">{model.name}</span>
-          </div>
+          <ModelBadge modelId={model.id} className="gap-2 text-[11px] max-w-full" />
         )}
         <div className="flex items-center gap-2">
           <Layers className="h-4 w-4 text-emerald-600" />
@@ -2017,7 +2120,7 @@ function EntityDataSection({
           <CollapsibleContent>
             <div className="p-2 pt-0 space-y-2">
               {properties.map((pset) => (
-                <PropertySetCard key={pset.name} pset={pset} />
+                <PropertySetCard key={pset.name} pset={pset} projectUnits={projectUnits} unitDisplayOverrides={unitDisplayOverrides} />
               ))}
             </div>
           </CollapsibleContent>
@@ -2035,7 +2138,7 @@ function EntityDataSection({
           <CollapsibleContent>
             <div className="p-2 pt-0 space-y-2">
               {quantities.map((qset) => (
-                <QuantitySetCard key={qset.name} qset={qset} />
+                <QuantitySetCard key={qset.name} qset={qset} projectUnits={projectUnits} unitDisplayOverrides={unitDisplayOverrides} />
               ))}
             </div>
           </CollapsibleContent>

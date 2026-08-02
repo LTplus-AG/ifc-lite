@@ -38,13 +38,18 @@ export function buildBridge(
   buildConsole(vm, logs);
 
   // ── bim global ─────────────────────────────────────────────
+  // The handle is freed in a `finally`: if namespace construction throws,
+  // an orphaned handle would keep a JSObject alive past context teardown and
+  // make the runtime's own dispose() abort the WASM module (#1905).
   const bimHandle = vm.newObject();
+  try {
+    // All namespaces are schema-driven (model, query, viewer, mutate, lens, export)
+    buildSchemaNamespaces(vm, bimHandle, sdk, perms, context);
 
-  // All namespaces are schema-driven (model, query, viewer, mutate, lens, export)
-  buildSchemaNamespaces(vm, bimHandle, sdk, perms, context);
-
-  vm.setProp(vm.global, 'bim', bimHandle);
-  bimHandle.dispose();
+    vm.setProp(vm.global, 'bim', bimHandle);
+  } finally {
+    bimHandle.dispose();
+  }
 
   return {
     logs,
@@ -68,30 +73,36 @@ function buildConsole(vm: QuickJSContext, logs: LogEntry[]): void {
   let totalBytes = 0;
   let truncated = false;
 
-  for (const level of ['log', 'warn', 'error', 'info'] as const) {
-    const fn = vm.newFunction(level, (...args: QuickJSHandle[]) => {
-      if (truncated) return;
-      if (logs.length >= MAX_LOG_ENTRIES || totalBytes >= MAX_TOTAL_BYTES) {
-        truncated = true;
-        logs.push({ level: 'warn', args: ['[log output truncated: limit reached]'], timestamp: Date.now() });
-        return;
-      }
-      const nativeArgs = args.map(a => vm.dump(a));
-      // Approximate host cost of retaining this entry; treat unserializable
-      // args (e.g. cyclic) as zero-cost rather than failing the log call.
-      let entryBytes = 0;
+  try {
+    for (const level of ['log', 'warn', 'error', 'info'] as const) {
+      const fn = vm.newFunction(level, (...args: QuickJSHandle[]) => {
+        if (truncated) return;
+        if (logs.length >= MAX_LOG_ENTRIES || totalBytes >= MAX_TOTAL_BYTES) {
+          truncated = true;
+          logs.push({ level: 'warn', args: ['[log output truncated: limit reached]'], timestamp: Date.now() });
+          return;
+        }
+        const nativeArgs = args.map(a => vm.dump(a));
+        // Approximate host cost of retaining this entry; treat unserializable
+        // args (e.g. cyclic) as zero-cost rather than failing the log call.
+        let entryBytes = 0;
+        try {
+          entryBytes = JSON.stringify(nativeArgs)?.length ?? 0;
+        } catch {
+          entryBytes = 0; /* unserializable args — skip cost accounting */
+        }
+        totalBytes += entryBytes;
+        logs.push({ level, args: nativeArgs, timestamp: Date.now() });
+      });
       try {
-        entryBytes = JSON.stringify(nativeArgs)?.length ?? 0;
-      } catch {
-        entryBytes = 0; /* unserializable args — skip cost accounting */
+        vm.setProp(consoleHandle, level, fn);
+      } finally {
+        fn.dispose();
       }
-      totalBytes += entryBytes;
-      logs.push({ level, args: nativeArgs, timestamp: Date.now() });
-    });
-    vm.setProp(consoleHandle, level, fn);
-    fn.dispose();
-  }
+    }
 
-  vm.setProp(vm.global, 'console', consoleHandle);
-  consoleHandle.dispose();
+    vm.setProp(vm.global, 'console', consoleHandle);
+  } finally {
+    consoleHandle.dispose();
+  }
 }

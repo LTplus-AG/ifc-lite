@@ -196,20 +196,13 @@ fn near_on_surface_tri(c: [f64; 3], t: &Tri, band2: f64) -> Option<[f64; 3]> {
     point_in_tri_proj(c, t, n).then_some(n)
 }
 
-/// The near-coplanar perpendicular band (see [`near_on_surface_normal`]) from the
-/// operand+`c` coordinate magnitude `extent`.
-fn near_band_from_extent(extent: f64) -> f64 {
-    (8.0 * SNAP_GRID).max(extent * (1.0 / 4_194_304.0))
-}
-
 fn on_surface_normal(c: [f64; 3], others: &[Tri]) -> Option<[f64; 3]> {
     others.iter().find_map(|t| on_surface_tri(c, t))
 }
 
-/// Power-of-two grid `mesh_bridge` snaps both operands to (metres); the
-/// `near_on_surface_normal` band below is sized to the scatter this snap
-/// leaves on a TILTED flush face.
-use super::super::mesh_bridge::SNAP_GRID;
+/// Canonical near-coplanar band formula (see [`near_on_surface_normal`]),
+/// defined once in `mesh_bridge` next to the `SNAP_GRID` it is sized from.
+use super::super::mesh_bridge::near_band_from_extent;
 
 /// The NEAR-coplanar analogue of [`on_surface_normal`], used ONLY for a
 /// sub-triangle whose parent face had a near-coplanar overlap with the other
@@ -336,7 +329,7 @@ impl<'a> BComponents<'a> {
         // AABB; also dwarfs any f64 rounding in the slab test. Deterministic
         // FMA-free f64.
         let max_ext = exts.iter().cloned().fold(1.0f64, f64::max);
-        let pad = 4.0 * (8.0 * SNAP_GRID).max(max_ext * (1.0 / 4_194_304.0));
+        let pad = 4.0 * near_band_from_extent(max_ext);
         let aabbs = comps
             .iter()
             .map(|c| {
@@ -472,7 +465,6 @@ fn on_interface_keep(
     other: &[Tri],
     ext_other: f64,
     op: BoolOp,
-    _a_side: bool,
 ) -> Option<bool> {
     let n = tri_normal(arr, tri);
     let (op_plus, op_minus) = solid_side(c, n, other, ext_other);
@@ -612,7 +604,7 @@ pub(super) fn boolean_vids_components(
             continue; // coplanar-shared B-copy: dropped (the A-copy is the kept one)
         }
         if cop_parent {
-            if let Some(keep) = on_interface_keep(arr, tri, c, a, ext_a, op, false) {
+            if let Some(keep) = on_interface_keep(arr, tri, c, a, ext_a, op) {
                 // regime 2 for B (coplanar-overlap parent only).
                 if keep {
                     let flip = matches!(op, BoolOp::Difference);

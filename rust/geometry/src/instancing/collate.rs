@@ -141,12 +141,12 @@ pub fn collate_refs(meshes: &[InstanceMeshRef], min_group: usize, rtc: [f64; 3])
     // they're routed to flat_indices and emitted as flat singleton templates.
     // Dropping them here would silently lose geometry now that capture is always-on
     // and real models feed the collator — the unit fixtures were all instanceable,
-    // which hid this. Empty meshes carry nothing to draw and are the only skip.
+    // which hid this. A non-empty non-instanceable mesh goes flat; an EMPTY mesh
+    // carries nothing to draw UNLESS it is a #1623 Phase 3 don't-bake occurrence
+    // placeholder (empty geometry + instanceable InstanceMeta) — the shared template
+    // supplies its geometry, so it joins its rep group like a materialized member.
     let mut flat: Vec<usize> = Vec::new();
     for (i, m) in meshes.iter().enumerate() {
-        if m.positions.is_empty() {
-            continue;
-        }
         match m.instance_meta {
             Some(im) if im.instanceable => {
                 groups
@@ -157,9 +157,25 @@ pub fn collate_refs(meshes: &[InstanceMeshRef], min_group: usize, rtc: [f64; 3])
                     })
                     .push(i);
             }
-            _ => flat.push(i),
+            // Empty + non-instanceable = nothing to draw (skip); non-empty +
+            // non-instanceable = flat singleton.
+            _ if !m.positions.is_empty() => flat.push(i),
+            _ => {}
         }
     }
+
+    // Route only DRAWABLE members flat: an empty don't-bake placeholder carries no
+    // geometry, so it can never render flat — the caller (the wasm don't-bake
+    // finalize) recovers such occurrences flat itself before collation, so a group
+    // it feeds here always has a materialized template and passes the count gate.
+    // Filtering defends against ever silently emitting an empty flat singleton.
+    let drawable = |members: &[usize]| -> Vec<usize> {
+        members
+            .iter()
+            .copied()
+            .filter(|&i| !meshes[i].positions.is_empty())
+            .collect::<Vec<_>>()
+    };
 
     let mut out = Collated {
         flat_indices: flat,
@@ -168,16 +184,27 @@ pub fn collate_refs(meshes: &[InstanceMeshRef], min_group: usize, rtc: [f64; 3])
     for rep in order {
         let members = &groups[&rep];
         if members.len() < min_group.max(1) {
-            out.flat_indices.extend_from_slice(members);
+            out.flat_indices.extend(drawable(members));
             continue;
         }
-        let t_idx = members[0];
+        // Template = the first NON-EMPTY (materialized) member. Empty members are
+        // don't-bake placeholders whose geometry IS this template.
+        let Some(t_idx) = members
+            .iter()
+            .copied()
+            .find(|&i| !meshes[i].positions.is_empty())
+        else {
+            // All-empty group: no template geometry to draw against. Unreachable by
+            // the caller contract (a materialized template always accompanies its
+            // occurrences); drop rather than emit empty singletons that draw nothing.
+            continue;
+        };
         let template = &meshes[t_idx];
         // Compose in the post-RTC frame so the georeferenced offset cancels
         // exactly regardless of each occurrence's rotation (see fn docs).
         let m_ref = to_post_rtc(compose_world(template.instance_meta.unwrap()), rtc);
         let Some(m_ref_inv) = m_ref.try_inverse() else {
-            out.flat_indices.extend_from_slice(members);
+            out.flat_indices.extend(drawable(members));
             continue;
         };
 
@@ -194,14 +221,20 @@ pub fn collate_refs(meshes: &[InstanceMeshRef], min_group: usize, rtc: [f64; 3])
         let mut shapes_match = true;
         for &i in members {
             let mesh = &meshes[i];
-            // Exact-tier occurrences share the SAME local geometry (so same counts),
-            // differing only by placement — we can't byte-compare their BAKED
-            // positions (those legitimately differ). Content-equality is instead
-            // guaranteed upstream: rep_identity is a FULL 128-bit content hash
-            // (compute_mesh_hash_full | tag), so a same-counts/different-content
-            // collision is ~2^-127. The count check stays as a cheap guard.
-            // Rigid-tier occurrences are intentionally non-identical (verified).
-            if !is_rigid && (mesh.positions.len() != vlen || mesh.indices.len() != ilen) {
+            // A #1623 Phase 3 don't-bake placeholder (empty geometry) is pose-only:
+            // its geometry IS the template, so skip the same-shape guard (like the
+            // rigid tier). Exact-tier materialized occurrences share the SAME local
+            // geometry (so same counts), differing only by placement — we can't
+            // byte-compare their BAKED positions (those legitimately differ).
+            // Content-equality is guaranteed upstream: rep_identity is a FULL 128-bit
+            // content hash (or the RepresentationMap id), so a same-counts/
+            // different-content collision is ~2^-127. The count check stays a cheap
+            // guard. Rigid-tier occurrences are intentionally non-identical (verified).
+            let pose_only = mesh.positions.is_empty();
+            if !pose_only
+                && !is_rigid
+                && (mesh.positions.len() != vlen || mesh.indices.len() != ilen)
+            {
                 shapes_match = false;
                 break;
             }
@@ -220,10 +253,93 @@ pub fn collate_refs(meshes: &[InstanceMeshRef], min_group: usize, rtc: [f64; 3])
                 occurrences,
             });
         } else {
-            out.flat_indices.extend_from_slice(members);
+            out.flat_indices.extend(drawable(members));
         }
     }
     out
+}
+
+/// Compose an occurrence's full PRE-RTC world transform `transform·local·canonical`
+/// as a row-major `[f64; 16]`. Public so the processing crate's don't-bake finalize
+/// (#1623 Phase 2) can record the SAME world placement `collate_refs` computes for a
+/// baked occurrence — without materializing the occurrence's vertices.
+pub fn compose_instance_world_row_major(meta: &InstanceMeta) -> [f64; 16] {
+    let m = compose_world(meta);
+    let mut out = [0.0f64; 16];
+    for r in 0..4 {
+        for c in 0..4 {
+            out[r * 4 + c] = m[(r, c)];
+        }
+    }
+    out
+}
+
+/// Template-relative instance transform `rel = post_rtc(M_k) · post_rtc(M_ref)⁻¹`
+/// as a row-major `[f32; 16]`, or `None` when `M_ref` is singular. `m_k` / `m_ref`
+/// are PRE-RTC row-major world transforms (see [`compose_instance_world_row_major`]);
+/// `rtc` is the model offset. This is EXACTLY `collate_refs`' per-occurrence `rel`,
+/// exposed for the don't-bake finalize where the occurrence carries no geometry to
+/// group — the template's baked world geometry placed by `rel` reproduces the
+/// occurrence's world geometry (bounded by `verify_recomposition`). #1623 Phase 2.
+pub fn instance_rel_row_major_f32(
+    m_k: &[f64; 16],
+    m_ref: &[f64; 16],
+    rtc: [f64; 3],
+) -> Option<[f32; 16]> {
+    let mk = to_post_rtc(Matrix4::from_row_slice(m_k), rtc);
+    let mref = to_post_rtc(Matrix4::from_row_slice(m_ref), rtc);
+    let mref_inv = mref.try_inverse()?;
+    Some(mat4_to_row_major_f32(&(mk * mref_inv)))
+}
+
+/// Bake a SOURCE-coords `Mesh` at a PRE-RTC row-major world transform into absolute
+/// POST-RTC world geometry `(positions, normals, indices)` — the #1623 Phase 2
+/// finalize fallback for a don't-bake instance whose template occurrence never
+/// materialized (an orphan; effectively unreachable for the eligible single-solid
+/// type-instanced set, but kept so geometry is NEVER silently lost). The affine part
+/// transforms positions; the inverse-transpose of the linear part transforms normals
+/// (renormalized). Geometrically equal to the baked flat occurrence (same triangles);
+/// the registry source is pre-weld, so vertices are unwelded — that changes only the
+/// vertex count, not the rendered surface.
+pub fn bake_source_at_world(
+    source: &Mesh,
+    world_row_major: &[f64; 16],
+    rtc: [f64; 3],
+) -> (Vec<f32>, Vec<f32>, Vec<u32>) {
+    let m = to_post_rtc(Matrix4::from_row_slice(world_row_major), rtc);
+    let vcount = source.positions.len() / 3;
+    let mut positions = Vec::with_capacity(source.positions.len());
+    for v in 0..vcount {
+        let p = m * nalgebra::Vector4::new(
+            source.positions[v * 3] as f64,
+            source.positions[v * 3 + 1] as f64,
+            source.positions[v * 3 + 2] as f64,
+            1.0,
+        );
+        positions.push((p.x / p.w) as f32);
+        positions.push((p.y / p.w) as f32);
+        positions.push((p.z / p.w) as f32);
+    }
+    let linear = m.fixed_view::<3, 3>(0, 0).into_owned();
+    let nmat = linear
+        .try_inverse()
+        .map(|inv| inv.transpose())
+        .unwrap_or(linear);
+    let ncount = source.normals.len() / 3;
+    let mut normals = Vec::with_capacity(source.normals.len());
+    for v in 0..ncount {
+        let nv = nmat
+            * nalgebra::Vector3::new(
+                source.normals[v * 3] as f64,
+                source.normals[v * 3 + 1] as f64,
+                source.normals[v * 3 + 2] as f64,
+            );
+        let nv = nv.try_normalize(0.0).unwrap_or(nv);
+        normals.push(nv.x as f32);
+        normals.push(nv.y as f32);
+        normals.push(nv.z as f32);
+    }
+    (positions, normals, source.indices.clone())
 }
 
 /// `collate_refs` over geometry `Mesh` values (thin wrapper, no geometry clone).

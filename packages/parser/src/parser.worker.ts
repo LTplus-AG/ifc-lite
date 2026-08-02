@@ -223,12 +223,23 @@ self.onmessage = async (event: MessageEvent<ParserInbound>) => {
     // SAB views (e.g. Firefox's timing-attack mitigation) are filtered out
     // by the wrapper before this worker is even spawned.
     //
-    // Initialise the WASM scanner up front. `parseColumnar` prefers the
-    // WASM scan when `wasmApi` is supplied (5–10× faster on huge files —
-    // a 14 M-entity, 986 MB file goes from ~28 s of JS tokenising to ~5 s
-    // of Rust+SIMD). We start init BEFORE awaiting the entity index so the
-    // module compile happens in parallel with the host's pre-pass.
-    const wasmApiPromise = ensureWasmScanApi();
+    // Initialise the WASM scanner. `parseColumnar` prefers the WASM scan when
+    // `wasmApi` is supplied (5–10× faster on huge files — a 14 M-entity, 986 MB
+    // file goes from ~28 s of JS tokenising to ~5 s of Rust+SIMD).
+    //
+    // BUT only compile it when the WASM scan will actually RUN. When the host
+    // promised an entity-index handoff (`waitForEntityIndex`), the streaming
+    // pre-pass builds the index and hands it over, and the entity scanner
+    // short-circuits on `preScannedEntityIndex` WITHOUT ever calling the wasm
+    // scan (see entity-scanner.ts). Eager-compiling the ~3.9 MB engine binary
+    // here would then be pure waste — a multi-hundred-ms compile that steals a
+    // core from the concurrent geometry pre-pass on exactly the ≥2 MB cold
+    // loads this path serves (the host gates `waitForEntityIndex` on
+    // fileSizeMB >= 2). So defer the compile: eager only on the no-handoff
+    // path, lazy on the fallback branch below if the promised index never
+    // arrives. (#1185 shipped the parallel-compile; this trims the case where
+    // that compile is never consumed.)
+    let wasmApiPromise = waitForEntityIndex ? null : ensureWasmScanApi();
 
     // If the host promised to ship an entity index, hold here until it
     // arrives. The streaming geometry pre-pass already walked the file
@@ -242,11 +253,20 @@ self.onmessage = async (event: MessageEvent<ParserInbound>) => {
       // flag to paths that actually emit, so timeouts shouldn't fire
       // in practice.
       preScanned = await awaitEntityIndex(60_000);
+      if (!preScanned) {
+        // The promised index never came (pre-pass aborted / path mismatch):
+        // we now DO need the wasm scan, so compile it — serially here, which
+        // is acceptable on this rare fallback (it already logged a warning).
+        wasmApiPromise = ensureWasmScanApi();
+      }
     } else {
       preScanned = takeEntityIndex();
     }
 
-    const wasmApi = await wasmApiPromise;
+    // `undefined` when the handoff succeeded — parseColumnar then uses the
+    // pre-scanned index and never touches the (uncompiled) wasm scanner. If the
+    // index were somehow empty, the scanner falls through to the JS tokeniser.
+    const wasmApi = wasmApiPromise ? await wasmApiPromise : undefined;
     const parser = new IfcParser();
     // `source` is the SAB-backed payload — `parseColumnar` accepts
     // `ArrayBuffer | SharedArrayBuffer` so no cast is needed.

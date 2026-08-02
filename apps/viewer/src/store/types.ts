@@ -249,6 +249,10 @@ export interface CameraCallbacks {
   home?: () => void;
   zoomIn?: () => void;
   zoomOut?: () => void;
+  /** Rotate the camera exactly 90° around the vertical axis. */
+  rotateLeft?: () => void;
+  /** Rotate the camera exactly 90° around the vertical axis. */
+  rotateRight?: () => void;
   frameSelection?: () => void;
   /**
    * Frame the camera on the bounds of an explicit id set, keeping the current
@@ -273,6 +277,14 @@ export interface CameraCallbacks {
   setSpaceOverlayMeshes?: (meshes: MeshData[]) => void;
   /** Remove all Space Sketch overlay ghost meshes from the scene. */
   clearSpaceOverlayMeshes?: () => void;
+  /**
+   * Frame an explicit world-space box (min/max corners) from the canonical
+   * isometric view, animating there. Used to frame a focused clash's contact
+   * region head-on (#1466) rather than `frameSelection`, which unions the
+   * selected elements' full bounds and keeps the current (often top-down) view
+   * direction, so a long clashing member dominates and the overlap reads small.
+   */
+  frameClashRegion?: (min: { x: number; y: number; z: number }, max: { x: number; y: number; z: number }) => void;
   orbit?: (deltaX: number, deltaY: number) => void;
   projectToScreen?: (worldPos: { x: number; y: number; z: number }) => { x: number; y: number } | null;
   /**

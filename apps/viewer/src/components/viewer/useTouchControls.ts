@@ -11,6 +11,7 @@ import { useEffect, type MutableRefObject, type RefObject } from 'react';
 import type { Renderer, PickResult } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { SectionPlane } from '@/store';
+import { isPivotRaycastTooExpensive } from './orbitPivotCensus.js';
 
 /** Locked gesture mode for 2-finger interactions */
 type TwoFingerGesture = 'none' | 'pinch' | 'pan';
@@ -89,7 +90,12 @@ export function useTouchControls(params: UseTouchControlsParams): void {
       // Outlier/sparse models (issue #1394) carry a robust orbit anchor that
       // gives an instant, good pivot — skip the raycast (its first-touch BVH
       // build can stall the main thread ~1s) and orbit the model centre below.
-      const hit = camera.getOrbitAnchorBounds() !== null
+      // Large models skip it too (same input-to-first-frame stall as the
+      // mouse path — see orbitPivotCensus.ts).
+      const skipPivotRaycast =
+        camera.getOrbitAnchorBounds() !== null ||
+        isPivotRaycastTooExpensive(renderer.getScene());
+      const hit = skipPivotRaycast
         ? null
         : renderer.raycastScene(tx, ty, {
             hiddenIds: hiddenEntitiesRef.current,

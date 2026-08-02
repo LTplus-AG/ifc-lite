@@ -1,6 +1,6 @@
 {
   "name": "ifc-lite",
-  "version": "4.1.0",
+  "version": "4.2.1",
   "description": "High-performance browser IFC parser & renderer",
   "private": true,
   "type": "module",
@@ -32,6 +32,9 @@
     "check:test-wiring": "node scripts/check-test-wiring.mjs",
     "check:api-surface": "node scripts/check-api-surface.mjs",
     "api-surface:update": "node scripts/check-api-surface.mjs --update",
+    "check:git-lfs": "node scripts/check-git-lfs.mjs",
+    "generate:server-attr-indices": "pnpm turbo build --filter=@ifc-lite/parser && node scripts/generate-server-attr-indices.mjs",
+    "check:server-attr-indices": "pnpm turbo build --filter=@ifc-lite/parser && node scripts/generate-server-attr-indices.mjs --check",
     "test:regression": "node scripts/test-geometry-regression.mjs",
     "test:esm": "node scripts/verify-esm-entrypoints.mjs",
     "test:ids-corpus": "node scripts/test-ids-corpus.mjs",
@@ -43,6 +46,10 @@
     "knip": "knip",
     "docs:serve": "python3 -m mkdocs serve",
     "docs:build": "python3 -m mkdocs build",
+    "docs:check-samples": "node scripts/docs/check-doc-samples.mjs",
+    "docs:generate": "node scripts/docs/generate-docs-sections.mjs",
+    "docs:check-generated": "node scripts/docs/generate-docs-sections.mjs --check",
+    "docs:check-readmes": "node scripts/docs/check-package-readmes.mjs",
     "changeset": "changeset",
     "version": "changeset version && node scripts/sync-versions.js",
     "release": "pnpm build && pnpm test:esm && pnpm release:npm && pnpm release:crates",
@@ -50,8 +57,6 @@
     "release:crates": "node scripts/release-crates.mjs",
     "publish:npm": "pnpm -r publish --access public",
     "publish:dry": "pnpm -r publish --access public --dry-run",
-    "test:benchmark": "playwright test tests/benchmark/benchmark.spec.ts",
-    "test:benchmark:headed": "playwright test tests/benchmark/benchmark.spec.ts --headed",
     "test:benchmark:viewer": "playwright test tests/benchmark/viewer-benchmark.spec.ts --project=viewer-benchmark",
     "test:benchmark:viewer:ci": "playwright test tests/benchmark/viewer-benchmark.spec.ts --project=viewer-benchmark-ci --reporter=json",
     "benchmark:check": "node scripts/check-benchmark-regression.js",
@@ -63,12 +68,13 @@
   },
   "devDependencies": {
     "@changesets/changelog-github": "^0.7.0",
-    "@changesets/cli": "^2.31.0",
-    "@playwright/test": "^1.61.1",
-    "@types/node": "^26.0.1",
-    "knip": "^6.23.0",
-    "tsx": "^4.22.4",
-    "turbo": "^2.10.0",
+    "@changesets/cli": "^2.31.1",
+    "@playwright/test": "^1.62.0",
+    "@posthog/cli": "0.9.2",
+    "@types/node": "^26.1.2",
+    "knip": "^6.29.0",
+    "tsx": "^4.23.1",
+    "turbo": "^2.10.7",
     "typescript": "^6.0.3"
   },
   "engines": {
@@ -84,9 +90,9 @@
       "protobufjs": "^8.0.2",
       "protocol-buffers-schema": "^3.6.1",
       "postcss": "^8.5.10",
-      "dompurify": "^3.4.9",
+      "dompurify": "^3.4.12",
       "lodash": "^4.18.0",
-      "tar": "^7.5.11",
+      "tar": "^7.5.21",
       "rollup": "^4.59.0",
       "esbuild": "^0.28.1",
       "vite": "^8.1.0",
@@ -100,8 +106,10 @@
       "picomatch@>=4": "^4.0.4",
       "uuid@<11.1.1": "^11.1.1",
       "@babel/core": "^7.29.6",
-      "js-yaml@4": "^4.2.0",
-      "read-yaml-file": "^2.1.0"
+      "js-yaml@4": "^4.3.0",
+      "read-yaml-file": "^2.1.0",
+      "brace-expansion": "^5.0.8",
+      "minimatch": "^10.2.5"
     }
   }
 }

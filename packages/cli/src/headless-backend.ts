@@ -41,7 +41,6 @@ import type {
 } from '@ifc-lite/sdk';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
-import { GeometryProcessor } from '@ifc-lite/geometry';
 import {
   addBeamToStore,
   addColumnToStore,
@@ -80,8 +79,18 @@ import {
   extractScheduleOnDemand,
 } from '@ifc-lite/parser';
 import { exportToStep, StepExporter, type StepExportOptions } from '@ifc-lite/export';
+import { exportHbjson, exportDfjson } from './energy-export.js';
 
 const MODEL_ID = 'default';
+
+/**
+ * Strip a real IFC source-file extension from a filename-derived model name.
+ * Only applied to the `modelName` fallback: an explicitly supplied export name
+ * is a display name where a trailing dotted segment is meaningful (`Tower.v2`).
+ */
+function stripIfcExtension(name: string): string {
+  return name.replace(/\.(ifc|ifcx|ifczip)$/i, '');
+}
 
 const REL_TYPE_MAP: Record<string, RelationshipType> = {
   IfcRelContainedInSpatialStructure: RelationshipType.ContainsElements,
@@ -635,46 +644,15 @@ export class HeadlessBackend implements BimBackend {
         }
         return exportToStep(store, exportOpts);
       },
-      hbjson: async (name?: string): Promise<string> => {
-        // HBJSON is rebuilt analytically from the source IFC bytes (rooms/openings/
-        // shades/constructions/adjacency) via the wasm geometry engine.
-        const bytes = store.source;
-        if (!bytes || bytes.length === 0) {
-          throw new Error('HBJSON export needs the source IFC bytes, which this store did not retain.');
-        }
-        const processor = new GeometryProcessor();
-        await processor.init();
-        // An explicit `name` is a display/model name — keep it verbatim (dotted
-        // identifiers like `Tower.v2` are valid). Only the modelName fallback is a
-        // filename, so only it gets a real IFC extension stripped.
-        const baseName = name ?? modelName.replace(/\.(ifc|ifcx|ifczip)$/i, '');
-        const result = processor.exportHbjson(bytes, baseName);
-        if (result === null) {
-          throw new Error('Geometry engine unavailable for HBJSON export.');
-        }
-        // The lens contract carries a string; HBJSON payloads are far below the
-        // V8 string ceiling, so decoding here is safe.
-        return new TextDecoder().decode(result);
-      },
-      dfjson: async (name?: string): Promise<string> => {
-        // DFJSON is rebuilt analytically from the source IFC bytes (extruded Room2D
-        // plates grouped into stories) via the wasm geometry engine.
-        const bytes = store.source;
-        if (!bytes || bytes.length === 0) {
-          throw new Error('DFJSON export needs the source IFC bytes, which this store did not retain.');
-        }
-        const processor = new GeometryProcessor();
-        await processor.init();
-        // An explicit `name` is a display/model name — keep it verbatim (dotted
-        // identifiers like `Tower.v2` are valid). Only the modelName fallback is a
-        // filename, so only it gets a real IFC extension stripped.
-        const baseName = name ?? modelName.replace(/\.(ifc|ifcx|ifczip)$/i, '');
-        const result = processor.exportDfjson(bytes, baseName);
-        if (result === null) {
-          throw new Error('Geometry engine unavailable for DFJSON export.');
-        }
-        return result;
-      },
+      // Both energy formats apply the mutation view — see energy-export.ts
+      // (issues #1908, #1344). An explicit `name` is a display/model name, so
+      // it is kept verbatim (dotted identifiers like `Tower.v2` are valid);
+      // only the `modelName` fallback is a filename, so only it gets a real
+      // IFC extension stripped.
+      hbjson: (name?: string): Promise<string> =>
+        exportHbjson(store, this.mutationView, name ?? stripIfcExtension(modelName)),
+      dfjson: (name?: string): Promise<string> =>
+        exportDfjson(store, this.mutationView, name ?? stripIfcExtension(modelName)),
       download(_content: string, _filename: string, _mimeType: string): void {
         /* no-op — CLI writes to stdout/file directly */
       },

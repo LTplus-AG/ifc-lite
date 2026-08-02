@@ -283,4 +283,28 @@ describe('differential: WASM kernel === TS kernel', () => {
     const n = await bothAgree(els, [{ id: 'r', name: 'r', a: 'IfcWall', b: 'IfcDuct*', mode: 'hard' }]);
     expect(n).toBe(1);
   });
+
+  it('agrees on the contained-pair mesh-level depth (#1866)', async () => {
+    // Concave L prism (notch [1,2]x[1,2] inside the AABB but outside the solid)
+    // and a small box in the notch, AABB-contained, dipping ~0.05 into the notch
+    // wall at x=1. The reported depth is measured from the crossing triangles'
+    // vertices, so both kernels must run the identical mesh-depth path.
+    const positions = new Float32Array([
+      0, 0, 0, 2, 0, 0, 2, 1, 0, 1, 1, 0, 1, 2, 0, 0, 2, 0,
+      0, 0, 1, 2, 0, 1, 2, 1, 1, 1, 1, 1, 1, 2, 1, 0, 2, 1,
+    ]);
+    const indices = new Uint32Array([
+      0, 2, 1, 0, 3, 2, 0, 4, 3, 0, 5, 4,
+      6, 7, 8, 6, 8, 9, 6, 9, 10, 6, 10, 11,
+      0, 1, 7, 0, 7, 6, 1, 2, 8, 1, 8, 7, 2, 3, 9, 2, 9, 8,
+      3, 4, 10, 3, 10, 9, 4, 5, 11, 4, 11, 10, 5, 0, 6, 5, 6, 11,
+    ]);
+    const wall: ClashElement = {
+      key: 'A', ref: refCounter++, model: 'm', tag: 'IfcWall',
+      positions, indices, bounds: { min: [0, 0, 0], max: [2, 2, 1] },
+    };
+    const duct = boxHxyz('B', 'IfcDuctSegment', [1.2, 1.4, 0.5], [0.25, 0.2, 0.2]);
+    const n = await bothAgree([wall, duct], [{ id: 'r', name: 'r', a: 'IfcWall', b: 'IfcDuct*', mode: 'hard' }]);
+    expect(n).toBe(1);
+  });
 });

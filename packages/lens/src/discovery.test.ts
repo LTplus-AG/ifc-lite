@@ -104,6 +104,26 @@ describe('discoverDataSources', () => {
     expect(result.materials).toEqual(['Concrete', 'Steel']);
   });
 
+  it('prefers getMaterialNames() (individual materials) over getMaterialName() (layer-set name) when both are present (#1366)', () => {
+    const provider = createMockProvider({
+      // Layer-set / family-type name — should be ignored when the richer API is available.
+      getMaterialName: (id) => {
+        if (id === 1) return 'Wall Type A';
+        if (id === 2) return 'Wall Type A';
+        return undefined;
+      },
+      // Individual constituent/layer materials — should win.
+      getMaterialNames: (id) => {
+        if (id === 1) return ['Gypsum', 'Insulation'];
+        if (id === 2) return ['Concrete'];
+        return [];
+      },
+    });
+    const result = discoverDataSources(provider, { materials: true });
+    expect(result.materials).toEqual(['Concrete', 'Gypsum', 'Insulation']);
+    expect(result.materials).not.toContain('Wall Type A');
+  });
+
   it('returns empty result when no categories requested', () => {
     const provider = createMockProvider();
     const result = discoverDataSources(provider, {});

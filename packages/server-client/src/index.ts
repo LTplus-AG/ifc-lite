@@ -33,6 +33,9 @@ export * from './types.js';
 export { decodeParquetGeometry, decodeOptimizedParquetGeometry, isParquetAvailable } from './parquet-decoder.js';
 export {
   decodeDataModel,
+  ServerEntityIndex,
+  type ServerEntityColumns,
+  type EntityMetadata,
   type DataModel,
   type Quantity,
   type QuantitySet,

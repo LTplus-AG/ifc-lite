@@ -59,6 +59,7 @@ function setDockedVisible(id: AnalysisPanelId, visible: boolean): void {
     case 'script': s.setScriptPanelVisible(visible); break;
     case 'gantt': s.setGanttPanelVisible(visible); break;
     case 'lists': s.setListPanelVisible(visible); break;
+    case 'layers': s.setLayersPanelVisible(visible); break;
   }
 }
 

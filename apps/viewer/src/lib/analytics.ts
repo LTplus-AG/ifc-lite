@@ -4,6 +4,29 @@
 
 import posthogClient from 'posthog-js';
 import { scrubEvent } from './analytics-scrub.js';
+import { shouldSuppressWasmSkewNoise } from './wasm-version-skew.js';
+import { shouldSuppressChunkSkewNoise } from './chunk-version-skew.js';
+
+// `before_send` gate: drop the noise from an auto-recovered version skew - the
+// tab reloads onto fresh assets, so the captured exception describes a failure
+// the user never actually hits. Two sibling gates, because the two skews are
+// detected differently: the wasm one by the error's own signature
+// (shouldSuppressWasmSkewNoise), the JS/CSS chunk one by the reload we have
+// already committed to (shouldSuppressChunkSkewNoise) - a failed chunk's
+// collateral shares no vocabulary with its cause. Then run the privacy/tagging
+// scrub on everything that remains. Kept here rather than inside scrubEvent so
+// analytics-scrub.ts stays dependency-free (no @ifc-lite/geometry import) and
+// independently unit-testable.
+// Exported for ./analytics.test.ts. Both gates are unit-tested in isolation, but
+// only a test of THIS function can catch the gate being disconnected from the
+// pipeline, which is the failure that would silently restore the noise.
+export const beforeSend = <
+  T extends { event?: string; properties?: Record<string, unknown> } | null,
+>(event: T): T | null => {
+  if (shouldSuppressWasmSkewNoise(event)) return null;
+  if (shouldSuppressChunkSkewNoise(event)) return null;
+  return scrubEvent(event);
+};
 
 // `import.meta.env` is undefined under the Node test runner (no Vite define
 // plugin), and this module is loaded transitively by most viewer tests. The
@@ -39,7 +62,7 @@ if (enabled) {
       // (current + future) before it leaves the browser, drop unactionable
       // third-party noise, and tag the geometry error family. See scrubEvent
       // in ./analytics-scrub.ts.
-      before_send: scrubEvent,
+      before_send: beforeSend,
     });
     // Register build attribution as super-properties so every event (incl.
     // ifc_model_loaded) carries the deploy it was served from — this is what

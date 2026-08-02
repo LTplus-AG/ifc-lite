@@ -39,6 +39,14 @@ describe('egm96Undulation (#1355)', () => {
     assert.ok(egm96Undulation(46.95, 7.44) > 45, 'Switzerland undulation should be ~+49 m');
   });
 
+  it('returns a plausible positive undulation for a NL lat/lon (RD-New / NAP)', () => {
+    // The most common file missing a declared VerticalDatum: Dutch RD-New / NAP.
+    // EGM96 N near Amsterdam (~52.37 N, 4.90 E) is ~+43.5 m — the amount the
+    // model would sink without the default correction (#1355).
+    const n = egm96Undulation(52.37, 4.9);
+    assert.ok(n > 40 && n < 48, `Amsterdam undulation should be ~+43 m, got ${n.toFixed(3)}`);
+  });
+
   it('is finite and bounded everywhere, and longitude wraps', () => {
     for (let lat = -90; lat <= 90; lat += 15) {
       for (let lon = -180; lon <= 180; lon += 15) {

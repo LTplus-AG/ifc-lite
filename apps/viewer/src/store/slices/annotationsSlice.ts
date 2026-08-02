@@ -40,6 +40,16 @@ export interface Annotation {
   modelId: string | null;
   createdAt: number;
   updatedAt: number;
+  /** Collab author attribution (ephemeral identity). Absent for pre-collab/local pins. */
+  authorId?: string;
+  authorName?: string;
+  authorColor?: string;
+  /**
+   * True for a pin that arrived from a collab peer (synced via the CRDT). Such
+   * pins are session-only — they're NOT written to this browser's localStorage,
+   * so a peer's markup doesn't leak into your solo sessions.
+   */
+  remote?: boolean;
 }
 
 export interface AnnotationDraft {
@@ -73,6 +83,23 @@ export interface AnnotationsSlice {
   selectAnnotation: (id: string | null) => void;
   /** Wipe all annotations across all models. Used by tests / "reset". */
   clearAllAnnotations: () => void;
+
+  // ── Collab sync (applied by the annotation-sync bridge; never re-mirrored) ──
+  /** Upsert a peer's annotation into the local map (session-only, not persisted). */
+  upsertRemoteAnnotation: (annotation: Annotation) => void;
+  /** Remove a peer's annotation that was deleted in the room. */
+  removeRemoteAnnotation: (id: string) => void;
+}
+
+/**
+ * Minimal cross-slice view of the collab slice: the (always-present) identity
+ * for author attribution, and the annotation mirror hooks (no-ops without a
+ * session). Accessed via a cast since the slice is typed in isolation.
+ */
+interface CollabBridgeView {
+  collabIdentity?: { id: string; name: string; color: string };
+  mirrorAnnotationUpsert?: (a: Annotation) => void;
+  mirrorAnnotationDelete?: (id: string) => void;
 }
 
 function generateId(prefix: 'ann' | 'draft'): string {
@@ -136,7 +163,8 @@ function loadFromStorage(): Map<string, Annotation> {
 function saveToStorage(annotations: Map<string, Annotation>): void {
   try {
     if (typeof localStorage === 'undefined') return;
-    const arr = Array.from(annotations.values());
+    // Persist only locally-authored pins; peers' synced pins are session-only.
+    const arr = Array.from(annotations.values()).filter((a) => !a.remote);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(arr));
   } catch (err) {
     // Quota exceeded / private mode — annotations stay in memory but
@@ -180,6 +208,9 @@ export const createAnnotationsSlice: StateCreator<AnnotationsSlice, [], [], Anno
     }
     const id = generateId('ann');
     const now = Date.now();
+    // Stamp author from the (always-present) collab identity so the pin carries
+    // attribution whether or not we're currently in a room.
+    const identity = (get() as unknown as CollabBridgeView).collabIdentity;
     const annotation: Annotation = {
       id,
       position: draft.position,
@@ -188,6 +219,9 @@ export const createAnnotationsSlice: StateCreator<AnnotationsSlice, [], [], Anno
       modelId: draft.modelId,
       createdAt: now,
       updatedAt: now,
+      authorId: identity?.id,
+      authorName: identity?.name,
+      authorColor: identity?.color,
     };
     set((state) => {
       const next = new Map(state.annotations);
@@ -199,6 +233,8 @@ export const createAnnotationsSlice: StateCreator<AnnotationsSlice, [], [], Anno
         selectedAnnotationId: null,
       };
     });
+    // Mirror into the shared room (no-op when not in a session / no permission).
+    (get() as unknown as CollabBridgeView).mirrorAnnotationUpsert?.(annotation);
     return id;
   },
 
@@ -225,9 +261,14 @@ export const createAnnotationsSlice: StateCreator<AnnotationsSlice, [], [], Anno
       saveToStorage(next);
       return { annotations: next };
     });
+    // Mirror the edited pin to the room (works for your own and, with permission,
+    // a peer's pin). No-op without a session.
+    const updated = get().annotations.get(id);
+    if (updated) (get() as unknown as CollabBridgeView).mirrorAnnotationUpsert?.(updated);
   },
 
   removeAnnotation: (id) => {
+    const existed = get().annotations.has(id);
     set((state) => {
       if (!state.annotations.has(id)) return {};
       const next = new Map(state.annotations);
@@ -238,6 +279,8 @@ export const createAnnotationsSlice: StateCreator<AnnotationsSlice, [], [], Anno
         selectedAnnotationId: state.selectedAnnotationId === id ? null : state.selectedAnnotationId,
       };
     });
+    // Propagate the deletion to the room (gated by permission inside the mirror).
+    if (existed) (get() as unknown as CollabBridgeView).mirrorAnnotationDelete?.(id);
   },
 
   selectAnnotation: (id) => {
@@ -247,5 +290,29 @@ export const createAnnotationsSlice: StateCreator<AnnotationsSlice, [], [], Anno
   clearAllAnnotations: () => {
     saveToStorage(new Map());
     set({ annotations: new Map(), draft: null, selectedAnnotationId: null });
+  },
+
+  upsertRemoteAnnotation: (annotation) => {
+    set((state) => {
+      const next = new Map(state.annotations);
+      // Trust the caller's `remote` flag (set by authorship in the sync bridge):
+      // peers' pins are session-only; a peer's edit to one of OUR pins arrives
+      // as non-remote, so persist it to localStorage like any local edit.
+      next.set(annotation.id, annotation);
+      if (!annotation.remote) saveToStorage(next);
+      return { annotations: next };
+    });
+  },
+
+  removeRemoteAnnotation: (id) => {
+    set((state) => {
+      if (!state.annotations.has(id)) return {};
+      const next = new Map(state.annotations);
+      next.delete(id);
+      return {
+        annotations: next,
+        selectedAnnotationId: state.selectedAnnotationId === id ? null : state.selectedAnnotationId,
+      };
+    });
   },
 });

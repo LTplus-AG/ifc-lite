@@ -8,7 +8,8 @@ use crate::{scale_segments, Point3, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 
 use super::bspline::{evaluate_bspline_curve, expand_knots};
-use super::curves::{read_axis2_placement_3d, sample_bspline_edge_curve, sample_circle_edge_curve};
+use super::conics::{read_axis2_placement_3d, sample_circle_edge_curve};
+use super::curves::sample_bspline_edge_curve;
 
 /// Sample points along a curve in 3D. Currently handles `IfcLine`, `IfcCircle`,
 /// `IfcTrimmedCurve` and `IfcBSplineCurveWithKnots`. Returns a polyline that
@@ -21,7 +22,9 @@ pub(super) fn sample_curve_polyline(
 ) -> Vec<Point3<f64>> {
     use std::f64::consts::TAU;
     let kind = curve.ifc_type.as_str().to_uppercase();
-    if kind == "IFCBSPLINECURVEWITHKNOTS" {
+    // The rational variant shares attributes 0-7 with the plain one; sampling
+    // it unweighted beats dropping the curve entirely.
+    if kind == "IFCBSPLINECURVEWITHKNOTS" || kind == "IFCRATIONALBSPLINECURVEWITHKNOTS" {
         // Reuse the helper with a synthetic start; we just need the polyline.
         let mut pts = sample_bspline_edge_curve(
             curve,
@@ -33,16 +36,9 @@ pub(super) fn sample_curve_polyline(
         if !pts.is_empty() {
             // Replace the synthetic start with an explicit evaluation at t_min.
             let degree = curve.get_float(0).unwrap_or(3.0) as usize;
-            if let (Some(cp_list), Some(mults), Some(knot_values)) = (
+            if let (Some(cp_list), Some((mults, knot_values))) = (
                 curve.get(1).and_then(|a| a.as_list()),
-                curve
-                    .get(6)
-                    .and_then(|a| a.as_list())
-                    .map(|l| l.iter().filter_map(|v| v.as_int()).collect::<Vec<_>>()),
-                curve
-                    .get(7)
-                    .and_then(|a| a.as_list())
-                    .map(|l| l.iter().filter_map(|v| v.as_float()).collect::<Vec<_>>()),
+                super::curves::parse_curve_knots(curve),
             ) {
                 let cps: Vec<Point3<f64>> = cp_list
                     .iter()
@@ -135,6 +131,45 @@ pub(super) fn sample_curve_polyline(
             .map(|i| {
                 let a = TAU * (i as f64) / (n as f64);
                 center + axis_x * (radius * a.cos()) + axis_y * (radius * a.sin())
+            })
+            .collect();
+    }
+    if kind == "IFCPOLYLINE" {
+        // IfcPolyline: 0=Points (list of IfcCartesianPoint)
+        let refs = match curve.get(0).and_then(|a| a.as_list()) {
+            Some(r) => r,
+            None => return Vec::new(),
+        };
+        let mut pts = Vec::with_capacity(refs.len());
+        for r in refs {
+            let Some(id) = r.as_entity_ref() else { continue };
+            let Ok(p) = decoder.decode_by_id(id) else { continue };
+            let Some(coords) = p.get(0).and_then(|v| v.as_list()) else { continue };
+            let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0);
+            let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
+            let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0);
+            pts.push(Point3::new(x, y, z));
+        }
+        return pts;
+    }
+    if kind == "IFCELLIPSE" {
+        // IfcEllipse: 0=Position, 1=SemiAxis1, 2=SemiAxis2. Full ellipse.
+        let r1 = curve.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
+        let r2 = curve.get(2).and_then(|v| v.as_float()).unwrap_or(0.0);
+        if r1 <= 0.0 || r2 <= 0.0 {
+            return Vec::new();
+        }
+        let placement = match curve.get(0).and_then(|a| decoder.resolve_ref(a).ok().flatten()) {
+            Some(p) => p,
+            None => return Vec::new(),
+        };
+        let (center, axis_z, axis_x) = read_axis2_placement_3d(&placement, decoder);
+        let axis_y = axis_z.cross(&axis_x);
+        let n = scale_segments(24, 8, 96, quality);
+        return (0..=n)
+            .map(|i| {
+                let a = TAU * (i as f64) / (n as f64);
+                center + axis_x * (r1 * a.cos()) + axis_y * (r2 * a.sin())
             })
             .collect();
     }

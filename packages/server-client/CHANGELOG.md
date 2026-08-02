@@ -1,5 +1,76 @@
 # @ifc-lite/server-client
 
+## 1.21.0
+
+### Minor Changes
+
+- [#1848](https://github.com/LTplus-AG/ifc-lite/pull/1848) [`2738f9b`](https://github.com/LTplus-AG/ifc-lite/commit/2738f9b51efd3795259bd4c8870cf13016a989ba) Thanks [@louistrue](https://github.com/louistrue)! - Issue [#1841](https://github.com/LTplus-AG/ifc-lite/issues/1841): decode the server entity table into a compact columnar index (`ServerEntityIndex`) instead of a giant `Map<number, EntityMetadata>`, avoiding the V8 2^24 Map ceiling and reusing the canonical `CompactEntityIndex` for `entityIndex.byId`. `DataModel.entities` is now a `ServerEntityIndex` rather than a `Map` (minor bump): it keeps the raw decoded columns (`columns`) for indexed consumption and exposes a Map-compatible read surface (`size`/`get`/`has`/iteration/`keys`/`values`/`entries`/`forEach`), materializing `EntityMetadata` rows lazily via binary search over a sorted expressId view.
+
+### Patch Changes
+
+- [#1848](https://github.com/LTplus-AG/ifc-lite/pull/1848) [`2738f9b`](https://github.com/LTplus-AG/ifc-lite/commit/2738f9b51efd3795259bd4c8870cf13016a989ba) Thanks [@louistrue](https://github.com/louistrue)! - Carry the canonical per-mesh `origin` and `geometry_class` through the server
+  geometry wire contract (issue [#1841](https://github.com/LTplus-AG/ifc-lite/issues/1841)). The server parquet serializers previously
+  dropped both, so origin-relative geometry collapsed onto the world origin and
+  deduplicated (instanced) elements — e.g. repeated slabs — rendered every
+  occurrence at the shared template coordinates ("N slabs collapse to one"). Both
+  the standard and the optimized (instanced) parquet paths now emit the origin (in
+  the same Y-up frame as positions; the optimized path carries it per instance so
+  deduplicated templates place correctly) and `geometry_class`, and the decoders
+  populate `MeshData.origin` / `MeshData.geometry_class` — matching the canonical
+  `@ifc-lite/geometry` `MeshData`. Additive and backward-compatible: absent
+  columns decode as origin `[0,0,0]` / class `0`, so world-baked payloads and
+  caches from older servers are unaffected.
+
+## 1.20.0
+
+### Minor Changes
+
+- [#1785](https://github.com/LTplus-AG/ifc-lite/pull/1785) [`7194c95`](https://github.com/LTplus-AG/ifc-lite/commit/7194c95002f2c84cd3c9444d710a50190a976a90) Thanks [@louistrue](https://github.com/louistrue)! - IDS validation on server-parsed models now matches candidate values for multi-valued properties (enumerated / bounded / list / table), for INSTANCE-attached properties, identically to the in-browser path ([#1766](https://github.com/LTplus-AG/ifc-lite/issues/1766)). The server emits the same `values[]` candidate array `parsePropertyValue` produces — enumerated/list members, bounded lower/upper/setPoint (deduped), table defining-then-defined values — as a JSON-encoded nullable `values_json` column (data-model cache v4 → v5, sparse: only multi-value rows). The decoder parses it, `convertServerDataModel`'s `materializeProp` attaches it to the property entry, and the existing IDS bridge (`projectProperty` → facet `candidateValues`) consumes it unchanged, so a facet passes when the constraint matches ANY candidate (not just the joined display value). `@ifc-lite/data`'s `Property` gains an optional `values?: string[]`.
+
+## 1.19.0
+
+### Minor Changes
+
+- [#1778](https://github.com/LTplus-AG/ifc-lite/pull/1778) [`564a800`](https://github.com/LTplus-AG/ifc-lite/commit/564a800e997322d863aac84127497ef4f8310ac3) Thanks [@louistrue](https://github.com/louistrue)! - Server-parse path now resolves the Lists attribute columns `Description`, `ObjectType`, `PredefinedType`, and `Tag` identically to the in-browser (WASM) path ([#1765](https://github.com/LTplus-AG/ifc-lite/issues/1765)). The server extracts them at the SAME schema-registry positions the WASM path resolves attribute names against — via a Rust index table generated from `@ifc-lite/parser`'s `SCHEMA_REGISTRY` (`scripts/generate-server-attr-indices.mjs`) — so the traps hold on both paths: `IfcSite` attr 7 (LongName) never surfaces as Tag, `IfcWallType` attr 4 (ApplicableOccurrence) never surfaces as ObjectType, and `CompositionType` enums never leak into PredefinedType. Data-model payload bumped to v4 with nullable `description`/`object_type`/`tag`/`predefined_type` entity columns; `@ifc-lite/data`'s `EntityTable` gains optional `getTag`/`getPredefinedType` accessors (server-parsed stores implement them; the WASM path keeps its on-demand source extraction).
+
+- [#1759](https://github.com/LTplus-AG/ifc-lite/pull/1759) [`e49a1a0`](https://github.com/LTplus-AG/ifc-lite/commit/e49a1a020eaafd397af626e88a058b69122a1bd9) Thanks [@louistrue](https://github.com/louistrue)! - Server-parse path now resolves Type-level properties/QTOs in Lists/Schedules identically to the in-browser (WASM) path ([#1751](https://github.com/LTplus-AG/ifc-lite/issues/1751)), and adds a `Type` list column showing the element's IfcTypeProduct name ([#1754](https://github.com/LTplus-AG/ifc-lite/issues/1754)).
+
+  Two things were broken on the server path and are fixed together:
+
+  - **Every text/boolean property was garbled.** The server's property extractor only matched bare strings/numbers, so STEP's typed wrappers (`IFCLABEL('X')`, `IFCBOOLEAN(.T.)`) fell through to a Rust `Debug` string typed `"unknown"`. It now mirrors the WASM `parsePropertyValue` — resolving canonical value + kind (`string`/`boolean`/`logical`/`integer`/`real`) and carrying the raw measure tag (`data_type`, e.g. `IFCLENGTHMEASURE`) — so numeric cells sum/sort and unit conversion ([#1573](https://github.com/LTplus-AG/ifc-lite/issues/1573)) works. `@ifc-lite/server-client`'s `Property` gains an optional `data_type` (data-model payload bumped to v3).
+
+  - **Type sets never reached the client.** The server dropped `IfcRelDefinesByType` and never read a type's `HasPropertySets`. It now emits the type→element relationship plus a synthetic `TYPEHASPROPERTYSETS` edge per type-owned set, and the viewer merges those onto the type id (own sets first, name-deduped) — matching the WASM path exactly.
+
+  `@ifc-lite/lists` adds a `Type` attribute column and an optional `getEntityDefiningTypeName` accessor on `ListDataProvider`. A cross-path parity test asserts identical `executeList` rows, column metadata, and group sums for the same file through both parse paths.
+
+## 1.18.3
+
+### Patch Changes
+
+- [#1691](https://github.com/LTplus-AG/ifc-lite/pull/1691) [`26af236`](https://github.com/LTplus-AG/ifc-lite/commit/26af236a9128f5fc97493d75d7c9642958343a7a) Thanks [@louistrue](https://github.com/louistrue)! - Documentation moved to https://ifclite.dev/docs/ - README links and package homepage fields now point at the new home (the GitHub Pages site remains as a mirror whose canonical URLs point there).
+
+## 1.18.2
+
+### Patch Changes
+
+- [#1651](https://github.com/LTplus-AG/ifc-lite/pull/1651) [`52d861c`](https://github.com/LTplus-AG/ifc-lite/commit/52d861cdace765965dc79953916403b3ab0e3da6) Thanks [@louistrue](https://github.com/louistrue)! - Surface the rect-fast `deferTooManyOpenings` counter in the geometry diagnostics. The Rust `RectFastSummary` already emits it (the opening-count DoS cap, [#1649](https://github.com/LTplus-AG/ifc-lite/issues/1649)); the `GeometryDiagnostics.rectFast` and server-client types now include it (optional, defaulted to 0 when absent so older payloads merge cleanly), `mergeGeometryDiagnostics` sums it, and the CLI geometry report renders it in the rect_fast defer breakdown.
+
+## 1.18.1
+
+### Patch Changes
+
+- [#1502](https://github.com/LTplus-AG/ifc-lite/pull/1502) [`7d5a031`](https://github.com/LTplus-AG/ifc-lite/commit/7d5a03191a768f68c5ddad878698d1aacb9940ef) Thanks [@louistrue](https://github.com/louistrue)! - fix(server-client): send the auth token on data-model and symbolic fetches
+
+  `fetchDataModel` and `fetchSymbolic` were the only requests that omitted
+  `authHeaders()`, so against a server started with `IFC_SERVER_API_TOKEN` the
+  geometry parse succeeded but the follow-up data-model and symbolic fetches got
+  401 and silently returned null — the model loaded with no properties and no
+  annotations. Both now send the `Authorization` header like every other request.
+
+  Also: the streaming parse cache-check now includes the parse query string
+  (`parseQuery(options)`), matching the non-streaming path, so a cached result for
+  a different tessellation quality is no longer returned as a hit.
+
 ## 1.18.0
 
 ### Minor Changes

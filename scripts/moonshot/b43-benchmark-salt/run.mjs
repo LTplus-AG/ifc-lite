@@ -75,6 +75,13 @@ const HERE = dirname(fileURLToPath(import.meta.url));
  * as one - they are in the repo so that anyone can re-run this exam and get the
  * same digits. A production salt is 32 CSPRNG bytes that exist only in the
  * scoring service's environment (BENCHMARK.md section 1b).
+ *
+ * They are deliberately spelled as a readable label plus 32 hex characters, so
+ * they satisfy the universal salt floor (128 bits of machine-generated
+ * material) while FAILING the deployment format `saltForSplit` enforces -
+ * exactly 64 hex characters and nothing else. A published salt therefore cannot
+ * be configured as a live one by accident: the scorer refuses it. That is the
+ * whole reason the format check has two tiers; see lib/salt.mjs.
  */
 const EXAM_SALTS = [
   { label: 'exam-A', value: 'b43-exam-salt-A-4f7c0b1e9d2a48c65e81b0f4a7c93d26' },

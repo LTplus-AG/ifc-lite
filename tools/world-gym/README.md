@@ -105,7 +105,7 @@ end to end).
 tools/world-gym/
   lib/
     rng.mjs                   deterministic seeded PRNG (mulberry32 + FNV-1a; keyed sfc32 when salted)
-    salt.mjs                  per-split generation salt: normalize, KDF, fingerprint (BENCHMARK.md 1a/1b)
+    salt.mjs                  per-split generation salt: format validation, KDF, fingerprint, safe CLI intake (BENCHMARK.md 1a/1b)
     deterministic-create.mjs  seeded Timestamp/GuidSource params for IfcCreator (see Determinism)
     quantities.mjs            wall/slab/column/beam/space quantity math, shared by both families
     corruption.mjs            adversarial defect planner + injector (negative-label half)
@@ -143,7 +143,10 @@ tools/world-gym/
    longer determines the model. Omitting the salt is the default and is
    byte-identical to the unsalted corpus. Only the benchmark's reporting split
    is ever salted, and only when a scorer is configured with one; see
-   `benchmark/BENCHMARK.md` sections 1a and 1b.
+   `benchmark/BENCHMARK.md` sections 1a and 1b. A salt is only ever accepted
+   from `--salt-env <VAR>` or `--salt-file <PATH>` - never from `--salt
+   <value>`, which is refused, because argv is world-readable - and it is
+   format-validated at every boundary it crosses.
 2. Builds the model into one `IfcCreator` instance using the exact same
    `@ifc-lite/create` methods the CLI's `ifc-lite create` command calls -
    metres, identity placement, one `toIfc()` call, per house convention.

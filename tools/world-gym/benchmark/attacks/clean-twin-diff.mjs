@@ -36,10 +36,11 @@
  * a different building entirely, so the diff isolates the difference between
  * two unrelated models rather than the planted corruption. This file is NOT
  * weakened for that - it stays committed, unchanged in substance, and is
- * re-run as the regression. It gained one optional `--salt`, used only by the
- * B4.3 control run to demonstrate that handing the attack the secret restores
- * it to 1.000, i.e. that the collapse is the salt's doing and not a broken
- * harness. Measured numbers: scripts/moonshot/b43-benchmark-salt/.
+ * re-run as the regression. It gained one optional salt input (`--salt-env` /
+ * `--salt-file`; a salt is never accepted in argv - see lib/salt.mjs), used
+ * only by the B4.3 control run to demonstrate that handing the attack the
+ * secret restores it to 1.000, i.e. that the collapse is the salt's doing and
+ * not a broken harness. Measured numbers: scripts/moonshot/b43-benchmark-salt/.
  *
  * It also keeps working, at full strength, on dev - which is deliberate. Dev is
  * open by design and carries no integrity claim.
@@ -92,7 +93,7 @@ import {
   BENCHMARK_NAME, SPEC_VERSION, CORRUPT_RATE, FAMILY, TASK_NAMES,
   DEFECT_TYPES, QUANTITY_KEYS, seedsForSplit,
 } from '../splits.mjs';
-import { normalizeSalt } from '../../lib/salt.mjs';
+import { resolveSaltFromArgs, describeSalt, redactSalt } from '../../lib/salt.mjs';
 
 // ============================================================================
 // Byte-only structural summary (reads a raw STEP string; no labels involved)
@@ -348,6 +349,13 @@ function submissionText(name, split, predictions) {
   return [header, ...predictions].map((o) => JSON.stringify(o)).join('\n') + '\n';
 }
 
+/**
+ * Set once `main` has resolved the salt, so the fatal-error printer at the
+ * bottom can scrub it out of anything it is about to write. The attack itself
+ * never prints it, but an error path is exactly where a secret escapes.
+ */
+let RESOLVED_SALT = '';
+
 async function main() {
   const args = process.argv.slice(2);
   const getFlag = (name) => {
@@ -359,16 +367,18 @@ async function main() {
   const outPath = getFlag('--out');
   const name = getFlag('--name') ?? 'clean-twin-diff';
   // Control only (B4.3): hand the attack the salt it is not supposed to have.
-  const salt = normalizeSalt(getFlag('--salt'));
+  // Never from argv - `--salt <value>` is refused outright (lib/salt.mjs).
+  const salt = resolveSaltFromArgs(args);
+  RESOLVED_SALT = salt;
   if (!outPath) {
-    process.stderr.write('Usage: node clean-twin-diff.mjs --split dev --out <file.jsonl> [--name <label>] [--salt <s>]\n');
+    process.stderr.write('Usage: node clean-twin-diff.mjs --split dev --out <file.jsonl> [--name <label>] [--salt-env <VAR> | --salt-file <PATH>]\n');
     process.exit(1);
   }
 
   const seeds = seedsForSplit(split);
   process.stderr.write(
     `CLEAN-TWIN-DIFF attack over split "${split}" (${seeds.length} models, spec ${SPEC_VERSION}, `
-    + `${salt ? 'WITH the salt - control run, not the attack' : 'no salt - the attack proper'})...\n`,
+    + `${salt ? `${describeSalt(salt)} - control run, not the attack` : 'no salt - the attack proper'})...\n`,
   );
 
   const predictions = [];
@@ -393,7 +403,10 @@ async function main() {
 const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
 if (isMain) {
   main().catch((err) => {
-    process.stderr.write(`${err.stack ?? err.message}\n`);
+    // A SaltFormatError is an operator message, not a bug: print it without a
+    // stack. Everything else prints its stack, scrubbed of the salt.
+    const text = err?.name === 'SaltFormatError' ? `error: ${err.message}` : (err.stack ?? err.message);
+    process.stderr.write(`${redactSalt(text, RESOLVED_SALT)}\n`);
     process.exit(1);
   });
 }

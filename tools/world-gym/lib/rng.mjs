@@ -74,13 +74,22 @@ export function sfc32(a, b, c, d) {
 /** Convenience wrapper with typed draw helpers over a single deterministic stream. */
 export class Rng {
   /**
+   * The salt is a PRIVATE field, not `this.salt`. An enumerable own property
+   * would put the secret into `JSON.stringify(anything_holding_an_rng)` and
+   * into every debugger/inspect dump, which is the quiet version of the argv
+   * leak. A private field cannot be serialized, enumerated or read from
+   * outside the class; `salted` below is the only thing callers may ask.
+   */
+  #salt;
+
+  /**
    * @param {string|number} seed - the stream name, e.g. '42:corrupt'
    * @param {string} [salt] - '' / omitted = the public universe (mulberry32,
    *   byte-identical to v1); non-empty = the salted universe (keyed sfc32).
    */
   constructor(seed, salt = '') {
-    this.salt = normalizeSalt(salt);
-    if (this.salt === '') {
+    this.#salt = normalizeSalt(salt);
+    if (this.#salt === '') {
       this.seedValue = hashSeed(seed);
       this._next = mulberry32(this.seedValue);
       // Preserved verbatim: forks of an unsalted stream key off the HASH, not
@@ -88,10 +97,15 @@ export class Rng {
       this._forkBase = String(this.seedValue);
     } else {
       this.seedValue = null; // there is no 32-bit identity for a keyed stream
-      this._next = sfc32(...deriveStreamState(this.salt, seed));
+      this._next = sfc32(...deriveStreamState(this.#salt, seed));
       this._forkBase = String(seed);
     }
     this.draws = 0;
+  }
+
+  /** Which universe this stream belongs to. A boolean, never the material. */
+  get salted() {
+    return this.#salt !== '';
   }
 
   /** Float in [0, 1). */
@@ -126,6 +140,6 @@ export class Rng {
    * silently fell back to the public universe would be a hole in the mechanism.
    */
   fork(label) {
-    return new Rng(`${this._forkBase}:${label}`, this.salt);
+    return new Rng(`${this._forkBase}:${label}`, this.#salt);
   }
 }

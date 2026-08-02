@@ -54,7 +54,7 @@ import {
 } from './splits.mjs';
 import { groundTruthForSeed } from './ground-truth.mjs';
 import { parseSubmission } from './submission.mjs';
-import { saltFingerprint, normalizeSalt } from '../lib/salt.mjs';
+import { saltFingerprint } from '../lib/salt.mjs';
 
 /**
  * The salt a scoring run uses, and the one place that decides it.
@@ -65,7 +65,10 @@ import { saltFingerprint, normalizeSalt } from '../lib/salt.mjs';
  * thing to ignore.
  */
 export function resolveScoringSalt(split, env = process.env) {
-  if (split !== REPORTING_SPLIT && normalizeSalt(env[SALT_ENV_VAR]) !== '') {
+  // Raw non-empty test, deliberately BEFORE any format validation: on a
+  // non-reporting split the actionable fact is "you configured a salt for the
+  // wrong split", and a format complaint would bury it.
+  if (split !== REPORTING_SPLIT && String(env[SALT_ENV_VAR] ?? '').trim() !== '') {
     throw new Error(
       `${SALT_ENV_VAR} is set but split "${split}" is not the reporting split ("${REPORTING_SPLIT}"). `
       + 'Non-reporting splits are unsalted by design (BENCHMARK.md section 1a); unset the variable or score the reporting split.',

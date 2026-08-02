@@ -28,7 +28,7 @@ import { fileURLToPath } from 'node:url';
 import { IfcCreator } from '../../packages/create/dist/index.js';
 import { deterministicCreateParams } from './lib/deterministic-create.mjs';
 import { Rng } from './lib/rng.mjs';
-import { normalizeSalt, saltFingerprint } from './lib/salt.mjs';
+import { normalizeSalt, saltFingerprint, resolveSaltFromArgs, redactSalt } from './lib/salt.mjs';
 import {
   drawDefectPlan, applyBuildDefects, applyTextDefects, expectationsFromRecords,
 } from './lib/corruption.mjs';
@@ -140,36 +140,17 @@ export function generateModel(seed, familyName = 'auto', opts = {}) {
 // ============================================================================
 
 /**
- * Resolve a salt from this CLI's args. Exported so any future tool that grows a
- * salt flag spells it the same way rather than inventing a second convention.
- *
- * `--salt-env VAR` is the form to prefer for anything but a local experiment: a
- * salt passed as `--salt` is visible in `ps` and in shell history, and a leaked
- * salt is a rotation event (BENCHMARK.md section 1b). The benchmark SCORER does
- * not take either flag - it reads the split's salt from the environment
- * (`splits.mjs#saltForSplit`), because which split may be salted is policy, not
- * a caller's choice.
+ * Set once `main` has resolved the salt, so the fatal-error printer below can
+ * scrub it out of anything it is about to write.
  */
-export function saltFromArgs(args, env = process.env) {
-  const envVar = getFlag(args, '--salt-env');
-  const literal = getFlag(args, '--salt');
-  if (envVar !== undefined && literal !== undefined) {
-    throw new Error('--salt and --salt-env are mutually exclusive');
-  }
-  if (envVar !== undefined) {
-    const value = env[envVar];
-    if (value === undefined) throw new Error(`--salt-env ${envVar}: environment variable is not set`);
-    return normalizeSalt(value);
-  }
-  return normalizeSalt(literal);
-}
+let RESOLVED_SALT = '';
 
 async function main() {
   const args = process.argv.slice(2);
   const hasFlag = (name) => args.includes(name);
 
   if (getFlag(args, '--seed') === undefined) {
-    process.stderr.write('Usage: node generator.mjs --seed <n> [--family frame|office|auto] [--corrupt | --corrupt-rate 0.3] [--salt <s> | --salt-env <VAR>] --out <file.ifc> [--json]\n');
+    process.stderr.write('Usage: node generator.mjs --seed <n> [--family frame|office|auto] [--corrupt | --corrupt-rate 0.3] [--salt-env <VAR> | --salt-file <PATH>] --out <file.ifc> [--json]\n');
     process.exit(1);
   }
   const seed = seedFlag(args, '--seed');
@@ -182,7 +163,10 @@ async function main() {
     process.exit(2);
   }
   const corruptRate = numberFlag(args, '--corrupt-rate', { def: 0, min: 0, max: 1 });
-  const salt = saltFromArgs(args);
+  // A salt is never taken from argv: `--salt <value>` is refused, `--salt-env
+  // <VAR>` and `--salt-file <PATH>` are the two safe forms (lib/salt.mjs).
+  const salt = resolveSaltFromArgs(args);
+  RESOLVED_SALT = salt;
 
   const model = generateModel(seed, family, { corruptRate, forceCorrupt, salt });
 
@@ -216,7 +200,8 @@ async function main() {
 const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
 if (isMain) {
   main().catch((err) => {
-    process.stderr.write(`${err.stack ?? err.message}\n`);
+    const text = err?.name === 'SaltFormatError' ? `error: ${err.message}` : (err.stack ?? err.message);
+    process.stderr.write(`${redactSalt(text, RESOLVED_SALT)}\n`);
     process.exit(1);
   });
 }

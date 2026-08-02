@@ -170,25 +170,70 @@ to the implementation instead of being left for the incident.
 node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
 ```
 
-`normalizeSalt` rejects anything under 16 characters, because a guessable salt
-is defeated by the same offline oracle the salt exists to stop: guess, generate,
-compare to the bytes you were served.
+**That format is enforced, not suggested.** A weak salt silently produces a weak
+split, which looks exactly like protection and is not - the same failure shape
+as a check that cannot fail - so a bad one is a refusal (`SaltFormatError`)
+rather than a warning. Two tiers, both in `lib/salt.mjs`:
+
+- every salt anywhere must be printable ASCII with no whitespace and must carry
+  a contiguous run of at least **32 lowercase hex characters** (128 bits of
+  machine-generated material, with a repetition guard so `000...0` does not
+  qualify). A human-chosen value like `benchmark-secret` is defeated by the very
+  oracle the salt exists to stop - guess, regenerate, compare to the bytes you
+  were served - so it is rejected outright. A readable label around the random
+  run is fine, which is how the published exam salts of
+  `scripts/moonshot/b43-benchmark-salt/` are spelled.
+- a **deployment** salt - the one `WORLD_GYM_SALT_TEST` carries into
+  `saltForSplit` - must additionally be *exactly* 64 lowercase hex characters,
+  i.e. the output of the command above and nothing else. That second tier exists
+  for the failure the first cannot catch: someone pasting a *published* exam
+  salt into a production scorer.
+
+This is a shape check, not an entropy oracle. It catches the misconfiguration
+that actually happens - a memorable phrase, a repeated character, a truncated
+paste - and cannot catch someone who types 64 hex characters out of their head.
+Randomness is guaranteed by using the command above; the check is what makes a
+deviation from it visible.
 
 **Holding one.** The salt lives in the scoring service's environment as
 `WORLD_GYM_SALT_TEST` and nowhere else - not in the repo, not in a config file,
-not in a CLI argument (`--salt-env VAR` exists because `--salt` puts a secret in
-`ps` and in shell history), not in a leaderboard row, not in a log line. Tools
-print the **fingerprint** (`saltId`, a truncated HMAC over a fixed label) so a
-row can say which universe it belongs to without revealing the universe.
+not in a leaderboard row, not in a log line, and above all **never in a command
+line**. A value in argv is visible in `ps`, in `/proc/<pid>/cmdline`, in the
+invoking shell's history file and in the command echo of every CI runner, i.e.
+to every other user on the machine and to anything that scrapes a process table
+- so the tools here **refuse `--salt <value>` outright**, with a non-zero exit,
+rather than accepting it or (worse) ignoring it and running unsalted while the
+caller believes otherwise. The two supported forms are:
 
-**What counts as a leak.** Any of: the value appearing in a log, a shell
-history, a CI transcript, an error message, a screenshot or a support ticket;
-a machine holding it being compromised; a person holding it leaving the trust
-boundary; or - the one that gets missed - a submitter scoring anomalously well
-in a way that only twin reconstruction explains. `clean-twin-diff` stays
-committed as the standing regression precisely so that last case has a
-detector: re-run it against the live salted split, and if it scores near the
-honest baselines instead of near the uninformed level, the salt is out.
+```bash
+node tools/world-gym/generator.mjs --seed 9 --salt-env WORLD_GYM_SALT_TEST --out model.ifc
+node tools/world-gym/generator.mjs --seed 9 --salt-file /path/to/salt   --out model.ifc
+```
+
+`--salt-file` requires mode 600 - a salt file another user on the box can read
+is the same leak, only quieter - and never echoes the contents, only the path.
+Both forms also refuse an argument that *looks like salt material*, because a
+64-hex secret is a perfectly valid variable name and a perfectly valid path, so
+"you pasted the value where the name goes" has to be caught by shape.
+
+Tools print the **fingerprint** (`saltId`, a truncated HMAC over a fixed label)
+so a row can say which universe it belongs to without revealing the universe. No
+error message, log line, submission file, leaderboard row or scorecard in this
+tree contains a salt value, and the CLI error paths additionally scrub the
+resolved salt out of anything they are about to write, so that a throw from
+somewhere else cannot carry it out. `determinism-check.mjs` asserts all of this
+on every run.
+
+**What counts as a leak.** Any of: the value appearing in a **process listing or
+a shell history** (the reason for the argv rules above), a log, a CI transcript,
+an error message, a screenshot or a support ticket; a world- or group-readable
+salt file; a machine holding it being compromised; a person holding it leaving
+the trust boundary; or - the one that gets missed - a submitter scoring
+anomalously well in a way that only twin reconstruction explains.
+`clean-twin-diff` stays committed as the standing regression precisely so that
+last case has a detector: re-run it against the live salted split, and if it
+scores near the honest baselines instead of near the uninformed level, the salt
+is out.
 
 **Rotating.** Rotation is cheap by construction: nothing is stored, so there is
 no dataset to rebuild. The universe is a pure function of the salt.

@@ -39,7 +39,7 @@
  * are not comparable.
  */
 
-import { normalizeSalt } from '../lib/salt.mjs';
+import { assertSecretSaltFormat } from '../lib/salt.mjs';
 
 export const BENCHMARK_NAME = 'ifc-lite-world-gym';
 export const SPEC_VERSION = '1.2.0';
@@ -83,9 +83,10 @@ export const REPORTING_SPLIT = 'test';
 
 /**
  * Environment variable the reporting split's salt is read from. It is an env
- * var and not a file or a flag because the salt is a deployment secret of the
- * scoring service: it must not be in the repo, in a config file, in argv or in
- * a shell history.
+ * var and not a flag because the salt is a deployment secret of the scoring
+ * service: it must not be in the repo, in a config file, in argv (where `ps`
+ * and every CI log can read it - the CLIs refuse `--salt <value>` outright) or
+ * in a shell history.
  */
 export const SALT_ENV_VAR = 'WORLD_GYM_SALT_TEST';
 
@@ -103,13 +104,21 @@ export const SALT_ENV_VAR = 'WORLD_GYM_SALT_TEST';
  *    it always was, and the committed anchors stay valid. Configuring the
  *    variable is the deliberate act of standing up a salted universe.
  *
+ * 3. A CONFIGURED SALT MUST BE THE DOCUMENTED FORMAT. This is the boundary a
+ *    real deployment secret crosses, so it is where the format is enforced:
+ *    exactly 64 lowercase hex characters, i.e. 32 CSPRNG bytes. A weak or
+ *    hand-chosen salt silently produces a weak split, which looks exactly like
+ *    protection and is not - so it is a refusal (`SaltFormatError`), not a
+ *    warning. See lib/salt.mjs for the two validation tiers and their reasons.
+ *
  * @param {string} split
  * @param {Record<string, string|undefined>} [env]
  * @returns {string} '' (unsalted) or the configured salt
+ * @throws {SaltFormatError} if the reporting split's salt is set but malformed
  */
 export function saltForSplit(split, env = process.env) {
   if (split !== REPORTING_SPLIT) return '';
-  return normalizeSalt(env[SALT_ENV_VAR]);
+  return assertSecretSaltFormat(env[SALT_ENV_VAR], SALT_ENV_VAR);
 }
 
 /** All seeds of one split, ascending. */

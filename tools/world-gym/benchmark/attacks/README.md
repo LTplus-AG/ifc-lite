@@ -156,10 +156,12 @@ result matter on this page:
   deliberate, because dev is open by design. What changed is that a SALTED
   reporting split can now be stood up, and against one the same attack collapses
   to the level of a submission built under an unrelated salt.
-- **The one addition is an optional `--salt` for the control run**, which hands
-  the attack the secret on purpose. It returns to 1.000 with it. That is how the
-  experiment distinguishes "the salt defended the split" from "the attack
-  broke".
+- **The one addition is an optional salt input for the control run**, which
+  hands the attack the secret on purpose. It returns to 1.000 with it. That is
+  how the experiment distinguishes "the salt defended the split" from "the
+  attack broke". The salt is taken from `--salt-env <VAR>` or `--salt-file
+  <PATH>` only: `--salt <value>` is refused, because argv is readable by every
+  user on the machine (BENCHMARK.md section 1b).
 - **The exam clause it was written against turns out to be unsatisfiable as
   worded** - "at or below the always-clean anchor" asks a well-formed submission
   to score below an information-free one, which the scoring math does not allow.

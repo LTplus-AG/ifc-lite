@@ -334,7 +334,7 @@
         "hostingReadWriteTrueConflicts": 303
       }
     },
-    "elapsedMs": 13822
+    "elapsedMs": 13810
   },
   "nullSpace": {
     "constructed": true,
@@ -348,6 +348,17 @@
     "scoredObservableSaysConverged": true,
     "membershipObservableSaysConverged": false,
     "unsoundAutoMergeOnAnUnmodelledOp": true,
+    "predicatePackage": "packages/provenance",
+    "predicatePackageIsPrivatePrototype": true,
+    "packagesInThisRepositoryThatDependOnIt": 0,
+    "productContainmentOpKinds": [
+      "set-child",
+      "remove-child"
+    ],
+    "productContainmentMerger": "packages/merge/src/three-way.ts",
+    "productMergerTreatsThePairAsAConflict": true,
+    "userReachableContainmentPath": "packages/cli/src/commands/layer-publish.ts",
+    "viewerCanWriteContainmentIntoTheSharedDocument": false,
     "opKindsTheGeneratorCanProduce": 4,
     "opKindThatExposesIt": "storey-set-members",
     "generatorProducesIt": false,
@@ -360,8 +371,8 @@
     "checkThatIsNotInvariant": "membershipDigest, a digest of every storey to element list"
   },
   "guard": {
-    "casesRun": 8,
-    "casesCaught": 8,
+    "casesRun": 9,
+    "casesCaught": 9,
     "allCaughtByExpectedNet": true,
     "cleanControlPasses": true,
     "cases": [
@@ -427,7 +438,15 @@
         "caught": true,
         "caughtByExpectedNet": true,
         "findingCount": 1,
-        "plantSha256Prefix": "d7448c9119a6"
+        "plantSha256Prefix": "fdd4531e882a"
+      },
+      {
+        "id": "g9",
+        "expectedNet": 1,
+        "caught": true,
+        "caughtByExpectedNet": true,
+        "findingCount": 1,
+        "plantSha256Prefix": "6862e7a1985e"
       }
     ]
   },

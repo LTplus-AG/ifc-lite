@@ -49,19 +49,43 @@ import { loadProvenance } from './replay.mjs';
  *   ancestor walk excludes the storey node ... if a future op kind targets
  *   containers directly, this rule needs revisiting."
  *
- * That is a soundness caveat the shipped code states about itself, and the
+ * That is a soundness caveat the module states about itself, and the
  * exam that is supposed to adjudicate the predicate is invariant under it. It
  * is the same shape as an exam that cannot see a wall placed below its room:
  * not a wrong answer, an unasked question.
  *
  * THE CHECK THAT IS NOT INVARIANT. Below, the op vocabulary is extended by one
  * kind -- setting a storey's membership list, which is an ordinary edit to
- * `IfcRelContainedInSpatialStructure.RelatedElements` and which the
- * collaboration layer already has a conflict kind for -- and the SHIPPED
- * predicate is asked about it. The verdict is asserted positively: the
- * predicate must clear the pair AND the two orders must diverge. That
- * combination is an unsound auto-merge, on an op the product supports and the
- * battery cannot generate.
+ * `IfcRelContainedInSpatialStructure.RelatedElements` -- and the predicate
+ * under test is asked about it, UNMODIFIED, over footprints built its own way.
+ * The verdict is asserted positively: the predicate must clear the pair AND the
+ * two orders must diverge.
+ *
+ * WHAT THAT DOES AND DOES NOT ESTABLISH, STATED HERE BECAUSE THE FIRST WRITE-UP
+ * OVERCLAIMED IT AND A REVIEWER CAUGHT IT. It establishes a property of this
+ * predicate: its soundness argument excludes ops that target a container node
+ * directly, and on exactly such a pair it clears a divergence. That is real and
+ * is not softened.
+ *
+ * It does NOT establish a defect in a shipped product path, and the earlier
+ * phrasing -- "an unsound auto-merge in shipped code, on an op the product
+ * supports" -- was wrong on both halves of the qualifier:
+ *
+ *   - The predicate is not shipped. It lives in packages/provenance, whose
+ *     package manifest is private and self-describes as a prototype, and no
+ *     other package in this repository depends on it. Nothing routes a user
+ *     edit to it.
+ *   - The product does support containment edits, but through a DIFFERENT
+ *     merger. They are `set-child` and `remove-child` in packages/merge, and
+ *     that package's three-way planner classifies a concurrent divergence on a
+ *     child slot as a hierarchy conflict rather than auto-merging it. So on the
+ *     path a user can actually reach, this pair is refused, not cleared.
+ *
+ * The correct claim is therefore about the exam, not about the product: the
+ * battery cannot generate the one op class the footprint module names as
+ * outside its own soundness argument, so that caveat has never been tested.
+ * The reachability facts are recorded as fields on the result so a reader gets
+ * them next to the verdict rather than from a report they may not have open.
  */
 function storeyNodeIdOf(storeyId) {
   // Mirrors merge-model.ts's own storeyNodeId, which is module-private.
@@ -87,8 +111,8 @@ function membershipDigest(m) {
   return createHash('sha256').update(rows.join('|')).digest('hex').slice(0, 16);
 }
 
-/** Apply an extended op. The four shipped kinds go to the shipped applier, so
- *  no shipped semantics are reimplemented here. */
+/** Apply an extended op. The four existing kinds go to the package's own
+ *  applier, so no semantics are reimplemented here. */
 function applyExtended(P, world, op, semantics) {
   if (op.type === 'storey-set-members') {
     const membership = new Map(world.membership);
@@ -119,7 +143,7 @@ export async function nullSpaceAudit(repoRoot) {
   // B: move one of those elements to the other storey. Targets the element.
   const opB = { opId: 'ns-b', type: 'storey-move', entityNodeId: moved, storeyId: otherStorey };
 
-  // The SHIPPED predicate, over footprints built the shipped way.
+  // The predicate under test, UNMODIFIED, over footprints built its own way.
   const dag = buildStateDag(base);
   const fpA = computeFootprint(dag, {
     opId: opA.opId,
@@ -156,7 +180,7 @@ export async function nullSpaceAudit(repoRoot) {
   return {
     constructed: true,
     semantics,
-    // What the shipped predicate says about the pair.
+    // What the predicate under test says about the pair.
     predicateSaysConflict: verdict.conflict,
     predicateStructural: verdict.structural,
     predicateSpatial: verdict.spatial,
@@ -165,6 +189,19 @@ export async function nullSpaceAudit(repoRoot) {
     membershipObservableSaysConverged: membershipAgrees,
     // The catch: predicate clears the pair, the richer observable diverges.
     unsoundAutoMergeOnAnUnmodelledOp: verdict.conflict === false && membershipAgrees === false,
+    // REACHABILITY, recorded beside the verdict so the two cannot be read apart.
+    // The finding above is a property of the predicate. It is NOT a shipped
+    // product defect, and each clause below is a fact a reader can check.
+    predicatePackage: 'packages/provenance',
+    predicatePackageIsPrivatePrototype: true,
+    packagesInThisRepositoryThatDependOnIt: 0,
+    // The product's own containment ops, and the merger that owns them.
+    productContainmentOpKinds: ['set-child', 'remove-child'],
+    productContainmentMerger: 'packages/merge/src/three-way.ts',
+    productMergerTreatsThePairAsAConflict: true,
+    // A user can cause a containment change; it does not reach this predicate.
+    userReachableContainmentPath: 'packages/cli/src/commands/layer-publish.ts',
+    viewerCanWriteContainmentIntoTheSharedDocument: false,
     // And the reason the battery can never report it.
     opKindsTheGeneratorCanProduce: 4,
     opKindThatExposesIt: 'storey-set-members',

@@ -268,15 +268,46 @@ operation, so it has never been revisited.
 
 **The check that is not invariant, and what it found.** The audit adds one
 operation kind -- setting a storey membership list, which is an ordinary edit
-to a spatial-containment relationship and which the collaboration layer already
-has a conflict kind for -- and asks the **shipped** predicate about a pair
-consisting of that edit and a concurrent move of one of the listed elements.
-The predicate clears the pair, because the element edit ancestor walk excludes
-the storey node and the two footprints are disjoint. The two orders then
-diverge. That is an unsound auto-merge, in shipped code, on an operation the
-product supports and the battery cannot produce. It is asserted positively: the
-run fails if the predicate does not clear the pair, and fails if the orders do
-not diverge.
+to a spatial-containment relationship -- and asks the predicate under test,
+unmodified, about a pair consisting of that edit and a concurrent move of one
+of the listed elements. The predicate clears the pair, because the element
+edit ancestor walk excludes the storey node and the two footprints are
+disjoint. The two orders then diverge. It is asserted positively: the run fails
+if the predicate does not clear the pair, and fails if the orders do not
+diverge.
+
+**What that establishes, and what it does not.** It establishes a property of
+this predicate: the soundness argument the footprint module states about itself
+excludes operations that target a container node directly, and on exactly such
+a pair the predicate clears a divergence. That stands.
+
+**The first version of this section said "an unsound auto-merge, in shipped
+code, on an operation the product supports". That was wrong, a reviewer caught
+it, and it is corrected here rather than quietly reworded.** Both halves of the
+qualifier fail:
+
+- *Not shipped.* The predicate lives in `packages/provenance`, whose manifest
+  is private and whose own description calls it a prototype, and no other
+  package in this repository depends on it. No user edit is routed to it by
+  anything.
+- *A different merger owns the real operation.* The product does support
+  containment edits, as `set-child` and `remove-child` in `packages/merge`, and
+  that package's three-way planner classifies a concurrent divergence on a
+  child slot as a **hierarchy conflict** rather than auto-merging it. On the
+  path a user can actually reach, this pair is refused, not cleared.
+
+A user *can* cause a spatial-containment change through a shipped path --
+publishing a layer whose delta carries `children` opinions, which the CLI
+recognises explicitly as a distinct write capability -- but that change goes to
+the merger above and never to the predicate audited here. The viewer cannot
+cause one at all: the collaboration document interface the viewer is given has
+no containment writer in it.
+
+So the correct claim is about the exam, not about the product: **the battery
+cannot generate the one operation class the footprint module names as outside
+its own soundness argument, so that caveat has never been tested.** The
+reachability facts are recorded as fields on the null-space result in the
+scorecard, beside the verdict, so the two cannot be read apart.
 
 ## 8. Privacy
 
@@ -303,14 +334,36 @@ comments, and since net one accounts for strings by finding them in the
 declared source corpus, three proof cases silently stopped being caught. The
 plants now live in a file that is deliberately outside the corpus.
 
-**The proof as it stands:** 8 planted cases, all of them caught, each by the
-net it was aimed at -- a case caught only by the other net counts as failed,
-because two lines of defence sharing one hole are one line of defence. A clean
-control artifact passes, without which every catch above would be satisfied by
-a guard that rejects everything. No planted token is written to any artifact;
-findings carry a digest prefix and a length.
+**The third failure was found by review, not by the proof, and it is the same
+blindness a third time.** Half B of net one had a word-level fallback: a string
+was accounted for when every one of its words appeared somewhere in the corpus.
+That is vocabulary, not provenance. A real authored model name assembled out of
+ordinary words the corpus happens to contain passed with nothing verbatim
+behind it, and net two only stops such a phrase if the operator happened to
+list that exact phrase -- which for a name nobody anticipated is precisely what
+does not happen. This is the same shape as the two failures above and as the
+quote-parity defect the guard was built against: a test that asks what a string
+*resembles* instead of where it *came from*.
 
-<!-- numeral-src: 8 :: b51-real-merge-traces/scorecard.json#guard.casesRun -->
+The fallback is gone. A string is now accounted for only if the corpus contains
+it. The reason a fallback existed is real -- source composes prose across
+adjacent string literals and line breaks, so a sentence is often not a
+byte-for-byte substring of the file that built it -- and is handled by
+reconstructing the corpus before the test rather than by loosening it: adjacent
+quote-plus-quote joins are spliced out and whitespace runs are collapsed. That
+recovers the sentence the source does emit and can never assemble a phrase the
+corpus does not contain in order. Every string in every artifact this bet
+writes is still accounted for; none of them needed the fallback.
+
+**The proof as it stands:** 9 planted cases, all of them caught, each by the
+net it was aimed at -- a case caught only by the other net counts as failed,
+because two lines of defence sharing one hole are one line of defence. The
+ninth is the recombined name above. A clean control artifact passes, without
+which every catch above would be satisfied by a guard that rejects everything.
+No planted token is written to any artifact; findings carry a digest prefix and
+a length.
+
+<!-- numeral-src: 9 :: b51-real-merge-traces/scorecard.json#guard.casesRun -->
 
 ## 9. Red run
 
@@ -342,8 +395,21 @@ failing to produce a divergence. Evidence in `red-run.json`.
 3. Eight seeds is more than one and is not many. The per-seed arrays are
    emitted in full so the spread can be read directly instead of trusted.
 
-4. The two failures the guard survived were found by its own proof. There is no
-   claim that a third does not exist.
+4. The guard has now survived three failures. Two were found by its own proof;
+   the third was found by a reviewer, which is the interesting part -- the
+   proof had eight cases and none of them was a phrase recombined out of corpus
+   words, so the proof was passing over a hole it had not been asked about. A
+   ninth case now covers it. There is no claim that a fourth does not exist,
+   and the third failure is direct evidence that the proof's coverage, not just
+   the guard's logic, is the thing to distrust.
+
+5. The census counts independent origins from operator-declared metadata, one
+   origin per supplied trace root by default. The registered bar of three
+   deployments is unchanged; what changed is that the meter can now reach it.
+   Before this correction the metric collapsed every non-demo corpus to one, so
+   no input could ever have cleared the bar and a failure to clear it carried no
+   information. The observed value on the corpus measured here is zero either
+   way, so no figure in this report moved.
 
 ## 11. Reproducing
 
@@ -358,3 +424,9 @@ The census defaults to the repository own data directory, which does not exist
 in a clean checkout; pass `--trace-root <dir>` to point it at a real one, and
 `--forbid-file <path outside the repo>` to hand net two a corpus denylist. The
 committed run used both.
+
+`--trace-root` may be repeated, and each supplied root counts as one
+independent origin provided it holds at least one room log this repository own
+examples did not open. A root that aggregates traces from several deployments
+may say so with an `origins.txt` beside them, one label per line; the labels
+are counted and discarded, never read into an artifact.

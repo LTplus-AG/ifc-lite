@@ -35,7 +35,7 @@
     },
     {
       "id": "r6-null-space",
-      "why": "the shipped predicate is required to clear a pair whose orders diverge",
+      "why": "the predicate under test is required to clear a pair whose orders diverge",
       "tripwireFired": true,
       "note": "the construction was built and evaluated"
     }

@@ -74,9 +74,25 @@ export const GUARD_CASES = [
   {
     id: 'g8',
     net: 2,
-    why: 'a term supplied by the operator from outside the repository',
-    build: () => ({ finding: 'an ordinary sentence about the measurement' }),
-    forbidden: ['an ordinary sentence about the measurement'],
+    why:
+      'a term supplied by the operator from outside the repository. The phrase is deliberately one ' +
+      'net 1 accounts for -- it is verbatim in the guard corpus -- so this case exercises net 2 ' +
+      'ALONE. If it tripped net 1 as well it would prove nothing about net 2 being an independent ' +
+      'line of defence.',
+    build: () => ({ finding: 'the synthetic schedule generator' }),
+    forbidden: ['the synthetic schedule generator'],
+  },
+  {
+    id: 'g9',
+    net: 1,
+    why:
+      'an authored model name assembled ENTIRELY out of words the corpus already contains -- ' +
+      'the third variant of this program\'s recurring blindness, after a regex that lost quote ' +
+      'parity and an allowlist that matched on appearance. Every word here occurs in the guard\'s ' +
+      'own source; the phrase does not. A provenance test that asks about words instead of about ' +
+      'the string passes this, and net 2 only stops it if the operator happened to list this exact ' +
+      'phrase, which for a name nobody anticipated is exactly what does not happen.',
+    build: () => ({ model: 'Main Building' }),
   },
 ];
 

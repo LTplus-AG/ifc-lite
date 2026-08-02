@@ -8,7 +8,7 @@
     },
     "guard": {
       "file": "scripts/moonshot/b51-real-merge-traces/identifier-guard.mjs",
-      "sha256Prefix": "cf8257274a471bf2"
+      "sha256Prefix": "ea2cad8649811820"
     }
   },
   "prediction": {

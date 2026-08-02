@@ -204,7 +204,7 @@ function guardProof() {
 
   return {
     corpusFiles: GUARD_CORPUS.sourceFiles,
-    corpusWords: GUARD_CORPUS.sourceWords,
+    corpusChars: GUARD_CORPUS.sourceChars,
     // How many real terms net 2 was fed for THIS run. Read from a file
     // outside the repository (see corpusTerms); the terms themselves are
     // never stored, only how many there were.
@@ -343,14 +343,14 @@ async function redRun() {
     note: guardRefused ? 'the guard refused the write' : 'the guard allowed it',
   });
 
-  // R6. The null-space check. Its whole claim is that the shipped predicate
+  // R6. The null-space check. Its whole claim is that the predicate under test
   // clears a pair whose orders diverge, on an op the battery cannot generate.
   // If the construction cannot produce that, the audit found nothing and must
   // say so rather than pass.
   const ns = await nullSpaceAudit(REPO_ROOT);
   fired.push({
     id: 'r6-null-space',
-    why: 'the shipped predicate is required to clear a pair whose orders diverge',
+    why: 'the predicate under test is required to clear a pair whose orders diverge',
     tripwireFired: ns.constructed === true && ns.unsoundAutoMergeOnAnUnmodelledOp === true,
     note: ns.constructed ? 'the construction was built and evaluated' : String(ns.reason ?? 'not constructed'),
   });

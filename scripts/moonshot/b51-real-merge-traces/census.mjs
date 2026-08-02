@@ -146,14 +146,59 @@ function repoDemoRoomFilenames(repoRoot) {
   return names;
 }
 
+/**
+ * How many distinct origins a supplied trace root declares.
+ *
+ * Criterion a5 counts DEPLOYMENTS OR TEAMS, and a directory of room logs
+ * carries no field saying which deployment wrote which log -- a room id is a
+ * project path, not a tenant. So the count comes from metadata the operator
+ * states explicitly: an `origins.txt` beside the traces, one label per line.
+ * The labels are operator-supplied material from outside this repository and
+ * are therefore COUNTED AND DISCARDED -- never returned, never stored, never
+ * handed to an artifact. Only the cardinality leaves this function.
+ *
+ * A root with no such file is worth at most ONE origin, which is the honest
+ * reading of "somebody gave me a directory": one directory, one provenance
+ * story, whatever number of rooms it happens to hold.
+ */
+function declaredOriginCount(root) {
+  for (const name of ['origins.txt', 'ORIGINS']) {
+    const abs = path.join(root, name);
+    if (!existsSync(abs)) continue;
+    const labels = new Set(
+      readFileSync(abs, 'utf-8')
+        .split('\n')
+        .map((s) => s.trim().toLowerCase())
+        .filter((s) => s.length > 0 && !s.startsWith('#')),
+    );
+    return labels.size;
+  }
+  return null;
+}
+
 function censusTraceRoots(repoRoot, requested) {
   const roots = [...requested];
+  // The in-tree default is this repository's own server writing its own data
+  // directory. It is counted for volume, never for independence: see
+  // `contributesIndependentOrigins` below.
+  const suppliedCount = requested.length;
   if (roots.length === 0) roots.push(path.join(repoRoot, '.collab-data'));
   const demoNames = repoDemoRoomFilenames(repoRoot);
   const out = [];
-  for (const root of roots) {
+  for (const [i, root] of roots.entries()) {
+    const suppliedOnCommandLine = i < suppliedCount;
     if (!existsSync(root)) {
-      out.push({ rootExists: false, roomLogs: 0, totalFrames: 0, totalBytes: 0, rotatedAuditFiles: 0 });
+      out.push({
+        rootExists: false,
+        roomLogs: 0,
+        totalFrames: 0,
+        totalBytes: 0,
+        rotatedAuditFiles: 0,
+        suppliedOnCommandLine,
+        roomLogsNotOpenedByThisRepositoryOwnDemos: 0,
+        originsDeclaredByOperator: 0,
+        contributesIndependentOrigins: 0,
+      });
       continue;
     }
     const entries = readdirSync(root).filter((f) => statSync(path.join(root, f)).isFile());
@@ -167,13 +212,25 @@ function censusTraceRoots(repoRoot, requested) {
       totalBytes += r.bytes;
       if (r.framingIntact) intact += 1;
     }
+    // See repoDemoRoomFilenames: a log this program's own demo opened is not
+    // an independent origin, whatever else it contains.
+    const demoLogs = logs.filter((f) => demoNames.has(f)).length;
+    const nonDemoLogs = logs.length - demoLogs;
+    const declared = declaredOriginCount(root);
+    // A root contributes independence only if it was supplied from outside the
+    // tree AND holds at least one log this repository's own demos did not open.
+    // Given that, it is worth the number of origins the operator declared, or
+    // one if the operator declared none.
+    const contributes = suppliedOnCommandLine && nonDemoLogs > 0 ? (declared ?? 1) : 0;
     out.push({
       rootExists: true,
       roomLogs: logs.length,
       roomLogsWithIntactFraming: intact,
-      // See repoDemoRoomFilenames: a log this program's own demo opened is not
-      // an independent origin, whatever else it contains.
-      roomLogsOpenedByThisRepositoryOwnDemos: logs.filter((f) => demoNames.has(f)).length,
+      roomLogsOpenedByThisRepositoryOwnDemos: demoLogs,
+      roomLogsNotOpenedByThisRepositoryOwnDemos: nonDemoLogs,
+      suppliedOnCommandLine,
+      originsDeclaredByOperator: declared ?? 0,
+      contributesIndependentOrigins: contributes,
       totalFrames,
       totalBytes,
       // A JSONL audit log would be a `.jsonl`, or a rotated `.log.<stamp>`.
@@ -231,7 +288,11 @@ export function buildCensus({ repoRoot, traceRoots }) {
     multiEditorSessions: 0,
     opKindsCovered: 0,
     sessionsWithHosting: 0,
-    independentOrigins: Math.max(0, roomLogs - demoRoomLogs) === 0 ? 0 : 1,
+    // a5 counts DEPLOYMENTS, so it is a sum over roots and not a boolean. The
+    // previous form collapsed every non-demo corpus to 1 and therefore made the
+    // registered bar of 3 unreachable by any input, which is a broken meter,
+    // not a strict one. The bar is untouched; only the count is fixed.
+    independentOrigins: roots.reduce((a, r) => a + (r.contributesIndependentOrigins ?? 0), 0),
     recordTypeExpressesOpKinds: capability.expresses,
   };
 

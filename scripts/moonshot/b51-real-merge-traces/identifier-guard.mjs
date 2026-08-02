@@ -96,12 +96,27 @@ import { createHash } from 'node:crypto';
  * harmless: if the source text is read wrongly, FEWER strings are accounted
  * for and the guard reports MORE findings. It cannot fail open.
  *
- * The word-level fallback exists because source composes prose across
- * concatenations and line breaks, so a whole sentence is often not a verbatim
- * substring of the file that built it. It is gated on `PROSE_CHARS`: every
- * character must be a letter, a digit, a space or ordinary sentence
- * punctuation, so a path, an email, a snake_case identifier or a compressed
- * GUID can never reach the fallback whatever words it contains.
+ * PROVENANCE MEANS VERBATIM, AND THE THIRD REVISION IS WHY. Half B once had a
+ * word-level fallback: a string was accounted for if every one of its words
+ * appeared somewhere in the corpus. That is not provenance, it is vocabulary,
+ * and it fails to the same blindness as the two revisions before it -- a real
+ * authored name assembled out of words the corpus happens to contain passes
+ * with nothing verbatim behind it. A two-word model name of exactly that shape
+ * cleared it on this bet's own corpus; the phrase is planted in
+ * guard-plants.mjs and, per the note at the top of this file, is not written
+ * here. So the fallback is gone. A string is accounted for only if the corpus
+ * literally contains it.
+ *
+ * The reason a fallback existed at all is real and is handled without loosening
+ * the test: source composes prose across adjacent string literals and line
+ * breaks, so a sentence assembled by `'...a ' + 'b...'` is not a byte-for-byte
+ * substring of the file that built it. Rather than accept recombination, the
+ * corpus is RECONSTRUCTED before the test -- adjacent quote-plus-quote joins
+ * are spliced out and runs of whitespace are collapsed, on both sides. That
+ * recovers exactly the sentence the source does emit and nothing else. It can
+ * only join text that is already adjacent across a `+` in a committed file,
+ * which is text the repository already publishes; it can never assemble a
+ * phrase the corpus does not contain in order.
  */
 const SAFE_SHAPES = [
   ['empty', /^$/],
@@ -123,16 +138,25 @@ const SAFE_SHAPES = [
   ['tiny', /^.{1,2}$/],
 ];
 
-/** Characters a string may contain and still be eligible for the word-level
- *  provenance fallback. Excludes every character an identifier, a path, an
- *  email or a compressed GUID needs. */
-const PROSE_CHARS = /^[A-Za-z0-9 ,.;:()<>+%='"?!-]+$/;
-
 /** Set by {@link setSourceCorpus}. Empty until then, which means half B
  *  accounts for nothing and the guard is at its strictest. */
 let SOURCE_TEXT = '';
-let SOURCE_WORDS = new Set();
+/** SOURCE_TEXT with adjacent string-literal joins spliced out and whitespace
+ *  collapsed, so a sentence the source assembles across `+` and newlines is
+ *  still found verbatim. See the note above: this reconstructs, it does not
+ *  recombine. */
+let SOURCE_JOINED = '';
 let SOURCE_FILE_COUNT = 0;
+
+/**
+ * Corpus side only: splice `' + '` joins between adjacent string literals, then
+ * collapse whitespace. The candidate side gets whitespace collapsing ALONE --
+ * a JS concatenation is a thing that exists in source, never in an artifact, so
+ * splicing the candidate too could only ever make the test weaker.
+ */
+function corpusForm(text) {
+  return text.replace(/(['"`])\s*\+\s*(['"`])/g, '').replace(/\s+/g, ' ');
+}
 
 /**
  * Declare the committed source files half B may account for a string against.
@@ -149,15 +173,13 @@ export function setSourceCorpus(readFile, files) {
     n += 1;
   }
   SOURCE_TEXT = parts.join('\n');
-  SOURCE_WORDS = new Set(
-    SOURCE_TEXT.split(/[^A-Za-z0-9]+/).filter((w) => w.length > 0).map((w) => w.toLowerCase()),
-  );
+  SOURCE_JOINED = corpusForm(SOURCE_TEXT);
   SOURCE_FILE_COUNT = n;
-  return { sourceFiles: n, sourceChars: SOURCE_TEXT.length, sourceWords: SOURCE_WORDS.size };
+  return { sourceFiles: n, sourceChars: SOURCE_TEXT.length, sourceJoinedChars: SOURCE_JOINED.length };
 }
 
 export function sourceCorpusSize() {
-  return { sourceFiles: SOURCE_FILE_COUNT, sourceWords: SOURCE_WORDS.size };
+  return { sourceFiles: SOURCE_FILE_COUNT, sourceChars: SOURCE_TEXT.length };
 }
 
 /** The first rule that accounts for `s`, or null. */
@@ -167,28 +189,15 @@ function classify(s) {
     if (re.test(s)) return name;
   }
   if (SOURCE_TEXT.length === 0) return null;
-  // Half B, whole string first.
+  // Half B, and the only form of half B: the corpus must contain the string
+  // itself. Raw first, then against the reconstructed corpus so a sentence the
+  // source composes across `+` and line breaks is still found IN ORDER. There
+  // is no word-level fallback -- see the note above for the revision that had
+  // one and what got through it.
   if (SOURCE_TEXT.includes(s)) return 'source-verbatim';
-  // Half B, word level. Three gates, and all three were forced by the guard's
-  // own planted-identifier proof rather than chosen:
-  //   - PROSE_CHARS, so a path, an email or a compressed GUID never reaches
-  //     the fallback whatever words it happens to contain;
-  //   - a SPACE must be present, so the fallback applies to sentences and
-  //     never to a single token. Without this gate a hyphenated session id was
-  //     accounted for, because its alphabetic half appears in ordinary prose
-  //     and its numeric half is pure digits. A lone token has to be verbatim
-  //     in the corpus or match a shape;
-  //   - every non-numeric word must appear in the corpus.
-  if (!PROSE_CHARS.test(s)) return null;
-  if (!/\s/.test(s)) return null;
-  const words = s.split(/[^A-Za-z0-9]+/).filter((w) => w.length > 0);
-  if (words.length === 0) return null;
-  for (const w of words) {
-    // Pure digits are measurements wherever they appear.
-    if (/^\d+$/.test(w)) continue;
-    if (!SOURCE_WORDS.has(w.toLowerCase())) return null;
-  }
-  return 'source-words';
+  const candidate = s.replace(/\s+/g, ' ').trim();
+  if (candidate.length > 0 && SOURCE_JOINED.includes(candidate)) return 'source-verbatim-joined';
+  return null;
 }
 
 /* ------------------------------------------------------------------ */

@@ -242,6 +242,24 @@ SHIPPED (landed with a PR), or RE-REFUTED / NOT SHIPPABLE. Do not read the secti
   engine every week and turns red when this changes. See
   `docs/architecture/wasm-wide-arithmetic.md` (delivery status verified 2026-07-31).
 
+- **Content-dedup signature walk on large single BREPs** (~2.00x traversal, SHIPPED #1909):
+  `item_dedup_key` walked every face/bound/loop/point of an `IfcFacetedBrep` to build a
+  dedup key — a second full traversal mirroring the mesher's own. On a model that is one
+  large BREP with no repeats, that key can never pay off. Gated on
+  `FACETED_BREP_DEDUP_FACE_LIMIT` (20,000 faces), measured with a **deterministic counter**
+  (`EntityDecoder::point_cache_stats()`), not wall-clock: 5,880,000 accesses with dedup on
+  vs 2,940,000 with it off on a synthetic 980k-face BREP — exactly 2.00x — and 1.00x after.
+  Post-mesh `get_or_cache_by_hash` and `direct_rep_identity` still run, so genuinely repeated
+  large geometry still dedups and still instances (asserted by test).
+  **Lesson, and the reason this entry exists:** an end-to-end suite verdict **cannot be
+  produced for this lever on the current corpus.** The largest BREP across all 163 fixtures
+  is 8,848 faces, so nothing in the suite crosses a 20,000-face gate; a base-vs-branch A/B
+  swung -10%/+9%/-7% with the sign tracking run order, i.e. pure noise. Do not spend another
+  afternoon on `probe.sh --suite` for a threshold this corpus cannot reach — either add a
+  fixture above the gate, or measure with a deterministic counter as above. The 20,000 figure
+  is a judgement call (an order of magnitude clear of realistic repeated parts, which run to
+  low hundreds of faces), not a measured optimum.
+
 ### Standing constraints
 - Geometry is **client-side only** (no server meshing).
 - One mesh home: `produce_element_meshes` - a fix in one pipeline diverges the other.

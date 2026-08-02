@@ -215,11 +215,15 @@ all three clauses at once, with mesh leaves present throughout.
 
 <!-- numeral-src: 169MB :: b45-m1-midterm/scorecard.json#fixtureBytes -->
 <!-- numeral-src: 63ms :: none - g0's own published data-plane figure. g0 writes
-     no scorecard, so nothing in this tree emits it. It is bound negatively
-     rather than left to the union index because the union CLEARS it by
-     coincidence: scorecard-no-aggregates.json's verifyAllMs[1] is 62.654, a
-     single spawn of a different DAG shape on a different day, which rounds to
-     63 and has nothing to do with g0. -->
+     no scorecard, so nothing in this tree emits it, and it stays bound
+     negatively. It was originally written this way because the union index
+     CLEARED it by coincidence: scorecard-no-aggregates.json's verifyAllMs[1]
+     was 62.654, a single spawn of a different DAG shape on a different day,
+     which rounded to 63 and had nothing to do with g0. The 2026-08-02 re-bless
+     moved that field to 76.618, so the coincidence is gone - which is exactly
+     why the binding is not left to the index: a figure whose provenance depends
+     on an unrelated field happening to round the right way has no provenance at
+     all, in either direction. -->
 
 ## Verdict: PASS on all three clauses
 
@@ -364,9 +368,12 @@ verification cost is dominated by re-hashing the 49 untouched-storey
      touches. Both ratios are computed in the sentence. -->
 <!-- numeral-src: 24 :: none - the edited wall's original vertex count, an input
      to the 46x ratio, read off the mesh during the variant run and stored by
-     neither scorecard. Bound negatively because the union index clears it
-     against scorecard-no-aggregates.json's parseMs, 2423 ms scaled by 1/100 -
-     a parse timing standing in for a vertex count. -->
+     neither scorecard. Bound negatively because the union index cleared it
+     against scorecard-no-aggregates.json's parseMs, then 2423 ms scaled by
+     1/100 - a parse timing standing in for a vertex count. The 2026-08-02
+     re-bless moved parseMs to 3118, so that particular unit-scaled hit no
+     longer fires; the binding stays negative because the figure still has no
+     committed field behind it, which was always the real reason. -->
 <!-- numeral-src: 1,106 :: b45-m1-midterm/scorecard.json#examB_propertyPlusGeometryWallEdit.verticesMoved -->
 <!-- numeral-src: 53.9, 56.0ms :: none - the pre- and post-inflation verify
      medians, from a separate instrumented run predating the 2026-08-01
@@ -429,7 +436,35 @@ from:
 | `sensitivityElementGranularityClaim.nodesResolved` | 21,777 |
 | `sensitivityElementGranularityClaim.nodesResolvedPct` | 12.6224 |
 | `sensitivityElementGranularityClaim.verifyMs` | 517.2 |
+| `sensitivityElementGranularityClaim.wouldPassClause1` | false |
 | `sensitivityElementGranularityClaim.wouldPassClause2` | false |
+
+**`wouldPassClause1` flipped in the 2026-08-02 re-bless**, and it is recorded
+here rather than smoothed over: the field was `true` at 453.5 ms and is `false`
+at 517.2 ms, because the probe crossed the same 500 ms bar clause 1 is judged
+on. Read it for exactly what it is and no more. It is the SENSITIVITY probe -
+the hypothetical "what if this bet had made an element-granularity claim on the
+g0/g1 DAG shape" - and this bet makes no such claim. Nothing in the exam moved:
+clauses 1, 2 and 3 still pass on the figures at the top of this document, by
+9.0x, by more than two orders of magnitude, and by 99.9956% against a 90% bar.
+
+What the flip does say is that the probe was never far from its bar - the run it
+replaces sat under 500 ms by less than this machine's run-to-run spread - so the
+honest reading of the probe was always "marginal", in both directions. It is not
+averaged with the earlier run, and it is not re-blessed until it passes: four
+runs on 2026-08-02 measured 517.2, 534.0, 543.8 and 544.4 ms, every one of them
+over the bar, and the committed artifact carries the first of them.
+
+<!-- 453.5ms and 500ms are already bound below and above respectively: 453.5 ms
+     by the `:: none` block on the correction paragraph (it is the value the
+     field held before this re-bless, and no artifact emits it any more), and
+     500 ms by the exam-bar binding on the verdict table. Both are re-quoted
+     here without new markers on purpose - one token, one binding. -->
+<!-- numeral-ok: 534.0, 543.8, 544.4ms :: the three companion runs of the
+     2026-08-02 re-bless. run.mjs writes one scorecard per invocation and the
+     committed artifact is the first run, so the other three have no committed
+     field and must stay unbacked; they are quoted to show the flip is not a
+     single unlucky sample. -->
 
 So the row was an **element-granularity claim measured on the g0/g1 DAG shape**
 - a fourth cell of a 2x2 (two claim granularities x two DAG shapes), not a third
@@ -532,16 +567,16 @@ back.
 
 ### Smaller caveats
 
-- The committed `scorecard-no-aggregates.json` predates the forged-trust-anchor
-  tamper case and the `altered` field, so its `tamper` array has two entries
-  where a run of the current script produces three. Every figure this document
-  binds to that artifact is a node count or a rate, and all of them reproduce to
-  the digit under the current script; the two timings it backs could not be
-  re-measured usefully at the time of writing (the host was oversubscribed
-  enough to inflate the same run's verify median by more than a factor of two),
-  so it has been left alone rather than re-blessed with contention artifacts.
-  Re-bless it with `--no-aggregates --write-scorecard` on a quiet machine and
-  re-derive the two figures it moves.
+- `scorecard-no-aggregates.json` was re-blessed on 2026-08-02 and this caveat is
+  now a record of what that closed. As committed on 2026-07-29 it predated the
+  forged-trust-anchor tamper case and the `altered` field, so its `tamper` array
+  carried two entries where the script produced three; the current artifact
+  carries all three, each with `altered: true` and each `caught`. The node
+  counts and rates reproduced to the digit then and still do. What the re-bless
+  moved is timings - the ones this document quotes are updated above, and one of
+  them crossed a bar: `sensitivityElementGranularityClaim.wouldPassClause1` is
+  now `false`. That is the sensitivity probe, not the exam; see the correction
+  in caveat 2.
 - `reads` is empty because Holter's walls carry exactly one pset each (g0
   documented the same; duplex yields 9 reads).
 - Trust root, kernel version and root `layerId` are placeholders, as in

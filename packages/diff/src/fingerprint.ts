@@ -154,10 +154,29 @@ function compareCodeUnits(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
+/**
+ * Total order over already-normalized records: name first, then the record's
+ * own serialized content as a tiebreak.
+ *
+ * The name alone is NOT a total order. `Array.prototype.sort` is stable, so
+ * two entries sharing a name keep their INPUT order — and the sorted result is
+ * then `JSON.stringify`d and hashed, which makes `dataHash` depend on the order
+ * the adapter happened to walk its relationships in. Same content, two orders,
+ * two hashes. Same-named property sets are not hypothetical here: type and
+ * occurrence psets of one name are a normal IFC arrangement (#1913), and an
+ * adapter that supplies them unmerged hands us duplicates.
+ *
+ * Tiebreaking on the serialized content makes the order total and content-
+ * derived, so it cannot depend on input order at all.
+ */
+function byNameThenContent<T extends { name: string }>(a: T, b: T): number {
+  return compareCodeUnits(a.name, b.name) || compareCodeUnits(stableSerialize(a), stableSerialize(b));
+}
+
 function sortedEntries(entries: PropertyEntryInput[]): { name: string; value: string | number | boolean | null }[] {
   return entries
     .map((entry) => ({ name: entry.name, value: normalizeValue(entry.value) }))
-    .sort((a, b) => compareCodeUnits(a.name, b.name));
+    .sort(byNameThenContent);
 }
 
 /**
@@ -208,13 +227,13 @@ export function buildDataFingerprint(input: DataFingerprintInput): string {
 function sortedPropertySets(input: DataFingerprintInput) {
   return (input.propertySets ?? [])
     .map((set) => ({ name: set.name, properties: sortedEntries(set.properties) }))
-    .sort((a, b) => compareCodeUnits(a.name, b.name));
+    .sort(byNameThenContent);
 }
 
 function sortedQuantitySets(input: DataFingerprintInput) {
   return (input.quantitySets ?? [])
     .map((set) => ({ name: set.name, quantities: sortedEntries(set.quantities) }))
-    .sort((a, b) => compareCodeUnits(a.name, b.name));
+    .sort(byNameThenContent);
 }
 
 /**

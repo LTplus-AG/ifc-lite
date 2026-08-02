@@ -333,3 +333,38 @@ describe('stableHash / buildDataFingerprint — locale independence', () => {
     expect(forward).toBe(reverse);
   });
 });
+
+describe('buildDataFingerprint — duplicate names cannot make the hash order-dependent', () => {
+  // Found via a CodeRabbit CLI review of the example's copy (#1998), then
+  // confirmed against the shipped package: sorting on `name` alone is not a
+  // total order, `Array.prototype.sort` is stable, so two same-named records
+  // kept their INPUT order and the hash moved with the adapter's walk order.
+  // The guide claims "collection ordering never produces a spurious modified";
+  // that was false for duplicates. Same-named psets are real here — type and
+  // occurrence psets of one name (#1913).
+  const wall = (sets: { name: string; v: number }[]) => ({
+    ifcType: 'IfcWall',
+    propertySets: sets.map((s) => ({ name: s.name, properties: [{ name: 'x', value: s.v }] })),
+  });
+
+  it('two same-named property sets hash the same whichever order they arrive in', () => {
+    const a = buildDataFingerprint(wall([{ name: 'P', v: 1 }, { name: 'P', v: 2 }]));
+    const b = buildDataFingerprint(wall([{ name: 'P', v: 2 }, { name: 'P', v: 1 }]));
+    expect(a).toBe(b);
+  });
+
+  it('still distinguishes genuinely different duplicate content', () => {
+    const a = buildDataFingerprint(wall([{ name: 'P', v: 1 }, { name: 'P', v: 2 }]));
+    const c = buildDataFingerprint(wall([{ name: 'P', v: 1 }, { name: 'P', v: 3 }]));
+    expect(a, 'the tiebreak must not collapse distinct content').not.toBe(c);
+  });
+
+  it('same-named quantity sets and same-named properties are order-stable too', () => {
+    const qs = (vals: number[]) => ({
+      ifcType: 'IfcWall',
+      quantitySets: vals.map((v) => ({ name: 'Q', quantities: [{ name: 'V', value: v }] })),
+      propertySets: [{ name: 'P', properties: vals.map((v) => ({ name: 'dup', value: v })) }],
+    });
+    expect(buildDataFingerprint(qs([1, 2]))).toBe(buildDataFingerprint(qs([2, 1])));
+  });
+});

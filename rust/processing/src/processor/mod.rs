@@ -737,6 +737,34 @@ pub fn process_geometry_streaming_filtered_with_options(
                 space_zone_properties: None,
                 representation_map_id: None,
             });
+        } else if ifc_lite_core::is_representationless_spatial_container_by_name(type_name)
+            && ifc_lite_core::nth_attribute_is_present(&content[start..end], 6)
+        {
+            // #1910: `has_geometry_by_name` excludes spatial containers like
+            // `IfcBuilding` because in virtually every real file they are
+            // pure hierarchy nodes with a null Representation. A DGM/terrain
+            // export that attaches its `IfcShellBasedSurfaceModel` directly
+            // to `IfcBuilding` (no `IfcBuildingElement` children at all) is
+            // the exceptional counter-example: its geometry must still be
+            // scheduled for meshing, or the file loads with correct metadata
+            // but renders nothing. Deliberately skips the
+            // `quick_element_summaries` insert above — the spatial tree
+            // already carries this entity as a node (`spatial_nodes`), so an
+            // extra "element" summary row would duplicate it in the UI tree.
+            let ifc_type = ifc_lite_core::legacy_aware_ifc_type(type_name);
+            entity_jobs.push(EntityJob {
+                id,
+                ifc_type,
+                start,
+                end,
+                product_definition_shape_id: None,
+                element_color: crate::style::default_color_for_type(ifc_type).to_array(),
+                global_id: None,
+                name: None,
+                presentation_layer: None,
+                space_zone_properties: None,
+                representation_map_id: None,
+            });
         }
         // #957: collect type-product geometry (IfcXxxType carrying its own
         // RepresentationMaps) and every IfcMappedItem's MappingSource, so after

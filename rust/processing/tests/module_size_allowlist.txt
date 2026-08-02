@@ -18,6 +18,8 @@
      463 rust/core/src/parser/tokenizer.rs
 # +3: Arc<Vec<AttributeValue>> so DecodedEntity clone is a refcount bump not a deep attribute-tree clone (perf/decode-churn).
     553 rust/core/src/schema_gen.rs
+# +99: #1910 has_geometry_by_name("IFCBUILDING") intentionally excludes spatial containers, but a DGM/terrain export can attach real geometry directly to IfcBuilding; adds is_representationless_spatial_container_by_name + nth_attribute_is_present so callers can catch that exceptional instance without loosening the by-name rule for the common case.
+     489 rust/core/src/schema_helpers.rs
      990 rust/core/src/units.rs
 # +4: build the index once in parallel on the fail-closed try_/project_glb_size large-model GLB paths (perf/parallel-scan).
 # +81: emissive-material knob for KMZ/Google Earth (#1427) - make_material lit/unlit/emissive branch + emissive param threaded through build_gltf/export_glb_from_meshes and their tests.
@@ -104,7 +106,8 @@
 # +18: #1293 dedup rep_identity: store rep beside the cached mesh, split tag_direct_instance into direct_rep_identity + stamp_direct_instance, and the flagged IFC_LITE_DEDUP_EXTRA type gate in item_dedup_key.
     1183 rust/geometry/src/router/processing.rs
 # +26: is_rtc_votable_representation predicate + doc — Surface3D is meshable but must NOT cast RTC votes (#1526 pollution via absolute-coord surfaces).
-     472 rust/geometry/src/router/rtc_offset.rs
+# +7: #1910 detect_rtc_offset_from_first_element now also samples an exceptional representationless-spatial-container instance (see schema_helpers.rs) so RTC detection and meshing agree on what counts as geometry.
+     479 rust/geometry/src/router/rtc_offset.rs
 # +1: reveal-quads comment expanded to 2 lines (dead-symbol reference fix, no code change).
      619 rust/geometry/src/router/voids/aabb_clip.rs
      871 rust/geometry/src/router/voids/geom.rs
@@ -201,7 +204,8 @@
 # +8: construct one model-wide shared IfcMappedItem source cache per process_geometry pass and inject it into each per-job router (#1623).
 # +74: #1623 Phase 2 don't-bake — ProcessingResult.instances field + StreamingOptions.enable_instancing + the scan-built MappedInstancePlan + the plan/collector threaded into process_entity_job + the finalize call; the finalize/orphan-recovery bodies were extracted to processor/instancing.rs (new, 147 lines) to hold the net down.
 # +27: #858 palette guard — build the indexed_colour_split_ids set from the indexed-colour map keys (armed only with the plan) + thread it into process_entity_job so an indexed-colour mapped source stays flat (keeps its per-triangle palette).
-    1642 rust/processing/src/processor/mod.rs
+# +19: #1910 schedule a representationless spatial container (IfcBuilding et al.) for meshing when it exceptionally carries a non-null Representation, instead of silently dropping its geometry.
+    1661 rust/processing/src/processor/mod.rs
 # +410: NEW row — #858 palette guard added the indexed_colour_split_ids param to process_entity_job (already the extracted per-job worker body from the #1623 file split), pushing this existing large module one line over 400; splitting the single job function further would fragment the tightly-coupled worker setup.
      410 rust/processing/src/processor/jobs.rs
      440 rust/processing/src/symbolic/items.rs
@@ -212,7 +216,8 @@
 # +108: build the referenced-repmaps + instantiated-type-id sets and the material-layer index ONCE in the streaming pre-pass (from spans this scan already collected) and emit them as a `prepass-columns` event, so every geometry worker skips its own full-file walk on the first batch (perf/single-scan #957/#563).
 # +14: #1623 Phase 3 — tally the don't-bake MappedInstancePlan from the same IfcMappedItem spans and emit it on the prepass-columns event (mirrors the referenced-repmaps ship).
 # +9: cap the entity-index up-front reservation (PREPASS_INDEX_RESERVE_CAP) so a ~4GB file does not reserve ~1GB of slots on top of the resident file and abort the wasm32 4GB address space before the scan (huge-file graceful-4gb).
-     780 rust/wasm-bindings/src/api/gpu_meshes/prepass.rs
+# +17: #1910 mirrors the identical processor/mod.rs exception — schedule an exceptional representationless-spatial-container job so the browser/wasm viewer doesn't silently drop the same geometry the server would now mesh.
+     797 rust/wasm-bindings/src/api/gpu_meshes/prepass.rs
      436 rust/wasm-bindings/src/api/grid_lines.rs
 # +75: add the setReferencedRepmaps / setInstantiatedTypeIds / setMaterialLayerIndex wasm setters that install the pre-pass-computed per-content structures into the worker's IfcAPI (perf/single-scan #957/#563), mirroring setEntityIndex.
 # +23: add the cached_source_bytes session field (doc + init + clearPrePassCache drop) for cold-load lever 1c (setSourceBytes); the setter + FromSource batch variants live in the new sub-400 gpu_meshes/batch_from_source.rs, not here (perf/coldload-setsourcebytes).

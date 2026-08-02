@@ -128,6 +128,105 @@ fn is_non_geometric_spatial(t: IfcType) -> bool {
     t.is_subtype_of(IfcType::IfcSpatialElement)
 }
 
+/// Whether `type_name` is one of the spatial-container types that
+/// [`has_geometry_by_name`] blocks by name (`IfcBuilding`, `IfcBuildingStorey`,
+/// `IfcFacility`, `IfcFacilityPart`, `IfcSpatialElement`,
+/// `IfcSpatialStructureElement`, and their subtypes) — i.e. `IfcProduct`
+/// subtypes that `is_non_geometric_spatial` treats as never carrying
+/// geometry directly.
+///
+/// In the overwhelming majority of real files that assumption holds: these
+/// entities are pure hierarchy nodes with a null `Representation`. Issue
+/// #1910 is the counter-example — a DGM/terrain export that attaches an
+/// `IfcShellBasedSurfaceModel` directly to `IfcBuilding` with no
+/// `IfcBuildingElement` children at all. `has_geometry_by_name` alone can't
+/// distinguish "this type never has a body" from "this specific instance
+/// happens not to", so callers that need to catch the exceptional case
+/// combine this predicate with an instance-level check of whether the
+/// entity's `Representation` attribute (index 6 on any `IfcProduct`) is
+/// actually non-null before scheduling it for meshing. See
+/// `rust/processing/src/processor/mod.rs` and
+/// `rust/wasm-bindings/src/api/gpu_meshes/prepass.rs`.
+pub fn is_representationless_spatial_container_by_name(type_name: &str) -> bool {
+    if get_legacy_entity_info(&normalise_uppercase(type_name)).is_some() {
+        // Legacy/removed entities resolve their own `has_geometry` flag and
+        // are never part of this modern-schema-only exception path.
+        return false;
+    }
+    let t = IfcType::from_str(&normalise_uppercase(type_name));
+    if matches!(t, IfcType::Unknown(_)) || !t.is_subtype_of(IfcType::IfcProduct) {
+        return false;
+    }
+    is_non_geometric_spatial(t)
+}
+
+/// Cheap textual check for whether a STEP entity's attribute at `index`
+/// (0-based, top-level — respects nested parens and quoted strings) is
+/// present and non-null (`$`), without fully decoding the entity via
+/// `EntityDecoder`. Companion to
+/// [`is_representationless_spatial_container_by_name`]: callers use it to
+/// check attribute 6 (`Representation`, stable across every `IfcProduct`
+/// subtype) before deciding an otherwise-excluded spatial container
+/// exceptionally carries geometry (#1910).
+pub fn nth_attribute_is_present(entity_bytes: &[u8], index: usize) -> bool {
+    let Some(open_idx) = entity_bytes.iter().position(|byte| *byte == b'(') else {
+        return false;
+    };
+    let Some(close_idx) = entity_bytes.iter().rposition(|byte| *byte == b')') else {
+        return false;
+    };
+    if close_idx <= open_idx {
+        return false;
+    }
+    let args = &entity_bytes[open_idx + 1..close_idx];
+
+    let mut in_string = false;
+    let mut depth = 0i32;
+    let mut start = 0usize;
+    let mut attr_idx = 0usize;
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i] {
+            b'\'' => {
+                if in_string && i + 1 < args.len() && args[i + 1] == b'\'' {
+                    i += 1;
+                } else {
+                    in_string = !in_string;
+                }
+            }
+            b'(' if !in_string => depth += 1,
+            b')' if !in_string => depth -= 1,
+            b',' if !in_string && depth == 0 => {
+                if attr_idx == index {
+                    let token = trim_ascii(&args[start..i]);
+                    return !token.is_empty() && token != b"$";
+                }
+                attr_idx += 1;
+                start = i + 1;
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    if attr_idx == index {
+        let token = trim_ascii(&args[start..]);
+        return !token.is_empty() && token != b"$";
+    }
+    false
+}
+
+fn trim_ascii(bytes: &[u8]) -> &[u8] {
+    let mut s = 0usize;
+    let mut e = bytes.len();
+    while s < e && bytes[s].is_ascii_whitespace() {
+        s += 1;
+    }
+    while e > s && bytes[e - 1].is_ascii_whitespace() {
+        e -= 1;
+    }
+    &bytes[s..e]
+}
+
 /// Check if an IFC entity class is "simple" geometry (processed first for
 /// fast first frame). Driven off the EXPRESS inheritance graph rather than
 /// a leaf-level blacklist, so new IFC4X3 subtypes (e.g. `IfcSolarDevice`

@@ -676,12 +676,12 @@
     "sampledCandidates": 2000000,
     "oracleIdentifiedTrueKey": true,
     "candidatesMatchingOracleInSample": 1,
-    "candidatesPerSecond": 1818238,
-    "fullSweepSecondsPerSeed": 2362.2,
-    "fullSweepCoreHoursPerSeed": 0.656,
-    "fullSweepCoreHoursForSplit": 656.2,
+    "candidatesPerSecond": 1842199,
+    "fullSweepSecondsPerSeed": 2331.4,
+    "fullSweepCoreHoursPerSeed": 0.648,
+    "fullSweepCoreHoursForSplit": 647.6,
     "unsaltedPathStateBits": 32,
     "saltedPathStateBits": 128
   },
-  "runtimeSeconds": 63.1
+  "runtimeSeconds": 62.6
 }

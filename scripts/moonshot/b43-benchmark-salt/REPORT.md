@@ -56,7 +56,7 @@ the served bytes are a free verification oracle, because the parameter draws
 become dimensions in the file. The probe in `scorecard.json` measures that sweep
 against a real seed: the oracle identifies the true stream state exactly, with a
 single match in a sampled window of two million candidates, at a rate that puts
-the full sweep of the whole reporting split at about 656 core-hours. That is a
+the full sweep of the whole reporting split at about 648 core-hours. That is a
 weekend on a spare machine, not a security barrier. Read that figure as an
 order of magnitude: it is derived from a wall-clock throughput measurement, so
 it legitimately moves with the machine and with the run, and the argument would
@@ -212,7 +212,7 @@ out.
 <!-- numeral-src: 2.767 :: b43-benchmark-salt/scorecard.json#summary.nullDistributionMaxAbsZ -->
 <!-- numeral-src: 24 :: b43-benchmark-salt/scorecard.json#summary.nullSamplesPerUniverse -->
 <!-- numeral-src: 1,000 :: b43-benchmark-salt/scorecard.json#models -->
-<!-- numeral-src: 656 :: b43-benchmark-salt/scorecard.json#bruteForce32Probe.fullSweepCoreHoursForSplit -->
+<!-- numeral-src: 648 :: b43-benchmark-salt/scorecard.json#bruteForce32Probe.fullSweepCoreHoursForSplit -->
 <!-- numeral-src: 128 :: b43-benchmark-salt/scorecard.json#bruteForce32Probe.saltedPathStateBits -->
 <!-- numeral-src: 32 :: b43-benchmark-salt/scorecard.json#bruteForce32Probe.unsaltedPathStateBits -->
 <!-- numeral-ok: 4.255 :: the same statistic measured at an earlier, smaller null sample size, quoted in order to show that it MOVED. Binding it would defeat the point - the committed scorecard holds the twenty-four-sample value, and if this figure ever became backed the sentence would be wrong. -->

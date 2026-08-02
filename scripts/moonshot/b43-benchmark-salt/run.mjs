@@ -342,16 +342,22 @@ async function main() {
       // reparametrization must be re-argued rather than relied on.
       //
       // The third clause is genuinely weak and is not offered as the offset: it
-      // can only bind in the window (max|null|, 2 sigma], which for exam-C is
-      // EMPTY - its nulls reach 0.072645, past the bound - so on the arm that
-      // motivated it the clause has no power at all. It is kept because it is
-      // ABSOLUTE-valued: a large NEGATIVE correlation is as much a leak as a
-      // positive one (an inverted predictor is a predictor), and the signed
-      // form let one through.
+      // can only bind outside the nulls' own spread, which for exam-C reaches
+      // 0.072645 - past the 2 sigma bound - so on the arm that motivated it the
+      // clause has no power at all. It is kept because it is the only clause
+      // that is RANGE-valued: it asks whether the observation lies inside the
+      // interval the nulls actually produced, at BOTH ends. A large negative
+      // correlation is as much a leak as a positive one - an inverted predictor
+      // is a predictor - and the original `observed <= max` form let one
+      // through. Range containment is strictly stronger than comparing
+      // magnitudes: an observation below every null still fails it even when
+      // some null happens to have a larger positive magnitude.
       attackRetainsNoInformation: mccAfter.every((v) => Math.abs(v) <= mccTwoSigmaBound)
         && max(mccZScores.map(Math.abs)) <= 2
-        && saltedArms.every((a) => Math.abs(a.nullDistribution.mccAnyDefect.observed)
-          <= Math.max(...a.nullDistribution.mccAnyDefect.samples.map(Math.abs))),
+        && saltedArms.every((a) => a.nullDistribution.mccAnyDefect.observed
+            >= a.nullDistribution.mccAnyDefect.min
+          && a.nullDistribution.mccAnyDefect.observed
+            <= a.nullDistribution.mccAnyDefect.max),
       controlRestoresAttack: controlValues.every((v) => v >= 0.999),
       honestSubmitterUnharmed: mean(honestAfter) >= honestBefore - 0.02,
       attackNoLongerBeatsHonestBaseline: mean(afterValues) < mean(honestAfter),

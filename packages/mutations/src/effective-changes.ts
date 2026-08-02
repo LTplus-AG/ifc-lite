@@ -280,6 +280,14 @@ function collectEntityChanges(snapshot: EffectiveChangesSnapshot, changes: Effec
  * internally — those are intentionally not double-reported here).
  *
  * Deterministic ordering: entityId, then kind, then name, then setName.
+ *
+ * A tombstoned entity's other overlay rows (attribute/property/quantity/type
+ * edits made before it was deleted) are dropped, keeping only its
+ * `entity-deleted` row. This mirrors `step-exporter.ts`'s STEP-export
+ * behaviour, which drops attribute/positional/type mutations for a deleted
+ * entity (`completeIndex` loop `continue`s on `mutationView.isDeleted()`
+ * before applying them) — reporting those superseded edits here would show
+ * the user a row for a change the exporter silently discards.
  */
 export function collectEffectiveChanges(
   snapshot: EffectiveChangesSnapshot,
@@ -294,5 +302,9 @@ export function collectEffectiveChanges(
   collectEntityChanges(snapshot, changes);
 
   changes.sort(compareEffectiveChanges);
-  return changes;
+
+  if (snapshot.tombstones.size === 0) return changes;
+  return changes.filter(
+    (c) => c.kind === 'entity-deleted' || !snapshot.tombstones.has(c.entityId),
+  );
 }

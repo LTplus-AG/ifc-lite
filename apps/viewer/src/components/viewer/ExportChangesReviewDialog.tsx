@@ -11,13 +11,24 @@
  * shows (both are overlay-based as of #1915, not the append-only
  * `mutationHistory`).
  *
+ * This component is a PURE display of the `groups` prop — it does not read
+ * the store itself and does not memoize/snapshot anything. `ExportChangesButton`
+ * builds `groups` from live state, and the overlay can still change while this
+ * dialog is open (every mutating action mutates its `MutablePropertyView`
+ * instance in place — there is no cheap frozen snapshot to hand this
+ * component instead). Freezing the display here would only make that
+ * divergence invisible, not fix it: `handleExport` re-reads live state
+ * regardless. So `ExportChangesButton.handleConfirm` re-derives `groups`
+ * synchronously at click time and refuses to export (toasting instead) if it
+ * no longer matches what was on screen — see that file's detect-and-require
+ * re-review logic.
+ *
  * Georeferencing and schedule edits are not `MutablePropertyView` overlay
  * entries (they live in separate store slices), so they cannot be itemized
  * per-entity here; a summary line reports their contribution to the total
  * count instead of silently dropping it from the review.
  */
 
-import { useMemo } from 'react';
 import { Download, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -30,16 +41,15 @@ import {
 } from '@/components/ui/dialog';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { EffectiveChange, MutablePropertyView } from '@ifc-lite/mutations';
-import { useViewerStore } from '@/store';
 import type { ChangedModelsResult } from '@/lib/export/model-changes';
 
-interface EntityRowGroup {
+export interface EntityRowGroup {
   entityId: number;
   label: string;
   changes: EffectiveChange[];
 }
 
-interface ModelReviewGroup {
+export interface ModelReviewGroup {
   modelId: string;
   modelName: string;
   entities: EntityRowGroup[];
@@ -80,7 +90,7 @@ function hasValuePair(kind: EffectiveChange['kind']): boolean {
   return kind === 'attribute' || kind === 'property' || kind === 'quantity' || kind === 'type';
 }
 
-function buildReviewGroups(
+export function buildReviewGroups(
   mutationViews: ReadonlyMap<string, MutablePropertyView>,
   changed: ChangedModelsResult,
 ): ModelReviewGroup[] {
@@ -115,7 +125,7 @@ function buildReviewGroups(
 interface ExportChangesReviewDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  changed: ChangedModelsResult;
+  groups: ModelReviewGroup[];
   totalCount: number;
   isExporting: boolean;
   onConfirm: () => void;
@@ -124,20 +134,11 @@ interface ExportChangesReviewDialogProps {
 export function ExportChangesReviewDialog({
   open,
   onOpenChange,
-  changed,
+  groups,
   totalCount,
   isExporting,
   onConfirm,
 }: ExportChangesReviewDialogProps) {
-  // Snapshot at open time (not a live subscription) — a review dialog should
-  // show a stable list while the user reads it, not shift under them if an
-  // edit lands elsewhere while it's open. Matches the `getState()` idiom
-  // ExportChangesButton itself uses for click-time reads.
-  const groups = useMemo(
-    () => (open ? buildReviewGroups(useViewerStore.getState().mutationViews, changed) : []),
-    [open, changed],
-  );
-
   const isEmpty = totalCount === 0 || groups.every((g) => g.entities.length === 0 && g.unitemizedCount === 0);
 
   return (

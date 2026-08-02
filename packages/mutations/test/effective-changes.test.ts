@@ -120,6 +120,27 @@ describe('MutablePropertyView.getEffectiveChanges (issue #1915) — enumeration 
     ]);
   });
 
+  it('drops a tombstoned entity\'s other overlay rows, keeping only entity-deleted', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor((entityId) => entityId === 7 ? [{
+      name: 'Pset_Base',
+      globalId: 'base-guid',
+      properties: [
+        { name: 'Status', type: PropertyValueType.Label, value: 'Original' },
+      ],
+    }] : []);
+
+    // Edit a base entity's property, then delete the entity — the exporter
+    // (`step-exporter.ts`) drops the property edit for a tombstoned entity,
+    // so the review list must agree rather than showing a superseded row.
+    view.setProperty(7, 'Pset_Base', 'Status', 'Changed', PropertyValueType.Label);
+    view.deleteEntity(7);
+
+    expect(view.getEffectiveChanges()).toEqual([
+      { entityId: 7, kind: 'entity-deleted' },
+    ]);
+  });
+
   it('is deterministically ordered by entityId, then kind, then name', () => {
     const view = new MutablePropertyView(null, 'model-1');
     view.setOnDemandExtractor((entityId) => entityId === 1 ? [{

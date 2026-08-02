@@ -27,7 +27,11 @@ import {
   type ArtifactFile,
 } from '@/lib/export/model-changes';
 import { defaultBuildArtifactsDeps } from '@/lib/export/changed-model-export';
-import { ExportChangesReviewDialog } from './ExportChangesReviewDialog';
+import {
+  ExportChangesReviewDialog,
+  buildReviewGroups,
+  type ModelReviewGroup,
+} from './ExportChangesReviewDialog';
 
 interface ExportChangesButtonProps {
   /** Optional custom class name */
@@ -52,6 +56,55 @@ function zipArtifacts(files: ArtifactFile[]): Promise<Uint8Array> {
   return new Promise((resolve, reject) => {
     zip(entries, { level: 6 }, (err, data) => (err ? reject(err) : resolve(data)));
   });
+}
+
+/**
+ * Structural equality for two `buildReviewGroups()` outputs (issue: review
+ * dialog can diverge from what actually gets exported — every mutating
+ * action mutates its `MutablePropertyView` instance in place rather than
+ * bumping `mutationVersion` through the store's tracked `set()`, so a
+ * mutation made while the review is open can leave the on-screen list stale
+ * without React re-rendering it).
+ *
+ * Deliberately NOT `JSON.stringify(a) === JSON.stringify(b)`: that would be
+ * order-sensitive, and while `collectEffectiveChanges` sorts deterministically
+ * (entityId, then kind, then name, then setName — see
+ * `packages/mutations/src/effective-changes.ts`), a field-by-field walk
+ * doesn't lean on that invariant holding forever. Both inputs come from the
+ * same `buildReviewGroups()` call site (open-time vs. click-time), so
+ * position-based comparison across the two arrays is valid either way.
+ */
+function reviewGroupsEqual(a: ModelReviewGroup[], b: ModelReviewGroup[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const ga = a[i];
+    const gb = b[i];
+    if (ga.modelId !== gb.modelId || ga.modelName !== gb.modelName || ga.unitemizedCount !== gb.unitemizedCount) {
+      return false;
+    }
+    if (ga.entities.length !== gb.entities.length) return false;
+    for (let j = 0; j < ga.entities.length; j++) {
+      const ea = ga.entities[j];
+      const eb = gb.entities[j];
+      if (ea.entityId !== eb.entityId || ea.label !== eb.label) return false;
+      if (ea.changes.length !== eb.changes.length) return false;
+      for (let k = 0; k < ea.changes.length; k++) {
+        const ca = ea.changes[k];
+        const cb = eb.changes[k];
+        if (
+          ca.entityId !== cb.entityId ||
+          ca.kind !== cb.kind ||
+          ca.name !== cb.name ||
+          ca.setName !== cb.setName ||
+          ca.previousValue !== cb.previousValue ||
+          ca.newValue !== cb.newValue
+        ) {
+          return false;
+        }
+      }
+    }
+  }
+  return true;
 }
 
 export function ExportChangesButton({ className }: ExportChangesButtonProps) {
@@ -82,6 +135,17 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
 
   const totalCount = totalChangeCount(changed);
   const modelCount = changed.models.length;
+
+  // Built only while the dialog is open, from the live overlay — this is what
+  // the user sees on screen. `handleConfirm` below re-derives this same shape
+  // synchronously at click time and compares, to catch a mutation that landed
+  // while the review was open without bumping `mutationVersion` (a direct
+  // mutation of the same `MutablePropertyView` instance, bypassing the
+  // store's tracked `set()`).
+  const groups: ModelReviewGroup[] = useMemo(
+    () => (reviewOpen ? buildReviewGroups(useViewerStore.getState().mutationViews, changed) : []),
+    [reviewOpen, changed],
+  );
 
   const handleExport = useCallback(async () => {
     setIsExporting(true);
@@ -137,9 +201,24 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
   }, []);
 
   const handleConfirm = useCallback(() => {
+    // Re-derive fresh, synchronously, at click time — comparing against
+    // `groups` (what's on screen) so a mutation applied in place while the
+    // review was open (not routed through the store's tracked `set()`, so it
+    // never bumped `mutationVersion` or re-rendered the dialog) is caught
+    // instead of silently exporting a file that no longer matches what the
+    // user reviewed.
+    const state = useViewerStore.getState();
+    const freshChanged = collectChangedModels(state);
+    const freshGroups = buildReviewGroups(state.mutationViews, freshChanged);
+
+    if (!reviewGroupsEqual(groups, freshGroups)) {
+      toast.error('Changes were made since you opened this review — check the updated list and confirm again.');
+      return;
+    }
+
     setReviewOpen(false);
     void handleExport();
-  }, [handleExport]);
+  }, [groups, handleExport]);
 
   // Nothing to export — but keep rendering while an export is in flight so a
   // mid-export clear (count -> 0) doesn't unmount the button and drop state.
@@ -188,7 +267,7 @@ export function ExportChangesButton({ className }: ExportChangesButtonProps) {
       <ExportChangesReviewDialog
         open={reviewOpen}
         onOpenChange={setReviewOpen}
-        changed={changed}
+        groups={groups}
         totalCount={totalCount}
         isExporting={isExporting}
         onConfirm={handleConfirm}

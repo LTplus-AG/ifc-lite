@@ -11,7 +11,7 @@ import { MutablePropertyView } from '@ifc-lite/mutations';
 import { PropertyValueType } from '@ifc-lite/data';
 import { useViewerStore } from '@/store/index.js';
 import type { ChangedModelsResult } from '@/lib/export/model-changes.js';
-import { ExportChangesReviewDialog } from './ExportChangesReviewDialog.js';
+import { ExportChangesReviewDialog, buildReviewGroups } from './ExportChangesReviewDialog.js';
 
 const mounted: Array<{ root: Root; container: HTMLElement }> = [];
 
@@ -24,12 +24,17 @@ function renderDialog(props: {
   const container = document.createElement('div');
   document.body.appendChild(container);
   const root = createRoot(container);
+  // The dialog is a pure display of `groups` (issue #1915 follow-up: review
+  // and export could diverge) — build it the same way `ExportChangesButton`
+  // does, from the live `mutationViews` map, rather than passing `changed`
+  // straight through.
+  const groups = buildReviewGroups(useViewerStore.getState().mutationViews, props.changed);
   act(() => {
     root.render(
       <ExportChangesReviewDialog
         open
         onOpenChange={props.onOpenChange}
-        changed={props.changed}
+        groups={groups}
         totalCount={props.totalCount}
         isExporting={false}
         onConfirm={props.onConfirm}

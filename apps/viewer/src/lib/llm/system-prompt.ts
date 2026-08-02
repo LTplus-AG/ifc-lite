@@ -215,7 +215,7 @@ function buildCreateContractCheatSheet(): string {
 
   lines.push('- Wall-hosted openings: use `Openings` inside `addIfcWall(...)` when you only need a void.');
   lines.push('- If the user asks for a house roof, pitched roof, or gable roof, default to `addIfcGableRoof`.');
-  lines.push('- `addIfcDoor` and `addIfcWindow`: these create standalone world-aligned elements.');
+  lines.push('- `addIfcDoor` and `addIfcWindow`: these create standalone axis-aligned elements, not wall-hosted inserts.');
   lines.push('- `addElement`: Use `IfcType`, `Placement: { Location: [...] }`, `Profile`, and `Depth`. Use `IfcType` not `Type`; use `Placement` not `Position`.');
   return lines.join('\n');
 }
@@ -240,11 +240,11 @@ function buildPlacementSemanticsSection(): string {
     '## PLACEMENT SEMANTICS',
     formatGroup('storey-relative', 'Common storey-relative methods'),
     formatGroup('wall-local', 'Hosted wall insert methods'),
-    formatGroup('world', 'Many advanced methods are world-placement based'),
+    formatGroup('world', 'World-placement methods'),
     formatGroup('explicit-placement', 'Explicit-placement generic methods'),
-    '- For world-placement methods, do NOT assume the storey elevation is automatically applied.',
-    '- Mixed multi-level scripts often combine both: storey-relative and world-placement helpers.',
-    '- If repeated world-placement elements are generated inside a storey loop, those calls should usually use `elevation` or `z` in their `Start`/`End`/`Position` Z coordinates.',
+    '- EVERY coordinate passed to `bim.create.addIfc*(h, storey, ...)` is relative to that storey. The storey placement carries `Elevation`, and the builder applies it exactly once.',
+    '- So do NOT add the storey elevation to an element Z inside a storey loop: adding it again puts the element at 2x the elevation.',
+    '- `Z = 0` means floor level of the storey you passed, whatever that storey\'s elevation is.',
   ].filter((line): line is string => Boolean(line)).join('\n');
 }
 
@@ -445,8 +445,8 @@ ${createContractCheatSheet}
 ${storeCheatSheet}
 
 ${placementSemantics}
-- \`addIfcDoor\` and \`addIfcWindow\` do not infer host-wall orientation. If you place them next to angled walls, they will stay world-aligned unless you build the wall void another way.
-- For storey-relative methods, \`Z=0\` usually means floor level of that storey.
+- \`addIfcDoor\` and \`addIfcWindow\` do not infer host-wall orientation. If you place them next to angled walls, they stay axis-aligned unless you build the wall void another way.
+- \`Z=0\` means floor level of the storey you passed.
 - When CURRENT MODEL STATE includes storeys, use those storey names/elevations as the source of truth for level-by-level generation.
 
 Example:
@@ -458,10 +458,11 @@ for (let i = 0; i < storeyCount; i++) {
   // Storey-relative
   bim.create.addIfcSlab(h, storey, { Position: [0, 0, 0], Width: 30, Depth: 40, Thickness: 0.3 });
 
-  // World-placement facade members
+  // Facade members: storey-relative too, so Z stays 0. Writing \`elevation\`
+  // here would apply it a second time and put the panel at 2x the height.
   bim.create.addIfcCurtainWall(h, storey, {
-    Start: [0, -0.2, elevation],
-    End: [30, -0.2, elevation],
+    Start: [0, -0.2, 0],
+    End: [30, -0.2, 0],
     Height: storeyHeight,
     Thickness: 0.15,
   });
@@ -482,7 +483,7 @@ for (let i = 0; i < storeyCount; i++) {
 - If a roof pitch is written as a plain degree value like \`15\`, convert it to radians first (for example \`15 * Math.PI / 180\`) before calling \`addIfcRoof\` or \`addIfcGableRoof\`.
 - If doors or windows appear rotated 90° relative to a wall, you probably used standalone \`addIfcDoor\` / \`addIfcWindow\` where a wall \`Openings\` payload was needed.
 - If repeated elements appear only at one level, you probably reused one storey reference instead of iterating over the intended storeys.
-- If repeated world-placement elements stack at the base level, first check whether their Z coordinates include the current storey elevation.
+- If repeated elements sit at twice their expected height, their Z coordinates are repeating the storey elevation that the storey placement already applies. Use storey-relative Z (usually 0).
 
 ## SCHEDULING / 4D (IfcTask, IfcWorkSchedule, IfcRelSequence)
 - ifc-lite ships a Gantt panel in the lower workspace that plays a construction-sequence animation driven by IfcTask dates and the products each task controls.

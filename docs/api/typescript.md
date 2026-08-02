@@ -682,6 +682,8 @@ creator.addIfcWall(storey, {
 const { content } = creator.toIfc();
 ```
 
+**Coordinates are storey-relative.** Every `addIfc*(storeyId, …)` method chains the product's `IfcLocalPlacement` to that storey's placement, and the storey placement is where `Elevation` is applied — exactly once. An element standing on the floor of a storey at `Elevation: 3` is created with `Z = 0`, not `Z = 3`; adding the elevation yourself puts it at twice the height. (`addIfcWallDoor` and `addIfcWallWindow` are the exception: their `Position` is wall-local, and they inherit the storey datum through their host wall.)
+
 ```typescript
 class IfcCreator {
   constructor(params?: ProjectParams);

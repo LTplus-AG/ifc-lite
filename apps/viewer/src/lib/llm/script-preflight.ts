@@ -866,18 +866,47 @@ function looksLikeMultiStoreyScript(code: string): boolean {
   return hasStoreyLoop && hasStoreyCreation;
 }
 
+/**
+ * Names that unambiguously hold the storey elevation. Deliberately does NOT
+ * include a bare `z`: `Position: [x, y, z]` is the most ordinary line in a
+ * generated script and flagging it would make this check noise.
+ */
 function mentionsElevationSignal(value: string): boolean {
-  return /\b(elevation|storeyElevation|levelElevation|baseZ|levelZ|storeyZ|z)\b/.test(value);
+  return /\b(elevation|storeyElevation|levelElevation|baseZ|levelZ|storeyZ)\b/i.test(value);
 }
 
-function validateWorldPlacementPatterns(code: string): PreflightScriptDiagnostic[] {
+/**
+ * The storey elevation applied TWICE.
+ *
+ * Every `bim.create.addIfc*(h, storey, …)` coordinate is storey-relative — the
+ * storey's own placement is what carries `Elevation`, and the builder applies
+ * it exactly once. A script that also writes the level elevation into an
+ * element's Z inside a storey loop puts that element at 2x the elevation.
+ * That is invisible in plan and easy to miss in a screenshot, which is why it
+ * is worth a preflight error rather than a warning.
+ *
+ * (This check used to assert the OPPOSITE — `@ifc-lite/create` placed a handful
+ * of constructors against the world until 1.18.0, so the advice then was to add
+ * the elevation. Following that advice now is the bug.)
+ */
+function validateStoreyElevationDoubling(code: string): PreflightScriptDiagnostic[] {
   if (!looksLikeMultiStoreyScript(code)) return [];
 
   const diagnostics: PreflightScriptDiagnostic[] = [];
-  const checks: Array<{ methodName: 'addIfcCurtainWall' | 'addIfcMember' | 'addIfcPlate'; keys: string[] }> = [
+  const checks: Array<{ methodName: string; keys: string[] }> = [
+    { methodName: 'addIfcWall', keys: ['Start', 'End'] },
+    { methodName: 'addIfcSlab', keys: ['Position'] },
+    { methodName: 'addIfcColumn', keys: ['Position'] },
+    { methodName: 'addIfcBeam', keys: ['Start', 'End'] },
     { methodName: 'addIfcCurtainWall', keys: ['Start', 'End'] },
     { methodName: 'addIfcMember', keys: ['Start', 'End'] },
+    { methodName: 'addIfcRailing', keys: ['Start', 'End'] },
     { methodName: 'addIfcPlate', keys: ['Position'] },
+    { methodName: 'addIfcSpace', keys: ['Position'] },
+    { methodName: 'addIfcDoor', keys: ['Position'] },
+    { methodName: 'addIfcWindow', keys: ['Position'] },
+    { methodName: 'addIfcFurnishingElement', keys: ['Position'] },
+    { methodName: 'addIfcBuildingElementProxy', keys: ['Position'] },
   ];
 
   for (const { methodName, keys } of checks) {
@@ -892,24 +921,22 @@ function validateWorldPlacementPatterns(code: string): PreflightScriptDiagnostic
         .filter((value): value is string => Boolean(value));
 
       if (zValues.length === 0) continue;
-      const allGrounded = zValues.every((value) => value === '0' || value === '0.0');
-      const anyElevationAware = zValues.some((value) => mentionsElevationSignal(value));
-      if (allGrounded && !anyElevationAware) {
-        diagnostics.push(createPreflightDiagnostic(
-          'world_placement_elevation',
-          `Suspicious multi-level placement: \`bim.create.${methodName}(...)\` appears inside a repeated storey-level script but uses fixed ground-level Z coordinates. This method is world-placement based, so its Z coordinates should usually include the current level elevation.`,
-          'error',
-          {
-            methodName,
-            failureKind: 'missing_level_elevation',
-            range: match.range,
-            line: match.line,
-            column: match.column,
-            snippet: match.snippet,
-            fixHint: 'Include the current level/storey elevation in the Z coordinates for this world-placement call.',
-          },
-        ));
-      }
+      if (!zValues.some((value) => mentionsElevationSignal(value))) continue;
+
+      diagnostics.push(createPreflightDiagnostic(
+        'storey_elevation_double_applied',
+        `Storey elevation applied twice: \`bim.create.${methodName}(...)\` writes the level elevation into its Z coordinate, but the storey placement already carries \`Elevation\`. This puts the element at 2x the level height. Use a storey-relative Z (usually \`0\`).`,
+        'error',
+        {
+          methodName,
+          failureKind: 'storey_elevation_double_applied',
+          range: match.range,
+          line: match.line,
+          column: match.column,
+          snippet: match.snippet,
+          fixHint: 'Drop the storey elevation from this Z coordinate — coordinates are relative to the storey you passed.',
+        },
+      ));
     }
   }
 
@@ -969,7 +996,7 @@ export function validateScriptPreflightDetailed(code: string): PreflightScriptDi
     ...validateBareIdentifierTraps(code).map((message) => createPreflightDiagnostic('bare_identifier', message, 'error', buildDiagnosticData(message))),
     ...validateWallHostedOpeningDiagnostics(code),
     ...validateMetadataQueryPatterns(code).map((message) => createPreflightDiagnostic('metadata_query_pattern', message, 'error', buildDiagnosticData(message))),
-    ...validateWorldPlacementPatterns(code),
+    ...validateStoreyElevationDoubling(code),
     ...validateDetachedSnippetScope(code),
   ];
 }

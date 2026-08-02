@@ -109,10 +109,10 @@ const slim = (v) => ({
     slabThicknessNominalM: v.emitted.slabThicknessNominalM,
     /** ABSOLUTE base height of each placed type, resolved out of the emitted
      *  STEP by walking its IfcLocalPlacement chain to the world -- not the
-     *  arguments that were passed in. The builder's placement parents are not
-     *  uniform (walls and slabs are storey-relative, spaces are
-     *  world-relative), so this is the only form of the check that can fail if
-     *  those semantics change underneath the caller. */
+     *  arguments that were passed in. Reading it back out of the file is the
+     *  only form of the check that can fail if the builder's placement
+     *  semantics change underneath the caller -- as they did once already,
+     *  when walls and slabs were storey-relative and spaces world-relative. */
     worldBaseZByType: v.emitted.worldBaseZByType,
   },
   frameCheck: { maxCornerOffsetM: v.card.frameCheck.maxCornerOffsetM, cornerOffsetsM: v.card.frameCheck.cornerOffsetsM },

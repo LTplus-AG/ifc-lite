@@ -19,7 +19,7 @@ seed: rerun the command and the hashes, scores and counts reproduce exactly.
 Seed 20260724 deterministically births an **office** building: 548
 entities, 1 storey(s), 28004 bytes.
 
-- model sha256: `80b58870ce12bc4f40bbd4da5ba7b5ce63dfdf7aa944bcc5774ce238898ab912` (regenerable from the seed alone)
+- model sha256: `b18f6558f1a829385e300f4455fe7fe06eee5665e5755acbca6ca3806f08da33` (regenerable from the seed alone)
 - schema: valid=true (0 errors, 0 warnings); clashes: 0
 - ground-truth totals (m3 / m2): slabCount=1, slabGrossArea=214.212816, slabGrossVolume=62.550142, wallCount=4, wallGrossSideArea=427.1124, wallGrossVolume=68.594251, partitionWallCount=6, roomCount=16, roomNetFloorArea=214.212816, roomNetVolume=617.361336
 - reward channels: schemaValidity=1, clashScore=1, determinismHashMatch=1, quantityAccuracy=1, defectDetection=1
@@ -81,7 +81,7 @@ Shortened penalty descent (6 rounds) over the diff-spike's 24-parameter
 differentiable building with exact dual-number gradients:
 
 - carbon: 177100.875 -> **73459.098 kgCO2e** (-58.521%); residual scaled constraint slack 0.00051128 across 4 constraint(s) (the full spike run drives this below 1e-6)
-- optimum authored as IFC: 111197 bytes, 74 mapped elements, sha256 `48fc69e72d33c45002832dec38d53fc6d0c563bab997e8fafcdc537181078c4e`
+- optimum authored as IFC: 111197 bytes, 74 mapped elements, sha256 `b4bc4bd689d28769f54593f9adf0b4c078a2c9e3ff18a233f82711cdc2e3dce7`
 - kernel re-meshed every element: worst volume rel dev 0.000001675 (wall-south-s0), missing meshes 0
 - kernel-derived carbon 73459.109 kgCO2e, rel dev 1.54e-7 vs the parametric claim
 - schema check on the optimum bytes: valid=true (0 errors, 1 warnings)
@@ -90,8 +90,8 @@ differentiable building with exact dual-number gradients:
 
 Wall clocks and the timestamp below change run to run; nothing above does.
 
-- generated at: 2026-07-29T17:44:18.805Z (node v22.14.0)
-- total wall clock: 7.5s
-- per act: act1=0.0s, act2=0.1s, act3=0.3s, act4=2.4s, act5=4.7s
+- generated at: 2026-08-02T11:45:51.178Z (node v22.14.0)
+- total wall clock: 6.7s
+- per act: act1=0.0s, act2=0.1s, act3=0.3s, act4=2.5s, act5=3.9s
 - artifacts (outside the repo): /var/folders/n2/jkb39p_x4md9jdv5hhzny6jc0000gn/T/ifc-lite-b35-demo
 

@@ -25,17 +25,21 @@
  *
  *  B  generate-ifc.mjs    the emitted model's ABSOLUTE placement datum, read
  *                         back out of the STEP. Catches the defect this file
- *                         was written for: `addIfcWall`/`addIfcSlab` place
- *                         relative to the storey while `addIfcSpace` places
- *                         relative to the world, so handing the same Z to
- *                         both puts the walls at 2x the storey elevation.
- *                         The exam cannot see this -- it scores IfcSpace
- *                         quantities, every one of which is invariant under a
- *                         rigid Z shift of the walls.
+ *                         was written for: `@ifc-lite/create` placed
+ *                         `addIfcWall`/`addIfcSlab` relative to the storey
+ *                         and `addIfcSpace` relative to the world, so
+ *                         handing the same Z to both put the walls at 2x the
+ *                         storey elevation. Fixed in 1.18.0 -- every kind is
+ *                         storey-relative now -- but the assertion stays,
+ *                         because it is what catches the semantics moving
+ *                         again in either direction. The exam cannot see this:
+ *                         it scores IfcSpace quantities, every one of which is
+ *                         invariant under a rigid Z shift of the walls.
  *
- *  B' negative control    the same check must REJECT a model built the old
- *                         way. An assertion that cannot fail is not evidence,
- *                         so the doubled-elevation model is rebuilt here
+ *  B' negative control    the same check must REJECT a model whose elevation
+ *                         is applied twice -- once by the storey and again in
+ *                         the element coordinates. An assertion that cannot
+ *                         fail is not evidence, so that model is rebuilt here
  *                         through the same builder and required to be caught.
  *
  *  C  score.mjs           the scoring arithmetic against a reference model
@@ -173,7 +177,8 @@ function writeReference(path, specs) {
   for (const s of specs) {
     const half = Math.sqrt(s.targetAreaM2) / 2;   // square, so its own area is exact
     creator.addIfcSpace(storey, {
-      Position: [0, 0, FLOOR_Z],
+      // Storey-relative: the storey placement already carries FLOOR_Z.
+      Position: [0, 0, 0],
       Profile: [
         [s.centroid[0] - half, s.centroid[1] - half], [s.centroid[0] + half, s.centroid[1] - half],
         [s.centroid[0] + half, s.centroid[1] + half], [s.centroid[0] - half, s.centroid[1] + half],
@@ -186,9 +191,16 @@ function writeReference(path, specs) {
 }
 
 /**
- * The model as the REVIEWED revision built it: the storey carries the floor
- * elevation and the wall and slab coordinates carry it a second time. Used
- * only as the negative control for the datum check.
+ * The model a caller gets by handing the floor elevation to BOTH the storey
+ * and every element coordinate: the storey placement applies it once and the
+ * coordinates apply it again, so every product lands at 2x the elevation.
+ * Used only as the negative control for the datum check -- an assertion that
+ * cannot fail is not evidence.
+ *
+ * (Before @ifc-lite/create 1.18.0 this same construction produced a SPLIT
+ * datum rather than a uniformly doubled one, because `addIfcSpace` was
+ * world-relative while `addIfcWall`/`addIfcSlab` were storey-relative. Either
+ * way it is the model the check must reject.)
  */
 function buildDoubledElevationModel(floorZ, slabThickness) {
   const creator = new IfcCreator({ Name: 'B5.5 negative control' });

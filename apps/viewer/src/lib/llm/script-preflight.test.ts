@@ -172,8 +172,11 @@ bim.create.addIfcPlate(h, s0, {
   assert.ok(errors.some((error) => error.includes('missing required key(s): `Depth`')));
 });
 
-test('preflight warns when repeated world-placement methods stay at ground level in a storey loop', () => {
-  const code = `
+// Every `bim.create.addIfc*(h, storey, ...)` coordinate is relative to that
+// storey, whose placement already carries `Elevation`. Repeating the elevation
+// in an element Z puts it at 2x the level height — the failure that shipped a
+// real model with its walls 1.37 m below the spaces they bounded.
+const TOWER_LOOP = (curtainWallZ: string) => `
 const h = bim.create.project({ Name: "Tower" });
 const storeyHeight = 3.5;
 const storeyCount = 10;
@@ -181,15 +184,36 @@ for (let i = 0; i < storeyCount; i++) {
   const elevation = i * storeyHeight;
   const storey = bim.create.addIfcBuildingStorey(h, { Name: "Level " + i, Elevation: elevation });
   bim.create.addIfcCurtainWall(h, storey, {
-    Start: [0, -0.2, 0],
-    End: [30, -0.2, 0],
+    Start: [0, -0.2, ${curtainWallZ}],
+    End: [30, -0.2, ${curtainWallZ}],
     Height: storeyHeight,
     Thickness: 0.15,
   });
 }
 `;
+
+test('preflight rejects a storey-loop element that repeats the level elevation in its Z', () => {
+  const errors = validateScriptPreflight(TOWER_LOOP('elevation'));
+  assert.ok(errors.some((error) => error.includes('Storey elevation applied twice')));
+});
+
+test('preflight accepts storey-relative Z in a storey loop', () => {
+  const errors = validateScriptPreflight(TOWER_LOOP('0'));
+  assert.ok(!errors.some((error) => error.includes('Storey elevation applied twice')));
+});
+
+test('preflight does not flag an ordinary `z` variable as a doubled elevation', () => {
+  const code = `
+const h = bim.create.project({ Name: "Tower" });
+const storeyCount = 3;
+for (let i = 0; i < storeyCount; i++) {
+  const storey = bim.create.addIfcBuildingStorey(h, { Name: "Level " + i, Elevation: i * 3 });
+  const z = 0;
+  bim.create.addIfcColumn(h, storey, { Position: [0, 0, z], Width: 0.4, Depth: 0.4, Height: 3 });
+}
+`;
   const errors = validateScriptPreflight(code);
-  assert.ok(errors.some((error) => error.includes('Suspicious multi-level placement')));
+  assert.ok(!errors.some((error) => error.includes('Storey elevation applied twice')));
 });
 
 test('preflight warns when material is queried via property sets', () => {

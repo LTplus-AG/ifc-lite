@@ -13,7 +13,7 @@
         "entityCount": 548,
         "fileSize": 28004,
         "storeyCount": 1,
-        "sha256": "80b58870ce12bc4f40bbd4da5ba7b5ce63dfdf7aa944bcc5774ce238898ab912",
+        "sha256": "b18f6558f1a829385e300f4455fe7fe06eee5665e5755acbca6ca3806f08da33",
         "groundTruthTotals": {
           "slabCount": 1,
           "slabGrossArea": 214.212816,
@@ -79,7 +79,7 @@
         "spotlight": {
           "seed": 20260725,
           "family": "office",
-          "sha256": "5d3a433fa4ade71ae882d19a3d9185a33c29e098b0601ed6e059497a4da0d2b4",
+          "sha256": "32f5e361f234c94bf9c97c1ec9ced3f3aec195fd7e488c3b2101aaa2859fbaee",
           "plantedDefects": [
             {
               "type": "duplicate-globalid",
@@ -367,7 +367,7 @@
         "optimumIfc": {
           "bytes": 111197,
           "mappedElements": 74,
-          "sha256": "48fc69e72d33c45002832dec38d53fc6d0c563bab997e8fafcdc537181078c4e"
+          "sha256": "b4bc4bd689d28769f54593f9adf0b4c078a2c9e3ff18a233f82711cdc2e3dce7"
         },
         "kernelValidation": {
           "worstElementRelDev": 0.000001675,

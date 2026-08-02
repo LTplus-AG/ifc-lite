@@ -13,13 +13,13 @@ export type PreflightDiagnosticCode =
   | 'bare_identifier'
   | 'wall_hosted_opening_pattern'
   | 'metadata_query_pattern'
-  | 'world_placement_elevation'
+  | 'storey_elevation_double_applied'
   | 'detached_snippet_scope';
 
 export type RuntimeDiagnosticCode =
   | 'generic_placement_contract'
   | 'plate_contract_mismatch'
-  | 'world_placement_elevation'
+  | 'storey_elevation_double_applied'
   | 'detached_snippet_scope'
   | 'wall_hosted_opening_alignment';
 
@@ -314,7 +314,7 @@ function defaultRootCauseKey(source: ScriptDiagnosticSource, code: string): stri
     case 'plate_contract_mismatch':
       return 'api_contract_mismatch';
     case 'wall_hosted_opening_pattern':
-    case 'world_placement_elevation':
+    case 'storey_elevation_double_applied':
     case 'wall_hosted_opening_alignment':
       return 'placement_context_mismatch';
     case 'detached_snippet_scope':

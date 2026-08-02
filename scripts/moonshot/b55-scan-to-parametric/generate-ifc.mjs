@@ -57,18 +57,20 @@ if (!Array.isArray(rooms.rooms) || rooms.rooms.length === 0) {
 const floorZ = rooms.planes.floor.z;
 
 /**
- * PLACEMENT PARENTS ARE NOT UNIFORM in `@ifc-lite/create`, and getting this
- * wrong moves the whole model rather than a millimetre of it.
+ * PLACEMENT IS STOREY-RELATIVE, and getting this wrong moves the whole model
+ * rather than a millimetre of it.
  *
- *   addIfcWall / addIfcSlab  place relative to the STOREY, whose own placement
- *                            the builder puts at [0, 0, Elevation].
- *   addIfcSpace              places relative to the WORLD.
+ * Every `@ifc-lite/create` element constructor chains its `IfcLocalPlacement`
+ * to the storey it is added to, and the storey's own placement is the one
+ * carrying `[0, 0, Elevation]`. So the fitted floor elevation is supplied
+ * EXACTLY ONCE -- by the storey -- and NEVER in an element coordinate.
+ * Repeating it in a coordinate lands that element at 2 x floorZ, which on this
+ * scan is 1.369 m below where it belongs.
  *
- * So the fitted floor elevation must be supplied exactly once per element: as
- * part of the coordinate for spaces, and NOT AT ALL for walls and the slab,
- * whose storey parent already carries it. Passing `floorZ` to all three -- as
- * this file did until it was measured -- lands the walls at 2 x floorZ, which
- * on this scan is 1.369 m below the spaces they are supposed to bound.
+ * (Before @ifc-lite/create 1.18.0 the parents were not uniform: walls and the
+ * slab were storey-relative while spaces were world-relative, so this file had
+ * to hand the elevation to spaces and withhold it from walls. That asymmetry
+ * was the defect; the builder now places every kind against the storey.)
  *
  * This is invisible to the exam (it scores IfcSpace quantities, every one of
  * which is invariant under a rigid Z shift of the walls), so
@@ -123,7 +125,7 @@ const emitted = { spaces: [], walls: [], slab: null };
 
 for (const room of rooms.rooms) {
   const id = creator.addIfcSpace(storey, {
-    Position: [0, 0, floorZ],
+    Position: [0, 0, STOREY_RELATIVE_Z],
     Profile: room.polygon,
     Height: room.heightM,
     Name: room.id,

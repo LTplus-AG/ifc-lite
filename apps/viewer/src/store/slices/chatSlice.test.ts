@@ -174,8 +174,8 @@ test('buildErrorFeedbackContent groups multiple local diagnostics under one root
           },
         ),
         createPreflightDiagnostic(
-          'world_placement_elevation',
-          'Suspicious repeated world placement.',
+          'storey_elevation_double_applied',
+          'Storey elevation applied twice.',
           'error',
           {
             methodName: 'addIfcMember',
@@ -190,7 +190,7 @@ test('buildErrorFeedbackContent groups multiple local diagnostics under one root
   assert.equal((prompt.match(/\[root-cause:placement_context_mismatch\]/g) ?? []).length, 1);
   assert.match(prompt, /scope=block/);
   assert.match(prompt, /supporting evidence: preflight:wall_hosted_opening_pattern/);
-  assert.match(prompt, /supporting evidence: preflight:world_placement_elevation/);
+  assert.match(prompt, /supporting evidence: preflight:storey_elevation_double_applied/);
 });
 
 test('clearChatMessages resets streaming state as well as persisted messages', () => {

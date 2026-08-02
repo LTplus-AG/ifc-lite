@@ -40,9 +40,9 @@ function augmentScriptError(message: string, code?: string): { message: string; 
   const looksDetachedCreateSnippet = /\bbim\.create\.[A-Za-z]+\(\s*h\s*,/.test(source)
     && !/\b(?:const|let|var)\s+h\b/.test(source)
     && !/bim\.create\.project\(/.test(source);
-  const looksWorldPlacementScript = /\bbim\.create\.(addIfcCurtainWall|addIfcMember|addIfcPlate)\(/.test(source)
+  const looksElevationDoubledScript = /\bbim\.create\.addIfc\w+\(/.test(source)
     && /\baddIfcBuildingStorey\(/.test(source)
-    && /\bconst\s+elevation\b|\bz\s*=/.test(source);
+    && /\bconst\s+elevation\b/.test(source);
 
   if (lower.includes(`can't access property "location", placement is undefined`)) {
     const diagnostic = createRuntimeDiagnostic(
@@ -78,15 +78,15 @@ function augmentScriptError(message: string, code?: string): { message: string; 
       );
       return { message: `${message}\n${diagnostic.message}`, diagnostics: [diagnostic] };
     }
-    if (looksWorldPlacementScript) {
+    if (looksElevationDoubledScript) {
       const diagnostic = createRuntimeDiagnostic(
-        'world_placement_elevation',
-        'Likely cause: a repeated world-placement method (such as `addIfcCurtainWall(...)`, `addIfcMember(...)`, or `addIfcPlate(...)`) is missing the current level elevation in its Z coordinates. These methods do not inherit storey-relative Z automatically.',
+        'storey_elevation_double_applied',
+        'Likely cause: a repeated create call inside a storey loop is writing the level elevation into its Z coordinate. Every `bim.create.addIfc*(h, storey, ...)` coordinate is already relative to that storey, whose placement carries `Elevation`, so this puts the element at 2x the level height.',
         'error',
         {
-          failureKind: 'world_placement',
+          failureKind: 'storey_elevation_double_applied',
           repairScope: 'block',
-          fixHint: 'Include the current level/storey elevation in `Start`, `End`, or `Position` Z coordinates.',
+          fixHint: 'Use storey-relative Z (usually `0`) in `Start`, `End`, or `Position` — do not add the level elevation.',
         },
       );
       return { message: `${message}\n${diagnostic.message}`, diagnostics: [diagnostic] };

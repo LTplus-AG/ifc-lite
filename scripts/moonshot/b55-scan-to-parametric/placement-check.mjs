@@ -7,14 +7,18 @@
  * Resolve ABSOLUTE placement heights out of a STEP file, by walking the
  * IfcLocalPlacement chain to the world.
  *
- * This exists because the placement PARENT is not uniform across
- * `@ifc-lite/create`'s element constructors: `addIfcWall` and `addIfcSlab`
- * place relative to the storey (whose own placement is `[0, 0, Elevation]`),
- * while `addIfcSpace` places relative to the world. A caller that hands the
- * same Z to both puts them 1x elevation apart, and nothing in the pipeline
- * downstream would notice: the exam scores IfcSpace quantities only, and every
- * one of those is invariant under a rigid Z shift of the walls. So the check
- * has to look at the file.
+ * This exists because the placement PARENT was not uniform across
+ * `@ifc-lite/create`'s element constructors before 1.18.0: `addIfcWall` and
+ * `addIfcSlab` placed relative to the storey (whose own placement is
+ * `[0, 0, Elevation]`), while `addIfcSpace` placed relative to the world. A
+ * caller that handed the same Z to both put them 1x elevation apart, and
+ * nothing in the pipeline downstream would notice: the exam scores IfcSpace
+ * quantities only, and every one of those is invariant under a rigid Z shift
+ * of the walls. So the check has to look at the file.
+ *
+ * The builder has since been fixed to place every kind against the storey, but
+ * this check stays: it is the assertion that would catch the semantics moving
+ * again, in either direction, and it costs a parse.
  *
  * Reading it back out of the emitted STEP -- rather than trusting the
  * arguments that were passed in -- is the point: it is the only form of the
